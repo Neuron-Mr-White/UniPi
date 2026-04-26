@@ -69,9 +69,10 @@ function selectProvider(
     const allProviders = registry.getProvidersForCapability(capability);
     const providerNames = allProviders.map((p) => p.name).join(", ");
     throw new Error(
-      `No ${capability} provider available.\n` +
-      `Configure providers via /unipi:web-settings\n` +
-      `Available providers: ${providerNames}`
+      `No ${capability} provider configured.\n` +
+      `→ Run /unipi:web-settings to enable providers and add API keys.\n` +
+      `→ Free options: DuckDuckGo (search), Jina Reader (read).\n` +
+      `→ Available providers: ${providerNames}`
     );
   }
 
