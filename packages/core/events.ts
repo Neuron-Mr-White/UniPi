@@ -29,6 +29,11 @@ export const UNIPI_EVENTS = {
   /** Module status response */
   MODULE_STATUS_RESPONSE: "unipi:module:status:response",
 
+  /** Info screen group registered */
+  INFO_GROUP_REGISTERED: "unipi:info:group:registered",
+  /** Info screen data updated */
+  INFO_DATA_UPDATED: "unipi:info:data:updated",
+
   /** Memory stored/updated */
   MEMORY_STORED: "unipi:memory:stored",
   /** Memory deleted */
@@ -147,6 +152,24 @@ export interface UnipiMemoryConsolidatedEvent {
   projectName: string;
 }
 
+/** Payload for INFO_GROUP_REGISTERED */
+export interface UnipiInfoGroupEvent {
+  /** Group id */
+  groupId: string;
+  /** Group display name */
+  groupName: string;
+  /** Module that registered the group */
+  module: string;
+}
+
+/** Payload for INFO_DATA_UPDATED */
+export interface UnipiInfoDataEvent {
+  /** Group id */
+  groupId: string;
+  /** Updated data keys */
+  keys: string[];
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -158,4 +181,6 @@ export type UnipiEventPayload =
   | UnipiMemoryStoredEvent
   | UnipiMemoryDeletedEvent
   | UnipiMemorySearchedEvent
-  | UnipiMemoryConsolidatedEvent;
+  | UnipiMemoryConsolidatedEvent
+  | UnipiInfoGroupEvent
+  | UnipiInfoDataEvent;

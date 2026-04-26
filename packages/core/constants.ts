@@ -25,7 +25,7 @@ export const MODULES = {
   MCP: "@unipi/mcp",
   TASK: "@unipi/task",
   WEBTOOLS: "@unipi/webtools",
-  INFO_SCREEN: "@unipi/info-screen",
+  INFO_SCREEN: "@pi-unipi/info-screen",
   IMPECCABLE: "@unipi/impeccable",
   SETTINGS: "@unipi/settings",
 } as const;
