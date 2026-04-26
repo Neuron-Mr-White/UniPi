@@ -79,6 +79,8 @@ export class AgentWidget {
         clearInterval(this.timer);
         this.timer = undefined;
       }
+      // Clear widget after agent finishes
+      this.requestRender();
     }
   }
 
