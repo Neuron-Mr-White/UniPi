@@ -31,7 +31,7 @@ const moduleReadyPromise = new Promise<void>((resolve) => {
 });
 
 /** Timeout for waiting for modules */
-const MODULE_WAIT_TIMEOUT_MS = 5000;
+const MODULE_WAIT_TIMEOUT_MS = 8000;
 
 /**
  * Wait for modules to announce, then return.

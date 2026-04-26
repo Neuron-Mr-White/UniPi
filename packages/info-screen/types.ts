@@ -70,7 +70,7 @@ export interface GroupSettings {
 /** Default settings */
 export const DEFAULT_SETTINGS: InfoScreenSettings = {
   showOnBoot: true,
-  bootTimeoutMs: 5000,
+  bootTimeoutMs: 8000,
   groups: {},
   groupOrder: [],
 };

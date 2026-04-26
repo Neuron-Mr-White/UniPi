@@ -8,6 +8,8 @@
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { emitEvent, MODULES } from "@pi-unipi/core";
+import { UNIPI_EVENTS } from "@pi-unipi/core";
 
 // Get info registry from global
 function getInfoRegistry() {
@@ -172,6 +174,14 @@ export default function (pi: ExtensionAPI) {
       `• Workspace agents: ${workspaceAgents}`,
       "info",
     );
+
+    // Emit module ready event
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+      name: MODULES.SUBAGENTS || "subagents",
+      version: "0.1.8",
+      commands: [],
+      tools: ["spawn_helper", "get_helper_result"],
+    });
   });
 
   // ESC propagation: abort all agents on session shutdown
