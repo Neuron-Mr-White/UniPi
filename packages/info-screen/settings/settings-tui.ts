@@ -47,6 +47,15 @@ export class SettingsOverlay implements Component {
       name: g.name,
       icon: g.icon,
     }));
+    // Apply saved order if exists
+    if (this.settings.groupOrder) {
+      const order = this.settings.groupOrder;
+      this.groups.sort((a, b) => {
+        const ai = order.indexOf(a.id);
+        const bi = order.indexOf(b.id);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+    }
   }
 
   /**
@@ -87,6 +96,12 @@ export class SettingsOverlay implements Component {
       case "\x1b[C": // Right - enter stats mode
       case "l":
         this.enterStatsMode(this.groups[this.selectedIndex].id);
+        break;
+      case "J": // Shift+J - move group down
+        this.moveGroupDown();
+        break;
+      case "K": // Shift+K - move group up
+        this.moveGroupUp();
         break;
       case "q": // Quit
       case "\x1b": // Escape
@@ -167,6 +182,42 @@ export class SettingsOverlay implements Component {
   }
 
   /**
+   * Move selected group up in order.
+   */
+  private moveGroupUp(): void {
+    if (this.selectedIndex <= 0) return;
+    const i = this.selectedIndex;
+    // Swap with previous
+    const temp = this.groups[i]!;
+    this.groups[i] = this.groups[i - 1]!;
+    this.groups[i - 1] = temp;
+    this.selectedIndex--;
+    this.saveGroupOrder();
+  }
+
+  /**
+   * Move selected group down in order.
+   */
+  private moveGroupDown(): void {
+    if (this.selectedIndex >= this.groups.length - 1) return;
+    const i = this.selectedIndex;
+    // Swap with next
+    const temp = this.groups[i]!;
+    this.groups[i] = this.groups[i + 1]!;
+    this.groups[i + 1] = temp;
+    this.selectedIndex++;
+    this.saveGroupOrder();
+  }
+
+  /**
+   * Save group order to settings.
+   */
+  private saveGroupOrder(): void {
+    this.settings.groupOrder = this.groups.map((g) => g.id);
+    saveInfoSettings(this.settings);
+  }
+
+  /**
    * Render the component.
    */
   render(width: number): string[] {
@@ -218,7 +269,7 @@ export class SettingsOverlay implements Component {
     // Footer
     lines.push("");
     lines.push(ansi.dim + "─".repeat(width) + ansi.reset);
-    lines.push(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  → stats  q close${ansi.reset}`, width));
+    lines.push(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  → stats  J/K reorder  q close${ansi.reset}`, width));
     lines.push("");
 
     return lines;

@@ -55,6 +55,8 @@ export interface InfoScreenSettings {
   bootTimeoutMs: number;
   /** Per-group settings */
   groups: Record<string, GroupSettings>;
+  /** Group display order (array of group ids) */
+  groupOrder?: string[];
 }
 
 /** Settings for a single group */
@@ -70,4 +72,5 @@ export const DEFAULT_SETTINGS: InfoScreenSettings = {
   showOnBoot: true,
   bootTimeoutMs: 2000,
   groups: {},
+  groupOrder: [],
 };

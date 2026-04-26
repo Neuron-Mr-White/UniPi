@@ -8,7 +8,8 @@
 import type { Component } from "@mariozechner/pi-tui";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { infoRegistry } from "../registry.js";
-import type { InfoGroup, GroupData, StatData } from "../types.js";
+import { getInfoSettings } from "../config.js";
+import type { InfoGroup, GroupData } from "../types.js";
 
 /** ANSI escape codes */
 const ansi = {
@@ -25,6 +26,9 @@ const ansi = {
   white: "\x1b[37m",
   red: "\x1b[31m",
   gray: "\x1b[90m",
+  // Backgrounds
+  bgDarkGray: "\x1b[48;5;235m",
+  bgDarkerGray: "\x1b[48;5;233m",
 };
 
 /** Tab color palette */
@@ -46,6 +50,8 @@ export class InfoOverlay implements Component {
   private loading = true;
   private error: string | null = null;
   private scrollOffset = 0;
+  /** Tab scroll offset for horizontal scrolling */
+  private tabScrollOffset = 0;
   /** Callback when overlay should close */
   onClose?: () => void;
 
@@ -67,6 +73,17 @@ export class InfoOverlay implements Component {
     this.loading = true;
     // Always re-fetch ALL groups to catch late registrations
     this.groups = infoRegistry.getAllGroups();
+    
+    // Apply saved order from settings
+    const settings = getInfoSettings();
+    if (settings.groupOrder && settings.groupOrder.length > 0) {
+      const order = settings.groupOrder;
+      this.groups.sort((a, b) => {
+        const ai = order.indexOf(a.id);
+        const bi = order.indexOf(b.id);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+    }
 
     try {
       // Load data for all groups in parallel
@@ -94,10 +111,12 @@ export class InfoOverlay implements Component {
       // Right arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
       this.scrollOffset = 0; // Reset scroll on tab switch
+      this.ensureTabVisible();
     } else if (data === "\x1b[D" || data === "h") {
       // Left arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
       this.scrollOffset = 0; // Reset scroll on tab switch
+      this.ensureTabVisible();
     } else if (data === "\x1b[B" || data === "j") {
       // Down arrow - scroll down
       this.scrollOffset++;
@@ -114,6 +133,14 @@ export class InfoOverlay implements Component {
       // q or Escape - close overlay
       this.onClose?.();
     }
+  }
+
+  /**
+   * Ensure active tab is visible in the tab bar (horizontal scroll).
+   */
+  private ensureTabVisible(): void {
+    // Tab bar shows ~maxTabsVisible tabs, centered around active
+    // This is handled in renderTabBar
   }
 
   /**
@@ -135,6 +162,16 @@ export class InfoOverlay implements Component {
     
     if (groupIds !== currentIds) {
       this.groups = allGroups;
+      // Apply saved order
+      const settings = getInfoSettings();
+      if (settings.groupOrder && settings.groupOrder.length > 0) {
+        const order = settings.groupOrder;
+        this.groups.sort((a, b) => {
+          const ai = order.indexOf(a.id);
+          const bi = order.indexOf(b.id);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
+      }
       // Load data for any new groups (non-blocking)
       this.loadDataForNewGroups(allGroups);
     }
@@ -169,11 +206,9 @@ export class InfoOverlay implements Component {
     const lines: string[] = [];
     const padding = " ".repeat(Math.max(0, Math.floor((width - 20) / 2)));
 
-    lines.push("");
     lines.push(`${padding}${ansi.cyan}${ansi.bold}📊 UniPi Info Screen${ansi.reset}`);
     lines.push("");
     lines.push(`${padding}${ansi.dim}Loading dashboard...${ansi.reset}`);
-    lines.push("");
 
     return lines;
   }
@@ -185,10 +220,8 @@ export class InfoOverlay implements Component {
     const lines: string[] = [];
     const padding = " ".repeat(Math.max(0, Math.floor((width - 20) / 2)));
 
-    lines.push("");
     lines.push(`${padding}${ansi.yellow}${ansi.bold}⚠️ Error${ansi.reset}`);
     lines.push(`${padding}${ansi.dim}${this.error ?? "Unknown error"}${ansi.reset}`);
-    lines.push("");
 
     return lines;
   }
@@ -200,22 +233,23 @@ export class InfoOverlay implements Component {
     const lines: string[] = [];
     const padding = " ".repeat(Math.max(0, Math.floor((width - 30) / 2)));
 
-    lines.push("");
     lines.push(`${padding}${ansi.cyan}${ansi.bold}📊 UniPi Info Screen${ansi.reset}`);
     lines.push("");
     lines.push(`${padding}${ansi.dim}No groups registered.${ansi.reset}`);
     lines.push(`${padding}${ansi.dim}Modules will register groups on startup.${ansi.reset}`);
-    lines.push("");
 
     return lines;
   }
 
   /**
-   * Pad a line to fill a target visual width.
+   * Pad a line to fill a target visual width with background.
    */
-  private padToWidth(line: string, targetWidth: number): string {
+  private padToWidth(line: string, targetWidth: number, bg?: string): string {
     const visLen = visibleWidth(line);
     const pad = Math.max(0, targetWidth - visLen);
+    if (bg) {
+      return bg + line + " ".repeat(pad) + ansi.reset;
+    }
     return line + " ".repeat(pad);
   }
 
@@ -227,19 +261,22 @@ export class InfoOverlay implements Component {
     const group = this.groups[this.activeTabIndex];
     const data = this.groupData.get(group.id) ?? {};
     // Inner width for content (subtract 2 for left+right borders)
-    // Subtract extra 1 to prevent right border clipping on some terminals
-    const innerWidth = width - 3;
+    const innerWidth = width - 2;
+
+    // Background colors
+    const bgHeader = ansi.bgDarkGray;
+    const bgContent = ansi.bgDarkerGray;
 
     // Top border
-    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth + 1)}╮${ansi.reset}`);
+    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
-    // Header
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth)}${ansi.dim} │${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
+    // Header with background
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
-    // Tab bar
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth)}${ansi.dim} │${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
+    // Tab bar with horizontal scrolling
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
     // Content with scrolling
     const contentLines = this.renderGroupContent(innerWidth, group, data);
@@ -253,20 +290,20 @@ export class InfoOverlay implements Component {
     const visibleContent = contentLines.slice(this.scrollOffset, this.scrollOffset + maxVisibleLines);
     
     for (const line of visibleContent) {
-      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim} │${ansi.reset}`);
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth, bgContent)}${ansi.dim}│${ansi.reset}`);
     }
     
     // Show scroll indicator if needed
     if (contentLines.length > maxVisibleLines) {
       const scrollInfo = ` ${this.scrollOffset + 1}-${Math.min(this.scrollOffset + maxVisibleLines, contentLines.length)}/${contentLines.length} `;
-      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(scrollInfo, innerWidth)}${ansi.dim} │${ansi.reset}`);
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(scrollInfo, innerWidth, bgContent)}${ansi.dim}│${ansi.reset}`);
     }
 
     // Footer
     const hasScroll = contentLines.length > maxVisibleLines;
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth, hasScroll), innerWidth)}${ansi.dim} │${ansi.reset}`);
-    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth + 1)}╯${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth, hasScroll), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
   }
@@ -290,15 +327,78 @@ export class InfoOverlay implements Component {
   }
 
   /**
-   * Render tab bar.
+   * Render tab bar with horizontal scrolling.
+   * When tabs overflow, slides to keep active tab visible.
    */
   private renderTabBar(width: number): string {
+    if (this.groups.length === 0) return "";
+
+    // Calculate tab widths
+    const tabWidths = this.groups.map(g => visibleWidth(` ${g.icon} ${g.name} `));
+    const separatorWidth = visibleWidth(`${ansi.dim}│${ansi.reset}`);
+    
+    // Find how many tabs fit
+    let maxTabs = 0;
+    let totalWidth = 0;
+    for (let i = 0; i < this.groups.length; i++) {
+      const tabW = tabWidths[i]!;
+      const sepW = i > 0 ? separatorWidth : 0;
+      if (totalWidth + sepW + tabW > width - 2) break;
+      totalWidth += sepW + tabW;
+      maxTabs = i + 1;
+    }
+
+    // If all tabs fit, show all
+    if (maxTabs >= this.groups.length) {
+      return this.renderAllTabs(width);
+    }
+
+    // Calculate scroll offset to keep active tab visible
+    // Center the active tab in the visible window
+    const halfVisible = Math.floor(maxTabs / 2);
+    let startIdx = this.activeTabIndex - halfVisible;
+    startIdx = Math.max(0, Math.min(startIdx, this.groups.length - maxTabs));
+    
+    // Build visible tabs
+    const tabs: string[] = [];
+    for (let i = startIdx; i < startIdx + maxTabs && i < this.groups.length; i++) {
+      const group = this.groups[i]!;
+      const isActive = i === this.activeTabIndex;
+      const color = TAB_COLORS[i % TAB_COLORS.length]!;
+
+      if (isActive) {
+        tabs.push(`${color}${ansi.bold} ${group.icon} ${group.name} ${ansi.reset}`);
+      } else {
+        tabs.push(`${ansi.dim} ${group.icon} ${group.name} ${ansi.reset}`);
+      }
+    }
+
+    const tabStr = tabs.join(`${ansi.dim}│${ansi.reset}`);
+    
+    // Add scroll indicators
+    const hasLeft = startIdx > 0;
+    const hasRight = startIdx + maxTabs < this.groups.length;
+    
+    if (hasLeft) {
+      return `${ansi.dim}◀${ansi.reset} ${tabStr}`;
+    }
+    if (hasRight) {
+      return `${tabStr} ${ansi.dim}▶${ansi.reset}`;
+    }
+    
+    return tabStr;
+  }
+
+  /**
+   * Render all tabs (when they all fit).
+   */
+  private renderAllTabs(width: number): string {
     const tabs: string[] = [];
 
     for (let i = 0; i < this.groups.length; i++) {
-      const group = this.groups[i];
+      const group = this.groups[i]!;
       const isActive = i === this.activeTabIndex;
-      const color = TAB_COLORS[i % TAB_COLORS.length];
+      const color = TAB_COLORS[i % TAB_COLORS.length]!;
 
       if (isActive) {
         tabs.push(`${color}${ansi.bold} ${group.icon} ${group.name} ${ansi.reset}`);
@@ -310,19 +410,12 @@ export class InfoOverlay implements Component {
     const tabStr = tabs.join(`${ansi.dim}│${ansi.reset}`);
     const visLen = visibleWidth(tabStr);
 
-    // Truncate if too wide
+    // Truncate if too wide (shouldn't happen if maxTabs calculation is correct)
     if (visLen > width - 2) {
       return truncateToWidth(tabStr, width - 2);
     }
 
     return tabStr;
-  }
-
-  /**
-   * Render a separator line.
-   */
-  private renderSeparator(width: number): string {
-    return ansi.dim + "─".repeat(width) + ansi.reset;
   }
 
   /**
@@ -383,7 +476,7 @@ export class InfoOverlay implements Component {
   /**
    * Render footer with navigation hints.
    */
-  private renderFooter(width: number, hasScroll?: boolean): string {
+  private renderFooter(width: number, _hasScroll?: boolean): string {
     const hints = [
       `${ansi.cyan}←/→${ansi.reset} tabs`,
     ];
