@@ -126,13 +126,16 @@ export class InfoOverlay implements Component {
       return this.renderError(width);
     }
 
-    // Always re-fetch ALL groups to catch late registrations
+    // Check for new groups (but don't re-trigger loading)
     const allGroups = infoRegistry.getAllGroups();
-    if (allGroups.length !== this.groups.length) {
-      console.debug(`[info-screen] Groups changed: ${this.groups.length} -> ${allGroups.length}`);
+    const groupIds = allGroups.map(g => g.id).join(",");
+    const currentIds = this.groups.map(g => g.id).join(",");
+    
+    if (groupIds !== currentIds) {
+      console.debug(`[info-screen] Groups changed: ${currentIds} -> ${groupIds}`);
       this.groups = allGroups;
-      // Async reload data for new groups
-      this.loadData();
+      // Load data for any new groups (non-blocking)
+      this.loadDataForNewGroups(allGroups);
     }
 
     if (this.groups.length === 0) {
@@ -140,6 +143,22 @@ export class InfoOverlay implements Component {
     }
 
     return this.renderDashboard(width);
+  }
+
+  /**
+   * Load data for groups we don't have data for yet.
+   */
+  private async loadDataForNewGroups(groups: InfoGroup[]): Promise<void> {
+    for (const group of groups) {
+      if (!this.groupData.has(group.id)) {
+        try {
+          const data = await infoRegistry.getGroupData(group.id);
+          this.groupData.set(group.id, data);
+        } catch (error) {
+          console.debug(`[info-screen] Error loading data for ${group.id}:`, error);
+        }
+      }
+    }
   }
 
   /**

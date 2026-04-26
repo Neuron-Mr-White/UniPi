@@ -105,11 +105,21 @@ function discoverExtensions(): Array<{ name: string; source: string; version: st
         // Extract package name from source
         let name = source;
         if (source.startsWith("npm:")) {
-          name = source.slice(4).split("@")[0];
+          const npmPkg = source.slice(4);
+          // Handle scoped packages like @scope/name
+          if (npmPkg.startsWith("@")) {
+            // @scope/name -> name
+            const parts = npmPkg.split("/");
+            name = parts.length > 1 ? parts[1] : npmPkg;
+          } else {
+            name = npmPkg.split("@")[0];
+          }
         } else if (source.startsWith("git:")) {
-          name = source.split("/").pop() ?? source;
+          name = source.split("/").pop()?.replace(/\.git$/, "") ?? source;
         }
 
+        // Skip empty names
+        if (!name || name.trim() === "") continue;
         if (counted.has(name)) continue;
         counted.add(name);
 
