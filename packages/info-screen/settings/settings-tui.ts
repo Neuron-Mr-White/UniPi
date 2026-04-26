@@ -37,6 +37,8 @@ export class SettingsOverlay implements Component {
   private selectedIndex = 0;
   private mode: "groups" | "stats" = "groups";
   private selectedGroupId: string | null = null;
+  /** Callback when overlay should close */
+  onClose?: () => void;
 
   constructor() {
     this.settings = getInfoSettings();
@@ -88,7 +90,7 @@ export class SettingsOverlay implements Component {
         break;
       case "q": // Quit
       case "\x1b": // Escape
-        // Handled by caller
+        this.onClose?.();
         break;
     }
   }
@@ -117,10 +119,13 @@ export class SettingsOverlay implements Component {
         break;
       case "\x1b[D": // Left - back to groups
       case "h":
-      case "q":
         this.mode = "groups";
         this.selectedGroupId = null;
         this.selectedIndex = this.groups.findIndex((g) => g.id === this.selectedGroupId) ?? 0;
+        break;
+      case "q": // Quit from stats mode
+      case "\x1b":
+        this.onClose?.();
         break;
     }
   }

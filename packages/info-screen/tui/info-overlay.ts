@@ -46,6 +46,8 @@ export class InfoOverlay implements Component {
   private loading = true;
   private error: string | null = null;
   private scrollOffset = 0;
+  /** Callback when overlay should close */
+  onClose?: () => void;
 
   constructor() {
     this.loadData();
@@ -110,7 +112,8 @@ export class InfoOverlay implements Component {
       // G - go to bottom (will be clamped in render)
       this.scrollOffset = Infinity;
     } else if (data === "q" || data === "\x1b") {
-      // q or Escape - handled by caller
+      // q or Escape - close overlay
+      this.onClose?.();
     }
   }
 

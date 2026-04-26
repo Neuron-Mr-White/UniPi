@@ -99,21 +99,14 @@ export default function (pi: ExtensionAPI) {
       // Wait for other modules to announce
       await waitForModules();
 
+      // Create overlay instance once
+      const overlay = new InfoOverlay();
+
       // Show the overlay
       ctx.ui.custom(
-        (tui, theme, keybindings, done) => {
-          const overlay = new InfoOverlay();
-
-          // Wrap handleInput to detect close keys
-          const originalHandleInput = overlay.handleInput.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            if (data === "q" || data === "\x1b") {
-              done(undefined);
-              return;
-            }
-            originalHandleInput(data);
-          };
-
+        (_tui, _theme, _keybindings, done) => {
+          // Wire up close handler
+          overlay.onClose = () => done(undefined);
           return overlay;
         },
         {
@@ -141,20 +134,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand(`${UNIPI_PREFIX}info`, {
     description: "Show info screen dashboard",
     handler: async (_args, ctx) => {
+      const overlay = new InfoOverlay();
       ctx.ui.custom(
-        (tui, theme, keybindings, done) => {
-          const overlay = new InfoOverlay();
-
-          // Wrap handleInput to detect close keys
-          const originalHandleInput = overlay.handleInput.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            if (data === "q" || data === "\x1b") {
-              done(undefined);
-              return;
-            }
-            originalHandleInput(data);
-          };
-
+        (_tui, _theme, _keybindings, done) => {
+          overlay.onClose = () => done(undefined);
           return overlay;
         },
         {
@@ -174,20 +157,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand(`${UNIPI_PREFIX}info-settings`, {
     description: "Configure info screen display",
     handler: async (_args, ctx) => {
+      const overlay = new SettingsOverlay();
       ctx.ui.custom(
-        (tui, theme, keybindings, done) => {
-          const overlay = new SettingsOverlay();
-
-          // Wrap handleInput to detect close keys
-          const originalHandleInput = overlay.handleInput.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            if (data === "q" || data === "\x1b") {
-              done(undefined);
-              return;
-            }
-            originalHandleInput(data);
-          };
-
+        (_tui, _theme, _keybindings, done) => {
+          overlay.onClose = () => done(undefined);
           return overlay;
         },
         {
