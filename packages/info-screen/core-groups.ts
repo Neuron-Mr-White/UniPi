@@ -180,6 +180,7 @@ const loadTimes: Array<{ name: string; type: string; ms: number }> = [];
 let totalLoadTimeMs = 0;
 let loadTrackingStarted = false;
 let loadTrackingStartMs = 0;
+const moduleStartTimes = new Map<string, number>();
 
 /** Start load time tracking */
 export function startLoadTracking(): void {
@@ -189,10 +190,28 @@ export function startLoadTracking(): void {
   }
 }
 
+/** Record when a module starts loading */
+export function recordModuleStart(name: string): void {
+  moduleStartTimes.set(name, Date.now());
+}
+
 /** Record a load time */
-export function recordLoadTime(name: string, type: string, ms: number): void {
-  loadTimes.push({ name, type, ms });
-  totalLoadTimeMs += ms;
+export function recordLoadTime(name: string, type: string, ms?: number): void {
+  // If no ms provided, calculate from start time
+  if (ms === undefined || ms === 0) {
+    const startTime = moduleStartTimes.get(name);
+    if (startTime) {
+      ms = Date.now() - startTime;
+    } else {
+      ms = 0;
+    }
+  }
+  // Avoid duplicates
+  const existing = loadTimes.find(t => t.name === name && t.type === type);
+  if (!existing) {
+    loadTimes.push({ name, type, ms });
+    totalLoadTimeMs += ms;
+  }
 }
 
 /** Finish load tracking */
@@ -209,7 +228,7 @@ export function getLoadTimes(): Array<{ name: string; type: string; ms: number }
 
 /** Get total load time */
 export function getTotalLoadTime(): number {
-  return totalLoadTimeMs;
+  return totalLoadTimeMs > 0 ? totalLoadTimeMs : (loadTrackingStarted ? Date.now() - loadTrackingStartMs : 0);
 }
 
 /**
@@ -510,16 +529,28 @@ export function registerCoreGroups(): void {
         return source === "sdk";
       });
 
-      // Build tool list as comma-separated values
+      // Build tool list as comma-separated values with wrapping
       const toolNames = tools.map((t) => `${t.name}`);
-      const toolListStr = toolNames.join(", ");
+      // Split into chunks of ~60 chars for wrapping
+      const chunks: string[] = [];
+      let current = "";
+      for (const name of toolNames) {
+        if (current && (current.length + name.length + 2) > 60) {
+          chunks.push(current);
+          current = name;
+        } else {
+          current = current ? `${current}, ${name}` : name;
+        }
+      }
+      if (current) chunks.push(current);
 
       return {
         total: { value: String(tools.length) },
         builtin: { value: String(builtin.length) },
         registered: { value: String(extension.length + sdk.length) },
         list: {
-          value: toolListStr.length > 0 ? toolListStr : "none",
+          value: chunks.length > 0 ? chunks[0] : "none",
+          detail: chunks.length > 1 ? chunks.slice(1).join("\n") : undefined,
         },
       };
     },
@@ -585,16 +616,28 @@ export function registerCoreGroups(): void {
       const global = skills.filter((s) => s.source === "global");
       const project = skills.filter((s) => s.source === "project");
 
-      // Build skill list as comma-separated values
+      // Build skill list as comma-separated values with wrapping
       const skillNames = skills.map((s) => `${s.name} (${s.source})`);
-      const skillListStr = skillNames.join(", ");
+      // Split into chunks of ~60 chars for wrapping
+      const chunks: string[] = [];
+      let current = "";
+      for (const name of skillNames) {
+        if (current && (current.length + name.length + 2) > 60) {
+          chunks.push(current);
+          current = name;
+        } else {
+          current = current ? `${current}, ${name}` : name;
+        }
+      }
+      if (current) chunks.push(current);
 
       return {
         count: { value: String(skills.length) },
         global: { value: String(global.length) },
         project: { value: String(project.length) },
         list: {
-          value: skillListStr.length > 0 ? skillListStr : "none",
+          value: chunks.length > 0 ? chunks[0] : "none",
+          detail: chunks.length > 1 ? chunks.slice(1).join("\n") : undefined,
         },
       };
     },

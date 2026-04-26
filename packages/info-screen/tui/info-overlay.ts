@@ -153,12 +153,12 @@ export class InfoOverlay implements Component {
       return this.renderError(width);
     }
 
-    // Check for new groups (but don't re-trigger loading)
+    // Check for new groups and re-fetch data
     const allGroups = infoRegistry.getAllGroups();
     const groupIds = allGroups.map(g => g.id).join(",");
     const currentIds = this.groups.map(g => g.id).join(",");
     
-    if (groupIds !== currentIds) {
+    if (groupIds !== currentIds || this.groups.length !== allGroups.length) {
       this.groups = allGroups;
       // Apply saved order
       const settings = getInfoSettings();
@@ -170,9 +170,10 @@ export class InfoOverlay implements Component {
           return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
         });
       }
-      // Load data for any new groups (non-blocking)
-      this.loadDataForNewGroups(allGroups);
     }
+
+    // Always re-fetch data for all groups to catch late updates
+    this.refreshAllData();
 
     if (this.groups.length === 0) {
       return this.renderEmpty(width);
@@ -194,6 +195,22 @@ export class InfoOverlay implements Component {
           // Silently skip groups with errors
         }
       }
+    }
+  }
+
+  /**
+   * Refresh data for all groups (non-blocking).
+   */
+  private refreshAllData(): void {
+    for (const group of this.groups) {
+      // Invalidate cache to get fresh data
+      infoRegistry.invalidateCache(group.id);
+      // Fetch fresh data (non-blocking)
+      infoRegistry.getGroupData(group.id).then(data => {
+        this.groupData.set(group.id, data);
+      }).catch(() => {
+        // Ignore errors
+      });
     }
   }
 

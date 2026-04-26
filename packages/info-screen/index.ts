@@ -12,10 +12,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking } from "./core-groups.js";
+import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart } from "./core-groups.js";
 
 /** Re-export infoRegistry, registerSkillDir, and load tracking for external use */
-export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking };
+export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart };
 import { getInfoSettings } from "./config.js";
 import { InfoOverlay } from "./tui/info-overlay.js";
 import { SettingsOverlay } from "./settings/settings-tui.js";
@@ -62,7 +62,7 @@ export default function (pi: ExtensionAPI) {
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
       // Track the module
       trackModule(event.name, event.version || "unknown");
-      recordLoadTime(event.name, "module", event.loadTimeMs || 0);
+      recordLoadTime(event.name, "module", event.loadTimeMs);
 
       // Track tools from this module
       if (event.tools && Array.isArray(event.tools)) {
