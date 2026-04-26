@@ -6,7 +6,7 @@ All-in-one extension suite for the [Pi coding agent](https://github.com/badlogic
 
 **All-in-one:**
 ```bash
-pi install npm:unipi
+pi install npm:@pi-unipi/unipi
 ```
 
 **Individual packages:**
