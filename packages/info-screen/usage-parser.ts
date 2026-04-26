@@ -52,23 +52,31 @@ interface PeriodBounds {
  * Get the sessions directory path.
  */
 function getSessionsDir(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "sessions");
+  // Replicate Pi's logic: respect PI_CODING_AGENT_DIR env var
+  const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  return join(agentDir, "sessions");
 }
 
 /**
  * Get period boundaries for today, this week, this month.
+ * Today starts at 00:00 local time.
+ * Week starts on Monday.
  */
 function getPeriodBounds(): { today: PeriodBounds; week: PeriodBounds; month: PeriodBounds } {
   const now = new Date();
 
+  // Start of today (midnight local time)
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
 
+  // Start of current week (Monday 00:00)
   const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay()); // Sunday
+  const dayOfWeek = weekStart.getDay(); // 0 = Sunday, 1 = Monday, ...
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  weekStart.setDate(weekStart.getDate() - daysSinceMonday);
   weekStart.setHours(0, 0, 0, 0);
 
+  // Start of current month (1st day 00:00)
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   return {
@@ -78,45 +86,65 @@ function getPeriodBounds(): { today: PeriodBounds; week: PeriodBounds; month: Pe
   };
 }
 
-/**
- * Check if a timestamp falls within a period.
- */
-function isInPeriod(timestamp: Date, period: PeriodBounds): boolean {
-  return timestamp >= period.start && timestamp <= period.end;
-}
+
 
 /**
  * Parse a JSONL session file and extract usage data.
+ * Matches tmustier's parsing logic.
  */
-function parseSessionFile(filePath: string): Array<{ usage: MessageUsage; model: string; timestamp: Date }> {
-  const results: Array<{ usage: MessageUsage; model: string; timestamp: Date }> = [];
+function parseSessionFile(
+  filePath: string,
+  seenHashes: Set<string>
+): Array<{ usage: MessageUsage; model: string; timestamp: number }> {
+  const results: Array<{ usage: MessageUsage; model: string; timestamp: number }> = [];
 
   try {
     const content = readFileSync(filePath, "utf-8");
-    const lines = content.split("\n").filter(Boolean);
+    const lines = content.trim().split("\n");
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+
       try {
         const entry = JSON.parse(line);
 
-        // Only process assistant messages with usage data
-        if (entry.role !== "assistant" || !entry.usage) continue;
+        // Match tmustier's parsing: check entry.type === "message" and entry.message?.role === "assistant"
+        if (entry.type === "message" && entry.message?.role === "assistant") {
+          const msg = entry.message;
+          if (msg.usage && msg.provider && msg.model) {
+            const input = msg.usage.input || 0;
+            const output = msg.usage.output || 0;
+            const cacheRead = msg.usage.cacheRead || 0;
+            const cacheWrite = msg.usage.cacheWrite || 0;
+            const cost = msg.usage.cost?.total || 0;
 
-        const usage = entry.usage;
-        if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
-        if (!usage.cost || typeof usage.cost.total !== "number") continue;
+            // Get timestamp
+            const fallbackTs = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
+            const timestamp = msg.timestamp || (Number.isNaN(fallbackTs) ? 0 : fallbackTs);
 
-        results.push({
-          usage: {
-            input: usage.input,
-            output: usage.output,
-            cacheRead: usage.cacheRead ?? 0,
-            cacheWrite: usage.cacheWrite ?? 0,
-            cost: { total: usage.cost.total },
-          },
-          model: entry.model ?? "unknown",
-          timestamp: new Date(entry.timestamp ?? Date.now()),
-        });
+            // Deduplicate copied history across branched session files
+            const totalTokens = input + output + cacheRead + cacheWrite;
+            const hash = `${timestamp}:${totalTokens}`;
+            if (seenHashes.has(hash)) continue;
+            seenHashes.add(hash);
+
+            // Only include if we have valid data
+            if (input > 0 || output > 0 || cost > 0) {
+              results.push({
+                usage: {
+                  input,
+                  output,
+                  cacheRead,
+                  cacheWrite,
+                  cost: { total: cost },
+                },
+                model: msg.model,
+                timestamp,
+              });
+            }
+          }
+        }
       } catch {
         // Skip malformed lines
       }
@@ -129,7 +157,27 @@ function parseSessionFile(filePath: string): Array<{ usage: MessageUsage; model:
 }
 
 /**
+ * Collect all session files recursively.
+ */
+function collectSessionFiles(dir: string, files: string[]): void {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        collectSessionFiles(entryPath, files);
+      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+        files.push(entryPath);
+      }
+    }
+  } catch {
+    // Skip directories we can't read
+  }
+}
+
+/**
  * Parse all session files and aggregate usage stats.
+ * Matches tmustier's parsing logic.
  */
 export function parseUsageStats(): UsageStats {
   const sessionsDir = getSessionsDir();
@@ -144,62 +192,56 @@ export function parseUsageStats(): UsageStats {
   if (!existsSync(sessionsDir)) return stats;
 
   const periods = getPeriodBounds();
+  const seenHashes = new Set<string>();
 
-  try {
-    const entries = readdirSync(sessionsDir, { withFileTypes: true });
+  // Collect all session files recursively
+  const sessionFiles: string[] = [];
+  collectSessionFiles(sessionsDir, sessionFiles);
+  sessionFiles.sort();
 
-    for (const entry of entries) {
-      // Skip directories (subagent runs)
-      if (entry.isDirectory()) continue;
+  for (const filePath of sessionFiles) {
+    const messages = parseSessionFile(filePath, seenHashes);
 
-      // Only process .jsonl files
-      if (!entry.name.endsWith(".jsonl")) continue;
+    if (messages.length === 0) continue;
 
-      const filePath = join(sessionsDir, entry.name);
-      const messages = parseSessionFile(filePath);
+    stats.sessionCount++;
+    stats.messageCount += messages.length;
 
-      if (messages.length === 0) continue;
+    for (const msg of messages) {
+      // Match tmustier's token calculation: input + output + cacheWrite (not cacheRead)
+      const totalTokens = msg.usage.input + msg.usage.output + msg.usage.cacheWrite;
 
-      stats.sessionCount++;
-      stats.messageCount += messages.length;
+      // All time
+      stats.tokens.allTime += totalTokens;
+      stats.cost.allTime += msg.usage.cost.total;
 
-      for (const msg of messages) {
-        const totalTokens = msg.usage.input + msg.usage.output + msg.usage.cacheWrite;
-
-        // All time
-        stats.tokens.allTime += totalTokens;
-        stats.cost.allTime += msg.usage.cost.total;
-
-        // Today
-        if (isInPeriod(msg.timestamp, periods.today)) {
-          stats.tokens.today += totalTokens;
-          stats.cost.today += msg.usage.cost.total;
-        }
-
-        // This week
-        if (isInPeriod(msg.timestamp, periods.week)) {
-          stats.tokens.week += totalTokens;
-          stats.cost.week += msg.usage.cost.total;
-        }
-
-        // This month
-        if (isInPeriod(msg.timestamp, periods.month)) {
-          stats.tokens.month += totalTokens;
-          stats.cost.month += msg.usage.cost.total;
-        }
-
-        // By model
-        const model = msg.model;
-        if (!stats.byModel[model]) {
-          stats.byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
-        }
-        stats.byModel[model].tokens += totalTokens;
-        stats.byModel[model].cost += msg.usage.cost.total;
-        stats.byModel[model].sessions++;
+      // Today
+      if (msg.timestamp >= periods.today.start.getTime()) {
+        stats.tokens.today += totalTokens;
+        stats.cost.today += msg.usage.cost.total;
       }
+
+      // This week
+      if (msg.timestamp >= periods.week.start.getTime()) {
+        stats.tokens.week += totalTokens;
+        stats.cost.week += msg.usage.cost.total;
+      }
+
+      // This month
+      if (msg.timestamp >= periods.month.start.getTime()) {
+        stats.tokens.month += totalTokens;
+        stats.cost.month += msg.usage.cost.total;
+      }
+
+      // By model
+      const model = msg.model;
+      if (!stats.byModel[model]) {
+        stats.byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
+      }
+      stats.byModel[model].tokens += totalTokens;
+      stats.byModel[model].cost += msg.usage.cost.total;
+      stats.byModel[model].sessions++;
     }
-  } catch {
-    // Return empty stats on error
   }
 
   return stats;

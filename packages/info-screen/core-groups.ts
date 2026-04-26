@@ -30,17 +30,36 @@ function getPackageVersion(packageDir: string): string {
  * Get pi version from its package.json.
  */
 function getPiVersion(): string {
-  try {
-    const piPath = join(homedir(), ".local", "share", "mise", "installs", "node");
-    // Fallback: try to find pi's package.json
-    const homePi = join(homedir(), ".pi", "agent", "package.json");
-    if (existsSync(homePi)) {
-      const pkg = JSON.parse(readFileSync(homePi, "utf-8"));
-      return pkg?.version ?? "unknown";
+  // Try to find pi's package.json in various locations
+  const possiblePaths = [
+    // Global npm install
+    join(homedir(), ".local", "share", "mise", "installs", "node", "24.14.1", "lib", "node_modules", "@mariozechner", "pi-coding-agent", "package.json"),
+    // Alternative locations
+    join(homedir(), ".local", "share", "mise", "installs", "node", "lib", "node_modules", "@mariozechner", "pi-coding-agent", "package.json"),
+  ];
+
+  for (const pkgPath of possiblePaths) {
+    try {
+      if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+        return pkg?.version ?? "unknown";
+      }
+    } catch {
+      // Continue to next path
     }
+  }
+
+  // Fallback: try to run pi --version
+  try {
+    const { execSync } = require("node:child_process");
+    const version = execSync("pi --version 2>/dev/null", { encoding: "utf-8" }).trim();
+    // Extract version number from output like "pi v0.42.4"
+    const match = version.match(/v([\d.]+)/);
+    if (match) return match[1];
   } catch {
     // Ignore
   }
+
   return "unknown";
 }
 
@@ -190,6 +209,27 @@ function discoverSkills(): Array<{ name: string; source: string }> {
 }
 
 /**
+ * Track announced modules.
+ */
+const announcedModules: Array<{ name: string; version: string }> = [];
+
+/**
+ * Add a module to the announced list.
+ */
+export function trackModule(name: string, version: string): void {
+  if (!announcedModules.find((m) => m.name === name)) {
+    announcedModules.push({ name, version });
+  }
+}
+
+/**
+ * Get list of announced modules.
+ */
+export function getAnnouncedModules(): Array<{ name: string; version: string }> {
+  return [...announcedModules];
+}
+
+/**
  * Register all core groups.
  */
 export function registerCoreGroups(): void {
@@ -213,10 +253,16 @@ export function registerCoreGroups(): void {
       const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
       const shortCwd = cwd.startsWith(homeDir) ? `~${cwd.slice(homeDir.length)}` : cwd;
 
+      const modules = getAnnouncedModules();
+      const moduleNames = modules.map((m) => m.name.replace(/^@[^/]+\//, ""));
+
       return {
-        version: { value: "0.1.0", detail: "unipi" },
+        version: { value: getPiVersion(), detail: "pi" },
         cwd: { value: shortCwd },
-        modules: { value: "loading...", detail: "updated on boot" },
+        modules: {
+          value: String(modules.length),
+          detail: moduleNames.slice(0, 4).join(", ") + (moduleNames.length > 4 ? ` +${moduleNames.length - 4} more` : ""),
+        },
         uptime: { value: formatUptime(process.uptime()) },
       };
     },
@@ -318,13 +364,20 @@ export function registerCoreGroups(): void {
         .map(([src, count]) => `${count} ${src}`)
         .join(", ");
 
+      // Build multi-line list
+      const listLines: string[] = [];
+      for (const ext of extensions.slice(0, 8)) {
+        listLines.push(`${ext.name} (${ext.source})`);
+      }
+      if (extensions.length > 8) {
+        listLines.push(`+${extensions.length - 8} more`);
+      }
+
       return {
         count: { value: String(extensions.length), detail: breakdown || "none" },
         list: {
-          value: extensions.length > 0
-            ? extensions.slice(0, 5).map((e) => e.name).join(", ")
-            : "none",
-          detail: extensions.length > 5 ? `+${extensions.length - 5} more` : undefined,
+          value: listLines.length > 0 ? listLines[0] : "none",
+          detail: listLines.length > 1 ? listLines.slice(1).join("\n") : undefined,
         },
       };
     },
@@ -342,17 +395,28 @@ export function registerCoreGroups(): void {
         { id: "count", label: "Total Skills", show: true },
         { id: "global", label: "Global Skills", show: true },
         { id: "project", label: "Project Skills", show: true },
+        { id: "list", label: "Skills", show: true },
       ],
     },
     dataProvider: async () => {
       const skills = discoverSkills();
-      const global = skills.filter((s) => s.source === "global").length;
-      const project = skills.filter((s) => s.source === "project").length;
+      const global = skills.filter((s) => s.source === "global");
+      const project = skills.filter((s) => s.source === "project");
+
+      // Build skill list
+      const skillNames = skills.slice(0, 10).map((s) => `${s.name} (${s.source})`);
+      if (skills.length > 10) {
+        skillNames.push(`+${skills.length - 10} more`);
+      }
 
       return {
         count: { value: String(skills.length) },
-        global: { value: String(global) },
-        project: { value: String(project) },
+        global: { value: String(global.length) },
+        project: { value: String(project.length) },
+        list: {
+          value: skillNames.length > 0 ? skillNames[0] : "none",
+          detail: skillNames.length > 1 ? skillNames.slice(1).join("\n") : undefined,
+        },
       };
     },
   });

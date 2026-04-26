@@ -12,10 +12,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, emitEvent, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
+import { registerCoreGroups, trackModule } from "./core-groups.js";
 
 /** Re-export infoRegistry for external use */
 export { infoRegistry };
-import { registerCoreGroups } from "./core-groups.js";
 import { getInfoSettings } from "./config.js";
 import { InfoOverlay } from "./tui/info-overlay.js";
 import { SettingsOverlay } from "./settings/settings-tui.js";
@@ -56,7 +56,10 @@ export default function (pi: ExtensionAPI) {
   // Listen for module announcements
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
-      // Another module announced — track it
+      // Track the module
+      trackModule(event.name, event.version || "unknown");
+
+      // Signal that a module has announced
       if (!moduleReady) {
         moduleReady = true;
         moduleReadyResolve?.();

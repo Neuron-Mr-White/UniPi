@@ -170,26 +170,29 @@ export class InfoOverlay implements Component {
     const lines: string[] = [];
     const group = this.groups[this.activeTabIndex];
     const data = this.groupData.get(group.id) ?? {};
+    const innerWidth = width - 4; // Account for border padding
+
+    // Top border
+    lines.push(`${ansi.dim}╭${"─".repeat(width - 2)}╮${ansi.reset}`);
 
     // Header
-    lines.push("");
-    lines.push(this.renderHeader(width, group));
-    lines.push("");
+    lines.push(`${ansi.dim}│${ansi.reset}${this.renderHeader(innerWidth, group)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
 
     // Tab bar
-    lines.push(this.renderTabBar(width));
-    lines.push("");
-
-    // Separator
-    lines.push(this.renderSeparator(width));
-    lines.push("");
+    lines.push(`${ansi.dim}│${ansi.reset}${this.renderTabBar(innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
 
     // Content
-    lines.push(...this.renderGroupContent(width, group, data));
+    const contentLines = this.renderGroupContent(innerWidth, group, data);
+    for (const line of contentLines) {
+      lines.push(`${ansi.dim}│${ansi.reset}${line}${ansi.dim}│${ansi.reset}`);
+    }
 
     // Footer
-    lines.push("");
-    lines.push(this.renderFooter(width));
+    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.renderFooter(innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}╰${"─".repeat(width - 2)}╯${ansi.reset}`);
 
     return lines;
   }
@@ -277,8 +280,25 @@ export class InfoOverlay implements Component {
       const label = `${stat.label}:`.padEnd(maxLabelLen + 1);
       let line = `  ${ansi.dim}${label}${ansi.reset} ${ansi.bold}${value}${ansi.reset}`;
 
+      // Handle multi-line detail
       if (detail) {
-        line += ` ${ansi.dim}(${detail})${ansi.reset}`;
+        const detailLines = detail.split("\n");
+        // First line with value
+        if (detailLines.length === 1) {
+          line += ` ${ansi.dim}(${detail})${ansi.reset}`;
+        } else {
+          // Multiple lines - show first line inline, rest indented
+          lines.push(line);
+          for (const dLine of detailLines) {
+            const indent = " ".repeat(maxLabelLen + 4);
+            let detailLine = `${indent}${ansi.dim}${dLine}${ansi.reset}`;
+            if (visibleWidth(detailLine) > width - 2) {
+              detailLine = truncateToWidth(detailLine, width - 2);
+            }
+            lines.push(detailLine);
+          }
+          continue;
+        }
       }
 
       // Truncate if too wide
