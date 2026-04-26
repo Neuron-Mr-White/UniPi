@@ -214,6 +214,11 @@ function discoverSkills(): Array<{ name: string; source: string }> {
 const announcedModules: Array<{ name: string; version: string }> = [];
 
 /**
+ * Track registered tools.
+ */
+const registeredTools: Array<{ name: string; source: string }> = [];
+
+/**
  * Add a module to the announced list.
  */
 export function trackModule(name: string, version: string): void {
@@ -227,6 +232,22 @@ export function trackModule(name: string, version: string): void {
  */
 export function getAnnouncedModules(): Array<{ name: string; version: string }> {
   return [...announcedModules];
+}
+
+/**
+ * Track a registered tool.
+ */
+export function trackTool(name: string, source: string): void {
+  if (!registeredTools.find((t) => t.name === name)) {
+    registeredTools.push({ name, source });
+  }
+}
+
+/**
+ * Get list of registered tools.
+ */
+export function getRegisteredTools(): Array<{ name: string; source: string }> {
+  return [...registeredTools];
 }
 
 /**
@@ -282,27 +303,36 @@ export function registerCoreGroups(): void {
         { id: "tokensMonth", label: "Tokens This Month", show: true },
         { id: "costToday", label: "Cost Today", show: true },
         { id: "costAllTime", label: "Cost All Time", show: true },
-        { id: "topModel", label: "Top Model", show: true },
+        { id: "topModelToday", label: "Top Model Today", show: true },
+        { id: "topModelWeek", label: "Top Model Week", show: true },
+        { id: "topModelMonth", label: "Top Model Month", show: true },
         { id: "sessions", label: "Total Sessions", show: true },
       ],
     },
     dataProvider: async () => {
       const stats = parseUsageStats();
 
-      // Find top model by cost
-      let topModel = "none";
-      let topCost = 0;
-      for (const [model, data] of Object.entries(stats.byModel)) {
-        if (data.cost > topCost) {
-          topCost = data.cost;
-          topModel = model;
+      // Find top model for each period
+      const findTopModel = (modelStats: Record<string, { tokens: number; cost: number; sessions: number }> | undefined) => {
+        if (!modelStats) return { name: "none", cost: 0 };
+        let topName = "none";
+        let topCost = 0;
+        for (const [model, data] of Object.entries(modelStats)) {
+          if (data.cost > topCost) {
+            topCost = data.cost;
+            topName = model;
+          }
         }
-      }
+        // Strip "Claude " prefix for brevity
+        if (topName.startsWith("Claude ")) {
+          topName = topName.slice(7);
+        }
+        return { name: topName, cost: topCost };
+      };
 
-      // Strip "Claude " prefix for brevity
-      if (topModel.startsWith("Claude ")) {
-        topModel = topModel.slice(7);
-      }
+      const topToday = findTopModel(stats.byModelToday);
+      const topWeek = findTopModel(stats.byModelWeek);
+      const topMonth = findTopModel(stats.byModelMonth);
 
       return {
         tokensToday: { value: formatTokens(stats.tokens.today) },
@@ -310,7 +340,9 @@ export function registerCoreGroups(): void {
         tokensMonth: { value: formatTokens(stats.tokens.month) },
         costToday: { value: formatCost(stats.cost.today) },
         costAllTime: { value: formatCost(stats.cost.allTime) },
-        topModel: { value: topModel, detail: formatCost(topCost) },
+        topModelToday: { value: topToday.name, detail: formatCost(topToday.cost) },
+        topModelWeek: { value: topWeek.name, detail: formatCost(topWeek.cost) },
+        topModelMonth: { value: topMonth.name, detail: formatCost(topMonth.cost) },
         sessions: { value: String(stats.sessionCount) },
       };
     },
@@ -328,14 +360,28 @@ export function registerCoreGroups(): void {
         { id: "total", label: "Total Tools", show: true },
         { id: "builtin", label: "Built-in", show: true },
         { id: "registered", label: "Registered", show: true },
+        { id: "list", label: "Tools", show: true },
       ],
     },
     dataProvider: async () => {
-      // Tool count will be injected by the extension
+      const tools = getRegisteredTools();
+      const builtin = tools.filter((t) => t.source === "builtin");
+      const custom = tools.filter((t) => t.source === "registered");
+
+      // Build tool list
+      const toolNames = tools.slice(0, 15).map((t) => `${t.name}`);
+      if (tools.length > 15) {
+        toolNames.push(`+${tools.length - 15} more`);
+      }
+
       return {
-        total: { value: "loading..." },
-        builtin: { value: "loading..." },
-        registered: { value: "loading..." },
+        total: { value: String(tools.length) },
+        builtin: { value: String(builtin.length) },
+        registered: { value: String(custom.length) },
+        list: {
+          value: toolNames.length > 0 ? toolNames[0] : "none",
+          detail: toolNames.length > 1 ? toolNames.slice(1).join("\n") : undefined,
+        },
       };
     },
   });

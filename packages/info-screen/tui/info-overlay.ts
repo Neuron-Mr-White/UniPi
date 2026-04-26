@@ -44,6 +44,7 @@ export class InfoOverlay implements Component {
   private groupData = new Map<string, GroupData>();
   private loading = true;
   private error: string | null = null;
+  private scrollOffset = 0;
 
   constructor() {
     this.loadData();
@@ -86,11 +87,25 @@ export class InfoOverlay implements Component {
 
     // Arrow keys for tab navigation
     if (data === "\x1b[C" || data === "l") {
-      // Right arrow
+      // Right arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
+      this.scrollOffset = 0; // Reset scroll on tab switch
     } else if (data === "\x1b[D" || data === "h") {
-      // Left arrow
+      // Left arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
+      this.scrollOffset = 0; // Reset scroll on tab switch
+    } else if (data === "\x1b[B" || data === "j") {
+      // Down arrow - scroll down
+      this.scrollOffset++;
+    } else if (data === "\x1b[A" || data === "k") {
+      // Up arrow - scroll up
+      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+    } else if (data === "g") {
+      // g - go to top
+      this.scrollOffset = 0;
+    } else if (data === "G") {
+      // G - go to bottom (will be clamped in render)
+      this.scrollOffset = Infinity;
     } else if (data === "q" || data === "\x1b") {
       // q or Escape - handled by caller
     }
@@ -194,15 +209,31 @@ export class InfoOverlay implements Component {
     lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth)}${ansi.dim} │${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
 
-    // Content
+    // Content with scrolling
     const contentLines = this.renderGroupContent(innerWidth, group, data);
-    for (const line of contentLines) {
+    const maxVisibleLines = 15; // Max content lines visible
+    
+    // Clamp scroll offset
+    const maxScroll = Math.max(0, contentLines.length - maxVisibleLines);
+    this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
+    
+    // Get visible slice
+    const visibleContent = contentLines.slice(this.scrollOffset, this.scrollOffset + maxVisibleLines);
+    
+    for (const line of visibleContent) {
       lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim} │${ansi.reset}`);
+    }
+    
+    // Show scroll indicator if needed
+    if (contentLines.length > maxVisibleLines) {
+      const scrollInfo = ` ${this.scrollOffset + 1}-${Math.min(this.scrollOffset + maxVisibleLines, contentLines.length)}/${contentLines.length} `;
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(scrollInfo, innerWidth)}${ansi.dim} │${ansi.reset}`);
     }
 
     // Footer
+    const hasScroll = contentLines.length > maxVisibleLines;
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth), innerWidth)}${ansi.dim} │${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth, hasScroll), innerWidth)}${ansi.dim} │${ansi.reset}`);
     lines.push(`${ansi.dim}╰${"─".repeat(innerWidth + 1)}╯${ansi.reset}`);
 
     return lines;
@@ -288,15 +319,15 @@ export class InfoOverlay implements Component {
       // Handle multi-line detail
       if (detail) {
         const detailLines = detail.split("\n");
-        // First line with value
         if (detailLines.length === 1) {
+          // Single line detail - show inline
           line += ` ${ansi.dim}(${detail})${ansi.reset}`;
         } else {
-          // Multiple lines - show first line inline, rest indented
+          // Multiple lines - show value on first line, details indented below
           lines.push(line);
           for (const dLine of detailLines) {
             const indent = " ".repeat(maxLabelLen + 4);
-            let detailLine = `${indent}${ansi.dim}${dLine}${ansi.reset}`;
+            let detailLine = `${indent}${dLine}`;
             if (visibleWidth(detailLine) > width - 2) {
               detailLine = truncateToWidth(detailLine, width - 2);
             }
@@ -320,11 +351,16 @@ export class InfoOverlay implements Component {
   /**
    * Render footer with navigation hints.
    */
-  private renderFooter(width: number): string {
+  private renderFooter(width: number, hasScroll?: boolean): string {
     const hints = [
       `${ansi.dim}←/→${ansi.reset} tabs`,
-      `${ansi.dim}q/Esc${ansi.reset} close`,
     ];
+    
+    if (hasScroll) {
+      hints.push(`${ansi.dim}↑/↓${ansi.reset} scroll`);
+    }
+    
+    hints.push(`${ansi.dim}q/Esc${ansi.reset} close`);
 
     const hintStr = hints.join(`  ${ansi.dim}•${ansi.reset}  `);
     const visLen = visibleWidth(hintStr);

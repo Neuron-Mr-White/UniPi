@@ -12,7 +12,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, emitEvent, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { registerCoreGroups, trackModule } from "./core-groups.js";
+import { registerCoreGroups, trackModule, trackTool } from "./core-groups.js";
 
 /** Re-export infoRegistry for external use */
 export { infoRegistry };
@@ -59,12 +59,30 @@ export default function (pi: ExtensionAPI) {
       // Track the module
       trackModule(event.name, event.version || "unknown");
 
+      // Track tools from this module
+      if (event.tools && Array.isArray(event.tools)) {
+        for (const tool of event.tools) {
+          trackTool(tool, event.name);
+        }
+      }
+
       // Signal that a module has announced
       if (!moduleReady) {
         moduleReady = true;
         moduleReadyResolve?.();
       }
     }
+  });
+
+  // Also track built-in tools by intercepting tool calls
+  const trackedBuiltinTools = new Set<string>();
+  pi.on("tool_call", async (event, _ctx) => {
+    const toolName = event.toolName;
+    if (!trackedBuiltinTools.has(toolName)) {
+      trackedBuiltinTools.add(toolName);
+      trackTool(toolName, "builtin");
+    }
+    return undefined; // Don't block the tool call
   });
 
   // Session lifecycle

@@ -34,8 +34,14 @@ export interface UsageStats {
     month: number;
     allTime: number;
   };
-  /** Token counts by model */
+  /** Token counts by model (all time) */
   byModel: Record<string, { tokens: number; cost: number; sessions: number }>;
+  /** Token counts by model (today) */
+  byModelToday: Record<string, { tokens: number; cost: number; sessions: number }>;
+  /** Token counts by model (this week) */
+  byModelWeek: Record<string, { tokens: number; cost: number; sessions: number }>;
+  /** Token counts by model (this month) */
+  byModelMonth: Record<string, { tokens: number; cost: number; sessions: number }>;
   /** Total sessions */
   sessionCount: number;
   /** Total messages */
@@ -185,6 +191,9 @@ export function parseUsageStats(): UsageStats {
     tokens: { today: 0, week: 0, month: 0, allTime: 0 },
     cost: { today: 0, week: 0, month: 0, allTime: 0 },
     byModel: {},
+    byModelToday: {},
+    byModelWeek: {},
+    byModelMonth: {},
     sessionCount: 0,
     messageCount: 0,
   };
@@ -233,7 +242,7 @@ export function parseUsageStats(): UsageStats {
         stats.cost.month += msg.usage.cost.total;
       }
 
-      // By model
+      // By model (all time)
       const model = msg.model;
       if (!stats.byModel[model]) {
         stats.byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
@@ -241,6 +250,36 @@ export function parseUsageStats(): UsageStats {
       stats.byModel[model].tokens += totalTokens;
       stats.byModel[model].cost += msg.usage.cost.total;
       stats.byModel[model].sessions++;
+
+      // By model (today)
+      if (msg.timestamp >= periods.today.start.getTime()) {
+        if (!stats.byModelToday[model]) {
+          stats.byModelToday[model] = { tokens: 0, cost: 0, sessions: 0 };
+        }
+        stats.byModelToday[model].tokens += totalTokens;
+        stats.byModelToday[model].cost += msg.usage.cost.total;
+        stats.byModelToday[model].sessions++;
+      }
+
+      // By model (this week)
+      if (msg.timestamp >= periods.week.start.getTime()) {
+        if (!stats.byModelWeek[model]) {
+          stats.byModelWeek[model] = { tokens: 0, cost: 0, sessions: 0 };
+        }
+        stats.byModelWeek[model].tokens += totalTokens;
+        stats.byModelWeek[model].cost += msg.usage.cost.total;
+        stats.byModelWeek[model].sessions++;
+      }
+
+      // By model (this month)
+      if (msg.timestamp >= periods.month.start.getTime()) {
+        if (!stats.byModelMonth[model]) {
+          stats.byModelMonth[model] = { tokens: 0, cost: 0, sessions: 0 };
+        }
+        stats.byModelMonth[model].tokens += totalTokens;
+        stats.byModelMonth[model].cost += msg.usage.cost.total;
+        stats.byModelMonth[model].sessions++;
+      }
     }
   }
 
