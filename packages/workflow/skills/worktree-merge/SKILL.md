@@ -1,98 +1,79 @@
 ---
 name: worktree-merge
-description: "Merge worktrees back to main branch. Multi-branch support with auto-suggest."
+description: "Merge worktree branches back to main. Gathers context from specs/plans, merges, cleans up."
 ---
 
-# Merging Worktrees
+# Worktree Merge
 
-Merge completed worktree branches back into main.
-
-## Boundaries
-
-**This skill MAY:** run git merge, git branch, git worktree commands, ask user for confirmation.
-**This skill MAY NOT:** edit code, implement features, force push.
-
-## Command Format
-
-```
-/unipi:worktree-merge <branch>(multiple,optional) <string(greedy)>(optional)
-```
-
-- `<branch>` — one or more branches to merge (auto-suggested from worktree-list)
-- `string(greedy)` — optional context (e.g., "merge all clean worktrees" or "merge auth first")
-- If no branches provided → agent lists worktrees and asks user to select
-
----
+Merge completed worktree branches into main. Gather context from docs before merging.
 
 ## Process
 
-### Phase 1: Resolve Target Branch
+### Phase 1: Gather Context
 
-1. Check for `main` branch
-2. If no `main`, check for `master`
-3. If neither exists:
-   > "No main or master branch found. Which branch should I merge into?"
-   - Ask user for target branch
+Before merging, read existing specs and plans to understand what each worktree was implementing:
 
-**Exit:** Target branch identified (e.g., `main`).
+1. Read all files in `.unipi/docs/specs/` (if exists)
+2. Read all files in `.unipi/docs/plans/` (if exists)
+3. Build a map: branch → what it was working on
 
-### Phase 2: Resolve Source Branches
+This context helps during merge conflicts and in the final report.
 
-If branches provided in args:
-1. Verify each branch exists
-2. Check for uncommitted changes in worktree
-3. Warn if dirty: "Branch `feat/auth` has uncommitted changes. Commit first?"
+### Phase 2: Resolve Target Branch
 
-If no branches provided:
-1. List all unipi worktrees
-2. Show status (clean/dirty)
-3. Ask user to select which to merge
+1. Check for `main` branch: `git branch --list main`
+2. If not found, check `master`: `git branch --list master`
+3. If neither exists, ask user for target branch
 
-**Exit:** Source branch(es) confirmed, all clean.
+### Phase 3: Resolve Source Branches
 
-### Phase 3: Merge
+**If branches provided in args:**
+- Verify each branch exists: `git branch --list <name>`
+- Check worktree status for each
 
-For each source branch:
+**If no branches provided:**
+- List all worktrees: `git worktree list`
+- Filter to `.unipi/worktrees/` paths only
+- Show each with status (clean/dirty via `git status`)
+- Ask user which to merge
 
-1. Switch to target branch (`git checkout main`)
-2. Merge source branch (`git merge feat/auth`)
-3. Handle conflicts if any:
-   - Report conflicts clearly
-   - Ask user how to resolve
-   - Don't force-merge
-4. If merge succeeds:
-   - Remove worktree (`git worktree remove .unipi/worktrees/feat/auth`)
-   - Delete branch if user confirms (`git branch -d feat/auth`)
+### Phase 4: Merge Each Branch
 
-### Phase 4: Report
+For each source branch (in dependency order if specs indicate ordering):
 
-Summary:
+1. **Checkout target:** `git checkout main`
+2. **Merge:** `git merge <branch> --no-edit`
+3. **If conflict:**
+   - Report which files conflict
+   - Reference the spec/plan context: "This branch was working on: <description>"
+   - Ask user how to resolve (do NOT force merge)
+   - Skip to next branch if user says so
+4. **If success:**
+   - Remove worktree: `git worktree remove .unipi/worktrees/<branch-name>`
+   - Delete branch: `git branch -d <branch>`
+   - Log success with context: "Merged: <what it was doing>"
+
+### Phase 5: Report
+
 ```
-Merged 2 worktrees into main:
-✓ feat/auth — merged successfully, worktree removed
-✓ fix/login-bug — merged successfully, worktree removed
+Merge Summary:
+✓ feat/auth — merged (auth system implementation from specs/auth-system.md)
+✓ fix/login-bug — merged (login fix from plans/bugfix-login.md)
+✗ feat/dashboard — CONFLICT in src/dashboard.ts, skipped
+
+Worktrees cleaned: 2 removed
+Branches deleted: 2
 ```
 
-Or if issues:
-```
-Merged 1 of 2 worktrees:
-✓ feat/auth — merged successfully
-✗ fix/login-bug — CONFLICT in src/auth.ts, needs manual resolution
-```
+### Phase 6: Suggest Next
 
-### Phase 5: Suggest Next
+- If all merged cleanly → suggest `/unipi:consolidate` to save learnings
+- If conflicts remain → suggest resolving and retrying `/unipi:worktree-merge`
+- If specs/plans exist for merged work → suggest `/unipi:document` to update docs
 
-After merge:
-- If all merged → suggest `/unipi:consolidate` to capture learnings
-- If conflicts remain → suggest resolving and retrying
-- If partial merge → suggest `/unipi:worktree-merge` for remaining
+## Important
 
----
-
-## Notes
-
-- Merges are standard git merges — no rebasing by default
-- Worktree removal keeps filesystem clean
-- Branch deletion is optional — ask user
-- Conflicts require human intervention — don't force
-- Order matters if branches depend on each other
+- ALWAYS read specs/plans before merging — context prevents bad conflict resolution
+- NEVER force push or force merge
+- Ask user before destructive operations (branch deletion)
+- If a worktree has uncommitted changes, warn and skip
