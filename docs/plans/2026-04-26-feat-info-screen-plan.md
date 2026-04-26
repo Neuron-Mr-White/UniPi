@@ -2,7 +2,7 @@
 title: "feat: Unipi Info Screen — Dashboard & Module Registry"
 type: plan
 date: 2026-04-26
-status: approved
+status: complete
 brainstorm: docs/brainstorms/2026-04-26-unipi-info-screen-brainstorm.md
 confidence: high
 ---
@@ -133,9 +133,9 @@ infoRegistry.registerGroup({
 
 ### Phase 5: External Module Updates
 
-- [ ] **5.1** Update `@pi-unipi/memory` — register "Memory" group with stats
-- [ ] **5.2** Update `@pi-unipi/subagents` — register "Subagents" group with stats
-- [ ] **5.3** Update `@pi-unipi/ralph` — register "Ralph" group with stats
+- [x] **5.1** Update `@pi-unipi/memory` — register "Memory" group with stats
+- [x] **5.2** Update `@pi-unipi/subagents` — register "Subagents" group with stats
+- [x] **5.3** Update `@pi-unipi/ralph` — register "Ralph" group with stats
 
 ### Phase 6: Config & Polish
 
