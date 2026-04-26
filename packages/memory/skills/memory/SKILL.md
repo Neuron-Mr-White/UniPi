@@ -87,14 +87,16 @@ memory_list()
 memory_delete(title: "auth_jwt_prefer_refresh_tokens")
 ```
 
-## Project vs Global Scope
+## Project vs Cross-Project Search
 
-| Scope | Use For | Tools |
-|-------|---------|-------|
-| **Project** | Project-specific decisions, patterns | `memory_store`, `memory_search`, `memory_list` |
-| **Global** | User preferences, general patterns | `global_memory_store`, `global_memory_search`, `global_memory_list` |
+| Action | Scope | Tools |
+|--------|-------|-------|
+| **Store** | Always project-scoped | `memory_store` |
+| **Search this project** | Current project only | `memory_search` |
+| **Search all projects** | Cross-project | `global_memory_search` |
+| **List all** | Cross-project | `global_memory_list` |
 
-**Rule of thumb:** If it applies to ALL projects (user prefers tabs), use global. If it's specific to THIS project (chose PostgreSQL), use project scope.
+**All memories are project-scoped.** When you store a memory, it belongs to the current project. Use `global_memory_search` to search across ALL projects when looking for past work or user preferences.
 
 ## Update-First Principle
 

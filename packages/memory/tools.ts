@@ -2,13 +2,20 @@
  * @unipi/memory — Tool registration
  *
  * Tools for the LLM to store, search, and delete memories.
+ * All storage is project-scoped. "Global" tools search across all projects.
  */
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MemoryStorage, type MemoryRecord } from "./storage.js";
+import {
+  MemoryStorage,
+  searchAllProjects,
+  listAllProjects,
+  getProjectName,
+  type MemoryRecord,
+} from "./storage.js";
 import { generateEmbedding } from "./embedding.js";
-import { hybridSearch, extractSnippet } from "./search.js";
+import { hybridSearch } from "./search.js";
 
 /** Tool names */
 export const MEMORY_TOOLS = {
@@ -16,7 +23,6 @@ export const MEMORY_TOOLS = {
   SEARCH: "memory_search",
   DELETE: "memory_delete",
   LIST: "memory_list",
-  GLOBAL_STORE: "global_memory_store",
   GLOBAL_SEARCH: "global_memory_search",
   GLOBAL_LIST: "global_memory_list",
 } as const;
@@ -26,7 +32,7 @@ export const MEMORY_TOOLS = {
  */
 export function registerMemoryTools(
   pi: ExtensionAPI,
-  getStorage: (global?: boolean) => MemoryStorage
+  getStorage: () => MemoryStorage
 ): void {
   // --- memory_store tool ---
   pi.registerTool({
@@ -37,7 +43,7 @@ export function registerMemoryTools(
     promptSnippet: "Store a memory for cross-session recall.",
     promptGuidelines: [
       "Use memory_store to remember important user preferences, decisions, patterns, or summaries.",
-      "Memory is scoped to the current project. Use global_memory_store for cross-project memories.",
+      "Memory is scoped to the current project.",
       "Update existing memories instead of creating duplicates.",
     ],
     parameters: Type.Object({
@@ -57,7 +63,7 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(false);
+      const storage = getStorage();
 
       // Check if similar memory exists
       const existing = storage.getByTitle(params.title);
@@ -70,7 +76,6 @@ export function registerMemoryTools(
           type: (params.type as MemoryRecord["type"]) || existing.type,
         };
 
-        // Generate embedding
         const embedding = await generateEmbedding(
           params.title + " " + params.content,
           pi
@@ -96,13 +101,12 @@ export function registerMemoryTools(
         title: params.title,
         content: params.content,
         tags: params.tags || [],
-        project: ctx.cwd?.split("/").pop() || "unknown",
+        project: getProjectName(ctx.cwd),
         type: (params.type as MemoryRecord["type"]) || "summary",
         created: "",
         updated: "",
       };
 
-      // Generate embedding
       const embedding = await generateEmbedding(
         params.title + " " + params.content,
         pi
@@ -128,12 +132,13 @@ export function registerMemoryTools(
     name: MEMORY_TOOLS.SEARCH,
     label: "Search Memory",
     description:
-      "Search project memories by keyword. Returns ranked results with snippets.",
-    promptSnippet: "Search memories for relevant context.",
+      "Search current project memories by keyword. Returns ranked results with snippets.",
+    promptSnippet: "Search project memories for relevant context.",
     promptGuidelines: [
       "Use memory_search before making decisions when you suspect past work exists.",
       "Search for user preferences when setting up new features.",
       "Search for patterns when implementing similar functionality.",
+      "Use global_memory_search to search across ALL projects.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
@@ -142,9 +147,8 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(false);
+      const storage = getStorage();
 
-      // Generate embedding for search
       const embedding = await generateEmbedding(params.query, pi);
 
       const results = hybridSearch(
@@ -189,14 +193,14 @@ export function registerMemoryTools(
   pi.registerTool({
     name: MEMORY_TOOLS.DELETE,
     label: "Delete Memory",
-    description: "Delete a memory by title or ID.",
+    description: "Delete a memory by title or ID from the current project.",
     promptSnippet: "Delete a memory.",
     parameters: Type.Object({
       title: Type.Optional(Type.String({ description: "Memory title to delete" })),
       id: Type.Optional(Type.String({ description: "Memory ID to delete" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(false);
+      const storage = getStorage();
 
       let deleted = false;
       if (params.id) {
@@ -227,7 +231,7 @@ export function registerMemoryTools(
     promptSnippet: "List all project memories.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(false);
+      const storage = getStorage();
       const memories = storage.listAll();
 
       if (memories.length === 0) {
@@ -253,70 +257,16 @@ export function registerMemoryTools(
     },
   });
 
-  // --- global_memory_store tool ---
-  pi.registerTool({
-    name: MEMORY_TOOLS.GLOBAL_STORE,
-    label: "Store Global Memory",
-    description:
-      "Store or update a global memory (accessible across all projects).",
-    promptSnippet: "Store a global memory.",
-    parameters: Type.Object({
-      title: Type.String({
-        description:
-          "Memory title in <most_important>_<lesser> format",
-      }),
-      content: Type.String({ description: "Full memory content" }),
-      tags: Type.Optional(
-        Type.Array(Type.String(), { description: "Tags for categorization" })
-      ),
-      type: Type.Optional(
-        Type.String({
-          description: "Memory type: preference, decision, pattern, or summary",
-          enum: ["preference", "decision", "pattern", "summary"],
-        })
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(true);
-
-      const existing = storage.getByTitle(params.title);
-      const record: MemoryRecord = {
-        id: existing?.id || "",
-        title: params.title,
-        content: params.content,
-        tags: params.tags || existing?.tags || [],
-        project: "global",
-        type: (params.type as MemoryRecord["type"]) || existing?.type || "summary",
-        created: existing?.created || "",
-        updated: "",
-      };
-
-      const embedding = await generateEmbedding(
-        params.title + " " + params.content,
-        pi
-      );
-      record.embedding = embedding;
-
-      storage.store(record);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `${existing ? "Updated" : "Stored"} global memory: ${params.title}`,
-          },
-        ],
-        details: { action: existing ? "updated" : "created", id: record.id },
-      };
-    },
-  });
-
   // --- global_memory_search tool ---
   pi.registerTool({
     name: MEMORY_TOOLS.GLOBAL_SEARCH,
-    label: "Search Global Memory",
-    description: "Search global memories across all projects.",
-    promptSnippet: "Search global memories.",
+    label: "Search All Projects",
+    description: "Search memories across ALL projects. Returns results with project names.",
+    promptSnippet: "Search memories across all projects.",
+    promptGuidelines: [
+      "Use global_memory_search when looking for memories from other projects.",
+      "Returns results with [project_name] prefix to identify source.",
+    ],
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       limit: Type.Optional(
@@ -324,22 +274,14 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(true);
-      const embedding = await generateEmbedding(params.query, pi);
-
-      const results = hybridSearch(
-        storage,
-        params.query,
-        params.limit || 10,
-        embedding
-      );
+      const results = searchAllProjects(params.query, params.limit || 10);
 
       if (results.length === 0) {
         return {
           content: [
             {
               type: "text",
-              text: `No global memories found for: "${params.query}"`,
+              text: `No memories found across projects for: "${params.query}"`,
             },
           ],
           details: { results: [] },
@@ -349,7 +291,7 @@ export function registerMemoryTools(
       const output = results
         .map(
           (r, i) =>
-            `${i + 1}. **${r.record.title}** (${r.record.type})\n   ${r.snippet}`
+            `${i + 1}. [${r.record.project}] **${r.record.title}** (${r.record.type})\n   ${r.snippet}`
         )
         .join("\n\n");
 
@@ -357,7 +299,7 @@ export function registerMemoryTools(
         content: [
           {
             type: "text",
-            text: `Found ${results.length} global memories:\n\n${output}`,
+            text: `Found ${results.length} memories across projects:\n\n${output}`,
           },
         ],
         details: { results: results.map((r) => r.record.id) },
@@ -368,30 +310,41 @@ export function registerMemoryTools(
   // --- global_memory_list tool ---
   pi.registerTool({
     name: MEMORY_TOOLS.GLOBAL_LIST,
-    label: "List Global Memories",
-    description: "List all global memories with project prefixes.",
-    promptSnippet: "List all global memories.",
+    label: "List All Project Memories",
+    description: "List all memories across all projects with project names.",
+    promptSnippet: "List all memories across projects.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const storage = getStorage(true);
-      const memories = storage.listAll();
+      const memories = listAllProjects();
 
       if (memories.length === 0) {
         return {
-          content: [{ type: "text", text: "No global memories stored." }],
+          content: [{ type: "text", text: "No memories stored in any project." }],
           details: { memories: [] },
         };
       }
 
-      const output = memories
-        .map((m) => `- [${m.id}] ${m.title} (${m.type})`)
-        .join("\n");
+      // Group by project
+      const grouped = new Map<string, typeof memories>();
+      for (const m of memories) {
+        const list = grouped.get(m.project) || [];
+        list.push(m);
+        grouped.set(m.project, list);
+      }
+
+      let output = "";
+      for (const [project, projectMemories] of grouped) {
+        output += `\n**${project}** (${projectMemories.length}):\n`;
+        for (const m of projectMemories) {
+          output += `  - ${m.title} (${m.type})\n`;
+        }
+      }
 
       return {
         content: [
           {
             type: "text",
-            text: `Global memories (${memories.length}):\n\n${output}`,
+            text: `All memories across ${grouped.size} projects (${memories.length} total):${output}`,
           },
         ],
         details: { memories },

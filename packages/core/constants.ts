@@ -84,7 +84,6 @@ export const MEMORY_TOOLS = {
   SEARCH: "memory_search",
   DELETE: "memory_delete",
   LIST: "memory_list",
-  GLOBAL_STORE: "global_memory_store",
   GLOBAL_SEARCH: "global_memory_search",
   GLOBAL_LIST: "global_memory_list",
 } as const;
@@ -95,7 +94,6 @@ export const MEMORY_COMMANDS = {
   SEARCH: "memory-search",
   CONSOLIDATE: "memory-consolidate",
   FORGET: "memory-forget",
-  GLOBAL_PROCESS: "global-memory-process",
   GLOBAL_SEARCH: "global-memory-search",
   GLOBAL_LIST: "global-memory-list",
 } as const;

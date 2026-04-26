@@ -2,7 +2,7 @@
  * @unipi/memory — Extension entry
  *
  * Persistent cross-session memory with vector search.
- * Provides tools and commands for memory management.
+ * All storage is project-scoped. "Global" tools search across all projects.
  * Injects memory titles at session start.
  * Auto-consolidates on compaction.
  */
@@ -14,34 +14,29 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@unipi/core";
-import { MemoryStorage, getProjectName } from "./storage.js";
+import {
+  MemoryStorage,
+  getProjectName,
+  searchAllProjects,
+  listAllProjects,
+} from "./storage.js";
 import { registerMemoryTools, MEMORY_TOOLS } from "./tools.js";
 import { registerMemoryCommands } from "./commands.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
 
-/** Storage instances */
+/** Storage instance for current project */
 let projectStorage: MemoryStorage | null = null;
-let globalStorage: MemoryStorage | null = null;
 
 /**
- * Get or create storage for the current project.
+ * Get storage for the current project.
  */
-function getStorage(globalScope = false): MemoryStorage {
-  if (globalScope) {
-    if (!globalStorage) {
-      globalStorage = new MemoryStorage("global", true);
-      globalStorage.init();
-    }
-    return globalStorage;
-  }
-
+function getStorage(): MemoryStorage {
   if (!projectStorage) {
-    // Fallback to global if somehow called before init
-    return getStorage(true);
+    // Fallback: create new instance (shouldn't happen after session_start)
+    return new MemoryStorage("unknown");
   }
-
   return projectStorage;
 }
 
@@ -62,12 +57,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     // Initialize project storage
     const projectName = getProjectName(ctx.cwd);
-    projectStorage = new MemoryStorage(projectName, false);
+    projectStorage = new MemoryStorage(projectName);
     projectStorage.init();
-
-    // Initialize global storage
-    globalStorage = new MemoryStorage("global", true);
-    globalStorage.init();
 
     // Announce module
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
@@ -78,7 +69,6 @@ export default function (pi: ExtensionAPI) {
         "unipi:memory-search",
         "unipi:memory-consolidate",
         "unipi:memory-forget",
-        "unipi:global-memory-process",
         "unipi:global-memory-search",
         "unipi:global-memory-list",
       ],
@@ -87,7 +77,6 @@ export default function (pi: ExtensionAPI) {
         MEMORY_TOOLS.SEARCH,
         MEMORY_TOOLS.DELETE,
         MEMORY_TOOLS.LIST,
-        MEMORY_TOOLS.GLOBAL_STORE,
         MEMORY_TOOLS.GLOBAL_SEARCH,
         MEMORY_TOOLS.GLOBAL_LIST,
       ],
@@ -96,48 +85,36 @@ export default function (pi: ExtensionAPI) {
     // Show memory status in UI
     if (ctx.hasUI) {
       const projectCount = projectStorage.listAll().length;
-      const globalCount = globalStorage.listAll().length;
+      const allMemories = listAllProjects();
+      const projectCountAll = allMemories.length;
       ctx.ui.setStatus(
         "unipi-memory",
-        `🧠 memory ${projectCount}p/${globalCount}g`
+        `🧠 memory ${projectCount}p/${projectCountAll}all`
       );
     }
   });
 
   // Inject memory titles at session start
   pi.on("before_agent_start", async (event, ctx) => {
-    if (!projectStorage || !globalStorage) return;
+    if (!projectStorage) return;
 
     const projectName = getProjectName(ctx.cwd);
     const projectMemories = projectStorage.listAll();
-    const globalMemories = globalStorage.listAll();
 
-    if (projectMemories.length === 0 && globalMemories.length === 0) {
+    if (projectMemories.length === 0) {
       return; // No memories to inject
     }
 
     let injection = "\n\n<memory>\n";
-    injection += "Available memories for context and recall:\n\n";
+    injection += `Available memories for project "${projectName}":\n\n`;
 
     // Project memories
-    if (projectMemories.length > 0) {
-      injection += `Project memories (${projectName}):\n`;
-      for (const m of projectMemories) {
-        injection += `- ${m.title}\n`;
-      }
-      injection += "\n";
+    for (const m of projectMemories) {
+      injection += `- ${m.title}\n`;
     }
 
-    // Global memories
-    if (globalMemories.length > 0) {
-      injection += "Global memories:\n";
-      for (const m of globalMemories) {
-        injection += `- [global] ${m.title}\n`;
-      }
-      injection += "\n";
-    }
-
-    injection += "Use memory_search to retrieve full content. Use memory_store to save new memories.\n";
+    injection += "\nUse memory_search to retrieve full content. Use memory_store to save new memories.\n";
+    injection += "Use global_memory_search to search across ALL projects.\n";
     injection += "</memory>";
 
     return {
@@ -168,8 +145,6 @@ export default function (pi: ExtensionAPI) {
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     projectStorage?.close();
-    globalStorage?.close();
     projectStorage = null;
-    globalStorage = null;
   });
 }

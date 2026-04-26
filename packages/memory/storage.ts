@@ -61,10 +61,21 @@ export function getProjectDir(projectName: string): string {
 }
 
 /**
- * Get the global memory directory
+ * Get all project directories under memory base.
  */
-export function getGlobalDir(): string {
-  return path.join(getMemoryBaseDir(), "global");
+export function getAllProjectDirs(): Array<{ name: string; dir: string }> {
+  const base = getMemoryBaseDir();
+  if (!fs.existsSync(base)) return [];
+  
+  return fs.readdirSync(base)
+    .filter(f => {
+      const fullPath = path.join(base, f);
+      return fs.statSync(fullPath).isDirectory();
+    })
+    .map(name => ({
+      name,
+      dir: path.join(base, name),
+    }));
 }
 
 /**
@@ -148,18 +159,16 @@ ${record.content}
 }
 
 /**
- * MemoryStorage class — manages SQLite + markdown storage.
+ * MemoryStorage class — manages SQLite + markdown storage for a single project.
  */
 export class MemoryStorage {
   private db: Database.Database | null = null;
   private projectName: string;
   private scopeDir: string;
-  private globalScope: boolean;
 
-  constructor(projectName: string, globalScope = false) {
+  constructor(projectName: string) {
     this.projectName = projectName;
-    this.globalScope = globalScope;
-    this.scopeDir = globalScope ? getGlobalDir() : getProjectDir(projectName);
+    this.scopeDir = getProjectDir(projectName);
   }
 
   /**
@@ -532,6 +541,81 @@ export class MemoryStorage {
     const row = this.db.prepare("SELECT id FROM memories LIMIT 1 OFFSET ?").get(rowid) as any;
     return row?.id || "";
   }
+}
+
+/**
+ * Search across ALL project directories.
+ * Returns results with project name prefix.
+ */
+export function searchAllProjects(
+  query: string,
+  limit = 10
+): SearchResult[] {
+  const projectDirs = getAllProjectDirs();
+  const allResults: SearchResult[] = [];
+
+  for (const { name: projectName, dir } of projectDirs) {
+    const dbPath = path.join(dir, MEMORY_DB_NAME);
+    if (!fs.existsSync(dbPath)) continue;
+
+    try {
+      const storage = new MemoryStorage(projectName);
+      storage.init();
+      const results = storage.search(query, limit);
+      allResults.push(...results);
+      storage.close();
+    } catch {
+      // Skip projects with corrupted DB
+    }
+  }
+
+  // Sort by score and return top results
+  return allResults
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+/**
+ * List memories from ALL projects.
+ * Returns memories with project name prefix.
+ */
+export function listAllProjects(): Array<{
+  project: string;
+  id: string;
+  title: string;
+  type: string;
+}> {
+  const projectDirs = getAllProjectDirs();
+  const allMemories: Array<{
+    project: string;
+    id: string;
+    title: string;
+    type: string;
+  }> = [];
+
+  for (const { name: projectName, dir } of projectDirs) {
+    const dbPath = path.join(dir, MEMORY_DB_NAME);
+    if (!fs.existsSync(dbPath)) continue;
+
+    try {
+      const storage = new MemoryStorage(projectName);
+      storage.init();
+      const memories = storage.listAll();
+      allMemories.push(
+        ...memories.map((m) => ({
+          project: projectName,
+          id: m.id,
+          title: m.title,
+          type: m.type,
+        }))
+      );
+      storage.close();
+    } catch {
+      // Skip projects with corrupted DB
+    }
+  }
+
+  return allMemories;
 }
 
 /**

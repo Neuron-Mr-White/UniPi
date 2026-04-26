@@ -2,17 +2,18 @@
  * @unipi/memory — Command registration
  *
  * User-facing commands for memory management.
+ * All storage is project-scoped. "Global" commands search across all projects.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MemoryStorage } from "./storage.js";
+import { MemoryStorage, searchAllProjects, listAllProjects } from "./storage.js";
 
 /**
  * Register memory commands.
  */
 export function registerMemoryCommands(
   pi: ExtensionAPI,
-  getStorage: (global?: boolean) => MemoryStorage
+  getStorage: () => MemoryStorage
 ): void {
   // --- /unipi:memory-process ---
   pi.registerCommand("unipi:memory-process", {
@@ -45,7 +46,7 @@ export function registerMemoryCommands(
         return;
       }
 
-      const storage = getStorage(false);
+      const storage = getStorage();
       const results = storage.search(args.trim());
 
       if (results.length === 0) {
@@ -99,7 +100,7 @@ For each item, use the memory_store tool to save it with an appropriate title an
         return;
       }
 
-      const storage = getStorage(false);
+      const storage = getStorage();
       const deleted = storage.deleteByTitle(args.trim());
 
       ctx.ui.notify(
@@ -111,41 +112,19 @@ For each item, use the memory_store tool to save it with an appropriate title an
     },
   });
 
-  // --- /unipi:global-memory-process ---
-  pi.registerCommand("unipi:global-memory-process", {
-    description: "Analyze text and store to global memory",
-    handler: async (args, ctx) => {
-      if (!args.trim()) {
-        ctx.ui.notify("Usage: /unipi:global-memory-process <text to analyze>", "info");
-        return;
-      }
-
-      ctx.ui.notify(
-        "Analyzing text for global memories... Use global_memory_store tool to save.",
-        "info"
-      );
-
-      pi.sendUserMessage(
-        `Analyze the following text and extract any memory-worthy items that apply across ALL projects (user preferences, general patterns). For each item, use the global_memory_store tool to save it.\n\nText to analyze:\n${args}`,
-        { deliverAs: "followUp" }
-      );
-    },
-  });
-
   // --- /unipi:global-memory-search ---
   pi.registerCommand("unipi:global-memory-search", {
-    description: "Search global memories",
+    description: "Search memories across all projects",
     handler: async (args, ctx) => {
       if (!args.trim()) {
         ctx.ui.notify("Usage: /unipi:global-memory-search <search term>", "info");
         return;
       }
 
-      const storage = getStorage(true);
-      const results = storage.search(args.trim());
+      const results = searchAllProjects(args.trim());
 
       if (results.length === 0) {
-        ctx.ui.notify(`No global memories found for: "${args}"`, "info");
+        ctx.ui.notify(`No memories found across projects for: "${args}"`, "info");
         return;
       }
 
@@ -157,7 +136,7 @@ For each item, use the memory_store tool to save it with an appropriate title an
         .join("\n\n");
 
       ctx.ui.notify(
-        `Found ${results.length} global memories:\n\n${output}`,
+        `Found ${results.length} memories across projects:\n\n${output}`,
         "info"
       );
     },
@@ -165,22 +144,33 @@ For each item, use the memory_store tool to save it with an appropriate title an
 
   // --- /unipi:global-memory-list ---
   pi.registerCommand("unipi:global-memory-list", {
-    description: "List all global memories with project prefixes",
+    description: "List all memories across all projects",
     handler: async (args, ctx) => {
-      const storage = getStorage(true);
-      const memories = storage.listAll();
+      const memories = listAllProjects();
 
       if (memories.length === 0) {
-        ctx.ui.notify("No global memories stored.", "info");
+        ctx.ui.notify("No memories stored in any project.", "info");
         return;
       }
 
-      const output = memories
-        .map((m) => `- [${m.id}] ${m.title} (${m.type})`)
-        .join("\n");
+      // Group by project
+      const grouped = new Map<string, typeof memories>();
+      for (const m of memories) {
+        const list = grouped.get(m.project) || [];
+        list.push(m);
+        grouped.set(m.project, list);
+      }
+
+      let output = "";
+      for (const [project, projectMemories] of grouped) {
+        output += `\n${project} (${projectMemories.length}):\n`;
+        for (const m of projectMemories) {
+          output += `  - ${m.title} (${m.type})\n`;
+        }
+      }
 
       ctx.ui.notify(
-        `Global memories (${memories.length}):\n\n${output}`,
+        `All memories across ${grouped.size} projects (${memories.length} total):${output}`,
         "info"
       );
     },
