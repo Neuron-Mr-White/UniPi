@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import type { Model } from "@mariozechner/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
+import { resolveModel, type ModelRegistry } from "./model-resolver.js";
 import type { AgentRecord, AgentType, ThinkingLevel } from "./types.js";
 import { FileLock } from "./file-lock.js";
 
@@ -29,10 +30,12 @@ interface SpawnArgs {
 interface SpawnOptions {
   description: string;
   model?: Model<any>;
+  modelInput?: string;
+  modelRegistry?: ModelRegistry;
+  thinkingLevel?: ThinkingLevel;
   maxTurns?: number;
   isolated?: boolean;
   inheritContext?: boolean;
-  thinkingLevel?: ThinkingLevel;
   isBackground?: boolean;
   onToolActivity?: (activity: ToolActivity) => void;
   onTextDelta?: (delta: string, fullText: string) => void;
@@ -113,9 +116,27 @@ export class AgentManager {
     if (options.isBackground) this.runningBackground++;
     this.onStart?.(record);
 
+    // Resolve model: explicit input > config model > parent model
+    let model = options.model;
+    if (options.modelInput && options.modelRegistry) {
+      const resolved = resolveModel(options.modelInput, options.modelRegistry);
+      if (typeof resolved === "string") {
+        // Error message — return early with error
+        record.status = "error";
+        record.error = resolved;
+        record.completedAt = Date.now();
+        if (options.isBackground) {
+          this.runningBackground--;
+          this.onComplete?.(record);
+        }
+        return;
+      }
+      model = resolved;
+    }
+
     const promise = runAgent(ctx, type, prompt, {
       pi,
-      model: options.model,
+      model,
       maxTurns: options.maxTurns,
       isolated: options.isolated,
       inheritContext: options.inheritContext,

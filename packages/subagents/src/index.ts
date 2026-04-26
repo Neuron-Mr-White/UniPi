@@ -187,6 +187,16 @@ Guidelines:
             minimum: 1,
           }),
         ),
+        model: Type.Optional(
+          Type.String({
+            description: 'Model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to inherit parent model.',
+          }),
+        ),
+        thinking: Type.Optional(
+          Type.String({
+            description: "Thinking level: off, minimal, low, medium, high, xhigh. Omit to inherit parent.",
+          }),
+        ),
       }),
 
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
@@ -197,6 +207,8 @@ Guidelines:
         const description = params.description as string;
         const runInBackground = params.run_in_background as boolean | undefined;
         const maxTurns = params.max_turns as number | undefined;
+        const modelInput = params.model as string | undefined;
+        const thinkingLevel = params.thinking as any | undefined;
 
         // Create activity tracker
         const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(maxTurns);
@@ -206,6 +218,9 @@ Guidelines:
           const id = manager.spawn(pi, ctx, type, prompt, {
             description,
             maxTurns,
+            modelInput,
+            modelRegistry: ctx.modelRegistry,
+            thinkingLevel,
             isBackground: true,
             ...bgCallbacks,
           });
@@ -262,6 +277,9 @@ Guidelines:
         const record = await manager.spawnAndWait(pi, ctx, type, prompt, {
           description,
           maxTurns,
+          modelInput,
+          modelRegistry: ctx.modelRegistry,
+          thinkingLevel,
           ...bgCallbacks,
         });
 
