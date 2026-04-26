@@ -6,11 +6,21 @@
  * - ~/.unipi/config/agents/*.md (global)
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import type { AgentConfig } from "./types.js";
+
+/** Backup a corrupted file by renaming to .bak */
+function backupCorrupted(filePath: string): void {
+  const backupPath = filePath + ".bak";
+  try {
+    renameSync(filePath, backupPath);
+  } catch {
+    // If backup fails, just leave it
+  }
+}
 
 /** Get project agents directory. */
 function getProjectAgentsDir(cwd: string): string {
@@ -67,6 +77,8 @@ function loadAgentFromFile(filePath: string, source: "project" | "global"): Agen
       source,
     };
   } catch {
+    // Corrupted file — backup and skip
+    backupCorrupted(filePath);
     return null;
   }
 }
