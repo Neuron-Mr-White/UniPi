@@ -1,29 +1,4 @@
 {
   "nextId": 4,
-  "tasks": [
-    {
-      "id": "2",
-      "subject": "Write subagents implementation plan",
-      "description": "Write the plan document for the UniPi subagents module based on brainstorm decisions",
-      "status": "completed",
-      "activeForm": "Writing subagents plan",
-      "metadata": {},
-      "blocks": [],
-      "blockedBy": [],
-      "createdAt": 1777191388304,
-      "updatedAt": 1777191518996
-    },
-    {
-      "id": "3",
-      "subject": "Implement subagents package",
-      "description": "Implement the UniPi subagents module following the plan at .unipi/docs/plans/2026-04-26-feat-subagents-plan.md",
-      "status": "in_progress",
-      "activeForm": "Implementing subagents module",
-      "metadata": {},
-      "blocks": [],
-      "blockedBy": [],
-      "createdAt": 1777191545285,
-      "updatedAt": 1777191546987
-    }
-  ]
+  "tasks": []
 }
