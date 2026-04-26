@@ -111,6 +111,20 @@ specs:
 - **Steps** are bite-sized — agent can follow without guessing
 - Order tasks by dependency (foundational work first)
 
+### Task Status Lifecycle
+
+Tasks use prefixes to track progress:
+
+| Status | Meaning |
+|--------|----------|
+| `unstarted:` | Not started |
+| `in-progress:` | Being worked on |
+| `completed:` | Done and verified |
+| `failed:` | Attempted but failed, needs investigation |
+| `awaiting_user:` | Needs user action (test, approve, provide input) |
+| `blocked:` | Waiting on dependency or external factor |
+| `skipped:` | Intentionally not doing (deferred, out of scope) |
+
 ---
 
 ## Phase 4: Update Brainstorm Checkboxes

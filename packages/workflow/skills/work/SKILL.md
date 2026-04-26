@@ -59,7 +59,7 @@ If args not provided, ask user interactively:
 1. Read plan file(s)
 2. Review critically — identify questions or concerns
 3. If concerns: raise with user before starting
-4. Identify task status: `unstarted:` (pending), `in-progress:` (started), `completed:` (done)
+4. Identify task status: `unstarted:` (pending), `in-progress:` (started), `completed:` (done), `failed:` (needs investigation), `awaiting_user:` (needs user action), `blocked:` (waiting on dependency), `skipped:` (deferred)
 
 **Exit:** Plan reviewed, ready to execute.
 
@@ -67,13 +67,35 @@ If args not provided, ask user interactively:
 
 ## Phase 3: Execute Tasks
 
-For each `unstarted:` task in order:
+For each task in order, skip `completed:`, `skipped:`, and `awaiting_user:` tasks:
 
+### If `unstarted:`
 1. Change `unstarted:` to `in-progress:` in plan
 2. Follow each step exactly (plan has bite-sized steps)
 3. Run verifications as specified in acceptance criteria
 4. Change `in-progress:` to `completed:` when complete
 5. Update plan file with progress
+
+### If `in-progress:`
+1. Continue from where it left off
+2. Follow remaining steps
+3. Change to `completed:` when done
+
+### If `failed:`
+1. Read failure notes
+2. Investigate root cause
+3. Fix and re-verify
+4. Change to `completed:` when fixed, or keep `failed:` if still broken
+
+### If `awaiting_user:`
+1. Remind user what's needed
+2. Wait for user response
+3. Resume when user provides input
+
+### If `blocked:`
+1. Check if blocker is resolved
+2. If resolved → change to `unstarted:` and continue
+3. If still blocked → skip and move to next task
 
 ### When to Stop and Ask
 

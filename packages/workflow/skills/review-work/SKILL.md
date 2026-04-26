@@ -46,9 +46,13 @@ For each task in plan:
 1. Read acceptance criteria
 2. Verify against actual implementation
 3. Determine status:
-   - **Done** — all criteria met
+   - **Done** — all criteria met → `completed:`
    - **Partially Done X/Y** — some steps complete, others not
-   - **Unstarted** — nothing done
+   - **Unstarted** — nothing done → `unstarted:`
+   - **Failed** — attempted but broken → `failed:`
+   - **Awaiting User** — needs user action → `awaiting_user:`
+   - **Blocked** — waiting on dependency → `blocked:`
+   - **Skipped** — intentionally not done → `skipped:`
 
 If `string(greedy)` scope provided, only check matching tasks.
 
