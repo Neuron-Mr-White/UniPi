@@ -207,29 +207,36 @@ export function registerWorkflowCommands(
     pi.registerCommand(fullCommand, {
       description: cmd.description,
       getArgumentCompletions: (prefix: string) => {
+        let items: { value: string; label: string; description: string }[] | null = null;
+
         // Plan command: suggest spec files
         if (cmd.name === WORKFLOW_COMMANDS.PLAN) {
-          return suggestSpecFiles(prefix);
+          items = suggestSpecFiles(prefix);
         }
 
         // Work command: suggest plan files
         if (cmd.name === WORKFLOW_COMMANDS.WORK) {
-          return suggestPlanFiles(prefix);
+          items = suggestPlanFiles(prefix);
         }
 
         // Review-work command: suggest plan files
         if (cmd.name === WORKFLOW_COMMANDS.REVIEW_WORK) {
-          return suggestPlanFiles(prefix);
+          items = suggestPlanFiles(prefix);
         }
 
         // Worktree merge: suggest existing worktrees
         if (cmd.name === WORKFLOW_COMMANDS.WORKTREE_MERGE) {
-          return suggestWorktrees();
+          items = suggestWorktrees();
         }
 
         // Worktree create: suggest existing worktrees as reference
         if (cmd.name === WORKFLOW_COMMANDS.WORKTREE_CREATE) {
-          return suggestWorktrees();
+          items = suggestWorktrees();
+        }
+
+        // Defensive: filter out any items with non-string value
+        if (items) {
+          return items.filter((item) => typeof item.value === "string");
         }
 
         // Other commands: no dynamic completions (free-text args)
