@@ -265,6 +265,7 @@ Guidelines:
               spinnerFrame: spinnerFrame % 10,
             },
           });
+          widget.update();
         };
 
         const spinnerInterval = setInterval(() => {
@@ -272,6 +273,7 @@ Guidelines:
           streamUpdate();
         }, 80);
 
+        widget.ensureTimer();
         streamUpdate();
 
         const record = await manager.spawnAndWait(pi, ctx, type, prompt, {
