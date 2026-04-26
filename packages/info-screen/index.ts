@@ -75,8 +75,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Listen for info group registrations via events
-  pi.events.on(UNIPI_EVENTS.INFO_GROUP_REGISTERED, (event: any) => {
-    console.debug(`[info-screen] Received group registration event:`, event);
+  pi.events.on(UNIPI_EVENTS.INFO_GROUP_REGISTERED, (_event: any) => {
+    // Group already registered via globalThis in registerGroup()
   });
 
   // Also track built-in tools by intercepting tool calls

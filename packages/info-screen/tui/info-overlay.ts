@@ -67,7 +67,6 @@ export class InfoOverlay implements Component {
     this.loading = true;
     // Always re-fetch ALL groups to catch late registrations
     this.groups = infoRegistry.getAllGroups();
-    console.debug(`[info-screen] loadData: ${this.groups.length} groups (all)`);
 
     try {
       // Load data for all groups in parallel
@@ -135,7 +134,6 @@ export class InfoOverlay implements Component {
     const currentIds = this.groups.map(g => g.id).join(",");
     
     if (groupIds !== currentIds) {
-      console.debug(`[info-screen] Groups changed: ${currentIds} -> ${groupIds}`);
       this.groups = allGroups;
       // Load data for any new groups (non-blocking)
       this.loadDataForNewGroups(allGroups);
@@ -157,8 +155,8 @@ export class InfoOverlay implements Component {
         try {
           const data = await infoRegistry.getGroupData(group.id);
           this.groupData.set(group.id, data);
-        } catch (error) {
-          console.debug(`[info-screen] Error loading data for ${group.id}:`, error);
+        } catch {
+          // Silently skip groups with errors
         }
       }
     }

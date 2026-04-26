@@ -1,97 +1,40 @@
 # Unipi — mise tasks for testing extensions in isolation
 #
 # Usage:
-#   mise run unipi             # Load all unipi modules (core + workflow + ralph)
-#   mise run unipi/ralph       # Load only @unipi/ralph
-#   mise run unipi/workflow    # Load only @unipi/workflow
-#   mise run unipi/list        # List commands/tools in non-interactive mode
-#   mise run unipi/typecheck   # Run TypeScript type check
-#
-# All tasks use --no-extensions to isolate from global extensions.
+#   mise run workspace          # Test workspace (info-screen) alone
+#   mise run memory             # Test memory alone
+#   mise run workspace+memory   # Test workspace + memory together
+#   mise run core               # All working extensions
+#   mise run ralph              # Test ralph alone
+#   mise run typecheck          # TypeScript type check
 
-[tasks.unipi]
-description = "Launch pi with all unipi modules loaded (isolated)"
+[tasks.workspace]
+description = "Launch pi with info-screen only"
+run = "pi --no-extensions --no-skills -e packages/info-screen/index.ts"
+
+[tasks.memory]
+description = "Launch pi with memory only"
+run = "pi --no-extensions --no-skills -e packages/memory/index.ts"
+
+[tasks."workspace+memory"]
+description = "Launch pi with info-screen + memory"
+run = "pi --no-extensions --no-skills -e packages/info-screen/index.ts -e packages/memory/index.ts"
+
+[tasks.core]
+description = "Launch pi with all working extensions"
 run = """
-pi --no-extensions \
-    -e packages/workflow/index.ts \
+pi --no-extensions --no-skills \
+    -e packages/info-screen/index.ts \
+    -e packages/memory/index.ts \
     -e packages/ralph/index.ts \
-    --no-skills
+    -e packages/subagents/src/index.ts \
+    -e packages/workflow/index.ts
 """
 
-[tasks."unipi:ephemeral"]
-description = "Launch pi with all unipi modules, no session saved"
-run = """
-pi --no-extensions \
-    -e packages/workflow/index.ts \
-    -e packages/ralph/index.ts \
-    --no-skills \
-    --no-session
-"""
+[tasks.ralph]
+description = "Launch pi with ralph only"
+run = "pi --no-extensions --no-skills -e packages/ralph/index.ts"
 
-[tasks."unipi/ralph"]
-description = "Launch pi with only @unipi/ralph loaded"
-run = """
-pi --no-extensions \
-    -e packages/ralph/index.ts \
-    --no-skills \
-    --no-session
-"""
-
-[tasks."unipi/workflow"]
-description = "Launch pi with only @unipi/workflow loaded"
-run = """
-pi --no-extensions \
-    -e packages/workflow/index.ts \
-    --no-skills \
-    --no-session
-"""
-
-[tasks."unipi/list"]
-description = "List registered commands and tools (non-interactive, exits)"
-run = """
-pi --no-extensions \
-    -e packages/workflow/index.ts \
-    -e packages/ralph/index.ts \
-    --no-skills \
-    --no-session \
-    -p "List all your registered slash commands and tools. Show name and description for each."
-"""
-
-[tasks."unipi/typecheck"]
-description = "Run TypeScript type check across all packages"
+[tasks.typecheck]
+description = "Run TypeScript type check"
 run = "npx tsc --noEmit --skipLibCheck"
-
-[tasks."unipi/doctor"]
-description = "Verify all packages have valid package.json and entry points"
-run = """
-echo "=== Checking package entry points ==="
-for pkg in core workflow ralph unipi; do
-    dir="packages/$pkg"
-    if [ -f "$dir/package.json" ]; then
-        echo "✓ $pkg: package.json found"
-    else
-        echo "✗ $pkg: MISSING package.json"
-    fi
-    if [ -f "$dir/index.ts" ]; then
-        echo "  ✓ index.ts found"
-    else
-        echo "  ✗ index.ts MISSING"
-    fi
-done
-echo ""
-echo "=== Checking node_modules symlinks ==="
-for pkg in core workflow ralph; do
-    if [ -d "node_modules/@unipi/$pkg" ]; then
-        echo "✓ @unipi/$pkg linked"
-    else
-        echo "✗ @unipi/$pkg NOT linked"
-    fi
-done
-"""
-
-[tasks."unipi/clean"]
-description = "Remove .unipi runtime state (ralph loops, cache)"
-run = """
-rm -rf .unipi/ralph/ .unipi/cache/
-echo "Cleaned .unipi runtime state"
-"""

@@ -54,7 +54,6 @@ class InfoRegistry {
    * If a group with the same id exists, it's replaced.
    */
   registerGroup(group: InfoGroup): void {
-    console.debug(`[info-screen] Registering group: ${group.id}`);
     this.groups.set(group.id, group);
   }
 
@@ -74,7 +73,6 @@ class InfoRegistry {
   getGroups(): InfoGroup[] {
     const settings = getInfoSettings();
     const allGroups = Array.from(this.groups.values());
-    console.debug(`[info-screen] getGroups: ${allGroups.length} total groups`);
 
     return allGroups
       .filter((group) => {
@@ -125,7 +123,7 @@ class InfoRegistry {
       this.cacheTimestamps.set(groupId, now);
       return data;
     } catch (error) {
-      console.debug(`[info-screen] Error fetching data for group ${groupId}:`, error);
+      // Silently fall back to cached data
       return this.dataCache.get(groupId) ?? {};
     }
   }
