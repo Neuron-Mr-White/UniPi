@@ -1,5 +1,5 @@
 {
-  "nextId": 19,
+  "nextId": 21,
   "tasks": [
     {
       "id": "17",
@@ -24,6 +24,30 @@
       "blockedBy": [],
       "createdAt": 1777186344181,
       "updatedAt": 1777186445019
+    },
+    {
+      "id": "19",
+      "subject": "Write WORKFLOW_COMMANDS.md",
+      "description": "Document all 13 commands in detail — format, restrictions, auto-suggest, sandbox level, terminal state",
+      "status": "pending",
+      "activeForm": "Writing command docs",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777186891935,
+      "updatedAt": 1777186891935
+    },
+    {
+      "id": "20",
+      "subject": "Fix brainstorm SKILL.md",
+      "description": "Skill needs more actionable instructions — agent shows tool calls and doesn't know what to do. Add explicit steps, tool usage, anti-patterns like superpowers executing-plans example",
+      "status": "pending",
+      "activeForm": "Fixing brainstorm skill",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777186891948,
+      "updatedAt": 1777186891948
     }
   ]
 }

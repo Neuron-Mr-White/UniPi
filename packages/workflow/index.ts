@@ -15,6 +15,8 @@ import {
   emitEvent,
   getPackageVersion,
   initUnipiDirs,
+  type SandboxLevel,
+  getToolsForLevel,
 } from "@unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
 
@@ -30,18 +32,70 @@ let savedTools: string[] | null = null;
 /** Whether sandbox is currently active */
 let sandboxActive = false;
 
+/** Current sandbox level (null = no sandbox) */
+let currentSandboxLevel: SandboxLevel | null = null;
+
 export default function (pi: ExtensionAPI) {
+  // Register skills directory with pi's resource loader
+  const skillsDir = new URL("./skills", import.meta.url).pathname;
+  pi.on("resources_discover", async (_event, _ctx) => {
+    return {
+      skillPaths: [skillsDir],
+    };
+  });
+
   // Register all workflow commands
   registerWorkflowCommands(pi, {
     isRalphDetected: () => ralphDetected,
-    getActiveTools: () => pi.getActiveTools().map((t) => t.name),
-    setActiveTools: (tools: string[]) => {
+    getActiveTools: () => pi.getActiveTools(),
+    setActiveTools: (tools: string[], level: SandboxLevel) => {
       pi.setActiveTools(tools);
       sandboxActive = true;
+      currentSandboxLevel = level;
     },
     saveTools: (tools: string[]) => {
       savedTools = tools;
     },
+  });
+
+  // Block tool calls that violate sandbox
+  pi.on("tool_call", async (event, _ctx) => {
+    if (!sandboxActive || !currentSandboxLevel) return;
+
+    const allowed = getToolsForLevel(currentSandboxLevel);
+    if (!allowed.includes(event.toolName)) {
+      return {
+        block: true,
+        reason: `Tool "${event.toolName}" is not allowed in ${currentSandboxLevel} sandbox. Allowed: ${allowed.join(", ")}`,
+      };
+    }
+  });
+
+  // Inject sandbox constraints into system prompt so LLM knows its limits
+  pi.on("before_agent_start", async (event, _ctx) => {
+    if (!sandboxActive || !currentSandboxLevel) return;
+
+    const allowed = getToolsForLevel(currentSandboxLevel);
+    const blocked = ["read", "write", "edit", "bash", "grep", "find", "ls"]
+      .filter((t) => !allowed.includes(t));
+
+    const base = `\n\n<sandbox>\nSandbox mode: ${currentSandboxLevel}.\nAvailable tools: ${allowed.join(", ")}.\nBlocked tools: ${blocked.join(", ")} — removed from your tool list.`;
+
+    if (currentSandboxLevel === "brainstorm") {
+      return {
+        systemPrompt:
+          event.systemPrompt +
+          base +
+          `\nThe write tool is available but restricted to .unipi/docs/specs/ only.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+      };
+    }
+
+    return {
+      systemPrompt:
+        event.systemPrompt +
+        base +
+        `\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+    };
   });
 
   // Restore tools when agent finishes
@@ -50,6 +104,7 @@ export default function (pi: ExtensionAPI) {
       pi.setActiveTools(savedTools);
       savedTools = null;
       sandboxActive = false;
+      currentSandboxLevel = null;
     }
   });
 

@@ -8,12 +8,14 @@
 import { WORKFLOW_COMMANDS } from "./constants.js";
 
 /** Sandbox levels */
-export type SandboxLevel = "read_only" | "write_unipi" | "full";
+export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "full";
 
 /** Tool sets per sandbox level */
 const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
-  /** Only read tool — no bash, no write, no edit */
-  read_only: ["read"],
+  /** Only read-only tools — no bash, no write, no edit */
+  read_only: ["read", "grep", "find", "ls"],
+  /** Read + constrained write — only to .unipi/docs/specs/ */
+  brainstorm: ["read", "grep", "find", "ls", "write"],
   /** Read + write/edit — bash blocked, writes go through write tool */
   write_unipi: ["read", "write", "edit"],
   /** All tools */
@@ -22,7 +24,7 @@ const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
 
 /** Command to sandbox level mapping */
 const COMMAND_SANDBOX: Record<string, SandboxLevel> = {
-  [WORKFLOW_COMMANDS.BRAINSTORM]: "write_unipi",
+  [WORKFLOW_COMMANDS.BRAINSTORM]: "brainstorm",
   [WORKFLOW_COMMANDS.PLAN]: "write_unipi",
   [WORKFLOW_COMMANDS.WORK]: "full",
   [WORKFLOW_COMMANDS.REVIEW_WORK]: "read_only",
