@@ -1,7 +1,7 @@
 # Unipi — mise tasks for testing
 #
 # All-in-one:
-#   mise run core           # Full Unipi suite
+#   mise run unipi           # Full Unipi suite (loads all from package.json)
 #
 # Individual (for debugging):
 #   mise run workflow
@@ -14,9 +14,9 @@
 # Utility:
 #   mise run typecheck
 
-[tasks.core]
+[tasks.unipi]
 description = "Launch pi with full Unipi suite"
-run = "pi --no-extensions --no-skills -e packages/core/extension.ts"
+run = "pi --no-extensions --no-skills -e packages/unipi/index.ts"
 
 [tasks.workflow]
 description = "Launch pi with workflow only"

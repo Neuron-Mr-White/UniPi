@@ -1,10 +1,12 @@
 /**
- * @pi-unipi/core — All-in-one extension entry
+ * @pi-unipi/unipi — All-in-one extension entry
  *
- * Loads every Unipi extension in a single entry point.
- * Used by `mise run core` and the root package.json pi.extensions.
- *
+ * Loads every Unipi module in a single entry point.
  * Think of this as the "oh-my-zsh" for pi — one install mounts all modules.
+ *
+ * Usage:
+ *   pi --no-extensions --no-skills -e packages/unipi/index.ts
+ *   mise run unipi
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
