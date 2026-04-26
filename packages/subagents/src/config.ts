@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/subagents — Config management
  *
- * Loads config from ~/.unipc/config/subagents.json (global)
+ * Loads config from ~/.unipi/config/subagents.json (global)
  * and <workspace>/.unipi/config/subagents.json (override).
  * Auto-generates on first run. Repairs corrupted files.
  */

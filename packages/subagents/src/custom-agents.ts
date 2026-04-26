@@ -2,8 +2,8 @@
  * @pi-unipi/subagents — Custom agent loader
  *
  * Discovers agent types from:
- * - <workspace>/.unipc/config/agents/*.md (project, highest priority)
- * - ~/.unipc/config/agents/*.md (global)
+ * - <workspace>/.unipi/config/agents/*.md (project, highest priority)
+ * - ~/.unipi/config/agents/*.md (global)
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -14,12 +14,12 @@ import type { AgentConfig } from "./types.js";
 
 /** Get project agents directory. */
 function getProjectAgentsDir(cwd: string): string {
-  return join(cwd, ".unipc", "config", "agents");
+  return join(cwd, ".unipi", "config", "agents");
 }
 
 /** Get global agents directory. */
 function getGlobalAgentsDir(): string {
-  return join(homedir(), ".unipc", "config", "agents");
+  return join(homedir(), ".unipi", "config", "agents");
 }
 
 /** All known built-in tool names. */
