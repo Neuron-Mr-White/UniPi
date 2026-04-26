@@ -34,11 +34,13 @@
   "pi": {
     "extensions": [
       "node_modules/@unipi/workflow/index.ts",
-      "node_modules/@unipi/ralph/index.ts"
+      "node_modules/@unipi/ralph/index.ts",
+      "node_modules/@unipi/memory/index.ts"
     ],
     "skills": [
       "node_modules/@unipi/workflow/skills",
-      "node_modules/@unipi/ralph"
+      "node_modules/@unipi/ralph",
+      "node_modules/@unipi/memory/skills"
     ]
   },
   "peerDependencies": {
@@ -46,6 +48,9 @@
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "@unipi/memory": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

@@ -49,8 +49,24 @@ Each module writes to its designated paths:
 |--------|-----------|------------|
 | `@unipi/workflow` | `.unipi/docs/brainstorms/`, `.unipi/docs/plans/` | `.unipi/docs/` |
 | `@unipi/ralph` | `.unipi/ralph/` | `.unipi/ralph/` |
-| `@unipi/memory` (future) | `.unipi/memory/` | `.unipi/memory/` |
+| `@unipi/memory` | `~/.unipi/memory/<project>/` | `~/.unipi/memory/` |
 | `@unipi/settings` (future) | `.unipi/config/` | `.unipi/config/` |
+
+### Memory Directory
+
+Memory is stored globally in `~/.unipi/memory/`, not in `.unipi/`:
+
+```
+~/.unipi/memory/
+├── global/
+│   ├── memory.db              # Global vector DB
+│   └── *.md                   # Global memory files
+└── <project_name>/
+    ├── memory.db              # Project vector DB
+    └── *.md                   # Project memory files
+```
+
+Project name is derived from the last directory segment of the project path.
 
 ### .gitignore Template
 

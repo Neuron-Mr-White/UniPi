@@ -1,0 +1,55 @@
+{
+  "name": "@unipi/memory",
+  "version": "0.1.0",
+  "description": "Persistent cross-session memory with vector search for Pi coding agent",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/memory"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "memory",
+    "vector-search",
+    "sqlite-vec"
+  ],
+  "pi": {
+    "extensions": ["index.ts"],
+    "skills": ["skills"]
+  },
+  "files": [
+    "index.ts",
+    "storage.ts",
+    "search.ts",
+    "embedding.ts",
+    "tools.ts",
+    "commands.ts",
+    "skills/**/*",
+    "README.md"
+  ],
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "sqlite-vec": "^0.1.9",
+    "js-yaml": "^4.1.0",
+    "@unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^25.6.0"
+  }
+}

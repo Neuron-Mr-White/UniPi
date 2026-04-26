@@ -28,6 +28,15 @@ export const UNIPI_EVENTS = {
   MODULE_STATUS_REQUEST: "unipi:module:status:request",
   /** Module status response */
   MODULE_STATUS_RESPONSE: "unipi:module:status:response",
+
+  /** Memory stored/updated */
+  MEMORY_STORED: "unipi:memory:stored",
+  /** Memory deleted */
+  MEMORY_DELETED: "unipi:memory:deleted",
+  /** Memory search performed */
+  MEMORY_SEARCHED: "unipi:memory:searched",
+  /** Memory consolidation completed */
+  MEMORY_CONSOLIDATED: "unipi:memory:consolidated",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -96,6 +105,48 @@ export interface UnipiStatusResponseEvent {
   status: Record<string, unknown>;
 }
 
+/** Payload for MEMORY_STORED */
+export interface UnipiMemoryStoredEvent {
+  /** Memory ID */
+  id: string;
+  /** Memory title */
+  title: string;
+  /** Memory type */
+  type: string;
+  /** Project name */
+  project: string;
+  /** Whether this was an update or create */
+  action: "created" | "updated";
+}
+
+/** Payload for MEMORY_DELETED */
+export interface UnipiMemoryDeletedEvent {
+  /** Memory ID */
+  id: string;
+  /** Memory title */
+  title: string;
+  /** Project name */
+  project: string;
+}
+
+/** Payload for MEMORY_SEARCHED */
+export interface UnipiMemorySearchedEvent {
+  /** Search query */
+  query: string;
+  /** Number of results */
+  resultCount: number;
+  /** Project scope */
+  project: string;
+}
+
+/** Payload for MEMORY_CONSOLIDATED */
+export interface UnipiMemoryConsolidatedEvent {
+  /** Number of memories extracted */
+  count: number;
+  /** Project name */
+  projectName: string;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -103,4 +154,8 @@ export type UnipiEventPayload =
   | UnipiRalphLoopEvent
   | UnipiRalphIterationEvent
   | UnipiStatusRequestEvent
-  | UnipiStatusResponseEvent;
+  | UnipiStatusResponseEvent
+  | UnipiMemoryStoredEvent
+  | UnipiMemoryDeletedEvent
+  | UnipiMemorySearchedEvent
+  | UnipiMemoryConsolidatedEvent;

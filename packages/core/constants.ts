@@ -78,6 +78,49 @@ export const UNIPI_DIRS = {
   QUICK_WORK: ".unipi/quick-work",
 } as const;
 
+/** Memory tool names */
+export const MEMORY_TOOLS = {
+  STORE: "memory_store",
+  SEARCH: "memory_search",
+  DELETE: "memory_delete",
+  LIST: "memory_list",
+  GLOBAL_STORE: "global_memory_store",
+  GLOBAL_SEARCH: "global_memory_search",
+  GLOBAL_LIST: "global_memory_list",
+} as const;
+
+/** Memory command names */
+export const MEMORY_COMMANDS = {
+  PROCESS: "memory-process",
+  SEARCH: "memory-search",
+  CONSOLIDATE: "memory-consolidate",
+  FORGET: "memory-forget",
+  GLOBAL_PROCESS: "global-memory-process",
+  GLOBAL_SEARCH: "global-memory-search",
+  GLOBAL_LIST: "global-memory-list",
+} as const;
+
+/** Memory directory paths */
+export const MEMORY_DIRS = {
+  BASE: "~/.unipi/memory",
+  GLOBAL: "~/.unipi/memory/global",
+} as const;
+
+/** Memory defaults */
+export const MEMORY_DEFAULTS = {
+  EMBEDDING_DIM: 384,
+  SEARCH_LIMIT: 10,
+  SNIPPET_CHARS: 150,
+} as const;
+
+/** Memory types */
+export const MEMORY_TYPES = {
+  PREFERENCE: "preference",
+  DECISION: "decision",
+  PATTERN: "pattern",
+  SUMMARY: "summary",
+} as const;
+
 /** Default ralph loop settings */
 export const RALPH_DEFAULTS = {
   MAX_ITERATIONS: 50,
