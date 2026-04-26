@@ -182,17 +182,17 @@ When `/unipi:work` runs with subagent support:
 
 ## Implementation Tasks
 
-- [ ] 1. Create `packages/subagents/package.json` with dependencies
-- [ ] 2. Create `types.ts` — AgentConfig, AgentRecord, FileLock, AgentType interfaces
-- [ ] 3. Create `config.ts` — load/validate/repair config from `~/.unipi/config/subagents.json`
-- [ ] 4. Create `file-lock.ts` — per-file transparent locking
-- [ ] 5. Create `agent-runner.ts` — session creation, execution, abort signal forwarding
-- [ ] 6. Create `agent-manager.ts` — lifecycle, concurrency queue, spawn/resume/abort
-- [ ] 7. Create `prompts.ts` — system prompt builder for agent types
-- [ ] 8. Create `widget.ts` — live widget (adapt from pi-subagents)
-- [ ] 9. Create `index.ts` — extension entry, register Agent/get_result tools
-- [ ] 10. Create skill files — `explore/SKILL.md`, `work/SKILL.md`
-- [ ] 11. Create custom agent loader — discover `.unipi/config/agents/*.md`
+- [x] 1. Create `packages/subagents/package.json` with dependencies
+- [x] 2. Create `types.ts` — AgentConfig, AgentRecord, FileLock, AgentType interfaces
+- [x] 3. Create `config.ts` — load/validate/repair config from `~/.unipi/config/subagents.json`
+- [x] 4. Create `file-lock.ts` — per-file transparent locking
+- [x] 5. Create `agent-runner.ts` — session creation, execution, abort signal forwarding
+- [x] 6. Create `agent-manager.ts` — lifecycle, concurrency queue, spawn/resume/abort
+- [x] 7. Create `prompts.ts` — system prompt builder for agent types
+- [x] 8. Create `widget.ts` — live widget (adapt from pi-subagents)
+- [x] 9. Create `index.ts` — extension entry, register Agent/get_result tools
+- [x] 10. Create skill files — `explore/SKILL.md`, `work/SKILL.md`
+- [x] 11. Create custom agent loader — discover `.unipi/config/agents/*.md`
 - [ ] 12. Test ESC propagation — all children abort on parent ESC
 - [ ] 13. Test file locking — concurrent writes to same file queue correctly
 - [ ] 14. Test config auto-generation and corruption recovery
