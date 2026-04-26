@@ -1,0 +1,50 @@
+{
+  "name": "@pi-unipi/web-api",
+  "version": "0.1.0",
+  "description": "Web search, read, and summarize tools with provider-based backend selection for Pi coding agent",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/web-api"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "web-api",
+    "search",
+    "read",
+    "summarize"
+  ],
+  "pi": {
+    "extensions": [
+      "src/index.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "files": [
+    "src/**/*.ts",
+    "skills/**/*",
+    "README.md"
+  ],
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}
