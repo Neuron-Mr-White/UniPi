@@ -87,13 +87,21 @@ export class InfoOverlay implements Component {
     }
 
     try {
-      // Load data for all groups in parallel
-      const promises = this.groups.map(async (group) => {
-        const data = await infoRegistry.getGroupData(group.id);
-        this.groupData.set(group.id, data);
+      // Load data for all groups in parallel with timeout
+      const loadPromises = this.groups.map(async (group) => {
+        try {
+          const data = await Promise.race([
+            infoRegistry.getGroupData(group.id),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+          ]);
+          this.groupData.set(group.id, data);
+        } catch {
+          // Use empty data on timeout/error
+          this.groupData.set(group.id, {});
+        }
       });
 
-      await Promise.all(promises);
+      await Promise.all(loadPromises);
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     }
