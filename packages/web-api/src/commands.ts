@@ -23,7 +23,7 @@ export function registerWebCommands(pi: ExtensionAPI): void {
   pi.registerCommand({
     name: `${UNIPI_PREFIX}${WEB_COMMANDS.SETTINGS}`,
     description: "Configure web API providers and API keys",
-    async execute(_args, _ctx) {
+    handler: async (_args, _ctx) => {
       await showSettingsDialog(pi);
     },
   });
@@ -32,7 +32,7 @@ export function registerWebCommands(pi: ExtensionAPI): void {
   pi.registerCommand({
     name: `${UNIPI_PREFIX}${WEB_COMMANDS.CACHE_CLEAR}`,
     description: "Clear all cached web content",
-    async execute(_args, _ctx) {
+    handler: async (_args, _ctx) => {
       const stats = webCache.getStats();
       const cleared = webCache.clear();
 
