@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Persistent cross-session memory with vector search for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -36,8 +36,10 @@
     "storage.ts",
     "search.ts",
     "embedding.ts",
+    "settings.ts",
     "tools.ts",
     "commands.ts",
+    "tui/**/*",
     "skills/**/*",
     "README.md"
   ],

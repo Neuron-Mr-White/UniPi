@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "node --test src/__tests__/*.test.ts"
   },
   "dependencies": {
     "@pi-unipi/core": "*",
