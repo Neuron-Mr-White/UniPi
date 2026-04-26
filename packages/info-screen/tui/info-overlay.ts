@@ -23,6 +23,7 @@ const ansi = {
   yellow: "\x1b[33m",
   magenta: "\x1b[35m",
   white: "\x1b[37m",
+  red: "\x1b[31m",
   gray: "\x1b[90m",
 };
 
@@ -62,9 +63,9 @@ export class InfoOverlay implements Component {
    */
   private async loadData(): Promise<void> {
     this.loading = true;
-    // Always re-fetch groups to catch late registrations
-    this.groups = infoRegistry.getGroups();
-    console.debug(`[info-screen] loadData: ${this.groups.length} groups`);
+    // Always re-fetch ALL groups to catch late registrations
+    this.groups = infoRegistry.getAllGroups();
+    console.debug(`[info-screen] loadData: ${this.groups.length} groups (all)`);
 
     try {
       // Load data for all groups in parallel
@@ -125,12 +126,12 @@ export class InfoOverlay implements Component {
       return this.renderError(width);
     }
 
-    // Re-check groups on each render in case new ones registered
-    const currentGroups = infoRegistry.getGroups();
-    if (currentGroups.length !== this.groups.length) {
-      console.debug(`[info-screen] Groups changed: ${this.groups.length} -> ${currentGroups.length}`);
-      this.groups = currentGroups;
-      // Reload data for new groups
+    // Always re-fetch ALL groups to catch late registrations
+    const allGroups = infoRegistry.getAllGroups();
+    if (allGroups.length !== this.groups.length) {
+      console.debug(`[info-screen] Groups changed: ${this.groups.length} -> ${allGroups.length}`);
+      this.groups = allGroups;
+      // Async reload data for new groups
       this.loadData();
     }
 
@@ -364,20 +365,18 @@ export class InfoOverlay implements Component {
    */
   private renderFooter(width: number, hasScroll?: boolean): string {
     const hints = [
-      `${ansi.dim}←/→${ansi.reset} tabs`,
+      `${ansi.cyan}←/→${ansi.reset} tabs`,
     ];
     
-    if (hasScroll) {
-      hints.push(`${ansi.dim}↑/↓${ansi.reset} scroll`);
-    }
-    
-    hints.push(`${ansi.dim}q/Esc${ansi.reset} close`);
+    hints.push(`${ansi.green}↑/↓${ansi.reset} scroll`);
+    hints.push(`${ansi.yellow}g/G${ansi.reset} top/bottom`);
+    hints.push(`${ansi.red}q/Esc${ansi.reset} close`);
 
     const hintStr = hints.join(`  ${ansi.dim}•${ansi.reset}  `);
     const visLen = visibleWidth(hintStr);
 
     if (visLen >= width - 4) {
-      return ansi.dim + truncateToWidth(hintStr, width - 4) + ansi.reset;
+      return truncateToWidth(hintStr, width - 4);
     }
 
     const leftPad = Math.floor((width - visLen) / 2);
