@@ -378,11 +378,8 @@ export function registerCoreGroups(): void {
       const builtin = tools.filter((t) => t.source === "builtin");
       const custom = tools.filter((t) => t.source === "registered");
 
-      // Build tool list
-      const toolNames = tools.slice(0, 15).map((t) => `${t.name}`);
-      if (tools.length > 15) {
-        toolNames.push(`+${tools.length - 15} more`);
-      }
+      // Build tool list - show all
+      const toolNames = tools.map((t) => `${t.name}`);
 
       return {
         total: { value: String(tools.length) },
@@ -420,13 +417,10 @@ export function registerCoreGroups(): void {
         .map(([src, count]) => `${count} ${src}`)
         .join(", ");
 
-      // Build multi-line list
+      // Build multi-line list - show all
       const listLines: string[] = [];
-      for (const ext of extensions.slice(0, 8)) {
+      for (const ext of extensions) {
         listLines.push(`${ext.name} (${ext.source})`);
-      }
-      if (extensions.length > 8) {
-        listLines.push(`+${extensions.length - 8} more`);
       }
 
       return {
@@ -459,11 +453,8 @@ export function registerCoreGroups(): void {
       const global = skills.filter((s) => s.source === "global");
       const project = skills.filter((s) => s.source === "project");
 
-      // Build skill list
-      const skillNames = skills.slice(0, 10).map((s) => `${s.name} (${s.source})`);
-      if (skills.length > 10) {
-        skillNames.push(`+${skills.length - 10} more`);
-      }
+      // Build skill list - show all
+      const skillNames = skills.map((s) => `${s.name} (${s.source})`);
 
       return {
         count: { value: String(skills.length) },
