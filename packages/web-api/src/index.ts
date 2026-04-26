@@ -75,7 +75,16 @@ export default function (pi: ExtensionAPI) {
         name: "Web API",
         icon: "🌐",
         priority: 50,
-        getData: async () => {
+        config: {
+          showByDefault: true,
+          stats: [
+            { id: "providers", label: "Enabled Providers", show: true },
+            { id: "cacheEntries", label: "Cache Entries", show: true },
+            { id: "cacheSize", label: "Cache Size", show: true },
+            { id: "expired", label: "Expired Entries", show: true },
+          ],
+        },
+        dataProvider: async () => {
           const config = loadConfig();
           const stats = webCache.getStats();
           const enabledCount = Object.values(config.providers).filter(
@@ -83,10 +92,10 @@ export default function (pi: ExtensionAPI) {
           ).length;
 
           return {
-            "Enabled Providers": enabledCount,
-            "Cache Entries": stats.totalEntries,
-            "Cache Size": `${(stats.totalSizeBytes / 1024).toFixed(1)} KB`,
-            "Expired Entries": stats.expiredEntries,
+            providers: { value: String(enabledCount) },
+            cacheEntries: { value: String(stats.totalEntries) },
+            cacheSize: { value: `${(stats.totalSizeBytes / 1024).toFixed(1)} KB` },
+            expired: { value: String(stats.expiredEntries) },
           };
         },
       });

@@ -224,6 +224,7 @@ class InfoRegistry {
     const group = this.groups.get(groupId);
     if (!group) return [];
 
+    if (!group.config?.stats) return [];
     return group.config.stats.filter((stat) => {
       if (!isStatEnabled(groupId, stat.id)) return false;
       return stat.show;
