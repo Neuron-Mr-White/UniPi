@@ -1,0 +1,17 @@
+{
+  "nextId": 3,
+  "tasks": [
+    {
+      "id": "2",
+      "subject": "Write subagents implementation plan",
+      "description": "Write the plan document for the UniPi subagents module based on brainstorm decisions",
+      "status": "in_progress",
+      "activeForm": "Writing subagents plan",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777191388304,
+      "updatedAt": 1777191394424
+    }
+  ]
+}
