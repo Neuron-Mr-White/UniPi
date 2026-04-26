@@ -54,6 +54,7 @@ class InfoRegistry {
    * If a group with the same id exists, it's replaced.
    */
   registerGroup(group: InfoGroup): void {
+    console.debug(`[info-screen] Registering group: ${group.id}`);
     this.groups.set(group.id, group);
   }
 
@@ -72,8 +73,10 @@ class InfoRegistry {
    */
   getGroups(): InfoGroup[] {
     const settings = getInfoSettings();
+    const allGroups = Array.from(this.groups.values());
+    console.debug(`[info-screen] getGroups: ${allGroups.length} total groups`);
 
-    return Array.from(this.groups.values())
+    return allGroups
       .filter((group) => {
         // Check group-level visibility
         const groupSettings = settings.groups[group.id];
