@@ -38,6 +38,13 @@ function ensureDir(filePath: string): void {
   }
 }
 
+/** Ensure a directory exists (not a file path). */
+function ensureDirExists(dirPath: string): void {
+  if (!existsSync(dirPath)) {
+    mkdirSync(dirPath, { recursive: true });
+  }
+}
+
 /** Write config atomically (write then rename). */
 function writeConfigAtomic(filePath: string, config: SubagentsConfig): void {
   const tmpPath = filePath + ".tmp";
@@ -80,14 +87,26 @@ function repairCorrupted(filePath: string): SubagentsConfig {
  */
 export function initConfig(cwd: string): SubagentsConfig {
   const globalPath = getGlobalConfigPath();
+  const globalDir = join(homedir(), ".unipi", "config");
+  const globalAgentsDir = join(homedir(), ".unipi", "config", "agents");
 
-  // Ensure global config dir exists
-  ensureDir(globalPath);
+  // Ensure directories exist
+  ensureDirExists(globalDir);
+  ensureDirExists(globalAgentsDir);
 
   // Load or create global config
   let globalConfig = loadConfigFromPath(globalPath);
   if (globalConfig === null) {
     globalConfig = repairCorrupted(globalPath);
+  }
+
+  // Ensure workspace directories exist if workspace exists
+  const workspaceDir = join(cwd, ".unipi", "config");
+  const workspaceAgentsDir = join(cwd, ".unipi", "config", "agents");
+  if (cwd && !cwd.startsWith(homedir())) {
+    // Only create workspace dirs if not in home directory
+    ensureDirExists(workspaceDir);
+    ensureDirExists(workspaceAgentsDir);
   }
 
   // Load workspace override if exists
