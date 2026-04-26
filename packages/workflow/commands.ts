@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readFileSync, readdirSync, existsSync } from "fs";
+import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
 import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@pi-unipi/core";
 
@@ -41,13 +41,17 @@ function suggestSpecFiles(prefix: string): { value: string; label: string; descr
   if (!existsSync(specsDir)) return [];
 
   try {
-    const files = readdirSync(specsDir).filter((f) => f.endsWith(".md"));
+    const search = prefix?.trim().split(/\s+/).pop() ?? "";
+    const files = readdirSync(specsDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ name: f, time: statSync(join(specsDir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
     return files
-      .filter((f) => !prefix || f.includes(prefix))
+      .filter((f) => !search || f.name.includes(search))
       .map((f) => ({
-        value: `specs:${f}`,
-        label: basename(f, ".md"),
-        description: `Spec: ${f}`,
+        value: `specs:${f.name}`,
+        label: basename(f.name, ".md"),
+        description: `Spec: ${f.name}`,
       }));
   } catch {
     return [];
@@ -62,13 +66,17 @@ function suggestPlanFiles(prefix: string): { value: string; label: string; descr
   if (!existsSync(plansDir)) return [];
 
   try {
-    const files = readdirSync(plansDir).filter((f) => f.endsWith(".md"));
+    const search = prefix?.trim().split(/\s+/).pop() ?? "";
+    const files = readdirSync(plansDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ name: f, time: statSync(join(plansDir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
     return files
-      .filter((f) => !prefix || f.includes(prefix))
+      .filter((f) => !search || f.name.includes(search))
       .map((f) => ({
-        value: `plan:${f}`,
-        label: basename(f, ".md"),
-        description: `Plan: ${f}`,
+        value: `plan:${f.name}`,
+        label: basename(f.name, ".md"),
+        description: `Plan: ${f.name}`,
       }));
   } catch {
     return [];
