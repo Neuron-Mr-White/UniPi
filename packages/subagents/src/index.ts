@@ -8,7 +8,12 @@
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { infoRegistry } from "@pi-unipi/info-screen";
+
+// Get info registry from global
+function getInfoRegistry() {
+  const g = globalThis as any;
+  return g.__unipi_info_registry;
+}
 import { AgentManager } from "./agent-manager.js";
 import { initConfig, saveGlobalConfig } from "./config.js";
 import { type AgentActivity, type AgentRecord, BUILTIN_TYPES } from "./types.js";
@@ -81,27 +86,30 @@ export default function (pi: ExtensionAPI) {
     const workspaceAgents = `${ctx.cwd}/.unipi/config/agents/`;
 
     // Register info group
-    infoRegistry.registerGroup({
-      id: "subagents",
-      name: "Subagents",
-      icon: "🤖",
-      priority: 80,
-      config: {
-        showByDefault: true,
-        stats: [
-          { id: "maxConcurrent", label: "Max Concurrent", show: true },
-          { id: "activeCount", label: "Active Agents", show: true },
-          { id: "enabled", label: "Enabled", show: true },
-        ],
-      },
-      dataProvider: async () => {
-        return {
-          maxConcurrent: { value: String(manager.getMaxConcurrent()) },
-          activeCount: { value: "N/A" },
-          enabled: { value: config.enabled ? "yes" : "no" },
-        };
-      },
-    });
+    const registry = getInfoRegistry();
+    if (registry) {
+      registry.registerGroup({
+        id: "subagents",
+        name: "Subagents",
+        icon: "🤖",
+        priority: 80,
+        config: {
+          showByDefault: true,
+          stats: [
+            { id: "maxConcurrent", label: "Max Concurrent", show: true },
+            { id: "activeCount", label: "Active Agents", show: true },
+            { id: "enabled", label: "Enabled", show: true },
+          ],
+        },
+        dataProvider: async () => {
+          return {
+            maxConcurrent: { value: String(manager.getMaxConcurrent()) },
+            activeCount: { value: "N/A" },
+            enabled: { value: config.enabled ? "yes" : "no" },
+          };
+        },
+      });
+    }
 
     ctx.ui.notify(
       `UniPi Subagents config:\n` +

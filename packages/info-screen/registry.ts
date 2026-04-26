@@ -173,3 +173,13 @@ class InfoRegistry {
 
 /** Singleton registry instance */
 export const infoRegistry = new InfoRegistry();
+
+// Expose globally so other modules can access without direct imports
+// (pi loads extensions independently, so imports may not resolve)
+const globalObj = globalThis as any;
+if (!globalObj.__unipi_info_registry) {
+  globalObj.__unipi_info_registry = infoRegistry;
+}
+export const getGlobalRegistry = (): InfoRegistry => {
+  return globalObj.__unipi_info_registry || infoRegistry;
+};
