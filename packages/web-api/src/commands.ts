@@ -4,7 +4,7 @@
  * Registers /unipi:web-settings and /unipi:web-cache-clear commands.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
 import { showSettingsDialog } from "./tui/settings-dialog.js";
 import { webCache } from "./cache.js";
@@ -22,22 +22,22 @@ export function registerWebCommands(pi: ExtensionAPI): void {
   // --- /unipi:web-settings command ---
   pi.registerCommand(`${UNIPI_PREFIX}${WEB_COMMANDS.SETTINGS}`, {
     description: "Configure web API providers and API keys",
-    handler: async (_args, _ctx) => {
-      await showSettingsDialog(pi);
+    handler: async (_args, ctx) => {
+      await showSettingsDialog(ctx);
     },
   });
 
   // --- /unipi:web-cache-clear command ---
   pi.registerCommand(`${UNIPI_PREFIX}${WEB_COMMANDS.CACHE_CLEAR}`, {
     description: "Clear all cached web content",
-    handler: async (_args, _ctx) => {
+    handler: async (_args, ctx) => {
       const stats = webCache.getStats();
       const cleared = webCache.clear();
 
-      await pi.ui.notify({
-        message: `Cache cleared: ${cleared} entries removed (${stats.totalSizeBytes} bytes freed)`,
-        level: "success",
-      });
+      ctx.ui.notify(
+        `Cache cleared: ${cleared} entries removed (${stats.totalSizeBytes} bytes freed)`,
+        "info",
+      );
     },
   });
 }

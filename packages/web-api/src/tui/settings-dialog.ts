@@ -5,7 +5,7 @@
  * Uses pi's TUI components for provider selection and key input.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { registry } from "../providers/registry.js";
 import {
   getApiKey,
@@ -21,8 +21,9 @@ import { getProviderOptions, getProviderStatuses } from "./provider-selector.js"
  * Show settings dialog.
  * This is the main entry point for /unipi:web-settings command.
  */
-export async function showSettingsDialog(pi: ExtensionAPI): Promise<void> {
+export async function showSettingsDialog(ctx: ExtensionCommandContext): Promise<void> {
   let running = true;
+  let lastSelected: string | undefined;
 
   while (running) {
     const options = getProviderOptions();
@@ -34,20 +35,37 @@ export async function showSettingsDialog(pi: ExtensionAPI): Promise<void> {
       description: "Exit settings",
     });
 
-    // Show provider list
-    const selected = await pi.ui.select({
-      title: "Web API Settings",
-      message: "Select a provider to configure:",
-      options,
-    });
+    // Move last selected provider to top of list for quick re-entry
+    if (lastSelected && lastSelected !== "__exit__") {
+      const idx = options.findIndex(o => o.value === lastSelected);
+      if (idx > 0) {
+        const [item] = options.splice(idx, 1);
+        options.unshift(item);
+      }
+    }
 
-    if (!selected || selected === "__exit__") {
+    // Show provider list
+    const labels = options.map(o => o.value === "__exit__" ? o.label : `${o.label} — ${o.description}`);
+    const selected = await ctx.ui.select(
+      "Web API Settings",
+      labels,
+    );
+    // Map label back to value
+    const selectedOpt = options.find(o => {
+      const full = o.value === "__exit__" ? o.label : `${o.label} — ${o.description}`;
+      return full === selected;
+    });
+    const selectedValue = selectedOpt?.value;
+
+    if (!selectedValue || selectedValue === "__exit__") {
       running = false;
       continue;
     }
 
+    lastSelected = selectedValue;
+
     // Show provider configuration
-    await configureProvider(pi, selected);
+    await configureProvider(ctx, selectedValue);
   }
 }
 
@@ -55,15 +73,15 @@ export async function showSettingsDialog(pi: ExtensionAPI): Promise<void> {
  * Configure a specific provider.
  */
 async function configureProvider(
-  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
   providerId: string
 ): Promise<void> {
   const provider = registry.getProvider(providerId);
   if (!provider) {
-    await pi.ui.notify({
-      message: `Provider "${providerId}" not found`,
-      level: "error",
-    });
+    ctx.ui.notify(
+      `Provider "${providerId}" not found`,
+      "error",
+    );
     return;
   }
 
@@ -110,32 +128,34 @@ async function configureProvider(
     description: "Return to provider list",
   });
 
-  const selected = await pi.ui.select({
-    title: `Configure ${provider.name}`,
-    message: `Capabilities: ${provider.capabilities.join(", ")}`,
-    options,
-  });
+  const labels = options.map(o => `${o.label} — ${o.description}`);
+  const selected = await ctx.ui.select(
+    `Configure ${provider.name} (${provider.capabilities.join(", ")})`,
+    labels,
+  );
+  const selectedOpt = options.find(o => `${o.label} — ${o.description}` === selected);
+  const selectedValue = selectedOpt?.value;
 
-  switch (selected) {
+  switch (selectedValue) {
     case "__toggle__":
       setProviderEnabled(providerId, !enabled);
-      await pi.ui.notify({
-        message: `${provider.name} ${!enabled ? "enabled" : "disabled"}`,
-        level: "success",
-      });
+      ctx.ui.notify(
+        `${provider.name} ${!enabled ? "enabled" : "disabled"}`,
+        "info",
+      );
       break;
 
     case "__add_key__":
     case "__update_key__":
-      await inputApiKey(pi, providerId, provider.name);
+      await inputApiKey(ctx, providerId, provider.name);
       break;
 
     case "__remove_key__":
       removeApiKey(providerId);
-      await pi.ui.notify({
-        message: `API key removed for ${provider.name}`,
-        level: "success",
-      });
+      ctx.ui.notify(
+        `API key removed for ${provider.name}`,
+        "info",
+      );
       break;
 
     case "__back__":
@@ -148,30 +168,25 @@ async function configureProvider(
  * Input API key for a provider.
  */
 async function inputApiKey(
-  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
   providerId: string,
   providerName: string
 ): Promise<void> {
-  const apiKey = await pi.ui.input({
-    title: `API Key for ${providerName}`,
-    message: `Enter API key (env: ${registry.getProvider(providerId)?.apiKeyEnv || "N/A"}):`,
-    placeholder: "sk-...",
-    validate: async (value: string) => {
-      if (!value || value.trim().length === 0) {
-        return "API key cannot be empty";
-      }
-      if (!validateApiKeyFormat(providerId, value)) {
-        return "API key format looks invalid";
-      }
-      return null;
-    },
-  });
+  const envHint = registry.getProvider(providerId)?.apiKeyEnv || "N/A";
+  const apiKey = await ctx.ui.input(
+    `API Key for ${providerName} (env: ${envHint})`,
+    "sk-...",
+  );
 
   if (apiKey) {
     setApiKey(providerId, apiKey);
-    await pi.ui.notify({
-      message: `API key saved for ${providerName}`,
-      level: "success",
-    });
+    // Auto-enable provider on successful key input
+    if (!isProviderEnabled(providerId)) {
+      setProviderEnabled(providerId, true);
+    }
+    ctx.ui.notify(
+      `API key saved for ${providerName} — enabled`,
+      "info",
+    );
   }
 }

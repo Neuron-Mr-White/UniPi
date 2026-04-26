@@ -128,6 +128,9 @@ web_llm_summarize(url: "https://example.com/research", prompt: "Extract key find
 
 Interactive settings dialog for managing providers and API keys.
 
+- **Auto-enable on key input** — provider is automatically enabled when you add a valid API key (no extra toggle step)
+- **Cursor memory** — last configured provider moves to the top of the list when you return to the menu
+
 ### /unipi:web-cache-clear
 
 Clear all cached web content.
@@ -145,8 +148,8 @@ Clear all cached web content.
 If you see "No search provider available":
 
 1. Run `/unipi:web-settings`
-2. Enable at least one provider
-3. Add API keys for paid providers
+2. Add API keys for paid providers (they auto-enable on key input)
+3. Or manually enable a free provider
 
 ### API key invalid
 

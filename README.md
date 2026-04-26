@@ -18,6 +18,7 @@ pi install npm:@pi-unipi/memory
 pi install npm:@pi-unipi/info-screen
 pi install npm:@pi-unipi/subagents
 pi install npm:@pi-unipi/btw
+pi install npm:@pi-unipi/web-api
 ```
 
 ## Packages
@@ -31,6 +32,7 @@ pi install npm:@pi-unipi/btw
 | `@pi-unipi/info-screen` | Dashboard and module registry overlay |
 | `@pi-unipi/subagents` | Parallel sub-agent execution with file locking |
 | `@pi-unipi/btw` | Parallel side conversations with `/btw` |
+| `@pi-unipi/web-api` | Web search, read, and summarize with provider selection |
 
 ## Commands
 
@@ -94,6 +96,13 @@ pi install npm:@pi-unipi/btw
 | `/unipi:info` | Show info dashboard |
 | `/unipi:info-settings` | Configure info display |
 
+### Web API (`/unipi:web-*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:web-settings` | Configure providers and API keys |
+| `/unipi:web-cache-clear` | Clear all cached web content |
+
 ### Tools
 
 | Tool | Package | Description |
@@ -108,6 +117,9 @@ pi install npm:@pi-unipi/btw
 | `memory_list` | memory | List project memories |
 | `global_memory_search` | memory | Search global memories |
 | `global_memory_list` | memory | List global memories |
+| `web_search` | web-api | Search the web via provider |
+| `web_read` | web-api | Extract content from URL |
+| `web_llm_summarize` | web-api | Summarize web content via LLM |
 
 ## How It Works
 
@@ -124,6 +136,8 @@ pi install npm:@pi-unipi/btw
 **BTW** adds a parallel side-conversation channel. Ask questions while the main agent keeps working, then inject or summarize the thread back.
 
 **Subagents** enables parallel execution with file locking, activity tracking, and custom agent types.
+
+**Web API** provides web search, page reading, and LLM summarization through a ranked provider system. DuckDuckGo and Jina work out of the box; paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are configured via `/unipi:web-settings`.
 
 ## Module Discovery
 
