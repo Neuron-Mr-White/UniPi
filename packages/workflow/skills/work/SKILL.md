@@ -39,6 +39,7 @@ If args not provided, ask user interactively:
    - "Do you want to work on current branch or create a worktree?"
    - If worktree: "What branch name?" (suggest based on spec topic)
    - Create worktree if not exists
+   - **After creating/confirming worktree:** write `workbranch: {branch-name}` to the plan file frontmatter
 
 2. **Specs:**
    - List available plans in `.unipi/docs/plans/`

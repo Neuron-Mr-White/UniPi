@@ -25,13 +25,17 @@ Review what was built, verify task completion, run codebase checks, add reviewer
 
 ---
 
-## Phase 1: Load Plan
+## Phase 1: Load Plan & Switch Branch
 
 1. If `plan:` arg provided, read that plan
 2. If not, list plans in `.unipi/docs/plans/` and ask user
 3. Read plan fully — understand tasks, acceptance criteria, current status
+4. **Read `workbranch:` from plan frontmatter:**
+   - If `workbranch:` exists and is not empty → switch to that branch/worktree
+   - If `workbranch:` missing or empty → review on current branch (main)
+   - To switch: `git checkout {workbranch}` or use worktree path
 
-**Exit:** Plan loaded. Know what to review.
+**Exit:** On correct branch. Plan loaded.
 
 ---
 

@@ -70,6 +70,7 @@ Structure the plan with heart of gold style:
 title: "{Topic} — Implementation Plan"
 type: plan
 date: YYYY-MM-DD
+workbranch: {branch-name or empty if on main}
 specs:
   - path/to/spec.md
 ---
