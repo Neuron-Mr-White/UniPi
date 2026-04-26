@@ -1,5 +1,5 @@
 {
-  "name": "unipi-core",
+  "name": "@pi-unipi/core",
   "version": "0.1.0",
   "description": "Shared utilities, event types, and constants for Unipi extension suite",
   "type": "module",
