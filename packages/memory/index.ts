@@ -14,6 +14,7 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@unipi/core";
+import { infoRegistry } from "@pi-unipi/info-screen";
 import {
   MemoryStorage,
   getProjectName,
@@ -80,6 +81,44 @@ export default function (pi: ExtensionAPI) {
         MEMORY_TOOLS.GLOBAL_SEARCH,
         MEMORY_TOOLS.GLOBAL_LIST,
       ],
+    });
+
+    // Register info group
+    infoRegistry.registerGroup({
+      id: "memory",
+      name: "Memory",
+      icon: "🧠",
+      priority: 60,
+      config: {
+        showByDefault: true,
+        stats: [
+          { id: "projectCount", label: "Project Memories", show: true },
+          { id: "totalCount", label: "Total Memories", show: true },
+          { id: "projects", label: "Projects", show: true },
+        ],
+      },
+      dataProvider: async () => {
+        if (!projectStorage) {
+          return {
+            projectCount: { value: "0" },
+            totalCount: { value: "0" },
+            projects: { value: "none" },
+          };
+        }
+
+        const projectMemories = projectStorage.listAll();
+        const allMemories = listAllProjects();
+        const uniqueProjects = [...new Set(allMemories.map((m) => m.project))];
+
+        return {
+          projectCount: { value: String(projectMemories.length) },
+          totalCount: { value: String(allMemories.length) },
+          projects: {
+            value: uniqueProjects.length.toString(),
+            detail: uniqueProjects.slice(0, 5).join(", ") + (uniqueProjects.length > 5 ? ` +${uniqueProjects.length - 5} more` : ""),
+          },
+        };
+      },
     });
 
     // Show memory status in UI

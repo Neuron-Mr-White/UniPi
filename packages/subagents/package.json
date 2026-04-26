@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@pi-unipi/core": "*",
-    "@pi-unipi/workflow": "*"
+    "@pi-unipi/workflow": "*",
+    "@pi-unipi/info-screen": "*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

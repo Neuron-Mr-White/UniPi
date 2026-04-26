@@ -34,7 +34,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@unipi/core": "^0.1.0"
+    "@unipi/core": "^0.1.0",
+    "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",

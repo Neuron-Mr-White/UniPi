@@ -14,6 +14,7 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@unipi/core";
+import { infoRegistry } from "@pi-unipi/info-screen";
 import { RalphLoopManager } from "./ralph-loop.js";
 import { registerRalphTools } from "./tools.js";
 
@@ -66,6 +67,39 @@ export default function (pi: ExtensionAPI) {
         "unipi:ralph-nuke",
       ],
       tools: [RALPH_TOOLS.START, RALPH_TOOLS.DONE],
+    });
+
+    // Register info group
+    infoRegistry.registerGroup({
+      id: "ralph",
+      name: "Ralph Loops",
+      icon: "🔄",
+      priority: 70,
+      config: {
+        showByDefault: true,
+        stats: [
+          { id: "activeLoops", label: "Active Loops", show: true },
+          { id: "totalIterations", label: "Total Iterations", show: true },
+          { id: "status", label: "Status", show: true },
+        ],
+      },
+      dataProvider: async () => {
+        const currentLoop = mgr.getCurrentLoop();
+        if (!currentLoop) {
+          return {
+            activeLoops: { value: "0" },
+            totalIterations: { value: "0" },
+            status: { value: "idle" },
+          };
+        }
+
+        const state = mgr.loadState(currentLoop);
+        return {
+          activeLoops: { value: "1" },
+          totalIterations: { value: String(state?.iteration ?? 0) },
+          status: { value: state?.status ?? "unknown" },
+        };
+      },
     });
   });
 
