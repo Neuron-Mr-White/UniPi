@@ -25,7 +25,7 @@ export const MODULES = {
   REGISTRY: "@pi-unipi/registry",
   MCP: "@pi-unipi/mcp",
   TASK: "@pi-unipi/task",
-  WEBTOOLS: "@pi-unipi/webtools",
+  WEB_API: "@pi-unipi/web-api",
   IMPECCABLE: "@pi-unipi/impeccable",
   SETTINGS: "@pi-unipi/settings",
 } as const;
