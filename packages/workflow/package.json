@@ -1,5 +1,5 @@
 {
-  "name": "@unipi/workflow",
+  "name": "unipi-workflow",
   "version": "0.1.0",
   "description": "Structured development workflow commands for Pi coding agent",
   "type": "module",
@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@unipi/core": "^0.1.0"
+    "unipi-core": "^0.1.0"
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",
