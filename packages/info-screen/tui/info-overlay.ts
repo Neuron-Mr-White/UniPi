@@ -176,22 +176,34 @@ export class InfoOverlay implements Component {
     lines.push(`${ansi.dim}╭${"─".repeat(width - 2)}╮${ansi.reset}`);
 
     // Header
-    lines.push(`${ansi.dim}│${ansi.reset}${this.renderHeader(innerWidth, group)}${ansi.dim}│${ansi.reset}`);
+    const headerLine = this.renderHeader(innerWidth, group);
+    const headerVisLen = visibleWidth(headerLine);
+    const headerPad = Math.max(0, innerWidth - headerVisLen);
+    lines.push(`${ansi.dim}│${ansi.reset}${headerLine}${" ".repeat(headerPad)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
 
     // Tab bar
-    lines.push(`${ansi.dim}│${ansi.reset}${this.renderTabBar(innerWidth)}${ansi.dim}│${ansi.reset}`);
+    const tabBarLine = this.renderTabBar(innerWidth);
+    const tabBarVisLen = visibleWidth(tabBarLine);
+    const tabBarPad = Math.max(0, innerWidth - tabBarVisLen);
+    lines.push(`${ansi.dim}│${ansi.reset}${tabBarLine}${" ".repeat(tabBarPad)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
 
     // Content
     const contentLines = this.renderGroupContent(innerWidth, group, data);
     for (const line of contentLines) {
-      lines.push(`${ansi.dim}│${ansi.reset}${line}${ansi.dim}│${ansi.reset}`);
+      // Pad line to fill inner width so right border aligns
+      const visLen = visibleWidth(line);
+      const pad = Math.max(0, innerWidth - visLen);
+      lines.push(`${ansi.dim}│${ansi.reset}${line}${" ".repeat(pad)}${ansi.dim}│${ansi.reset}`);
     }
 
     // Footer
     lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.renderFooter(innerWidth)}${ansi.dim}│${ansi.reset}`);
+    const footerLine = this.renderFooter(innerWidth);
+    const footerVisLen = visibleWidth(footerLine);
+    const footerPad = Math.max(0, innerWidth - footerVisLen);
+    lines.push(`${ansi.dim}│${ansi.reset}${footerLine}${" ".repeat(footerPad)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}╰${"─".repeat(width - 2)}╯${ansi.reset}`);
 
     return lines;
