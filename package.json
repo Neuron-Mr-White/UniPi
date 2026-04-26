@@ -50,7 +50,7 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "@unipi/memory": "*"
+    "@pi-unipi/memory": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
