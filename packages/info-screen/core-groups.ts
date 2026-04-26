@@ -407,17 +407,13 @@ export function registerCoreGroups(): void {
       const times = getLoadTimes();
       const total = getTotalLoadTime();
       
-      // Sort by load time descending
-      const sorted = [...times].sort((a, b) => b.ms - a.ms);
+      // Filter out 0ms entries and sort by load time descending
+      const validTimes = times.filter(t => t.ms > 0);
+      const sorted = [...validTimes].sort((a, b) => b.ms - a.ms);
       
-      // Build list as comma-separated values
-      const listStr = sorted.length > 0 
-        ? sorted.map(t => `${t.name} (${t.ms}ms)`).join(", ") 
-        : "none";
-
       return {
         total: { value: `${total}ms` },
-        count: { value: String(times.length) },
+        count: { value: String(validTimes.length) },
         list: {
           value: sorted.length > 0 ? `${sorted[0].name} (${sorted[0].ms}ms)` : "none",
           detail: sorted.length > 1 ? sorted.slice(1).map(t => `${t.name} (${t.ms}ms)`).join(", ") : undefined,

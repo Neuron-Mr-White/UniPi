@@ -35,6 +35,7 @@ export class SettingsOverlay implements Component {
   private settings: InfoScreenSettings;
   private groups: Array<{ id: string; name: string; icon: string }>;
   private selectedIndex = 0;
+  private savedGroupIndex = 0; // Saved position before entering stats mode
   private mode: "groups" | "stats" = "groups";
   private selectedGroupId: string | null = null;
   /** Callback when overlay should close */
@@ -90,9 +91,9 @@ export class SettingsOverlay implements Component {
         this.selectedIndex = (this.selectedIndex + 1) % this.groups.length;
         break;
       case " ": // Space - toggle visibility
-      case "\r": // Enter - toggle visibility
         this.toggleGroupVisibility(this.groups[this.selectedIndex].id);
         break;
+      case "\r": // Enter - enter stats mode
       case "\x1b[C": // Right - enter stats mode
       case "l":
         this.enterStatsMode(this.groups[this.selectedIndex].id);
@@ -129,20 +130,27 @@ export class SettingsOverlay implements Component {
         this.selectedIndex = (this.selectedIndex + 1) % group.config.stats.length;
         break;
       case " ": // Space - toggle stat
-      case "\r": // Enter - toggle stat
         this.toggleStatVisibility(this.selectedGroupId, group.config.stats[this.selectedIndex].id);
         break;
       case "\x1b[D": // Left - back to groups
       case "h":
-        this.mode = "groups";
-        this.selectedGroupId = null;
-        this.selectedIndex = this.groups.findIndex((g) => g.id === this.selectedGroupId) ?? 0;
+      case "\r": // Enter - also go back
+        this.backToGroups();
         break;
       case "q": // Quit from stats mode
       case "\x1b":
         this.onClose?.();
         break;
     }
+  }
+
+  /**
+   * Return to groups mode, restoring cursor position.
+   */
+  private backToGroups(): void {
+    this.mode = "groups";
+    this.selectedIndex = this.savedGroupIndex; // Restore saved position
+    this.selectedGroupId = null;
   }
 
   /**
@@ -176,6 +184,7 @@ export class SettingsOverlay implements Component {
    * Enter stats editing mode for a group.
    */
   private enterStatsMode(groupId: string): void {
+    this.savedGroupIndex = this.selectedIndex; // Save position for later
     this.mode = "stats";
     this.selectedGroupId = groupId;
     this.selectedIndex = 0;
@@ -229,19 +238,27 @@ export class SettingsOverlay implements Component {
   }
 
   /**
+   * Pad a line to fill a target visual width.
+   */
+  private padToWidth(line: string, targetWidth: number): string {
+    const visLen = visibleWidth(line);
+    const pad = Math.max(0, targetWidth - visLen);
+    return line + " ".repeat(pad);
+  }
+
+  /**
    * Render groups mode.
    */
   private renderGroupsMode(width: number): string[] {
     const lines: string[] = [];
+    const innerWidth = width - 2; // Subtract border chars
+
+    // Top border
+    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
     // Header
-    lines.push("");
-    lines.push(this.renderCentered(`${ansi.bold}⚙️  Info Screen Settings${ansi.reset}`, width));
-    lines.push("");
-
-    // Separator
-    lines.push(ansi.dim + "─".repeat(width) + ansi.reset);
-    lines.push("");
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.bold}⚙️  Info Screen Settings${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
     // Group list
     for (let i = 0; i < this.groups.length; i++) {
@@ -259,18 +276,17 @@ export class SettingsOverlay implements Component {
         line += `  ${ansi.dim}→ stats${ansi.reset}`;
       }
 
-      if (visibleWidth(line) > width - 2) {
-        line = truncateToWidth(line, width - 2);
+      if (visibleWidth(line) > innerWidth - 2) {
+        line = truncateToWidth(line, innerWidth - 2);
       }
 
-      lines.push(line);
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
     }
 
     // Footer
-    lines.push("");
-    lines.push(ansi.dim + "─".repeat(width) + ansi.reset);
-    lines.push(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  → stats  J/K reorder  q close${ansi.reset}`, width));
-    lines.push("");
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  Enter/→ stats  J/K reorder  q close${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
   }
@@ -288,15 +304,14 @@ export class SettingsOverlay implements Component {
     }
 
     const groupSettings = getGroupSettings(group.id);
+    const innerWidth = width - 2;
+
+    // Top border
+    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
     // Header
-    lines.push("");
-    lines.push(this.renderCentered(`${group.icon} ${group.name} Stats`, width));
-    lines.push("");
-
-    // Separator
-    lines.push(ansi.dim + "─".repeat(width) + ansi.reset);
-    lines.push("");
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${group.icon} ${group.name} Stats`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
     // Stats list
     for (let i = 0; i < group.config.stats.length; i++) {
@@ -309,18 +324,17 @@ export class SettingsOverlay implements Component {
 
       let line = `  ${indicator} ${toggle} ${stat.label}`;
 
-      if (visibleWidth(line) > width - 2) {
-        line = truncateToWidth(line, width - 2);
+      if (visibleWidth(line) > innerWidth - 2) {
+        line = truncateToWidth(line, innerWidth - 2);
       }
 
-      lines.push(line);
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
     }
 
     // Footer
-    lines.push("");
-    lines.push(ansi.dim + "─".repeat(width) + ansi.reset);
-    lines.push(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  ← back  q close${ansi.reset}`, width));
-    lines.push("");
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  ←/Enter back  q close${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
   }
