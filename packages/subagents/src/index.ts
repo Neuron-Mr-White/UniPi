@@ -71,6 +71,24 @@ export default function (pi: ExtensionAPI) {
   // Create widget
   const widget = new AgentWidget(manager, agentActivity);
 
+  // Session start: notify agent about config paths
+  pi.on("session_start", async (_event, ctx) => {
+    const homedir = require("os").homedir();
+    const globalConfig = `${homedir}/.unipi/config/subagents.json`;
+    const globalAgents = `${homedir}/.unipi/config/agents/`;
+    const workspaceConfig = `${ctx.cwd}/.unipi/config/subagents.json`;
+    const workspaceAgents = `${ctx.cwd}/.unipi/config/agents/`;
+
+    ctx.ui.notify(
+      `UniPi Subagents config:\n` +
+      `• Global: ${globalConfig}\n` +
+      `• Global agents: ${globalAgents}\n` +
+      `• Workspace: ${workspaceConfig}\n` +
+      `• Workspace agents: ${workspaceAgents}`,
+      "info",
+    );
+  });
+
   // ESC propagation: abort all agents on session shutdown
   pi.on("session_shutdown", async () => {
     manager.abortAll();
@@ -138,7 +156,9 @@ export default function (pi: ExtensionAPI) {
       description: `Launch a sub-agent for parallel work.
 
 Available agent types: ${builtinTypes}
-Custom types can be defined in .unipi/config/agents/<name>.md
+Custom types can be defined in:
+- ~/.unipi/config/agents/<name>.md (global)
+- <workspace>/.unipi/config/agents/<name>.md (project)
 
 Guidelines:
 - Use "explore" for parallel file reads
@@ -148,7 +168,7 @@ Guidelines:
 - Agents inherit the parent model by default`,
       parameters: Type.Object({
         type: Type.String({
-          description: `Agent type: ${builtinTypes}, or custom type from .unipc/config/agents/*.md`,
+          description: `Agent type: ${builtinTypes}, or custom type from ~/.unipi/config/agents/*.md`,
         }),
         prompt: Type.String({
           description: "The task for the agent to perform.",
