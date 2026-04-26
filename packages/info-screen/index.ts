@@ -99,18 +99,20 @@ export default function (pi: ExtensionAPI) {
       // Wait for other modules to announce
       await waitForModules();
 
-      // Show the overlay
+      // Show the overlay using three-method object pattern
       ctx.ui.custom(
         (tui, _theme, _keybindings, done) => {
           const overlay = new InfoOverlay();
           overlay.onClose = () => done(undefined);
-          // Wrap handleInput to trigger re-render after state changes
-          const originalHandleInput = overlay.handleInput?.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            originalHandleInput?.(data);
-            tui.requestRender();
+          // Return three-method object as per pi-tui docs
+          return {
+            render: (w: number) => overlay.render(w),
+            invalidate: () => overlay.invalidate(),
+            handleInput: (data: string) => {
+              overlay.handleInput?.(data);
+              tui.requestRender();
+            },
           };
-          return overlay;
         },
         {
           overlay: true,
@@ -141,12 +143,14 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const overlay = new InfoOverlay();
           overlay.onClose = () => done(undefined);
-          const originalHandleInput = overlay.handleInput?.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            originalHandleInput?.(data);
-            tui.requestRender();
+          return {
+            render: (w: number) => overlay.render(w),
+            invalidate: () => overlay.invalidate(),
+            handleInput: (data: string) => {
+              overlay.handleInput?.(data);
+              tui.requestRender();
+            },
           };
-          return overlay;
         },
         {
           overlay: true,
@@ -169,12 +173,14 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const overlay = new SettingsOverlay();
           overlay.onClose = () => done(undefined);
-          const originalHandleInput = overlay.handleInput?.bind(overlay);
-          overlay.handleInput = (data: string) => {
-            originalHandleInput?.(data);
-            tui.requestRender();
+          return {
+            render: (w: number) => overlay.render(w),
+            invalidate: () => overlay.invalidate(),
+            handleInput: (data: string) => {
+              overlay.handleInput?.(data);
+              tui.requestRender();
+            },
           };
-          return overlay;
         },
         {
           overlay: true,
