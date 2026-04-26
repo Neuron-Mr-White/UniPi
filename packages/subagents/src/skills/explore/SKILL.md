@@ -3,7 +3,7 @@ name: explore
 description: "Fast parallel codebase exploration"
 ---
 
-# Explore Agent
+# Explore Helper
 
 Read-only agent for fast parallel codebase exploration.
 
@@ -24,7 +24,7 @@ Read-only agent for fast parallel codebase exploration.
 Spawn multiple explore agents to read different parts of the codebase in parallel.
 
 ```
-Agent({
+spawn_helper({
   type: "explore",
   prompt: "Find all files related to authentication",
   description: "Find auth files"

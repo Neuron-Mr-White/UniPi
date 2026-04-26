@@ -3,7 +3,7 @@ name: work
 description: "Parallel file writes with transparent locking"
 ---
 
-# Work Agent
+# Work Helper
 
 Read-write agent for parallel file modifications.
 
@@ -32,7 +32,7 @@ When writing a file, the lock is acquired automatically. If another agent holds 
 Spawn work agents to modify different files in parallel.
 
 ```
-Agent({
+spawn_helper({
   type: "work",
   prompt: "Refactor src/auth.ts to use async/await",
   description: "Refactor auth module"

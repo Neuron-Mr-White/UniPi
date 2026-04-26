@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/subagents — Extension entry
  *
- * Tools: Agent, get_result
+ * Tools: spawn_helper, get_helper_result
  * ESC propagation: all children abort on parent ESC
  */
 
@@ -236,8 +236,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(
     defineTool({
-      name: "Agent",
-      label: "Agent",
+      name: "spawn_helper",
+      label: "Spawn Helper",
       description: `Launch a sub-agent for parallel work.
 
 Available agent types: ${builtinTypes}
@@ -263,7 +263,7 @@ Guidelines:
         }),
         run_in_background: Type.Optional(
           Type.Boolean({
-            description: "Run in background. Returns agent ID immediately.",
+            description: "Run in background. Returns helper ID immediately.",
           }),
         ),
         max_turns: Type.Optional(
@@ -392,16 +392,16 @@ Guidelines:
     }),
   );
 
-  // ---- get_result tool ----
+  // ---- get_helper_result tool ----
 
   pi.registerTool(
     defineTool({
-      name: "get_result",
-      label: "Get Agent Result",
+      name: "get_helper_result",
+      label: "Get Helper Result",
       description: "Check status and retrieve results from a background agent.",
       parameters: Type.Object({
         agent_id: Type.String({
-          description: "The agent ID to check.",
+          description: "The helper ID to check.",
         }),
         wait: Type.Optional(
           Type.Boolean({
@@ -412,7 +412,7 @@ Guidelines:
       execute: async (_toolCallId, params) => {
         const record = manager.getRecord(params.agent_id as string);
         if (!record) {
-          return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
+          return textResult(`Helper not found: "${params.agent_id}". It may have been cleaned up.`);
         }
 
         if (params.wait && record.status === "running" && record.promise) {

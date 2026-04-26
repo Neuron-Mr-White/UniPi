@@ -367,6 +367,7 @@ export function registerCoreGroups(): void {
         { id: "cwd", label: "Working Directory", show: true },
         { id: "modules", label: "Active Modules", show: true },
         { id: "uptime", label: "Session Uptime", show: true },
+        { id: "loadTime", label: "Total Load Time", show: true },
       ],
     },
     dataProvider: async () => {
@@ -376,6 +377,7 @@ export function registerCoreGroups(): void {
 
       const modules = getAnnouncedModules();
       const moduleNames = modules.map((m) => m.name.replace(/^@[^/]+\//, ""));
+      const totalLoadTime = getTotalLoadTime();
 
       return {
         version: { value: getPiVersion(), detail: "pi" },
@@ -385,39 +387,7 @@ export function registerCoreGroups(): void {
           detail: moduleNames.slice(0, 4).join(", ") + (moduleNames.length > 4 ? ` +${moduleNames.length - 4} more` : ""),
         },
         uptime: { value: formatUptime(process.uptime()) },
-      };
-    },
-  });
-
-  // 1b. Load time group
-  infoRegistry.registerGroup({
-    id: "loadtime",
-    name: "Load Time",
-    icon: "⏱️",
-    priority: 15,
-    config: {
-      showByDefault: true,
-      stats: [
-        { id: "total", label: "Total Load Time", show: true },
-        { id: "count", label: "Items Loaded", show: true },
-        { id: "list", label: "Load Times", show: true },
-      ],
-    },
-    dataProvider: async () => {
-      const times = getLoadTimes();
-      const total = getTotalLoadTime();
-      
-      // Filter out 0ms entries and sort by load time descending
-      const validTimes = times.filter(t => t.ms > 0);
-      const sorted = [...validTimes].sort((a, b) => b.ms - a.ms);
-      
-      return {
-        total: { value: `${total}ms` },
-        count: { value: String(validTimes.length) },
-        list: {
-          value: sorted.length > 0 ? `${sorted[0].name} (${sorted[0].ms}ms)` : "none",
-          detail: sorted.length > 1 ? sorted.slice(1).map(t => `${t.name} (${t.ms}ms)`).join(", ") : undefined,
-        },
+        loadTime: { value: `${totalLoadTime}ms` },
       };
     },
   });
