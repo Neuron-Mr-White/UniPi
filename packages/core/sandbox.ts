@@ -14,10 +14,10 @@ export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "full";
 const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
   /** Only read-only tools — no bash, no write, no edit */
   read_only: ["read", "grep", "find", "ls"],
-  /** Read + constrained write — only to .unipi/docs/specs/ */
-  brainstorm: ["read", "grep", "find", "ls", "write"],
-  /** Read + write/edit — bash blocked, writes go through write tool */
-  write_unipi: ["read", "write", "edit"],
+  /** Read + constrained write + bash (setup only) — only to .unipi/docs/specs/ */
+  brainstorm: ["read", "grep", "find", "ls", "write", "bash"],
+  /** Read + write/edit + file discovery — no bash */
+  write_unipi: ["read", "write", "edit", "grep", "find", "ls"],
   /** All tools */
   full: ["read", "write", "edit", "bash"],
 };
@@ -27,7 +27,7 @@ const COMMAND_SANDBOX: Record<string, SandboxLevel> = {
   [WORKFLOW_COMMANDS.BRAINSTORM]: "brainstorm",
   [WORKFLOW_COMMANDS.PLAN]: "write_unipi",
   [WORKFLOW_COMMANDS.WORK]: "full",
-  [WORKFLOW_COMMANDS.REVIEW_WORK]: "read_only",
+  [WORKFLOW_COMMANDS.REVIEW_WORK]: "write_unipi",
   [WORKFLOW_COMMANDS.CONSOLIDATE]: "write_unipi",
   [WORKFLOW_COMMANDS.WORKTREE_CREATE]: "full",
   [WORKFLOW_COMMANDS.WORKTREE_LIST]: "read_only",
@@ -81,5 +81,5 @@ export function hasWriteAccess(commandName: string): boolean {
  */
 export function hasBashAccess(commandName: string): boolean {
   const level = getSandboxLevel(commandName);
-  return level === "full";
+  return level === "full" || level === "brainstorm";
 }

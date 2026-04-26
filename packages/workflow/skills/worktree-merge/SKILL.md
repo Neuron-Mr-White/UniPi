@@ -46,8 +46,16 @@ For each source branch (in dependency order if specs indicate ordering):
 3. **If conflict:**
    - Report which files conflict
    - Reference the spec/plan context: "This branch was working on: <description>"
-   - Ask user how to resolve (do NOT force merge)
-   - Skip to next branch if user says so
+   - **Structured conflict resolution:**
+     1. **Check finalized plan** — read the plan for this branch, understand intended changes
+     2. **Brainstorm resolution** — reason about which changes align with the plan's intent
+     3. **Read codebase** — read the conflicting files to understand current state
+     4. **Ask user** — present options and ask for final decision (always ask, never force)
+   - Options to present:
+     - Accept incoming (their changes)
+     - Accept current (main branch)
+     - Manual merge (describe what each side does, ask user to decide)
+     - Skip this branch
 4. **If success:**
    - Remove worktree: `git worktree remove .unipi/worktrees/<branch-name>`
    - Delete branch: `git branch -d <branch>`

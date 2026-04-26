@@ -58,7 +58,7 @@ If args not provided, ask user interactively:
 1. Read plan file(s)
 2. Review critically — identify questions or concerns
 3. If concerns: raise with user before starting
-4. Identify which tasks are already `[x]` (done) vs `[ ]` (pending)
+4. Identify task status: `unstarted:` (pending), `in-progress:` (started), `completed:` (done)
 
 **Exit:** Plan reviewed, ready to execute.
 
@@ -66,12 +66,12 @@ If args not provided, ask user interactively:
 
 ## Phase 3: Execute Tasks
 
-For each task in order:
+For each `unstarted:` task in order:
 
-1. Mark task as `in_progress` in plan
+1. Change `unstarted:` to `in-progress:` in plan
 2. Follow each step exactly (plan has bite-sized steps)
 3. Run verifications as specified in acceptance criteria
-4. Mark as `[x]` when complete
+4. Change `in-progress:` to `completed:` when complete
 5. Update plan file with progress
 
 ### When to Stop and Ask
@@ -107,12 +107,11 @@ Don't wait until end to commit — incremental commits are safer.
 
 ## Phase 5: Complete
 
-When all tasks marked `[x]`:
+When all tasks are `completed:`:
 
 1. Run final verification (tests, lint, build)
 2. Commit all remaining changes
-3. Update plan with completion status
-4. Inform user:
+3. Inform user:
 
 > "All tasks complete. Worktree: `feat/<branch>`. Recommend reviewing before merge."
 
@@ -127,9 +126,9 @@ Suggest next step:
 
 ## Resumability
 
-If user runs `/unipi:work` and plan has partial `[x]` marks:
+If user runs `/unipi:work` and plan has `completed:` or `in-progress:` tasks:
 1. Read plan
-2. Identify first `[ ]` task
+2. Identify first `unstarted:` task
 3. Ask user: "Resume from Task N: {name}?"
 4. Continue from there
 

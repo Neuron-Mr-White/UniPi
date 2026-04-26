@@ -55,6 +55,27 @@ function suggestSpecFiles(prefix: string): { value: string; label: string; descr
 }
 
 /**
+ * Suggest plan files from .unipi/docs/plans/ for work and review-work commands.
+ */
+function suggestPlanFiles(prefix: string): { value: string; label: string; description: string }[] {
+  const plansDir = join(process.cwd(), ".unipi", "docs", "plans");
+  if (!existsSync(plansDir)) return [];
+
+  try {
+    const files = readdirSync(plansDir).filter((f) => f.endsWith(".md"));
+    return files
+      .filter((f) => !prefix || f.includes(prefix))
+      .map((f) => ({
+        value: `plan:${f}`,
+        label: basename(f, ".md"),
+        description: `Plan: ${f}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Suggest existing worktree names for merge/list commands.
  */
 function suggestWorktrees(): { value: string; label: string; description: string }[] {
@@ -96,7 +117,7 @@ const COMMANDS: WorkflowCommand[] = [
     description:
       "Execute plan — implement in worktree, test, commit on done",
     skillName: "work",
-    argumentHint: "<task description>",
+    argumentHint: "plan:<file> <description>",
     ralphHint: "Ralph detected. Use /unipi:ralph-start for long-running tasks.",
   },
   {
@@ -104,7 +125,7 @@ const COMMANDS: WorkflowCommand[] = [
     description:
       "Review work — check task completion, run lint/build, mark reviewer remarks",
     skillName: "review-work",
-    argumentHint: "<worktree>",
+    argumentHint: "plan:<file> <scope>",
   },
   {
     name: WORKFLOW_COMMANDS.CONSOLIDATE,
@@ -181,6 +202,16 @@ export function registerWorkflowCommands(
         // Plan command: suggest spec files
         if (cmd.name === WORKFLOW_COMMANDS.PLAN) {
           return suggestSpecFiles(prefix);
+        }
+
+        // Work command: suggest plan files
+        if (cmd.name === WORKFLOW_COMMANDS.WORK) {
+          return suggestPlanFiles(prefix);
+        }
+
+        // Review-work command: suggest plan files
+        if (cmd.name === WORKFLOW_COMMANDS.REVIEW_WORK) {
+          return suggestPlanFiles(prefix);
         }
 
         // Worktree merge: suggest existing worktrees

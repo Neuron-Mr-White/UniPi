@@ -86,7 +86,16 @@ export default function (pi: ExtensionAPI) {
         systemPrompt:
           event.systemPrompt +
           base +
-          `\nThe write tool is available but restricted to .unipi/docs/specs/ only.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+          `\nThe write tool is available but restricted to .unipi/docs/specs/ only.\nbash is available ONLY for specific setup use case (e.g., git init, mkdir). Do NOT use bash for reading files or listing directories — use grep, find, ls instead.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+      };
+    }
+
+    if (currentSandboxLevel === "write_unipi") {
+      return {
+        systemPrompt:
+          event.systemPrompt +
+          base +
+          `\nWrite tool is restricted to .unipi/docs/ only (specs and plans).\nUse grep, find, ls for file discovery — do NOT guess filenames.\nbash is blocked — use read, write, edit, grep, find, ls only.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
       };
     }
 
@@ -94,7 +103,7 @@ export default function (pi: ExtensionAPI) {
       systemPrompt:
         event.systemPrompt +
         base +
-        `\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+        `\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requires an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
     };
   });
 

@@ -145,6 +145,7 @@ The `## Implementation Checklist` section uses `- [ ]` markdown checkboxes. Thes
 
 - **`[ ]` = unplanned** — not yet covered by a plan
 - **`[x]` = planned** — marked when `/unipi:plan` covers this item
+- **`[x]` does NOT mean done** — implementation progress is tracked in the plan file (`unstarted:` / `in-progress:` / `completed:`)
 - Agent MUST fill in checklist items based on the design
 - Each item should be a discrete, implementable task
 - Items should be ordered by dependency (earlier items don't depend on later ones)

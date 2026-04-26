@@ -81,16 +81,19 @@ specs:
 
 ## Tasks
 
-### Task 1: {Task Name}
-**Description:** {What needs to be done}
-**Dependencies:** {None, or list of tasks}
-**Acceptance Criteria:** {How to verify done}
-**Steps:**
-1. {Concrete step}
-2. {Concrete step}
+- unstarted: Task 1 — {Task Name}
+  - Description: {What needs to be done}
+  - Dependencies: {None, or list of tasks}
+  - Acceptance Criteria: {How to verify done}
+  - Steps:
+    1. {Concrete step}
+    2. {Concrete step}
 
-### Task 2: {Task Name}
-...
+- unstarted: Task 2 — {Task Name}
+  - Description: ...
+  - Dependencies: ...
+  - Acceptance Criteria: ...
+  - Steps: ...
 
 ## Sequencing
 {Order of execution, dependency graph if complex}
@@ -129,6 +132,8 @@ After plan is complete:
 
 This creates the link between brainstorm and plan — plan covers some items, others remain for future plans.
 
+**Semantics:** Spec `[x]` means "planned" (covered by a plan). It does NOT mean "done". Implementation progress is tracked in the plan file, not the spec.
+
 ---
 
 ## Phase 5: Review Plan
@@ -138,9 +143,10 @@ Self-check before presenting:
 - [ ] Every task has clear acceptance criteria
 - [ ] Dependencies are correct (no circular, no missing)
 - [ ] Steps are bite-sized (agent can follow without guessing)
-- [ ] Brainstorm checkboxes updated correctly
 - [ ] String greedy scope respected (if provided)
 - [ ] Plan is focused enough for single `/unipi:work` session
+
+Do NOT re-read or re-edit the spec checkboxes — Phase 4 already wrote them.
 
 ---
 
@@ -164,6 +170,5 @@ Recommend starting a **new session** for work — it will switch pi's internal w
 ## Resumability
 
 If user runs `/unipi:plan` on an existing plan:
-1. Read the plan
-2. Check what's already marked done
-3. Ask user if they want to add tasks, modify existing, or plan new scope
+1. Read the plan — look for `completed:` tasks
+2. Ask user if they want to add tasks, modify existing, or plan new scope
