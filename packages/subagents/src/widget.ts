@@ -2,7 +2,7 @@
  * @pi-unipi/subagents — Live widget
  *
  * Shows running agents above the editor.
- * Uses setWidget API for proper rendering.
+ * Uses setWidget with tui.requestRender() for updates.
  */
 
 import type { AgentManager } from "./agent-manager.js";
@@ -10,13 +10,6 @@ import type { AgentActivity } from "./types.js";
 
 /** Spinner frames (braille). */
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-/** Format token count. */
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return `${n}`;
-}
 
 /** Format duration. */
 function formatMs(ms: number): string {
@@ -49,8 +42,8 @@ export class AgentWidget {
   private spinnerFrame = 0;
   private timer?: ReturnType<typeof setInterval>;
   private uiCtx?: any;
-  private widgetRegistered = false;
   private tui?: any;
+  private widgetRegistered = false;
 
   constructor(manager: AgentManager, activity: Map<string, AgentActivity>) {
     this.manager = manager;
@@ -69,7 +62,7 @@ export class AgentWidget {
     if (this.timer) return;
     this.timer = setInterval(() => {
       this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER.length;
-      this.requestRender();
+      this.triggerRender();
     }, 80);
   }
 
@@ -80,15 +73,15 @@ export class AgentWidget {
         this.timer = undefined;
       }
       // Clear widget after agent finishes
-      this.requestRender();
+      this.triggerRender();
     }
   }
 
   update() {
-    this.requestRender();
+    this.triggerRender();
   }
 
-  private requestRender() {
+  private triggerRender() {
     if (!this.uiCtx) return;
 
     const allAgents = this.manager.listAgents();
@@ -105,7 +98,7 @@ export class AgentWidget {
       return;
     }
 
-    // Register widget callback once, then request re-render
+    // Register widget callback once
     if (!this.widgetRegistered) {
       this.uiCtx.setWidget(
         "unipi-agents",
@@ -122,10 +115,10 @@ export class AgentWidget {
         { placement: "aboveEditor" },
       );
       this.widgetRegistered = true;
-    } else {
-      // Widget already registered — request re-render
-      this.tui?.requestRender?.();
     }
+
+    // Request re-render via TUI
+    this.tui?.requestRender?.();
   }
 
   private renderWidget(tui: any, theme: any): string[] {
@@ -163,7 +156,7 @@ export class AgentWidget {
       parts.push(duration);
 
       const connector = i === running.length - 1 && queued.length === 0 ? "└─" : "├─";
-      const activityConnector = i === running.length - 1 && queued.length === 0 ? "  " : "│ ";
+      const activityConnector = i === running.length - 1 && queued.length === 0 ? "   " : "│ ";
 
       lines.push(
         truncate(
@@ -172,7 +165,7 @@ export class AgentWidget {
         ),
       );
       lines.push(
-        truncate(theme.fg("dim", activityConnector) + theme.fg("dim", `  ⎿  ${activity}`)),
+        truncate(theme.fg("dim", activityConnector) + theme.fg("dim", `⎿  ${activity}`)),
       );
     }
 
