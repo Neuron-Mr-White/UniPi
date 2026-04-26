@@ -164,47 +164,46 @@ export class InfoOverlay implements Component {
   }
 
   /**
+   * Pad a line to fill a target visual width.
+   */
+  private padToWidth(line: string, targetWidth: number): string {
+    const visLen = visibleWidth(line);
+    const pad = Math.max(0, targetWidth - visLen);
+    return line + " ".repeat(pad);
+  }
+
+  /**
    * Render the full dashboard.
    */
   private renderDashboard(width: number): string[] {
     const lines: string[] = [];
     const group = this.groups[this.activeTabIndex];
     const data = this.groupData.get(group.id) ?? {};
-    const innerWidth = width - 4; // Account for border padding
+    // Inner width for content (subtract 2 for left+right borders)
+    // Subtract extra 1 to prevent right border clipping on some terminals
+    const innerWidth = width - 3;
 
     // Top border
-    lines.push(`${ansi.dim}╭${"─".repeat(width - 2)}╮${ansi.reset}`);
+    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth + 1)}╮${ansi.reset}`);
 
     // Header
-    const headerLine = this.renderHeader(innerWidth, group);
-    const headerVisLen = visibleWidth(headerLine);
-    const headerPad = Math.max(0, innerWidth - headerVisLen);
-    lines.push(`${ansi.dim}│${ansi.reset}${headerLine}${" ".repeat(headerPad)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth)}${ansi.dim} │${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
 
     // Tab bar
-    const tabBarLine = this.renderTabBar(innerWidth);
-    const tabBarVisLen = visibleWidth(tabBarLine);
-    const tabBarPad = Math.max(0, innerWidth - tabBarVisLen);
-    lines.push(`${ansi.dim}│${ansi.reset}${tabBarLine}${" ".repeat(tabBarPad)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth)}${ansi.dim} │${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
 
     // Content
     const contentLines = this.renderGroupContent(innerWidth, group, data);
     for (const line of contentLines) {
-      // Pad line to fill inner width so right border aligns
-      const visLen = visibleWidth(line);
-      const pad = Math.max(0, innerWidth - visLen);
-      lines.push(`${ansi.dim}│${ansi.reset}${line}${" ".repeat(pad)}${ansi.dim}│${ansi.reset}`);
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim} │${ansi.reset}`);
     }
 
     // Footer
-    lines.push(`${ansi.dim}├${"─".repeat(width - 2)}┤${ansi.reset}`);
-    const footerLine = this.renderFooter(innerWidth);
-    const footerVisLen = visibleWidth(footerLine);
-    const footerPad = Math.max(0, innerWidth - footerVisLen);
-    lines.push(`${ansi.dim}│${ansi.reset}${footerLine}${" ".repeat(footerPad)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}╰${"─".repeat(width - 2)}╯${ansi.reset}`);
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth + 1)}┤${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth), innerWidth)}${ansi.dim} │${ansi.reset}`);
+    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth + 1)}╯${ansi.reset}`);
 
     return lines;
   }
@@ -221,16 +220,10 @@ export class InfoOverlay implements Component {
       return ansi.bold + truncateToWidth(paddedTitle, width - 4) + ansi.reset;
     }
 
+    // Center the title
     const leftPad = Math.floor((width - visLen) / 2);
-    const rightPad = width - visLen - leftPad;
 
-    return (
-      " ".repeat(leftPad) +
-      ansi.bold +
-      paddedTitle +
-      ansi.reset +
-      " ".repeat(rightPad)
-    );
+    return " ".repeat(leftPad) + ansi.bold + paddedTitle + ansi.reset;
   }
 
   /**
