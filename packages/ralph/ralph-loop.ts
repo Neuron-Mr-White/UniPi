@@ -24,7 +24,7 @@ import {
   readJson,
   writeJson,
   now,
-} from "@unipi/core";
+} from "@pi-unipi/core";
 
 /** Loop status */
 export type LoopStatus = "active" | "paused" | "completed";

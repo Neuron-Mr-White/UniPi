@@ -1,6 +1,6 @@
 {
-  "name": "@unipi/ralph",
-  "version": "0.1.0",
+  "name": "@pi-unipi/ralph",
+  "version": "0.1.1",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@unipi/core": "^0.1.0",
+    "@pi-unipi/core": "^0.1.0",
     "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {

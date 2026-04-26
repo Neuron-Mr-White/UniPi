@@ -13,7 +13,7 @@ import {
   RALPH_TOOLS,
   emitEvent,
   getPackageVersion,
-} from "@unipi/core";
+} from "@pi-unipi/core";
 
 // Get info registry from global
 function getInfoRegistry() {
@@ -306,7 +306,7 @@ function handleStart(rest: string, ctx: ExtensionContext, pi: ExtensionAPI): voi
   const fullPath = require("node:path").resolve(ctx.cwd, taskFile);
   const fs = require("node:fs");
   if (!fs.existsSync(fullPath)) {
-    const { ensureDir } = require("@unipi/core");
+    const { ensureDir } = require("@pi-unipi/core");
     ensureDir(fullPath);
     fs.writeFileSync(
       fullPath,
@@ -316,7 +316,7 @@ function handleStart(rest: string, ctx: ExtensionContext, pi: ExtensionAPI): voi
     if (ctx.hasUI) ctx.ui.notify(`Created task file: ${taskFile}`, "info");
   }
 
-  const { tryRead } = require("@unipi/core");
+  const { tryRead } = require("@pi-unipi/core");
   const content = tryRead(fullPath);
   if (!content) {
     if (ctx.hasUI) ctx.ui.notify(`Could not read task file: ${taskFile}`, "error");
@@ -453,7 +453,7 @@ function handleCancel(
   }
 
   if (mgr.getCurrentLoop() === loopName) mgr.setCurrentLoop(null);
-  const { tryDelete } = require("@unipi/core");
+  const { tryDelete } = require("@pi-unipi/core");
   tryDelete(
     require("node:path").resolve(
       ctx.cwd,

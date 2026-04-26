@@ -6,7 +6,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { RALPH_COMPLETE_MARKER, RALPH_DEFAULTS, RALPH_TOOLS } from "@unipi/core";
+import { RALPH_COMPLETE_MARKER, RALPH_DEFAULTS, RALPH_TOOLS } from "@pi-unipi/core";
 import { RalphLoopManager, DEFAULT_REFLECT_INSTRUCTIONS } from "./ralph-loop.js";
 
 /**

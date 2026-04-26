@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Dashboard and module registry for Unipi — configurable info overlay with tabbed groups",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,9 @@
     "dashboard"
   ],
   "pi": {
-    "extensions": ["index.ts"]
+    "extensions": [
+      "index.ts"
+    ]
   },
   "files": [
     "*.ts",
