@@ -12,10 +12,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { registerCoreGroups, trackModule, trackTool } from "./core-groups.js";
+import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking } from "./core-groups.js";
 
-/** Re-export infoRegistry for external use */
-export { infoRegistry };
+/** Re-export infoRegistry, registerSkillDir, and load tracking for external use */
+export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking };
 import { getInfoSettings } from "./config.js";
 import { InfoOverlay } from "./tui/info-overlay.js";
 import { SettingsOverlay } from "./settings/settings-tui.js";
@@ -31,33 +31,38 @@ const moduleReadyPromise = new Promise<void>((resolve) => {
 });
 
 /** Timeout for waiting for modules */
-const MODULE_WAIT_TIMEOUT_MS = 2000;
+const MODULE_WAIT_TIMEOUT_MS = 5000;
 
 /**
- * Wait for all modules to announce, then return.
+ * Wait for modules to announce, then return.
  */
 async function waitForModules(): Promise<void> {
   const settings = getInfoSettings();
-  const timeoutMs = settings.bootTimeoutMs;
+  const timeoutMs = settings.bootTimeoutMs || MODULE_WAIT_TIMEOUT_MS;
 
-  // Wait for module ready or timeout
-  await Promise.race([
-    moduleReadyPromise,
-    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-  ]);
+  // Wait a bit for modules to announce
+  // We wait for the full timeout to give all modules time to emit MODULE_READY
+  await new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
 }
 
 export default function (pi: ExtensionAPI) {
+  // Set pi API reference for tools access
+  setPiApi(pi);
+
   // Register core groups on load
   registerCoreGroups();
 
 
+
+  // Start load tracking
+  startLoadTracking();
 
   // Listen for module announcements
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
       // Track the module
       trackModule(event.name, event.version || "unknown");
+      recordLoadTime(event.name, "module", event.loadTimeMs || 0);
 
       // Track tools from this module
       if (event.tools && Array.isArray(event.tools)) {
@@ -125,6 +130,9 @@ export default function (pi: ExtensionAPI) {
         }
       );
     }
+
+    // Finish load tracking
+    finishLoadTracking();
 
     // Announce module
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {

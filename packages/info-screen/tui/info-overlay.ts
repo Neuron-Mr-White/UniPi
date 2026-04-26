@@ -26,9 +26,7 @@ const ansi = {
   white: "\x1b[37m",
   red: "\x1b[31m",
   gray: "\x1b[90m",
-  // Backgrounds
-  bgDarkGray: "\x1b[48;5;235m",
-  bgDarkerGray: "\x1b[48;5;233m",
+
 };
 
 /** Tab color palette */
@@ -50,7 +48,7 @@ export class InfoOverlay implements Component {
   private loading = true;
   private error: string | null = null;
   private scrollOffset = 0;
-  /** Tab scroll offset for horizontal scrolling */
+  /** Tab scroll offset for windowed scrolling */
   private tabScrollOffset = 0;
   /** Callback when overlay should close */
   onClose?: () => void;
@@ -263,46 +261,39 @@ export class InfoOverlay implements Component {
     // Inner width for content (subtract 2 for left+right borders)
     const innerWidth = width - 2;
 
-    // Background colors
-    const bgHeader = ansi.bgDarkGray;
-    const bgContent = ansi.bgDarkerGray;
+    // Fixed content height for stability
+    const CONTENT_HEIGHT = 12;
 
     // Top border
     lines.push(`${ansi.dim}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
-    // Header with background
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    // Header
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
     // Tab bar with horizontal scrolling
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
-    // Content with scrolling
+    // Content with scrolling (fixed height)
     const contentLines = this.renderGroupContent(innerWidth, group, data);
-    const maxVisibleLines = 15; // Max content lines visible
     
     // Clamp scroll offset
-    const maxScroll = Math.max(0, contentLines.length - maxVisibleLines);
+    const maxScroll = Math.max(0, contentLines.length - CONTENT_HEIGHT);
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
     
     // Get visible slice
-    const visibleContent = contentLines.slice(this.scrollOffset, this.scrollOffset + maxVisibleLines);
+    const visibleContent = contentLines.slice(this.scrollOffset, this.scrollOffset + CONTENT_HEIGHT);
     
-    for (const line of visibleContent) {
-      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth, bgContent)}${ansi.dim}│${ansi.reset}`);
-    }
-    
-    // Show scroll indicator if needed
-    if (contentLines.length > maxVisibleLines) {
-      const scrollInfo = ` ${this.scrollOffset + 1}-${Math.min(this.scrollOffset + maxVisibleLines, contentLines.length)}/${contentLines.length} `;
-      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(scrollInfo, innerWidth, bgContent)}${ansi.dim}│${ansi.reset}`);
+    // Render content lines (pad to fixed height)
+    for (let i = 0; i < CONTENT_HEIGHT; i++) {
+      const line = visibleContent[i] ?? "";
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
     }
 
-    // Footer
-    const hasScroll = contentLines.length > maxVisibleLines;
+    // Footer with scroll indicator inline
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderFooter(innerWidth, hasScroll), innerWidth, bgHeader)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.renderFooterWithScroll(innerWidth, contentLines.length, CONTENT_HEIGHT)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
@@ -327,8 +318,9 @@ export class InfoOverlay implements Component {
   }
 
   /**
-   * Render tab bar with horizontal scrolling.
-   * When tabs overflow, slides to keep active tab visible.
+   * Render tab bar with windowed scrolling.
+   * Window slides only when active tab reaches the edge.
+   * Example: abcde → user on 'e' presses right → efghi
    */
   private renderTabBar(width: number): string {
     if (this.groups.length === 0) return "";
@@ -337,13 +329,15 @@ export class InfoOverlay implements Component {
     const tabWidths = this.groups.map(g => visibleWidth(` ${g.icon} ${g.name} `));
     const separatorWidth = visibleWidth(`${ansi.dim}│${ansi.reset}`);
     
-    // Find how many tabs fit
+    // Find how many tabs fit (account for potential scroll indicators)
+    const indicatorSpace = 3; // Space for ◀ or ▶
     let maxTabs = 0;
     let totalWidth = 0;
     for (let i = 0; i < this.groups.length; i++) {
       const tabW = tabWidths[i]!;
       const sepW = i > 0 ? separatorWidth : 0;
-      if (totalWidth + sepW + tabW > width - 2) break;
+      // Reserve space for scroll indicator on one side
+      if (totalWidth + sepW + tabW > width - 2 - indicatorSpace) break;
       totalWidth += sepW + tabW;
       maxTabs = i + 1;
     }
@@ -353,15 +347,27 @@ export class InfoOverlay implements Component {
       return this.renderAllTabs(width);
     }
 
-    // Calculate scroll offset to keep active tab visible
-    // Center the active tab in the visible window
-    const halfVisible = Math.floor(maxTabs / 2);
-    let startIdx = this.activeTabIndex - halfVisible;
-    startIdx = Math.max(0, Math.min(startIdx, this.groups.length - maxTabs));
+    // Windowed scrolling: slide only when active tab reaches edge
+    // Initialize tabScrollOffset if needed
+    if (this.tabScrollOffset === undefined) {
+      this.tabScrollOffset = 0;
+    }
+
+    // Ensure active tab is visible within the window
+    if (this.activeTabIndex < this.tabScrollOffset) {
+      // Active tab is before window - slide left
+      this.tabScrollOffset = this.activeTabIndex;
+    } else if (this.activeTabIndex >= this.tabScrollOffset + maxTabs) {
+      // Active tab is after window - slide right
+      this.tabScrollOffset = this.activeTabIndex - maxTabs + 1;
+    }
+
+    // Clamp scroll offset
+    this.tabScrollOffset = Math.max(0, Math.min(this.tabScrollOffset, this.groups.length - maxTabs));
     
     // Build visible tabs
     const tabs: string[] = [];
-    for (let i = startIdx; i < startIdx + maxTabs && i < this.groups.length; i++) {
+    for (let i = this.tabScrollOffset; i < this.tabScrollOffset + maxTabs && i < this.groups.length; i++) {
       const group = this.groups[i]!;
       const isActive = i === this.activeTabIndex;
       const color = TAB_COLORS[i % TAB_COLORS.length]!;
@@ -376,8 +382,8 @@ export class InfoOverlay implements Component {
     const tabStr = tabs.join(`${ansi.dim}│${ansi.reset}`);
     
     // Add scroll indicators
-    const hasLeft = startIdx > 0;
-    const hasRight = startIdx + maxTabs < this.groups.length;
+    const hasLeft = this.tabScrollOffset > 0;
+    const hasRight = this.tabScrollOffset + maxTabs < this.groups.length;
     
     if (hasLeft) {
       return `${ansi.dim}◀${ansi.reset} ${tabStr}`;
@@ -474,26 +480,37 @@ export class InfoOverlay implements Component {
   }
 
   /**
-   * Render footer with navigation hints.
+   * Render footer with navigation hints and scroll indicator.
    */
-  private renderFooter(width: number, _hasScroll?: boolean): string {
-    const hints = [
-      `${ansi.cyan}←/→${ansi.reset} tabs`,
-    ];
-    
-    hints.push(`${ansi.green}↑/↓${ansi.reset} scroll`);
-    hints.push(`${ansi.yellow}g/G${ansi.reset} top/bottom`);
-    hints.push(`${ansi.red}q/Esc${ansi.reset} close`);
-
-    const hintStr = hints.join(`  ${ansi.dim}•${ansi.reset}  `);
-    const visLen = visibleWidth(hintStr);
-
-    if (visLen >= width - 4) {
-      return truncateToWidth(hintStr, width - 4);
+  private renderFooterWithScroll(width: number, totalLines: number, visibleHeight: number): string {
+    // Left side: scroll indicator
+    const hasScroll = totalLines > visibleHeight;
+    let scrollStr = "";
+    if (hasScroll) {
+      scrollStr = `${ansi.dim}${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}${ansi.reset}`;
     }
 
-    const leftPad = Math.floor((width - visLen) / 2);
+    // Right side: navigation hints
+    const hints = [
+      `${ansi.cyan}←/→${ansi.reset} tabs`,
+      `${ansi.green}↑/↓${ansi.reset} scroll`,
+      `${ansi.red}q/Esc${ansi.reset} close`,
+    ];
 
-    return " ".repeat(leftPad) + hintStr;
+    const hintStr = hints.join(`  ${ansi.dim}•${ansi.reset}  `);
+    const hintWidth = visibleWidth(hintStr);
+    const scrollWidth = visibleWidth(scrollStr);
+
+    // Calculate spacing
+    const gap = 4;
+    const totalWidth = scrollWidth + gap + hintWidth;
+    
+    if (totalWidth >= width - 2) {
+      // Too wide, just show hints
+      return truncateToWidth(hintStr, width - 2);
+    }
+
+    const padding = " ".repeat(width - 2 - totalWidth);
+    return scrollStr + padding + hintStr;
   }
 }

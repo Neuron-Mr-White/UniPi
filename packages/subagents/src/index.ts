@@ -99,13 +99,66 @@ export default function (pi: ExtensionAPI) {
             { id: "maxConcurrent", label: "Max Concurrent", show: true },
             { id: "activeCount", label: "Active Agents", show: true },
             { id: "enabled", label: "Enabled", show: true },
+            { id: "types", label: "Available Types", show: true },
           ],
         },
         dataProvider: async () => {
+          // Get available agent types
+          const types = config.types || {};
+          const builtinTypes = ["explore", "work"];
+          
+          // Check for custom agent types in filesystem
+          const customTypes: string[] = [];
+          try {
+            const fs = require("fs");
+            const path = require("path");
+            
+            // Check global agents directory
+            if (fs.existsSync(globalAgents)) {
+              const files = fs.readdirSync(globalAgents);
+              for (const file of files) {
+                if (file.endsWith(".md")) {
+                  customTypes.push(file.replace(".md", ""));
+                }
+              }
+            }
+            
+            // Check workspace agents directory
+            if (fs.existsSync(workspaceAgents)) {
+              const files = fs.readdirSync(workspaceAgents);
+              for (const file of files) {
+                if (file.endsWith(".md")) {
+                  const name = file.replace(".md", "");
+                  if (!customTypes.includes(name)) {
+                    customTypes.push(name);
+                  }
+                }
+              }
+            }
+          } catch {
+            // Ignore errors
+          }
+          
+          // Build available types list
+          const allTypes = [...new Set([...builtinTypes, ...Object.keys(types), ...customTypes])];
+          const typeList = allTypes.map(t => {
+            const isEnabled = types[t]?.enabled !== false;
+            const isBuiltin = builtinTypes.includes(t);
+            const scope = customTypes.includes(t) ? "project" : "global";
+            return `${t}(${scope})${isEnabled ? "" : " [disabled]"}`;
+          }).join(", ");
+          
+          // Get active agents count
+          const activeAgents = manager.listAgents().filter(a => a.status === "running").length;
+          
           return {
             maxConcurrent: { value: String(manager.getMaxConcurrent()) },
-            activeCount: { value: "N/A" },
+            activeCount: { value: String(activeAgents) },
             enabled: { value: config.enabled ? "yes" : "no" },
+            types: {
+              value: allTypes.length > 0 ? allTypes[0] : "none",
+              detail: allTypes.length > 1 ? typeList : undefined,
+            },
           };
         },
       });

@@ -103,6 +103,7 @@ export default function (pi: ExtensionAPI) {
             { id: "projectCount", label: "Project Memories", show: true },
             { id: "totalCount", label: "Total Memories", show: true },
             { id: "projects", label: "Projects", show: true },
+            { id: "recent", label: "Recent Memories", show: true },
           ],
         },
         dataProvider: async () => {
@@ -111,6 +112,7 @@ export default function (pi: ExtensionAPI) {
               projectCount: { value: "0" },
               totalCount: { value: "0" },
               projects: { value: "none" },
+              recent: { value: "none" },
             };
           }
 
@@ -118,12 +120,20 @@ export default function (pi: ExtensionAPI) {
           const allMemories = listAllProjects();
           const uniqueProjects = [...new Set(allMemories.map((m) => m.project))];
 
+          // Get 3 most recent memories (sorted by updated DESC in listAll)
+          const recentMemories = projectMemories.slice(0, 3);
+          const recentList = recentMemories.map(m => m.title).join("\n");
+
           return {
             projectCount: { value: String(projectMemories.length) },
             totalCount: { value: String(allMemories.length) },
             projects: {
               value: uniqueProjects.length.toString(),
               detail: uniqueProjects.slice(0, 5).join(", ") + (uniqueProjects.length > 5 ? ` +${uniqueProjects.length - 5} more` : ""),
+            },
+            recent: {
+              value: recentMemories.length > 0 ? recentMemories[0].title : "none",
+              detail: recentMemories.length > 1 ? recentMemories.slice(1).map(m => m.title).join("\n") : undefined,
             },
           };
         },

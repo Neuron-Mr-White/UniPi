@@ -174,6 +174,59 @@ function discoverExtensions(): Array<{ name: string; source: string; version: st
 }
 
 /**
+ * Load time tracking.
+ */
+const loadTimes: Array<{ name: string; type: string; ms: number }> = [];
+let totalLoadTimeMs = 0;
+let loadTrackingStarted = false;
+let loadTrackingStartMs = 0;
+
+/** Start load time tracking */
+export function startLoadTracking(): void {
+  if (!loadTrackingStarted) {
+    loadTrackingStartMs = Date.now();
+    loadTrackingStarted = true;
+  }
+}
+
+/** Record a load time */
+export function recordLoadTime(name: string, type: string, ms: number): void {
+  loadTimes.push({ name, type, ms });
+  totalLoadTimeMs += ms;
+}
+
+/** Finish load tracking */
+export function finishLoadTracking(): void {
+  if (loadTrackingStarted) {
+    totalLoadTimeMs = Date.now() - loadTrackingStartMs;
+  }
+}
+
+/** Get load times */
+export function getLoadTimes(): Array<{ name: string; type: string; ms: number }> {
+  return [...loadTimes];
+}
+
+/** Get total load time */
+export function getTotalLoadTime(): number {
+  return totalLoadTimeMs;
+}
+
+/**
+ * Additional skill directories registered by extensions.
+ */
+const extraSkillDirs: string[] = [];
+
+/**
+ * Register an additional skill directory (from extensions).
+ */
+export function registerSkillDir(dir: string): void {
+  if (!extraSkillDirs.includes(dir)) {
+    extraSkillDirs.push(dir);
+  }
+}
+
+/**
  * Discover loaded skills by scanning filesystem.
  */
 function discoverSkills(): Array<{ name: string; source: string }> {
@@ -185,6 +238,8 @@ function discoverSkills(): Array<{ name: string; source: string }> {
   const skillDirs = [
     join(homeDir, ".pi", "agent", "skills"),
     join(cwd, ".pi", "skills"),
+    // Add extra dirs from extensions
+    ...extraSkillDirs,
   ];
 
   const counted = new Set<string>();
@@ -204,10 +259,14 @@ function discoverSkills(): Array<{ name: string; source: string }> {
         const skillPath = join(dir, name, "SKILL.md");
         if (existsSync(skillPath)) {
           counted.add(name);
-          skills.push({
-            name,
-            source: dir.includes(homeDir) ? "global" : "project",
-          });
+          // Determine source based on path
+          let source = "extension";
+          if (dir.includes(join(homeDir, ".pi"))) {
+            source = "global";
+          } else if (dir === join(cwd, ".pi", "skills")) {
+            source = "project";
+          }
+          skills.push({ name, source });
         }
       }
     } catch {
@@ -227,6 +286,18 @@ const announcedModules: Array<{ name: string; version: string }> = [];
  * Track registered tools.
  */
 const registeredTools: Array<{ name: string; source: string }> = [];
+
+/**
+ * Reference to pi API for getting tools.
+ */
+let piApi: any = null;
+
+/**
+ * Set the pi API reference.
+ */
+export function setPiApi(api: any): void {
+  piApi = api;
+}
 
 /**
  * Add a module to the announced list.
@@ -295,6 +366,43 @@ export function registerCoreGroups(): void {
           detail: moduleNames.slice(0, 4).join(", ") + (moduleNames.length > 4 ? ` +${moduleNames.length - 4} more` : ""),
         },
         uptime: { value: formatUptime(process.uptime()) },
+      };
+    },
+  });
+
+  // 1b. Load time group
+  infoRegistry.registerGroup({
+    id: "loadtime",
+    name: "Load Time",
+    icon: "⏱️",
+    priority: 15,
+    config: {
+      showByDefault: true,
+      stats: [
+        { id: "total", label: "Total Load Time", show: true },
+        { id: "count", label: "Items Loaded", show: true },
+        { id: "list", label: "Load Times", show: true },
+      ],
+    },
+    dataProvider: async () => {
+      const times = getLoadTimes();
+      const total = getTotalLoadTime();
+      
+      // Sort by load time descending
+      const sorted = [...times].sort((a, b) => b.ms - a.ms);
+      
+      // Build list as comma-separated values
+      const listStr = sorted.length > 0 
+        ? sorted.map(t => `${t.name} (${t.ms}ms)`).join(", ") 
+        : "none";
+
+      return {
+        total: { value: `${total}ms` },
+        count: { value: String(times.length) },
+        list: {
+          value: sorted.length > 0 ? `${sorted[0].name} (${sorted[0].ms}ms)` : "none",
+          detail: sorted.length > 1 ? sorted.slice(1).map(t => `${t.name} (${t.ms}ms)`).join(", ") : undefined,
+        },
       };
     },
   });
@@ -374,20 +482,44 @@ export function registerCoreGroups(): void {
       ],
     },
     dataProvider: async () => {
-      const tools = getRegisteredTools();
-      const builtin = tools.filter((t) => t.source === "builtin");
-      const custom = tools.filter((t) => t.source === "registered");
+      // Use pi.getAllTools() to get actual tools with source info
+      let tools: Array<{ name: string; source?: string; sourceInfo?: any }> = [];
+      
+      if (piApi && typeof piApi.getAllTools === "function") {
+        try {
+          tools = piApi.getAllTools();
+        } catch {
+          // Fallback to tracked tools
+          tools = getRegisteredTools();
+        }
+      } else {
+        tools = getRegisteredTools();
+      }
 
-      // Build tool list - show all
+      // Categorize by source
+      const builtin = tools.filter((t) => {
+        const source = t.sourceInfo?.source || t.source;
+        return source === "builtin";
+      });
+      const extension = tools.filter((t) => {
+        const source = t.sourceInfo?.source || t.source;
+        return source !== "builtin" && source !== "sdk";
+      });
+      const sdk = tools.filter((t) => {
+        const source = t.sourceInfo?.source || t.source;
+        return source === "sdk";
+      });
+
+      // Build tool list as comma-separated values
       const toolNames = tools.map((t) => `${t.name}`);
+      const toolListStr = toolNames.join(", ");
 
       return {
         total: { value: String(tools.length) },
         builtin: { value: String(builtin.length) },
-        registered: { value: String(custom.length) },
+        registered: { value: String(extension.length + sdk.length) },
         list: {
-          value: toolNames.length > 0 ? toolNames[0] : "none",
-          detail: toolNames.length > 1 ? toolNames.slice(1).join("\n") : undefined,
+          value: toolListStr.length > 0 ? toolListStr : "none",
         },
       };
     },
@@ -453,16 +585,16 @@ export function registerCoreGroups(): void {
       const global = skills.filter((s) => s.source === "global");
       const project = skills.filter((s) => s.source === "project");
 
-      // Build skill list - show all
+      // Build skill list as comma-separated values
       const skillNames = skills.map((s) => `${s.name} (${s.source})`);
+      const skillListStr = skillNames.join(", ");
 
       return {
         count: { value: String(skills.length) },
         global: { value: String(global.length) },
         project: { value: String(project.length) },
         list: {
-          value: skillNames.length > 0 ? skillNames[0] : "none",
-          detail: skillNames.length > 1 ? skillNames.slice(1).join("\n") : undefined,
+          value: skillListStr.length > 0 ? skillListStr : "none",
         },
       };
     },
