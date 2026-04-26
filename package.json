@@ -28,6 +28,7 @@
   },
   "files": [
     "packages/*/index.ts",
+    "packages/*/extensions/**/*.ts",
     "packages/*/skills/**/*",
     "packages/*/README.md"
   ],
@@ -36,12 +37,15 @@
       "node_modules/@pi-unipi/workflow/index.ts",
       "node_modules/@pi-unipi/ralph/index.ts",
       "node_modules/@pi-unipi/memory/index.ts",
-      "node_modules/@pi-unipi/info-screen/index.ts"
+      "node_modules/@pi-unipi/info-screen/index.ts",
+      "node_modules/@pi-unipi/subagents/src/index.ts",
+      "node_modules/@pi-unipi/btw/extensions/btw.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
       "node_modules/@pi-unipi/ralph/SKILL.md",
-      "node_modules/@pi-unipi/memory/skills"
+      "node_modules/@pi-unipi/memory/skills",
+      "node_modules/@pi-unipi/btw/skills"
     ]
   },
   "peerDependencies": {
@@ -56,7 +60,8 @@
     "@pi-unipi/ralph": "*",
     "@pi-unipi/memory": "*",
     "@pi-unipi/info-screen": "*",
-    "@pi-unipi/subagents": "*"
+    "@pi-unipi/subagents": "*",
+    "@pi-unipi/btw": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

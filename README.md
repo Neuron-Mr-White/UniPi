@@ -17,6 +17,7 @@ pi install npm:@pi-unipi/ralph
 pi install npm:@pi-unipi/memory
 pi install npm:@pi-unipi/info-screen
 pi install npm:@pi-unipi/subagents
+pi install npm:@pi-unipi/btw
 ```
 
 ## Packages
@@ -29,6 +30,7 @@ pi install npm:@pi-unipi/subagents
 | `@pi-unipi/memory` | Persistent cross-session memory with vector search |
 | `@pi-unipi/info-screen` | Dashboard and module registry overlay |
 | `@pi-unipi/subagents` | Parallel sub-agent execution with file locking |
+| `@pi-unipi/btw` | Parallel side conversations with `/btw` |
 
 ## Commands
 
@@ -74,6 +76,17 @@ pi install npm:@pi-unipi/subagents
 | `/unipi:global-memory-search <term>` | Search global memories |
 | `/unipi:global-memory-list` | List all global memories |
 
+### BTW (`/btw*`)
+
+| Command | Description |
+|---------|-------------|
+| `/btw [--save] <question>` | Side conversation (contextual) |
+| `/btw:tangent [--save] <q>` | Contextless tangent thread |
+| `/btw:new [question]` | Fresh thread with main-session context |
+| `/btw:clear` | Dismiss and clear thread |
+| `/btw:inject [instructions]` | Send full thread to main agent |
+| `/btw:summarize [instr]` | Summarize and inject into main agent |
+
 ### Info Screen (`/unipi:info*`)
 
 | Command | Description |
@@ -107,6 +120,8 @@ pi install npm:@pi-unipi/subagents
 **Memory** provides persistent cross-session memory with SQLite + vector search. Project-scoped and global memories with hybrid search.
 
 **Info Screen** is a dashboard overlay showing module status, registered tools, and custom groups from all modules.
+
+**BTW** adds a parallel side-conversation channel. Ask questions while the main agent keeps working, then inject or summarize the thread back.
 
 **Subagents** enables parallel execution with file locking, activity tracking, and custom agent types.
 

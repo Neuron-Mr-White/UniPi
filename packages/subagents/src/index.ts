@@ -5,23 +5,24 @@
  * ESC propagation: all children abort on parent ESC
  */
 
-import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { emitEvent, MODULES } from "@pi-unipi/core";
-import { UNIPI_EVENTS } from "@pi-unipi/core";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { emitEvent, MODULES, UNIPI_EVENTS } from "@pi-unipi/core";
+import { AgentManager } from "./agent-manager.js";
+import { initConfig } from "./config.js";
+import { type AgentActivity, BUILTIN_TYPES } from "./types.js";
+import { AgentWidget } from "./widget.js";
 
-// Get info registry from global
+/** Get info registry from global */
 function getInfoRegistry() {
   const g = globalThis as any;
   return g.__unipi_info_registry;
 }
-import { AgentManager } from "./agent-manager.js";
-import { initConfig, saveGlobalConfig } from "./config.js";
-import { type AgentActivity, type AgentRecord, BUILTIN_TYPES } from "./types.js";
-import { AgentWidget } from "./widget.js";
 
-/** Format tokens safely. */
+/** Format tokens safely */
 function safeFormatTokens(session: any): string {
   if (!session) return "";
   try {
@@ -35,7 +36,7 @@ function safeFormatTokens(session: any): string {
   }
 }
 
-/** Build result text. */
+/** Build result text */
 function textResult(msg: string, details?: any) {
   return { content: [{ type: "text" as const, text: msg }], details };
 }
@@ -45,17 +46,21 @@ export default function (pi: ExtensionAPI) {
   const config = initConfig(process.cwd());
   if (!config.enabled) return;
 
+  // Compute paths at factory time
+  const homeDir = homedir();
+  const cwd = process.cwd();
+  const globalAgentsDir = join(homeDir, ".unipi", "config", "agents");
+  const workspaceAgentsDir = join(cwd, ".unipi", "config", "agents");
+
   // Activity tracking for widget
   const agentActivity = new Map<string, AgentActivity>();
 
   // Create manager with completion callback
   const manager = new AgentManager(
     (record) => {
-      // On complete: clean up activity, emit event
       agentActivity.delete(record.id);
       widget.markFinished(record.id);
       widget.update();
-
       pi.events.emit("subagents:completed", {
         id: record.id,
         type: record.type,
@@ -67,7 +72,6 @@ export default function (pi: ExtensionAPI) {
     },
     config.maxConcurrent,
     (record) => {
-      // On start: emit event
       pi.events.emit("subagents:started", {
         id: record.id,
         type: record.type,
@@ -79,103 +83,78 @@ export default function (pi: ExtensionAPI) {
   // Create widget
   const widget = new AgentWidget(manager, agentActivity);
 
-  // Session start: notify agent about config paths
-  pi.on("session_start", async (_event, ctx) => {
-    const homedir = require("os").homedir();
-    const globalConfig = `${homedir}/.unipi/config/subagents.json`;
-    const globalAgents = `${homedir}/.unipi/config/agents/`;
-    const workspaceConfig = `${ctx.cwd}/.unipi/config/subagents.json`;
-    const workspaceAgents = `${ctx.cwd}/.unipi/config/agents/`;
+  // Register info group at factory time (not session_start)
+  const registry = getInfoRegistry();
+  if (registry) {
+    registry.registerGroup({
+      id: "subagents",
+      name: "Subagents",
+      icon: "🤖",
+      priority: 80,
+      config: {
+        showByDefault: true,
+        stats: [
+          { id: "maxConcurrent", label: "Max Concurrent", show: true },
+          { id: "activeCount", label: "Active Agents", show: true },
+          { id: "enabled", label: "Enabled", show: true },
+          { id: "types", label: "Available Types", show: true },
+        ],
+      },
+      dataProvider: async () => {
+        const types = config.types || {};
+        const builtinTypes = ["explore", "work"];
 
-    // Register info group
-    const registry = getInfoRegistry();
-    if (registry) {
-      registry.registerGroup({
-        id: "subagents",
-        name: "Subagents",
-        icon: "🤖",
-        priority: 80,
-        config: {
-          showByDefault: true,
-          stats: [
-            { id: "maxConcurrent", label: "Max Concurrent", show: true },
-            { id: "activeCount", label: "Active Agents", show: true },
-            { id: "enabled", label: "Enabled", show: true },
-            { id: "types", label: "Available Types", show: true },
-          ],
-        },
-        dataProvider: async () => {
-          // Get available agent types
-          const types = config.types || {};
-          const builtinTypes = ["explore", "work"];
-          
-          // Check for custom agent types in filesystem
-          const customTypes: string[] = [];
+        // Scan for custom agent types
+        const customTypes: string[] = [];
+        for (const dir of [globalAgentsDir, workspaceAgentsDir]) {
           try {
-            const fs = require("fs");
-            const path = require("path");
-            
-            // Check global agents directory
-            if (fs.existsSync(globalAgents)) {
-              const files = fs.readdirSync(globalAgents);
-              for (const file of files) {
-                if (file.endsWith(".md")) {
+            if (existsSync(dir)) {
+              for (const file of readdirSync(dir)) {
+                if (file.endsWith(".md") && !customTypes.includes(file.replace(".md", ""))) {
                   customTypes.push(file.replace(".md", ""));
                 }
               }
             }
-            
-            // Check workspace agents directory
-            if (fs.existsSync(workspaceAgents)) {
-              const files = fs.readdirSync(workspaceAgents);
-              for (const file of files) {
-                if (file.endsWith(".md")) {
-                  const name = file.replace(".md", "");
-                  if (!customTypes.includes(name)) {
-                    customTypes.push(name);
-                  }
-                }
-              }
-            }
-          } catch {
-            // Ignore errors
-          }
-          
-          // Build available types list
-          const allTypes = [...new Set([...builtinTypes, ...Object.keys(types), ...customTypes])];
-          const typeList = allTypes.map(t => {
-            const isEnabled = types[t]?.enabled !== false;
-            const isBuiltin = builtinTypes.includes(t);
-            const scope = customTypes.includes(t) ? "project" : "global";
-            return `${t}(${scope})${isEnabled ? "" : " [disabled]"}`;
-          }).join(", ");
-          
-          // Get active agents count
-          const activeAgents = manager.listAgents().filter(a => a.status === "running").length;
-          
-          return {
-            maxConcurrent: { value: String(manager.getMaxConcurrent()) },
-            activeCount: { value: String(activeAgents) },
-            enabled: { value: config.enabled ? "yes" : "no" },
-            types: {
-              value: allTypes.length > 0 ? allTypes[0] : "none",
-              detail: allTypes.length > 1 ? typeList : undefined,
-            },
-          };
-        },
-      });
-    }
+          } catch { /* ignore */ }
+        }
+
+        const allTypes = [...new Set([...builtinTypes, ...Object.keys(types), ...customTypes])];
+        const typeList = allTypes.map(t => {
+          const isEnabled = types[t]?.enabled !== false;
+          const isBuiltin = builtinTypes.includes(t);
+          const scope = customTypes.includes(t) ? "project" : "global";
+          return `${t}(${scope})${isEnabled ? "" : " [disabled]"}`;
+        }).join(", ");
+
+        const activeAgents = manager.listAgents().filter(a => a.status === "running").length;
+
+        return {
+          maxConcurrent: { value: String(manager.getMaxConcurrent()) },
+          activeCount: { value: String(activeAgents) },
+          enabled: { value: config.enabled ? "yes" : "no" },
+          types: {
+            value: allTypes.length > 0 ? allTypes[0] : "none",
+            detail: allTypes.length > 1 ? typeList : undefined,
+          },
+        };
+      },
+    });
+  }
+
+  // Session start: emit MODULE_READY
+  pi.on("session_start", async (_event, ctx) => {
+    const globalConfig = `${homeDir}/.unipi/config/subagents.json`;
+    const workspaceConfig = `${cwd}/.unipi/config/subagents.json`;
 
     ctx.ui.notify(
       `UniPi Subagents config:\n` +
       `• Global: ${globalConfig}\n` +
-      `• Global agents: ${globalAgents}\n` +
+      `• Global agents: ${globalAgentsDir}\n` +
       `• Workspace: ${workspaceConfig}\n` +
-      `• Workspace agents: ${workspaceAgents}`,
+      `• Workspace agents: ${workspaceAgentsDir}`,
       "info",
     );
 
-    // Emit module ready event
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.SUBAGENTS || "subagents",
       version: "0.1.8",
@@ -305,11 +284,9 @@ Guidelines:
         const modelInput = params.model as string | undefined;
         const thinkingLevel = params.thinking as any | undefined;
 
-        // Create activity tracker
         const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(maxTurns);
 
         if (runInBackground) {
-          // Background execution
           const id = manager.spawn(pi, ctx, type, prompt, {
             description,
             maxTurns,
@@ -342,7 +319,6 @@ Guidelines:
         // Foreground execution
         let spinnerFrame = 0;
         const startedAt = Date.now();
-        let fgId: string | undefined;
 
         const streamUpdate = () => {
           onUpdate?.({
@@ -381,11 +357,6 @@ Guidelines:
         });
 
         clearInterval(spinnerInterval);
-
-        if (fgId) {
-          agentActivity.delete(fgId);
-          widget.markFinished(fgId);
-        }
 
         const tokenText = safeFormatTokens(bgState.session);
         const durationMs = (record.completedAt ?? Date.now()) - record.startedAt;

@@ -26,6 +26,7 @@ pi install npm:unipi
 - **Tabbed groups** — each module registers info groups with custom data providers
 - **Configurable** — per-group and per-stat visibility via settings
 - **Boot overlay** — shows dashboard on session start (configurable)
+- **Styled dialog chrome** — uses pi-tui theme API for consistent borders, scrollable content, and navigation hints (matching the overlay style used by @pi-unipi/btw)
 - **Core groups** — modules, tools, load time, session info out of the box
 
 ## Registering a Group

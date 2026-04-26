@@ -1,81 +1,135 @@
 /**
- * @pi-unipi/info-screen — TUI Overlay Component
+ * @pi-unipi/info-screen — TUI Overlay Component (Cache-First Reactive)
  *
- * Main dashboard overlay with tabbed navigation.
- * Displays registered groups as tabs with their stats.
+ * Opens immediately with cached data.
+ * Each group loads independently in the background.
+ * Reactive: re-renders as data arrives.
+ * Shows humanized "last updated" timestamps.
  */
 
 import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
 import type { InfoGroup, GroupData } from "../types.js";
 
-/** ANSI escape codes */
-const ansi = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  underline: "\x1b[4m",
-  // Colors
-  blue: "\x1b[34m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  magenta: "\x1b[35m",
-  white: "\x1b[37m",
-  red: "\x1b[31m",
-  gray: "\x1b[90m",
-
-};
-
 /** Tab color palette */
-const TAB_COLORS = [
-  ansi.cyan,
-  ansi.green,
-  ansi.yellow,
-  ansi.magenta,
-  ansi.blue,
+const TAB_FG: Array<"accent" | "success" | "warning" | "error"> = [
+  "accent",
+  "success",
+  "warning",
+  "error",
 ];
 
+/** Humanize a duration in ms to a short string */
+function humanizeAge(ms: number): string {
+  if (ms <= 0) return "never";
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
 /**
- * Info overlay component with tabbed navigation.
+ * Info overlay component with cache-first reactive model.
  */
 export class InfoOverlay implements Component {
   private groups: InfoGroup[] = [];
   private activeTabIndex = 0;
   private groupData = new Map<string, GroupData>();
-  private loading = true;
-  private error: string | null = null;
+  private groupLoading = new Map<string, boolean>();
   private scrollOffset = 0;
-  /** Tab scroll offset for windowed scrolling */
   private tabScrollOffset = 0;
-  /** Callback when overlay should close */
+  private lastGlobalUpdate = 0;
+  private unsubscribers: Array<() => void> = [];
+  private _destroyed = false;
+
   onClose?: () => void;
+  requestRender?: () => void;
+
+  private theme: Theme | null = null;
+
+  setTheme(theme: Theme): void {
+    this.theme = theme;
+  }
 
   constructor() {
-    // Start loading data immediately
-    this.loadData();
-  }
-
-  /**
-   * Invalidate cached render state.
-   */
-  invalidate(): void {
-    // No cached state to invalidate
-  }
-
-  /**
-   * Load data for all groups.
-   */
-  private async loadData(): Promise<void> {
-    this.loading = true;
-    // Wait a bit for modules to announce before fetching groups
-    await new Promise(r => setTimeout(r, 500));
-    // Always re-fetch ALL groups to catch late registrations
+    // Load groups synchronously (they're already registered)
     this.groups = infoRegistry.getAllGroups();
-    
-    // Apply saved order from settings
+    this.applyOrder();
+
+    // Seed cache with any existing data (instant display)
+    for (const group of this.groups) {
+      const cached = infoRegistry.getCachedData(group.id);
+      if (cached) {
+        this.groupData.set(group.id, cached);
+      }
+      this.groupLoading.set(group.id, true);
+    }
+
+    // Subscribe to per-group updates for reactive rendering
+    this.unsubscribers.push(
+      infoRegistry.subscribeAll((groupId, data) => {
+        if (this._destroyed) return;
+        this.groupData.set(groupId, data);
+        this.groupLoading.set(groupId, false);
+        this.lastGlobalUpdate = Date.now();
+        this.requestRender?.();
+      })
+    );
+
+    // Start background fetch for all groups (non-blocking)
+    this.fetchAllBackground();
+  }
+
+  /**
+   * Fetch all groups in background. Each resolves independently.
+   */
+  private async fetchAllBackground(): Promise<void> {
+    for (const group of this.groups) {
+      // Fire each fetch independently — don't await sequentially
+      infoRegistry.getGroupData(group.id).then(() => {
+        this.groupLoading.set(group.id, false);
+      }).catch(() => {
+        this.groupLoading.set(group.id, false);
+      });
+    }
+  }
+
+  /**
+   * Handle late-arriving groups (e.g., subagents announces after boot).
+   */
+  private syncGroups(): void {
+    const allGroups = infoRegistry.getAllGroups();
+    if (allGroups.length !== this.groups.length) {
+      this.groups = allGroups;
+      this.applyOrder();
+
+      // Seed new groups from cache
+      for (const group of this.groups) {
+        if (!this.groupData.has(group.id)) {
+          const cached = infoRegistry.getCachedData(group.id);
+          if (cached) {
+            this.groupData.set(group.id, cached);
+          } else {
+            this.groupLoading.set(group.id, true);
+            // Fetch this new group
+            infoRegistry.getGroupData(group.id).then(() => {
+              this.groupLoading.set(group.id, false);
+            }).catch(() => {
+              this.groupLoading.set(group.id, false);
+            });
+          }
+        }
+      }
+    }
+  }
+
+  private applyOrder(): void {
     const settings = getInfoSettings();
     if (settings.groupOrder && settings.groupOrder.length > 0) {
       const order = settings.groupOrder;
@@ -85,107 +139,69 @@ export class InfoOverlay implements Component {
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       });
     }
-
-    try {
-      // Load data for all groups in parallel with timeout
-      const loadPromises = this.groups.map(async (group) => {
-        try {
-          const data = await Promise.race([
-            infoRegistry.getGroupData(group.id),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-          ]);
-          this.groupData.set(group.id, data);
-        } catch {
-          // Use empty data on timeout/error
-          this.groupData.set(group.id, {});
-        }
-      });
-
-      await Promise.all(loadPromises);
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
-    }
-
-    this.loading = false;
   }
 
   /**
-   * Handle keyboard input.
+   * Cleanup subscriptions.
    */
-  handleInput(data: string): void {
-    if (this.loading) return;
+  destroy(): void {
+    this._destroyed = true;
+    for (const unsub of this.unsubscribers) {
+      unsub();
+    }
+    this.unsubscribers = [];
+  }
 
-    // Arrow keys for tab navigation
+  invalidate(): void {
+    this.syncGroups();
+  }
+
+  handleInput(data: string): void {
     if (data === "\x1b[C" || data === "l") {
-      // Right arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
-      this.scrollOffset = 0; // Reset scroll on tab switch
-      this.ensureTabVisible();
+      this.scrollOffset = 0;
     } else if (data === "\x1b[D" || data === "h") {
-      // Left arrow - switch tab
       this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
-      this.scrollOffset = 0; // Reset scroll on tab switch
-      this.ensureTabVisible();
+      this.scrollOffset = 0;
     } else if (data === "\x1b[B" || data === "j") {
-      // Down arrow - scroll down
       this.scrollOffset++;
     } else if (data === "\x1b[A" || data === "k") {
-      // Up arrow - scroll up
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
     } else if (data === "g") {
-      // g - go to top
       this.scrollOffset = 0;
     } else if (data === "G") {
-      // G - go to bottom (will be clamped in render)
       this.scrollOffset = Infinity;
+    } else if (data === "r") {
+      // Manual refresh
+      this.refreshActiveGroup();
+    } else if (data === "R") {
+      // Refresh all
+      this.refreshAll();
     } else if (data === "q" || data === "\x1b") {
-      // q or Escape - close overlay
+      this.destroy();
       this.onClose?.();
     }
   }
 
-  /**
-   * Ensure active tab is visible in the tab bar (horizontal scroll).
-   */
-  private ensureTabVisible(): void {
-    // Tab bar shows ~maxTabsVisible tabs, centered around active
-    // This is handled in renderTabBar
+  private refreshActiveGroup(): void {
+    const group = this.groups[this.activeTabIndex];
+    if (!group) return;
+    this.groupLoading.set(group.id, true);
+    this.requestRender?.();
+    infoRegistry.refreshGroup(group.id);
   }
 
-  /**
-   * Render the component.
-   */
+  private refreshAll(): void {
+    for (const group of this.groups) {
+      this.groupLoading.set(group.id, true);
+    }
+    this.requestRender?.();
+    infoRegistry.refreshAll();
+  }
+
   render(width: number): string[] {
-    // While loading, show loading state
-    if (this.loading) {
-      return this.renderLoading(width);
-    }
-
-    if (this.error) {
-      return this.renderError(width);
-    }
-
-    // Check for new groups and re-fetch data
-    const allGroups = infoRegistry.getAllGroups();
-    const groupIds = allGroups.map(g => g.id).join(",");
-    const currentIds = this.groups.map(g => g.id).join(",");
-    
-    if (groupIds !== currentIds || this.groups.length !== allGroups.length) {
-      this.groups = allGroups;
-      // Apply saved order
-      const settings = getInfoSettings();
-      if (settings.groupOrder && settings.groupOrder.length > 0) {
-        const order = settings.groupOrder;
-        this.groups.sort((a, b) => {
-          const ai = order.indexOf(a.id);
-          const bi = order.indexOf(b.id);
-          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-        });
-      }
-    }
-
-    // Always re-fetch data for all groups to catch late updates
-    this.refreshAllData();
+    // Sync groups in case late arrivals
+    this.syncGroups();
 
     if (this.groups.length === 0) {
       return this.renderEmpty(width);
@@ -194,290 +210,191 @@ export class InfoOverlay implements Component {
     return this.renderDashboard(width);
   }
 
-  /**
-   * Load data for groups we don't have data for yet.
-   */
-  private async loadDataForNewGroups(groups: InfoGroup[]): Promise<void> {
-    for (const group of groups) {
-      if (!this.groupData.has(group.id)) {
-        try {
-          const data = await infoRegistry.getGroupData(group.id);
-          this.groupData.set(group.id, data);
-        } catch {
-          // Silently skip groups with errors
-        }
-      }
-    }
+  // ─── Theme helpers ───────────────────────────────────────────────────
+
+  private fg(color: string, text: string): string {
+    if (this.theme) return this.theme.fg(color as any, text);
+    const c: Record<string, string> = {
+      accent: "\x1b[36m", success: "\x1b[32m", warning: "\x1b[33m",
+      error: "\x1b[31m", dim: "\x1b[2m", borderMuted: "\x1b[90m",
+    };
+    return `${c[color] ?? ""}${text}\x1b[0m`;
   }
 
-  /**
-   * Callback set by wrapper to trigger re-render.
-   */
-  requestRender?: () => void;
-
-  /**
-   * Refresh data for all groups (non-blocking).
-   */
-  private refreshAllData(): void {
-    for (const group of this.groups) {
-      // Invalidate cache to get fresh data
-      infoRegistry.invalidateCache(group.id);
-      // Fetch fresh data (non-blocking)
-      infoRegistry.getGroupData(group.id).then(data => {
-        const old = this.groupData.get(group.id);
-        const oldStr = JSON.stringify(old);
-        const newStr = JSON.stringify(data);
-        this.groupData.set(group.id, data);
-        // Trigger re-render if data changed
-        if (oldStr !== newStr && this.requestRender) {
-          this.requestRender();
-        }
-      }).catch(() => {
-        // Ignore errors
-      });
-    }
+  private bold(text: string): string {
+    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
   }
 
-  /**
-   * Render loading state.
-   */
-  private renderLoading(width: number): string[] {
-    const lines: string[] = [];
-    const padding = " ".repeat(Math.max(0, Math.floor((width - 20) / 2)));
-
-    lines.push(`${padding}${ansi.cyan}${ansi.bold}📊 UniPi Info Screen${ansi.reset}`);
-    lines.push("");
-    lines.push(`${padding}${ansi.dim}Loading dashboard...${ansi.reset}`);
-
-    return lines;
+  private bg(color: string, text: string): string {
+    return this.theme ? this.theme.bg(color as any, text) : text;
   }
 
-  /**
-   * Render error state.
-   */
-  private renderError(width: number): string[] {
-    const lines: string[] = [];
-    const padding = " ".repeat(Math.max(0, Math.floor((width - 20) / 2)));
-
-    lines.push(`${padding}${ansi.yellow}${ansi.bold}⚠️ Error${ansi.reset}`);
-    lines.push(`${padding}${ansi.dim}${this.error ?? "Unknown error"}${ansi.reset}`);
-
-    return lines;
+  private frameLine(content: string, innerWidth: number): string {
+    const truncated = truncateToWidth(content, innerWidth, "");
+    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
+    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
   }
 
-  /**
-   * Render empty state.
-   */
+  private ruleLine(innerWidth: number): string {
+    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
+  }
+
+  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
+    const left = edge === "top" ? "┌" : "└";
+    const right = edge === "top" ? "┐" : "┘";
+    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
+  }
+
+  private getDialogHeight(): number {
+    const terminalRows = process.stdout.rows ?? 30;
+    return Math.max(18, Math.min(32, Math.floor(terminalRows * 0.78)));
+  }
+
+  // ─── State views ─────────────────────────────────────────────────────
+
   private renderEmpty(width: number): string[] {
+    const innerWidth = Math.max(22, width - 2);
     const lines: string[] = [];
-    const padding = " ".repeat(Math.max(0, Math.floor((width - 30) / 2)));
-
-    lines.push(`${padding}${ansi.cyan}${ansi.bold}📊 UniPi Info Screen${ansi.reset}`);
-    lines.push("");
-    lines.push(`${padding}${ansi.dim}No groups registered.${ansi.reset}`);
-    lines.push(`${padding}${ansi.dim}Modules will register groups on startup.${ansi.reset}`);
-
+    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.frameLine(this.fg("accent", this.bold("📊 UniPi Info Screen")), innerWidth));
+    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.frameLine(this.fg("dim", "No groups registered."), innerWidth));
+    lines.push(this.frameLine(this.fg("dim", "Modules will register groups on startup."), innerWidth));
+    for (let i = 0; i < 4; i++) lines.push(this.frameLine("", innerWidth));
+    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.frameLine(this.fg("dim", "q/Esc close · r refresh"), innerWidth));
+    lines.push(this.borderLine(innerWidth, "bottom"));
     return lines;
   }
 
-  /**
-   * Pad a line to fill a target visual width with background.
-   */
-  private padToWidth(line: string, targetWidth: number, bg?: string): string {
-    const visLen = visibleWidth(line);
-    const pad = Math.max(0, targetWidth - visLen);
-    if (bg) {
-      return bg + line + " ".repeat(pad) + ansi.reset;
-    }
-    return line + " ".repeat(pad);
-  }
+  // ─── Dashboard ───────────────────────────────────────────────────────
 
-  /**
-   * Render the full dashboard.
-   */
   private renderDashboard(width: number): string[] {
-    const lines: string[] = [];
+    const innerWidth = Math.max(22, width - 2);
     const group = this.groups[this.activeTabIndex];
     const data = this.groupData.get(group.id) ?? {};
-    // Inner width for content (subtract 2 for left+right borders)
-    const innerWidth = width - 2;
+    const isLoading = this.groupLoading.get(group.id) ?? false;
 
-    // Fixed content height for stability
     const CONTENT_HEIGHT = 12;
+    const lines: string[] = [];
 
-    // Top border
-    lines.push(`${ansi.dim}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
+    lines.push(this.borderLine(innerWidth, "top"));
 
-    // Header
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderHeader(innerWidth, group), innerWidth)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+    // Header: group name + loading indicator
+    const loadingDot = isLoading
+      ? ` ${this.fg("warning", "●")}`
+      : ` ${this.fg("success", "●")}`;
+    const headerText = this.fg("accent", this.bold(` ${group.icon} ${group.name} `)) + loadingDot;
+    lines.push(this.frameLine(headerText, innerWidth));
+    lines.push(this.ruleLine(innerWidth));
 
-    // Tab bar with horizontal scrolling
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderTabBar(innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+    // Tab bar
+    lines.push(this.frameLine(this.renderTabBar(innerWidth), innerWidth));
+    lines.push(this.ruleLine(innerWidth));
 
-    // Content with scrolling (fixed height)
+    // Content with scrolling
     const contentLines = this.renderGroupContent(innerWidth, group, data);
-    
-    // Clamp scroll offset
-    const maxScroll = Math.max(0, contentLines.length - CONTENT_HEIGHT);
+    const wrapped = this.wrapLines(contentLines, innerWidth);
+    const maxScroll = Math.max(0, wrapped.length - CONTENT_HEIGHT);
     this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
-    
-    // Get visible slice
-    const visibleContent = contentLines.slice(this.scrollOffset, this.scrollOffset + CONTENT_HEIGHT);
-    
-    // Render content lines (pad to fixed height)
+
+    const visible = wrapped.slice(this.scrollOffset, this.scrollOffset + CONTENT_HEIGHT);
     for (let i = 0; i < CONTENT_HEIGHT; i++) {
-      const line = visibleContent[i] ?? "";
-      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
+      lines.push(this.frameLine(visible[i] ?? "", innerWidth));
     }
 
-    // Footer with scroll indicator inline
-    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.renderFooterWithScroll(innerWidth, contentLines.length, CONTENT_HEIGHT)}${ansi.dim}│${ansi.reset}`);
-    lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
+    // Footer
+    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.frameLine(this.renderFooter(innerWidth, wrapped.length, CONTENT_HEIGHT), innerWidth));
+    lines.push(this.borderLine(innerWidth, "bottom"));
 
     return lines;
   }
 
-  /**
-   * Render header with title and group info.
-   */
-  private renderHeader(width: number, group: InfoGroup): string {
-    const title = `${group.icon} ${group.name}`;
-    const paddedTitle = ` ${title} `;
-    const visLen = visibleWidth(paddedTitle);
-
-    if (visLen >= width - 4) {
-      return ansi.bold + truncateToWidth(paddedTitle, width - 4) + ansi.reset;
-    }
-
-    // Center the title
-    const leftPad = Math.floor((width - visLen) / 2);
-
-    return " ".repeat(leftPad) + ansi.bold + paddedTitle + ansi.reset;
-  }
-
-  /**
-   * Render tab bar with windowed scrolling.
-   * Window slides only when active tab reaches the edge.
-   * Example: abcde → user on 'e' presses right → efghi
-   */
   private renderTabBar(width: number): string {
     if (this.groups.length === 0) return "";
 
-    // Calculate tab widths
     const tabWidths = this.groups.map(g => visibleWidth(` ${g.icon} ${g.name} `));
-    const separatorWidth = visibleWidth(`${ansi.dim}│${ansi.reset}`);
-    
-    // Find how many tabs fit (account for potential scroll indicators)
-    const indicatorSpace = 3; // Space for ◀ or ▶
+    const sepW = visibleWidth(this.fg("borderMuted", "│"));
+    const indicatorSpace = 3;
     let maxTabs = 0;
-    let totalWidth = 0;
+    let totalW = 0;
     for (let i = 0; i < this.groups.length; i++) {
-      const tabW = tabWidths[i]!;
-      const sepW = i > 0 ? separatorWidth : 0;
-      // Reserve space for scroll indicator on one side
-      if (totalWidth + sepW + tabW > width - 2 - indicatorSpace) break;
-      totalWidth += sepW + tabW;
+      const add = (i > 0 ? sepW : 0) + tabWidths[i]!;
+      if (totalW + add > width - 2 - indicatorSpace) break;
+      totalW += add;
       maxTabs = i + 1;
     }
 
-    // If all tabs fit, show all
     if (maxTabs >= this.groups.length) {
-      return this.renderAllTabs(width);
+      return this.renderAllTabs();
     }
 
-    // Windowed scrolling: slide only when active tab reaches edge
-    // Initialize tabScrollOffset if needed
-    if (this.tabScrollOffset === undefined) {
-      this.tabScrollOffset = 0;
-    }
-
-    // Ensure active tab is visible within the window
     if (this.activeTabIndex < this.tabScrollOffset) {
-      // Active tab is before window - slide left
       this.tabScrollOffset = this.activeTabIndex;
     } else if (this.activeTabIndex >= this.tabScrollOffset + maxTabs) {
-      // Active tab is after window - slide right
       this.tabScrollOffset = this.activeTabIndex - maxTabs + 1;
     }
-
-    // Clamp scroll offset
     this.tabScrollOffset = Math.max(0, Math.min(this.tabScrollOffset, this.groups.length - maxTabs));
-    
-    // Build visible tabs
+
     const tabs: string[] = [];
     for (let i = this.tabScrollOffset; i < this.tabScrollOffset + maxTabs && i < this.groups.length; i++) {
-      const group = this.groups[i]!;
+      const g = this.groups[i]!;
       const isActive = i === this.activeTabIndex;
-      const color = TAB_COLORS[i % TAB_COLORS.length]!;
+      const color = TAB_FG[i % TAB_FG.length]!;
+      // Per-tab loading indicator
+      const isLoading = this.groupLoading.get(g.id) ?? false;
+      const dot = isLoading ? this.fg("warning", "●") : "";
 
       if (isActive) {
-        tabs.push(`${color}${ansi.bold} ${group.icon} ${group.name} ${ansi.reset}`);
+        tabs.push(this.fg(color, this.bold(` ${g.icon} ${g.name} ${dot}`)));
       } else {
-        tabs.push(`${ansi.dim} ${group.icon} ${group.name} ${ansi.reset}`);
+        tabs.push(this.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
       }
     }
 
-    const tabStr = tabs.join(`${ansi.dim}│${ansi.reset}`);
-    
-    // Add scroll indicators
-    const hasLeft = this.tabScrollOffset > 0;
-    const hasRight = this.tabScrollOffset + maxTabs < this.groups.length;
-    
-    if (hasLeft) {
-      return `${ansi.dim}◀${ansi.reset} ${tabStr}`;
-    }
-    if (hasRight) {
-      return `${tabStr} ${ansi.dim}▶${ansi.reset}`;
-    }
-    
+    const tabStr = tabs.join(this.fg("borderMuted", "│"));
+    if (this.tabScrollOffset > 0) return `${this.fg("dim", "◀")} ${tabStr}`;
+    if (this.tabScrollOffset + maxTabs < this.groups.length) return `${tabStr} ${this.fg("dim", "▶")}`;
     return tabStr;
   }
 
-  /**
-   * Render all tabs (when they all fit).
-   */
-  private renderAllTabs(width: number): string {
+  private renderAllTabs(): string {
     const tabs: string[] = [];
-
     for (let i = 0; i < this.groups.length; i++) {
-      const group = this.groups[i]!;
+      const g = this.groups[i]!;
       const isActive = i === this.activeTabIndex;
-      const color = TAB_COLORS[i % TAB_COLORS.length]!;
+      const color = TAB_FG[i % TAB_FG.length]!;
+      const isLoading = this.groupLoading.get(g.id) ?? false;
+      const dot = isLoading ? this.fg("warning", "●") : "";
 
       if (isActive) {
-        tabs.push(`${color}${ansi.bold} ${group.icon} ${group.name} ${ansi.reset}`);
+        tabs.push(this.fg(color, this.bold(` ${g.icon} ${g.name} ${dot}`)));
       } else {
-        tabs.push(`${ansi.dim} ${group.icon} ${group.name} ${ansi.reset}`);
+        tabs.push(this.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
       }
     }
-
-    const tabStr = tabs.join(`${ansi.dim}│${ansi.reset}`);
-    const visLen = visibleWidth(tabStr);
-
-    // Truncate if too wide (shouldn't happen if maxTabs calculation is correct)
-    if (visLen > width - 2) {
-      return truncateToWidth(tabStr, width - 2);
-    }
-
-    return tabStr;
+    return tabs.join(this.fg("borderMuted", "│"));
   }
 
-  /**
-   * Render group content.
-   */
   private renderGroupContent(width: number, group: InfoGroup, data: GroupData): string[] {
     const lines: string[] = [];
+    const isLoading = this.groupLoading.get(group.id) ?? false;
     const visibleStats = infoRegistry.getVisibleStats(group.id);
 
     if (visibleStats.length === 0) {
-      lines.push(`  ${ansi.dim}No stats configured for this group.${ansi.reset}`);
+      lines.push(`  ${this.fg("dim", "No stats configured for this group.")}`);
       return lines;
     }
 
-    // Calculate label width for alignment
+    // If no data yet and loading, show placeholder per stat
+    if (Object.keys(data).length === 0 && isLoading) {
+      for (const stat of visibleStats) {
+        lines.push(`  ${this.fg("dim", `${stat.label}:`)} ${this.fg("warning", "···")}`);
+      }
+      return lines;
+    }
+
     const maxLabelLen = Math.max(...visibleStats.map((s) => s.label.length));
 
     for (const stat of visibleStats) {
@@ -486,16 +403,13 @@ export class InfoOverlay implements Component {
       const detail = statData?.detail;
 
       const label = `${stat.label}:`.padEnd(maxLabelLen + 1);
-      let line = `  ${ansi.dim}${label}${ansi.reset} ${ansi.bold}${value}${ansi.reset}`;
+      let line = `  ${this.fg("dim", label)} ${this.bold(value)}`;
 
-      // Handle multi-line detail
       if (detail) {
         const detailLines = detail.split("\n");
         if (detailLines.length === 1) {
-          // Single line detail - show inline
-          line += ` ${ansi.dim}(${detail})${ansi.reset}`;
+          line += ` ${this.fg("dim", `(${detail})`)}`;
         } else {
-          // Multiple lines - show value on first line, details indented below
           lines.push(line);
           for (const dLine of detailLines) {
             const indent = " ".repeat(maxLabelLen + 4);
@@ -509,7 +423,6 @@ export class InfoOverlay implements Component {
         }
       }
 
-      // Truncate if too wide
       if (visibleWidth(line) > width - 2) {
         line = truncateToWidth(line, width - 2);
       }
@@ -520,38 +433,50 @@ export class InfoOverlay implements Component {
     return lines;
   }
 
-  /**
-   * Render footer with navigation hints and scroll indicator.
-   */
-  private renderFooterWithScroll(width: number, totalLines: number, visibleHeight: number): string {
-    // Left side: scroll indicator
+  private renderFooter(width: number, totalLines: number, visibleHeight: number): string {
     const hasScroll = totalLines > visibleHeight;
     let scrollStr = "";
     if (hasScroll) {
-      scrollStr = `${ansi.dim}${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}${ansi.reset}`;
+      scrollStr = this.fg("dim", `${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}`);
     }
 
-    // Right side: navigation hints
+    // Last updated for active group
+    const group = this.groups[this.activeTabIndex];
+    const lastUp = infoRegistry.getLastUpdated(group?.id ?? "");
+    const age = lastUp > 0 ? humanizeAge(Date.now() - lastUp) : "loading…";
+
     const hints = [
-      `${ansi.cyan}←/→${ansi.reset} tabs`,
-      `${ansi.green}↑/↓${ansi.reset} scroll`,
-      `${ansi.red}q/Esc${ansi.reset} close`,
+      `${this.fg("accent", "←/→")} tabs`,
+      `${this.fg("success", "↑/↓")} scroll`,
+      `${this.fg("warning", "r")} refresh`,
+      `${this.fg("error", "q/Esc")} close`,
     ];
 
-    const hintStr = hints.join(`  ${ansi.dim}•${ansi.reset}  `);
-    const hintWidth = visibleWidth(hintStr);
-    const scrollWidth = visibleWidth(scrollStr);
+    const hintStr = hints.join(`  ${this.fg("borderMuted", "•")}  `);
 
-    // Calculate spacing
+    // Build right side: age + hints
+    const ageStr = this.fg("dim", `⏱ ${age}`);
+    const rightStr = `${ageStr}  ${this.fg("borderMuted", "│")}  ${hintStr}`;
+
+    const scrollW = visibleWidth(scrollStr);
+    const rightW = visibleWidth(rightStr);
     const gap = 4;
-    const totalWidth = scrollWidth + gap + hintWidth;
-    
-    if (totalWidth >= width - 2) {
-      // Too wide, just show hints
-      return truncateToWidth(hintStr, width - 2);
+    const totalW = scrollW + gap + rightW;
+
+    if (totalW >= width - 2) {
+      return truncateToWidth(rightStr, width - 2);
     }
 
-    const padding = " ".repeat(width - 2 - totalWidth);
-    return scrollStr + padding + hintStr;
+    const padding = " ".repeat(Math.max(0, width - 2 - totalW));
+    return scrollStr + padding + rightStr;
+  }
+
+  private wrapLines(lines: string[], innerWidth: number): string[] {
+    const wrapped: string[] = [];
+    for (const line of lines) {
+      if (!line) { wrapped.push(""); continue; }
+      wrapped.push(...wrapTextWithAnsi(line, Math.max(1, innerWidth)));
+    }
+    return wrapped;
   }
 }

@@ -1,39 +1,46 @@
-# Unipi — mise tasks for testing extensions in isolation
+# Unipi — mise tasks for testing
 #
-# Usage:
-#   mise run workspace          # Test workspace (info-screen) alone
-#   mise run memory             # Test memory alone
-#   mise run workspace+memory   # Test workspace + memory together
-#   mise run core               # All working extensions
-#   mise run ralph              # Test ralph alone
-#   mise run typecheck          # TypeScript type check
+# All-in-one:
+#   mise run core           # Full Unipi suite
+#
+# Individual (for debugging):
+#   mise run workflow
+#   mise run ralph
+#   mise run memory
+#   mise run info-screen
+#   mise run btw
+#   mise run subagents
+#
+# Utility:
+#   mise run typecheck
 
-[tasks.workspace]
-description = "Launch pi with info-screen only"
-run = "pi --no-extensions --no-skills -e packages/info-screen/index.ts"
+[tasks.core]
+description = "Launch pi with full Unipi suite"
+run = "pi --no-extensions --no-skills -e packages/core/extension.ts"
+
+[tasks.workflow]
+description = "Launch pi with workflow only"
+run = "pi --no-extensions --no-skills -e packages/workflow/index.ts"
+
+[tasks.ralph]
+description = "Launch pi with ralph only"
+run = "pi --no-extensions --no-skills -e packages/ralph/index.ts"
 
 [tasks.memory]
 description = "Launch pi with memory only"
 run = "pi --no-extensions --no-skills -e packages/memory/index.ts"
 
-[tasks."workspace+memory"]
-description = "Launch pi with info-screen + memory"
-run = "pi --no-extensions --no-skills -e packages/info-screen/index.ts -e packages/memory/index.ts"
+[tasks.info-screen]
+description = "Launch pi with info-screen only"
+run = "pi --no-extensions --no-skills -e packages/info-screen/index.ts"
 
-[tasks.core]
-description = "Launch pi with all working extensions"
-run = """
-pi --no-extensions --no-skills \
-    -e packages/info-screen/index.ts \
-    -e packages/memory/index.ts \
-    -e packages/ralph/index.ts \
-    -e packages/subagents/src/index.ts \
-    -e packages/workflow/index.ts
-"""
+[tasks.btw]
+description = "Launch pi with btw only"
+run = "pi --no-extensions --no-skills -e packages/btw/extensions/btw.ts"
 
-[tasks.ralph]
-description = "Launch pi with ralph only"
-run = "pi --no-extensions --no-skills -e packages/ralph/index.ts"
+[tasks.subagents]
+description = "Launch pi with subagents only"
+run = "pi --no-extensions --no-skills -e packages/subagents/src/index.ts"
 
 [tasks.typecheck]
 description = "Run TypeScript type check"
