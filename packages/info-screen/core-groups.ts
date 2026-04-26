@@ -375,16 +375,32 @@ export function registerCoreGroups(): void {
       const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
       const shortCwd = cwd.startsWith(homeDir) ? `~${cwd.slice(homeDir.length)}` : cwd;
 
-      const modules = getAnnouncedModules();
-      const moduleNames = modules.map((m) => m.name.replace(/^@[^/]+\//, ""));
+      // Get modules from announced events AND registered groups
+      const announced = getAnnouncedModules();
+      const registeredGroups = infoRegistry.getAllGroups();
+      
+      // Combine: announced modules + groups that aren't from announced modules
+      const moduleNames = new Set<string>();
+      for (const m of announced) {
+        moduleNames.add(m.name.replace(/^@[^/]+\//, ""));
+      }
+      // Add non-core groups as modules (they come from extensions)
+      const coreGroupIds = new Set(["overview", "usage", "tools", "extensions", "skills"]);
+      for (const g of registeredGroups) {
+        if (!coreGroupIds.has(g.id)) {
+          moduleNames.add(g.id);
+        }
+      }
+      
       const totalLoadTime = getTotalLoadTime();
+      const moduleList = Array.from(moduleNames);
 
       return {
         version: { value: getPiVersion(), detail: "pi" },
         cwd: { value: shortCwd },
         modules: {
-          value: String(modules.length),
-          detail: moduleNames.slice(0, 4).join(", ") + (moduleNames.length > 4 ? ` +${moduleNames.length - 4} more` : ""),
+          value: String(moduleList.length),
+          detail: moduleList.slice(0, 4).join(", ") + (moduleList.length > 4 ? ` +${moduleList.length - 4} more` : ""),
         },
         uptime: { value: formatUptime(process.uptime()) },
         loadTime: { value: `${totalLoadTime}ms` },

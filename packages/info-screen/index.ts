@@ -59,6 +59,7 @@ export default function (pi: ExtensionAPI) {
 
   // Listen for module announcements
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
+    console.debug(`[info-screen] MODULE_READY received:`, event.name);
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
       // Track the module
       trackModule(event.name, event.version || "unknown");
@@ -96,11 +97,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Session lifecycle
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     const settings = getInfoSettings();
 
-    // Show dashboard on boot if enabled
-    if (settings.showOnBoot) {
+    // Show dashboard only on initial startup, not on /new
+    if (settings.showOnBoot && event.reason === "startup") {
       // Wait for other modules to announce
       await waitForModules();
 
