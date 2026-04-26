@@ -1,0 +1,106 @@
+/**
+ * @unipi/core — Event type definitions for inter-module communication
+ *
+ * Modules announce presence via pi.events. Other modules listen and
+ * enable integration features when peers are detected.
+ */
+
+/** Event names emitted by unipi modules */
+export const UNIPI_EVENTS = {
+  /** Module loaded and ready */
+  MODULE_READY: "unipi:module:ready",
+  /** Module unloading */
+  MODULE_GONE: "unipi:module:gone",
+
+  /** Workflow command started */
+  WORKFLOW_START: "unipi:workflow:start",
+  /** Workflow command ended */
+  WORKFLOW_END: "unipi:workflow:end",
+
+  /** Ralph loop started */
+  RALPH_LOOP_START: "unipi:ralph:loop:start",
+  /** Ralph loop ended */
+  RALPH_LOOP_END: "unipi:ralph:loop:end",
+  /** Ralph loop iteration completed */
+  RALPH_ITERATION_DONE: "unipi:ralph:iteration:done",
+
+  /** Request module status (for info-screen) */
+  MODULE_STATUS_REQUEST: "unipi:module:status:request",
+  /** Module status response */
+  MODULE_STATUS_RESPONSE: "unipi:module:status:response",
+} as const;
+
+/** Payload for MODULE_READY / MODULE_GONE */
+export interface UnipiModuleEvent {
+  /** Module name, e.g. "@unipi/workflow" */
+  name: string;
+  /** Module version */
+  version: string;
+  /** Commands registered by this module */
+  commands: string[];
+  /** Tools registered by this module */
+  tools: string[];
+}
+
+/** Payload for WORKFLOW_START / WORKFLOW_END */
+export interface UnipiWorkflowEvent {
+  /** Command name, e.g. "brainstorm" */
+  command: string;
+  /** Full command with prefix, e.g. "/unipi:brainstorm" */
+  fullCommand: string;
+  /** Arguments passed to command */
+  args: string;
+  /** For WORKFLOW_END: whether it succeeded */
+  success?: boolean;
+  /** For WORKFLOW_END: duration in ms */
+  durationMs?: number;
+}
+
+/** Payload for RALPH_LOOP_START / RALPH_LOOP_END */
+export interface UnipiRalphLoopEvent {
+  /** Loop name */
+  name: string;
+  /** Current iteration */
+  iteration: number;
+  /** Max iterations (0 = unlimited) */
+  maxIterations: number;
+  /** Loop status */
+  status: "active" | "paused" | "completed";
+  /** For RALPH_LOOP_END: reason */
+  reason?: "completed" | "max_reached" | "cancelled" | "error";
+}
+
+/** Payload for RALPH_ITERATION_DONE */
+export interface UnipiRalphIterationEvent {
+  /** Loop name */
+  name: string;
+  /** Iteration that just completed */
+  iteration: number;
+  /** Next iteration number */
+  nextIteration: number;
+}
+
+/** Payload for MODULE_STATUS_REQUEST */
+export interface UnipiStatusRequestEvent {
+  /** Request ID for correlation */
+  requestId: string;
+}
+
+/** Payload for MODULE_STATUS_RESPONSE */
+export interface UnipiStatusResponseEvent {
+  /** Request ID this responds to */
+  requestId: string;
+  /** Module name */
+  name: string;
+  /** Module status data */
+  status: Record<string, unknown>;
+}
+
+/** Union of all unipi event payloads */
+export type UnipiEventPayload =
+  | UnipiModuleEvent
+  | UnipiWorkflowEvent
+  | UnipiRalphLoopEvent
+  | UnipiRalphIterationEvent
+  | UnipiStatusRequestEvent
+  | UnipiStatusResponseEvent;

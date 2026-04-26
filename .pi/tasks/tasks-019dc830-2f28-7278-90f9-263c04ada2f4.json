@@ -1,0 +1,17 @@
+{
+  "nextId": 2,
+  "tasks": [
+    {
+      "id": "1",
+      "subject": "Add .unipi/ directory convention to docs",
+      "description": "Establish convention that all runtime artifacts, generated docs, config live under .unipi/. Update README, create convention doc, update plan references.",
+      "status": "completed",
+      "activeForm": "Adding .unipi/ convention docs",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777180814100,
+      "updatedAt": 1777180917877
+    }
+  ]
+}

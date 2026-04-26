@@ -1,0 +1,32 @@
+{
+  "name": "@unipi/core",
+  "version": "0.1.0",
+  "description": "Shared utilities, event types, and constants for Unipi extension suite",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "unipi"
+  ],
+  "files": [
+    "*.ts",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

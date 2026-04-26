@@ -1,0 +1,77 @@
+{
+  "nextId": 8,
+  "tasks": [
+    {
+      "id": "2",
+      "subject": "Scaffold monorepo structure",
+      "description": "Create root package.json with npm workspaces, directory structure under packages/, .npmrc for @unipi scope, .gitignore",
+      "status": "completed",
+      "activeForm": "Scaffolding monorepo",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179071906,
+      "updatedAt": 1777179182507
+    },
+    {
+      "id": "3",
+      "subject": "Implement @unipi/core",
+      "description": "Create events.ts, constants.ts, utils.ts, index.ts for @unipi/core package. Event type definitions, shared constants, utility helpers.",
+      "status": "completed",
+      "activeForm": "Implementing @unipi/core",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179187266,
+      "updatedAt": 1777179274543
+    },
+    {
+      "id": "4",
+      "subject": "Implement @unipi/workflow extension",
+      "description": "Create index.ts with command registration for all 12 workflow commands. Commands dispatch to skills. Emits MODULE_READY event. Listens for ralph presence.",
+      "status": "completed",
+      "activeForm": "Implementing @unipi/workflow",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179278016,
+      "updatedAt": 1777179820551
+    },
+    {
+      "id": "5",
+      "subject": "Create workflow skills (12 SKILL.md files)",
+      "description": "Create SKILL.md files for: brainstorm, plan, work, review-work, consolidate, worktree-create, consultant, quick-work, gather-context, document, scan-issues, worktree-merge",
+      "status": "completed",
+      "activeForm": "Creating workflow skills",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179316920,
+      "updatedAt": 1777179417752
+    },
+    {
+      "id": "6",
+      "subject": "Implement @unipi/ralph",
+      "description": "Port pi-ralph-wiggum to unipi pattern. Add event emission (MODULE_READY, RALPH_LOOP_START/END). Create index.ts, ralph-loop.ts, tools.ts, SKILL.md.",
+      "status": "completed",
+      "activeForm": "Implementing @unipi/ralph",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179432991,
+      "updatedAt": 1777179560137
+    },
+    {
+      "id": "7",
+      "subject": "Create unipi meta-package and verify publish",
+      "description": "Create meta-package README, verify npm publish dry-run works for all packages.",
+      "status": "completed",
+      "activeForm": "Finalizing packages",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777179563205,
+      "updatedAt": 1777179820534
+    }
+  ]
+}

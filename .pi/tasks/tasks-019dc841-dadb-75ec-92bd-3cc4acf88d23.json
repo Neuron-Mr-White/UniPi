@@ -1,0 +1,29 @@
+{
+  "nextId": 19,
+  "tasks": [
+    {
+      "id": "17",
+      "subject": "Create sandbox module in @unipi/core",
+      "description": "Define sandbox levels (READ_ONLY, WRITE_UNIPI, FULL), map commands to levels, provide getToolsForCommand() function",
+      "status": "completed",
+      "activeForm": "Creating sandbox module",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777186344171,
+      "updatedAt": 1777186385589
+    },
+    {
+      "id": "18",
+      "subject": "Apply sandbox in workflow commands",
+      "description": "Call setActiveTools() when command starts, restore on end",
+      "status": "completed",
+      "activeForm": "Applying sandbox to commands",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777186344181,
+      "updatedAt": 1777186445019
+    }
+  ]
+}

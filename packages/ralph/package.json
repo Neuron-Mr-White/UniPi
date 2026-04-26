@@ -1,0 +1,45 @@
+{
+  "name": "@unipi/ralph",
+  "version": "0.1.0",
+  "description": "Long-running iterative development loops for Pi coding agent",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/ralph"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "unipi",
+    "ralph",
+    "loops"
+  ],
+  "files": [
+    "*.ts",
+    "SKILL.md",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./SKILL.md"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@unipi/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "unipi",
+  "version": "0.1.0",
+  "description": "All-in-one extension suite for Pi coding agent",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npx tsc --noEmit --skipLibCheck",
+    "publish:all": "npm publish --workspaces --access public"
+  },
+  "files": [
+    "packages/*/index.ts",
+    "packages/*/skills/**/*",
+    "packages/*/README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "node_modules/@unipi/workflow/index.ts",
+      "node_modules/@unipi/ralph/index.ts"
+    ],
+    "skills": [
+      "node_modules/@unipi/workflow/skills",
+      "node_modules/@unipi/ralph"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.0"
+  }
+}
