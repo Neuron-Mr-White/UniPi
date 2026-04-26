@@ -1,0 +1,86 @@
+/**
+ * @pi-unipi/subagents — Type definitions
+ */
+
+import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
+
+export type { ThinkingLevel };
+
+/** Agent type name: built-in or user-defined. */
+export type AgentType = string;
+
+/** Built-in agent type names. */
+export const BUILTIN_TYPES = ["explore", "work"] as const;
+
+/** Memory scope for persistent agent memory. */
+export type MemoryScope = "user" | "project" | "local";
+
+/** Unified agent configuration. */
+export interface AgentConfig {
+  name: string;
+  displayName?: string;
+  description: string;
+  builtinToolNames?: string[];
+  disallowedTools?: string[];
+  extensions: true | string[] | false;
+  skills: true | string[] | false;
+  model?: string;
+  thinking?: ThinkingLevel;
+  maxTurns?: number;
+  systemPrompt: string;
+  promptMode: "replace" | "append";
+  inheritContext?: boolean;
+  runInBackground?: boolean;
+  isolated?: boolean;
+  memory?: MemoryScope;
+  isDefault?: boolean;
+  enabled?: boolean;
+  source?: "builtin" | "project" | "global";
+}
+
+/** Agent record — tracks a running agent. */
+export interface AgentRecord {
+  id: string;
+  type: AgentType;
+  description: string;
+  status: "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
+  result?: string;
+  error?: string;
+  toolUses: number;
+  startedAt: number;
+  completedAt?: number;
+  session?: AgentSession;
+  abortController?: AbortController;
+  promise?: Promise<string>;
+  /** Set when result consumed via get_result — suppresses notification. */
+  resultConsumed?: boolean;
+  /** Files locked by this agent. */
+  lockedFiles: Set<string>;
+}
+
+/** File lock entry. */
+export interface FileLockEntry {
+  agentId: string;
+  filePath: string;
+  promise: Promise<void>;
+  release: () => void;
+}
+
+/** Extension config. */
+export interface SubagentsConfig {
+  maxConcurrent: number;
+  enabled: boolean;
+  types: Record<string, { enabled?: boolean }>;
+}
+
+/** Agent activity for widget display. */
+export interface AgentActivity {
+  activeTools: Map<string, string>;
+  toolUses: number;
+  turnCount: number;
+  maxTurns?: number;
+  tokens: string;
+  responseText: string;
+  session?: AgentSession;
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@pi-unipi/subagents",
+  "version": "0.1.0",
+  "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*",
+    "@pi-unipi/workflow": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  }
+}
