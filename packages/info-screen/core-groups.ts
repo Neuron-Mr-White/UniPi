@@ -322,8 +322,10 @@ export function setPiApi(api: any): void {
  * Add a module to the announced list.
  */
 export function trackModule(name: string, version: string): void {
+
   if (!announcedModules.find((m) => m.name === name)) {
     announcedModules.push({ name, version });
+  
   }
 }
 
@@ -331,6 +333,7 @@ export function trackModule(name: string, version: string): void {
  * Get list of announced modules.
  */
 export function getAnnouncedModules(): Array<{ name: string; version: string }> {
+
   return [...announcedModules];
 }
 

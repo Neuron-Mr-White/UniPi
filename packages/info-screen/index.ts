@@ -59,11 +59,13 @@ export default function (pi: ExtensionAPI) {
 
   // Listen for module announcements
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
-    console.debug(`[info-screen] MODULE_READY received:`, event.name);
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
       // Track the module
       trackModule(event.name, event.version || "unknown");
       recordLoadTime(event.name, "module", event.loadTimeMs);
+
+      // Invalidate overview cache so next render shows updated modules
+      infoRegistry.invalidateCache("overview");
 
       // Track tools from this module
       if (event.tools && Array.isArray(event.tools)) {
@@ -110,6 +112,7 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const overlay = new InfoOverlay();
           overlay.onClose = () => done(undefined);
+          overlay.requestRender = () => tui.requestRender();
           // Return three-method object as per pi-tui docs
           return {
             render: (w: number) => overlay.render(w),
@@ -152,6 +155,7 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const overlay = new InfoOverlay();
           overlay.onClose = () => done(undefined);
+          overlay.requestRender = () => tui.requestRender();
           return {
             render: (w: number) => overlay.render(w),
             invalidate: () => overlay.invalidate(),

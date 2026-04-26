@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
     projectStorage = new MemoryStorage(projectName);
     projectStorage.init();
 
-    console.debug("[memory] Emitting MODULE_READY");
+
     // Announce module
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.MEMORY,

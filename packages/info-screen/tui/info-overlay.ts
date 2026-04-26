@@ -54,6 +54,7 @@ export class InfoOverlay implements Component {
   onClose?: () => void;
 
   constructor() {
+    // Start loading data immediately
     this.loadData();
   }
 
@@ -69,6 +70,8 @@ export class InfoOverlay implements Component {
    */
   private async loadData(): Promise<void> {
     this.loading = true;
+    // Wait a bit for modules to announce before fetching groups
+    await new Promise(r => setTimeout(r, 500));
     // Always re-fetch ALL groups to catch late registrations
     this.groups = infoRegistry.getAllGroups();
     
@@ -145,6 +148,7 @@ export class InfoOverlay implements Component {
    * Render the component.
    */
   render(width: number): string[] {
+    // While loading, show loading state
     if (this.loading) {
       return this.renderLoading(width);
     }
@@ -199,6 +203,11 @@ export class InfoOverlay implements Component {
   }
 
   /**
+   * Callback set by wrapper to trigger re-render.
+   */
+  requestRender?: () => void;
+
+  /**
    * Refresh data for all groups (non-blocking).
    */
   private refreshAllData(): void {
@@ -207,7 +216,14 @@ export class InfoOverlay implements Component {
       infoRegistry.invalidateCache(group.id);
       // Fetch fresh data (non-blocking)
       infoRegistry.getGroupData(group.id).then(data => {
+        const old = this.groupData.get(group.id);
+        const oldStr = JSON.stringify(old);
+        const newStr = JSON.stringify(data);
         this.groupData.set(group.id, data);
+        // Trigger re-render if data changed
+        if (oldStr !== newStr && this.requestRender) {
+          this.requestRender();
+        }
       }).catch(() => {
         // Ignore errors
       });
