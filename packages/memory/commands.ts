@@ -7,6 +7,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { MemoryStorage, searchAllProjects, listAllProjects } from "./storage.js";
+import { showMemorySettings } from "./tui/settings-tui.js";
+import { isEmbeddingReady, hasModelChanged, loadEmbeddingConfig } from "./settings.js";
 
 /**
  * Register memory commands.
@@ -173,6 +175,30 @@ For each item, use the memory_store tool to save it with an appropriate title an
         `All memories across ${grouped.size} projects (${memories.length} total):${output}`,
         "info"
       );
+    },
+  });
+
+  // --- /unipi:memory-settings ---
+  pi.registerCommand("unipi:memory-settings", {
+    description: "Configure embedding provider and model for vector search",
+    handler: async (_args, ctx) => {
+      // Quick status if called with no TUI
+      if (!ctx.hasUI) {
+        const config = loadEmbeddingConfig();
+        const ready = isEmbeddingReady();
+        const migrated = hasModelChanged();
+        ctx.ui.notify(
+          `Embedding: ${ready ? "✓ Ready" : "✗ Not configured"}\n` +
+          `Provider: ${config.provider}\n` +
+          `Model: ${config.model}\n` +
+          `Dimensions: ${config.dimensions}\n` +
+          (migrated ? "⚠ Model changed — re-embed needed" : ""),
+          "info"
+        );
+        return;
+      }
+
+      await showMemorySettings(pi);
     },
   });
 }

@@ -9,7 +9,6 @@ allowed-tools:
   - memory_search
   - memory_delete
   - memory_list
-  - global_memory_store
   - global_memory_search
   - global_memory_list
   - read
@@ -87,16 +86,18 @@ memory_list()
 memory_delete(title: "auth_jwt_prefer_refresh_tokens")
 ```
 
-## Project vs Cross-Project Search
+## Search Scope
 
-| Action | Scope | Tools |
-|--------|-------|-------|
+`memory_search` searches ALL projects by default. Use `scope` param to narrow:
+
+| Action | Scope | Tool |
+|--------|-------|------|
 | **Store** | Always project-scoped | `memory_store` |
-| **Search this project** | Current project only | `memory_search` |
-| **Search all projects** | Cross-project | `global_memory_search` |
+| **Search all projects** | Cross-project (default) | `memory_search(query)` or `memory_search(query, scope="all")` |
+| **Search this project** | Current project only | `memory_search(query, scope="project")` |
 | **List all** | Cross-project | `global_memory_list` |
 
-**All memories are project-scoped.** When you store a memory, it belongs to the current project. Use `global_memory_search` to search across ALL projects when looking for past work or user preferences.
+**All memories are project-scoped.** When you store a memory, it belongs to the current project. `memory_search` searches everything by default — no need to call a separate global search.
 
 ## Update-First Principle
 
@@ -108,7 +109,27 @@ memory_delete(title: "auth_jwt_prefer_refresh_tokens")
 
 This prevents memory duplication and keeps memory clean.
 
-## Consolidation
+## Vector Search (Embeddings)
+
+Memory supports vector similarity search via OpenRouter API.
+
+### Setup
+1. Run `/unipi:memory-settings`
+2. Add your OpenRouter API key
+3. Select embedding model (default: `openai/text-embedding-3-small`)
+
+### How it works
+- Embeddings are generated when storing/searching memories
+- Search combines **vector similarity** + **fuzzy text matching** for best results
+- Vector search finds semantically similar memories even without exact keyword matches
+
+### Model compatibility
+⚠ **Different embedding models produce incompatible vectors.**
+If you switch models, existing embeddings won't match new searches.
+Use `/unipi:memory-settings` → "Re-embed All Memories" to fix.
+
+### No API key?
+Falls back to fuzzy text-only search. Still works, just less semantic.
 
 When the user runs `/unipi:memory-consolidate` or during compaction:
 
@@ -149,3 +170,4 @@ You can read these files directly with the `read` tool for full context.
 | Use vague titles | Use specific `<category>_<detail>` format |
 | Store in wrong scope | Project-specific = project scope, universal = global |
 | Forget to update | When context changes, update the memory |
+| Switch embedding models without re-embedding | Re-embed or accept fuzzy-only fallback |

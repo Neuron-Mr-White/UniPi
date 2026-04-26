@@ -53,13 +53,13 @@
       "id": "5",
       "subject": "Push to GitHub and publish to npm",
       "description": "Commit all changes, push to GitHub, and publish updated packages to npm",
-      "status": "in_progress",
+      "status": "completed",
       "activeForm": "Pushing and publishing",
       "metadata": {},
       "blocks": [],
       "blockedBy": [],
       "createdAt": 1777215629846,
-      "updatedAt": 1777215726624
+      "updatedAt": 1777215832277
     }
   ]
 }

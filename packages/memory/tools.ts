@@ -23,28 +23,34 @@ export const MEMORY_TOOLS = {
   SEARCH: "memory_search",
   DELETE: "memory_delete",
   LIST: "memory_list",
-  GLOBAL_SEARCH: "global_memory_search",
   GLOBAL_LIST: "global_memory_list",
 } as const;
 
+// Keep old name as alias for backward compat
+export const GLOBAL_SEARCH_ALIAS = "global_memory_search";
+
 /**
  * Register memory tools.
+ * @param onActivity - called when recall/store happens (marks lifecycle state)
  */
 export function registerMemoryTools(
   pi: ExtensionAPI,
-  getStorage: () => MemoryStorage
+  getStorage: () => MemoryStorage,
+  onActivity?: () => void
 ): void {
   // --- memory_store tool ---
   pi.registerTool({
     name: MEMORY_TOOLS.STORE,
     label: "Store Memory",
     description:
-      "Store or update a memory for cross-session recall. Use for user preferences, project decisions, code patterns, and conversation summaries.",
+      "IMPORTANT: Call at the END of every non-trivial task to save what you learned. " +
+      "Store or update a memory for cross-session recall — user preferences, project decisions, " +
+      "code patterns, and conversation summaries. Update existing memories instead of creating duplicates.",
     promptSnippet: "Store a memory for cross-session recall.",
     promptGuidelines: [
-      "Use memory_store to remember important user preferences, decisions, patterns, or summaries.",
-      "Memory is scoped to the current project.",
-      "Update existing memories instead of creating duplicates.",
+      "IMPORTANT: Always call memory_store when you learn something non-obvious.",
+      "Search for existing similar memories first — update if found, create if not.",
+      "Memory is scoped to the current project. Use for decisions, preferences, patterns, summaries.",
     ],
     parameters: Type.Object({
       title: Type.String({
@@ -64,6 +70,7 @@ export function registerMemoryTools(
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const storage = getStorage();
+      onActivity?.(); // Mark store as done for lifecycle
 
       // Check if similar memory exists
       const existing = storage.getByTitle(params.title);
@@ -127,63 +134,112 @@ export function registerMemoryTools(
     },
   });
 
-  // --- memory_search tool ---
+  // --- memory_search tool (unified: searches all projects by default) ---
   pi.registerTool({
     name: MEMORY_TOOLS.SEARCH,
     label: "Search Memory",
     description:
-      "Search current project memories by keyword. Returns ranked results with snippets.",
-    promptSnippet: "Search project memories for relevant context.",
+      "IMPORTANT: Call BEFORE starting work to check for existing context. " +
+      "Searches memories by keyword. Searches ALL projects by default — returns results with " +
+      "[project_name] prefix. Use scope='project' to limit to current project only.",
+    promptSnippet: "Search memories for relevant context before starting work.",
     promptGuidelines: [
-      "Use memory_search before making decisions when you suspect past work exists.",
+      "IMPORTANT: Always call memory_search before making decisions when you suspect past work exists.",
+      "Searches all projects by default — no need to call a separate global search.",
       "Search for user preferences when setting up new features.",
       "Search for patterns when implementing similar functionality.",
-      "Use global_memory_search to search across ALL projects.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       limit: Type.Optional(
         Type.Number({ description: "Max results (default 10)", default: 10 })
       ),
+      scope: Type.Optional(
+        Type.String({
+          description: "Search scope: 'all' (default, searches all projects) or 'project' (current project only)",
+          enum: ["all", "project"],
+          default: "all",
+        })
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const storage = getStorage();
+      onActivity?.(); // Mark recall as done for lifecycle
+      const limit = params.limit || 10;
+      const scope = (params as any).scope || "all";
 
-      const embedding = await generateEmbedding(params.query, pi);
+      if (scope === "project") {
+        // Project-only search (original behavior)
+        const storage = getStorage();
+        const results = storage.search(params.query, limit);
 
-      const results = hybridSearch(
-        storage,
-        params.query,
-        params.limit || 10,
-        embedding
-      );
+        if (results.length === 0) {
+          return {
+            content: [{ type: "text", text: `No memories found for: "${params.query}"` }],
+            details: { results: [] },
+          };
+        }
+
+        const output = results
+          .map((r, i) => `${i + 1}. **${r.record.title}** (${r.record.type})\n   ${r.snippet}`)
+          .join("\n\n");
+
+        return {
+          content: [{ type: "text", text: `Found ${results.length} memories:\n\n${output}` }],
+          details: { results: results.map((r) => r.record.id) },
+        };
+      }
+
+      // Default: search ALL projects
+      const results = searchAllProjects(params.query, limit);
 
       if (results.length === 0) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `No memories found for: "${params.query}"`,
-            },
-          ],
+          content: [{ type: "text", text: `No memories found across projects for: "${params.query}"` }],
           details: { results: [] },
         };
       }
 
       const output = results
-        .map(
-          (r, i) =>
-            `${i + 1}. **${r.record.title}** (${r.record.type})\n   ${r.snippet}`
-        )
+        .map((r, i) => `${i + 1}. [${r.record.project}] **${r.record.title}** (${r.record.type})\n   ${r.snippet}`)
         .join("\n\n");
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `Found ${results.length} memories:\n\n${output}`,
-          },
-        ],
+        content: [{ type: "text", text: `Found ${results.length} memories across projects:\n\n${output}` }],
+        details: { results: results.map((r) => r.record.id) },
+      };
+    },
+  });
+
+  // --- global_memory_search alias (backward compat, delegates to memory_search) ---
+  pi.registerTool({
+    name: GLOBAL_SEARCH_ALIAS,
+    label: "Search All Projects",
+    description:
+      "Alias for memory_search with scope='all'. Searches memories across ALL projects.",
+    promptSnippet: "Search memories across all projects.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Search query" }),
+      limit: Type.Optional(
+        Type.Number({ description: "Max results (default 10)", default: 10 })
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate) {
+      onActivity?.();
+      const results = searchAllProjects(params.query, params.limit || 10);
+
+      if (results.length === 0) {
+        return {
+          content: [{ type: "text", text: `No memories found across projects for: "${params.query}"` }],
+          details: { results: [] },
+        };
+      }
+
+      const output = results
+        .map((r, i) => `${i + 1}. [${r.record.project}] **${r.record.title}** (${r.record.type})\n   ${r.snippet}`)
+        .join("\n\n");
+
+      return {
+        content: [{ type: "text", text: `Found ${results.length} memories across projects:\n\n${output}` }],
         details: { results: results.map((r) => r.record.id) },
       };
     },
@@ -257,55 +313,7 @@ export function registerMemoryTools(
     },
   });
 
-  // --- global_memory_search tool ---
-  pi.registerTool({
-    name: MEMORY_TOOLS.GLOBAL_SEARCH,
-    label: "Search All Projects",
-    description: "Search memories across ALL projects. Returns results with project names.",
-    promptSnippet: "Search memories across all projects.",
-    promptGuidelines: [
-      "Use global_memory_search when looking for memories from other projects.",
-      "Returns results with [project_name] prefix to identify source.",
-    ],
-    parameters: Type.Object({
-      query: Type.String({ description: "Search query" }),
-      limit: Type.Optional(
-        Type.Number({ description: "Max results (default 10)", default: 10 })
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const results = searchAllProjects(params.query, params.limit || 10);
 
-      if (results.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `No memories found across projects for: "${params.query}"`,
-            },
-          ],
-          details: { results: [] },
-        };
-      }
-
-      const output = results
-        .map(
-          (r, i) =>
-            `${i + 1}. [${r.record.project}] **${r.record.title}** (${r.record.type})\n   ${r.snippet}`
-        )
-        .join("\n\n");
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Found ${results.length} memories across projects:\n\n${output}`,
-          },
-        ],
-        details: { results: results.map((r) => r.record.id) },
-      };
-    },
-  });
 
   // --- global_memory_list tool ---
   pi.registerTool({

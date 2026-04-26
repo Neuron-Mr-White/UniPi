@@ -26,8 +26,9 @@ import {
   searchAllProjects,
   listAllProjects,
 } from "./storage.js";
-import { registerMemoryTools, MEMORY_TOOLS } from "./tools.js";
+import { registerMemoryTools, MEMORY_TOOLS, GLOBAL_SEARCH_ALIAS } from "./tools.js";
 import { registerMemoryCommands } from "./commands.js";
+import { isEmbeddingReady, hasModelChanged } from "./settings.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
@@ -47,6 +48,10 @@ function getStorage(): MemoryStorage {
 }
 
 export default function (pi: ExtensionAPI) {
+  // Lifecycle state — tracks whether recall/store have happened this session
+  let recallDone = false;
+  let storeDone = false;
+
   // Register skills directory
   const skillsDir = new URL("./skills", import.meta.url).pathname;
   pi.on("resources_discover", async (_event, _ctx) => {
@@ -56,11 +61,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Register tools and commands
-  registerMemoryTools(pi, getStorage);
+  registerMemoryTools(pi, getStorage, () => { recallDone = true; storeDone = true; });
   registerMemoryCommands(pi, getStorage);
 
   // Session lifecycle
   pi.on("session_start", async (_event, ctx) => {
+    // Reset lifecycle flags
+    recallDone = false;
+    storeDone = false;
+
     // Initialize project storage
     const projectName = getProjectName(ctx.cwd);
     projectStorage = new MemoryStorage(projectName);
@@ -78,13 +87,14 @@ export default function (pi: ExtensionAPI) {
         "unipi:memory-forget",
         "unipi:global-memory-search",
         "unipi:global-memory-list",
+        "unipi:memory-settings",
       ],
       tools: [
         MEMORY_TOOLS.STORE,
         MEMORY_TOOLS.SEARCH,
         MEMORY_TOOLS.DELETE,
         MEMORY_TOOLS.LIST,
-        MEMORY_TOOLS.GLOBAL_SEARCH,
+        GLOBAL_SEARCH_ALIAS,
         MEMORY_TOOLS.GLOBAL_LIST,
       ],
     });
@@ -146,59 +156,76 @@ export default function (pi: ExtensionAPI) {
       const projectCount = projectStorage.listAll().length;
       const allMemories = listAllProjects();
       const projectCountAll = allMemories.length;
+      const vecReady = isEmbeddingReady();
+      const vecIcon = vecReady ? "⚡" : "📝";
       ctx.ui.setStatus(
         "unipi-memory",
-        `🧠 memory ${projectCount}p/${projectCountAll}all`
+        `${vecIcon} memory ${projectCount}p/${projectCountAll}all${hasModelChanged() ? " ⚠" : ""}`
       );
     }
   });
 
-  // Inject memory titles at session start
+  // Inject memory recall reminder at agent start (hidden message, not system prompt)
   pi.on("before_agent_start", async (event, ctx) => {
+    if (recallDone) return;
     if (!projectStorage) return;
 
     const projectName = getProjectName(ctx.cwd);
     const projectMemories = projectStorage.listAll();
 
     if (projectMemories.length === 0) {
-      return; // No memories to inject
-    }
-
-    let injection = "\n\n<memory>\n";
-    injection += `Available memories for project "${projectName}":\n\n`;
-
-    // Project memories
-    for (const m of projectMemories) {
-      injection += `- ${m.title}\n`;
-    }
-
-    injection += "\nUse memory_search to retrieve full content. Use memory_store to save new memories.\n";
-    injection += "Use global_memory_search to search across ALL projects.\n";
-    injection += "</memory>";
-
-    return {
-      systemPrompt: event.systemPrompt + injection,
-    };
-  });
-
-  // Auto-consolidation on compaction
-  pi.on("session_before_compact", async (event, ctx) => {
-    const { preparation } = event;
-
-    // Extract summary text
-    const summary = preparation.previousSummary || "";
-
-    if (!summary || summary.length < 100) {
-      // Summary too short to extract memories from
+      recallDone = true; // Nothing to recall, skip
       return;
     }
 
-    // For now, just log that consolidation would happen
-    // Future: Use LLM to extract memories
-    console.log("[unipi/memory] Auto-consolidation triggered, summary length:", summary.length);
+    const titleList = projectMemories.slice(0, 20).map(m => `- ${m.title}`).join("\n");
+    const extra = projectMemories.length > 20 ? `\n... and ${projectMemories.length - 20} more` : "";
 
-    // Don't modify the compaction summary - return unchanged
-    return {};
+    return {
+      message: {
+        customType: "unipi-memory-recall-reminder",
+        content: [
+          "## 🧠 Memory System Active",
+          "",
+          `You have ${projectMemories.length} memories stored for project "${projectName}".`,
+          "**BEFORE starting work**, call `memory_search` with relevant keywords to check for existing context.",
+          "",
+          "Available memories:",
+          titleList + extra,
+          "",
+          "**AFTER completing the task**, if you learned something non-obvious,",
+          "call `memory_store` to save it for future sessions.",
+          "",
+          "Guardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+        ].join("\n"),
+        display: false,
+      },
+    };
+  });
+
+  // After each agent response, remind LLM to save if it hasn't yet
+  pi.on("agent_end", async (_event, _ctx) => {
+    if (storeDone || !recallDone) return;
+
+    pi.sendMessage(
+      {
+        customType: "unipi-memory-retro-reminder",
+        content: [
+          "**🧠 Memory reminder:** If you learned something non-obvious in this task,",
+          "call `memory_store` to save it as a memory for future sessions.",
+          "Update existing memories instead of creating duplicates.",
+        ].join(" "),
+        display: false,
+      },
+      {
+        deliverAs: "nextTurn",
+      },
+    );
+  });
+
+  // After compaction, reset recall state so reminder re-injects
+  pi.on("session_compact", async (_event, _ctx) => {
+    recallDone = false;
   });
 
   // Cleanup on shutdown
