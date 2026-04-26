@@ -62,8 +62,9 @@ export class InfoOverlay implements Component {
    */
   private async loadData(): Promise<void> {
     this.loading = true;
-    // Re-fetch groups in case new ones registered since construction
+    // Always re-fetch groups to catch late registrations
     this.groups = infoRegistry.getGroups();
+    console.debug(`[info-screen] loadData: ${this.groups.length} groups`);
 
     try {
       // Load data for all groups in parallel
@@ -122,6 +123,15 @@ export class InfoOverlay implements Component {
 
     if (this.error) {
       return this.renderError(width);
+    }
+
+    // Re-check groups on each render in case new ones registered
+    const currentGroups = infoRegistry.getGroups();
+    if (currentGroups.length !== this.groups.length) {
+      console.debug(`[info-screen] Groups changed: ${this.groups.length} -> ${currentGroups.length}`);
+      this.groups = currentGroups;
+      // Reload data for new groups
+      this.loadData();
     }
 
     if (this.groups.length === 0) {
