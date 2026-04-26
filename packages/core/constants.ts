@@ -16,18 +16,18 @@ export const UNIPI_SETTINGS_KEY = "unipi" as const;
 
 /** Module names */
 export const MODULES = {
-  CORE: "@unipi/core",
-  WORKFLOW: "@unipi/workflow",
-  RALPH: "@unipi/ralph",
-  SUBAGENTS: "@unipi/subagents",
-  MEMORY: "@unipi/memory",
-  REGISTRY: "@unipi/registry",
-  MCP: "@unipi/mcp",
-  TASK: "@unipi/task",
-  WEBTOOLS: "@unipi/webtools",
+  CORE: "@pi-unipi/core",
+  WORKFLOW: "@pi-unipi/workflow",
+  RALPH: "@pi-unipi/ralph",
+  SUBAGENTS: "@pi-unipi/subagents",
+  MEMORY: "@pi-unipi/memory",
   INFO_SCREEN: "@pi-unipi/info-screen",
-  IMPECCABLE: "@unipi/impeccable",
-  SETTINGS: "@unipi/settings",
+  REGISTRY: "@pi-unipi/registry",
+  MCP: "@pi-unipi/mcp",
+  TASK: "@pi-unipi/task",
+  WEBTOOLS: "@pi-unipi/webtools",
+  IMPECCABLE: "@pi-unipi/impeccable",
+  SETTINGS: "@pi-unipi/settings",
 } as const;
 
 /** Workflow command names */

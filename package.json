@@ -33,15 +33,15 @@
   ],
   "pi": {
     "extensions": [
-      "node_modules/@unipi/workflow/index.ts",
-      "node_modules/@unipi/ralph/index.ts",
-      "node_modules/@unipi/memory/index.ts",
+      "node_modules/@pi-unipi/workflow/index.ts",
+      "node_modules/@pi-unipi/ralph/index.ts",
+      "node_modules/@pi-unipi/memory/index.ts",
       "node_modules/@pi-unipi/info-screen/index.ts"
     ],
     "skills": [
-      "node_modules/@unipi/workflow/skills",
-      "node_modules/@unipi/ralph",
-      "node_modules/@unipi/memory/skills"
+      "node_modules/@pi-unipi/workflow/skills",
+      "node_modules/@pi-unipi/ralph/SKILL.md",
+      "node_modules/@pi-unipi/memory/skills"
     ]
   },
   "peerDependencies": {
@@ -51,7 +51,12 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "@pi-unipi/memory": "*"
+    "@pi-unipi/core": "*",
+    "@pi-unipi/workflow": "*",
+    "@pi-unipi/ralph": "*",
+    "@pi-unipi/memory": "*",
+    "@pi-unipi/info-screen": "*",
+    "@pi-unipi/subagents": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

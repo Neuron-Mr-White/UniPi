@@ -9,43 +9,116 @@ All-in-one extension suite for the [Pi coding agent](https://github.com/badlogic
 pi install npm:unipi
 ```
 
-**Granular:**
+**Individual packages:**
 ```bash
-pi install npm:@unipi/workflow
-pi install npm:@unipi/ralph
+pi install npm:@pi-unipi/core
+pi install npm:@pi-unipi/workflow
+pi install npm:@pi-unipi/ralph
+pi install npm:@pi-unipi/memory
+pi install npm:@pi-unipi/info-screen
+pi install npm:@pi-unipi/subagents
 ```
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| `@unipi/core` | Shared utilities, event types, constants |
-| `@unipi/workflow` | Structured development workflow commands |
-| `@unipi/ralph` | Long-running iterative development loops |
-| `unipi` | Meta-package — installs all of the above |
+| `@pi-unipi/core` | Shared utilities, event types, constants |
+| `@pi-unipi/workflow` | 13 structured development workflow commands |
+| `@pi-unipi/ralph` | Long-running iterative development loops |
+| `@pi-unipi/memory` | Persistent cross-session memory with vector search |
+| `@pi-unipi/info-screen` | Dashboard and module registry overlay |
+| `@pi-unipi/subagents` | Parallel sub-agent execution with file locking |
 
 ## Commands
 
-All commands use `/unipi:` prefix:
+### Workflow (`/unipi:*`)
 
-| Command | Package | Description |
-|---------|---------|-------------|
-| `/unipi:brainstorm` | workflow | Collaborative discovery |
-| `/unipi:plan` | workflow | Strategic planning |
-| `/unipi:work` | workflow | Execute plan |
-| `/unipi:review-work` | workflow | Review what was built |
-| `/unipi:consolidate` | workflow | Merge findings |
-| `/unipi:worktree-create` | workflow | Create git worktree |
-| `/unipi:consultant` | workflow | Expert panel review |
-| `/unipi:quick-work` | workflow | Fast single-task execution |
-| `/unipi:gather-context` | workflow | Research codebase |
-| `/unipi:document` | workflow | Generate docs |
-| `/unipi:scan-issues` | workflow | Find bugs, anti-patterns |
-| `/unipi:worktree-merge` | workflow | Merge worktree back |
+| Command | Description |
+|---------|-------------|
+| `/unipi:brainstorm` | Collaborative discovery |
+| `/unipi:plan` | Strategic planning |
+| `/unipi:work` | Execute plan in worktree |
+| `/unipi:review-work` | Review what was built |
+| `/unipi:consolidate` | Merge findings, update docs |
+| `/unipi:worktree-create` | Create git worktree |
+| `/unipi:worktree-list` | List all worktrees |
+| `/unipi:worktree-merge` | Merge worktree back |
+| `/unipi:consultant` | Expert panel review |
+| `/unipi:quick-work` | Fast single-task execution |
+| `/unipi:gather-context` | Research codebase |
+| `/unipi:document` | Generate documentation |
+| `/unipi:scan-issues` | Find bugs, anti-patterns |
+
+### Ralph (`/unipi:ralph`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:ralph start <name>` | Start a loop |
+| `/unipi:ralph stop` | Pause current loop |
+| `/unipi:ralph resume <name>` | Resume a paused loop |
+| `/unipi:ralph status` | Show all loops |
+| `/unipi:ralph cancel <name>` | Delete loop state |
+| `/unipi:ralph archive <name>` | Archive completed loop |
+| `/unipi:ralph clean` | Clean completed loops |
+| `/unipi:ralph nuke` | Delete all ralph data |
+
+### Memory (`/unipi:*-memory-*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:memory-process <text>` | Store extracted memories |
+| `/unipi:memory-search <term>` | Search project memories |
+| `/unipi:memory-consolidate` | Consolidate session into memory |
+| `/unipi:memory-forget <title>` | Delete a memory |
+| `/unipi:global-memory-search <term>` | Search global memories |
+| `/unipi:global-memory-list` | List all global memories |
+
+### Info Screen (`/unipi:info*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:info` | Show info dashboard |
+| `/unipi:info-settings` | Configure info display |
+
+### Tools
+
+| Tool | Package | Description |
+|------|---------|-------------|
+| `ralph_start` | ralph | Start a ralph loop |
+| `ralph_done` | ralph | Signal iteration complete |
+| `spawn_helper` | subagents | Spawn parallel sub-agent |
+| `get_helper_result` | subagents | Retrieve background agent result |
+| `memory_store` | memory | Store/update memory |
+| `memory_search` | memory | Search project memories |
+| `memory_delete` | memory | Delete memory by ID |
+| `memory_list` | memory | List project memories |
+| `global_memory_search` | memory | Search global memories |
+| `global_memory_list` | memory | List global memories |
+
+## How It Works
+
+**Core** provides shared infrastructure — event types, constants, utilities — so modules discover each other without tight coupling.
+
+**Workflow** provides 13 commands guiding work from idea to completion via brainstorm → plan → work → review → consolidate.
+
+**Ralph** enables long-running iterative tasks. Start a loop, the agent works through iterations, reflects periodically, and completes when done.
+
+**Memory** provides persistent cross-session memory with SQLite + vector search. Project-scoped and global memories with hybrid search.
+
+**Info Screen** is a dashboard overlay showing module status, registered tools, and custom groups from all modules.
+
+**Subagents** enables parallel execution with file locking, activity tracking, and custom agent types.
+
+## Module Discovery
+
+Modules announce presence via `pi.events`. When `@pi-unipi/workflow` detects `@pi-unipi/ralph`, it enables loop integration. Each module works standalone.
 
 ## Development
 
 ```bash
+git clone https://github.com/Neuron-Mr-White/unipi.git
+cd unipi
 npm install
 npm run typecheck
 ```

@@ -45,7 +45,7 @@
     "better-sqlite3": "^12.9.0",
     "sqlite-vec": "^0.1.9",
     "js-yaml": "^4.1.0",
-    "@unipi/core": "*",
+    "@pi-unipi/core": "*",
     "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {

@@ -1,11 +1,11 @@
-# @unipi/core
+# @pi-unipi/core
 
 Shared utilities, event types, and constants for the [Unipi](https://github.com/Neuron-Mr-White/unipi) extension suite.
 
 ## Install
 
 ```bash
-pi install npm:@unipi/core
+pi install npm:@pi-unipi/core
 ```
 
 Or as part of the full suite:
@@ -16,7 +16,7 @@ pi install npm:unipi
 ## Usage
 
 ```typescript
-import { UNIPI_EVENTS, MODULES, sanitize, emitEvent } from "@unipi/core";
+import { UNIPI_EVENTS, MODULES, sanitize, emitEvent } from "@pi-unipi/core";
 
 // Emit module ready event
 emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {

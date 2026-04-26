@@ -17,7 +17,7 @@ import {
   initUnipiDirs,
   type SandboxLevel,
   getToolsForLevel,
-} from "@unipi/core";
+} from "@pi-unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
 
 /** Package version (read from package.json at load time) */

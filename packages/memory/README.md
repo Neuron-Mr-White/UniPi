@@ -1,4 +1,4 @@
-# @unipi/memory
+# @pi-unipi/memory
 
 Persistent cross-session memory with vector search for Pi coding agent.
 
@@ -18,7 +18,7 @@ Persistent cross-session memory with vector search for Pi coding agent.
 pi install npm:unipi
 
 # Standalone
-pi install npm:@unipi/memory
+pi install npm:@pi-unipi/memory
 ```
 
 ## Tools
@@ -91,4 +91,4 @@ Examples:
 - `better-sqlite3` - SQLite database
 - `sqlite-vec` - Vector search extension
 - `js-yaml` - YAML frontmatter parsing
-- `@unipi/core` - Shared utilities
+- `@pi-unipi/core` - Shared utilities

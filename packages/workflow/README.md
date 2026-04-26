@@ -1,4 +1,4 @@
-# @unipi/workflow
+# @pi-unipi/workflow
 
 Structured development workflow commands for Pi coding agent.
 
@@ -106,16 +106,15 @@ brainstorm → plan → work → review-work → consolidate
 
 ## Integration
 
-- **@unipi/core** — shared constants, events, utilities
-- **@unipi/memory** — memory hooks for consolidate (optional)
-- **@unipi/registry** — skill crafting for consolidate (optional)
-- **@unipi/subagents** — parallel research for gather-context, scan-issues (optional)
-- **@unipi/ralph** — loop integration for long-running tasks (optional)
+- **@pi-unipi/core** — shared constants, events, utilities
+- **@pi-unipi/memory** — memory hooks for consolidate (optional)
+- **@pi-unipi/subagents** — parallel research for gather-context, scan-issues (optional)
+- **@pi-unipi/ralph** — loop integration for long-running tasks (optional)
 
 ## Installation
 
 ```bash
-npm install @unipi/workflow
+npm install @pi-unipi/workflow
 ```
 
 Add to pi settings:

@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, basename } from "path";
-import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@unipi/core";
+import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@pi-unipi/core";
 
 /** Options for command registration */
 export interface WorkflowCommandOptions {

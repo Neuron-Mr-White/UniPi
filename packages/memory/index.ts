@@ -13,7 +13,7 @@ import {
   MODULES,
   emitEvent,
   getPackageVersion,
-} from "@unipi/core";
+} from "@pi-unipi/core";
 
 // Get info registry from global (avoids direct import issues with pi's extension loading)
 function getInfoRegistry() {

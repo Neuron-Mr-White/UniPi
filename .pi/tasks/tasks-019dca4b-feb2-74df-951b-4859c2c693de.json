@@ -1,0 +1,65 @@
+{
+  "nextId": 6,
+  "tasks": [
+    {
+      "id": "1",
+      "subject": "Update unipi README based on completed modules",
+      "description": "Read current README and completed modules, update README to reflect actual state",
+      "status": "completed",
+      "activeForm": "Updating unipi README",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777215629817,
+      "updatedAt": 1777215697159
+    },
+    {
+      "id": "2",
+      "subject": "Update core package deps",
+      "description": "Add newest/unadded deps, remove unused ones from core package.json",
+      "status": "completed",
+      "activeForm": "Updating core dependencies",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777215629825,
+      "updatedAt": 1777215726599
+    },
+    {
+      "id": "3",
+      "subject": "Remove packages/unipi folder",
+      "description": "Remove unused packages/unipi directory",
+      "status": "completed",
+      "activeForm": "Removing unused unipi package",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777215629832,
+      "updatedAt": 1777215697174
+    },
+    {
+      "id": "4",
+      "subject": "Update all package READMEs",
+      "description": "Update each package's README to reflect current state, not stale",
+      "status": "completed",
+      "activeForm": "Updating package READMEs",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777215629839,
+      "updatedAt": 1777215726613
+    },
+    {
+      "id": "5",
+      "subject": "Push to GitHub and publish to npm",
+      "description": "Commit all changes, push to GitHub, and publish updated packages to npm",
+      "status": "in_progress",
+      "activeForm": "Pushing and publishing",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1777215629846,
+      "updatedAt": 1777215726624
+    }
+  ]
+}
