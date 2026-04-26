@@ -62,6 +62,7 @@ export class InfoOverlay implements Component {
    */
   private async loadData(): Promise<void> {
     this.loading = true;
+    // Re-fetch groups in case new ones registered since construction
     this.groups = infoRegistry.getGroups();
 
     try {

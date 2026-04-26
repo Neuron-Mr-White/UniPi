@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { UNIPI_EVENTS, MODULES, emitEvent, getPackageVersion } from "@pi-unipi/core";
+import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
 import { registerCoreGroups, trackModule, trackTool } from "./core-groups.js";
 
@@ -133,7 +133,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Register /unipi:info command
-  pi.registerCommand("info", {
+  pi.registerCommand(`${UNIPI_PREFIX}info`, {
     description: "Show info screen dashboard",
     handler: async (_args, ctx) => {
       ctx.ui.custom(
@@ -166,7 +166,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Register /unipi:info-settings command
-  pi.registerCommand("info-settings", {
+  pi.registerCommand(`${UNIPI_PREFIX}info-settings`, {
     description: "Configure info screen display",
     handler: async (_args, ctx) => {
       ctx.ui.custom(
