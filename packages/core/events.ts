@@ -55,6 +55,11 @@ export const UNIPI_EVENTS = {
   MCP_TOOLS_UNREGISTERED: "unipi:mcp:tools:unregistered",
   /** MCP catalog synced */
   MCP_CATALOG_SYNCED: "unipi:mcp:catalog:synced",
+
+  /** Compactor: compaction completed */
+  COMPACTOR_COMPACTED: "unipi:compactor:compacted",
+  /** Compactor: stats updated */
+  COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -211,6 +216,36 @@ export interface UnipiMcpCatalogSyncedEvent {
   source: string;
 }
 
+/** Payload for COMPACTOR compaction completed */
+export interface UnipiCompactionEvent {
+  /** Session ID */
+  sessionId: string;
+  /** Messages summarized */
+  summarized: number;
+  /** Messages kept */
+  kept: number;
+  /** Estimated tokens saved */
+  tokensSaved: number;
+  /** Compression ratio string, e.g. "56:1" */
+  compressionRatio: string;
+}
+
+/** Payload for COMPACTOR stats update */
+export interface UnipiCompactorStatsEvent {
+  /** Session events count */
+  sessionEvents: number;
+  /** Compactions count */
+  compactions: number;
+  /** Tokens saved total */
+  tokensSaved: number;
+  /** Indexed documents count */
+  indexedDocs: number;
+  /** Sandbox executions count */
+  sandboxRuns: number;
+  /** Search queries count */
+  searchQueries: number;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -227,4 +262,6 @@ export type UnipiEventPayload =
   | UnipiInfoDataEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
-  | UnipiMcpCatalogSyncedEvent;
+  | UnipiMcpCatalogSyncedEvent
+  | UnipiCompactionEvent
+  | UnipiCompactorStatsEvent;

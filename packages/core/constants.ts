@@ -30,6 +30,7 @@ export const MODULES = {
   SETTINGS: "@pi-unipi/settings",
   UTILITY: "@pi-unipi/utility",
   ASK_USER: "@pi-unipi/ask-user",
+  COMPACTOR: "@pi-unipi/compactor",
 } as const;
 
 /** Workflow command names */
@@ -173,4 +174,52 @@ export const MCP_DEFAULTS = {
   STARTUP_TIMEOUT_MS: 10000,
   MAX_SERVERS: 20,
   TOOL_NAME_SEPARATOR: "__",
+} as const;
+
+/** Compactor tool names */
+export const COMPACTOR_TOOLS = {
+  COMPACT: "compact",
+  VCC_RECALL: "vcc_recall",
+  CTX_EXECUTE: "ctx_execute",
+  CTX_EXECUTE_FILE: "ctx_execute_file",
+  CTX_BATCH_EXECUTE: "ctx_batch_execute",
+  CTX_INDEX: "ctx_index",
+  CTX_SEARCH: "ctx_search",
+  CTX_FETCH_AND_INDEX: "ctx_fetch_and_index",
+  CTX_STATS: "ctx_stats",
+  CTX_DOCTOR: "ctx_doctor",
+} as const;
+
+/** Compactor command names */
+export const COMPACTOR_COMMANDS = {
+  COMPACT: "compact",
+  COMPACT_RECALL: "compact-recall",
+  COMPACT_STATS: "compact-stats",
+  COMPACT_DOCTOR: "compact-doctor",
+  COMPACT_SETTINGS: "compact-settings",
+  COMPACT_PRESET: "compact-preset",
+  COMPACT_INDEX: "compact-index",
+  COMPACT_SEARCH: "compact-search",
+  COMPACT_PURGE: "compact-purge",
+} as const;
+
+/** Compactor directory paths */
+export const COMPACTOR_DIRS = {
+  CONFIG: "~/.unipi/config/compactor",
+  DB: "~/.unipi/db/compactor",
+} as const;
+
+/** Compactor defaults */
+export const COMPACTOR_DEFAULTS = {
+  MAX_EVENTS_PER_SESSION: 1000,
+  DEDUP_WINDOW: 5,
+  MAX_RESUME_BYTES: 2048,
+  BRIEF_MAX_LINES: 120,
+  COMPACT_BRIEF_LINES: 60,
+  MINIMAL_BRIEF_LINES: 20,
+  OUTPUT_CAP_MB: 100,
+  DEFAULT_TIMEOUT_MS: 30000,
+  SESSION_TTL_DAYS: 7,
+  CACHE_TTL_HOURS: 24,
+  FTS5_CHUNK_SIZE: 4096,
 } as const;

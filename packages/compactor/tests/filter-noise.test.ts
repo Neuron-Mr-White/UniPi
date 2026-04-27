@@ -28,7 +28,7 @@ describe("filterNoise", () => {
       { kind: "user", text: "<system-reminder>foo</system-reminder> actual" },
     ];
     const out = filterNoise(blocks);
-    expect(out[0].text).toBe("actual");
+    expect((out[0] as any).text).toBe("actual");
   });
 
   it("removes noise strings", () => {

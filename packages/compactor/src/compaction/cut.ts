@@ -53,7 +53,7 @@ export function buildOwnCut(branchEntries: any[]): OwnCutResult {
   }
 
   if (liveMessages.length === 0) return { ok: false, reason: "no_live_messages" };
-  if (liveMessages.length <= 2) return { ok: false, reason: "too_few_live_messages" };
+  if (liveMessages.length < 2) return { ok: false, reason: "too_few_live_messages" };
 
   let cutIdx = liveMessages.length - 1;
   while (cutIdx > 0 && liveMessages[cutIdx].message.role !== "user") {

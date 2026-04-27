@@ -125,15 +125,21 @@ export function renderDiff(
   const afterLines = after.split("\n");
   const diff = computeDiff(beforeLines, afterLines);
 
+  let effectiveIndicator = indicator;
   const effectiveLayout = layout === "auto"
     ? (maxWidth >= 100 ? "split" : "unified")
     : layout;
 
-  if (effectiveLayout === "split") {
-    return renderSplit(diff, indicator);
+  // Auto mode: use classic indicator for unified to keep output clean
+  if (layout === "auto" && effectiveLayout === "unified") {
+    effectiveIndicator = "classic";
   }
 
-  return renderUnified(diff, indicator);
+  if (effectiveLayout === "split") {
+    return renderSplit(diff, effectiveIndicator);
+  }
+
+  return renderUnified(diff, effectiveIndicator);
 }
 
 export function renderEditDiffResult(
