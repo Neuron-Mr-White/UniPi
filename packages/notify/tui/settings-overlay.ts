@@ -11,8 +11,8 @@ import {
   loadConfig,
   saveConfig,
   validateConfig,
-  type NotifyConfig,
 } from "../settings.js";
+import type { NotifyConfig } from "../types.js";
 
 /** ANSI escape codes */
 const ansi = {
@@ -176,7 +176,7 @@ export class NotifySettingsOverlay implements Component {
       {
         key: "telegram",
         label: "Telegram",
-        detail: this.config.telegram.botId
+        detail: this.config.telegram.botToken
           ? "Bot configured"
           : "Bot API notifications",
       },

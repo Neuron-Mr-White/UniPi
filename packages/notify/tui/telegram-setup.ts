@@ -160,171 +160,82 @@ export class TelegramSetupOverlay implements Component {
     }
   }
 
+  /** Helper to push a truncated line */
+  private line(lines: string[], s: string, width: number): void {
+    lines.push(truncateToWidth(s, width));
+  }
+
   render(width: number): string[] {
     const lines: string[] = [];
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
+    const l = (s: string) => this.line(lines, s, width);
 
-    add(`${ansi.bold}${ansi.cyan}Telegram Bot Setup${ansi.reset}`);
-    add("");
+    l(`${ansi.bold}${ansi.cyan}Telegram Bot Setup${ansi.reset}`);
+    l("");
 
     switch (this.phase) {
       case "instructions":
-        this.renderInstructions(lines, width);
+        l(`${ansi.dim}Set up Telegram notifications in 3 steps:${ansi.reset}`);
+        l("");
+        l(`  ${ansi.bold}1.${ansi.reset} Open Telegram and message ${ansi.cyan}@BotFather${ansi.reset}`);
+        l(`     Send /newbot and follow the prompts to create a bot`);
+        l("");
+        l(`  ${ansi.bold}2.${ansi.reset} Copy the bot token from BotFather`);
+        l("");
+        l(`  ${ansi.bold}3.${ansi.reset} Send any message to your new bot`);
+        l(`     (We'll detect your chat ID automatically)`);
+        l("");
+        l(`${ansi.dim}Press Enter to continue, Esc to cancel${ansi.reset}`);
         break;
+
       case "token":
-        this.renderTokenInput(lines, width);
+        l(`${ansi.dim}Paste your bot token from BotFather:${ansi.reset}`);
+        l("");
+        const display = this.botToken || " ";
+        l(`  ${ansi.bold}${display}${ansi.dim}█${ansi.reset}`);
+        l("");
+        l(`${ansi.dim}Enter to start polling • Esc to cancel${ansi.reset}`);
         break;
-      case "polling":
-        this.renderPolling(lines, width);
+
+      case "polling": {
+        const frame = SPINNER_FRAMES[this.spinnerFrame] || "⠋";
+        const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+        const remaining = Math.max(0, 300 - elapsed);
+        l(`  ${ansi.cyan}${frame}${ansi.reset} ${ansi.bold}Waiting for first message...${ansi.reset}`);
+        l("");
+        l(`  ${ansi.dim}Send any message to your bot in Telegram${ansi.reset}`);
+        l(`  ${ansi.dim}Timeout: ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}${ansi.reset}`);
+        l("");
+        l(`${ansi.dim}Esc to cancel${ansi.reset}`);
         break;
+      }
+
       case "success":
-        this.renderSuccess(lines, width);
+        l(`  ${ansi.green}✓ Telegram bot configured!${ansi.reset}`);
+        l("");
+        l(`  ${ansi.dim}Chat ID: ${this.chatId}${ansi.reset}`);
+        l(`  ${ansi.dim}Notifications will be sent to this chat${ansi.reset}`);
+        l("");
+        l(`${ansi.dim}Press Enter to close${ansi.reset}`);
         break;
+
       case "error":
-        this.renderError(lines, width);
+        l(`  ${ansi.red}✗ Setup failed${ansi.reset}`);
+        l("");
+        l(`  ${ansi.dim}${this.error || "Unknown error"}${ansi.reset}`);
+        l("");
+        l(`${ansi.dim}Press Enter to close${ansi.reset}`);
         break;
+
       case "timeout":
-        this.renderTimeout(lines, width);
+        l(`  ${ansi.yellow}⏰ Timed out after 5 minutes${ansi.reset}`);
+        l("");
+        l(`  ${ansi.dim}Make sure you sent a message to your bot in Telegram`);
+        l(`  ${ansi.dim}You can try again with /unipi:notify-set-tg${ansi.reset}`);
+        l("");
+        l(`${ansi.dim}Press Enter to close${ansi.reset}`);
         break;
     }
 
     return lines;
-  }
-
-  private renderInstructions(lines: string[], width: number): void {
-    lines.push(
-      truncateToWidth(
-        `${ansi.dim}Set up Telegram notifications in 3 steps:${ansi.reset}`,
-        width
-      )
-    );
-    add("");
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.bold}1.${ansi.reset} Open Telegram and message ${ansi.cyan}@BotFather${ansi.reset}`,
-        width
-      )
-    );
-    lines.push(
-      truncateToWidth(
-        `     Send /newbot and follow the prompts to create a bot`,
-        width
-      )
-    );
-    add("");
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.bold}2.${ansi.reset} Copy the bot token from BotFather`,
-        width
-      )
-    );
-    add("");
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.bold}3.${ansi.reset} Send any message to your new bot`,
-        width
-      )
-    );
-    lines.push(
-      truncateToWidth(
-        `     (We'll detect your chat ID automatically)`,
-        width
-      )
-    );
-    add("");
-    add(
-      `${ansi.dim}Press Enter to continue, Esc to cancel${ansi.reset}`
-    );
-  }
-
-  private renderTokenInput(lines: string[], width: number): void {
-    lines.push(
-      truncateToWidth(`${ansi.dim}Paste your bot token from BotFather:${ansi.reset}`, width)
-    );
-    add("");
-    const display = this.botToken || " ";
-    lines.push(
-      truncateToWidth(`  ${ansi.bold}${display}${ansi.dim}█${ansi.reset}`, width)
-    );
-    add("");
-    add(
-      `${ansi.dim}Enter to start polling • Esc to cancel${ansi.reset}`
-    );
-  }
-
-  private renderPolling(lines: string[], width: number): void {
-    const frame = SPINNER_FRAMES[this.spinnerFrame] || "⠋";
-    const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
-    const remaining = Math.max(0, 300 - elapsed);
-
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.cyan}${frame}${ansi.reset} ${ansi.bold}Waiting for first message...${ansi.reset}`,
-        width
-      )
-    );
-    add("");
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.dim}Send any message to your bot in Telegram${ansi.reset}`,
-        width
-      )
-    );
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.dim}Timeout: ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}${ansi.reset}`,
-        width
-      )
-    );
-    add("");
-    add(`${ansi.dim}Esc to cancel${ansi.reset}`);
-  }
-
-  private renderSuccess(lines: string[], width: number): void {
-    lines.push(
-      truncateToWidth(`  ${ansi.green}✓ Telegram bot configured!${ansi.reset}`, width)
-    );
-    add("");
-    lines.push(
-      truncateToWidth(`  ${ansi.dim}Chat ID: ${this.chatId}${ansi.reset}`, width)
-    );
-    lines.push(
-      truncateToWidth(`  ${ansi.dim}Notifications will be sent to this chat${ansi.reset}`, width)
-    );
-    add("");
-    add(`${ansi.dim}Press Enter to close${ansi.reset}`);
-  }
-
-  private renderError(lines: string[], width: number): void {
-    lines.push(
-      truncateToWidth(`  ${ansi.red}✗ Setup failed${ansi.reset}`, width)
-    );
-    add("");
-    lines.push(
-      truncateToWidth(`  ${ansi.dim}${this.error || "Unknown error"}${ansi.reset}`, width)
-    );
-    add("");
-    add(`${ansi.dim}Press Enter to close${ansi.reset}`);
-  }
-
-  private renderTimeout(lines: string[], width: number): void {
-    lines.push(
-      truncateToWidth(`  ${ansi.yellow}⏰ Timed out after 5 minutes${ansi.reset}`, width)
-    );
-    add("");
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.dim}Make sure you sent a message to your bot in Telegram`,
-        width
-      )
-    );
-    lines.push(
-      truncateToWidth(
-        `  ${ansi.dim}You can try again with /unipi:notify-set-tg${ansi.reset}`,
-        width
-      )
-    );
-    add("");
-    add(`${ansi.dim}Press Enter to close${ansi.reset}`);
   }
 }

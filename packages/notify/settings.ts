@@ -45,7 +45,7 @@ export function loadConfig(): NotifyConfig {
   try {
     if (existsSync(configPath)) {
       const raw = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as Partial<NotifyConfig>;
       // Merge with defaults to ensure new fields are present
       return mergeWithDefaults(parsed);
     }
@@ -69,7 +69,7 @@ export function saveConfig(config: NotifyConfig): void {
 /** Update config with partial changes */
 export function updateConfig(partial: Partial<NotifyConfig>): NotifyConfig {
   const current = loadConfig();
-  const updated = deepMerge(current, partial);
+  const updated = { ...current, ...partial };
   saveConfig(updated);
   return updated;
 }
@@ -103,34 +103,13 @@ export function validateConfig(config: NotifyConfig): string[] {
   return errors;
 }
 
-/** Deep merge helper — merges source into target, target properties take precedence only if undefined */
-function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Partial<T>
-): T {
-  const result = { ...target };
-  for (const key of Object.keys(source) as Array<keyof T>) {
-    if (
-      source[key] !== undefined &&
-      typeof source[key] === "object" &&
-      source[key] !== null &&
-      !Array.isArray(source[key]) &&
-      typeof target[key] === "object" &&
-      target[key] !== null &&
-      !Array.isArray(target[key])
-    ) {
-      (result as Record<string, unknown>)[key as string] = deepMerge(
-        target[key] as Record<string, unknown>,
-        source[key] as Record<string, unknown>
-      );
-    } else if (source[key] !== undefined) {
-      result[key] = source[key] as T[keyof T];
-    }
-  }
-  return result;
-}
-
 /** Merge loaded config with defaults to ensure all fields exist */
 function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
-  return deepMerge(DEFAULT_CONFIG, loaded);
+  return {
+    defaultPlatforms: loaded.defaultPlatforms ?? DEFAULT_CONFIG.defaultPlatforms,
+    events: { ...DEFAULT_CONFIG.events, ...loaded.events },
+    native: { ...DEFAULT_CONFIG.native, ...loaded.native },
+    gotify: { ...DEFAULT_CONFIG.gotify, ...loaded.gotify },
+    telegram: { ...DEFAULT_CONFIG.telegram, ...loaded.telegram },
+  };
 }

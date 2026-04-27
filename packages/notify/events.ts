@@ -48,9 +48,9 @@ export function registerEventListeners(
       await dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config);
     };
 
-    pi.on(def.hook as string, handler);
+    (pi as any).on(def.hook, handler);
     cleanupFns.push(() => {
-      pi.off(def.hook as string, handler);
+      (pi as any).off(def.hook, handler);
     });
   }
 
@@ -62,9 +62,9 @@ export function registerEventListeners(
       // For now, modules register their own events through MODULE_READY
     }
   };
-  pi.on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
+  (pi as any).on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
   cleanupFns.push(() => {
-    pi.off(UNIPI_EVENTS.MODULE_READY, moduleHandler);
+    (pi as any).off(UNIPI_EVENTS.MODULE_READY, moduleHandler);
   });
 }
 

@@ -31,11 +31,11 @@ export async function sendNativeNotification(
         message,
         appID: options?.windowsAppId,
       },
-      (err) => {
+      (err: Error | null) => {
         if (err) {
           reject(
             new Error(
-              `Native notification failed: ${err instanceof Error ? err.message : String(err)}`
+              `Native notification failed: ${err.message}`
             )
           );
         } else {
