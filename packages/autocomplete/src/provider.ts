@@ -46,20 +46,28 @@ function getEnhancedUnipiItems(
   prefix: string,
   descriptionOverrides: Map<string, string> = new Map(),
 ): AutocompleteItem[] {
-  // The prefix from the base provider includes the "/" and possibly "unipi:"
-  // e.g., "/brain" → prefix is "/brain" or "brain"
-  // e.g., "/unipi:brain" → prefix is "/unipi:brain"
-  const query = prefix
-    .replace(/^\//, "")
-    .replace(/^unipi:/, "")
-    .toLowerCase();
+  // The base provider sets prefix = full textBeforeCursor e.g. "/uni", "/unipi:brain".
+  // Two cases:
+  //   Case A  "/unipi:something" — user typed past the colon; match the short name.
+  //   Case B  "/something"       — user is still forming the command word; the base
+  //                                 fuzzyFilter matched against the full "unipi:work"
+  //                                 string, so we must do the same.
+  const stripped = prefix.replace(/^\//, "").toLowerCase();
+  const isPastUnipiColon = stripped.startsWith("unipi:");
+  const query = isPastUnipiColon
+    ? stripped.slice("unipi:".length) // e.g. "brain" from "/unipi:brain"
+    : stripped;                        // e.g. "uni" from "/uni"
 
   const entries = Object.entries(COMMAND_REGISTRY);
 
-  // Filter by fuzzy match on command name (without unipi: prefix)
+  // Case A: match short name ("brain" against "brainstorm")
+  // Case B: match full value ("uni" against "unipi:work") so all unipi commands
+  //         surface when the user hasn't yet typed the full "unipi:" prefix.
   const matched = entries.filter(([cmd]) => {
-    const cmdName = cmd.replace("unipi:", "").toLowerCase();
-    return fuzzyMatch(cmdName, query);
+    if (isPastUnipiColon) {
+      return fuzzyMatch(cmd.replace("unipi:", "").toLowerCase(), query);
+    }
+    return fuzzyMatch(cmd.toLowerCase(), query);
   });
 
   // Sort by package order, then alphabetically within each package
