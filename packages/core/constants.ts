@@ -139,11 +139,25 @@ export const RALPH_STATUS_ICONS = {
 /** Utility command names */
 export const UTILITY_COMMANDS = {
   CONTINUE: "continue",
+  RELOAD: "reload",
+  STATUS: "status",
+  CLEANUP: "cleanup",
+  ENV: "env",
+  DOCTOR: "doctor",
 } as const;
 
 /** Utility tool names */
 export const UTILITY_TOOLS = {
   CONTINUE: "continue_task",
+  BATCH: "ctx_batch",
+  ENV: "ctx_env",
+} as const;
+
+/** Utility directory paths */
+export const UTILITY_DIRS = {
+  CACHE: "~/.unipi/cache",
+  ANALYTICS: "~/.unipi/analytics",
+  TEMP: "/tmp/unipi",
 } as const;
 
 /** Ask-user tool names */

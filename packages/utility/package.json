@@ -19,13 +19,16 @@
     "continue"
   ],
   "files": [
-    "index.ts",
-    "commands.ts",
-    "README.md"
+    "src/index.ts",
+    "src/commands.ts",
+    "src/types.ts",
+    "src/**/*.ts",
+    "README.md",
+    "skills/**/*.md"
   ],
   "pi": {
     "extensions": [
-      "index.ts"
+      "src/index.ts"
     ]
   },
   "publishConfig": {

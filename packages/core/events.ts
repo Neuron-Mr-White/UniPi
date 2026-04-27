@@ -55,6 +55,19 @@ export const UNIPI_EVENTS = {
   MCP_TOOLS_UNREGISTERED: "unipi:mcp:tools:unregistered",
   /** MCP catalog synced */
   MCP_CATALOG_SYNCED: "unipi:mcp:catalog:synced",
+
+  /** Utility module cleanup started */
+  UTILITY_CLEANUP_START: "unipi:utility:cleanup:start",
+  /** Utility module cleanup completed */
+  UTILITY_CLEANUP_DONE: "unipi:utility:cleanup:done",
+  /** Utility diagnostics started */
+  UTILITY_DIAGNOSTICS_START: "unipi:utility:diagnostics:start",
+  /** Utility diagnostics completed */
+  UTILITY_DIAGNOSTICS_DONE: "unipi:utility:diagnostics:done",
+  /** Utility cache invalidated */
+  UTILITY_CACHE_INVALIDATED: "unipi:utility:cache:invalidated",
+  /** Utility lifecycle state changed */
+  UTILITY_LIFECYCLE_STATE: "unipi:utility:lifecycle:state",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -211,6 +224,40 @@ export interface UnipiMcpCatalogSyncedEvent {
   source: string;
 }
 
+/** Payload for UTILITY_CLEANUP_START / UTILITY_CLEANUP_DONE */
+export interface UnipiUtilityCleanupEvent {
+  /** Whether this is a dry run */
+  dryRun: boolean;
+  /** Categories being cleaned */
+  categories: string[];
+  /** Results (present on DONE) */
+  results?: Array<{
+    category: string;
+    removed: number;
+    bytesFreed: number;
+  }>;
+}
+
+/** Payload for UTILITY_DIAGNOSTICS_START / UTILITY_DIAGNOSTICS_DONE */
+export interface UnipiUtilityDiagnosticsEvent {
+  /** Overall health status */
+  overall: "healthy" | "warning" | "error" | "unknown";
+  /** Number of checks run */
+  checkCount: number;
+  /** Report (present on DONE) */
+  report?: unknown;
+}
+
+/** Payload for UTILITY_LIFECYCLE_STATE */
+export interface UnipiUtilityLifecycleEvent {
+  /** New lifecycle state */
+  state: "running" | "shutting_down" | "orphaned" | "error";
+  /** Previous state */
+  previousState?: string;
+  /** Reason for state change */
+  reason?: string;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -227,4 +274,7 @@ export type UnipiEventPayload =
   | UnipiInfoDataEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
-  | UnipiMcpCatalogSyncedEvent;
+  | UnipiMcpCatalogSyncedEvent
+  | UnipiUtilityCleanupEvent
+  | UnipiUtilityDiagnosticsEvent
+  | UnipiUtilityLifecycleEvent;
