@@ -71,6 +71,20 @@ function padVisible(content: string, targetWidth: number): string {
   return content + " ".repeat(pad);
 }
 
+/**
+ * Strip characters that pi-tui's visibleWidth and the user's terminal may
+ * disagree on (RGI emoji, variation selectors, ZWJ, regional indicators).
+ * Keeps printable ASCII and standard Latin/box-drawing chars; replaces
+ * problem chars with a single * so widths stay deterministic.
+ */
+function widthSafe(s: string): string {
+  return s
+    .replace(/[\u200D\uFE00-\uFE0F\uFEFF]/g, "")
+    .replace(/[\u2600-\u27BF]/g, "*")
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, "*")
+    .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, "*");
+}
+
 export function renderMcpAddOverlay(params?: {
   scope?: "global" | "project";
   onComplete?: () => void;
@@ -502,16 +516,20 @@ export function renderMcpAddOverlay(params?: {
         if (serverIdx < state.filteredServers.length) {
           const server = state.filteredServers[serverIdx];
           const selected = serverIdx === state.selectedIndex;
-          const scopeIcon = server.scope === "cloud" ? "☁️ " : "🏠 ";
-          const officialMark = server.official ? theme.fg("success", "✓ ") : "  ";
+          const scopeTag = server.scope === "cloud" ? "[c]" : "[l]";
+          const officialMark = server.official ? theme.fg("success", "*") : " ";
           const prefix = selected
-            ? (browseFocused ? theme.fg("accent", "▸ ") : theme.fg("muted", "▸ "))
+            ? (browseFocused ? theme.fg("accent", "> ") : theme.fg("muted", "> "))
             : "  ";
-          const nameRaw = truncateToWidth(server.name, leftW - 8);
+          // Reserved cells: " " + prefix(2) + officialMark(1) + " " + scopeTag(3) + " " = 8
+          const nameRaw = widthSafe(truncateToWidth(server.name, leftW - 8));
+          const scope = server.scope === "cloud"
+            ? theme.fg("accent", scopeTag)
+            : theme.fg("warning", scopeTag);
           const name = selected
             ? (browseFocused ? theme.bold(theme.fg("accent", nameRaw)) : theme.bold(nameRaw))
             : theme.fg("text", nameRaw);
-          left = ` ${prefix}${officialMark}${scopeIcon}${name}`;
+          left = ` ${prefix}${officialMark} ${scope} ${name}`;
         } else if (state.filteredServers.length === 0 && row === 1) {
           left = ` ${theme.fg("warning", "no matches")}`;
         }
@@ -543,9 +561,17 @@ export function renderMcpAddOverlay(params?: {
       );
 
       const sel = state.filteredServers[state.selectedIndex];
-      const descContent = sel
-        ? ` ${theme.fg("accent", sel.id)}  ${theme.fg("muted", truncateToWidth(sel.description, innerWidth - visibleWidth(sel.id) - 4))}`
-        : ` ${theme.fg("dim", "no server selected")}`;
+      let descContent: string;
+      if (sel) {
+        const idSafe = widthSafe(sel.id);
+        const idVis = visibleWidth(idSafe);
+        const descBudget = Math.max(0, innerWidth - idVis - 4);
+        const descSafe = widthSafe(sel.description);
+        const desc = truncateToWidth(descSafe, descBudget);
+        descContent = ` ${theme.fg("accent", idSafe)}  ${theme.fg("muted", desc)}`;
+      } else {
+        descContent = ` ${theme.fg("dim", "no server selected")}`;
+      }
       lines.push(border("│") + padVisible(descContent, innerWidth) + border("│"));
 
       // ── Validation error ───────────────────────────────────────────
