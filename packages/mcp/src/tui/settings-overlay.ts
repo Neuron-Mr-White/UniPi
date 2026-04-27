@@ -95,7 +95,7 @@ export function renderMcpSettingsOverlay(params?: {
 
         items.push({
           name,
-          status: runtimeState?.status ?? (enabled ? "stopped" : "stopped"),
+          status: runtimeState?.status ?? "stopped",
           command: `${def.command} ${(def.args ?? []).slice(0, 3).join(" ")}`,
           toolCount: runtimeState?.toolCount ?? 0,
           source: state.viewScope === "global" ? "G" : "P",

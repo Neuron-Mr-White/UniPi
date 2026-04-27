@@ -235,6 +235,11 @@ export class McpClient {
     return this.connected;
   }
 
+  /** Process ID of the spawned MCP server, or undefined if not connected */
+  get pid(): number | undefined {
+    return this.process?.pid;
+  }
+
   /** Captured stderr output */
   get stderr(): string {
     return this.stderrBuffer;

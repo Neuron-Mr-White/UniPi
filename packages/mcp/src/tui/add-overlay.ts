@@ -14,7 +14,7 @@ import {
   truncateToWidth,
   visibleWidth,
 } from "@mariozechner/pi-tui";
-import type { CatalogEntry, CatalogData } from "../types.js";
+import type { CatalogEntry, CatalogData, McpConfig, McpMetadata } from "../types.js";
 import { loadCatalog } from "../config/sync.js";
 import {
   loadMcpConfig,
@@ -23,7 +23,7 @@ import {
   saveMetadata,
   getGlobalConfigDir,
 } from "../config/manager.js";
-import { validateMcpConfig, createServerTemplate } from "../config/schema.js";
+import { validateMcpConfig, createServerTemplate, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
 
 /** State for the add overlay */
 interface AddOverlayState {
@@ -170,8 +170,15 @@ export function renderMcpAddOverlay(params?: {
         // Determine target directory
         const configDir = getGlobalConfigDir();
 
-        // Load existing config and merge
-        const existing = loadMcpConfig(configDir);
+        // Load existing config and merge — handle corrupt existing config
+        let existing: McpConfig;
+        try {
+          existing = loadMcpConfig(configDir);
+        } catch {
+          // Existing config is corrupt — start fresh
+          existing = { ...DEFAULT_MCP_CONFIG };
+        }
+
         const newServers = parsed.mcpServers ?? {};
 
         for (const [name, def] of Object.entries(newServers)) {
@@ -181,7 +188,12 @@ export function renderMcpAddOverlay(params?: {
         saveMcpConfig(configDir, existing);
 
         // Update metadata
-        const meta = loadMetadata(configDir);
+        let meta: McpMetadata;
+        try {
+          meta = loadMetadata(configDir);
+        } catch {
+          meta = { ...DEFAULT_METADATA, servers: {}, sync: { ...DEFAULT_METADATA.sync } };
+        }
         for (const name of Object.keys(newServers)) {
           meta.servers[name] = {
             enabled: true,

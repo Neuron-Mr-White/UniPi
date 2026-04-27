@@ -115,7 +115,7 @@ export class ServerRegistry {
       entry.state = {
         ...state,
         status: "running",
-        pid: undefined, // ChildProcess pid not directly accessible after spawn
+        pid: client.pid,
         toolCount: toolNames.length,
       };
       entry.toolNames = toolNames;

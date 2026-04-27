@@ -216,6 +216,10 @@ export default function (pi: ExtensionAPI) {
       try {
         ctx.ui.notify("Syncing MCP catalog from GitHub...", "info");
         const catalog = await syncCatalog();
+        emitEvent(pi, UNIPI_EVENTS.MCP_CATALOG_SYNCED, {
+          totalServers: catalog.totalServers,
+          source: catalog.source,
+        });
         ctx.ui.notify(
           `MCP Catalog Synced\nSource: ${catalog.source}\nServers: ${catalog.totalServers}\nUpdated: ${catalog.lastUpdated}`,
           "info",
