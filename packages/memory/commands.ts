@@ -198,7 +198,7 @@ For each item, use the memory_store tool to save it with an appropriate title an
         return;
       }
 
-      await showMemorySettings(pi);
+      await showMemorySettings(ctx);
     },
   });
 }

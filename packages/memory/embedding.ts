@@ -8,7 +8,7 @@
  * openai/text-embedding-3 supports custom dimensions via API param.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import {
   loadEmbeddingConfig,
   getApiKey,
@@ -174,7 +174,7 @@ export async function generateEmbeddingsBatch(
  * Re-embed all memories across all projects.
  * Returns count of successfully re-embedded memories.
  */
-export async function reembedAllMemories(pi: ExtensionAPI): Promise<number> {
+export async function reembedAllMemories(ctx: ExtensionCommandContext): Promise<number> {
   const { getAllProjectDirs, MemoryStorage } = await import("./storage.js");
   const projectDirs = getAllProjectDirs();
   let count = 0;
@@ -197,7 +197,7 @@ export async function reembedAllMemories(pi: ExtensionAPI): Promise<number> {
 
       // Generate embeddings in batch
       const texts = fullRecords.map((r) => `${r.title} ${r.content}`);
-      const embeddings = await generateEmbeddingsBatch(texts, pi);
+      const embeddings = await generateEmbeddingsBatch(texts);
 
       // Update records
       for (let i = 0; i < fullRecords.length; i++) {

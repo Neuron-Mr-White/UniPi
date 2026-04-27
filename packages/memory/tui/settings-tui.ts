@@ -2,10 +2,10 @@
  * @unipi/memory — Settings TUI
  *
  * Interactive settings dialog for embedding configuration.
- * Uses pi's UI primitives (select, input, notify).
+ * Uses ctx.ui primitives (select, input, notify).
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import {
   loadEmbeddingConfig,
   saveEmbeddingConfig,
@@ -19,20 +19,12 @@ import {
   type EmbeddingConfig,
 } from "../settings.js";
 
-/** pi.ui type that's available when TUI is present */
-type PiUI = {
-  select: (opts: { title: string; message: string; options: Array<{ label: string; value: string; description?: string }> }) => Promise<string | null | undefined>;
-  input: (opts: { title: string; message: string; placeholder?: string; validate?: (value: string) => Promise<string | null> }) => Promise<string | null | undefined>;
-  notify: (opts: { message: string; level: string }) => Promise<void>;
-};
-
 /**
  * Show memory settings dialog.
  * Main entry point for /unipi:memory-settings command.
  */
-export async function showMemorySettings(pi: ExtensionAPI): Promise<void> {
-  // Cast to access pi.ui which exists at runtime but isn't typed
-  const ui = (pi as any).ui as PiUI;
+export async function showMemorySettings(ctx: ExtensionCommandContext): Promise<void> {
+  const ui = ctx.ui;
   let running = true;
 
   while (running) {
@@ -115,28 +107,28 @@ export async function showMemorySettings(pi: ExtensionAPI): Promise<void> {
       description: "Exit settings",
     });
 
-    const selected = await ui.select({
-      title: "🧠 Memory Settings",
-      message: statusLines.join("\n"),
-      options,
-    });
+    const labels = options.map(o => `${o.label} — ${o.description}`);
+    const selected = await ui.select(
+      "🧠 Memory Settings",
+      labels,
+    );
+    // Map selected label back to value
+    const selectedOpt = options.find(o => `${o.label} — ${o.description}` === selected);
+    const selectedValue = selectedOpt?.value;
 
-    if (!selected || selected === "__exit__") {
+    if (!selectedValue || selectedValue === "__exit__") {
       running = false;
       continue;
     }
 
-    switch (selected) {
+    switch (selectedValue) {
       case "__add_key__":
       case "__update_key__":
         await handleApiKeyInput(ui);
         break;
       case "__remove_key__":
         clearApiKey();
-        await ui.notify({
-          message: "API key removed. Vector search disabled.",
-          level: "info",
-        });
+        ui.notify("API key removed. Vector search disabled.", "info");
         break;
       case "__select_model__":
         await handleModelSelection(ui);
@@ -145,16 +137,13 @@ export async function showMemorySettings(pi: ExtensionAPI): Promise<void> {
         await handleDimensionsInput(ui);
         break;
       case "__reembed__":
-        await handleReembed(ui, pi);
+        await handleReembed(ui, ctx);
         break;
       case "__suppress__":
         const cfg = loadEmbeddingConfig();
         cfg.suppressMigrationWarning = true;
         saveEmbeddingConfig(cfg);
-        await ui.notify({
-          message: "Migration warning suppressed.",
-          level: "info",
-        });
+        ui.notify("Migration warning suppressed.", "info");
         break;
     }
   }
@@ -163,66 +152,65 @@ export async function showMemorySettings(pi: ExtensionAPI): Promise<void> {
 /**
  * Handle API key input.
  */
-async function handleApiKeyInput(ui: PiUI): Promise<void> {
-  const key = await ui.input({
-    title: "OpenRouter API Key",
-    message: "Enter your OpenRouter API key (sk-or-v1-...):",
-    placeholder: "sk-or-v1-...",
-    validate: async (value: string) => {
-      if (!value || value.trim().length === 0) {
-        return "API key cannot be empty";
-      }
-      if (!value.startsWith("sk-or-") && !value.startsWith("sk-")) {
-        return "Key should start with sk-or- or sk-";
-      }
-      return null;
-    },
-  });
+async function handleApiKeyInput(ui: ExtensionCommandContext["ui"]): Promise<void> {
+  const key = await ui.input(
+    "Enter your OpenRouter API key (sk-or-v1-...):",
+    "sk-or-v1-...",
+  );
 
   if (key) {
-    setApiKey(key.trim());
-    await ui.notify({
-      message: "API key saved. Vector search enabled.",
-      level: "success",
-    });
+    const trimmed = key.trim();
+    if (trimmed.length === 0) {
+      ui.notify("API key cannot be empty.", "warning");
+      return;
+    }
+    if (!trimmed.startsWith("sk-or-") && !trimmed.startsWith("sk-")) {
+      ui.notify("Key should start with sk-or- or sk-.", "warning");
+      return;
+    }
+    setApiKey(trimmed);
+    ui.notify("API key saved. Vector search enabled.", "info");
   }
 }
 
 /**
  * Handle model selection.
  */
-async function handleModelSelection(ui: PiUI): Promise<void> {
+async function handleModelSelection(ui: ExtensionCommandContext["ui"]): Promise<void> {
   const config = loadEmbeddingConfig();
 
-  const options = OPENROUTER_EMBEDDING_MODELS.map((m) => ({
+  const modelOptions = OPENROUTER_EMBEDDING_MODELS.map((m) => ({
     label: `${m.name}${m.id === config.model ? " ✓" : ""}`,
     value: m.id,
     description: `${m.description} (${m.dimensions}d, ~${m.costPer1k}/1k tokens)`,
   }));
 
   // Add custom option
-  options.push({
+  modelOptions.push({
     label: "✏️ Custom Model ID",
     value: "__custom__",
     description: "Enter a custom OpenRouter model ID",
   });
 
-  const selected = await ui.select({
-    title: "Select Embedding Model",
-    message: "Choose an embedding model. ⚠ Changing model invalidates existing embeddings.",
-    options,
-  });
+  const labels = modelOptions.map(o => `${o.label} — ${o.description}`);
+  const selected = await ui.select(
+    "Select Embedding Model",
+    labels,
+  );
 
   if (!selected) return;
 
-  let modelId = selected;
+  // Map label back to value
+  const selectedOpt = modelOptions.find(o => `${o.label} — ${o.description}` === selected);
+  let modelId = selectedOpt?.value;
 
-  if (selected === "__custom__") {
-    const custom = await ui.input({
-      title: "Custom Model ID",
-      message: "Enter the OpenRouter model ID:",
-      placeholder: "openai/text-embedding-3-small",
-    });
+  if (!modelId) return;
+
+  if (modelId === "__custom__") {
+    const custom = await ui.input(
+      "Enter the OpenRouter model ID:",
+      "openai/text-embedding-3-small",
+    );
     if (!custom) return;
     modelId = custom.trim();
   }
@@ -235,40 +223,33 @@ async function handleModelSelection(ui: PiUI): Promise<void> {
   config.dimensions = dimensions;
   saveEmbeddingConfig(config);
 
-  await ui.notify({
-    message: `Model set to ${modelId} (${dimensions}d).${hasModelChanged() ? " Re-embed existing memories to use new model." : ""}`,
-    level: "success",
-  });
+  ui.notify(
+    `Model set to ${modelId} (${dimensions}d).${hasModelChanged() ? " Re-embed existing memories to use new model." : ""}`,
+    "info",
+  );
 }
 
 /**
  * Handle dimensions input.
  */
-async function handleDimensionsInput(ui: PiUI): Promise<void> {
+async function handleDimensionsInput(ui: ExtensionCommandContext["ui"]): Promise<void> {
   const config = loadEmbeddingConfig();
 
-  const dimStr = await ui.input({
-    title: "Embedding Dimensions",
-    message: `Enter dimensions (default: 384). Lower = faster, less storage.\nNote: openai/text-embedding-3 supports 256-3072.\nada-002 only supports 1536.`,
-    placeholder: "384",
-    validate: async (value: string) => {
-      const num = parseInt(value, 10);
-      if (isNaN(num) || num < 64 || num > 3072) {
-        return "Must be a number between 64 and 3072";
-      }
-      return null;
-    },
-  });
+  const dimStr = await ui.input(
+    `Enter dimensions (default: 384). Lower = faster, less storage.\nNote: openai/text-embedding-3 supports 256-3072.\nada-002 only supports 1536.`,
+    "384",
+  );
 
   if (dimStr) {
     const dims = parseInt(dimStr, 10);
+    if (isNaN(dims) || dims < 64 || dims > 3072) {
+      ui.notify("Must be a number between 64 and 3072.", "warning");
+      return;
+    }
     config.dimensions = dims;
     saveEmbeddingConfig(config);
 
-    await ui.notify({
-      message: `Dimensions set to ${dims}. Re-embed existing memories to apply.`,
-      level: "success",
-    });
+    ui.notify(`Dimensions set to ${dims}. Re-embed existing memories to apply.`, "info");
   }
 }
 
@@ -276,26 +257,25 @@ async function handleDimensionsInput(ui: PiUI): Promise<void> {
  * Handle re-embedding all memories.
  * This is a destructive operation — warns user first.
  */
-async function handleReembed(ui: PiUI, pi: ExtensionAPI): Promise<void> {
-  const confirm = await ui.select({
-    title: "Re-embed All Memories",
-    message: "⚠ This will re-generate ALL embeddings using the current model.\nOld embeddings will be overwritten.\nThis may take a while and costs API calls.",
-    options: [
-      { label: "Yes, re-embed all", value: "yes", description: "Proceed with re-embedding" },
-      { label: "Cancel", value: "no", description: "Abort" },
-    ],
-  });
+async function handleReembed(ui: ExtensionCommandContext["ui"], ctx: ExtensionCommandContext): Promise<void> {
+  const confirmOptions = [
+    { label: "Yes, re-embed all — Proceed with re-embedding", value: "yes" },
+    { label: "Cancel — Abort", value: "no" },
+  ];
+  const confirmLabels = confirmOptions.map(o => o.label);
+  const confirm = await ui.select(
+    "Re-embed All Memories",
+    confirmLabels,
+  );
 
-  if (confirm !== "yes") return;
+  const confirmOpt = confirmOptions.find(o => o.label === confirm);
+  if (confirmOpt?.value !== "yes") return;
 
   // Import here to avoid circular deps
   const { reembedAllMemories } = await import("../embedding.js");
-  const count = await reembedAllMemories(pi);
+  const count = await reembedAllMemories(ctx);
 
   markModelUsed();
 
-  await ui.notify({
-    message: `Re-embedded ${count} memories with current model.`,
-    level: "success",
-  });
+  ui.notify(`Re-embedded ${count} memories with current model.`, "info");
 }

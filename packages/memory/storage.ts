@@ -232,10 +232,11 @@ export class MemoryStorage {
    * Open database and set up schema. Called by init() with retry logic.
    */
   private initDb(dbPath: string): void {
-    this.db = new Database(dbPath);
+    this.db = new Database(dbPath, { timeout: 5000 });
 
     // Enable WAL mode for concurrent reads
     this.db.pragma("journal_mode = WAL");
+    this.db.pragma("busy_timeout = 5000");
 
     // Load sqlite-vec extension
     try {
