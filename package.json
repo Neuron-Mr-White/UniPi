@@ -43,7 +43,7 @@
       "node_modules/@pi-unipi/subagents/src/index.ts",
       "node_modules/@pi-unipi/btw/extensions/btw.ts",
       "node_modules/@pi-unipi/web-api/src/index.ts",
-      "node_modules/@pi-unipi/utility/index.ts",
+      "node_modules/@pi-unipi/utility/src/index.ts",
       "node_modules/@pi-unipi/ask-user/index.ts",
       "node_modules/@pi-unipi/mcp/src/index.ts"
     ],
@@ -53,6 +53,7 @@
       "node_modules/@pi-unipi/memory/skills",
       "node_modules/@pi-unipi/btw/skills",
       "node_modules/@pi-unipi/ask-user/skills",
+      "node_modules/@pi-unipi/utility/skills",
       "node_modules/@pi-unipi/mcp/skills"
     ]
   },

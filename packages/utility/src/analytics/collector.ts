@@ -246,6 +246,10 @@ export class AnalyticsCollector {
     }
   }
 
+  /** Sensitive key patterns to redact */
+  private static SENSITIVE_KEYS =
+    /api[_-]?key|apiKey|token|password|secret|auth|credential|private[_-]?key/i;
+
   /** Remove sensitive data from metadata */
   private sanitizeMetadata(
     metadata?: Record<string, unknown>,
@@ -253,7 +257,9 @@ export class AnalyticsCollector {
     if (!metadata) return undefined;
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(metadata)) {
-      if (typeof value === "string") {
+      if (AnalyticsCollector.SENSITIVE_KEYS.test(key)) {
+        sanitized[key] = "[REDACTED]";
+      } else if (typeof value === "string") {
         sanitized[key] = this.sanitizeString(value);
       } else {
         sanitized[key] = value;
@@ -266,9 +272,9 @@ export class AnalyticsCollector {
   private sanitizeString(str: string): string {
     // Truncate to 500 chars
     let result = str.length > 500 ? str.slice(0, 500) + "…" : str;
-    // Redact common secret patterns
+    // Redact common secret patterns in strings
     result = result.replace(
-      /(api[_-]?key|token|password|secret|auth)\s*[:=]\s*\S+/gi,
+      /(api[_-]?key|apiKey|token|password|secret|auth)\s*[:=]\s*\S+/gi,
       "$1: [REDACTED]",
     );
     return result;
