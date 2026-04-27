@@ -311,7 +311,7 @@ export function renderMcpSettingsOverlay(params?: {
                   ? theme.fg("muted", "○")
                   : theme.fg("dim", "○");
 
-          const name = selected ? theme.bold(server.name) : theme.fg("default", server.name);
+          const name = selected ? theme.bold(server.name) : theme.fg("text", server.name);
           const cmd = theme.fg("muted", truncateToWidth(server.command, 24));
           const tools =
             server.status === "running" && server.toolCount > 0

@@ -360,7 +360,7 @@ export function renderMcpAddOverlay(params?: {
           const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
           const name = selected
             ? theme.bold(server.name)
-            : theme.fg("default", server.name);
+            : theme.fg("text", server.name);
           left = ` ${prefix}${scopeIcon} ${name}`;
           if (selected) {
             // Show description on next line if available
@@ -380,7 +380,7 @@ export function renderMcpAddOverlay(params?: {
           const editorLines = state.editorContent.split("\n");
           const editorIdx = row - 2;
           if (editorIdx < editorLines.length) {
-            right = theme.fg("default", truncateToWidth(editorLines[editorIdx], halfW - 3));
+            right = theme.fg("text", truncateToWidth(editorLines[editorIdx], halfW - 3));
           }
         }
 
