@@ -151,6 +151,9 @@ export function renderMcpAddOverlay(params?: {
     };
     const editor = new Editor(tui, editorTheme);
     editor.setText(state.editorContent);
+    // Enter must insert a newline, not submit (which clears the editor).
+    // Ctrl+S handles saving; no submit path needed.
+    (editor as any).disableSubmit = true;
 
     let cachedLines: string[] | undefined;
     let lastListHeight = 12;
