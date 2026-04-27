@@ -31,6 +31,7 @@ export const MODULES = {
   UTILITY: "@pi-unipi/utility",
   ASK_USER: "@pi-unipi/ask-user",
   COMPACTOR: "@pi-unipi/compactor",
+  NOTIFY: "@pi-unipi/notify",
 } as const;
 
 /** Workflow command names */
@@ -221,6 +222,23 @@ export const COMPACTOR_COMMANDS = {
 export const COMPACTOR_DIRS = {
   CONFIG: "~/.unipi/config/compactor",
   DB: "~/.unipi/db/compactor",
+} as const;
+
+/** Notify command names */
+export const NOTIFY_COMMANDS = {
+  SETTINGS: "notify-settings",
+  SET_TG: "notify-set-tg",
+  TEST: "notify-test",
+} as const;
+
+/** Notify tool names */
+export const NOTIFY_TOOLS = {
+  NOTIFY_USER: "notify_user",
+} as const;
+
+/** Notify directory paths */
+export const NOTIFY_DIRS = {
+  CONFIG: "~/.unipi/config/notify",
 } as const;
 
 /** Compactor defaults */
