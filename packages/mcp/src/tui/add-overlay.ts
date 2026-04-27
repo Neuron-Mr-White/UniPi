@@ -1,9 +1,13 @@
 /**
  * @pi-unipi/mcp — Add server overlay TUI
  *
- * Split-pane overlay for adding MCP servers:
- * Left: browsable/searchable catalog list
- * Right: JSON config editor for selected server
+ * Vim-modal browser for the MCP catalog with split-pane editor.
+ *
+ * Modes:
+ *   normal  — j/k navigate, Enter select, l/Tab → editor, / search, gg/G top/bottom,
+ *             Ctrl+d/u half-page, Esc/q close
+ *   search  — typing edits query, Enter accept, Esc cancel
+ *   editor  — JSON editor active, Ctrl+S save, Esc/h back to browse
  */
 
 import {
@@ -23,56 +27,50 @@ import {
   saveMetadata,
   getGlobalConfigDir,
 } from "../config/manager.js";
-import { validateMcpConfig, createServerTemplate, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
+import { validateMcpConfig, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
 
-/** State for the add overlay */
+type Mode = "normal" | "search" | "editor";
+
 interface AddOverlayState {
-  mode: "browse" | "custom";
+  mode: Mode;
   searchQuery: string;
+  pendingSearch: string;
   filteredServers: CatalogEntry[];
   allServers: CatalogEntry[];
   selectedIndex: number;
+  scrollOffset: number;
   editorContent: string;
-  focusPane: "browse" | "editor";
   validationError: string | null;
   scope: "global" | "project";
   saved: boolean;
+  pendingG: boolean;
+  status: string;
 }
 
-/**
- * Generate a pre-filled JSON config template from a catalog entry.
- */
 function generateConfigTemplate(server: CatalogEntry): string {
-  const name = server.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-
+  const slug = server.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
   const config: Record<string, unknown> = {
     mcpServers: {
-      [name]: {
+      [slug]: {
         command: server.install?.command ?? "npx",
-        args: server.install?.args ?? ["-y", `@modelcontextprotocol/server-${name}`],
+        args: server.install?.args ?? ["-y", `@modelcontextprotocol/server-${slug}`],
         env: {},
       },
     },
   };
-
-  // Pre-fill env vars with placeholders
   if (server.install?.envVars) {
     const env: Record<string, string> = {};
-    for (const v of server.install.envVars) {
-      env[v] = "";
-    }
-    (config.mcpServers as any)[name].env = env;
+    for (const v of server.install.envVars) env[v] = "";
+    (config.mcpServers as any)[slug].env = env;
   }
-
   return JSON.stringify(config, null, 2);
 }
 
-/**
- * Render the MCP add overlay.
- *
- * Returns a callback compatible with ctx.ui.custom():
- * (tui, theme, kb, done) => { render, invalidate, handleInput }
- */
+function padVisible(content: string, targetWidth: number): string {
+  const pad = Math.max(0, targetWidth - visibleWidth(content));
+  return content + " ".repeat(pad);
+}
+
 export function renderMcpAddOverlay(params?: {
   scope?: "global" | "project";
   onComplete?: () => void;
@@ -85,21 +83,22 @@ export function renderMcpAddOverlay(params?: {
   ) => {
     const scope = params?.scope ?? "global";
 
-    // State
     const state: AddOverlayState = {
-      mode: "browse",
+      mode: "normal",
       searchQuery: "",
+      pendingSearch: "",
       filteredServers: [],
       allServers: [],
       selectedIndex: 0,
+      scrollOffset: 0,
       editorContent: "{}",
-      focusPane: "browse",
       validationError: null,
       scope,
       saved: false,
+      pendingG: false,
+      status: "",
     };
 
-    // Load catalog
     let catalog: CatalogData;
     try {
       catalog = loadCatalog();
@@ -107,11 +106,8 @@ export function renderMcpAddOverlay(params?: {
       state.filteredServers = catalog.servers;
     } catch {
       catalog = { lastUpdated: "", source: "", totalServers: 0, servers: [] };
-      state.allServers = [];
-      state.filteredServers = [];
     }
 
-    // Editor theme
     const editorTheme: EditorTheme = {
       borderColor: (s: any) => theme.fg("accent", s),
       selectList: {
@@ -126,13 +122,38 @@ export function renderMcpAddOverlay(params?: {
     editor.setText(state.editorContent);
 
     let cachedLines: string[] | undefined;
+    let lastListHeight = 12;
 
     function refresh() {
       cachedLines = undefined;
       tui.requestRender();
     }
 
-    function searchServers(query: string) {
+    function setStatus(msg: string) {
+      state.status = msg;
+      // Auto-clear status after a few renders by using a timer
+      setTimeout(() => {
+        if (state.status === msg) {
+          state.status = "";
+          refresh();
+        }
+      }, 1500);
+    }
+
+    function ensureVisible() {
+      const h = lastListHeight;
+      if (state.selectedIndex < state.scrollOffset) {
+        state.scrollOffset = state.selectedIndex;
+      } else if (state.selectedIndex >= state.scrollOffset + h) {
+        state.scrollOffset = state.selectedIndex - h + 1;
+      }
+      const max = Math.max(0, state.filteredServers.length - h);
+      if (state.scrollOffset > max) state.scrollOffset = max;
+      if (state.scrollOffset < 0) state.scrollOffset = 0;
+    }
+
+    function applySearch(query: string) {
+      state.searchQuery = query;
       if (!query.trim()) {
         state.filteredServers = state.allServers;
       } else {
@@ -145,17 +166,15 @@ export function renderMcpAddOverlay(params?: {
         );
       }
       state.selectedIndex = 0;
+      state.scrollOffset = 0;
     }
 
-    function selectServer(index: number) {
-      if (index < 0 || index >= state.filteredServers.length) return;
-      state.selectedIndex = index;
-      const server = state.filteredServers[index];
+    function loadSelectedIntoEditor() {
+      if (state.selectedIndex < 0 || state.selectedIndex >= state.filteredServers.length) return;
+      const server = state.filteredServers[state.selectedIndex];
       state.editorContent = generateConfigTemplate(server);
       editor.setText(state.editorContent);
       state.validationError = null;
-      state.focusPane = "editor";
-      state.mode = "browse";
     }
 
     function validateAndSave(): boolean {
@@ -166,28 +185,19 @@ export function renderMcpAddOverlay(params?: {
           state.validationError = validation.errors[0];
           return false;
         }
-
-        // Determine target directory
         const configDir = getGlobalConfigDir();
-
-        // Load existing config and merge — handle corrupt existing config
         let existing: McpConfig;
         try {
           existing = loadMcpConfig(configDir);
         } catch {
-          // Existing config is corrupt — start fresh
           existing = { ...DEFAULT_MCP_CONFIG };
         }
-
         const newServers = parsed.mcpServers ?? {};
-
         for (const [name, def] of Object.entries(newServers)) {
           existing.mcpServers[name] = def as any;
         }
-
         saveMcpConfig(configDir, existing);
 
-        // Update metadata
         let meta: McpMetadata;
         try {
           meta = loadMetadata(configDir);
@@ -195,10 +205,7 @@ export function renderMcpAddOverlay(params?: {
           meta = { ...DEFAULT_METADATA, servers: {}, sync: { ...DEFAULT_METADATA.sync } };
         }
         for (const name of Object.keys(newServers)) {
-          meta.servers[name] = {
-            enabled: true,
-            addedAt: new Date().toISOString(),
-          };
+          meta.servers[name] = { enabled: true, addedAt: new Date().toISOString() };
         }
         saveMetadata(configDir, meta);
 
@@ -206,82 +213,171 @@ export function renderMcpAddOverlay(params?: {
         state.validationError = null;
         return true;
       } catch (err) {
-        state.validationError =
-          err instanceof Error ? err.message : "Invalid JSON";
+        state.validationError = err instanceof Error ? err.message : "Invalid JSON";
         return false;
       }
     }
 
-    function handleInput(data: string) {
-      // Editor pane focused: delegate to editor
-      if (state.focusPane === "editor") {
-        if (matchesKey(data, Key.escape)) {
-          // Cancel editing, go back to browse
-          state.focusPane = "browse";
-          state.validationError = null;
-          refresh();
-          return;
-        }
+    // ─── Input handling ───────────────────────────────────────────────
 
-        // Ctrl+S or Enter in editor: validate and save
-        if (
-          (data === "\x13" || data === "\r") &&
-          state.editorContent.trim() !== "{}"
-        ) {
-          if (validateAndSave()) {
-            done({ saved: true });
-            params?.onComplete?.();
-          } else {
-            refresh();
-          }
-          return;
-        }
-
-        // Delegate to editor
-        editor.handleInput(data);
-        state.editorContent = editor.getText();
+    function handleEditorMode(data: string) {
+      if (matchesKey(data, Key.escape)) {
+        state.mode = "normal";
+        state.validationError = null;
         refresh();
         return;
       }
+      // Ctrl+S to save
+      if (data === "\x13") {
+        if (validateAndSave()) {
+          done({ saved: true });
+          params?.onComplete?.();
+        } else {
+          refresh();
+        }
+        return;
+      }
+      // Delegate everything else to the editor
+      editor.handleInput(data);
+      state.editorContent = editor.getText();
+      refresh();
+    }
 
-      // Browse pane focused
+    function handleSearchMode(data: string) {
       if (matchesKey(data, Key.escape)) {
+        // Cancel search — restore previous query
+        applySearch(state.searchQuery);
+        state.pendingSearch = state.searchQuery;
+        state.mode = "normal";
+        refresh();
+        return;
+      }
+      if (data === "\r" || data === "\n") {
+        // Accept search
+        applySearch(state.pendingSearch);
+        state.mode = "normal";
+        refresh();
+        return;
+      }
+      if (data === "\x7f" || data === "\b") {
+        if (state.pendingSearch.length > 0) {
+          state.pendingSearch = state.pendingSearch.slice(0, -1);
+          applySearch(state.pendingSearch);
+          refresh();
+        }
+        return;
+      }
+      // Regular printable input
+      if (data.length === 1 && data >= " ") {
+        state.pendingSearch += data;
+        applySearch(state.pendingSearch);
+        refresh();
+        return;
+      }
+    }
+
+    function handleNormalMode(data: string) {
+      // Close
+      if (matchesKey(data, Key.escape) || data === "q") {
         done(null);
         return;
       }
 
-      // Navigation
-      if (matchesKey(data, Key.up)) {
+      const listLen = state.filteredServers.length;
+      const half = Math.max(1, Math.floor(lastListHeight / 2));
+
+      // Movement
+      if (matchesKey(data, Key.down) || data === "j") {
+        if (state.selectedIndex < listLen - 1) {
+          state.selectedIndex++;
+          ensureVisible();
+          refresh();
+        }
+        state.pendingG = false;
+        return;
+      }
+      if (matchesKey(data, Key.up) || data === "k") {
         if (state.selectedIndex > 0) {
           state.selectedIndex--;
+          ensureVisible();
           refresh();
+        }
+        state.pendingG = false;
+        return;
+      }
+      // gg → top, G → bottom
+      if (data === "g") {
+        if (state.pendingG) {
+          state.selectedIndex = 0;
+          state.scrollOffset = 0;
+          state.pendingG = false;
+          refresh();
+        } else {
+          state.pendingG = true;
         }
         return;
       }
-
-      if (matchesKey(data, Key.down)) {
-        if (state.selectedIndex < state.filteredServers.length - 1) {
-          state.selectedIndex++;
-          refresh();
-        }
+      if (data === "G") {
+        state.selectedIndex = Math.max(0, listLen - 1);
+        ensureVisible();
+        state.pendingG = false;
+        refresh();
+        return;
+      }
+      // Ctrl+d / Ctrl+u — half-page
+      if (data === "\x04") {
+        state.selectedIndex = Math.min(listLen - 1, state.selectedIndex + half);
+        ensureVisible();
+        state.pendingG = false;
+        refresh();
+        return;
+      }
+      if (data === "\x15") {
+        state.selectedIndex = Math.max(0, state.selectedIndex - half);
+        ensureVisible();
+        state.pendingG = false;
+        refresh();
+        return;
+      }
+      // PageDown / PageUp
+      if (data === "\x1b[6~") {
+        state.selectedIndex = Math.min(listLen - 1, state.selectedIndex + lastListHeight);
+        ensureVisible();
+        refresh();
+        return;
+      }
+      if (data === "\x1b[5~") {
+        state.selectedIndex = Math.max(0, state.selectedIndex - lastListHeight);
+        ensureVisible();
+        refresh();
         return;
       }
 
-      // Enter: select server and move to editor
+      state.pendingG = false;
+
+      // Search
+      if (data === "/") {
+        state.mode = "search";
+        state.pendingSearch = state.searchQuery;
+        refresh();
+        return;
+      }
+
+      // Enter or l/Tab → load into editor and switch focus
       if (data === "\r" || data === "\n") {
-        selectServer(state.selectedIndex);
+        loadSelectedIntoEditor();
+        state.mode = "editor";
+        refresh();
+        return;
+      }
+      if (data === "l" || data === "\t") {
+        if (state.editorContent.trim() === "{}") loadSelectedIntoEditor();
+        state.mode = "editor";
         refresh();
         return;
       }
 
-      // Tab: toggle focus between panes
-      if (data === "\t") {
-        state.focusPane = state.focusPane === "browse" ? "editor" : "browse";
-        refresh();
-        return;
-      }
-
-      // 'c': switch to custom mode (empty editor)
+      // c → custom JSON skeleton
       if (data === "c") {
         state.editorContent = JSON.stringify(
           { mcpServers: { "": { command: "", args: [], env: {} } } },
@@ -289,153 +385,205 @@ export function renderMcpAddOverlay(params?: {
           2,
         );
         editor.setText(state.editorContent);
-        state.focusPane = "editor";
-        state.mode = "custom";
+        state.mode = "editor";
         refresh();
         return;
       }
 
-      // '/' or typing: start search
-      if (data === "/" || (data.length === 1 && data >= " ")) {
-        if (data === "/") {
-          state.searchQuery = "";
-        } else {
-          state.searchQuery += data;
-        }
-        searchServers(state.searchQuery);
+      // ? → show help (status flash)
+      if (data === "?") {
+        setStatus("j/k=move · gg/G=top/bot · Ctrl+d/u=half-page · /=search · Enter=edit · q=quit");
         refresh();
         return;
       }
-
-      // Backspace: delete from search
-      if (data === "\x7f" || data === "\b") {
-        if (state.searchQuery.length > 0) {
-          state.searchQuery = state.searchQuery.slice(0, -1);
-          searchServers(state.searchQuery);
-          refresh();
-        }
-        return;
-      }
     }
 
-    /** Pad content to exact visible width, accounting for ANSI codes and emoji */
-    function padVisible(content: string, targetWidth: number): string {
-      const vw = visibleWidth(content);
-      const pad = Math.max(0, targetWidth - vw);
-      return content + " ".repeat(pad);
+    function handleInput(data: string) {
+      if (state.mode === "editor") return handleEditorMode(data);
+      if (state.mode === "search") return handleSearchMode(data);
+      return handleNormalMode(data);
     }
 
-    /** Render a single split-pane row: │ left │ right │ */
-    function splitRow(left: string, right: string, halfW: number): string {
-      return (
-        theme.fg("accent", "│") +
-        padVisible(left, halfW) +
-        theme.fg("accent", "│") +
-        padVisible(right, halfW) +
-        theme.fg("accent", "│")
-      );
-    }
+    // ─── Rendering ────────────────────────────────────────────────────
 
     function render(width: number): string[] {
       if (cachedLines) return cachedLines;
 
       const lines: string[] = [];
-      const innerWidth = Math.max(22, width - 2);
-      const halfW = Math.floor(innerWidth / 2) - 1; // -1 for the middle │
+      const innerWidth = Math.max(40, width - 2);
 
-      // ── Header ──────────────────────────────────────────────────────
-      const header = " Add MCP Server ";
-      const modeLabel = state.mode === "browse" ? "[Browse]" : "[Custom]";
-      const headerPad = Math.max(0, innerWidth - visibleWidth(header) - visibleWidth(modeLabel));
-      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
+      // Pane widths: account for left │, middle │, right │ borders
+      const leftW = Math.floor((innerWidth - 1) / 2);
+      const rightW = innerWidth - 1 - leftW;
+
+      const browseFocused = state.mode !== "editor";
+      const editorFocused = state.mode === "editor";
+
+      // Border + active-pane accent helpers
+      const border = (s: string) => theme.fg("accent", s);
+      const dimBorder = (s: string) => theme.fg("muted", s);
+
+      // ── Top header ──────────────────────────────────────────────────
+      const title = " Add MCP Server ";
+      const modeTag =
+        state.mode === "search"
+          ? "[SEARCH]"
+          : state.mode === "editor"
+            ? "[EDITOR]"
+            : "[NORMAL]";
+      const headerPad = Math.max(0, innerWidth - visibleWidth(title) - visibleWidth(modeTag));
+      lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
       lines.push(
-        theme.fg("accent", "│") +
-        theme.bold(header) +
-        theme.fg("muted", " ".repeat(headerPad) + modeLabel) +
-        theme.fg("accent", "│"),
+        border("│") +
+          theme.bold(title) +
+          " ".repeat(headerPad) +
+          theme.fg("accent", modeTag) +
+          border("│"),
       );
-      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
 
-      // ── Content area — split pane ──────────────────────────────────
-      const browseServers = state.filteredServers;
-      const CONTENT_HEIGHT = 16;
+      // Pane headers row: ├──── search bar ────┬──── Config Editor ────┤
+      lines.push(
+        border("├") +
+          border("─".repeat(leftW)) +
+          border("┬") +
+          border("─".repeat(rightW)) +
+          border("┤"),
+      );
+
+      // Search bar / list header on left, editor title on right
+      const searchBar = (() => {
+        if (state.mode === "search") {
+          const cursor = state.pendingSearch.length > 0 ? "" : "█";
+          return ` ${theme.fg("accent", "/")}${theme.fg("text", state.pendingSearch)}${theme.fg("accent", cursor)}`;
+        }
+        if (state.searchQuery) return ` ${theme.fg("muted", "/")}${theme.fg("text", state.searchQuery)}`;
+        return ` ${theme.fg("muted", "/ press / to search")}`;
+      })();
+
+      const editorHeader = editorFocused
+        ? theme.bold(theme.fg("accent", " Config Editor "))
+        : theme.fg("muted", " Config Editor ");
+
+      const total = state.allServers.length;
+      const shown = state.filteredServers.length;
+      const counter =
+        shown < total
+          ? theme.fg("dim", `${shown}/${total} `)
+          : theme.fg("dim", `${total} `);
+      const leftHeaderRight = padVisible(searchBar, leftW - visibleWidth(counter)) + counter;
+
+      lines.push(
+        border("│") +
+          padVisible(leftHeaderRight, leftW) +
+          (browseFocused ? border("│") : dimBorder("│")) +
+          padVisible(editorHeader, rightW) +
+          border("│"),
+      );
+
+      lines.push(
+        border("├") +
+          border("─".repeat(leftW)) +
+          border("┼") +
+          border("─".repeat(rightW)) +
+          border("┤"),
+      );
+
+      // ── List + editor body ─────────────────────────────────────────
+      const LIST_HEIGHT = 14;
+      lastListHeight = LIST_HEIGHT;
+      ensureVisible();
+
       const editorLines = state.editorContent.split("\n");
 
-      // Build left pane lines (one string per row, no embedded newlines)
-      const leftLines: string[] = [];
-
-      // Row 0: search bar
-      const searchDisplay = state.searchQuery || "search...";
-      leftLines.push(theme.fg("muted", ` 🔍 ${searchDisplay}`));
-
-      // Row 1: blank separator
-      leftLines.push("");
-
-      // Rows 2+: server list
-      for (let i = 0; i < browseServers.length && leftLines.length < CONTENT_HEIGHT; i++) {
-        const server = browseServers[i];
-        const selected = i === state.selectedIndex;
-        const scopeIcon = server.scope === "cloud" ? "☁️" : "🏠";
-        const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
-        const name = selected
-          ? theme.bold(server.name)
-          : theme.fg("text", server.name);
-        leftLines.push(` ${prefix}${scopeIcon} ${name}`);
-
-        // Show description below selected item (takes its own row)
-        if (selected && server.description) {
-          const desc = truncateToWidth(server.description, halfW - 5);
-          leftLines.push(`    ${theme.fg("muted", desc)}`);
+      for (let row = 0; row < LIST_HEIGHT; row++) {
+        // Left: server list
+        let left = "";
+        const serverIdx = state.scrollOffset + row;
+        if (serverIdx < state.filteredServers.length) {
+          const server = state.filteredServers[serverIdx];
+          const selected = serverIdx === state.selectedIndex;
+          const scopeIcon = server.scope === "cloud" ? "☁️ " : "🏠 ";
+          const officialMark = server.official ? theme.fg("success", "✓ ") : "  ";
+          const prefix = selected
+            ? (browseFocused ? theme.fg("accent", "▸ ") : theme.fg("muted", "▸ "))
+            : "  ";
+          const nameRaw = truncateToWidth(server.name, leftW - 8);
+          const name = selected
+            ? (browseFocused ? theme.bold(theme.fg("accent", nameRaw)) : theme.bold(nameRaw))
+            : theme.fg("text", nameRaw);
+          left = ` ${prefix}${officialMark}${scopeIcon}${name}`;
+        } else if (state.filteredServers.length === 0 && row === 1) {
+          left = ` ${theme.fg("warning", "no matches")}`;
         }
+
+        // Right: editor content
+        let right = "";
+        if (row < editorLines.length) {
+          const raw = editorLines[row];
+          right = ` ${theme.fg(editorFocused ? "text" : "muted", truncateToWidth(raw, rightW - 1))}`;
+        }
+
+        const midBorder = browseFocused && !editorFocused ? border("│") : dimBorder("│");
+        lines.push(
+          (browseFocused ? border("│") : dimBorder("│")) +
+            padVisible(left, leftW) +
+            midBorder +
+            padVisible(right, rightW) +
+            (editorFocused ? border("│") : dimBorder("│")),
+        );
       }
 
-      // Build right pane lines
-      const rightLines: string[] = [];
+      // ── Description / status row ──────────────────────────────────
+      lines.push(
+        border("├") +
+          border("─".repeat(leftW)) +
+          border("┴") +
+          border("─".repeat(rightW)) +
+          border("┤"),
+      );
 
-      // Row 0: editor header
-      rightLines.push(theme.fg("muted", " Config Editor "));
-
-      // Row 1: blank separator
-      rightLines.push("");
-
-      // Rows 2+: editor content
-      for (let i = 0; i < editorLines.length && rightLines.length < CONTENT_HEIGHT; i++) {
-        rightLines.push(theme.fg("text", truncateToWidth(editorLines[i], halfW - 2)));
-      }
-
-      // Combine into split-pane rows
-      for (let row = 0; row < CONTENT_HEIGHT; row++) {
-        const left = leftLines[row] ?? "";
-        const right = rightLines[row] ?? "";
-        lines.push(splitRow(left, right, halfW));
-      }
+      const sel = state.filteredServers[state.selectedIndex];
+      const descContent = sel
+        ? ` ${theme.fg("accent", sel.id)}  ${theme.fg("muted", truncateToWidth(sel.description, innerWidth - visibleWidth(sel.id) - 4))}`
+        : ` ${theme.fg("dim", "no server selected")}`;
+      lines.push(border("│") + padVisible(descContent, innerWidth) + border("│"));
 
       // ── Validation error ───────────────────────────────────────────
       if (state.validationError) {
         const errText = ` ⚠ ${truncateToWidth(state.validationError, innerWidth - 4)}`;
+        lines.push(border("│") + padVisible(theme.fg("error", errText), innerWidth) + border("│"));
+      }
+
+      // ── Status line ────────────────────────────────────────────────
+      if (state.status) {
         lines.push(
-          theme.fg("accent", "│") +
-          padVisible(theme.fg("error", errText), innerWidth) +
-          theme.fg("accent", "│"),
+          border("│") +
+            padVisible(` ${theme.fg("warning", state.status)}`, innerWidth) +
+            border("│"),
         );
       }
 
       // ── Footer ─────────────────────────────────────────────────────
+      lines.push(border(`├${"─".repeat(innerWidth)}┤`));
       const scopeLabel = state.scope === "global" ? "● Global" : "● Project";
-      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
       lines.push(
-        theme.fg("accent", "│") +
-        padVisible(theme.fg("muted", ` ${scopeLabel}`), innerWidth) +
-        theme.fg("accent", "│"),
+        border("│") +
+          padVisible(theme.fg("muted", ` ${scopeLabel}`), innerWidth) +
+          border("│"),
       );
 
-      const binds = " ↑↓ navigate  Enter select  Tab pane  c custom  q/Esc close";
+      const binds =
+        state.mode === "editor"
+          ? " Ctrl+S save · Esc back · Tab pane "
+          : state.mode === "search"
+            ? " Type to filter · Enter accept · Esc cancel "
+            : " j/k move · gg/G top/bot · Ctrl+d/u page · / search · Enter edit · c custom · q close ";
       lines.push(
-        theme.fg("accent", "│") +
-        padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
-        theme.fg("accent", "│"),
+        border("│") +
+          padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
+          border("│"),
       );
-      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
+      lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
 
       cachedLines = lines;
       return lines;

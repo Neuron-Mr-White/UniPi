@@ -199,8 +199,8 @@ export function renderMcpSettingsOverlay(params?: {
         return;
       }
 
-      // Navigation
-      if (matchesKey(data, Key.up)) {
+      // Navigation (arrows + vim j/k)
+      if (matchesKey(data, Key.up) || data === "k") {
         if (state.selectedIndex > 0) {
           state.selectedIndex--;
           refresh();
@@ -208,7 +208,7 @@ export function renderMcpSettingsOverlay(params?: {
         return;
       }
 
-      if (matchesKey(data, Key.down)) {
+      if (matchesKey(data, Key.down) || data === "j") {
         if (state.selectedIndex < state.servers.length - 1) {
           state.selectedIndex++;
           refresh();
