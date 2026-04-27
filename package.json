@@ -77,8 +77,7 @@
     "@pi-unipi/mcp": "*",
     "@pi-unipi/memory": "*",
     "@pi-unipi/ralph": "*",
-    "@pi-unipi/subagents": "*",
-    "@pi-unipi/notify": "*",
+    "@pi-unipi/subagents": "*"
     "@pi-unipi/utility": "*",
     "@pi-unipi/web-api": "*",
     "@pi-unipi/workflow": "*"

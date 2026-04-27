@@ -32,6 +32,7 @@ export const MODULES = {
   ASK_USER: "@pi-unipi/ask-user",
   COMPACTOR: "@pi-unipi/compactor",
   NOTIFY: "@pi-unipi/notify",
+  BTW: "@pi-unipi/btw",
 } as const;
 
 /** Workflow command names */
@@ -227,6 +228,7 @@ export const COMPACTOR_DIRS = {
 /** Notify command names */
 export const NOTIFY_COMMANDS = {
   SETTINGS: "notify-settings",
+  SET_GOTIFY: "notify-set-gotify",
   SET_TG: "notify-set-tg",
   TEST: "notify-test",
 } as const;
