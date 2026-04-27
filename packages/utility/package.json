@@ -45,6 +45,6 @@
     "@sinclair/typebox": "*"
   },
   "scripts": {
-    "test": "node --test tests/**/*.test.ts"
+    "test": "npx tsx --test tests/**/*.test.ts"
   }
 }

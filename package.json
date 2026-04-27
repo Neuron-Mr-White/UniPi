@@ -64,20 +64,21 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "@pi-unipi/core": "*",
-    "@pi-unipi/workflow": "*",
-    "@pi-unipi/ralph": "*",
-    "@pi-unipi/memory": "*",
-    "@pi-unipi/info-screen": "*",
-    "@pi-unipi/subagents": "*",
-    "@pi-unipi/btw": "*",
-    "@pi-unipi/web-api": "*",
-    "@pi-unipi/utility": "*",
     "@pi-unipi/ask-user": "*",
-    "@pi-unipi/mcp": "*"
+    "@pi-unipi/btw": "*",
+    "@pi-unipi/core": "*",
+    "@pi-unipi/info-screen": "*",
+    "@pi-unipi/mcp": "*",
+    "@pi-unipi/memory": "*",
+    "@pi-unipi/ralph": "*",
+    "@pi-unipi/subagents": "*",
+    "@pi-unipi/utility": "*",
+    "@pi-unipi/web-api": "*",
+    "@pi-unipi/workflow": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.0"
   }
 }
