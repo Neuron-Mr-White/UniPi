@@ -139,6 +139,9 @@ export class TelegramSetupOverlay implements Component {
         this.phase = "success";
         this.saveConfig();
         this.cleanup();
+        this.requestRender?.();
+        // Auto-close after brief delay to show success
+        setTimeout(() => this.onClose?.(), 1000);
         return;
       }
 
@@ -147,6 +150,7 @@ export class TelegramSetupOverlay implements Component {
         this.phase = "timeout";
         this.error = "Timed out after 5 minutes";
         this.cleanup();
+        this.requestRender?.();
         return;
       }
 
@@ -157,6 +161,7 @@ export class TelegramSetupOverlay implements Component {
       this.phase = "error";
       this.error = err instanceof Error ? err.message : String(err);
       this.cleanup();
+      this.requestRender?.();
     }
   }
 
