@@ -17,6 +17,7 @@ import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
 import { syncCatalog, loadCatalog } from "./config/sync.js";
 import { ServerRegistry } from "./bridge/registry.js";
 import { renderMcpAddOverlay } from "./tui/add-overlay.js";
+import { renderMcpSettingsOverlay } from "./tui/settings-overlay.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
@@ -256,32 +257,37 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /unipi:mcp-settings — placeholder (TUI overlay in Task 8)
+  // /unipi:mcp-settings — settings overlay
   pi.registerCommand(`unipi:${MCP_COMMANDS.SETTINGS}`, {
     description: "Manage MCP server settings",
     handler: async (_args: string, ctx: any) => {
-      // TODO: Task 8 — implement TUI overlay
-      const reg = getRegistry();
-      if (!reg) {
-        ctx.ui.notify("MCP extension not initialized", "warning");
+      if (!ctx.hasUI) {
+        ctx.ui.notify("MCP Settings requires an interactive UI.", "warning");
         return;
       }
 
-      const all = reg.getAll();
-      if (all.length === 0) {
-        ctx.ui.notify(
-          "No servers configured. Config: ~/.unipi/config/mcp/mcp-config.json",
-          "info",
+      const cwd = ctx.cwd ?? process.cwd();
+
+      function openSettings() {
+        ctx.ui.custom(
+          renderMcpSettingsOverlay({
+            registry: registry ?? undefined,
+            cwd,
+            onComplete: () => {},
+          }),
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "80%",
+              minWidth: 70,
+              anchor: "center",
+              margin: 2,
+            },
+          },
         );
-        return;
       }
 
-      const lines = ["MCP Settings:\n"];
-      for (const state of all) {
-        lines.push(`- ${state.name}: ${state.status} (${state.toolCount} tools)`);
-      }
-      lines.push("\nTUI settings overlay not yet implemented.");
-      ctx.ui.notify(lines.join("\n"), "info");
+      openSettings();
     },
   });
 }
