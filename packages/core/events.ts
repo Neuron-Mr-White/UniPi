@@ -211,6 +211,36 @@ export interface UnipiMcpCatalogSyncedEvent {
   source: string;
 }
 
+/** Payload for COMPACTOR compaction completed */
+export interface UnipiCompactionEvent {
+  /** Session ID */
+  sessionId: string;
+  /** Messages summarized */
+  summarized: number;
+  /** Messages kept */
+  kept: number;
+  /** Estimated tokens saved */
+  tokensSaved: number;
+  /** Compression ratio string, e.g. "56:1" */
+  compressionRatio: string;
+}
+
+/** Payload for COMPACTOR stats update */
+export interface UnipiCompactorStatsEvent {
+  /** Session events count */
+  sessionEvents: number;
+  /** Compactions count */
+  compactions: number;
+  /** Tokens saved total */
+  tokensSaved: number;
+  /** Indexed documents count */
+  indexedDocs: number;
+  /** Sandbox executions count */
+  sandboxRuns: number;
+  /** Search queries count */
+  searchQueries: number;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -227,4 +257,6 @@ export type UnipiEventPayload =
   | UnipiInfoDataEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
-  | UnipiMcpCatalogSyncedEvent;
+  | UnipiMcpCatalogSyncedEvent
+  | UnipiCompactionEvent
+  | UnipiCompactorStatsEvent;
