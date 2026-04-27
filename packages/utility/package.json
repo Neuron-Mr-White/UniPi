@@ -1,0 +1,43 @@
+{
+  "name": "@pi-unipi/utility",
+  "version": "0.1.0",
+  "description": "Utility commands and tools for Pi coding agent — continue, status helpers",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/utility"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "utility",
+    "continue"
+  ],
+  "files": [
+    "index.ts",
+    "commands.ts",
+    "tools.ts",
+    "constants.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "index.ts"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
+}

@@ -29,7 +29,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     3. Add `UTILITY_TOOLS` with `CONTINUE: "continue_task"`
     4. Add `ASK_USER_TOOLS` with `ASK: "ask_user"`
 
-- unstarted: Task 2 — Create @pi-unipi/utility Package Structure
+- completed: Task 2 — Create @pi-unipi/utility Package Structure
   - Description: Create the utility package with package.json, index.ts, commands.ts, tools.ts, constants.ts, and README.md
   - Dependencies: Task 1
   - Acceptance Criteria: Package structure matches Unipi patterns; package.json has correct metadata and dependencies
@@ -41,7 +41,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     5. Create `packages/utility/index.ts` as extension entry point
     6. Create `packages/utility/README.md` with usage documentation
 
-- unstarted: Task 3 — Implement /unipi:continue Command
+- completed: Task 3 — Implement /unipi:continue Command
   - Description: Register and implement the `/unipi:continue` command that sends a steer message to continue the agent
   - Dependencies: Task 2
   - Acceptance Criteria: Command registers without errors; invoking command sends steer message; agent continues without user message in transcript
@@ -51,7 +51,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     3. Use `pi.sendUserMessage(CONTINUE_PROMPT, { deliverAs: "steer" })` to continue
     4. Handle edge cases: agent busy (queue or notify), no active session
 
-- unstarted: Task 4 — Implement continue_task Tool
+- completed: Task 4 — Implement continue_task Tool
   - Description: Register and implement the `continue_task` tool for programmatic agent continuation
   - Dependencies: Task 2
   - Acceptance Criteria: Tool registers with correct schema; execute function sends steer message; returns appropriate content
