@@ -44,7 +44,22 @@ interface MemoryFrontmatter {
 }
 
 const MEMORY_DB_NAME = "memory.db";
-const MEMORY_EMBEDDING_DIM = 384;
+/**
+ * Get the configured embedding dimensions.
+ * Reads from config, falls back to 384.
+ */
+function getEmbeddingDims(): number {
+  try {
+    const configPath = path.join(os.homedir(), ".unipi", "memory", "config.json");
+    if (fs.existsSync(configPath)) {
+      const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (typeof raw.dimensions === "number" && raw.dimensions >= 64) {
+        return raw.dimensions;
+      }
+    }
+  } catch { /* ignore */ }
+  return 384;
+}
 
 /**
  * Get the base memory directory (~/.unipi/memory/)
@@ -263,7 +278,7 @@ export class MemoryStorage {
     // Create vector table if sqlite-vec loaded
     try {
       this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[${MEMORY_EMBEDDING_DIM}])
+        CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[${getEmbeddingDims()}])
       `);
     } catch {
       // vec0 table may already exist or sqlite-vec not loaded
