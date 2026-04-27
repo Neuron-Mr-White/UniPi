@@ -61,7 +61,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     3. Implement execute function that sends steer message
     4. Return success/error content based on result
 
-- unstarted: Task 5 — Create @pi-unipi/ask-user Package Structure
+- completed: Task 5 — Create @pi-unipi/ask-user Package Structure
   - Description: Create the ask-user package with package.json, index.ts, types.ts, tools.ts, ask-ui.ts, commands.ts, skills/, and README.md
   - Dependencies: Task 1
   - Acceptance Criteria: Package structure matches Unipi patterns; package.json has correct metadata and dependencies
@@ -75,7 +75,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     7. Create `packages/ask-user/index.ts` as extension entry point
     8. Create `packages/ask-user/README.md` with usage documentation
 
-- unstarted: Task 6 — Implement ask_user Tool
+- completed: Task 6 — Implement ask_user Tool
   - Description: Register and implement the `ask_user` tool with TypeBox schema, mode switching, and TUI rendering
   - Dependencies: Task 5
   - Acceptance Criteria: Tool registers with correct schema; single-select mode works; multi-select mode works; freeform mode works; timeout works; cancel works
@@ -91,7 +91,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     9. Handle cancel: return cancelled response
     10. Return AskUserResponse with kind, selections, text, comment
 
-- unstarted: Task 7 — Implement ask-ui TUI Components
+- completed: Task 7 — Implement ask-ui TUI Components
   - Description: Build polished TUI components for single-select, multi-select, and freeform input using ctx.ui.custom()
   - Dependencies: Task 6
   - Acceptance Criteria: TUI renders correctly; keyboard navigation works; selection/submission works; cancel works; theme integration works
@@ -105,7 +105,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     7. Integrate with pi theme for consistent styling
     8. Use `ctx.ui.custom()` callback pattern (render, invalidate, handleInput)
 
-- unstarted: Task 8 — Create ask-user Skill
+- completed: Task 8 — Create ask-user Skill
   - Description: Write the bundled SKILL.md that guides the agent to use ask_user for high-stakes decisions
   - Dependencies: Task 5
   - Acceptance Criteria: Skill file is valid markdown; describes when to use ask_user; provides examples; lists parameters
