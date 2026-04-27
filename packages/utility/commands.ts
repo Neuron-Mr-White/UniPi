@@ -14,7 +14,6 @@ import { CONTINUE_PROMPT } from "./constants.js";
 export function registerUtilityCommands(pi: ExtensionAPI): void {
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.CONTINUE}`, {
     description: "Continue the agent from where it left off without adding user context",
-    argumentHint: "",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.isIdle()) {
         if (ctx.hasUI) {

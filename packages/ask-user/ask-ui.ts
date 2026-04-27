@@ -6,7 +6,6 @@
  */
 
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-tui";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -33,7 +32,7 @@ export function renderAskUI(params: {
   timeout?: number;
 }): (
   tui: any,
-  theme: Theme,
+  theme: any,
   kb: any,
   done: (result: AskUIResult | null) => void,
 ) => {
@@ -270,7 +269,7 @@ export function renderAskUI(params: {
     function renderOptions(
       lines: string[],
       add: (s: string) => void,
-      theme: Theme,
+      theme: any,
       _width: number,
     ) {
       for (let i = 0; i < displayOptions.length; i++) {
@@ -332,7 +331,7 @@ export function renderAskUI(params: {
  * Create a renderCall function for the ask_user tool.
  */
 export function createRenderCall() {
-  return (args: any, theme: Theme, _context: any) => {
+  return (args: any, theme: any, _context: any) => {
     const question = args.question || "";
     const options = Array.isArray(args.options) ? args.options : [];
     const mode = args.allowMultiple ? "multi-select" : "single-select";
@@ -352,7 +351,7 @@ export function createRenderCall() {
  * Create a renderResult function for the ask_user tool.
  */
 export function createRenderResult() {
-  return (result: any, _options: any, theme: Theme, _context: any) => {
+  return (result: any, _options: any, theme: any, _context: any) => {
     const details = result.details;
     if (!details) {
       const text = result.content?.[0];

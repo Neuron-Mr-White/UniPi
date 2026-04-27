@@ -13,7 +13,6 @@ import { UNIPI_PREFIX } from "@pi-unipi/core";
 export function registerAskUserCommands(pi: ExtensionAPI): void {
   pi.registerCommand(`${UNIPI_PREFIX}ask-user-test`, {
     description: "Test the ask_user tool with a sample question",
-    argumentHint: "",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) {
         if (ctx.hasUI) {
