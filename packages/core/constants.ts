@@ -28,6 +28,8 @@ export const MODULES = {
   WEB_API: "@pi-unipi/web-api",
   IMPECCABLE: "@pi-unipi/impeccable",
   SETTINGS: "@pi-unipi/settings",
+  UTILITY: "@pi-unipi/utility",
+  ASK_USER: "@pi-unipi/ask-user",
 } as const;
 
 /** Workflow command names */
@@ -131,4 +133,19 @@ export const RALPH_STATUS_ICONS = {
   active: "▶",
   paused: "⏸",
   completed: "✓",
+} as const;
+
+/** Utility command names */
+export const UTILITY_COMMANDS = {
+  CONTINUE: "continue",
+} as const;
+
+/** Utility tool names */
+export const UTILITY_TOOLS = {
+  CONTINUE: "continue_task",
+} as const;
+
+/** Ask-user tool names */
+export const ASK_USER_TOOLS = {
+  ASK: "ask_user",
 } as const;
