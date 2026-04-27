@@ -21,8 +21,6 @@
   "files": [
     "index.ts",
     "commands.ts",
-    "tools.ts",
-    "constants.ts",
     "README.md"
   ],
   "pi": {

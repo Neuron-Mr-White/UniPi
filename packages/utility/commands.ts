@@ -6,7 +6,6 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
-import { CONTINUE_PROMPT } from "./constants.js";
 
 /**
  * Register utility commands.
@@ -25,8 +24,15 @@ export function registerUtilityCommands(pi: ExtensionAPI): void {
         return;
       }
 
-      // Send steer message — continues agent without polluting transcript
-      pi.sendUserMessage(CONTINUE_PROMPT, { deliverAs: "steer" });
+      // Send custom message to trigger a turn without polluting transcript
+      pi.sendMessage(
+        {
+          customType: "unipi-continue",
+          content: "",
+          display: false,
+        },
+        { triggerTurn: true },
+      );
     },
   });
 }
