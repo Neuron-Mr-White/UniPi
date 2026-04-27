@@ -16,6 +16,7 @@ import type { ResolvedServer } from "./types.js";
 import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
 import { syncCatalog, loadCatalog } from "./config/sync.js";
 import { ServerRegistry } from "./bridge/registry.js";
+import { renderMcpAddOverlay } from "./tui/add-overlay.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
@@ -227,14 +228,30 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /unipi:mcp-add — placeholder (TUI overlay in Task 7)
+  // /unipi:mcp-add — add server overlay
   pi.registerCommand(`unipi:${MCP_COMMANDS.ADD}`, {
     description: "Add an MCP server (browse catalog or custom config)",
     handler: async (_args: string, ctx: any) => {
-      // TODO: Task 7 — implement TUI overlay
-      ctx.ui.notify(
-        "MCP Add overlay not yet implemented. Edit ~/.unipi/config/mcp/mcp-config.json manually.",
-        "info",
+      if (!ctx.hasUI) {
+        ctx.ui.notify("MCP Add requires an interactive UI.", "warning");
+        return;
+      }
+
+      ctx.ui.custom(
+        renderMcpAddOverlay({
+          onComplete: () => {
+            ctx.ui.notify("MCP server saved. Restart pi to activate.", "info");
+          },
+        }),
+        {
+          overlay: true,
+          overlayOptions: {
+            width: "90%",
+            minWidth: 80,
+            anchor: "center",
+            margin: 2,
+          },
+        },
       );
     },
   });
