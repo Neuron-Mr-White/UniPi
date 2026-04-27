@@ -1,0 +1,727 @@
+{
+  "lastUpdated": "2026-04-27T00:00:00Z",
+  "source": "seed",
+  "totalServers": 50,
+  "servers": [
+    {
+      "id": "github/github-mcp-server",
+      "name": "GitHub MCP Server",
+      "description": "GitHub's official MCP Server for repository management, pull requests, issues, code search, and more",
+      "github": "https://github.com/github/github-mcp-server",
+      "categories": ["development", "version-control"],
+      "language": "go",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "docker",
+        "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
+        "envVars": ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+      }
+    },
+    {
+      "id": "anthropics/mcp-servers",
+      "name": "Playwright MCP",
+      "description": "Browser automation and web scraping via Playwright — navigate pages, fill forms, take screenshots",
+      "github": "https://github.com/anthropics/mcp-servers",
+      "categories": ["browser", "automation"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Brave Search",
+      "description": "Web search via Brave Search API with rich results and summaries",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["search", "web"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        "envVars": ["BRAVE_API_KEY"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Filesystem",
+      "description": "Local filesystem access — read, write, search, and manage files and directories",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["filesystem", "local"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "PostgreSQL",
+      "description": "PostgreSQL database access — query, inspect schema, and manage data",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["database", "sql"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-postgres"],
+        "envVars": ["POSTGRES_CONNECTION_STRING"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "SQLite",
+      "description": "SQLite database access — query, create tables, manage local databases",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["database", "sql"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Memory",
+      "description": "Persistent knowledge graph memory — store and retrieve entities, relations, and observations",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["memory", "knowledge-graph"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Fetch",
+      "description": "HTTP fetching — make requests, download content, interact with REST APIs",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["web", "http"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Puppeteer",
+      "description": "Browser automation via Puppeteer — navigate, screenshot, interact with web pages",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["browser", "automation"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-puppeteer"]
+      }
+    },
+    {
+      "id": "supabase/mcp-server-supabase",
+      "name": "Supabase",
+      "description": "Supabase management — database, auth, storage, and edge functions",
+      "github": "https://github.com/supabase/mcp-server-supabase",
+      "categories": ["database", "backend"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@supabase/mcp-server-supabase"],
+        "envVars": ["SUPABASE_ACCESS_TOKEN"]
+      }
+    },
+    {
+      "id": "cloudflare/mcp-server-cloudflare",
+      "name": "Cloudflare",
+      "description": "Cloudflare Workers, KV, R2, D1, and other Cloudflare services management",
+      "github": "https://github.com/cloudflare/mcp-server-cloudflare",
+      "categories": ["cloud", "infrastructure"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
+        "envVars": ["CLOUDFLARE_API_TOKEN"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Docker",
+      "description": "Docker container management — run, stop, inspect containers and images",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["devops", "containers"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-docker"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "GitLab",
+      "description": "GitLab integration — projects, merge requests, issues, pipelines, and repositories",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["development", "version-control"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-gitlab"],
+        "envVars": ["GITLAB_PERSONAL_ACCESS_TOKEN"]
+      }
+    },
+    {
+      "id": "tacticlaunch/mcp-linear",
+      "name": "Linear",
+      "description": "Linear project management — issues, projects, cycles, and team workflows",
+      "github": "https://github.com/tacticlaunch/mcp-linear",
+      "categories": ["project-management", "productivity"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-linear"],
+        "envVars": ["LINEAR_API_KEY"]
+      }
+    },
+    {
+      "id": "makenotion/notion-mcp-server",
+      "name": "Notion",
+      "description": "Notion workspace integration — pages, databases, blocks, and search",
+      "github": "https://github.com/makenotion/notion-mcp-server",
+      "categories": ["productivity", "knowledge"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@notionhq/notion-mcp-server"],
+        "envVars": ["NOTION_API_KEY"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Slack",
+      "description": "Slack workspace integration — messages, channels, users, and threads",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["communication", "productivity"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "envVars": ["SLACK_BOT_TOKEN", "SLACK_TEAM_ID"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Google Maps",
+      "description": "Google Maps API — geocoding, places, directions, and distance calculations",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["maps", "location"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-google-maps"],
+        "envVars": ["GOOGLE_MAPS_API_KEY"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Google Drive",
+      "description": "Google Drive file access — list, read, search, and manage files",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["storage", "files"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-gdrive"],
+        "envVars": ["GOOGLE_DRIVE_CREDENTIALS"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Everything",
+      "description": "Reference/test server with all MCP features — prompts, resources, tools, sampling",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["testing", "reference"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-everything"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Sequential Thinking",
+      "description": "Step-by-step reasoning chain for complex problem decomposition",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["reasoning", "thinking"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+      }
+    },
+    {
+      "id": "anthropics/mcp-servers",
+      "name": "Computer Use",
+      "description": "Desktop computer control — mouse, keyboard, screenshots via Anthropic",
+      "github": "https://github.com/anthropics/mcp-servers",
+      "categories": ["automation", "desktop"],
+      "language": "python",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@anthropic/mcp-computer-use"]
+      }
+    },
+    {
+      "id": "sentry-io/mcp-server",
+      "name": "Sentry",
+      "description": "Sentry error tracking — issues, releases, performance monitoring",
+      "github": "https://github.com/sentry-io/mcp-server",
+      "categories": ["monitoring", "errors"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@sentry/mcp-server"],
+        "envVars": ["SENTRY_AUTH_TOKEN"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "AWS KB Retrieval",
+      "description": "Amazon Knowledge Base retrieval — search and query AWS-hosted knowledge bases",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["aws", "search"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-aws-kb-retrieval"],
+        "envVars": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"]
+      }
+    },
+    {
+      "id": "aiedward/figma-mcp",
+      "name": "Figma",
+      "description": "Figma design file access — read layers, export assets, inspect designs",
+      "github": "https://github.com/aiedward/figma-mcp",
+      "categories": ["design", "ui"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-figma"],
+        "envVars": ["FIGMA_ACCESS_TOKEN"]
+      }
+    },
+    {
+      "id": "alexfazio/mcp-discord",
+      "name": "Discord",
+      "description": "Discord bot integration — messages, channels, servers, and moderation",
+      "github": "https://github.com/alexfazio/mcp-discord",
+      "categories": ["communication", "social"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-discord"],
+        "envVars": ["DISCORD_BOT_TOKEN"]
+      }
+    },
+    {
+      "id": "tavily-ai/mcp-tavily",
+      "name": "Tavily",
+      "description": "AI-optimized web search — extract and summarize web content for AI agents",
+      "github": "https://github.com/tavily-ai/mcp-tavily",
+      "categories": ["search", "web"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-tavily"],
+        "envVars": ["TAVILY_API_KEY"]
+      }
+    },
+    {
+      "id": "mendableai/mcp-server-firecrawl",
+      "name": "Firecrawl",
+      "description": "Web crawling and scraping — extract structured data from websites",
+      "github": "https://github.com/mendableai/mcp-server-firecrawl",
+      "categories": ["web", "scraping"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-firecrawl"],
+        "envVars": ["FIRECRAWL_API_KEY"]
+      }
+    },
+    {
+      "id": "exa-labs/mcp-server-exa",
+      "name": "Exa",
+      "description": "Exa search engine — neural search with semantic understanding",
+      "github": "https://github.com/exa-labs/mcp-server-exa",
+      "categories": ["search", "ai"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-exa"],
+        "envVars": ["EXA_API_KEY"]
+      }
+    },
+    {
+      "id": "neondatabase/mcp-server-neon",
+      "name": "Neon",
+      "description": "Neon serverless Postgres — database management, branching, and queries",
+      "github": "https://github.com/neondatabase/mcp-server-neon",
+      "categories": ["database", "serverless"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-neon"],
+        "envVars": ["NEON_API_KEY"]
+      }
+    },
+    {
+      "id": "railwayapp/mcp-server-railway",
+      "name": "Railway",
+      "description": "Railway deployment platform — services, deployments, and infrastructure management",
+      "github": "https://github.com/railwayapp/mcp-server-railway",
+      "categories": ["devops", "deployment"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-railway"],
+        "envVars": ["RAILWAY_API_TOKEN"]
+      }
+    },
+    {
+      "id": "vercel/mcp-vercel",
+      "name": "Vercel",
+      "description": "Vercel deployment platform — projects, deployments, domains, and serverless functions",
+      "github": "https://github.com/vercel/mcp-vercel",
+      "categories": ["devops", "deployment"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-vercel"],
+        "envVars": ["VERCEL_API_TOKEN"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Git",
+      "description": "Git repository operations — commit history, diffs, branches, and blame",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["development", "version-control"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-git"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-shell",
+      "name": "Shell",
+      "description": "Shell command execution — run arbitrary commands with output capture",
+      "github": "https://github.com/jlowin/mcp-server-shell",
+      "categories": ["system", "shell"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-shell"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-redis",
+      "name": "Redis",
+      "description": "Redis database access — get, set, list operations, and pub/sub",
+      "github": "https://github.com/jlowin/mcp-server-redis",
+      "categories": ["database", "cache"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-redis"],
+        "envVars": ["REDIS_URL"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-elasticsearch",
+      "name": "Elasticsearch",
+      "description": "Elasticsearch access — search, index, and manage documents",
+      "github": "https://github.com/jlowin/mcp-server-elasticsearch",
+      "categories": ["database", "search"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-elasticsearch"],
+        "envVars": ["ELASTICSEARCH_URL"]
+      }
+    },
+    {
+      "id": "modelscope/mcp-server-time",
+      "name": "Time",
+      "description": "Time and timezone utilities — current time, conversions, and calculations",
+      "github": "https://github.com/modelscope/mcp-server-time",
+      "categories": ["utility", "time"],
+      "language": "typescript",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "time-mcp"]
+      }
+    },
+    {
+      "id": "modelscope/mcp-server-weather",
+      "name": "Weather",
+      "description": "Weather forecasts and current conditions via OpenMeteo API",
+      "github": "https://github.com/modelscope/mcp-server-weather",
+      "categories": ["weather", "utility"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "weather-mcp"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-pdf",
+      "name": "PDF",
+      "description": "PDF document reading — extract text, tables, and metadata from PDF files",
+      "github": "https://github.com/jlowin/mcp-server-pdf",
+      "categories": ["documents", "files"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-pdf"]
+      }
+    },
+    {
+      "id": "modelscope/mcp-server-sqlalchemy",
+      "name": "SQLAlchemy",
+      "description": "Universal SQL database access via SQLAlchemy — MySQL, PostgreSQL, SQLite, Oracle",
+      "github": "https://github.com/modelscope/mcp-server-sqlalchemy",
+      "categories": ["database", "sql"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-sqlalchemy"],
+        "envVars": ["DATABASE_URL"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-prometheus",
+      "name": "Prometheus",
+      "description": "Prometheus metrics — query and explore metrics via PromQL",
+      "github": "https://github.com/jlowin/mcp-server-prometheus",
+      "categories": ["monitoring", "metrics"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-prometheus"],
+        "envVars": ["PROMETHEUS_URL"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-grafana",
+      "name": "Grafana",
+      "description": "Grafana dashboards — list, view, and manage dashboards and data sources",
+      "github": "https://github.com/jlowin/mcp-server-grafana",
+      "categories": ["monitoring", "dashboards"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-grafana"],
+        "envVars": ["GRAFANA_URL", "GRAFANA_API_KEY"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-jira",
+      "name": "Jira",
+      "description": "Jira project management — issues, sprints, boards, and workflows",
+      "github": "https://github.com/jlowin/mcp-server-jira",
+      "categories": ["project-management", "productivity"],
+      "language": "python",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-jira"],
+        "envVars": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-confluence",
+      "name": "Confluence",
+      "description": "Confluence wiki — pages, spaces, search, and content management",
+      "github": "https://github.com/jlowin/mcp-server-confluence",
+      "categories": ["knowledge", "documentation"],
+      "language": "python",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-confluence"],
+        "envVars": ["CONFLUENCE_URL", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-obsidian",
+      "name": "Obsidian",
+      "description": "Obsidian vault access — read, write, and search notes in Obsidian vaults",
+      "github": "https://github.com/jlowin/mcp-server-obsidian",
+      "categories": ["notes", "knowledge"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-obsidian"],
+        "envVars": ["OBSIDIAN_VAULT_PATH"]
+      }
+    },
+    {
+      "id": "modelcontextprotocol/servers",
+      "name": "Redis (Official)",
+      "description": "Official Redis MCP server — key-value operations, pub/sub, and data structures",
+      "github": "https://github.com/modelcontextprotocol/servers",
+      "categories": ["database", "cache"],
+      "language": "typescript",
+      "scope": "local",
+      "official": true,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-redis"],
+        "envVars": ["REDIS_URL"]
+      }
+    },
+    {
+      "id": "modelscope/mcp-server-minio",
+      "name": "MinIO",
+      "description": "MinIO object storage — upload, download, list, and manage objects and buckets",
+      "github": "https://github.com/modelscope/mcp-server-minio",
+      "categories": ["storage", "s3"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-minio"],
+        "envVars": ["MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-mongodb",
+      "name": "MongoDB",
+      "description": "MongoDB database access — query, insert, update documents and manage collections",
+      "github": "https://github.com/jlowin/mcp-server-mongodb",
+      "categories": ["database", "nosql"],
+      "language": "python",
+      "scope": "local",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-mongodb"],
+        "envVars": ["MONGODB_URI"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-airtable",
+      "name": "Airtable",
+      "description": "Airtable base access — list, read, create, update, and delete records",
+      "github": "https://github.com/jlowin/mcp-server-airtable",
+      "categories": ["database", "productivity"],
+      "language": "python",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-airtable"],
+        "envVars": ["AIRTABLE_API_KEY"]
+      }
+    },
+    {
+      "id": "jlowin/mcp-server-github-actions",
+      "name": "GitHub Actions",
+      "description": "GitHub Actions workflow management — trigger, monitor, and manage CI/CD workflows",
+      "github": "https://github.com/jlowin/mcp-server-github-actions",
+      "categories": ["devops", "ci-cd"],
+      "language": "typescript",
+      "scope": "cloud",
+      "official": false,
+      "install": {
+        "command": "npx",
+        "args": ["-y", "mcp-server-github-actions"],
+        "envVars": ["GITHUB_TOKEN"]
+      }
+    }
+  ]
+}
