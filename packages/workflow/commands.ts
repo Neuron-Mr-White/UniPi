@@ -85,20 +85,48 @@ function suggestPlanFiles(prefix: string): { value: string; label: string; descr
 
 /**
  * Suggest existing worktree names for merge/list commands.
+ * Recursively scans for actual git worktrees (directories containing .git files).
  */
 function suggestWorktrees(): { value: string; label: string; description: string }[] {
   const worktreesDir = join(process.cwd(), ".unipi", "worktrees");
   if (!existsSync(worktreesDir)) return [];
 
   try {
-    const dirs = readdirSync(worktreesDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name);
-    return dirs.map((d) => ({
-      value: d,
-      label: d,
-      description: `Worktree: ${d}`,
-    }));
+    const results: { value: string; label: string; description: string }[] = [];
+
+    /**
+     * Recursively find worktree directories (those containing a .git file).
+     * A worktree's .git file contains: gitdir: /path/to/.git/worktrees/<branch>
+     */
+    function findWorktrees(dir: string, relativePath: string): void {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+        if (entry.name === ".git" && entry.isFile()) {
+          // This is a worktree — extract branch name from gitdir path
+          try {
+            const gitContent = readFileSync(fullPath, "utf-8").trim();
+            const match = gitContent.match(/gitdir:\s+.+?\/([^/]+)$/);
+            const branchName = match?.[1] ?? entry.name;
+            results.push({
+              value: branchName,
+              label: branchName,
+              description: `Worktree: ${relPath}`,
+            });
+          } catch {
+            // Can't read .git file — skip
+          }
+        } else if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") {
+          // Recurse into subdirectories (but not into nested .git or node_modules)
+          findWorktrees(fullPath, relPath);
+        }
+      }
+    }
+
+    findWorktrees(worktreesDir, "");
+    return results;
   } catch {
     return [];
   }
