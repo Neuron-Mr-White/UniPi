@@ -116,7 +116,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     4. Document all parameters with types and defaults
     5. Provide examples for single-select, multi-select, and with-context modes
 
-- unstarted: Task 9 — Update @pi-unipi/unipi Meta-Package
+- completed: Task 9 — Update @pi-unipi/unipi Meta-Package
   - Description: Add utility and ask-user imports to the meta-package so they load with `pi install npm:unipi`
   - Dependencies: Task 3, Task 4, Task 6, Task 7, Task 8
   - Acceptance Criteria: Meta-package imports both extensions; package.json lists dependencies; pi.extensions and pi.skills arrays updated

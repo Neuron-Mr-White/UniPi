@@ -18,6 +18,8 @@ import infoScreen from "@pi-unipi/info-screen";
 import subagents from "../subagents/src/index.js";
 import btw from "@pi-unipi/btw/extensions/btw.js";
 import webApi from "../web-api/src/index.js";
+import utility from "@pi-unipi/utility";
+import askUser from "@pi-unipi/ask-user";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -27,4 +29,6 @@ export default function (pi: ExtensionAPI) {
   subagents(pi);
   btw(pi);
   webApi(pi);
+  utility(pi);
+  askUser(pi);
 }
