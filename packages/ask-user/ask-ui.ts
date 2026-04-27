@@ -43,13 +43,13 @@ export function renderAskUI(params: {
   return (tui, theme, _kb, done) => {
     const { question, context, options, allowMultiple, allowFreeform, timeout } = params;
 
-    // Build display options — add "Type something..." if allowFreeform
+    // Build display options — add "Custom response" if allowFreeform
     const displayOptions: (NormalizedOption & { isFreeform?: boolean })[] = [
       ...options,
     ];
     if (allowFreeform) {
       displayOptions.push({
-        label: "Type something...",
+        label: "Custom response",
         value: "__freeform__",
         isFreeform: true,
       });
@@ -60,6 +60,7 @@ export function renderAskUI(params: {
     let editMode = false;
     let cachedLines: string[] | undefined;
     const selected = new Set<string>();
+    let customText: string | null = null; // Store custom text
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let remainingMs = timeout;
 
@@ -79,24 +80,15 @@ export function renderAskUI(params: {
     editor.onSubmit = (value: string) => {
       const trimmed = value.trim();
       if (trimmed) {
-        cleanup();
-        if (allowMultiple && selected.size > 0) {
-          done({
-            response: {
-              kind: "combined",
-              selections: Array.from(selected),
-              text: trimmed,
-            },
-          });
-        } else {
-          done({
-            response: {
-              kind: "freeform",
-              text: trimmed,
-            },
-          });
-        }
+        customText = trimmed;
+        editMode = false;
+        editor.setText("");
+        refresh();
       } else {
+        // If empty and no previous custom text, uncheck freeform option
+        if (!customText) {
+          selected.delete("__freeform__");
+        }
         editMode = false;
         editor.setText("");
         refresh();
@@ -144,6 +136,11 @@ export function renderAskUI(params: {
       // Edit mode: route to editor
       if (editMode) {
         if (matchesKey(data, Key.escape)) {
+          // Cancel text input
+          if (!customText) {
+            // No custom text yet: uncheck freeform option
+            selected.delete("__freeform__");
+          }
           editMode = false;
           editor.setText("");
           refresh();
@@ -169,15 +166,30 @@ export function renderAskUI(params: {
       // Multi-select: Space to toggle
       if (allowMultiple && matchesKey(data, Key.space)) {
         const opt = displayOptions[optionIndex];
-        if (!opt.isFreeform) {
-          const val = opt.value;
+        const val = opt.value;
+        if (opt.isFreeform) {
+          // Freeform option: toggle and enter edit mode if checking
+          if (selected.has(val)) {
+            // Unchecking: clear custom text
+            selected.delete(val);
+            customText = null;
+          } else {
+            // Checking: enter edit mode to get custom text
+            selected.add(val);
+            if (!customText) {
+              editMode = true;
+              editor.setText("");
+            }
+          }
+        } else {
+          // Regular option: toggle
           if (selected.has(val)) {
             selected.delete(val);
           } else {
             selected.add(val);
           }
-          refresh();
         }
+        refresh();
         return;
       }
 
@@ -186,8 +198,17 @@ export function renderAskUI(params: {
         const opt = displayOptions[optionIndex];
 
         if (opt.isFreeform) {
-          editMode = true;
-          editor.setText("");
+          // Freeform option: toggle like Space
+          if (selected.has(opt.value)) {
+            // Already checked: enter edit mode to modify text
+            editMode = true;
+            editor.setText(customText || "");
+          } else {
+            // Not checked: check it and enter edit mode
+            selected.add(opt.value);
+            editMode = true;
+            editor.setText("");
+          }
           refresh();
           return;
         }
@@ -196,12 +217,25 @@ export function renderAskUI(params: {
           // In multi-select, Enter submits current selection
           if (selected.size > 0) {
             cleanup();
-            done({
-              response: {
-                kind: "selection",
-                selections: Array.from(selected),
-              },
-            });
+            if (customText && selected.has("__freeform__")) {
+              // Combined response with custom text
+              const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
+              done({
+                response: {
+                  kind: "combined",
+                  selections: regularSelections,
+                  text: customText,
+                },
+              });
+            } else {
+              // Regular selection
+              done({
+                response: {
+                  kind: "selection",
+                  selections: Array.from(selected),
+                },
+              });
+            }
           }
           return;
         }
@@ -242,18 +276,8 @@ export function renderAskUI(params: {
       add(theme.fg("text", ` ${question}`));
       lines.push("");
 
-      // Options
-      if (editMode) {
-        // Show options for reference
-        renderOptions(lines, add, theme, width);
-        lines.push("");
-        add(theme.fg("muted", " Your answer:"));
-        for (const line of editor.render(width - 2)) {
-          add(` ${line}`);
-        }
-      } else {
-        renderOptions(lines, add, theme, width);
-      }
+      // Options (editor is now inline with freeform option)
+      renderOptions(lines, add, theme, width);
 
       // Timeout countdown
       if (timeout && remainingMs !== undefined && remainingMs > 0) {
@@ -264,7 +288,7 @@ export function renderAskUI(params: {
 
       lines.push("");
       if (editMode) {
-        add(theme.fg("dim", " Enter to submit • Esc to go back"));
+        add(theme.fg("dim", " Enter to confirm text • Esc to cancel text input"));
       } else if (allowMultiple) {
         add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter submit • Esc cancel"));
       } else {
@@ -280,7 +304,7 @@ export function renderAskUI(params: {
       lines: string[],
       add: (s: string) => void,
       theme: any,
-      _width: number,
+      width: number,
     ) {
       for (let i = 0; i < displayOptions.length; i++) {
         const opt = displayOptions[i];
@@ -288,16 +312,30 @@ export function renderAskUI(params: {
         const prefix = isSelected ? theme.fg("accent", "> ") : "  ";
 
         if (opt.isFreeform) {
-          // Freeform option
-          if (editMode) {
-            add(prefix + theme.fg("accent", `  ${opt.label} ✎`));
-          } else {
-            add(
-              prefix +
-                (isSelected
-                  ? theme.fg("accent", `  ${opt.label}`)
-                  : theme.fg("muted", `  ${opt.label}`)),
-            );
+          // Freeform option: show checkbox like regular option
+          const checked = selected.has(opt.value);
+          const box = checked ? "✓" : " ";
+          const color = checked ? "success" : isSelected ? "accent" : "text";
+          
+          let label = opt.label;
+          if (checked && customText) {
+            // Show custom text next to label
+            label = `${opt.label}: "${customText}"`;
+          }
+          
+          add(
+            prefix +
+              theme.fg(color, `[${box}]`) +
+              " " +
+              theme.fg(isSelected ? "accent" : "text", label),
+          );
+          
+          // Show edit indicator if in edit mode for this option
+          if (editMode && isSelected) {
+            add(`   ${theme.fg("muted", "Type your response:")}`);
+            for (const line of editor.render(width - 4)) {
+              add(`   ${line}`);
+            }
           }
         } else if (allowMultiple) {
           // Multi-select: show checkbox
