@@ -164,6 +164,7 @@ export const MCP_COMMANDS = {
   SETTINGS: "mcp-settings",
   SYNC: "mcp-sync",
   STATUS: "mcp-status",
+  RELOAD: "mcp-reload",
 } as const;
 
 /** MCP defaults */

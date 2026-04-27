@@ -94,9 +94,28 @@ export class ServerRegistry {
     this.entries.set(name, entry);
 
     try {
+      // Defensive: ensure server definition has correct types before passing
+      // to the client. Catches rare serialization bugs where env/args become
+      // strings instead of objects/arrays.
+      const safeCommand = typeof def.command === "string" ? def.command : String(def.command);
+      const safeArgs = Array.isArray(def.args) ? def.args : [];
+      let safeEnv: Record<string, string> | undefined;
+      if (def.env !== undefined && def.env !== null) {
+        if (typeof def.env === "object" && !Array.isArray(def.env)) {
+          safeEnv = {};
+          for (const [k, v] of Object.entries(def.env)) {
+            safeEnv[k] = typeof v === "string" ? v : String(v);
+          }
+        } else {
+          console.error(
+            `[MCP] Server '${name}': env is not an object (${typeof def.env}), skipping env vars`,
+          );
+        }
+      }
+
       // Create and connect client
       const client = new McpClient({ timeoutMs: this.timeoutMs });
-      await client.connect(def.command, def.args ?? [], def.env);
+      await client.connect(safeCommand, safeArgs, safeEnv);
 
       entry.client = client;
 

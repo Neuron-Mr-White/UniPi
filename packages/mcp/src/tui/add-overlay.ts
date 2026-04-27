@@ -26,6 +26,7 @@ import {
   loadMetadata,
   saveMetadata,
   getGlobalConfigDir,
+  getProjectConfigDir,
 } from "../config/manager.js";
 import { validateMcpConfig, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
 
@@ -239,6 +240,12 @@ export function renderMcpAddOverlay(params?: {
       }
     }
 
+    function getConfigDir(): string {
+      return state.scope === "project"
+        ? getProjectConfigDir(process.cwd())
+        : getGlobalConfigDir();
+    }
+
     function validateAndSave(): boolean {
       try {
         const parsed = JSON.parse(state.editorContent);
@@ -247,7 +254,7 @@ export function renderMcpAddOverlay(params?: {
           state.validationError = validation.errors[0];
           return false;
         }
-        const configDir = getGlobalConfigDir();
+        const configDir = getConfigDir();
         let existing: McpConfig;
         try {
           existing = loadMcpConfig(configDir);
@@ -333,9 +340,41 @@ export function renderMcpAddOverlay(params?: {
         return;
       }
       if (data === "\r" || data === "\n") {
-        // Accept search
+        // Accept search, load selected server into editor
         applySearch(state.pendingSearch);
         state.mode = "normal";
+        loadSelectedIntoEditor();
+        state.mode = "editor";
+        refresh();
+        return;
+      }
+      // Arrow keys + j/k navigate list while searching
+      if (matchesKey(data, Key.down) || data === "\x1b[B" || data === "j") {
+        if (state.selectedIndex < state.filteredServers.length - 1) {
+          state.selectedIndex++;
+          ensureVisible();
+          refresh();
+        }
+        return;
+      }
+      if (matchesKey(data, Key.up) || data === "\x1b[A" || data === "k") {
+        if (state.selectedIndex > 0) {
+          state.selectedIndex--;
+          ensureVisible();
+          refresh();
+        }
+        return;
+      }
+      // PgUp/PgDn also work in search
+      if (data === "\x1b[6~") {
+        state.selectedIndex = Math.min(state.filteredServers.length - 1, state.selectedIndex + lastListHeight);
+        ensureVisible();
+        refresh();
+        return;
+      }
+      if (data === "\x1b[5~") {
+        state.selectedIndex = Math.max(0, state.selectedIndex - lastListHeight);
+        ensureVisible();
         refresh();
         return;
       }
@@ -514,7 +553,11 @@ export function renderMcpAddOverlay(params?: {
       const dimBorder = (s: string) => theme.fg("muted", s);
 
       // ── Top header ──────────────────────────────────────────────────
-      const title = " Add MCP Server ";
+      const scopeTag = state.scope === "global" ? "[GLOBAL]" : "[PROJECT]";
+      const configPath = state.scope === "global"
+        ? getGlobalConfigDir() + "/mcp-config.json"
+        : ".unipi/config/mcp/mcp-config.json";
+      const title = ` Add MCP Server ${theme.fg("accent", scopeTag)} `;
       const modeTag =
         state.mode === "search"
           ? "[SEARCH]"
@@ -530,6 +573,16 @@ export function renderMcpAddOverlay(params?: {
           theme.fg("accent", modeTag) +
           border("│"),
       );
+      // Config path row (OSC 8 hyperlink to file for Ctrl+click in supported terminals)
+      const configPathAbs = state.scope === "global"
+        ? getGlobalConfigDir() + "/mcp-config.json"
+        : process.cwd() + "/.unipi/config/mcp/mcp-config.json";
+      const pathLink = hyperlink(
+        "file://" + configPathAbs,
+        theme.fg("muted", configPath),
+      );
+      const pathLabel = ` Config: ${pathLink} ${theme.fg("dim", "(Ctrl+click)")} `;
+      lines.push(border("│") + padVisible(pathLabel, innerWidth) + border("│"));
 
       // Pane headers row: ├──── search bar ────┬──── Config Editor ────┤
       lines.push(
@@ -712,7 +765,7 @@ export function renderMcpAddOverlay(params?: {
         state.mode === "editor"
           ? " Ctrl+S=save · Ctrl+P=prettify · Enter=newline · Esc=back to list "
           : state.mode === "search"
-            ? " Type to filter · Enter accept · Esc cancel "
+            ? " Type to filter · ↑↓ navigate · Enter load+edit · Esc cancel "
             : " j/k move · / search · Enter edit · r reload tmpl · c custom · Tab pane · q close ";
       lines.push(
         border("│") +

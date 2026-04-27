@@ -75,6 +75,12 @@ export class InfoOverlay implements Component {
     this.unsubscribers.push(
       infoRegistry.subscribeAll((groupId, data) => {
         if (this._destroyed) return;
+        // Skip empty data from registration notifications — syncGroups()
+        // will trigger the real fetch.
+        if (Object.keys(data).length === 0) {
+          this.requestRender?.();
+          return;
+        }
         this.groupData.set(groupId, data);
         this.groupLoading.set(groupId, false);
         this.lastGlobalUpdate = Date.now();
@@ -105,25 +111,32 @@ export class InfoOverlay implements Component {
    */
   private syncGroups(): void {
     const allGroups = infoRegistry.getAllGroups();
-    if (allGroups.length !== this.groups.length) {
+    const hadNewGroups = allGroups.length !== this.groups.length;
+    if (hadNewGroups) {
       this.groups = allGroups;
       this.applyOrder();
+    }
 
-      // Seed new groups from cache
-      for (const group of this.groups) {
-        if (!this.groupData.has(group.id)) {
-          const cached = infoRegistry.getCachedData(group.id);
-          if (cached) {
-            this.groupData.set(group.id, cached);
-          } else {
-            this.groupLoading.set(group.id, true);
-            // Fetch this new group
-            infoRegistry.getGroupData(group.id).then(() => {
-              this.groupLoading.set(group.id, false);
-            }).catch(() => {
-              this.groupLoading.set(group.id, false);
-            });
-          }
+    // Ensure every group has real (non-empty) data.
+    // Registration notifications inject `{}` to trigger re-sync; we must
+    // not treat that as fetched data or the stats render as "—".
+    for (const group of this.groups) {
+      const existing = this.groupData.get(group.id);
+      const hasRealData = existing && Object.keys(existing).length > 0;
+      if (!hasRealData) {
+        const cached = infoRegistry.getCachedData(group.id);
+        if (cached && Object.keys(cached).length > 0) {
+          this.groupData.set(group.id, cached);
+        } else if (!this.groupLoading.get(group.id)) {
+          this.groupLoading.set(group.id, true);
+          infoRegistry.getGroupData(group.id).then((data) => {
+            this.groupData.set(group.id, data);
+            this.groupLoading.set(group.id, false);
+            this.lastGlobalUpdate = Date.now();
+            this.requestRender?.();
+          }).catch(() => {
+            this.groupLoading.set(group.id, false);
+          });
         }
       }
     }

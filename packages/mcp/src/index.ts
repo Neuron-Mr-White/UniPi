@@ -119,19 +119,38 @@ export default function (pi: ExtensionAPI) {
             { id: "failed", label: "Failed", show: true },
           ],
         },
-        dataProvider: async () => ({
-          total: { value: String(reg.getAll().length) },
-          active: { value: String(reg.getActive().length) },
-          tools: { value: String(reg.getTotalToolCount()) },
-          failed: {
-            value: String(reg.getFailed().length),
-            detail:
-              reg.getFailed().length > 0
-                ? reg.getFailed().map((f) => f.name).join(", ")
-                : undefined,
-          },
-        }),
+        dataProvider: async () => {
+          try {
+            const all = reg.getAll();
+            const active = reg.getActive();
+            const failed = reg.getFailed();
+            const toolCount = reg.getTotalToolCount();
+            return {
+              total: { value: String(all.length) },
+              active: { value: String(active.length) },
+              tools: { value: String(toolCount) },
+              failed: {
+                value: String(failed.length),
+                detail:
+                  failed.length > 0
+                    ? failed.map((f) => f.name).join(", ")
+                    : undefined,
+              },
+            };
+          } catch (err) {
+            console.error("[MCP] Info dataProvider error:", err);
+            return {
+              total: { value: "?" },
+              active: { value: "?" },
+              tools: { value: "?" },
+              failed: { value: "?" },
+            };
+          }
+        },
       });
+      // Trigger initial data fetch so the info overlay shows real values
+      // instead of the empty GroupData from notifyGroupRegistered.
+      infoRegistry.getGroupData("mcp").catch(() => {});
     }
 
     // Emit MODULE_READY
@@ -144,6 +163,7 @@ export default function (pi: ExtensionAPI) {
         `unipi:${MCP_COMMANDS.SETTINGS}`,
         `unipi:${MCP_COMMANDS.SYNC}`,
         `unipi:${MCP_COMMANDS.STATUS}`,
+        `unipi:${MCP_COMMANDS.RELOAD}`,
       ],
       tools: activeServers.flatMap((s) =>
         registry?.getEntry(s.name)?.toolNames ?? [],
@@ -292,6 +312,46 @@ export default function (pi: ExtensionAPI) {
       }
 
       openSettings();
+    },
+  });
+
+  // /unipi:mcp-reload — restart all MCP servers
+  pi.registerCommand(`unipi:${MCP_COMMANDS.RELOAD}`, {
+    description: "Reload all MCP servers (restart with current config)",
+    handler: async (_args: string, ctx: any) => {
+      const reg = getRegistry();
+      if (!reg) {
+        ctx.ui.notify("MCP extension not initialized", "warning");
+        return;
+      }
+
+      const all = reg.getAll();
+      if (all.length === 0) {
+        ctx.ui.notify("No MCP servers configured. Use /unipi:mcp-add to add one.", "info");
+        return;
+      }
+
+      ctx.ui.notify(`Reloading ${all.length} MCP server(s)...`, "info");
+
+      let restarted = 0;
+      let failed = 0;
+      for (const state of all) {
+        try {
+          await reg.restartServer(state.name);
+          restarted++;
+        } catch (err) {
+          failed++;
+          console.error(
+            `[MCP] Failed to restart server '${state.name}':`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
+      const msg = failed > 0
+        ? `Reloaded: ${restarted} ok, ${failed} failed`
+        : `Reloaded ${restarted} MCP server(s) successfully`;
+      ctx.ui.notify(msg, failed > 0 ? "warning" : "info");
     },
   });
 }
