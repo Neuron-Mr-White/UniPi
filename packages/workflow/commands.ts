@@ -192,6 +192,13 @@ const COMMANDS: WorkflowCommand[] = [
     skillName: "scan-issues",
     argumentHint: "<scope>",
   },
+  {
+    name: WORKFLOW_COMMANDS.AUTO,
+    description:
+      "Full pipeline — brainstorm → plan → work → review → merge",
+    skillName: "auto",
+    argumentHint: "<description> plan:<file> specs:<file>",
+  },
 ];
 
 /**
@@ -232,6 +239,11 @@ export function registerWorkflowCommands(
         // Worktree create: suggest existing worktrees as reference
         if (cmd.name === WORKFLOW_COMMANDS.WORKTREE_CREATE) {
           items = suggestWorktrees();
+        }
+
+        // Auto command: suggest plan files
+        if (cmd.name === WORKFLOW_COMMANDS.AUTO) {
+          items = suggestPlanFiles(prefix);
         }
 
         // Defensive: filter out any items with non-string value

@@ -8,7 +8,7 @@
 import { WORKFLOW_COMMANDS } from "./constants.js";
 
 /** Sandbox levels */
-export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "full";
+export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "review" | "full";
 
 /** Tool sets per sandbox level */
 const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
@@ -18,6 +18,8 @@ const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
   brainstorm: ["read", "grep", "find", "ls", "write", "bash"],
   /** Read + write/edit + file discovery — no bash */
   write_unipi: ["read", "write", "edit", "grep", "find", "ls"],
+  /** Read + write + bash for git operations — no code editing outside .unipi */
+  review: ["read", "write", "edit", "grep", "find", "ls", "bash"],
   /** All tools */
   full: ["read", "write", "edit", "bash"],
 };
@@ -27,7 +29,7 @@ const COMMAND_SANDBOX: Record<string, SandboxLevel> = {
   [WORKFLOW_COMMANDS.BRAINSTORM]: "brainstorm",
   [WORKFLOW_COMMANDS.PLAN]: "write_unipi",
   [WORKFLOW_COMMANDS.WORK]: "full",
-  [WORKFLOW_COMMANDS.REVIEW_WORK]: "write_unipi",
+  [WORKFLOW_COMMANDS.REVIEW_WORK]: "review",
   [WORKFLOW_COMMANDS.CONSOLIDATE]: "write_unipi",
   [WORKFLOW_COMMANDS.WORKTREE_CREATE]: "full",
   [WORKFLOW_COMMANDS.WORKTREE_LIST]: "read_only",
@@ -37,6 +39,7 @@ const COMMAND_SANDBOX: Record<string, SandboxLevel> = {
   [WORKFLOW_COMMANDS.GATHER_CONTEXT]: "read_only",
   [WORKFLOW_COMMANDS.DOCUMENT]: "write_unipi",
   [WORKFLOW_COMMANDS.SCAN_ISSUES]: "read_only",
+  [WORKFLOW_COMMANDS.AUTO]: "full",
 };
 
 /**

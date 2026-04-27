@@ -56,8 +56,20 @@ Committed to current branch.
 2. If concerns: raise with user before proceeding
 3. If `string(greedy)` provided: use it to scope planning (e.g., "focus on auth only")
 4. Ask clarifying questions if needed (one at a time)
+5. **Ask about work branch:**
 
-**Exit:** No blockers. Ready to plan.
+> "Where should this work happen?"
+>
+> 1. **Main branch** — work directly on main (small/medium tasks, low risk)
+> 2. **New branch** — isolated worktree (larger tasks, risky changes)
+>
+> If "New branch": "What branch name? (e.g., `feat/auth`, or press enter for auto-naming based on spec topic)"
+
+Record the decision:
+- Main branch → `workbranch:` will be empty in plan frontmatter
+- New branch → `workbranch: {branch-name}` in plan frontmatter (auto-generate `feat/{topic}` if not provided)
+
+**Exit:** No blockers. Branch strategy decided. Ready to plan.
 
 ---
 
@@ -70,7 +82,7 @@ Structure the plan with heart of gold style:
 title: "{Topic} — Implementation Plan"
 type: plan
 date: YYYY-MM-DD
-workbranch: {branch-name or empty if on main}
+workbranch: {branch-name}   # empty string = work on main branch
 specs:
   - path/to/spec.md
 ---
@@ -170,15 +182,19 @@ Do NOT re-read or re-edit the spec checkboxes — Phase 4 already wrote them.
 Present plan summary to user. Then ask:
 
 1. **Proceed to /unipi:work** — Start implementing in a worktree
-2. **Revise plan** — Adjust tasks or scope
-3. **Done for now** — Return later
+2. **Proceed to /unipi:auto** — Run full pipeline (work → review → merge)
+3. **Revise plan** — Adjust tasks or scope
+4. **Done for now** — Return later
 
-If user selects "Proceed to /unipi:work", suggest:
-```
-/unipi:work worktree:feat/<branch-name> specs:YYYY-MM-DD-<topic>-plan
-```
+If user selects "Proceed to /unipi:work":
+- **Worktree branch** → suggest: `/unipi:work worktree:<branch-name> specs:YYYY-MM-DD-<topic>-plan`
+- **Main branch** → suggest: `/unipi:work specs:YYYY-MM-DD-<topic>-plan` (no worktree arg)
 
-Recommend starting a **new session** for work — it will switch pi's internal worktree.
+If user selects "Proceed to /unipi:auto":
+- **Worktree branch** → suggest: `/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md`
+- **Main branch** → suggest: `/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md` (same — auto reads workbranch from plan)
+
+Recommend starting a **new session** for work if using a worktree.
 
 ---
 

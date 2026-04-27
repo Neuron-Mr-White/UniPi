@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",

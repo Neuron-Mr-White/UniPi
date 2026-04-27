@@ -6,4 +6,5 @@ dist/
 .DS_Store
 
 .unipi/worktrees/
+.unipi/memory/
 .pi/

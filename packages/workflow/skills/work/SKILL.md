@@ -1,6 +1,6 @@
 ---
 name: work
-description: "Execute plan — implement in worktree, test, commit on done. Resumable across sessions."
+description: "Execute plan — implement tasks, test, commit on done. Works in worktree or on main branch. Resumable."
 ---
 
 # Executing Plans
@@ -9,8 +9,12 @@ Load plan, review critically, execute tasks, commit when complete.
 
 ## Boundaries
 
-**This skill MAY:** read/write code in worktree, read/write `.unipi/docs/`, run tests, commit, create worktree.
-**This skill MAY NOT:** modify files outside worktree, merge branches, deploy.
+**This skill MAY:** read/write code, read/write `.unipi/docs/`, run tests, commit, create worktree.
+**This skill MAY NOT:** merge branches, deploy.
+
+**Worktree vs Main:**
+- If `workbranch` in plan → work within worktree directory
+- If `workbranch` empty → work directly on main branch (current directory)
 
 ## Command Format
 
@@ -25,32 +29,36 @@ Load plan, review critically, execute tasks, commit when complete.
 
 ## Sandbox
 
-- **Read/Write:** full access within worktree directory
+- **Read/Write:** full access within worktree (or project root if on main)
 - **Write:** `.unipi/docs/` for progress tracking
-- **Cannot:** modify files outside worktree
 
 ---
 
 ## Phase 1: Resolve Args
 
-If args not provided, ask user interactively:
-
-1. **Worktree:**
-   - "Do you want to work on current branch or create a worktree?"
-   - If worktree: "What branch name?" (suggest based on spec topic)
-   - Create worktree if not exists
-   - **After creating/confirming worktree:** write `workbranch: {branch-name}` to the plan file frontmatter
-
-2. **Specs:**
-   - List available plans in `.unipi/docs/plans/`
-   - "Which plan(s) to execute?"
+1. **Specs:**
+   - If `specs:` arg provided, read those plan files
+   - If not, list available plans in `.unipi/docs/plans/` and ask user
    - Can select multiple
+
+2. **Read `workbranch` from plan frontmatter:**
+   - If `workbranch:` is **non-empty** → use that branch/worktree
+     - If worktree arg also provided → use worktree arg (override)
+     - Create worktree if not exists: `git worktree add .unipi/worktrees/{branch} -b {branch}`
+     - Work within worktree directory
+   - If `workbranch:` is **empty or missing** → work on current branch (main)
+     - No worktree creation needed
+     - Edit files directly in project root
+   - If neither plan nor args specify branch → ask user:
+     > "Where should this work happen?"
+     > 1. Current branch (main)
+     > 2. New worktree (provide branch name)
 
 3. **Scope:**
    - If `string(greedy)` provided, use to scope tasks
    - Otherwise execute all incomplete tasks
 
-**Exit:** Worktree set, plan(s) loaded, scope defined.
+**Exit:** Branch/worktree resolved. Plan(s) loaded. Scope defined.
 
 ---
 
@@ -134,16 +142,21 @@ When all tasks are `completed:`:
 
 1. Run final verification (tests, lint, build)
 2. Commit all remaining changes
-3. Inform user:
+3. Inform user based on branch strategy:
 
-> "All tasks complete. Worktree: `feat/<branch>`. Recommend reviewing before merge."
-
-Suggest next step:
+**If working in worktree:**
+> "All tasks complete. Worktree: `{branch}`. Recommend reviewing before merge."
 ```
 /unipi:review-work plan:<plan-path>
 ```
-
 **Recommend starting a new session** for review.
+
+**If working on main branch:**
+> "All tasks complete. All changes committed directly on main."
+```
+/unipi:review-work plan:<plan-path>
+```
+No merge needed — changes already on main.
 
 ---
 
@@ -161,6 +174,7 @@ If user provides scope string, only execute matching tasks.
 
 ## Notes
 
-- Agent reads plan regardlessly on start — finds what's incomplete
-- Worktree isolation: changes don't affect main branch until merge
+- Agent reads plan on start — finds what's incomplete
+- Worktree: changes don't affect main branch until merge (skip for small tasks)
+- Main branch: changes committed directly, no merge needed
 - Each worktree session is independent — no coordination with other worktrees

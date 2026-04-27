@@ -7,6 +7,8 @@ description: "Merge worktree branches back to main. Gathers context from specs/p
 
 Merge completed worktree branches into main. Gather context from docs before merging.
 
+**Note:** Only needed when work was done in a worktree (plan `workbranch` set). If work was on main branch directly, skip this — changes already on main.
+
 ## Process
 
 ### Phase 1: Gather Context

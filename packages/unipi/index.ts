@@ -20,6 +20,7 @@ import btw from "@pi-unipi/btw/extensions/btw.js";
 import webApi from "../web-api/src/index.js";
 import utility from "@pi-unipi/utility";
 import askUser from "@pi-unipi/ask-user";
+import mcp from "@pi-unipi/mcp";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -31,4 +32,5 @@ export default function (pi: ExtensionAPI) {
   webApi(pi);
   utility(pi);
   askUser(pi);
+  mcp(pi);
 }

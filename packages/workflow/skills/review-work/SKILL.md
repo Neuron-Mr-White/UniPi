@@ -9,7 +9,7 @@ Review what was built, verify task completion, run codebase checks, add reviewer
 
 ## Boundaries
 
-**This skill MAY:** read codebase, run checks (lint, build, test, docker), write reviewer remarks to plan docs.
+**This skill MAY:** read codebase, run checks (lint, build, test, docker), write reviewer remarks to plan docs, run bash for git operations (checkout worktree branch).
 **This skill MAY NOT:** edit code, implement features, create new files.
 
 ## Command Format
@@ -112,15 +112,35 @@ Followed by description explaining the status.
 Based on review results:
 
 **If all tasks done and checks pass:**
-> "All tasks complete and verified. Ready to consolidate."
+
+*If `workbranch` is set (worktree):*
+> "All tasks complete and verified. Ready to merge back to main."
+```
+/unipi:worktree-merge
+```
+
+*If `workbranch` is empty (main branch):*
+> "All tasks complete and verified. Changes already on main — no merge needed."
+```
+/unipi:consolidate
+```
+
+Either way, user can consolidate learnings:
 ```
 /unipi:consolidate
 ```
 
 **If tasks incomplete or checks fail:**
 > "Tasks remaining and/or checks failing. Continue work?"
+
+*If `workbranch` is set:*
 ```
 /unipi:work worktree:<branch> specs:<plan-path>
+```
+
+*If `workbranch` is empty (main):*
+```
+/unipi:work specs:<plan-path>
 ```
 
 **If scoped review complete:**

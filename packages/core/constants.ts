@@ -47,6 +47,7 @@ export const WORKFLOW_COMMANDS = {
   GATHER_CONTEXT: "gather-context",
   DOCUMENT: "document",
   SCAN_ISSUES: "scan-issues",
+  AUTO: "auto",
 } as const;
 
 /** Ralph command names */
