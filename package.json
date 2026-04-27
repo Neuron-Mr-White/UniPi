@@ -66,7 +66,7 @@
   "dependencies": {
     "@pi-unipi/ask-user": "*",
     "@pi-unipi/btw": "*",
-    "@pi-unipi/core": "*"
+    "@pi-unipi/core": "*",
     "@pi-unipi/info-screen": "*",
     "@pi-unipi/mcp": "*",
     "@pi-unipi/memory": "*",

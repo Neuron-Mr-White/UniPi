@@ -68,6 +68,9 @@ export const UNIPI_EVENTS = {
   UTILITY_CACHE_INVALIDATED: "unipi:utility:cache:invalidated",
   /** Utility lifecycle state changed */
   UTILITY_LIFECYCLE_STATE: "unipi:utility:lifecycle:state",
+
+  /** Notification sent */
+  NOTIFICATION_SENT: "unipi:notify:sent",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -288,6 +291,18 @@ export interface UnipiUtilityLifecycleEvent {
   reason?: string;
 }
 
+/** Payload for NOTIFICATION_SENT */
+export interface UnipiNotificationSentEvent {
+  /** Event type that triggered notification */
+  eventType: string;
+  /** Platforms sent to */
+  platforms: string[];
+  /** Whether all platforms succeeded */
+  success: boolean;
+  /** ISO timestamp */
+  timestamp: string;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -309,4 +324,5 @@ export type UnipiEventPayload =
   | UnipiCompactorStatsEvent
   | UnipiUtilityCleanupEvent
   | UnipiUtilityDiagnosticsEvent
-  | UnipiUtilityLifecycleEvent;
+  | UnipiUtilityLifecycleEvent
+  | UnipiNotificationSentEvent;
