@@ -31,7 +31,7 @@ export interface AskUserParams {
 /** Response from ask_user tool */
 export interface AskUserResponse {
   /** Response kind */
-  kind: "selection" | "freeform" | "cancelled" | "timed_out";
+  kind: "selection" | "freeform" | "combined" | "cancelled" | "timed_out";
   /** Selected option values (for selection kind) */
   selections?: string[];
   /** Freeform text (for freeform kind) */

@@ -260,6 +260,14 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         case "freeform":
           contentText = `User wrote: ${response.text}`;
           break;
+        case "combined": {
+          const selections = response.selections || [];
+          const selText = selections.length === 1
+            ? selections[0]
+            : selections.join(", ");
+          contentText = `User selected: ${selText} and wrote: ${response.text}`;
+          break;
+        }
         case "timed_out":
           contentText = "User did not respond (timed out)";
           break;

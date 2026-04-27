@@ -80,12 +80,22 @@ export function renderAskUI(params: {
       const trimmed = value.trim();
       if (trimmed) {
         cleanup();
-        done({
-          response: {
-            kind: "freeform",
-            text: trimmed,
-          },
-        });
+        if (allowMultiple && selected.size > 0) {
+          done({
+            response: {
+              kind: "combined",
+              selections: Array.from(selected),
+              text: trimmed,
+            },
+          });
+        } else {
+          done({
+            response: {
+              kind: "freeform",
+              text: trimmed,
+            },
+          });
+        }
       } else {
         editMode = false;
         editor.setText("");
@@ -384,6 +394,20 @@ export function createRenderResult() {
             : selections.join(", ");
         return new Text(
           theme.fg("success", "✓ ") + theme.fg("accent", display),
+          0,
+          0,
+        );
+      }
+      case "combined": {
+        const selections = response.selections || [];
+        const selDisplay = selections.length === 1
+          ? selections[0]
+          : selections.join(", ");
+        return new Text(
+          theme.fg("success", "✓ ") +
+            theme.fg("accent", selDisplay) +
+            theme.fg("muted", " and wrote ") +
+            theme.fg("accent", response.text || ""),
           0,
           0,
         );
