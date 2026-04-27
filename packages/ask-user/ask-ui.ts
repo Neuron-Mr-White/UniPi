@@ -198,13 +198,29 @@ export function renderAskUI(params: {
         const opt = displayOptions[optionIndex];
 
         if (opt.isFreeform) {
-          // Freeform option: toggle like Space
-          if (selected.has(opt.value)) {
-            // Already checked: enter edit mode to modify text
-            editMode = true;
-            editor.setText(customText || "");
+          // Freeform option: if already checked with text, submit; otherwise enter edit mode
+          if (selected.has(opt.value) && customText) {
+            // Already checked with text: submit the form
+            cleanup();
+            const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
+            if (regularSelections.length > 0) {
+              done({
+                response: {
+                  kind: "combined",
+                  selections: regularSelections,
+                  text: customText,
+                },
+              });
+            } else {
+              done({
+                response: {
+                  kind: "freeform",
+                  text: customText,
+                },
+              });
+            }
           } else {
-            // Not checked: check it and enter edit mode
+            // Not checked or no text: check it and enter edit mode
             selected.add(opt.value);
             editMode = true;
             editor.setText("");
