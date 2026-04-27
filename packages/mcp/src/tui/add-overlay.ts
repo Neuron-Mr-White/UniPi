@@ -318,114 +318,124 @@ export function renderMcpAddOverlay(params?: {
       }
     }
 
+    /** Pad content to exact visible width, accounting for ANSI codes and emoji */
+    function padVisible(content: string, targetWidth: number): string {
+      const vw = visibleWidth(content);
+      const pad = Math.max(0, targetWidth - vw);
+      return content + " ".repeat(pad);
+    }
+
+    /** Render a single split-pane row: │ left │ right │ */
+    function splitRow(left: string, right: string, halfW: number): string {
+      return (
+        theme.fg("accent", "│") +
+        padVisible(left, halfW) +
+        theme.fg("accent", "│") +
+        padVisible(right, halfW) +
+        theme.fg("accent", "│")
+      );
+    }
+
     function render(width: number): string[] {
       if (cachedLines) return cachedLines;
 
       const lines: string[] = [];
-      const halfW = Math.floor(width / 2) - 1;
+      const innerWidth = Math.max(22, width - 2);
+      const halfW = Math.floor(innerWidth / 2) - 1; // -1 for the middle │
 
-      // Header
+      // ── Header ──────────────────────────────────────────────────────
       const header = " Add MCP Server ";
       const modeLabel = state.mode === "browse" ? "[Browse]" : "[Custom]";
-      lines.push(
-        theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
-      );
+      const headerPad = Math.max(0, innerWidth - visibleWidth(header) - visibleWidth(modeLabel));
+      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
       lines.push(
         theme.fg("accent", "│") +
-          theme.bold(header) +
-          theme.fg("muted", modeLabel.padStart(width - visibleWidth(header) - visibleWidth(modeLabel) - 1)) +
-          theme.fg("accent", "│"),
+        theme.bold(header) +
+        theme.fg("muted", " ".repeat(headerPad) + modeLabel) +
+        theme.fg("accent", "│"),
       );
-      lines.push(
-        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
-      );
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
 
-      // Content area — split pane
+      // ── Content area — split pane ──────────────────────────────────
       const browseServers = state.filteredServers;
-      const maxRows = 16;
+      const CONTENT_HEIGHT = 16;
+      const editorLines = state.editorContent.split("\n");
 
-      for (let row = 0; row < maxRows; row++) {
-        let left = "";
-        let right = "";
+      // Build left pane lines (one string per row, no embedded newlines)
+      const leftLines: string[] = [];
 
-        // Left pane: browse
-        if (row === 0) {
-          const searchDisplay = state.searchQuery || "search...";
-          left = theme.fg("muted", ` 🔍 ${searchDisplay}`);
-        } else if (row >= 2 && row - 2 < browseServers.length) {
-          const idx = row - 2;
-          const server = browseServers[idx];
-          const selected = idx === state.selectedIndex;
-          const scopeIcon = server.scope === "cloud" ? "☁️" : "🏠";
-          const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
-          const name = selected
-            ? theme.bold(server.name)
-            : theme.fg("text", server.name);
-          left = ` ${prefix}${scopeIcon} ${name}`;
-          if (selected) {
-            // Show description on next line if available
-            const desc = truncateToWidth(
-              server.description,
-              halfW - 4,
-            );
-            left = ` ${prefix}${scopeIcon} ${name}\n   ${theme.fg("muted", desc)}`;
-          }
+      // Row 0: search bar
+      const searchDisplay = state.searchQuery || "search...";
+      leftLines.push(theme.fg("muted", ` 🔍 ${searchDisplay}`));
+
+      // Row 1: blank separator
+      leftLines.push("");
+
+      // Rows 2+: server list
+      for (let i = 0; i < browseServers.length && leftLines.length < CONTENT_HEIGHT; i++) {
+        const server = browseServers[i];
+        const selected = i === state.selectedIndex;
+        const scopeIcon = server.scope === "cloud" ? "☁️" : "🏠";
+        const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
+        const name = selected
+          ? theme.bold(server.name)
+          : theme.fg("text", server.name);
+        leftLines.push(` ${prefix}${scopeIcon} ${name}`);
+
+        // Show description below selected item (takes its own row)
+        if (selected && server.description) {
+          const desc = truncateToWidth(server.description, halfW - 5);
+          leftLines.push(`    ${theme.fg("muted", desc)}`);
         }
-
-        // Right pane: editor
-        if (row === 0) {
-          right = theme.fg("muted", " Config Editor ");
-        } else if (row >= 2) {
-          // Show editor lines
-          const editorLines = state.editorContent.split("\n");
-          const editorIdx = row - 2;
-          if (editorIdx < editorLines.length) {
-            right = theme.fg("text", truncateToWidth(editorLines[editorIdx], halfW - 3));
-          }
-        }
-
-        // Pad and combine
-        const leftPadded = left.padEnd(halfW);
-        const rightPadded = right.padEnd(halfW);
-        lines.push(
-          theme.fg("accent", "│") +
-            leftPadded +
-            theme.fg("accent", "│") +
-            rightPadded +
-            theme.fg("accent", "│"),
-        );
       }
 
-      // Validation error
+      // Build right pane lines
+      const rightLines: string[] = [];
+
+      // Row 0: editor header
+      rightLines.push(theme.fg("muted", " Config Editor "));
+
+      // Row 1: blank separator
+      rightLines.push("");
+
+      // Rows 2+: editor content
+      for (let i = 0; i < editorLines.length && rightLines.length < CONTENT_HEIGHT; i++) {
+        rightLines.push(theme.fg("text", truncateToWidth(editorLines[i], halfW - 2)));
+      }
+
+      // Combine into split-pane rows
+      for (let row = 0; row < CONTENT_HEIGHT; row++) {
+        const left = leftLines[row] ?? "";
+        const right = rightLines[row] ?? "";
+        lines.push(splitRow(left, right, halfW));
+      }
+
+      // ── Validation error ───────────────────────────────────────────
       if (state.validationError) {
+        const errText = ` ⚠ ${truncateToWidth(state.validationError, innerWidth - 4)}`;
         lines.push(
           theme.fg("accent", "│") +
-            theme.fg("error", ` ⚠ ${truncateToWidth(state.validationError, width - 6)}`.padEnd(width - 2)) +
-            theme.fg("accent", "│"),
+          padVisible(theme.fg("error", errText), innerWidth) +
+          theme.fg("accent", "│"),
         );
       }
 
-      // Scope indicator
-      const scopeLabel = state.scope === "global" ? "Global" : "Project";
-      lines.push(
-        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
-      );
+      // ── Footer ─────────────────────────────────────────────────────
+      const scopeLabel = state.scope === "global" ? "● Global" : "● Project";
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
       lines.push(
         theme.fg("accent", "│") +
-          theme.fg("muted", ` ${scopeLabel}`.padEnd(width - 2)) +
-          theme.fg("accent", "│"),
+        padVisible(theme.fg("muted", ` ${scopeLabel}`), innerWidth) +
+        theme.fg("accent", "│"),
       );
 
-      // Keybinds
       const binds = " ↑↓ navigate  Enter select  Tab pane  c custom  q/Esc close";
       lines.push(
         theme.fg("accent", "│") +
-          theme.fg("muted", truncateToWidth(binds, width - 2).padEnd(width - 2)) +
-          theme.fg("accent", "│"),
+        padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
+        theme.fg("accent", "│"),
       );
-      lines.push(
-        theme.fg("accent", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
-      );
+      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
 
       cachedLines = lines;
       return lines;

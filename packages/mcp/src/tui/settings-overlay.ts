@@ -267,35 +267,38 @@ export function renderMcpSettingsOverlay(params?: {
       }
     }
 
+    /** Pad content to exact visible width, accounting for ANSI codes and emoji */
+    function padVisible(content: string, targetWidth: number): string {
+      const vw = visibleWidth(content);
+      const pad = Math.max(0, targetWidth - vw);
+      return content + " ".repeat(pad);
+    }
+
     function render(width: number): string[] {
       if (cachedLines) return cachedLines;
 
       const lines: string[] = [];
+      const innerWidth = Math.max(22, width - 2);
 
-      // Header
+      // ── Header ──────────────────────────────────────────────────────
       const header = " MCP Settings ";
       const scopeLabel = state.viewScope === "global" ? "● Global" : "● Project";
-      lines.push(
-        theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
-      );
+      const headerPad = Math.max(0, innerWidth - visibleWidth(header) - visibleWidth(scopeLabel));
+      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
       lines.push(
         theme.fg("accent", "│") +
-          theme.bold(header) +
-          theme.fg("accent", 
-            scopeLabel.padStart(width - visibleWidth(header) - visibleWidth(scopeLabel) - 1),
-          ) +
-          theme.fg("accent", "│"),
+        theme.bold(header) +
+        theme.fg("accent", " ".repeat(headerPad) + scopeLabel) +
+        theme.fg("accent", "│"),
       );
-      lines.push(
-        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
-      );
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
 
-      // Server list
+      // ── Server list ─────────────────────────────────────────────────
       if (state.servers.length === 0) {
         lines.push(
           theme.fg("accent", "│") +
-            theme.fg("muted", " No servers configured".padEnd(width - 2)) +
-            theme.fg("accent", "│"),
+          padVisible(theme.fg("muted", " No servers configured"), innerWidth) +
+          theme.fg("accent", "│"),
         );
       } else {
         for (let i = 0; i < state.servers.length; i++) {
@@ -326,39 +329,31 @@ export function renderMcpSettingsOverlay(params?: {
           const line = ` ${prefix}${statusIcon} ${name}  ${cmd}  ${tools}  ${source}`;
           lines.push(
             theme.fg("accent", "│") +
-              truncateToWidth(line, width - 2).padEnd(width - 2) +
-              theme.fg("accent", "│"),
+            padVisible(truncateToWidth(line, innerWidth), innerWidth) +
+            theme.fg("accent", "│"),
           );
         }
       }
 
-      // Confirm delete overlay
+      // ── Confirm delete ─────────────────────────────────────────────
       if (state.confirmDelete) {
-        lines.push(
-          theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
-        );
+        lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
         lines.push(
           theme.fg("accent", "│") +
-            theme.fg("warning", 
-              ` Delete '${state.confirmDelete}'? (y/n)`.padEnd(width - 2),
-            ) +
-            theme.fg("accent", "│"),
+          padVisible(theme.fg("warning", ` Delete '${state.confirmDelete}'? (y/n)`), innerWidth) +
+          theme.fg("accent", "│"),
         );
       }
 
-      // Keybinds
-      lines.push(
-        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
-      );
+      // ── Keybinds ───────────────────────────────────────────────────
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
       const binds = " ↑↓ select  Space toggle  a add  s sync  g global  p project  d delete  q/Esc close";
       lines.push(
         theme.fg("accent", "│") +
-          theme.fg("muted", truncateToWidth(binds, width - 2).padEnd(width - 2)) +
-          theme.fg("accent", "│"),
+        padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
+        theme.fg("accent", "│"),
       );
-      lines.push(
-        theme.fg("accent", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
-      );
+      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
 
       cachedLines = lines;
       return lines;
