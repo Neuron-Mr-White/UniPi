@@ -507,7 +507,21 @@ export function renderMcpAddOverlay(params?: {
       lastListHeight = LIST_HEIGHT;
       ensureVisible();
 
-      const editorLines = state.editorContent.split("\n");
+      // Drive the real Editor: focus reflects mode, render gives lines that
+      // already contain the reverse-video cursor when focused. We strip the
+      // editor's top/bottom horizontal borders since our pane has its own.
+      editor.focused = editorFocused;
+      const editorRendered: string[] = (() => {
+        try {
+          return editor.render(rightW);
+        } catch {
+          return [];
+        }
+      })();
+      const editorBody =
+        editorRendered.length >= 2
+          ? editorRendered.slice(1, -1)
+          : editorRendered;
 
       for (let row = 0; row < LIST_HEIGHT; row++) {
         // Left: server list
@@ -534,11 +548,10 @@ export function renderMcpAddOverlay(params?: {
           left = ` ${theme.fg("warning", "no matches")}`;
         }
 
-        // Right: editor content
+        // Right: editor content (lines already contain cursor + ANSI)
         let right = "";
-        if (row < editorLines.length) {
-          const raw = editorLines[row];
-          right = ` ${theme.fg(editorFocused ? "text" : "muted", truncateToWidth(raw, rightW - 1))}`;
+        if (row < editorBody.length) {
+          right = editorBody[row];
         }
 
         const midBorder = browseFocused && !editorFocused ? border("│") : dimBorder("│");
