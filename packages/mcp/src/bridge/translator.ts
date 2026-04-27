@@ -16,6 +16,18 @@ interface ToolParameters {
   required?: string[];
 }
 
+/** Content block returned by a pi tool */
+interface PiContentBlock {
+  type: "text";
+  text: string;
+}
+
+/** Pi tool execution result shape */
+interface PiToolResult {
+  content: PiContentBlock[];
+  details?: Record<string, unknown>;
+}
+
 /** Pi-compatible external tool */
 export interface PiExternalTool {
   name: string;
@@ -26,7 +38,7 @@ export interface PiExternalTool {
     params: Record<string, unknown>,
     signal?: AbortSignal,
     onUpdate?: (update: string) => void,
-  ) => Promise<string>;
+  ) => Promise<PiToolResult>;
 }
 
 /**
@@ -60,42 +72,66 @@ export function translateMcpTool(
   ].join(" ");
 
   const execute = async (
-    toolCallId: string,
+    _toolCallId: string,
     params: Record<string, unknown>,
     _signal?: AbortSignal,
     _onUpdate?: (update: string) => void,
-  ): Promise<string> => {
+  ): Promise<PiToolResult> => {
     try {
       const result: McpToolResult = await client.callTool(
         mcpTool.name,
         params,
       );
 
-      // Join all text content blocks
-      const textParts: string[] = [];
-      for (const block of result.content) {
+      // Defensive: some MCP servers return malformed results without content
+      const contentBlocks = result.content ?? [];
+      const blocks: PiContentBlock[] = [];
+
+      for (const block of contentBlocks) {
         if (block.type === "text" && block.text) {
-          textParts.push(block.text);
+          blocks.push({ type: "text", text: block.text });
         } else if (block.type === "image" && block.data) {
-          textParts.push(`[Image: ${block.mimeType ?? "unknown"}]`);
+          blocks.push({
+            type: "text",
+            text: `[Image: ${block.mimeType ?? "unknown"}]`,
+          });
         } else if (block.type === "resource") {
-          textParts.push(`[Resource: ${block.text ?? block.mimeType ?? "unknown"}]`);
+          blocks.push({
+            type: "text",
+            text: `[Resource: ${block.text ?? block.mimeType ?? "unknown"}]`,
+          });
         }
       }
 
       if (result.isError) {
-        const joined = textParts.join("\n") || "Unknown error";
-        throw new Error(`MCP tool error from ${serverName}: ${joined}`);
+        const errorText = blocks.map((b) => b.text).join("\n") || "Unknown error";
+        return {
+          content: [{ type: "text", text: `MCP tool error from ${serverName}: ${errorText}` }],
+          details: { error: true, server: serverName, tool: mcpTool.name },
+        };
       }
 
-      return textParts.join("\n") || "(no output)";
+      if (blocks.length === 0) {
+        blocks.push({ type: "text", text: "(no output)" });
+      }
+
+      return {
+        content: blocks,
+        details: { server: serverName, tool: mcpTool.name },
+      };
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `MCP tool "${mcpTool.name}" on server "${serverName}" failed: ${message}\n` +
-          `Check server status via /unipi:mcp-settings`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `MCP tool "${mcpTool.name}" on server "${serverName}" failed: ${message}\n` +
+              `Check server status via /unipi:mcp-settings`,
+          },
+        ],
+        details: { error: true, server: serverName, tool: mcpTool.name },
+      };
     }
   };
 
