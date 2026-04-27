@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Utility commands and tools for Pi coding agent — continue, status helpers",
   "type": "module",
   "license": "MIT",
