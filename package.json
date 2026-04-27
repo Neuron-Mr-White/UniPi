@@ -47,7 +47,8 @@
       "node_modules/@pi-unipi/ask-user/index.ts",
       "node_modules/@pi-unipi/mcp/src/index.ts",
       "node_modules/@pi-unipi/compactor/src/index.ts",
-      "node_modules/@pi-unipi/notify/index.ts"
+      "node_modules/@pi-unipi/notify/index.ts",
+      "node_modules/@pi-unipi/command-enchantment/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -72,12 +73,13 @@
     "@pi-unipi/btw": "*",
     "@pi-unipi/compactor": "*",
     "@pi-unipi/notify": "*",
+    "@pi-unipi/command-enchantment": "*",
     "@pi-unipi/core": "*",
     "@pi-unipi/info-screen": "*",
     "@pi-unipi/mcp": "*",
     "@pi-unipi/memory": "*",
     "@pi-unipi/ralph": "*",
-    "@pi-unipi/subagents": "*"
+    "@pi-unipi/subagents": "*",
     "@pi-unipi/utility": "*",
     "@pi-unipi/web-api": "*",
     "@pi-unipi/workflow": "*"

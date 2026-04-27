@@ -1,0 +1,40 @@
+{
+  "name": "@pi-unipi/command-enchantment",
+  "version": "0.1.0",
+  "description": "Enhanced TUI autocomplete for /unipi:* commands — colored, sorted, and grouped by package",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/autocomplete"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "autocomplete"
+  ],
+  "pi": {
+    "extensions": [
+      "src/index.ts"
+    ]
+  },
+  "files": [
+    "src/**/*.ts",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

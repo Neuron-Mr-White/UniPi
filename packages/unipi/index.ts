@@ -22,6 +22,7 @@ import utility from "@pi-unipi/utility";
 import askUser from "@pi-unipi/ask-user";
 import mcp from "@pi-unipi/mcp";
 import notify from "@pi-unipi/notify";
+import commandEnchantment from "@pi-unipi/command-enchantment";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -35,4 +36,5 @@ export default function (pi: ExtensionAPI) {
   askUser(pi);
   mcp(pi);
   notify(pi);
+  commandEnchantment(pi);
 }
