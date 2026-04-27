@@ -1,0 +1,50 @@
+{
+  "name": "@pi-unipi/ask-user",
+  "version": "0.1.0",
+  "description": "Structured user input tool for Pi coding agent — single-select, multi-select, freeform",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/ask-user"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "ask-user",
+    "interactive",
+    "user-input"
+  ],
+  "files": [
+    "index.ts",
+    "types.ts",
+    "tools.ts",
+    "ask-ui.ts",
+    "commands.ts",
+    "skills/**/*",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "index.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  }
+}

@@ -189,6 +189,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         if (results.length === 0) {
           return {
             content: [{ type: "text", text: "No results found." }],
+            details: {},
           };
         }
 
@@ -206,6 +207,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
               text: `Found ${results.length} results:\n\n${formatted}`,
             },
           ],
+          details: {},
         };
       } catch (error) {
         const message =
@@ -213,6 +215,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: `Search failed: ${message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -255,6 +258,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
               text: `Content from ${result.url}:\n\n${result.content}`,
             },
           ],
+          details: {},
         };
       } catch (error) {
         const message =
@@ -262,6 +266,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: `Read failed: ${message}` }],
           isError: true,
+          details: {},
         };
       }
     },
@@ -316,6 +321,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
               text: `Summary of ${result.url}:\n\n${result.summary}`,
             },
           ],
+          details: {},
         };
       } catch (error) {
         const message =
@@ -323,6 +329,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: `Summarize failed: ${message}` }],
           isError: true,
+          details: {},
         };
       }
     },
