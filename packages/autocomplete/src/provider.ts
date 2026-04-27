@@ -36,11 +36,44 @@ function fuzzyMatch(text: string, query: string): boolean {
   return qi === q.length;
 }
 
+// ─── Namespace detection ─────────────────────────────────────────────
+
+/**
+ * If the query looks like a package namespace (e.g. "workflow", "memory",
+ * "utility"), return that package name so its commands sort to the top.
+ * Returns null when the query isn't a pure namespace search.
+ */
+function detectNamespaceBoost(query: string): string | null {
+  if (!query) return null;
+  const q = query.toLowerCase();
+  // Direct match against known package names (and common aliases)
+  const NAMESPACE_ALIASES: Record<string, string> = {
+    // Full package names
+    workflow: "workflow",
+    ralph: "ralph",
+    memory: "memory",
+    mcp: "mcp",
+    utility: "utility",
+    "ask-user": "ask-user",
+    info: "info",
+    "web-api": "web-api",
+    compact: "compact",
+    notify: "notify",
+    // Unambiguous short aliases
+    mem: "memory",
+    util: "utility",
+    web: "web-api",
+    notification: "notify",
+  };
+  return NAMESPACE_ALIASES[q] ?? null;
+}
+
 // ─── Enhanced item generation ────────────────────────────────────────
 
 /**
  * Generate enhanced autocomplete items for unipi commands,
  * sorted by package order then alphabetically within each package.
+ * When the query matches a package namespace, that package floats to top.
  */
 function getEnhancedUnipiItems(
   prefix: string,
@@ -60,20 +93,44 @@ function getEnhancedUnipiItems(
 
   const entries = Object.entries(COMMAND_REGISTRY);
 
-  // Case A: match short name ("brain" against "brainstorm")
-  // Case B: match full value ("uni" against "unipi:work") so all unipi commands
-  //         surface when the user hasn't yet typed the full "unipi:" prefix.
-  const matched = entries.filter(([cmd]) => {
-    if (isPastUnipiColon) {
-      return fuzzyMatch(cmd.replace("unipi:", "").toLowerCase(), query);
-    }
-    return fuzzyMatch(cmd.toLowerCase(), query);
-  });
+  // Detect namespace query: when the query is exactly a package name/alias
+  // (e.g. "workflow", "mem", "utility") short-circuit and return ALL commands
+  // from that package, sorted by name, with other packages following.
+  const boostedPackage = detectNamespaceBoost(query);
 
-  // Sort by package order, then alphabetically within each package
+  let matched: [string, string][];
+
+  if (boostedPackage) {
+    // Namespace mode: show boosted package first (all its commands), then
+    // remaining packages in normal order.
+    // Works for both "/workflow" and "/unipi:workflow".
+    matched = entries;
+  } else {
+    // Case A: match short name ("brain" against "brainstorm")
+    // Case B: match full value ("uni" against "unipi:work") so all unipi
+    //         commands surface when the user hasn't typed the full prefix.
+    matched = entries.filter(([cmd]) => {
+      if (isPastUnipiColon) {
+        return fuzzyMatch(cmd.replace("unipi:", "").toLowerCase(), query);
+      }
+      return fuzzyMatch(cmd.toLowerCase(), query);
+    });
+  }
+
+  // Sort: boosted package first, then by PACKAGE_ORDER, then alphabetically.
   matched.sort((a, b) => {
-    const orderA = PACKAGE_ORDER.indexOf(a[1]);
-    const orderB = PACKAGE_ORDER.indexOf(b[1]);
+    const pkgA = a[1];
+    const pkgB = b[1];
+
+    if (boostedPackage) {
+      const aIsBoosted = pkgA === boostedPackage;
+      const bIsBoosted = pkgB === boostedPackage;
+      if (aIsBoosted && !bIsBoosted) return -1;
+      if (!aIsBoosted && bIsBoosted) return 1;
+    }
+
+    const orderA = PACKAGE_ORDER.indexOf(pkgA);
+    const orderB = PACKAGE_ORDER.indexOf(pkgB);
     if (orderA !== orderB) return orderA - orderB;
     return a[0].localeCompare(b[0]);
   });
@@ -97,6 +154,20 @@ function getEnhancedUnipiItems(
       description: desc ? `${tag} ${desc}` : tag,
     };
   });
+}
+
+// ─── Argument re-trigger helpers ─────────────────────────────────────
+
+/**
+ * Return true when textBeforeCursor is inside the arguments of a /unipi:* command.
+ * e.g. "/unipi:work " or "/unipi:work plan:foo" → true
+ *      "/unipi:work" (no space) → false
+ */
+function isInUnipiArgPosition(textBeforeCursor: string): boolean {
+  const spaceIdx = textBeforeCursor.indexOf(" ");
+  if (spaceIdx === -1) return false;
+  const cmdName = textBeforeCursor.slice(1, spaceIdx); // strip leading "/"
+  return cmdName.startsWith("unipi:");
 }
 
 // ─── Provider factory ────────────────────────────────────────────────
@@ -131,13 +202,25 @@ export function createEnchantedProvider(
         return current.getSuggestions(lines, cursorLine, cursorCol, options);
       }
 
-      // If there's a space in the text, we're typing arguments to an already-
-      // selected command — pass through to base provider without injecting the
-      // command list.
+      // ── Argument position ──────────────────────────────────────────
+      // When there's a space, the user is typing arguments for a command.
+      // The base provider handles argument completions only when force=false
+      // (it skips the slash-command path entirely when force=true, falling
+      // back to file suggestions instead).  We fix that by always calling
+      // base with force=false so the getArgumentCompletions path is taken.
       if (textBeforeCursor.includes(" ")) {
+        if (isInUnipiArgPosition(textBeforeCursor)) {
+          // Force the non-force path so argument completions are returned
+          // even when the editor called us with force=true (Tab key after space).
+          return current.getSuggestions(lines, cursorLine, cursorCol, {
+            ...options,
+            force: false,
+          });
+        }
         return current.getSuggestions(lines, cursorLine, cursorCol, options);
       }
 
+      // ── Command-name position ──────────────────────────────────────
       // Get base suggestions (includes all commands)
       const baseSuggestions = await current.getSuggestions(
         lines,
@@ -145,41 +228,44 @@ export function createEnchantedProvider(
         cursorCol,
         options,
       );
-      if (!baseSuggestions) return null;
 
-      // Separate: keep non-unipi items, discard unipi items
-      // Also collect descriptions from base items for unipi commands
+      // Separate: keep non-unipi items, collect unipi descriptions
       const nonUnipiItems: AutocompleteItem[] = [];
       const descriptionOverrides = new Map<string, string>();
 
-      for (const item of baseSuggestions.items) {
-        if (item.value.startsWith("unipi:")) {
-          // Save the description from base suggestions
-          if (item.description) {
-            descriptionOverrides.set(item.value, item.description);
+      if (baseSuggestions) {
+        for (const item of baseSuggestions.items) {
+          if (item.value.startsWith("unipi:")) {
+            if (item.description) {
+              descriptionOverrides.set(item.value, item.description);
+            }
+          } else {
+            nonUnipiItems.push(item);
           }
-        } else {
-          nonUnipiItems.push(item);
         }
       }
 
-      // Generate enhanced unipi items
+      // The prefix we pass to getEnhancedUnipiItems: prefer base's prefix
+      // (which is the full textBeforeCursor), fall back to textBeforeCursor.
+      const effectivePrefix = baseSuggestions?.prefix ?? textBeforeCursor;
+
+      // Generate enhanced unipi items (handles namespace queries too)
       const enhancedUnipiItems = getEnhancedUnipiItems(
-        baseSuggestions.prefix,
+        effectivePrefix,
         descriptionOverrides,
       );
 
-      // If no unipi items match, just return non-unipi
+      // If no unipi items match, just return non-unipi (or null if empty)
       if (enhancedUnipiItems.length === 0) {
         return nonUnipiItems.length > 0
-          ? { items: nonUnipiItems, prefix: baseSuggestions.prefix }
+          ? { items: nonUnipiItems, prefix: effectivePrefix }
           : null;
       }
 
       // Merge: non-unipi first, then enhanced unipi (sorted by package)
       return {
         items: [...nonUnipiItems, ...enhancedUnipiItems],
-        prefix: baseSuggestions.prefix,
+        prefix: effectivePrefix,
       };
     },
 
@@ -204,13 +290,18 @@ export function createEnchantedProvider(
       cursorLine: number,
       cursorCol: number,
     ): boolean {
-      return (
-        current.shouldTriggerFileCompletion?.(
-          lines,
-          cursorLine,
-          cursorCol,
-        ) ?? true
-      );
+      const currentLine = lines[cursorLine] ?? "";
+      const textBeforeCursor = currentLine.slice(0, cursorCol);
+
+      // When Tab is pressed inside a /unipi:* argument context we still
+      // want getSuggestions to be called (returning true here allows that),
+      // and getSuggestions will override force=false so the base provider
+      // takes the argument-completion path instead of the file path.
+      if (isInUnipiArgPosition(textBeforeCursor)) {
+        return true;
+      }
+
+      return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
     },
   };
 }
