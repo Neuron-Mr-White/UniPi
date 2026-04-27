@@ -25,6 +25,8 @@
     "tools.ts",
     "ask-ui.ts",
     "commands.ts",
+    "config.ts",
+    "settings-tui.ts",
     "skills/**/*",
     "README.md"
   ],

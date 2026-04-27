@@ -9,6 +9,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { ASK_USER_TOOLS } from "@pi-unipi/core";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
+import { getAskUserSettings } from "./config.js";
 
 /**
  * Register ask-user tools.
@@ -90,6 +91,81 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         allowFreeform?: boolean;
         timeout?: number;
       };
+
+      // Check settings
+      const settings = getAskUserSettings();
+      if (!settings.enabled) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: ask_user tool is disabled in settings.",
+            },
+          ],
+          details: {
+            question,
+            response: {
+              kind: "cancelled",
+              comment: "Tool disabled",
+            } as AskUserResponse,
+          },
+        };
+      }
+
+      // Validate requested format against allowed formats
+      if (allowMultiple && !settings.allowedFormats.multiSelect) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Multi-select questions are disabled in settings.",
+            },
+          ],
+          details: {
+            question,
+            response: {
+              kind: "cancelled",
+              comment: "Multi-select disabled",
+            } as AskUserResponse,
+          },
+        };
+      }
+
+      if (!allowMultiple && !settings.allowedFormats.singleSelect) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Single-select questions are disabled in settings.",
+            },
+          ],
+          details: {
+            question,
+            response: {
+              kind: "cancelled",
+              comment: "Single-select disabled",
+            } as AskUserResponse,
+          },
+        };
+      }
+
+      if (allowFreeform && !settings.allowedFormats.freeform) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Freeform questions are disabled in settings.",
+            },
+          ],
+          details: {
+            question,
+            response: {
+              kind: "cancelled",
+              comment: "Freeform disabled",
+            } as AskUserResponse,
+          },
+        };
+      }
 
       // Validate: need UI
       if (!ctx.hasUI) {

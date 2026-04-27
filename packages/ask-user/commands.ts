@@ -1,33 +1,50 @@
 /**
  * @pi-unipi/ask-user — Command registration
  *
- * Registers optional test command for ask_user tool.
+ * Registers settings command for ask_user tool.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
+import { AskUserSettingsOverlay } from "./settings-tui.js";
 
 /**
  * Register ask-user commands.
  */
 export function registerAskUserCommands(pi: ExtensionAPI): void {
-  pi.registerCommand(`${UNIPI_PREFIX}ask-user-test`, {
-    description: "Test the ask_user tool with a sample question",
+  pi.registerCommand(`${UNIPI_PREFIX}ask-user-settings`, {
+    description: "Configure ask_user tool settings",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) {
         if (ctx.hasUI) {
-          ctx.ui.notify("ask_user test requires an interactive UI.", "warning");
+          ctx.ui.notify("Settings require an interactive UI.", "warning");
         }
         return;
       }
 
-      // The test command just notifies — actual testing happens via tool call
-      if (ctx.hasUI) {
-        ctx.ui.notify(
-          "To test ask_user, ask the agent to ask you a question using the ask_user tool.",
-          "info",
-        );
-      }
+      ctx.ui.custom(
+        (tui: any, _theme: any, _keybindings: any, done: any) => {
+          const overlay = new AskUserSettingsOverlay();
+          overlay.onClose = () => done(undefined);
+          return {
+            render: (w: number) => overlay.render(w),
+            invalidate: () => overlay.invalidate(),
+            handleInput: (data: string) => {
+              overlay.handleInput(data);
+              tui.requestRender();
+            },
+          };
+        },
+        {
+          overlay: true,
+          overlayOptions: {
+            width: "80%",
+            minWidth: 60,
+            anchor: "center",
+            margin: 2,
+          },
+        },
+      );
     },
   });
 }

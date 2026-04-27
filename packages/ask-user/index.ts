@@ -37,7 +37,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.ASK_USER,
       version: VERSION,
-      commands: ["unipi:ask-user-test"],
+      commands: ["unipi:ask-user-settings"],
       tools: [ASK_USER_TOOLS.ASK],
     });
   });
