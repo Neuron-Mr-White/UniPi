@@ -23,22 +23,22 @@ Before running this chore, ensure:
 ## Package Inventory
 
 | Directory | npm Package | Version |
-|-----------|-------------|---------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.2 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.0 |
-| `packages/btw` | `@pi-unipi/btw` | 0.1.1 |
-| `packages/compactor` | `@pi-unipi/compactor` | 0.1.0 |
-| `packages/core` | `@pi-unipi/core` | 0.1.7 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.13 |
-| `packages/mcp` | `@pi-unipi/mcp` | 0.1.6 |
-| `packages/memory` | `@pi-unipi/memory` | 0.1.5 |
-| `packages/notify` | `@pi-unipi/notify` | 0.1.0 |
-| `packages/ralph` | `@pi-unipi/ralph` | 0.1.2 |
-| `packages/subagents` | `@pi-unipi/subagents` | 0.1.12 |
-| `packages/utility` | `@pi-unipi/utility` | 0.2.0 |
-| `packages/web-api` | `@pi-unipi/web-api` | 0.1.7 |
-| `packages/workflow` | `@pi-unipi/workflow` | 0.1.8 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.8 |
+|-----------|-------------|----------|
+| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.3 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.1 |
+| `packages/btw` | `@pi-unipi/btw` | 0.1.2 |
+| `packages/compactor` | `@pi-unipi/compactor` | 0.1.1 |
+| `packages/core` | `@pi-unipi/core` | 0.1.8 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.14 |
+| `packages/mcp` | `@pi-unipi/mcp` | 0.1.7 |
+| `packages/memory` | `@pi-unipi/memory` | 0.1.6 |
+| `packages/notify` | `@pi-unipi/notify` | 0.1.1 |
+| `packages/ralph` | `@pi-unipi/ralph` | 0.1.3 |
+| `packages/subagents` | `@pi-unipi/subagents` | 0.1.13 |
+| `packages/utility` | `@pi-unipi/utility` | 0.2.1 |
+| `packages/web-api` | `@pi-unipi/web-api` | 0.1.8 |
+| `packages/workflow` | `@pi-unipi/workflow` | 0.1.9 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.9 |
 
 ---
 

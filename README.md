@@ -19,6 +19,11 @@ pi install npm:@pi-unipi/info-screen
 pi install npm:@pi-unipi/subagents
 pi install npm:@pi-unipi/btw
 pi install npm:@pi-unipi/web-api
+pi install npm:@pi-unipi/compactor
+pi install npm:@pi-unipi/notify
+pi install npm:@pi-unipi/utility
+pi install npm:@pi-unipi/mcp
+pi install npm:@pi-unipi/ask-user
 ```
 
 ## Packages
@@ -26,13 +31,18 @@ pi install npm:@pi-unipi/web-api
 | Package | Description |
 |---------|-------------|
 | `@pi-unipi/core` | Shared utilities, event types, constants |
-| `@pi-unipi/workflow` | 13 structured development workflow commands |
+| `@pi-unipi/workflow` | 20 structured development workflow commands |
 | `@pi-unipi/ralph` | Long-running iterative development loops |
 | `@pi-unipi/memory` | Persistent cross-session memory with vector search |
 | `@pi-unipi/info-screen` | Dashboard and module registry overlay |
 | `@pi-unipi/subagents` | Parallel sub-agent execution with file locking |
 | `@pi-unipi/btw` | Parallel side conversations with `/btw` |
 | `@pi-unipi/web-api` | Web search, read, and summarize with provider selection |
+| `@pi-unipi/compactor` | Session compaction, context management, batch execution |
+| `@pi-unipi/notify` | Cross-platform notifications (native, Gotify, Telegram) |
+| `@pi-unipi/utility` | Environment info, diagnostics, settings inspector, cleanup |
+| `@pi-unipi/mcp` | MCP server discovery, connection, and tool integration |
+| `@pi-unipi/ask-user` | Structured user input with options and freeform text |
 
 ## Commands
 
@@ -45,6 +55,7 @@ pi install npm:@pi-unipi/web-api
 | `/unipi:work` | Execute plan in worktree |
 | `/unipi:review-work` | Review what was built |
 | `/unipi:consolidate` | Merge findings, update docs |
+| `/unipi:auto` | Full pipeline — brainstorm → plan → work → review → merge |
 | `/unipi:worktree-create` | Create git worktree |
 | `/unipi:worktree-list` | List all worktrees |
 | `/unipi:worktree-merge` | Merge worktree back |
@@ -53,6 +64,12 @@ pi install npm:@pi-unipi/web-api
 | `/unipi:gather-context` | Research codebase |
 | `/unipi:document` | Generate documentation |
 | `/unipi:scan-issues` | Find bugs, anti-patterns |
+| `/unipi:debug` | Active bug investigation — reproduce, diagnose, root-cause |
+| `/unipi:fix` | Fix bugs using debug reports |
+| `/unipi:quick-fix` | Fast one-shot fix for clear bugs |
+| `/unipi:research` | Deep codebase investigation and documentation review |
+| `/unipi:chore-create` | Create reusable chore (deploy, publish, etc.) |
+| `/unipi:chore-execute` | Run a saved chore |
 
 ### Ralph (`/unipi:ralph`)
 
@@ -103,6 +120,49 @@ pi install npm:@pi-unipi/web-api
 | `/unipi:web-settings` | Configure providers and API keys |
 | `/unipi:web-cache-clear` | Clear all cached web content |
 
+### Compactor (`/unipi:compact*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:compact` | Compact session into brief |
+| `/unipi:compact-recall` | Recall from compacted sessions |
+| `/unipi:compact-stats` | Show compaction statistics |
+| `/unipi:compact-doctor` | Diagnose compactor issues |
+| `/unipi:compact-settings` | Configure compactor |
+| `/unipi:compact-preset` | Apply compaction presets |
+| `/unipi:compact-index` | Index context for search |
+| `/unipi:compact-search` | Search indexed context |
+| `/unipi:compact-purge` | Purge old compacted data |
+
+### Notify (`/unipi:notify-*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:notify-settings` | Configure notification platforms |
+| `/unipi:notify-set-gotify` | Set Gotify server config |
+| `/unipi:notify-set-tg` | Set Telegram bot config |
+| `/unipi:notify-test` | Test notification delivery |
+
+### Utility (`/unipi:*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:env` | Show environment info |
+| `/unipi:doctor` | Run diagnostics |
+| `/unipi:status` | Show module status |
+| `/unipi:cleanup` | Clean stale temp files |
+| `/unipi:reload` | Reload extensions |
+
+### MCP (`/unipi:mcp-*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:mcp-add` | Add MCP server |
+| `/unipi:mcp-settings` | Configure MCP servers |
+| `/unipi:mcp-sync` | Sync MCP tools |
+| `/unipi:mcp-status` | Show MCP connection status |
+| `/unipi:mcp-reload` | Reload MCP connections |
+
 ### Tools
 
 | Tool | Package | Description |
@@ -120,12 +180,23 @@ pi install npm:@pi-unipi/web-api
 | `web_search` | web-api | Search the web via provider |
 | `web_read` | web-api | Extract content from URL |
 | `web_llm_summarize` | web-api | Summarize web content via LLM |
+| `notify_user` | notify | Send cross-platform notifications |
+| `ask_user` | ask-user | Structured user input with options |
+| `compact` | compactor | Compact session context |
+| `vcc_recall` | compactor | Recall from compacted sessions |
+| `ctx_execute` | compactor | Execute with context management |
+| `ctx_batch_execute` | compactor | Batch execute with rollback |
+| `ctx_index` | compactor | Index context for search |
+| `ctx_search` | compactor | Search indexed context |
+| `ctx_fetch_and_index` | compactor | Fetch and index web content |
+| `ctx_stats` | compactor | Show compaction statistics |
+| `ctx_doctor` | compactor | Diagnose compactor issues |
 
 ## How It Works
 
 **Core** provides shared infrastructure — event types, constants, utilities — so modules discover each other without tight coupling.
 
-**Workflow** provides 13 commands guiding work from idea to completion via brainstorm → plan → work → review → consolidate.
+**Workflow** provides 20 commands guiding work from idea to completion: brainstorm → plan → work → review → consolidate, plus quick-fix, debug, research, chore, and more.
 
 **Ralph** enables long-running iterative tasks. Start a loop, the agent works through iterations, reflects periodically, and completes when done.
 
@@ -138,6 +209,16 @@ pi install npm:@pi-unipi/web-api
 **Subagents** enables parallel execution with file locking, activity tracking, and custom agent types.
 
 **Web API** provides web search, page reading, and LLM summarization through a ranked provider system. DuckDuckGo and Jina work out of the box; paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are configured via `/unipi:web-settings`.
+
+**Compactor** manages session context with compaction, indexing, search, and batch execution. Keep context lean without losing important information.
+
+**Notify** sends notifications across platforms — native OS, Gotify, and Telegram. Configure once, get alerts everywhere.
+
+**Utility** provides environment info, diagnostics, settings inspection, and cleanup tools for maintaining your development environment.
+
+**MCP** integrates Model Context Protocol servers — discover, connect, and use external tool servers seamlessly.
+
+**Ask User** provides structured user input with multiple-choice, multi-select, and freeform text options.
 
 ## Module Discovery
 
