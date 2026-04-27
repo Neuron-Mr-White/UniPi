@@ -55,8 +55,23 @@ export function translateMcpTool(
   ].join(" ");
 
   const execute = async (
-    params: Record<string, unknown>,
+    rawParams: Record<string, unknown> | string,
   ): Promise<string> => {
+    // Pi sometimes passes tool arguments as a JSON string rather than an
+    // object. Parse it before forwarding to the MCP server.
+    let params: Record<string, unknown>;
+    if (typeof rawParams === "string") {
+      try {
+        params = JSON.parse(rawParams) as Record<string, unknown>;
+      } catch {
+        throw new Error(
+          `MCP tool "${mcpTool.name}" received invalid JSON string as arguments: ${rawParams}`,
+        );
+      }
+    } else {
+      params = rawParams;
+    }
+
     try {
       const result: McpToolResult = await client.callTool(
         mcpTool.name,
