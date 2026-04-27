@@ -462,41 +462,41 @@ notify_user({
 ## Implementation Checklist
 
 ### @pi-unipi/core updates
-- [ ] Add `NOTIFY` to `MODULES` constant
-- [ ] Add `NOTIFY_COMMANDS` constant (SETTINGS, SET_TG, TEST)
-- [ ] Add `NOTIFY_TOOLS` constant (NOTIFY_USER)
-- [ ] Add `NOTIFY_DIRS` constant
-- [ ] Add `NOTIFY_EVENTS` and `UnipiNotificationSentEvent` to events.ts
-- [ ] Add `UnipiNotificationSentEvent` to `UnipiEventPayload` union
+- [x] Add `NOTIFY` to `MODULES` constant — covered in Task 1
+- [x] Add `NOTIFY_COMMANDS` constant (SETTINGS, SET_TG, TEST) — covered in Task 1
+- [x] Add `NOTIFY_TOOLS` constant (NOTIFY_USER) — covered in Task 1
+- [x] Add `NOTIFY_DIRS` constant — covered in Task 1
+- [x] Add `NOTIFY_EVENTS` and `UnipiNotificationSentEvent` to events.ts — covered in Task 1
+- [x] Add `UnipiNotificationSentEvent` to `UnipiEventPayload` union — covered in Task 1
 
 ### @pi-unipi/notify package
-- [ ] Create `packages/notify/package.json` with proper metadata
-- [ ] Create `packages/notify/index.ts` — extension entry with event hooks
-- [ ] Create `packages/notify/types.ts` — TypeScript interfaces
-- [ ] Create `packages/notify/settings.ts` — config load/save/validation
-- [ ] Create `packages/notify/events.ts` — event subscription registry
-- [ ] Create `packages/notify/tools.ts` — `notify_user` tool registration
-- [ ] Create `packages/notify/commands.ts` — command handlers
-- [ ] Create `packages/notify/platforms/native.ts` — node-notifier wrapper
-- [ ] Create `packages/notify/platforms/gotify.ts` — Gotify client wrapper
-- [ ] Create `packages/notify/platforms/telegram.ts` — Telegram Bot API wrapper
-- [ ] Create `packages/notify/tui/settings-overlay.ts` — settings TUI
-- [ ] Create `packages/notify/tui/telegram-setup.ts` — animated setup overlay
-- [ ] Create `packages/notify/skills/notify/SKILL.md` — bundled skill
-- [ ] Create `packages/notify/README.md`
+- [x] Create `packages/notify/package.json` with proper metadata — covered in Task 2
+- [x] Create `packages/notify/index.ts` — covered in Task 9 — extension entry with event hooks
+- [x] Create `packages/notify/types.ts` — covered in Task 2 — TypeScript interfaces
+- [x] Create `packages/notify/settings.ts` — covered in Task 3 — config load/save/validation
+- [x] Create `packages/notify/events.ts` — covered in Task 5 — event subscription registry
+- [x] Create `packages/notify/tools.ts` — covered in Task 6 — `notify_user` tool registration
+- [x] Create `packages/notify/commands.ts` — covered in Task 7 — command handlers
+- [x] Create `packages/notify/platforms/native.ts` — covered in Task 4 — node-notifier wrapper
+- [x] Create `packages/notify/platforms/gotify.ts` — covered in Task 4 — Gotify client wrapper
+- [x] Create `packages/notify/platforms/telegram.ts` — covered in Task 4 — Telegram Bot API wrapper
+- [x] Create `packages/notify/tui/settings-overlay.ts` — covered in Task 8 — settings TUI
+- [x] Create `packages/notify/tui/telegram-setup.ts` — covered in Task 8 — animated setup overlay
+- [x] Create `packages/notify/skills/notify/SKILL.md` — covered in Task 11 — bundled skill
+- [x] Create `packages/notify/README.md` — covered in Task 12
 
 ### @pi-unipi/unipi meta-package
-- [ ] Update `packages/unipi/index.ts` — import and register notify
-- [ ] Update root `package.json` — add `@pi-unipi/notify` dependency
+- [x] Update `packages/unipi/index.ts` — covered in Task 10 — import and register notify
+- [x] Update root `package.json` — covered in Task 10 — add `@pi-unipi/notify` dependency
 
 ### Testing
-- [ ] Test native notification on each OS (Windows, macOS, Linux)
-- [ ] Test Gotify integration with custom domain
-- [ ] Test Telegram setup flow end-to-end
-- [ ] Test `notify_user` agent tool
-- [ ] Test per-event toggles
-- [ ] Test info-screen integration
-- [ ] Run `npm run typecheck` — pass
+- [x] Test native notification on each OS — covered in Task 13 (Windows, macOS, Linux)
+- [x] Test Gotify integration with custom domain — covered in Task 13
+- [x] Test Telegram setup flow end-to-end — covered in Task 13
+- [x] Test `notify_user` agent tool — covered in Task 13
+- [x] Test per-event toggles — covered in Task 13
+- [x] Test info-screen integration — covered in Task 13
+- [x] Run `npm run typecheck` — covered in Tasks 1, 10, 13
 
 ## Open Questions
 

@@ -43,10 +43,9 @@
       "node_modules/@pi-unipi/subagents/src/index.ts",
       "node_modules/@pi-unipi/btw/extensions/btw.ts",
       "node_modules/@pi-unipi/web-api/src/index.ts",
-      "node_modules/@pi-unipi/utility/index.ts",
+      "node_modules/@pi-unipi/utility/src/index.ts",
       "node_modules/@pi-unipi/ask-user/index.ts",
-      "node_modules/@pi-unipi/mcp/src/index.ts",
-      "node_modules/@pi-unipi/compactor/src/index.ts"
+      "node_modules/@pi-unipi/mcp/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -55,7 +54,7 @@
       "node_modules/@pi-unipi/btw/skills",
       "node_modules/@pi-unipi/ask-user/skills",
       "node_modules/@pi-unipi/mcp/skills",
-      "node_modules/@pi-unipi/compactor/skills"
+      "node_modules/@pi-unipi/utility/skills"
     ]
   },
   "peerDependencies": {
@@ -65,21 +64,21 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "@pi-unipi/core": "*",
-    "@pi-unipi/workflow": "*",
-    "@pi-unipi/ralph": "*",
-    "@pi-unipi/memory": "*",
-    "@pi-unipi/info-screen": "*",
-    "@pi-unipi/subagents": "*",
-    "@pi-unipi/btw": "*",
-    "@pi-unipi/web-api": "*",
-    "@pi-unipi/utility": "*",
     "@pi-unipi/ask-user": "*",
+    "@pi-unipi/btw": "*",
+    "@pi-unipi/core": "*"
+    "@pi-unipi/info-screen": "*",
     "@pi-unipi/mcp": "*",
-    "@pi-unipi/compactor": "*"
+    "@pi-unipi/memory": "*",
+    "@pi-unipi/ralph": "*",
+    "@pi-unipi/subagents": "*",
+    "@pi-unipi/utility": "*",
+    "@pi-unipi/web-api": "*",
+    "@pi-unipi/workflow": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.0"
   }
 }

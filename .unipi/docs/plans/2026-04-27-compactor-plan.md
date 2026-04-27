@@ -526,7 +526,61 @@ Phase 7: Polish
 - Tasks 13-15 (Display) can be parallel after Task 1
 - Tasks 16-17 (Tools, Commands) can be parallel after Phases 2-4
 
-**Critical path:** Task 0 → Task 1 → Task 2 → Task 4 → Task 18 → Task 21 ✅ (all completed)
+**Critical path:** Task 0 → Task 1 → Task 2 → Task 4 → Task 18 → Task 21 (see review below)
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Partially Done 19/23 (4 skipped, 0 unstarted)
+
+### Verified Complete (19 tasks)
+- Task 2: Config Schema + Storage + Migration ✅
+- Task 4: Message Pipeline ✅ (11 tests pass)
+- Task 5: Brief + Format + Merge ✅ (tests pass)
+- Task 7: Recall Tool ✅ (tests pass)
+- Task 8: Session Event Tracking + SQLite DB ✅
+- Task 9: Compaction Survival (XML Resume Snapshot) ✅
+- Task 10: FTS5 Content Store ✅ (MVP: porter index only)
+- Task 11: Sandbox Executor ✅ (5 tests pass)
+- Task 12: Security Layer ✅ (6 tests pass)
+- Task 13: Tool Override Renderers ✅
+- Task 15: Thinking Labels + User Message Box ✅
+- Task 16: All Tools Implementation ✅ (10 tools present)
+- Task 17: All Commands Implementation ✅
+- Task 18: Extension Entry Point ✅ (but broken imports — see critical issues)
+- Task 19: Info-Screen Integration ✅ (data provider ready)
+
+### Partially Done (2 tasks)
+- **Task 1 (Package Scaffold + Constants + Types):** Package structure ✅, types.ts ✅, but COMPACTOR NOT added to MODULES in core/constants.ts, COMPACTOR_COMMANDS/TOOLS/DIRS/DEFAULTS NOT added to core/constants.ts, compactor events NOT added to core/events.ts. **Entry point imports these from @pi-unipi/core — will fail at runtime.**
+- **Task 21 (README + Root Integration):** README.md ✅, but root package.json does NOT include @pi-unipi/compactor in dependencies or pi.extensions.
+
+### Skipped (4 tasks)
+- Task 3: TUI Settings Overlay (deferred to post-MVP) ⏸️
+- Task 20: Skills (deferred to post-MVP) ⏸️
+- Task 23: Performance + Edge Cases (deferred to post-MVP) ⏸️
+
+### Failing Tests (2/41)
+1. **cut.test.ts > handles orphan recovery:** Expects `buildOwnCut()` to return `ok: true` when `firstKeptEntryId` references a nonexistent entry (orphan), but it returns `ok: false`. Orphan recovery logic not implemented.
+2. **diff-renderer.test.ts > auto-selects layout based on width:** Test expects unified layout (no `│` characters) for `maxWidth: 50`, but split layout is used instead. Auto-layout threshold logic incorrect.
+
+### Critical Issues (must fix before merge)
+1. **Missing core constants/events:** `src/index.ts` imports `COMPACTOR_COMMANDS`, `COMPACTOR_TOOLS`, `MODULES.COMPACTOR` from `@pi-unipi/core`, but these are NOT defined there. Extension will crash on `session_start`.
+2. **Missing root package.json entry:** `@pi-unipi/compactor` not in root dependencies or `pi.extensions`. Extension won't be loaded by Pi.
+
+### Codebase Checks
+- ✅ TypeScript: Source code passes (10 errors are only bun:test type refs in test files, expected)
+- ⚠️ Tests: 39/41 pass, 2 failing (see above)
+- ⏭️ Lint: No lint configuration found
+- ⏭️ Build: No build script configured
+- ⏭️ Docker: No Dockerfile present
+
+### Verdict
+**2 critical issues blocking runtime.** The compactor package code is complete and well-structured, but cannot function without:
+1. Core constants/events additions (COMPACTOR to MODULES, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, COMPACTOR_DIRS, COMPACTOR_DEFAULTS, compactor events)
+2. Root package.json registration
+
+Plus 2 test failures need investigation (orphan recovery, auto-layout).
 
 ---
 

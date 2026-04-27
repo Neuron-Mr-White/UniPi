@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "0.1.1",
-  "description": "Utility commands and tools for Pi coding agent — continue, status helpers",
+  "version": "0.2.0",
+  "description": "Utility commands and tools for Pi coding agent — lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "license": "MIT",
   "author": "Neuron Mr White",
@@ -16,16 +16,22 @@
     "pi-coding-agent",
     "unipi",
     "utility",
-    "continue"
+    "continue",
+    "diagnostics",
+    "cache",
+    "analytics"
   ],
   "files": [
-    "index.ts",
-    "commands.ts",
-    "README.md"
+    "src/index.ts",
+    "src/commands.ts",
+    "src/types.ts",
+    "src/**/*.ts",
+    "README.md",
+    "skills/**/*.md"
   ],
   "pi": {
     "extensions": [
-      "index.ts"
+      "src/index.ts"
     ]
   },
   "publishConfig": {
@@ -37,5 +43,8 @@
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "@sinclair/typebox": "*"
+  },
+  "scripts": {
+    "test": "npx tsx --test tests/**/*.test.ts"
   }
 }
