@@ -126,7 +126,7 @@ Both follow established Unipi patterns (memory, ralph, btw) for tool/command reg
     3. Update root `package.json` pi.extensions array to include utility and ask-user entry points
     4. Update root `package.json` pi.skills array to include ask-user skills directory
 
-- unstarted: Task 10 — Testing and Validation
+- completed: Task 10 — Testing and Validation
   - Description: Run typecheck, test all extensions manually, verify integration works
   - Dependencies: Task 9
   - Acceptance Criteria: `npm run typecheck` passes; all manual tests pass; info-screen shows new modules
