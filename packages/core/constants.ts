@@ -149,3 +149,26 @@ export const UTILITY_TOOLS = {
 export const ASK_USER_TOOLS = {
   ASK: "ask_user",
 } as const;
+
+/** MCP directory paths */
+export const MCP_DIRS = {
+  GLOBAL_CONFIG: "~/.unipi/config/mcp",
+  PROJECT_CONFIG: ".unipi/config/mcp",
+  CATALOG_CACHE: "~/.unipi/config/mcp/servers.json",
+} as const;
+
+/** MCP command names */
+export const MCP_COMMANDS = {
+  ADD: "mcp-add",
+  SETTINGS: "mcp-settings",
+  SYNC: "mcp-sync",
+  STATUS: "mcp-status",
+} as const;
+
+/** MCP defaults */
+export const MCP_DEFAULTS = {
+  SYNC_INTERVAL_MS: 86400000,
+  STARTUP_TIMEOUT_MS: 10000,
+  MAX_SERVERS: 20,
+  TOOL_NAME_SEPARATOR: "__",
+} as const;

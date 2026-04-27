@@ -42,6 +42,19 @@ export const UNIPI_EVENTS = {
   MEMORY_SEARCHED: "unipi:memory:searched",
   /** Memory consolidation completed */
   MEMORY_CONSOLIDATED: "unipi:memory:consolidated",
+
+  /** MCP server started */
+  MCP_SERVER_STARTED: "unipi:mcp:server:started",
+  /** MCP server stopped */
+  MCP_SERVER_STOPPED: "unipi:mcp:server:stopped",
+  /** MCP server error */
+  MCP_SERVER_ERROR: "unipi:mcp:server:error",
+  /** MCP tools registered */
+  MCP_TOOLS_REGISTERED: "unipi:mcp:tools:registered",
+  /** MCP tools unregistered */
+  MCP_TOOLS_UNREGISTERED: "unipi:mcp:tools:unregistered",
+  /** MCP catalog synced */
+  MCP_CATALOG_SYNCED: "unipi:mcp:catalog:synced",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -170,6 +183,34 @@ export interface UnipiInfoDataEvent {
   keys: string[];
 }
 
+/** Payload for MCP_SERVER_STARTED / MCP_SERVER_STOPPED */
+export interface UnipiMcpServerEvent {
+  /** Server name */
+  name: string;
+  /** Number of tools (for started) */
+  toolCount?: number;
+  /** Error message (for error) */
+  error?: string;
+  /** Process ID */
+  pid?: number;
+}
+
+/** Payload for MCP_TOOLS_REGISTERED / MCP_TOOLS_UNREGISTERED */
+export interface UnipiMcpToolsEvent {
+  /** Server name */
+  serverName: string;
+  /** Tool names */
+  toolNames: string[];
+}
+
+/** Payload for MCP_CATALOG_SYNCED */
+export interface UnipiMcpCatalogSyncedEvent {
+  /** Total servers in catalog */
+  totalServers: number;
+  /** Source of sync */
+  source: string;
+}
+
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
@@ -183,4 +224,7 @@ export type UnipiEventPayload =
   | UnipiMemorySearchedEvent
   | UnipiMemoryConsolidatedEvent
   | UnipiInfoGroupEvent
-  | UnipiInfoDataEvent;
+  | UnipiInfoDataEvent
+  | UnipiMcpServerEvent
+  | UnipiMcpToolsEvent
+  | UnipiMcpCatalogSyncedEvent;

@@ -1,0 +1,47 @@
+{
+  "name": "@pi-unipi/mcp",
+  "version": "0.1.0",
+  "description": "MCP server management extension for Pi coding agent — browse, add, configure, and use MCP servers",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/mcp"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "mcp",
+    "model-context-protocol",
+    "tools"
+  ],
+  "pi": {
+    "extensions": [
+      "src/index.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "files": [
+    "src/**/*.ts",
+    "data/**/*",
+    "skills/**/*",
+    "README.md"
+  ],
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}
