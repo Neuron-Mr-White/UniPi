@@ -35,7 +35,7 @@ Use the `ask_user` tool to collect structured input from the user.
 | `context` | string? | — | Additional context shown before question |
 | `options` | array? | [] | Multiple-choice options with labels, descriptions, values |
 | `allowMultiple` | boolean? | false | Enable multi-select |
-| `allowFreeform` | boolean? | true | Add "Type something..." option |
+| `allowFreeform` | boolean? | true | Add "Custom response" checkable option |
 | `timeout` | number? | — | Auto-dismiss after N ms |
 
 ## Examples
@@ -84,3 +84,17 @@ ask_user({
   allowFreeform: true
 })
 ```
+
+Combined (multi-select + freeform):
+```
+ask_user({
+  question: "Which features and what custom feature?",
+  options: [
+    { label: "Auth", value: "auth" },
+    { label: "Cache", value: "cache" }
+  ],
+  allowMultiple: true,
+  allowFreeform: true
+})
+```
+User can check "Auth", "Cache", and "Custom response" to type additional features.
