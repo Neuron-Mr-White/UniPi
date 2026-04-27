@@ -276,26 +276,26 @@ export function renderMcpSettingsOverlay(params?: {
       const header = " MCP Settings ";
       const scopeLabel = state.viewScope === "global" ? "● Global" : "● Project";
       lines.push(
-        theme.accent(`╭${"─".repeat(Math.max(0, width - 2))}╮`),
+        theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
       );
       lines.push(
-        theme.accent("│") +
+        theme.fg("accent", "│") +
           theme.bold(header) +
-          theme.accent(
+          theme.fg("accent", 
             scopeLabel.padStart(width - visibleWidth(header) - visibleWidth(scopeLabel) - 1),
           ) +
-          theme.accent("│"),
+          theme.fg("accent", "│"),
       );
       lines.push(
-        theme.accent(`├${"─".repeat(Math.max(0, width - 2))}┤`),
+        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
       );
 
       // Server list
       if (state.servers.length === 0) {
         lines.push(
-          theme.accent("│") +
-            theme.muted(" No servers configured".padEnd(width - 2)) +
-            theme.accent("│"),
+          theme.fg("accent", "│") +
+            theme.fg("muted", " No servers configured".padEnd(width - 2)) +
+            theme.fg("accent", "│"),
         );
       } else {
         for (let i = 0; i < state.servers.length; i++) {
@@ -304,30 +304,30 @@ export function renderMcpSettingsOverlay(params?: {
 
           const statusIcon =
             server.status === "running"
-              ? theme.success("●")
+              ? theme.fg("success", "●")
               : server.status === "error"
-                ? theme.error("✗")
+                ? theme.fg("error", "✗")
                 : server.enabled
-                  ? theme.muted("○")
-                  : theme.dim("○");
+                  ? theme.fg("muted", "○")
+                  : theme.fg("dim", "○");
 
           const name = selected ? theme.bold(server.name) : theme.fg("default", server.name);
-          const cmd = theme.muted(truncateToWidth(server.command, 24));
+          const cmd = theme.fg("muted", truncateToWidth(server.command, 24));
           const tools =
             server.status === "running" && server.toolCount > 0
-              ? theme.accent(`${server.toolCount} tools`)
+              ? theme.fg("accent", `${server.toolCount} tools`)
               : server.status === "error" && server.error
-                ? theme.error(truncateToWidth(server.error, 20))
-                : theme.dim("stopped");
+                ? theme.fg("error", truncateToWidth(server.error, 20))
+                : theme.fg("dim", "stopped");
 
-          const source = theme.muted(`[${server.source}]`);
-          const prefix = selected ? theme.accent("▸ ") : "  ";
+          const source = theme.fg("muted", `[${server.source}]`);
+          const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
 
           const line = ` ${prefix}${statusIcon} ${name}  ${cmd}  ${tools}  ${source}`;
           lines.push(
-            theme.accent("│") +
+            theme.fg("accent", "│") +
               truncateToWidth(line, width - 2).padEnd(width - 2) +
-              theme.accent("│"),
+              theme.fg("accent", "│"),
           );
         }
       }
@@ -335,29 +335,29 @@ export function renderMcpSettingsOverlay(params?: {
       // Confirm delete overlay
       if (state.confirmDelete) {
         lines.push(
-          theme.accent(`├${"─".repeat(Math.max(0, width - 2))}┤`),
+          theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
         );
         lines.push(
-          theme.accent("│") +
-            theme.warning(
+          theme.fg("accent", "│") +
+            theme.fg("warning", 
               ` Delete '${state.confirmDelete}'? (y/n)`.padEnd(width - 2),
             ) +
-            theme.accent("│"),
+            theme.fg("accent", "│"),
         );
       }
 
       // Keybinds
       lines.push(
-        theme.accent(`├${"─".repeat(Math.max(0, width - 2))}┤`),
+        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
       );
       const binds = " ↑↓ select  Space toggle  a add  s sync  g global  p project  d delete  q/Esc close";
       lines.push(
-        theme.accent("│") +
-          theme.muted(truncateToWidth(binds, width - 2).padEnd(width - 2)) +
-          theme.accent("│"),
+        theme.fg("accent", "│") +
+          theme.fg("muted", truncateToWidth(binds, width - 2).padEnd(width - 2)) +
+          theme.fg("accent", "│"),
       );
       lines.push(
-        theme.accent(`╰${"─".repeat(Math.max(0, width - 2))}╯`),
+        theme.fg("accent", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
       );
 
       cachedLines = lines;

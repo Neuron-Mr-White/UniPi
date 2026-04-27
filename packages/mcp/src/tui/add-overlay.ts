@@ -328,16 +328,16 @@ export function renderMcpAddOverlay(params?: {
       const header = " Add MCP Server ";
       const modeLabel = state.mode === "browse" ? "[Browse]" : "[Custom]";
       lines.push(
-        theme.accent(`╭${"─".repeat(Math.max(0, width - 2))}╮`),
+        theme.fg("accent", `╭${"─".repeat(Math.max(0, width - 2))}╮`),
       );
       lines.push(
-        theme.accent("│") +
+        theme.fg("accent", "│") +
           theme.bold(header) +
-          theme.muted(modeLabel.padStart(width - visibleWidth(header) - visibleWidth(modeLabel) - 1)) +
-          theme.accent("│"),
+          theme.fg("muted", modeLabel.padStart(width - visibleWidth(header) - visibleWidth(modeLabel) - 1)) +
+          theme.fg("accent", "│"),
       );
       lines.push(
-        theme.accent(`├${"─".repeat(Math.max(0, width - 2))}┤`),
+        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
       );
 
       // Content area — split pane
@@ -351,13 +351,13 @@ export function renderMcpAddOverlay(params?: {
         // Left pane: browse
         if (row === 0) {
           const searchDisplay = state.searchQuery || "search...";
-          left = theme.muted(` 🔍 ${searchDisplay}`);
+          left = theme.fg("muted", ` 🔍 ${searchDisplay}`);
         } else if (row >= 2 && row - 2 < browseServers.length) {
           const idx = row - 2;
           const server = browseServers[idx];
           const selected = idx === state.selectedIndex;
           const scopeIcon = server.scope === "cloud" ? "☁️" : "🏠";
-          const prefix = selected ? theme.accent("▸ ") : "  ";
+          const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
           const name = selected
             ? theme.bold(server.name)
             : theme.fg("default", server.name);
@@ -368,13 +368,13 @@ export function renderMcpAddOverlay(params?: {
               server.description,
               halfW - 4,
             );
-            left = ` ${prefix}${scopeIcon} ${name}\n   ${theme.muted(desc)}`;
+            left = ` ${prefix}${scopeIcon} ${name}\n   ${theme.fg("muted", desc)}`;
           }
         }
 
         // Right pane: editor
         if (row === 0) {
-          right = theme.muted(" Config Editor ");
+          right = theme.fg("muted", " Config Editor ");
         } else if (row >= 2) {
           // Show editor lines
           const editorLines = state.editorContent.split("\n");
@@ -388,43 +388,43 @@ export function renderMcpAddOverlay(params?: {
         const leftPadded = left.padEnd(halfW);
         const rightPadded = right.padEnd(halfW);
         lines.push(
-          theme.accent("│") +
+          theme.fg("accent", "│") +
             leftPadded +
-            theme.accent("│") +
+            theme.fg("accent", "│") +
             rightPadded +
-            theme.accent("│"),
+            theme.fg("accent", "│"),
         );
       }
 
       // Validation error
       if (state.validationError) {
         lines.push(
-          theme.accent("│") +
-            theme.error(` ⚠ ${truncateToWidth(state.validationError, width - 6)}`.padEnd(width - 2)) +
-            theme.accent("│"),
+          theme.fg("accent", "│") +
+            theme.fg("error", ` ⚠ ${truncateToWidth(state.validationError, width - 6)}`.padEnd(width - 2)) +
+            theme.fg("accent", "│"),
         );
       }
 
       // Scope indicator
       const scopeLabel = state.scope === "global" ? "Global" : "Project";
       lines.push(
-        theme.accent(`├${"─".repeat(Math.max(0, width - 2))}┤`),
+        theme.fg("accent", `├${"─".repeat(Math.max(0, width - 2))}┤`),
       );
       lines.push(
-        theme.accent("│") +
-          theme.muted(` ${scopeLabel}`.padEnd(width - 2)) +
-          theme.accent("│"),
+        theme.fg("accent", "│") +
+          theme.fg("muted", ` ${scopeLabel}`.padEnd(width - 2)) +
+          theme.fg("accent", "│"),
       );
 
       // Keybinds
       const binds = " ↑↓ navigate  Enter select  Tab pane  c custom  q/Esc close";
       lines.push(
-        theme.accent("│") +
-          theme.muted(truncateToWidth(binds, width - 2).padEnd(width - 2)) +
-          theme.accent("│"),
+        theme.fg("accent", "│") +
+          theme.fg("muted", truncateToWidth(binds, width - 2).padEnd(width - 2)) +
+          theme.fg("accent", "│"),
       );
       lines.push(
-        theme.accent(`╰${"─".repeat(Math.max(0, width - 2))}╯`),
+        theme.fg("accent", `╰${"─".repeat(Math.max(0, width - 2))}╯`),
       );
 
       cachedLines = lines;
