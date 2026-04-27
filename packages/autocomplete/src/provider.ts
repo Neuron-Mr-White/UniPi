@@ -123,6 +123,13 @@ export function createEnchantedProvider(
         return current.getSuggestions(lines, cursorLine, cursorCol, options);
       }
 
+      // If there's a space in the text, we're typing arguments to an already-
+      // selected command — pass through to base provider without injecting the
+      // command list.
+      if (textBeforeCursor.includes(" ")) {
+        return current.getSuggestions(lines, cursorLine, cursorCol, options);
+      }
+
       // Get base suggestions (includes all commands)
       const baseSuggestions = await current.getSuggestions(
         lines,
