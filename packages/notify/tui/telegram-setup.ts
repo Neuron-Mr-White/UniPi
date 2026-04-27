@@ -30,6 +30,8 @@ export class TelegramSetupOverlay implements Component {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private startTime = Date.now();
   private readonly TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  private isInPaste = false;
+  private pasteBuffer = "";
   onClose?: () => void;
   requestRender?: () => void;
   private theme: Theme | null = null;
@@ -51,6 +53,25 @@ export class TelegramSetupOverlay implements Component {
         }
         break;
       case "token":
+        // Handle bracketed paste mode
+        if (this.isInPaste) {
+          this.pasteBuffer += data;
+          const endIndex = this.pasteBuffer.indexOf("\x1b[201~");
+          if (endIndex !== -1) {
+            // Extract pasted content and process it
+            const pasteContent = this.pasteBuffer.substring(0, endIndex);
+            this.processTokenInput(pasteContent);
+            this.isInPaste = false;
+            this.pasteBuffer = "";
+          }
+          return;
+        }
+        // Detect start of bracketed paste
+        if (data.includes("\x1b[200~")) {
+          this.isInPaste = true;
+          this.pasteBuffer = data.replace("\x1b[200~", "");
+          return;
+        }
         if (data === "\r" && this.botToken.length > 0) {
           this.startPolling();
         } else if (data === "\x1b") {
@@ -58,14 +79,8 @@ export class TelegramSetupOverlay implements Component {
           this.onClose?.();
         } else if (data === "\x7f" || data === "\b") {
           this.botToken = this.botToken.slice(0, -1);
-        } else if (data === "\x16" || data === "\x1b[200~") {
-          // Bracketed paste mode: ignore paste start/end sequences
         } else {
-          // Accept multi-character paste and single valid chars
-          const cleaned = data.replace(/[^0-9:A-Za-z_-]/g, "");
-          if (cleaned.length > 0) {
-            this.botToken += cleaned;
-          }
+          this.processTokenInput(data);
         }
         break;
       case "polling":
@@ -82,6 +97,16 @@ export class TelegramSetupOverlay implements Component {
           this.onClose?.();
         }
         break;
+    }
+  }
+
+  private processTokenInput(data: string): void {
+    // Ignore escape sequences (arrow keys, function keys, etc.)
+    if (data.startsWith("\x1b[")) return;
+    // Filter to valid bot token characters only
+    const cleaned = data.replace(/[^0-9:A-Za-z_-]/g, "");
+    if (cleaned.length > 0) {
+      this.botToken += cleaned;
     }
   }
 
