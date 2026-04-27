@@ -30,6 +30,7 @@ import {
 import { validateMcpConfig, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
 
 type Mode = "normal" | "search" | "editor";
+type StatusKind = "info" | "success" | "warn" | "error";
 
 interface AddOverlayState {
   mode: Mode;
@@ -40,11 +41,14 @@ interface AddOverlayState {
   selectedIndex: number;
   scrollOffset: number;
   editorContent: string;
+  /** ID of the catalog server whose template is currently in the editor. */
+  loadedServerId: string | null;
   validationError: string | null;
   scope: "global" | "project";
   saved: boolean;
   pendingG: boolean;
   status: string;
+  statusKind: StatusKind;
 }
 
 function generateConfigTemplate(server: CatalogEntry): string {
@@ -85,6 +89,17 @@ function widthSafe(s: string): string {
     .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, "*");
 }
 
+/**
+ * Wrap text in an OSC 8 hyperlink escape. Modern terminals (iTerm2,
+ * kitty, WezTerm, Windows Terminal, GNOME Terminal, Alacritty-with-osc8)
+ * make the text Ctrl/Cmd-clickable; other terminals ignore the escapes.
+ * The ST used here is BEL (\x07) since it has wider support than ESC\.
+ */
+function hyperlink(url: string, text: string): string {
+  if (!url) return text;
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}
+
 export function renderMcpAddOverlay(params?: {
   scope?: "global" | "project";
   onComplete?: () => void;
@@ -106,11 +121,13 @@ export function renderMcpAddOverlay(params?: {
       selectedIndex: 0,
       scrollOffset: 0,
       editorContent: "{}",
+      loadedServerId: null,
       validationError: null,
       scope,
       saved: false,
       pendingG: false,
       status: "",
+      statusKind: "info",
     };
 
     let catalog: CatalogData;
@@ -143,15 +160,15 @@ export function renderMcpAddOverlay(params?: {
       tui.requestRender();
     }
 
-    function setStatus(msg: string) {
+    function setStatus(msg: string, kind: StatusKind = "info", ttlMs = 2000) {
       state.status = msg;
-      // Auto-clear status after a few renders by using a timer
+      state.statusKind = kind;
       setTimeout(() => {
         if (state.status === msg) {
           state.status = "";
           refresh();
         }
-      }, 1500);
+      }, ttlMs);
     }
 
     function ensureVisible() {
@@ -183,12 +200,40 @@ export function renderMcpAddOverlay(params?: {
       state.scrollOffset = 0;
     }
 
-    function loadSelectedIntoEditor() {
+    /**
+     * Load the catalog template for the currently selected server.
+     * Skipped when the same server's template is already loaded so the
+     * user's in-progress edits are never silently wiped.
+     */
+    function loadSelectedIntoEditor(opts: { force?: boolean } = {}) {
       if (state.selectedIndex < 0 || state.selectedIndex >= state.filteredServers.length) return;
       const server = state.filteredServers[state.selectedIndex];
+      if (!opts.force && state.loadedServerId === server.id) return;
       state.editorContent = generateConfigTemplate(server);
       editor.setText(state.editorContent);
+      state.loadedServerId = server.id;
       state.validationError = null;
+      setStatus(`Loaded template for ${widthSafe(server.name)}`, "info", 1500);
+    }
+
+    function prettifyEditor() {
+      try {
+        const parsed = JSON.parse(state.editorContent);
+        const pretty = JSON.stringify(parsed, null, 2);
+        if (pretty !== state.editorContent) {
+          state.editorContent = pretty;
+          editor.setText(pretty);
+          setStatus("✓ Formatted", "success", 1500);
+        } else {
+          setStatus("Already formatted", "info", 1200);
+        }
+      } catch (err) {
+        setStatus(
+          `Cannot prettify: ${err instanceof Error ? err.message : "invalid JSON"}`,
+          "error",
+          2500,
+        );
+      }
     }
 
     function validateAndSave(): boolean {
@@ -241,14 +286,32 @@ export function renderMcpAddOverlay(params?: {
         refresh();
         return;
       }
-      // Ctrl+S to save
+      // Ctrl+S — save config to disk
       if (data === "\x13") {
         if (validateAndSave()) {
-          done({ saved: true });
+          const names = (() => {
+            try {
+              return Object.keys(JSON.parse(state.editorContent).mcpServers ?? {});
+            } catch {
+              return [];
+            }
+          })();
+          const label = names[0] ?? "server";
+          setStatus(`✓ Saved "${label}"! Closing…`, "success", 4000);
           params?.onComplete?.();
+          state.mode = "normal";
+          refresh();
+          setTimeout(() => done({ saved: true }), 1600);
         } else {
+          setStatus(state.validationError ?? "Invalid config", "error", 3000);
           refresh();
         }
+        return;
+      }
+      // Ctrl+P — prettify JSON
+      if (data === "\x10") {
+        prettifyEditor();
+        refresh();
         return;
       }
       // Delegate everything else to the editor
@@ -377,16 +440,24 @@ export function renderMcpAddOverlay(params?: {
         return;
       }
 
-      // Enter or l/Tab → load into editor and switch focus
+      // Enter → load template (if new server) + switch to editor.
+      // Will NOT wipe existing edits when re-entering editor on the same server.
       if (data === "\r" || data === "\n") {
         loadSelectedIntoEditor();
         state.mode = "editor";
         refresh();
         return;
       }
+      // l / Tab → switch focus to editor, never overwrite content.
       if (data === "l" || data === "\t") {
         if (state.editorContent.trim() === "{}") loadSelectedIntoEditor();
         state.mode = "editor";
+        refresh();
+        return;
+      }
+      // r → force reload template for the currently selected server.
+      if (data === "r") {
+        loadSelectedIntoEditor({ force: true });
         refresh();
         return;
       }
@@ -399,7 +470,9 @@ export function renderMcpAddOverlay(params?: {
           2,
         );
         editor.setText(state.editorContent);
+        state.loadedServerId = null;
         state.mode = "editor";
+        setStatus("Custom JSON skeleton", "info", 1200);
         refresh();
         return;
       }
@@ -474,9 +547,17 @@ export function renderMcpAddOverlay(params?: {
         return ` ${theme.fg("muted", "/ press / to search")}`;
       })();
 
+      const editingLabel = (() => {
+        const sel = state.filteredServers[state.selectedIndex];
+        if (state.loadedServerId && sel && sel.id === state.loadedServerId) {
+          return ` Editing: ${widthSafe(sel.name)} `;
+        }
+        if (state.loadedServerId) return ` Editing: ${widthSafe(state.loadedServerId)} `;
+        return " Config Editor ";
+      })();
       const editorHeader = editorFocused
-        ? theme.bold(theme.fg("accent", " Config Editor "))
-        : theme.fg("muted", " Config Editor ");
+        ? theme.bold(theme.fg("accent", editingLabel))
+        : theme.fg("muted", editingLabel);
 
       const total = state.allServers.length;
       const shown = state.filteredServers.length;
@@ -581,7 +662,11 @@ export function renderMcpAddOverlay(params?: {
         const descBudget = Math.max(0, innerWidth - idVis - 4);
         const descSafe = widthSafe(sel.description);
         const desc = truncateToWidth(descSafe, descBudget);
-        descContent = ` ${theme.fg("accent", idSafe)}  ${theme.fg("muted", desc)}`;
+        const idLink = sel.github
+          ? hyperlink(sel.github, theme.fg("accent", idSafe))
+          : theme.fg("accent", idSafe);
+        const hint = sel.github ? theme.fg("dim", " (Ctrl+click)") : "";
+        descContent = ` ${idLink}${hint}  ${theme.fg("muted", desc)}`;
       } else {
         descContent = ` ${theme.fg("dim", "no server selected")}`;
       }
@@ -595,11 +680,20 @@ export function renderMcpAddOverlay(params?: {
 
       // ── Status line ────────────────────────────────────────────────
       if (state.status) {
-        lines.push(
-          border("│") +
-            padVisible(` ${theme.fg("warning", state.status)}`, innerWidth) +
-            border("│"),
-        );
+        const colour =
+          state.statusKind === "success"
+            ? "success"
+            : state.statusKind === "error"
+              ? "error"
+              : state.statusKind === "warn"
+                ? "warning"
+                : "accent";
+        const text = ` ${state.status}`;
+        const styled =
+          state.statusKind === "success"
+            ? theme.bold(theme.fg(colour as any, text))
+            : theme.fg(colour as any, text);
+        lines.push(border("│") + padVisible(styled, innerWidth) + border("│"));
       }
 
       // ── Footer ─────────────────────────────────────────────────────
@@ -613,10 +707,10 @@ export function renderMcpAddOverlay(params?: {
 
       const binds =
         state.mode === "editor"
-          ? " Ctrl+S save · Esc back · Tab pane "
+          ? " Ctrl+S=save · Ctrl+P=prettify · Enter=newline · Esc=back to list "
           : state.mode === "search"
             ? " Type to filter · Enter accept · Esc cancel "
-            : " j/k move · gg/G top/bot · Ctrl+d/u page · / search · Enter edit · c custom · q close ";
+            : " j/k move · / search · Enter edit · r reload tmpl · c custom · Tab pane · q close ";
       lines.push(
         border("│") +
           padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
