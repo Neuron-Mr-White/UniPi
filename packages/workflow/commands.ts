@@ -84,6 +84,56 @@ function suggestPlanFiles(prefix: string): { value: string; label: string; descr
 }
 
 /**
+ * Suggest debug files from .unipi/docs/debug/ for fix command.
+ */
+function suggestDebugFiles(prefix: string): { value: string; label: string; description: string }[] {
+  const debugDir = join(process.cwd(), ".unipi", "docs", "debug");
+  if (!existsSync(debugDir)) return [];
+
+  try {
+    const search = prefix?.trim().split(/\s+/).pop() ?? "";
+    const files = readdirSync(debugDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ name: f, time: statSync(join(debugDir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
+    return files
+      .filter((f) => !search || f.name.includes(search))
+      .map((f) => ({
+        value: `debug:${f.name}`,
+        label: basename(f.name, ".md"),
+        description: `Debug: ${f.name}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Suggest chore files from .unipi/docs/chore/ for chore-execute command.
+ */
+function suggestChoreFiles(prefix: string): { value: string; label: string; description: string }[] {
+  const choreDir = join(process.cwd(), ".unipi", "docs", "chore");
+  if (!existsSync(choreDir)) return [];
+
+  try {
+    const search = prefix?.trim().split(/\s+/).pop() ?? "";
+    const files = readdirSync(choreDir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ name: f, time: statSync(join(choreDir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
+    return files
+      .filter((f) => !search || f.name.includes(search))
+      .map((f) => ({
+        value: `chore:${f.name}`,
+        label: basename(f.name, ".md"),
+        description: `Chore: ${f.name}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Suggest existing worktree names for merge/list commands.
  * Recursively scans for actual git worktrees (directories containing .git files).
  */
@@ -227,6 +277,48 @@ const COMMANDS: WorkflowCommand[] = [
     skillName: "auto",
     argumentHint: "<description> plan:<file> specs:<file>",
   },
+  {
+    name: WORKFLOW_COMMANDS.DEBUG,
+    description:
+      "Active bug investigation — reproduce, diagnose, root-cause analysis",
+    skillName: "debug",
+    argumentHint: "<bug description or error>",
+  },
+  {
+    name: WORKFLOW_COMMANDS.FIX,
+    description:
+      "Fix bugs using debug reports — autocomplete for debug files",
+    skillName: "fix",
+    argumentHint: "debug:<file> <scope>",
+  },
+  {
+    name: WORKFLOW_COMMANDS.QUICK_FIX,
+    description:
+      "Fast bug fix without debug report — one shot",
+    skillName: "quick-fix",
+    argumentHint: "<bug description>",
+  },
+  {
+    name: WORKFLOW_COMMANDS.RESEARCH,
+    description:
+      "Read-only research with bash access — deep codebase investigation",
+    skillName: "research",
+    argumentHint: "<topic or question>",
+  },
+  {
+    name: WORKFLOW_COMMANDS.CHORE_CREATE,
+    description:
+      "Create reusable chore definition for repeatable tasks",
+    skillName: "chore-create",
+    argumentHint: "<chore description>",
+  },
+  {
+    name: WORKFLOW_COMMANDS.CHORE_EXECUTE,
+    description:
+      "Execute a saved chore — deploy, publish, push, etc.",
+    skillName: "chore-execute",
+    argumentHint: "chore:<file> <overrides>",
+  },
 ];
 
 /**
@@ -272,6 +364,16 @@ export function registerWorkflowCommands(
         // Auto command: suggest plan files
         if (cmd.name === WORKFLOW_COMMANDS.AUTO) {
           items = suggestPlanFiles(prefix);
+        }
+
+        // Fix command: suggest debug files
+        if (cmd.name === WORKFLOW_COMMANDS.FIX) {
+          items = suggestDebugFiles(prefix);
+        }
+
+        // Chore-execute command: suggest chore files
+        if (cmd.name === WORKFLOW_COMMANDS.CHORE_EXECUTE) {
+          items = suggestChoreFiles(prefix);
         }
 
         // Defensive: filter out any items with non-string value

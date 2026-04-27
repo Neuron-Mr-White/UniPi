@@ -266,18 +266,18 @@ Use the same `fuzzyFilter` function from `@mariozechner/pi-tui` that the base pr
 
 ## Implementation Checklist
 
-- [ ] Create `packages/autocomplete/index.ts` with provider logic
-- [ ] Define `COMMAND_REGISTRY` mapping all 48 commands to packages
-- [ ] Define `PACKAGE_ORDER` and `PACKAGE_COLORS` constants
-- [ ] Implement fuzzy matching for unipi commands
-- [ ] Implement `getEnhancedUnipiItems()` with sorting and formatting
-- [ ] Register provider via `ctx.ui.addAutocompleteProvider()` in `session_start`
-- [ ] Add `autocompleteEnhanced` setting to unipi settings schema
-- [ ] Register the extension in the main unipi index
-- [ ] Test with all command categories
-- [ ] Test edge cases (empty prefix, no match, non-unipi commands)
-- [ ] Verify `applyCompletion` delegates correctly
-- [ ] Verify argument completions work (e.g., `/unipi:plan specs:`)
+- [x] Create `packages/autocomplete/index.ts` with provider logic — covered in Tasks 2-3
+- [x] Define `COMMAND_REGISTRY` mapping all 48 commands to packages — covered in Task 1 (updated to 52 verified commands)
+- [x] Define `PACKAGE_ORDER` and `PACKAGE_COLORS` constants — covered in Task 1
+- [x] Implement fuzzy matching for unipi commands — covered in Task 2
+- [x] Implement `getEnhancedUnipiItems()` with sorting and formatting — covered in Task 2
+- [x] Register provider via `ctx.ui.addAutocompleteProvider()` in `session_start` — covered in Task 3
+- [x] Add `autocompleteEnhanced` setting to unipi settings schema — covered in Task 3
+- [x] Register the extension in the main unipi index — covered in Task 4
+- [x] Test with all command categories — covered in Task 5
+- [x] Test edge cases (empty prefix, no match, non-unipi commands) — covered in Task 5
+- [x] Verify `applyCompletion` delegates correctly — covered in Task 2 and Task 5
+- [x] Verify argument completions work (e.g., `/unipi:plan specs:`) — covered in Task 5
 
 ## Open Questions
 

@@ -78,7 +78,7 @@ Create a self-contained extension (`@pi-unipi/command-enchantment`) that interce
     1. Add import for `@pi-unipi/command-enchantment` in `packages/unipi/index.ts`
     2. Call `commandEnchantment(pi)` alongside other extensions
 
-- in-progress: Task 5 — Manual testing and verification
+- completed: Task 5 — Manual testing and verification
   - Description: Test all command categories, edge cases, and settings toggle
   - Dependencies: Task 4
   - Acceptance Criteria:

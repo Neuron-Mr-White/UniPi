@@ -12,12 +12,18 @@ import { injectResumeSnapshot } from "./session/resume-inject.js";
 import { ContentStore } from "./store/index.js";
 import { PolyglotExecutor } from "./executor/executor.js";
 import { registerCommands } from "./commands/index.js";
+import { registerCompactorTools } from "./tools/register.js";
+import { normalizeMessages } from "./compaction/normalize.js";
+import { filterNoise } from "./compaction/filter-noise.js";
+import type { NormalizedBlock } from "./types.js";
 
 export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
   let contentStore: ContentStore | null = null;
   let executor: PolyglotExecutor | null = null;
   let config = loadConfig();
+  let cachedBlocks: NormalizedBlock[] = [];
+  let currentSessionId = "default";
 
   const init = async () => {
     scaffoldConfig();
@@ -35,7 +41,15 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   };
 
   registerCompactionHooks(pi);
-  registerCommands(pi);
+
+  // Register commands with deps (they need sessionDB/contentStore)
+  const getCommandDeps = () => ({
+    sessionDB,
+    contentStore,
+    getSessionId: () => currentSessionId,
+    getBlocks: () => cachedBlocks,
+  });
+  registerCommands(pi, getCommandDeps());
 
   pi.on("session_start", async (_event, ctx) => {
     await init();
@@ -44,8 +58,22 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const projectDir = (ctx as any).cwd ?? process.cwd();
     const suffix = getWorktreeSuffix();
     const fullSessionId = `${sessionId}${suffix}`;
+    currentSessionId = fullSessionId;
 
     sessionDB?.ensureSession(fullSessionId, projectDir);
+
+    // Register all compactor tools with Pi
+    if (sessionDB) {
+      registerCompactorTools(pi, {
+        sessionDB,
+        contentStore,
+        getSessionId: () => currentSessionId,
+        getBlocks: () => cachedBlocks,
+      });
+    }
+
+    // Re-register commands with fresh deps now that sessionDB is ready
+    registerCommands(pi, getCommandDeps());
 
     emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.COMPACTOR,
@@ -63,10 +91,21 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", async (_event, ctx) => {
     config = loadConfig();
+    currentSessionId = `${(ctx as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+
+    // Re-cache normalized blocks for vcc_recall
+    try {
+      const messages = (ctx as any).messages ?? [];
+      if (messages.length > 0) {
+        const normalized = normalizeMessages(messages);
+        cachedBlocks = filterNoise(normalized);
+      }
+    } catch {
+      // Non-fatal: recall will work on empty blocks
+    }
 
     if (sessionDB) {
-      const sessionId = `${(ctx as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
-      const snapshot = await injectResumeSnapshot(sessionDB, sessionId);
+      const snapshot = await injectResumeSnapshot(sessionDB, currentSessionId);
       if (snapshot) {
         // Snapshot injected as context
       }
@@ -118,15 +157,37 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (!sessionDB) return;
     const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
 
-    const events = extractEventsFromToolResult({
+    // Extract and store session events
+    const toolEvents = extractEventsFromToolResult({
       toolName: (event as any).toolName ?? "",
-      toolInput: (event as any).args ?? {},
-      toolResponse: (event as any).result ? JSON.stringify((event as any).result).slice(0, 1000) : undefined,
+      toolInput: (event as any).input ?? {},
+      toolResponse: (event as any).content ? JSON.stringify((event as any).content).slice(0, 1000) : undefined,
       isError: (event as any).isError ?? false,
     });
 
-    for (const ev of events) {
+    for (const ev of toolEvents) {
       sessionDB.insertEvent(sessionId, ev, "PostToolUse");
+    }
+
+    // Apply display overrides for built-in tools
+    const toolName = (event as any).toolName ?? "";
+    const td = config.toolDisplay;
+    const toolConfig = {
+      readOutputMode: td?.mode as any,
+      searchOutputMode: td?.mode as any,
+      bashOutputMode: td?.mode as any,
+      previewLines: 20,
+      bashCollapsedLines: 5,
+      showTruncationHints: true,
+    };
+    try {
+      const { applyToolDisplayOverride } = await import("./display/tool-overrides.js");
+      const override = applyToolDisplayOverride(toolName, event as any, toolConfig);
+      if (override !== undefined) {
+        return override as any;
+      }
+    } catch {
+      // Non-fatal: display override failed
     }
   });
 

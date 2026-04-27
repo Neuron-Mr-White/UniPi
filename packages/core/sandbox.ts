@@ -40,6 +40,12 @@ const COMMAND_SANDBOX: Record<string, SandboxLevel> = {
   [WORKFLOW_COMMANDS.DOCUMENT]: "write_unipi",
   [WORKFLOW_COMMANDS.SCAN_ISSUES]: "read_only",
   [WORKFLOW_COMMANDS.AUTO]: "full",
+  [WORKFLOW_COMMANDS.DEBUG]: "read_only",
+  [WORKFLOW_COMMANDS.FIX]: "full",
+  [WORKFLOW_COMMANDS.QUICK_FIX]: "full",
+  [WORKFLOW_COMMANDS.RESEARCH]: "read_only",
+  [WORKFLOW_COMMANDS.CHORE_CREATE]: "write_unipi",
+  [WORKFLOW_COMMANDS.CHORE_EXECUTE]: "full",
 };
 
 /**

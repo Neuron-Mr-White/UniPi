@@ -45,9 +45,9 @@ export const PACKAGE_COLORS: Record<string, string> = {
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (52 verified commands) */
+/** Mapping of full command name → package name (58 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
-  // workflow (14 commands)
+  // workflow (20 commands)
   "unipi:brainstorm":     "workflow",
   "unipi:plan":           "workflow",
   "unipi:work":           "workflow",
@@ -62,6 +62,12 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:document":       "workflow",
   "unipi:scan-issues":    "workflow",
   "unipi:auto":           "workflow",
+  "unipi:debug":          "workflow",
+  "unipi:fix":            "workflow",
+  "unipi:quick-fix":      "workflow",
+  "unipi:research":       "workflow",
+  "unipi:chore-create":   "workflow",
+  "unipi:chore-execute":  "workflow",
 
   // ralph (2 commands)
   "unipi:ralph":          "ralph",
@@ -114,8 +120,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-purge":   "compact",
 
   // notify (4 commands)
-  "unipi:configure-notify": "notify",
-  "unipi:notify":           "notify",
+  "unipi:notify-settings":  "notify",
+  "unipi:notify-set-gotify": "notify",
+  "unipi:notify-set-tg":    "notify",
+  "unipi:notify-test":      "notify",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -135,6 +143,12 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:document":       "Generate documentation — README, API docs",
   "unipi:scan-issues":    "Deep investigation — find bugs, issues",
   "unipi:auto":           "Full pipeline — brainstorm → plan → work → review",
+  "unipi:debug":          "Active bug investigation — reproduce, diagnose",
+  "unipi:fix":            "Fix bugs using debug reports",
+  "unipi:quick-fix":      "Fast bug fix without debug report",
+  "unipi:research":       "Read-only research with bash access",
+  "unipi:chore-create":   "Create reusable chore definition",
+  "unipi:chore-execute":  "Execute a saved chore",
 
   "unipi:ralph":          "Ralph loop — start/resume coding session",
   "unipi:ralph-stop":     "Stop the active ralph loop",
@@ -178,8 +192,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-search":   "Search compacted sessions",
   "unipi:compact-purge":    "Purge old compacted sessions",
 
-  "unipi:configure-notify": "Configure notification settings",
-  "unipi:notify":           "Send a notification",
+  "unipi:notify-settings":  "Configure notification platforms and events",
+  "unipi:notify-set-gotify": "Set up Gotify push notifications",
+  "unipi:notify-set-tg":    "Set up Telegram bot notifications",
+  "unipi:notify-test":      "Test all enabled notification platforms",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────

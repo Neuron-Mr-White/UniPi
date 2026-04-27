@@ -51,6 +51,12 @@ export const WORKFLOW_COMMANDS = {
   DOCUMENT: "document",
   SCAN_ISSUES: "scan-issues",
   AUTO: "auto",
+  DEBUG: "debug",
+  FIX: "fix",
+  QUICK_FIX: "quick-fix",
+  RESEARCH: "research",
+  CHORE_CREATE: "chore-create",
+  CHORE_EXECUTE: "chore-execute",
 } as const;
 
 /** Ralph command names */
@@ -80,8 +86,11 @@ export const UNIPI_DIRS = {
   PLANS: ".unipi/docs/plans",
   GENERATED: ".unipi/docs/generated",
   REVIEWS: ".unipi/docs/reviews",
+  DEBUG: ".unipi/docs/debug",
+  FIX: ".unipi/docs/fix",
+  QUICK_WORK: ".unipi/docs/quick-work",
+  CHORE: ".unipi/docs/chore",
   MEMORY: ".unipi/memory",
-  QUICK_WORK: ".unipi/quick-work",
 } as const;
 
 /** Memory tool names */

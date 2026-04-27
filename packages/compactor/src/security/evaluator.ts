@@ -1,12 +1,40 @@
 /**
  * Security evaluator — command + file path evaluation
+ *
+ * Supports loading permission patterns from .pi/settings.json
  */
 
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { realpathSync, existsSync, readFileSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { PermissionDecision, SecurityPolicy } from "./policy.js";
 import { parseBashPattern, parseToolPattern, globToRegex, fileGlobToRegex } from "./policy.js";
+
+/**
+ * Load permission patterns from .pi/settings.json in the given directory.
+ * Returns a SecurityPolicy merged with the provided policy.
+ */
+export function loadProjectPermissions(
+  cwd: string,
+  basePolicy: SecurityPolicy,
+): SecurityPolicy {
+  const settingsPath = join(cwd, ".pi", "settings.json");
+  if (!existsSync(settingsPath)) return basePolicy;
+
+  try {
+    const raw = readFileSync(settingsPath, "utf-8");
+    const settings = JSON.parse(raw);
+    const permissions = settings.permissions ?? settings.security ?? {};
+
+    return {
+      deny: [...basePolicy.deny, ...(permissions.deny ?? [])],
+      ask: [...basePolicy.ask, ...(permissions.ask ?? [])],
+      allow: [...basePolicy.allow, ...(permissions.allow ?? [])],
+    };
+  } catch {
+    return basePolicy;
+  }
+}
 
 export function evaluateCommand(
   command: string,

@@ -8,6 +8,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { UNIPI_PREFIX } from "@pi-unipi/core";
 import { NOTIFY_COMMANDS } from "@pi-unipi/core";
 import { NotifySettingsOverlay } from "./tui/settings-overlay.js";
+import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { loadConfig } from "./settings.js";
 import { sendNativeNotification } from "./platforms/native.js";
@@ -30,9 +31,51 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, _theme: any, _keybindings: any, done: any) => {
+          (tui: any, theme: any, _keybindings: any, done: any) => {
             const overlay = new NotifySettingsOverlay();
+            overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
+            overlay.requestRender = () => tui.requestRender();
+            return {
+              render: (w: number) => overlay.render(w),
+              invalidate: () => overlay.invalidate(),
+              handleInput: (data: string) => {
+                overlay.handleInput(data);
+                tui.requestRender();
+              },
+            };
+          },
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "80%",
+              minWidth: 60,
+              anchor: "center",
+              margin: 2,
+            },
+          }
+        );
+      },
+    }
+  );
+
+  // /unipi:notify-set-gotify — Interactive Gotify setup
+  pi.registerCommand(
+    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_GOTIFY}`,
+    {
+      description: "Set up Gotify push notifications with connection test",
+      handler: async (_args: string, ctx: ExtensionContext) => {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("Gotify setup requires an interactive UI.", "warning");
+          return;
+        }
+
+        ctx.ui.custom(
+          (tui: any, theme: any, _keybindings: any, done: any) => {
+            const overlay = new GotifySetupOverlay();
+            overlay.setTheme(theme);
+            overlay.onClose = () => done(undefined);
+            overlay.requestRender = () => tui.requestRender();
             return {
               render: (w: number) => overlay.render(w),
               invalidate: () => overlay.invalidate(),
@@ -68,9 +111,11 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, _theme: any, _keybindings: any, done: any) => {
+          (tui: any, theme: any, _keybindings: any, done: any) => {
             const overlay = new TelegramSetupOverlay();
+            overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
+            overlay.requestRender = () => tui.requestRender();
             return {
               render: (w: number) => overlay.render(w),
               invalidate: () => overlay.invalidate(),

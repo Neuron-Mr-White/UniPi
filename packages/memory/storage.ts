@@ -173,6 +173,12 @@ export class MemoryStorage {
 
   /**
    * Initialize the storage (create DB, tables, load extension).
+   *
+   * Uses retry logic to handle concurrent access from multiple Pi sessions,
+   * especially on WSL/Windows filesystem where SQLite locking can be flaky.
+   *
+   * IMPORTANT: We never delete the DB here — another session may have it open.
+   * If all retries fail, we throw and let this session run without memory.
    */
   init(): void {
     // Ensure directory exists
@@ -181,6 +187,51 @@ export class MemoryStorage {
     }
 
     const dbPath = path.join(this.scopeDir, MEMORY_DB_NAME);
+    const maxRetries = 5;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.initDb(dbPath);
+        return; // Success
+      } catch (err: any) {
+        const isTransient =
+          err?.message?.includes("disk I/O error") ||
+          err?.code === "SQLITE_IOERR" ||
+          err?.code === "SQLITE_BUSY" ||
+          err?.message?.includes("database is locked");
+
+        this.close();
+
+        if (isTransient && attempt < maxRetries) {
+          // Likely concurrent access — back off and retry.
+          // Do NOT delete the DB: another session may have it open
+          // and deleting open files on WSL/Windows is unsafe.
+          const delayMs = 50 * Math.pow(2, attempt - 1); // 50, 100, 200, 400
+          console.warn(
+            `[unipi/memory] Transient error on attempt ${attempt}/${maxRetries}, retrying in ${delayMs}ms...`
+          );
+          const end = Date.now() + delayMs;
+          while (Date.now() < end) { /* busy wait */ }
+          continue;
+        }
+
+        // Either non-transient error, or retries exhausted.
+        // Log and throw — this session will run without memory.
+        if (isTransient) {
+          console.warn(
+            "[unipi/memory] Could not open database after retries. " +
+            "Another session may have the DB locked. Memory unavailable this session."
+          );
+        }
+        throw err;
+      }
+    }
+  }
+
+  /**
+   * Open database and set up schema. Called by init() with retry logic.
+   */
+  private initDb(dbPath: string): void {
     this.db = new Database(dbPath);
 
     // Enable WAL mode for concurrent reads
@@ -216,6 +267,9 @@ export class MemoryStorage {
     } catch {
       // vec0 table may already exist or sqlite-vec not loaded
     }
+
+    // Verify database is usable
+    this.db.prepare("SELECT 1 FROM memories LIMIT 0").get();
   }
 
   /**
@@ -225,6 +279,37 @@ export class MemoryStorage {
     if (this.db) {
       this.db.close();
       this.db = null;
+    }
+  }
+
+  /**
+   * Remove corrupted database files (db, wal, shm).
+   */
+  private removeCorruptedDb(): void {
+    const dbPath = path.join(this.scopeDir, MEMORY_DB_NAME);
+    const files = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
+    for (const file of files) {
+      try {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+          console.warn(`[unipi/memory] Removed corrupted file: ${file}`);
+        }
+      } catch {
+        // Ignore removal errors
+      }
+    }
+  }
+
+  /**
+   * Check if database is healthy.
+   */
+  isHealthy(): boolean {
+    if (!this.db) return false;
+    try {
+      this.db.prepare("SELECT 1").get();
+      return true;
+    } catch {
+      return false;
     }
   }
 

@@ -1,11 +1,11 @@
 ---
 name: scan-issues
-description: "Deep investigation — find bugs, anti-patterns, security issues. Spawns subagents if available."
+description: "Passive codebase scan — find potential bugs, anti-patterns, security issues. Spawns subagents if available."
 ---
 
 # Scanning for Issues
 
-Deep investigation of codebase to find bugs, anti-patterns, security issues, and technical debt.
+Passive investigation of codebase to find potential bugs, anti-patterns, security issues, and technical debt.
 
 ## Boundaries
 
@@ -13,6 +13,8 @@ Deep investigation of codebase to find bugs, anti-patterns, security issues, and
 **This skill MAY NOT:** edit code, fix issues, run tests that modify state, deploy.
 
 **This is investigation only — not fixing.**
+
+**Note:** For active debugging of specific bugs, use `/unipi:debug` instead. scan-issues finds potential problems; debug diagnoses known issues.
 
 ## Command Format
 
@@ -181,3 +183,13 @@ Based on findings:
 - Can focus on specific categories or scan broadly
 - Prioritized findings help triage what to fix first
 - Natural lead-in to quick-work (for critical) or brainstorm (for planned cleanup)
+
+## Differences from debug
+
+| Aspect | `/unipi:scan-issues` | `/unipi:debug` |
+|--------|----------------------|----------------|
+| Purpose | Find potential issues | Investigate specific bug |
+| Input | Scope / category | Bug report / error message |
+| Output | Issue list with priorities | Debug report with root cause |
+| Depth | Broad codebase scan | Deep single-issue analysis |
+| Handoff | `/unipi:quick-work` or `/unipi:brainstorm` | `/unipi:fix` |

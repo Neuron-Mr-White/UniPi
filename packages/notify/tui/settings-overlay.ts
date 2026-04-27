@@ -6,28 +6,14 @@
  */
 
 import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import {
   loadConfig,
   saveConfig,
   validateConfig,
 } from "../settings.js";
 import type { NotifyConfig } from "../types.js";
-
-/** ANSI escape codes */
-const ansi = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  gray: "\x1b[90m",
-};
-
-const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
-const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
 /** Section types */
 type Section = "platforms" | "events";
@@ -42,9 +28,15 @@ export class NotifySettingsOverlay implements Component {
   private error: string | null = null;
   private saved = false;
   onClose?: () => void;
+  requestRender?: () => void;
+  private theme: Theme | null = null;
 
   constructor() {
     this.config = loadConfig();
+  }
+
+  setTheme(theme: Theme): void {
+    this.theme = theme;
   }
 
   invalidate(): void {}
@@ -112,50 +104,88 @@ export class NotifySettingsOverlay implements Component {
     setTimeout(() => this.onClose?.(), 500);
   }
 
-  render(width: number): string[] {
-    const lines: string[] = [];
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
+  // ─── Theme helpers ───────────────────────────────────────────────────
 
-    add(`${ansi.bold}${ansi.cyan}Notify Settings${ansi.reset}`);
-    add(`${ansi.dim}Configure notification platforms and events${ansi.reset}`);
-    add("");
+  private fg(color: string, text: string): string {
+    if (this.theme) return this.theme.fg(color as any, text);
+    const c: Record<string, string> = {
+      accent: "\x1b[36m", success: "\x1b[32m", warning: "\x1b[33m",
+      error: "\x1b[31m", dim: "\x1b[2m", borderMuted: "\x1b[90m",
+    };
+    return `${c[color] ?? ""}${text}\x1b[0m`;
+  }
+
+  private bold(text: string): string {
+    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
+  }
+
+  private frameLine(content: string, innerWidth: number): string {
+    const truncated = truncateToWidth(content, innerWidth, "");
+    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
+    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
+  }
+
+  private ruleLine(innerWidth: number): string {
+    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
+  }
+
+  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
+    const left = edge === "top" ? "┌" : "└";
+    const right = edge === "top" ? "┐" : "┘";
+    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
+  }
+
+  private getDialogHeight(): number {
+    const terminalRows = process.stdout.rows ?? 30;
+    return Math.max(14, Math.min(24, Math.floor(terminalRows * 0.65)));
+  }
+
+  render(width: number): string[] {
+    const innerWidth = Math.max(22, width - 2);
+    const lines: string[] = [];
+
+    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.frameLine(this.fg("accent", this.bold("🔔 Notify Settings")), innerWidth));
+    lines.push(this.frameLine(this.fg("dim", "Configure notification platforms and events"), innerWidth));
+    lines.push(this.ruleLine(innerWidth));
 
     // Section tabs
     const platformTab =
       this.section === "platforms"
-        ? `${ansi.bold}${ansi.cyan}[Platforms]${ansi.reset}`
-        : `${ansi.dim}Platforms${ansi.reset}`;
+        ? this.fg("accent", this.bold("[Platforms]"))
+        : this.fg("dim", "Platforms");
     const eventsTab =
       this.section === "events"
-        ? `${ansi.bold}${ansi.cyan}[Events]${ansi.reset}`
-        : `${ansi.dim}Events${ansi.reset}`;
-    add(`  ${platformTab}  ${eventsTab}`);
-    add("");
+        ? this.fg("accent", this.bold("[Events]"))
+        : this.fg("dim", "Events");
+    lines.push(this.frameLine(`  ${platformTab}  ${eventsTab}`, innerWidth));
+    lines.push(this.ruleLine(innerWidth));
 
     if (this.section === "platforms") {
-      this.renderPlatforms(lines, width);
+      this.renderPlatforms(lines, innerWidth);
     } else {
-      this.renderEvents(lines, width);
+      this.renderEvents(lines, innerWidth);
     }
 
     // Status messages
     if (this.error) {
-      add("");
-      add(`  ${ansi.red}⚠ ${this.error}${ansi.reset}`);
+      lines.push(this.ruleLine(innerWidth));
+      lines.push(this.frameLine(`  ${this.fg("error", `⚠ ${this.error}`)}`, innerWidth));
     }
     if (this.saved) {
-      add("");
-      add(`  ${ansi.green}✓ Settings saved${ansi.reset}`);
+      lines.push(this.ruleLine(innerWidth));
+      lines.push(this.frameLine(`  ${this.fg("success", "✓ Settings saved")}`, innerWidth));
     }
 
     // Footer
-    add("");
-    add(`${ansi.dim}↑↓ navigate • Space toggle • Tab switch • Enter save • Esc cancel${ansi.reset}`);
+    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.frameLine(this.fg("dim", "↑↓ navigate · Space toggle · Tab switch · Enter save · Esc cancel"), innerWidth));
+    lines.push(this.borderLine(innerWidth, "bottom"));
 
     return lines;
   }
 
-  private renderPlatforms(lines: string[], width: number): void {
+  private renderPlatforms(lines: string[], innerWidth: number): void {
     const platforms: Array<{
       key: "native" | "gotify" | "telegram";
       label: string;
@@ -185,31 +215,35 @@ export class NotifySettingsOverlay implements Component {
     for (let i = 0; i < platforms.length; i++) {
       const p = platforms[i];
       const isSelected = i === this.selectedIndex;
-      const toggle = this.config[p.key].enabled ? TOGGLE_ON : TOGGLE_OFF;
-      const labelColor = isSelected ? ansi.bold : ansi.dim;
+      const toggleOn = this.fg("success", "●");
+      const toggleOff = this.fg("dim", "○");
+      const toggle = this.config[p.key].enabled ? toggleOn : toggleOff;
+      const label = isSelected ? this.bold(p.label) : this.fg("dim", p.label);
 
       lines.push(
-        truncateToWidth(
-          `${isSelected ? ansi.cyan + "▸" + ansi.reset : " "} ${toggle} ${labelColor}${p.label}${ansi.reset}  ${ansi.gray}${p.detail}${ansi.reset}`,
-          width
+        this.frameLine(
+          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}  ${this.fg("dim", p.detail)}`,
+          innerWidth
         )
       );
     }
   }
 
-  private renderEvents(lines: string[], width: number): void {
+  private renderEvents(lines: string[], innerWidth: number): void {
     const events = Object.entries(this.config.events);
 
     for (let i = 0; i < events.length; i++) {
       const [key, cfg] = events[i];
       const isSelected = i === this.selectedIndex;
-      const toggle = cfg.enabled ? TOGGLE_ON : TOGGLE_OFF;
-      const labelColor = isSelected ? ansi.bold : ansi.dim;
+      const toggleOn = this.fg("success", "●");
+      const toggleOff = this.fg("dim", "○");
+      const toggle = cfg.enabled ? toggleOn : toggleOff;
+      const label = isSelected ? this.bold(key) : this.fg("dim", key);
 
       lines.push(
-        truncateToWidth(
-          `${isSelected ? ansi.cyan + "▸" + ansi.reset : " "} ${toggle} ${labelColor}${key}${ansi.reset}`,
-          width
+        this.frameLine(
+          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}`,
+          innerWidth
         )
       );
     }

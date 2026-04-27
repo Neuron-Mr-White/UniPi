@@ -18,7 +18,7 @@ export async function sendGotifyNotification(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      X_Gotify_Key: appToken,
+      "X-Gotify-Key": appToken,
     },
     body: JSON.stringify({
       title,

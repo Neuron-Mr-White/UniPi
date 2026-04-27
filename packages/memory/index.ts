@@ -73,7 +73,12 @@ export default function (pi: ExtensionAPI) {
     // Initialize project storage
     const projectName = getProjectName(ctx.cwd);
     projectStorage = new MemoryStorage(projectName);
-    projectStorage.init();
+    try {
+      projectStorage.init();
+    } catch (err) {
+      console.warn("[unipi/memory] Failed to initialize storage, running without memory:", (err as any)?.message ?? err);
+      projectStorage = null;
+    }
 
 
     // Announce module
@@ -127,8 +132,14 @@ export default function (pi: ExtensionAPI) {
             };
           }
 
-          const projectMemories = projectStorage.listAll();
-          const allMemories = listAllProjects();
+          let projectMemories: Array<{ id: string; title: string; type: string }> = [];
+          let allMemories: Array<{ project: string; id: string; title: string; type: string }> = [];
+          try {
+            projectMemories = projectStorage.listAll();
+            allMemories = listAllProjects();
+          } catch (err) {
+            console.warn("[unipi/memory] Failed to list memories for info panel:", err);
+          }
           const uniqueProjects = [...new Set(allMemories.map((m) => m.project))];
 
           // Get 3 most recent memories (sorted by updated DESC in listAll)
@@ -153,9 +164,14 @@ export default function (pi: ExtensionAPI) {
 
     // Show memory status in UI
     if (ctx.hasUI) {
-      const projectCount = projectStorage.listAll().length;
-      const allMemories = listAllProjects();
-      const projectCountAll = allMemories.length;
+      let projectCount = 0;
+      let projectCountAll = 0;
+      try {
+        projectCount = projectStorage?.listAll()?.length ?? 0;
+        projectCountAll = listAllProjects().length;
+      } catch (err) {
+        console.warn("[unipi/memory] Failed to count memories for status:", err);
+      }
       const vecReady = isEmbeddingReady();
       const vecIcon = vecReady ? "⚡" : "📝";
       ctx.ui.setStatus(
@@ -171,7 +187,14 @@ export default function (pi: ExtensionAPI) {
     if (!projectStorage) return;
 
     const projectName = getProjectName(ctx.cwd);
-    const projectMemories = projectStorage.listAll();
+    let projectMemories: Array<{ id: string; title: string; type: string }> = [];
+    try {
+      projectMemories = projectStorage.listAll();
+    } catch (err) {
+      console.warn("[unipi/memory] Failed to list memories for recall:", err);
+      recallDone = true; // Skip recall on error
+      return;
+    }
 
     if (projectMemories.length === 0) {
       recallDone = true; // Nothing to recall, skip
