@@ -56,6 +56,10 @@ export const UNIPI_EVENTS = {
   /** MCP catalog synced */
   MCP_CATALOG_SYNCED: "unipi:mcp:catalog:synced",
 
+  /** Compactor: compaction completed */
+  COMPACTOR_COMPACTED: "unipi:compactor:compacted",
+  /** Compactor: stats updated */
+  COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
   /** Utility module cleanup started */
   UTILITY_CLEANUP_START: "unipi:utility:cleanup:start",
   /** Utility module cleanup completed */
@@ -287,7 +291,6 @@ export interface UnipiUtilityLifecycleEvent {
   /** Reason for state change */
   reason?: string;
 }
-
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent

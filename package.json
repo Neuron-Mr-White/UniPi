@@ -45,7 +45,8 @@
       "node_modules/@pi-unipi/web-api/src/index.ts",
       "node_modules/@pi-unipi/utility/src/index.ts",
       "node_modules/@pi-unipi/ask-user/index.ts",
-      "node_modules/@pi-unipi/mcp/src/index.ts"
+      "node_modules/@pi-unipi/mcp/src/index.ts",
+      "node_modules/@pi-unipi/compactor/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -54,7 +55,8 @@
       "node_modules/@pi-unipi/btw/skills",
       "node_modules/@pi-unipi/ask-user/skills",
       "node_modules/@pi-unipi/mcp/skills",
-      "node_modules/@pi-unipi/utility/skills"
+      "node_modules/@pi-unipi/utility/skills",
+      "node_modules/@pi-unipi/compactor/skills"
     ]
   },
   "peerDependencies": {
@@ -66,7 +68,8 @@
   "dependencies": {
     "@pi-unipi/ask-user": "*",
     "@pi-unipi/btw": "*",
-    "@pi-unipi/core": "*"
+    "@pi-unipi/compactor": "*",
+    "@pi-unipi/core": "*",
     "@pi-unipi/info-screen": "*",
     "@pi-unipi/mcp": "*",
     "@pi-unipi/memory": "*",
