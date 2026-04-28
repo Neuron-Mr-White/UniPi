@@ -5,7 +5,7 @@
  * Uses ctx.ui.custom() callback pattern following question.ts/questionnaire.ts.
  */
 
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -376,6 +376,11 @@ export function renderAskUI(params: {
       }
 
       const add = (s: string) => lines.push(border("│") + padVisible(truncateToWidth(s, innerWidth), innerWidth) + border("│"));
+      const addWrapped = (s: string) => {
+        for (const line of wrapTextWithAnsi(s, innerWidth)) {
+          lines.push(border("│") + padVisible(truncateToWidth(line, innerWidth), innerWidth) + border("│"));
+        }
+      };
       const addEmpty = () => lines.push(border("│") + " ".repeat(innerWidth) + border("│"));
 
       // Top border
@@ -383,13 +388,13 @@ export function renderAskUI(params: {
 
       // Context
       if (context) {
-        add(theme.fg("muted", ` ${context}`));
+        addWrapped(theme.fg("muted", ` ${context}`));
         addEmpty();
       }
 
       // Question
-      add(theme.fg("text", ` ${question}`));
-        addEmpty();
+      addWrapped(theme.fg("text", ` ${question}`));
+      addEmpty();
 
       // Options (editor is now inline with freeform option)
       renderOptions(lines, add, theme, innerWidth);
