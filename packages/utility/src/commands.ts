@@ -20,6 +20,7 @@ import {
 import { cleanupStale, formatCleanupReport } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
+import type { NameBadgeState } from "./tui/name-badge-state.js";
 
 /** Send a markdown response via pi.sendMessage */
 function sendResponse(pi: ExtensionAPI, markdown: string): void {
@@ -31,6 +32,45 @@ function sendResponse(pi: ExtensionAPI, markdown: string): void {
     },
     { deliverAs: "followUp" },
   );
+}
+
+/**
+ * Register name badge commands: /unipi:name-badge, /unipi:badge-gen.
+ */
+export function registerNameBadgeCommands(
+  pi: ExtensionAPI,
+  state: NameBadgeState,
+): void {
+  // ─── /unipi:name-badge — toggle badge overlay ───────────────────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.NAME_BADGE}`, {
+    description: "Toggle session name badge overlay",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("Name badge requires an interactive UI.", "warning");
+        return;
+      }
+
+      const nowVisible = await state.toggle(pi, ctx);
+      ctx.ui.notify(
+        nowVisible ? "Name badge enabled" : "Name badge disabled",
+        "info",
+      );
+    },
+  });
+
+  // ─── /unipi:badge-gen — generate name via LLM ──────────────────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_GEN}`, {
+    description: "Generate session name via LLM and enable badge",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("Badge generation requires an interactive UI.", "warning");
+        return;
+      }
+
+      await state.generate(pi, ctx);
+      ctx.ui.notify("Generating session name...", "info");
+    },
+  });
 }
 
 /**

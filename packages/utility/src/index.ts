@@ -21,7 +21,8 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
-import { registerUtilityCommands } from "./commands.js";
+import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
+import { NameBadgeState } from "./tui/name-badge-state.js";
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
@@ -37,6 +38,8 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.CLEANUP,
   UTILITY_COMMANDS.ENV,
   UTILITY_COMMANDS.DOCTOR,
+  UTILITY_COMMANDS.NAME_BADGE,
+  UTILITY_COMMANDS.BADGE_GEN,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -54,8 +57,12 @@ export default function (pi: ExtensionAPI) {
     analytics.disable();
   });
 
+  // Initialize name badge state
+  const nameBadgeState = new NameBadgeState();
+
   // Register commands
   registerUtilityCommands(pi);
+  registerNameBadgeCommands(pi, nameBadgeState);
 
   // Register tools
   registerUtilityTools(pi);
@@ -63,8 +70,8 @@ export default function (pi: ExtensionAPI) {
   // Register info-screen group
   registerInfoScreen(pi);
 
-  // Session lifecycle — announce module
-  pi.on("session_start", async () => {
+  // Session lifecycle — announce module + restore badge
+  pi.on("session_start", async (_event, ctx) => {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.UTILITY,
       version: VERSION,
@@ -73,6 +80,9 @@ export default function (pi: ExtensionAPI) {
     });
 
     analytics.recordModuleLoad(MODULES.UTILITY, VERSION);
+
+    // Restore name badge if it was visible in previous session
+    await nameBadgeState.restore(pi, ctx);
   });
 
   // Track command usage
@@ -84,6 +94,7 @@ export default function (pi: ExtensionAPI) {
 
   // Session shutdown cleanup
   pi.on("session_shutdown", async () => {
+    nameBadgeState.hide();
     await lifecycle.shutdown("session_shutdown");
   });
 }

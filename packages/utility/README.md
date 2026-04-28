@@ -14,6 +14,8 @@ Comprehensive utility suite for the Pi coding agent — part of the Unipi extens
 | `/unipi:cleanup` | Clean stale DBs, temp files, old sessions |
 | `/unipi:env` | Show environment info (Node, Pi, OS, paths) |
 | `/unipi:doctor` | Run diagnostics across all modules |
+| `/unipi:name-badge` | Toggle name badge overlay (shows session name) |
+| `/unipi:badge-gen` | Generate session name via LLM and enable badge |
 
 ### Tools
 
@@ -58,6 +60,16 @@ pi install npm:@pi-unipi/unipi
 /unipi:env                 # Show environment
 /unipi:doctor              # Run diagnostics
 ```
+
+### Name Badge
+
+```
+/unipi:name-badge          # Toggle the session name badge on/off
+/unipi:badge-gen           # Generate a session name via LLM
+```
+
+The badge is a persistent HUD overlay in the top-right corner showing the current session name.
+It auto-restores visibility on session restart.
 
 ### Batch Execution (Code)
 
@@ -125,7 +137,9 @@ packages/utility/src/
 │   ├── capabilities.ts   # Terminal detection
 │   └── width.ts          # Width utilities
 ├── tui/
-│   └── settings-inspector.ts  # Settings overlay model
+│   ├── settings-inspector.ts  # Settings overlay model
+│   ├── name-badge.ts          # Name badge overlay component
+│   └── name-badge-state.ts    # Name badge state manager
 └── tools/
     ├── batch.ts          # Batch execution
     └── env.ts            # Environment info

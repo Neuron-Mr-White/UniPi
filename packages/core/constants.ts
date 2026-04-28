@@ -157,6 +157,8 @@ export const UTILITY_COMMANDS = {
   CLEANUP: "cleanup",
   ENV: "env",
   DOCTOR: "doctor",
+  NAME_BADGE: "name-badge",
+  BADGE_GEN: "badge-gen",
 } as const;
 
 /** Utility tool names */
