@@ -148,6 +148,19 @@ export default function (pi: ExtensionAPI) {
       // Build notification details
       const details = buildNotificationDetails(record, agentActivity.get(record.id));
 
+      // Badge generation: extract name from agent result and set directly.
+      // Mark resultConsumed BEFORE the notification check so the main agent
+      // never sees this subagent.
+      if (record.description === "Generate session name" && record.result && record.status === "completed") {
+        const name = record.result.split("\n")[0]?.trim().slice(0, 50) ?? "";
+        if (name && !name.startsWith("Error") && !name.includes("error")) {
+          try {
+            pi.setSessionName(name);
+          } catch { /* best effort */ }
+        }
+        record.resultConsumed = true;
+      }
+
       // Send styled notification via message renderer
       const status = getStatusLabel(record.status, record.error);
       const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
@@ -177,16 +190,6 @@ export default function (pi: ExtensionAPI) {
           },
           { deliverAs: "followUp", triggerTurn: true },
         );
-      }
-
-      // Badge generation: extract name from agent result and set directly
-      if (record.description === "Generate session name" && record.result && record.status === "completed") {
-        const name = record.result.split("\n")[0]?.trim().slice(0, 50) ?? "";
-        if (name && !name.startsWith("Error") && !name.includes("error")) {
-          try {
-            pi.setSessionName(name);
-          } catch { /* best effort */ }
-        }
       }
 
       pi.events.emit("subagents:completed", {
