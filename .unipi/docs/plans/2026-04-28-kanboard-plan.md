@@ -297,7 +297,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - `GET /api/workflow` → JSON data
 
 ### Task 12 — Copy-to-Clipboard Component
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Reusable copy button component for command shortcuts.
 - **Dependencies:** Task 9
 - **Acceptance Criteria:**
