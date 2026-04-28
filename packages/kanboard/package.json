@@ -1,0 +1,54 @@
+{
+  "name": "@pi-unipi/kanboard",
+  "version": "0.1.0",
+  "description": "Visualization layer for unipi workflow — HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/kanboard"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "kanboard",
+    "kanban",
+    "visualization",
+    "milestones",
+    "workflow"
+  ],
+  "files": [
+    "src/**/*.ts",
+    "ui/**/*.ts",
+    "ui/**/*.css",
+    "ui/**/*.js",
+    "skills/**/*",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "index.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.0"
+  }
+}
