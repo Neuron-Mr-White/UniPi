@@ -38,6 +38,15 @@ Use the `ask_user` tool to collect structured input from the user.
 | `allowFreeform` | boolean? | true | Add "Custom response" checkable option |
 | `timeout` | number? | — | Auto-dismiss after N ms |
 
+### Option Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `label` | string | required | Display label |
+| `description` | string? | — | Description shown below label |
+| `value` | string? | label | Value returned when selected |
+| `allowCustom` | boolean? | false | Allow user to add custom text for this option |
+
 ## Examples
 
 Single choice:
@@ -98,3 +107,17 @@ ask_user({
 })
 ```
 User can check "Auth", "Cache", and "Custom response" to type additional features.
+
+With per-option custom text:
+```
+ask_user({
+  question: "Does this look right?",
+  options: [
+    { label: "Yes", value: "yes" },
+    { label: "Partially", value: "partial", allowCustom: true },
+    { label: "No", value: "no", allowCustom: true }
+  ],
+  allowFreeform: false
+})
+```
+Selecting "Partially" or "No" enters text input so the user can explain what needs to change.

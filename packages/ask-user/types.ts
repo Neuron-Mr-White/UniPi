@@ -10,6 +10,8 @@ export interface AskUserOption {
   description?: string;
   /** Value returned when selected (defaults to label) */
   value?: string;
+  /** When true, selecting this option allows the user to add custom text before submitting */
+  allowCustom?: boolean;
 }
 
 /** Parameters for ask_user tool */
@@ -45,4 +47,6 @@ export interface NormalizedOption {
   label: string;
   description?: string;
   value: string;
+  /** When true, selecting this option allows the user to add custom text before submitting */
+  allowCustom?: boolean;
 }

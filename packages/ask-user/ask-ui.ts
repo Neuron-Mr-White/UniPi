@@ -58,9 +58,11 @@ export function renderAskUI(params: {
     // State
     let optionIndex = 0;
     let editMode = false;
+    let editTarget: "freeform" | number = "freeform"; // which option is being edited
     let cachedLines: string[] | undefined;
     const selected = new Set<string>();
-    let customText: string | null = null; // Store custom text
+    let customText: string | null = null; // Store custom text (global freeform)
+    const optionCustomTexts = new Map<string, string>(); // Per-option custom text for allowCustom
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let remainingMs = timeout;
 
@@ -77,21 +79,64 @@ export function renderAskUI(params: {
     };
     const editor = new Editor(tui, editorTheme);
 
+    function getOptionCustomText(optIndex: number): string | null {
+      const opt = displayOptions[optIndex];
+      return optionCustomTexts.get(opt.value) ?? null;
+    }
+
+    function setOptionCustomText(optIndex: number, text: string | null) {
+      const opt = displayOptions[optIndex];
+      if (text) {
+        optionCustomTexts.set(opt.value, text);
+      } else {
+        optionCustomTexts.delete(opt.value);
+      }
+    }
+
     editor.onSubmit = (value: string) => {
       const trimmed = value.trim();
-      if (trimmed) {
-        customText = trimmed;
-        editMode = false;
-        editor.setText("");
-        refresh();
-      } else {
-        // If empty and no previous custom text, uncheck freeform option
-        if (!customText) {
-          selected.delete("__freeform__");
+      if (editTarget === "freeform") {
+        // Global freeform input
+        if (trimmed) {
+          customText = trimmed;
+          editMode = false;
+          editor.setText("");
+          refresh();
+        } else {
+          // If empty and no previous custom text, uncheck freeform option
+          if (!customText) {
+            selected.delete("__freeform__");
+          }
+          editMode = false;
+          editor.setText("");
+          refresh();
         }
-        editMode = false;
-        editor.setText("");
-        refresh();
+      } else {
+        // Per-option custom input (allowCustom)
+        if (trimmed) {
+          setOptionCustomText(editTarget, trimmed);
+          editMode = false;
+          editor.setText("");
+          // Auto-submit in single-select mode
+          if (!allowMultiple) {
+            cleanup();
+            const opt = displayOptions[editTarget];
+            done({
+              response: {
+                kind: "combined",
+                selections: [opt.value],
+                text: trimmed,
+              },
+            });
+            return;
+          }
+          refresh();
+        } else {
+          // Empty: cancel edit mode, keep option selected but without custom text
+          editMode = false;
+          editor.setText("");
+          refresh();
+        }
       }
     };
 
@@ -137,10 +182,13 @@ export function renderAskUI(params: {
       if (editMode) {
         if (matchesKey(data, Key.escape)) {
           // Cancel text input
-          if (!customText) {
-            // No custom text yet: uncheck freeform option
-            selected.delete("__freeform__");
+          if (editTarget === "freeform") {
+            // Global freeform: uncheck if no previous text
+            if (!customText) {
+              selected.delete("__freeform__");
+            }
           }
+          // For per-option: just cancel edit, keep option selected
           editMode = false;
           editor.setText("");
           refresh();
@@ -178,6 +226,20 @@ export function renderAskUI(params: {
             selected.add(val);
             if (!customText) {
               editMode = true;
+              editTarget = "freeform";
+              editor.setText("");
+            }
+          }
+        } else if (opt.allowCustom) {
+          // allowCustom option: toggle and enter edit mode if checking
+          if (selected.has(val)) {
+            selected.delete(val);
+            optionCustomTexts.delete(val);
+          } else {
+            selected.add(val);
+            if (!getOptionCustomText(optionIndex)) {
+              editMode = true;
+              editTarget = optionIndex;
               editor.setText("");
             }
           }
@@ -223,6 +285,7 @@ export function renderAskUI(params: {
             // Not checked or no text: check it and enter edit mode
             selected.add(opt.value);
             editMode = true;
+            editTarget = "freeform";
             editor.setText("");
           }
           refresh();
@@ -244,19 +307,58 @@ export function renderAskUI(params: {
                 },
               });
             } else {
-              // Regular selection
-              done({
-                response: {
-                  kind: "selection",
-                  selections: Array.from(selected),
-                },
-              });
+              // Regular selection — include any per-option custom texts
+              const selections = Array.from(selected);
+              const combinedTexts: string[] = [];
+              for (const sel of selections) {
+                const txt = optionCustomTexts.get(sel);
+                if (txt) combinedTexts.push(`${sel}: ${txt}`);
+              }
+              if (combinedTexts.length > 0) {
+                done({
+                  response: {
+                    kind: "combined",
+                    selections,
+                    text: combinedTexts.join("\n"),
+                  },
+                });
+              } else {
+                done({
+                  response: {
+                    kind: "selection",
+                    selections,
+                  },
+                });
+              }
             }
           }
           return;
         }
 
-        // Single-select: return immediately
+        // Single-select: check if option has allowCustom
+        if (opt.allowCustom) {
+          const existing = getOptionCustomText(optionIndex);
+          if (existing) {
+            // Already has custom text: submit as combined
+            cleanup();
+            done({
+              response: {
+                kind: "combined",
+                selections: [opt.value],
+                text: existing,
+              },
+            });
+          } else {
+            // Enter edit mode for this option
+            editMode = true;
+            editTarget = optionIndex;
+            editor.setText("");
+            refresh();
+          }
+          return;
+        }
+
+        // Single-select without allowCustom: return immediately
         cleanup();
         done({
           response: {
@@ -306,9 +408,21 @@ export function renderAskUI(params: {
       if (editMode) {
         add(theme.fg("dim", " Enter to confirm text • Esc to cancel text input"));
       } else if (allowMultiple) {
-        add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter submit • Esc cancel"));
+        // Check if current option has allowCustom
+        const currentOpt = displayOptions[optionIndex];
+        const hasCustom = currentOpt?.allowCustom && !optionCustomTexts.get(currentOpt.value);
+        const base = " ↑↓ navigate • Space toggle • Enter submit • Esc cancel";
+        const customHint = hasCustom ? " • Space to add note" : "";
+        add(theme.fg("dim", base + customHint));
       } else {
-        add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
+        // Check if current option has allowCustom
+        const currentOpt = displayOptions[optionIndex];
+        const hasCustom = currentOpt?.allowCustom && !optionCustomTexts.get(currentOpt.value);
+        if (hasCustom) {
+          add(theme.fg("dim", " ↑↓ navigate • Enter to add note • Esc cancel"));
+        } else {
+          add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
+        }
       }
       add(theme.fg("accent", "─".repeat(width)));
 
@@ -325,7 +439,7 @@ export function renderAskUI(params: {
       for (let i = 0; i < displayOptions.length; i++) {
         const opt = displayOptions[i];
         const isSelected = i === optionIndex;
-        const prefix = isSelected ? theme.fg("accent", "> ") : "  ";
+        const prefix = isSelected ? theme.fg("> ", "accent") : "  ";
 
         if (opt.isFreeform) {
           // Freeform option: show checkbox like regular option
@@ -347,7 +461,7 @@ export function renderAskUI(params: {
           );
           
           // Show edit indicator if in edit mode for this option
-          if (editMode && isSelected) {
+          if (editMode && editTarget === "freeform" && isSelected) {
             add(`   ${theme.fg("muted", "Type your response:")}`);
             for (const line of editor.render(width - 4)) {
               add(`   ${line}`);
@@ -358,20 +472,54 @@ export function renderAskUI(params: {
           const checked = selected.has(opt.value);
           const box = checked ? "✓" : " ";
           const color = checked ? "success" : isSelected ? "accent" : "text";
+          
+          let label = opt.label;
+          const optCustom = optionCustomTexts.get(opt.value);
+          if (optCustom) {
+            label = `${opt.label}: "${optCustom}"`;
+          }
+          
           add(
             prefix +
               theme.fg(color, `[${box}]`) +
               " " +
-              theme.fg(isSelected ? "accent" : "text", opt.label),
+              theme.fg(isSelected ? "accent" : "text", label),
           );
+          
+          // Show edit indicator if in edit mode for this option
+          if (editMode && editTarget === i && isSelected) {
+            add(`   ${theme.fg("muted", "Type your response:")}`);
+            for (const line of editor.render(width - 4)) {
+              add(`   ${line}`);
+            }
+          }
         } else {
-          // Single-select: simple option
+          // Single-select: option
+          let label = opt.label;
+          const optCustom = optionCustomTexts.get(opt.value);
+          if (optCustom) {
+            label = `${opt.label}: "${optCustom}"`;
+          }
+          
+          // Show allowCustom indicator
+          if (opt.allowCustom && !optCustom) {
+            label += theme.fg("dim", " (add note)");
+          }
+          
           add(
             prefix +
               (isSelected
-                ? theme.fg("accent", opt.label)
-                : theme.fg("text", opt.label)),
+                ? theme.fg("accent", label)
+                : theme.fg("text", label)),
           );
+          
+          // Show edit indicator if in edit mode for this option
+          if (editMode && editTarget === i && isSelected) {
+            add(`   ${theme.fg("muted", "Type your response:")}`);
+            for (const line of editor.render(width - 4)) {
+              add(`   ${line}`);
+            }
+          }
         }
 
         // Description

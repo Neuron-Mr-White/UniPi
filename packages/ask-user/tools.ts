@@ -51,6 +51,13 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
                 description: "Value returned when selected (defaults to label)",
               }),
             ),
+            allowCustom: Type.Optional(
+              Type.Boolean({
+                description:
+                  "When true, selecting this option enters text input mode " +
+                  "so the user can add a custom comment before submitting.",
+              }),
+            ),
           }),
           {
             description:
@@ -86,7 +93,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       } = params as {
         question: string;
         context?: string;
-        options?: { label: string; description?: string; value?: string }[];
+        options?: { label: string; description?: string; value?: string; allowCustom?: boolean }[];
         allowMultiple?: boolean;
         allowFreeform?: boolean;
         timeout?: number;
@@ -211,6 +218,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         label: opt.label,
         description: opt.description,
         value: opt.value ?? opt.label,
+        allowCustom: opt.allowCustom ?? false,
       }));
 
       // Render interactive UI
