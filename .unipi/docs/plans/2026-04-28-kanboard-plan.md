@@ -353,7 +353,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
 ## Phase 5: Skills + Commands
 
 ### Task 14 — kanboard-doctor Skill
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Write the kanboard-doctor skill for parser diagnostics.
 - **Dependencies:** Task 4-8 (parsers)
 - **Acceptance Criteria:**
@@ -369,7 +369,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   6. Write Phase 5 (Re-validate): Re-run parser after each fix, verify error resolved
 
 ### Task 15 — Command Registration + Completions
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Register kanboard and kanboard-doctor commands.
 - **Dependencies:** Task 14
 - **Acceptance Criteria:**
@@ -387,7 +387,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   5. Wire commands into `index.ts`
 
 ### Task 16 — Extension Entry + Registration
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Wire up the extension entry point.
 - **Dependencies:** Task 13, Task 15
 - **Acceptance Criteria:**
