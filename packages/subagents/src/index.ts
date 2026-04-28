@@ -143,18 +143,6 @@ export default function (pi: ExtensionAPI) {
 
   // Session start: emit MODULE_READY
   pi.on("session_start", async (_event, ctx) => {
-    const globalConfig = `${homeDir}/.unipi/config/subagents.json`;
-    const workspaceConfig = `${cwd}/.unipi/config/subagents.json`;
-
-    ctx.ui.notify(
-      `UniPi Subagents config:\n` +
-      `• Global: ${globalConfig}\n` +
-      `• Global agents: ${globalAgentsDir}\n` +
-      `• Workspace: ${workspaceConfig}\n` +
-      `• Workspace agents: ${workspaceAgentsDir}`,
-      "info",
-    );
-
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.SUBAGENTS || "subagents",
       version: "0.1.8",
