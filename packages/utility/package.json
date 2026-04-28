@@ -38,7 +38,11 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "*"
+    "@pi-unipi/core": "*",
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
