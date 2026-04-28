@@ -162,6 +162,7 @@ export const UTILITY_COMMANDS = {
   BADGE_GEN: "badge-gen",
   BADGE_TOGGLE: "badge-toggle",
   BADGE_SETTINGS: "badge-settings",
+  UTIL_SETTINGS: "util-settings",
 } as const;
 
 /** Utility tool names */
