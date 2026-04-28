@@ -45,7 +45,18 @@ Use the `ask_user` tool to collect structured input from the user.
 | `label` | string | required | Display label |
 | `description` | string? | — | Description shown below label |
 | `value` | string? | label | Value returned when selected |
-| `allowCustom` | boolean? | false | Allow user to add custom text for this option |
+| `allowCustom` | boolean? | false | Allow user to add custom text for this option (shorthand for `action: "input"`) |
+| `action` | string? | "select" | Special action: `"select"`, `"input"`, `"end_turn"`, `"new_session"` |
+| `prefill` | string? | — | Prefill message for `"new_session"` action |
+
+### Action Types
+
+| Action | Behavior |
+|--------|----------|
+| `"select"` | Normal selection (default). Returns immediately. |
+| `"input"` | Enters text input mode. Returns `combined` response with selection + text. |
+| `"end_turn"` | Signals end of agent turn. Returns `end_turn` response kind. |
+| `"new_session"` | Starts a new session. Returns `new_session` response kind with optional `prefill`. |
 
 ## Examples
 
@@ -121,3 +132,21 @@ ask_user({
 })
 ```
 Selecting "Partially" or "No" enters text input so the user can explain what needs to change.
+
+With end_turn and new_session actions:
+```
+ask_user({
+  question: "How would you like to proceed?",
+  options: [
+    { label: "Looks good, proceed", value: "proceed" },
+    { label: "I want changes", value: "changes", action: "input" },
+    { label: "Done for now", value: "done", action: "end_turn" },
+    { label: "Start fresh", value: "new", action: "new_session", prefill: "Let's redesign the..." }
+  ],
+  allowFreeform: false
+})
+```
+- "Looks good" returns immediately with selection
+- "I want changes" enters text input mode for the user to explain
+- "Done for now" signals the agent to end its turn
+- "Start fresh" starts a new session with the prefill message

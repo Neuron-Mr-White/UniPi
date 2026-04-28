@@ -29,6 +29,9 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       "Provide clear options with labels and optional descriptions.",
       "Use allowMultiple for multi-select scenarios (e.g., choosing features to enable).",
       "Use allowFreeform: false to restrict to predefined options only.",
+      "Use action: 'input' on an option to let the user add custom text before submitting.",
+      "Use action: 'end_turn' on an option to let the user signal end of turn.",
+      "Use action: 'new_session' with prefill to let the user start a new session.",
     ],
     parameters: Type.Object({
       question: Type.String({
@@ -56,6 +59,26 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
                 description:
                   "When true, selecting this option enters text input mode " +
                   "so the user can add a custom comment before submitting.",
+              }),
+            ),
+            action: Type.Optional(
+              Type.Union(
+                [
+                  Type.Literal("select"),
+                  Type.Literal("input"),
+                  Type.Literal("end_turn"),
+                  Type.Literal("new_session"),
+                ],
+                {
+                  description:
+                    "Special action: 'select' (default), 'input' (text input), " +
+                    "'end_turn' (signal end of turn), 'new_session' (start new session with prefill).",
+                },
+              ),
+            ),
+            prefill: Type.Optional(
+              Type.String({
+                description: "Prefill message for new_session action.",
               }),
             ),
           }),
@@ -93,7 +116,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       } = params as {
         question: string;
         context?: string;
-        options?: { label: string; description?: string; value?: string; allowCustom?: boolean }[];
+        options?: { label: string; description?: string; value?: string; allowCustom?: boolean; action?: string; prefill?: string }[];
         allowMultiple?: boolean;
         allowFreeform?: boolean;
         timeout?: number;
@@ -219,6 +242,8 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         description: opt.description,
         value: opt.value ?? opt.label,
         allowCustom: opt.allowCustom ?? false,
+        action: (opt.action as NormalizedOption["action"]) ?? "select",
+        prefill: opt.prefill,
       }));
 
       // Render interactive UI
@@ -276,6 +301,14 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           contentText = `User selected: ${selText} and wrote: ${response.text}`;
           break;
         }
+        case "end_turn":
+          contentText = "User chose to end the turn.";
+          break;
+        case "new_session":
+          contentText = response.prefill
+            ? `User chose to start a new session: ${response.prefill}`
+            : "User chose to start a new session.";
+          break;
         case "timed_out":
           contentText = "User did not respond (timed out)";
           break;

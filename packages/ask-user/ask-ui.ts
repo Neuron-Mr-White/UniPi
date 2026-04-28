@@ -93,6 +93,14 @@ export function renderAskUI(params: {
       }
     }
 
+    /** Get effective action for an option (allowCustom maps to input) */
+    function getAction(opt: NormalizedOption & { isFreeform?: boolean }): string {
+      if (opt.isFreeform) return "freeform";
+      if (opt.action && opt.action !== "select") return opt.action;
+      if (opt.allowCustom) return "input";
+      return "select";
+    }
+
     editor.onSubmit = (value: string) => {
       const trimmed = value.trim();
       if (editTarget === "freeform") {
@@ -215,14 +223,14 @@ export function renderAskUI(params: {
       if (allowMultiple && matchesKey(data, Key.space)) {
         const opt = displayOptions[optionIndex];
         const val = opt.value;
-        if (opt.isFreeform) {
+        const action = getAction(opt);
+
+        if (action === "freeform") {
           // Freeform option: toggle and enter edit mode if checking
           if (selected.has(val)) {
-            // Unchecking: clear custom text
             selected.delete(val);
             customText = null;
           } else {
-            // Checking: enter edit mode to get custom text
             selected.add(val);
             if (!customText) {
               editMode = true;
@@ -230,8 +238,18 @@ export function renderAskUI(params: {
               editor.setText("");
             }
           }
-        } else if (opt.allowCustom) {
-          // allowCustom option: toggle and enter edit mode if checking
+        } else if (action === "end_turn") {
+          // End turn: immediate
+          cleanup();
+          done({ response: { kind: "end_turn", selections: [val] } });
+          return;
+        } else if (action === "new_session") {
+          // New session: immediate
+          cleanup();
+          done({ response: { kind: "new_session", selections: [val], prefill: opt.prefill } });
+          return;
+        } else if (action === "input") {
+          // Input action: toggle and enter edit mode if checking
           if (selected.has(val)) {
             selected.delete(val);
             optionCustomTexts.delete(val);
@@ -258,31 +276,19 @@ export function renderAskUI(params: {
       // Enter: select or submit
       if (matchesKey(data, Key.enter)) {
         const opt = displayOptions[optionIndex];
+        const action = getAction(opt);
 
-        if (opt.isFreeform) {
+        if (action === "freeform") {
           // Freeform option: if already checked with text, submit; otherwise enter edit mode
           if (selected.has(opt.value) && customText) {
-            // Already checked with text: submit the form
             cleanup();
             const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
             if (regularSelections.length > 0) {
-              done({
-                response: {
-                  kind: "combined",
-                  selections: regularSelections,
-                  text: customText,
-                },
-              });
+              done({ response: { kind: "combined", selections: regularSelections, text: customText } });
             } else {
-              done({
-                response: {
-                  kind: "freeform",
-                  text: customText,
-                },
-              });
+              done({ response: { kind: "freeform", text: customText } });
             }
           } else {
-            // Not checked or no text: check it and enter edit mode
             selected.add(opt.value);
             editMode = true;
             editTarget = "freeform";
@@ -292,22 +298,26 @@ export function renderAskUI(params: {
           return;
         }
 
+        if (action === "end_turn") {
+          cleanup();
+          done({ response: { kind: "end_turn", selections: [opt.value] } });
+          return;
+        }
+
+        if (action === "new_session") {
+          cleanup();
+          done({ response: { kind: "new_session", selections: [opt.value], prefill: opt.prefill } });
+          return;
+        }
+
         if (allowMultiple) {
           // In multi-select, Enter submits current selection
           if (selected.size > 0) {
             cleanup();
             if (customText && selected.has("__freeform__")) {
-              // Combined response with custom text
               const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
-              done({
-                response: {
-                  kind: "combined",
-                  selections: regularSelections,
-                  text: customText,
-                },
-              });
+              done({ response: { kind: "combined", selections: regularSelections, text: customText } });
             } else {
-              // Regular selection — include any per-option custom texts
               const selections = Array.from(selected);
               const combinedTexts: string[] = [];
               for (const sel of selections) {
@@ -315,41 +325,22 @@ export function renderAskUI(params: {
                 if (txt) combinedTexts.push(`${sel}: ${txt}`);
               }
               if (combinedTexts.length > 0) {
-                done({
-                  response: {
-                    kind: "combined",
-                    selections,
-                    text: combinedTexts.join("\n"),
-                  },
-                });
+                done({ response: { kind: "combined", selections, text: combinedTexts.join("\n") } });
               } else {
-                done({
-                  response: {
-                    kind: "selection",
-                    selections,
-                  },
-                });
+                done({ response: { kind: "selection", selections } });
               }
             }
           }
           return;
         }
 
-        // Single-select: check if option has allowCustom
-        if (opt.allowCustom) {
+        // Single-select: check if option has input action
+        if (action === "input") {
           const existing = getOptionCustomText(optionIndex);
           if (existing) {
-            // Already has custom text: submit as combined
             cleanup();
-            done({
-              response: {
-                kind: "combined",
-                selections: [opt.value],
-                text: existing,
-              },
-            });
+            done({ response: { kind: "combined", selections: [opt.value], text: existing } });
           } else {
-            // Enter edit mode for this option
             editMode = true;
             editTarget = optionIndex;
             editor.setText("");
@@ -358,14 +349,9 @@ export function renderAskUI(params: {
           return;
         }
 
-        // Single-select without allowCustom: return immediately
+        // Single-select without special action: return immediately
         cleanup();
-        done({
-          response: {
-            kind: "selection",
-            selections: [opt.value],
-          },
-        });
+        done({ response: { kind: "selection", selections: [opt.value] } });
         return;
       }
 
@@ -408,18 +394,27 @@ export function renderAskUI(params: {
       if (editMode) {
         add(theme.fg("dim", " Enter to confirm text • Esc to cancel text input"));
       } else if (allowMultiple) {
-        // Check if current option has allowCustom
         const currentOpt = displayOptions[optionIndex];
-        const hasCustom = currentOpt?.allowCustom && !optionCustomTexts.get(currentOpt.value);
+        const action = currentOpt ? getAction(currentOpt) : "select";
         const base = " ↑↓ navigate • Space toggle • Enter submit • Esc cancel";
-        const customHint = hasCustom ? " • Space to add note" : "";
-        add(theme.fg("dim", base + customHint));
+        let hint = "";
+        if (action === "input" && !optionCustomTexts.get(currentOpt.value)) {
+          hint = " • Space to add note";
+        } else if (action === "end_turn") {
+          hint = " • Space to end turn";
+        } else if (action === "new_session") {
+          hint = " • Space to start new session";
+        }
+        add(theme.fg("dim", base + hint));
       } else {
-        // Check if current option has allowCustom
         const currentOpt = displayOptions[optionIndex];
-        const hasCustom = currentOpt?.allowCustom && !optionCustomTexts.get(currentOpt.value);
-        if (hasCustom) {
+        const action = currentOpt ? getAction(currentOpt) : "select";
+        if (action === "input" && !optionCustomTexts.get(currentOpt.value)) {
           add(theme.fg("dim", " ↑↓ navigate • Enter to add note • Esc cancel"));
+        } else if (action === "end_turn") {
+          add(theme.fg("dim", " ↑↓ navigate • Enter to end turn • Esc cancel"));
+        } else if (action === "new_session") {
+          add(theme.fg("dim", " ↑↓ navigate • Enter to start new session • Esc cancel"));
         } else {
           add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
         }
@@ -501,9 +496,14 @@ export function renderAskUI(params: {
             label = `${opt.label}: "${optCustom}"`;
           }
           
-          // Show allowCustom indicator
-          if (opt.allowCustom && !optCustom) {
+          // Show action indicator
+          const action = getAction(opt);
+          if (action === "input" && !optCustom) {
             label += theme.fg("dim", " (add note)");
+          } else if (action === "end_turn") {
+            label += theme.fg("dim", " ↵");
+          } else if (action === "new_session") {
+            label += theme.fg("dim", " ↗");
           }
           
           add(
@@ -614,6 +614,20 @@ export function createRenderResult() {
           0,
         );
       }
+      case "end_turn":
+        return new Text(
+          theme.fg("success", "✓ ") + theme.fg("muted", "end turn"),
+          0,
+          0,
+        );
+      case "new_session":
+        return new Text(
+          theme.fg("success", "✓ ") +
+            theme.fg("muted", "new session") +
+            (response.prefill ? theme.fg("accent", `: ${response.prefill}`) : ""),
+          0,
+          0,
+        );
       default:
         return new Text(
           theme.fg("text", JSON.stringify(response)),
