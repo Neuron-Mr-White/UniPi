@@ -347,12 +347,23 @@ export default function (pi: ExtensionAPI) {
       ? `Generate a concise session title (MAX 5 WORDS) for this conversation:\n\n"${summary}"\n\nCall the set_session_name tool with the name. Do not explain.`
       : `Generate a concise session title (MAX 5 WORDS) for the current session. Call the set_session_name tool. Do not explain.`;
 
-    // Try with openai/gpt-oss-20b, fallback to inherit
-    const modelInput = "openai/gpt-oss-20b";
+    // Try with configured model, fallback to inherit
+    let modelInput: string | undefined = undefined;
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const configPath = path.resolve(process.cwd(), ".unipi/config/badge.json");
+      if (fs.existsSync(configPath)) {
+        const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        if (typeof parsed.generationModel === "string" && parsed.generationModel !== "inherit") {
+          modelInput = parsed.generationModel;
+        }
+      }
+    } catch { /* ignore — inherit parent model */ }
     let resolvedModel: any = undefined;
 
     // Check if model is available
-    if (sessionCtx.modelRegistry) {
+    if (modelInput && sessionCtx.modelRegistry) {
       const { resolveModel } = await import("./model-resolver.js");
       const result = resolveModel(modelInput, sessionCtx.modelRegistry);
       if (typeof result !== "string") {

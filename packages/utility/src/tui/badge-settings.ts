@@ -16,6 +16,8 @@ export interface BadgeSettings {
   badgeEnabled: boolean;
   /** Enable the set_session_name tool for agents */
   agentTool: boolean;
+  /** Model to use for badge name generation. "inherit" = parent model, or "provider/model-id" */
+  generationModel: string;
 }
 
 /** Default badge settings */
@@ -23,6 +25,7 @@ const DEFAULT_SETTINGS: BadgeSettings = {
   autoGen: true,
   badgeEnabled: true,
   agentTool: true,
+  generationModel: "inherit",
 };
 
 /** Badge settings file name */
@@ -48,6 +51,7 @@ export function readBadgeSettings(): BadgeSettings {
       autoGen: typeof parsed.autoGen === "boolean" ? parsed.autoGen : DEFAULT_SETTINGS.autoGen,
       badgeEnabled: typeof parsed.badgeEnabled === "boolean" ? parsed.badgeEnabled : DEFAULT_SETTINGS.badgeEnabled,
       agentTool: typeof parsed.agentTool === "boolean" ? parsed.agentTool : DEFAULT_SETTINGS.agentTool,
+      generationModel: typeof parsed.generationModel === "string" ? parsed.generationModel : DEFAULT_SETTINGS.generationModel,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -97,6 +101,7 @@ export function formatBadgeSettings(settings: BadgeSettings): string {
     `| Auto Generate | ${toggle(settings.autoGen)} | Generate name on first message |`,
     `| Badge Enabled | ${toggle(settings.badgeEnabled)} | Show badge overlay |`,
     `| Agent Tool | ${toggle(settings.agentTool)} | Allow agents to call set_session_name |`,
+    `| Generation Model | ${settings.generationModel} | Model for badge name generation |`,
     "",
     `Config: \`${BADGE_CONFIG_FILE}\``,
   ].join("\n");

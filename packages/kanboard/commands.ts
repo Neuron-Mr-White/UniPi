@@ -10,7 +10,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, KANBOARD_COMMANDS, KANBOARD_DIRS, UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { startServer, KanboardServer } from "./server/index.js";
 import { renderKanboardOverlay } from "./tui/kanboard-overlay.js";
-import { KanboardSettingsOverlay } from "./tui/settings-overlay.js";
 
 /** Module-level reference to running server */
 let runningServer: KanboardServer | null = null;
@@ -82,44 +81,4 @@ export function registerCommands(pi: ExtensionAPI): void {
       },
     },
   );
-
-  // kanboard-settings — Configure kanboard module
-  pi.registerCommand(
-    `${UNIPI_PREFIX}kanboard-settings`,
-    {
-      description: "Configure kanboard module settings",
-      handler: async (_args: string, ctx: any) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Settings require an interactive UI.", "warning");
-          return;
-        }
-
-        ctx.ui.custom(
-          (tui: any, _theme: any, _keybindings: any, done: any) => {
-            const overlay = new KanboardSettingsOverlay();
-            overlay.onClose = () => done(undefined);
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 50,
-              anchor: "center",
-              margin: 2,
-            },
-          },
-        );
-      },
-    },
-  );
-
-
 }

@@ -29,6 +29,9 @@ import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
 
+/** Re-export readBadgeSettings for cross-package use */
+export { readBadgeSettings } from "./tui/badge-settings.js";
+
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
 
@@ -46,6 +49,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.BADGE_NAME,
   UTILITY_COMMANDS.BADGE_GEN,
   UTILITY_COMMANDS.BADGE_TOGGLE,
+  UTILITY_COMMANDS.BADGE_SETTINGS,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -89,6 +93,15 @@ export default function (pi: ExtensionAPI) {
 
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
+
+    // Write model cache for TUI components
+    if ((ctx as any).modelRegistry) {
+      const { writeModelCache } = await import("@pi-unipi/core");
+      const registry = (ctx as any).modelRegistry;
+      const models = (registry.getAvailable?.() ?? registry.getAll())
+        .map((m: any) => ({ provider: m.provider, id: m.id, name: m.name }));
+      writeModelCache(models);
+    }
   });
 
   // First-message hook: auto-generate session name on first user message

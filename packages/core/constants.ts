@@ -161,6 +161,7 @@ export const UTILITY_COMMANDS = {
   BADGE_NAME: "badge-name",
   BADGE_GEN: "badge-gen",
   BADGE_TOGGLE: "badge-toggle",
+  BADGE_SETTINGS: "badge-settings",
 } as const;
 
 /** Utility tool names */

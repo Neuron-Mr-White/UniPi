@@ -8,3 +8,4 @@ export * from "./constants.js";
 export * from "./events.js";
 export * from "./sandbox.js";
 export * from "./utils.js";
+export * from "./model-cache.js";

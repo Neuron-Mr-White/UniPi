@@ -22,6 +22,7 @@ import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
 import type { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./tui/badge-settings.js";
+import { BadgeSettingsTui } from "./tui/badge-settings-tui.js";
 
 /** Send a markdown response via pi.sendMessage */
 function sendResponse(pi: ExtensionAPI, markdown: string): void {
@@ -93,6 +94,42 @@ export function registerNameBadgeCommands(
       // Show current settings
       const settings = readBadgeSettings();
       sendResponse(pi, formatBadgeSettings(settings));
+    },
+  });
+
+  // ─── /unipi:badge-settings — TUI settings overlay ──────────────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_SETTINGS}`, {
+    description: "Configure badge settings via TUI overlay",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("Badge settings require an interactive UI.", "warning");
+        return;
+      }
+
+      ctx.ui.custom(
+        (tui: any, _theme: any, _keybindings: any, done: any) => {
+          const overlay = new BadgeSettingsTui();
+          overlay.onClose = () => done(undefined);
+          overlay.requestRender = () => tui.requestRender();
+          return {
+            render: (w: number) => overlay.render(w),
+            invalidate: () => overlay.invalidate(),
+            handleInput: (data: string) => {
+              overlay.handleInput(data);
+              tui.requestRender();
+            },
+          };
+        },
+        {
+          overlay: true,
+          overlayOptions: {
+            width: "80%",
+            minWidth: 50,
+            anchor: "center",
+            margin: 2,
+          },
+        },
+      );
     },
   });
 }
