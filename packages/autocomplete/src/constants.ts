@@ -28,6 +28,7 @@ export const PACKAGE_ORDER: string[] = [
   "web-api",
   "compact",
   "notify",
+  "kanboard",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -44,6 +45,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   "web-api": `${ESC}[95m`, // Bright Magenta
   compact:   `${ESC}[37m`, // White
   notify:    `${ESC}[96m`, // Bright Cyan
+  kanboard:  `${ESC}[92m`, // Bright Green
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -132,6 +134,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:notify-set-gotify": "notify",
   "unipi:notify-set-tg":    "notify",
   "unipi:notify-test":      "notify",
+
+  // kanboard (2 commands)
+  "unipi:kanboard":        "kanboard",
+  "unipi:kanboard-doctor": "kanboard",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -207,6 +213,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
   "unipi:notify-test":      "Test all enabled notification platforms",
 
+  "unipi:kanboard":        "Start the kanboard visualization server",
+  "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
+
   "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
   "unipi:milestone-update":  "Sync MILESTONES.md with completed work",
 };
@@ -225,4 +234,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   "web-api": "web-api",
   compact:   "compact",
   notify:    "notify",
+  kanboard:  "kanboard",
 };
