@@ -16,6 +16,8 @@ Comprehensive utility suite for the Pi coding agent — part of the Unipi extens
 | `/unipi:doctor` | Run diagnostics across all modules |
 | `/unipi:name-badge` | Toggle name badge overlay (shows session name) |
 | `/unipi:badge-gen` | Generate session name via LLM and enable badge |
+| `/unipi:util-settings` | **Unified settings** — badge + diff rendering config |
+| `/unipi:badge-settings` | Settings overlay (deprecated alias for `/unipi:util-settings`) |
 
 ### Tools
 
@@ -23,6 +25,8 @@ Comprehensive utility suite for the Pi coding agent — part of the Unipi extens
 |------|-------------|
 | `ctx_batch` | Atomic batch execution with rollback support |
 | `ctx_env` | Environment inspection for debugging |
+| `write` | Write file with **syntax-highlighted diff** (when diff enabled) |
+| `edit` | Edit file with **split/unified diff view** (when diff enabled) |
 
 ### Modules (Programmatic API)
 
@@ -70,6 +74,40 @@ pi install npm:@pi-unipi/unipi
 
 The badge is a persistent HUD overlay in the top-right corner showing the current session name.
 It auto-restores visibility on session restart.
+
+### Diff Rendering
+
+Shiki-powered, syntax-highlighted diffs for `write` and `edit` tool output. When enabled, the default tools are replaced with enhanced versions that show side-by-side or stacked diffs with syntax highlighting.
+
+**Features:**
+- Split view (side-by-side) for `edit` tool, auto-falls back to unified on narrow terminals
+- Unified view (stacked single-column) for `write` tool overwrites
+- 4 color presets: default, midnight, subtle, neon
+- LRU cache (192 entries) for Shiki highlights
+- Large diff fallback (skip highlighting above 80k chars)
+- Environment variable color overrides (`DIFF_ADD_BG`, `DIFF_REM_BG`, etc.)
+
+**Configuration:**
+
+```
+/unipi:util-settings        # Open unified settings TUI
+```
+
+Or edit `.unipi/config/util-settings.json` directly:
+
+```json
+{
+  "diff": {
+    "enabled": true,
+    "theme": "default",
+    "shikiTheme": "github-dark",
+    "splitMinWidth": 150
+  }
+}
+```
+
+**Diff themes:** default, midnight, subtle, neon
+**Shiki themes:** github-dark, dracula, one-dark-pro, catppuccin-mocha, nord, tokyo-night, and more
 
 ### Batch Execution (Code)
 
@@ -136,10 +174,19 @@ packages/utility/src/
 ├── display/
 │   ├── capabilities.ts   # Terminal detection
 │   └── width.ts          # Width utilities
+├── diff/
+│   ├── settings.ts       # Unified settings (badge + diff) read/write + migration
+│   ├── theme.ts          # Diff color presets, resolution chain, hex ↔ ANSI
+│   ├── parser.ts         # Diff parsing (structuredPatch, word diff analysis)
+│   ├── highlighter.ts    # Shiki singleton, LRU cache, language detection
+│   ├── renderer.ts       # Split/unified renderers, ANSI utilities
+│   └── wrapper.ts        # write/edit tool wrapping with diff output
 ├── tui/
 │   ├── settings-inspector.ts  # Settings overlay model
 │   ├── name-badge.ts          # Name badge overlay component
-│   └── name-badge-state.ts    # Name badge state manager
+│   ├── name-badge-state.ts    # Name badge state manager
+│   ├── badge-settings.ts      # Badge settings (thin wrapper over diff/settings)
+│   └── util-settings-tui.ts  # Unified settings TUI (badge + diff)
 └── tools/
     ├── batch.ts          # Batch execution
     └── env.ts            # Environment info
@@ -158,7 +205,13 @@ The analytics collector is **privacy-respecting** by design:
 - `@pi-unipi/core` — Shared constants, events, utilities
 - `@mariozechner/pi-coding-agent` — Pi extension API
 - `@sinclair/typebox` — Schema validation (peer dependency)
+- `diff` — Unified diff generation (for diff rendering)
+- `@shikijs/cli` — Shiki syntax highlighting (for diff rendering)
 - `sqlite3` — Optional, for persistent cache/analytics
+
+### Dev Dependencies
+
+- `@types/diff` — TypeScript types for the diff library
 
 ## License
 
