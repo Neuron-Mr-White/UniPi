@@ -84,28 +84,32 @@ export class NameBadgeComponent implements Component {
       fgColor = "muted";
     }
 
-    // Inner padding around text
-    const padX = 2;
-    // Overhead: left border(1) + right border(1) + padding(padX * 2)
-    const overhead = 2 + padX * 2;
-    const maxTextWidth = Math.max(1, width - overhead);
+    // Full-width box: borders take 2 cols
+    const innerWidth = Math.max(1, width - 2);
+    const maxTextWidth = Math.max(1, innerWidth - 4); // 2-cell pad each side
 
     // Truncate name if needed
     if (visibleWidth(displayText) > maxTextWidth) {
       displayText = truncateToWidth(displayText, maxTextWidth - 1, "…");
     }
 
-    const innerWidth = visibleWidth(displayText) + padX * 2;
+    // Center text within inner width
+    const textVw = visibleWidth(displayText);
+    const leftPad = Math.floor((innerWidth - textVw) / 2);
+    const rightPad = innerWidth - textVw - leftPad;
+
     const border = (s: string) => this.theme ? this.theme.fg("accent" as any, s) : s;
     const bgFn = (s: string) => this.theme ? this.theme.bg("customMessageBg" as any, s) : s;
 
-    // Build lines with opaque background
-    const topLine = bgFn(border("╭" + "─".repeat(innerWidth) + "╮"));
-    const padding = " ".repeat(padX);
     const nameStyled = this.theme
       ? this.theme.fg(fgColor as any, displayText)
       : displayText;
-    const contentLine = bgFn(border("│") + padding + nameStyled + padding + border("│"));
+
+    // Build lines with opaque background spanning full width
+    const topLine = bgFn(border("╭" + "─".repeat(innerWidth) + "╮"));
+    const contentLine = bgFn(
+      border("│") + " ".repeat(leftPad) + nameStyled + " ".repeat(rightPad) + border("│"),
+    );
     const bottomLine = bgFn(border("╰" + "─".repeat(innerWidth) + "╯"));
 
     return [topLine, contentLine, bottomLine];
