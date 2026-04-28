@@ -44,6 +44,17 @@ export const BUILTIN_CONFIGS: Record<string, AgentConfig> = {
     promptMode: "append",
     source: "builtin",
   },
+  "name-gen": {
+    name: "name-gen",
+    displayName: "Name Generator",
+    description: "Minimal agent for generating session names from conversation context.",
+    builtinToolNames: [],
+    extensions: false,
+    skills: false,
+    systemPrompt: "You are a session name generator. Generate concise titles from conversation context. Reply with ONLY the title.",
+    promptMode: "replace",
+    source: "builtin",
+  },
 } as const;
 
 /** Memory scope for persistent agent memory. */

@@ -101,6 +101,34 @@ describe("Badge generation — onComplete callback", () => {
 // ─── Test: Agent configuration ────────────────────────────────────
 
 describe("Badge generation — agent configuration", () => {
+  it("badge generation uses 'name-gen' agent type (not 'explore')", () => {
+    const src = readSource("packages/subagents/src/index.ts");
+
+    assert.ok(
+      src.includes('manager.spawn(pi, sessionCtx, "name-gen", prompt'),
+      "Badge generation should spawn a 'name-gen' agent",
+    );
+
+    assert.ok(
+      !src.includes('manager.spawn(pi, sessionCtx, "explore"'),
+      "Should NOT use 'explore' — that type can be overridden by user custom agents",
+    );
+  });
+
+  it("'name-gen' type is defined in BUILTIN_CONFIGS with empty tools", () => {
+    const src = readSource("packages/subagents/src/types.ts");
+
+    assert.ok(
+      src.includes('"name-gen"'),
+      "types.ts should define name-gen agent config",
+    );
+
+    assert.ok(
+      src.includes('builtinToolNames: []'),
+      "name-gen should have empty tool list",
+    );
+  });
+
   it("background agent is isolated (no extensions, no skills, minimal system prompt)", () => {
     const src = readSource("packages/subagents/src/index.ts");
 

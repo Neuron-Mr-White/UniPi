@@ -382,7 +382,7 @@ export default function (pi: ExtensionAPI) {
       // If result is a string (error), resolvedModel stays undefined → inherit parent
     }
 
-    manager.spawn(pi, sessionCtx, "explore", prompt, {
+    manager.spawn(pi, sessionCtx, "name-gen", prompt, {
       description: "Generate session name",
       model: resolvedModel,
       isBackground: true,
