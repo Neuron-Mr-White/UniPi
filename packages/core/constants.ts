@@ -169,7 +169,9 @@ export const UTILITY_TOOLS = {
   BATCH: "ctx_batch",
   ENV: "ctx_env",
   SET_SESSION_NAME: "set_session_name",
-} as const;/** Badge config path */
+} as const;
+
+/** Badge config path */
 export const BADGE_CONFIG_FILE = ".unipi/config/badge.json" as const;
 
 /** Utility directory paths */
