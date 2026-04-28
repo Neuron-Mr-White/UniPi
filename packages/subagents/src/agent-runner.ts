@@ -17,7 +17,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import type { AgentConfig, AgentType, ThinkingLevel } from "./types.js";
+import { BUILTIN_CONFIGS, type AgentConfig, type AgentType, type ThinkingLevel } from "./types.js";
 
 /** Tools excluded from subagents to prevent nesting. */
 const EXCLUDED_TOOL_NAMES = ["Agent", "get_result"];
@@ -57,6 +57,7 @@ export interface ToolActivity {
 export interface RunOptions {
   pi: ExtensionAPI;
   model?: Model<any>;
+  agentConfig?: AgentConfig;
   maxTurns?: number;
   signal?: AbortSignal;
   isolated?: boolean;
@@ -122,6 +123,15 @@ function getToolNamesForType(type: AgentType, config?: AgentConfig): string[] {
   return [...BUILTIN_TOOL_NAMES];
 }
 
+/**
+ * Resolve agent config for a type.
+ * Priority: explicit config > builtin config > default
+ */
+function resolveAgentConfig(type: AgentType, explicitConfig?: AgentConfig): AgentConfig | undefined {
+  if (explicitConfig) return explicitConfig;
+  return BUILTIN_CONFIGS[type];
+}
+
 /** Resolve model from config. */
 function resolveDefaultModel(
   parentModel: Model<any> | undefined,
@@ -142,19 +152,24 @@ export async function runAgent(
 ): Promise<RunResult> {
   const effectiveCwd = options.cwd ?? ctx.cwd;
 
-  // Build system prompt
-  const agentConfig = options as any; // Will be properly typed later
+  // Resolve agent config
+  const agentConfig = resolveAgentConfig(type, options.agentConfig);
   const parentSystemPrompt = ctx.getSystemPrompt();
 
+  // Build system prompt using config or defaults
   let systemPrompt: string;
-  if (options.isolated) {
-    systemPrompt = `You are a ${type} agent. Follow the task instructions precisely. Do not ask questions.`;
+  if (agentConfig?.systemPrompt && agentConfig.promptMode === "replace") {
+    systemPrompt = agentConfig.systemPrompt;
+  } else if (options.isolated) {
+    const base = agentConfig?.systemPrompt ?? `You are a ${type} agent.`;
+    systemPrompt = `${base} Follow the task instructions precisely. Do not ask questions.`;
   } else {
-    systemPrompt = parentSystemPrompt + `\n\nYou are a ${type} agent. Follow the task instructions precisely.`;
+    const agentPrompt = agentConfig?.systemPrompt ?? `You are a ${type} agent.`;
+    systemPrompt = parentSystemPrompt + `\n\n${agentPrompt}`;
   }
 
-  // Get tool names
-  let toolNames = getToolNamesForType(type);
+  // Get tool names from config
+  let toolNames = getToolNamesForType(type, agentConfig);
 
   // Create resource loader
   const agentDir = getAgentDir();

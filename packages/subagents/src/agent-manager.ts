@@ -10,7 +10,9 @@ import type { Model } from "@mariozechner/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { resolveModel, type ModelRegistry } from "./model-resolver.js";
-import type { AgentRecord, AgentType, ThinkingLevel } from "./types.js";
+import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel } from "./types.js";
+import { BUILTIN_CONFIGS } from "./types.js";
+import { loadCustomAgents } from "./custom-agents.js";
 import { FileLock } from "./file-lock.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
@@ -49,6 +51,7 @@ export class AgentManager {
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
   private maxConcurrent: number;
+  private customAgents: Map<string, AgentConfig>;
 
   /** Per-file transparent locking for write agents. */
   readonly fileLock = new FileLock();
@@ -62,7 +65,13 @@ export class AgentManager {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.maxConcurrent = maxConcurrent;
+    this.customAgents = loadCustomAgents(process.cwd());
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
+  }
+
+  /** Get resolved agent config for a type. */
+  getAgentConfig(type: AgentType): AgentConfig | undefined {
+    return this.customAgents.get(type) ?? BUILTIN_CONFIGS[type];
   }
 
   setMaxConcurrent(n: number) {
@@ -134,9 +143,11 @@ export class AgentManager {
       model = resolved;
     }
 
+    const agentConfig = this.getAgentConfig(type);
     const promise = runAgent(ctx, type, prompt, {
       pi,
       model,
+      agentConfig,
       maxTurns: options.maxTurns,
       isolated: options.isolated,
       inheritContext: options.inheritContext,

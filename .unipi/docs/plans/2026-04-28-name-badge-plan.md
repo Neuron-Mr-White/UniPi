@@ -123,3 +123,22 @@ Task 6 (README) ─────────────────────�
 - **`pi.appendEntry()` for persistence** — verify this API exists and supports custom entry types. If not, fall back to in-memory state only (badge won't persist across restarts).
 - **`triggerTurn: true` with hidden message** — the LLM must have `set_session_name` as an available tool for badge-gen to work. If not available, the name generation will time out gracefully after 30s.
 - **Overlay stacking** — badge stays in its layer when other overlays open. This is by design but may surprise users who expect the badge to always be on top.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- Task 1 ✅ — `NAME_BADGE` and `BADGE_GEN` constants added to `UTILITY_COMMANDS` in `packages/core/constants.ts`
+- Task 2 ✅ — `NameBadgeComponent` in `packages/utility/src/tui/name-badge.ts` — renders bordered badge, truncates with ellipsis, uses theme accent/muted/border colors
+- Task 3 ✅ — `NameBadgeState` in `packages/utility/src/tui/name-badge-state.ts` — toggle, show/hide, 1s polling, persistence via `pi.appendEntry()`, restore on session_start, LLM generate with 30s timeout
+- Task 4 ✅ — Both commands registered in `packages/utility/src/commands.ts` with UI guard checks, added to `ALL_COMMANDS` in index.ts
+- Task 5 ✅ — `session_start` calls `nameBadgeState.restore()`, `session_shutdown` calls `nameBadgeState.hide()`, wired in `packages/utility/src/index.ts`
+- Task 6 ✅ — README updated with both commands in table and dedicated Name Badge usage section
+
+Codebase Checks:
+- ✓ TypeScript (tsc --noEmit): passed — zero errors
+- ⚠ Biome lint: 8 errors (`noExplicitAny` — necessary due to pi-tui overlay API lacking exported types), 13 warnings (formatting tabs vs spaces — pre-existing codebase-wide convention; import organization — auto-fixable)
+- ✓ Tests: 69/69 passed (no new tests for TUI component — depends on pi runtime)
+- ✗ Build: no build script in utility package (not applicable)
+- ✗ Docker: no Dockerfile (not applicable)

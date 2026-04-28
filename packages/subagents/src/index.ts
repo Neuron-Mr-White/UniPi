@@ -2,10 +2,12 @@
  * @pi-unipi/subagents — Extension entry
  *
  * Tools: spawn_helper, get_helper_result
+ * Features: renderCall/renderResult, message renderer, conversation viewer
  * ESC propagation: all children abort on parent ESC
  */
 
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +15,8 @@ import { homedir } from "node:os";
 import { emitEvent, MODULES, UNIPI_EVENTS } from "@pi-unipi/core";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
-import { type AgentActivity, BUILTIN_TYPES } from "./types.js";
+import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
+import { ConversationViewer } from "./conversation-viewer.js";
 import { AgentWidget } from "./widget.js";
 
 /** Get info registry from global */
@@ -22,23 +25,103 @@ function getInfoRegistry() {
   return g.__unipi_info_registry;
 }
 
-/** Format tokens safely */
+// ---- Formatting helpers (shared between renderers and inline text) ----
+
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/** Tool name → human-readable action. */
+const TOOL_DISPLAY: Record<string, string> = {
+  read: "reading",
+  bash: "running command",
+  edit: "editing",
+  write: "writing",
+  grep: "searching",
+  find: "finding files",
+  ls: "listing",
+};
+
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M token`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k token`;
+  return `${count} token`;
+}
+
+function formatTurns(turn: number, max?: number | null): string {
+  return max != null ? `⟳${turn}≤${max}` : `⟳${turn}`;
+}
+
+function formatMs(ms: number): string {
+  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
+  return `${ms}ms`;
+}
+
+/** Build activity description from active tools. */
+function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+  if (activeTools.size > 0) {
+    const groups = new Map<string, number>();
+    for (const toolName of activeTools.values()) {
+      const action = TOOL_DISPLAY[toolName] ?? toolName;
+      groups.set(action, (groups.get(action) ?? 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [action, count] of groups) {
+      if (count > 1) {
+        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
+      } else {
+        parts.push(action);
+      }
+    }
+    return parts.join(", ") + "…";
+  }
+  if (responseText && responseText.trim().length > 0) {
+    const line = responseText.split("\n").find((l) => l.trim())?.trim() ?? "";
+    if (line.length > 60) return line.slice(0, 60) + "…";
+    if (line.length > 0) return line;
+  }
+  return "thinking…";
+}
+
+/** Format tokens safely from session. */
 function safeFormatTokens(session: any): string {
   if (!session) return "";
   try {
     const stats = session.getSessionStats();
     const total = stats.tokens?.total ?? 0;
-    if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`;
-    if (total >= 1_000) return `${(total / 1_000).toFixed(1)}k`;
-    return `${total}`;
+    return formatTokens(total);
   } catch {
     return "";
+  }
+}
+
+/** Get raw token count from session. */
+function safeTokenCount(session: any): number {
+  if (!session) return 0;
+  try {
+    return session.getSessionStats().tokens?.total ?? 0;
+  } catch {
+    return 0;
   }
 }
 
 /** Build result text */
 function textResult(msg: string, details?: any) {
   return { content: [{ type: "text" as const, text: msg }], details };
+}
+
+/** Escape XML for structured notifications. */
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Human-readable status label. */
+function getStatusLabel(status: string, error?: string): string {
+  switch (status) {
+    case "error": return `Error: ${error ?? "unknown"}`;
+    case "aborted": return "Aborted (max turns exceeded)";
+    case "stopped": return "Stopped";
+    default: return "Done";
+  }
 }
 
 export default function (pi: ExtensionAPI) {
@@ -61,6 +144,41 @@ export default function (pi: ExtensionAPI) {
       agentActivity.delete(record.id);
       widget.markFinished(record.id);
       widget.update();
+
+      // Build notification details
+      const details = buildNotificationDetails(record, agentActivity.get(record.id));
+
+      // Send styled notification via message renderer
+      const status = getStatusLabel(record.status, record.error);
+      const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
+      const resultPreview = record.result
+        ? record.result.length > 500
+          ? record.result.slice(0, 500) + "…"
+          : record.result
+        : "No output.";
+
+      const notificationXml = [
+        `<task-notification>`,
+        `<task-id>${record.id}</task-id>`,
+        `<status>${escapeXml(status)}</status>`,
+        `<summary>Agent "${escapeXml(record.description)}" ${record.status}</summary>`,
+        `<result>${escapeXml(resultPreview)}</result>`,
+        `<usage><total_tokens>${details.totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses><duration_ms>${durationMs}</duration_ms></usage>`,
+        `</task-notification>`,
+      ].join("\n");
+
+      if (!record.resultConsumed) {
+        pi.sendMessage<NotificationDetails>(
+          {
+            customType: "subagent-notification",
+            content: notificationXml,
+            display: true,
+            details,
+          },
+          { deliverAs: "followUp", triggerTurn: true },
+        );
+      }
+
       pi.events.emit("subagents:completed", {
         id: record.id,
         type: record.type,
@@ -77,6 +195,72 @@ export default function (pi: ExtensionAPI) {
         type: record.type,
         description: record.description,
       });
+    },
+  );
+
+  // Build notification details for the message renderer
+  function buildNotificationDetails(record: any, activity?: AgentActivity): NotificationDetails {
+    return {
+      id: record.id,
+      description: record.description,
+      status: record.status,
+      toolUses: record.toolUses,
+      turnCount: activity?.turnCount ?? 0,
+      maxTurns: activity?.maxTurns,
+      totalTokens: safeTokenCount(record.session),
+      durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
+      error: record.error,
+      resultPreview: record.result
+        ? record.result.length > 200
+          ? record.result.slice(0, 200) + "…"
+          : record.result
+        : "No output.",
+    };
+  }
+
+  // ---- Register custom notification renderer ----
+  pi.registerMessageRenderer<NotificationDetails>(
+    "subagent-notification",
+    (message, { expanded }, theme) => {
+      const d = message.details;
+      if (!d) return undefined;
+
+      function renderOne(d: NotificationDetails): string {
+        const isError = d.status === "error" || d.status === "stopped" || d.status === "aborted";
+        const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
+        const statusText = isError
+          ? d.status
+          : d.status === "steered"
+            ? "completed (steered)"
+            : "completed";
+
+        // Line 1: icon + agent description + status
+        let line = `${icon} ${theme.bold(d.description)} ${theme.fg("dim", statusText)}`;
+
+        // Line 2: stats
+        const parts: string[] = [];
+        if (d.turnCount > 0) parts.push(formatTurns(d.turnCount, d.maxTurns));
+        if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+        if (d.totalTokens > 0) parts.push(formatTokens(d.totalTokens));
+        if (d.durationMs > 0) parts.push(formatMs(d.durationMs));
+        if (parts.length) {
+          line += "\n  " + parts.map((p) => theme.fg("dim", p)).join(" " + theme.fg("dim", "·") + " ");
+        }
+
+        // Line 3: result preview (collapsed) or full (expanded)
+        if (expanded) {
+          const lines = d.resultPreview.split("\n").slice(0, 30);
+          for (const l of lines) line += "\n" + theme.fg("dim", `  ${l}`);
+        } else {
+          const preview = d.resultPreview.split("\n")[0]?.slice(0, 80) ?? "";
+          line += "\n  " + theme.fg("dim", `⎿  ${preview}`);
+        }
+
+        return line;
+      }
+
+      const all = [d, ...(d.others ?? [])];
+      return new Text(all.map(renderOne).join("\n"), 0, 0);
     },
   );
 
@@ -104,7 +288,6 @@ export default function (pi: ExtensionAPI) {
         const types = config.types || {};
         const builtinTypes = ["explore", "work"];
 
-        // Scan for custom agent types
         const customTypes: string[] = [];
         for (const dir of [globalAgentsDir, workspaceAgentsDir]) {
           try {
@@ -119,14 +302,14 @@ export default function (pi: ExtensionAPI) {
         }
 
         const allTypes = [...new Set([...builtinTypes, ...Object.keys(types), ...customTypes])];
-        const typeList = allTypes.map(t => {
+        const typeList = allTypes.map((t) => {
           const isEnabled = types[t]?.enabled !== false;
           const isBuiltin = builtinTypes.includes(t);
           const scope = customTypes.includes(t) ? "project" : "global";
           return `${t}(${scope})${isEnabled ? "" : " [disabled]"}`;
         }).join(", ");
 
-        const activeAgents = manager.listAgents().filter(a => a.status === "running").length;
+        const activeAgents = manager.listAgents().filter((a) => a.status === "running").length;
 
         return {
           maxConcurrent: { value: String(manager.getMaxConcurrent()) },
@@ -145,7 +328,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.SUBAGENTS || "subagents",
-      version: "0.1.8",
+      version: "0.2.0",
       commands: [],
       tools: ["spawn_helper", "get_helper_result"],
     });
@@ -157,14 +340,14 @@ export default function (pi: ExtensionAPI) {
     manager.dispose();
   });
 
-  // Wire UI context for widget
+  // Wire UI context for widget + age finished agents on new turn
   pi.on("tool_execution_start", async (_event, ctx) => {
     widget.setUICtx(ctx.ui);
-    widget.update();
+    widget.onTurnStart();
   });
 
   // Create activity tracker
-  function createActivityTracker(maxTurns?: number) {
+  function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
     const state: AgentActivity = {
       activeTools: new Map(),
       toolUses: 0,
@@ -187,20 +370,19 @@ export default function (pi: ExtensionAPI) {
           }
           state.toolUses++;
         }
-        widget.update();
+        state.tokens = safeFormatTokens(state.session);
+        onStreamUpdate?.();
       },
       onTextDelta: (_delta: string, fullText: string) => {
         state.responseText = fullText;
-        widget.update();
+        onStreamUpdate?.();
       },
       onTurnEnd: (turnCount: number) => {
         state.turnCount = turnCount;
-        widget.update();
+        onStreamUpdate?.();
       },
       onSessionCreated: (session: any) => {
         state.session = session;
-        state.tokens = safeFormatTokens(session);
-        widget.update();
       },
     };
 
@@ -261,6 +443,87 @@ Guidelines:
         ),
       }),
 
+      // ---- Rich inline rendering ----
+
+      renderCall(args, theme) {
+        const displayName = args.type ? args.type : "Agent";
+        const desc = args.description ?? "";
+        return new Text(
+          "▸ " + theme.fg("toolTitle", theme.bold(displayName)) + (desc ? "  " + theme.fg("muted", desc) : ""),
+          0,
+          0,
+        );
+      },
+
+      renderResult(result, { expanded, isPartial }, theme) {
+        const details = result.details as any;
+        if (!details) {
+          const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+          return new Text(text, 0, 0);
+        }
+
+        // Stats helper
+        const stats = (d: any) => {
+          const parts: string[] = [];
+          if (d.turnCount != null && d.turnCount > 0) parts.push(formatTurns(d.turnCount, d.maxTurns));
+          if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+          if (d.tokens) parts.push(d.tokens);
+          return parts.map((p) => theme.fg("dim", p)).join(" " + theme.fg("dim", "·") + " ");
+        };
+
+        // Running
+        if (isPartial || details.status === "running") {
+          const frame = SPINNER[details.spinnerFrame ?? 0];
+          const s = stats(details);
+          let line = theme.fg("accent", frame) + (s ? " " + s : "");
+          line += "\n" + theme.fg("dim", `  ⎿  ${details.activity ?? "thinking…"}`);
+          return new Text(line, 0, 0);
+        }
+
+        // Background launched
+        if (details.status === "background") {
+          return new Text(theme.fg("dim", `  ⎿  Running in background (ID: ${details.agentId})`), 0, 0);
+        }
+
+        // Completed
+        if (details.status === "completed") {
+          const duration = formatMs(details.durationMs);
+          const s = stats(details);
+          let line = theme.fg("success", "✓") + (s ? " " + s : "");
+          line += " " + theme.fg("dim", "·") + " " + theme.fg("dim", duration);
+
+          if (expanded) {
+            const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
+            if (resultText) {
+              const rlines = resultText.split("\n").slice(0, 50);
+              for (const l of rlines) {
+                line += "\n" + theme.fg("dim", `  ${l}`);
+              }
+            }
+          } else {
+            line += "\n" + theme.fg("dim", "  ⎿  Done");
+          }
+          return new Text(line, 0, 0);
+        }
+
+        // Error / Aborted / Stopped
+        const isError = details.status === "error";
+        const isStopped = details.status === "stopped";
+        const s = stats(details);
+        let line = (isStopped ? theme.fg("dim", "■") : theme.fg("error", "✗")) + (s ? " " + s : "");
+
+        if (isError) {
+          line += "\n" + theme.fg("error", `  ⎿  Error: ${details.error ?? "unknown"}`);
+        } else if (isStopped) {
+          line += "\n" + theme.fg("dim", "  ⎿  Stopped");
+        } else {
+          line += "\n" + theme.fg("warning", "  ⎿  Aborted (max turns exceeded)");
+        }
+        return new Text(line, 0, 0);
+      },
+
+      // ---- Execute ----
+
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         widget.setUICtx(ctx.ui);
 
@@ -272,9 +535,17 @@ Guidelines:
         const modelInput = params.model as string | undefined;
         const thinkingLevel = params.thinking as any | undefined;
 
-        const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(maxTurns);
-
         if (runInBackground) {
+          const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(maxTurns);
+
+          // Wrap onSessionCreated to sync tokens
+          const origOnSession = bgCallbacks.onSessionCreated;
+          bgCallbacks.onSessionCreated = (session: any) => {
+            origOnSession(session);
+            bgState.tokens = safeFormatTokens(session);
+            widget.update();
+          };
+
           const id = manager.spawn(pi, ctx, type, prompt, {
             description,
             maxTurns,
@@ -304,27 +575,42 @@ Guidelines:
           );
         }
 
-        // Foreground execution
+        // Foreground execution — stream progress via onUpdate
         let spinnerFrame = 0;
         const startedAt = Date.now();
+        let fgId: string | undefined;
+
+        const { state: fgState, callbacks: fgCallbacks } = createActivityTracker(maxTurns);
 
         const streamUpdate = () => {
           onUpdate?.({
-            content: [{ type: "text", text: `${bgState.toolUses} tool uses...` }],
+            content: [{ type: "text", text: `${fgState.toolUses} tool uses...` }],
             details: {
               status: "running",
-              toolUses: bgState.toolUses,
-              tokens: bgState.tokens,
-              turnCount: bgState.turnCount,
-              maxTurns: bgState.maxTurns,
+              toolUses: fgState.toolUses,
+              tokens: fgState.tokens,
+              turnCount: fgState.turnCount,
+              maxTurns: fgState.maxTurns,
               durationMs: Date.now() - startedAt,
-              activity: bgState.responseText
-                ? bgState.responseText.split("\n").pop()?.trim().slice(0, 60)
-                : "thinking…",
-              spinnerFrame: spinnerFrame % 10,
+              activity: describeActivity(fgState.activeTools, fgState.responseText),
+              spinnerFrame: spinnerFrame % SPINNER.length,
             },
           });
-          widget.update();
+        };
+
+        // Wire session to register in widget
+        const origOnSession = fgCallbacks.onSessionCreated;
+        fgCallbacks.onSessionCreated = (session: any) => {
+          origOnSession(session);
+          fgState.tokens = safeFormatTokens(session);
+          for (const a of manager.listAgents()) {
+            if (a.session === session) {
+              fgId = a.id;
+              agentActivity.set(a.id, fgState);
+              widget.ensureTimer();
+              break;
+            }
+          }
         };
 
         const spinnerInterval = setInterval(() => {
@@ -332,7 +618,6 @@ Guidelines:
           streamUpdate();
         }, 80);
 
-        widget.ensureTimer();
         streamUpdate();
 
         const record = await manager.spawnAndWait(pi, ctx, type, prompt, {
@@ -341,21 +626,42 @@ Guidelines:
           modelInput,
           modelRegistry: ctx.modelRegistry,
           thinkingLevel,
-          ...bgCallbacks,
+          ...fgCallbacks,
         });
 
         clearInterval(spinnerInterval);
 
-        const tokenText = safeFormatTokens(bgState.session);
+        // Clean up foreground agent from widget
+        if (fgId) {
+          agentActivity.delete(fgId);
+          widget.markFinished(fgId);
+          widget.update();
+        }
+
+        const tokenText = safeFormatTokens(fgState.session);
         const durationMs = (record.completedAt ?? Date.now()) - record.startedAt;
 
         if (record.status === "error") {
-          return textResult(`Agent failed: ${record.error}`);
+          return textResult(`Agent failed: ${record.error}`, {
+            status: "error",
+            toolUses: record.toolUses,
+            tokens: tokenText,
+            durationMs,
+            error: record.error,
+          });
         }
 
         return textResult(
           `Agent completed in ${(durationMs / 1000).toFixed(1)}s (${record.toolUses} tool uses${tokenText ? `, ${tokenText} tokens` : ""}).\n\n` +
             (record.result?.trim() || "No output."),
+          {
+            status: "completed",
+            toolUses: record.toolUses,
+            tokens: tokenText,
+            durationMs,
+            turnCount: fgState.turnCount,
+            maxTurns: fgState.maxTurns,
+          },
         );
       },
     }),
@@ -367,7 +673,7 @@ Guidelines:
     defineTool({
       name: "get_helper_result",
       label: "Get Helper Result",
-      description: "Check status and retrieve results from a background agent.",
+      description: "Check status and retrieve results from a background agent. Use view: true to open a live conversation overlay.",
       parameters: Type.Object({
         agent_id: Type.String({
           description: "The helper ID to check.",
@@ -377,11 +683,44 @@ Guidelines:
             description: "Wait for completion. Default: false.",
           }),
         ),
+        view: Type.Optional(
+          Type.Boolean({
+            description: "Open a live conversation viewer overlay. Default: false.",
+          }),
+        ),
       }),
-      execute: async (_toolCallId, params) => {
+      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
         const record = manager.getRecord(params.agent_id as string);
         if (!record) {
           return textResult(`Helper not found: "${params.agent_id}". It may have been cleaned up.`);
+        }
+
+        // Open conversation viewer overlay if requested
+        if (params.view && record.session) {
+          const activity = agentActivity.get(record.id);
+          await ctx.ui.custom<undefined>(
+            (tui, theme, _keybindings, done) => {
+              return new ConversationViewer(
+                tui,
+                record.session!,
+                {
+                  type: record.type,
+                  description: record.description,
+                  status: record.status,
+                  toolUses: record.toolUses,
+                  startedAt: record.startedAt,
+                  completedAt: record.completedAt,
+                },
+                activity,
+                theme,
+                done,
+              );
+            },
+            {
+              overlay: true,
+              overlayOptions: { anchor: "center", width: "90%" },
+            },
+          );
         }
 
         if (params.wait && record.status === "running" && record.promise) {

@@ -89,16 +89,15 @@ export class NameBadgeState {
     this.currentName = name;
     this.visible = true;
 
+    // Store tui reference for requestRender wiring
+    let tuiRef: any = null;
+
     ctx.ui.custom(
       (tui: any, theme: any, _keybindings: any, _done: any) => {
+        tuiRef = tui;
         const component = new NameBadgeComponent(name);
         component.setTheme(theme);
         this.component = component;
-
-        // Wire requestRender for reactive updates
-        if (this.overlayHandle) {
-          this.overlayHandle.requestRender = () => tui.requestRender();
-        }
 
         return {
           render: (w: number) => component.render(w),
@@ -118,8 +117,10 @@ export class NameBadgeState {
         },
         onHandle: (handle: OverlayHandle) => {
           this.overlayHandle = handle;
-          // Wire requestRender if factory already ran
-          // (handle arrives after factory in some cases)
+          // Wire requestRender now that handle exists
+          if (tuiRef) {
+            (this.overlayHandle as any).requestRender = () => tuiRef.requestRender();
+          }
         },
       },
     );

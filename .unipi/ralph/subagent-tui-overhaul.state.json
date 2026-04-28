@@ -1,0 +1,14 @@
+{
+  "name": "subagent-tui-overhaul",
+  "taskFile": ".unipi/ralph/subagent-tui-overhaul.md",
+  "iteration": 2,
+  "maxIterations": 15,
+  "itemsPerIteration": 0,
+  "reflectEvery": 3,
+  "reflectInstructions": "REFLECTION CHECKPOINT\n\nPause and reflect on your progress:\n1. What has been accomplished so far?\n2. What's working well?\n3. What's not working or blocking progress?\n4. Should the approach be adjusted?\n5. What are the next priorities?\n\nUpdate the task file with your reflection, then continue working.",
+  "active": false,
+  "status": "completed",
+  "startedAt": "2026-04-28T06:34:37.178Z",
+  "lastReflectionAt": 0,
+  "completedAt": "2026-04-28T06:48:42.218Z"
+}
