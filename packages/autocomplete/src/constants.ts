@@ -135,9 +135,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:notify-set-tg":    "notify",
   "unipi:notify-test":      "notify",
 
-  // kanboard (2 commands)
-  "unipi:kanboard":        "kanboard",
-  "unipi:kanboard-doctor": "kanboard",
+  // kanboard (4 commands)
+  "unipi:kanboard":          "kanboard",
+  "unipi:kanboard-doctor":   "kanboard",
+  "unipi:kanboard-settings": "kanboard",
+  "unipi:name-gen":          "kanboard",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -189,6 +191,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:doctor":     "Run diagnostics",
   "unipi:name-badge": "Toggle session name badge overlay",
   "unipi:badge-gen":  "Generate session name via LLM",
+  "unipi:name-gen":   "Generate session name badge from kanboard context",
+  "unipi:kanboard-settings": "Configure kanboard module settings",
 
   "unipi:ask-user-settings": "Configure ask-user settings",
 

@@ -242,6 +242,7 @@ export const COMPACTOR_DIRS = {
 export const KANBOARD_COMMANDS = {
   KANBOARD: "kanboard",
   KANBOARD_DOCTOR: "kanboard-doctor",
+  NAME_GEN: "name-gen",
 } as const;
 
 /** Kanboard directory paths */

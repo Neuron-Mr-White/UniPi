@@ -175,6 +175,7 @@ body {
 .checklist-status.done { color: var(--green); }
 .checklist-status.in-progress { color: var(--yellow); }
 .checklist-status.todo { color: var(--text-dim); }
+.checklist-status.reviewed { color: var(--accent); }
 
 .checklist-text {
   flex: 1;
@@ -210,6 +211,11 @@ body {
 .badge-todo {
   background: var(--bg-hover);
   color: var(--text-muted);
+}
+
+.badge-reviewed {
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 /* === Copy Button === */

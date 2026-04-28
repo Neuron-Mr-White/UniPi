@@ -20,6 +20,7 @@ import {
   UTILITY_TOOLS,
   emitEvent,
   getPackageVersion,
+  type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
@@ -83,6 +84,14 @@ export default function (pi: ExtensionAPI) {
 
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
+  });
+
+  // Listen for badge generation requests from other modules (e.g., kanboard)
+  pi.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST as any, async (_event: any, ctx: any) => {
+    // Show badge overlay if not already visible
+    if (!nameBadgeState.isVisible() && ctx?.hasUI) {
+      await nameBadgeState.show(pi, ctx);
+    }
   });
 
   // Track command usage

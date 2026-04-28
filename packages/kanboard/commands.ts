@@ -1,15 +1,16 @@
 /**
  * @pi-unipi/kanboard — Command Registration
  *
- * Registers kanboard and kanboard-doctor commands.
+ * Registers kanboard, kanboard-doctor, and name-gen commands.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { UNIPI_PREFIX, KANBOARD_COMMANDS, KANBOARD_DIRS } from "@pi-unipi/core";
+import { UNIPI_PREFIX, KANBOARD_COMMANDS, KANBOARD_DIRS, UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { startServer, KanboardServer } from "./server/index.js";
 import { renderKanboardOverlay } from "./tui/kanboard-overlay.js";
+import { KanboardSettingsOverlay } from "./tui/settings-overlay.js";
 
 /** Module-level reference to running server */
 let runningServer: KanboardServer | null = null;
@@ -78,6 +79,80 @@ export function registerCommands(pi: ExtensionAPI): void {
       handler: async (_args: string, ctx: any) => {
         ctx.ui.notify("Loading kanboard-doctor skill...", "info");
         // The skill will be loaded by the skill system via resources_discover
+      },
+    },
+  );
+
+  // kanboard-settings — Configure kanboard module
+  pi.registerCommand(
+    `${UNIPI_PREFIX}kanboard-settings`,
+    {
+      description: "Configure kanboard module settings",
+      handler: async (_args: string, ctx: any) => {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("Settings require an interactive UI.", "warning");
+          return;
+        }
+
+        ctx.ui.custom(
+          (tui: any, _theme: any, _keybindings: any, done: any) => {
+            const overlay = new KanboardSettingsOverlay();
+            overlay.onClose = () => done(undefined);
+            return {
+              render: (w: number) => overlay.render(w),
+              invalidate: () => overlay.invalidate(),
+              handleInput: (data: string) => {
+                overlay.handleInput(data);
+                tui.requestRender();
+              },
+            };
+          },
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "80%",
+              minWidth: 50,
+              anchor: "center",
+              margin: 2,
+            },
+          },
+        );
+      },
+    },
+  );
+
+  // name-gen — Generate session name badge
+  pi.registerCommand(
+    `${UNIPI_PREFIX}${KANBOARD_COMMANDS.NAME_GEN}`,
+    {
+      description: "Generate session name badge from kanboard context",
+      handler: async (_args: string, ctx: any) => {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("Name generation requires an interactive UI.", "warning");
+          return;
+        }
+
+        // Emit event so utility module can show badge overlay
+        emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
+          source: "kanboard",
+        });
+
+        // Send hidden message to LLM to generate session name
+        pi.sendMessage(
+          {
+            customType: "badge-gen",
+            content: [
+              "[System Instruction: Analyze this conversation and generate a concise session title.",
+              "Call the set_session_name tool with a name that is MAXIMUM 5 WORDS.",
+              "The name should capture the main topic or task being worked on.",
+              "Do not explain your reasoning. Just call set_session_name.]",
+            ].join(" "),
+            display: false,
+          },
+          { triggerTurn: true },
+        );
+
+        ctx.ui.notify("Generating session name...", "info");
       },
     },
   );

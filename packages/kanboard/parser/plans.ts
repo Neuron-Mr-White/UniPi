@@ -43,6 +43,7 @@ const STATUS_MAP: Record<string, ItemStatus> = {
   awaiting_user: "in-progress",
   blocked: "in-progress",
   skipped: "done",
+  reviewed: "reviewed",
 };
 
 /** Task header pattern */
@@ -50,7 +51,7 @@ const TASK_HEADER_PATTERN = /^###\s+Task\s+\d+\s*[—–-]\s*(.+)$/;
 
 /** Status line pattern: - **Status:** keyword */
 const STATUS_LINE_PATTERN =
-  /^\s*-\s*\*\*Status:\*\*\s*(unstarted|in-progress|completed|failed|awaiting_user|blocked|skipped)\s*$/;
+  /^\s*-\s*\*\*Status:\*\*\s*(unstarted|in-progress|completed|failed|awaiting_user|blocked|skipped|reviewed)\s*$/;
 
 /** Plan parser — extracts task statuses from plans */
 export class PlanParser implements DocParser {

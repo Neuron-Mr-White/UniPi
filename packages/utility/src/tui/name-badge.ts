@@ -2,7 +2,7 @@
  * @pi-unipi/utility — Name Badge Component
  *
  * Pure render component for the session name badge overlay.
- * Displays a single-line bordered box with the current session name.
+ * Displays a bordered box with opaque background and session name.
  * Display-only — no input handling, no focus.
  */
 
@@ -11,13 +11,24 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
 /** Placeholder text when no session name is set */
-const PLACEHOLDER = "Set a name now";
+const PLACEHOLDER = "Set a name";
 
 /**
- * NameBadgeComponent — single-line HUD overlay showing session name.
+ * Pad content to exact visible width.
+ */
+function padVisible(content: string, targetWidth: number): string {
+  const vw = visibleWidth(content);
+  const pad = Math.max(0, targetWidth - vw);
+  return content + " ".repeat(pad);
+}
+
+/**
+ * NameBadgeComponent — bordered box HUD overlay showing session name.
  *
- * Renders: ┌─ {name} ─┐
- * With accent color for the name, muted for placeholder.
+ * Renders a proper box with opaque background:
+ * ╭──────────╮
+ * │   Best   │
+ * ╰──────────╯
  */
 export class NameBadgeComponent implements Component {
   private name: string | null;
@@ -55,50 +66,48 @@ export class NameBadgeComponent implements Component {
       return this.cachedLines;
     }
 
-    const line = this.renderBadge(width);
-    this.cachedLines = [line];
+    const lines = this.renderBadge(width);
+    this.cachedLines = lines;
     this.cachedWidth = width;
     return this.cachedLines;
   }
 
-  private renderBadge(width: number): string {
-    // Build the badge content
-    const prefix = "┌─ ";
-    const suffix = " ─┐";
-    const prefixW = visibleWidth(prefix);
-    const suffixW = visibleWidth(suffix);
-    const overhead = prefixW + suffixW;
-
+  private renderBadge(width: number): string[] {
     // Determine display text and color
     let displayText: string;
-    let color: string;
+    let fgColor: string;
     if (this.name) {
       displayText = this.name;
-      color = "accent";
+      fgColor = "accent";
     } else {
       displayText = PLACEHOLDER;
-      color = "muted";
+      fgColor = "muted";
     }
 
-    // Available space for the name
-    const maxNameWidth = Math.max(1, width - overhead);
+    // Inner padding around text
+    const padX = 2;
+    // Overhead: left border(1) + right border(1) + padding(padX * 2)
+    const overhead = 2 + padX * 2;
+    const maxTextWidth = Math.max(1, width - overhead);
 
     // Truncate name if needed
-    if (visibleWidth(displayText) > maxNameWidth) {
-      displayText = truncateToWidth(displayText, maxNameWidth - 1, "…");
+    if (visibleWidth(displayText) > maxTextWidth) {
+      displayText = truncateToWidth(displayText, maxTextWidth - 1, "…");
     }
 
-    // Apply theme colors
-    const nameStyled = this.theme
-      ? this.theme.fg(color as any, displayText)
-      : displayText;
-    const borderStyled = this.theme
-      ? this.theme.fg("border" as any, "┌─ ")
-      : "┌─ ";
-    const borderEndStyled = this.theme
-      ? this.theme.fg("border" as any, " ─┐")
-      : " ─┐";
+    const innerWidth = visibleWidth(displayText) + padX * 2;
+    const border = (s: string) => this.theme ? this.theme.fg("accent" as any, s) : s;
+    const bgFn = (s: string) => this.theme ? this.theme.bg("customMessageBg" as any, s) : s;
 
-    return `${borderStyled}${nameStyled}${borderEndStyled}`;
+    // Build lines with opaque background
+    const topLine = bgFn(border("╭" + "─".repeat(innerWidth) + "╮"));
+    const padding = " ".repeat(padX);
+    const nameStyled = this.theme
+      ? this.theme.fg(fgColor as any, displayText)
+      : displayText;
+    const contentLine = bgFn(border("│") + padding + nameStyled + padding + border("│"));
+    const bottomLine = bgFn(border("╰" + "─".repeat(innerWidth) + "╯"));
+
+    return [topLine, contentLine, bottomLine];
   }
 }

@@ -37,6 +37,7 @@ function statusBadge(status: string): string {
     done: "✓ Done",
     "in-progress": "◐ In Progress",
     todo: "○ To Do",
+    reviewed: "◉ Reviewed",
   };
   return `<span class="badge badge-${status}">${labels[status] ?? status}</span>`;
 }
@@ -45,7 +46,7 @@ function statusBadge(status: string): string {
 function renderDocCard(doc: ParsedDoc): string {
   const config = DOC_TYPE_CONFIG[doc.type] ?? { icon: "📄", label: doc.type, color: "accent" };
   const total = doc.items.length;
-  const done = doc.items.filter((i) => i.status === "done").length;
+  const done = doc.items.filter((i) => i.status === "done" || i.status === "reviewed").length;
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const itemsHtml = doc.items
@@ -53,9 +54,9 @@ function renderDocCard(doc: ParsedDoc): string {
       (item) => `
     <li class="checklist-item" style="display: none;" data-status="${item.status}">
       <span class="checklist-status ${item.status}">${
-        item.status === "done" ? "✓" : item.status === "in-progress" ? "◐" : "○"
+        item.status === "done" ? "✓" : item.status === "in-progress" ? "◐" : item.status === "reviewed" ? "◉" : "○"
       }</span>
-      <span class="checklist-text${item.status === "done" ? " done" : ""}">${esc(item.text)}</span>
+      <span class="checklist-text${item.status === "done" || item.status === "reviewed" ? " done" : ""}">${esc(item.text)}</span>
       ${
         item.command
           ? `<button class="copy-btn" onclick="copyToClipboard('${esc(item.command)}', event)">📋</button>`
@@ -73,8 +74,8 @@ function renderDocCard(doc: ParsedDoc): string {
           <span class="card-title">${esc(doc.title)}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          ${statusBadge(total === 0 ? "todo" : done === total ? "done" : "in-progress")}
-          <span class="progress-text">${done}/${total}</span>
+          ${statusBadge(total === 0 ? (doc.type === "quick-work" ? "done" : "todo") : done === total ? "done" : "in-progress")}
+          ${total > 0 ? `<span class="progress-text">${done}/${total}</span>` : ""}
         </div>
       </div>
       <div class="progress-bar">
@@ -102,7 +103,7 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
   const totalDocs = docs.length;
   const totalItems = docs.reduce((sum, d) => sum + d.items.length, 0);
   const totalDone = docs.reduce(
-    (sum, d) => sum + d.items.filter((i) => i.status === "done").length,
+    (sum, d) => sum + d.items.filter((i) => i.status === "done" || i.status === "reviewed").length,
     0,
   );
 
@@ -116,7 +117,7 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
 
     const typeItems = typeDocs.reduce((sum, d) => sum + d.items.length, 0);
     const typeDone = typeDocs.reduce(
-      (sum, d) => sum + d.items.filter((i) => i.status === "done").length,
+      (sum, d) => sum + d.items.filter((i) => i.status === "done" || i.status === "reviewed").length,
       0,
     );
 
@@ -153,6 +154,7 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
       <button class="filter-btn" :class="{ active: filter === 'all' }" @click="setFilter('all')">All</button>
       <button class="filter-btn" :class="{ active: filter === 'todo' }" @click="setFilter('todo')">To Do</button>
       <button class="filter-btn" :class="{ active: filter === 'in-progress' }" @click="setFilter('in-progress')">In Progress</button>
+      <button class="filter-btn" :class="{ active: filter === 'reviewed' }" @click="setFilter('reviewed')">Reviewed</button>
       <button class="filter-btn" :class="{ active: filter === 'done' }" @click="setFilter('done')">Done</button>
     </div>
 

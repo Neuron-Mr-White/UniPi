@@ -9,6 +9,7 @@ const BADGE_LABELS: Record<string, string> = {
   done: "✓ Done",
   "in-progress": "◐ In Progress",
   todo: "○ To Do",
+  reviewed: "◉ Reviewed",
 };
 
 /**

@@ -75,6 +75,9 @@ export const UNIPI_EVENTS = {
 
   /** Notification sent */
   NOTIFICATION_SENT: "unipi:notify:sent",
+
+  /** Badge generation requested (from kanboard or other module) */
+  BADGE_GENERATE_REQUEST: "unipi:badge:generate:request",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -295,6 +298,12 @@ export interface UnipiUtilityLifecycleEvent {
   reason?: string;
 }
 
+/** Payload for BADGE_GENERATE_REQUEST */
+export interface UnipiBadgeGenerateRequestEvent {
+  /** Source of the request (e.g., "kanboard", "input-hook") */
+  source: string;
+}
+
 /** Payload for NOTIFICATION_SENT */
 export interface UnipiNotificationSentEvent {
   /** Event type that triggered notification */
@@ -329,4 +338,5 @@ export type UnipiEventPayload =
   | UnipiUtilityCleanupEvent
   | UnipiUtilityDiagnosticsEvent
   | UnipiUtilityLifecycleEvent
-  | UnipiNotificationSentEvent;
+  | UnipiNotificationSentEvent
+  | UnipiBadgeGenerateRequestEvent;

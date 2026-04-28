@@ -14,7 +14,7 @@ export type DocType =
   | "review";
 
 /** Status of a parsed item */
-export type ItemStatus = "todo" | "in-progress" | "done";
+export type ItemStatus = "todo" | "in-progress" | "done" | "reviewed";
 
 /** A single parsed item from a document */
 export interface ParsedItem {

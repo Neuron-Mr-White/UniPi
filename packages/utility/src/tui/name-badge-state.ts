@@ -14,7 +14,9 @@ import { NameBadgeComponent } from "./name-badge.js";
 /** Overlay handle from ctx.ui.custom() */
 interface OverlayHandle {
   requestRender?: () => void;
-  close?: () => void;
+  hide?: () => void;
+  setHidden?: (hidden: boolean) => void;
+  isHidden?: () => boolean;
   focus?: () => void;
   unfocus?: () => void;
   isFocused?: () => boolean;
@@ -137,7 +139,12 @@ export class NameBadgeState {
 
     if (this.overlayHandle) {
       try {
-        this.overlayHandle.close?.();
+        // Use hide() to permanently remove the overlay
+        if (typeof this.overlayHandle.hide === "function") {
+          this.overlayHandle.hide();
+        } else if (typeof this.overlayHandle.setHidden === "function") {
+          this.overlayHandle.setHidden(true);
+        }
       } catch {
         // Handle may already be invalid
       }
