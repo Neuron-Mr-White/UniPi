@@ -61,7 +61,7 @@ Start with:
 2. "Who has this problem and when?" — context changes solutions
 3. "What does success look like?" — outcomes, not features
 
-Use `ask_user` for structured decisions (approach selection, scope tradeoffs). Use conversational text for open-ended exploration. Prefer multiple choice when natural options exist. Validate assumptions explicitly.
+Use `ask_user` for structured decisions (approach selection, scope tradeoffs) when the tool is available. If `ask_user` is not available, use conversational text with clearly numbered options (e.g., "1. Option A — ... 2. Option B — ... Please pick one."). Use conversational text for open-ended exploration. Prefer multiple choice when natural options exist. Validate assumptions explicitly.
 
 **Exit:** Problem statement clear and reframed. Both agree on what solving.
 
@@ -76,7 +76,7 @@ Propose 2-3 different approaches with trade-offs:
 
 Present conversationally with recommendation and reasoning.
 
-**If open questions emerge:** MUST ask user about each one. Don't assume. Use `ask_user` with clearly labeled options and descriptions for each approach.
+**If open questions emerge:** MUST ask user about each one. Don't assume. Use `ask_user` with clearly labeled options and descriptions for each approach when available; otherwise present numbered options conversationally.
 
 **Exit:** Approach chosen. User signals decision.
 
@@ -86,7 +86,7 @@ Present conversationally with recommendation and reasoning.
 
 Once approach chosen, present design in sections:
 - Scale each section to complexity (few sentences if straightforward, 200-300 words if nuanced)
-- Ask after each section whether it looks right (use `ask_user` for "approve / needs changes / go back" checkpoints)
+- Ask after each section whether it looks right (use `ask_user` for "approve / needs changes / go back" checkpoints if available; otherwise ask conversationally and wait for response)
 - Cover: architecture, components, data flow, error handling, testing
 - Be ready to go back and clarify
 
