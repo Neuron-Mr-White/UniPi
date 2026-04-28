@@ -1,8 +1,9 @@
 /**
  * @pi-unipi/kanboard — Plan Parser
  *
- * Parses plans for `unstarted:` / `in-progress:` / `completed:` task statuses.
- * Also handles `failed:`, `awaiting_user:`, `blocked:`, `skipped:`.
+ * Parses plans for task statuses. Handles the format:
+ * ### Task N — Name
+ * - **Status:** unstarted|in-progress|completed|failed|awaiting_user|blocked|skipped
  */
 
 import * as fs from "node:fs";
@@ -44,9 +45,12 @@ const STATUS_MAP: Record<string, ItemStatus> = {
   skipped: "done",
 };
 
-/** Status keywords to match */
-const STATUS_PATTERN =
-  /^\s*-?\s*\*?\*?(unstarted|in-progress|completed|failed|awaiting_user|blocked|skipped):\s*\*?\*?(.*)$/;
+/** Task header pattern */
+const TASK_HEADER_PATTERN = /^###\s+Task\s+\d+\s*[—–-]\s*(.+)$/;
+
+/** Status line pattern: - **Status:** keyword */
+const STATUS_LINE_PATTERN =
+  /^\s*-\s*\*\*Status:\*\*\s*(unstarted|in-progress|completed|failed|awaiting_user|blocked|skipped)\s*$/;
 
 /** Plan parser — extracts task statuses from plans */
 export class PlanParser implements DocParser {
@@ -70,29 +74,38 @@ export class PlanParser implements DocParser {
     const lines = content.split("\n");
     const fileName = path.basename(filePath);
 
+    let currentTaskName: string | null = null;
+    let currentTaskLine: number | null = null;
+
     for (let i = bodyStart; i < lines.length; i++) {
       const line = lines[i];
       const lineNum = i + 1; // 1-indexed
 
-      const match = line.match(STATUS_PATTERN);
-      if (match) {
-        const statusKey = match[1];
-        const text = match[2].trim();
+      // Match task headers: ### Task N — Name
+      const headerMatch = line.match(TASK_HEADER_PATTERN);
+      if (headerMatch) {
+        currentTaskName = headerMatch[1].trim();
+        currentTaskLine = lineNum;
+        continue;
+      }
 
-        if (!text) {
-          warnings.push(`Line ${lineNum}: Empty task name after status`);
-          continue;
-        }
-
+      // Match status lines: - **Status:** keyword
+      const statusMatch = line.match(STATUS_LINE_PATTERN);
+      if (statusMatch && currentTaskName) {
+        const statusKey = statusMatch[1];
         const status = STATUS_MAP[statusKey] ?? "todo";
 
         items.push({
-          text,
+          text: currentTaskName,
           status,
-          lineNumber: lineNum,
+          lineNumber: currentTaskLine ?? lineNum,
           sourceFile: fileName,
           command: `/unipi:work plan:${fileName}`,
         });
+
+        // Reset current task
+        currentTaskName = null;
+        currentTaskLine = null;
       }
     }
 

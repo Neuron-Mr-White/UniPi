@@ -409,7 +409,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
 ## Phase 6: Polish
 
 ### Task 17 — README + Documentation
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Write README.md documentation.
 - **Dependencies:** All previous tasks
 - **Acceptance Criteria:**
@@ -427,7 +427,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - Doctor skill
 
 ### Task 18 — Integration Testing
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** End-to-end test of the complete kanboard workflow.
 - **Dependencies:** All previous tasks
 - **Acceptance Criteria:**
