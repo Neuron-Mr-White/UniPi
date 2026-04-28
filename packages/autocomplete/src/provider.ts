@@ -265,9 +265,9 @@ export function createEnchantedProvider(
           : null;
       }
 
-      // Merge: non-unipi first, then enhanced unipi (sorted by package)
+      // Merge: enhanced unipi first (sorted by package), then non-unipi
       return {
-        items: [...nonUnipiItems, ...enhancedUnipiItems],
+        items: [...enhancedUnipiItems, ...nonUnipiItems],
         prefix: effectivePrefix,
       };
     },
