@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/kanboard — Command Registration
  *
- * Registers kanboard, kanboard-doctor, and name-gen commands.
+ * Registers kanboard and kanboard-doctor commands.
  */
 
 import * as fs from "node:fs";
@@ -121,24 +121,5 @@ export function registerCommands(pi: ExtensionAPI): void {
     },
   );
 
-  // name-gen — Request badge generation via utility module
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${KANBOARD_COMMANDS.NAME_GEN}`,
-    {
-      description: "Generate session name badge via background agent",
-      handler: async (_args: string, ctx: any) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Name generation requires an interactive UI.", "warning");
-          return;
-        }
 
-        // Emit event so utility/subagents can handle badge generation
-        emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
-          source: "kanboard",
-        });
-
-        ctx.ui.notify("Generating session name...", "info");
-      },
-    },
-  );
 }

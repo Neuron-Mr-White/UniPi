@@ -158,7 +158,7 @@ export const UTILITY_COMMANDS = {
   CLEANUP: "cleanup",
   ENV: "env",
   DOCTOR: "doctor",
-  NAME_BADGE: "name-badge",
+  BADGE_NAME: "badge-name",
   BADGE_GEN: "badge-gen",
   BADGE_TOGGLE: "badge-toggle",
 } as const;
@@ -247,7 +247,6 @@ export const COMPACTOR_DIRS = {
 export const KANBOARD_COMMANDS = {
   KANBOARD: "kanboard",
   KANBOARD_DOCTOR: "kanboard-doctor",
-  NAME_GEN: "name-gen",
 } as const;
 
 /** Kanboard directory paths */

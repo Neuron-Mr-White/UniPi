@@ -36,14 +36,14 @@ function sendResponse(pi: ExtensionAPI, markdown: string): void {
 }
 
 /**
- * Register name badge commands: /unipi:name-badge, /unipi:badge-gen.
+ * Register name badge commands: /unipi:badge-name, /unipi:badge-gen.
  */
 export function registerNameBadgeCommands(
   pi: ExtensionAPI,
   state: NameBadgeState,
 ): void {
-  // ─── /unipi:name-badge — toggle badge overlay ───────────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.NAME_BADGE}`, {
+  // ─── /unipi:badge-name — toggle badge overlay ───────────────────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_NAME}`, {
     description: "Toggle session name badge overlay",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) {
