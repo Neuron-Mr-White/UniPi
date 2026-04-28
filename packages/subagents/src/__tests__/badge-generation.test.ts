@@ -60,8 +60,13 @@ describe("Badge generation — tool availability", () => {
 // ─── Test: Prompt no longer references non-existent tool ───────────
 
 describe("Badge generation — prompt fix", () => {
-  it("prompt asks agent to OUTPUT the title directly (not call a tool)", () => {
+  it("prompt includes conversation context inline", () => {
     const src = readSource("packages/subagents/src/index.ts");
+
+    assert.ok(
+      src.includes("Conversation:"),
+      "Prompt should include conversation context inline",
+    );
 
     assert.ok(
       src.includes("Reply with ONLY the title"),
@@ -89,6 +94,28 @@ describe("Badge generation — onComplete callback", () => {
     assert.ok(
       src.includes("pi.setSessionName(name)"),
       "Should call pi.setSessionName with extracted name",
+    );
+  });
+});
+
+// ─── Test: Agent configuration ────────────────────────────────────
+
+describe("Badge generation — agent configuration", () => {
+  it("background agent is isolated (no extensions, no skills, minimal system prompt)", () => {
+    const src = readSource("packages/subagents/src/index.ts");
+
+    assert.ok(
+      src.includes("isolated: true"),
+      "Should spawn with isolated: true to avoid loading extensions/skills",
+    );
+  });
+
+  it("background agent maxTurns is 1 (single response)", () => {
+    const src = readSource("packages/subagents/src/index.ts");
+
+    assert.ok(
+      src.includes("maxTurns: 1"),
+      "Badge generation agent should have maxTurns: 1",
     );
   });
 });

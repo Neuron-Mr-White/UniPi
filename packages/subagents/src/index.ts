@@ -354,8 +354,8 @@ export default function (pi: ExtensionAPI) {
 
     const summary = event?.conversationSummary ?? "";
     const prompt = summary
-      ? `Generate a concise session title (MAX 5 WORDS) for this conversation:\n\n"${summary}"\n\nReply with ONLY the title. No quotes, no explanation, no punctuation.`
-      : `Generate a concise session title (MAX 5 WORDS) for the current session. Reply with ONLY the title. No quotes, no explanation, no punctuation.`;
+      ? `Based on this conversation, generate a concise session title (MAX 5 WORDS). Reply with ONLY the title. No quotes, no explanation, no punctuation.\n\nConversation:\n${summary}`
+      : `Generate a concise session title (MAX 5 WORDS) for this session. Reply with ONLY the title. No quotes, no explanation, no punctuation.`;
 
     // Try with configured model, fallback to inherit
     let modelInput: string | undefined = undefined;
@@ -386,7 +386,8 @@ export default function (pi: ExtensionAPI) {
       description: "Generate session name",
       model: resolvedModel,
       isBackground: true,
-      maxTurns: 3,
+      isolated: true,
+      maxTurns: 1,
     });
   });
 
