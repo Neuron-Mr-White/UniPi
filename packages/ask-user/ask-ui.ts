@@ -447,7 +447,7 @@ export function renderAskUI(params: {
       for (let i = 0; i < displayOptions.length; i++) {
         const opt = displayOptions[i];
         const isSelected = i === optionIndex;
-        const prefix = isSelected ? theme.fg("> ", "accent") : "  ";
+        const prefix = isSelected ? theme.fg("accent", "> ") : "  ";
 
         if (opt.isFreeform) {
           // Freeform option: show checkbox like regular option
