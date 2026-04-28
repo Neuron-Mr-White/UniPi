@@ -102,6 +102,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:doctor":     "utility",
   "unipi:name-badge": "utility",
   "unipi:badge-gen":  "utility",
+  "unipi:badge-toggle": "utility",
 
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
@@ -190,7 +191,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:env":        "Show environment info",
   "unipi:doctor":     "Run diagnostics",
   "unipi:name-badge": "Toggle session name badge overlay",
-  "unipi:badge-gen":  "Generate session name via LLM",
+  "unipi:badge-gen":  "Generate session name via background agent",
+  "unipi:badge-toggle": "Configure badge settings (autoGen, badgeEnabled, agentTool)",
   "unipi:name-gen":   "Generate session name badge from kanboard context",
   "unipi:kanboard-settings": "Configure kanboard module settings",
 

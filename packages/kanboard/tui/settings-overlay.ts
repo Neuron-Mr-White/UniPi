@@ -2,14 +2,14 @@
  * @pi-unipi/kanboard — Settings TUI Component
  *
  * Interactive settings editor for kanboard module.
- * Allows configuring auto badge generation and other kanboard behaviors.
+ * Badge settings are now managed by utility module via .unipi/config/badge.json.
+ * This overlay provides a convenient TUI to edit them.
  */
 
 import type { Component } from "@mariozechner/pi-tui";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { homedir } from "node:os";
 
 /** ANSI escape codes */
 const ansi = {
@@ -27,17 +27,21 @@ const ansi = {
 const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
 const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
-/** Settings path */
-const SETTINGS_PATH = path.join(homedir(), ".pi", "agent", "settings.json");
+/** Badge config path (same as utility module) */
+const BADGE_CONFIG_PATH = ".unipi/config/badge.json";
 
-/** Kanboard settings interface */
-interface KanboardSettings {
-  autoBadgeGen: boolean;
+/** Badge settings interface (mirrors utility's BadgeSettings) */
+interface BadgeSettings {
+  autoGen: boolean;
+  badgeEnabled: boolean;
+  agentTool: boolean;
 }
 
 /** Default settings */
-const DEFAULT_SETTINGS: KanboardSettings = {
-  autoBadgeGen: true,
+const DEFAULT_SETTINGS: BadgeSettings = {
+  autoGen: true,
+  badgeEnabled: true,
+  agentTool: true,
 };
 
 /** Setting items */
@@ -45,60 +49,64 @@ interface SettingItem {
   key: string;
   label: string;
   description: string;
-  getValue: (settings: KanboardSettings) => boolean;
-  setValue: (settings: KanboardSettings, value: boolean) => void;
+  getValue: (settings: BadgeSettings) => boolean;
+  setValue: (settings: BadgeSettings, value: boolean) => void;
 }
 
 /** List of configurable settings */
 const SETTINGS: SettingItem[] = [
   {
-    key: "autoBadgeGen",
-    label: "Auto badge generation",
-    description: "Generate session name badge on first user message",
-    getValue: (s) => s.autoBadgeGen,
-    setValue: (s, v) => (s.autoBadgeGen = v),
+    key: "autoGen",
+    label: "Auto generate",
+    description: "Generate session name on first user message",
+    getValue: (s) => s.autoGen,
+    setValue: (s, v) => (s.autoGen = v),
+  },
+  {
+    key: "badgeEnabled",
+    label: "Badge enabled",
+    description: "Show the name badge overlay",
+    getValue: (s) => s.badgeEnabled,
+    setValue: (s, v) => (s.badgeEnabled = v),
+  },
+  {
+    key: "agentTool",
+    label: "Agent tool",
+    description: "Allow agents to call set_session_name",
+    getValue: (s) => s.agentTool,
+    setValue: (s, v) => (s.agentTool = v),
   },
 ];
 
 /**
- * Read kanboard settings from disk.
+ * Read badge settings from disk.
  */
-function readSettings(): KanboardSettings {
+function readSettings(): BadgeSettings {
   try {
-    if (!fs.existsSync(SETTINGS_PATH)) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
-    const kanboard = parsed?.unipi?.kanboard;
-    if (kanboard && typeof kanboard === "object") {
-      return {
-        autoBadgeGen: typeof kanboard.autoBadgeGen === "boolean"
-          ? kanboard.autoBadgeGen
-          : DEFAULT_SETTINGS.autoBadgeGen,
-      };
-    }
-    return { ...DEFAULT_SETTINGS };
+    const configPath = path.resolve(process.cwd(), BADGE_CONFIG_PATH);
+    if (!fs.existsSync(configPath)) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return {
+      autoGen: typeof parsed.autoGen === "boolean" ? parsed.autoGen : DEFAULT_SETTINGS.autoGen,
+      badgeEnabled: typeof parsed.badgeEnabled === "boolean" ? parsed.badgeEnabled : DEFAULT_SETTINGS.badgeEnabled,
+      agentTool: typeof parsed.agentTool === "boolean" ? parsed.agentTool : DEFAULT_SETTINGS.agentTool,
+    };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
 /**
- * Write kanboard settings to disk.
+ * Write badge settings to disk.
  */
-function saveSettings(settings: KanboardSettings): void {
+function saveSettings(settings: BadgeSettings): void {
   try {
-    let parsed: Record<string, unknown> = {};
-    if (fs.existsSync(SETTINGS_PATH)) {
-      parsed = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
-    }
-    if (!parsed.unipi || typeof parsed.unipi !== "object") {
-      parsed.unipi = {};
-    }
-    (parsed.unipi as Record<string, unknown>).kanboard = settings;
-    const dir = path.dirname(SETTINGS_PATH);
+    const configPath = path.resolve(process.cwd(), BADGE_CONFIG_PATH);
+    const dir = path.dirname(configPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(parsed, null, 2) + "\n", "utf-8");
+    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
   } catch {
     // Best effort
   }
@@ -106,9 +114,10 @@ function saveSettings(settings: KanboardSettings): void {
 
 /**
  * Settings overlay component for kanboard.
+ * Edits badge settings stored in .unipi/config/badge.json.
  */
 export class KanboardSettingsOverlay implements Component {
-  private settings: KanboardSettings;
+  private settings: BadgeSettings;
   private selectedIndex = 0;
   /** Callback when overlay should close */
   onClose?: () => void;
@@ -187,8 +196,8 @@ export class KanboardSettingsOverlay implements Component {
     lines.push(`${ansi.cyan}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
     // Header
-    add(`${ansi.bold}${ansi.cyan}Kanboard Settings${ansi.reset}`);
-    add(`${ansi.dim}Configure kanboard module behavior${ansi.reset}`);
+    add(`${ansi.bold}${ansi.cyan}Badge Settings${ansi.reset}`);
+    add(`${ansi.dim}Configure badge generation behavior${ansi.reset}`);
     addEmpty();
 
     // Settings list
@@ -207,6 +216,7 @@ export class KanboardSettingsOverlay implements Component {
     // Footer
     addEmpty();
     add(`${ansi.dim}↑↓ navigate • Space toggle • Enter save • Esc cancel${ansi.reset}`);
+    add(`${ansi.dim}Config: ${BADGE_CONFIG_PATH}${ansi.reset}`);
 
     // Bottom border
     lines.push(`${ansi.cyan}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);

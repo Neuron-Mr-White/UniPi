@@ -5,11 +5,13 @@
  * - Toggle visibility (persisted via pi.appendEntry)
  * - Poll for session name changes every 1s
  * - Restore visibility on session start
- * - Generate session name via hidden LLM prompt
+ * - Generate session name via background agent event
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { NameBadgeComponent } from "./name-badge.js";
+import { readBadgeSettings } from "./badge-settings.js";
 
 /** Overlay handle from ctx.ui.custom() */
 interface OverlayHandle {
@@ -179,12 +181,14 @@ export class NameBadgeState {
   }
 
   /**
-   * Generate a session name via LLM and enable the badge.
-   * Sends a hidden message instructing the LLM to call set_session_name.
+   * Generate a session name via background agent.
+   * Emits BADGE_GENERATE_REQUEST event for subagents to handle.
+   * Also enables the badge overlay if not visible.
    */
   async generate(
     pi: ExtensionAPI,
     ctx: { hasUI: boolean; ui: any; cwd?: string },
+    conversationSummary?: string,
   ): Promise<void> {
     // Enable badge if not visible
     if (!this.visible) {
@@ -195,29 +199,38 @@ export class NameBadgeState {
     // Clear any previous generation timeout
     this.clearGenTimeout();
 
-    // Send hidden message to LLM
-    pi.sendMessage(
-      {
-        customType: "badge-gen",
-        content: [
-          "[System Instruction: Analyze this conversation and generate a concise session title.",
-          "Call the set_session_name tool with a name that is MAXIMUM 5 WORDS.",
-          "The name should capture the main topic or task being worked on.",
-          "Do not explain your reasoning. Just call set_session_name.]",
-        ].join(" "),
-        display: false,
-      },
-      { triggerTurn: true },
-    );
+    // Emit event for subagents to spawn background agent
+    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
+      source: "command",
+      conversationSummary,
+    });
 
     // Set timeout — if name not set within 30s, give up
     this.genTimeout = setTimeout(() => {
       this.genTimeout = null;
-      // If name is still null after timeout, the LLM didn't respond
+      // If name is still null after timeout, the agent didn't respond
       if (this.currentName === null) {
         // Badge stays with placeholder — no error needed
       }
     }, GEN_TIMEOUT_MS);
+  }
+
+  /**
+   * Directly set the session name via pi API.
+   * Used by the set_session_name tool.
+   */
+  setSessionName(pi: ExtensionAPI, name: string): void {
+    try {
+      pi.setSessionName(name);
+      // Update component immediately (don't wait for poll)
+      this.currentName = name;
+      this.component?.setName(name);
+      this.overlayHandle?.requestRender?.();
+      // Clear generation timeout if active
+      this.clearGenTimeout();
+    } catch {
+      // Best effort
+    }
   }
 
   // ─── Private ────────────────────────────────────────────────────────

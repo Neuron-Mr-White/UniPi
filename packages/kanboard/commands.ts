@@ -121,36 +121,21 @@ export function registerCommands(pi: ExtensionAPI): void {
     },
   );
 
-  // name-gen — Generate session name badge
+  // name-gen — Request badge generation via utility module
   pi.registerCommand(
     `${UNIPI_PREFIX}${KANBOARD_COMMANDS.NAME_GEN}`,
     {
-      description: "Generate session name badge from kanboard context",
+      description: "Generate session name badge via background agent",
       handler: async (_args: string, ctx: any) => {
         if (!ctx.hasUI) {
           ctx.ui.notify("Name generation requires an interactive UI.", "warning");
           return;
         }
 
-        // Emit event so utility module can show badge overlay
+        // Emit event so utility/subagents can handle badge generation
         emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
           source: "kanboard",
         });
-
-        // Send hidden message to LLM to generate session name
-        pi.sendMessage(
-          {
-            customType: "badge-gen",
-            content: [
-              "[System Instruction: Analyze this conversation and generate a concise session title.",
-              "Call the set_session_name tool with a name that is MAXIMUM 5 WORDS.",
-              "The name should capture the main topic or task being worked on.",
-              "Do not explain your reasoning. Just call set_session_name.]",
-            ].join(" "),
-            display: false,
-          },
-          { triggerTurn: true },
-        );
 
         ctx.ui.notify("Generating session name...", "info");
       },

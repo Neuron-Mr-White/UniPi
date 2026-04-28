@@ -324,13 +324,48 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  // Session start: emit MODULE_READY
+  // Store session context for badge generation
+  let sessionCtx: any = null;
+
+  // Session start: emit MODULE_READY + capture context
   pi.on("session_start", async (_event, ctx) => {
+    sessionCtx = ctx;
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.SUBAGENTS || "subagents",
       version: "0.2.0",
       commands: [],
       tools: ["spawn_helper", "get_helper_result"],
+    });
+  });
+
+  // Listen for badge generation requests — spawn background agent
+  pi.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST as any, async (event: any) => {
+    if (!sessionCtx) return;
+
+    const summary = event?.conversationSummary ?? "";
+    const prompt = summary
+      ? `Generate a concise session title (MAX 5 WORDS) for this conversation:\n\n"${summary}"\n\nCall the set_session_name tool with the name. Do not explain.`
+      : `Generate a concise session title (MAX 5 WORDS) for the current session. Call the set_session_name tool. Do not explain.`;
+
+    // Try with openai/gpt-oss-20b, fallback to inherit
+    const modelInput = "openai/gpt-oss-20b";
+    let resolvedModel: any = undefined;
+
+    // Check if model is available
+    if (sessionCtx.modelRegistry) {
+      const { resolveModel } = await import("./model-resolver.js");
+      const result = resolveModel(modelInput, sessionCtx.modelRegistry);
+      if (typeof result !== "string") {
+        resolvedModel = result;
+      }
+      // If result is a string (error), resolvedModel stays undefined → inherit parent
+    }
+
+    manager.spawn(pi, sessionCtx, "explore", prompt, {
+      description: "Generate session name",
+      model: resolvedModel,
+      isBackground: true,
+      maxTurns: 3,
     });
   });
 

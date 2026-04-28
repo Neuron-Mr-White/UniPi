@@ -160,6 +160,7 @@ export const UTILITY_COMMANDS = {
   DOCTOR: "doctor",
   NAME_BADGE: "name-badge",
   BADGE_GEN: "badge-gen",
+  BADGE_TOGGLE: "badge-toggle",
 } as const;
 
 /** Utility tool names */
@@ -167,7 +168,9 @@ export const UTILITY_TOOLS = {
   CONTINUE: "continue_task",
   BATCH: "ctx_batch",
   ENV: "ctx_env",
-} as const;
+  SET_SESSION_NAME: "set_session_name",
+} as const;/** Badge config path */
+export const BADGE_CONFIG_FILE = ".unipi/config/badge.json" as const;
 
 /** Utility directory paths */
 export const UTILITY_DIRS = {

@@ -21,30 +21,44 @@ const DOC_TYPE_CONFIG: Record<
   DocType,
   { icon: string; label: string; color: string }
 > = {
-  spec: { icon: "📝", label: "Specs", color: "accent" },
-  plan: { icon: "📋", label: "Plans", color: "accent" },
-  milestone: { icon: "🎯", label: "Milestones", color: "green" },
+  spec: { icon: "◈", label: "Specs", color: "accent" },
+  plan: { icon: "◈", label: "Plans", color: "accent" },
+  milestone: { icon: "◉", label: "Milestones", color: "green" },
   "quick-work": { icon: "⚡", label: "Quick Work", color: "yellow" },
-  debug: { icon: "🐛", label: "Debug", color: "red" },
-  fix: { icon: "🔧", label: "Fixes", color: "green" },
-  chore: { icon: "🧹", label: "Chores", color: "yellow" },
-  review: { icon: "👁", label: "Reviews", color: "accent" },
+  debug: { icon: "◆", label: "Debug", color: "red" },
+  fix: { icon: "◊", label: "Fixes", color: "green" },
+  chore: { icon: "◇", label: "Chores", color: "yellow" },
+  review: { icon: "◈", label: "Reviews", color: "accent" },
 };
 
 /** Render status badge */
 function statusBadge(status: string): string {
   const labels: Record<string, string> = {
-    done: "✓ Done",
-    "in-progress": "◐ In Progress",
-    todo: "○ To Do",
-    reviewed: "◉ Reviewed",
+    done: "Done",
+    "in-progress": "In Progress",
+    todo: "To Do",
+    reviewed: "Reviewed",
   };
   return `<span class="badge badge-${status}">${labels[status] ?? status}</span>`;
 }
 
+/** Render status icon */
+function statusIcon(status: string): string {
+  switch (status) {
+    case "done":
+      return "✓";
+    case "in-progress":
+      return "◐";
+    case "reviewed":
+      return "◉";
+    default:
+      return "○";
+  }
+}
+
 /** Render a single doc card */
 function renderDocCard(doc: ParsedDoc): string {
-  const config = DOC_TYPE_CONFIG[doc.type] ?? { icon: "📄", label: doc.type, color: "accent" };
+  const config = DOC_TYPE_CONFIG[doc.type] ?? { icon: "◈", label: doc.type, color: "accent" };
   const total = doc.items.length;
   const done = doc.items.filter((i) => i.status === "done" || i.status === "reviewed").length;
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -52,14 +66,15 @@ function renderDocCard(doc: ParsedDoc): string {
   const itemsHtml = doc.items
     .map(
       (item) => `
-    <li class="checklist-item" style="display: none;" data-status="${item.status}">
-      <span class="checklist-status ${item.status}">${
-        item.status === "done" ? "✓" : item.status === "in-progress" ? "◐" : item.status === "reviewed" ? "◉" : "○"
-      }</span>
+    <li class="checklist-item" data-status="${item.status}">
+      <span class="checklist-status ${item.status}" aria-label="${item.status}">
+        <span aria-hidden="true">${statusIcon(item.status)}</span>
+        <span class="visually-hidden">${item.status}</span>
+      </span>
       <span class="checklist-text${item.status === "done" || item.status === "reviewed" ? " done" : ""}">${esc(item.text)}</span>
       ${
         item.command
-          ? `<button class="copy-btn" onclick="copyToClipboard('${esc(item.command)}', event)">📋</button>`
+          ? `<button class="copy-btn" onclick="copyToClipboard('${esc(item.command)}', event)" aria-label="Copy ${esc(item.command)} to clipboard">${esc(item.command)}</button>`
           : ""
       }
     </li>`,
@@ -68,38 +83,38 @@ function renderDocCard(doc: ParsedDoc): string {
 
   return `
     <div class="card" x-data="{ open: false }">
-      <div class="card-header" @click="open = !open" style="cursor: pointer;">
-        <div>
-          <span>${config.icon}</span>
-          <span class="card-title">${esc(doc.title)}</span>
+      <button type="button" class="card-header" @click="open = !open" :aria-expanded="open">
+        <div class="card-header-inner">
+          <span class="doc-type-icon">${config.icon}</span>
+          <h3 class="card-title">${esc(doc.title)}</h3>
         </div>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <div class="card-meta">
           ${statusBadge(total === 0 ? (doc.type === "quick-work" ? "done" : "todo") : done === total ? "done" : "in-progress")}
           ${total > 0 ? `<span class="progress-text">${done}/${total}</span>` : ""}
         </div>
-      </div>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width: ${percent}%"></div>
+      </button>
+      <div class="progress-bar" style="--progress: ${percent};">
+        <div class="progress-fill"></div>
       </div>
       <template x-if="open">
-        <ul class="checklist" style="margin-top: 0.5rem;">
+        <ul class="checklist">
           ${itemsHtml}
         </ul>
       </template>
-      ${doc.warnings.length > 0 ? `<div class="warnings">${doc.warnings.map((w) => `<div class="warning-item">${esc(w)}</div>`).join("")}</div>` : ""}
+      ${doc.warnings.length > 0
+        ? `<div class="warnings">${doc.warnings.map((w) => `<div class="warning-item">${esc(w)}</div>`).join("")}</div>`
+        : ""}
     </div>`;
 }
 
 /** Render the workflow page */
 export function renderWorkflowPage(docs: ParsedDoc[]): string {
-  // Group by type
   const groups: Record<string, ParsedDoc[]> = {};
   for (const doc of docs) {
     if (!groups[doc.type]) groups[doc.type] = [];
     groups[doc.type].push(doc);
   }
 
-  // Stats
   const totalDocs = docs.length;
   const totalItems = docs.reduce((sum, d) => sum + d.items.length, 0);
   const totalDone = docs.reduce(
@@ -110,7 +125,7 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
   let sectionsHtml = "";
   for (const [type, typeDocs] of Object.entries(groups)) {
     const config = DOC_TYPE_CONFIG[type as DocType] ?? {
-      icon: "📄",
+      icon: "◈",
       label: type,
       color: "accent",
     };
@@ -123,11 +138,13 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
 
     sectionsHtml += `
       <div class="section">
-        <div class="section-header open" onclick="toggleSection(event)">
+        <button type="button" class="section-header" aria-expanded="true" onclick="toggleSection(event)">
           <span class="section-toggle">▶</span>
-          <span class="section-title">${config.icon} ${config.label}</span>
+          <div class="section-title-wrap">
+            <h2 class="section-title">${config.icon} ${config.label}</h2>
+          </div>
           <span class="section-count">${typeDocs.length} docs · ${typeDone}/${typeItems} items</span>
-        </div>
+        </button>
         <div class="section-content">
           <div class="card-grid">
             ${typeDocs.map(renderDocCard).join("\n")}
@@ -139,15 +156,16 @@ export function renderWorkflowPage(docs: ParsedDoc[]): string {
   if (totalDocs === 0) {
     sectionsHtml = `
       <div class="empty-state">
-        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-icon">✦</div>
         <p class="empty-state-text">No workflow documents found</p>
       </div>`;
   }
 
   const content = `
     <div class="page-header">
-      <h1 class="page-title">⚡ Workflow</h1>
+      <h1 class="page-title">Workflow</h1>
       <p class="page-subtitle">${totalDocs} documents · ${totalDone}/${totalItems} items complete</p>
+      <div class="page-header-stat">${totalItems > 0 ? Math.round((totalDone / totalItems) * 100) : 0}% across all documents</div>
     </div>
 
     <div class="filters" x-data="kanboardFilters()">

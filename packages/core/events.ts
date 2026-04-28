@@ -302,6 +302,8 @@ export interface UnipiUtilityLifecycleEvent {
 export interface UnipiBadgeGenerateRequestEvent {
   /** Source of the request (e.g., "kanboard", "input-hook") */
   source: string;
+  /** First user message for context (optional) */
+  conversationSummary?: string;
 }
 
 /** Payload for NOTIFICATION_SENT */

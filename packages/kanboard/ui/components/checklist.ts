@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/kanboard — Checklist Component
  *
- * Reusable checklist renderer with status indicators and toggle buttons.
+ * Reusable checklist renderer with status indicators and copy buttons.
  */
 
 import type { ParsedItem } from "../../types.js";
@@ -40,11 +40,14 @@ export function renderChecklist(items: ParsedItem[]): string {
     .map(
       (item) => `
     <li class="checklist-item">
-      <span class="checklist-status ${item.status}">${statusIcon(item.status)}</span>
+      <span class="checklist-status ${item.status}" aria-label="${item.status}">
+        <span aria-hidden="true">${statusIcon(item.status)}</span>
+        <span class="visually-hidden">${item.status}</span>
+      </span>
       <span class="checklist-text${item.status === "done" ? " done" : ""}">${esc(item.text)}</span>
       ${
         item.command
-          ? `<button class="copy-btn" onclick="copyToClipboard('${esc(item.command)}', event)">📋</button>`
+          ? `<button class="copy-btn" onclick="copyToClipboard('${esc(item.command)}', event)" aria-label="Copy ${esc(item.command)} to clipboard">${esc(item.command)}</button>`
           : ""
       }
     </li>`,

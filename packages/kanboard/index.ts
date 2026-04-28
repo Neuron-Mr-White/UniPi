@@ -5,38 +5,12 @@
  * HTTP server with htmx + Alpine.js UI, modular parsers, TUI overlay, and kanban board.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { homedir } from "node:os";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MODULES, KANBOARD_COMMANDS, UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
+import { MODULES, KANBOARD_COMMANDS } from "@pi-unipi/core";
 import { registerCommands } from "./commands.js";
 
 /** Package version */
 const VERSION = "0.1.0";
-
-/** Whether we've seen the first user message (for auto badge generation) */
-let firstMessageSeen = false;
-
-/**
- * Check if auto badge generation on first message is enabled.
- * Reads from ~/.pi/agent/settings.json under unipi.kanboard.autoBadgeGen.
- * Defaults to true.
- */
-function isAutoBadgeGenEnabled(): boolean {
-  try {
-    const settingsPath = path.join(homedir(), ".pi", "agent", "settings.json");
-    if (!fs.existsSync(settingsPath)) return true;
-    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    const kanboard = settings?.unipi?.kanboard;
-    if (kanboard && typeof kanboard.autoBadgeGen === "boolean") {
-      return kanboard.autoBadgeGen;
-    }
-    return true;
-  } catch {
-    return true;
-  }
-}
 
 export default function (pi: ExtensionAPI): void {
   // Register skills directory
@@ -51,39 +25,8 @@ export default function (pi: ExtensionAPI): void {
   // Register commands
   registerCommands(pi);
 
-  // Hook: on first user message, trigger async badge generation
-  pi.on("input", async (event) => {
-    // Only trigger on first user message
-    if (firstMessageSeen) return;
-    firstMessageSeen = true;
-
-    // Check if auto badge generation is enabled (configurable)
-    if (!isAutoBadgeGenEnabled()) return;
-
-    // Skip if badge already has a name
-    const sessionName = pi.getSessionName?.();
-    if (sessionName) return;
-
-    // Emit event so utility can show badge overlay
-    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
-      source: "input-hook",
-    });
-
-    // Send hidden message to LLM to generate session name
-    pi.sendMessage(
-      {
-        customType: "badge-gen",
-        content: [
-          "[System Instruction: Analyze this conversation and generate a concise session title.",
-          "Call the set_session_name tool with a name that is MAXIMUM 5 WORDS.",
-          "The name should capture the main topic or task being worked on.",
-          "Do not explain your reasoning. Just call set_session_name.]",
-        ].join(" "),
-        display: false,
-      },
-      { triggerTurn: true },
-    );
-  });
+  // Note: Badge generation on first message is handled by the utility module.
+  // Kanboard no longer manages badge generation to avoid duplication.
 
   // Register info-screen group
   const globalObj = globalThis as any;

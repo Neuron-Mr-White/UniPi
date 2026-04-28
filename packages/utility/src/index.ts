@@ -2,14 +2,14 @@
  * @pi-unipi/utility — Extension entry
  *
  * Comprehensive utilities suite for Pi coding agent:
- * - Commands: continue, reload, status, cleanup, env, doctor
- * - Tools: ctx_batch, ctx_env
+ * - Commands: continue, reload, status, cleanup, env, doctor, badge
+ * - Tools: ctx_batch, ctx_env, set_session_name
  * - Lifecycle: process management, stale cleanup
  * - Cache: TTL cache with optional persistence
  * - Analytics: lightweight event collection
  * - Diagnostics: cross-module health checks
  * - Display: terminal capabilities, width utilities
- * - TUI: settings inspector pattern
+ * - TUI: settings inspector pattern, name badge
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -24,12 +24,16 @@ import {
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
+import { readBadgeSettings } from "./tui/badge-settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+
+/** Whether we've seen the first user message (for auto badge generation) */
+let firstMessageSeen = false;
 
 /** All commands registered by this module */
 const ALL_COMMANDS = [
@@ -41,10 +45,11 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.DOCTOR,
   UTILITY_COMMANDS.NAME_BADGE,
   UTILITY_COMMANDS.BADGE_GEN,
+  UTILITY_COMMANDS.BADGE_TOGGLE,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
-const ALL_TOOLS = [UTILITY_TOOLS.BATCH, UTILITY_TOOLS.ENV];
+const ALL_TOOLS = [UTILITY_TOOLS.BATCH, UTILITY_TOOLS.ENV, UTILITY_TOOLS.SET_SESSION_NAME];
 
 export default function (pi: ExtensionAPI) {
   // Initialize lifecycle manager
@@ -66,7 +71,7 @@ export default function (pi: ExtensionAPI) {
   registerNameBadgeCommands(pi, nameBadgeState);
 
   // Register tools
-  registerUtilityTools(pi);
+  registerUtilityTools(pi, nameBadgeState);
 
   // Register info-screen group
   registerInfoScreen(pi);
@@ -84,6 +89,42 @@ export default function (pi: ExtensionAPI) {
 
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
+  });
+
+  // First-message hook: auto-generate session name on first user message
+  pi.on("input", async (_event: any, ctx: any) => {
+    // Only trigger on first user message
+    if (firstMessageSeen) return;
+    firstMessageSeen = true;
+
+    // Check if auto generation is enabled
+    const settings = readBadgeSettings();
+    if (!settings.autoGen) return;
+
+    // Skip if badge already has a name
+    const sessionName = pi.getSessionName?.();
+    if (sessionName) return;
+
+    // Get first message text for context
+    const messageText = typeof _event?.content === "string"
+      ? _event.content
+      : Array.isArray(_event?.content)
+        ? _event.content
+            .filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join(" ")
+        : "";
+
+    // Emit event for subagents to spawn background agent
+    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
+      source: "input-hook",
+      conversationSummary: messageText.slice(0, 500),
+    });
+
+    // Show badge overlay if UI available
+    if (ctx?.hasUI && !nameBadgeState.isVisible()) {
+      await nameBadgeState.show(pi, ctx);
+    }
   });
 
   // Listen for badge generation requests from other modules (e.g., kanboard)
@@ -104,6 +145,7 @@ export default function (pi: ExtensionAPI) {
   // Session shutdown cleanup
   pi.on("session_shutdown", async () => {
     nameBadgeState.hide();
+    firstMessageSeen = false;
     await lifecycle.shutdown("session_shutdown");
   });
 }
@@ -111,7 +153,7 @@ export default function (pi: ExtensionAPI) {
 /**
  * Register utility tools.
  */
-function registerUtilityTools(pi: ExtensionAPI): void {
+function registerUtilityTools(pi: ExtensionAPI, nameBadgeState: NameBadgeState): void {
   // ctx_batch — atomic batch execution
   pi.registerTool({
     name: UTILITY_TOOLS.BATCH,
@@ -189,4 +231,53 @@ function registerUtilityTools(pi: ExtensionAPI): void {
       };
     },
   });
+
+  // set_session_name — set the session name for badge display
+  const badgeSettings = readBadgeSettings();
+  if (badgeSettings.agentTool) {
+    pi.registerTool({
+      name: UTILITY_TOOLS.SET_SESSION_NAME,
+      label: "Set Session Name",
+      description:
+        "Set the session name that appears in the badge overlay and session selector. " +
+        "Use this to give the current session a descriptive title. " +
+        "Name should be concise (max 5 words recommended).",
+      promptSnippet: "Set a name/title for the current session.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "The session name to set (max 5 words recommended).",
+          },
+        },
+        required: ["name"],
+      },
+      async execute(_toolCallId, params) {
+        const { name } = params as { name: string };
+        if (!name || typeof name !== "string") {
+          return {
+            content: [{ type: "text", text: "Error: name parameter is required and must be a string." }],
+            details: undefined,
+          };
+        }
+
+        const trimmed = name.trim();
+        if (trimmed.length === 0) {
+          return {
+            content: [{ type: "text", text: "Error: name cannot be empty." }],
+            details: undefined,
+          };
+        }
+
+        // Set the session name
+        nameBadgeState.setSessionName(pi, trimmed);
+
+        return {
+          content: [{ type: "text", text: `Session name set to: "${trimmed}"` }],
+          details: { name: trimmed },
+        };
+      },
+    });
+  }
 }

@@ -6,10 +6,10 @@
 
 /** Status badge labels */
 const BADGE_LABELS: Record<string, string> = {
-  done: "✓ Done",
-  "in-progress": "◐ In Progress",
-  todo: "○ To Do",
-  reviewed: "◉ Reviewed",
+  done: "Done",
+  "in-progress": "In Progress",
+  todo: "To Do",
+  reviewed: "Reviewed",
 };
 
 /**

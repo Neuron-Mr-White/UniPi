@@ -16,11 +16,8 @@ function esc(text: string): string {
 
 /**
  * Render a copy-to-clipboard button.
- *
- * @param text - Text to copy
- * @param label - Optional display label (defaults to text truncated)
  */
 export function renderCopyButton(text: string, label?: string): string {
   const displayLabel = label ?? (text.length > 40 ? text.slice(0, 37) + "..." : text);
-  return `<button class="copy-btn" onclick="copyToClipboard('${esc(text)}', event)" title="${esc(text)}">📋 ${esc(displayLabel)}</button>`;
+  return `<button class="copy-btn" onclick="copyToClipboard('${esc(text)}', event)" title="${esc(text)}" aria-label="Copy ${esc(displayLabel)} to clipboard">${esc(displayLabel)}</button>`;
 }

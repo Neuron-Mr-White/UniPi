@@ -21,6 +21,7 @@ import { cleanupStale, formatCleanupReport } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
 import type { NameBadgeState } from "./tui/name-badge-state.js";
+import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./tui/badge-settings.js";
 
 /** Send a markdown response via pi.sendMessage */
 function sendResponse(pi: ExtensionAPI, markdown: string): void {
@@ -58,9 +59,9 @@ export function registerNameBadgeCommands(
     },
   });
 
-  // ─── /unipi:badge-gen — generate name via LLM ──────────────────────────
+  // ─── /unipi:badge-gen — generate name via background agent ─────────────
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_GEN}`, {
-    description: "Generate session name via LLM and enable badge",
+    description: "Generate session name via background agent and enable badge",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("Badge generation requires an interactive UI.", "warning");
@@ -69,6 +70,29 @@ export function registerNameBadgeCommands(
 
       await state.generate(pi, ctx);
       ctx.ui.notify("Generating session name...", "info");
+    },
+  });
+
+  // ─── /unipi:badge-toggle — configure badge settings ─────────────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_TOGGLE}`, {
+    description: "Configure badge settings (autoGen, badgeEnabled, agentTool)",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      // Parse args: /unipi:badge-settings [key] [on|off]
+      const parts = args.trim().split(/\s+/);
+      if (parts.length >= 2 && parts[0]) {
+        const key = parts[0] as "autoGen" | "badgeEnabled" | "agentTool";
+        const value = parts[1]?.toLowerCase();
+        if ("autoGen|badgeEnabled|agentTool".includes(key)) {
+          const boolValue = value === "on" || value === "true" || value === "1";
+          updateBadgeSetting(key, boolValue);
+          ctx.ui.notify(`Badge ${key} set to ${boolValue}`, "info");
+          return;
+        }
+      }
+
+      // Show current settings
+      const settings = readBadgeSettings();
+      sendResponse(pi, formatBadgeSettings(settings));
     },
   });
 }
