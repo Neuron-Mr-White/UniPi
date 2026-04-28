@@ -120,7 +120,18 @@ function getEnhancedUnipiItems(
     });
   }
 
-  // Sort: boosted package first, then by PACKAGE_ORDER, then alphabetically.
+  // Determine match quality for ranking exact > prefix > fuzzy
+  const getMatchPriority = (cmd: string): number => {
+    const name = isPastUnipiColon
+      ? cmd.replace("unipi:", "").toLowerCase()
+      : cmd.toLowerCase();
+    if (name === query) return 0;        // Exact match
+    if (name.startsWith(query)) return 1; // Prefix match
+    return 2;                              // Fuzzy match
+  };
+
+  // Sort: boosted package first, then exact > prefix > fuzzy,
+  // then by PACKAGE_ORDER, then alphabetically.
   matched.sort((a, b) => {
     const pkgA = a[1];
     const pkgB = b[1];
@@ -131,6 +142,11 @@ function getEnhancedUnipiItems(
       if (aIsBoosted && !bIsBoosted) return -1;
       if (!aIsBoosted && bIsBoosted) return 1;
     }
+
+    // Rank by match quality: exact > prefix > fuzzy
+    const priA = getMatchPriority(a[0]);
+    const priB = getMatchPriority(b[0]);
+    if (priA !== priB) return priA - priB;
 
     const orderA = PACKAGE_ORDER.indexOf(pkgA);
     const orderB = PACKAGE_ORDER.indexOf(pkgB);
@@ -265,9 +281,9 @@ export function createEnchantedProvider(
           : null;
       }
 
-      // Merge: enhanced unipi first (sorted by package), then non-unipi
+      // Merge: system commands first, then enhanced unipi (sorted by package)
       return {
-        items: [...enhancedUnipiItems, ...nonUnipiItems],
+        items: [...nonUnipiItems, ...enhancedUnipiItems],
         prefix: effectivePrefix,
       };
     },
