@@ -119,6 +119,11 @@ export class KanboardServer {
     this.server = null;
   }
 
+  /** Get the docs root directory */
+  getDocsRoot(): string {
+    return this.config.docsRoot;
+  }
+
   /** Try ports in range, return first available */
   private async allocatePort(): Promise<number | null> {
     for (let port = this.config.port; port <= this.config.maxPort; port++) {
@@ -253,27 +258,14 @@ export async function startServer(
   config?: Partial<KanboardConfig>,
 ): Promise<{ server: KanboardServer; port: number; url: string }> {
   const server = new KanboardServer(config);
+  const docsRoot = server.getDocsRoot();
 
-  // Default routes — will be populated by route modules
-  server.route("GET", "/", (_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end("<html><body><h1>Kanboard</h1><p>Under construction</p></body></html>");
-  });
+  // Register route modules
+  const { registerMilestoneRoutes } = await import("./routes/milestone.js");
+  const { registerWorkflowRoutes } = await import("./routes/workflow.js");
 
-  server.route("GET", "/workflow", (_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end("<html><body><h1>Workflow</h1><p>Under construction</p></body></html>");
-  });
-
-  server.route("GET", "/api/milestones", (_req, res) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ items: [] }));
-  });
-
-  server.route("GET", "/api/workflow", (_req, res) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ docs: [] }));
-  });
+  registerMilestoneRoutes(server, docsRoot);
+  registerWorkflowRoutes(server, docsRoot);
 
   server.route("POST", "/api/docs/:type/:file/items/:line", async (req, res) => {
     // Placeholder — will be implemented with actual file updating

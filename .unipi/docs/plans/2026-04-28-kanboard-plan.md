@@ -247,7 +247,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - Collapsible section toggles
 
 ### Task 10 — Milestone Web Page
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Build the milestone page with phases, progress bars, and checklists.
 - **Dependencies:** Task 7, Task 9
 - **Acceptance Criteria:**
@@ -275,7 +275,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - `DELETE /api/milestones/items/:phase/:line` → delete item
 
 ### Task 11 — Workflow Web Page
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Build the workflow page with cards grouped by doc type.
 - **Dependencies:** Task 4-8 (parsers), Task 9
 - **Acceptance Criteria:**
