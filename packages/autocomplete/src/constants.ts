@@ -93,7 +93,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:mcp-settings": "mcp",
   "unipi:mcp-reload":   "mcp",
 
-  // utility (6 commands)
+  // utility (10 commands)
   "unipi:continue":   "utility",
   "unipi:reload":     "utility",
   "unipi:status":     "utility",
@@ -103,6 +103,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:badge-name": "utility",
   "unipi:badge-gen":  "utility",
   "unipi:badge-toggle": "utility",
+  "unipi:badge-settings": "utility",
 
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
@@ -136,10 +137,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:notify-set-tg":    "notify",
   "unipi:notify-test":      "notify",
 
-  // kanboard (4 commands)
+  // kanboard (3 commands)
   "unipi:kanboard":          "kanboard",
   "unipi:kanboard-doctor":   "kanboard",
-  "unipi:kanboard-settings": "kanboard",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -192,7 +192,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:badge-name": "Toggle session name badge overlay",
   "unipi:badge-gen":  "Generate session name via background agent",
   "unipi:badge-toggle": "Configure badge settings (autoGen, badgeEnabled, agentTool)",
-  "unipi:kanboard-settings": "Configure kanboard module settings",
+  "unipi:badge-settings": "Configure badge settings via TUI overlay",
+  "unipi:kanboard":        "Start the kanboard visualization server",
+  "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
 
   "unipi:ask-user-settings": "Configure ask-user settings",
 
@@ -216,9 +218,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-set-gotify": "Set up Gotify push notifications",
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
   "unipi:notify-test":      "Test all enabled notification platforms",
-
-  "unipi:kanboard":        "Start the kanboard visualization server",
-  "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
 
   "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
   "unipi:milestone-update":  "Sync MILESTONES.md with completed work",
