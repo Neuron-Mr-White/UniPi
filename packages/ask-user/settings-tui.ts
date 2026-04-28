@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { getAskUserSettings, saveAskUserSettings, type AskUserSettings } from "./config.js";
 
 /** ANSI escape codes */
@@ -135,12 +135,24 @@ export class AskUserSettingsOverlay implements Component {
    */
   render(width: number): string[] {
     const lines: string[] = [];
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
+    const innerWidth = Math.max(40, width - 2);
+
+    function padVisible(content: string, targetWidth: number): string {
+      const vw = visibleWidth(content);
+      const pad = Math.max(0, targetWidth - vw);
+      return content + " ".repeat(pad);
+    }
+
+    const add = (s: string) => lines.push(`${ansi.cyan}│${ansi.reset}` + padVisible(truncateToWidth(s, innerWidth), innerWidth) + `${ansi.cyan}│${ansi.reset}`);
+    const addEmpty = () => lines.push(`${ansi.cyan}│${ansi.reset}` + " ".repeat(innerWidth) + `${ansi.cyan}│${ansi.reset}`);
+
+    // Top border
+    lines.push(`${ansi.cyan}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
     // Header
     add(`${ansi.bold}${ansi.cyan}Ask User Settings${ansi.reset}`);
     add(`${ansi.dim}Configure how the agent can ask you questions${ansi.reset}`);
-    add("");
+    addEmpty();
 
     // Settings list
     for (let i = 0; i < SETTINGS.length; i++) {
@@ -156,8 +168,11 @@ export class AskUserSettingsOverlay implements Component {
     }
 
     // Footer
-    add("");
+    addEmpty();
     add(`${ansi.dim}↑↓ navigate • Space toggle • Enter save • Esc cancel${ansi.reset}`);
+
+    // Bottom border
+    lines.push(`${ansi.cyan}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
   }

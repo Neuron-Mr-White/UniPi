@@ -5,7 +5,7 @@
  * Uses ctx.ui.custom() callback pattern following question.ts/questionnaire.ts.
  */
 
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -366,31 +366,42 @@ export function renderAskUI(params: {
       if (cachedLines) return cachedLines;
 
       const lines: string[] = [];
-      const add = (s: string) => lines.push(truncateToWidth(s, width));
+      const innerWidth = Math.max(40, width - 2);
+      const border = (s: string) => theme.fg("accent", s);
 
-      add(theme.fg("accent", "─".repeat(width)));
+      function padVisible(content: string, targetWidth: number): string {
+        const vw = visibleWidth(content);
+        const pad = Math.max(0, targetWidth - vw);
+        return content + " ".repeat(pad);
+      }
+
+      const add = (s: string) => lines.push(border("│") + padVisible(truncateToWidth(s, innerWidth), innerWidth) + border("│"));
+      const addEmpty = () => lines.push(border("│") + " ".repeat(innerWidth) + border("│"));
+
+      // Top border
+      lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
 
       // Context
       if (context) {
         add(theme.fg("muted", ` ${context}`));
-        lines.push("");
+        addEmpty();
       }
 
       // Question
       add(theme.fg("text", ` ${question}`));
-      lines.push("");
+        addEmpty();
 
       // Options (editor is now inline with freeform option)
-      renderOptions(lines, add, theme, width);
+      renderOptions(lines, add, theme, innerWidth);
 
       // Timeout countdown
       if (timeout && remainingMs !== undefined && remainingMs > 0) {
-        lines.push("");
+        addEmpty();
         const secs = Math.ceil(remainingMs / 1000);
         add(theme.fg("dim", ` ⏱ ${secs}s remaining`));
       }
 
-      lines.push("");
+      addEmpty();
       if (editMode) {
         add(theme.fg("dim", " Enter to confirm text • Esc to cancel text input"));
       } else if (allowMultiple) {
@@ -419,7 +430,9 @@ export function renderAskUI(params: {
           add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
         }
       }
-      add(theme.fg("accent", "─".repeat(width)));
+
+      // Bottom border
+      lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
 
       cachedLines = lines;
       return lines;
