@@ -61,7 +61,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   2. Run typecheck
 
 ### Task 3 — HTTP Server with Port Allocation
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Implement the HTTP server with port allocation, PID management, and graceful shutdown.
 - **Dependencies:** Task 2
 - **Acceptance Criteria:**
