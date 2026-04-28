@@ -5,7 +5,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MILESTONE_COMMANDS, MILESTONE_DIRS } from "@pi-unipi/core";
+import { UNIPI_PREFIX, MILESTONE_COMMANDS, MILESTONE_DIRS } from "@pi-unipi/core";
 import { parseMilestones } from "./milestone.js";
 import * as path from "node:path";
 
@@ -14,7 +14,7 @@ import * as path from "node:path";
  */
 export function registerCommands(pi: ExtensionAPI): void {
   // milestone-onboard — create milestones from existing work
-  pi.registerCommand(MILESTONE_COMMANDS.ONBOARD, {
+  pi.registerCommand(`${UNIPI_PREFIX}${MILESTONE_COMMANDS.ONBOARD}`, {
     description: "Create MILESTONES.md from existing workflow docs — scan, propose, refine, write",
     handler: async (_args: string, ctx: any) => {
       ctx.ui.notify(
@@ -34,7 +34,7 @@ export function registerCommands(pi: ExtensionAPI): void {
   });
 
   // milestone-update — sync milestones with completed work
-  pi.registerCommand(MILESTONE_COMMANDS.UPDATE, {
+  pi.registerCommand(`${UNIPI_PREFIX}${MILESTONE_COMMANDS.UPDATE}`, {
     description: "Sync MILESTONES.md with completed work — scan docs, diff checkboxes, auto-update",
     handler: async (_args: string, ctx: any) => {
       ctx.ui.notify(
