@@ -149,7 +149,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Listen for ralph module ready event
-  pi.on(UNIPI_EVENTS.MODULE_READY as any, (event: any) => {
+  pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
     if (event?.name === MODULES.RALPH) {
       ralphDetected = true;
     }

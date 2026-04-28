@@ -70,6 +70,9 @@ export default function (pi: ExtensionAPI) {
   // Initialize name badge state
   const nameBadgeState = new NameBadgeState();
 
+  // Capture session context for cross-event use
+  let capturedCtx: any = null;
+
   // Register commands
   registerUtilityCommands(pi);
   registerNameBadgeCommands(pi, nameBadgeState);
@@ -82,6 +85,7 @@ export default function (pi: ExtensionAPI) {
 
   // Session lifecycle — announce module + restore badge
   pi.on("session_start", async (_event, ctx) => {
+    capturedCtx = ctx;
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.UTILITY,
       version: VERSION,
@@ -141,10 +145,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Listen for badge generation requests from other modules (e.g., kanboard)
-  pi.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST as any, async (_event: any, ctx: any) => {
+  pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (_event: any) => {
     // Show badge overlay if not already visible
-    if (!nameBadgeState.isVisible() && ctx?.hasUI) {
-      await nameBadgeState.show(pi, ctx);
+    if (!nameBadgeState.isVisible() && capturedCtx?.hasUI) {
+      await nameBadgeState.show(pi, capturedCtx);
     }
   });
 

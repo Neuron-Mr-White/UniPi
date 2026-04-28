@@ -349,7 +349,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Listen for badge generation requests — spawn background agent
-  pi.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST as any, async (event: any) => {
+  pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (event: any) => {
     if (!sessionCtx) return;
 
     const summary = event?.conversationSummary ?? "";
