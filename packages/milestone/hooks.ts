@@ -199,13 +199,9 @@ export function registerSessionEndHook(pi: ExtensionAPI): void {
 
       const completions = extractNewCompletions(filePath, baseline);
       for (const { text, phase } of completions) {
-        // Try exact match update
-        const updated = updateItemStatus(milestonesPath, phase, text, true);
-        if (!updated) {
-          console.warn(
-            `[milestone] Could not auto-update "${text}" in phase "${phase}" — no exact match found`,
-          );
-        }
+        // Try exact match update — silently skip items that don't match
+        // milestones (e.g. internal spec checklists with " — covered in Task N" suffixes)
+        updateItemStatus(milestonesPath, phase, text, true);
       }
     }
   });
