@@ -97,7 +97,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
 ## Phase 2: Parsers
 
 ### Task 4 — Parser Interface + Registry
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Create the parser interface, registry, and base utilities.
 - **Dependencies:** Task 2
 - **Acceptance Criteria:**
