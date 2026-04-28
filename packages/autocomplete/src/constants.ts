@@ -92,12 +92,14 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:mcp-reload":   "mcp",
 
   // utility (6 commands)
-  "unipi:continue": "utility",
-  "unipi:reload":   "utility",
-  "unipi:status":   "utility",
-  "unipi:cleanup":  "utility",
-  "unipi:env":      "utility",
-  "unipi:doctor":   "utility",
+  "unipi:continue":   "utility",
+  "unipi:reload":     "utility",
+  "unipi:status":     "utility",
+  "unipi:cleanup":    "utility",
+  "unipi:env":        "utility",
+  "unipi:doctor":     "utility",
+  "unipi:name-badge": "utility",
+  "unipi:badge-gen":  "utility",
 
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
@@ -173,12 +175,14 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:mcp-settings": "Configure MCP settings",
   "unipi:mcp-reload":   "Reload MCP connections",
 
-  "unipi:continue": "Continue the last conversation",
-  "unipi:reload":   "Reload extensions and settings",
-  "unipi:status":   "Show system status",
-  "unipi:cleanup":  "Clean up old sessions and cache",
-  "unipi:env":      "Show environment info",
-  "unipi:doctor":   "Run diagnostics",
+  "unipi:continue":   "Continue the last conversation",
+  "unipi:reload":     "Reload extensions and settings",
+  "unipi:status":     "Show system status",
+  "unipi:cleanup":    "Clean up old sessions and cache",
+  "unipi:env":        "Show environment info",
+  "unipi:doctor":     "Run diagnostics",
+  "unipi:name-badge": "Toggle session name badge overlay",
+  "unipi:badge-gen":  "Generate session name via LLM",
 
   "unipi:ask-user-settings": "Configure ask-user settings",
 
