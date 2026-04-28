@@ -24,6 +24,8 @@ pi install npm:@pi-unipi/notify
 pi install npm:@pi-unipi/utility
 pi install npm:@pi-unipi/mcp
 pi install npm:@pi-unipi/ask-user
+pi install npm:@pi-unipi/milestone
+pi install npm:@pi-unipi/kanboard
 ```
 
 ## Packages
@@ -43,6 +45,8 @@ pi install npm:@pi-unipi/ask-user
 | `@pi-unipi/utility` | Environment info, diagnostics, settings inspector, cleanup |
 | `@pi-unipi/mcp` | MCP server discovery, connection, and tool integration |
 | `@pi-unipi/ask-user` | Structured user input with options and freeform text |
+| `@pi-unipi/milestone` | Milestone tracking and project progress management |
+| `@pi-unipi/kanboard` | Kanboard visualization server with TUI overlay |
 
 ## Commands
 
@@ -152,6 +156,9 @@ pi install npm:@pi-unipi/ask-user
 | `/unipi:status` | Show module status |
 | `/unipi:cleanup` | Clean stale temp files |
 | `/unipi:reload` | Reload extensions |
+| `/unipi:name-badge` | Toggle session name badge overlay |
+| `/unipi:badge-gen` | Generate session name via background agent |
+| `/unipi:badge-toggle` | Configure badge settings |
 
 ### MCP (`/unipi:mcp-*`)
 
@@ -191,6 +198,24 @@ pi install npm:@pi-unipi/ask-user
 | `ctx_fetch_and_index` | compactor | Fetch and index web content |
 | `ctx_stats` | compactor | Show compaction statistics |
 | `ctx_doctor` | compactor | Diagnose compactor issues |
+| `set_session_name` | utility | Set session name for badge display |
+| `ctx_batch` | utility | Atomic batch execution with rollback |
+| `ctx_env` | utility | Show environment information |
+
+### Milestone (`/unipi:milestone-*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:milestone-onboard` | Create MILESTONES.md from existing workflow docs |
+| `/unipi:milestone-update` | Sync MILESTONES.md with completed work |
+
+### Kanboard (`/unipi:kanboard*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:kanboard` | Toggle kanboard visualization server |
+| `/unipi:kanboard-doctor` | Diagnose and fix kanboard parser issues |
+| `/unipi:name-gen` | Generate session name badge via background agent |
 
 ## How It Works
 
@@ -219,6 +244,10 @@ pi install npm:@pi-unipi/ask-user
 **MCP** integrates Model Context Protocol servers — discover, connect, and use external tool servers seamlessly.
 
 **Ask User** provides structured user input with multiple-choice, multi-select, and freeform text options.
+
+**Milestone** tracks project progress with MILESTONES.md — onboards existing work and syncs with completed tasks.
+
+**Kanboard** provides a visualization server with htmx + Alpine.js UI for kanban boards, workflow timelines, and milestone progress. Includes a TUI overlay for quick access.
 
 ## Module Discovery
 
