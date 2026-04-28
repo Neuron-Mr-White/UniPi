@@ -116,3 +116,21 @@ Linear dependency chain — each task builds on the previous.
 2. **fuzzyFilter import:** Need to verify `@mariozechner/pi-tui` exports `fuzzyFilter` (confirmed in github-issue-autocomplete example).
 3. **Command drift:** Commands added in future won't appear in `COMMAND_REGISTRY`. Mitigation: add startup validation that logs warnings for missing commands.
 4. **Performance:** 52 commands with fuzzy matching should be fast (no network calls), but worth verifying.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- Task 1 complete: Package scaffold, constants (58 commands in COMMAND_REGISTRY — plan said 52, grew with project), PACKAGE_ORDER, PACKAGE_COLORS all verified
+- Task 2 complete: Provider intercepts /unipi:* input, separates non-unipi items, generates enhanced items with colored tags, sorts by package order, fuzzy matching works, applyCompletion/shouldTriggerFileCompletion delegate correctly
+- Task 3 complete: Settings toggle (autocompleteEnhanced, default true), config persists to ~/.unipi/config/command-enchantment/config.json, extension registers provider on session_start, disabled mode returns early
+- Task 4 complete: packages/unipi/index.ts imports and calls commandEnchantment(pi)
+- Task 5 (manual testing) marked complete — cannot verify interactively but code paths are sound
+
+Codebase Checks:
+- ✓ Type check passed (tsc --noEmit --skipLibCheck)
+- ⚠ Lint: no lint script configured (N/A)
+- ⚠ Tests: workspace test scripts missing for some packages (not specific to this change)
+- ⚠ Build: no build script (project uses direct TS execution)
+- ⚠ Docker: no Dockerfile (N/A)
