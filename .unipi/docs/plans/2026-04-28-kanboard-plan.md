@@ -220,7 +220,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
 ## Phase 3: Web UI
 
 ### Task 9 — Shared HTML Layout
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Build the base HTML layout with htmx + Alpine.js.
 - **Dependencies:** Task 3
 - **Acceptance Criteria:**
