@@ -75,6 +75,12 @@ export default function (pi: ExtensionAPI) {
     projectStorage = new MemoryStorage(projectName);
     try {
       projectStorage.init();
+      
+      // Sync any orphaned markdown files into the database
+      const synced = projectStorage.syncOrphanedFiles();
+      if (synced > 0) {
+        console.warn(`[unipi/memory] Synced ${synced} orphaned memory files into database`);
+      }
     } catch (err) {
       console.warn("[unipi/memory] Failed to initialize storage, running without memory:", (err as any)?.message ?? err);
       projectStorage = null;

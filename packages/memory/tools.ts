@@ -72,10 +72,28 @@ export function registerMemoryTools(
       const storage = getStorage();
       onActivity?.(); // Mark store as done for lifecycle
 
-      // Check if similar memory exists
+      // Step 1: Check for exact duplicate
       const existing = storage.getByTitle(params.title);
       if (existing) {
-        // Update existing
+        // Exact match found — check if content is also the same
+        const isSameContent = existing.content.trim() === params.content.trim();
+        
+        if (isSameContent) {
+          // Duplicate with same content — gentle error asking to read first
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⚠️ Memory already exists with this title and content: "${params.title}"\n\n` +
+                      `Please read the existing memory first using memory_search before saving.\n` +
+                      `If you want to update it, provide new or modified content.`,
+              },
+            ],
+            details: { action: "duplicate_detected", id: existing.id },
+          };
+        }
+
+        // Same title but different content — update existing
         const updated: MemoryRecord = {
           ...existing,
           content: params.content,
@@ -102,7 +120,50 @@ export function registerMemoryTools(
         };
       }
 
-      // Create new memory
+      // Step 2: Check for similar memories
+      const similarMemories = storage.findSimilarByTitle(params.title, 0.6);
+      
+      if (similarMemories.length > 0) {
+        // Found similar memories — save but notify
+        const similarList = similarMemories
+          .slice(0, 3)
+          .map(s => `  - "${s.record.title}" (${Math.round(s.similarity * 100)}% similar)`)
+          .join("\n");
+
+        // Create new memory
+        const record: MemoryRecord = {
+          id: "",
+          title: params.title,
+          content: params.content,
+          tags: params.tags || [],
+          project: getProjectName(ctx.cwd),
+          type: (params.type as MemoryRecord["type"]) || "summary",
+          created: "",
+          updated: "",
+        };
+
+        const embedding = await generateEmbedding(
+          params.title + " " + params.content,
+          pi
+        );
+        record.embedding = embedding;
+
+        storage.store(record);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Stored memory: ${params.title}\n\n` +
+                    `⚠️ Similar memories found:\n${similarList}\n\n` +
+                    `Consider reviewing these to avoid redundancy.`,
+            },
+          ],
+          details: { action: "created_with_similar", id: record.id, similar: similarMemories.map(s => s.record.id) },
+        };
+      }
+
+      // Step 3: No duplicates or similar — create new memory
       const record: MemoryRecord = {
         id: "",
         title: params.title,

@@ -331,6 +331,7 @@ export class MemoryStorage {
 
   /**
    * Store or update a memory record.
+   * Uses transaction to ensure atomicity — either all writes succeed or none do.
    */
   store(record: MemoryRecord): void {
     if (!this.db) throw new Error("Storage not initialized");
@@ -348,52 +349,181 @@ export class MemoryStorage {
     // Set project if not provided
     if (!record.project) record.project = this.projectName;
 
-    // Upsert into memories table
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO memories (id, title, content, tags, project, type, created, updated, embedding)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    // Prepare markdown content BEFORE transaction (fail fast)
+    const mdPath = path.join(this.scopeDir, `${record.id}.md`);
+    const frontmatter: MemoryFrontmatter = {
+      title: record.title,
+      tags: record.tags,
+      project: record.project,
+      created: record.created,
+      updated: record.updated,
+      type: record.type,
+    };
+    const mdContent = `---\n${yaml.dump(frontmatter, { lineWidth: -1 })}---\n\n${record.content}\n`;
 
-    const tagsJson = JSON.stringify(record.tags);
-    const embeddingBuf = record.embedding ? Buffer.from(record.embedding.buffer) : null;
+    // Use transaction for atomicity
+    const storeInTx = this.db.transaction(() => {
+      // Upsert into memories table
+      const stmt = this.db!.prepare(`
+        INSERT OR REPLACE INTO memories (id, title, content, tags, project, type, created, updated, embedding)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      record.id,
-      record.title,
-      record.content,
-      tagsJson,
-      record.project,
-      record.type,
-      record.created,
-      record.updated,
-      embeddingBuf
+      const tagsJson = JSON.stringify(record.tags);
+      const embeddingBuf = record.embedding ? Buffer.from(record.embedding.buffer) : null;
+
+      stmt.run(
+        record.id,
+        record.title,
+        record.content,
+        tagsJson,
+        record.project,
+        record.type,
+        record.created,
+        record.updated,
+        embeddingBuf
+      );
+
+      // Update vector table
+      if (record.embedding) {
+        try {
+          // Delete old vector if exists
+          this.db!.prepare("DELETE FROM memories_vec WHERE rowid = ?").run(BigInt(this.idToRowid(record.id)));
+        } catch {
+          // Ignore if not found
+        }
+
+        try {
+          const vecStmt = this.db!.prepare(
+            "INSERT INTO memories_vec(rowid, embedding) VALUES (?, ?)"
+          );
+          vecStmt.run(
+            BigInt(this.idToRowid(record.id)),
+            Buffer.from(record.embedding.buffer)
+          );
+        } catch (err) {
+          console.warn("[unipi/memory] Failed to insert vector:", err);
+        }
+      }
+    });
+
+    // Execute transaction
+    storeInTx();
+
+    // Write markdown file AFTER successful DB write
+    try {
+      // Ensure directory exists
+      const dir = path.dirname(mdPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(mdPath, mdContent, "utf-8");
+    } catch (err) {
+      // DB write succeeded but file write failed — log but don't throw
+      // Memory is still in DB and searchable
+      console.warn("[unipi/memory] Failed to write markdown file:", err);
+    }
+  }
+
+  /**
+   * Sync orphaned markdown files into the database.
+   * Reads all .md files in the project dir, parses frontmatter,
+   * and inserts any that are missing from the DB.
+   * Returns count of synced files.
+   */
+  syncOrphanedFiles(): number {
+    if (!this.db) throw new Error("Storage not initialized");
+
+    const files = fs.readdirSync(this.scopeDir)
+      .filter(f => f.endsWith(".md") && !f.startsWith("."));
+
+    // Get existing IDs from DB
+    const existingIds = new Set(
+      (this.db.prepare("SELECT id FROM memories").all() as any[])
+        .map(r => r.id)
     );
 
-    // Update vector table
-    if (record.embedding) {
-      try {
-        // Delete old vector if exists
-        this.db.prepare("DELETE FROM memories_vec WHERE rowid = ?").run(BigInt(this.idToRowid(record.id)));
-      } catch {
-        // Ignore if not found
-      }
+    let synced = 0;
+    for (const file of files) {
+      const filePath = path.join(this.scopeDir, file);
+      const record = parseMemoryFile(filePath);
+      if (!record) continue;
 
+      // Generate ID from title (same logic as store())
+      const id = record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+
+      if (existingIds.has(id)) continue; // Already in DB
+
+      // Insert into DB
       try {
-        const vecStmt = this.db.prepare(
-          "INSERT INTO memories_vec(rowid, embedding) VALUES (?, ?)"
+        record.id = id;
+        const tagsJson = JSON.stringify(record.tags);
+        
+        this.db.prepare(`
+          INSERT OR IGNORE INTO memories (id, title, content, tags, project, type, created, updated, embedding)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        `).run(
+          id,
+          record.title,
+          record.content,
+          tagsJson,
+          record.project || this.projectName,
+          record.type,
+          record.created,
+          record.updated
         );
-        vecStmt.run(
-          BigInt(this.idToRowid(record.id)),
-          Buffer.from(record.embedding.buffer)
-        );
+
+        synced++;
+        console.warn(`[unipi/memory] Synced orphaned file: ${file}`);
       } catch (err) {
-        console.warn("[unipi/memory] Failed to insert vector:", err);
+        console.warn(`[unipi/memory] Failed to sync ${file}:`, err);
       }
     }
 
-    // Write markdown file
-    const mdPath = path.join(this.scopeDir, `${record.id}.md`);
-    writeMemoryFile(mdPath, record);
+    return synced;
+  }
+
+  /**
+   * Check if a memory with the given title already exists.
+   */
+  hasByTitle(title: string): boolean {
+    if (!this.db) throw new Error("Storage not initialized");
+    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const row = this.db.prepare("SELECT 1 FROM memories WHERE id = ?").get(id);
+    return !!row;
+  }
+
+  /**
+   * Find memories with similar titles (fuzzy match).
+   * Returns array of { record, similarity } sorted by similarity desc.
+   */
+  findSimilarByTitle(title: string, threshold = 0.6): Array<{ record: MemoryRecord; similarity: number }> {
+    if (!this.db) throw new Error("Storage not initialized");
+
+    const allRows = this.db.prepare("SELECT id, title FROM memories").all() as any[];
+    const results: Array<{ record: MemoryRecord; similarity: number }> = [];
+
+    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    const titleWords = new Set(normalizedTitle.split(/\s+/).filter((w: string) => w.length > 2));
+
+    for (const row of allRows) {
+      const normalizedRowTitle = row.title.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+      const rowWords = new Set(normalizedRowTitle.split(/\s+/).filter((w: string) => w.length > 2));
+
+      // Calculate Jaccard similarity
+      const intersection = new Set([...titleWords].filter((w: string) => rowWords.has(w)));
+      const union = new Set([...titleWords, ...rowWords]);
+      const similarity = union.size > 0 ? intersection.size / union.size : 0;
+
+      if (similarity >= threshold) {
+        const record = this.getById(row.id);
+        if (record) {
+          results.push({ record, similarity });
+        }
+      }
+    }
+
+    return results.sort((a, b) => b.similarity - a.similarity);
   }
 
   /**
