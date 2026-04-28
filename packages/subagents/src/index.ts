@@ -179,6 +179,16 @@ export default function (pi: ExtensionAPI) {
         );
       }
 
+      // Badge generation: extract name from agent result and set directly
+      if (record.description === "Generate session name" && record.result && record.status === "completed") {
+        const name = record.result.split("\n")[0]?.trim().slice(0, 50) ?? "";
+        if (name && !name.startsWith("Error") && !name.includes("error")) {
+          try {
+            pi.setSessionName(name);
+          } catch { /* best effort */ }
+        }
+      }
+
       pi.events.emit("subagents:completed", {
         id: record.id,
         type: record.type,
@@ -344,8 +354,8 @@ export default function (pi: ExtensionAPI) {
 
     const summary = event?.conversationSummary ?? "";
     const prompt = summary
-      ? `Generate a concise session title (MAX 5 WORDS) for this conversation:\n\n"${summary}"\n\nCall the set_session_name tool with the name. Do not explain.`
-      : `Generate a concise session title (MAX 5 WORDS) for the current session. Call the set_session_name tool. Do not explain.`;
+      ? `Generate a concise session title (MAX 5 WORDS) for this conversation:\n\n"${summary}"\n\nReply with ONLY the title. No quotes, no explanation, no punctuation.`
+      : `Generate a concise session title (MAX 5 WORDS) for the current session. Reply with ONLY the title. No quotes, no explanation, no punctuation.`;
 
     // Try with configured model, fallback to inherit
     let modelInput: string | undefined = undefined;

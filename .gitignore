@@ -8,3 +8,4 @@ dist/
 .unipi/worktrees/
 .unipi/memory/
 .pi/
+.unipi/config/
