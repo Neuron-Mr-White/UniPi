@@ -45,7 +45,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   7. Run typecheck
 
 ### Task 2 — Types
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Define TypeScript interfaces for parser and server types.
 - **Dependencies:** Task 1
 - **Acceptance Criteria:**
