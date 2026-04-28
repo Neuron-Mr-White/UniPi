@@ -1,0 +1,50 @@
+{
+  "name": "@pi-unipi/milestone",
+  "version": "0.1.0",
+  "description": "Lifecycle layer for project-level goals — MILESTONES.md tracking, session hooks, auto-sync",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/milestone"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "milestone",
+    "goals",
+    "progress"
+  ],
+  "files": [
+    "*.ts",
+    "skills/**/*",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "index.ts"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.0"
+  }
+}
