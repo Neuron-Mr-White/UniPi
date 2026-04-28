@@ -20,6 +20,7 @@ export const PACKAGE_ORDER: string[] = [
   "workflow",
   "ralph",
   "memory",
+  "milestone",
   "mcp",
   "utility",
   "ask-user",
@@ -35,6 +36,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   workflow:  `${ESC}[91m`, // Bright Red
   ralph:     `${ESC}[33m`, // Yellow/Orange
   memory:    `${ESC}[93m`, // Bright Yellow
+  milestone: `${ESC}[32m`, // Green
   mcp:       `${ESC}[32m`, // Green
   utility:   `${ESC}[36m`, // Cyan
   "ask-user": `${ESC}[94m`, // Bright Blue
@@ -119,6 +121,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-search":  "compact",
   "unipi:compact-purge":   "compact",
 
+  // milestone (2 commands)
+  "unipi:milestone-onboard": "milestone",
+  "unipi:milestone-update":  "milestone",
+
   // notify (4 commands)
   "unipi:notify-settings":  "notify",
   "unipi:notify-set-gotify": "notify",
@@ -196,6 +202,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-set-gotify": "Set up Gotify push notifications",
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
   "unipi:notify-test":      "Test all enabled notification platforms",
+
+  "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
+  "unipi:milestone-update":  "Sync MILESTONES.md with completed work",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────
@@ -204,6 +213,7 @@ export const PACKAGE_LABELS: Record<string, string> = {
   workflow:  "workflow",
   ralph:     "ralph",
   memory:    "memory",
+  milestone: "milestone",
   mcp:       "mcp",
   utility:   "utility",
   "ask-user": "ask-user",

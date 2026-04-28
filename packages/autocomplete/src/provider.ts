@@ -52,6 +52,7 @@ function detectNamespaceBoost(query: string): string | null {
     workflow: "workflow",
     ralph: "ralph",
     memory: "memory",
+    milestone: "milestone",
     mcp: "mcp",
     utility: "utility",
     "ask-user": "ask-user",
@@ -61,6 +62,8 @@ function detectNamespaceBoost(query: string): string | null {
     notify: "notify",
     // Unambiguous short aliases
     mem: "memory",
+    ms: "milestone",
+    goal: "milestone",
     util: "utility",
     web: "web-api",
     notification: "notify",
