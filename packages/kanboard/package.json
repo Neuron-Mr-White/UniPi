@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Visualization layer for unipi workflow — HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
   "type": "module",
   "license": "MIT",

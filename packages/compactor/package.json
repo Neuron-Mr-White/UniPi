@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, FTS5 search, and tool display optimization",
   "type": "module",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/command-enchantment",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Enhanced TUI autocomplete for /unipi:* commands — colored, sorted, and grouped by package",
   "type": "module",
   "license": "MIT",
