@@ -11,7 +11,6 @@ import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
-import { loadConfig } from "./settings.js";
 
 /** Built-in event definitions — maps event key to pi hook + display label */
 export const BUILTIN_EVENTS: Record<
@@ -25,9 +24,6 @@ export const BUILTIN_EVENTS: Record<
   memory_consolidated: { hook: UNIPI_EVENTS.MEMORY_CONSOLIDATED, label: "Memory Saved" },
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
 };
-
-/** Stores registered listener cleanup functions */
-const cleanupFns: Array<() => void> = [];
 
 /**
  * Register event listeners for all enabled notification events.
@@ -49,9 +45,6 @@ export function registerEventListeners(
     };
 
     (pi as any).on(def.hook, handler);
-    cleanupFns.push(() => {
-      (pi as any).off(def.hook, handler);
-    });
   }
 
   // Listen for dynamic module events
@@ -63,18 +56,10 @@ export function registerEventListeners(
     }
   };
   (pi as any).on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
-  cleanupFns.push(() => {
-    (pi as any).off(UNIPI_EVENTS.MODULE_READY, moduleHandler);
-  });
 }
 
-/** Remove all registered event listeners */
-export function unregisterEventListeners(): void {
-  for (const cleanup of cleanupFns) {
-    cleanup();
-  }
-  cleanupFns.length = 0;
-}
+/** No-op — cleanup handled by session teardown */
+export function unregisterEventListeners(): void {}
 
 /**
  * Dispatch a notification to the configured platforms.
