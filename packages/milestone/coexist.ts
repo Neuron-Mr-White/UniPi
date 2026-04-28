@@ -49,12 +49,8 @@ export function onBrainstormComplete(specPath: string): void {
   }
 
   if (matched.length > 0) {
-    console.log(
-      `[milestone] Brainstorm spec contains items that map to milestones: ${matched.join(", ")}`,
-    );
-    console.log(
-      `[milestone] Run /unipi:milestone-update to sync after completing work.`,
-    );
+    // Removed console.log — milestone matches are informational.
+    // Use /unipi:milestone-update to sync manually.
   }
 }
 
@@ -101,9 +97,7 @@ export function onPlanComplete(planPath: string): void {
   }
 
   if (matched.length > 0) {
-    console.log(
-      `[milestone] Plan covers milestone items: ${matched.join(", ")}`,
-    );
+    // Removed console.log — plan-milestone matches are informational.
   }
 }
 
@@ -116,8 +110,5 @@ export function onConsolidate(): void {
 
   if (!tryRead(milestonesPath)) return;
 
-  // Just log that milestone sync was handled by session_shutdown hook
-  console.log(
-    `[milestone] Milestone progress was auto-synced during session shutdown.`,
-  );
+  // Removed console.log — milestone auto-sync is silent.
 }

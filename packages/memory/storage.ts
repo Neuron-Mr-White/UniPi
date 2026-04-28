@@ -222,9 +222,8 @@ export class MemoryStorage {
           // Do NOT delete the DB: another session may have it open
           // and deleting open files on WSL/Windows is unsafe.
           const delayMs = 50 * Math.pow(2, attempt - 1); // 50, 100, 200, 400
-          console.warn(
-            `[unipi/memory] Transient error on attempt ${attempt}/${maxRetries}, retrying in ${delayMs}ms...`
-          );
+          // Removed console.warn — transient retries are normal during concurrent access.
+          // Memory availability visible via info-screen memory group.
           const end = Date.now() + delayMs;
           while (Date.now() < end) { /* busy wait */ }
           continue;
@@ -233,10 +232,7 @@ export class MemoryStorage {
         // Either non-transient error, or retries exhausted.
         // Log and throw — this session will run without memory.
         if (isTransient) {
-          console.warn(
-            "[unipi/memory] Could not open database after retries. " +
-            "Another session may have the DB locked. Memory unavailable this session."
-          );
+          // Removed console.warn — memory unavailable status visible via info-screen.
         }
         throw err;
       }
@@ -256,8 +252,8 @@ export class MemoryStorage {
     // Load sqlite-vec extension
     try {
       sqliteVec.load(this.db);
-    } catch (err) {
-      console.warn("[unipi/memory] Failed to load sqlite-vec, fuzzy-only mode:", err);
+    } catch (_err) {
+      // sqlite-vec unavailable — fuzzy-only mode. Silent startup.
     }
 
     // Create tables
@@ -308,7 +304,7 @@ export class MemoryStorage {
       try {
         if (fs.existsSync(file)) {
           fs.unlinkSync(file);
-          console.warn(`[unipi/memory] Removed corrupted file: ${file}`);
+          // Removed console.warn — corrupted file cleanup is silent.
         }
       } catch {
         // Ignore removal errors
@@ -401,8 +397,8 @@ export class MemoryStorage {
             BigInt(this.idToRowid(record.id)),
             Buffer.from(record.embedding.buffer)
           );
-        } catch (err) {
-          console.warn("[unipi/memory] Failed to insert vector:", err);
+        } catch (_err) {
+          // Vector insert failure — memory still searchable via text/FTS.
         }
       }
     });
@@ -418,10 +414,8 @@ export class MemoryStorage {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(mdPath, mdContent, "utf-8");
-    } catch (err) {
-      // DB write succeeded but file write failed — log but don't throw
-      // Memory is still in DB and searchable
-      console.warn("[unipi/memory] Failed to write markdown file:", err);
+    } catch (_err) {
+      // DB write succeeded but file write failed — memory still in DB and searchable.
     }
   }
 
@@ -474,9 +468,9 @@ export class MemoryStorage {
         );
 
         synced++;
-        console.warn(`[unipi/memory] Synced orphaned file: ${file}`);
-      } catch (err) {
-        console.warn(`[unipi/memory] Failed to sync ${file}:`, err);
+        // Removed console.warn — orphaned file sync is silent.
+      } catch (_err) {
+        // Sync failure — file remains as standalone markdown.
       }
     }
 

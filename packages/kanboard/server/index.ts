@@ -81,7 +81,7 @@ export class KanboardServer {
     // Check for existing instance
     const existing = this.checkExistingInstance();
     if (existing) {
-      console.log(`[kanboard] Existing instance detected at ${existing}`);
+      // Removed console.log — existing instance detection is silent.
     }
 
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -98,7 +98,7 @@ export class KanboardServer {
 
     // Graceful shutdown
     const shutdown = () => {
-      console.log("[kanboard] Shutting down...");
+      // Removed console.log — shutdown is silent.
       this.server?.close(() => {
         this.removePidFile();
         process.exit(0);
@@ -108,7 +108,7 @@ export class KanboardServer {
     process.on("SIGTERM", shutdown);
 
     const url = `http://localhost:${port}`;
-    console.log(`[kanboard] Server running at ${url}`);
+    // Removed console.log — server URL visible via /unipi:kanboard or info-screen.
     return { port, url };
   }
 
@@ -132,7 +132,7 @@ export class KanboardServer {
         return port;
       } catch (err: any) {
         if (err.code === "EADDRINUSE") {
-          console.log(`[kanboard] Port ${port} in use, trying next...`);
+          // Removed console.log — port allocation is silent.
           continue;
         }
         throw err;
@@ -236,8 +236,8 @@ export class KanboardServer {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(this.config.pidFile, String(process.pid));
-    } catch (err: any) {
-      console.warn(`[kanboard] Could not write PID file: ${err.message}`);
+    } catch (_err: any) {
+      // PID write failure — non-critical, kanboard still works.
     }
   }
 

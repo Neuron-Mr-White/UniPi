@@ -107,9 +107,7 @@ export class ServerRegistry {
             safeEnv[k] = typeof v === "string" ? v : String(v);
           }
         } else {
-          console.error(
-            `[MCP] Server '${name}': env is not an object (${typeof def.env}), skipping env vars`,
-          );
+          // Env config invalid — silently skip env vars.
         }
       }
 

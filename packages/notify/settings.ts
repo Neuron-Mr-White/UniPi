@@ -50,11 +50,8 @@ export function loadConfig(): NotifyConfig {
       // Merge with defaults to ensure new fields are present
       return mergeWithDefaults(parsed);
     }
-  } catch (err) {
-    console.warn(
-      `[notify] Failed to load config from ${configPath}, using defaults:`,
-      err
-    );
+  } catch (_err) {
+    // Config load failure — using defaults silently.
   }
   return { ...DEFAULT_CONFIG };
 }

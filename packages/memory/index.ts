@@ -78,11 +78,10 @@ export default function (pi: ExtensionAPI) {
       
       // Sync any orphaned markdown files into the database
       const synced = projectStorage.syncOrphanedFiles();
-      if (synced > 0) {
-        console.warn(`[unipi/memory] Synced ${synced} orphaned memory files into database`);
-      }
-    } catch (err) {
-      console.warn("[unipi/memory] Failed to initialize storage, running without memory:", (err as any)?.message ?? err);
+      // Removed console.warn — orphaned file sync is informational only.
+      // Visible via memory tool list or info-screen memory group.
+    } catch (_err) {
+      // Memory init failure — running without memory. Silent startup.
       projectStorage = null;
     }
 
@@ -113,7 +112,6 @@ export default function (pi: ExtensionAPI) {
     // Register info group
     const registry = getInfoRegistry();
     if (registry) {
-      console.debug("[memory] Registering info group");
       registry.registerGroup({
         id: "memory",
         name: "Memory",
@@ -143,8 +141,8 @@ export default function (pi: ExtensionAPI) {
           try {
             projectMemories = projectStorage.listAll();
             allMemories = listAllProjects();
-          } catch (err) {
-            console.warn("[unipi/memory] Failed to list memories for info panel:", err);
+          } catch (_err) {
+            // Info panel data unavailable — shows empty values.
           }
           const uniqueProjects = [...new Set(allMemories.map((m) => m.project))];
 
@@ -175,8 +173,8 @@ export default function (pi: ExtensionAPI) {
       try {
         projectCount = projectStorage?.listAll()?.length ?? 0;
         projectCountAll = listAllProjects().length;
-      } catch (err) {
-        console.warn("[unipi/memory] Failed to count memories for status:", err);
+      } catch (_err) {
+        // Count unavailable — status bar shows 0.
       }
       const vecReady = isEmbeddingReady();
       const vecIcon = vecReady ? "⚡" : "📝";
@@ -196,8 +194,7 @@ export default function (pi: ExtensionAPI) {
     let projectMemories: Array<{ id: string; title: string; type: string }> = [];
     try {
       projectMemories = projectStorage.listAll();
-    } catch (err) {
-      console.warn("[unipi/memory] Failed to list memories for recall:", err);
+    } catch (_err) {
       recallDone = true; // Skip recall on error
       return;
     }

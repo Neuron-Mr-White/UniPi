@@ -32,26 +32,55 @@ export default function (pi: ExtensionAPI) {
   // Start load tracking
   startLoadTracking();
 
-  // Listen for module announcements — track and trigger reactive updates
-  pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
-    if (event.name && event.name !== MODULES.INFO_SCREEN) {
+  // Debounced MODULE_READY handling — batch module announcements
+  // to prevent layout shift from rapid per-module cache invalidation.
+  let moduleReadyBatch: Array<{ name: string; version: string; tools?: string[]; loadTimeMs?: number }> = [];
+  let moduleReadyTimer: ReturnType<typeof setTimeout> | null = null;
+  const MODULE_READY_DEBOUNCE_MS = 150;
+
+  function flushModuleReadyBatch(): void {
+    const batch = moduleReadyBatch;
+    moduleReadyBatch = [];
+    moduleReadyTimer = null;
+
+    if (batch.length === 0) return;
+
+    // Track all modules and tools
+    let hasTools = false;
+    for (const event of batch) {
       trackModule(event.name, event.version || "unknown");
       recordLoadTime(event.name, "module", event.loadTimeMs);
-
-      // Invalidate overview so next fetch picks up new module list
-      infoRegistry.invalidateCache("overview");
-
-      // Trigger background refresh of overview — subscribers will re-render
-      infoRegistry.getGroupData("overview");
-
       if (event.tools && Array.isArray(event.tools)) {
         for (const tool of event.tools) {
           trackTool(tool, event.name);
         }
-        // Refresh tools group too
-        infoRegistry.invalidateCache("tools");
-        infoRegistry.getGroupData("tools");
+        hasTools = true;
       }
+    }
+
+    // Single cache invalidation for all modules
+    infoRegistry.invalidateCache("overview");
+    infoRegistry.getGroupData("overview");
+
+    if (hasTools) {
+      infoRegistry.invalidateCache("tools");
+      infoRegistry.getGroupData("tools");
+    }
+  }
+
+  // Listen for module announcements — track and trigger reactive updates
+  pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
+    if (event.name && event.name !== MODULES.INFO_SCREEN) {
+      moduleReadyBatch.push({
+        name: event.name,
+        version: event.version,
+        tools: event.tools,
+        loadTimeMs: event.loadTimeMs,
+      });
+
+      // Debounce: wait for more modules to arrive, then flush once
+      if (moduleReadyTimer) clearTimeout(moduleReadyTimer);
+      moduleReadyTimer = setTimeout(flushModuleReadyBatch, MODULE_READY_DEBOUNCE_MS);
     }
   });
 

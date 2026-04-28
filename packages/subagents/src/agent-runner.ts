@@ -172,12 +172,16 @@ export async function runAgent(
   let toolNames = getToolNamesForType(type, agentConfig);
 
   // Create resource loader
+  // Respect agentConfig.extensions/skills flags: if explicitly false, skip loading.
+  // This prevents explore/work agents from loading all parent extensions.
   const agentDir = getAgentDir();
+  const skipExtensions = options.isolated || agentConfig?.extensions === false;
+  const skipSkills = options.isolated || agentConfig?.skills === false;
   const loader = new DefaultResourceLoader({
     cwd: effectiveCwd,
     agentDir,
-    noExtensions: options.isolated,
-    noSkills: options.isolated,
+    noExtensions: skipExtensions,
+    noSkills: skipSkills,
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
@@ -213,15 +217,19 @@ export async function runAgent(
   });
   session.setActiveToolsByName(activeTools);
 
-  // Bind extensions
-  await session.bindExtensions({
-    onError: (err) => {
-      options.onToolActivity?.({
-        type: "end",
-        toolName: `extension-error:${err.extensionPath}`,
-      });
-    },
-  });
+  // Bind extensions — only if extensions were loaded.
+  // Skipping for agents with extensions: false avoids firing session_start
+  // on an empty extension set, preventing unnecessary MODULE_READY cascade.
+  if (!skipExtensions) {
+    await session.bindExtensions({
+      onError: (err) => {
+        options.onToolActivity?.({
+          type: "end",
+          toolName: `extension-error:${err.extensionPath}`,
+        });
+      },
+    });
+  }
 
   options.onSessionCreated?.(session);
 

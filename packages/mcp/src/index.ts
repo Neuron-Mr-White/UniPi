@@ -75,11 +75,8 @@ export default function (pi: ExtensionAPI) {
     try {
       const result = loadAndResolve(cwd);
       servers = result.servers;
-    } catch (err) {
-      console.error(
-        "[MCP] Failed to load config:",
-        err instanceof Error ? err.message : err,
-      );
+    } catch (_err) {
+      // Config load failure — servers will be empty, visible via /unipi:mcp-status.
     }
 
     // Start enabled servers (parallel, non-blocking errors)
@@ -88,14 +85,11 @@ export default function (pi: ExtensionAPI) {
       .map(async (server) => {
         try {
           await registry!.startServer(server);
-          console.log(
-            `[MCP] Started server '${server.name}' (${registry!.getServerState(server.name)?.toolCount ?? 0} tools)`,
-          );
+          // Removed console.log — startup logs cause layout shift in TUI.
+          // Server status visible via /unipi:mcp-status or info screen.
         } catch (err) {
-          console.error(
-            `[MCP] Failed to start server '${server.name}':`,
-            err instanceof Error ? err.message : err,
-          );
+          // Removed console.error — errors surfaced via info-screen MCP group.
+          // Server failure tracked in registry state.
         }
       });
 
@@ -138,7 +132,7 @@ export default function (pi: ExtensionAPI) {
               },
             };
           } catch (err) {
-            console.error("[MCP] Info dataProvider error:", err);
+            // Removed console.error — info-screen shows "?" on error.
             return {
               total: { value: "?" },
               active: { value: "?" },

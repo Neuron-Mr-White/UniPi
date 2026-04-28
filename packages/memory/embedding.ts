@@ -79,8 +79,7 @@ export async function generateEmbedding(
     });
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => "unknown");
-      console.warn(`[unipi/memory] Embedding API error ${response.status}: ${errText}`);
+      // Removed console.warn — embedding errors cause fallback to fuzzy search.
       return null;
     }
 
@@ -88,7 +87,7 @@ export async function generateEmbedding(
     const values = data?.data?.[0]?.embedding;
 
     if (!Array.isArray(values)) {
-      console.warn("[unipi/memory] Unexpected embedding response format");
+      // Removed console.warn — unexpected format causes fallback to fuzzy search.
       return null;
     }
 
@@ -102,9 +101,9 @@ export async function generateEmbedding(
     return vec;
   } catch (err: any) {
     if (err?.name === "TimeoutError") {
-      console.warn("[unipi/memory] Embedding API timeout");
+      // Removed console.warn — timeout causes fallback to fuzzy search.
     } else {
-      console.warn("[unipi/memory] Embedding error:", err?.message || err);
+      // Removed console.warn — embedding error causes fallback to fuzzy search.
     }
     return null;
   }
@@ -209,8 +208,8 @@ export async function reembedAllMemories(ctx: ExtensionCommandContext): Promise<
       }
 
       storage.close();
-    } catch (err) {
-      console.warn(`[unipi/memory] Failed to re-embed project ${projectName}:`, err);
+    } catch (_err) {
+      // Re-embedding failure — existing embeddings preserved.
     }
   }
 
