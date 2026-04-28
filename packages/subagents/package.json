@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "dist/index.js",
