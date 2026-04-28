@@ -8,6 +8,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { MODULES, MILESTONE_COMMANDS, MILESTONE_DIRS, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 import { registerSessionStartHook, registerSessionEndHook } from "./hooks.js";
+import { registerCommands } from "./commands.js";
 import { getProgressSummary } from "./milestone.js";
 import * as path from "node:path";
 
@@ -15,6 +16,9 @@ export default function milestoneExtension(pi: ExtensionAPI): void {
   // Register lifecycle hooks
   registerSessionStartHook(pi);
   registerSessionEndHook(pi);
+
+  // Register commands
+  registerCommands(pi);
 
   // Register info-screen group
   const globalObj = globalThis as any;
