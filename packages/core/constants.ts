@@ -34,6 +34,7 @@ export const MODULES = {
   NOTIFY: "@pi-unipi/notify",
   BTW: "@pi-unipi/btw",
   MILESTONE: "@pi-unipi/milestone",
+  KANBOARD: "@pi-unipi/kanboard",
 } as const;
 
 /** Workflow command names */
@@ -235,6 +236,24 @@ export const COMPACTOR_COMMANDS = {
 export const COMPACTOR_DIRS = {
   CONFIG: "~/.unipi/config/compactor",
   DB: "~/.unipi/db/compactor",
+} as const;
+
+/** Kanboard command names */
+export const KANBOARD_COMMANDS = {
+  KANBOARD: "kanboard",
+  KANBOARD_DOCTOR: "kanboard-doctor",
+} as const;
+
+/** Kanboard directory paths */
+export const KANBOARD_DIRS = {
+  UI_STATIC: "ui/static",
+  PID_FILE: ".unipi/kanboard.pid",
+} as const;
+
+/** Kanboard defaults */
+export const KANBOARD_DEFAULTS = {
+  PORT: 8165,
+  MAX_PORT: 8175,
 } as const;
 
 /** Notify command names */
