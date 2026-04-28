@@ -119,16 +119,15 @@ describe("Badge generation — event bus (CRITICAL FIX)", () => {
     assert.ok(!piOnMatch, "Should NOT use pi.on() for cross-module events");
   });
 
-  it("utility listens via pi.events.on (NOT pi.on)", () => {
+  it("utility BADGE_GENERATE_REQUEST listener is removed (input handler already shows overlay)", () => {
     const src = readSource("packages/utility/src/index.ts");
 
+    // Should NOT have a separate BADGE_GENERATE_REQUEST listener
+    // The input handler already shows the overlay and emits the event
     assert.ok(
-      src.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
-      "Utility should listen via pi.events.on",
+      !src.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
+      "Utility should NOT have a separate BADGE_GENERATE_REQUEST listener",
     );
-
-    const piOnMatch = src.match(/pi\.on\(UNIPI_EVENTS\.BADGE_GENERATE_REQUEST/g);
-    assert.ok(!piOnMatch, "Should NOT use pi.on() for cross-module events");
   });
 
   it("workflow listens for MODULE_READY via pi.events.on (NOT pi.on)", () => {
@@ -225,14 +224,18 @@ describe("Badge generation — ROOT CAUSE SUMMARY", () => {
     const utilitySrc = readSource("packages/utility/src/index.ts");
     const workflowSrc = readSource("packages/workflow/index.ts");
 
+    // Subagents: correct event bus
     assert.ok(
       subagentsSrc.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
       "subagents: must use pi.events.on for BADGE_GENERATE_REQUEST",
     );
+
+    // Utility: no duplicate listener (input handler already handles it)
     assert.ok(
-      utilitySrc.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
-      "utility: must use pi.events.on for BADGE_GENERATE_REQUEST",
-    );
+      !utilitySrc.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
+      "utility: no duplicate BADGE_GENERATE_REQUEST listener",    );
+
+    // Workflow: correct event bus
     assert.ok(
       workflowSrc.includes("pi.events.on(UNIPI_EVENTS.MODULE_READY"),
       "workflow: must use pi.events.on for MODULE_READY",
