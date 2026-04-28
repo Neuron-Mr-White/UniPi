@@ -23,6 +23,7 @@ export const BUILTIN_EVENTS: Record<
   mcp_server_error: { hook: UNIPI_EVENTS.MCP_SERVER_ERROR, label: "MCP Error" },
   memory_consolidated: { hook: UNIPI_EVENTS.MEMORY_CONSOLIDATED, label: "Memory Saved" },
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
+  ask_user_prompt: { hook: UNIPI_EVENTS.ASK_USER_PROMPT, label: "Question Asked" },
 };
 
 /**
@@ -171,6 +172,10 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
       return `Memory consolidated (${p.count || 0} items)`;
     case "session_shutdown":
       return "Session ending";
+    case "ask_user_prompt":
+      return p.context
+        ? `Agent asks: ${String(p.question || "")} — ${String(p.context)}`
+        : `Agent asks: ${String(p.question || "A question")}`;
     default:
       return p.message ? String(p.message) : "Event occurred";
   }

@@ -40,6 +40,18 @@ interface StrategyItem {
   setMode: (c: CompactorConfig, v: string) => void;
 }
 
+/** Top-level debug toggle that mirrors config.debug */
+const GLOBAL_DEBUG: StrategyItem = {
+  key: "debug",
+  label: "Verbose Debug",
+  description: "Log ALL compaction events to console",
+  modes: ["on", "off"],
+  getEnabled: (c) => c.debug,
+  setEnabled: (c, v) => (c.debug = v),
+  getMode: (c) => (c.debug ? "on" : "off"),
+  setMode: (c, v) => (c.debug = v === "on"),
+};
+
 /** All configurable strategies */
 const STRATEGIES: StrategyItem[] = [
   {
@@ -144,6 +156,9 @@ const STRATEGIES: StrategyItem[] = [
   },
 ];
 
+/** All navigable items: debug toggle first, then strategies */
+const ALL_ITEMS: StrategyItem[] = [GLOBAL_DEBUG, ...STRATEGIES];
+
 const PRESETS: CompactorPreset[] = ["opencode", "balanced", "verbose", "minimal"];
 
 /**
@@ -170,7 +185,7 @@ export class CompactorSettingsOverlay implements Component {
       case "\x1b[A": // Up
       case "k":
         if (this.mode === "strategy") {
-          this.selectedIndex = (this.selectedIndex - 1 + STRATEGIES.length) % STRATEGIES.length;
+          this.selectedIndex = (this.selectedIndex - 1 + ALL_ITEMS.length) % ALL_ITEMS.length;
         } else {
           this.presetIndex = (this.presetIndex - 1 + PRESETS.length) % PRESETS.length;
         }
@@ -178,21 +193,21 @@ export class CompactorSettingsOverlay implements Component {
       case "\x1b[B": // Down
       case "j":
         if (this.mode === "strategy") {
-          this.selectedIndex = (this.selectedIndex + 1) % STRATEGIES.length;
+          this.selectedIndex = (this.selectedIndex + 1) % ALL_ITEMS.length;
         } else {
           this.presetIndex = (this.presetIndex + 1) % PRESETS.length;
         }
         break;
       case " ": // Space - toggle enabled
         if (this.mode === "strategy") {
-          const item = STRATEGIES[this.selectedIndex];
+          const item = ALL_ITEMS[this.selectedIndex];
           item.setEnabled(this.config, !item.getEnabled(this.config));
         }
         break;
       case "\x1b[C": // Right - cycle mode forward
       case "\r": // Enter
         if (this.mode === "strategy") {
-          const strat = STRATEGIES[this.selectedIndex];
+          const strat = ALL_ITEMS[this.selectedIndex];
           const modes = strat.modes;
           const currentIdx = modes.indexOf(strat.getMode(this.config));
           const nextIdx = (currentIdx + 1) % modes.length;
@@ -205,7 +220,7 @@ export class CompactorSettingsOverlay implements Component {
         break;
       case "\x1b[D": // Left - cycle mode backward
         if (this.mode === "strategy") {
-          const strat2 = STRATEGIES[this.selectedIndex];
+          const strat2 = ALL_ITEMS[this.selectedIndex];
           const modes2 = strat2.modes;
           const curIdx = modes2.indexOf(strat2.getMode(this.config));
           const prevIdx = (curIdx - 1 + modes2.length) % modes2.length;
@@ -248,9 +263,9 @@ export class CompactorSettingsOverlay implements Component {
       add("");
       add(`${ansi.dim}↑↓ navigate • Enter apply • p back to strategies • s save • Esc cancel${ansi.reset}`);
     } else {
-      // Strategy list
-      for (let i = 0; i < STRATEGIES.length; i++) {
-        const item = STRATEGIES[i];
+      // Strategy list (GLOBAL_DEBUG at top, then all strategies)
+      for (let i = 0; i < ALL_ITEMS.length; i++) {
+        const item = ALL_ITEMS[i];
         const isSelected = i === this.selectedIndex;
         const enabled = item.getEnabled(this.config);
         const mode = item.getMode(this.config);

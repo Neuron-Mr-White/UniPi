@@ -22,6 +22,8 @@ export interface AskUserSettings {
     /** Allow freeform text input */
     freeform: boolean;
   };
+  /** Send notification when agent pauses to ask a question */
+  notifyOnAsk: boolean;
 }
 
 /** Default settings */
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: AskUserSettings = {
     multiSelect: true,
     freeform: true,
   },
+  notifyOnAsk: true,
 };
 
 /** Settings path */
@@ -102,7 +105,9 @@ export function getAskUserSettings(): AskUserSettings {
     };
   }
 
-  cachedSettings = { enabled, allowedFormats };
+  const notifyOnAsk = typeof askUser.notifyOnAsk === "boolean" ? askUser.notifyOnAsk : DEFAULT_SETTINGS.notifyOnAsk;
+
+  cachedSettings = { enabled, allowedFormats, notifyOnAsk };
   return cachedSettings;
 }
 
@@ -119,6 +124,7 @@ export function saveAskUserSettings(settings: AskUserSettings): void {
   (file[SETTINGS_KEY] as Record<string, unknown>).askUser = {
     enabled: settings.enabled,
     allowedFormats: settings.allowedFormats,
+    notifyOnAsk: settings.notifyOnAsk,
   };
 
   writeSettingsFile(file);

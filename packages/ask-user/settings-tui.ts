@@ -65,6 +65,13 @@ const SETTINGS: SettingItem[] = [
     getValue: (s) => s.allowedFormats.freeform,
     setValue: (s, v) => (s.allowedFormats.freeform = v),
   },
+  {
+    key: "notifyOnAsk",
+    label: "Notify when asking",
+    description: "Send notification when agent pauses for input",
+    getValue: (s) => s.notifyOnAsk,
+    setValue: (s, v) => (s.notifyOnAsk = v),
+  },
 ];
 
 /**

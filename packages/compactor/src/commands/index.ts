@@ -27,7 +27,7 @@ export interface CommandDeps {
 }
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
-  pi.registerCommand("compact", {
+  pi.registerCommand("unipi:compact", {
     description: "Trigger manual compaction with stats",
     handler: async (_args: string, ctx: any) => {
       const result = compactTool();
@@ -39,7 +39,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-recall", {
+  pi.registerCommand("unipi:compact-recall", {
     description: "Search session history (BM25 or regex)",
     handler: async (args: string, ctx: any) => {
       const query = args.trim();
@@ -64,7 +64,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-stats", {
+  pi.registerCommand("unipi:compact-stats", {
     description: "Show context savings dashboard",
     handler: async (_args: string, ctx: any) => {
       if (!deps?.sessionDB || !deps?.contentStore) {
@@ -89,7 +89,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-doctor", {
+  pi.registerCommand("unipi:compact-doctor", {
     description: "Run diagnostics checklist",
     handler: async (_args: string, ctx: any) => {
       if (!deps?.sessionDB || !deps?.contentStore) {
@@ -111,7 +111,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-settings", {
+  pi.registerCommand("unipi:compact-settings", {
     description: "Open TUI settings overlay",
     handler: async (_args: string, ctx: any) => {
       try {
@@ -128,7 +128,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-preset", {
+  pi.registerCommand("unipi:compact-preset", {
     description: "Apply quick preset (opencode/balanced/verbose/minimal)",
     handler: async (args: string, ctx: any) => {
       const presetName = parsePreset(args.trim());
@@ -146,7 +146,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-index", {
+  pi.registerCommand("unipi:compact-index", {
     description: "Index current project files into FTS5",
     handler: async (_args: string, ctx: any) => {
       if (!deps?.contentStore) {
@@ -202,7 +202,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-search", {
+  pi.registerCommand("unipi:compact-search", {
     description: "Search indexed content",
     handler: async (args: string, ctx: any) => {
       const query = args.trim();
@@ -230,7 +230,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  pi.registerCommand("compact-purge", {
+  pi.registerCommand("unipi:compact-purge", {
     description: "Wipe all indexed content from FTS5",
     handler: async (_args: string, ctx: any) => {
       if (!deps?.contentStore) {

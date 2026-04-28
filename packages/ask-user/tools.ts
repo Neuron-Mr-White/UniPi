@@ -6,7 +6,11 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { ASK_USER_TOOLS } from "@pi-unipi/core";
+import {
+  ASK_USER_TOOLS,
+  UNIPI_EVENTS,
+  emitEvent,
+} from "@pi-unipi/core";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
 import { getAskUserSettings } from "./config.js";
@@ -245,6 +249,17 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         action: (opt.action as NormalizedOption["action"]) ?? "select",
         prefill: opt.prefill,
       }));
+
+      // Emit ASK_USER_PROMPT event if notifyOnAsk is enabled
+      if (settings.notifyOnAsk) {
+        emitEvent(pi, UNIPI_EVENTS.ASK_USER_PROMPT, {
+          question,
+          context,
+          optionCount: normalizedOptions.length,
+          allowMultiple,
+          allowFreeform,
+        });
+      }
 
       // Render interactive UI
       const result = await ctx.ui.custom<{ response: AskUserResponse } | null>(

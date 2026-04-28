@@ -14,30 +14,27 @@ export function defaultDBPath(name: string): string {
 }
 
 let sqliteLib: any = null;
-let sqliteFlavor: "bun" | "node" | "better-sqlite3" | null = null;
+let sqliteFlavor: "bun" | "better-sqlite3" | null = null;
 
 export async function loadSQLite() {
   if (sqliteLib) return { lib: sqliteLib, flavor: sqliteFlavor! };
 
+  // Try bun:sqlite first (Bun runtime)
   try {
     sqliteLib = await import("bun:sqlite" as any);
     sqliteFlavor = "bun";
     return { lib: sqliteLib, flavor: sqliteFlavor };
   } catch {
+    // Skip node:sqlite — its API (DatabaseSync) is incompatible with
+    // better-sqlite3's constructor pattern (Database class).
     try {
-      sqliteLib = await import("node:sqlite" as any);
-      sqliteFlavor = "node";
+      sqliteLib = await import("better-sqlite3");
+      sqliteFlavor = "better-sqlite3";
       return { lib: sqliteLib, flavor: sqliteFlavor };
     } catch {
-      try {
-        sqliteLib = await import("better-sqlite3");
-        sqliteFlavor = "better-sqlite3";
-        return { lib: sqliteLib, flavor: sqliteFlavor };
-      } catch {
-        sqliteLib = {};
-        sqliteFlavor = "better-sqlite3";
-        return { lib: sqliteLib, flavor: sqliteFlavor };
-      }
+      sqliteLib = {};
+      sqliteFlavor = "better-sqlite3";
+      return { lib: sqliteLib, flavor: sqliteFlavor };
     }
   }
 }

@@ -26,6 +26,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     agent_end: { enabled: false, platforms: [] },
     memory_consolidated: { enabled: false, platforms: [] },
     session_shutdown: { enabled: false, platforms: [] },
+    ask_user_prompt: { enabled: false, platforms: [] },
   },
   native: {
     enabled: true,

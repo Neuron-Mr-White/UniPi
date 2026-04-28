@@ -78,6 +78,9 @@ export const UNIPI_EVENTS = {
 
   /** Badge generation requested (from kanboard or other module) */
   BADGE_GENERATE_REQUEST: "unipi:badge:generate:request",
+
+  /** Agent asked user a question (ask_user tool invoked) */
+  ASK_USER_PROMPT: "unipi:ask-user:prompt",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -306,6 +309,20 @@ export interface UnipiBadgeGenerateRequestEvent {
   conversationSummary?: string;
 }
 
+/** Payload for ASK_USER_PROMPT */
+export interface UnipiAskUserPromptEvent {
+  /** Question being asked */
+  question: string;
+  /** Additional context */
+  context?: string;
+  /** Number of options provided */
+  optionCount?: number;
+  /** Whether multi-select mode */
+  allowMultiple?: boolean;
+  /** Whether freeform input allowed */
+  allowFreeform?: boolean;
+}
+
 /** Payload for NOTIFICATION_SENT */
 export interface UnipiNotificationSentEvent {
   /** Event type that triggered notification */
@@ -341,4 +358,5 @@ export type UnipiEventPayload =
   | UnipiUtilityDiagnosticsEvent
   | UnipiUtilityLifecycleEvent
   | UnipiNotificationSentEvent
-  | UnipiBadgeGenerateRequestEvent;
+  | UnipiBadgeGenerateRequestEvent
+  | UnipiAskUserPromptEvent;

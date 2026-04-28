@@ -44,17 +44,16 @@ let sqliteLib: any = null;
 
 async function getSQLite() {
   if (sqliteLib) return sqliteLib;
+  // Try bun:sqlite first (Bun runtime)
   try {
     sqliteLib = await import("bun:sqlite" as any);
     return sqliteLib;
   } catch {
-    try {
-      sqliteLib = await import("node:sqlite" as any);
-      return sqliteLib;
-    } catch {
-      sqliteLib = await import("better-sqlite3");
-      return sqliteLib;
-    }
+    // Skip node:sqlite — its API (DatabaseSync) is incompatible with
+    // better-sqlite3's constructor pattern used by SessionDB.
+    // Go straight to better-sqlite3 which has the expected shape.
+    sqliteLib = await import("better-sqlite3");
+    return sqliteLib;
   }
 }
 
@@ -78,8 +77,10 @@ export class SessionDB {
 
   async init(): Promise<void> {
     const sqlite: any = await getSQLite();
-    // Handle different SQLite API shapes
-    const Database = sqlite.Database ?? sqlite.default?.Database ?? sqlite;
+    // Handle different SQLite API shapes:
+    // - bun:sqlite exports Database as a named export
+    // - better-sqlite3 (CJS) exports the constructor as default when imported via ESM
+    const Database = sqlite.Database ?? sqlite.default?.Database ?? sqlite.default ?? sqlite;
     this.db = new Database(this.dbPath);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.initSchema();

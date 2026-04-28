@@ -17,6 +17,16 @@ import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
 import type { NormalizedBlock } from "./types.js";
 
+/** Debug logger — only logs when config.debug === true */
+function createDebugLogger(getConfig: () => { debug: boolean }) {
+  return (event: string, data?: Record<string, unknown>) => {
+    if (!getConfig().debug) return;
+    const ts = new Date().toISOString().slice(11, 23);
+    const details = data ? " " + JSON.stringify(data) : "";
+    console.error(`[compactor:${ts}] ${event}${details}`);
+  };
+}
+
 export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
   let contentStore: ContentStore | null = null;
@@ -24,6 +34,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   let config = loadConfig();
   let cachedBlocks: NormalizedBlock[] = [];
   let currentSessionId = "default";
+
+  const debug = createDebugLogger(() => config);
 
   const init = async () => {
     scaffoldConfig();
@@ -42,14 +54,13 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   registerCompactionHooks(pi);
 
-  // Register commands with deps (they need sessionDB/contentStore)
+  // Commands will be registered inside session_start when deps are ready
   const getCommandDeps = () => ({
     sessionDB,
     contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
   });
-  registerCommands(pi, getCommandDeps());
 
   pi.on("session_start", async (_event, ctx) => {
     await init();
@@ -59,6 +70,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const suffix = getWorktreeSuffix();
     const fullSessionId = `${sessionId}${suffix}`;
     currentSessionId = fullSessionId;
+
+    debug("session_start", { sessionId: fullSessionId, projectDir });
 
     sessionDB?.ensureSession(fullSessionId, projectDir);
 
@@ -82,6 +95,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       tools: Object.values(COMPACTOR_TOOLS),
     });
 
+    debug("MODULE_READY", { commands: Object.values(COMPACTOR_COMMANDS), tools: Object.values(COMPACTOR_TOOLS) });
+
     if (config.fts5Index.mode === "auto" && contentStore) {
       // TODO: index project files
     }
@@ -92,6 +107,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
     config = loadConfig();
     currentSessionId = `${(ctx as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+    debug("before_agent_start", { sessionId: currentSessionId, configDebug: config.debug });
 
     // Re-cache normalized blocks for vcc_recall
     try {
@@ -106,9 +122,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     if (sessionDB) {
       const snapshot = await injectResumeSnapshot(sessionDB, currentSessionId);
-      if (snapshot) {
-        // Snapshot injected as context
-      }
+      debug("resume_snapshot", { injected: !!snapshot });
     }
   });
 
@@ -117,6 +131,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
       const events = sessionDB.getEvents(sessionId, { limit: 1000 });
       const stats = sessionDB.getSessionStats(sessionId);
+      debug("session_before_compact", { sessionId, eventCount: events.length, compactCount: stats?.compact_count ?? 0 });
       const { buildResumeSnapshot } = await import("./session/snapshot.js");
       const snapshot = buildResumeSnapshot(events, {
         compactCount: stats?.compact_count ?? 1,
@@ -129,10 +144,12 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (sessionDB) {
       const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
       sessionDB.incrementCompactCount(sessionId);
+      debug("session_compact", { sessionId });
     }
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
+    debug("session_shutdown");
     if (sessionDB) {
       sessionDB.cleanupOldSessions(7);
     }
@@ -144,6 +161,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   pi.on("input", async (event, _ctx) => {
     const toolName = (event as any).toolName ?? "";
     const args = (event as any).args ?? {};
+    debug("input", { toolName, args: JSON.stringify(args).slice(0, 200) });
     if (toolName === "bash" || toolName === "Bash") {
       const cmd = String(args.command ?? "");
       if (/\b(curl|wget|nc|netcat)\b/.test(cmd)) {
@@ -156,6 +174,10 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   pi.on("tool_result", async (event, _ctx) => {
     if (!sessionDB) return;
     const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+    const toolNameRaw = (event as any).toolName ?? "";
+    const isError = (event as any).isError ?? false;
+
+    debug("tool_result", { toolName: toolNameRaw, isError, sessionId });
 
     // Extract and store session events
     const toolEvents = extractEventsFromToolResult({
@@ -167,6 +189,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     for (const ev of toolEvents) {
       sessionDB.insertEvent(sessionId, ev, "PostToolUse");
+      debug("event_stored", { category: ev.category, type: ev.type });
     }
 
     // Apply display overrides for built-in tools
@@ -192,20 +215,25 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("message_update", async (event, _ctx) => {
-    if ((event as any).message?.thinking) {
-      // Handled by display engine
+    const msg = (event as any).message;
+    if (msg?.thinking) {
+      debug("message_update", { thinking: true, length: String(msg.thinking).length });
     }
   });
 
   pi.on("message_end", async (_event, _ctx) => {
-    // Thinking label persistence
+    debug("message_end");
   });
 
   pi.on("context", async (event, _ctx) => {
     const { sanitizeThinkingArtifacts } = await import("./display/thinking-label.js");
-    const ctx = (event as any).context;
-    if (typeof ctx === "string") {
-      (event as any).context = sanitizeThinkingArtifacts(ctx);
+    const ctxStr = (event as any).context;
+    if (typeof ctxStr === "string") {
+      const sanitized = sanitizeThinkingArtifacts(ctxStr);
+      if (sanitized !== ctxStr) {
+        debug("context", { sanitized: true, beforeLen: ctxStr.length, afterLen: sanitized.length });
+      }
+      (event as any).context = sanitized;
     }
   });
 }

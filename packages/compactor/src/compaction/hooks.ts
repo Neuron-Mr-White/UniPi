@@ -4,7 +4,6 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { convertToLlm } from "@mariozechner/pi-coding-agent";
-import { writeFileSync } from "node:fs";
 import { compile } from "./summarize.js";
 import { loadConfig } from "../config/manager.js";
 import { buildOwnCut } from "./cut.js";
@@ -21,9 +20,11 @@ const formatTokens = (n: number): string => {
   return String(n);
 };
 
-const dbg = (debug: boolean, data: Record<string, unknown>) => {
+const dbg = (debug: boolean, event: string, data?: Record<string, unknown>) => {
   if (!debug) return;
-  try { writeFileSync("/tmp/compactor-debug.json", JSON.stringify(data, null, 2)); } catch {}
+  const ts = new Date().toISOString().slice(11, 23);
+  const details = data ? " " + JSON.stringify(data) : "";
+  console.error(`[compactor:${ts}] ${event}${details}`);
 };
 
 const previewContent = (content: unknown): string => {
@@ -53,11 +54,16 @@ export function registerCompactionHooks(pi: ExtensionAPI): void {
   pi.on("session_before_compact", (event, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
+    dbg(config.debug, "session_before_compact:enter", { entryCount: (branchEntries as any[])?.length, hasPrevSummary: !!preparation?.previousSummary, isCompactor: customInstructions === COMPACTOR_INSTRUCTION });
 
     const isCompactor = customInstructions === COMPACTOR_INSTRUCTION;
-    if (!isCompactor && !config.overrideDefaultCompaction) return;
+    if (!isCompactor && !config.overrideDefaultCompaction) {
+      dbg(config.debug, "session_before_compact:skip", { reason: "not_compactor_and_no_override" });
+      return;
+    }
 
     const ownCut = buildOwnCut(branchEntries as any[]);
+    dbg(config.debug, "buildOwnCut", { ok: ownCut.ok, reason: !ownCut.ok ? (ownCut as any).reason : undefined });
     if (!ownCut.ok) {
       try {
         ctx?.ui?.notify?.(REASON_MESSAGES[ownCut.reason], "warning");
@@ -90,6 +96,7 @@ export function registerCompactionHooks(pi: ExtensionAPI): void {
       keptTokensEst: Math.round(keptChars / 4),
     };
 
+    dbg(config.debug, "compile", { messageCount: messages.length, hasPrevSummary: !!preparation.previousSummary });
     const summary = compile({
       messages,
       previousSummary: preparation.previousSummary,
@@ -99,7 +106,7 @@ export function registerCompactionHooks(pi: ExtensionAPI): void {
       },
     });
 
-    dbg(config.debug, {
+    dbg(config.debug, "compaction_pipeline", {
       usedOwnCut: true,
       messagesToSummarize: agentMessages.length,
       firstKeptEntryId,
@@ -129,6 +136,8 @@ export function registerCompactionHooks(pi: ExtensionAPI): void {
   });
 
   pi.on("session_compact", (event, ctx) => {
+    const config = loadConfig();
+    dbg(config.debug, "session_compact", { fromExtension: event.fromExtension, lastCompactWasCompactor });
     if (!event.fromExtension) return;
     if (lastCompactWasCompactor) return;
     const stats = lastStats;
