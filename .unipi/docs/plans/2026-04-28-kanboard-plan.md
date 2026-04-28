@@ -322,7 +322,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
 ## Phase 4: TUI Overlay
 
 ### Task 13 — TUI Overlay (Tasks List + Kanban Board)
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Build the TUI overlay with two tabs: tasks list and kanban board.
 - **Dependencies:** Task 4-8 (parsers)
 - **Acceptance Criteria:**
