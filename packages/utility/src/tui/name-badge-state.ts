@@ -113,6 +113,7 @@ export class NameBadgeState {
           offsetX: -1,
           offsetY: 1,
           minWidth: 20,
+          nonCapturing: true,
           visible: (termWidth: number) => termWidth >= 40,
         },
         onHandle: (handle: OverlayHandle) => {
