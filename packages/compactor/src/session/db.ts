@@ -4,8 +4,9 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { SessionEvent, StoredEvent, SessionMeta, ResumeRow } from "../types.js";
 
 export function getWorktreeSuffix(): string {
@@ -76,6 +77,9 @@ export class SessionDB {
   }
 
   async init(): Promise<void> {
+    const dir = dirname(this.dbPath);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
     const sqlite: any = await getSQLite();
     // Handle different SQLite API shapes:
     // - bun:sqlite exports Database as a named export
