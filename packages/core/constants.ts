@@ -33,6 +33,7 @@ export const MODULES = {
   COMPACTOR: "@pi-unipi/compactor",
   NOTIFY: "@pi-unipi/notify",
   BTW: "@pi-unipi/btw",
+  MILESTONE: "@pi-unipi/milestone",
 } as const;
 
 /** Workflow command names */
@@ -250,6 +251,17 @@ export const NOTIFY_TOOLS = {
 /** Notify directory paths */
 export const NOTIFY_DIRS = {
   CONFIG: "~/.unipi/config/notify",
+} as const;
+
+/** Milestone command names */
+export const MILESTONE_COMMANDS = {
+  ONBOARD: "milestone-onboard",
+  UPDATE: "milestone-update",
+} as const;
+
+/** Milestone directory paths */
+export const MILESTONE_DIRS = {
+  MILESTONES: ".unipi/docs/MILESTONES.md",
 } as const;
 
 /** Compactor defaults */
