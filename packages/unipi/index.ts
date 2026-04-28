@@ -23,6 +23,7 @@ import askUser from "@pi-unipi/ask-user";
 import mcp from "@pi-unipi/mcp";
 import notify from "@pi-unipi/notify";
 import milestone from "@pi-unipi/milestone";
+import kanboard from "@pi-unipi/kanboard";
 import commandEnchantment from "@pi-unipi/command-enchantment";
 
 export default function (pi: ExtensionAPI) {
@@ -38,5 +39,6 @@ export default function (pi: ExtensionAPI) {
   mcp(pi);
   notify(pi);
   milestone(pi);
+  kanboard(pi);
   commandEnchantment(pi);
 }
