@@ -93,10 +93,29 @@ export class ParserRegistry {
 }
 
 /** Create a registry with all default parsers registered */
-export function createDefaultRegistry(): ParserRegistry {
+export async function createDefaultRegistry(): Promise<ParserRegistry> {
   const registry = new ParserRegistry();
 
-  // Parsers will be imported and registered here as they're implemented
-  // For now, return empty registry
+  // Import and register all parsers
+  const { SpecParser } = await import("./specs.js");
+  const { PlanParser } = await import("./plans.js");
+  const { MilestoneParser } = await import("./milestones.js");
+  const {
+    QuickWorkParser,
+    DebugParser,
+    FixParser,
+    ChoreParser,
+    ReviewParser,
+  } = await import("./remaining.js");
+
+  registry.register(new SpecParser());
+  registry.register(new PlanParser());
+  registry.register(new MilestoneParser());
+  registry.register(new QuickWorkParser());
+  registry.register(new DebugParser());
+  registry.register(new FixParser());
+  registry.register(new ChoreParser());
+  registry.register(new ReviewParser());
+
   return registry;
 }

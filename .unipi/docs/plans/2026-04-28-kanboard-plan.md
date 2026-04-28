@@ -124,7 +124,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   4. Run typecheck
 
 ### Task 5 — Spec Parser
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Parse brainstorm specs for `- [ ]` / `- [x]` checklist items.
 - **Dependencies:** Task 4
 - **Acceptance Criteria:**
@@ -145,7 +145,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - Collect warnings for malformed lines
 
 ### Task 6 — Plan Parser
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Parse plans for `unstarted:` / `in-progress:` / `completed:` task statuses.
 - **Dependencies:** Task 4
 - **Acceptance Criteria:**
@@ -166,7 +166,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
      - Generate command string
 
 ### Task 7 — Milestone Parser
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Parse MILESTONES.md. Reuse `@pi-unipi/milestone` package's parser.
 - **Dependencies:** Task 4, `@pi-unipi/milestone` package (Task 3 from milestone plan)
 - **Acceptance Criteria:**
@@ -184,7 +184,7 @@ This plan depends on `@pi-unipi/milestone` being completed first (for MILESTONES
   4. Add `@pi-unipi/milestone` as dependency in package.json
 
 ### Task 8 — Remaining Parsers (quick-work, debug, fix, chore, review)
-- **Status:** unstarted
+- **Status:** completed
 - **Description:** Implement parsers for the remaining doc types.
 - **Dependencies:** Task 4
 - **Acceptance Criteria:**
