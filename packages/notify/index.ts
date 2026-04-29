@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.NOTIFY,
       version: VERSION,
-      commands: ["unipi:notify-settings", "unipi:notify-set-gotify", "unipi:notify-set-tg", "unipi:notify-test"],
+      commands: ["unipi:notify-settings", "unipi:notify-set-gotify", "unipi:notify-set-tg", "unipi:notify-set-ntfy", "unipi:notify-test"],
       tools: [NOTIFY_TOOLS.NOTIFY_USER],
     });
   });

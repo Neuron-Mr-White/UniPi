@@ -10,10 +10,12 @@ import { NOTIFY_COMMANDS } from "@pi-unipi/core";
 import { NotifySettingsOverlay } from "./tui/settings-overlay.js";
 import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
+import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
 import { loadConfig } from "./settings.js";
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
+import { sendNtfyNotification } from "./platforms/ntfy.js";
 
 /**
  * Register notify commands.
@@ -139,6 +141,46 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
     }
   );
 
+  // /unipi:notify-set-ntfy — Interactive ntfy setup
+  pi.registerCommand(
+    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_NTFY}`,
+    {
+      description: "Set up ntfy push notifications with connection test",
+      handler: async (_args: string, ctx: ExtensionContext) => {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("ntfy setup requires an interactive UI.", "warning");
+          return;
+        }
+
+        ctx.ui.custom(
+          (tui: any, theme: any, _keybindings: any, done: any) => {
+            const overlay = new NtfySetupOverlay();
+            overlay.setTheme(theme);
+            overlay.onClose = () => done(undefined);
+            overlay.requestRender = () => tui.requestRender();
+            return {
+              render: (w: number) => overlay.render(w),
+              invalidate: () => overlay.invalidate(),
+              handleInput: (data: string) => {
+                overlay.handleInput(data);
+                tui.requestRender();
+              },
+            };
+          },
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "80%",
+              minWidth: 60,
+              anchor: "center",
+              margin: 2,
+            },
+          }
+        );
+      },
+    }
+  );
+
   // /unipi:notify-test — Send test notification to all enabled platforms
   pi.registerCommand(
     `${UNIPI_PREFIX}${NOTIFY_COMMANDS.TEST}`,
@@ -195,6 +237,25 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           } catch (err) {
             results.push(
               `✗ Telegram: ${err instanceof Error ? err.message : "failed"}`
+            );
+          }
+        }
+
+        // ntfy
+        if (config.ntfy.enabled && config.ntfy.serverUrl && config.ntfy.topic) {
+          try {
+            await sendNtfyNotification(
+              config.ntfy.serverUrl,
+              config.ntfy.topic,
+              title,
+              message,
+              config.ntfy.priority,
+              config.ntfy.token
+            );
+            results.push("✓ ntfy: sent");
+          } catch (err) {
+            results.push(
+              `✗ ntfy: ${err instanceof Error ? err.message : "failed"}`
             );
           }
         }

@@ -47,6 +47,13 @@ Help users configure the `@pi-unipi/notify` notification system.
     "enabled": false,
     "botToken": null,
     "chatId": null
+  },
+  "ntfy": {
+    "enabled": false,
+    "serverUrl": "https://ntfy.sh",
+    "topic": null,
+    "token": null,
+    "priority": 3
   }
 }
 ```
@@ -75,6 +82,20 @@ Bot API notifications. Requires:
 - `botToken` — From @BotFather
 - `chatId` — Auto-detected by `/unipi:notify-set-tg`
 
+### ntfy (default: disabled)
+
+Simple HTTP-based pub-sub notification service. Supports public [ntfy.sh](https://ntfy.sh) and self-hosted instances.
+Requires:
+- `serverUrl` — ntfy server URL (default: `https://ntfy.sh`)
+- `topic` — Topic name to publish to (acts as a channel)
+- `token` — Optional access token for authenticated servers
+- `priority` — 1-5 (default: 3)
+
+**Setup options:**
+1. **Interactive overlay:** Run `/unipi:notify-set-ntfy` for guided setup with connection test
+2. **Manual config:** Edit `config.json` directly with the fields above
+3. **Agent can write config:** Read the current config, merge changes, write back
+
 ## Commands
 
 | Command | Description |
@@ -82,6 +103,7 @@ Bot API notifications. Requires:
 | `/unipi:notify-settings` | TUI overlay to toggle platforms and events |
 | `/unipi:notify-set-gotify` | Interactive Gotify setup wizard |
 | `/unipi:notify-set-tg` | Interactive Telegram setup wizard |
+| `/unipi:notify-set-ntfy` | Interactive ntfy setup wizard |
 | `/unipi:notify-test` | Send test notification to all enabled platforms |
 
 ## Events
@@ -125,6 +147,7 @@ Read the JSON, make changes, write it back. Example:
 
 For Gotify: suggest running `/unipi:notify-set-gotify`
 For Telegram: suggest running `/unipi:notify-set-tg`
+For ntfy: suggest running `/unipi:notify-set-ntfy`
 For general settings: suggest `/unipi:notify-settings`
 
 ## Validation rules
@@ -132,3 +155,5 @@ For general settings: suggest `/unipi:notify-settings`
 - Gotify: `serverUrl` and `appToken` required when enabled
 - Gotify: `priority` must be 1-10
 - Telegram: `botToken` and `chatId` required when enabled
+- ntfy: `serverUrl` and `topic` required when enabled
+- ntfy: `priority` must be 1-5

@@ -268,6 +268,7 @@ export const NOTIFY_COMMANDS = {
   SETTINGS: "notify-settings",
   SET_GOTIFY: "notify-set-gotify",
   SET_TG: "notify-set-tg",
+  SET_NTFY: "notify-set-ntfy",
   TEST: "notify-test",
 } as const;
 

@@ -11,6 +11,7 @@ import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
+import { sendNtfyNotification } from "./platforms/ntfy.js";
 
 /** Built-in event definitions — maps event key to pi hook + display label */
 export const BUILTIN_EVENTS: Record<
@@ -81,6 +82,7 @@ export async function dispatchNotification(
     if (p === "native") return config.native.enabled;
     if (p === "gotify") return config.gotify.enabled;
     if (p === "telegram") return config.telegram.enabled;
+    if (p === "ntfy") return config.ntfy.enabled;
     return false;
   });
 
@@ -150,6 +152,19 @@ async function sendToPlatform(
         config.telegram.chatId,
         title,
         message
+      );
+      break;
+    case "ntfy":
+      if (!config.ntfy.serverUrl || !config.ntfy.topic) {
+        throw new Error("ntfy: serverUrl and topic are required");
+      }
+      await sendNtfyNotification(
+        config.ntfy.serverUrl,
+        config.ntfy.topic,
+        title,
+        message,
+        config.ntfy.priority,
+        config.ntfy.token
       );
       break;
   }

@@ -68,16 +68,17 @@ export class NotifySettingsOverlay implements Component {
   }
 
   private get maxItems(): number {
-    if (this.section === "platforms") return 3; // native, gotify, telegram
+    if (this.section === "platforms") return 4; // native, gotify, telegram, ntfy
     return Object.keys(this.config.events).length;
   }
 
   private toggleCurrent(): void {
     if (this.section === "platforms") {
-      const platforms: Array<"native" | "gotify" | "telegram"> = [
+      const platforms: Array<"native" | "gotify" | "telegram" | "ntfy"> = [
         "native",
         "gotify",
         "telegram",
+        "ntfy",
       ];
       const key = platforms[this.selectedIndex];
       if (key) {
@@ -187,7 +188,7 @@ export class NotifySettingsOverlay implements Component {
 
   private renderPlatforms(lines: string[], innerWidth: number): void {
     const platforms: Array<{
-      key: "native" | "gotify" | "telegram";
+      key: "native" | "gotify" | "telegram" | "ntfy";
       label: string;
       detail: string;
     }> = [
@@ -209,6 +210,13 @@ export class NotifySettingsOverlay implements Component {
         detail: this.config.telegram.botToken
           ? "Bot configured"
           : "Bot API notifications",
+      },
+      {
+        key: "ntfy",
+        label: "ntfy",
+        detail: this.config.ntfy.serverUrl
+          ? `Server: ${this.config.ntfy.serverUrl}`
+          : "Self-hosted push service",
       },
     ];
 

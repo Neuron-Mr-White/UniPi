@@ -3,7 +3,7 @@
  */
 
 /** Supported notification platforms */
-export type NotifyPlatform = "native" | "gotify" | "telegram";
+export type NotifyPlatform = "native" | "gotify" | "telegram" | "ntfy";
 
 /** Per-event notification configuration */
 export interface EventNotifyConfig {
@@ -43,6 +43,20 @@ export interface TelegramConfig {
   chatId?: string;
 }
 
+/** ntfy notification platform config */
+export interface NtfyConfig {
+  /** Whether ntfy is enabled */
+  enabled: boolean;
+  /** ntfy server URL (default: https://ntfy.sh) */
+  serverUrl?: string;
+  /** ntfy topic to publish to */
+  topic?: string;
+  /** Optional access token for authenticated ntfy servers */
+  token?: string;
+  /** Priority level (1-5, default: 3) */
+  priority: number;
+}
+
 /** Full notification configuration */
 export interface NotifyConfig {
   /** Global default platforms for all events */
@@ -55,6 +69,8 @@ export interface NotifyConfig {
   gotify: GotifyConfig;
   /** Telegram settings */
   telegram: TelegramConfig;
+  /** ntfy settings */
+  ntfy: NtfyConfig;
 }
 
 /** Parameters for the notify_user agent tool */
