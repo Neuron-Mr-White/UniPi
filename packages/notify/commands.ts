@@ -11,6 +11,7 @@ import { NotifySettingsOverlay } from "./tui/settings-overlay.js";
 import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
+import { RecapModelSelectorOverlay } from "./tui/recap-model-selector.js";
 import { loadConfig } from "./settings.js";
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
@@ -38,6 +39,34 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
             overlay.requestRender = () => tui.requestRender();
+            overlay.onOpenModelSelector = () => {
+              // Open model selector as nested overlay
+              tui.custom(
+                (innerTui: any, innerTheme: any, _innerKb: any, innerDone: any) => {
+                  const selector = new RecapModelSelectorOverlay();
+                  selector.setTheme(innerTheme);
+                  selector.onClose = () => innerDone(undefined);
+                  selector.requestRender = () => innerTui.requestRender();
+                  return {
+                    render: (w: number) => selector.render(w),
+                    invalidate: () => selector.invalidate(),
+                    handleInput: (data: string) => {
+                      selector.handleInput(data);
+                      innerTui.requestRender();
+                    },
+                  };
+                },
+                {
+                  overlay: true,
+                  overlayOptions: {
+                    width: "60%",
+                    minWidth: 40,
+                    anchor: "center",
+                    margin: 4,
+                  },
+                }
+              );
+            };
             return {
               render: (w: number) => overlay.render(w),
               invalidate: () => overlay.invalidate(),
@@ -54,6 +83,46 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
               minWidth: 60,
               anchor: "center",
               margin: 2,
+            },
+          }
+        );
+      },
+    }
+  );
+
+  // /unipi:notify-recap-model — Open recap model selector directly
+  pi.registerCommand(
+    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.RECAP_MODEL}`,
+    {
+      description: "Select model for notification recaps",
+      handler: async (_args: string, ctx: ExtensionContext) => {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("Model selector requires an interactive UI.", "warning");
+          return;
+        }
+
+        ctx.ui.custom(
+          (tui: any, theme: any, _keybindings: any, done: any) => {
+            const overlay = new RecapModelSelectorOverlay();
+            overlay.setTheme(theme);
+            overlay.onClose = () => done(undefined);
+            overlay.requestRender = () => tui.requestRender();
+            return {
+              render: (w: number) => overlay.render(w),
+              invalidate: () => overlay.invalidate(),
+              handleInput: (data: string) => {
+                overlay.handleInput(data);
+                tui.requestRender();
+              },
+            };
+          },
+          {
+            overlay: true,
+            overlayOptions: {
+              width: "60%",
+              minWidth: 40,
+              anchor: "center",
+              margin: 4,
             },
           }
         );

@@ -12,6 +12,7 @@ import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
+import { summarizeLastMessage } from "./summarize.js";
 
 /** Built-in event definitions — maps event key to pi hook + display label */
 export const BUILTIN_EVENTS: Record<
@@ -35,8 +36,10 @@ export function registerEventListeners(
   pi: ExtensionAPI,
   config: NotifyConfig
 ): void {
-  // Register built-in events
+  // Register built-in events (except agent_end which has custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
+    if (eventKey === "agent_end") continue; // handled separately below
+
     const eventConfig = config.events[eventKey];
     if (!eventConfig?.enabled) continue;
 
@@ -47,6 +50,44 @@ export function registerEventListeners(
     };
 
     (pi as any).on(def.hook, handler);
+  }
+
+  // agent_end — custom handler with session name and recap support
+  const agentEndConfig = config.events["agent_end"];
+  if (agentEndConfig?.enabled) {
+    const handler = async (payload: unknown) => {
+      const sessionName = pi.getSessionName?.();
+      const title = `Pi — ${BUILTIN_EVENTS.agent_end.label}`;
+      let message: string;
+
+      if (config.recap.enabled) {
+        // Recap mode: summarize last assistant message
+        const lastText = extractLastAssistantText(payload);
+        if (lastText) {
+          const apiKey = resolveApiKey(config.recap.model);
+          if (apiKey) {
+            try {
+              const modelId = extractModelId(config.recap.model);
+              const recap = await summarizeLastMessage(lastText, apiKey, modelId);
+              message = sessionName ? `${sessionName}: ${recap}` : recap;
+            } catch {
+              message = buildAgentEndMessage(sessionName);
+            }
+          } else {
+            message = buildAgentEndMessage(sessionName);
+          }
+        } else {
+          message = buildAgentEndMessage(sessionName);
+        }
+      } else {
+        // No recap: use session name based message
+        message = buildAgentEndMessage(sessionName);
+      }
+
+      await dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config);
+    };
+
+    (pi as any).on("agent_end", handler);
   }
 
   // Listen for dynamic module events
@@ -194,4 +235,60 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
     default:
       return p.message ? String(p.message) : "Event occurred";
   }
+}
+
+/** Build agent_end message using session name */
+function buildAgentEndMessage(sessionName: string | undefined): string {
+  if (sessionName) return `${sessionName} - Agent is complete`;
+  return "Agent is complete";
+}
+
+/** Extract text from the last assistant message in agent_end payload */
+function extractLastAssistantText(payload: unknown): string | null {
+  const p = payload as { messages?: Array<{ role?: string; content?: unknown }> };
+  if (!p?.messages || !Array.isArray(p.messages)) return null;
+
+  // Find last assistant message
+  for (let i = p.messages.length - 1; i >= 0; i--) {
+    const msg = p.messages[i];
+    if (msg?.role !== "assistant") continue;
+
+    const content = msg.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      // Extract text blocks from content array
+      const textParts: string[] = [];
+      for (const block of content) {
+        if (typeof block === "object" && block !== null) {
+          const b = block as { type?: string; text?: string };
+          if (b.type === "text" && typeof b.text === "string") {
+            textParts.push(b.text);
+          }
+        }
+      }
+      if (textParts.length > 0) return textParts.join("\n");
+    }
+  }
+
+  return null;
+}
+
+/** Extract provider from model reference (e.g. "openrouter/openai/gpt-oss-20b" → "openrouter") */
+function extractProvider(modelRef: string): string {
+  const slashIdx = modelRef.indexOf("/");
+  return slashIdx > 0 ? modelRef.slice(0, slashIdx) : modelRef;
+}
+
+/** Extract model ID from full reference (e.g. "openrouter/openai/gpt-oss-20b" → "openai/gpt-oss-20b") */
+function extractModelId(modelRef: string): string {
+  const slashIdx = modelRef.indexOf("/");
+  return slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
+}
+
+/** Resolve API key for a provider from environment variables */
+function resolveApiKey(modelRef: string): string | undefined {
+  const provider = extractProvider(modelRef);
+  // Try standard env var patterns
+  const envKey = `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
+  return process.env[envKey];
 }

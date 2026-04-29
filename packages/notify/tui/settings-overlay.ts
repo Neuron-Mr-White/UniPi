@@ -16,7 +16,7 @@ import {
 import type { NotifyConfig } from "../types.js";
 
 /** Section types */
-type Section = "platforms" | "events";
+type Section = "platforms" | "events" | "recap";
 
 /**
  * Settings overlay component.
@@ -29,6 +29,8 @@ export class NotifySettingsOverlay implements Component {
   private saved = false;
   onClose?: () => void;
   requestRender?: () => void;
+  /** Called when user presses M in recap section to open model selector */
+  onOpenModelSelector?: () => void;
   private theme: Theme | null = null;
 
   constructor() {
@@ -55,8 +57,17 @@ export class NotifySettingsOverlay implements Component {
         this.toggleCurrent();
         break;
       case "\t": // Tab - switch section
-        this.section = this.section === "platforms" ? "events" : "platforms";
-        this.selectedIndex = 0;
+        {
+          const sections: Section[] = ["platforms", "events", "recap"];
+          const idx = sections.indexOf(this.section);
+          this.section = sections[(idx + 1) % sections.length];
+          this.selectedIndex = 0;
+        }
+        break;
+      case "m": // M - open model selector (only in recap section)
+        if (this.section === "recap") {
+          this.onOpenModelSelector?.();
+        }
         break;
       case "\r": // Enter - save
         this.save();
@@ -69,6 +80,7 @@ export class NotifySettingsOverlay implements Component {
 
   private get maxItems(): number {
     if (this.section === "platforms") return 4; // native, gotify, telegram, ntfy
+    if (this.section === "recap") return 1; // toggle
     return Object.keys(this.config.events).length;
   }
 
@@ -84,6 +96,8 @@ export class NotifySettingsOverlay implements Component {
       if (key) {
         this.config[key].enabled = !this.config[key].enabled;
       }
+    } else if (this.section === "recap") {
+      this.config.recap.enabled = !this.config.recap.enabled;
     } else {
       const eventKeys = Object.keys(this.config.events);
       const key = eventKeys[this.selectedIndex];
@@ -159,11 +173,17 @@ export class NotifySettingsOverlay implements Component {
       this.section === "events"
         ? this.fg("accent", this.bold("[Events]"))
         : this.fg("dim", "Events");
-    lines.push(this.frameLine(`  ${platformTab}  ${eventsTab}`, innerWidth));
+    const recapTab =
+      this.section === "recap"
+        ? this.fg("accent", this.bold("[Recap]"))
+        : this.fg("dim", "Recap");
+    lines.push(this.frameLine(`  ${platformTab}  ${eventsTab}  ${recapTab}`, innerWidth));
     lines.push(this.ruleLine(innerWidth));
 
     if (this.section === "platforms") {
       this.renderPlatforms(lines, innerWidth);
+    } else if (this.section === "recap") {
+      this.renderRecap(lines, innerWidth);
     } else {
       this.renderEvents(lines, innerWidth);
     }
@@ -180,7 +200,10 @@ export class NotifySettingsOverlay implements Component {
 
     // Footer
     lines.push(this.ruleLine(innerWidth));
-    lines.push(this.frameLine(this.fg("dim", "↑↓ navigate · Space toggle · Tab switch · Enter save · Esc cancel"), innerWidth));
+    const footerHint = this.section === "recap"
+      ? "↑↓ navigate · Space toggle · M change model · Tab switch · Enter save · Esc cancel"
+      : "↑↓ navigate · Space toggle · Tab switch · Enter save · Esc cancel";
+    lines.push(this.frameLine(this.fg("dim", footerHint), innerWidth));
     lines.push(this.borderLine(innerWidth, "bottom"));
 
     return lines;
@@ -255,5 +278,34 @@ export class NotifySettingsOverlay implements Component {
         )
       );
     }
+  }
+
+  private renderRecap(lines: string[], innerWidth: number): void {
+    // Toggle
+    const isSelected = this.selectedIndex === 0;
+    const toggleOn = this.fg("success", "●");
+    const toggleOff = this.fg("dim", "○");
+    const toggle = this.config.recap.enabled ? toggleOn : toggleOff;
+    const label = isSelected
+      ? this.bold("Enable Recap")
+      : this.fg("dim", "Enable Recap");
+
+    lines.push(
+      this.frameLine(
+        `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}`,
+        innerWidth
+      )
+    );
+
+    // Current model display
+    const modelRef = this.config.recap.model;
+    const modelLabel = this.fg("dim", `  Model: ${modelRef}`);
+    lines.push(this.frameLine(modelLabel, innerWidth));
+    lines.push(
+      this.frameLine(
+        this.fg("dim", "  Press M to change model"),
+        innerWidth
+      )
+    );
   }
 }

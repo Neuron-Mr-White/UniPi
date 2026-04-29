@@ -132,12 +132,13 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:milestone-onboard": "milestone",
   "unipi:milestone-update":  "milestone",
 
-  // notify (5 commands)
+  // notify (6 commands)
   "unipi:notify-settings":  "notify",
   "unipi:notify-set-gotify": "notify",
   "unipi:notify-set-tg":    "notify",
   "unipi:notify-set-ntfy":  "notify",
   "unipi:notify-test":      "notify",
+  "unipi:notify-recap-model": "notify",
 
   // kanboard (3 commands)
   "unipi:kanboard":          "kanboard",
@@ -222,6 +223,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
   "unipi:notify-set-ntfy":  "Set up ntfy push notifications",
   "unipi:notify-test":      "Test all enabled notification platforms",
+  "unipi:notify-recap-model": "Select model for notification recaps",
 
   "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
   "unipi:milestone-update":  "Sync MILESTONES.md with completed work",

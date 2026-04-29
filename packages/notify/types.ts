@@ -57,6 +57,14 @@ export interface NtfyConfig {
   priority: number;
 }
 
+/** Recap notification config */
+export interface RecapConfig {
+  /** Whether recap summarization is enabled */
+  enabled: boolean;
+  /** Model to use for recap (e.g. "openrouter/openai/gpt-oss-20b") */
+  model: string;
+}
+
 /** Full notification configuration */
 export interface NotifyConfig {
   /** Global default platforms for all events */
@@ -71,6 +79,8 @@ export interface NotifyConfig {
   telegram: TelegramConfig;
   /** ntfy settings */
   ntfy: NtfyConfig;
+  /** Recap summarization settings */
+  recap: RecapConfig;
 }
 
 /** Parameters for the notify_user agent tool */

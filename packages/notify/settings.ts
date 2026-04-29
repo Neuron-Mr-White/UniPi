@@ -43,6 +43,10 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     serverUrl: "https://ntfy.sh",
     priority: 3,
   },
+  recap: {
+    enabled: false,
+    model: "openrouter/openai/gpt-oss-20b",
+  },
 };
 
 /** Load config from disk, returning defaults if missing or invalid */
@@ -128,5 +132,6 @@ function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
     gotify: { ...DEFAULT_CONFIG.gotify, ...loaded.gotify },
     telegram: { ...DEFAULT_CONFIG.telegram, ...loaded.telegram },
     ntfy: { ...DEFAULT_CONFIG.ntfy, ...loaded.ntfy },
+    recap: { ...DEFAULT_CONFIG.recap, ...loaded.recap },
   };
 }
