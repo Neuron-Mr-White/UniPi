@@ -121,6 +121,16 @@ export function registerEventListeners(
   (pi as any).on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
 }
 
+/** Get all platforms that are currently enabled in config */
+function getEnabledPlatforms(config: NotifyConfig): NotifyPlatform[] {
+  const enabled: NotifyPlatform[] = [];
+  if (config.native.enabled) enabled.push("native");
+  if (config.gotify.enabled) enabled.push("gotify");
+  if (config.telegram.enabled) enabled.push("telegram");
+  if (config.ntfy.enabled) enabled.push("ntfy");
+  return enabled;
+}
+
 /** No-op — cleanup handled by session teardown */
 export function unregisterEventListeners(): void {}
 
@@ -136,8 +146,13 @@ export async function dispatchNotification(
   eventType: string,
   config: NotifyConfig
 ): Promise<NotifyDispatchResult> {
+  // Resolve platforms: event-specific → all enabled → global defaults
   const platforms =
-    eventPlatforms.length > 0 ? eventPlatforms : config.defaultPlatforms;
+    eventPlatforms.length > 0
+      ? eventPlatforms
+      : getEnabledPlatforms(config).length > 0
+        ? getEnabledPlatforms(config)
+        : config.defaultPlatforms;
 
   const enabledPlatforms = platforms.filter((p) => {
     if (p === "native") return config.native.enabled;

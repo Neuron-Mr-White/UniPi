@@ -26,7 +26,7 @@ const NotifyUserSchema = Type.Object({
   ),
   platforms: Type.Optional(
     Type.Array(
-      Type.String({ enum: ["native", "gotify", "telegram"] }),
+      Type.String({ enum: ["native", "gotify", "telegram", "ntfy"] }),
       { description: "Override platforms for this notification" }
     )
   ),
@@ -40,7 +40,7 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
     name: NOTIFY_TOOLS.NOTIFY_USER,
     label: "Notify User",
     description:
-      "Send a notification to the user's configured platforms (native OS, Gotify, Telegram). " +
+      "Send a notification to the user's configured platforms (native OS, Gotify, Telegram, ntfy). " +
       "Use for critical errors, completion of long-running tasks, or when the user explicitly asked to be notified.",
     parameters: NotifyUserSchema,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {
@@ -53,7 +53,7 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
         message: string;
         title?: string;
         priority?: "low" | "normal" | "high";
-        platforms?: Array<"native" | "gotify" | "telegram">;
+        platforms?: Array<"native" | "gotify" | "telegram" | "ntfy">;
       };
 
       const config = loadConfig();
