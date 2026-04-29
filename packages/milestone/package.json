@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/milestone",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Lifecycle layer for project-level goals — MILESTONES.md tracking, session hooks, auto-sync",
   "type": "module",
   "license": "MIT",

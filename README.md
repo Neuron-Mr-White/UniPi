@@ -41,7 +41,7 @@ pi install npm:@pi-unipi/kanboard
 | `@pi-unipi/btw` | Parallel side conversations with `/btw` |
 | `@pi-unipi/web-api` | Web search, read, and summarize with provider selection |
 | `@pi-unipi/compactor` | Session compaction, context management, batch execution |
-| `@pi-unipi/notify` | Cross-platform notifications (native, Gotify, Telegram) |
+| `@pi-unipi/notify` | Cross-platform notifications (native, Gotify, Telegram, ntfy) |
 | `@pi-unipi/utility` | Environment info, diagnostics, settings inspector, cleanup |
 | `@pi-unipi/mcp` | MCP server discovery, connection, and tool integration |
 | `@pi-unipi/ask-user` | Structured user input with options and freeform text |
@@ -145,6 +145,8 @@ pi install npm:@pi-unipi/kanboard
 | `/unipi:notify-settings` | Configure notification platforms |
 | `/unipi:notify-set-gotify` | Set Gotify server config |
 | `/unipi:notify-set-tg` | Set Telegram bot config |
+| `/unipi:notify-set-ntfy` | Set ntfy topic and server |
+| `/unipi:notify-recap-model` | Set model for notification recaps |
 | `/unipi:notify-test` | Test notification delivery |
 
 ### Utility (`/unipi:*`)

@@ -1,6 +1,6 @@
 # @pi-unipi/notify
 
-Cross-platform notification extension for Pi. Sends push notifications to native OS, Gotify, and Telegram when agent lifecycle events occur.
+Cross-platform notification extension for Pi. Sends push notifications to native OS, Gotify, Telegram, and ntfy when agent lifecycle events occur.
 
 ## What it does
 
@@ -52,12 +52,35 @@ This guides you through:
 2. Pasting the bot token
 3. Auto-detecting your chat ID
 
+### ntfy
+
+HTTP-based pub-sub notifications via [ntfy.sh](https://ntfy.sh) or self-hosted. Run setup command:
+
+```
+/unipi:notify-set-ntfy
+```
+
+Or configure manually:
+
+```json
+{
+  "ntfy": {
+    "enabled": true,
+    "serverUrl": "https://ntfy.sh",
+    "topic": "your-topic-name",
+    "priority": 3
+  }
+}
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `/unipi:notify-settings` | Open settings overlay to configure platforms and events |
+| `/unipi:notify-set-gotify` | Configure Gotify server connection |
 | `/unipi:notify-set-tg` | Interactive Telegram bot setup |
+| `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
 | `/unipi:notify-test` | Send test notification to all enabled platforms |
 
 ## Agent Tool
