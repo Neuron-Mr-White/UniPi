@@ -205,6 +205,7 @@ describe("Badge generation — event bus (CRITICAL FIX)", () => {
     const validLifecycleEvents = [
       "session_start", "session_shutdown", "input",
       "tool_call", "tool_execution_start",
+      "agent_end", "before_agent_start",
     ];
 
     // Check that pi.on() is only used with lifecycle events
@@ -228,11 +229,26 @@ describe("Badge generation — event bus (CRITICAL FIX)", () => {
 // ─── Test: Event flow ──────────────────────────────────────────────
 
 describe("Badge generation — event flow", () => {
-  it("utility emits BADGE_GENERATE_REQUEST on first input", () => {
+  it("utility emits BADGE_GENERATE_REQUEST after agent responds (deferred from input)", () => {
     const src = readSource("packages/utility/src/index.ts");
 
+    // BADGE_GENERATE_REQUEST should be emitted in agent_end handler, not input
     assert.ok(src.includes("BADGE_GENERATE_REQUEST"));
     assert.ok(src.includes('source: "input-hook"'));
+
+    // input handler should NOT emit BADGE_GENERATE_REQUEST directly
+    const inputBlock = src.match(/pi\.on\("input"[\s\S]*?(?=pi\.on\(|$)/)?.[0] ?? "";
+    assert.ok(
+      !inputBlock.includes("BADGE_GENERATE_REQUEST"),
+      "input handler should NOT emit BADGE_GENERATE_REQUEST — deferred to agent_end",
+    );
+
+    // agent_end handler should emit BADGE_GENERATE_REQUEST
+    const agentEndBlock = src.match(/pi\.on\("agent_end"[\s\S]*?(?=pi\.on\(|$)/)?.[0] ?? "";
+    assert.ok(
+      agentEndBlock.includes("BADGE_GENERATE_REQUEST"),
+      "agent_end handler should emit BADGE_GENERATE_REQUEST with full conversation context",
+    );
   });
 
   it("BADGE_GENERATE_REQUEST event is defined in core", () => {

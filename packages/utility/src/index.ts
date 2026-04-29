@@ -38,6 +38,12 @@ const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
 /** Whether we've seen the first user message (for auto badge generation) */
 let firstMessageSeen = false;
 
+/** Stored user text from first input, used to build conversation summary after agent responds */
+let firstUserText = "";
+
+/** Stored UI context from first input, used to show badge overlay after agent responds */
+let firstInputCtx: any = null;
+
 /** All commands registered by this module */
 const ALL_COMMANDS = [
   UTILITY_COMMANDS.CONTINUE,
@@ -106,7 +112,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // First-message hook: auto-generate session name on first user message
+  // First-message hook: capture user text for deferred badge generation
   pi.on("input", async (_event: any, ctx: any) => {
     // Only trigger on first user message
     if (firstMessageSeen) return;
@@ -120,8 +126,8 @@ export default function (pi: ExtensionAPI) {
     const sessionName = pi.getSessionName?.();
     if (sessionName) return;
 
-    // Get first message text for context
-    const messageText = typeof _event?.content === "string"
+    // Store first message text for later use in agent_end
+    firstUserText = typeof _event?.content === "string"
       ? _event.content
       : Array.isArray(_event?.content)
         ? _event.content
@@ -130,16 +136,57 @@ export default function (pi: ExtensionAPI) {
             .join(" ")
         : "";
 
-    // Emit event for subagents to spawn background agent
-    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
-      source: "input-hook",
-      conversationSummary: messageText.slice(0, 500),
-    });
+    // Store ctx for badge overlay show after agent responds
+    firstInputCtx = ctx;
+  });
+
+  // After agent completes first response, generate badge name with full conversation context
+  pi.on("agent_end", async (event: any, _ctx: any) => {
+    // Only act if we captured a first input and are waiting for badge generation
+    if (!firstInputCtx) return;
+    const ctx = firstInputCtx;
+    firstInputCtx = null; // consume — only trigger once
+
+    // Check if a name was already set (e.g. manually) in the meantime
+    const sessionName = pi.getSessionName?.();
+    if (sessionName) return;
 
     // Show badge overlay if UI available
     if (ctx?.hasUI && !nameBadgeState.isVisible()) {
       await nameBadgeState.show(pi, ctx);
     }
+
+    // Build conversation summary from full message history (user + assistant)
+    const messages: any[] = event?.messages ?? [];
+    const summaryParts: string[] = [];
+
+    // Include the user's first message
+    if (firstUserText) {
+      summaryParts.push(`User: ${firstUserText}`);
+    }
+
+    // Include assistant's response text
+    const assistantMsgs = messages.filter((m: any) => m.role === "assistant");
+    for (const msg of assistantMsgs) {
+      if (Array.isArray(msg.content)) {
+        const textParts = msg.content
+          .filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join(" ");
+        if (textParts) summaryParts.push(`Assistant: ${textParts}`);
+      } else if (typeof msg.content === "string" && msg.content) {
+        summaryParts.push(`Assistant: ${msg.content}`);
+      }
+    }
+
+    // Truncate to reasonable size
+    const conversationSummary = summaryParts.join("\n").slice(0, 800);
+
+    // Emit event for subagents to spawn background agent
+    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
+      source: "input-hook",
+      conversationSummary,
+    });
   });
 
   // Track command usage
@@ -153,6 +200,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     nameBadgeState.hide();
     firstMessageSeen = false;
+    firstUserText = "";
+    firstInputCtx = null;
     await lifecycle.shutdown("session_shutdown");
   });
 }
