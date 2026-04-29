@@ -15,24 +15,34 @@ export async function sendNtfyNotification(
   priority: number = 3,
   token?: string
 ): Promise<void> {
-  const url = `${serverUrl.replace(/\/$/, "")}/${topic}`;
+  // ntfy supports POSTing to the server root with a JSON body that carries
+  // topic/title/message/priority. JSON bodies are UTF-8 safe, unlike HTTP
+  // headers which must be ByteString (Latin-1) and reject characters like
+  // em dash (U+2014). See https://docs.ntfy.sh/publish/#publish-as-json
+  const url = serverUrl.replace(/\/$/, "");
   const headers: Record<string, string> = {
-    Title: title,
-    Priority: String(Math.max(1, Math.min(5, priority))),
+    "Content-Type": "application/json",
   };
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  const body = JSON.stringify({
+    topic,
+    title,
+    message,
+    priority: Math.max(1, Math.min(5, priority)),
+  });
+
   const response = await fetch(url, {
     method: "POST",
     headers,
-    body: message,
+    body,
   });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "<no body>");
-    throw new Error(`ntfy API error ${response.status}: ${body}`);
+    const resBody = await response.text().catch(() => "<no body>");
+    throw new Error(`ntfy API error ${response.status}: ${resBody}`);
   }
 }
