@@ -5,7 +5,7 @@
  * Supports built-in events and dynamic discovery via MODULE_READY.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types.js";
 import { sendNativeNotification } from "./platforms/native.js";
@@ -13,6 +13,19 @@ import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { summarizeLastMessage } from "./summarize.js";
+
+/** Stored session context for modelRegistry access */
+let sessionCtx: ExtensionContext | null = null;
+
+/** Store session context (called from index.ts on session_start) */
+export function setSessionContext(ctx: ExtensionContext): void {
+  sessionCtx = ctx;
+}
+
+/** Clear session context (called on session_shutdown) */
+export function clearSessionContext(): void {
+  sessionCtx = null;
+}
 
 /** Built-in event definitions — maps event key to pi hook + display label */
 export const BUILTIN_EVENTS: Record<
@@ -63,13 +76,20 @@ export function registerEventListeners(
       if (config.recap.enabled) {
         // Recap mode: summarize last assistant message
         const lastText = extractLastAssistantText(payload);
-        if (lastText) {
-          const apiKey = resolveApiKey(config.recap.model);
-          if (apiKey) {
+        if (lastText && sessionCtx?.modelRegistry) {
+          const provider = extractProvider(config.recap.model);
+          const modelId = extractModelId(config.recap.model);
+          const model = sessionCtx.modelRegistry.find(provider, modelId);
+          if (model) {
             try {
-              const modelId = extractModelId(config.recap.model);
-              const recap = await summarizeLastMessage(lastText, apiKey, modelId);
-              message = sessionName ? `${sessionName}: ${recap}` : recap;
+              const apiKeyResult = await sessionCtx.modelRegistry.getApiKeyAndHeaders(model);
+              const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
+              if (apiKey) {
+                const recap = await summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId);
+                message = sessionName ? `${sessionName}: ${recap}` : recap;
+              } else {
+                message = buildAgentEndMessage(sessionName);
+              }
             } catch {
               message = buildAgentEndMessage(sessionName);
             }

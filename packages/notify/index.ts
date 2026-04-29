@@ -19,6 +19,8 @@ import { loadConfig } from "./settings.js";
 import {
   registerEventListeners,
   unregisterEventListeners,
+  setSessionContext,
+  clearSessionContext,
 } from "./events.js";
 
 /** Package version */
@@ -38,7 +40,8 @@ export default function (pi: ExtensionAPI) {
   registerNotifyCommands(pi);
 
   // Session lifecycle — register events and announce module
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
+    setSessionContext(ctx);
     const config = loadConfig();
     registerEventListeners(pi, config);
 
@@ -52,6 +55,7 @@ export default function (pi: ExtensionAPI) {
 
   // Cleanup on session shutdown
   pi.on("session_shutdown", async () => {
+    clearSessionContext();
     unregisterEventListeners();
   });
 }

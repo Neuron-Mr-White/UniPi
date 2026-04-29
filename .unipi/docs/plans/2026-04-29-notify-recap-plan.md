@@ -101,7 +101,7 @@ Fix the agent_end notification to show meaningful messages instead of generic te
     1. Add `"unipi:notify-recap-model": "notify"` to category map
     2. Add `"unipi:notify-recap-model": "Select model for notification recaps"` to descriptions
 
-- unstarted: Task 10 — Build and verify
+- completed: Task 10 — Build and verify
   - Description: Run build to ensure no type errors
   - Dependencies: Tasks 1-9
   - Acceptance Criteria: `npm run build` passes with no errors
@@ -131,3 +131,16 @@ Task 10 (build verify) ← All tasks
 - OpenRouter API key might not be configured → fallback to truncated message
 - AgentMessage type structure may vary → extract text content defensively
 - Model selector needs to handle empty cache gracefully
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- All 10 tasks completed and verified against acceptance criteria
+- Typecheck passes with no errors
+- Committed as c91550a
+
+Codebase Checks:
+- ✓ Type check passed (`npm run typecheck`)
+- ✓ All imports resolve

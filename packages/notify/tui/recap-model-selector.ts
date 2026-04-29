@@ -29,9 +29,8 @@ export class RecapModelSelectorOverlay implements Component {
   private theme: Theme | null = null;
 
   constructor() {
-    // Load cached models and filter to openrouter provider
-    const allModels = readModelCache();
-    this.models = allModels.filter((m) => m.provider === "openrouter");
+    // Load all cached models from project-wide cache
+    this.models = readModelCache();
     this.applyFilter();
 
     // Pre-select current config model
@@ -245,9 +244,10 @@ export class RecapModelSelectorOverlay implements Component {
           ? ` ${this.fg("warning", "(default)")}`
           : "";
 
+        const providerTag = this.fg("dim", `[${m.provider}]`);
         const display = isSelected
-          ? `${this.bold(label)}${defaultTag} ${this.fg("dim", fullRef)}`
-          : `${this.fg("dim", label)}${defaultTag}`;
+          ? `${providerTag} ${this.bold(label)}${defaultTag}`
+          : `${providerTag} ${this.fg("dim", label)}${defaultTag}`;
 
         lines.push(this.frameLine(`  ${marker} ${display}`, innerWidth));
       }
