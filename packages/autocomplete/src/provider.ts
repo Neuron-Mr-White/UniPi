@@ -274,16 +274,54 @@ export function createEnchantedProvider(
         descriptionOverrides,
       );
 
-      // If no unipi items match, just return non-unipi (or null if empty)
+      // If no unipi items match, handle skill vs system items
       if (enhancedUnipiItems.length === 0) {
-        return nonUnipiItems.length > 0
-          ? { items: nonUnipiItems, prefix: effectivePrefix }
+        if (nonUnipiItems.length === 0) return null;
+
+        // Check if user explicitly typed /skill: prefix
+        const isSkillQuery = effectivePrefix.replace(/^\//, "").toLowerCase().startsWith("skill:");
+        
+        if (isSkillQuery) {
+          // User wants skill commands — return them
+          return { items: nonUnipiItems, prefix: effectivePrefix };
+        }
+
+        // Otherwise, filter out skill commands from suggestions
+        const systemOnly = nonUnipiItems.filter(item => !item.value.startsWith("skill:"));
+        return systemOnly.length > 0
+          ? { items: systemOnly, prefix: effectivePrefix }
           : null;
       }
 
-      // Merge: system commands first, then enhanced unipi (sorted by package)
+      // Separate non-unipi items into system commands and skill commands
+      const systemItems: AutocompleteItem[] = [];
+      const skillItems: AutocompleteItem[] = [];
+
+      for (const item of nonUnipiItems) {
+        if (item.value.startsWith("skill:")) {
+          skillItems.push(item);
+        } else {
+          systemItems.push(item);
+        }
+      }
+
+      // Check if user explicitly typed /skill: prefix
+      const isExplicitSkillQuery = effectivePrefix.replace(/^\//, "").toLowerCase().startsWith("skill:");
+
+      // Build final list based on query context
+      let finalItems: AutocompleteItem[];
+
+      if (isExplicitSkillQuery) {
+        // User explicitly wants skill commands — show them first
+        finalItems = [...skillItems, ...enhancedUnipiItems, ...systemItems];
+      } else {
+        // Default: unipi commands first, then system commands, hide skill commands
+        // (skill commands are redundant when unipi equivalents exist)
+        finalItems = [...enhancedUnipiItems, ...systemItems];
+      }
+
       return {
-        items: [...nonUnipiItems, ...enhancedUnipiItems],
+        items: finalItems,
         prefix: effectivePrefix,
       };
     },
