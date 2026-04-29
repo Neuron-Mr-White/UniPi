@@ -41,7 +41,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
             overlay.requestRender = () => tui.requestRender();
             overlay.onOpenModelSelector = () => {
               // Open model selector as nested overlay
-              tui.custom(
+              ctx.ui.custom(
                 (innerTui: any, innerTheme: any, _innerKb: any, innerDone: any) => {
                   const selector = new RecapModelSelectorOverlay();
                   selector.setTheme(innerTheme);
