@@ -176,6 +176,7 @@ export class ContentStore {
   private stmts: Map<string, PreparedStatement> = new Map();
   private dbPath: string;
   private ready = false;
+  private writeCount = 0;
 
   constructor(opts?: { dbPath?: string }) {
     this.dbPath = opts?.dbPath ?? defaultDBPath("content");
@@ -271,6 +272,7 @@ export class ContentStore {
     });
 
     withRetry(() => transaction());
+    this.afterWrite();
 
     return { sourceId: 1, label, totalChunks: chunks.length, codeChunks };
   }
@@ -357,8 +359,25 @@ export class ContentStore {
   async purge(): Promise<number> {
     if (!this.ready) await this.init();
     this.db.exec(`DELETE FROM content_fts; DELETE FROM content_sources;`);
+    this.afterWrite();
     const row = this.stmt("countSources").get() as { cnt: number };
     return row.cnt;
+  }
+
+  /** Run WAL checkpoint to prevent unbounded WAL file growth. */
+  checkpointWAL(mode: "PASSIVE" | "TRUNCATE" = "PASSIVE"): void {
+    if (!this.db) return;
+    try {
+      this.db.exec(`PRAGMA wal_checkpoint(${mode});`);
+    } catch { /* ignore */ }
+  }
+
+  /** Increment write counter and trigger PASSIVE checkpoint every 10th write. */
+  private afterWrite(): void {
+    this.writeCount++;
+    if (this.writeCount % 10 === 0) {
+      this.checkpointWAL("PASSIVE");
+    }
   }
 
   close(): void {

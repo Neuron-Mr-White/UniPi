@@ -3,7 +3,7 @@
  */
 
 import { PolyglotExecutor } from "../executor/executor.js";
-import { ContentStore } from "../store/index.js";
+import type { ContentStore } from "../store/index.js";
 import type { Language, ExecResult, SearchResult } from "../types.js";
 
 export interface BatchCommand {
@@ -28,11 +28,9 @@ export interface BatchResult {
   >;
 }
 
-export async function ctxBatchExecute(items: BatchItem[]): Promise<BatchResult> {
+export async function ctxBatchExecute(store: ContentStore, items: BatchItem[]): Promise<BatchResult> {
   const results: BatchResult["results"] = [];
   const executor = new PolyglotExecutor();
-  const store = new ContentStore();
-  await store.init();
 
   for (const item of items) {
     if (item.type === "execute") {
@@ -48,6 +46,5 @@ export async function ctxBatchExecute(items: BatchItem[]): Promise<BatchResult> 
     }
   }
 
-  store.close();
   return { results };
 }

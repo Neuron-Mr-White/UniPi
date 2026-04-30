@@ -10,6 +10,11 @@ import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
 export const COMPACTOR_CONFIG_PATH = join(homedir(), ".unipi", "config", "compactor", "config.json");
 
+/** Return the per-project config path for a given project directory. */
+export function projectConfigPath(cwd: string): string {
+  return join(cwd, ".unipi", "config", "compactor.json");
+}
+
 const readJson = (path: string): Record<string, unknown> | null => {
   try {
     return JSON.parse(readFileSync(path, "utf-8"));
@@ -18,23 +23,66 @@ const readJson = (path: string): Record<string, unknown> | null => {
   }
 };
 
+/** Deep merge project overrides into global config. */
+function deepMerge<T extends Record<string, any>>(base: T, override: Partial<T>): T {
+  const result = { ...base };
+  for (const key of Object.keys(override) as (keyof T)[]) {
+    const baseVal = result[key];
+    const overrideVal = override[key];
+    if (
+      overrideVal !== undefined &&
+      typeof overrideVal === "object" &&
+      !Array.isArray(overrideVal) &&
+      overrideVal !== null &&
+      typeof baseVal === "object" &&
+      !Array.isArray(baseVal) &&
+      baseVal !== null
+    ) {
+      (result as any)[key] = deepMerge(baseVal as any, overrideVal as any);
+    } else if (overrideVal !== undefined) {
+      (result as any)[key] = overrideVal;
+    }
+  }
+  return result;
+}
+
 /**
  * Load compactor config from disk with defaults fallback.
+ * Supports per-project overrides at <cwd>/.unipi/config/compactor.json.
  */
-export function loadConfig(): CompactorConfig {
+export function loadConfig(cwd?: string): CompactorConfig {
   const parsed = readJson(COMPACTOR_CONFIG_PATH);
-  if (!parsed || typeof parsed !== "object") return structuredClone(DEFAULT_COMPACTOR_CONFIG);
-  return migrateConfig(parsed as Partial<CompactorConfig>);
+  let config: CompactorConfig;
+  if (!parsed || typeof parsed !== "object") {
+    config = structuredClone(DEFAULT_COMPACTOR_CONFIG);
+  } else {
+    config = migrateConfig(parsed as Partial<CompactorConfig>);
+  }
+
+  // Apply per-project overrides if cwd is provided and project config exists
+  if (cwd) {
+    const projPath = projectConfigPath(cwd);
+    const projOverride = readJson(projPath);
+    if (projOverride && typeof projOverride === "object") {
+      config = deepMerge(config, projOverride as Partial<CompactorConfig>);
+    }
+  }
+
+  return config;
 }
 
 /**
  * Save config to disk with schema validation.
+ * If perProject is true, saves to <cwd>/.unipi/config/compactor.json instead of global.
  */
-export function saveConfig(config: CompactorConfig): { success: boolean; error?: string } {
+export function saveConfig(config: CompactorConfig, opts?: { perProject?: boolean; cwd?: string }): { success: boolean; error?: string } {
   try {
-    const dir = dirname(COMPACTOR_CONFIG_PATH);
+    const targetPath = (opts?.perProject && opts?.cwd)
+      ? projectConfigPath(opts.cwd)
+      : COMPACTOR_CONFIG_PATH;
+    const dir = dirname(targetPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(COMPACTOR_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+    writeFileSync(targetPath, `${JSON.stringify(config, null, 2)}\n`);
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -67,6 +115,7 @@ export function migrateConfig(partial: Partial<CompactorConfig>): CompactorConfi
     fts5Index: mergeStrategy("fts5Index", defaults.fts5Index, partial.fts5Index),
     sandboxExecution: mergeStrategy("sandboxExecution", defaults.sandboxExecution, partial.sandboxExecution),
     toolDisplay: mergeStrategy("toolDisplay", defaults.toolDisplay, partial.toolDisplay),
+    pipeline: mergeStrategy("pipeline", defaults.pipeline, (partial as any).pipeline) as any,
     overrideDefaultCompaction: partial.overrideDefaultCompaction ?? defaults.overrideDefaultCompaction,
     debug: partial.debug ?? defaults.debug,
     showTruncationHints: partial.showTruncationHints ?? defaults.showTruncationHints,

@@ -1,74 +1,30 @@
 ---
 name: compactor
-description: Routing decision tree for compactor — when to compact, search, index, or diagnose.
+description: Context management — compact session, recall history, run code, search content.
 ---
 
-# Compactor Routing
+# Compactor — Context Management
 
-Use this skill to decide which compactor action to take.
+## When Context Is Tight
+- `context_budget` → check % full. `compact` → free tokens (zero-LLM, 98%+ reduction).
+  Compact BEFORE complex work. `compact(dryRun: true)` to preview without compacting.
+- `compactor_stats` → check savings. `compactor_doctor` → diagnose.
 
-## Decision Tree
+## Finding Past Work
+- `session_recall(query)` → search this session (BM25 or regex).
+- `content_search(query)` → search indexed files/docs.
+  → Index first: `content_index` or `content_fetch(url)`.
 
-```
-User wants to...
-├── Reduce context / free tokens
-│   └── /unipi:compact or `compact` tool
-│
-├── Find something from earlier in the session
-│   └── /unipi:compact-recall <query> or `vcc_recall` tool
-│
-├── Run code safely
-│   └── `ctx_execute` tool (single) or `ctx_batch_execute` (batch)
-│
-├── Index project files for search
-│   └── /unipi:compact-index or `ctx_index` tool
-│
-├── Search indexed content
-│   └── /unipi:compact-search <query> or `ctx_search` tool
-│
-├── Fetch and index a URL
-│   └── `ctx_fetch_and_index` tool
-│
-├── View compactor stats
-│   └── /unipi:compact-stats or `ctx_stats` tool
-│
-├── Diagnose issues
-│   └── /unipi:compact-doctor or `ctx_doctor` tool
-│
-├── Change settings
-│   └── /unipi:compact-settings (TUI overlay)
-│   └── /unipi:compact-preset <name> (quick preset)
-│
-└── Wipe indexed content
-    └── /unipi:compact-purge
-```
+## Running Code
+- `sandbox(lang, code)` → single script. `sandbox_batch(items)` → atomic.
+  `sandbox_file(lang, path)` → run file. Only stdout enters context.
 
-## When to Compact
+## Complex Multi-Step Tasks
+⚠ When the task spans many operations, PREFER Ralph loops
+   (`/unipi:work`, `ralph_start`) if available — they manage
+   context pressure better than monolithic runs.
 
-- Context window > 80% full
-- Session has > 100 messages
-- Before starting a complex multi-step task
-- When the agent starts repeating itself
-
-## When to Recall
-
-- User references something from earlier
-- Need to find a file path mentioned before
-- Looking for a previous error or decision
-- Searching for a specific code snippet
-
-## When to Index
-
-- Starting work on a large codebase
-- Need fast search across many files
-- Documentation or reference material
-- Before a research-heavy task
-
-## Presets
-
-| Preset | Best For |
-|--------|----------|
-| `opencode` | Code-heavy work, minimal context waste |
-| `balanced` | General use, good defaults |
-| `verbose` | Maximum context preservation |
-| `minimal` | Maximum token savings |
+## Critical Rules
+- Compact BEFORE starting, not when full.
+- `session_recall` instead of scrolling history.
+- Index project files early if you'll search often.

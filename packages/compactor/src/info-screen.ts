@@ -4,6 +4,7 @@
 
 import type { SessionDB } from "./session/db.js";
 import type { ContentStore } from "./store/index.js";
+import type { RuntimeCounters } from "./types.js";
 import { getLastCompactionStats } from "./compaction/hooks.js";
 
 export interface InfoScreenData {
@@ -20,6 +21,7 @@ export async function getInfoScreenData(
   sessionDB: SessionDB,
   contentStore: ContentStore,
   sessionId: string,
+  counters?: RuntimeCounters,
 ): Promise<InfoScreenData> {
   const stats = sessionDB.getSessionStats(sessionId);
   const compactStats = getLastCompactionStats();
@@ -31,11 +33,15 @@ export async function getInfoScreenData(
       detail: "Session events tracked",
     },
     compactions: {
-      value: String(stats?.compact_count ?? 0),
+      value: String(counters?.compactions ?? stats?.compact_count ?? 0),
       detail: compactStats ? `Last: ${compactStats.summarized} msgs` : "No compactions yet",
     },
     tokensSaved: {
-      value: compactStats ? `~${compactStats.keptTokensEst}` : "0",
+      value: counters?.totalTokensCompacted
+        ? `~${counters.totalTokensCompacted}`
+        : compactStats
+          ? `~${compactStats.keptTokensEst}`
+          : "0",
       detail: "Estimated tokens kept",
     },
     compressionRatio: {
@@ -49,11 +55,11 @@ export async function getInfoScreenData(
       detail: `${storeStats.chunks} chunks indexed`,
     },
     sandboxExecutions: {
-      value: "0",
+      value: String(counters?.sandboxRuns ?? 0),
       detail: "Sandbox runs this session",
     },
     searchQueries: {
-      value: "0",
+      value: String(counters?.searchQueries ?? 0),
       detail: "Search queries this session",
     },
   };

@@ -2,7 +2,7 @@
  * ctx_fetch_and_index tool — fetch URL → markdown → index
  */
 
-import { ContentStore } from "../store/index.js";
+import type { ContentStore } from "../store/index.js";
 import type { IndexResult } from "../types.js";
 
 export interface CtxFetchAndIndexInput {
@@ -11,7 +11,7 @@ export interface CtxFetchAndIndexInput {
   chunkSize?: number;
 }
 
-export async function ctxFetchAndIndex(input: CtxFetchAndIndexInput): Promise<IndexResult> {
+export async function ctxFetchAndIndex(store: ContentStore, input: CtxFetchAndIndexInput): Promise<IndexResult> {
   const label = input.label ?? input.url;
 
   const response = await fetch(input.url, {
@@ -23,15 +23,10 @@ export async function ctxFetchAndIndex(input: CtxFetchAndIndexInput): Promise<In
   }
 
   const text = await response.text();
-  const store = new ContentStore();
-  await store.init();
 
-  const result = await store.index(label, text, {
+  return store.index(label, text, {
     contentType: "plain",
     source: input.url,
     chunkSize: input.chunkSize,
   });
-
-  store.close();
-  return result;
 }

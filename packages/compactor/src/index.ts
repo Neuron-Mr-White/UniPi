@@ -15,7 +15,7 @@ import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
-import type { NormalizedBlock } from "./types.js";
+import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
 
 /** Debug logger — only logs when config.debug === true */
 function createDebugLogger(getConfig: () => { debug: boolean }) {
@@ -34,6 +34,14 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   let config = loadConfig();
   let cachedBlocks: NormalizedBlock[] = [];
   let currentSessionId = "default";
+  const counters: RuntimeCounters = {
+    sandboxRuns: 0,
+    searchQueries: 0,
+    recallQueries: 0,
+    compactions: 0,
+    totalTokensCompacted: 0,
+  };
+  const getCounters = () => counters;
 
   const debug = createDebugLogger(() => config);
 
@@ -67,7 +75,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     executor = new PolyglotExecutor();
   };
 
-  registerCompactionHooks(pi, { getSessionDB: () => sessionDB, getSessionId: () => currentSessionId });
+  registerCompactionHooks(pi);
 
   // Commands registered inside session_start after init() when deps are ready
   const getCommandDeps = () => ({
@@ -75,6 +83,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
+    getCounters,
   });
 
   pi.on("session_start", async (_event, ctx) => {
@@ -97,6 +106,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         contentStore,
         getSessionId: () => currentSessionId,
         getBlocks: () => cachedBlocks,
+        getCounters,
       });
     }
 
@@ -127,7 +137,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         dataProvider: async () => {
           try {
             const { getInfoScreenData } = await import("./info-screen.js");
-            const data = await getInfoScreenData(sdb, cs, sid());
+            const data = await getInfoScreenData(sdb, cs, sid(), counters);
             return {
               sessionEvents: { value: data.sessionEvents.value, detail: data.sessionEvents.detail },
               compactions: { value: data.compactions.value, detail: data.compactions.detail },
@@ -159,16 +169,39 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
-    config = loadConfig();
+    const cwd = (ctx as any).cwd ?? process.cwd();
+    config = loadConfig(cwd);
     currentSessionId = `${(ctx as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
     debug("before_agent_start", { sessionId: currentSessionId, configDebug: config.debug });
+
+    // Evaluate autoDetect conditions for strategies
+    try {
+      const { existsSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const strategies: Array<{ key: string; config: CompactorStrategyConfig }> = [
+        { key: "commits", config: config.commits },
+        { key: "fts5Index", config: config.fts5Index },
+      ];
+      for (const { key, config: strat } of strategies) {
+        if ((strat as any).autoDetect === "git") {
+          const gitDir = join(cwd, ".git");
+          if (!existsSync(gitDir)) {
+            debug("autoDetect_disable", { strategy: key, reason: "no .git dir" });
+            // Non-destructive: temporarily disable at runtime, don't modify config file
+            strat.enabled = false;
+          }
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
 
     // Re-cache normalized blocks for vcc_recall
     try {
       const messages = (ctx as any).messages ?? [];
       if (messages.length > 0) {
         const normalized = normalizeMessages(messages);
-        cachedBlocks = filterNoise(normalized);
+        cachedBlocks = filterNoise(normalized, config.pipeline?.customNoisePatterns);
       }
     } catch {
       // Non-fatal: recall will work on empty blocks
@@ -185,7 +218,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
           const events = sessionDB.getEvents(currentSessionId, { limit: 100 });
           const autoInjection = buildAutoInjection(events);
           if (autoInjection) {
-            debug("auto_injection", { length: autoInjection.length });
+            debug("auto_injection", { tokens: autoInjection.tokens, length: autoInjection.text.length });
             // Note: auto-injection is included in the resume snapshot context
             // The model receives it as part of the session state restoration
           }
@@ -214,12 +247,19 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (sessionDB) {
       const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
       sessionDB.incrementCompactCount(sessionId);
+      counters.compactions++;
+      const tokensBefore = (event as any).tokensBefore ?? 0;
+      if (tokensBefore > 0) {
+        counters.totalTokensCompacted += Math.round(tokensBefore * 0.85); // rough estimate
+      }
       debug("session_compact", { sessionId });
     }
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
     debug("session_shutdown");
+    // WAL checkpoint: TRUNCATE on shutdown to keep DB file size down
+    contentStore?.checkpointWAL("TRUNCATE");
     if (sessionDB) {
       sessionDB.cleanupOldSessions(7);
     }
@@ -232,12 +272,71 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const toolName = (event as any).toolName ?? "";
     const args = (event as any).args ?? {};
     debug("input", { toolName, args: JSON.stringify(args).slice(0, 200) });
+
+    // Existing network tool guard
     if (toolName === "bash" || toolName === "Bash") {
       const cmd = String(args.command ?? "");
       if (/\b(curl|wget|nc|netcat)\b/.test(cmd)) {
         return { cancel: true } as any;
       }
     }
+
+    // Security scanner/evaluator wiring (fail-open pattern)
+    try {
+      const { evaluateCommand, evaluateFilePath, loadProjectPermissions } = await import("./security/evaluator.js");
+      const { hasShellEscapes, scanForShellEscapes } = await import("./security/scanner.js");
+      const { readsOrCreatesPolicy } = await import("./security/policy.js");
+
+      // Load deny patterns from .pi/settings.json (fail-open: empty list on error)
+      const cwd = (event as any).cwd ?? process.cwd();
+      const denyPolicy = readsOrCreatesPolicy(cwd);
+
+      // 1. Evaluate bash commands against deny patterns
+      if (toolName === "bash" || toolName === "Bash" || toolName === "Bash") {
+        const cmd = String(args.command ?? "");
+        if (cmd) {
+          const decision = evaluateCommand(cmd, denyPolicy);
+          if (decision === "deny") {
+            debug("security_deny", { toolName, cmd: cmd.slice(0, 100) });
+            return {
+              content: [{ type: "text", text: `Command blocked by security policy: ${cmd.slice(0, 80)}` }],
+              isError: true,
+            } as any;
+          }
+        }
+      }
+
+      // 2. Scan sandbox non-shell code for shell escapes
+      const sandboxToolNames = ["ctx_execute", "ctx_execute_file", "sandbox", "sandbox_file"];
+      if (sandboxToolNames.includes(toolName)) {
+        const language = String(args.language ?? "");
+        const code = String(args.code ?? "");
+        if (language && language !== "shell" && code) {
+          if (hasShellEscapes(code, language)) {
+            const findings = scanForShellEscapes(code, language);
+            debug("security_shell_escapes", { toolName, language, findings });
+            // Fail-open: log but don't block (the hooks system is enforcement)
+          }
+        }
+      }
+
+      // 3. Evaluate file paths in read/write/edit operations
+      const fileOpTools = ["read", "edit", "write", "Read", "Edit", "Write"];
+      if (fileOpTools.includes(toolName)) {
+        const filePath = args.path ?? args.filePath ?? args.file_path ?? "";
+        if (filePath) {
+          const decision = evaluateFilePath(filePath, denyPolicy, cwd);
+          if (decision === "deny") {
+            debug("security_deny_file", { toolName, filePath });
+            // Non-fatal: log warning but allow through (fail-open)
+          }
+        }
+      }
+    } catch (err) {
+      // Fail-open: security checks are advisory, never block on errors
+      debug("security_check_error", { error: String(err) });
+    }
+
     return undefined;
   });
 
