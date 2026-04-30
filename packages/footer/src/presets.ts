@@ -65,7 +65,7 @@ const FULL_PRESET: PresetDef = {
     "extension_statuses",
   ],
   secondarySegments: [
-    "session", "hostname", "time",
+    "hostname", "time",
     "platforms_enabled", "last_sent",
   ],
   separator: "powerline-thin",
@@ -88,7 +88,7 @@ const NERD_PRESET: PresetDef = {
     "extension_statuses",
   ],
   secondarySegments: [
-    "hostname", "time", "session",
+    "hostname", "time",
     "compression_ratio", "indexed_docs",
     "platforms_enabled", "last_sent",
   ],

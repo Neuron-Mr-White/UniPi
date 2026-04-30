@@ -45,11 +45,15 @@ function renderCurrentCommandSegment(ctx: FooterSegmentContext): RenderedSegment
   const data = getWorkflowData(ctx);
   const active = data.active === true;
   const command = data.command as string | undefined;
-  if (!command) return { content: "", visible: false };
+
+  // No workflow — show dash
+  if (!command) {
+    const content = `${WORKFLOW_ICON} -`;
+    return { content: applyColor("workflow", content, ctx.theme, ctx.colors), visible: true };
+  }
 
   const statusPrefix = active ? "▶" : "✓";
   const semanticColor = getWorkflowSemanticColor(command);
-  // Use the workflow icon  instead of "wf"
   const content = `${WORKFLOW_ICON} ${statusPrefix} ${command}`;
   return { content: applyColor(semanticColor, content, ctx.theme, ctx.colors), visible: true };
 }

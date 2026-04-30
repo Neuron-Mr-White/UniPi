@@ -178,12 +178,12 @@ export const EMOJI_ICONS: IconSet = {
   serversFailed:   "⚠",
 
   // Ralph
-  activeLoops:     "\udb81\udf09",
-  totalIterations: "\udb81\udf09",
-  loopStatus:      "\udb81\udf09",
+  activeLoops:     "",
+  totalIterations: "",
+  loopStatus:      "",
 
   // Workflow
-  currentCommand:  "\uf52e",
+  currentCommand:  "",
   sandboxLevel:    "◧",
   commandDuration: "⏱",
 
@@ -242,12 +242,12 @@ export const TEXT_ICONS: IconSet = {
   serversFailed:   "err",
 
   // Ralph
-  activeLoops:     "rlp",
-  totalIterations: "itr",
-  loopStatus:      "rlp",
+  activeLoops:     "",
+  totalIterations: "",
+  loopStatus:      "",
 
   // Workflow
-  currentCommand:  "wf",
+  currentCommand:  "",
   sandboxLevel:    "sbx",
   commandDuration: "dur",
 
