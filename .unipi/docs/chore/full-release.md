@@ -39,6 +39,8 @@ Before running this chore, ensure:
 | `packages/utility` | `@pi-unipi/utility` | 0.2.1 |
 | `packages/web-api` | `@pi-unipi/web-api` | 0.1.8 |
 | `packages/workflow` | `@pi-unipi/workflow` | 0.1.9 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.6 |
+| `packages/footer` | `@pi-unipi/footer` | 0.1.0 |
 | `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.9 |
 
 ---

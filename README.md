@@ -26,6 +26,7 @@ pi install npm:@pi-unipi/mcp
 pi install npm:@pi-unipi/ask-user
 pi install npm:@pi-unipi/milestone
 pi install npm:@pi-unipi/kanboard
+pi install npm:@pi-unipi/footer
 ```
 
 ## Packages
@@ -47,6 +48,7 @@ pi install npm:@pi-unipi/kanboard
 | `@pi-unipi/ask-user` | Structured user input with options and freeform text |
 | `@pi-unipi/milestone` | Milestone tracking and project progress management |
 | `@pi-unipi/kanboard` | Kanboard visualization server with TUI overlay |
+| `@pi-unipi/footer` | Persistent status bar with live stats from all packages |
 
 ## Commands
 
@@ -217,7 +219,15 @@ pi install npm:@pi-unipi/kanboard
 |---------|-------------|
 | `/unipi:kanboard` | Toggle kanboard visualization server |
 | `/unipi:kanboard-doctor` | Diagnose and fix kanboard parser issues |
-| `/unipi:name-gen` | Generate session name badge via background agent |
+
+### Footer (`/unipi:footer*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:footer` | Toggle footer or switch preset |
+| `/unipi:footer-settings` | Open footer settings — toggle groups and segments |
+
+### Name Badge
 
 ## How It Works
 
@@ -250,6 +260,8 @@ pi install npm:@pi-unipi/kanboard
 **Milestone** tracks project progress with MILESTONES.md — onboards existing work and syncs with completed tasks.
 
 **Kanboard** provides a visualization server with htmx + Alpine.js UI for kanban boards, workflow timelines, and milestone progress. Includes a TUI overlay for quick access.
+
+**Footer** renders a persistent status bar at the bottom of the terminal, showing live stats from all Unipi packages — compactor tokens, memory count, MCP status, Ralph loops, workflow state, kanboard tasks, and notifications. Fully configurable with presets and per-segment toggles.
 
 ## Module Discovery
 

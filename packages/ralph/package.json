@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ralph",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "license": "MIT",
