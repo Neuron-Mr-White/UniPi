@@ -25,6 +25,7 @@ import { ctxSearch, type CtxSearchInput } from "./ctx-search.js";
 import { ctxFetchAndIndex, type CtxFetchAndIndexInput } from "./ctx-fetch-and-index.js";
 import { ctxStats, type CtxStatsResult } from "./ctx-stats.js";
 import { ctxDoctor, type DoctorResult } from "./ctx-doctor.js";
+import { contextBudgetTool } from "./context-budget.js";
 import type { SessionDB } from "../session/db.js";
 import type { ContentStore } from "../store/index.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
@@ -45,7 +46,9 @@ const LanguageSchema = Type.Union([
   Type.Literal("elixir"),
 ]);
 
-const CompactParams = Type.Object({});
+const CompactParams = Type.Object({
+  dryRun: Type.Optional(Type.Boolean({ description: "If true, report what would be compacted without actually compacting" })),
+});
 
 const RecallParams = Type.Object({
   query: Type.String({ description: "Search query for session history" }),
@@ -187,13 +190,24 @@ function registerToolWithAlias(
  * Call this during session_start after services are initialized.
  */
 export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps): void {
-  // 1. compact — trigger manual compaction
+  // 1. compact — trigger manual compaction (with optional dryRun)
   pi.registerTool({
     name: "compact",
     label: "Compact",
-    description: "Trigger manual context compaction. Reduces session history while preserving continuity.",
+    description: "Trigger manual context compaction. Reduces session history while preserving continuity. Use dryRun:true to preview without compacting.",
     parameters: CompactParams,
-    async execute(): Promise<any> {
+    async execute(_toolCallId, params: Static<typeof CompactParams>): Promise<any> {
+      if (params.dryRun) {
+        const blocks = deps.getBlocks();
+        const totalMessages = blocks.length;
+        const estimated = Math.round(totalMessages * 0.15); // ~15% kept is typical
+        return jsonResult({
+          dryRun: true,
+          wouldCompact: totalMessages,
+          estimatedKept: estimated,
+          message: `Would compact ${totalMessages} messages → ~${estimated} kept.`,
+        }, "Dry run — no compaction performed");
+      }
       const c = deps.getCounters?.();
       if (c) { c.compactions++; }
       const result = compactTool();
@@ -417,4 +431,27 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     },
   };
   registerToolWithAlias(pi, "compactor_doctor", "ctx_doctor", doctorDefinition);
+
+  // 11. context_budget — estimate remaining context window
+  pi.registerTool({
+    name: "context_budget",
+    label: "Context Budget",
+    description: "Estimate remaining context window (% full, tokens left) and get advice on whether to compact.",
+    parameters: Type.Object({}),
+    async execute(): Promise<any> {
+      // TokensBefore is not directly available here from the tool deps.
+      // The tool provides a best-effort estimate based on session blocks.
+      const blocks = deps.getBlocks();
+      const estimatedTokens = blocks.reduce((sum, b) => {
+        const text = b.kind === "tool_call"
+          ? `${b.name} ${JSON.stringify((b as any).args ?? {})}`
+          : b.kind === "tool_result"
+            ? `${b.name} ${(b as any).text ?? ""}`
+            : (b as any).text ?? "";
+        return sum + Math.ceil(text.length / 4);
+      }, 0);
+      const message = contextBudgetTool(estimatedTokens);
+      return textResult(message);
+    },
+  });
 }

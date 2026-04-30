@@ -141,8 +141,9 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     description: "Open TUI settings overlay",
     handler: async (_args: string, ctx: any) => {
       try {
+        const cwd = (ctx as any).cwd ?? process.cwd();
         const { renderSettingsOverlay } = await import("../tui/settings-overlay.js");
-        const result = await ctx.ui.custom(renderSettingsOverlay());
+        const result = await ctx.ui.custom(renderSettingsOverlay(cwd));
         if (result) {
           ctx.ui.notify("Settings saved.", "info");
         } else {

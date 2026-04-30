@@ -1,8 +1,11 @@
 /**
  * BM25-lite search over normalized message blocks
+ *
+ * Includes module-level index cache for fast repeated queries.
  */
 
 import type { NormalizedBlock } from "../types.js";
+import { createHash } from "node:crypto";
 
 interface SearchDoc {
   id: number;
@@ -63,6 +66,23 @@ export interface SearchHit {
   kind: string;
 }
 
+// Module-level index cache
+let cachedIndexHash = "";
+let cachedDocs: SearchDoc[] = [];
+let cachedIndex: Map<string, number[]> | null = null;
+let cachedDocCount = 0;
+let cachedAvgDocLen = 0;
+let cachedDocLens: Map<number, number> = new Map();
+
+export function invalidateSearchCache(): void {
+  cachedIndexHash = "";
+  cachedDocs = [];
+  cachedIndex = null;
+  cachedDocCount = 0;
+  cachedAvgDocLen = 0;
+  cachedDocLens = new Map();
+}
+
 export function searchEntries(
   blocks: NormalizedBlock[],
   query: string,
@@ -74,10 +94,37 @@ export function searchEntries(
     kind: b.kind,
   }));
 
-  const index = buildIndex(docs);
-  const docCount = docs.length;
-  const docLens = new Map(docs.map((d) => [d.id, tokenize(d.text).length]));
-  const avgDocLen = docCount > 0 ? [...docLens.values()].reduce((a, b) => a + b, 0) / docCount : 1;
+  // Compute content hash to detect blocks change
+  const hashSource = docs.length > 0
+    ? `${docs.length}:${docs[0].text.slice(0, 80)}:${docs[docs.length - 1].text.slice(-80)}`
+    : "empty";
+  const currentHash = createHash("sha256").update(hashSource).digest("hex");
+
+  // Use cached index if blocks haven't changed
+  let index: Map<string, number[]>;
+  let docCount: number;
+  let avgDocLen: number;
+  let docLens: Map<number, number>;
+
+  if (currentHash === cachedIndexHash && cachedIndex) {
+    index = cachedIndex;
+    docCount = cachedDocCount;
+    avgDocLen = cachedAvgDocLen;
+    docLens = cachedDocLens;
+  } else {
+    index = buildIndex(docs);
+    docCount = docs.length;
+    docLens = new Map(docs.map((d) => [d.id, tokenize(d.text).length]));
+    avgDocLen = docCount > 0 ? [...docLens.values()].reduce((a, b) => a + b, 0) / docCount : 1;
+
+    // Update cache
+    cachedIndexHash = currentHash;
+    cachedDocs = docs;
+    cachedIndex = index;
+    cachedDocCount = docCount;
+    cachedAvgDocLen = avgDocLen;
+    cachedDocLens = docLens;
+  }
 
   const queryTokens = tokenize(query);
   if (queryTokens.length === 0) return [];

@@ -6,7 +6,8 @@ description: Context management — compact session, recall history, run code, s
 # Compactor — Context Management
 
 ## When Context Is Tight
-- `compact` → free tokens (zero-LLM, 98%+ reduction). Compact BEFORE complex work.
+- `context_budget` → check % full. `compact` → free tokens (zero-LLM, 98%+ reduction).
+  Compact BEFORE complex work. `compact(dryRun: true)` to preview without compacting.
 - `compactor_stats` → check savings. `compactor_doctor` → diagnose.
 
 ## Finding Past Work
