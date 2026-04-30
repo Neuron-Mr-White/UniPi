@@ -56,10 +56,13 @@ export function registerEventListeners(
     const eventConfig = config.events[eventKey];
     if (!eventConfig?.enabled) continue;
 
-    const handler = async (payload: unknown) => {
+    const handler = (payload: unknown) => {
       const title = `Pi — ${def.label}`;
       const message = buildEventMessage(eventKey, payload);
-      await dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config);
+      // Fire-and-forget: don't block the event emitter
+      dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config).catch(
+        (err) => console.error(`[notify] Background notification failed for ${eventKey}:`, err)
+      );
     };
 
     (pi as any).on(def.hook, handler);
@@ -68,43 +71,44 @@ export function registerEventListeners(
   // agent_end — custom handler with session name and recap support
   const agentEndConfig = config.events["agent_end"];
   if (agentEndConfig?.enabled) {
-    const handler = async (payload: unknown) => {
+    const handler = (payload: unknown) => {
+      // Fire-and-forget: build message and dispatch in background,
+      // don't block agent_end from completing
       const sessionName = pi.getSessionName?.();
       const title = `Pi — ${BUILTIN_EVENTS.agent_end.label}`;
-      let message: string;
 
       if (config.recap.enabled) {
-        // Recap mode: summarize last assistant message
+        // Recap mode: summarize asynchronously, then dispatch
         const lastText = extractLastAssistantText(payload);
         if (lastText && sessionCtx?.modelRegistry) {
           const provider = extractProvider(config.recap.model);
           const modelId = extractModelId(config.recap.model);
           const model = sessionCtx.modelRegistry.find(provider, modelId);
           if (model) {
-            try {
-              const apiKeyResult = await sessionCtx.modelRegistry.getApiKeyAndHeaders(model);
-              const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
-              if (apiKey) {
-                const recap = await summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId);
-                message = sessionName ? `${sessionName}: ${recap}` : recap;
-              } else {
-                message = buildAgentEndMessage(sessionName);
-              }
-            } catch {
-              message = buildAgentEndMessage(sessionName);
-            }
-          } else {
-            message = buildAgentEndMessage(sessionName);
+            sessionCtx.modelRegistry.getApiKeyAndHeaders(model)
+              .then((apiKeyResult) => {
+                const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
+                if (apiKey) {
+                  return summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId)
+                    .then((recap) => sessionName ? `${sessionName}: ${recap}` : recap);
+                }
+                return buildAgentEndMessage(sessionName);
+              })
+              .catch(() => buildAgentEndMessage(sessionName))
+              .then((message) =>
+                dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config)
+              )
+              .catch((err) => console.error("[notify] Background agent_end notification failed:", err));
+            return;
           }
-        } else {
-          message = buildAgentEndMessage(sessionName);
         }
-      } else {
-        // No recap: use session name based message
-        message = buildAgentEndMessage(sessionName);
       }
 
-      await dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config);
+      // No recap or recap unavailable: dispatch immediately in background
+      const message = buildAgentEndMessage(sessionName);
+      dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config).catch(
+        (err) => console.error("[notify] Background agent_end notification failed:", err)
+      );
     };
 
     (pi as any).on("agent_end", handler);

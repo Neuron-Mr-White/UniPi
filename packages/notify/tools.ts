@@ -9,7 +9,6 @@ import { Type } from "@sinclair/typebox";
 import { NOTIFY_TOOLS } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
 import { dispatchNotification } from "./events.js";
-import type { NotifyDispatchResult } from "./types.js";
 
 /** Schema for notify_user tool parameters */
 const NotifyUserSchema = Type.Object({
@@ -43,7 +42,7 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
       "Send a notification to the user's configured platforms (native OS, Gotify, Telegram, ntfy). " +
       "Use for critical errors, completion of long-running tasks, or when the user explicitly asked to be notified.",
     parameters: NotifyUserSchema,
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
       const {
         message,
         title,
@@ -64,32 +63,26 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
       // Resolve platforms — use params.platforms or global defaults
       const notifPlatforms = platforms || config.defaultPlatforms;
 
-      // Dispatch notification
-      const result: NotifyDispatchResult = await dispatchNotification(
+      // Fire-and-forget: dispatch in background so the tool doesn't block the agent
+      dispatchNotification(
         pi,
         notifTitle,
         message,
         notifPlatforms,
         "agent_tool",
         config
-      );
-
-      // Format result
-      const platformResults = result.results.map(
-        (r) => `${r.platform}: ${r.success ? "✓ sent" : `✗ ${r.error || "failed"}`}`
+      ).catch((err) =>
+        console.error("[notify] Background notify_user dispatch failed:", err)
       );
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Notification sent to ${result.results.length} platform(s):\n${platformResults.join("\n")}`,
+            text: `Notification sending to ${notifPlatforms.length} platform(s): ${notifPlatforms.join(", ")}`,
           },
         ],
-        details: {
-          platforms: result.results.map((r) => r.platform),
-          allSuccess: result.allSuccess,
-        },
+        details: { platforms: notifPlatforms },
       };
     },
   });
