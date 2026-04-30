@@ -71,6 +71,22 @@ Load plan, review critically, execute tasks, commit when complete.
 
 **Exit:** Plan reviewed, ready to execute.
 
+### Ralph Loop Decision
+
+Count the non-completed tasks (`unstarted:`, `in-progress:`, `failed:`). If you have the `ralph_start` tool available and 3+ non-trivial tasks remain, consider a ralph loop for resilience:
+
+```
+ralph_start({
+  name: "{plan-topic}",
+  taskContent: "# {Plan Title}\n\n{overview}\n\n## Goals\n- {goal1}\n- {goal2}\n\n## Checklist\n- [ ] {task1}\n- [ ] {task2}\n- [ ] {task3}",
+  maxIterations: 50,
+  itemsPerIteration: 2,
+  reflectEvery: 5
+})
+```
+
+**To skip:** Just proceed to Phase 3 and execute tasks directly. Ralph is a helper, not a requirement.
+
 ---
 
 ## Phase 3: Execute Tasks
@@ -142,7 +158,8 @@ When all tasks are `completed:`:
 
 1. Run final verification (tests, lint, build)
 2. Commit all remaining changes
-3. Inform user based on branch strategy:
+3. If using a ralph loop, emit `COMPLETE` and call `ralph_done` to cleanly exit
+4. Inform user based on branch strategy:
 
 **If working in worktree:**
 > "All tasks complete. Worktree: `{branch}`. Recommend reviewing before merge."

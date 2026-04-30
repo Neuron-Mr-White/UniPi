@@ -37,6 +37,14 @@ Review what was built, verify task completion, run codebase checks, add reviewer
 
 **Exit:** On correct branch. Plan loaded.
 
+### Ralph Status Check
+
+If a ralph loop was used for this work (check `.unipi/ralph/` for a matching state file):
+1. Read `.unipi/ralph/{name}.state.json` — note iteration count, reflection findings
+2. Read `.unipi/ralph/{name}.md` — check checklist completion
+3. Note any items marked incomplete or abandoned across iterations
+4. Include this loop context in your reviewer remarks
+
 ---
 
 ## Phase 2: Check Task Completion
