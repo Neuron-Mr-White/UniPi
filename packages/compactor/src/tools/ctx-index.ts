@@ -2,7 +2,7 @@
  * ctx_index tool — chunk content → index into FTS5
  */
 
-import { ContentStore } from "../store/index.js";
+import type { ContentStore } from "../store/index.js";
 import type { IndexResult } from "../types.js";
 import { readFileSync } from "node:fs";
 
@@ -14,10 +14,7 @@ export interface CtxIndexInput {
   chunkSize?: number;
 }
 
-export async function ctxIndex(input: CtxIndexInput): Promise<IndexResult> {
-  const store = new ContentStore();
-  await store.init();
-
+export async function ctxIndex(store: ContentStore, input: CtxIndexInput): Promise<IndexResult> {
   let text: string;
   let source: string;
 
@@ -31,12 +28,9 @@ export async function ctxIndex(input: CtxIndexInput): Promise<IndexResult> {
     throw new Error("Either content or filePath must be provided");
   }
 
-  const result = await store.index(input.label, text, {
+  return store.index(input.label, text, {
     contentType: input.contentType ?? "plain",
     source,
     chunkSize: input.chunkSize,
   });
-
-  store.close();
-  return result;
 }

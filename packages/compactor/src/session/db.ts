@@ -101,11 +101,8 @@ export class SessionDB {
         priority INTEGER NOT NULL DEFAULT 2,
         data TEXT NOT NULL,
         project_dir TEXT NOT NULL DEFAULT '',
-        attribution_source TEXT NOT NULL DEFAULT 'unknown',
-        attribution_confidence REAL NOT NULL DEFAULT 0,
         source_hook TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        data_hash TEXT NOT NULL DEFAULT ''
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
       CREATE INDEX IF NOT EXISTS idx_session_events_type ON session_events(session_id, type);
@@ -117,10 +114,7 @@ export class SessionDB {
         started_at TEXT NOT NULL DEFAULT (datetime('now')),
         last_event_at TEXT,
         event_count INTEGER NOT NULL DEFAULT 0,
-        compact_count INTEGER NOT NULL DEFAULT 0,
-        total_chars_before INTEGER NOT NULL DEFAULT 0,
-        total_chars_kept INTEGER NOT NULL DEFAULT 0,
-        total_messages_summarized INTEGER NOT NULL DEFAULT 0
+        compact_count INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS session_resume (
@@ -133,28 +127,25 @@ export class SessionDB {
       );
     `);
 
-    // Schema migration: add columns that may be missing on existing databases.
-    // SQLite has no ADD COLUMN IF NOT EXISTS — we catch "duplicate column" errors.
-    // Mirrors the column additions from the compactor gap analysis (2026-04-30).
-    this.migrateAddColumn("session_meta", "total_chars_before INTEGER NOT NULL DEFAULT 0");
-    this.migrateAddColumn("session_meta", "total_chars_kept INTEGER NOT NULL DEFAULT 0");
-    this.migrateAddColumn("session_meta", "total_messages_summarized INTEGER NOT NULL DEFAULT 0");
-    this.migrateAddColumn("session_events", "attribution_source TEXT NOT NULL DEFAULT 'unknown'");
-    this.migrateAddColumn("session_events", "attribution_confidence REAL NOT NULL DEFAULT 0");
-    this.migrateAddColumn("session_events", "data_hash TEXT NOT NULL DEFAULT ''");
+    // Run version-gated schema migrations (no try/catch wrappers)
+    this.runMigrations();
   }
 
-  /** Add a column to an existing table, ignoring "duplicate column" errors. */
-  private migrateAddColumn(table: string, columnDef: string): void {
-    try {
-      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
-    } catch (err: any) {
-      const msg = typeof err?.message === "string" ? err.message : String(err);
-      if (!msg.includes("duplicate column") && !msg.includes("already exists")) {
-        throw err;
-      }
-      // Column already exists — this is expected on fresh databases where
-      // CREATE TABLE included the column, or after a previous migration ran.
+  /** Run version-gated schema migrations using PRAGMA user_version. */
+  private runMigrations(): void {
+    const currentVersion = this.db.pragma("user_version", { simple: true }) as number;
+
+    if (currentVersion < 1) {
+      // V1: Add columns introduced by compactor gap analysis (2026-04-30)
+      this.db.exec(`
+        ALTER TABLE session_meta ADD COLUMN total_chars_before INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE session_meta ADD COLUMN total_chars_kept INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE session_meta ADD COLUMN total_messages_summarized INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE session_events ADD COLUMN attribution_source TEXT NOT NULL DEFAULT 'unknown';
+        ALTER TABLE session_events ADD COLUMN attribution_confidence REAL NOT NULL DEFAULT 0;
+        ALTER TABLE session_events ADD COLUMN data_hash TEXT NOT NULL DEFAULT '';
+      `);
+      this.db.pragma("user_version = 1");
     }
   }
 

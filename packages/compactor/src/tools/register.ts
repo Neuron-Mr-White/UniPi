@@ -232,7 +232,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxBatchExecuteParams,
     async execute(_toolCallId, params: Static<typeof CtxBatchExecuteParams>): Promise<any> {
       try {
-        const result = await ctxBatchExecute(params.items as BatchItem[]);
+        const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
         const summaries = result.results.map((r, i) => {
           if (r.type === "execute") {
             const s = r.result.stdout?.slice(0, 200) || "(no output)";
@@ -255,7 +255,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxIndexParams,
     async execute(_toolCallId, params: Static<typeof CtxIndexParams>): Promise<any> {
       try {
-        const result = await ctxIndex(params as CtxIndexInput);
+        const result = await ctxIndex(deps.contentStore!, params as CtxIndexInput);
         return textResult(
           `Indexed "${result.label}": ${result.totalChunks} chunks (${result.codeChunks} code)`,
           result as unknown as Record<string, unknown>,
@@ -274,7 +274,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxSearchParams,
     async execute(_toolCallId, params: Static<typeof CtxSearchParams>): Promise<any> {
       try {
-        const results = await ctxSearch(params as CtxSearchInput);
+        const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
         if (results.length === 0) {
           return textResult(`No results for "${params.query}".`);
         }
@@ -300,7 +300,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxFetchAndIndexParams,
     async execute(_toolCallId, params: Static<typeof CtxFetchAndIndexParams>): Promise<any> {
       try {
-        const result = await ctxFetchAndIndex(params as CtxFetchAndIndexInput);
+        const result = await ctxFetchAndIndex(deps.contentStore!, params as CtxFetchAndIndexInput);
         return textResult(
           `Fetched and indexed "${result.label}": ${result.totalChunks} chunks`,
           result as unknown as Record<string, unknown>,

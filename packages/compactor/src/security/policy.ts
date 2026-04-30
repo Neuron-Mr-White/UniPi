@@ -2,6 +2,9 @@
  * Security policy — pattern parsing, glob-to-regex
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 export type PermissionDecision = "allow" | "deny" | "ask";
 
 export interface SecurityPolicy {
@@ -71,4 +74,24 @@ export function fileGlobToRegex(glob: string, caseInsensitive: boolean = false):
   }
 
   return new RegExp(`^${regexStr}$`, caseInsensitive ? "i" : "");
+}
+
+/**
+ * Create a minimal deny-only policy by reading .pi/settings.json in cwd.
+ * Returns a SecurityPolicy with deny patterns populated (fail-open: returns empty on error).
+ */
+export function readsOrCreatesPolicy(cwd: string): SecurityPolicy {
+  const settingsPath = join(cwd, ".pi", "settings.json");
+  if (!existsSync(settingsPath)) return { allow: [], deny: [], ask: [] };
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    const permissions = settings.permissions ?? settings.security ?? {};
+    return {
+      deny: [...(permissions.deny ?? [])],
+      ask: [...(permissions.ask ?? [])],
+      allow: [...(permissions.allow ?? [])],
+    };
+  } catch {
+    return { allow: [], deny: [], ask: [] };
+  }
 }

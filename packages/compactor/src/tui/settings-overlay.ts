@@ -159,7 +159,7 @@ const STRATEGIES: StrategyItem[] = [
 /** All navigable items: debug toggle first, then strategies */
 const ALL_ITEMS: StrategyItem[] = [GLOBAL_DEBUG, ...STRATEGIES];
 
-const PRESETS: CompactorPreset[] = ["opencode", "balanced", "verbose", "minimal"];
+const PRESETS: CompactorPreset[] = ["precise", "balanced", "thorough", "lean"];
 
 /**
  * Settings overlay component for compactor configuration.

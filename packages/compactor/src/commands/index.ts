@@ -133,7 +133,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     handler: async (args: string, ctx: any) => {
       const presetName = parsePreset(args.trim());
       if (!presetName) {
-        ctx.ui.notify("Unknown preset. Use: opencode, balanced, verbose, minimal", "error");
+        ctx.ui.notify("Unknown preset. Use: precise, balanced, thorough, lean", "error");
         return;
       }
       const config = applyPreset(presetName);
@@ -186,7 +186,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
             if (content.length < 50) continue;
             const ext = extname(file);
             const ct = ext === ".md" ? "markdown" : ext === ".json" ? "json" : "plain";
-            const result = await deps.contentStore.index(relative(cwd, file), content, {
+            const result = await deps.contentStore!.index(relative(cwd, file), content, {
               contentType: ct,
               source: file,
             });
@@ -215,7 +215,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         return;
       }
       try {
-        const results = await ctxSearch({ query, limit: 10 });
+        const results = await ctxSearch(deps.contentStore!, { query, limit: 10 });
         if (results.length === 0) {
           ctx.ui.notify(`No results for "${query}".`, "info");
           return;
@@ -238,7 +238,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         return;
       }
       try {
-        await deps.contentStore.purge();
+        await deps.contentStore!.purge();
         ctx.ui.notify("All indexed content purged.", "info");
       } catch (err) {
         ctx.ui.notify(`Purge error: ${err}`, "error");

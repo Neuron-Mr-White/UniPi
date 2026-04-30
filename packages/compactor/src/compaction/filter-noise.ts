@@ -17,9 +17,10 @@ const NOISE_STRINGS = [
 
 const XML_WRAPPER_RE = /<(system-reminder|ide_opened_file|command-message|context-window-usage)[^>]*>[\s\S]*?<\/\1>/g;
 
-const isNoiseUserBlock = (text: string): boolean => {
+const isNoiseUserBlock = (text: string, extraPatterns: string[] = []): boolean => {
   const trimmed = text.trim();
   if (NOISE_STRINGS.some((s) => trimmed.includes(s))) return true;
+  if (extraPatterns.length > 0 && extraPatterns.some((p) => trimmed.includes(p))) return true;
   const stripped = trimmed.replace(XML_WRAPPER_RE, "").trim();
   return stripped.length === 0;
 };
@@ -27,14 +28,14 @@ const isNoiseUserBlock = (text: string): boolean => {
 const cleanUserText = (text: string): string =>
   text.replace(XML_WRAPPER_RE, "").trim();
 
-export const filterNoise = (blocks: NormalizedBlock[]): NormalizedBlock[] => {
+export const filterNoise = (blocks: NormalizedBlock[], extraPatterns?: string[]): NormalizedBlock[] => {
   const out: NormalizedBlock[] = [];
   for (const b of blocks) {
     if (b.kind === "thinking") continue;
     if (b.kind === "tool_call" && NOISE_TOOLS.has(b.name)) continue;
     if (b.kind === "tool_result" && NOISE_TOOLS.has(b.name)) continue;
     if (b.kind === "user") {
-      if (isNoiseUserBlock(b.text)) continue;
+      if (isNoiseUserBlock(b.text, extraPatterns)) continue;
       const cleaned = cleanUserText(b.text);
       if (!cleaned) continue;
       out.push({ kind: "user", text: cleaned });
