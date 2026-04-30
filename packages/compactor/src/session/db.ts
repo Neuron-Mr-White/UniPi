@@ -69,7 +69,7 @@ const DEDUP_WINDOW = 5;
 
 export class SessionDB {
   private db: any;
-  private stmts: Map<string, PreparedStatement> = new Map();
+  private stmts: Map<string, PreparedStatement> | null = null;
   private dbPath: string;
 
   constructor(opts?: { dbPath?: string }) {
@@ -127,7 +127,7 @@ export class SessionDB {
       );
     `);
 
-    // Run version-gated schema migrations (no try/catch wrappers)
+    // Run version-gated schema migrations
     this.runMigrations();
   }
 
@@ -137,21 +137,31 @@ export class SessionDB {
 
     if (currentVersion < 1) {
       // V1: Add columns introduced by compactor gap analysis (2026-04-30)
-      this.db.exec(`
-        ALTER TABLE session_meta ADD COLUMN total_chars_before INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE session_meta ADD COLUMN total_chars_kept INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE session_meta ADD COLUMN total_messages_summarized INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE session_events ADD COLUMN attribution_source TEXT NOT NULL DEFAULT 'unknown';
-        ALTER TABLE session_events ADD COLUMN attribution_confidence REAL NOT NULL DEFAULT 0;
-        ALTER TABLE session_events ADD COLUMN data_hash TEXT NOT NULL DEFAULT '';
-      `);
+      // Each ALTER TABLE is wrapped individually — SQLite auto-commits DDL,
+      // so a partial failure from a prior run would leave some columns added
+      // and others not. We catch "duplicate column" to handle this safely.
+      const safeAddColumn = (table: string, col: string, def: string) => {
+        try {
+          this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+        } catch (e: any) {
+          if (e?.message?.includes("duplicate column")) return;
+          throw e;
+        }
+      };
+      safeAddColumn("session_meta", "total_chars_before", "INTEGER NOT NULL DEFAULT 0");
+      safeAddColumn("session_meta", "total_chars_kept", "INTEGER NOT NULL DEFAULT 0");
+      safeAddColumn("session_meta", "total_messages_summarized", "INTEGER NOT NULL DEFAULT 0");
+      safeAddColumn("session_events", "attribution_source", "TEXT NOT NULL DEFAULT 'unknown'");
+      safeAddColumn("session_events", "attribution_confidence", "REAL NOT NULL DEFAULT 0");
+      safeAddColumn("session_events", "data_hash", "TEXT NOT NULL DEFAULT ''");
       this.db.pragma("user_version = 1");
     }
   }
 
   private prepareStatements(): void {
+    this.stmts = new Map();
     const p = (key: string, sql: string) => {
-      this.stmts.set(key, this.db.prepare(sql) as PreparedStatement);
+      this.stmts!.set(key, this.db.prepare(sql) as PreparedStatement);
     };
 
     p("insertEvent", `INSERT INTO session_events (session_id, type, category, priority, data, project_dir, attribution_source, attribution_confidence, source_hook, data_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -175,7 +185,7 @@ export class SessionDB {
   }
 
   private stmt(key: string): PreparedStatement {
-    return this.stmts.get(key)!;
+    return this.stmts!.get(key)!;
   }
 
   insertEvent(sessionId: string, event: SessionEvent, sourceHook: string = "PostToolUse"): void {
@@ -266,6 +276,7 @@ export class SessionDB {
   }
 
   deleteSession(sessionId: string): void {
+    if (!this.stmts) return;
     this.db.transaction(() => {
       this.stmt("deleteEvents").run(sessionId);
       this.stmt("deleteResume").run(sessionId);
@@ -274,6 +285,7 @@ export class SessionDB {
   }
 
   cleanupOldSessions(maxAgeDays: number = 7): number {
+    if (!this.stmts) return 0;
     const oldSessions = this.stmt("getOldSessions").all(`-${maxAgeDays}`) as Array<{ session_id: string }>;
     for (const { session_id } of oldSessions) {
       this.deleteSession(session_id);

@@ -2,43 +2,27 @@
  * @pi-unipi/compactor — TUI Settings Overlay
  *
  * Interactive settings editor for compactor configuration.
- * Tabbed navigation (Presets / Strategies / Pipeline), search filter,
- * preset preview, per-project override, live stats footer.
+ * Uses pi-tui SettingsList for proper keybinding support.
+ * Tabbed sections (Presets / Strategies / Pipeline), search,
+ * preset preview, per-project override.
  */
 
 import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
 import { loadConfig, saveConfig, projectConfigPath } from "../config/manager.js";
-import { applyPreset, detectPreset, PRESET_CONFIGS } from "../config/presets.js";
-import type { CompactorPreset, RuntimeCounters } from "../types.js";
+import { applyPreset, detectPreset } from "../config/presets.js";
+import type { CompactorPreset } from "../types.js";
 import type { CompactorConfig } from "../types.js";
 import { existsSync, unlinkSync } from "node:fs";
 
-/** ANSI escape codes */
-const ansi = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  gray: "\x1b[90m",
-  magenta: "\x1b[35m",
-  white: "\x1b[37m",
-  blue: "\x1b[34m",
-};
+// ─── Section types ─────────────────────────────────────────────────────
 
-const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
-const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
-const CHECKBOX_ON = `${ansi.green}☑${ansi.reset}`;
-const CHECKBOX_OFF = `${ansi.dim}☐${ansi.reset}`;
+type Section = "presets" | "strategies" | "pipeline";
+const SECTIONS: Section[] = ["presets", "strategies", "pipeline"];
 
-type Tab = "presets" | "strategies" | "pipeline";
-const TABS: Tab[] = ["presets", "strategies", "pipeline"];
+// ─── Strategy item definition ──────────────────────────────────────────
 
-/** Strategy item definition */
-interface StrategyItem {
+interface StrategyDef {
   key: string;
   label: string;
   description: string;
@@ -50,29 +34,28 @@ interface StrategyItem {
 }
 
 /** Pipeline feature item */
-interface PipelineItem {
+interface PipelineDef {
   key: string;
   label: string;
   description: string;
-  group: "On Compaction" | "On Search" | "On Index";
+  group: string;
   getValue: (c: CompactorConfig) => boolean;
   setValue: (c: CompactorConfig, v: boolean) => void;
 }
 
-/** Top-level debug toggle that mirrors config.debug */
-const GLOBAL_DEBUG: StrategyItem = {
-  key: "debug",
-  label: "Verbose Debug",
-  description: "Log ALL compaction events to console",
-  modes: ["on", "off"],
-  getEnabled: (c) => c.debug,
-  setEnabled: (c, v) => (c.debug = v),
-  getMode: (c) => (c.debug ? "on" : "off"),
-  setMode: (c, v) => (c.debug = v === "on"),
-};
+// ─── Static definitions ────────────────────────────────────────────────
 
-/** All configurable strategies */
-const STRATEGIES: StrategyItem[] = [
+const STRATEGIES: StrategyDef[] = [
+  {
+    key: "debug",
+    label: "Verbose Debug",
+    description: "Log ALL compaction events to console",
+    modes: ["on", "off"],
+    getEnabled: (c) => c.debug,
+    setEnabled: (c, v) => (c.debug = v),
+    getMode: (c) => (c.debug ? "on" : "off"),
+    setMode: (c, v) => (c.debug = v === "on"),
+  },
   {
     key: "sessionGoals",
     label: "Session Goals",
@@ -175,9 +158,7 @@ const STRATEGIES: StrategyItem[] = [
   },
 ];
 
-const ALL_STRATEGY_ITEMS: StrategyItem[] = [GLOBAL_DEBUG, ...STRATEGIES];
-
-const PIPELINE_ITEMS: PipelineItem[] = [
+const PIPELINE_ITEMS: PipelineDef[] = [
   { key: "ttlCache", label: "TTL Cache", description: "Cache with time-based expiry", group: "On Compaction", getValue: (c) => c.pipeline.ttlCache, setValue: (c, v) => (c.pipeline.ttlCache = v) },
   { key: "autoInjection", label: "Auto Injection", description: "Inject behavioral state after compaction", group: "On Compaction", getValue: (c) => c.pipeline.autoInjection, setValue: (c, v) => (c.pipeline.autoInjection = v) },
   { key: "mmapPragma", label: "MMap Pragma", description: "Use mmap for SQLite I/O", group: "On Compaction", getValue: (c) => c.pipeline.mmapPragma, setValue: (c, v) => (c.pipeline.mmapPragma = v) },
@@ -207,19 +188,52 @@ const PRESET_DESCRIPTIONS: Record<string, { summary: string; detail: string }> =
   },
 };
 
+// ─── Theme for SettingsList ────────────────────────────────────────────
+
+const THEME: SettingsListTheme = {
+  label: (text, selected) => selected ? `\x1b[1m${text}\x1b[0m` : `\x1b[2m${text}\x1b[0m`,
+  value: (text, selected) => selected ? `\x1b[35m${text}\x1b[0m` : `\x1b[35m${text}\x1b[0m`,
+  description: (text) => `\x1b[90m${text}\x1b[0m`,
+  cursor: `\x1b[36m▸\x1b[0m`,
+  hint: (text) => `\x1b[2m${text}\x1b[0m`,
+};
+
+// ─── Helper: frame a line inside box drawing ───────────────────────────
+
+function frameLine(content: string, innerWidth: number): string {
+  const truncated = truncateToWidth(content, innerWidth, "");
+  const padding = Math.max(0, innerWidth - visibleWidth(truncated));
+  return `\x1b[90m│\x1b[0m${truncated}${" ".repeat(padding)}\x1b[90m│\x1b[0m`;
+}
+
+function ruleLine(innerWidth: number): string {
+  return `\x1b[90m├${"─".repeat(innerWidth)}┤\x1b[0m`;
+}
+
+function borderLine(innerWidth: number, edge: "top" | "bottom"): string {
+  const left = edge === "top" ? "┌" : "└";
+  const right = edge === "top" ? "┐" : "┘";
+  return `\x1b[90m${left}${"─".repeat(innerWidth)}${right}\x1b[0m`;
+}
+
+// ─── Main component ────────────────────────────────────────────────────
+
 /**
  * Settings overlay component for compactor configuration.
- * Features tabbed navigation, search filter, preset preview, per-project override.
+ * Uses SettingsList from pi-tui for proper vim/arrow keybinding support.
  */
 export class CompactorSettingsOverlay implements Component {
   private config: CompactorConfig;
-  private activeTab: Tab = "presets";
-  private selectedIndex = 0;
-  private presetIndex = 0;
-  private searchQuery = "";
+  private section: Section = "presets";
   private perProjectOverride = false;
   private projectDir: string;
+  private saved = false;
   onClose?: () => void;
+
+  // Per-section SettingsList instances
+  private presetList!: SettingsList;
+  private strategyList!: SettingsList;
+  private pipelineList!: SettingsList;
 
   constructor(opts?: { cwd?: string }) {
     this.projectDir = opts?.cwd ?? process.cwd();
@@ -229,289 +243,258 @@ export class CompactorSettingsOverlay implements Component {
     const projPath = projectConfigPath(this.projectDir);
     this.perProjectOverride = existsSync(projPath);
 
-    const currentPreset = detectPreset(this.config);
-    this.presetIndex = PRESETS.indexOf(currentPreset as CompactorPreset);
-    if (this.presetIndex < 0) this.presetIndex = 0;
+    this.buildLists();
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    this.currentList?.invalidate();
+  }
 
-  /** Get currently visible strategy items (filtered by search) */
-  private getVisibleItems(): StrategyItem[] {
-    if (!this.searchQuery) return ALL_STRATEGY_ITEMS;
-    const q = this.searchQuery.toLowerCase();
-    return ALL_STRATEGY_ITEMS.filter(
-      (s) => s.label.toLowerCase().includes(q) || s.description.toLowerCase().includes(q),
+  // ─── Build SettingsList instances ──────────────────────────────────
+
+  private buildLists(): void {
+    // ── Presets list ──────────────────────────────────────────────────
+    const presetItems: SettingItem[] = PRESETS.map((name) => {
+      const desc = PRESET_DESCRIPTIONS[name]!;
+      return {
+        id: `preset:${name}`,
+        label: name.charAt(0).toUpperCase() + name.slice(1),
+        description: desc.summary,
+        currentValue: detectPreset(this.config) === name ? "✓ active" : "",
+        values: ["apply"],
+      };
+    });
+    // Add per-project override as a setting item
+    presetItems.push({
+      id: "projectOverride",
+      label: "Project Override",
+      description: "Override global config for this project only",
+      currentValue: this.perProjectOverride ? "enabled" : "disabled",
+      values: ["enabled", "disabled"],
+    });
+
+    this.presetList = new SettingsList(
+      presetItems,
+      8,
+      THEME,
+      (id, newValue) => this.onPresetChange(id, newValue),
+      () => this.onCancel(),
+    );
+
+    // ── Strategies list ───────────────────────────────────────────────
+    const strategyItems: SettingItem[] = STRATEGIES.map((s) => ({
+      id: `strategy:${s.key}`,
+      label: s.label,
+      description: s.description,
+      currentValue: this.formatStrategyValue(s),
+      values: s.modes,
+    }));
+
+    this.strategyList = new SettingsList(
+      strategyItems,
+      12,
+      THEME,
+      (id, newValue) => this.onStrategyChange(id, newValue),
+      () => this.onCancel(),
+      { enableSearch: true },
+    );
+
+    // ── Pipeline list ─────────────────────────────────────────────────
+    const pipelineItems: SettingItem[] = PIPELINE_ITEMS.map((p) => ({
+      id: `pipeline:${p.key}`,
+      label: `${p.group}: ${p.label}`,
+      description: p.description,
+      currentValue: p.getValue(this.config) ? "on" : "off",
+      values: ["on", "off"],
+    }));
+
+    this.pipelineList = new SettingsList(
+      pipelineItems,
+      8,
+      THEME,
+      (id, newValue) => this.onPipelineChange(id, newValue),
+      () => this.onCancel(),
     );
   }
 
-  /** Set active tab by index */
-  private setTab(tab: Tab): void {
-    this.activeTab = tab;
-    this.selectedIndex = 0;
+  // ─── Current section's list ────────────────────────────────────────
+
+  private get currentList(): SettingsList {
+    if (this.section === "strategies") return this.strategyList;
+    if (this.section === "pipeline") return this.pipelineList;
+    return this.presetList;
   }
 
+  // ─── Change handlers ───────────────────────────────────────────────
+
+  private onPresetChange(id: string, _newValue: string): void {
+    if (id === "projectOverride") {
+      this.perProjectOverride = _newValue === "enabled";
+      if (!this.perProjectOverride) {
+        const projPath = projectConfigPath(this.projectDir);
+        try { unlinkSync(projPath); } catch { /* ignore */ }
+      }
+      this.presetList.updateValue("projectOverride", this.perProjectOverride ? "enabled" : "disabled");
+      return;
+    }
+    // Apply the preset
+    const presetName = id.replace("preset:", "") as CompactorPreset;
+    if (PRESETS.includes(presetName)) {
+      this.config = applyPreset(presetName);
+      // Update all strategy/pipeline items to reflect new config
+      this.refreshStrategyValues();
+      this.refreshPipelineValues();
+      // Update preset indicators
+      for (const name of PRESETS) {
+        this.presetList.updateValue(
+          `preset:${name}`,
+          detectPreset(this.config) === name ? "✓ active" : "",
+        );
+      }
+    }
+  }
+
+  private onStrategyChange(id: string, newValue: string): void {
+    const key = id.replace("strategy:", "");
+    const strat = STRATEGIES.find((s) => s.key === key);
+    if (!strat) return;
+
+    // Map the cycled value to enabled + mode
+    strat.setMode(this.config, newValue);
+    // If mode is "off", disable; otherwise enable
+    strat.setEnabled(this.config, newValue !== "off");
+
+    this.strategyList.updateValue(id, this.formatStrategyValue(strat));
+
+    // Update preset indicators since config may no longer match a preset
+    for (const name of PRESETS) {
+      this.presetList.updateValue(
+        `preset:${name}`,
+        detectPreset(this.config) === name ? "✓ active" : "",
+      );
+    }
+  }
+
+  private onPipelineChange(id: string, newValue: string): void {
+    const key = id.replace("pipeline:", "");
+    const item = PIPELINE_ITEMS.find((p) => p.key === key);
+    if (!item) return;
+    item.setValue(this.config, newValue === "on");
+    this.pipelineList.updateValue(id, newValue);
+
+    // Update preset indicators
+    for (const name of PRESETS) {
+      this.presetList.updateValue(
+        `preset:${name}`,
+        detectPreset(this.config) === name ? "✓ active" : "",
+      );
+    }
+  }
+
+  private onCancel(): void {
+    this.onClose?.();
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────────────
+
+  private formatStrategyValue(s: StrategyDef): string {
+    const enabled = s.getEnabled(this.config);
+    const mode = s.getMode(this.config);
+    if (!enabled) return "off";
+    return mode;
+  }
+
+  private refreshStrategyValues(): void {
+    for (const s of STRATEGIES) {
+      this.strategyList.updateValue(`strategy:${s.key}`, this.formatStrategyValue(s));
+    }
+  }
+
+  private refreshPipelineValues(): void {
+    for (const p of PIPELINE_ITEMS) {
+      this.pipelineList.updateValue(`pipeline:${p.key}`, p.getValue(this.config) ? "on" : "off");
+    }
+  }
+
+  // ─── Input handling ────────────────────────────────────────────────
+
   handleInput(data: string): void {
-    // Search mode: typing adds to filter
-    if (data === "/" && this.activeTab === "strategies") {
-      this.searchQuery = "";
+    // Tab switches section
+    if (data === "\t" || data === "\x1b[Z") {
+      const idx = SECTIONS.indexOf(this.section);
+      this.section = SECTIONS[(idx + 1) % SECTIONS.length];
       return;
     }
 
-    // When search bar is being typed
-    if (this.activeTab === "strategies" && (data.length === 1 || data === "\x7f" || data === "\b")) {
-      if (data === "\x7f" || data === "\b") {
-        this.searchQuery = this.searchQuery.slice(0, -1);
-        this.selectedIndex = 0;
-        return;
-      } else if (!/[\x00-\x1f]/.test(data)) {
-        this.searchQuery += data;
-        this.selectedIndex = 0;
-        return;
-      }
+    // Enter saves and closes
+    if (data === "\r") {
+      saveConfig(this.config, { perProject: this.perProjectOverride, cwd: this.projectDir });
+      this.saved = true;
+      setTimeout(() => this.onClose?.(), 400);
+      return;
     }
 
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        if (this.activeTab === "strategies") {
-          const items = this.getVisibleItems();
-          this.selectedIndex = (this.selectedIndex - 1 + items.length) % items.length;
-        } else if (this.activeTab === "presets") {
-          this.presetIndex = (this.presetIndex - 1 + PRESETS.length) % PRESETS.length;
-        } else {
-          this.selectedIndex = (this.selectedIndex - 1 + PIPELINE_ITEMS.length) % PIPELINE_ITEMS.length;
-        }
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        if (this.activeTab === "strategies") {
-          const items = this.getVisibleItems();
-          this.selectedIndex = (this.selectedIndex + 1) % items.length;
-        } else if (this.activeTab === "presets") {
-          this.presetIndex = (this.presetIndex + 1) % PRESETS.length;
-        } else {
-          this.selectedIndex = (this.selectedIndex + 1) % PIPELINE_ITEMS.length;
-        }
-        break;
-      case " ": // Space — toggle
-        if (this.activeTab === "strategies") {
-          const items = this.getVisibleItems();
-          if (items.length > 0) {
-            const item = items[this.selectedIndex];
-            item.setEnabled(this.config, !item.getEnabled(this.config));
-          }
-        } else if (this.activeTab === "pipeline") {
-          const pi = PIPELINE_ITEMS[this.selectedIndex];
-          pi.setValue(this.config, !pi.getValue(this.config));
-        }
-        break;
-      case "\x1b[C": // Right — cycle mode / next tab
-      case "\r": // Enter
-        if (this.activeTab === "strategies") {
-          const items = this.getVisibleItems();
-          if (items.length > 0) {
-            const strat = items[this.selectedIndex];
-            const modes = strat.modes;
-            const currentIdx = modes.indexOf(strat.getMode(this.config));
-            const nextIdx = (currentIdx + 1) % modes.length;
-            strat.setMode(this.config, modes[nextIdx]);
-          }
-        } else if (this.activeTab === "presets") {
-          // Apply selected preset
-          this.config = applyPreset(PRESETS[this.presetIndex]);
-          this.activeTab = "strategies";
-        } else {
-          // Next tab
-          const tabIdx = TABS.indexOf(this.activeTab);
-          this.setTab(TABS[(tabIdx + 1) % TABS.length]);
-        }
-        break;
-      case "\x1b[D": // Left — cycle mode backward / prev tab
-        if (this.activeTab === "strategies") {
-          const items = this.getVisibleItems();
-          if (items.length > 0) {
-            const strat2 = items[this.selectedIndex];
-            const modes2 = strat2.modes;
-            const curIdx = modes2.indexOf(strat2.getMode(this.config));
-            const prevIdx = (curIdx - 1 + modes2.length) % modes2.length;
-            strat2.setMode(this.config, modes2[prevIdx]);
-          }
-        } else {
-          // Prev tab
-          const tabIdx = TABS.indexOf(this.activeTab);
-          this.setTab(TABS[(tabIdx - 1 + TABS.length) % TABS.length]);
-        }
-        break;
-      case "\t": // Tab — cycle tabs forward
-        {
-          const tabIdx = TABS.indexOf(this.activeTab);
-          this.setTab(TABS[(tabIdx + 1) % TABS.length]);
-        }
-        break;
-      case "1": this.setTab("presets"); break;
-      case "2": this.setTab("strategies"); break;
-      case "3": this.setTab("pipeline"); break;
-      case "o": // Toggle per-project override
-        this.perProjectOverride = !this.perProjectOverride;
-        if (!this.perProjectOverride) {
-          // Remove project config file if it exists
-          const projPath = projectConfigPath(this.projectDir);
-          try { unlinkSync(projPath); } catch { /* ignore */ }
-        }
-        break;
-      case "\x1b": // Escape
-        if (this.searchQuery) {
-          this.searchQuery = ""; // Clear search first
-        } else {
-          this.onClose?.();
-        }
-        break;
-      case "s": // Save
-        saveConfig(this.config, { perProject: this.perProjectOverride, cwd: this.projectDir });
-        this.onClose?.();
-        break;
+    // Escape cancels (but SettingsList also handles it, calling onCancel)
+    if (data === "\x1b") {
+      this.onClose?.();
+      return;
     }
+
+    // Delegate all other input to the current section's SettingsList
+    this.currentList.handleInput(data);
   }
+
+  // ─── Render ────────────────────────────────────────────────────────
 
   render(width: number): string[] {
+    const innerWidth = Math.max(22, width - 2);
     const lines: string[] = [];
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
 
     // Header
-    add(`${ansi.bold}${ansi.cyan}🗜️  Compactor Settings${ansi.reset}`);
+    lines.push(borderLine(innerWidth, "top"));
+    lines.push(frameLine(`\x1b[1m\x1b[36m🗜️  Compactor Settings\x1b[0m`, innerWidth));
+
+    // Current preset indicator
     const presetName = detectPreset(this.config);
-    const overrideLabel = this.perProjectOverride
-      ? `${ansi.yellow}Project override active${ansi.reset}`
-      : `${ansi.dim}Using global config${ansi.reset}`;
     const presetLabel = presetName === "custom" ? "custom (modified)" : presetName;
-    add(`${ansi.dim}Preset: ${presetLabel}  |  ${overrideLabel}${ansi.reset}`);
+    const overrideLabel = this.perProjectOverride
+      ? `\x1b[33mProject override\x1b[0m`
+      : `\x1b[2mGlobal config\x1b[0m`;
+    lines.push(frameLine(`\x1b[2mPreset: ${presetLabel}  ·  ${overrideLabel}\x1b[0m`, innerWidth));
+    lines.push(ruleLine(innerWidth));
 
-    // Tab bar
-    add("");
-    const tabLine = TABS.map((t) => {
-      const label = t.charAt(0).toUpperCase() + t.slice(1);
-      if (t === this.activeTab) {
-        return ` ${ansi.bold}${ansi.cyan}${label}${ansi.reset} `;
+    // Section tabs
+    const tabParts = SECTIONS.map((s) => {
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      if (s === this.section) {
+        return `\x1b[1m\x1b[36m[${label}]\x1b[0m`;
       }
-      return ` ${ansi.dim}${label}${ansi.reset} `;
-    }).join("│");
-    add(`┌${"─".repeat(Math.max(0, width - 2))}┐`);
-    add(`│${tabLine}${" ".repeat(Math.max(0, width - tabLine.replace(/\x1b\[[0-9;]*m/g, "").length - 1))}│`);
-    add(`├${"─".repeat(Math.max(0, width - 2))}┤`);
+      return `\x1b[2m${label}\x1b[0m`;
+    });
+    lines.push(frameLine(`  ${tabParts.join("  ")}`, innerWidth));
+    lines.push(ruleLine(innerWidth));
 
-    if (this.activeTab === "presets") {
-      this.renderPresetsTab(lines as string[], width);
-    } else if (this.activeTab === "strategies") {
-      this.renderStrategiesTab(lines as string[], width);
-    } else {
-      this.renderPipelineTab(lines as string[], width);
+    // Section content (rendered by SettingsList)
+    const contentLines = this.currentList.render(innerWidth - 2);
+    for (const line of contentLines) {
+      lines.push(frameLine(` ${line}`, innerWidth));
     }
 
-    // Footer
-    add(`├${"─".repeat(Math.max(0, width - 2))}┤`);
-    add(`│ ${this.renderFooter(width - 2)} │`);
-    add(`└${"─".repeat(Math.max(0, width - 2))}┘`);
+    // Saved indicator
+    if (this.saved) {
+      lines.push(ruleLine(innerWidth));
+      lines.push(frameLine(`  \x1b[32m✓ Settings saved\x1b[0m`, innerWidth));
+    }
+
+    // Footer hints
+    lines.push(ruleLine(innerWidth));
+    const hints = this.section === "strategies"
+      ? "↑↓ navigate · Space change · Tab switch · / search · Enter save · Esc cancel"
+      : "↑↓ navigate · Space change · Tab switch · Enter save · Esc cancel";
+    lines.push(frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
+    lines.push(borderLine(innerWidth, "bottom"));
 
     return lines;
-  }
-
-  private renderPresetsTab(lines: string[], width: number): void {
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
-    add("");
-    for (let i = 0; i < PRESETS.length; i++) {
-      const isSelected = i === this.presetIndex;
-      const prefix = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
-      const name = PRESETS[i];
-      const desc = PRESET_DESCRIPTIONS[name] ?? { summary: "", detail: "" };
-      const label = isSelected ? `${ansi.bold}${name}${ansi.reset}` : name;
-      add(`${prefix} ${label}`);
-      add(`   ${ansi.dim}${desc.summary}${ansi.reset}`);
-
-      // Preview details when selected
-      if (isSelected) {
-        const detailLines = desc.detail.split("\n");
-        for (const dl of detailLines) {
-          add(`   ${ansi.blue}${dl}${ansi.reset}`);
-        }
-      }
-      add("");
-    }
-  }
-
-  private renderStrategiesTab(lines: string[], width: number): void {
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
-
-    // Search bar
-    if (this.searchQuery) {
-      add(`${ansi.yellow}/${this.searchQuery}${ansi.reset}`);
-      add("");
-    }
-
-    const items = this.getVisibleItems();
-    if (items.length === 0) {
-      add("");
-      add(`   ${ansi.gray}No matching strategies.${ansi.reset}`);
-      add("");
-    } else {
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const isSelected = i === this.selectedIndex;
-        const enabled = item.getEnabled(this.config);
-        const mode = item.getMode(this.config);
-        const toggle = enabled ? TOGGLE_ON : TOGGLE_OFF;
-        const labelColor = isSelected ? ansi.bold : "";
-        const modeColor = ansi.magenta;
-        const descColor = ansi.gray;
-
-        const cursor = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
-        add(`${cursor} ${toggle} ${labelColor}${item.label}${ansi.reset} ${modeColor}[${mode}]${ansi.reset}`);
-        add(`   ${descColor}${item.description}${ansi.reset}`);
-        if (isSelected) add("");
-      }
-    }
-
-    // Per-project override checkbox
-    add("");
-    const checkIcon = this.perProjectOverride ? CHECKBOX_ON : CHECKBOX_OFF;
-    add(`   ${checkIcon} Override for this project${ansi.dim}  (press o to toggle)${ansi.reset}`);
-  }
-
-  private renderPipelineTab(lines: string[], width: number): void {
-    const add = (s: string) => lines.push(truncateToWidth(s, width));
-
-    const groups = new Map<string, PipelineItem[]>();
-    for (const pi of PIPELINE_ITEMS) {
-      const g = groups.get(pi.group) ?? [];
-      g.push(pi);
-      groups.set(pi.group, g);
-    }
-
-    for (const [group, items] of groups) {
-      add(` ${ansi.bold}${group}${ansi.reset}`);
-      add("");
-      for (const item of items) {
-        const idx = PIPELINE_ITEMS.indexOf(item);
-        const isSelected = idx === this.selectedIndex;
-        const on = item.getValue(this.config);
-        const toggle = on ? TOGGLE_ON : TOGGLE_OFF;
-        const labelColor = isSelected ? ansi.bold : "";
-        const descColor = ansi.gray;
-
-        const cursor = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
-        add(`${cursor} ${toggle} ${labelColor}${item.label}${ansi.reset}`);
-        add(`   ${descColor}${item.description}${ansi.reset}`);
-        if (isSelected) add("");
-      }
-      add("");
-    }
-  }
-
-  private renderFooter(width: number): string {
-    const shortcuts = this.activeTab === "strategies" && this.searchQuery
-      ? `${ansi.dim}Esc clear search${ansi.reset}`
-      : `${ansi.dim}←→ mode${this.activeTab === "presets" ? " • Enter apply" : ""}${ansi.reset} ${ansi.dim}Space toggle${ansi.reset} ${ansi.dim}s save${ansi.reset} ${ansi.dim}Esc cancel${ansi.reset} ${ansi.dim}1/2/3 tabs${ansi.reset} ${this.activeTab === "strategies" ? `${ansi.dim}/ search${ansi.reset}` : ""}`;
-    return shortcuts;
   }
 }
 
@@ -525,7 +508,7 @@ export function renderSettingsOverlay(cwd?: string) {
 
     return {
       render: (width: number) => overlay.render(width),
-      invalidate: () => {},
+      invalidate: () => overlay.invalidate(),
       handleInput: (data: string) => overlay.handleInput(data),
     };
   };

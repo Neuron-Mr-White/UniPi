@@ -295,6 +295,12 @@ export const MILESTONE_DIRS = {
   MILESTONES: ".unipi/docs/MILESTONES.md",
 } as const;
 
+/** Footer command names */
+export const FOOTER_COMMANDS = {
+  FOOTER: "footer",
+  FOOTER_SETTINGS: "footer-settings",
+} as const;
+
 /** Compactor defaults */
 export const COMPACTOR_DEFAULTS = {
   MAX_EVENTS_PER_SESSION: 1000,

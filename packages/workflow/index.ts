@@ -143,8 +143,8 @@ export default function (pi: ExtensionAPI) {
 
     // Show workflow status in UI
     if (ctx.hasUI) {
-      const ralphStatus = ralphDetected ? "✓ ralph" : "○ ralph";
-      ctx.ui.setStatus("unipi-workflow", `⚡ workflow ${ralphStatus}`);
+      const ralphStatus = ralphDetected ? "✓ rl" : "○ rl";
+      ctx.ui.setStatus("unipi-workflow", `⚡ wf ${ralphStatus}`);
     }
   });
 

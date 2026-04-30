@@ -1,16 +1,76 @@
 /**
  * @pi-unipi/footer — Status extension segment
  *
- * Segment renderer for extension statuses from footerData.
+ * Renders extension status entries from footerData.getExtensionStatuses().
+ * Uses the configured separator between entries and the current icon style.
+ *
+ * Status keys from packages:
+ *   "unipi-workflow" → "⚡ wf:brainstorm ✓ rl"  (active command shown)
+ *   "ralph"          → "rl:loop-name 3/50"
+ *   "unipi-memory"   → "⚡ mem 75p/101all"
+ *   "subagents"      → various
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { loadFooterSettings } from "../config.js";
+import { getSeparator } from "../rendering/separators.js";
 
-function withIcon(segmentId: string, text: string): string {
-  const icon = getIcon(segmentId);
-  return icon ? `${icon} ${text}` : text;
+/** Map status keys to short display names and segment IDs for icons */
+const STATUS_DISPLAY: Record<string, { short: string; segmentId: string }> = {
+  "unipi-workflow": { short: "wf", segmentId: "currentCommand" },
+  workflow: { short: "wf", segmentId: "currentCommand" },
+  ralph: { short: "rl", segmentId: "activeLoops" },
+  "unipi-memory": { short: "mem", segmentId: "projectCount" },
+  memory: { short: "mem", segmentId: "projectCount" },
+  compactor: { short: "cmp", segmentId: "compactions" },
+  mcp: { short: "mcp", segmentId: "serversTotal" },
+  notify: { short: "ntf", segmentId: "platformsEnabled" },
+  kanboard: { short: "kb", segmentId: "docsCount" },
+  info: { short: "info", segmentId: "extensionStatuses" },
+  subagents: { short: "sa", segmentId: "extensionStatuses" },
+};
+
+/** Get the separator character for the current settings */
+function getStatusSeparator(): string {
+  const settings = loadFooterSettings();
+  const sepDef = getSeparator(settings.separator);
+  return sepDef.left;
+}
+
+/**
+ * Strip any leading emoji/symbol from a status value.
+ * The packages set their own icons (⚡, 🔄, 📝, ○, ✓) which we replace
+ * with our own based on the configured icon style.
+ */
+function stripLeadingSymbol(value: string): string {
+  // Remove common emoji/symbol prefixes (1-2 chars + optional space)
+  return value.replace(/^[\u2600-\u27BF\u2300-\u23FF\u2B50\u25CF\u25CB\u25B6\u23F3\u26A1\u{1F300}-\u{1F9FF}]\s*/u, "");
+}
+
+/**
+ * Clean up a status value by stripping the package name prefix
+ * and existing icons, returning just the meaningful content.
+ */
+function cleanStatusValue(key: string, value: string): string {
+  // First strip any leading emoji/symbol
+  let cleaned = stripLeadingSymbol(value);
+
+  // Strip known package name prefixes
+  const namePatterns: Record<string, RegExp> = {
+    "unipi-workflow": /^wf:?\s*/i,
+    workflow: /^wf:?\s*/i,
+    "unipi-memory": /^mem:?\s*/i,
+    memory: /^mem:?\s*/i,
+    ralph: /^rl:?\s*/i,
+  };
+
+  const pattern = namePatterns[key.toLowerCase()];
+  if (pattern) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  return cleaned.trim();
 }
 
 function renderExtensionStatusesSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -22,21 +82,35 @@ function renderExtensionStatusesSegment(ctx: FooterSegmentContext): RenderedSegm
   const statuses = footerData.getExtensionStatuses() as Map<string, string>;
   if (!statuses || statuses.size === 0) return { content: "", visible: false };
 
-  // Collect compact status strings, skip empty ones
+  const sep = getStatusSeparator();
+
+  // Collect compact status strings with icons
   const parts: string[] = [];
-  for (const value of statuses.values()) {
-    if (value && value.trim()) {
-      // Strip ANSI codes for compact display, keep visible text
-      const stripped = value.replace(/\x1b\[[0-9;]*m/g, "").trim();
-      if (stripped) {
-        parts.push(stripped);
-      }
-    }
+  for (const [key, value] of statuses) {
+    if (!value || !value.trim()) continue;
+
+    // Strip ANSI codes for compact display
+    const stripped = value.replace(/\x1b\[[0-9;]*m/g, "").trim();
+    if (!stripped) continue;
+
+    const display = STATUS_DISPLAY[key.toLowerCase()];
+    const icon = display
+      ? getIcon(display.segmentId)
+      : getIcon("extensionStatuses");
+
+    const shortName = display?.short ?? key;
+    const extraContent = cleanStatusValue(key, stripped);
+
+    // Format: "icon shortName extraContent" or "icon shortName"
+    const part = extraContent
+      ? (icon ? `${icon} ${shortName} ${extraContent}` : `${shortName} ${extraContent}`)
+      : (icon ? `${icon} ${shortName}` : shortName);
+    parts.push(part);
   }
 
   if (parts.length === 0) return { content: "", visible: false };
 
-  const content = parts.join(" · ");
+  const content = parts.join(` ${sep} `);
   return { content, visible: true };
 }
 

@@ -52,23 +52,27 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     // Initialize SessionDB — this is required for core functionality.
     // If it fails, log the error and continue. Commands that depend on
     // sessionDB will report "not initialized" gracefully.
+    // IMPORTANT: Don't assign sessionDB until init succeeds — a partially-
+    // constructed instance with empty stmts would slip past null-guards.
     try {
-      sessionDB = new SessionDB();
-      await sessionDB.init();
+      const db = new SessionDB();
+      await db.init();
+      sessionDB = db;
     } catch (err) {
       console.error(`[compactor] SessionDB init failed: ${String(err)}`);
-      // sessionDB remains null — commands will see deps.sessionDB === null
+      sessionDB = null;
     }
 
     // Initialize ContentStore independently — its failure shouldn't
     // prevent SessionDB commands from working.
     if (config.fts5Index.enabled) {
       try {
-        contentStore = new ContentStore();
-        await contentStore.init();
+        const cs = new ContentStore();
+        await cs.init();
+        contentStore = cs;
       } catch (err) {
         console.error(`[compactor] ContentStore init failed: ${String(err)}`);
-        // contentStore remains null — commands will see deps.contentStore === null
+        contentStore = null;
       }
     }
 

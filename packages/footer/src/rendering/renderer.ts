@@ -11,8 +11,9 @@ import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, Rende
 import type { FooterRegistry } from "../registry/index.js";
 import { getSeparator, separatorVisibleWidth } from "./separators.js";
 import { getDefaultColors } from "./theme.js";
+import { setIconStyle } from "./icons.js";
 import { getPreset } from "../presets.js";
-import { isSegmentEnabled } from "../config.js";
+import { isSegmentEnabled, loadFooterSettings } from "../config.js";
 
 /** Segment lookup by ID across all groups */
 interface SegmentLookup {
@@ -81,6 +82,7 @@ export class FooterRenderer {
     this.registry = registry;
     this.segmentLookup = segmentLookup;
     this.presetName = initialPreset;
+    this.syncIconStyle();
 
     // Subscribe to registry changes
     this.registry.subscribe(() => {
@@ -93,6 +95,13 @@ export class FooterRenderer {
   setPreset(name: string): void {
     this.presetName = name;
     this.resetLayoutCache();
+    this.syncIconStyle();
+  }
+
+  /** Sync the icon style from settings to the icons module */
+  private syncIconStyle(): void {
+    const settings = loadFooterSettings();
+    setIconStyle(settings.iconStyle);
   }
 
   /** Get the active preset name */

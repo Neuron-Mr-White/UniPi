@@ -50,7 +50,8 @@
       "node_modules/@pi-unipi/notify/index.ts",
       "node_modules/@pi-unipi/milestone/index.ts",
       "node_modules/@pi-unipi/kanboard/index.ts",
-      "node_modules/@pi-unipi/command-enchantment/src/index.ts"
+      "node_modules/@pi-unipi/command-enchantment/src/index.ts",
+      "node_modules/@pi-unipi/footer/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -88,7 +89,8 @@
     "@pi-unipi/milestone": "*",
     "@pi-unipi/kanboard": "*",
     "@pi-unipi/web-api": "*",
-    "@pi-unipi/workflow": "*"
+    "@pi-unipi/workflow": "*",
+    "@pi-unipi/footer": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

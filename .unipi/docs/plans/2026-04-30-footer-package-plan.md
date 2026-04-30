@@ -367,3 +367,31 @@ Task 1 (scaffold) → Task 2 (types) → Task 3 (separators) ─┬→ Task 17 (
 
 6. **setFooter/setWidget API nuances** — Subtle timing/placement issues possible.
    - *Mitigation:* Follow pi-powerline-footer patterns closely. Test in real pi session.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Partially Done 21/22
+
+All 22 tasks marked completed in plan. Verification confirms 21 fully met acceptance criteria, 1 has a minor gap:
+
+- **Tasks 1–18, 20–22: Done** — All files exist, types compile, structure matches spec. Package scaffold, types, separators, theme/icons, registry, events, config, all 8 segment groups (core/compactor/memory/mcp/ralph/workflow/kanboard/notify/status-ext), presets, renderer, entry point, settings TUI, tests, and README are all present and substantive.
+- **Task 19 (Commands): Partially Done 6/7** — All 6 command steps work (toggle, preset switching, settings TUI). However, step 7 (`FOOTER_COMMANDS` in core/constants.ts) was not implemented. Only `MODULES.FOOTER` was added, not a `FOOTER_COMMANDS` constant. Low severity — commands still function correctly via string literals in the commands module.
+
+### Noted Issues (non-blocking)
+
+1. **Skills directory empty** — `packages/footer/skills/` exists but contains no SKILL.md files. Plan mentions "Register skills directory via `resources_discover`" as optional.
+2. **Segment tests are structural** — Tests verify file existence, export names, and inline helper functions rather than actual rendering output (mocking pi SDK is complex). Acceptable for initial implementation.
+3. **Config tests mirror defaults** — Config tests re-declare DEFAULT_SETTINGS locally rather than importing from the module (due to module resolution constraints in test runner).
+4. **Renderer theme integration** — `getThemeLike()` returns a pass-through `fg()` as a placeholder. Actual theming relies on segment renderers calling `applyColor()` directly. Works but could be cleaner.
+5. **Kanboard reads from globalThis** — No kanboard import; reads `__unipi_kanboard_registry` from globalThis directly. Matches the plan's risk mitigation (wrap in try/catch, graceful fallback).
+6. **Footer not wired into main `packages/unipi`** — Expected; requires merge first.
+
+### Codebase Checks
+
+- ✓ **Footer package TypeScript** — `tsc --noEmit` passes clean (exit 0)
+- ✓ **Footer package tests** — 41/41 pass (5 test files, 11 suites)
+- ✗ **Monorepo typecheck** — Pre-existing errors in `packages/utility` and `packages/unipi` (shiki CLI import, Promise vs sync type mismatches). Not caused by footer package.
+- ✓ **No lint script** in root — N/A
+- ✓ **Build** — Footer package is TypeScript source-only (no build step needed)

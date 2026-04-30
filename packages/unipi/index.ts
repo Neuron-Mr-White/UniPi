@@ -26,6 +26,7 @@ import milestone from "@pi-unipi/milestone";
 import kanboard from "@pi-unipi/kanboard";
 import commandEnchantment from "@pi-unipi/command-enchantment";
 import compactor from "@pi-unipi/compactor";
+import footer from "@pi-unipi/footer";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -43,4 +44,5 @@ export default function (pi: ExtensionAPI) {
   kanboard(pi);
   commandEnchantment(pi);
   compactor(pi);
+  footer(pi);
 }

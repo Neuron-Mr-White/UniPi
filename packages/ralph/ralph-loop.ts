@@ -204,7 +204,7 @@ export class RalphLoopManager {
     const { theme } = this.ctx.ui;
     const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 
-    this.ctx.ui.setStatus("ralph", theme.fg("accent", `🔄 ${state.name} (${state.iteration}${maxStr})`));
+    this.ctx.ui.setStatus("ralph", theme.fg("accent", `rl:${state.name} ${state.iteration}${maxStr}`));
 
     const lines = [
       theme.fg("accent", theme.bold("Ralph Loop")),

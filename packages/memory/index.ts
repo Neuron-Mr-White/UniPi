@@ -180,7 +180,7 @@ export default function (pi: ExtensionAPI) {
       const vecIcon = vecReady ? "⚡" : "📝";
       ctx.ui.setStatus(
         "unipi-memory",
-        `${vecIcon} memory ${projectCount}p/${projectCountAll}all${hasModelChanged() ? " ⚠" : ""}`
+        `${vecIcon} mem ${projectCount}p/${projectCountAll}all${hasModelChanged() ? " ⚠" : ""}`
       );
     }
   });

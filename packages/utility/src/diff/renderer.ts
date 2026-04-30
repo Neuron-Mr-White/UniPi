@@ -290,7 +290,7 @@ export function shouldUseSplit(diff: ParsedDiff, tw: number, max: number): boole
  * @param max - Maximum lines to render
  * @param dc - Diff colors
  */
-export async function renderUnified(
+export function renderUnified(
   diff: ParsedDiff,
   language: string,
   max: number,
@@ -343,7 +343,7 @@ export async function renderUnified(
  * @param max - Maximum lines to render
  * @param dc - Diff colors
  */
-export async function renderSplit(
+export function renderSplit(
   diff: ParsedDiff,
   language: string,
   max: number,

@@ -29,6 +29,7 @@ export const PACKAGE_ORDER: string[] = [
   "compact",
   "notify",
   "kanboard",
+  "footer",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   compact:   `${ESC}[37m`, // White
   notify:    `${ESC}[96m`, // Bright Cyan
   kanboard:  `${ESC}[92m`, // Bright Green
+  footer:    `${ESC}[34m`, // Blue
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -143,6 +145,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // kanboard (3 commands)
   "unipi:kanboard":          "kanboard",
   "unipi:kanboard-doctor":   "kanboard",
+
+  // footer (2 commands)
+  "unipi:footer":            "footer",
+  "unipi:footer-settings":   "footer",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -227,6 +233,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
   "unipi:milestone-update":  "Sync MILESTONES.md with completed work",
+
+  "unipi:footer":            "Toggle footer or switch preset",
+  "unipi:footer-settings":   "Open footer settings — toggle groups and segments",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────
@@ -244,4 +253,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   compact:   "compact",
   notify:    "notify",
   kanboard:  "kanboard",
+  footer:    "footer",
 };

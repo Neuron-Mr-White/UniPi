@@ -31,21 +31,24 @@ function getKanboardData(): Record<string, unknown> | null {
 
 function renderDocsCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
-  const value = kb?.docsCount ?? "—";
+  const value = kb?.docsCount;
+  if (value === undefined || value === null) return { content: "", visible: false };
   const content = withIcon("docsCount", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderTasksDoneSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
-  const value = kb?.tasksDone ?? "—";
+  const value = kb?.tasksDone;
+  if (value === undefined || value === null) return { content: "", visible: false };
   const content = withIcon("tasksDone", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderTasksTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
-  const value = kb?.tasksTotal ?? "—";
+  const value = kb?.tasksTotal;
+  if (value === undefined || value === null) return { content: "", visible: false };
   const content = withIcon("tasksTotal", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }

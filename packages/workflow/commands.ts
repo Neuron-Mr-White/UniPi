@@ -428,6 +428,9 @@ export function registerWorkflowCommands(
 
         if (ctx.hasUI) {
           ctx.ui.notify(`Running /${fullCommand}`, "info");
+          // Update extension status with active command name
+          const ralphStatus = options.isRalphDetected() ? "✓ rl" : "○ rl";
+          ctx.ui.setStatus("unipi-workflow", `⚡ wf:${cmd.name} ${ralphStatus}`);
         }
       },
     });

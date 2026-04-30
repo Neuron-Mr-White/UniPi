@@ -241,6 +241,26 @@ done
 
 Expected: All tests pass. If any fail, fix before continuing.
 
+### Step 8b: Bundle unipi Extension (Optional)
+
+Regenerate the single-file bundle so npm consumers (especially on slow filesystems) get fast startup:
+
+```bash
+npx esbuild packages/unipi/index.ts \
+  --bundle \
+  --platform=node \
+  --format=esm \
+  --target=node24 \
+  --external:better-sqlite3 \
+  --outfile=packages/unipi/bundled.js
+```
+
+Expected: `packages/unipi/bundled.js` regenerated (~1.1MB).
+If esbuild not installed: `npm install -D esbuild`.
+
+**Note:** This step is optional for local development on ext4 — `index.ts` loads in ~3s
+directly. It matters for npm users who may be on slower filesystems (WSL2 /mnt, Docker mounts, NFS).
+
 ### Step 9: Bump Versions
 
 For each package that has changes, bump the patch version:
@@ -336,7 +356,17 @@ npm publish --access public
 
 Expected: All packages published successfully.
 
-### Step 13: Verify npm Publications
+### Step 13: Verify Alias Performance
+
+Confirm the `unipi` alias (which loads from ext4 source) starts fast after the release:
+
+```bash
+time bash -ic 'unipi -p ""'
+```
+
+Expected: ~4-6s (includes bash startup). If >10s, the alias may be loading from a stale path or /mnt/d.
+
+### Step 14: Verify npm Publications
 
 ```bash
 for pkg in packages/*/; do
@@ -421,7 +451,9 @@ After successful completion:
 - [ ] All packages mounted correctly in root and info-screen
 - [ ] All commands registered correctly in command registry
 - [ ] Documentation is accurate and compelling
+- [ ] `packages/unipi/bundled.js` regenerated (if Step 8b ran)
 - [ ] All packages published to npm with new versions
+- [ ] `unipi` alias starts in <6s (`time bash -ic 'unipi -p ""'`)
 - [ ] Changes pushed to GitHub
 - [ ] Git tag created (optional)
 

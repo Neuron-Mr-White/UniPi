@@ -40,6 +40,9 @@ The footer is automatically enabled when unipi loads. Use commands to control it
 
 - `/unipi:footer` — toggle footer on/off
 - `/unipi:footer <preset>` — switch preset (default, minimal, compact, full, nerd, ascii)
+- `/unipi:footer sep:<style>` — change separator style (powerline, powerline-thin, slash, pipe, dot, ascii)
+- `/unipi:footer icon:<style>` — change icon style (nerd, emoji, text)
+- `/unipi:footer on` / `/unipi:footer off` — enable/disable explicitly
 - `/unipi:footer-settings` — open settings TUI for per-group/per-segment toggles
 
 ## Segment Groups
@@ -78,6 +81,7 @@ Settings are stored in `~/.pi/agent/settings.json` under `unipi.footer`:
       "enabled": true,
       "preset": "default",
       "separator": "powerline-thin",
+      "iconStyle": "nerd",
       "groups": {
         "compactor": {
           "show": true,
@@ -128,10 +132,23 @@ Narrow terminal (<120 cols):
 | `dot` | · | Middle dot separator |
 | `ascii` | > < | ASCII angle brackets |
 
+## Icon Styles
+
+Three icon styles are available, controlled by `/unipi:footer icon:<style>` or the `iconStyle` setting:
+
+| Style | Description | Example |
+-------|-------------|--------|
+| `nerd` | Nerd Font glyphs (default, requires Nerd Font terminal) |  , ,  |
+| `emoji` | Unicode emoji/symbols (works on most terminals) | ⚡, ◧, $] |
+| `text` | Plain text abbreviations (works everywhere, most compact) | evt, cmp, $] |
+
+When `iconStyle` is not explicitly set, the footer auto-detects Nerd Font support and
+defaults to `nerd` if available, `emoji` otherwise.
+
 ## Error Handling
 
 - **Event subscription failures:** Each handler wrapped in try/catch — one failing handler doesn't break others
-- **Data provider failures:** Segments render "—" or hide when data unavailable (graceful degradation)
+- **Data provider failures:** Segments hide when data unavailable (graceful degradation)
 - **Config parse failures:** Fall back to default preset with warning
 - **Module loading order:** Footer works even if packages load after it — late-arriving events update cache
 

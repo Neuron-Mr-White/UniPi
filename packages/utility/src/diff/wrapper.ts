@@ -154,9 +154,9 @@ export function registerEnhancedWriteTool(pi: ExtensionAPI, cwd: string): void {
         } as DiffToolDetails,
       };
     },
-    async renderResult(result: any, _options: any, theme: any): Promise<any> {
+    renderResult(result: any, _options: any, theme: any): any {
       const details = result?.details as DiffToolDetails | undefined;
-      if (!details || !details.diff || details.diff.lines.length === 0) {
+      if (!details || !details.diff || !details.diff.lines || details.diff.lines.length === 0) {
         return null as any;
       }
 
@@ -165,18 +165,15 @@ export function registerEnhancedWriteTool(pi: ExtensionAPI, cwd: string): void {
         const tw = termW();
         const max = 60;
 
-        let rendered: string;
-        if (tw >= SPLIT_MIN_WIDTH) {
-          rendered = await renderSplit(details.diff, details.language, max, dc);
-        } else {
-          rendered = await renderUnified(details.diff, details.language, max, dc);
-        }
+        const rendered: string = tw >= SPLIT_MIN_WIDTH
+          ? renderSplit(details.diff, details.language, max, dc)
+          : renderUnified(details.diff, details.language, max, dc);
 
         // Return a simple component-like object with text
         return {
           setText: () => {},
           text: rendered,
-          render: () => [rendered],
+          render: () => rendered.split("\n"),
         } as any;
       } catch {
         return null as any;
@@ -262,9 +259,9 @@ export function registerEnhancedEditTool(pi: ExtensionAPI, cwd: string): void {
         } as DiffToolDetails,
       };
     },
-    async renderResult(result: any, _options: any, theme: any): Promise<any> {
+    renderResult(result: any, _options: any, theme: any): any {
       const details = result?.details as DiffToolDetails | undefined;
-      if (!details || !details.diff || details.diff.lines.length === 0) {
+      if (!details || !details.diff || !details.diff.lines || details.diff.lines.length === 0) {
         return null as any;
       }
 
@@ -273,17 +270,14 @@ export function registerEnhancedEditTool(pi: ExtensionAPI, cwd: string): void {
         const tw = termW();
         const max = 60;
 
-        let rendered: string;
-        if (tw >= SPLIT_MIN_WIDTH) {
-          rendered = await renderSplit(details.diff, details.language, max, dc);
-        } else {
-          rendered = await renderUnified(details.diff, details.language, max, dc);
-        }
+        const rendered: string = tw >= SPLIT_MIN_WIDTH
+          ? renderSplit(details.diff, details.language, max, dc)
+          : renderUnified(details.diff, details.language, max, dc);
 
         return {
           setText: () => {},
           text: rendered,
-          render: () => [rendered],
+          render: () => rendered.split("\n"),
         } as any;
       } catch {
         return null as any;

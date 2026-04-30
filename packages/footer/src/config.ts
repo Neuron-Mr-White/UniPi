@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { FooterSettings, FooterGroupSettings, SeparatorStyle } from "./types.js";
+import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle } from "./types.js";
 import { UNIPI_SETTINGS_KEY } from "@pi-unipi/core";
 
 /** Default footer settings */
@@ -16,6 +16,7 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   enabled: true,
   preset: "default",
   separator: "powerline-thin",
+  iconStyle: "nerd",
   groups: {
     core: { show: true, segments: {} },
     compactor: { show: true, segments: {} },
@@ -90,6 +91,7 @@ export function loadFooterSettings(): FooterSettings {
       enabled: typeof footer.enabled === "boolean" ? footer.enabled : DEFAULT_FOOTER_SETTINGS.enabled,
       preset: typeof footer.preset === "string" ? footer.preset : DEFAULT_FOOTER_SETTINGS.preset,
       separator: isValidSeparator(footer.separator) ? footer.separator as SeparatorStyle : DEFAULT_FOOTER_SETTINGS.separator,
+      iconStyle: isValidIconStyle(footer.iconStyle) ? footer.iconStyle as IconStyle : DEFAULT_FOOTER_SETTINGS.iconStyle,
       groups: mergeGroupSettings(
         DEFAULT_FOOTER_SETTINGS.groups,
         footer.groups as Record<string, FooterGroupSettings> | undefined,
@@ -143,6 +145,12 @@ export function isSegmentEnabled(groupId: string, segmentId: string): boolean {
 function isValidSeparator(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const valid: string[] = ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"];
+  return valid.includes(value);
+}
+
+function isValidIconStyle(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const valid: string[] = ["nerd", "emoji", "text"];
   return valid.includes(value);
 }
 

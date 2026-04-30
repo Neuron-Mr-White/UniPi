@@ -3,7 +3,10 @@
  *
  * Segment renderers for the compactor group: session_events, compactions,
  * tokens_saved, compression_ratio, indexed_docs, sandbox_runs, search_queries.
- * Data sourced from COMPACTOR_STATS_UPDATED event via registry cache.
+ *
+ * Data sourced from piContext.sessionManager (live session data).
+ * Segments without a reliable data source are hidden (visible: false)
+ * rather than showing a placeholder like "—".
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
@@ -22,63 +25,103 @@ function formatTokens(n: number): string {
   return `${(n / 1000000).toFixed(1)}M`;
 }
 
-/** Get compactor data from registry cache */
-function getCompactorData(ctx: FooterSegmentContext): Record<string, unknown> {
-  const data = ctx.data;
-  if (!data || typeof data !== "object") return {};
-  return data as Record<string, unknown>;
+/** Hidden segment — no reliable data source available */
+function hidden(): RenderedSegment {
+  return { content: "", visible: false };
+}
+
+/** Safely extract sessionManager from piContext */
+function getSessionManager(ctx: FooterSegmentContext): any {
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  return piCtx?.sessionManager as any | undefined;
+}
+
+/** Get all session events from sessionManager branch */
+function getSessionEvents(ctx: FooterSegmentContext): any[] {
+  const sm = getSessionManager(ctx);
+  if (!sm || typeof sm.getBranch !== "function") return [];
+  try {
+    return sm.getBranch() ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function renderSessionEventsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.sessionEvents ?? "—";
-  const content = withIcon("sessionEvents", `${value}`);
+  const events = getSessionEvents(ctx);
+  const count = events.length;
+  if (count === 0) return hidden();
+
+  const content = withIcon("sessionEvents", `${count}`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.compactions ?? "—";
-  const content = withIcon("compactions", `${value}`);
+  // Count compaction entries in the session events
+  const events = getSessionEvents(ctx);
+  let compactionCount = 0;
+  for (const e of events) {
+    if (!e || typeof e !== "object") continue;
+    if (e.type === "compaction" || e.type === "compacted") {
+      compactionCount++;
+    }
+  }
+  if (compactionCount === 0) return hidden();
+
+  const content = withIcon("compactions", `${compactionCount}`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.tokensSaved;
-  if (value === undefined || value === null) return { content: "", visible: false };
-  const content = withIcon("tokensSaved", formatTokens(Number(value)));
+  // Sum tokens saved from compaction events if available
+  const events = getSessionEvents(ctx);
+  let tokensSaved = 0;
+  let hasCompaction = false;
+  for (const e of events) {
+    if (!e || typeof e !== "object") continue;
+    if (e.type === "compaction" || e.type === "compacted") {
+      hasCompaction = true;
+      tokensSaved += Number(e.tokensSaved ?? e.tokens_saved ?? 0);
+    }
+  }
+  if (!hasCompaction || tokensSaved === 0) return hidden();
+
+  const content = withIcon("tokensSaved", formatTokens(tokensSaved));
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const lastCompaction = data.lastCompaction as Record<string, unknown> | undefined;
-  const ratio = lastCompaction?.compressionRatio;
-  if (!ratio) return { content: "", visible: false };
-  const content = withIcon("compressionRatio", `${ratio}`);
+  // Check last compaction event for compression ratio
+  const events = getSessionEvents(ctx);
+  let lastRatio: number | undefined;
+  for (const e of events) {
+    if (!e || typeof e !== "object") continue;
+    if (e.type === "compaction" || e.type === "compacted") {
+      const ratio = e.compressionRatio ?? e.compression_ratio;
+      if (ratio !== undefined && ratio !== null) {
+        lastRatio = Number(ratio);
+      }
+    }
+  }
+  if (lastRatio === undefined) return hidden();
+
+  const content = withIcon("compressionRatio", `${lastRatio.toFixed(1)}x`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
-function renderIndexedDocsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.indexedDocs ?? "—";
-  const content = withIcon("indexedDocs", `${value}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
+function renderIndexedDocsSegment(_ctx: FooterSegmentContext): RenderedSegment {
+  // No reliable data source for indexed docs count
+  return hidden();
 }
 
-function renderSandboxRunsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.sandboxRuns ?? "—";
-  const content = withIcon("sandboxRuns", `${value}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
+function renderSandboxRunsSegment(_ctx: FooterSegmentContext): RenderedSegment {
+  // No reliable data source for sandbox run count
+  return hidden();
 }
 
-function renderSearchQueriesSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const data = getCompactorData(ctx);
-  const value = data.searchQueries ?? "—";
-  const content = withIcon("searchQueries", `${value}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
+function renderSearchQueriesSegment(_ctx: FooterSegmentContext): RenderedSegment {
+  // No reliable data source for search query count
+  return hidden();
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [
