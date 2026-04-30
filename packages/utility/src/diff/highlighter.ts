@@ -262,7 +262,7 @@ export async function getShikiHighlighter(): Promise<any> {
 
   shikiInitPromise = (async () => {
     try {
-      const { createHighlighter } = await import("@shikijs/cli");
+      const { createHighlighter } = await import("shiki");
       shikiHighlighter = await createHighlighter({
         themes: ["github-dark"],
         langs: [

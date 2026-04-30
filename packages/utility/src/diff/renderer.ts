@@ -295,7 +295,7 @@ export function renderUnified(
   language: string,
   max: number,
   dc: DiffColors,
-): Promise<string> {
+): string {
   const lines: string[] = [];
   const totalLines = Math.min(diff.lines.length, max);
   const truncated = diff.lines.length > max;
@@ -348,7 +348,7 @@ export function renderSplit(
   language: string,
   max: number,
   dc: DiffColors,
-): Promise<string> {
+): string {
   const tw = termW();
 
   // Auto-fallback to unified
