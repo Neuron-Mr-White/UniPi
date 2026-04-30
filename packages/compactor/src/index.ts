@@ -52,15 +52,18 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     executor = new PolyglotExecutor();
   };
 
-  registerCompactionHooks(pi);
+  registerCompactionHooks(pi, { sessionDB, getSessionId: () => currentSessionId });
 
-  // Commands will be registered inside session_start when deps are ready
+  // Commands registered immediately (like ask-user pattern)
+  // so they're available before session_start
   const getCommandDeps = () => ({
     sessionDB,
     contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
   });
+
+  registerCommands(pi, getCommandDeps());
 
   pi.on("session_start", async (_event, ctx) => {
     await init();
@@ -75,7 +78,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     sessionDB?.ensureSession(fullSessionId, projectDir);
 
-    // Register all compactor tools with Pi
+    // Register all compactor tools with Pi (deps now have live sessionDB)
     if (sessionDB) {
       registerCompactorTools(pi, {
         sessionDB,
@@ -85,8 +88,44 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       });
     }
 
-    // Re-register commands with fresh deps now that sessionDB is ready
-    registerCommands(pi, getCommandDeps());
+    // Register info-screen group
+    const infoRegistry = (globalThis as any).__unipi_info_registry;
+    if (infoRegistry && sessionDB && contentStore) {
+      const sdb = sessionDB;
+      const cs = contentStore;
+      const sid = () => currentSessionId;
+      infoRegistry.registerGroup({
+        id: "compactor",
+        name: "Compactor",
+        icon: "🗜️",
+        priority: 12,
+        config: {
+          showByDefault: true,
+          stats: [
+            { id: "sessionEvents", label: "Session events", show: true },
+            { id: "compactions", label: "Compactions", show: true },
+            { id: "tokensSaved", label: "Tokens compacted", show: true },
+            { id: "compressionRatio", label: "Compression ratio", show: true },
+            { id: "indexedDocs", label: "Indexed docs", show: true },
+          ],
+        },
+        dataProvider: async () => {
+          try {
+            const { getInfoScreenData } = await import("./info-screen.js");
+            const data = await getInfoScreenData(sdb, cs, sid());
+            return {
+              sessionEvents: { value: data.sessionEvents.value, detail: data.sessionEvents.detail },
+              compactions: { value: data.compactions.value, detail: data.compactions.detail },
+              tokensSaved: { value: data.tokensSaved.value, detail: data.tokensSaved.detail },
+              compressionRatio: { value: data.compressionRatio.value, detail: data.compressionRatio.detail },
+              indexedDocs: { value: data.indexedDocs.value, detail: data.indexedDocs.detail },
+            };
+          } catch {
+            return {};
+          }
+        },
+      });
+    }
 
     emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.COMPACTOR,
@@ -123,6 +162,22 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (sessionDB) {
       const snapshot = await injectResumeSnapshot(sessionDB, currentSessionId);
       debug("resume_snapshot", { injected: !!snapshot });
+
+      // Auto-injection on compact: inject behavioral state after compaction
+      if (snapshot && sessionDB) {
+        try {
+          const { buildAutoInjection } = await import("./session/auto-inject.js");
+          const events = sessionDB.getEvents(currentSessionId, { limit: 100 });
+          const autoInjection = buildAutoInjection(events);
+          if (autoInjection) {
+            debug("auto_injection", { length: autoInjection.length });
+            // Note: auto-injection is included in the resume snapshot context
+            // The model receives it as part of the session state restoration
+          }
+        } catch (err) {
+          debug("auto_injection_error", { error: String(err) });
+        }
+      }
     }
   });
 
