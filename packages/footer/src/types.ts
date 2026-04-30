@@ -1,0 +1,168 @@
+/**
+ * @pi-unipi/footer — Type definitions
+ *
+ * All TypeScript types for the footer package: segments, groups, config,
+ * presets, separators, theme.
+ */
+
+import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+
+// ─── Semantic Colors ────────────────────────────────────────────────────────
+
+/** Semantic color names mapped to segment groups */
+export type SemanticColor =
+  | "model"
+  | "path"
+  | "git"
+  | "compactor"
+  | "memory"
+  | "mcp"
+  | "ralph"
+  | "workflow"
+  | "kanboard"
+  | "notify"
+  | "separator"
+  | "border"
+  | "context"
+  | "contextWarn"
+  | "contextError"
+  | "cost"
+  | "tokens"
+  | "thinking"
+  | "thinkingMinimal"
+  | "thinkingLow"
+  | "thinkingMedium";
+
+/** A theme color name or custom hex color */
+export type ColorValue = ThemeColor | `#${string}`;
+
+/** Theme-like interface for rendering */
+export type ThemeLike = Pick<Theme, "fg">;
+
+/** Mapping of semantic color names to actual colors */
+export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
+
+// ─── Separators ─────────────────────────────────────────────────────────────
+
+/** Separator styles for segment dividers */
+export type SeparatorStyle =
+  | "powerline"
+  | "powerline-thin"
+  | "slash"
+  | "pipe"
+  | "dot"
+  | "ascii";
+
+/** Separator definition with left/right glyph strings */
+export interface SeparatorDef {
+  left: string;
+  right: string;
+}
+
+// ─── Segments ───────────────────────────────────────────────────────────────
+
+/** Rendered segment output */
+export interface RenderedSegment {
+  /** The rendered content string (may include ANSI codes) */
+  content: string;
+  /** Whether this segment is visible */
+  visible: boolean;
+}
+
+/** Context passed to segment render functions */
+export interface FooterSegmentContext {
+  /** Pi theme for coloring */
+  theme: ThemeLike;
+  /** Resolved color scheme */
+  colors: ColorScheme;
+  /** Data from the registry for this segment's group */
+  data: unknown;
+  /** Available width for this segment */
+  width: number;
+  /** Per-segment options from preset */
+  options?: Record<string, unknown>;
+  /** Full pi context (for core segments that need ctx.sessionManager, etc.) */
+  piContext?: unknown;
+  /** Footer data provider (for core segments that need git, extension statuses) */
+  footerData?: unknown;
+}
+
+/** Segment render function type */
+export type SegmentRenderFn = (ctx: FooterSegmentContext) => RenderedSegment;
+
+/** A single footer segment definition */
+export interface FooterSegment {
+  /** Unique segment identifier (e.g., "model", "compactions") */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Icon glyph (Nerd Font or ASCII) */
+  icon: string;
+  /** Render function */
+  render: SegmentRenderFn;
+  /** Whether this segment is shown by default */
+  defaultShow: boolean;
+}
+
+// ─── Groups ─────────────────────────────────────────────────────────────────
+
+/** A group of related segments (typically one per package) */
+export interface FooterGroup {
+  /** Unique group identifier (e.g., "core", "compactor") */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Group icon */
+  icon: string;
+  /** Segments within this group */
+  segments: FooterSegment[];
+  /** Whether this group is shown by default */
+  defaultShow: boolean;
+}
+
+// ─── Settings ───────────────────────────────────────────────────────────────
+
+/** Per-group settings */
+export interface FooterGroupSettings {
+  /** Whether this group is visible */
+  show: boolean;
+  /** Per-segment visibility overrides */
+  segments?: Record<string, boolean>;
+}
+
+/** Footer settings stored in settings.json */
+export interface FooterSettings {
+  /** Whether the footer is enabled */
+  enabled: boolean;
+  /** Active preset name */
+  preset: string;
+  /** Separator style */
+  separator: SeparatorStyle;
+  /** Per-group settings */
+  groups: Record<string, FooterGroupSettings>;
+}
+
+/** Full footer config (settings + runtime state) */
+export interface FooterConfig {
+  settings: FooterSettings;
+  /** Runtime: whether footer is currently active */
+  active: boolean;
+}
+
+// ─── Presets ────────────────────────────────────────────────────────────────
+
+/** Preset definition */
+export interface PresetDef {
+  /** Segments on the left side of the status bar */
+  leftSegments: string[];
+  /** Segments on the right side of the status bar */
+  rightSegments: string[];
+  /** Secondary row segments (shown when terminal is narrow) */
+  secondarySegments: string[];
+  /** Separator style for this preset */
+  separator: SeparatorStyle;
+  /** Color scheme for this preset */
+  colors?: ColorScheme;
+  /** Per-segment options */
+  segmentOptions?: Record<string, Record<string, unknown>>;
+}
