@@ -81,6 +81,7 @@ export type OwnCutResult =
 export interface CompactorStrategyConfig {
   enabled: boolean;
   mode: string;
+  autoDetect?: "git" | null;
 }
 
 export interface CompactorConfig {
@@ -96,17 +97,15 @@ export interface CompactorConfig {
   sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: string[]; outputLimit: number };
   toolDisplay: CompactorStrategyConfig & { mode: "opencode" | "balanced" | "verbose" | "custom"; diffLayout: "auto" | "split" | "unified"; diffIndicator: "bars" | "classic" | "none"; showThinkingLabels: boolean; showUserMessageBox: boolean; showBashSpinner: boolean; showPendingPreviews: boolean };
 
-  // Pipeline feature toggles
+  // Pipeline features
   pipeline: {
-    // On Compaction
-    ttlCache: boolean;          // 24h TTL cache for ctx_fetch_and_index
-    autoInjection: boolean;     // Auto-inject behavioral state after compaction
-    // On Search
-    proximityReranking: boolean; // Multi-term proximity boost
-    timelineSort: boolean;      // Unified search across ContentStore + SessionDB
-    progressiveThrottling: boolean; // Call rate limiting for ctx_search
-    // On Index
-    mmapPragma: boolean;        // 256MB mmap for FTS5 performance
+    ttlCache: boolean;
+    autoInjection: boolean;
+    proximityReranking: boolean;
+    timelineSort: boolean;
+    progressiveThrottling: boolean;
+    mmapPragma: boolean;
+    customNoisePatterns: string[];
   };
 
   // Global settings
@@ -115,7 +114,7 @@ export interface CompactorConfig {
   showTruncationHints: boolean;
 }
 
-export type CompactorPreset = "opencode" | "balanced" | "verbose" | "minimal" | "custom";
+export type CompactorPreset = "precise" | "balanced" | "thorough" | "lean" | "opencode" | "verbose" | "minimal" | "custom";
 
 // ─────────────────────────────────────────────────────────
 // Session events (from context-mode)
@@ -154,9 +153,6 @@ export interface SessionMeta {
   last_event_at: string | null;
   event_count: number;
   compact_count: number;
-  total_chars_before: number;
-  total_chars_kept: number;
-  total_messages_summarized: number;
 }
 
 export interface ResumeRow {
@@ -205,8 +201,6 @@ export interface IndexResult {
   label: string;
   totalChunks: number;
   codeChunks: number;
-  cacheHit?: boolean;
-  cachedAt?: string;
 }
 
 export interface SearchResult {
@@ -270,6 +264,18 @@ export interface ToolDisplayConfig {
   diffWordWrap: boolean;
   showTruncationHints: boolean;
   showRtkCompactionHints: boolean;
+}
+
+// ─────────────────────────────────────────────────────────
+// Runtime counters (live session stats)
+// ─────────────────────────────────────────────────────────
+
+export interface RuntimeCounters {
+  sandboxRuns: number;
+  searchQueries: number;
+  recallQueries: number;
+  compactions: number;
+  totalTokensCompacted: number;
 }
 
 // ─────────────────────────────────────────────────────────
