@@ -17,13 +17,14 @@ import { ctxIndex } from "../tools/ctx-index.js";
 import { ctxSearch } from "../tools/ctx-search.js";
 import { ContentStore } from "../store/index.js";
 import type { SessionDB } from "../session/db.js";
-import type { NormalizedBlock } from "../types.js";
+import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
 export interface CommandDeps {
   sessionDB: SessionDB | null;
   contentStore: ContentStore | null;
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
+  getCounters?: () => RuntimeCounters;
 }
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
@@ -72,7 +73,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         return;
       }
       try {
-        const stats = await ctxStats(deps.sessionDB, deps.contentStore, deps.getSessionId());
+        const stats = await ctxStats(deps.sessionDB, deps.contentStore, deps.getSessionId(), deps.getCounters?.());
         const lines = [
           "📊 Compactor Stats",
           `Session events: ${stats.sessionEvents}`,

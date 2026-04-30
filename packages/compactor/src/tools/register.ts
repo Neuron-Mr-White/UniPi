@@ -19,7 +19,7 @@ import { ctxStats, type CtxStatsResult } from "./ctx-stats.js";
 import { ctxDoctor, type DoctorResult } from "./ctx-doctor.js";
 import type { SessionDB } from "../session/db.js";
 import type { ContentStore } from "../store/index.js";
-import type { NormalizedBlock } from "../types.js";
+import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
 // --- TypeBox Schemas for each tool ---
 
@@ -132,6 +132,7 @@ export interface CompactorToolDeps {
   contentStore: ContentStore | null;
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
+  getCounters?: () => RuntimeCounters;
 }
 
 /**
@@ -146,6 +147,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     description: "Trigger manual context compaction. Reduces session history while preserving continuity.",
     parameters: CompactParams,
     async execute(): Promise<any> {
+      const c = deps.getCounters?.();
+      if (c) { c.compactions++; }
       const result = compactTool();
       return jsonResult(result, "Compaction triggered");
     },
@@ -159,6 +162,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       "Search session history using BM25 or regex. Find previous goals, files, commits, and context.",
     parameters: VccRecallParams,
     async execute(_toolCallId, params: Static<typeof VccRecallParams>): Promise<any> {
+      const c = deps.getCounters?.();
+      if (c) { c.recallQueries++; }
       const blocks = deps.getBlocks();
       const input: RecallInput = {
         query: params.query,
@@ -191,6 +196,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxExecuteParams,
     async execute(_toolCallId, params: Static<typeof CtxExecuteParams>): Promise<any> {
       try {
+        const c = deps.getCounters?.();
+        if (c) { c.sandboxRuns++; }
         const result = await ctxExecute(params as CtxExecuteInput);
         const parts: string[] = [];
         if (result.stdout) parts.push(result.stdout);
@@ -212,6 +219,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxExecuteFileParams,
     async execute(_toolCallId, params: Static<typeof CtxExecuteFileParams>): Promise<any> {
       try {
+        const c = deps.getCounters?.();
+        if (c) { c.sandboxRuns++; }
         const result = await ctxExecuteFile(params as CtxExecuteFileInput);
         const parts: string[] = [];
         if (result.stdout) parts.push(result.stdout);
@@ -232,6 +241,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxBatchExecuteParams,
     async execute(_toolCallId, params: Static<typeof CtxBatchExecuteParams>): Promise<any> {
       try {
+        const c = deps.getCounters?.();
+        if (c) { c.sandboxRuns++; c.searchQueries++; }
         const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
         const summaries = result.results.map((r, i) => {
           if (r.type === "execute") {
@@ -274,6 +285,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxSearchParams,
     async execute(_toolCallId, params: Static<typeof CtxSearchParams>): Promise<any> {
       try {
+        const c = deps.getCounters?.();
+        if (c) { c.searchQueries++; }
         const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
         if (results.length === 0) {
           return textResult(`No results for "${params.query}".`);
@@ -319,7 +332,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     parameters: CtxStatsParams,
     async execute(): Promise<any> {
       try {
-        const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId());
+        const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId(), deps.getCounters?.());
         const lines = [
           `📊 Compactor Stats`,
           `Session events: ${result.sessionEvents}`,

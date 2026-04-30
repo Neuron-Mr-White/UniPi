@@ -267,6 +267,18 @@ export interface ToolDisplayConfig {
 }
 
 // ─────────────────────────────────────────────────────────
+// Runtime counters (live session stats)
+// ─────────────────────────────────────────────────────────
+
+export interface RuntimeCounters {
+  sandboxRuns: number;
+  searchQueries: number;
+  recallQueries: number;
+  compactions: number;
+  totalTokensCompacted: number;
+}
+
+// ─────────────────────────────────────────────────────────
 // Info-screen integration
 // ─────────────────────────────────────────────────────────
 

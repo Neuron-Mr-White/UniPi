@@ -15,7 +15,7 @@ import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
-import type { NormalizedBlock, CompactorStrategyConfig } from "./types.js";
+import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
 
 /** Debug logger — only logs when config.debug === true */
 function createDebugLogger(getConfig: () => { debug: boolean }) {
@@ -34,6 +34,14 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   let config = loadConfig();
   let cachedBlocks: NormalizedBlock[] = [];
   let currentSessionId = "default";
+  const counters: RuntimeCounters = {
+    sandboxRuns: 0,
+    searchQueries: 0,
+    recallQueries: 0,
+    compactions: 0,
+    totalTokensCompacted: 0,
+  };
+  const getCounters = () => counters;
 
   const debug = createDebugLogger(() => config);
 
@@ -75,6 +83,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
+    getCounters,
   });
 
   pi.on("session_start", async (_event, ctx) => {
@@ -97,6 +106,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         contentStore,
         getSessionId: () => currentSessionId,
         getBlocks: () => cachedBlocks,
+        getCounters,
       });
     }
 
@@ -127,7 +137,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         dataProvider: async () => {
           try {
             const { getInfoScreenData } = await import("./info-screen.js");
-            const data = await getInfoScreenData(sdb, cs, sid());
+            const data = await getInfoScreenData(sdb, cs, sid(), counters);
             return {
               sessionEvents: { value: data.sessionEvents.value, detail: data.sessionEvents.detail },
               compactions: { value: data.compactions.value, detail: data.compactions.detail },
@@ -237,6 +247,11 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (sessionDB) {
       const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
       sessionDB.incrementCompactCount(sessionId);
+      counters.compactions++;
+      const tokensBefore = (event as any).tokensBefore ?? 0;
+      if (tokensBefore > 0) {
+        counters.totalTokensCompacted += Math.round(tokensBefore * 0.85); // rough estimate
+      }
       debug("session_compact", { sessionId });
     }
   });
