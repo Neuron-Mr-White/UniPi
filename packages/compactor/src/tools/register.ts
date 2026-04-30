@@ -3,6 +3,14 @@
  *
  * Each tool is registered via pi.registerTool() with proper TypeBox schemas
  * so the LLM can discover and invoke them.
+ *
+ * New naming convention (v0.2.0):
+ *   compact, session_recall, sandbox, sandbox_file, sandbox_batch,
+ *   content_index, content_search, content_fetch, compactor_stats, compactor_doctor
+ *
+ * Old names kept as deprecated aliases for backward compatibility:
+ *   vcc_recall, ctx_execute, ctx_execute_file, ctx_batch_execute,
+ *   ctx_index, ctx_search, ctx_fetch_and_index, ctx_stats, ctx_doctor
  */
 
 import { Type, type Static } from "@sinclair/typebox";
@@ -39,7 +47,7 @@ const LanguageSchema = Type.Union([
 
 const CompactParams = Type.Object({});
 
-const VccRecallParams = Type.Object({
+const RecallParams = Type.Object({
   query: Type.String({ description: "Search query for session history" }),
   mode: Type.Optional(Type.Union([Type.Literal("bm25"), Type.Literal("regex")], {
     description: "Search mode: bm25 (default) or regex fallback",
@@ -49,19 +57,19 @@ const VccRecallParams = Type.Object({
   expand: Type.Optional(Type.Boolean({ description: "Return full message content for hits" })),
 });
 
-const CtxExecuteParams = Type.Object({
+const SandboxParams = Type.Object({
   language: LanguageSchema,
   code: Type.String({ description: "Code to execute in the sandbox" }),
   timeout: Type.Optional(Type.Number({ description: "Timeout in ms (default 30000)", minimum: 1000 })),
 });
 
-const CtxExecuteFileParams = Type.Object({
+const SandboxFileParams = Type.Object({
   language: LanguageSchema,
   path: Type.String({ description: "Path to file to execute" }),
   timeout: Type.Optional(Type.Number({ description: "Timeout in ms (default 30000)", minimum: 1000 })),
 });
 
-const CtxBatchExecuteParams = Type.Object({
+const SandboxBatchParams = Type.Object({
   items: Type.Array(
     Type.Union([
       Type.Object({
@@ -80,7 +88,7 @@ const CtxBatchExecuteParams = Type.Object({
   ),
 });
 
-const CtxIndexParams = Type.Object({
+const ContentIndexParams = Type.Object({
   label: Type.String({ description: "Label for the indexed content" }),
   content: Type.Optional(Type.String({ description: "Content to index (or use filePath)" })),
   filePath: Type.Optional(Type.String({ description: "Path to file to index" })),
@@ -92,21 +100,21 @@ const CtxIndexParams = Type.Object({
   chunkSize: Type.Optional(Type.Number({ description: "Chunk size in characters", minimum: 100 })),
 });
 
-const CtxSearchParams = Type.Object({
+const ContentSearchParams = Type.Object({
   query: Type.String({ description: "Search query against indexed content" }),
   limit: Type.Optional(Type.Number({ description: "Max results (default 10)", minimum: 1 })),
   offset: Type.Optional(Type.Number({ description: "Pagination offset", minimum: 0 })),
 });
 
-const CtxFetchAndIndexParams = Type.Object({
+const ContentFetchParams = Type.Object({
   url: Type.String({ description: "URL to fetch, convert to markdown, and index" }),
   label: Type.Optional(Type.String({ description: "Label for the indexed content" })),
   chunkSize: Type.Optional(Type.Number({ description: "Chunk size in characters", minimum: 100 })),
 });
 
-const CtxStatsParams = Type.Object({});
+const StatsParams = Type.Object({});
 
-const CtxDoctorParams = Type.Object({});
+const DoctorParams = Type.Object({});
 
 // --- Helpers ---
 
@@ -125,6 +133,23 @@ function jsonResult(data: unknown, label?: string): any {
   };
 }
 
+/** Log a deprecation warning when old tool names are used. */
+function deprecationLog(oldName: string, newName: string): void {
+  console.error(`[compactor] DEPRECATED: Tool "${oldName}" used — use "${newName}" instead.`);
+}
+
+// --- Old schema names for backward compat aliases ---
+
+const VccRecallParams = RecallParams;
+const CtxExecuteParams = SandboxParams;
+const CtxExecuteFileParams = SandboxFileParams;
+const CtxBatchExecuteParams = SandboxBatchParams;
+const CtxIndexParams = ContentIndexParams;
+const CtxSearchParams = ContentSearchParams;
+const CtxFetchAndIndexParams = ContentFetchParams;
+const CtxStatsParams = StatsParams;
+const CtxDoctorParams = DoctorParams;
+
 // --- Registration ---
 
 export interface CompactorToolDeps {
@@ -133,6 +158,28 @@ export interface CompactorToolDeps {
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
   getCounters?: () => RuntimeCounters;
+}
+
+/** Helper to register a tool under a new name and an old deprecated alias. */
+function registerToolWithAlias(
+  pi: ExtensionAPI,
+  newName: string,
+  oldName: string,
+  definition: Parameters<ExtensionAPI["registerTool"]>[0],
+): void {
+  // Register under new (primary) name
+  pi.registerTool({ ...definition, name: newName });
+
+  // Also register under old name as deprecated alias
+  pi.registerTool({
+    ...definition,
+    name: oldName,
+    description: `${definition.description} (DEPRECATED: use "${newName}" instead)`,
+    execute: async (_toolCallId?: string, ...args: any[]) => {
+      deprecationLog(oldName, newName);
+      return (definition as any).execute(_toolCallId, ...args);
+    },
+  });
 }
 
 /**
@@ -154,14 +201,13 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     },
   });
 
-  // 2. vcc_recall — search session history
-  pi.registerTool({
-    name: "vcc_recall",
-    label: "Recall",
+  // 2. session_recall (new) / vcc_recall (deprecated) — search session history
+  const recallDefinition = {
+    label: "Session Recall",
     description:
       "Search session history using BM25 or regex. Find previous goals, files, commits, and context.",
-    parameters: VccRecallParams,
-    async execute(_toolCallId, params: Static<typeof VccRecallParams>): Promise<any> {
+    parameters: RecallParams,
+    async execute(_toolCallId: string, params: Static<typeof RecallParams>): Promise<any> {
       const c = deps.getCounters?.();
       if (c) { c.recallQueries++; }
       const blocks = deps.getBlocks();
@@ -185,16 +231,16 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         result as unknown as Record<string, unknown>,
       );
     },
-  });
+  };
+  registerToolWithAlias(pi, "session_recall", "vcc_recall", recallDefinition);
 
-  // 3. ctx_execute — run code in sandbox
-  pi.registerTool({
-    name: "ctx_execute",
-    label: "Execute",
+  // 3. sandbox (new) / ctx_execute (deprecated) — run code in sandbox
+  const sandboxDefinition = {
+    label: "Sandbox",
     description:
       "Run code in a sandboxed environment. Supports 11 languages. Only stdout enters context.",
-    parameters: CtxExecuteParams,
-    async execute(_toolCallId, params: Static<typeof CtxExecuteParams>): Promise<any> {
+    parameters: SandboxParams,
+    async execute(_toolCallId: string, params: Static<typeof SandboxParams>): Promise<any> {
       try {
         const c = deps.getCounters?.();
         if (c) { c.sandboxRuns++; }
@@ -209,15 +255,15 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Execution error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "sandbox", "ctx_execute", sandboxDefinition);
 
-  // 4. ctx_execute_file — execute file with FILE_CONTENT
-  pi.registerTool({
-    name: "ctx_execute_file",
-    label: "Execute File",
+  // 4. sandbox_file (new) / ctx_execute_file (deprecated) — execute file
+  const sandboxFileDefinition = {
+    label: "Sandbox File",
     description: "Execute a file in the sandbox. File content is injected as FILE_CONTENT variable.",
-    parameters: CtxExecuteFileParams,
-    async execute(_toolCallId, params: Static<typeof CtxExecuteFileParams>): Promise<any> {
+    parameters: SandboxFileParams,
+    async execute(_toolCallId: string, params: Static<typeof SandboxFileParams>): Promise<any> {
       try {
         const c = deps.getCounters?.();
         if (c) { c.sandboxRuns++; }
@@ -231,15 +277,15 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Execution error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "sandbox_file", "ctx_execute_file", sandboxFileDefinition);
 
-  // 5. ctx_batch_execute — atomic batch
-  pi.registerTool({
-    name: "ctx_batch_execute",
-    label: "Batch Execute",
+  // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch
+  const sandboxBatchDefinition = {
+    label: "Sandbox Batch",
     description: "Run multiple code executions and searches atomically as a batch.",
-    parameters: CtxBatchExecuteParams,
-    async execute(_toolCallId, params: Static<typeof CtxBatchExecuteParams>): Promise<any> {
+    parameters: SandboxBatchParams,
+    async execute(_toolCallId: string, params: Static<typeof SandboxBatchParams>): Promise<any> {
       try {
         const c = deps.getCounters?.();
         if (c) { c.sandboxRuns++; c.searchQueries++; }
@@ -256,15 +302,15 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Batch error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "sandbox_batch", "ctx_batch_execute", sandboxBatchDefinition);
 
-  // 6. ctx_index — index content into FTS5
-  pi.registerTool({
-    name: "ctx_index",
-    label: "Index",
+  // 6. content_index (new) / ctx_index (deprecated) — index content into FTS5
+  const contentIndexDefinition = {
+    label: "Content Index",
     description: "Chunk content or a file and index into FTS5 for fast search.",
-    parameters: CtxIndexParams,
-    async execute(_toolCallId, params: Static<typeof CtxIndexParams>): Promise<any> {
+    parameters: ContentIndexParams,
+    async execute(_toolCallId: string, params: Static<typeof ContentIndexParams>): Promise<any> {
       try {
         const result = await ctxIndex(deps.contentStore!, params as CtxIndexInput);
         return textResult(
@@ -275,15 +321,15 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Index error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "content_index", "ctx_index", contentIndexDefinition);
 
-  // 7. ctx_search — query FTS5 content store
-  pi.registerTool({
-    name: "ctx_search",
-    label: "Search",
+  // 7. content_search (new) / ctx_search (deprecated) — query FTS5 content store
+  const contentSearchDefinition = {
+    label: "Content Search",
     description: "Search indexed content using FTS5 full-text search.",
-    parameters: CtxSearchParams,
-    async execute(_toolCallId, params: Static<typeof CtxSearchParams>): Promise<any> {
+    parameters: ContentSearchParams,
+    async execute(_toolCallId: string, params: Static<typeof ContentSearchParams>): Promise<any> {
       try {
         const c = deps.getCounters?.();
         if (c) { c.searchQueries++; }
@@ -303,15 +349,15 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Search error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "content_search", "ctx_search", contentSearchDefinition);
 
-  // 8. ctx_fetch_and_index — fetch URL → markdown → index
-  pi.registerTool({
-    name: "ctx_fetch_and_index",
-    label: "Fetch & Index",
+  // 8. content_fetch (new) / ctx_fetch_and_index (deprecated) — fetch URL
+  const contentFetchDefinition = {
+    label: "Content Fetch",
     description: "Fetch a URL, convert to markdown, and index into FTS5 content store.",
-    parameters: CtxFetchAndIndexParams,
-    async execute(_toolCallId, params: Static<typeof CtxFetchAndIndexParams>): Promise<any> {
+    parameters: ContentFetchParams,
+    async execute(_toolCallId: string, params: Static<typeof ContentFetchParams>): Promise<any> {
       try {
         const result = await ctxFetchAndIndex(deps.contentStore!, params as CtxFetchAndIndexInput);
         return textResult(
@@ -322,14 +368,14 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Fetch error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "content_fetch", "ctx_fetch_and_index", contentFetchDefinition);
 
-  // 9. ctx_stats — context savings dashboard
-  pi.registerTool({
-    name: "ctx_stats",
-    label: "Stats",
+  // 9. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
+  const statsDefinition = {
+    label: "Compactor Stats",
     description: "Show context savings dashboard — session events, compactions, indexed content.",
-    parameters: CtxStatsParams,
+    parameters: StatsParams,
     async execute(): Promise<any> {
       try {
         const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId(), deps.getCounters?.());
@@ -347,14 +393,14 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Stats error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "compactor_stats", "ctx_stats", statsDefinition);
 
-  // 10. ctx_doctor — diagnostics checklist
-  pi.registerTool({
-    name: "ctx_doctor",
-    label: "Doctor",
+  // 10. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
+  const doctorDefinition = {
+    label: "Compactor Doctor",
     description: "Run diagnostics checklist — validate config, DB, FTS5, runtimes.",
-    parameters: CtxDoctorParams,
+    parameters: DoctorParams,
     async execute(): Promise<any> {
       try {
         const result = await ctxDoctor(deps.sessionDB, deps.contentStore!);
@@ -369,5 +415,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
         return textResult(`Doctor error: ${err}`, { error: true });
       }
     },
-  });
+  };
+  registerToolWithAlias(pi, "compactor_doctor", "ctx_doctor", doctorDefinition);
 }
