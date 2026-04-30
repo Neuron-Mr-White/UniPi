@@ -21,6 +21,7 @@
     "fts5"
   ],
   "files": [
+    "index.ts",
     "src/**/*.ts",
     "skills/**/*",
     "README.md"

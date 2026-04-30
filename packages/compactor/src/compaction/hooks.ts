@@ -8,6 +8,7 @@ import { compile } from "./summarize.js";
 import { loadConfig } from "../config/manager.js";
 import { buildOwnCut } from "./cut.js";
 import type { CompactionStats } from "../types.js";
+import type { SessionDB } from "../session/db.js";
 
 export const COMPACTOR_INSTRUCTION = "__compactor__";
 
@@ -50,7 +51,10 @@ const REASON_MESSAGES: Record<import("./cut.js").OwnCutCancelReason, string> = {
   no_user_message: "compactor: Cannot compact — no user message found",
 };
 
-export function registerCompactionHooks(pi: ExtensionAPI): void {
+export function registerCompactionHooks(
+  pi: ExtensionAPI,
+  deps?: { getSessionDB?: () => SessionDB | null; getSessionId?: () => string },
+): void {
   pi.on("session_before_compact", (event, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
@@ -95,6 +99,23 @@ export function registerCompactionHooks(pi: ExtensionAPI): void {
       kept: keptEntries.length,
       keptTokensEst: Math.round(keptChars / 4),
     };
+
+    // Persist cumulative compaction stats
+    const sessionDB = deps?.getSessionDB?.();
+    if (sessionDB && deps?.getSessionId) {
+      try {
+        const sessionId = deps.getSessionId();
+        const charsBefore = agentMessages.reduce((sum: number, msg: any) => {
+          const c = msg.message?.content;
+          if (typeof c === "string") return sum + c.length;
+          if (Array.isArray(c)) return sum + c.reduce((s: number, p: any) => s + (p.text?.length ?? 0), 0);
+          return sum;
+        }, 0);
+        sessionDB.addCompactionStats(sessionId, charsBefore, keptChars, agentMessages.length);
+      } catch {
+        // non-fatal
+      }
+    }
 
     dbg(config.debug, "compile", { messageCount: messages.length, hasPrevSummary: !!preparation.previousSummary });
     const summary = compile({

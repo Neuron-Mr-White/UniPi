@@ -42,6 +42,17 @@ export async function loadSQLite() {
 export function applyWALPragmas(db: any): void {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
+  // Memory-map the DB file for read-heavy FTS5 search workloads (if enabled)
+  try {
+    const { loadConfig } = require("../config/manager.js");
+    const config = loadConfig();
+    if (config.pipeline?.mmapPragma !== false) {
+      db.exec("PRAGMA mmap_size = 268435456;"); // 256MB
+    }
+  } catch {
+    // Fallback: always apply mmap if config can't be loaded
+    try { db.exec("PRAGMA mmap_size = 268435456;"); } catch { /* unsupported runtime */ }
+  }
 }
 
 export function withRetry<T>(fn: () => T, maxRetries = 3): T {

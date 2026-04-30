@@ -4,7 +4,6 @@
 
 import type { SessionDB } from "./session/db.js";
 import type { ContentStore } from "./store/index.js";
-import type { RuntimeCounters } from "./types.js";
 import { getLastCompactionStats } from "./compaction/hooks.js";
 
 export interface InfoScreenData {
@@ -21,11 +20,15 @@ export async function getInfoScreenData(
   sessionDB: SessionDB,
   contentStore: ContentStore,
   sessionId: string,
-  counters?: RuntimeCounters,
 ): Promise<InfoScreenData> {
   const stats = sessionDB.getSessionStats(sessionId);
   const compactStats = getLastCompactionStats();
   const storeStats = await contentStore.getStats();
+  const allTime = sessionDB.getAllTimeStats();
+
+  // All-time tokens compacted (chars before - chars kept, estimated at 4 chars/token)
+  const allTimeTokensCompacted = Math.round((allTime.allCharsBefore - allTime.allCharsKept) / 4);
+  const formatTok = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
   return {
     sessionEvents: {
@@ -33,33 +36,29 @@ export async function getInfoScreenData(
       detail: "Session events tracked",
     },
     compactions: {
-      value: String(counters?.compactions ?? stats?.compact_count ?? 0),
+      value: String(stats?.compact_count ?? 0),
       detail: compactStats ? `Last: ${compactStats.summarized} msgs` : "No compactions yet",
     },
     tokensSaved: {
-      value: counters?.totalTokensCompacted
-        ? `~${counters.totalTokensCompacted}`
-        : compactStats
-          ? `~${compactStats.keptTokensEst}`
-          : "0",
-      detail: "Estimated tokens kept",
+      value: formatTok(allTimeTokensCompacted),
+      detail: `All-time across ${allTime.allCompactions} compactions`,
     },
     compressionRatio: {
-      value: compactStats && compactStats.summarized > 0
-        ? `${Math.round(compactStats.summarized / Math.max(compactStats.kept, 1))}:1`
+      value: allTime.allCharsKept > 0
+        ? `${Math.round(allTime.allCharsBefore / allTime.allCharsKept)}:1`
         : "N/A",
-      detail: "Compression ratio",
+      detail: "All-time compression ratio",
     },
     indexedDocs: {
       value: String(storeStats.sources),
       detail: `${storeStats.chunks} chunks indexed`,
     },
     sandboxExecutions: {
-      value: String(counters?.sandboxRuns ?? 0),
+      value: "0",
       detail: "Sandbox runs this session",
     },
     searchQueries: {
-      value: String(counters?.searchQueries ?? 0),
+      value: "0",
       detail: "Search queries this session",
     },
   };

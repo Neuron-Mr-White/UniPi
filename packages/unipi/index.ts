@@ -25,6 +25,7 @@ import notify from "@pi-unipi/notify";
 import milestone from "@pi-unipi/milestone";
 import kanboard from "@pi-unipi/kanboard";
 import commandEnchantment from "@pi-unipi/command-enchantment";
+import compactor from "@pi-unipi/compactor";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -41,4 +42,5 @@ export default function (pi: ExtensionAPI) {
   milestone(pi);
   kanboard(pi);
   commandEnchantment(pi);
+  compactor(pi);
 }

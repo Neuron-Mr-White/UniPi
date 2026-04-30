@@ -102,7 +102,30 @@ Organize findings into clear categories:
 
 ### Phase 4: Present & Handoff
 
-Present findings to user. Then:
+Present findings to user.
+
+#### Save Gate
+
+If the user already specified whether to save (e.g., "save findings to memory" or "just show me"), skip this gate and follow their preference. Otherwise, ask:
+
+```
+ask_user({
+  question: "Save this context?",
+  context: "Context gathered from {N} files across {areas}. Summary includes structure, patterns, prior art, and recommendations.",
+  options: [
+    { label: "Save to memory", description: "Store findings in .unipi/memory/ for future sessions", value: "save" },
+    { label: "Save to file", description: "Write findings to .unipi/docs/research/<topic>.md", value: "file" },
+    { label: "Don't save", description: "Discard — context was just for this session", value: "discard" }
+  ],
+  allowFreeform: false
+})
+```
+
+- **Save to memory:** Write findings to `.unipi/memory/` following the consolidate skill's memory file format.
+- **Save to file:** Write findings to `.unipi/docs/research/<topic>.md` using the synthesis output format from Phase 3.
+- **Don't save:** Skip — findings stay in conversation only.
+
+After the save decision, hand off:
 
 > "Context gathered. Ready to brainstorm solutions?"
 ```
@@ -119,4 +142,4 @@ The brainstorm will start with this context already available — no need to re-
 - Subagent support enables parallel research when available
 - Findings feed directly into brainstorm — natural workflow
 - Can be run standalone for exploration, or as pre-brainstorm step
-- Output is ephemeral (in conversation) unless user requests saving
+- Output is ephemeral (in conversation) unless user requests saving — save gate at end of Phase 4 offers explicit save-to-memory or save-to-file

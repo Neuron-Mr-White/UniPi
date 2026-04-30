@@ -8,6 +8,7 @@ import { loadSQLite, applyWALPragmas, withRetry, isSQLiteCorruptionError, defaul
 import type { PreparedStatement } from "./db-base.js";
 import { autoChunk } from "./chunking.js";
 import type { IndexResult, SearchResult, StoreStats } from "../types.js";
+import { loadConfig } from "../config/manager.js";
 
 // --- Fuzzy correction ---
 
@@ -131,6 +132,118 @@ function rrfMerge(
     .map((s) => ({ ...s.result, rank: s.score }));
 }
 
+// ── Proximity Reranking (from context-mode) ──────────────────
+
+/** Find all character positions of a term in text */
+function findAllPositions(text: string, term: string): number[] {
+  const positions: number[] = [];
+  let idx = text.indexOf(term);
+  while (idx !== -1) {
+    positions.push(idx);
+    idx = text.indexOf(term, idx + 1);
+  }
+  return positions;
+}
+
+/** Sweep-line algorithm to find minimum span covering all terms */
+function findMinSpan(positionLists: number[][]): number {
+  if (positionLists.length === 0) return Infinity;
+  if (positionLists.length === 1) return 0;
+
+  const sorted = positionLists.map((p) => [...p].sort((a, b) => a - b));
+  const ptrs = new Array(sorted.length).fill(0);
+  let minSpan = Infinity;
+
+  while (true) {
+    let curMin = Infinity;
+    let curMax = -Infinity;
+    let minIdx = 0;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const val = sorted[i][ptrs[i]];
+      if (val < curMin) { curMin = val; minIdx = i; }
+      if (val > curMax) { curMax = val; }
+    }
+
+    const span = curMax - curMin;
+    if (span < minSpan) minSpan = span;
+
+    ptrs[minIdx]++;
+    if (ptrs[minIdx] >= sorted[minIdx].length) break;
+  }
+
+  return minSpan;
+}
+
+/** Count adjacent term pairs within a character gap */
+function countAdjacentPairs(
+  positionLists: number[][],
+  terms: string[],
+  gap: number = 30,
+): number {
+  if (positionLists.length < 2 || terms.length < 2) return 0;
+  let total = 0;
+  const pairs = Math.min(positionLists.length, terms.length) - 1;
+  for (let i = 0; i < pairs; i++) {
+    const left = positionLists[i];
+    const right = positionLists[i + 1];
+    const leftLen = terms[i].length;
+    let j = 0;
+    for (const p of left) {
+      const minStart = p + leftLen;
+      const maxStart = minStart + gap;
+      while (j < right.length && right[j] < minStart) j++;
+      if (j < right.length && right[j] <= maxStart) {
+        total++;
+        j++;
+      }
+    }
+  }
+  return total;
+}
+
+/** Apply proximity reranking to RRF results */
+function applyProximityReranking(
+  results: SearchResult[],
+  query: string,
+): SearchResult[] {
+  const allTerms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+  const filtered = allTerms.filter((w) => !STOPWORDS.has(w));
+  const terms = filtered.length > 0 ? filtered : allTerms;
+
+  if (terms.length < 2) return results; // Single-term queries skip proximity
+
+  const scored = results.map((r) => {
+    const titleLower = r.title.toLowerCase();
+    const titleHits = terms.filter((t) => titleLower.includes(t)).length;
+    const titleWeight = r.contentType === "code" ? 0.6 : 0.3;
+    const titleBoost = titleHits > 0 ? titleWeight * (titleHits / terms.length) : 0;
+
+    let proximityBoost = 0;
+    let phraseBoost = 0;
+
+    const content = r.content.toLowerCase();
+    const positions = terms.map((t) => findAllPositions(content, t));
+
+    if (!positions.some((p) => p.length === 0)) {
+      const minSpan = findMinSpan(positions);
+      proximityBoost = 1 / (1 + minSpan / Math.max(content.length, 1));
+
+      const adjacentPairs = countAdjacentPairs(positions, terms);
+      phraseBoost = 0.5 * Math.min(1, adjacentPairs / 4);
+    }
+
+    return { result: r, boost: titleBoost + proximityBoost + phraseBoost };
+  });
+
+  return scored
+    .sort((a, b) => b.boost - a.boost || a.result.rank - b.result.rank)
+    .map((s) => s.result);
+}
+
 const STOPWORDS = new Set([
   "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
   "her", "was", "one", "our", "out", "has", "his", "how", "its", "may",
@@ -228,6 +341,7 @@ export class ContentStore {
     p("deleteByLabel", `DELETE FROM content_fts WHERE label = ?`);
     p("insertSource", `INSERT INTO content_sources (label, source, content_type, mtime, sha256, chunk_count) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(label) DO UPDATE SET source=excluded.source, content_type=excluded.content_type, mtime=excluded.mtime, sha256=excluded.sha256, chunk_count=excluded.chunk_count, indexed_at=datetime('now')`);
     p("getSource", `SELECT label, source, content_type, mtime, sha256, chunk_count, indexed_at FROM content_sources WHERE label = ?`);
+    p("getSourceMeta", `SELECT label, chunk_count, indexed_at FROM content_sources WHERE label = ?`);
     p("deleteSource", `DELETE FROM content_sources WHERE label = ?`);
     p("countSources", `SELECT COUNT(*) AS cnt FROM content_sources`);
     p("countFTS", `SELECT COUNT(*) AS cnt FROM content_fts`);
@@ -314,7 +428,13 @@ export class ContentStore {
     // RRF fusion
     const rrfResults = rrfMerge(porterResults, trigramResults);
 
-    if (mode === "rrf") return rrfResults.slice(0, limit);
+    // Apply proximity reranking to all RRF results (if enabled)
+    const config = loadConfig();
+    const rerankedResults = config.pipeline.proximityReranking
+      ? applyProximityReranking(rrfResults, query)
+      : rrfResults;
+
+    if (mode === "rrf") return rerankedResults.slice(0, limit);
 
     // Fuzzy mode: apply fuzzy correction to query terms
     const vocab = buildVocabulary(allRows);
@@ -338,11 +458,11 @@ export class ContentStore {
         matchLayer: "fuzzy" as const,
         rank: r.rank * 0.9, // slightly lower confidence
       }));
-      const merged = rrfMerge(rrfResults, correctedResults);
-      return merged.slice(0, limit);
+      const merged = rrfMerge(rerankedResults, correctedResults);
+      return applyProximityReranking(merged, query).slice(0, limit);
     }
 
-    return rrfResults.slice(0, limit);
+    return rerankedResults.slice(0, limit);
   }
 
   async getStats(): Promise<StoreStats> {
@@ -354,6 +474,13 @@ export class ContentStore {
       chunks: chunksRow.cnt,
       codeChunks: 0,
     };
+  }
+
+  /** Get source metadata for TTL cache check */
+  getSourceMeta(label: string): { label: string; chunkCount: number; indexedAt: string } | null {
+    const row = this.stmt("getSourceMeta").get(label) as { label: string; chunk_count: number; indexed_at: string } | undefined;
+    if (!row) return null;
+    return { label: row.label, chunkCount: row.chunk_count, indexedAt: row.indexed_at };
   }
 
   async purge(): Promise<number> {

@@ -49,15 +49,17 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     showBashSpinner: true,
     showPendingPreviews: true,
   },
+
+  // Pipeline feature toggles (all enabled by default)
   pipeline: {
-    ttlCache: false,
-    autoInjection: false,
-    proximityReranking: false,
-    timelineSort: false,
-    progressiveThrottling: false,
-    mmapPragma: false,
-    customNoisePatterns: [],
+    ttlCache: true,              // 24h TTL cache for ctx_fetch_and_index
+    autoInjection: true,         // Auto-inject behavioral state after compaction
+    proximityReranking: true,    // Multi-term proximity boost
+    timelineSort: true,          // Unified search across ContentStore + SessionDB
+    progressiveThrottling: true, // Call rate limiting for ctx_search
+    mmapPragma: true,            // 256MB mmap for FTS5 performance
   },
+
   overrideDefaultCompaction: false,
   debug: false,
   showTruncationHints: true,
