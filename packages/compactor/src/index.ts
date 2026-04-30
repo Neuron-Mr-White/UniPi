@@ -41,29 +41,41 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     scaffoldConfig();
     config = loadConfig();
 
-    sessionDB = new SessionDB();
-    await sessionDB.init();
+    // Initialize SessionDB — this is required for core functionality.
+    // If it fails, log the error and continue. Commands that depend on
+    // sessionDB will report "not initialized" gracefully.
+    try {
+      sessionDB = new SessionDB();
+      await sessionDB.init();
+    } catch (err) {
+      console.error(`[compactor] SessionDB init failed: ${String(err)}`);
+      // sessionDB remains null — commands will see deps.sessionDB === null
+    }
 
+    // Initialize ContentStore independently — its failure shouldn't
+    // prevent SessionDB commands from working.
     if (config.fts5Index.enabled) {
-      contentStore = new ContentStore();
-      await contentStore.init();
+      try {
+        contentStore = new ContentStore();
+        await contentStore.init();
+      } catch (err) {
+        console.error(`[compactor] ContentStore init failed: ${String(err)}`);
+        // contentStore remains null — commands will see deps.contentStore === null
+      }
     }
 
     executor = new PolyglotExecutor();
   };
 
-  registerCompactionHooks(pi, { sessionDB, getSessionId: () => currentSessionId });
+  registerCompactionHooks(pi, { getSessionDB: () => sessionDB, getSessionId: () => currentSessionId });
 
-  // Commands registered immediately (like ask-user pattern)
-  // so they're available before session_start
+  // Commands registered inside session_start after init() when deps are ready
   const getCommandDeps = () => ({
     sessionDB,
     contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
   });
-
-  registerCommands(pi, getCommandDeps());
 
   pi.on("session_start", async (_event, ctx) => {
     await init();
@@ -87,6 +99,9 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         getBlocks: () => cachedBlocks,
       });
     }
+
+    // Register commands with live deps
+    registerCommands(pi, getCommandDeps());
 
     // Register info-screen group
     const infoRegistry = (globalThis as any).__unipi_info_registry;

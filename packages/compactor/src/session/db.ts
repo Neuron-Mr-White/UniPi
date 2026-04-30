@@ -117,7 +117,10 @@ export class SessionDB {
         started_at TEXT NOT NULL DEFAULT (datetime('now')),
         last_event_at TEXT,
         event_count INTEGER NOT NULL DEFAULT 0,
-        compact_count INTEGER NOT NULL DEFAULT 0
+        compact_count INTEGER NOT NULL DEFAULT 0,
+        total_chars_before INTEGER NOT NULL DEFAULT 0,
+        total_chars_kept INTEGER NOT NULL DEFAULT 0,
+        total_messages_summarized INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS session_resume (
@@ -129,6 +132,30 @@ export class SessionDB {
         consumed INTEGER NOT NULL DEFAULT 0
       );
     `);
+
+    // Schema migration: add columns that may be missing on existing databases.
+    // SQLite has no ADD COLUMN IF NOT EXISTS — we catch "duplicate column" errors.
+    // Mirrors the column additions from the compactor gap analysis (2026-04-30).
+    this.migrateAddColumn("session_meta", "total_chars_before INTEGER NOT NULL DEFAULT 0");
+    this.migrateAddColumn("session_meta", "total_chars_kept INTEGER NOT NULL DEFAULT 0");
+    this.migrateAddColumn("session_meta", "total_messages_summarized INTEGER NOT NULL DEFAULT 0");
+    this.migrateAddColumn("session_events", "attribution_source TEXT NOT NULL DEFAULT 'unknown'");
+    this.migrateAddColumn("session_events", "attribution_confidence REAL NOT NULL DEFAULT 0");
+    this.migrateAddColumn("session_events", "data_hash TEXT NOT NULL DEFAULT ''");
+  }
+
+  /** Add a column to an existing table, ignoring "duplicate column" errors. */
+  private migrateAddColumn(table: string, columnDef: string): void {
+    try {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
+    } catch (err: any) {
+      const msg = typeof err?.message === "string" ? err.message : String(err);
+      if (!msg.includes("duplicate column") && !msg.includes("already exists")) {
+        throw err;
+      }
+      // Column already exists — this is expected on fresh databases where
+      // CREATE TABLE included the column, or after a previous migration ran.
+    }
   }
 
   private prepareStatements(): void {
@@ -143,8 +170,10 @@ export class SessionDB {
     p("evictLowestPriority", `DELETE FROM session_events WHERE id = (SELECT id FROM session_events WHERE session_id = ? ORDER BY priority ASC, id ASC LIMIT 1)`);
     p("updateMetaLastEvent", `UPDATE session_meta SET last_event_at = datetime('now'), event_count = event_count + 1 WHERE session_id = ?`);
     p("ensureSession", `INSERT OR IGNORE INTO session_meta (session_id, project_dir) VALUES (?, ?)`);
-    p("getSessionStats", `SELECT session_id, project_dir, started_at, last_event_at, event_count, compact_count FROM session_meta WHERE session_id = ?`);
+    p("getSessionStats", `SELECT session_id, project_dir, started_at, last_event_at, event_count, compact_count, total_chars_before, total_chars_kept, total_messages_summarized FROM session_meta WHERE session_id = ?`);
     p("incrementCompactCount", `UPDATE session_meta SET compact_count = compact_count + 1 WHERE session_id = ?`);
+    p("addCompactionStats", `UPDATE session_meta SET total_chars_before = total_chars_before + ?, total_chars_kept = total_chars_kept + ?, total_messages_summarized = total_messages_summarized + ? WHERE session_id = ?`);
+    p("getAllTimeStats", `SELECT COALESCE(SUM(total_chars_before), 0) AS all_chars_before, COALESCE(SUM(total_chars_kept), 0) AS all_chars_kept, COALESCE(SUM(total_messages_summarized), 0) AS all_messages_summarized, COALESCE(SUM(compact_count), 0) AS all_compactions FROM session_meta`);
     p("upsertResume", `INSERT INTO session_resume (session_id, snapshot, event_count) VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET snapshot = excluded.snapshot, event_count = excluded.event_count, created_at = datetime('now'), consumed = 0`);
     p("getResume", `SELECT snapshot, event_count, consumed FROM session_resume WHERE session_id = ?`);
     p("markResumeConsumed", `UPDATE session_resume SET consumed = 1 WHERE session_id = ?`);
@@ -159,6 +188,7 @@ export class SessionDB {
   }
 
   insertEvent(sessionId: string, event: SessionEvent, sourceHook: string = "PostToolUse"): void {
+    if (!this.stmts) return;
     const dataHash = createHash("sha256").update(event.data).digest("hex").slice(0, 16).toUpperCase();
     const projectDir = String(event.project_dir ?? "").trim();
     const attributionSource = String(event.attribution_source ?? "unknown");
@@ -185,38 +215,62 @@ export class SessionDB {
   }
 
   getEvents(sessionId: string, opts?: { type?: string; minPriority?: number; limit?: number }): StoredEvent[] {
+    if (!this.stmts) return [];
     const limit = opts?.limit ?? 1000;
     return this.stmt("getEvents").all(sessionId, limit) as StoredEvent[];
   }
 
   getEventCount(sessionId: string): number {
+    if (!this.stmts) return 0;
     const row = this.stmt("getEventCount").get(sessionId) as { cnt: number };
     return row.cnt;
   }
 
   ensureSession(sessionId: string, projectDir: string): void {
+    if (!this.stmts) return;
     this.stmt("ensureSession").run(sessionId, projectDir);
   }
 
   getSessionStats(sessionId: string): SessionMeta | null {
+    if (!this.stmts) return null;
     const row = this.stmt("getSessionStats").get(sessionId) as SessionMeta | undefined;
     return row ?? null;
   }
 
   incrementCompactCount(sessionId: string): void {
+    if (!this.stmts) return;
     this.stmt("incrementCompactCount").run(sessionId);
   }
 
+  addCompactionStats(sessionId: string, charsBefore: number, charsKept: number, messagesSummarized: number): void {
+    if (!this.stmts) return;
+    this.stmt("addCompactionStats").run(charsBefore, charsKept, messagesSummarized, sessionId);
+  }
+
+  getAllTimeStats(): { allCharsBefore: number; allCharsKept: number; allMessagesSummarized: number; allCompactions: number } {
+    if (!this.stmts) return { allCharsBefore: 0, allCharsKept: 0, allMessagesSummarized: 0, allCompactions: 0 };
+    const row = this.stmt("getAllTimeStats").get() as { all_chars_before: number; all_chars_kept: number; all_messages_summarized: number; all_compactions: number };
+    return {
+      allCharsBefore: row?.all_chars_before ?? 0,
+      allCharsKept: row?.all_chars_kept ?? 0,
+      allMessagesSummarized: row?.all_messages_summarized ?? 0,
+      allCompactions: row?.all_compactions ?? 0,
+    };
+  }
+
   upsertResume(sessionId: string, snapshot: string, eventCount?: number): void {
+    if (!this.stmts) return;
     this.stmt("upsertResume").run(sessionId, snapshot, eventCount ?? 0);
   }
 
   getResume(sessionId: string): ResumeRow | null {
+    if (!this.stmts) return null;
     const row = this.stmt("getResume").get(sessionId) as ResumeRow | undefined;
     return row ?? null;
   }
 
   markResumeConsumed(sessionId: string): void {
+    if (!this.stmts) return;
     this.stmt("markResumeConsumed").run(sessionId);
   }
 
