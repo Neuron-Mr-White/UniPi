@@ -401,11 +401,11 @@ export class CompactorSettingsOverlay implements Component {
     add(`├${"─".repeat(Math.max(0, width - 2))}┤`);
 
     if (this.activeTab === "presets") {
-      this.renderPresetsTab(lines, width);
+      this.renderPresetsTab(lines as string[], width);
     } else if (this.activeTab === "strategies") {
-      this.renderStrategiesTab(lines, width);
+      this.renderStrategiesTab(lines as string[], width);
     } else {
-      this.renderPipelineTab(lines, width);
+      this.renderPipelineTab(lines as string[], width);
     }
 
     // Footer
@@ -416,8 +416,8 @@ export class CompactorSettingsOverlay implements Component {
     return lines;
   }
 
-  private renderPresetsTab(lines: (s: string) => void, width: number): void {
-    const add = lines;
+  private renderPresetsTab(lines: string[], width: number): void {
+    const add = (s: string) => lines.push(truncateToWidth(s, width));
     add("");
     for (let i = 0; i < PRESETS.length; i++) {
       const isSelected = i === this.presetIndex;
@@ -439,12 +439,12 @@ export class CompactorSettingsOverlay implements Component {
     }
   }
 
-  private renderStrategiesTab(lines: (s: string) => void, width: number): void {
-    const add = lines;
+  private renderStrategiesTab(lines: string[], width: number): void {
+    const add = (s: string) => lines.push(truncateToWidth(s, width));
 
     // Search bar
     if (this.searchQuery) {
-      add(`│ ${ansi.yellow}/${this.searchQuery}${ansi.reset}${" ".repeat(Math.max(0, 1))}`);
+      add(`${ansi.yellow}/${this.searchQuery}${ansi.reset}`);
       add("");
     }
 
@@ -477,8 +477,8 @@ export class CompactorSettingsOverlay implements Component {
     add(`   ${checkIcon} Override for this project${ansi.dim}  (press o to toggle)${ansi.reset}`);
   }
 
-  private renderPipelineTab(lines: (s: string) => void, width: number): void {
-    const add = lines;
+  private renderPipelineTab(lines: string[], width: number): void {
+    const add = (s: string) => lines.push(truncateToWidth(s, width));
 
     const groups = new Map<string, PipelineItem[]>();
     for (const pi of PIPELINE_ITEMS) {

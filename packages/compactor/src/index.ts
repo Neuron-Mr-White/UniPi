@@ -75,7 +75,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     executor = new PolyglotExecutor();
   };
 
-  registerCompactionHooks(pi, { getSessionDB: () => sessionDB, getSessionId: () => currentSessionId });
+  registerCompactionHooks(pi);
 
   // Commands registered inside session_start after init() when deps are ready
   const getCommandDeps = () => ({
@@ -218,7 +218,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
           const events = sessionDB.getEvents(currentSessionId, { limit: 100 });
           const autoInjection = buildAutoInjection(events);
           if (autoInjection) {
-            debug("auto_injection", { length: autoInjection.length });
+            debug("auto_injection", { tokens: autoInjection.tokens, length: autoInjection.text.length });
             // Note: auto-injection is included in the resume snapshot context
             // The model receives it as part of the session state restoration
           }

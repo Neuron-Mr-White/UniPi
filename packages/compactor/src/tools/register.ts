@@ -163,44 +163,22 @@ export interface CompactorToolDeps {
   getCounters?: () => RuntimeCounters;
 }
 
-/** Helper to register a tool under a new name and an old deprecated alias. */
-function registerToolWithAlias(
-  pi: ExtensionAPI,
-  newName: string,
-  oldName: string,
-  definition: Parameters<ExtensionAPI["registerTool"]>[0],
-): void {
-  // Register under new (primary) name
-  pi.registerTool({ ...definition, name: newName });
-
-  // Also register under old name as deprecated alias
-  pi.registerTool({
-    ...definition,
-    name: oldName,
-    description: `${definition.description} (DEPRECATED: use "${newName}" instead)`,
-    execute: async (_toolCallId?: string, ...args: any[]) => {
-      deprecationLog(oldName, newName);
-      return (definition as any).execute(_toolCallId, ...args);
-    },
-  });
-}
-
 /**
  * Register all compactor tools with Pi's ExtensionAPI.
  * Call this during session_start after services are initialized.
  */
 export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps): void {
   // 1. compact — trigger manual compaction (with optional dryRun)
-  pi.registerTool({
+  pi.registerTool(({
     name: "compact",
     label: "Compact",
     description: "Trigger manual context compaction. Reduces session history while preserving continuity. Use dryRun:true to preview without compacting.",
     parameters: CompactParams,
-    async execute(_toolCallId, params: Static<typeof CompactParams>): Promise<any> {
+    async execute(_toolCallId: string, params: any): Promise<any> {
       if (params.dryRun) {
         const blocks = deps.getBlocks();
         const totalMessages = blocks.length;
-        const estimated = Math.round(totalMessages * 0.15); // ~15% kept is typical
+        const estimated = Math.round(totalMessages * 0.15);
         return jsonResult({
           dryRun: true,
           wouldCompact: totalMessages,
@@ -213,234 +191,194 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       const result = compactTool();
       return jsonResult(result, "Compaction triggered");
     },
-  });
+  } as any));
 
   // 2. session_recall (new) / vcc_recall (deprecated) — search session history
-  const recallDefinition = {
-    label: "Session Recall",
-    description:
-      "Search session history using BM25 or regex. Find previous goals, files, commits, and context.",
-    parameters: RecallParams,
-    async execute(_toolCallId: string, params: Static<typeof RecallParams>): Promise<any> {
-      const c = deps.getCounters?.();
-      if (c) { c.recallQueries++; }
-      const blocks = deps.getBlocks();
-      const input: RecallInput = {
-        query: params.query,
-        mode: params.mode,
-        limit: params.limit,
-        offset: params.offset,
-        expand: params.expand,
-      };
-      const result = vccRecall(blocks, input);
-      if (result.hits.length === 0) {
-        return textResult(`No results found for "${result.query}".`);
-      }
-      const lines = result.hits.map(
-        (h, i) =>
-          `[${i + 1}/${result.total}] score=${h.score.toFixed(2)} kind=${h.kind}\n${h.text}`,
-      );
-      return textResult(
-        `Found ${result.total} results for "${result.query}":\n\n${lines.join("\n\n")}`,
-        result as unknown as Record<string, unknown>,
-      );
-    },
+  const recallExec = async (_toolCallId: string, params: any): Promise<any> => {
+    const c = deps.getCounters?.();
+    if (c) { c.recallQueries++; }
+    const blocks = deps.getBlocks();
+    const input: RecallInput = {
+      query: params.query,
+      mode: params.mode,
+      limit: params.limit,
+      offset: params.offset,
+      expand: params.expand,
+    };
+    const result = vccRecall(blocks, input);
+    if (result.hits.length === 0) {
+      return textResult(`No results found for "${result.query}".`);
+    }
+    const lines = result.hits.map(
+      (h, i) =>
+        `[${i + 1}/${result.total}] score=${h.score.toFixed(2)} kind=${h.kind}\n${h.text}`,
+    );
+    return textResult(
+      `Found ${result.total} results for "${result.query}":\n\n${lines.join("\n\n")}`,
+      result as unknown as Record<string, unknown>,
+    );
   };
-  registerToolWithAlias(pi, "session_recall", "vcc_recall", recallDefinition);
+  pi.registerTool({ name: "session_recall", label: "Session Recall", description: "Search session history using BM25 or regex. Find previous goals, files, commits, and context.", parameters: RecallParams, execute: recallExec } as any);
+  pi.registerTool({ name: "vcc_recall", label: "Session Recall", description: "Search session history using BM25 or regex. (DEPRECATED: use session_recall instead)", parameters: VccRecallParams, async execute(tcId: string, p: any) { deprecationLog("vcc_recall", "session_recall"); return recallExec(tcId, p); } } as any);
 
   // 3. sandbox (new) / ctx_execute (deprecated) — run code in sandbox
-  const sandboxDefinition = {
-    label: "Sandbox",
-    description:
-      "Run code in a sandboxed environment. Supports 11 languages. Only stdout enters context.",
-    parameters: SandboxParams,
-    async execute(_toolCallId: string, params: Static<typeof SandboxParams>): Promise<any> {
-      try {
-        const c = deps.getCounters?.();
-        if (c) { c.sandboxRuns++; }
-        const result = await ctxExecute(params as CtxExecuteInput);
-        const parts: string[] = [];
-        if (result.stdout) parts.push(result.stdout);
-        if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
-        if (result.timedOut) parts.push("[timed out]");
-        if (result.exitCode !== 0) parts.push(`[exit code: ${result.exitCode}]`);
-        return textResult(parts.join("\n") || "(no output)", result as unknown as Record<string, unknown>);
-      } catch (err) {
-        return textResult(`Execution error: ${err}`, { error: true });
-      }
-    },
+  const sandboxExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const c = deps.getCounters?.();
+      if (c) { c.sandboxRuns++; }
+      const result = await ctxExecute(params as CtxExecuteInput);
+      const parts: string[] = [];
+      if (result.stdout) parts.push(result.stdout);
+      if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
+      if (result.timedOut) parts.push("[timed out]");
+      if (result.exitCode !== 0) parts.push(`[exit code: ${result.exitCode}]`);
+      return textResult(parts.join("\n") || "(no output)", result as unknown as Record<string, unknown>);
+    } catch (err) {
+      return textResult(`Execution error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "sandbox", "ctx_execute", sandboxDefinition);
+  pi.registerTool({ name: "sandbox", label: "Sandbox", description: "Run code in a sandboxed environment. Supports 11 languages. Only stdout enters context.", parameters: SandboxParams, execute: sandboxExec } as any);
+  pi.registerTool({ name: "ctx_execute", label: "Sandbox", description: "Run code in sandbox. (DEPRECATED: use sandbox instead)", parameters: CtxExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute", "sandbox"); return sandboxExec(tcId, p); } } as any);
 
   // 4. sandbox_file (new) / ctx_execute_file (deprecated) — execute file
-  const sandboxFileDefinition = {
-    label: "Sandbox File",
-    description: "Execute a file in the sandbox. File content is injected as FILE_CONTENT variable.",
-    parameters: SandboxFileParams,
-    async execute(_toolCallId: string, params: Static<typeof SandboxFileParams>): Promise<any> {
-      try {
-        const c = deps.getCounters?.();
-        if (c) { c.sandboxRuns++; }
-        const result = await ctxExecuteFile(params as CtxExecuteFileInput);
-        const parts: string[] = [];
-        if (result.stdout) parts.push(result.stdout);
-        if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
-        if (result.timedOut) parts.push("[timed out]");
-        return textResult(parts.join("\n") || "(no output)", result as unknown as Record<string, unknown>);
-      } catch (err) {
-        return textResult(`Execution error: ${err}`, { error: true });
-      }
-    },
+  const sandboxFileExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const c = deps.getCounters?.();
+      if (c) { c.sandboxRuns++; }
+      const result = await ctxExecuteFile(params as CtxExecuteFileInput);
+      const parts: string[] = [];
+      if (result.stdout) parts.push(result.stdout);
+      if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
+      if (result.timedOut) parts.push("[timed out]");
+      return textResult(parts.join("\n") || "(no output)", result as unknown as Record<string, unknown>);
+    } catch (err) {
+      return textResult(`Execution error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "sandbox_file", "ctx_execute_file", sandboxFileDefinition);
+  pi.registerTool({ name: "sandbox_file", label: "Sandbox File", description: "Execute a file in the sandbox. File content is injected as FILE_CONTENT variable.", parameters: SandboxFileParams, execute: sandboxFileExec } as any);
+  pi.registerTool({ name: "ctx_execute_file", label: "Sandbox File", description: "Execute file in sandbox. (DEPRECATED: use sandbox_file instead)", parameters: CtxExecuteFileParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute_file", "sandbox_file"); return sandboxFileExec(tcId, p); } } as any);
 
   // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch
-  const sandboxBatchDefinition = {
-    label: "Sandbox Batch",
-    description: "Run multiple code executions and searches atomically as a batch.",
-    parameters: SandboxBatchParams,
-    async execute(_toolCallId: string, params: Static<typeof SandboxBatchParams>): Promise<any> {
-      try {
-        const c = deps.getCounters?.();
-        if (c) { c.sandboxRuns++; c.searchQueries++; }
-        const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
-        const summaries = result.results.map((r, i) => {
-          if (r.type === "execute") {
-            const s = r.result.stdout?.slice(0, 200) || "(no output)";
-            return `[${i}] execute → ${r.result.exitCode === 0 ? "ok" : "fail"}: ${s}`;
-          }
-          return `[${i}] search → ${r.results.length} results`;
-        });
-        return textResult(`Batch results (${result.results.length} items):\n${summaries.join("\n")}`, result as unknown as Record<string, unknown>);
-      } catch (err) {
-        return textResult(`Batch error: ${err}`, { error: true });
-      }
-    },
+  const sandboxBatchExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const c = deps.getCounters?.();
+      if (c) { c.sandboxRuns++; c.searchQueries++; }
+      const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
+      const summaries = result.results.map((r, i) => {
+        if (r.type === "execute") {
+          const s = r.result.stdout?.slice(0, 200) || "(no output)";
+          return `[${i}] execute → ${r.result.exitCode === 0 ? "ok" : "fail"}: ${s}`;
+        }
+        return `[${i}] search → ${r.results.length} results`;
+      });
+      return textResult(`Batch results (${result.results.length} items):\n${summaries.join("\n")}`, result as unknown as Record<string, unknown>);
+    } catch (err) {
+      return textResult(`Batch error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "sandbox_batch", "ctx_batch_execute", sandboxBatchDefinition);
+  pi.registerTool({ name: "sandbox_batch", label: "Sandbox Batch", description: "Run multiple code executions and searches atomically as a batch.", parameters: SandboxBatchParams, execute: sandboxBatchExec } as any);
+  pi.registerTool({ name: "ctx_batch_execute", label: "Sandbox Batch", description: "Run batch operations. (DEPRECATED: use sandbox_batch instead)", parameters: CtxBatchExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_batch_execute", "sandbox_batch"); return sandboxBatchExec(tcId, p); } } as any);
 
   // 6. content_index (new) / ctx_index (deprecated) — index content into FTS5
-  const contentIndexDefinition = {
-    label: "Content Index",
-    description: "Chunk content or a file and index into FTS5 for fast search.",
-    parameters: ContentIndexParams,
-    async execute(_toolCallId: string, params: Static<typeof ContentIndexParams>): Promise<any> {
-      try {
-        const result = await ctxIndex(deps.contentStore!, params as CtxIndexInput);
-        return textResult(
-          `Indexed "${result.label}": ${result.totalChunks} chunks (${result.codeChunks} code)`,
-          result as unknown as Record<string, unknown>,
-        );
-      } catch (err) {
-        return textResult(`Index error: ${err}`, { error: true });
-      }
-    },
+  const contentIndexExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const result = await ctxIndex(deps.contentStore!, params as CtxIndexInput);
+      return textResult(
+        `Indexed "${result.label}": ${result.totalChunks} chunks (${result.codeChunks} code)`,
+        result as unknown as Record<string, unknown>,
+      );
+    } catch (err) {
+      return textResult(`Index error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "content_index", "ctx_index", contentIndexDefinition);
+  pi.registerTool({ name: "content_index", label: "Content Index", description: "Chunk content or a file and index into FTS5 for fast search.", parameters: ContentIndexParams, execute: contentIndexExec } as any);
+  pi.registerTool({ name: "ctx_index", label: "Content Index", description: "Index content into FTS5. (DEPRECATED: use content_index instead)", parameters: CtxIndexParams, async execute(tcId: string, p: any) { deprecationLog("ctx_index", "content_index"); return contentIndexExec(tcId, p); } } as any);
 
   // 7. content_search (new) / ctx_search (deprecated) — query FTS5 content store
-  const contentSearchDefinition = {
-    label: "Content Search",
-    description: "Search indexed content using FTS5 full-text search.",
-    parameters: ContentSearchParams,
-    async execute(_toolCallId: string, params: Static<typeof ContentSearchParams>): Promise<any> {
-      try {
-        const c = deps.getCounters?.();
-        if (c) { c.searchQueries++; }
-        const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
-        if (results.length === 0) {
-          return textResult(`No results for "${params.query}".`);
-        }
-        const lines = results.map(
-          (r, i) =>
-            `[${i + 1}] ${r.title} (rank: ${r.rank.toFixed(3)})\n${r.content.slice(0, 300)}`,
-        );
-        return textResult(
-          `Found ${results.length} results:\n\n${lines.join("\n\n")}`,
-          { results } as unknown as Record<string, unknown>,
-        );
-      } catch (err) {
-        return textResult(`Search error: ${err}`, { error: true });
+  const contentSearchExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const c = deps.getCounters?.();
+      if (c) { c.searchQueries++; }
+      const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
+      if (results.length === 0) {
+        return textResult(`No results for "${params.query}".`);
       }
-    },
+      const lines = results.map(
+        (r, i) =>
+          `[${i + 1}] ${r.title} (rank: ${r.rank.toFixed(3)})\n${r.content.slice(0, 300)}`,
+      );
+      return textResult(
+        `Found ${results.length} results:\n\n${lines.join("\n\n")}`,
+        { results } as unknown as Record<string, unknown>,
+      );
+    } catch (err) {
+      return textResult(`Search error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "content_search", "ctx_search", contentSearchDefinition);
+  pi.registerTool({ name: "content_search", label: "Content Search", description: "Search indexed content using FTS5 full-text search.", parameters: ContentSearchParams, execute: contentSearchExec } as any);
+  pi.registerTool({ name: "ctx_search", label: "Content Search", description: "Search indexed content. (DEPRECATED: use content_search instead)", parameters: CtxSearchParams, async execute(tcId: string, p: any) { deprecationLog("ctx_search", "content_search"); return contentSearchExec(tcId, p); } } as any);
 
   // 8. content_fetch (new) / ctx_fetch_and_index (deprecated) — fetch URL
-  const contentFetchDefinition = {
-    label: "Content Fetch",
-    description: "Fetch a URL, convert to markdown, and index into FTS5 content store.",
-    parameters: ContentFetchParams,
-    async execute(_toolCallId: string, params: Static<typeof ContentFetchParams>): Promise<any> {
-      try {
-        const result = await ctxFetchAndIndex(deps.contentStore!, params as CtxFetchAndIndexInput);
-        return textResult(
-          `Fetched and indexed "${result.label}": ${result.totalChunks} chunks`,
-          result as unknown as Record<string, unknown>,
-        );
-      } catch (err) {
-        return textResult(`Fetch error: ${err}`, { error: true });
-      }
-    },
+  const contentFetchExec = async (_toolCallId: string, params: any): Promise<any> => {
+    try {
+      const result = await ctxFetchAndIndex(deps.contentStore!, params as CtxFetchAndIndexInput);
+      return textResult(
+        `Fetched and indexed "${result.label}": ${result.totalChunks} chunks`,
+        result as unknown as Record<string, unknown>,
+      );
+    } catch (err) {
+      return textResult(`Fetch error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "content_fetch", "ctx_fetch_and_index", contentFetchDefinition);
+  pi.registerTool({ name: "content_fetch", label: "Content Fetch", description: "Fetch a URL, convert to markdown, and index into FTS5 content store.", parameters: ContentFetchParams, execute: contentFetchExec } as any);
+  pi.registerTool({ name: "ctx_fetch_and_index", label: "Content Fetch", description: "Fetch URL and index. (DEPRECATED: use content_fetch instead)", parameters: CtxFetchAndIndexParams, async execute(tcId: string, p: any) { deprecationLog("ctx_fetch_and_index", "content_fetch"); return contentFetchExec(tcId, p); } } as any);
 
   // 9. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
-  const statsDefinition = {
-    label: "Compactor Stats",
-    description: "Show context savings dashboard — session events, compactions, indexed content.",
-    parameters: StatsParams,
-    async execute(): Promise<any> {
-      try {
-        const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId(), deps.getCounters?.());
-        const lines = [
-          `📊 Compactor Stats`,
-          `Session events: ${result.sessionEvents}`,
-          `Compactions: ${result.compactions}`,
-          `Tokens saved: ${result.tokensSaved}`,
-          `Indexed docs: ${result.indexedDocs} (${result.indexedChunks} chunks)`,
-          `Sandbox runs: ${result.sandboxRuns}`,
-          `Search queries: ${result.searchQueries}`,
-        ];
-        return textResult(lines.join("\n"), result as unknown as Record<string, unknown>);
-      } catch (err) {
-        return textResult(`Stats error: ${err}`, { error: true });
-      }
-    },
+  const statsExec = async (): Promise<any> => {
+    try {
+      const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId(), deps.getCounters?.());
+      const lines = [
+        `📊 Compactor Stats`,
+        `Session events: ${result.sessionEvents}`,
+        `Compactions: ${result.compactions}`,
+        `Tokens saved: ${result.tokensSaved}`,
+        `Indexed docs: ${result.indexedDocs} (${result.indexedChunks} chunks)`,
+        `Sandbox runs: ${result.sandboxRuns}`,
+        `Search queries: ${result.searchQueries}`,
+      ];
+      return textResult(lines.join("\n"), result as unknown as Record<string, unknown>);
+    } catch (err) {
+      return textResult(`Stats error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "compactor_stats", "ctx_stats", statsDefinition);
+  pi.registerTool({ name: "compactor_stats", label: "Compactor Stats", description: "Show context savings dashboard — session events, compactions, indexed content.", parameters: StatsParams, execute: statsExec } as any);
+  pi.registerTool({ name: "ctx_stats", label: "Compactor Stats", description: "Show stats dashboard. (DEPRECATED: use compactor_stats instead)", parameters: CtxStatsParams, async execute() { deprecationLog("ctx_stats", "compactor_stats"); return statsExec(); } } as any);
 
   // 10. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
-  const doctorDefinition = {
-    label: "Compactor Doctor",
-    description: "Run diagnostics checklist — validate config, DB, FTS5, runtimes.",
-    parameters: DoctorParams,
-    async execute(): Promise<any> {
-      try {
-        const result = await ctxDoctor(deps.sessionDB, deps.contentStore!);
-        const icon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
-        const lines = [
-          result.healthy ? "🩺 All checks passed" : "🩺 Issues found",
-          "",
-          ...result.checks.map((c) => `${icon(c.status)} ${c.name}: ${c.message}`),
-        ];
-        return jsonResult(result, lines.join("\n"));
-      } catch (err) {
-        return textResult(`Doctor error: ${err}`, { error: true });
-      }
-    },
+  const doctorExec = async (): Promise<any> => {
+    try {
+      const result = await ctxDoctor(deps.sessionDB, deps.contentStore!);
+      const icon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
+      const lines = [
+        result.healthy ? "🩺 All checks passed" : "🩺 Issues found",
+        "",
+        ...result.checks.map((c) => `${icon(c.status)} ${c.name}: ${c.message}`),
+      ];
+      return jsonResult(result, lines.join("\n"));
+    } catch (err) {
+      return textResult(`Doctor error: ${err}`, { error: true });
+    }
   };
-  registerToolWithAlias(pi, "compactor_doctor", "ctx_doctor", doctorDefinition);
+  pi.registerTool({ name: "compactor_doctor", label: "Compactor Doctor", description: "Run diagnostics checklist — validate config, DB, FTS5, runtimes.", parameters: DoctorParams, execute: doctorExec } as any);
+  pi.registerTool({ name: "ctx_doctor", label: "Compactor Doctor", description: "Run diagnostics. (DEPRECATED: use compactor_doctor instead)", parameters: CtxDoctorParams, async execute() { deprecationLog("ctx_doctor", "compactor_doctor"); return doctorExec(); } } as any);
 
   // 11. context_budget — estimate remaining context window
-  pi.registerTool({
+  pi.registerTool(({
     name: "context_budget",
     label: "Context Budget",
     description: "Estimate remaining context window (% full, tokens left) and get advice on whether to compact.",
     parameters: Type.Object({}),
     async execute(): Promise<any> {
-      // TokensBefore is not directly available here from the tool deps.
-      // The tool provides a best-effort estimate based on session blocks.
       const blocks = deps.getBlocks();
       const estimatedTokens = blocks.reduce((sum, b) => {
         const text = b.kind === "tool_call"
@@ -453,5 +391,5 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       const message = contextBudgetTool(estimatedTokens);
       return textResult(message);
     },
-  });
+  } as any));
 }

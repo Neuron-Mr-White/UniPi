@@ -33,13 +33,14 @@ function deepMerge<T extends Record<string, any>>(base: T, override: Partial<T>)
       overrideVal !== undefined &&
       typeof overrideVal === "object" &&
       !Array.isArray(overrideVal) &&
+      overrideVal !== null &&
       typeof baseVal === "object" &&
       !Array.isArray(baseVal) &&
       baseVal !== null
     ) {
-      result[key] = deepMerge(baseVal as any, overrideVal as any);
+      (result as any)[key] = deepMerge(baseVal as any, overrideVal as any);
     } else if (overrideVal !== undefined) {
-      result[key] = overrideVal;
+      (result as any)[key] = overrideVal;
     }
   }
   return result;
