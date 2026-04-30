@@ -1,78 +1,37 @@
 /**
  * @pi-unipi/utility — Badge Settings Manager
  *
- * Manages badge configuration stored in .unipi/config/badge.json.
- * Settings: autoGen, badgeEnabled, agentTool
+ * Thin wrappers over the unified settings manager (util-settings.json).
+ * Existing callers continue to work unchanged.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  readUtilSettings,
+  writeUtilSettings,
+  type BadgeSettingsSection,
+} from "../diff/settings.js";
 
-/** Badge settings interface */
-export interface BadgeSettings {
-  /** Auto-generate session name on first user message */
-  autoGen: boolean;
-  /** Show the badge overlay */
-  badgeEnabled: boolean;
-  /** Enable the set_session_name tool for agents */
-  agentTool: boolean;
-  /** Model to use for badge name generation. "inherit" = parent model, or "provider/model-id" */
-  generationModel: string;
-}
+/** Badge settings interface (re-exports BadgeSettingsSection for backward compat) */
+export type BadgeSettings = BadgeSettingsSection;
 
-/** Default badge settings */
-const DEFAULT_SETTINGS: BadgeSettings = {
-  autoGen: true,
-  badgeEnabled: true,
-  agentTool: true,
-  generationModel: "inherit",
-};
-
-/** Badge settings file name */
-const BADGE_CONFIG_FILE = ".unipi/config/badge.json";
+/** Default badge settings for formatBadgeSettings display */
+const BADGE_CONFIG_FILE = ".unipi/config/util-settings.json";
 
 /**
- * Get the config file path relative to cwd.
- */
-function getConfigPath(): string {
-  return path.resolve(process.cwd(), BADGE_CONFIG_FILE);
-}
-
-/**
- * Read badge settings from disk.
+ * Read badge settings from unified config.
  * Returns defaults if file doesn't exist or is malformed.
  */
 export function readBadgeSettings(): BadgeSettings {
-  try {
-    const configPath = getConfigPath();
-    if (!fs.existsSync(configPath)) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return {
-      autoGen: typeof parsed.autoGen === "boolean" ? parsed.autoGen : DEFAULT_SETTINGS.autoGen,
-      badgeEnabled: typeof parsed.badgeEnabled === "boolean" ? parsed.badgeEnabled : DEFAULT_SETTINGS.badgeEnabled,
-      agentTool: typeof parsed.agentTool === "boolean" ? parsed.agentTool : DEFAULT_SETTINGS.agentTool,
-      generationModel: typeof parsed.generationModel === "string" ? parsed.generationModel : DEFAULT_SETTINGS.generationModel,
-    };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
+  return readUtilSettings().badge;
 }
 
 /**
- * Write badge settings to disk.
- * Creates .unipi/config/ directory if needed.
+ * Write badge settings to unified config.
  */
 export function writeBadgeSettings(settings: BadgeSettings): void {
-  try {
-    const configPath = getConfigPath();
-    const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(configPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-  } catch {
-    // Best effort
-  }
+  const util = readUtilSettings();
+  util.badge = settings;
+  writeUtilSettings(util);
 }
 
 /**

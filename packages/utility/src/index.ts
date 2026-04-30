@@ -25,6 +25,8 @@ import {
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings } from "./tui/badge-settings.js";
+import { readDiffSettings } from "./diff/settings.js";
+import { registerEnhancedWriteTool, registerEnhancedEditTool } from "./diff/wrapper.js";
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
@@ -56,6 +58,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.BADGE_GEN,
   UTILITY_COMMANDS.BADGE_TOGGLE,
   UTILITY_COMMANDS.BADGE_SETTINGS,
+  UTILITY_COMMANDS.UTIL_SETTINGS,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -101,6 +104,14 @@ export default function (pi: ExtensionAPI) {
 
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
+
+    // Register diff-enhanced tools if enabled
+    const diffSettings = readDiffSettings();
+    if (diffSettings.enabled) {
+      const cwd = process.cwd();
+      registerEnhancedWriteTool(pi, cwd);
+      registerEnhancedEditTool(pi, cwd);
+    }
 
     // Write model cache for TUI components
     if ((ctx as any).modelRegistry) {
