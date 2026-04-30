@@ -35,6 +35,7 @@ export const MODULES = {
   BTW: "@pi-unipi/btw",
   MILESTONE: "@pi-unipi/milestone",
   KANBOARD: "@pi-unipi/kanboard",
+  FOOTER: "@pi-unipi/footer",
 } as const;
 
 /** Workflow command names */
