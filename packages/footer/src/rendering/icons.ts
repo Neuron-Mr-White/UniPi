@@ -1,8 +1,11 @@
 /**
- * @pi-unipi/footer — Icon system with Nerd Font / ASCII fallback
+ * @pi-unipi/footer — Icon system with 3 styles: Nerd Font, Emoji, Text
  *
- * Provides icon mapping for each segment with auto-detection
- * of Nerd Font support.
+ * Each icon set maps segment IDs to glyph strings.
+ * The active set is determined by the `iconStyle` setting:
+ *   - "nerd"  → Nerd Font glyphs (requires Nerd Font installed)
+ *   - "emoji" → Unicode emoji / symbols (works on most terminals)
+ *   - "text"  → Plain text labels (works everywhere, most compact)
  */
 
 import { detectNerdFontSupport } from "./separators.js";
@@ -72,127 +75,244 @@ export interface IconSet {
   separator: string;
 }
 
-/** Nerd Font icons */
+// ─── Nerd Font icons ────────────────────────────────────────────────────────
+
+/** Nerd Font glyphs — requires a Nerd Font installed in the terminal */
 export const NERD_ICONS: IconSet = {
-  model: "\uEC19",          // nf-md-chip
-  thinking: "\uE22C",       // nf-oct-pi
-  path: "\uF115",           // nf-fa-folder_open
-  git: "\uF126",            // nf-fa-code_fork
-  context: "\uE70F",        // nf-dev-database
-  cost: "\uF155",           // nf-fa-dollar
-  tokens: "\uE26B",         // nf-seti-html
-  tokensIn: "\uF090",       // nf-fa-sign_in
-  tokensOut: "\uF08B",      // nf-fa-sign_out
-  session: "\uF550",        // nf-md-identifier
-  hostname: "\uF109",       // nf-fa-laptop
-  time: "\uF017",           // nf-fa-clock_o
+  // Core
+  model:           "\uEC19", // nf-md-chip
+  thinking:        "\uE22C", // nf-oct-pi
+  path:            "\uF115", // nf-fa-folder_open
+  git:             "\uF126", // nf-fa-code_fork
+  context:         "\uE70F", // nf-dev-database
+  cost:            "\uF155", // nf-fa-dollar
+  tokens:          "\uE26B", // nf-seti-html
+  tokensIn:        "\uF090", // nf-fa-sign_in
+  tokensOut:       "\uF08B", // nf-fa-sign_out
+  session:         "\uF550", // nf-md-identifier
+  hostname:        "\uF109", // nf-fa-laptop
+  time:            "\uF017", // nf-fa-clock_o
 
-  sessionEvents: "\uF0C0",  // nf-fa-users
-  compactions: "\uF1C0",    // nf-fa-database
-  tokensSaved: "\uF155",    // nf-fa-dollar
-  compressionRatio: "\uE70F", // nf-dev-database
-  indexedDocs: "\uF02D",    // nf-fa-book
-  sandboxRuns: "\uF121",    // nf-fa-terminal
-  searchQueries: "\uF002",  // nf-fa-search
+  // Compactor
+  sessionEvents:   "\uF0C0", // nf-fa-users
+  compactions:     "\uF1C0", // nf-fa-database
+  tokensSaved:     "\uF155", // nf-fa-dollar
+  compressionRatio:"\uE70F", // nf-dev-database
+  indexedDocs:     "\uF02D", // nf-fa-book
+  sandboxRuns:     "\uF121", // nf-fa-terminal
+  searchQueries:   "\uF002", // nf-fa-search
 
-  projectCount: "\uF07B",   // nf-fa-folder
-  totalCount: "\uF1C0",     // nf-fa-database
-  consolidations: "\uF0E7", // nf-fa-bolt
+  // Memory
+  projectCount:    "\uee9c", //  memory icon
+  totalCount:      "\uee9c", //  memory icon
+  consolidations:  "\uee9c", //  memory icon
 
-  serversTotal: "\uF233",   // nf-fa-server
-  serversActive: "\uF058",  // nf-fa-check_circle
-  toolsTotal: "\uF0AD",     // nf-fa-wrench
-  serversFailed: "\uF071",  // nf-fa-warning
+  // MCP
+  serversTotal:    "\uF233", // nf-fa-server
+  serversActive:   "\uF058", // nf-fa-check_circle
+  toolsTotal:      "\uF0AD", // nf-fa-wrench
+  serversFailed:   "\uF071", // nf-fa-warning
 
-  activeLoops: "\uF04B",    // nf-fa-play
-  totalIterations: "\uF01E", // nf-fa-repeat
-  loopStatus: "\uF144",     // nf-fa-circle_play
+  // Ralph
+  activeLoops:     "\udb81\udf09", // 󰼉 ralph loop icon
+  totalIterations: "\udb81\udf09", // 󰼉 ralph loop icon
+  loopStatus:      "\udb81\udf09", // 󰼉 ralph loop icon
 
-  currentCommand: "\uF120",  // nf-fa-terminal
-  sandboxLevel: "\uF023",   // nf-fa-lock
-  commandDuration: "\uF017", // nf-fa-clock_o
+  // Workflow
+  currentCommand:  "\uf52e", //  workflow icon
+  sandboxLevel:    "\uf023", // nf-fa-lock
+  commandDuration: "\uf017", // nf-fa-clock_o
 
-  docsCount: "\uF15C",      // nf-fa-file_text
-  tasksDone: "\uF058",      // nf-fa-check_circle
-  tasksTotal: "\uF0AE",     // nf-fa-tasks
-  taskPct: "\uF200",        // nf-fa-pie_chart
+  // Kanboard
+  docsCount:       "\uF15C", // nf-fa-file_text
+  tasksDone:       "\uF058", // nf-fa-check_circle
+  tasksTotal:      "\uF0AE", // nf-fa-tasks
+  taskPct:         "\uF200", // nf-fa-pie_chart
 
-  platformsEnabled: "\uF0E0", // nf-fa-envelope
-  lastSent: "\uF017",       // nf-fa-clock_o
+  // Notify
+  platformsEnabled:"\uF0E0", // nf-fa-envelope
+  lastSent:        "\uF017", // nf-fa-clock_o
 
-  extensionStatuses: "\uF1E6", // nf-fa-plug
+  // Extension status
+  extensionStatuses:"\uF1E6", // nf-fa-plug
 
-  separator: "\uE0B1",      // nf-pl-left_soft_divider
+  separator:       "\uE0B1", // nf-pl-left_soft_divider
 };
 
-/** ASCII/Unicode fallback icons */
-export const ASCII_ICONS: IconSet = {
-  model: "",
-  thinking: "π",
-  path: "dir",
-  git: "⎇",
-  context: "ctx",
-  cost: "$",
-  tokens: "⊛",
-  tokensIn: "→",
-  tokensOut: "←",
-  session: "#",
-  hostname: "⌂",
-  time: "⏱",
+// ─── Emoji icons ─────────────────────────────────────────────────────────────
 
-  sessionEvents: "evt",
-  compactions: "cmp",
-  tokensSaved: "svd",
-  compressionRatio: "rat",
-  indexedDocs: "idx",
-  sandboxRuns: "sbx",
-  searchQueries: "qry",
+/** Unicode emoji / symbol icons — works on most modern terminals */
+export const EMOJI_ICONS: IconSet = {
+  // Core
+  model:           "",
+  thinking:        "π",
+  path:            "",
+  git:             "⎇",
+  context:         "",
+  cost:            "$",
+  tokens:          "⊛",
+  tokensIn:        "→",
+  tokensOut:       "←",
+  session:         "#",
+  hostname:        "⌂",
+  time:            "⏱",
 
-  projectCount: "prj",
-  totalCount: "ttl",
-  consolidations: "cns",
+  // Compactor
+  sessionEvents:   "⚡",
+  compactions:     "◧",
+  tokensSaved:     "$",
+  compressionRatio:"⇄",
+  indexedDocs:     "☰",
+  sandboxRuns:     "▶",
+  searchQueries:   "⊗",
 
-  serversTotal: "srv",
-  serversActive: "act",
-  toolsTotal: "tls",
-  serversFailed: "err",
+  // Memory
+  projectCount:    "\uee9c",
+  totalCount:      "\uee9c",
+  consolidations:  "\uee9c",
 
-  activeLoops: "▶",
-  totalIterations: "iter",
-  loopStatus: "ralph",
+  // MCP
+  serversTotal:    "srv",
+  serversActive:   "●",
+  toolsTotal:      "🔧",
+  serversFailed:   "⚠",
 
-  currentCommand: "cmd",
-  sandboxLevel: "sbx",
+  // Ralph
+  activeLoops:     "\udb81\udf09",
+  totalIterations: "\udb81\udf09",
+  loopStatus:      "\udb81\udf09",
+
+  // Workflow
+  currentCommand:  "\uf52e",
+  sandboxLevel:    "◧",
+  commandDuration: "⏱",
+
+  // Kanboard
+  docsCount:       "☰",
+  tasksDone:       "✓",
+  tasksTotal:      "☐",
+  taskPct:         "%",
+
+  // Notify
+  platformsEnabled:"♮",
+  lastSent:        "⏱",
+
+  // Extension status
+  extensionStatuses:"▦",
+
+  separator:       "|",
+};
+
+// ─── Text icons ──────────────────────────────────────────────────────────────
+
+/** Plain text labels — works everywhere, most compact */
+export const TEXT_ICONS: IconSet = {
+  // Core
+  model:           "",
+  thinking:        "",
+  path:            "",
+  git:             "",
+  context:         "",
+  cost:            "",
+  tokens:          "",
+  tokensIn:        "",
+  tokensOut:       "",
+  session:         "",
+  hostname:        "",
+  time:            "",
+
+  // Compactor
+  sessionEvents:   "evt",
+  compactions:     "cmp",
+  tokensSaved:     "svd",
+  compressionRatio:"rat",
+  indexedDocs:     "idx",
+  sandboxRuns:     "sbx",
+  searchQueries:   "qry",
+
+  // Memory
+  projectCount:    "mem",
+  totalCount:      "mem",
+  consolidations:  "cns",
+
+  // MCP
+  serversTotal:    "srv",
+  serversActive:   "act",
+  toolsTotal:      "tls",
+  serversFailed:   "err",
+
+  // Ralph
+  activeLoops:     "rlp",
+  totalIterations: "itr",
+  loopStatus:      "rlp",
+
+  // Workflow
+  currentCommand:  "wf",
+  sandboxLevel:    "sbx",
   commandDuration: "dur",
 
-  docsCount: "doc",
-  tasksDone: "✓",
-  tasksTotal: "tasks",
-  taskPct: "pct",
+  // Kanboard
+  docsCount:       "doc",
+  tasksDone:       "✓",
+  tasksTotal:      "tsk",
+  taskPct:         "pct",
 
-  platformsEnabled: "ntf",
-  lastSent: "sent",
+  // Notify
+  platformsEnabled:"ntf",
+  lastSent:        "lst",
 
-  extensionStatuses: "ext",
+  // Extension status
+  extensionStatuses:"ext",
 
-  separator: "|",
+  separator:       "|",
 };
 
-// ─── Icon lookup ────────────────────────────────────────────────────────────
+// ─── Icon lookup ─────────────────────────────────────────────────────────────
 
-/**
- * Get the icon for a segment by ID.
- * Returns Nerd Font glyph if available, ASCII fallback otherwise.
- */
-export function getIcon(segmentId: string): string {
-  const icons = detectNerdFontSupport() ? NERD_ICONS : ASCII_ICONS;
-  const key = segmentId as keyof IconSet;
-  return icons[key] ?? segmentId;
+/** Current icon style — updated by the renderer when settings change */
+let currentIconStyle: "nerd" | "emoji" | "text" | undefined;
+
+/** Set the active icon style (called by renderer when settings change) */
+export function setIconStyle(style: "nerd" | "emoji" | "text" | undefined): void {
+  currentIconStyle = style;
+}
+
+/** Resolve the effective icon style from settings + terminal detection */
+export function resolveIconStyle(configured?: string): "nerd" | "emoji" | "text" {
+  // Explicit setting wins
+  if (configured === "nerd" || configured === "emoji" || configured === "text") {
+    return configured;
+  }
+
+  // Auto-detect: use Nerd Font if terminal supports it, emoji otherwise
+  return detectNerdFontSupport() ? "nerd" : "emoji";
 }
 
 /**
- * Get the full icon set based on terminal capabilities.
+ * Get the icon for a segment by ID.
+ * Uses the configured icon style, falling back to auto-detection.
  */
-export function getIcons(): IconSet {
-  return detectNerdFontSupport() ? NERD_ICONS : ASCII_ICONS;
+export function getIcon(segmentId: string, overrideStyle?: "nerd" | "emoji" | "text"): string {
+  const style = overrideStyle ?? currentIconStyle ?? resolveIconStyle();
+  const sets: Record<string, IconSet> = {
+    nerd: NERD_ICONS,
+    emoji: EMOJI_ICONS,
+    text: TEXT_ICONS,
+  };
+  const icons = sets[style];
+  const key = segmentId as keyof IconSet;
+  return icons[key] ?? "";
+}
+
+/**
+ * Get the full icon set based on the configured style.
+ */
+export function getIcons(iconStyle?: "nerd" | "emoji" | "text"): IconSet {
+  const style = iconStyle ?? currentIconStyle ?? resolveIconStyle();
+  const sets: Record<string, IconSet> = {
+    nerd: NERD_ICONS,
+    emoji: EMOJI_ICONS,
+    text: TEXT_ICONS,
+  };
+  return sets[style];
 }

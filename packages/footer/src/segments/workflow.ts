@@ -6,9 +6,12 @@
  * Data sourced from WORKFLOW_START/END events via registry cache.
  */
 
-import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
+import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColor } from "../types.js";
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+
+/** Nerd Font icon for workflow:  */
+const WORKFLOW_ICON = "\uf52e";
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -21,15 +24,34 @@ function getWorkflowData(ctx: FooterSegmentContext): Record<string, unknown> {
   return data as Record<string, unknown>;
 }
 
+/** Map a workflow command name to a semantic color for slight differentiation */
+function getWorkflowSemanticColor(command: string): SemanticColor {
+  const commandLower = command.toLowerCase();
+
+  if (commandLower.includes("brainstorm")) return "workflowBrainstorm";
+  if (commandLower.includes("plan")) return "workflowPlan";
+  if (commandLower.includes("work") && !commandLower.includes("network") && !commandLower.includes("framework")) return "workflowWork";
+  if (commandLower.includes("review")) return "workflowReview";
+  if (commandLower.includes("auto")) return "workflowAuto";
+  if (commandLower.includes("fix") || commandLower.includes("debug")) return "workflowWork";
+  if (commandLower.includes("quick")) return "workflowOther";
+  if (commandLower.includes("document")) return "workflowPlan";
+  if (commandLower.includes("consolidate")) return "workflowOther";
+
+  return "workflow";
+}
+
 function renderCurrentCommandSegment(ctx: FooterSegmentContext): RenderedSegment {
   const data = getWorkflowData(ctx);
   const active = data.active === true;
   const command = data.command as string | undefined;
   if (!command) return { content: "", visible: false };
 
-  const prefix = active ? "▶" : "✓";
-  const content = withIcon("currentCommand", `${prefix} ${command}`);
-  return { content: applyColor("workflow", content, ctx.theme, ctx.colors), visible: true };
+  const statusPrefix = active ? "▶" : "✓";
+  const semanticColor = getWorkflowSemanticColor(command);
+  // Use the workflow icon  instead of "wf"
+  const content = `${WORKFLOW_ICON} ${statusPrefix} ${command}`;
+  return { content: applyColor(semanticColor, content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderSandboxLevelSegment(ctx: FooterSegmentContext): RenderedSegment {

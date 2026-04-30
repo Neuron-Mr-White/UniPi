@@ -18,7 +18,15 @@ export type SemanticColor =
   | "memory"
   | "mcp"
   | "ralph"
+  | "ralphOn"
+  | "ralphOff"
   | "workflow"
+  | "workflowBrainstorm"
+  | "workflowPlan"
+  | "workflowWork"
+  | "workflowReview"
+  | "workflowAuto"
+  | "workflowOther"
   | "kanboard"
   | "notify"
   | "separator"
@@ -31,7 +39,9 @@ export type SemanticColor =
   | "thinking"
   | "thinkingMinimal"
   | "thinkingLow"
-  | "thinkingMedium";
+  | "thinkingMedium"
+  | "thinkingHigh"
+  | "thinkingXhigh";
 
 /** A theme color name or custom hex color */
 export type ColorValue = ThemeColor | `#${string}`;
@@ -43,6 +53,9 @@ export type ThemeLike = Pick<Theme, "fg">;
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 
 // ─── Separators ─────────────────────────────────────────────────────────────
+
+/** Icon style — determines which icon set is used for segments */
+export type IconStyle = "nerd" | "emoji" | "text";
 
 /** Separator styles for segment dividers */
 export type SeparatorStyle =
@@ -138,6 +151,8 @@ export interface FooterSettings {
   preset: string;
   /** Separator style */
   separator: SeparatorStyle;
+  /** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */
+  iconStyle: IconStyle;
   /** Per-group settings */
   groups: Record<string, FooterGroupSettings>;
 }

@@ -17,7 +17,15 @@ const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor> = {
   memory: "accent",
   mcp: "success",
   ralph: "warning",
+  ralphOn: "success",
+  ralphOff: "error",
   workflow: "accent",
+  workflowBrainstorm: "warning",
+  workflowPlan: "success",
+  workflowWork: "accent",
+  workflowReview: "muted",
+  workflowAuto: "thinkingHigh",
+  workflowOther: "dim",
   kanboard: "dim",
   notify: "muted",
   separator: "dim",
@@ -31,6 +39,8 @@ const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor> = {
   thinkingMinimal: "thinkingMinimal",
   thinkingLow: "thinkingLow",
   thinkingMedium: "thinkingMedium",
+  thinkingHigh: "thinkingHigh",
+  thinkingXhigh: "thinkingXhigh",
 };
 
 /**

@@ -61,6 +61,53 @@ function getUsageStats(piContext: unknown): UsageStats {
   return { input, output, cacheRead, cacheWrite, cost };
 }
 
+// ─── Rainbow helpers for xhigh thinking level ───────────────────────────────
+
+/** ANSI 256-color rainbow palette for xhigh thinking level */
+const RAINBOW_COLORS = [
+  "\x1b[38;5;196m", // red
+  "\x1b[38;5;202m", // orange
+  "\x1b[38;5;226m", // yellow
+  "\x1b[38;5;82m",  // green
+  "\x1b[38;5;45m",  // blue
+  "\x1b[38;5;129m", // indigo
+  "\x1b[38;5;171m", // violet
+];
+
+const ANSI_RESET = "\x1b[0m";
+
+/** Apply rainbow coloring to text, cycling through colors per character */
+export function rainbowText(text: string): string {
+  let result = "";
+  let colorIdx = 0;
+  for (const char of text) {
+    if (char === " ") {
+      result += char;
+    } else {
+      result += `${RAINBOW_COLORS[colorIdx % RAINBOW_COLORS.length]}${char}${ANSI_RESET}`;
+      colorIdx++;
+    }
+  }
+  return result;
+}
+
+/** Render a rainbow border line of the given width */
+export function rainbowBorder(width: number): string {
+  let result = "";
+  for (let i = 0; i < width; i++) {
+    result += `${RAINBOW_COLORS[i % RAINBOW_COLORS.length]}─${ANSI_RESET}`;
+  }
+  return result;
+}
+
+/** Get the current thinking level from piContext */
+export function getThinkingLevel(piContext: unknown): string {
+  const piCtx = piContext as Record<string, unknown> | undefined;
+  return typeof piCtx?.getThinkingLevel === "function"
+    ? (piCtx as any).getThinkingLevel()
+    : "off";
+}
+
 // ─── Segment Renderers ──────────────────────────────────────────────────────
 
 function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -75,10 +122,7 @@ function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 function renderThinkingSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
-  const thinkingLevel = typeof piCtx?.getThinkingLevel === "function"
-    ? (piCtx as any).getThinkingLevel()
-    : "off";
+  const thinkingLevel = getThinkingLevel(ctx.piContext);
 
   if (thinkingLevel === "off") return { content: "", visible: false };
 
@@ -86,12 +130,20 @@ function renderThinkingSegment(ctx: FooterSegmentContext): RenderedSegment {
     minimal: "min", low: "low", medium: "med", high: "high", xhigh: "xhigh",
   };
   const label = levelText[thinkingLevel] || thinkingLevel;
-  const content = `think:${label}`;
+  const icon = getIcon("thinking");
+  const text = `think:${label}`;
+  const content = icon ? `${icon} ${text}` : text;
+
+  // xhigh uses rainbow coloring
+  if (thinkingLevel === "xhigh") {
+    return { content: rainbowText(content), visible: true };
+  }
 
   let semanticColor: SemanticColor = "thinking";
   if (thinkingLevel === "minimal") semanticColor = "thinkingMinimal";
   else if (thinkingLevel === "low") semanticColor = "thinkingLow";
   else if (thinkingLevel === "medium") semanticColor = "thinkingMedium";
+  else if (thinkingLevel === "high") semanticColor = "thinkingHigh";
 
   return { content: color(ctx, semanticColor, content), visible: true };
 }
@@ -125,20 +177,29 @@ function renderGitSegment(ctx: FooterSegmentContext): RenderedSegment {
 
 function renderContextPctSegment(ctx: FooterSegmentContext): RenderedSegment {
   const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+
+  // Use pi's built-in getContextUsage() — handles compaction and cache correctly
+  const contextUsage = typeof (piCtx as any)?.getContextUsage === "function"
+    ? (piCtx as any).getContextUsage()
+    : undefined;
+
   const model = piCtx?.model as Record<string, unknown> | undefined;
-  const contextWindow = (model?.contextWindow as number) || 0;
+  const contextWindow = contextUsage?.contextWindow ?? (model?.contextWindow as number) ?? 0;
   if (!contextWindow) return { content: "", visible: false };
 
-  const stats = getUsageStats(piCtx);
-  const totalTokens = stats.input + stats.output + stats.cacheRead + stats.cacheWrite;
-  const pct = contextWindow > 0 ? (totalTokens / contextWindow) * 100 : 0;
+  const pct = contextUsage?.percent;
+  const tokens = contextUsage?.tokens;
 
-  const text = `${pct.toFixed(1)}%/${formatTokens(contextWindow)}`;
+  // If percent is null (post-compaction, awaiting next response), show ?%
+  const pctDisplay = pct !== null && pct !== undefined ? pct.toFixed(1) : "?";
+  const text = `${pctDisplay}%/${formatTokens(contextWindow)}`;
   const content = withIcon("context", text);
 
   let semanticColor: SemanticColor = "context";
-  if (pct > 90) semanticColor = "contextError";
-  else if (pct > 70) semanticColor = "contextWarn";
+  if (pct !== null && pct !== undefined) {
+    if (pct > 90) semanticColor = "contextError";
+    else if (pct > 70) semanticColor = "contextWarn";
+  }
 
   return { content: color(ctx, semanticColor, content), visible: true };
 }

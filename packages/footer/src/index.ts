@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
-import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
 import { subscribeToEvents } from "./events.js";
@@ -26,6 +26,7 @@ import { NOTIFY_SEGMENTS } from "./segments/notify.js";
 import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 
 import type { FooterGroup, FooterSegment } from "./types.js";
+import { getThinkingLevel, rainbowBorder } from "./segments/core.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
@@ -125,7 +126,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
       name: "@pi-unipi/footer",
       version: "0.1.0",
-      commands: ["unipi:footer", "unipi:footer-settings"],
+      commands: [`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`, `${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_SETTINGS}`],
       tools: [],
     });
   });
@@ -177,7 +178,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
     };
   }, { placement: "aboveEditor" });
 
-  // Secondary row widget
+  // Secondary row widget + rainbow input border for xhigh thinking
   ctx.ui.setWidget("footer-secondary", (_tui: any, _theme: Theme) => {
     return {
       dispose() {},
@@ -187,8 +188,20 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
       render(width: number): string[] {
         if (!state.enabled || !state.piContext) return [];
 
+        const lines: string[] = [];
+
+        // Rainbow border for input bar when thinking level is xhigh
+        const thinkingLevel = getThinkingLevel(state.piContext);
+        if (thinkingLevel === "xhigh") {
+          lines.push(rainbowBorder(width));
+        }
+
         const layout = state.renderer.computeLayout(width);
-        return layout.secondaryContent ? [layout.secondaryContent] : [];
+        if (layout.secondaryContent) {
+          lines.push(layout.secondaryContent);
+        }
+
+        return lines;
       },
     };
   }, { placement: "belowEditor" });
