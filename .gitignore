@@ -5,6 +5,9 @@ dist/
 .env
 .DS_Store
 
+# Bundled file contains third-party secrets from npm dependencies
+packages/unipi/bundled.js
+
 .unipi/worktrees/
 .unipi/memory/
 .pi/
