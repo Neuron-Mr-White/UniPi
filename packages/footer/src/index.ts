@@ -62,6 +62,7 @@ interface FooterState {
   piContext: unknown;
   footerData: unknown;
   tuiRef: any;
+  refreshTimer: ReturnType<typeof setInterval> | null;
 }
 
 export default function footerExtension(pi: ExtensionAPI): void {
@@ -82,6 +83,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     piContext: null,
     footerData: null,
     tuiRef: null,
+    refreshTimer: null,
   };
 
   // Register all groups in the registry
@@ -113,6 +115,10 @@ export default function footerExtension(pi: ExtensionAPI): void {
     state.unsubscribeEvents = null;
     state.piContext = null;
     state.footerData = null;
+    if (state.refreshTimer) {
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = null;
+    }
     state.tuiRef = null;
   });
 
@@ -138,6 +144,14 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
   // Register footer (minimal — handles branch changes)
   ctx.ui.setFooter((tui: any, _theme: Theme, footerData: any) => {
     state.tuiRef = tui;
+
+    // Start periodic refresh for time-sensitive segments (e.g. clock)
+    if (!state.refreshTimer) {
+      state.refreshTimer = setInterval(() => {
+        state.renderer.resetLayoutCache();
+        state.tuiRef?.requestRender();
+      }, 1_000);
+    }
     state.footerData = footerData;
     state.renderer.setContext(state.piContext, footerData);
 
