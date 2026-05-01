@@ -8,7 +8,7 @@
  */
 
 import type { TextSnapshot } from "./types.ts";
-import { MAX_UNDO_SNAPSHOTS, UNDO_DEBOUNCE_MS, UNDO_THROTTLE_MS } from "./types.ts";
+import { MAX_UNDO_SNAPSHOTS, UNDO_DEBOUNCE_MS } from "./types.ts";
 
 export interface UndoRedoResult {
   text: string;
@@ -41,21 +41,14 @@ export class UndoRedoBuffer {
 
   /**
    * Undo: pop from undo stack, push current text to redo.
-   * 1s throttle: ignores if last undo was within 1 second.
    */
   undo(currentText: string): UndoRedoResult {
-    const now = Date.now();
-    if (now - this.lastUndoAt < UNDO_THROTTLE_MS) {
-      return { text: currentText, ok: false, reason: "throttled" };
-    }
-
     if (this.undoStack.length === 0) {
       return { text: currentText, ok: false, reason: "nothing to undo" };
     }
 
     const snapshot = this.undoStack.pop()!;
-    this.redoStack.push({ text: currentText, timestamp: now });
-    this.lastUndoAt = now;
+    this.redoStack.push({ text: currentText, timestamp: Date.now() });
     return { text: snapshot.text, ok: true };
   }
 

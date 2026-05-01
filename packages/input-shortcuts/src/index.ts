@@ -178,7 +178,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       ctx.ui.setEditorText(result.text);
       showSuccess(ctx, "✓ undo");
     } else {
-      showError(ctx, result.reason === "throttled" ? "undo throttled" : "nothing to undo");
+      showError(ctx, "nothing to undo");
     }
   }
 

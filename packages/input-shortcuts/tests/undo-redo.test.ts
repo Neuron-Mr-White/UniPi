@@ -19,14 +19,11 @@ describe("UndoRedoBuffer", () => {
     assert.equal(undo1.ok, true);
     assert.equal(undo1.text, "second");
 
-    // Reset throttle for test
-    (buf as any).lastUndoAt = 0;
     const undo2 = buf.undo("second");
     assert.equal(undo2.ok, true);
     assert.equal(undo2.text, "first");
 
     // Nothing more to undo
-    (buf as any).lastUndoAt = 0;
     const undo3 = buf.undo("first");
     assert.equal(undo3.ok, false);
     assert.equal(undo3.reason, "nothing to undo");
@@ -67,7 +64,6 @@ describe("UndoRedoBuffer", () => {
 
     // Push 55 snapshots (max is 50)
     for (let i = 0; i < 55; i++) {
-      // Need to wait past debounce
       buf.snapshot(`text-${i}`);
       // Manually reset debounce for testing
       (buf as any).lastSnapshotAt = 0;
@@ -78,8 +74,6 @@ describe("UndoRedoBuffer", () => {
     for (let i = 0; i < 60; i++) {
       const result = buf.undo("x");
       if (result.ok) count++;
-      // Reset throttle for testing
-      (buf as any).lastUndoAt = 0;
     }
     assert.equal(count, 50);
   });
@@ -119,21 +113,27 @@ describe("UndoRedoBuffer", () => {
     assert.equal(undo2.ok, false);
   });
 
-  it("throttle prevents rapid undo", () => {
+  it("consecutive undos work without throttle", () => {
     const buf = new UndoRedoBuffer();
 
     buf.snapshot("a");
-    // Reset debounce
     (buf as any).lastSnapshotAt = 0;
     buf.snapshot("b");
+    (buf as any).lastSnapshotAt = 0;
+    buf.snapshot("c");
 
+    // Three consecutive undos should all work
     const undo1 = buf.undo("current");
     assert.equal(undo1.ok, true);
+    assert.equal(undo1.text, "c");
 
-    // Immediate undo should be throttled
-    const undo2 = buf.undo("b");
-    assert.equal(undo2.ok, false);
-    assert.equal(undo2.reason, "throttled");
+    const undo2 = buf.undo("c");
+    assert.equal(undo2.ok, true);
+    assert.equal(undo2.text, "b");
+
+    const undo3 = buf.undo("b");
+    assert.equal(undo3.ok, true);
+    assert.equal(undo3.text, "a");
   });
 
   it("hasUndo/hasRedo reflect stack state", () => {
