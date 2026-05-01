@@ -17,6 +17,8 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   preset: "default",
   separator: "powerline-thin",
   iconStyle: "nerd",
+  zoneSeparator: "\u2502", // │
+  showFullLabels: false,
   groups: {
     core: { show: true, segments: {} },
     compactor: { show: true, segments: {} },
@@ -92,6 +94,8 @@ export function loadFooterSettings(): FooterSettings {
       preset: typeof footer.preset === "string" ? footer.preset : DEFAULT_FOOTER_SETTINGS.preset,
       separator: isValidSeparator(footer.separator) ? footer.separator as SeparatorStyle : DEFAULT_FOOTER_SETTINGS.separator,
       iconStyle: isValidIconStyle(footer.iconStyle) ? footer.iconStyle as IconStyle : DEFAULT_FOOTER_SETTINGS.iconStyle,
+      zoneSeparator: typeof footer.zoneSeparator === "string" ? footer.zoneSeparator : DEFAULT_FOOTER_SETTINGS.zoneSeparator,
+      showFullLabels: typeof footer.showFullLabels === "boolean" ? footer.showFullLabels : DEFAULT_FOOTER_SETTINGS.showFullLabels,
       groups: mergeGroupSettings(
         DEFAULT_FOOTER_SETTINGS.groups,
         footer.groups as Record<string, FooterGroupSettings> | undefined,

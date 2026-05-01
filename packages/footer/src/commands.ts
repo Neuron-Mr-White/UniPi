@@ -10,7 +10,8 @@ import { UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { PRESET_NAMES } from "./presets.js";
 import { showFooterSettings } from "./tui/settings-tui.js";
-import type { FooterGroup, SeparatorStyle, IconStyle } from "./types.js";
+import { showFooterHelp } from "./help.js";
+import type { FooterGroup, FooterSegment, SeparatorStyle, IconStyle } from "./types.js";
 import { setIconStyle } from "./rendering/icons.js";
 
 /** Minimal autocomplete item (compatible with pi-tui AutocompleteItem) */
@@ -46,6 +47,7 @@ interface FooterState {
     getPresetName(): string;
     resetLayoutCache(): void;
   };
+  segmentLookup: Map<string, FooterSegment>;
   piContext: unknown;
   setupUI: ((pi: ExtensionAPI, ctx: any) => void) | null;
 }
@@ -202,6 +204,15 @@ export function registerCommands(
         ].join("\n");
         ctx.ui.notify(info, "info");
       }
+    },
+  });
+
+  // /unipi:footer-help — show help overlay
+  pi.registerCommand(`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_HELP}`, {
+    description: "Show footer segment guide (icons, labels, descriptions)",
+    handler: async (_args, _ctx) => {
+      const allSegments = Array.from(state.segmentLookup.values());
+      showFooterHelp(pi, allSegments, state.renderer.getPresetName());
     },
   });
 }

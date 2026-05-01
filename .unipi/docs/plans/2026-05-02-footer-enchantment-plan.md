@@ -106,7 +106,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     6. Add `zoneSeparator` key to `FooterSettings` type and config
     7. Verify rendering at various terminal widths (80, 120, 200 columns)
 
-- unstarted: Task 6 — Footer-Help & Full-Label Mode
+- completed: Task 6 — Footer-Help & Full-Label Mode
   - Description: Add `/unipi:footer-help` overlay and compact/labeled toggle. Both depend on the description and shortLabel fields from Task 1.
   - Dependencies: Task 1 (descriptions), Task 5 (zones for grouping)
   - Acceptance Criteria: `/unipi:footer-help` opens overlay showing enabled segments by zone with descriptions. Full-label mode switches segment display from `ses:sonnet` to `Model: sonnet`.

@@ -319,6 +319,7 @@ export const INPUT_SHORTCUTS_COMMANDS = {
 export const FOOTER_COMMANDS = {
   FOOTER: "footer",
   FOOTER_SETTINGS: "footer-settings",
+  FOOTER_HELP: "footer-help",
 } as const;
 
 /** Compactor defaults */
