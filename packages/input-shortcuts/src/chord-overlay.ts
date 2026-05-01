@@ -3,7 +3,7 @@
  *
  * Two states: root chord (action menu) and register sub-chord (register list).
  * Uses ctx.ui.custom() pattern from btw/compactor.
- * 300ms timeout auto-closes overlay.
+ * Closes on ESC or after executing an action. No timeout.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -17,7 +17,7 @@ import {
   type KeybindingsManager,
 } from "@mariozechner/pi-tui";
 import type { ChordState } from "./types.ts";
-import { CHORD_TIMEOUT_MS, THINKING_CYCLE } from "./types.ts";
+import { THINKING_CYCLE } from "./types.ts";
 import type { RegisterStore } from "./registers.ts";
 import type { UndoRedoBuffer } from "./undo-redo.ts";
 import { copyToClipboard } from "./clipboard.ts";
@@ -66,7 +66,6 @@ export class ChordOverlay extends Container implements Focusable {
   private actionLines: Text[] = [];
   private tui: TUI;
   private theme: ThemeLike;
-  private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private done: () => void;
   private ctx: ExtensionContext;
   private registers: RegisterStore;
@@ -101,7 +100,6 @@ export class ChordOverlay extends Container implements Focusable {
     this.callbacks = callbacks;
 
     this.renderRootMenu();
-    this.startTimeouter();
   }
 
   private renderRootMenu(): void {
@@ -125,23 +123,7 @@ export class ChordOverlay extends Container implements Focusable {
     this.tui.requestRender();
   }
 
-  private startTimeouter(): void {
-    this.clearTimeouter();
-    this.timeoutHandle = setTimeout(() => {
-      this.close();
-    }, CHORD_TIMEOUT_MS);
-  }
-
-  private clearTimeouter(): void {
-    if (this.timeoutHandle) {
-      clearTimeout(this.timeoutHandle);
-      this.timeoutHandle = null;
-    }
-  }
-
   handleInput(data: string): void {
-    this.clearTimeouter();
-
     if (matchesKey(data, Key.escape)) {
       this.close();
       return;
@@ -199,7 +181,6 @@ export class ChordOverlay extends Container implements Focusable {
 
   private enterRegChord(): void {
     this.renderRegisterMenu();
-    this.startTimeouter();
   }
 
   // ─── Actions ───────────────────────────────────────────────────────────────
@@ -207,13 +188,11 @@ export class ChordOverlay extends Container implements Focusable {
   private actionStash(): void {
     const text = this.ctx.ui.getEditorText();
     if (text.length > 0) {
-      // Save current text to stash, snapshot before clearing
       this.undoRedo.snapshot(text);
       this.registers.setStash(text);
       this.ctx.ui.setEditorText("");
       showSuccess(this.ctx, "✓ stash saved");
     } else {
-      // Restore stash
       const stash = this.registers.getStash();
       if (stash.length === 0) {
         showError(this.ctx, "stash empty");
@@ -312,14 +291,11 @@ export class ChordOverlay extends Container implements Focusable {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   private close(): void {
-    this.clearTimeouter();
     clearStatus(this.ctx);
     this.done();
   }
 
-  dispose(): void {
-    this.clearTimeouter();
-  }
+  dispose(): void {}
 
   render(width: number): string[] {
     const dialogWidth = Math.min(40, Math.max(28, width));

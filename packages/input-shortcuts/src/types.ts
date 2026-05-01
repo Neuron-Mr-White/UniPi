@@ -37,7 +37,6 @@ export const DEFAULT_CONFIG: InputShortcutsConfig = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const CHORD_TIMEOUT_MS = 300;
 export const UNDO_THROTTLE_MS = 1000;
 export const UNDO_DEBOUNCE_MS = 500;
 export const MAX_UNDO_SNAPSHOTS = 50;
