@@ -33,7 +33,7 @@ describe("Segment files", () => {
   it("segment IDs are consistent with file names", () => {
     const content = fs.readFileSync(path.join(SEGMENTS_DIR, "core.ts"), "utf-8");
     assert.ok(content.includes("model"), "core.ts should define model segment");
-    assert.ok(content.includes("path"), "core.ts should define path segment");
+    assert.ok(content.includes("api_state"), "core.ts should define api_state segment");
     assert.ok(content.includes("git"), "core.ts should define git segment");
   });
 

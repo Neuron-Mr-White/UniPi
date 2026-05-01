@@ -16,17 +16,14 @@ import { detectNerdFontSupport } from "./separators.js";
 export interface IconSet {
   // Core segments
   model: string;
-  thinking: string;
-  path: string;
+  apiState: string;
+  toolCount: string;
   git: string;
   context: string;
   cost: string;
   tokens: string;
   tokensIn: string;
   tokensOut: string;
-  session: string;
-  hostname: string;
-  time: string;
 
   // Compactor segments
   sessionEvents: string;
@@ -80,38 +77,35 @@ export interface IconSet {
 /** Nerd Font glyphs — requires a Nerd Font installed in the terminal */
 export const NERD_ICONS: IconSet = {
   // Core
-  model:           "\uEC19", // nf-md-chip
-  thinking:        "\uE22C", // nf-oct-pi
-  path:            "\uF115", // nf-fa-folder_open
-  git:             "\uF126", // nf-fa-code_fork
-  context:         "\uE70F", // nf-dev-database
-  cost:            "\uF155", // nf-fa-dollar
-  tokens:          "\uE26B", // nf-seti-html
-  tokensIn:        "\uF090", // nf-fa-sign_in
-  tokensOut:       "\uF08B", // nf-fa-sign_out
-  session:         "\uF550", // nf-md-identifier
-  hostname:        "\uF109", // nf-fa-laptop
-  time:            "\uF017", // nf-fa-clock_o
+  model:           "\uDB81\uDE5B", // 󰚩 custom model icon
+  apiState:        "\uF725", // 󱂛 api state icon
+  toolCount:       "\uF0AD", //  tool count icon
+  git:             "\uF0E8", //  git icon
+  context:         "\uF8D8", //  context icon
+  cost:            "\uF155", //  cost icon
+  tokens:          "\uF07B", //  tokens icon
+  tokensIn:        "\uF07B", //  tokens in icon
+  tokensOut:       "\uF07B", //  tokens out icon
 
   // Compactor
-  sessionEvents:   "\uF0C0", // nf-fa-users
-  compactions:     "\uF1C0", // nf-fa-database
-  tokensSaved:     "\uF155", // nf-fa-dollar
-  compressionRatio:"\uE70F", // nf-dev-database
-  indexedDocs:     "\uF02D", // nf-fa-book
-  sandboxRuns:     "\uF121", // nf-fa-terminal
-  searchQueries:   "\uF002", // nf-fa-search
+  sessionEvents:   "\uDBB1\uDECF", // 󰲏 session events icon
+  compactions:     "\uDBB1\uDECF", // 󰲏 compactions icon
+  tokensSaved:     "\uF155", //  tokens saved icon
+  compressionRatio:"\uDBB1\uDECF", // 󰲏 compression ratio icon
+  indexedDocs:     "\uDB81\uDE19", // 󰈙 indexed docs icon
+  sandboxRuns:     "\uF121", //  sandbox runs icon
+  searchQueries:   "\uF002", //  search queries icon
 
   // Memory
-  projectCount:    "\uee9c", //  memory icon
-  totalCount:      "\uee9c", //  memory icon
-  consolidations:  "\uee9c", //  memory icon
+  projectCount:    "\uDB81\uDED4", // 󰍚 memory icon
+  totalCount:      "\uEB9C", //  total count icon
+  consolidations:  "\uDB81\uDED4", // 󰍚 consolidations icon
 
   // MCP
-  serversTotal:    "\uF233", // nf-fa-server
-  serversActive:   "\uF058", // nf-fa-check_circle
-  toolsTotal:      "\uF0AD", // nf-fa-wrench
-  serversFailed:   "\uF071", // nf-fa-warning
+  serversTotal:    "\uF0F6", //  servers total icon
+  serversActive:   "\uF058", //  servers active icon
+  toolsTotal:      "\uF0AD", //  tools total icon
+  serversFailed:   "\uF467", //  servers failed icon
 
   // Ralph
   activeLoops:     "\udb81\udf09", // 󰼉 ralph loop icon
@@ -119,22 +113,22 @@ export const NERD_ICONS: IconSet = {
   loopStatus:      "\udb81\udf09", // 󰼉 ralph loop icon
 
   // Workflow
-  currentCommand:  "\uf52e", //  workflow icon
-  sandboxLevel:    "\uf023", // nf-fa-lock
-  commandDuration: "\uf017", // nf-fa-clock_o
+  currentCommand:  "\uF0E8", //  current command icon
+  sandboxLevel:    "\uDBB1\uDDFE", // 󰟾 sandbox level icon
+  commandDuration: "\uDBB9\uDEAB", // 󱎫 command duration icon
 
   // Kanboard
-  docsCount:       "\uF15C", // nf-fa-file_text
-  tasksDone:       "\uF058", // nf-fa-check_circle
-  tasksTotal:      "\uF0AE", // nf-fa-tasks
-  taskPct:         "\uF200", // nf-fa-pie_chart
+  docsCount:       "\uDB81\uDE19", // 󰈙 docs count icon
+  tasksDone:       "\uF0E8", //  tasks done icon
+  tasksTotal:      "\uF0E8", //  tasks total icon
+  taskPct:         "\uF0E8", //  task pct icon
 
   // Notify
   platformsEnabled:"\uF0E0", // nf-fa-envelope
   lastSent:        "\uF017", // nf-fa-clock_o
 
   // Extension status
-  extensionStatuses:"\uF1E6", // nf-fa-plug
+  extensionStatuses:"\uDBB5\uDEAB", // 󱖫 extension statuses icon
 
   separator:       "\uE0B1", // nf-pl-left_soft_divider
 };
@@ -144,47 +138,44 @@ export const NERD_ICONS: IconSet = {
 /** Unicode emoji / symbol icons — works on most modern terminals */
 export const EMOJI_ICONS: IconSet = {
   // Core
-  model:           "",
-  thinking:        "π",
-  path:            "",
+  model:           "🤖",
+  apiState:        "🔄",
+  toolCount:       "🔧",
   git:             "⎇",
-  context:         "",
-  cost:            "$",
+  context:         "🗄️",
+  cost:            "💲",
   tokens:          "⊛",
   tokensIn:        "→",
   tokensOut:       "←",
-  session:         "#",
-  hostname:        "⌂",
-  time:            "⏱",
 
   // Compactor
   sessionEvents:   "⚡",
   compactions:     "◧",
-  tokensSaved:     "$",
+  tokensSaved:     "💲",
   compressionRatio:"⇄",
   indexedDocs:     "☰",
   sandboxRuns:     "▶",
   searchQueries:   "⊗",
 
   // Memory
-  projectCount:    "\uee9c",
-  totalCount:      "\uee9c",
-  consolidations:  "\uee9c",
+  projectCount:    "🧠",
+  totalCount:      "🧠",
+  consolidations:  "🧠",
 
   // MCP
-  serversTotal:    "srv",
+  serversTotal:    "🖥️",
   serversActive:   "●",
   toolsTotal:      "🔧",
-  serversFailed:   "⚠",
+  serversFailed:   "⚠️",
 
   // Ralph
-  activeLoops:     "",
-  totalIterations: "",
-  loopStatus:      "",
+  activeLoops:     "🔁",
+  totalIterations: "🔁",
+  loopStatus:      "🔁",
 
   // Workflow
-  currentCommand:  "",
-  sandboxLevel:    "◧",
+  currentCommand:  "▶️",
+  sandboxLevel:    "🔒",
   commandDuration: "⏱",
 
   // Kanboard
@@ -208,61 +199,58 @@ export const EMOJI_ICONS: IconSet = {
 /** Plain text labels — works everywhere, most compact */
 export const TEXT_ICONS: IconSet = {
   // Core
-  model:           "",
-  thinking:        "",
-  path:            "",
-  git:             "",
-  context:         "",
-  cost:            "",
-  tokens:          "",
-  tokensIn:        "",
-  tokensOut:       "",
-  session:         "",
-  hostname:        "",
-  time:            "",
+  model:           "MDL",
+  apiState:        "API",
+  toolCount:       "TLS",
+  git:             "GIT",
+  context:         "CTX",
+  cost:            "CST",
+  tokens:          "TOK",
+  tokensIn:        "TKI",
+  tokensOut:       "TKO",
 
   // Compactor
-  sessionEvents:   "evt",
-  compactions:     "cmp",
-  tokensSaved:     "svd",
-  compressionRatio:"rat",
-  indexedDocs:     "idx",
-  sandboxRuns:     "sbx",
-  searchQueries:   "qry",
+  sessionEvents:   "EVT",
+  compactions:     "CMP",
+  tokensSaved:     "SVD",
+  compressionRatio:"RAT",
+  indexedDocs:     "IDX",
+  sandboxRuns:     "SBX",
+  searchQueries:   "QRY",
 
   // Memory
   projectCount:    "mem",
-  totalCount:      "mem",
-  consolidations:  "cns",
+  totalCount:      "MEM",
+  consolidations:  "CNS",
 
   // MCP
-  serversTotal:    "srv",
-  serversActive:   "act",
-  toolsTotal:      "tls",
-  serversFailed:   "err",
+  serversTotal:    "SRV",
+  serversActive:   "ACT",
+  toolsTotal:      "TLS",
+  serversFailed:   "ERR",
 
   // Ralph
-  activeLoops:     "",
-  totalIterations: "",
-  loopStatus:      "",
+  activeLoops:     "LPS",
+  totalIterations: "ITR",
+  loopStatus:      "STS",
 
   // Workflow
-  currentCommand:  "",
-  sandboxLevel:    "sbx",
-  commandDuration: "dur",
+  currentCommand:  "CMD",
+  sandboxLevel:    "SBX",
+  commandDuration: "DUR",
 
   // Kanboard
-  docsCount:       "doc",
-  tasksDone:       "✓",
-  tasksTotal:      "tsk",
-  taskPct:         "pct",
+  docsCount:       "DOC",
+  tasksDone:       "DNE",
+  tasksTotal:      "TSK",
+  taskPct:         "PCT",
 
   // Notify
-  platformsEnabled:"ntf",
-  lastSent:        "lst",
+  platformsEnabled:"NTF",
+  lastSent:        "LST",
 
   // Extension status
-  extensionStatuses:"ext",
+  extensionStatuses:"EXT",
 
   separator:       "|",
 };

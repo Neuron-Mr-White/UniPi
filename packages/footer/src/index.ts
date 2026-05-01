@@ -26,7 +26,7 @@ import { NOTIFY_SEGMENTS } from "./segments/notify.js";
 import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 
 import type { FooterGroup, FooterSegment } from "./types.js";
-import { getThinkingLevel, rainbowBorder } from "./segments/core.js";
+import { rainbowBorder } from "./segments/core.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
@@ -178,7 +178,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
     };
   }, { placement: "aboveEditor" });
 
-  // Secondary row widget + rainbow input border for xhigh thinking
+  // Secondary row widget
   ctx.ui.setWidget("footer-secondary", (_tui: any, _theme: Theme) => {
     return {
       dispose() {},
@@ -189,12 +189,6 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
         if (!state.enabled || !state.piContext) return [];
 
         const lines: string[] = [];
-
-        // Rainbow border for input bar when thinking level is xhigh
-        const thinkingLevel = getThinkingLevel(state.piContext);
-        if (thinkingLevel === "xhigh") {
-          lines.push(rainbowBorder(width));
-        }
 
         const layout = state.renderer.computeLayout(width);
         if (layout.secondaryContent) {

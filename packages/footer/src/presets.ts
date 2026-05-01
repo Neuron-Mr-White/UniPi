@@ -12,7 +12,7 @@ import { getDefaultColors } from "./rendering/theme.js";
 /** Default preset — balanced view */
 const DEFAULT_PRESET: PresetDef = {
   leftSegments: [
-    "model", "thinking", "path", "git", "context_pct", "cost",
+    "model", "api_state", "tool_count", "git", "context_pct", "cost",
   ],
   rightSegments: [
     "compactions", "tokens_saved", "project_count", "loop_status",
@@ -27,7 +27,7 @@ const DEFAULT_PRESET: PresetDef = {
 /** Minimal preset — just the essentials */
 const MINIMAL_PRESET: PresetDef = {
   leftSegments: [
-    "path", "git", "context_pct",
+    "git", "context_pct",
   ],
   rightSegments: [],
   secondarySegments: [],
@@ -51,7 +51,7 @@ const COMPACT_PRESET: PresetDef = {
 /** Full preset — everything */
 const FULL_PRESET: PresetDef = {
   leftSegments: [
-    "model", "thinking", "path", "git", "context_pct", "cost",
+    "model", "api_state", "tool_count", "git", "context_pct", "cost",
     "tokens_total", "tokens_in", "tokens_out",
   ],
   rightSegments: [
@@ -65,7 +65,6 @@ const FULL_PRESET: PresetDef = {
     "extension_statuses",
   ],
   secondarySegments: [
-    "hostname", "time",
     "platforms_enabled", "last_sent",
   ],
   separator: "powerline-thin",
@@ -75,7 +74,7 @@ const FULL_PRESET: PresetDef = {
 /** Nerd preset — maximum detail for Nerd Font users */
 const NERD_PRESET: PresetDef = {
   leftSegments: [
-    "model", "thinking", "path", "git", "context_pct", "cost",
+    "model", "api_state", "tool_count", "git", "context_pct", "cost",
     "tokens_total",
   ],
   rightSegments: [
@@ -88,7 +87,6 @@ const NERD_PRESET: PresetDef = {
     "extension_statuses",
   ],
   secondarySegments: [
-    "hostname", "time",
     "compression_ratio", "indexed_docs",
     "platforms_enabled", "last_sent",
   ],
@@ -99,7 +97,7 @@ const NERD_PRESET: PresetDef = {
 /** ASCII preset — safe for any terminal */
 const ASCII_PRESET: PresetDef = {
   leftSegments: [
-    "model", "path", "git", "context_pct", "cost",
+    "model", "git", "context_pct", "cost",
   ],
   rightSegments: [
     "compactions", "tokens_saved", "project_count",

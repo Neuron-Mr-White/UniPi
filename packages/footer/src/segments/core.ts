@@ -1,13 +1,10 @@
 /**
  * @pi-unipi/footer — Core segments
  *
- * Segment renderers for the core group: model, thinking, path, git,
- * context_pct, cost, tokens_total, tokens_in, tokens_out, session,
- * hostname, time.
+ * Segment renderers for the core group: model, api_state, tool_count, git,
+ * context_pct, cost, tokens_total, tokens_in, tokens_out.
  */
 
-import { hostname as osHostname } from "node:os";
-import { basename } from "node:path";
 import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColor } from "../types.js";
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
@@ -61,9 +58,9 @@ function getUsageStats(piContext: unknown): UsageStats {
   return { input, output, cacheRead, cacheWrite, cost };
 }
 
-// ─── Rainbow helpers for xhigh thinking level ───────────────────────────────
+// ─── Rainbow helpers (kept for potential future use) ─────────────────────────
 
-/** ANSI 256-color rainbow palette for xhigh thinking level */
+/** ANSI 256-color rainbow palette */
 const RAINBOW_COLORS = [
   "\x1b[38;5;196m", // red
   "\x1b[38;5;202m", // orange
@@ -100,14 +97,6 @@ export function rainbowBorder(width: number): string {
   return result;
 }
 
-/** Get the current thinking level from piContext */
-export function getThinkingLevel(piContext: unknown): string {
-  const piCtx = piContext as Record<string, unknown> | undefined;
-  return typeof piCtx?.getThinkingLevel === "function"
-    ? (piCtx as any).getThinkingLevel()
-    : "off";
-}
-
 // ─── Segment Renderers ──────────────────────────────────────────────────────
 
 function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -121,49 +110,20 @@ function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
   return { content: color(ctx, "model", content), visible: true };
 }
 
-function renderThinkingSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const thinkingLevel = getThinkingLevel(ctx.piContext);
-
-  if (thinkingLevel === "off") return { content: "", visible: false };
-
-  const levelText: Record<string, string> = {
-    minimal: "min", low: "low", medium: "med", high: "high", xhigh: "xhigh",
-  };
-  const label = levelText[thinkingLevel] || thinkingLevel;
-  const icon = getIcon("thinking");
-  const text = `think:${label}`;
-  const content = icon ? `${icon} ${text}` : text;
-
-  // xhigh uses rainbow coloring
-  if (thinkingLevel === "xhigh") {
-    return { content: rainbowText(content), visible: true };
-  }
-
-  let semanticColor: SemanticColor = "thinking";
-  if (thinkingLevel === "minimal") semanticColor = "thinkingMinimal";
-  else if (thinkingLevel === "low") semanticColor = "thinkingLow";
-  else if (thinkingLevel === "medium") semanticColor = "thinkingMedium";
-  else if (thinkingLevel === "high") semanticColor = "thinkingHigh";
-
-  return { content: color(ctx, semanticColor, content), visible: true };
+function renderApiStateSegment(ctx: FooterSegmentContext): RenderedSegment {
+  // API state is not directly exposed in piContext yet.
+  // Show a placeholder that indicates the segment exists.
+  // TODO: Connect to actual API state when pi exposes it.
+  const content = withIcon("apiState", "ok");
+  return { content: color(ctx, "model", content), visible: true };
 }
 
-function renderPathSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
-  const cwd = (piCtx?.cwd as string) || process.cwd();
-  const home = process.env.HOME || process.env.USERPROFILE;
-  let pwd = cwd;
-
-  if (home && pwd.startsWith(home)) {
-    pwd = `~${pwd.slice(home.length)}`;
-  }
-  // For brevity, show basename by default
-  if (pwd.length > 30) {
-    pwd = `…${pwd.slice(-29)}`;
-  }
-
-  const content = withIcon("path", pwd);
-  return { content: color(ctx, "path", content), visible: true };
+function renderToolCountSegment(ctx: FooterSegmentContext): RenderedSegment {
+  // Tool count is not directly exposed in piContext yet.
+  // Show a placeholder that indicates the segment exists.
+  // TODO: Connect to actual tool count when pi exposes it.
+  const content = withIcon("toolCount", "—");
+  return { content: color(ctx, "model", content), visible: true };
 }
 
 function renderGitSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -242,42 +202,18 @@ function renderTokensSegment(variant: "total" | "in" | "out"): (ctx: FooterSegme
   };
 }
 
-function renderSessionSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
-  const sessionId = (piCtx?.sessionManager as any)?.getSessionId?.();
-  const display = sessionId?.slice(0, 8) || "new";
-  const content = withIcon("session", display);
-  return { content: color(ctx, "model", content), visible: true };
-}
 
-function renderHostnameSegment(_ctx: FooterSegmentContext): RenderedSegment {
-  const name = osHostname().split(".")[0];
-  const content = withIcon("hostname", name);
-  return { content, visible: true };
-}
-
-function renderTimeSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const now = new Date();
-  const hours = now.getHours();
-  const mins = now.getMinutes().toString().padStart(2, "0");
-  const timeStr = `${hours}:${mins}`;
-  const content = withIcon("time", timeStr);
-  return { content, visible: true };
-}
 
 // ─── Core segments array ────────────────────────────────────────────────────
 
 export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "model", label: "Model", icon: "", render: renderModelSegment, defaultShow: true },
-  { id: "thinking", label: "Thinking", icon: "", render: renderThinkingSegment, defaultShow: true },
-  { id: "path", label: "Path", icon: "", render: renderPathSegment, defaultShow: true },
+  { id: "api_state", label: "API State", icon: "", render: renderApiStateSegment, defaultShow: true },
+  { id: "tool_count", label: "Tool Count", icon: "", render: renderToolCountSegment, defaultShow: true },
   { id: "git", label: "Git", icon: "", render: renderGitSegment, defaultShow: true },
   { id: "context_pct", label: "Context %", icon: "", render: renderContextPctSegment, defaultShow: true },
   { id: "cost", label: "Cost", icon: "", render: renderCostSegment, defaultShow: true },
   { id: "tokens_total", label: "Tokens Total", icon: "", render: renderTokensSegment("total"), defaultShow: false },
   { id: "tokens_in", label: "Tokens In", icon: "", render: renderTokensSegment("in"), defaultShow: false },
   { id: "tokens_out", label: "Tokens Out", icon: "", render: renderTokensSegment("out"), defaultShow: false },
-  { id: "session", label: "Session", icon: "", render: renderSessionSegment, defaultShow: false },
-  { id: "hostname", label: "Hostname", icon: "", render: renderHostnameSegment, defaultShow: false },
-  { id: "time", label: "Time", icon: "", render: renderTimeSegment, defaultShow: false },
 ];
