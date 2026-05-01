@@ -7,6 +7,8 @@
  */
 
 import { readFileSync } from "fs";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { discoverReadmes, resolveReadmePath } from "../readme.js";
 import { renderMarkdown } from "../markdown.js";
 import type { ReadmeEntry } from "../../types.js";
@@ -20,33 +22,13 @@ interface ReadmeState {
   listScroll: number;
   contentScroll: number;
   contentLines: string[];
-  pendingG: boolean;
 }
 
-/** ANSI codes */
-const ESC = "\x1b";
-const BOLD = `${ESC}[1m`;
-const DIM = `${ESC}[2m`;
-const RESET = `${ESC}[0m`;
-
-/** Truncate string to visible width */
-function trunc(text: string, width: number): string {
-  let vw = 0;
-  let result = "";
-  let inEsc = false;
-  for (const ch of text) {
-    if (ch === "\x1b") { inEsc = true; result += ch; continue; }
-    if (inEsc) { result += ch; if (ch === "m") inEsc = false; continue; }
-    if (vw >= width) break;
-    result += ch;
-    vw++;
-  }
-  return result;
-}
-
-/** Pad string to visible width */
+/**
+ * Pad content to exact visible width.
+ */
 function padVisible(content: string, targetWidth: number): string {
-  const vw = content.replace(/\x1b\[[0-9;]*m/g, "").length;
+  const vw = visibleWidth(content);
   const pad = Math.max(0, targetWidth - vw);
   return content + " ".repeat(pad);
 }
@@ -57,7 +39,7 @@ function padVisible(content: string, targetWidth: number): string {
 export function renderReadmeOverlay(params?: { openDirect?: string }) {
   return (
     tui: any,
-    _theme: any,
+    theme: Theme,
     _kb: any,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
@@ -68,7 +50,6 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
       listScroll: 0,
       contentScroll: 0,
       contentLines: [],
-      pendingG: false,
     };
 
     let loaded = false;
@@ -80,7 +61,7 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
         const readmePath = resolveReadmePath(params.openDirect);
         if (readmePath) {
           const content = readFileSync(readmePath, "utf-8");
-          state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 2);
+          state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 4);
           state.view = "content";
         }
       }
@@ -90,29 +71,48 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
     const render = (width: number): string[] => {
       ensureLoaded();
 
+      const innerWidth = Math.max(22, width - 2);
       const lines: string[] = [];
-      lines.push(trunc(` 📖 README Browser `, width));
-      lines.push("─".repeat(width));
 
+      // ── Header ──────────────────────────────────────────────────────
+      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible(theme.fg("accent", theme.bold(" 📖 README Browser ")), innerWidth) +
+        theme.fg("accent", "│"),
+      );
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
+
+      // ── Content ─────────────────────────────────────────────────────
       if (state.view === "list") {
-        renderListView(lines, width);
+        renderListView(lines, innerWidth);
       } else {
-        renderContentView(lines, width);
+        renderContentView(lines, innerWidth);
       }
 
-      lines.push("─".repeat(width));
+      // ── Footer ──────────────────────────────────────────────────────
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
       const footer =
         state.view === "list"
-          ? " j/k: navigate  Enter: read  q/Esc: close "
-          : " j/k: scroll  q/Esc: back to list ";
-      lines.push(trunc(footer, width));
+          ? ` ${theme.fg("accent", "j/k")} navigate  ${theme.fg("success", "Enter")} read  ${theme.fg("error", "q/Esc")} close`
+          : ` ${theme.fg("accent", "j/k")} scroll  ${theme.fg("error", "q/Esc")} back to list`;
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible(truncateToWidth(footer, innerWidth), innerWidth) +
+        theme.fg("accent", "│"),
+      );
+      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
 
       return lines;
     };
 
-    const renderListView = (lines: string[], width: number) => {
+    const renderListView = (lines: string[], innerWidth: number) => {
       if (state.entries.length === 0) {
-        lines.push(trunc("  No README files found.", width));
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(theme.fg("muted", "  No README files found."), innerWidth) +
+          theme.fg("accent", "│"),
+        );
         return;
       }
 
@@ -128,26 +128,32 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
       const visible = state.entries.slice(state.listScroll, state.listScroll + maxLines);
 
       for (let i = 0; i < visible.length; i++) {
-        const entry = visible[i];
+        const entry = visible[i]!;
         const globalIdx = state.listScroll + i;
         const selected = globalIdx === state.listIndex;
-        const prefix = selected ? " ▸ " : "   ";
+        const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
 
-        const name = `${BOLD}${entry.name}${RESET}`;
-        const version = `${DIM}v${entry.version}${RESET}`;
-        const line = `${prefix}${name}  ${version}`;
+        const name = selected ? theme.bold(entry.name) : theme.fg("text", entry.name);
+        const version = theme.fg("muted", `v${entry.version}`);
+        const line = ` ${prefix}${name}  ${version}`;
         lines.push(
-          trunc(
-            selected ? `${ESC}[7m${padVisible(line, width)}${ESC}[0m` : line,
-            width,
-          ),
+          theme.fg("accent", "│") +
+          padVisible(
+            selected ? theme.bg("selectedBg", truncateToWidth(line, innerWidth)) : truncateToWidth(line, innerWidth),
+            innerWidth,
+          ) +
+          theme.fg("accent", "│"),
         );
       }
     };
 
-    const renderContentView = (lines: string[], width: number) => {
+    const renderContentView = (lines: string[], innerWidth: number) => {
       if (state.contentLines.length === 0) {
-        lines.push(trunc("  No content available.", width));
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(theme.fg("muted", "  No content available."), innerWidth) +
+          theme.fg("accent", "│"),
+        );
         return;
       }
 
@@ -158,20 +164,25 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
 
       const visible = state.contentLines.slice(state.contentScroll, state.contentScroll + maxLines);
       for (const line of visible) {
-        lines.push(trunc(` ${line}`, width));
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(truncateToWidth(` ${line}`, innerWidth), innerWidth) +
+          theme.fg("accent", "│"),
+        );
       }
     };
 
     const handleInput = (data: string) => {
       ensureLoaded();
-      const key = data.toLowerCase();
 
-      if ((key === "q" || key === "\x1b") && state.view === "list") {
+      // Close from list view
+      if ((matchesKey(data, Key.escape) || data === "q") && state.view === "list") {
         done({ viewed: true });
         return;
       }
 
-      if ((key === "q" || key === "\x1b") && state.view === "content") {
+      // Back from content view
+      if ((matchesKey(data, Key.escape) || data === "q") && state.view === "content") {
         if (params?.openDirect) {
           done({ viewed: true });
           return;
@@ -183,16 +194,16 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
       }
 
       if (state.view === "list") {
-        if (key === "j" || key === "\x1b[B") {
+        if (matchesKey(data, Key.down) || data === "j") {
           state.listIndex = Math.min(state.listIndex + 1, state.entries.length - 1);
-        } else if (key === "k" || key === "\x1b[A") {
+        } else if (matchesKey(data, Key.up) || data === "k") {
           state.listIndex = Math.max(state.listIndex - 1, 0);
-        } else if (key === "\r" || key === "\n") {
+        } else if (matchesKey(data, Key.enter)) {
           if (state.entries.length > 0) {
-            const entry = state.entries[state.listIndex];
+            const entry = state.entries[state.listIndex]!;
             try {
               const content = readFileSync(entry.path, "utf-8");
-              state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 2);
+              state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 4);
               state.contentScroll = 0;
               state.view = "content";
             } catch {
@@ -200,31 +211,19 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
               state.view = "content";
             }
           }
-        } else if (key === "g") {
-          if (state.pendingG) {
-            state.listIndex = 0;
-            state.pendingG = false;
-          } else {
-            state.pendingG = true;
-            setTimeout(() => { state.pendingG = false; }, 500);
-          }
-        } else if (key === "G") {
+        } else if (data === "g") {
+          state.listIndex = 0;
+        } else if (data === "G") {
           state.listIndex = state.entries.length - 1;
         }
       } else {
-        if (key === "j" || key === "\x1b[B") {
+        if (matchesKey(data, Key.down) || data === "j") {
           state.contentScroll++;
-        } else if (key === "k" || key === "\x1b[A") {
+        } else if (matchesKey(data, Key.up) || data === "k") {
           state.contentScroll = Math.max(0, state.contentScroll - 1);
-        } else if (key === "g") {
-          if (state.pendingG) {
-            state.contentScroll = 0;
-            state.pendingG = false;
-          } else {
-            state.pendingG = true;
-            setTimeout(() => { state.pendingG = false; }, 500);
-          }
-        } else if (key === "G") {
+        } else if (data === "g") {
+          state.contentScroll = 0;
+        } else if (data === "G") {
           state.contentScroll = 999999;
         }
       }

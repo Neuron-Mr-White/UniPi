@@ -7,6 +7,8 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Theme } from "@mariozechner/pi-coding-agent";
 import { parseChangelog } from "../changelog.js";
 import { getPackageVersion } from "@pi-unipi/core";
 import type { ChangelogEntry } from "../../types.js";
@@ -20,35 +22,13 @@ interface ChangelogState {
   listScroll: number;
   detailScroll: number;
   installedVersion: string;
-  pendingG: boolean;
 }
 
-/** ANSI codes */
-const ESC = "\x1b";
-const BOLD = `${ESC}[1m`;
-const DIM = `${ESC}[2m`;
-const TEAL = `${ESC}[36m`;
-const AMBER = `${ESC}[33m`;
-const RESET = `${ESC}[0m`;
-
-/** Truncate string to visible width */
-function trunc(text: string, width: number): string {
-  let vw = 0;
-  let result = "";
-  let inEsc = false;
-  for (const ch of text) {
-    if (ch === "\x1b") { inEsc = true; result += ch; continue; }
-    if (inEsc) { result += ch; if (ch === "m") inEsc = false; continue; }
-    if (vw >= width) break;
-    result += ch;
-    vw++;
-  }
-  return result;
-}
-
-/** Pad string to visible width */
+/**
+ * Pad content to exact visible width.
+ */
 function padVisible(content: string, targetWidth: number): string {
-  const vw = content.replace(/\x1b\[[0-9;]*m/g, "").length;
+  const vw = visibleWidth(content);
   const pad = Math.max(0, targetWidth - vw);
   return content + " ".repeat(pad);
 }
@@ -59,7 +39,7 @@ function padVisible(content: string, targetWidth: number): string {
 export function renderChangelogOverlay() {
   return (
     tui: any,
-    _theme: any,
+    theme: Theme,
     _kb: any,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
@@ -74,7 +54,6 @@ export function renderChangelogOverlay() {
       listScroll: 0,
       detailScroll: 0,
       installedVersion,
-      pendingG: false,
     };
 
     // Load changelog
@@ -91,39 +70,55 @@ export function renderChangelogOverlay() {
     const render = (width: number): string[] => {
       ensureLoaded();
 
+      const innerWidth = Math.max(22, width - 2);
       const lines: string[] = [];
 
-      // Header
-      lines.push(trunc(` 📋 Changelog `, width));
-      lines.push("─".repeat(width));
+      // ── Header ──────────────────────────────────────────────────────
+      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible(theme.fg("accent", theme.bold(" 📋 Changelog ")), innerWidth) +
+        theme.fg("accent", "│"),
+      );
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
 
+      // ── Content ─────────────────────────────────────────────────────
       if (state.view === "list") {
-        renderListView(lines, width);
+        renderListView(lines, innerWidth);
       } else {
-        renderDetailView(lines, width);
+        renderDetailView(lines, innerWidth);
       }
 
-      // Footer
-      lines.push("─".repeat(width));
+      // ── Footer ──────────────────────────────────────────────────────
+      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
       const footer =
         state.view === "list"
-          ? " j/k: navigate  Enter: view details  q/Esc: close "
-          : " j/k: scroll  q/Esc: back to list ";
-      lines.push(trunc(footer, width));
+          ? ` ${theme.fg("accent", "j/k")} navigate  ${theme.fg("success", "Enter")} view details  ${theme.fg("error", "q/Esc")} close`
+          : ` ${theme.fg("accent", "j/k")} scroll  ${theme.fg("error", "q/Esc")} back to list`;
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible(truncateToWidth(footer, innerWidth), innerWidth) +
+        theme.fg("accent", "│"),
+      );
+      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
 
       return lines;
     };
 
-    const renderListView = (lines: string[], width: number) => {
+    const renderListView = (lines: string[], innerWidth: number) => {
       if (state.entries.length === 0) {
-        lines.push(trunc("  No changelog available.", width));
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(theme.fg("muted", "  No changelog available."), innerWidth) +
+          theme.fg("accent", "│"),
+        );
         return;
       }
 
       state.listIndex = Math.min(state.listIndex, state.entries.length - 1);
       state.listIndex = Math.max(0, state.listIndex);
 
-      // Show visible entries (assume max ~20 lines for content)
+      // Show visible entries
       const maxLines = 20;
       if (state.listIndex < state.listScroll) state.listScroll = state.listIndex;
       if (state.listIndex >= state.listScroll + maxLines) {
@@ -133,50 +128,64 @@ export function renderChangelogOverlay() {
       const visible = state.entries.slice(state.listScroll, state.listScroll + maxLines);
 
       for (let i = 0; i < visible.length; i++) {
-        const entry = visible[i];
+        const entry = visible[i]!;
         const globalIdx = state.listScroll + i;
         const selected = globalIdx === state.listIndex;
-        const prefix = selected ? " ▸ " : "   ";
+        const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
 
         let label: string;
         if (entry.version === "Unreleased") {
-          label = `${DIM}Unreleased${RESET}`;
+          label = theme.fg("muted", "Unreleased");
         } else if (entry.version === state.installedVersion) {
-          label = `${TEAL}✓ Current${RESET}`;
+          label = theme.fg("success", "✓ Current");
         } else {
           const pa = entry.version.split(".").map(Number);
           const pb = state.installedVersion.split(".").map(Number);
           const isNewer =
-            pa[0] > pb[0] ||
-            (pa[0] === pb[0] && pa[1] > pb[1]) ||
-            (pa[0] === pb[0] && pa[1] === pb[1] && pa[2] > pb[2]);
-          label = isNewer ? `${AMBER}↑ New${RESET}` : "";
+            pa[0]! > pb[0]! ||
+            (pa[0] === pb[0] && pa[1]! > pb[1]!) ||
+            (pa[0] === pb[0] && pa[1] === pb[1] && pa[2]! > pb[2]!);
+          label = isNewer ? theme.fg("warning", "↑ New") : "";
         }
 
-        const version = `${BOLD}${entry.version}${RESET}`;
-        const date = entry.date ? ` — ${entry.date}` : "";
-        const line = `${prefix}${version}${date}  ${label}`;
+        const version = selected ? theme.bold(entry.version) : theme.fg("text", entry.version);
+        const date = entry.date ? ` — ${theme.fg("muted", entry.date)}` : "";
+        const line = ` ${prefix}${version}${date}  ${label}`;
         lines.push(
-          trunc(
-            selected ? `${ESC}[7m${padVisible(line, width)}${ESC}[0m` : line,
-            width,
-          ),
+          theme.fg("accent", "│") +
+          padVisible(
+            selected ? theme.bg("selectedBg", truncateToWidth(line, innerWidth)) : truncateToWidth(line, innerWidth),
+            innerWidth,
+          ) +
+          theme.fg("accent", "│"),
         );
       }
     };
 
-    const renderDetailView = (lines: string[], width: number) => {
+    const renderDetailView = (lines: string[], innerWidth: number) => {
       const entry = state.entries[state.listIndex];
       if (!entry) {
-        lines.push(trunc("  No entry selected.", width));
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(theme.fg("muted", "  No entry selected."), innerWidth) +
+          theme.fg("accent", "│"),
+        );
         return;
       }
 
       const title = entry.date
-        ? `${BOLD}${entry.version}${RESET} — ${entry.date}`
-        : `${BOLD}${entry.version}${RESET} — Unreleased`;
-      lines.push(trunc(`  ${title}`, width));
-      lines.push("");
+        ? `${theme.bold(entry.version)} — ${theme.fg("muted", entry.date)}`
+        : `${theme.bold(entry.version)} — ${theme.fg("muted", "Unreleased")}`;
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible(truncateToWidth(`  ${title}`, innerWidth), innerWidth) +
+        theme.fg("accent", "│"),
+      );
+      lines.push(
+        theme.fg("accent", "│") +
+        padVisible("", innerWidth) +
+        theme.fg("accent", "│"),
+      );
 
       const bodyLines = entry.body.split("\n");
       const maxScroll = Math.max(0, bodyLines.length - 15);
@@ -186,33 +195,36 @@ export function renderChangelogOverlay() {
       const visible = bodyLines.slice(state.detailScroll, state.detailScroll + 15);
       for (const line of visible) {
         const trimmed = line.trim();
+        let styled: string;
         if (trimmed.startsWith("### ")) {
-          lines.push(trunc(`  ${BOLD}${trimmed.slice(4)}${RESET}`, width));
+          styled = `  ${theme.bold(trimmed.slice(4))}`;
         } else if (trimmed.startsWith("- ")) {
-          const content = trimmed.slice(2).replace(/`([^`]+)`/g, (_, code) => `${DIM}${code}${RESET}`);
-          lines.push(trunc(`    • ${content}`, width));
+          const content = trimmed.slice(2).replace(/`([^`]+)`/g, (_, code) => theme.fg("muted", code));
+          styled = `    • ${content}`;
         } else if (!trimmed) {
-          lines.push("");
+          styled = "";
         } else {
-          lines.push(trunc(`  ${trimmed}`, width));
+          styled = `  ${trimmed}`;
         }
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(truncateToWidth(styled, innerWidth), innerWidth) +
+          theme.fg("accent", "│"),
+        );
       }
     };
 
     const handleInput = (data: string) => {
       ensureLoaded();
 
-      // Parse key from data string
-      const key = data.toLowerCase();
-
       // Close from list view
-      if ((key === "q" || key === "\x1b") && state.view === "list") {
+      if ((matchesKey(data, Key.escape) || data === "q") && state.view === "list") {
         done({ viewed: true });
         return;
       }
 
       // Back from detail view
-      if ((key === "q" || key === "\x1b") && state.view === "detail") {
+      if ((matchesKey(data, Key.escape) || data === "q") && state.view === "detail") {
         state.view = "list";
         state.detailScroll = 0;
         tui.requestRender();
@@ -221,40 +233,28 @@ export function renderChangelogOverlay() {
 
       // Navigation
       if (state.view === "list") {
-        if (key === "j" || key === "\x1b[B") {
+        if (matchesKey(data, Key.down) || data === "j") {
           state.listIndex = Math.min(state.listIndex + 1, state.entries.length - 1);
-        } else if (key === "k" || key === "\x1b[A") {
+        } else if (matchesKey(data, Key.up) || data === "k") {
           state.listIndex = Math.max(state.listIndex - 1, 0);
-        } else if (key === "\r" || key === "\n") {
+        } else if (matchesKey(data, Key.enter)) {
           if (state.entries.length > 0) {
             state.view = "detail";
             state.detailScroll = 0;
           }
-        } else if (key === "g") {
-          if (state.pendingG) {
-            state.listIndex = 0;
-            state.pendingG = false;
-          } else {
-            state.pendingG = true;
-            setTimeout(() => { state.pendingG = false; }, 500);
-          }
-        } else if (key === "G") {
+        } else if (data === "g") {
+          state.listIndex = 0;
+        } else if (data === "G") {
           state.listIndex = state.entries.length - 1;
         }
       } else {
-        if (key === "j" || key === "\x1b[B") {
+        if (matchesKey(data, Key.down) || data === "j") {
           state.detailScroll++;
-        } else if (key === "k" || key === "\x1b[A") {
+        } else if (matchesKey(data, Key.up) || data === "k") {
           state.detailScroll = Math.max(0, state.detailScroll - 1);
-        } else if (key === "g") {
-          if (state.pendingG) {
-            state.detailScroll = 0;
-            state.pendingG = false;
-          } else {
-            state.pendingG = true;
-            setTimeout(() => { state.pendingG = false; }, 500);
-          }
-        } else if (key === "G") {
+        } else if (data === "g") {
+          state.detailScroll = 0;
+        } else if (data === "G") {
           state.detailScroll = 999999;
         }
       }
