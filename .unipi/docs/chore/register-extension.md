@@ -217,7 +217,43 @@ if (registry) {
 
 Expected: Info-screen group registered with stats.
 
-### Step 8: Emit Module Ready Event
+### Step 8: Add Footer Registration (if package has live data)
+
+If the package exposes live stats or status data, register a footer group in its `src/index.ts`:
+
+```typescript
+// Register footer group
+const globalObj = globalThis as any;
+const footerRegistry = globalObj.__unipi_footer_registry;
+if (footerRegistry) {
+  footerRegistry.registerGroup({
+    id: "<name>",           // Unique group ID
+    name: "<Display Name>", // Human-readable name
+    icon: "📦",             // Emoji icon
+    priority: <number>,     // Lower = leftmost in footer
+    segments: [
+      { id: "seg1", label: "Seg 1", show: true },
+      { id: "seg2", label: "Seg 2", show: true },
+    ],
+    dataProvider: async () => {
+      return {
+        seg1: { value: "...", detail: "..." },
+        seg2: { value: "...", detail: "..." },
+      };
+    },
+  });
+}
+```
+
+**Footer vs Info-Screen:**
+- **Footer** — compact live stats in the status bar (bottom of screen). Use for: counts, status indicators, quick metrics.
+- **Info-screen** — detailed dashboard overlay (full screen). Use for: comprehensive stats, configuration status, health checks.
+
+Some packages register both (e.g., `compactor`, `memory`). Some only need one. Choose based on what data you expose.
+
+Expected: Footer group registered with segments (if applicable).
+
+### Step 9: Emit Module Ready Event
 
 In the package's `src/index.ts`, emit the module ready event:
 
@@ -235,7 +271,7 @@ emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
 
 Expected: Module ready event emitted with commands list.
 
-### Step 9: Verify Registration
+### Step 10: Verify Registration
 
 Run type check:
 ```bash
@@ -244,9 +280,9 @@ npx tsc --noEmit
 
 Expected: No errors.
 
-Expected: Info screen shows the new module with its stats.
+Expected: Info screen shows the new module with its stats. Footer shows the new module's segments (if registered).
 
-### Step 10: Report Results
+### Step 11: Report Results
 
 Report the final state:
 
@@ -267,7 +303,7 @@ Report the final state:
 - packages/core/constants.ts (MODULES entry)
 - packages/autocomplete/src/constants.ts (5 updates)
 - packages/unipi/index.ts (import + call)
-- packages/<name>/src/index.ts (info-screen + module ready)
+- packages/<name>/src/index.ts (info-screen + footer + module ready)
 ```
 
 ## Failure Handling
@@ -303,4 +339,5 @@ After successful completion:
 - **Color palette**: Avoid duplicating existing colors — check PACKAGE_COLORS before assigning
 - **Priority convention**: workflow=10, ralph=20, memory=30, milestone=40, mcp=50, utility=60, ask-user=70, info=80, web-api=90, compact=100, notify=110, kanboard=120, input-shortcuts=115
 - **Info-screen is optional**: Some packages (like workflow, command-enchantment) don't need info-screen groups
+- **Footer is optional**: Only packages with live stats/status need footer groups
 - **MODULES constant**: Must exist in `packages/core/constants.ts` for event emission — add if missing

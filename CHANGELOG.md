@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-05-01
+
 ### Added
 - `@pi-unipi/updater` package — auto-updater, changelog browser, and readme browser
 - `/unipi:readme` command — browse package README.md files in TUI overlay
@@ -16,6 +18,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Skip-version persistence — skip a version and re-prompt only when newer version appears
 - Auto-update mode with countdown and cancel option
 - Markdown terminal renderer for changelog and readme content
+- `@pi-unipi/input-shortcuts` package — keyboard shortcuts with chord overlay, undo/redo, clipboard
+- `/unipi:stash-settings` command — configure keyboard shortcuts and input behavior
+- Project-level ntfy configuration — each project can use its own ntfy.json
+- Theme-aware Markdown rendering in updater TUI overlays
+
+### Fixed
+- Updater TUI overlays (`readme-overlay.ts`, `changelog-overlay.ts`, `update-overlay.ts`) — replaced `data.toLowerCase()` with `matchesKey()` to fix arrow key sequences and uppercase keys like `G`
+- Updater TUI overlays — replaced raw ANSI codes with `theme.fg()`, `theme.bold()`, `theme.bg()` for consistent styling
+- `input-shortcuts`: suppress input listener while overlay is open to prevent background input
+- `input-shortcuts`: suppress input listener during undo/redo operations
+- `input-shortcuts`: remove undo throttle — allow consecutive undos without delay
+- `input-shortcuts`: redo undo snapshot logic — 3 independent triggers for reliable state capture
+- `input-shortcuts`: undo for typed text + cut/copy deferred action pattern
+- `input-shortcuts`: overlay blocks editor API — refactor to deferred action pattern
+- `input-shortcuts`: remove chord timeout — overlay stays open until ESC or action
+- `input-shortcuts`: use `unipi:` prefix in `registerCommand()` calls
+- `input-shortcuts`: register extension — add barrel file, unipi entry, command registry, info-screen
+- `footer`: use icon style system in ralph and workflow segments
+- `footer`: remove duplicate icon from WEB segment
+- `footer`: add 1-second refresh timer so time segment updates
+- `footer`: uppercase status short labels and fix duplicate memory entry
+
+### Changed
+- Updater TUI overlays use `truncateToWidth()` and `visibleWidth()` from `@mariozechner/pi-tui` instead of custom implementations
+- Updater TUI overlays use proper box drawing frame (`╭╮╰╯│├┤`) matching other overlays
 
 ## [0.1.15] — 2026-04-30
 

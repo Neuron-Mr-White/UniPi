@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-05-01
+last-run: 2026-05-01 (v0.1.16)
 ---
 
 # Full Release Pipeline
@@ -25,25 +25,26 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.9 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.7 |
-| `packages/btw` | `@pi-unipi/btw` | 0.1.8 |
-| `packages/compactor` | `@pi-unipi/compactor` | 0.2.1 |
-| `packages/core` | `@pi-unipi/core` | 0.1.14 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.20 |
-| `packages/mcp` | `@pi-unipi/mcp` | 0.1.13 |
-| `packages/memory` | `@pi-unipi/memory` | 0.1.12 |
-| `packages/notify` | `@pi-unipi/notify` | 0.1.8 |
-| `packages/ralph` | `@pi-unipi/ralph` | 0.1.9 |
-| `packages/subagents` | `@pi-unipi/subagents` | 0.2.6 |
-| `packages/utility` | `@pi-unipi/utility` | 0.2.7 |
-| `packages/web-api` | `@pi-unipi/web-api` | 0.1.14 |
-| `packages/workflow` | `@pi-unipi/workflow` | 0.1.15 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.7 |
-| `packages/footer` | `@pi-unipi/footer` | 0.1.2 |
-| `packages/milestone` | `@pi-unipi/milestone` | 0.1.7 |
-| `packages/updater` | `@pi-unipi/updater` | 0.1.0 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.15 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.10 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.8 |
+| `packages/btw` | `@pi-unipi/btw` | 0.1.9 |
+| `packages/compactor` | `@pi-unipi/compactor` | 0.2.2 |
+| `packages/core` | `@pi-unipi/core` | 0.1.15 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.21 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 0.1.1 |
+| `packages/mcp` | `@pi-unipi/mcp` | 0.1.14 |
+| `packages/memory` | `@pi-unipi/memory` | 0.1.13 |
+| `packages/notify` | `@pi-unipi/notify` | 0.1.9 |
+| `packages/ralph` | `@pi-unipi/ralph` | 0.1.10 |
+| `packages/subagents` | `@pi-unipi/subagents` | 0.2.7 |
+| `packages/utility` | `@pi-unipi/utility` | 0.2.8 |
+| `packages/web-api` | `@pi-unipi/web-api` | 0.1.15 |
+| `packages/workflow` | `@pi-unipi/workflow` | 0.1.16 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.8 |
+| `packages/footer` | `@pi-unipi/footer` | 0.1.3 |
+| `packages/milestone` | `@pi-unipi/milestone` | 0.1.8 |
+| `packages/updater` | `@pi-unipi/updater` | 0.1.1 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.16 |
 
 ---
 
@@ -280,6 +281,8 @@ Update the root `CHANGELOG.md` to move `[Unreleased]` items into a new versioned
 ```bash
 # Check what's in Unreleased
 grep -A 50 '## \[Unreleased\]' CHANGELOG.md | head -60
+# Get git log since last release
+git log --oneline <last-release-commit>..HEAD
 ```
 
 1. Create a new `## [X.Y.Z] — YYYY-MM-DD` section below `[Unreleased]`
@@ -287,6 +290,25 @@ grep -A 50 '## \[Unreleased\]' CHANGELOG.md | head -60
 3. Add any additional changes discovered from `git log` since last release
 4. Keep `[Unreleased]` empty (with just the heading) for future work
 5. Ensure format follows [Keep a Changelog](https://keepachangelog.com/)
+
+**Changelog Tone — Slightly Technical:**
+- **README** (non-technical): Tell user what command changed, what agent tool added, what behaviour modified. Focus on features, changes, and fixes from user perspective.
+- **CHANGELOG** (slightly technical): Can mention function names, file names, technical details. Use fix/feature/change scope.
+
+Example format:
+```markdown
+### Fixed
+- `updater`: replaced `data.toLowerCase()` with `matchesKey()` in `readme-overlay.ts` to fix arrow key sequences
+- `footer`: added 1-second refresh timer to `FooterGroup` so time segment updates
+- `input-shortcuts`: refactored `ChordOverlay` to use deferred action pattern to unblock editor API
+
+### Added
+- `@pi-unipi/input-shortcuts` package — keyboard shortcuts with chord overlay, undo/redo, clipboard
+- `/unipi:stash-settings` command — configure keyboard shortcuts and input behavior
+
+### Changed
+- Updater TUI overlays use `truncateToWidth()` and `visibleWidth()` from `@mariozechner/pi-tui` instead of custom implementations
+```
 
 Expected: CHANGELOG.md has populated version section and empty `[Unreleased]`.
 

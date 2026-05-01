@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/mcp",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "MCP server management extension for Pi coding agent — browse, add, configure, and use MCP servers",
   "type": "module",
   "license": "MIT",
