@@ -71,7 +71,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   // ─── Register /unipi:stash-settings command ────────────────────────────
 
-  pi.registerCommand("stash-settings", {
+  pi.registerCommand(`unipi:${INPUT_SHORTCUTS_COMMANDS.STASH_SETTINGS}`, {
     description: "Open input shortcuts settings overlay to customize keybindings",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) return;

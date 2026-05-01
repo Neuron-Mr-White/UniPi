@@ -3,6 +3,7 @@ name: register-extension
 type: maintenance
 description: Register a new Unipi extension into command registry, info-screen, and unipi package
 created: 2026-04-29
+updated: 2026-05-01
 ---
 
 # Register Extension
@@ -13,31 +14,100 @@ Register a new Unipi extension into all required registries. This is the canonic
 
 Before running this chore, ensure:
 - [ ] New package exists under `packages/<name>/`
-- [ ] Package has an `index.ts` entry point that exports a default function accepting `ExtensionAPI`
-- [ ] Package registers its commands via `pi.registerCommand()` in its own code
+- [ ] Package has a **root `index.ts`** that re-exports `./src/index.ts` (see Step 0)
+- [ ] Package `src/index.ts` exports a default function accepting `ExtensionAPI`
+- [ ] Package registers its commands via `pi.registerCommand()` with the full `unipi:` prefix
 - [ ] On main branch
 
 ## Steps
 
+### Step 0: Create Root Barrel File (CRITICAL)
+
+Every unipi package **must** have a root `index.ts` that re-exports the entry point. Without this, TypeScript's NodeNext module resolution cannot find the package when imported as `@pi-unipi/<name>`.
+
+Create `packages/<name>/index.ts`:
+
+```typescript
+/**
+ * @pi-unipi/<name> — Re-exports
+ */
+
+export { default } from "./src/index.ts";
+```
+
+**Why:** When npm symlinks the package into `node_modules/@pi-unipi/<name>/`, TypeScript looks for `index.ts` at the package root. If it only exists in `src/index.ts`, the module resolution fails silently — the extension never loads.
+
+**Verification:** After `npm install`, check that `node_modules/@pi-unipi/<name>/index.ts` exists.
+
+Expected: Root barrel file exists and re-exports `./src/index.ts`.
+
 ### Step 1: Read the New Package
 
-Read the package's `index.ts` and any `commands.ts` to extract:
+Read the package's `src/index.ts` and any `commands.ts` to extract:
 - Package name (kebab-case, e.g., `my-package`)
-- All commands it registers (e.g., `unipi:my-cmd`, `unipi:my-cmd-settings`)
+- All commands it registers (must include `unipi:` prefix, e.g., `unipi:my-cmd`)
 - Whether it already has info-screen registration
 
 ```bash
-cat packages/<name>/index.ts
-cat packages/<name>/commands.ts  # if exists
+cat packages/<name>/src/index.ts
+cat packages/<name>/src/commands.ts  # if exists
 ```
 
-Expected: List of all command names and info-screen registration status.
+Expected: List of all command names (with `unipi:` prefix) and info-screen registration status.
 
-### Step 2: Update Command Registry (6 places)
+### Step 2: Ensure Commands Use `unipi:` Prefix
+
+Commands must be registered with the **full `unipi:` prefix** in `pi.registerCommand()`. There are two patterns:
+
+**Pattern A — Direct string (preferred):**
+```typescript
+pi.registerCommand("unipi:my-cmd", {
+  description: "...",
+  handler: async (args, ctx) => { ... },
+});
+```
+
+**Pattern B — Using constants:**
+```typescript
+import { UNIPI_PREFIX, MY_COMMANDS } from "@pi-unipi/core";
+
+pi.registerCommand(`${UNIPI_PREFIX}${MY_COMMANDS.MY_CMD}`, {
+  description: "...",
+  handler: async (args, ctx) => { ... },
+});
+```
+
+**WRONG:** `pi.registerCommand("my-cmd", ...)` — creates `/my-cmd` instead of `/unipi:my-cmd`
+
+Expected: All commands registered with `unipi:` prefix.
+
+### Step 3: Add MODULES Constant (if missing)
+
+In `packages/core/constants.ts`, add the module name if it doesn't exist:
+
+```typescript
+export const MODULES = {
+  // ... existing ...
+  MY_PACKAGE: "@pi-unipi/<name>",
+} as const;
+```
+
+Also add command constants if useful:
+
+```typescript
+export const MY_COMMANDS = {
+  CMD1: "my-cmd",
+  CMD2: "my-cmd-settings",
+} as const;
+```
+
+Expected: MODULES entry exists in core/constants.ts.
+
+### Step 4: Update Command Registry (5 places)
 
 All changes go in `packages/autocomplete/src/constants.ts`:
 
-#### 2a. PACKAGE_ORDER
+#### 4a. PACKAGE_ORDER
 Add the package name to the array (order by display priority):
 ```typescript
 export const PACKAGE_ORDER: string[] = [
@@ -46,7 +116,7 @@ export const PACKAGE_ORDER: string[] = [
 ];
 ```
 
-#### 2b. PACKAGE_COLORS
+#### 4b. PACKAGE_COLORS
 Add ANSI color code for the package:
 ```typescript
 export const PACKAGE_COLORS: Record<string, string> = {
@@ -59,8 +129,8 @@ Color reference:
 - `31` = Red, `32` = Green, `33` = Yellow, `34` = Blue, `35` = Magenta, `36` = Cyan
 - `91-96` = Bright variants
 
-#### 2c. COMMAND_REGISTRY
-Map each command to the package:
+#### 4c. COMMAND_REGISTRY
+Map each command to the package (with `unipi:` prefix):
 ```typescript
 export const COMMAND_REGISTRY: Record<string, string> = {
   // ... existing ...
@@ -69,8 +139,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 };
 ```
 
-#### 2d. COMMAND_DESCRIPTIONS
-Add short descriptions for each command:
+#### 4d. COMMAND_DESCRIPTIONS
+Add short descriptions for each command (with `unipi:` prefix):
 ```typescript
 export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   // ... existing ...
@@ -79,7 +149,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 };
 ```
 
-#### 2e. PACKAGE_LABELS
+#### 4e. PACKAGE_LABELS
 Add pretty name for display:
 ```typescript
 export const PACKAGE_LABELS: Record<string, string> = {
@@ -90,7 +160,7 @@ export const PACKAGE_LABELS: Record<string, string> = {
 
 Expected: All 5 data structures updated with new package and its commands.
 
-### Step 3: Update Unipi Package Entry
+### Step 5: Update Unipi Package Entry
 
 In `packages/unipi/index.ts`, add import and call:
 
@@ -105,9 +175,18 @@ export default function (pi: ExtensionAPI) {
 
 Expected: Package imported and called in the all-in-one entry point.
 
-### Step 4: Add Info-Screen Registration (if missing)
+### Step 6: Install and Verify Symlink
 
-If the package doesn't already register an info-screen group, add this to its `index.ts`:
+```bash
+npm install
+ls node_modules/@pi-unipi/<name>/index.ts  # Must exist
+```
+
+Expected: Symlinked package has root `index.ts`.
+
+### Step 7: Add Info-Screen Registration (if missing)
+
+If the package doesn't already register an info-screen group, add this to its `src/index.ts`:
 
 ```typescript
 // Register info-screen group
@@ -118,7 +197,7 @@ if (registry) {
     id: "<name>",           // Unique group ID
     name: "<Display Name>", // Human-readable name
     icon: "📦",             // Emoji icon
-    priority: <number>,     // Lower = higher in list (10-100)
+    priority: <number>,     // Lower = higher in list (10-120)
     config: {
       showByDefault: true,
       stats: [
@@ -138,45 +217,36 @@ if (registry) {
 
 Expected: Info-screen group registered with stats.
 
-### Step 5: Emit Module Ready Event
+### Step 8: Emit Module Ready Event
 
-In the package's `index.ts`, emit the module ready event:
+In the package's `src/index.ts`, emit the module ready event:
 
 ```typescript
 import { MODULES, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 
 // At end of extension function:
 emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
-  name: MODULES.<NAME>,     // Must exist in core constants.ts
+  name: MODULES.<NAME>,     // Must exist in core constants.ts (Step 3)
   version: "0.1.0",
-  commands: ["unipi:cmd1", "unipi:cmd2"],
+  commands: ["unipi:cmd1", "unipi:cmd2"],  // Full unipi: prefix
   tools: [],
 });
 ```
 
-If `MODULES.<NAME>` doesn't exist, add it to `packages/core/constants.ts`.
-
 Expected: Module ready event emitted with commands list.
 
-### Step 6: Verify Registration
+### Step 9: Verify Registration
 
-Run the unipi entry point to verify:
-
+Run type check:
 ```bash
-pi --no-extensions --no-skills -e packages/unipi/index.ts --command "unipi:info"
+npx tsc --noEmit
 ```
+
+Expected: No errors.
 
 Expected: Info screen shows the new module with its stats.
 
-Also verify autocomplete:
-```bash
-pi --no-extensions --no-skills -e packages/unipi/index.ts
-# Then type /unipi: and check autocomplete shows new commands
-```
-
-Expected: New commands appear in autocomplete with correct package label and color.
-
-### Step 7: Report Results
+### Step 10: Report Results
 
 Report the final state:
 
@@ -193,35 +263,44 @@ Report the final state:
 - Stats: stat1, stat2, ...
 
 ### Files Modified
+- packages/<name>/index.ts (root barrel — NEW)
+- packages/core/constants.ts (MODULES entry)
 - packages/autocomplete/src/constants.ts (5 updates)
 - packages/unipi/index.ts (import + call)
-- packages/<name>/index.ts (info-screen + module ready)
+- packages/<name>/src/index.ts (info-screen + module ready)
 ```
 
 ## Failure Handling
 
 If verification fails:
-1. Check `packages/autocomplete/src/constants.ts` — all 5 structures updated?
-2. Check `packages/unipi/index.ts` — import and call present?
-3. Check package's `index.ts` — info-screen registration and module ready event?
-4. Check `packages/core/constants.ts` — MODULES entry exists?
-5. If error persists after 2 attempts, report to user with full error output.
+1. **Command doesn't appear / outputs as string:** Check `pi.registerCommand()` uses full `unipi:` prefix
+2. **Module not found (TS2307):** Check root `index.ts` barrel file exists and re-exports `./src/index.ts`
+3. **Check `packages/autocomplete/src/constants.ts`** — all 5 structures updated?
+4. **Check `packages/unipi/index.ts`** — import and call present?
+5. **Check package's `src/index.ts`** — info-screen registration and module ready event?
+6. **Check `packages/core/constants.ts`** — MODULES entry exists?
+7. If error persists after 2 attempts, report to user with full error output.
 
 ## Post-conditions
 
 After successful completion:
+- [ ] Root `index.ts` barrel file exists at package root
+- [ ] All commands registered with `unipi:` prefix in `pi.registerCommand()`
 - [ ] All commands in COMMAND_REGISTRY with correct package mapping
 - [ ] PACKAGE_ORDER, PACKAGE_COLORS, PACKAGE_LABELS updated
 - [ ] COMMAND_DESCRIPTIONS populated for all new commands
-- [ ] Package imported and called in unipi/index.ts
+- [ ] MODULES entry in `packages/core/constants.ts`
+- [ ] Package imported and called in `packages/unipi/index.ts`
 - [ ] Info-screen group registered with stats
 - [ ] Module ready event emitted
-- [ ] Verification passed (info screen shows module, autocomplete works)
+- [ ] Type check passes (`npx tsc --noEmit`)
 
 ## Notes
 
-- **6 places in constants.ts**: PACKAGE_ORDER, PACKAGE_COLORS, COMMAND_REGISTRY, COMMAND_DESCRIPTIONS, PACKAGE_LABELS (5 data structures)
+- **Root barrel file is CRITICAL:** Without `packages/<name>/index.ts`, the extension silently fails to load. This is the #1 registration bug.
+- **Command prefix is CRITICAL:** `pi.registerCommand("cmd")` creates `/cmd`, not `/unipi:cmd`. Always use `"unipi:cmd"` or `\`${UNIPI_PREFIX}cmd\``.
+- **5 places in constants.ts**: PACKAGE_ORDER, PACKAGE_COLORS, COMMAND_REGISTRY, COMMAND_DESCRIPTIONS, PACKAGE_LABELS
 - **Color palette**: Avoid duplicating existing colors — check PACKAGE_COLORS before assigning
-- **Priority convention**: workflow=10, ralph=20, memory=30, milestone=40, mcp=50, utility=60, ask-user=70, info=80, web-api=90, compact=100, notify=110, kanboard=120
+- **Priority convention**: workflow=10, ralph=20, memory=30, milestone=40, mcp=50, utility=60, ask-user=70, info=80, web-api=90, compact=100, notify=110, kanboard=120, input-shortcuts=115
 - **Info-screen is optional**: Some packages (like workflow, command-enchantment) don't need info-screen groups
 - **MODULES constant**: Must exist in `packages/core/constants.ts` for event emission — add if missing
