@@ -9,39 +9,39 @@ pi install npm:@pi-unipi/unipi
 
 ## What You Get
 
-**Workflow** — 20 commands that take ideas to shipped code. Brainstorm, plan, execute in worktrees, review, consolidate. The agent follows skill files step by step.
+**[Workflow](./packages/workflow/README.md)** — 20 commands that take ideas to shipped code. Brainstorm, plan, execute in worktrees, review, consolidate. The agent follows skill files step by step.
 
-**Ralph** — Long-running loops that persist across sessions. Start a task, iterate through checklist items, resume after crashes. Progress tracked, state saved.
+**[Ralph](./packages/ralph/README.md)** — Long-running loops that persist across sessions. Start a task, iterate through checklist items, resume after crashes. Progress tracked, state saved.
 
-**Memory** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
+**[Memory](./packages/memory/README.md)** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
 
-**Compactor** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, sandbox execution, FTS5 search.
+**[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, sandbox execution, FTS5 search.
 
-**Subagents** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
+**[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
 
-**Web API** — Web search, page reading, content summarization. Smart-fetch engine with browser-grade TLS fingerprinting — free, no API key. Paid providers as fallbacks.
+**[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Smart-fetch engine with browser-grade TLS fingerprinting — free, no API key. Paid providers as fallbacks.
 
-**MCP** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
+**[MCP](./packages/mcp/README.md)** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
 
-**Notify** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing. Configure once, get alerts everywhere.
+**[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing. Configure once, get alerts everywhere.
 
-**Footer** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling.
+**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling.
 
-**BTW** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
+**[BTW](./packages/btw/README.md)** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
 
-**Ask User** — Structured input for decision gates. Single-select, multi-select, freeform. The agent asks instead of guessing.
+**[Ask User](./packages/ask-user/README.md)** — Structured input for decision gates. Single-select, multi-select, freeform. The agent asks instead of guessing.
 
-**Milestone** — Track project goals across workflow cycles. MILESTONES.md stays in sync with specs, plans, and completed work.
+**[Milestone](./packages/milestone/README.md)** — Track project goals across workflow cycles. MILESTONES.md stays in sync with specs, plans, and completed work.
 
-**Kanboard** — Web UI and TUI overlay for kanban boards. Parses all workflow documents into cards with progress indicators.
+**[Kanboard](./packages/kanboard/README.md)** — Web UI and TUI overlay for kanban boards. Parses all workflow documents into cards with progress indicators.
 
-**Info Screen** — Dashboard overlay showing module status, tools, and custom data groups.
+**[Info Screen](./packages/info-screen/README.md)** — Dashboard overlay showing module status, tools, and custom data groups.
 
-**Utility** — Environment info, diagnostics, cleanup, name badge, and Shiki-powered diff rendering.
+**[Utility](./packages/utility/README.md)** — Environment info, diagnostics, cleanup, name badge, and Shiki-powered diff rendering.
 
-**Updater** — Checks npm for new versions on session start. Changelog browser and readme browser in TUI overlays.
+**[Updater](./packages/updater/README.md)** — Checks npm for new versions on session start. Changelog browser and readme browser in TUI overlays.
 
-**Input Shortcuts** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
+**[Input Shortcuts](./packages/input-shortcuts/README.md)** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
 
 ## Architecture
 
