@@ -20,11 +20,9 @@ import type { RuntimeStats } from "./session/analytics.js";
 
 /** Debug logger — only logs when config.debug === true */
 function createDebugLogger(getConfig: () => { debug: boolean }) {
-  return (event: string, data?: Record<string, unknown>) => {
-    if (!getConfig().debug) return;
-    const ts = new Date().toISOString().slice(11, 23);
-    const details = data ? " " + JSON.stringify(data) : "";
-    console.error(`[compactor:${ts}] ${event}${details}`);
+  return (_event: string, _data?: Record<string, unknown>) => {
+    // Debug logging disabled — was writing to stdout causing TUI rendering issues.
+    return;
   };
 }
 
@@ -98,8 +96,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const db = new SessionDB();
       await db.init();
       sessionDB = db;
-    } catch (err) {
-      console.error(`[compactor] SessionDB init failed: ${String(err)}`);
+    } catch {
+      // Silently ignore — SessionDB init failure is handled gracefully.
       sessionDB = null;
     }
 
@@ -110,8 +108,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         const cs = new ContentStore();
         await cs.init();
         contentStore = cs;
-      } catch (err) {
-        console.error(`[compactor] ContentStore init failed: ${String(err)}`);
+      } catch {
+        // Silently ignore — ContentStore init failure is handled gracefully.
         contentStore = null;
       }
     }
@@ -470,6 +468,30 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       }
     } catch {
       // Non-fatal: display override failed
+    }
+
+    // Width-safe diff truncation for edit/write tool results.
+    // Pi's renderDiff() does not truncate lines to terminal width,
+    // causing TUI crashes on narrow terminals. We truncate the
+    // diff string in details.diff before it reaches the TUI.
+    const diffToolNames = ["edit", "Edit", "write", "Write"];
+    if (diffToolNames.includes(toolName)) {
+      try {
+        const details = (event as any).details as
+          { diff?: string } | undefined;
+        if (details?.diff) {
+          const { clampDiffToWidth } = await import(
+            "./display/diff-width-safety.js"
+          );
+          const clamped = clampDiffToWidth(details.diff);
+          if (clamped !== details.diff) {
+            debug("diff_width_clamped", { toolName });
+            return { details: { ...details, diff: clamped } } as any;
+          }
+        }
+      } catch (err) {
+        debug("diff_width_clamp_error", { error: String(err) });
+      }
     }
   });
 

@@ -3,6 +3,8 @@
  * syntax highlighting, and Nerd Font detection
  */
 
+import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+
 export type DiffLayout = "auto" | "split" | "unified";
 export type DiffIndicator = "bars" | "classic" | "nerd" | "none";
 
@@ -150,16 +152,28 @@ function indicatorChar(type: DiffLine["type"], style: DiffIndicator): string {
   return type === "add" ? "+ " : type === "remove" ? "- " : "  ";
 }
 
-function renderUnified(diff: DiffLine[], indicator: DiffIndicator): string {
+function renderUnified(
+  diff: DiffLine[],
+  indicator: DiffIndicator,
+  maxWidth?: number,
+): string {
   return diff.map((line) => {
     const prefix = indicator === "bars"
       ? (line.type === "add" ? "│ " : line.type === "remove" ? "│ " : "  ")
       : indicatorChar(line.type, indicator);
-    return prefix + line.text;
+    const rendered = prefix + line.text;
+    if (maxWidth && visibleWidth(rendered) > maxWidth) {
+      return truncateToWidth(rendered, maxWidth, "…");
+    }
+    return rendered;
   }).join("\n");
 }
 
-function renderSplit(diff: DiffLine[], indicator: DiffIndicator): string {
+function renderSplit(
+  diff: DiffLine[],
+  indicator: DiffIndicator,
+  maxW?: number,
+): string {
   const left: string[] = [];
   const right: string[] = [];
 
@@ -176,12 +190,24 @@ function renderSplit(diff: DiffLine[], indicator: DiffIndicator): string {
     }
   }
 
-  const maxWidth = Math.max(...left.map((l) => l.length), 40);
+  const halfW = maxW ? Math.floor(maxW / 2) - 2 : 40;
+  const colW = Math.max(
+    ...left.map((l) => visibleWidth(l)),
+    ...right.map((l) => visibleWidth(l)),
+    Math.min(halfW, 40),
+  );
   const result: string[] = [];
   for (let i = 0; i < left.length; i++) {
-    const l = left[i].padEnd(maxWidth);
+    const lTrunc = visibleWidth(left[i]) > colW
+      ? truncateToWidth(left[i], colW, "…")
+      : left[i].padEnd(colW);
     const sep = left[i] && right[i] ? " │ " : "   ";
-    result.push(l + sep + right[i]);
+    let rLine = right[i];
+    if (maxW && visibleWidth(lTrunc + sep + rLine) > maxW) {
+      const rBudget = maxW - visibleWidth(lTrunc + sep);
+      rLine = truncateToWidth(rLine, Math.max(1, rBudget), "…");
+    }
+    result.push(lTrunc + sep + rLine);
   }
 
   return result.join("\n");
@@ -229,10 +255,10 @@ export function renderDiff(
   }
 
   if (effectiveLayout === "split") {
-    return renderSplit(highlightedDiff, effectiveIndicator);
+    return renderSplit(highlightedDiff, effectiveIndicator, maxWidth);
   }
 
-  return renderUnified(highlightedDiff, effectiveIndicator);
+  return renderUnified(highlightedDiff, effectiveIndicator, maxWidth);
 }
 
 export function renderEditDiffResult(

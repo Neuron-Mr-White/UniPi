@@ -78,10 +78,6 @@ export function resolveBrowserProfile(browser?: string): string {
   }
 
   // Unknown profile — pass through (wreq-js may support newer profiles)
-  console.warn(
-    `[smart-fetch] Unknown browser profile "${browser}", using as-is. ` +
-    `Known profiles: ${BROWSER_PROFILES.join(", ")}`
-  );
   return browser;
 }
 

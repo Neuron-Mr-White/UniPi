@@ -12,10 +12,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ToolDefinition, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import { visibleWidth as piVisibleWidth, truncateToWidth as piTruncateToWidth } from "@mariozechner/pi-tui";
 import { readDiffSettings } from "./settings.js";
 import { parseDiff } from "./parser.js";
 import { resolveDiffColors, applyDiffPalette } from "./theme.js";
-import { renderSplit, renderUnified, termW, SPLIT_MIN_WIDTH } from "./renderer.js";
+import { renderSplit, renderUnified, termW, SPLIT_MIN_WIDTH, truncateToTermWidth } from "./renderer.js";
 import { detectLanguageFromPath, hlBlock, MAX_HL_CHARS } from "./highlighter.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -157,7 +158,15 @@ export function registerEnhancedWriteTool(pi: ExtensionAPI, cwd: string): void {
     renderResult(result: any, _options: any, theme: any): any {
       const details = result?.details as DiffToolDetails | undefined;
       if (!details || !details.diff || !details.diff.lines || details.diff.lines.length === 0) {
-        return null as any;
+        // Error or empty-diff case: render the message from result.content so the
+        // user sees "Could not find text to replace..." etc. Never return null here
+        // because Container.render() will crash on null child.
+        const msg = result?.content?.[0]?.text ?? "";
+        return {
+          setText: () => {},
+          text: msg,
+          render: (width: number) => (width > 0 ? [msg.slice(0, width)] : [msg]),
+        } as any;
       }
 
       try {
@@ -169,11 +178,26 @@ export function registerEnhancedWriteTool(pi: ExtensionAPI, cwd: string): void {
           ? renderSplit(details.diff, details.language, max, dc)
           : renderUnified(details.diff, details.language, max, dc);
 
-        // Return a simple component-like object with text
+        // Split into lines and cache for width-aware rendering.
+        // Each line is already truncated to terminal width by
+        // truncateToTermWidth() in the renderer, but we also
+        // respect the width parameter from Box.render().
+        const cachedLines = rendered.split("\n");
+
         return {
           setText: () => {},
           text: rendered,
-          render: () => rendered.split("\n"),
+          render: (width: number) => {
+            // If width is provided, re-truncate lines that
+            // still exceed it (e.g., inside nested Boxes)
+            const maxW = width > 0 ? width : tw;
+            return cachedLines.map((line: string) => {
+              if (piVisibleWidth(line) > maxW) {
+                return piTruncateToWidth(line, maxW, "…");
+              }
+              return line;
+            });
+          },
         } as any;
       } catch {
         return null as any;
@@ -274,10 +298,20 @@ export function registerEnhancedEditTool(pi: ExtensionAPI, cwd: string): void {
           ? renderSplit(details.diff, details.language, max, dc)
           : renderUnified(details.diff, details.language, max, dc);
 
+        const cachedLines = rendered.split("\n");
+
         return {
           setText: () => {},
           text: rendered,
-          render: () => rendered.split("\n"),
+          render: (width: number) => {
+            const maxW = width > 0 ? width : tw;
+            return cachedLines.map((line: string) => {
+              if (piVisibleWidth(line) > maxW) {
+                return piTruncateToWidth(line, maxW, "…");
+              }
+              return line;
+            });
+          },
         } as any;
       } catch {
         return null as any;

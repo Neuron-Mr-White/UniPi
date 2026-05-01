@@ -71,9 +71,9 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
         notifPlatforms,
         "agent_tool",
         config
-      ).catch((err) =>
-        console.error("[notify] Background notify_user dispatch failed:", err)
-      );
+      ).catch(() => {
+        // Silently ignore — background dispatch failure is non-blocking.
+      });
 
       return {
         content: [

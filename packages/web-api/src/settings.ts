@@ -125,8 +125,8 @@ export function loadAuth(): WebApiAuth {
       const content = fs.readFileSync(authPath, "utf-8");
       return JSON.parse(content);
     }
-  } catch (error) {
-    console.error("[web-api] Failed to load auth:", error);
+  } catch {
+    // Silently ignore — auth load failure returns empty.
   }
   return {};
 }
@@ -164,8 +164,8 @@ export function loadConfig(): WebApiConfig {
         },
       };
     }
-  } catch (error) {
-    console.error("[web-api] Failed to load config:", error);
+  } catch {
+    // Silently ignore — config load failure falls back to defaults.
   }
   return DEFAULT_CONFIG;
 }

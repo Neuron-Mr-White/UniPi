@@ -61,7 +61,9 @@ export function registerEventListeners(
       const message = buildEventMessage(eventKey, payload);
       // Fire-and-forget: don't block the event emitter
       dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config).catch(
-        (err) => console.error(`[notify] Background notification failed for ${eventKey}:`, err)
+        () => {
+          // Silently ignore — background notification failure is non-blocking.
+        }
       );
     };
 
@@ -98,7 +100,9 @@ export function registerEventListeners(
               .then((message) =>
                 dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config)
               )
-              .catch((err) => console.error("[notify] Background agent_end notification failed:", err));
+              .catch(() => {
+                // Silently ignore — background agent_end notification failure is non-blocking.
+              });
             return;
           }
         }
@@ -107,7 +111,9 @@ export function registerEventListeners(
       // No recap or recap unavailable: dispatch immediately in background
       const message = buildAgentEndMessage(sessionName);
       dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config).catch(
-        (err) => console.error("[notify] Background agent_end notification failed:", err)
+        () => {
+          // Silently ignore — background agent_end notification failure is non-blocking.
+        }
       );
     };
 
@@ -172,10 +178,7 @@ export async function dispatchNotification(
         await sendToPlatform(platform, title, message, config);
         return { platform, success: true };
       } catch (err) {
-        console.error(
-          `[notify] Failed to send via ${platform}:`,
-          err instanceof Error ? err.message : err
-        );
+        // Silently ignore — platform send failure is tracked in results.
         return {
           platform,
           success: false,

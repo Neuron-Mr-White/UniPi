@@ -48,8 +48,8 @@ function readSettingsFile(): Record<string, unknown> | null {
     if (!fs.existsSync(settingsPath)) return null;
     const raw = fs.readFileSync(settingsPath, "utf-8");
     return JSON.parse(raw) as Record<string, unknown>;
-  } catch (err) {
-    console.warn("[footer] Failed to read settings.json:", err);
+  } catch {
+    // Silently ignore — settings read failure falls back to null.
     return null;
   }
 }
@@ -66,8 +66,8 @@ function writeSettingsFile(settings: Record<string, unknown>): boolean {
     }
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
     return true;
-  } catch (err) {
-    console.warn("[footer] Failed to write settings.json:", err);
+  } catch {
+    // Silently ignore — settings write failure is non-blocking.
     return false;
   }
 }
@@ -97,8 +97,8 @@ export function loadFooterSettings(): FooterSettings {
         footer.groups as Record<string, FooterGroupSettings> | undefined,
       ),
     };
-  } catch (err) {
-    console.warn("[footer] Failed to parse footer settings, using defaults:", err);
+  } catch {
+    // Silently ignore — parse failure falls back to defaults.
     return { ...DEFAULT_FOOTER_SETTINGS };
   }
 }

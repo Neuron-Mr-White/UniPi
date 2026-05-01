@@ -21,11 +21,9 @@ const formatTokens = (n: number): string => {
   return String(n);
 };
 
-const dbg = (debug: boolean, event: string, data?: Record<string, unknown>) => {
-  if (!debug) return;
-  const ts = new Date().toISOString().slice(11, 23);
-  const details = data ? " " + JSON.stringify(data) : "";
-  console.error(`[compactor:${ts}] ${event}${details}`);
+const dbg = (_debug: boolean, _event: string, _data?: Record<string, unknown>) => {
+  // Debug logging disabled — was writing to stdout causing TUI rendering issues.
+  return;
 };
 
 const previewContent = (content: unknown): string => {

@@ -282,19 +282,19 @@ Info-screen data provider (called by registry on demand)
 
 ## Implementation Checklist
 
-- [ ] Port `AnalyticsEngine` (queryAll computation) from context-mode into `compactor/src/session/analytics.ts`
-- [ ] Add `RuntimeStats` tracking to `compactor/src/index.ts` (tool_result handler)
-- [ ] Add `measureResponseBytes()` helper for Pi event format
-- [ ] Add `sessionDB.getDb()` method to expose internal db for AnalyticsEngine
-- [ ] Replace `compactor/src/info-screen.ts` with budget-focused `CompactorInfoData` + data provider
-- [ ] Update info-screen group registration in `compactor/src/index.ts` (keep "Compactor" name, new stats)
-- [ ] Add cost estimation: wire `usage-parser.ts` cost-per-token to `costSaved` stat
-- [ ] Change `overrideDefaultCompaction: true` in `compactor/src/config/schema.ts`
-- [ ] Update `session_compact` handler to always record stats (not just when compactor pipeline ran)
-- [ ] Add per-tool breakdown as `detail` text for `tokensSaved` and `topTools` stats
-- [ ] Port `createMinimalDb()` fallback for AnalyticsEngine when SessionDB unavailable
-- [ ] Type-check passes: `npx tsc --noEmit --skipLibCheck` in packages/compactor
-- [ ] Existing tests pass: `bun test packages/compactor/tests/`
+- [x] Port `AnalyticsEngine` (queryAll computation) from context-mode into `compactor/src/session/analytics.ts` — covered in Task 1
+- [x] Add `RuntimeStats` tracking to `compactor/src/index.ts` (tool_result handler) — covered in Task 2
+- [x] Add `measureResponseBytes()` helper for Pi event format — covered in Task 2
+- [x] Add `sessionDB.getDb()` method to expose internal db for AnalyticsEngine — covered in Task 3
+- [x] Replace `compactor/src/info-screen.ts` with budget-focused `CompactorInfoData` + data provider — covered in Task 4
+- [x] Update info-screen group registration in `compactor/src/index.ts` (keep "Compactor" name, new stats) — covered in Task 4
+- [x] Add cost estimation: wire `usage-parser.ts` cost-per-token to `costSaved` stat — covered in Task 4
+- [x] Change `overrideDefaultCompaction: true` in `compactor/src/config/schema.ts` — covered in Task 5
+- [x] Update `session_compact` handler to always record stats (not just when compactor pipeline ran) — covered in Task 6
+- [x] Add per-tool breakdown as `detail` text for `tokensSaved` and `topTools` stats — covered in Task 4
+- [x] Port `createMinimalDb()` fallback for AnalyticsEngine when SessionDB unavailable — covered in Task 1
+- [x] Type-check passes: `npx tsc --noEmit --skipLibCheck` in packages/compactor — covered in Task 8
+- [x] Existing tests pass: `bun test packages/compactor/tests/` — covered in Task 8
 
 ## Open Questions
 

@@ -115,19 +115,17 @@ export class FooterRegistry {
     for (const callback of this.subscribers) {
       try {
         callback();
-      } catch (err) {
-        console.error("[footer] Subscriber error:", err);
+      } catch {
+        // Silently ignore — subscriber errors are non-blocking.
       }
     }
   }
 
   // ─── Debug ────────────────────────────────────────────────────────────────
 
-  private log(event: string, ...args: unknown[]): void {
-    if (!this.debug) return;
-    const ts = new Date().toISOString().slice(11, 23);
-    const details = args.length > 0 ? " " + JSON.stringify(args) : "";
-    console.error(`[footer-registry:${ts}] ${event}${details}`);
+  private log(_event: string, ..._args: unknown[]): void {
+    // Debug logging disabled — was writing to stdout causing TUI rendering issues.
+    return;
   }
 }
 

@@ -15,6 +15,7 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../ty
 import { getIcon } from "../rendering/icons.js";
 import { loadFooterSettings } from "../config.js";
 import { getSeparator } from "../rendering/separators.js";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 /** Map status keys to short display names and segment IDs for icons */
 const STATUS_DISPLAY: Record<string, { short: string; segmentId: string }> = {
@@ -110,7 +111,12 @@ function renderExtensionStatusesSegment(ctx: FooterSegmentContext): RenderedSegm
 
   if (parts.length === 0) return { content: "", visible: false };
 
+  // Clamp total content to terminal width to prevent TUI crash
   const content = parts.join(` ${sep} `);
+  const maxW = ctx.width > 0 ? ctx.width : 120;
+  if (visibleWidth(content) > maxW) {
+    return { content: truncateToWidth(content, maxW, "…"), visible: true };
+  }
   return { content, visible: true };
 }
 

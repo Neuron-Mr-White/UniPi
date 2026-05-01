@@ -137,8 +137,8 @@ function jsonResult(data: unknown, label?: string): any {
 }
 
 /** Log a deprecation warning when old tool names are used. */
-function deprecationLog(oldName: string, newName: string): void {
-  console.error(`[compactor] DEPRECATED: Tool "${oldName}" used — use "${newName}" instead.`);
+function deprecationLog(_oldName: string, _newName: string): void {
+  // Deprecation logging disabled — was writing to stdout causing TUI rendering issues.
 }
 
 // --- Old schema names for backward compat aliases ---

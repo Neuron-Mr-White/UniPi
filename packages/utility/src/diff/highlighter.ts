@@ -273,9 +273,8 @@ export async function getShikiHighlighter(): Promise<any> {
         ],
       });
       return shikiHighlighter;
-    } catch (err) {
+    } catch {
       // If Shiki fails to load, return null — we'll use plain text
-      console.warn("[pi-diff] Shiki highlighter failed to load:", err);
       shikiInitPromise = null;
       return null;
     }

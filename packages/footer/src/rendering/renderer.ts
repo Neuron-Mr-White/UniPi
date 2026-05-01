@@ -9,6 +9,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, RenderedSegment } from "../types.js";
 import type { FooterRegistry } from "../registry/index.js";
+import { visibleWidth as piVisibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import { getSeparator, separatorVisibleWidth } from "./separators.js";
 import { getDefaultColors } from "./theme.js";
 import { setIconStyle } from "./icons.js";
@@ -29,10 +30,9 @@ interface RenderedSegmentWithWidth {
 
 // ─── ANSI helpers ───────────────────────────────────────────────────────────
 
-/** Strip ANSI escape codes and measure visible width */
+/** ANSI-aware visible width using pi-tui */
 function visibleWidth(text: string): number {
-  const stripped = text.replace(/\x1b\[[0-9;]*m/g, "");
-  return stripped.length;
+  return piVisibleWidth(text);
 }
 
 const ANSI_RESET = "\x1b[0m";

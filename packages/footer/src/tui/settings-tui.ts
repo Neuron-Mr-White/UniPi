@@ -52,8 +52,8 @@ export function showFooterSettings(ctx: any, groups: FooterGroup[]): void {
         horizontalAlign: "center",
       }),
     },
-  ).catch((err: unknown) => {
-    console.error("[footer] Settings overlay error:", err);
+  ).catch(() => {
+    // Silently ignore — overlay errors are non-blocking.
   });
 }
 

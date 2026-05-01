@@ -173,8 +173,8 @@ export class KanboardServer {
         });
         try {
           await route.handler(req, res, params);
-        } catch (err: any) {
-          console.error(`[kanboard] Route error: ${err.message}`);
+        } catch (_err: any) {
+          // Silently ignore — route handler error, send generic 500.
           res.writeHead(500, { "Content-Type": "text/plain" });
           res.end("Internal Server Error");
         }

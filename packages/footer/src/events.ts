@@ -30,8 +30,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.COMPACTOR_STATS_UPDATED, (event: unknown) => {
       try {
         registry.updateData("compactor", event);
-      } catch (err) {
-        console.error("[footer] Compactor stats handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -41,8 +41,8 @@ export function subscribeToEvents(
       try {
         const existing = registry.getGroupData("compactor") as Record<string, unknown> | undefined;
         registry.updateData("compactor", { ...existing, lastCompaction: event });
-      } catch (err) {
-        console.error("[footer] Compaction handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -54,8 +54,8 @@ export function subscribeToEvents(
       try {
         const existing = registry.getGroupData("memory") as Record<string, unknown> | undefined;
         registry.updateData("memory", { ...existing, lastStored: event });
-      } catch (err) {
-        console.error("[footer] Memory stored handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -65,8 +65,8 @@ export function subscribeToEvents(
       try {
         const existing = registry.getGroupData("memory") as Record<string, unknown> | undefined;
         registry.updateData("memory", { ...existing, lastDeleted: event });
-      } catch (err) {
-        console.error("[footer] Memory deleted handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -76,8 +76,8 @@ export function subscribeToEvents(
       try {
         const existing = registry.getGroupData("memory") as Record<string, unknown> | undefined;
         registry.updateData("memory", { ...existing, lastConsolidated: event });
-      } catch (err) {
-        console.error("[footer] Memory consolidated handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -94,8 +94,8 @@ export function subscribeToEvents(
         const serversActive = (typeof existing?.serversActive === "number" ? existing.serversActive : 0) + 1;
         const toolsTotal = (typeof existing?.toolsTotal === "number" ? existing.toolsTotal : 0) + toolCount;
         registry.updateData("mcp", { ...existing, serversTotal, serversActive, toolsTotal, lastServerStarted: event });
-      } catch (err) {
-        console.error("[footer] MCP server started handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -116,8 +116,8 @@ export function subscribeToEvents(
           toolsTotal = Math.max(0, toolsTotal - lastStartedCount);
         }
         registry.updateData("mcp", { ...existing, serversActive, toolsTotal, lastServerStopped: event });
-      } catch (err) {
-        console.error("[footer] MCP server stopped handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -129,8 +129,8 @@ export function subscribeToEvents(
         const serversTotal = (typeof existing?.serversTotal === "number" ? existing.serversTotal : 0) + 1;
         const serversFailed = (typeof existing?.serversFailed === "number" ? existing.serversFailed : 0) + 1;
         registry.updateData("mcp", { ...existing, serversTotal, serversFailed, lastServerError: event });
-      } catch (err) {
-        console.error("[footer] MCP server error handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -143,8 +143,8 @@ export function subscribeToEvents(
         const toolNames = Array.isArray(evt?.toolNames) ? evt.toolNames : [];
         const toolsTotal = (typeof existing?.toolsTotal === "number" ? existing.toolsTotal : 0) + toolNames.length;
         registry.updateData("mcp", { ...existing, toolsTotal, lastToolsRegistered: event });
-      } catch (err) {
-        console.error("[footer] MCP tools registered handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -157,8 +157,8 @@ export function subscribeToEvents(
         const toolNames = Array.isArray(evt?.toolNames) ? evt.toolNames : [];
         const toolsTotal = Math.max(0, (typeof existing?.toolsTotal === "number" ? existing.toolsTotal : 0) - toolNames.length);
         registry.updateData("mcp", { ...existing, toolsTotal, lastToolsUnregistered: event });
-      } catch (err) {
-        console.error("[footer] MCP tools unregistered handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -169,8 +169,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.RALPH_LOOP_START, (event: unknown) => {
       try {
         registry.updateData("ralph", { ...(event as Record<string, unknown>), active: true });
-      } catch (err) {
-        console.error("[footer] Ralph loop start handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -179,8 +179,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.RALPH_LOOP_END, (event: unknown) => {
       try {
         registry.updateData("ralph", { ...(event as Record<string, unknown>), active: false });
-      } catch (err) {
-        console.error("[footer] Ralph loop end handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -190,8 +190,8 @@ export function subscribeToEvents(
       try {
         const existing = registry.getGroupData("ralph") as Record<string, unknown> | undefined;
         registry.updateData("ralph", { ...existing, lastIteration: event });
-      } catch (err) {
-        console.error("[footer] Ralph iteration handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -202,8 +202,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.WORKFLOW_START, (event: unknown) => {
       try {
         registry.updateData("workflow", { ...(event as Record<string, unknown>), active: true, startTime: Date.now() });
-      } catch (err) {
-        console.error("[footer] Workflow start handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -212,8 +212,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.WORKFLOW_END, (event: unknown) => {
       try {
         registry.updateData("workflow", { ...(event as Record<string, unknown>), active: false });
-      } catch (err) {
-        console.error("[footer] Workflow end handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -224,8 +224,8 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.NOTIFICATION_SENT, (event: unknown) => {
       try {
         registry.updateData("notify", event);
-      } catch (err) {
-        console.error("[footer] Notification handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );
@@ -237,8 +237,8 @@ export function subscribeToEvents(
       try {
         // Invalidate all caches when new modules load — they may bring fresh data
         registry.invalidateAll();
-      } catch (err) {
-        console.error("[footer] Module ready handler error:", err);
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
       }
     })
   );

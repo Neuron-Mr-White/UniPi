@@ -333,12 +333,9 @@ export default function (pi: ExtensionAPI) {
         try {
           await reg.restartServer(state.name);
           restarted++;
-        } catch (err) {
+        } catch (_err) {
           failed++;
-          console.error(
-            `[MCP] Failed to restart server '${state.name}':`,
-            err instanceof Error ? err.message : err,
-          );
+          // Silently ignore — restart failure tracked in failed count.
         }
       }
 

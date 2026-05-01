@@ -435,9 +435,8 @@ export async function defuddleFetch(
           content = fallbackExtraction(document);
           metadata = extractMetadata(null, document);
         }
-      } catch (defuddleError) {
-        // Fallback to DOM extraction
-        console.warn("[smart-fetch] Defuddle extraction failed, using fallback:", defuddleError);
+      } catch (_defuddleError) {
+        // Defuddle extraction failed — use fallback DOM extraction.
         content = fallbackExtraction(document);
         metadata = extractMetadata(null, document);
       }

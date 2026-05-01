@@ -3,12 +3,17 @@
  *
  * ANSI diff rendering: split (side-by-side) and unified (stacked) views.
  * Includes ANSI utilities, background injection, and adaptive wrapping.
+ *
+ * IMPORTANT: All output lines must be truncated to terminal width
+ * to prevent TUI crashes. Use fit() or truncateToTermWidth()
+ * before pushing lines.
  */
 
 import type { ParsedDiff, DiffLine } from "./parser.js";
 import type { DiffColors } from "./theme.js";
 import { hexToBgAnsi, hexToFgAnsi } from "./theme.js";
 import { hlBlock, detectLanguage } from "./highlighter.js";
+import { truncateToWidth as piTruncateToWidth, visibleWidth as piVisibleWidth } from "@mariozechner/pi-tui";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -36,64 +41,21 @@ export function strip(s: string): string {
 
 /**
  * Get the visible width of a string (excluding ANSI escapes).
- * Handles CJK characters (width 2) and emoji.
+ * Delegates to pi-tui's ANSI-aware implementation for correctness.
  */
 export function visibleWidth(s: string): number {
-  const stripped = strip(s);
-  let width = 0;
-  for (const char of stripped) {
-    const code = char.codePointAt(0)!;
-    // CJK Unified Ideographs, CJK Compatibility, etc.
-    if (
-      (code >= 0x4e00 && code <= 0x9fff) ||
-      (code >= 0x3000 && code <= 0x30ff) ||
-      (code >= 0xff00 && code <= 0xffef) ||
-      (code >= 0xf900 && code <= 0xfaff) ||
-      (code >= 0x2e80 && code <= 0x2eff) ||
-      (code >= 0x3400 && code <= 0x4dbf) ||
-      (code >= 0x20000 && code <= 0x2a6df)
-    ) {
-      width += 2;
-    } else if (code > 0xffff) {
-      // Surrogate pairs / emoji — typically width 2
-      width += 2;
-    } else {
-      width += 1;
-    }
-  }
-  return width;
+  return piVisibleWidth(s);
 }
 
 /**
  * Fit a string to a target width, padding or truncating as needed.
- * Preserves ANSI state across truncation.
+ * Uses pi-tui's ANSI-aware truncation for correctness.
  */
 export function fit(s: string, targetWidth: number): string {
   const vw = visibleWidth(s);
   if (vw === targetWidth) return s;
   if (vw > targetWidth) {
-    // Truncate — find the cut point
-    let width = 0;
-    let i = 0;
-    const stripped = strip(s);
-    for (; i < stripped.length && width < targetWidth; i++) {
-      const code = stripped.codePointAt(i)!;
-      width += (code >= 0x4e00 && code <= 0x9fff) || code > 0xffff ? 2 : 1;
-    }
-    // Find the corresponding position in the original (with ANSI) string
-    let strippedIdx = 0;
-    let origIdx = 0;
-    while (origIdx < s.length && strippedIdx < i) {
-      if (s[origIdx] === "\x1b") {
-        // Skip ANSI sequence
-        while (origIdx < s.length && s[origIdx] !== "m") origIdx++;
-        origIdx++;
-      } else {
-        strippedIdx++;
-        origIdx++;
-      }
-    }
-    return s.substring(0, origIdx) + "\x1b[0m";
+    return piTruncateToWidth(s, targetWidth, "");
   }
   // Pad
   return s + " ".repeat(targetWidth - vw);
@@ -196,6 +158,17 @@ export function termW(): number {
   } catch {
     return 80;
   }
+}
+
+/**
+ * Truncate a line to terminal width using pi-tui's ANSI-aware truncation.
+ * Prevents TUI crash when rendered lines exceed terminal width.
+ * Accounts for rendering overhead from Box nesting (~6 chars).
+ */
+export function truncateToTermWidth(line: string): string {
+  const maxW = Math.max(20, termW() - 6);
+  if (piVisibleWidth(line) <= maxW) return line;
+  return piTruncateToWidth(line, maxW, "…");
 }
 
 // ─── Background Injection ───────────────────────────────────────────────────────
@@ -313,16 +286,16 @@ export function renderUnified(
 
     switch (line.type) {
       case "hunk":
-        lines.push(`${hunkFg}${line.content}${reset}`);
+        lines.push(truncateToTermWidth(`${hunkFg}${line.content}${reset}`));
         break;
       case "add":
-        lines.push(`${addBg}${addFg}+${reset}${addBg} ${lnum(null, 4)} ${lnum(line.newLine, 4)} │ ${line.content}${reset}`);
+        lines.push(truncateToTermWidth(`${addBg}${addFg}+${reset}${addBg} ${lnum(null, 4)} ${lnum(line.newLine, 4)} │ ${line.content}${reset}`));
         break;
       case "remove":
-        lines.push(`${remBg}${remFg}-${reset}${remBg} ${lnum(line.oldLine, 4)} ${lnum(null, 4)} │ ${line.content}${reset}`);
+        lines.push(truncateToTermWidth(`${remBg}${remFg}-${reset}${remBg} ${lnum(line.oldLine, 4)} ${lnum(null, 4)} │ ${line.content}${reset}`));
         break;
       case "context":
-        lines.push(` ${headerFg}${lnum(line.oldLine, 4)} ${lnum(line.newLine, 4)}${reset} │ ${line.content}`);
+        lines.push(truncateToTermWidth(` ${headerFg}${lnum(line.oldLine, 4)} ${lnum(line.newLine, 4)}${reset} │ ${line.content}`));
         break;
     }
   }
@@ -411,7 +384,7 @@ export function renderSplit(
   for (let i = 0; i < leftLines.length; i++) {
     const left = leftLines[i];
     const right = rightLines[i];
-    lines.push(`${left} │ ${right}`);
+    lines.push(truncateToTermWidth(`${left} │ ${right}`));
   }
 
   if (truncated) {

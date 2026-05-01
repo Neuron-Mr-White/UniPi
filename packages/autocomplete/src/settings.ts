@@ -52,8 +52,8 @@ export function loadConfig(): CommandEnchantmentConfig {
         ...config,
       };
     }
-  } catch (error) {
-    console.error("[command-enchantment] Failed to load config:", error);
+  } catch {
+    // Silently ignore — config load failure falls back to defaults.
   }
   return DEFAULT_CONFIG;
 }

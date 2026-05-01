@@ -34,8 +34,8 @@ export interface CommandDeps {
   getCounters?: () => RuntimeCounters;
 }
 
-function deprecationLog(oldName: string, newName: string): void {
-  console.error(`[compactor] DEPRECATED: Command "${oldName}" used — use "${newName}" instead.`);
+function deprecationLog(_oldName: string, _newName: string): void {
+  // Deprecation logging disabled — was writing to stdout causing TUI rendering issues.
 }
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
