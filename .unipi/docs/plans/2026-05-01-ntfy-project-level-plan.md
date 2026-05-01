@@ -81,7 +81,7 @@ Add project-level ntfy configuration so different projects can use different ntf
     5. Update config.json structure example to note ntfy section is legacy (migrated to ntfy.json)
     6. Update commands table if any commands changed
 
-- in-progress: Task 6 — Build and verify
+- completed: Task 6 — Build and verify
   - Description: Run TypeScript compilation to verify zero errors. Review all changed files for correctness.
   - Dependencies: Tasks 1-5
   - Acceptance Criteria: `tsc --noEmit --skipLibCheck` passes with zero errors. All files are consistent and cross-reference correctly.
