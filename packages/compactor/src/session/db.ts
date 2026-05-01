@@ -293,6 +293,9 @@ export class SessionDB {
     return oldSessions.length;
   }
 
+  /** Expose the underlying db for AnalyticsEngine (read-only queries). Returns null if init failed. */
+  getDb(): any { return this.db ?? null; }
+
   close(): void {
     try { this.db.close(); } catch { /* ignore */ }
   }

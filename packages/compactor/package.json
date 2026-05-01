@@ -38,7 +38,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "*"
+    "@pi-unipi/core": "*",
+    "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

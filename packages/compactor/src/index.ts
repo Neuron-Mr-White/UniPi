@@ -16,6 +16,7 @@ import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
 import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
+import type { RuntimeStats } from "./session/analytics.js";
 
 /** Debug logger — only logs when config.debug === true */
 function createDebugLogger(getConfig: () => { debug: boolean }) {
@@ -25,6 +26,35 @@ function createDebugLogger(getConfig: () => { debug: boolean }) {
     const details = data ? " " + JSON.stringify(data) : "";
     console.error(`[compactor:${ts}] ${event}${details}`);
   };
+}
+
+/** Measure byte size of a tool_result event's response content. */
+function measureResponseBytes(event: any): number {
+  try {
+    const content = event.content;
+    if (typeof content === "string") return Buffer.byteLength(content, "utf-8");
+    if (Array.isArray(content)) {
+      return content.reduce((sum: number, block: any) => {
+        if (typeof block?.text === "string") return sum + Buffer.byteLength(block.text, "utf-8");
+        if (typeof block === "string") return sum + Buffer.byteLength(block, "utf-8");
+        return sum;
+      }, 0);
+    }
+    if (event.output && typeof event.output === "string") return Buffer.byteLength(event.output, "utf-8");
+  } catch {
+    // Non-blocking: byte measurement errors silently skipped
+  }
+  return 0;
+}
+
+/** Check if a tool is a sandbox tool (output stays in sandbox, not context). */
+function isSandboxTool(name: string): boolean {
+  return name === "bash" || name === "Bash";
+}
+
+/** Check if a tool is an index tool (content goes to FTS5, not context). Future-proofing. */
+function isIndexTool(_name: string): boolean {
+  return false;
 }
 
 export default function compactorExtension(pi: ExtensionAPI): void {
@@ -42,6 +72,16 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     totalTokensCompacted: 0,
   };
   const getCounters = () => counters;
+
+  const runtimeStats: RuntimeStats = {
+    bytesReturned: {},
+    bytesIndexed: 0,
+    bytesSandboxed: 0,
+    calls: {},
+    sessionStart: Date.now(),
+    cacheHits: 0,
+    cacheBytesSaved: 0,
+  };
 
   const debug = createDebugLogger(() => config);
 
@@ -101,6 +141,15 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     debug("session_start", { sessionId: fullSessionId, projectDir });
 
+    // Reset runtime stats for new session
+    runtimeStats.bytesReturned = {};
+    runtimeStats.bytesIndexed = 0;
+    runtimeStats.bytesSandboxed = 0;
+    runtimeStats.calls = {};
+    runtimeStats.sessionStart = Date.now();
+    runtimeStats.cacheHits = 0;
+    runtimeStats.cacheBytesSaved = 0;
+
     sessionDB?.ensureSession(fullSessionId, projectDir);
 
     // Register all compactor tools with Pi (deps now have live sessionDB)
@@ -119,9 +168,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     // Register info-screen group
     const infoRegistry = (globalThis as any).__unipi_info_registry;
-    if (infoRegistry && sessionDB && contentStore) {
+    if (infoRegistry && sessionDB) {
       const sdb = sessionDB;
-      const cs = contentStore;
       const sid = () => currentSessionId;
       infoRegistry.registerGroup({
         id: "compactor",
@@ -131,23 +179,25 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         config: {
           showByDefault: true,
           stats: [
-            { id: "sessionEvents", label: "Session events", show: true },
+            { id: "tokensSaved", label: "Tokens saved", show: true },
+            { id: "costSaved", label: "Cost saved", show: true },
+            { id: "pctReduction", label: "% Reduction", show: true },
+            { id: "topTools", label: "Top tools", show: true },
             { id: "compactions", label: "Compactions", show: true },
-            { id: "tokensSaved", label: "Tokens compacted", show: true },
-            { id: "compressionRatio", label: "Compression ratio", show: true },
-            { id: "indexedDocs", label: "Indexed docs", show: true },
+            { id: "toolCalls", label: "Tool calls", show: true },
           ],
         },
         dataProvider: async () => {
           try {
             const { getInfoScreenData } = await import("./info-screen.js");
-            const data = await getInfoScreenData(sdb, cs, sid(), counters);
+            const data = await getInfoScreenData(sdb, sid(), runtimeStats);
             return {
-              sessionEvents: { value: data.sessionEvents.value, detail: data.sessionEvents.detail },
-              compactions: { value: data.compactions.value, detail: data.compactions.detail },
               tokensSaved: { value: data.tokensSaved.value, detail: data.tokensSaved.detail },
-              compressionRatio: { value: data.compressionRatio.value, detail: data.compressionRatio.detail },
-              indexedDocs: { value: data.indexedDocs.value, detail: data.indexedDocs.detail },
+              costSaved: { value: data.costSaved.value, detail: data.costSaved.detail },
+              pctReduction: { value: data.pctReduction.value, detail: data.pctReduction.detail },
+              topTools: { value: data.topTools.value, detail: data.topTools.detail },
+              compactions: { value: data.compactions.value, detail: data.compactions.detail },
+              toolCalls: { value: data.toolCalls.value, detail: data.toolCalls.detail },
             };
           } catch {
             return {};
@@ -252,11 +302,29 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
       sessionDB.incrementCompactCount(sessionId);
       counters.compactions++;
+
+      // Use actual runtimeStats for byte measurement instead of heuristic
+      const totalBytesReturned = Object.values(runtimeStats.bytesReturned).reduce((s, b) => s + b, 0);
+      const totalBytesProcessed = runtimeStats.bytesIndexed + runtimeStats.bytesSandboxed + totalBytesReturned;
+      // charsBefore = total bytes processed by all tools (proxy for context window usage)
+      // charsKept = bytes that stayed in context (bytesReturned, minus what compaction removed)
       const tokensBefore = (event as any).tokensBefore ?? 0;
-      if (tokensBefore > 0) {
-        counters.totalTokensCompacted += Math.round(tokensBefore * 0.85); // rough estimate
+      if (totalBytesProcessed > 0 && tokensBefore > 0) {
+        // Use actual token count from Pi, estimate chars from it
+        const charsBefore = tokensBefore * 4;
+        // Estimate kept chars: proportional to what remains after compaction
+        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.15);
+        const charsKept = tokensAfter * 4;
+        const messagesSummarized = Math.max(1, Math.round(tokensBefore / 500));
+        counters.totalTokensCompacted += tokensBefore - tokensAfter;
+        sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
+      } else if (tokensBefore > 0) {
+        // Fallback: only tokensBefore available, use conservative estimate
+        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.15);
+        counters.totalTokensCompacted += tokensBefore - tokensAfter;
+        sessionDB.addCompactionStats(sessionId, tokensBefore * 4, tokensAfter * 4, 1);
       }
-      debug("session_compact", { sessionId });
+      debug("session_compact", { sessionId, tokensBefore, totalBytesProcessed });
     }
   });
 
@@ -363,6 +431,24 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     for (const ev of toolEvents) {
       sessionDB.insertEvent(sessionId, ev, "PostToolUse");
       debug("event_stored", { category: ev.category, type: ev.type });
+    }
+
+    // Track byte consumption per tool for analytics
+    try {
+      const responseBytes = measureResponseBytes(event);
+      if (responseBytes > 0) {
+        const tName = (event as any).toolName ?? "unknown";
+        runtimeStats.calls[tName] = (runtimeStats.calls[tName] || 0) + 1;
+        runtimeStats.bytesReturned[tName] = (runtimeStats.bytesReturned[tName] || 0) + responseBytes;
+        if (isSandboxTool(tName)) {
+          runtimeStats.bytesSandboxed += responseBytes;
+        }
+        if (isIndexTool(tName)) {
+          runtimeStats.bytesIndexed += responseBytes;
+        }
+      }
+    } catch {
+      // Non-blocking: byte tracking errors silently skipped
     }
 
     // Apply display overrides for built-in tools

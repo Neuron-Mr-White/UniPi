@@ -283,11 +283,10 @@ export interface RuntimeCounters {
 // ─────────────────────────────────────────────────────────
 
 export interface CompactorInfoData {
-  sessionEvents: { value: string; detail: string };
-  compactions: { value: string; detail: string };
   tokensSaved: { value: string; detail: string };
-  compressionRatio: { value: string; detail: string };
-  indexedDocs: { value: string; detail: string };
-  sandboxExecutions: { value: string; detail: string };
-  searchQueries: { value: string; detail: string };
+  costSaved: { value: string; detail: string };
+  pctReduction: { value: string; detail: string };
+  topTools: { value: string; detail: string };
+  compactions: { value: string; detail: string };
+  toolCalls: { value: string; detail: string };
 }

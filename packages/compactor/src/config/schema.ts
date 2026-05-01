@@ -58,7 +58,7 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     mmapPragma: false,
     customNoisePatterns: [],
   },
-  overrideDefaultCompaction: false,
+  overrideDefaultCompaction: true,
   debug: false,
   showTruncationHints: true,
 };
