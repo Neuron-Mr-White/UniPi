@@ -27,6 +27,7 @@ import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 
 import type { FooterGroup, FooterSegment } from "./types.js";
 import { rainbowBorder } from "./segments/core.js";
+import { tpsTracker } from "./tps-tracker.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
@@ -124,6 +125,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
       state.refreshTimer = null;
     }
     state.tuiRef = null;
+    tpsTracker.reset();
   });
 
   // ─── Register commands ──────────────────────────────────────────────────
@@ -152,6 +154,26 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
     // Start periodic refresh for time-sensitive segments (e.g. clock)
     if (!state.refreshTimer) {
       state.refreshTimer = setInterval(() => {
+        // Feed TPS tracker with current output token count
+        try {
+          const piCtx = state.piContext as Record<string, unknown> | undefined;
+          if (piCtx?.sessionManager) {
+            const sm = (piCtx as any).sessionManager;
+            const events = sm?.getBranch?.() ?? [];
+            let totalOutput = 0;
+            for (const e of events) {
+              if (!e || typeof e !== "object") continue;
+              if (e.type !== "message") continue;
+              const m = e.message;
+              if (!m || m.role !== "assistant") continue;
+              if (m.stopReason === "error" || m.stopReason === "aborted") continue;
+              totalOutput += m.usage?.output ?? 0;
+            }
+            tpsTracker.onTokenEvent(Date.now(), totalOutput);
+          }
+        } catch {
+          // Silently ignore — TPS is best-effort
+        }
         state.renderer.resetLayoutCache();
         state.tuiRef?.requestRender();
       }, 1_000);

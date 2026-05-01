@@ -27,6 +27,10 @@ export interface IconSet {
   session: string;
   hostname: string;
   time: string;
+  tps: string;
+  clock: string;
+  duration: string;
+  thinkingLevel: string;
 
   // Compactor segments
   sessionEvents: string;
@@ -92,6 +96,10 @@ export const NERD_ICONS: IconSet = {
   session:         "\uF550", // nf-md-identifier
   hostname:        "\uF109", // nf-fa-laptop
   time:            "\uF017", // nf-fa-clock_o
+  tps:             "\uF062", // \u2191 up arrow
+  clock:           "\uF017", // nf-fa-clock_o
+  duration:        "\uF49B", // nf-md-timer_outline
+  thinkingLevel:   "\uF4D8", // nf-fa-lightbulb_o
 
   // Compactor
   sessionEvents:   "\uDBB1\uDECF", // 󰲏 session events icon
@@ -157,6 +165,11 @@ export const EMOJI_ICONS: IconSet = {
   hostname:        "⌂",
   time:            "⏱",
 
+  tps:             "↑",
+  clock:           "🕔",
+  duration:        "⏱",
+  thinkingLevel:   "💡",
+
   // Compactor
   sessionEvents:   "⚡",
   compactions:     "◧",
@@ -220,6 +233,11 @@ export const TEXT_ICONS: IconSet = {
   session:         "SES",
   hostname:        "HST",
   time:            "TIM",
+
+  tps:             "TPS",
+  clock:           "CLK",
+  duration:        "DUR",
+  thinkingLevel:   "THK",
 
   // Compactor
   sessionEvents:   "EVT",

@@ -46,7 +46,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     3. Update session segment to use `session` semantic color
     4. Verify rendering: hex colors produce correct ANSI codes via existing `applyColor()`
 
-- unstarted: Task 3 — TPS Tracking & Segment + Clock & Duration
+- completed: Task 3 — TPS Tracking & Segment + Clock & Duration
   - Description: Add TPS data derivation (sliding 3s window), the tps segment with tier coloring, a wall-clock segment, and update the duration segment label/format.
   - Dependencies: Task 1 (type fields), Task 2 (TPS tier colors)
   - Acceptance Criteria: TPS segment shows live rate during generation, session average when idle. Clock shows HH:MM:SS, duration shows H:MM:SS. Both update every second.

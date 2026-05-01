@@ -10,6 +10,7 @@ import { hostname as osHostname } from "node:os";
 import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColor } from "../types.js";
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { tpsTracker } from "../tps-tracker.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -226,6 +227,82 @@ function renderTimeSegment(ctx: FooterSegmentContext): RenderedSegment {
   return { content, visible: true };
 }
 
+// ─── TPS tier color function ────────────────────────────────────────────────
+
+function getTpsSemanticColor(tps: number): SemanticColor {
+  if (tps > 200) return "tpsBlazing";
+  if (tps > 100) return "tpsFast";
+  if (tps > 50) return "tpsGood";
+  if (tps > 30) return "tpsModerate";
+  return "tpsSlow";
+}
+
+function renderTpsSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const generating = tpsTracker.isGenerating();
+  const liveTps = tpsTracker.getLiveTps();
+  const avgTps = tpsTracker.getSessionAvgTps();
+
+  // No data yet — hide
+  if (!tpsTracker.getTotalOutput()) return { content: "", visible: false };
+
+  const icon = getIcon("tps");
+
+  if (generating && liveTps > 0) {
+    // Active generation: show live rate + avg
+    const liveDisplay = Math.round(liveTps);
+    const avgDisplay = Math.round(avgTps);
+    const liveText = `\u2191 ${liveDisplay} t/s`;
+    const avgText = `avg ${avgDisplay}`;
+    const liveColored = applyColor(getTpsSemanticColor(liveTps), liveText, ctx.theme, ctx.colors);
+    const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
+    const content = icon ? `${icon} ${liveColored} \u00b7 ${avgColored}` : `${liveColored} \u00b7 ${avgColored}`;
+    return { content, visible: true };
+  }
+
+  // Idle: show session average
+  const avgDisplay = Math.round(avgTps);
+  const avgText = `avg ${avgDisplay} t/s`;
+  const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
+  const content = icon ? `${icon} ${avgColored}` : avgColored;
+  return { content: avgColored, visible: true };
+}
+
+function renderClockSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const now = new Date();
+  const h = now.getHours().toString().padStart(2, "0");
+  const m = now.getMinutes().toString().padStart(2, "0");
+  const s = now.getSeconds().toString().padStart(2, "0");
+  const timeStr = `${h}:${m}:${s}`;
+  const content = withIcon("clock", timeStr);
+  return { content: color(ctx, "clock", content), visible: true };
+}
+
+function renderDurationSegment(ctx: FooterSegmentContext): RenderedSegment {
+  // Derive session duration from sessionManager
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  const sessionStart = (piCtx?.sessionManager as any)?.getSessionStartTime?.();
+  if (!sessionStart) {
+    // Fallback: show current time segment style
+    return { content: "", visible: false };
+  }
+
+  const elapsedMs = Date.now() - sessionStart;
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  let display: string;
+  if (hours > 0) {
+    display = `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  } else {
+    display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  const content = withIcon("duration", display);
+  return { content: color(ctx, "duration", content), visible: true };
+}
+
 // ─── Core segments array ────────────────────────────────────────────────────
 
 export const CORE_SEGMENTS: FooterSegment[] = [
@@ -233,6 +310,7 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "api_state", label: "API", shortLabel: "api", description: "API connection state", zone: "left", icon: "", render: renderApiStateSegment, defaultShow: true },
   { id: "tool_count", label: "Tool Count", shortLabel: "tls", description: "Number of tools available", zone: "left", icon: "", render: renderToolCountSegment, defaultShow: true },
   { id: "git", label: "Git", shortLabel: "git", description: "Current git branch + dirty/clean status", zone: "left", icon: "", render: renderGitSegment, defaultShow: true },
+  { id: "tps", label: "TPS", shortLabel: "tps", description: "Tokens per second \u2014 live during generation", zone: "center", icon: "", render: renderTpsSegment, defaultShow: true },
   { id: "context_pct", label: "Context %", shortLabel: "ctx", description: "Context window usage percentage", zone: "center", icon: "", render: renderContextPctSegment, defaultShow: true },
   { id: "cost", label: "Cost", shortLabel: "cst", description: "Session cost in USD", zone: "center", icon: "", render: renderCostSegment, defaultShow: true },
   { id: "tokens_total", label: "Tokens Total", shortLabel: "tok", description: "Total tokens used this session", zone: "center", icon: "", render: renderTokensSegment("total"), defaultShow: false },
@@ -240,5 +318,6 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "tokens_out", label: "Tokens Out", shortLabel: "tout", description: "Output tokens generated", zone: "center", icon: "", render: renderTokensSegment("out"), defaultShow: false },
   { id: "session", label: "Session", shortLabel: "ses", description: "Session identifier", zone: "left", icon: "", render: renderSessionSegment, defaultShow: false },
   { id: "hostname", label: "Hostname", shortLabel: "hst", description: "Machine hostname", zone: "left", icon: "", render: renderHostnameSegment, defaultShow: false },
-  { id: "time", label: "Duration", shortLabel: "dur", description: "Session duration", zone: "right", icon: "", render: renderTimeSegment, defaultShow: false },
+  { id: "clock", label: "Clock", shortLabel: "clk", description: "Current wall time (HH:MM:SS)", zone: "right", icon: "", render: renderClockSegment, defaultShow: true },
+  { id: "duration", label: "Duration", shortLabel: "dur", description: "Session duration", zone: "right", icon: "", render: renderDurationSegment, defaultShow: true },
 ];
