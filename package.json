@@ -51,7 +51,7 @@
       "node_modules/@pi-unipi/milestone/index.ts",
       "node_modules/@pi-unipi/kanboard/index.ts",
       "node_modules/@pi-unipi/command-enchantment/src/index.ts",
-      "node_modules/@pi-unipi/footer/index.ts"
+      "node_modules/@pi-unipi/footer/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
