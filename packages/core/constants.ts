@@ -36,6 +36,7 @@ export const MODULES = {
   MILESTONE: "@pi-unipi/milestone",
   KANBOARD: "@pi-unipi/kanboard",
   FOOTER: "@pi-unipi/footer",
+  UPDATER: "@pi-unipi/updater",
 } as const;
 
 /** Workflow command names */
@@ -293,6 +294,19 @@ export const MILESTONE_COMMANDS = {
 /** Milestone directory paths */
 export const MILESTONE_DIRS = {
   MILESTONES: ".unipi/docs/MILESTONES.md",
+} as const;
+
+/** Updater command names */
+export const UPDATER_COMMANDS = {
+  README: "readme",
+  CHANGELOG: "changelog",
+  UPDATER_SETTINGS: "updater-settings",
+} as const;
+
+/** Updater directory paths */
+export const UPDATER_DIRS = {
+  CONFIG: "~/.unipi/config/updater",
+  CACHE: "~/.unipi/cache/updater",
 } as const;
 
 /** Footer command names */

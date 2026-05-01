@@ -81,6 +81,15 @@ export const UNIPI_EVENTS = {
 
   /** Agent asked user a question (ask_user tool invoked) */
   ASK_USER_PROMPT: "unipi:ask-user:prompt",
+
+  /** Update check performed */
+  UPDATE_CHECK: "unipi:update:check",
+  /** Update available */
+  UPDATE_AVAILABLE: "unipi:update:available",
+  /** Update applied */
+  UPDATE_APPLIED: "unipi:update:applied",
+  /** Update error */
+  UPDATE_ERROR: "unipi:update:error",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -323,6 +332,42 @@ export interface UnipiAskUserPromptEvent {
   allowFreeform?: boolean;
 }
 
+/** Payload for UPDATE_CHECK */
+export interface UnipiUpdateCheckEvent {
+  /** Current installed version */
+  currentVersion: string;
+  /** Latest version found on npm */
+  latestVersion: string;
+  /** Whether an update is available */
+  updateAvailable: boolean;
+  /** Error if check failed */
+  error?: string;
+}
+
+/** Payload for UPDATE_AVAILABLE */
+export interface UnipiUpdateAvailableEvent {
+  /** Current installed version */
+  currentVersion: string;
+  /** Latest version available */
+  latestVersion: string;
+}
+
+/** Payload for UPDATE_APPLIED */
+export interface UnipiUpdateAppliedEvent {
+  /** Previous version */
+  previousVersion: string;
+  /** New version after update */
+  newVersion: string;
+}
+
+/** Payload for UPDATE_ERROR */
+export interface UnipiUpdateErrorEvent {
+  /** Error message */
+  error: string;
+  /** Whether the error was from check or install */
+  phase: "check" | "install";
+}
+
 /** Payload for NOTIFICATION_SENT */
 export interface UnipiNotificationSentEvent {
   /** Event type that triggered notification */
@@ -359,4 +404,8 @@ export type UnipiEventPayload =
   | UnipiUtilityLifecycleEvent
   | UnipiNotificationSentEvent
   | UnipiBadgeGenerateRequestEvent
-  | UnipiAskUserPromptEvent;
+  | UnipiAskUserPromptEvent
+  | UnipiUpdateCheckEvent
+  | UnipiUpdateAvailableEvent
+  | UnipiUpdateAppliedEvent
+  | UnipiUpdateErrorEvent;

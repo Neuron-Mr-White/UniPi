@@ -27,6 +27,7 @@ pi install npm:@pi-unipi/ask-user
 pi install npm:@pi-unipi/milestone
 pi install npm:@pi-unipi/kanboard
 pi install npm:@pi-unipi/footer
+pi install npm:@pi-unipi/updater
 ```
 
 ## Packages
@@ -49,6 +50,7 @@ pi install npm:@pi-unipi/footer
 | `@pi-unipi/milestone` | Milestone tracking and project progress management |
 | `@pi-unipi/kanboard` | Kanboard visualization server with TUI overlay |
 | `@pi-unipi/footer` | Persistent status bar with live stats from all packages |
+| `@pi-unipi/updater` | Auto-updater, changelog browser, and readme browser |
 
 ## Commands
 
@@ -226,6 +228,14 @@ pi install npm:@pi-unipi/footer
 |---------|-------------|
 | `/unipi:footer` | Toggle footer or switch preset |
 | `/unipi:footer-settings` | Open footer settings — toggle groups and segments |
+
+### Updater (`/unipi:updater*`)
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:readme [package]` | Browse package README files in TUI overlay |
+| `/unipi:changelog` | Browse CHANGELOG.md with version list and detail view |
+| `/unipi:updater-settings` | Configure check interval and auto-update mode |
 
 ### Name Badge
 

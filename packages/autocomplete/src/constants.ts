@@ -30,6 +30,7 @@ export const PACKAGE_ORDER: string[] = [
   "notify",
   "kanboard",
   "footer",
+  "updater",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   notify:    `${ESC}[96m`, // Bright Cyan
   kanboard:  `${ESC}[92m`, // Bright Green
   footer:    `${ESC}[34m`, // Blue
+  updater:   `${ESC}[93m`, // Bright Yellow
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -149,6 +151,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // footer (2 commands)
   "unipi:footer":            "footer",
   "unipi:footer-settings":   "footer",
+
+  // updater (3 commands)
+  "unipi:readme":            "updater",
+  "unipi:changelog":         "updater",
+  "unipi:updater-settings":  "updater",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -236,6 +243,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:footer":            "Toggle footer or switch preset",
   "unipi:footer-settings":   "Open footer settings — toggle groups and segments",
+
+  "unipi:readme":            "Browse package README files",
+  "unipi:changelog":         "Browse changelog (Keep a Changelog format)",
+  "unipi:updater-settings":  "Configure updater — check interval and auto-update",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────
@@ -254,4 +265,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   notify:    "notify",
   kanboard:  "kanboard",
   footer:    "footer",
+  updater:   "updater",
 };

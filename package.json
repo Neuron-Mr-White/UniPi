@@ -51,7 +51,8 @@
       "node_modules/@pi-unipi/milestone/index.ts",
       "node_modules/@pi-unipi/kanboard/index.ts",
       "node_modules/@pi-unipi/command-enchantment/src/index.ts",
-      "node_modules/@pi-unipi/footer/src/index.ts"
+      "node_modules/@pi-unipi/footer/src/index.ts",
+      "node_modules/@pi-unipi/updater/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -64,7 +65,8 @@
       "node_modules/@pi-unipi/compactor/skills",
       "node_modules/@pi-unipi/notify/skills",
       "node_modules/@pi-unipi/milestone/skills",
-      "node_modules/@pi-unipi/kanboard/skills"
+      "node_modules/@pi-unipi/kanboard/skills",
+      "node_modules/@pi-unipi/updater/skills"
     ]
   },
   "peerDependencies": {
@@ -90,7 +92,8 @@
     "@pi-unipi/kanboard": "*",
     "@pi-unipi/web-api": "*",
     "@pi-unipi/workflow": "*",
-    "@pi-unipi/footer": "*"
+    "@pi-unipi/footer": "*",
+    "@pi-unipi/updater": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
