@@ -13,6 +13,7 @@ import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
 import { RecapModelSelectorOverlay } from "./tui/recap-model-selector.js";
 import { loadConfig } from "./settings.js";
+import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
@@ -310,16 +311,17 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           }
         }
 
-        // ntfy
-        if (config.ntfy.enabled && config.ntfy.serverUrl && config.ntfy.topic) {
+        // ntfy — resolved from project/global ntfy.json
+        const ntfyConfig = loadNtfyConfig(process.cwd());
+        if (ntfyConfig.enabled && ntfyConfig.serverUrl && ntfyConfig.topic) {
           try {
             await sendNtfyNotification(
-              config.ntfy.serverUrl,
-              config.ntfy.topic,
+              ntfyConfig.serverUrl,
+              ntfyConfig.topic,
               title,
               message,
-              config.ntfy.priority,
-              config.ntfy.token
+              ntfyConfig.priority,
+              ntfyConfig.token
             );
             results.push("✓ ntfy: sent");
           } catch (err) {

@@ -42,8 +42,9 @@ export default function (pi: ExtensionAPI) {
   // Session lifecycle — register events and announce module
   pi.on("session_start", async (_event, ctx) => {
     setSessionContext(ctx);
+    const cwd = process.cwd();
     const config = loadConfig();
-    registerEventListeners(pi, config);
+    registerEventListeners(pi, config, cwd);
 
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.NOTIFY,

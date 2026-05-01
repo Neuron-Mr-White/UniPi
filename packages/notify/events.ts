@@ -8,6 +8,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types.js";
+import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
@@ -47,7 +48,8 @@ export const BUILTIN_EVENTS: Record<
  */
 export function registerEventListeners(
   pi: ExtensionAPI,
-  config: NotifyConfig
+  config: NotifyConfig,
+  cwd: string
 ): void {
   // Register built-in events (except agent_end which has custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
@@ -60,7 +62,7 @@ export function registerEventListeners(
       const title = `Pi — ${def.label}`;
       const message = buildEventMessage(eventKey, payload);
       // Fire-and-forget: don't block the event emitter
-      dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config).catch(
+      dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd).catch(
         () => {
           // Silently ignore — background notification failure is non-blocking.
         }
@@ -98,7 +100,7 @@ export function registerEventListeners(
               })
               .catch(() => buildAgentEndMessage(sessionName))
               .then((message) =>
-                dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config)
+                dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config, cwd)
               )
               .catch(() => {
                 // Silently ignore — background agent_end notification failure is non-blocking.
@@ -110,7 +112,7 @@ export function registerEventListeners(
 
       // No recap or recap unavailable: dispatch immediately in background
       const message = buildAgentEndMessage(sessionName);
-      dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config).catch(
+      dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config, cwd).catch(
         () => {
           // Silently ignore — background agent_end notification failure is non-blocking.
         }
@@ -132,12 +134,12 @@ export function registerEventListeners(
 }
 
 /** Get all platforms that are currently enabled in config */
-function getEnabledPlatforms(config: NotifyConfig): NotifyPlatform[] {
+function getEnabledPlatforms(config: NotifyConfig, ntfyEnabled: boolean): NotifyPlatform[] {
   const enabled: NotifyPlatform[] = [];
   if (config.native.enabled) enabled.push("native");
   if (config.gotify.enabled) enabled.push("gotify");
   if (config.telegram.enabled) enabled.push("telegram");
-  if (config.ntfy.enabled) enabled.push("ntfy");
+  if (ntfyEnabled) enabled.push("ntfy");
   return enabled;
 }
 
@@ -154,28 +156,32 @@ export async function dispatchNotification(
   message: string,
   eventPlatforms: NotifyPlatform[],
   eventType: string,
-  config: NotifyConfig
+  config: NotifyConfig,
+  cwd: string
 ): Promise<NotifyDispatchResult> {
+  // Resolve ntfy config from project/global ntfy.json
+  const ntfyConfig = loadNtfyConfig(cwd);
+
   // Resolve platforms: event-specific → all enabled → global defaults
   const platforms =
     eventPlatforms.length > 0
       ? eventPlatforms
-      : getEnabledPlatforms(config).length > 0
-        ? getEnabledPlatforms(config)
+      : getEnabledPlatforms(config, ntfyConfig.enabled).length > 0
+        ? getEnabledPlatforms(config, ntfyConfig.enabled)
         : config.defaultPlatforms;
 
   const enabledPlatforms = platforms.filter((p) => {
     if (p === "native") return config.native.enabled;
     if (p === "gotify") return config.gotify.enabled;
     if (p === "telegram") return config.telegram.enabled;
-    if (p === "ntfy") return config.ntfy.enabled;
+    if (p === "ntfy") return ntfyConfig.enabled;
     return false;
   });
 
   const results = await Promise.all(
     enabledPlatforms.map(async (platform) => {
       try {
-        await sendToPlatform(platform, title, message, config);
+        await sendToPlatform(platform, title, message, config, cwd);
         return { platform, success: true };
       } catch (err) {
         // Silently ignore — platform send failure is tracked in results.
@@ -206,7 +212,8 @@ async function sendToPlatform(
   platform: NotifyPlatform,
   title: string,
   message: string,
-  config: NotifyConfig
+  config: NotifyConfig,
+  cwd: string
 ): Promise<void> {
   switch (platform) {
     case "native":
@@ -237,19 +244,22 @@ async function sendToPlatform(
         message
       );
       break;
-    case "ntfy":
-      if (!config.ntfy.serverUrl || !config.ntfy.topic) {
+    case "ntfy": {
+      const ntfyConfig = loadNtfyConfig(cwd);
+      if (!ntfyConfig.enabled) return;
+      if (!ntfyConfig.serverUrl || !ntfyConfig.topic) {
         throw new Error("ntfy: serverUrl and topic are required");
       }
       await sendNtfyNotification(
-        config.ntfy.serverUrl,
-        config.ntfy.topic,
+        ntfyConfig.serverUrl,
+        ntfyConfig.topic,
         title,
         message,
-        config.ntfy.priority,
-        config.ntfy.token
+        ntfyConfig.priority,
+        ntfyConfig.token
       );
       break;
+    }
   }
 }
 

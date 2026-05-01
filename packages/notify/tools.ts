@@ -64,13 +64,15 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
       const notifPlatforms = platforms || config.defaultPlatforms;
 
       // Fire-and-forget: dispatch in background so the tool doesn't block the agent
+      const cwd = process.cwd();
       dispatchNotification(
         pi,
         notifTitle,
         message,
         notifPlatforms,
         "agent_tool",
-        config
+        config,
+        cwd
       ).catch(() => {
         // Silently ignore — background dispatch failure is non-blocking.
       });

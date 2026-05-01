@@ -13,7 +13,8 @@ import {
   saveConfig,
   validateConfig,
 } from "../settings.js";
-import type { NotifyConfig } from "../types.js";
+import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
+import type { NotifyConfig, NtfyConfig } from "../types.js";
 
 /** Section types */
 type Section = "platforms" | "events" | "recap";
@@ -23,6 +24,8 @@ type Section = "platforms" | "events" | "recap";
  */
 export class NotifySettingsOverlay implements Component {
   private config: NotifyConfig;
+  private ntfyConfig: NtfyConfig;
+  private ntfyScope: "project" | "global" | "none";
   private section: Section = "platforms";
   private selectedIndex = 0;
   private error: string | null = null;
@@ -35,6 +38,9 @@ export class NotifySettingsOverlay implements Component {
 
   constructor() {
     this.config = loadConfig();
+    const cwd = process.cwd();
+    this.ntfyConfig = loadNtfyConfig(cwd);
+    this.ntfyScope = getNtfyConfigScope(cwd);
   }
 
   setTheme(theme: Theme): void {
@@ -93,7 +99,10 @@ export class NotifySettingsOverlay implements Component {
         "ntfy",
       ];
       const key = platforms[this.selectedIndex];
-      if (key) {
+      if (key === "ntfy") {
+        // ntfy toggle updates the resolved ntfy config
+        this.ntfyConfig.enabled = !this.ntfyConfig.enabled;
+      } else if (key) {
         this.config[key].enabled = !this.config[key].enabled;
       }
     } else if (this.section === "recap") {
@@ -115,6 +124,10 @@ export class NotifySettingsOverlay implements Component {
     }
     this.error = null;
     saveConfig(this.config);
+    // Save ntfy config to its own file if scope is known
+    if (this.ntfyScope !== "none") {
+      saveNtfyConfig(this.ntfyScope, process.cwd(), this.ntfyConfig);
+    }
     this.saved = true;
     setTimeout(() => this.onClose?.(), 500);
   }
@@ -237,9 +250,9 @@ export class NotifySettingsOverlay implements Component {
       {
         key: "ntfy",
         label: "ntfy",
-        detail: this.config.ntfy.serverUrl
-          ? `Server: ${this.config.ntfy.serverUrl}`
-          : "Self-hosted push service",
+        detail: this.ntfyScope !== "none"
+          ? `Topic: ${this.ntfyConfig.topic ?? "—"} · P${this.ntfyConfig.priority} · [${this.ntfyScope}]`
+          : "Not configured",
       },
     ];
 
@@ -248,7 +261,9 @@ export class NotifySettingsOverlay implements Component {
       const isSelected = i === this.selectedIndex;
       const toggleOn = this.fg("success", "●");
       const toggleOff = this.fg("dim", "○");
-      const toggle = this.config[p.key].enabled ? toggleOn : toggleOff;
+      // ntfy enabled state comes from resolved ntfy.json, not config.json
+      const isEnabled = p.key === "ntfy" ? this.ntfyConfig.enabled : this.config[p.key].enabled;
+      const toggle = isEnabled ? toggleOn : toggleOff;
       const label = isSelected ? this.bold(p.label) : this.fg("dim", p.label);
 
       lines.push(

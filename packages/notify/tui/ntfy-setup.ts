@@ -10,10 +10,11 @@ import type { Component } from "@mariozechner/pi-tui";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { sendNtfyNotification } from "../platforms/ntfy.js";
-import { updateConfig, loadConfig } from "../settings.js";
+import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
 
 type SetupPhase =
   | "instructions"
+  | "scope"
   | "server-url"
   | "topic"
   | "token"
@@ -28,6 +29,8 @@ type SetupPhase =
  */
 export class NtfySetupOverlay implements Component {
   private phase: SetupPhase = "instructions";
+  private scope: "global" | "project" = "global";
+  private scopeIndex = 0; // 0 = global, 1 = project
   private serverUrl = "";
   private topic = "";
   private token = "";
@@ -41,12 +44,18 @@ export class NtfySetupOverlay implements Component {
   private theme: Theme | null = null;
 
   constructor() {
-    // Pre-fill from existing config if available
-    const config = loadConfig();
-    if (config.ntfy.serverUrl) this.serverUrl = config.ntfy.serverUrl;
-    if (config.ntfy.topic) this.topic = config.ntfy.topic;
-    if (config.ntfy.token) this.token = config.ntfy.token;
-    if (config.ntfy.priority) this.priority = String(config.ntfy.priority);
+    // Determine current scope and pre-fill from resolved config
+    const cwd = process.cwd();
+    const existingScope = getNtfyConfigScope(cwd);
+    if (existingScope !== "none") {
+      this.scope = existingScope;
+      this.scopeIndex = existingScope === "project" ? 1 : 0;
+    }
+    const config = loadNtfyConfig(cwd);
+    if (config.serverUrl) this.serverUrl = config.serverUrl;
+    if (config.topic) this.topic = config.topic;
+    if (config.token) this.token = config.token;
+    if (config.priority) this.priority = String(config.priority);
   }
 
   setTheme(theme: Theme): void {
@@ -59,6 +68,21 @@ export class NtfySetupOverlay implements Component {
     switch (this.phase) {
       case "instructions":
         if (data === "\r" || data === " ") {
+          this.phase = "scope";
+        } else if (data === "\x1b") {
+          this.onClose?.();
+        }
+        break;
+
+      case "scope":
+        if (data === "\x1b[A" || data === "k") {
+          // Up
+          this.scopeIndex = Math.max(0, this.scopeIndex - 1);
+        } else if (data === "\x1b[B" || data === "j") {
+          // Down
+          this.scopeIndex = Math.min(1, this.scopeIndex + 1);
+        } else if (data === "\r" || data === " ") {
+          this.scope = this.scopeIndex === 1 ? "project" : "global";
           this.phase = this.serverUrl ? "topic" : "server-url";
         } else if (data === "\x1b") {
           this.onClose?.();
@@ -206,14 +230,13 @@ export class NtfySetupOverlay implements Component {
   }
 
   private saveConfig(): void {
-    updateConfig({
-      ntfy: {
-        enabled: true,
-        serverUrl: this.serverUrl.replace(/\/$/, ""),
-        topic: this.topic,
-        token: this.token || undefined,
-        priority: parseInt(this.priority, 10) || 3,
-      },
+    const cwd = process.cwd();
+    saveNtfyConfig(this.scope, cwd, {
+      enabled: true,
+      serverUrl: this.serverUrl.replace(/\/$/, ""),
+      topic: this.topic,
+      token: this.token || undefined,
+      priority: parseInt(this.priority, 10) || 3,
     });
   }
 
@@ -335,6 +358,36 @@ export class NtfySetupOverlay implements Component {
           )
         );
         break;
+
+      case "scope": {
+        lines.push(
+          this.frameLine(
+            this.fg("dim", "Where should this config be saved?"),
+            innerWidth
+          )
+        );
+        lines.push(this.frameLine("", innerWidth));
+        const options = ["Global (all projects)", "Project (this project only)"];
+        for (let i = 0; i < options.length; i++) {
+          const isSelected = i === this.scopeIndex;
+          const label = isSelected ? this.bold(options[i]) : this.fg("dim", options[i]);
+          lines.push(
+            this.frameLine(
+              `  ${isSelected ? this.fg("accent", "▸") : " "} ${label}`,
+              innerWidth
+            )
+          );
+        }
+        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.ruleLine(innerWidth));
+        lines.push(
+          this.frameLine(
+            this.fg("dim", "↑↓ select · Enter confirm · Esc cancel"),
+            innerWidth
+          )
+        );
+        break;
+      }
 
       case "server-url":
         lines.push(
