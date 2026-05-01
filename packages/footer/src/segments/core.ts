@@ -303,6 +303,32 @@ function renderDurationSegment(ctx: FooterSegmentContext): RenderedSegment {
   return { content: color(ctx, "duration", content), visible: true };
 }
 
+// ─── Thinking level ──────────────────────────────────────────────────────────
+
+/** Map thinking level to semantic color */
+function getThinkingSemanticColor(level: string | undefined): SemanticColor {
+  switch (level) {
+    case "minimal": return "thinkingMinimal";
+    case "low": return "thinkingLow";
+    case "medium": return "thinkingMedium";
+    case "high": return "thinkingHigh";
+    case "xhigh": return "thinkingXhigh";
+    default: return "thinking";
+  }
+}
+
+function renderThinkingLevelSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  const model = piCtx?.model as Record<string, unknown> | undefined;
+  const thinkingLevel = model?.thinkingLevel as string | undefined;
+
+  if (!thinkingLevel || thinkingLevel === "off") return { content: "", visible: false };
+
+  const semanticColor = getThinkingSemanticColor(thinkingLevel);
+  const content = withIcon("thinkingLevel", thinkingLevel);
+  return { content: color(ctx, semanticColor, content), visible: true };
+}
+
 // ─── Core segments array ────────────────────────────────────────────────────
 
 export const CORE_SEGMENTS: FooterSegment[] = [
@@ -320,4 +346,5 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "hostname", label: "Hostname", shortLabel: "hst", description: "Machine hostname", zone: "left", icon: "", render: renderHostnameSegment, defaultShow: false },
   { id: "clock", label: "Clock", shortLabel: "clk", description: "Current wall time (HH:MM:SS)", zone: "right", icon: "", render: renderClockSegment, defaultShow: true },
   { id: "duration", label: "Duration", shortLabel: "dur", description: "Session duration", zone: "right", icon: "", render: renderDurationSegment, defaultShow: true },
+  { id: "thinking_level", label: "Thinking", shortLabel: "thk", description: "Current model thinking level", zone: "center", icon: "", render: renderThinkingLevelSegment, defaultShow: false },
 ];

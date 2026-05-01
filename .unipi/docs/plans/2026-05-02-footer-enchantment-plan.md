@@ -68,7 +68,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     6. Add `clock` and `tps` icons to all 3 icon sets in `icons.ts`
     7. Verify TPS updates during generation, clock/duration tick every second
 
-- unstarted: Task 4 — Workflow Colors & Thinking Level Segment
+- completed: Task 4 — Workflow Colors & Thinking Level Segment
   - Description: Wire up the spec's workflow command→color mapping and add the optional thinking level segment.
   - Dependencies: Task 2 (workflow colors in palette)
   - Acceptance Criteria: Workflow segment shows correct color per command type. Thinking level segment renders with 6-level colors. Rainbow mode option exists.

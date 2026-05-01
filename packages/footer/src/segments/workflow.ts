@@ -23,21 +23,43 @@ function getWorkflowData(ctx: FooterSegmentContext): Record<string, unknown> {
   return data as Record<string, unknown>;
 }
 
-/** Map a workflow command name to a semantic color for slight differentiation */
+/** Map a workflow command name to a semantic color for category differentiation */
 function getWorkflowSemanticColor(command: string): SemanticColor {
-  const commandLower = command.toLowerCase();
+  const c = command.toLowerCase();
 
-  if (commandLower.includes("brainstorm")) return "workflowBrainstorm";
-  if (commandLower.includes("plan")) return "workflowPlan";
-  if (commandLower.includes("work") && !commandLower.includes("network") && !commandLower.includes("framework")) return "workflowWork";
-  if (commandLower.includes("review")) return "workflowReview";
-  if (commandLower.includes("auto")) return "workflowAuto";
-  if (commandLower.includes("fix") || commandLower.includes("debug")) return "workflowWork";
-  if (commandLower.includes("quick")) return "workflowOther";
-  if (commandLower.includes("document")) return "workflowPlan";
-  if (commandLower.includes("consolidate")) return "workflowOther";
+  // Red: brainstorm, debug, gather-context, quick-fix, quick-work, chore-create
+  if (c.includes("brainstorm") || c.includes("debug") || c.includes("gather-context") ||
+      c.includes("quick-fix") || c.includes("quick-work") || c.includes("chore-create")) {
+    return "workflowBrainstorm";
+  }
 
-  return "workflow";
+  // Orange: chore-execute, plan
+  if (c.includes("chore-exec") || c.includes("plan")) {
+    return "workflowChoreExec";
+  }
+
+  // Yellow: work
+  if (c.includes("work") && !c.includes("network") && !c.includes("framework") && !c.includes("worktree")) {
+    return "workflowWork";
+  }
+
+  // Green: review-work, review
+  if (c.includes("review")) {
+    return "workflowReview";
+  }
+
+  // Blue: worktree-*
+  if (c.includes("worktree")) {
+    return "worktree" as SemanticColor;
+  }
+
+  // Auto
+  if (c.includes("auto")) {
+    return "workflowAuto";
+  }
+
+  // Default: idle/none
+  return "workflowNone";
 }
 
 function renderCurrentCommandSegment(ctx: FooterSegmentContext): RenderedSegment {

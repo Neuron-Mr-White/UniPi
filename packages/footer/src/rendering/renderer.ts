@@ -265,7 +265,7 @@ export class FooterRenderer {
   /** Map a segment ID to its group ID */
   private getGroupForSegment(segId: string): string {
     // Core segments
-    const coreIds = ["model", "api_state", "tool_count", "git", "context_pct", "cost", "tokens_total", "tokens_in", "tokens_out", "session", "hostname", "time", "tps", "clock", "duration"];
+    const coreIds = ["model", "api_state", "tool_count", "git", "context_pct", "cost", "tokens_total", "tokens_in", "tokens_out", "session", "hostname", "time", "tps", "clock", "duration", "thinking_level"];
     if (coreIds.includes(segId)) return "core";
 
     // Compactor segments
