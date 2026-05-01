@@ -255,3 +255,36 @@ Task 17 (skill) ── standalone
 - **CHANGELOG.md doesn't exist yet on older versions** — parser returns empty array, overlay shows "No changelog available"
 - **README paths vary by install method** — discovery uses `import.meta.url` + walk-up, should work for both workspace and npm installs
 - **pi-tui Component API may have changed** — use kanboard overlay as reference, it's the most recent working example
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done 17/17
+
+All 17 tasks complete and verified against acceptance criteria:
+
+- **Task 1 (scaffold/types):** ✅ `packages/updater/` exists with `package.json`, `types.ts`, `index.ts`. Core constants (`MODULES.UPDATER`, `UPDATER_COMMANDS`, `UPDATER_DIRS`) and events (`UPDATE_CHECK/AVAILABLE/APPLIED/ERROR`) with payload interfaces all present in core.
+- **Task 2 (settings/config):** ✅ `settings.ts` has `loadConfig()`, `saveConfig()`, `DEFAULT_CONFIG`, `validateConfig()`, `getIntervalOptions()`. `cache.ts` has `readLastCheck()`, `writeLastCheck()`, `isCheckDue()`, `writeSkippedVersion()`, `isVersionSkipped()` with `mkdirSync recursive`.
+- **Task 3 (changelog parser):** ✅ `changelog.ts` parses `## [version]` and `### Section` headers. Handles `[Unreleased]`, missing files, empty files. Exports `parseChangelog()`, `getNewerVersions()`, `compareVersions()`.
+- **Task 4 (readme discovery):** ✅ `readme.ts` maps 20 short names to full `@pi-unipi/` package names via MODULES. Checks both workspace and node_modules layouts. Exports `discoverReadmes()` and `resolveReadmePath()`.
+- **Task 5 (markdown renderer):** ✅ `markdown.ts` handles headings (bold/underline), bullets (•), code blocks (dim), inline code, bold, italic, links. Word-wraps to terminal width.
+- **Task 6 (npm checker):** ✅ `checker.ts` fetches `registry.npmjs.org/@pi-unipi/unipi`, extracts `dist-tags.latest`, respects check interval, writes cache, handles network errors gracefully with 10s timeout.
+- **Task 7 (installer):** ✅ `installer.ts` wraps `child_process.exec("pi install npm:@pi-unipi/unipi")` with 60s timeout, emits `UPDATE_APPLIED` or `UPDATE_ERROR` events.
+- **Task 8 (changelog TUI):** ✅ `changelog-overlay.ts` has list/detail views, Current/New labels (teal/amber), j/k navigation, Enter for detail, Esc/q back, g/G jump.
+- **Task 9 (readme TUI):** ✅ `readme-overlay.ts` has list/content views, `openDirect` parameter for arg mode, version display, markdown rendering.
+- **Task 10 (update overlay):** ✅ `update-overlay.ts` shows version diff, changelog for newer versions, [Y] Update / [n] Skip, auto mode with countdown, skip-version persistence.
+- **Task 11 (settings TUI):** ✅ `settings-overlay.ts` has interval radio (30min/1h/6h/1d) and auto-update radio (disabled/notify/auto), Space cycles, Enter saves, Esc cancels.
+- **Task 12 (commands):** ✅ `commands.ts` registers all 3 commands. Autocomplete entries in `constants.ts` with COMMAND_REGISTRY, COMMAND_DESCRIPTIONS, PACKAGE_ORDER, PACKAGE_COLORS, PACKAGE_LABELS.
+- **Task 13 (entry point):** ✅ `src/index.ts` has `session_start` lifecycle (config load, update check, overlay show), `resources_discover` for skills, `registerCommands()`, `MODULE_READY` event.
+- **Task 14 (CHANGELOG/README):** ✅ Root `CHANGELOG.md` exists with `[Unreleased]` section listing updater features, plus `[0.1.15]` and `[0.1.14]` entries. `packages/updater/README.md` exists.
+- **Task 15 (integration):** ✅ Root `package.json` has `@pi-unipi/updater` dep, extension and skills entries. `packages/unipi/index.ts` imports and calls `updater(pi)`. Root README has updater row and 3 commands.
+- **Task 16 (info-screen):** ✅ Info-screen group registered in `src/index.ts` with "updater" id, 4 stats (installed/latest/status/lastCheck), event subscriptions for reactive updates.
+- **Task 17 (skill):** ✅ `skills/configure-updater/SKILL.md` documents all 3 commands, config options, cache behavior, and navigation keys.
+
+Codebase Checks:
+- ✓ Type check passed (`tsc --noEmit --skipLibCheck` — exit 0)
+- ✓ Tests passed (180/180, 0 failures — workspace test scripts missing for web-api/workflow but all runnable tests pass)
+- — Lint: no lint script defined
+- — Build: no build script defined (pi-packages use TS directly)
+- — Docker: no Dockerfile

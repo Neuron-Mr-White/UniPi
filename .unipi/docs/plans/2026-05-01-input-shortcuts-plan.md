@@ -29,7 +29,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
 
 ## Tasks
 
-- unstarted: Task 1 — Create package skeleton
+- completed: Task 1 — Create package skeleton
   - Description: Create `packages/input-shortcuts/` with package.json, tsconfig, index.ts, src/ directory structure following the footer/compactor pattern.
   - Dependencies: None
   - Acceptance Criteria: Package exists with correct structure, workspace registered, pi extension entry in root package.json
@@ -41,7 +41,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     5. Add `"@pi-unipi/input-shortcuts": "*"` to root package.json dependencies
     6. Add `"node_modules/@pi-unipi/input-shortcuts/src/index.ts"` to root package.json `pi.extensions` array
 
-- unstarted: Task 2 — Implement types.ts
+- completed: Task 2 — Implement types.ts
   - Description: Define shared type definitions for register data, undo/redo snapshots, config schema, and chord state.
   - Dependencies: Task 1
   - Acceptance Criteria: All types compile, used by downstream modules
@@ -52,7 +52,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     4. Define `ChordAction` enum/type: stash, redo, undo, appendRegister, appendStash, copy, cut, toggleThinking, tab
     5. Define `ChordState` type: idle | chord_root | chord_reg
 
-- unstarted: Task 3 — Implement registers.ts
+- completed: Task 3 — Implement registers.ts
   - Description: Register store with JSON file persistence. 10 numbered registers (0-9) + 1 stash register (S). File: `.unipi/config/input-shortcuts.json`. Atomic writes (write to .tmp then rename).
   - Dependencies: Task 2
   - Acceptance Criteria: Can load, get/set stash, get/set registers, persist to disk. Unit tests pass.
@@ -63,7 +63,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     4. Create directory on first write if missing
     5. Write unit tests: load/create file, read/write stash, read/write registers, roundtrip
 
-- unstarted: Task 4 — Implement undo-redo.ts
+- completed: Task 4 — Implement undo-redo.ts
   - Description: In-memory ring buffer (max 50 snapshots) with debounce (500ms) and undo throttle (1s). Redo buffer cleared on new snapshot.
   - Dependencies: Task 2
   - Acceptance Criteria: Snapshot/undo/redo work correctly, throttle prevents rapid-fire, debounce prevents noise. Unit tests pass.
@@ -75,7 +75,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     5. Implement `clear()` for session shutdown
     6. Write unit tests: basic undo/redo, throttle, debounce, redo-clears-on-new-snapshot, max size eviction
 
-- unstarted: Task 5 — Implement clipboard.ts
+- completed: Task 5 — Implement clipboard.ts
   - Description: Cross-platform clipboard read/write using child_process. Detection order: xclip → xsel → pbcopy/pbpaste → clip/powershell. Cache detected command.
   - Dependencies: None
   - Acceptance Criteria: Detects available clipboard tool, copies and pastes text. Returns error gracefully if unavailable. Unit tests pass.
@@ -86,7 +86,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     4. Handle errors gracefully (return `{ ok: false, reason: "clipboard unavailable" }`)
     5. Write unit tests: detection fallback, copy/paste roundtrip (skip in CI if no clipboard)
 
-- unstarted: Task 6 — Implement status.ts
+- completed: Task 6 — Implement status.ts
   - Description: Status bar feedback helper using `ctx.ui.setStatus("input-shortcuts", text)` with auto-clear after duration.
   - Dependencies: None
   - Acceptance Criteria: Shows status text, auto-clears after specified duration
@@ -94,7 +94,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     1. Implement `showStatus(ctx, text, durationMs)` — set status, setTimeout to clear
     2. Implement constants: `STATUS_SUCCESS_MS = 2000`, `STATUS_ERROR_MS = 3000`
 
-- unstarted: Task 7 — Implement chord-overlay.ts
+- completed: Task 7 — Implement chord-overlay.ts
   - Description: TUI overlay component that opens on `ALT+S`, shows action menu, captures keypresses. Uses `ctx.ui.custom()` pattern from btw/compactor. Two states: root chord and register sub-chord.
   - Dependencies: Task 2, Task 3, Task 4, Task 5, Task 6
   - Acceptance Criteria: Overlay renders action list, keypress triggers action, 300ms timeout auto-closes, register sub-chord works. Actions execute correctly.
@@ -115,7 +115,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
        - Toggle thinking: cycle off→low→medium→high→xhigh→off
     7. Show status feedback after each action (via status.ts)
 
-- unstarted: Task 8 — Implement settings-overlay.ts and /unipi:stash-settings command
+- completed: Task 8 — Implement settings-overlay.ts and /unipi:stash-settings command
   - Description: Settings TUI overlay (using SettingsList from pi-tui, following compactor pattern) that lets users customize the chord trigger keybinding and the tab-insert keybinding. Persist config to `.unipi/config/input-shortcuts-config.json`. Register `/unipi:stash-settings` command.
   - Dependencies: Task 2, Task 7
   - Acceptance Criteria: `/unipi:stash-settings` opens overlay, user can change keybindings, settings persist and are used by the chord handler
@@ -127,7 +127,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     5. Register `/unipi:stash-settings` command that opens the overlay
     6. On config save, re-register shortcuts with new keybindings (if possible) or inform user to restart
 
-- unstarted: Task 9 — Implement index.ts — extension entry point
+- completed: Task 9 — Implement index.ts — extension entry point
   - Description: Wire everything together. Register `ALT+S` shortcut (or configured key) that opens chord overlay. Register `ALT+I` shortcut for tab insertion. Register `/unipi:stash-settings` command. Handle session lifecycle.
   - Dependencies: Task 3, Task 4, Task 5, Task 6, Task 7, Task 8
   - Acceptance Criteria: Extension loads, shortcuts register, chord overlay opens on ALT+S, tab insert works on ALT+I, settings command works, cleanup on session shutdown
@@ -139,7 +139,7 @@ This preserves the vim-style chord UX using infrastructure that actually exists.
     5. Register `/unipi:stash-settings` command — handler opens settings overlay
     6. On `session_shutdown`: cancel chord, clear undo buffer
 
-- unstarted: Task 10 — Integration testing and manual verification
+- completed: Task 10 — Integration testing and manual verification
   - Description: Test all shortcut actions end-to-end in Pi TUI. Verify overlay renders correctly, actions work, settings persist.
   - Dependencies: Task 9
   - Acceptance Criteria: All 8 actions work from the chord overlay, settings overlay opens and saves, tab insert works

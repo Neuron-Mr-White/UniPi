@@ -1,9 +1,9 @@
 ---
 name: full-release
 type: chore
-description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update docs, publish to npm, push to GitHub
+description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-04-30
+last-run: 2026-05-01
 ---
 
 # Full Release Pipeline
@@ -25,23 +25,25 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.3 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.1 |
-| `packages/btw` | `@pi-unipi/btw` | 0.1.2 |
-| `packages/compactor` | `@pi-unipi/compactor` | 0.1.1 |
-| `packages/core` | `@pi-unipi/core` | 0.1.8 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.14 |
-| `packages/mcp` | `@pi-unipi/mcp` | 0.1.7 |
-| `packages/memory` | `@pi-unipi/memory` | 0.1.6 |
-| `packages/notify` | `@pi-unipi/notify` | 0.1.1 |
-| `packages/ralph` | `@pi-unipi/ralph` | 0.1.3 |
-| `packages/subagents` | `@pi-unipi/subagents` | 0.1.13 |
-| `packages/utility` | `@pi-unipi/utility` | 0.2.1 |
-| `packages/web-api` | `@pi-unipi/web-api` | 0.1.8 |
-| `packages/workflow` | `@pi-unipi/workflow` | 0.1.9 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.6 |
-| `packages/footer` | `@pi-unipi/footer` | 0.1.0 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.9 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.9 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.7 |
+| `packages/btw` | `@pi-unipi/btw` | 0.1.8 |
+| `packages/compactor` | `@pi-unipi/compactor` | 0.2.1 |
+| `packages/core` | `@pi-unipi/core` | 0.1.14 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.20 |
+| `packages/mcp` | `@pi-unipi/mcp` | 0.1.13 |
+| `packages/memory` | `@pi-unipi/memory` | 0.1.12 |
+| `packages/notify` | `@pi-unipi/notify` | 0.1.8 |
+| `packages/ralph` | `@pi-unipi/ralph` | 0.1.9 |
+| `packages/subagents` | `@pi-unipi/subagents` | 0.2.6 |
+| `packages/utility` | `@pi-unipi/utility` | 0.2.7 |
+| `packages/web-api` | `@pi-unipi/web-api` | 0.1.14 |
+| `packages/workflow` | `@pi-unipi/workflow` | 0.1.15 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.7 |
+| `packages/footer` | `@pi-unipi/footer` | 0.1.2 |
+| `packages/milestone` | `@pi-unipi/milestone` | 0.1.7 |
+| `packages/updater` | `@pi-unipi/updater` | 0.1.0 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.15 |
 
 ---
 
@@ -192,6 +194,14 @@ diff /tmp/expected_notify.txt /tmp/registered_notify.txt
 ```
 Expected: No differences. Notify commands: `notify-settings`, `notify-set-gotify`, `notify-set-tg`, `notify-test`.
 
+**Updater commands** (registered in `packages/updater/src/commands.ts`):
+```bash
+grep -oP 'UPDATER_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_updater.txt
+grep -oP 'UPDATER_COMMANDS\.\K[A_]+' packages/updater/src/commands.ts | sort -u > /tmp/registered_updater.txt
+diff /tmp/expected_updater.txt /tmp/registered_updater.txt
+```
+Expected: No differences. Updater commands: `readme`, `changelog`, `updater-settings`.
+
 **Web-api commands** (registered in `packages/web-api/src/commands.ts`):
 ```bash
 grep -oP 'WEB_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_web.txt
@@ -263,7 +273,24 @@ If esbuild not installed: `npm install -D esbuild`.
 **Note:** This step is optional for local development on ext4 — `index.ts` loads in ~3s
 directly. It matters for npm users who may be on slower filesystems (WSL2 /mnt, Docker mounts, NFS).
 
-### Step 9: Bump Versions
+### Step 9: Update CHANGELOG.md
+
+Update the root `CHANGELOG.md` to move `[Unreleased]` items into a new versioned section:
+
+```bash
+# Check what's in Unreleased
+grep -A 50 '## \[Unreleased\]' CHANGELOG.md | head -60
+```
+
+1. Create a new `## [X.Y.Z] — YYYY-MM-DD` section below `[Unreleased]`
+2. Move all items from `[Unreleased]` into the new section
+3. Add any additional changes discovered from `git log` since last release
+4. Keep `[Unreleased]` empty (with just the heading) for future work
+5. Ensure format follows [Keep a Changelog](https://keepachangelog.com/)
+
+Expected: CHANGELOG.md has populated version section and empty `[Unreleased]`.
+
+### Step 10: Bump Versions
 
 For each package that has changes, bump the patch version:
 
@@ -282,7 +309,7 @@ Expected: All package.json versions incremented.
 
 **Note:** If you want minor or major bumps, adjust accordingly. Review `git log` since last release to decide.
 
-### Step 10: Update Documentation
+### Step 11: Update Documentation
 
 Update each package's README and the root README:
 
@@ -320,7 +347,7 @@ done
 - MCP integration for external tool servers
 - All-in-one install: `pi install npm:@pi-unipi/unipi`
 
-### Step 11: Commit Documentation & Version Bumps
+### Step 12: Commit Documentation & Version Bumps
 
 ```bash
 git add -A
@@ -329,7 +356,7 @@ git commit -m "chore: bump versions and update docs for release"
 
 Expected: Commit succeeds.
 
-### Step 12: Publish All Packages to npm
+### Step 13: Publish All Packages to npm
 
 Publish each package (dependencies must be published first):
 
@@ -358,7 +385,7 @@ npm publish --access public
 
 Expected: All packages published successfully.
 
-### Step 13: Verify Alias Performance
+### Step 14: Verify Alias Performance
 
 Confirm the `unipi` alias (which loads from ext4 source) starts fast after the release:
 
@@ -368,7 +395,7 @@ time bash -ic 'unipi -p ""'
 
 Expected: ~4-6s (includes bash startup). If >10s, the alias may be loading from a stale path or /mnt/d.
 
-### Step 14: Verify npm Publications
+### Step 15: Verify npm Publications
 
 ```bash
 for pkg in packages/*/; do
@@ -383,7 +410,7 @@ done
 
 Expected: All packages show their new versions on npm.
 
-### Step 14: Push to GitHub
+### Step 16: Push to GitHub
 
 ```bash
 git push origin main
@@ -397,7 +424,7 @@ git push origin main
 
 Expected: Push succeeds, remote is up to date.
 
-### Step 15: Create Git Tag (Optional)
+### Step 17: Create Git Tag (Optional)
 
 ```bash
 VERSION=$(cat package.json | jq -r '.version')
@@ -421,13 +448,13 @@ If **command registry check fails**:
 1. Identify which commands are missing or orphaned
 2. Add missing `registerCommand` calls or constants
 3. Re-run the verification
-4. Continue from Step 8
+4. Continue from Step 9
 
 If **tests fail**:
 1. Read test output to identify failures
 2. Fix the failing tests or the code they test
 3. Re-run tests
-4. Continue from Step 9
+4. Continue from Step 10
 
 If **npm publish fails** for a package:
 1. Check if logged in: `npm whoami`
