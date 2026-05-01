@@ -37,6 +37,7 @@ export const MODULES = {
   KANBOARD: "@pi-unipi/kanboard",
   FOOTER: "@pi-unipi/footer",
   UPDATER: "@pi-unipi/updater",
+  INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
 } as const;
 
 /** Workflow command names */
@@ -307,6 +308,11 @@ export const UPDATER_COMMANDS = {
 export const UPDATER_DIRS = {
   CONFIG: "~/.unipi/config/updater",
   CACHE: "~/.unipi/cache/updater",
+} as const;
+
+/** Input-shortcuts command names */
+export const INPUT_SHORTCUTS_COMMANDS = {
+  STASH_SETTINGS: "stash-settings",
 } as const;
 
 /** Footer command names */

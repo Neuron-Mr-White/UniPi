@@ -31,6 +31,7 @@ export const PACKAGE_ORDER: string[] = [
   "kanboard",
   "footer",
   "updater",
+  "input-shortcuts",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -50,6 +51,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   kanboard:  `${ESC}[92m`, // Bright Green
   footer:    `${ESC}[34m`, // Blue
   updater:   `${ESC}[93m`, // Bright Yellow
+  "input-shortcuts": `${ESC}[95m`, // Bright Magenta
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -156,6 +158,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:readme":            "updater",
   "unipi:changelog":         "updater",
   "unipi:updater-settings":  "updater",
+
+  // input-shortcuts (1 command)
+  "unipi:stash-settings":   "input-shortcuts",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -247,6 +252,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:readme":            "Browse package README files",
   "unipi:changelog":         "Browse changelog (Keep a Changelog format)",
   "unipi:updater-settings":  "Configure updater — check interval and auto-update",
+
+  "unipi:stash-settings":   "Open input shortcuts settings — customize keybindings",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────
@@ -266,4 +273,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   kanboard:  "kanboard",
   footer:    "footer",
   updater:   "updater",
+  "input-shortcuts": "input-shortcuts",
 };

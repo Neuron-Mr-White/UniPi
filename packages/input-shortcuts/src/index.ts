@@ -7,6 +7,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
+import { MODULES, emitEvent, UNIPI_EVENTS, INPUT_SHORTCUTS_COMMANDS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
 import { UndoRedoBuffer } from "./undo-redo.ts";
 import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
@@ -99,5 +100,49 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     undoRedo.clear();
+  });
+
+  // ─── Info-screen registration ────────────────────────────────────────────
+
+  const globalObj = globalThis as any;
+  const registry = globalObj.__unipi_info_registry;
+  if (registry) {
+    registry.registerGroup({
+      id: "input-shortcuts",
+      name: "Input Shortcuts",
+      icon: "⌨️",
+      priority: 115,
+      config: {
+        showByDefault: true,
+        stats: [
+          { id: "chordKey", label: "Chord key", show: true },
+          { id: "tabInsertKey", label: "Tab insert key", show: true },
+          { id: "registersUsed", label: "Registers used", show: true },
+          { id: "stashStatus", label: "Stash", show: true },
+        ],
+      },
+      dataProvider: async () => {
+        const config = loadConfig();
+        let used = 0;
+        for (let i = 0; i <= 9; i++) {
+          if (registers.getRegister(i).length > 0) used++;
+        }
+        return {
+          chordKey: { value: config.chordKey, detail: "Key to open shortcuts overlay" },
+          tabInsertKey: { value: config.tabInsertKey, detail: "Key to insert tab" },
+          registersUsed: { value: `${used}/10`, detail: "Non-empty numbered registers" },
+          stashStatus: { value: registers.getStash().length > 0 ? "set" : "empty", detail: "Stash register" },
+        };
+      },
+    });
+  }
+
+  // ─── Module ready event ──────────────────────────────────────────────────
+
+  emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+    name: MODULES.INPUT_SHORTCUTS,
+    version: "0.1.0",
+    commands: [`unipi:${INPUT_SHORTCUTS_COMMANDS.STASH_SETTINGS}`],
+    tools: [],
   });
 }

@@ -28,6 +28,7 @@ import commandEnchantment from "@pi-unipi/command-enchantment";
 import compactor from "@pi-unipi/compactor";
 import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
+import inputShortcuts from "@pi-unipi/input-shortcuts";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -47,4 +48,5 @@ export default function (pi: ExtensionAPI) {
   compactor(pi);
   footer(pi);
   updater(pi);
+  inputShortcuts(pi);
 }
