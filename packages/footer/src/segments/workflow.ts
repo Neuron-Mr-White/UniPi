@@ -95,7 +95,7 @@ function formatDuration(ms: number): string {
 }
 
 export const WORKFLOW_SEGMENTS: FooterSegment[] = [
-  { id: "current_command", label: "Current Command", icon: "", render: renderCurrentCommandSegment, defaultShow: true },
-  { id: "sandbox_level", label: "Sandbox Level", icon: "", render: renderSandboxLevelSegment, defaultShow: false },
-  { id: "command_duration", label: "Command Duration", icon: "", render: renderCommandDurationSegment, defaultShow: true },
+  { id: "current_command", label: "Command", shortLabel: "wrk", description: "Active workflow command", zone: "left", icon: "", render: renderCurrentCommandSegment, defaultShow: true },
+  { id: "sandbox_level", label: "Sandbox", shortLabel: "sbx", description: "Sandbox permission level", zone: "center", icon: "", render: renderSandboxLevelSegment, defaultShow: false },
+  { id: "command_duration", label: "Duration", shortLabel: "cdur", description: "Current command duration", zone: "center", icon: "", render: renderCommandDurationSegment, defaultShow: true },
 ];

@@ -125,11 +125,11 @@ function renderSearchQueriesSegment(_ctx: FooterSegmentContext): RenderedSegment
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [
-  { id: "session_events", label: "Session Events", icon: "", render: renderSessionEventsSegment, defaultShow: true },
-  { id: "compactions", label: "Compactions", icon: "", render: renderCompactionsSegment, defaultShow: true },
-  { id: "tokens_saved", label: "Tokens Saved", icon: "", render: renderTokensSavedSegment, defaultShow: true },
-  { id: "compression_ratio", label: "Compression Ratio", icon: "", render: renderCompressionRatioSegment, defaultShow: false },
-  { id: "indexed_docs", label: "Indexed Docs", icon: "", render: renderIndexedDocsSegment, defaultShow: false },
-  { id: "sandbox_runs", label: "Sandbox Runs", icon: "", render: renderSandboxRunsSegment, defaultShow: false },
-  { id: "search_queries", label: "Search Queries", icon: "", render: renderSearchQueriesSegment, defaultShow: false },
+  { id: "session_events", label: "Session Events", shortLabel: "evt", description: "Number of session events", zone: "center", icon: "", render: renderSessionEventsSegment, defaultShow: true },
+  { id: "compactions", label: "Compactions", shortLabel: "cmp", description: "Number of context compactions", zone: "center", icon: "", render: renderCompactionsSegment, defaultShow: true },
+  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "svd", description: "Tokens saved by compaction", zone: "center", icon: "", render: renderTokensSavedSegment, defaultShow: true },
+  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "rat", description: "Last compaction compression ratio", zone: "center", icon: "", render: renderCompressionRatioSegment, defaultShow: false },
+  { id: "indexed_docs", label: "Indexed Docs", shortLabel: "idx", description: "Number of indexed documents", zone: "center", icon: "", render: renderIndexedDocsSegment, defaultShow: false },
+  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "sbx", description: "Number of sandbox code runs", zone: "center", icon: "", render: renderSandboxRunsSegment, defaultShow: false },
+  { id: "search_queries", label: "Search Queries", shortLabel: "qry", description: "Number of search queries", zone: "center", icon: "", render: renderSearchQueriesSegment, defaultShow: false },
 ];

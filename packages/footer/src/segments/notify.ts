@@ -45,6 +45,6 @@ function renderLastSentSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const NOTIFY_SEGMENTS: FooterSegment[] = [
-  { id: "platforms_enabled", label: "Platforms", icon: "", render: renderPlatformsEnabledSegment, defaultShow: true },
-  { id: "last_sent", label: "Last Sent", icon: "", render: renderLastSentSegment, defaultShow: true },
+  { id: "platforms_enabled", label: "Platforms", shortLabel: "ntf", description: "Active notification platforms", zone: "center", icon: "", render: renderPlatformsEnabledSegment, defaultShow: true },
+  { id: "last_sent", label: "Last Sent", shortLabel: "lst", description: "Time of last notification sent", zone: "center", icon: "", render: renderLastSentSegment, defaultShow: true },
 ];

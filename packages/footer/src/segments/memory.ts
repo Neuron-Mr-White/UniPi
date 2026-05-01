@@ -136,7 +136,7 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
 }
 
 export const MEMORY_SEGMENTS: FooterSegment[] = [
-  { id: "project_count", label: "Project Count", icon: "", render: renderProjectCountSegment, defaultShow: true },
-  { id: "total_count", label: "Total Count", icon: "", render: renderTotalCountSegment, defaultShow: true },
-  { id: "consolidations", label: "Consolidations", icon: "", render: renderConsolidationsSegment, defaultShow: false },
+  { id: "project_count", label: "Project Memory", shortLabel: "mem", description: "Memory entries for this project", zone: "center", icon: "", render: renderProjectCountSegment, defaultShow: true },
+  { id: "total_count", label: "Total Memory", shortLabel: "tot", description: "Total memory entries across projects", zone: "center", icon: "", render: renderTotalCountSegment, defaultShow: true },
+  { id: "consolidations", label: "Consolidations", shortLabel: "cns", description: "Number of memory consolidations", zone: "center", icon: "", render: renderConsolidationsSegment, defaultShow: false },
 ];

@@ -10,37 +10,59 @@ import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "../types
 
 /** Default semantic-to-theme-color mapping */
 const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor> = {
+  // ── Model & Identity (Left zone) ──
   model: "accent",
   path: "text",
   git: "accent",
+  gitClean: "success",
+  gitDirty: "warning",
+  session: "accent",
+  worktree: "accent",
+  // ── Workflow (Left zone) ──
+  workflow: "accent",
+  workflowNone: "dim",
+  workflowBrainstorm: "warning",
+  workflowPlan: "success",
+  workflowWork: "accent",
+  workflowReview: "muted",
+  workflowAuto: "thinkingHigh",
+  workflowDebug: "error",
+  workflowChoreExec: "warning",
+  workflowOther: "dim",
+  // ── TPS tiers (Center zone) ──
+  tpsSlow: "error",
+  tpsModerate: "warning",
+  tpsGood: "accent",
+  tpsFast: "success",
+  tpsBlazing: "thinkingHigh",
+  tpsIdle: "dim",
+  // ── Metrics (Center zone) ──
   compactor: "muted",
   memory: "accent",
   mcp: "success",
   ralph: "warning",
   ralphOn: "success",
   ralphOff: "error",
-  workflow: "accent",
-  workflowBrainstorm: "warning",
-  workflowPlan: "success",
-  workflowWork: "accent",
-  workflowReview: "muted",
-  workflowAuto: "thinkingHigh",
-  workflowOther: "dim",
   kanboard: "dim",
   notify: "muted",
-  separator: "dim",
-  border: "dim",
   context: "muted",
   contextWarn: "warning",
   contextError: "error",
   cost: "text",
   tokens: "muted",
+  // ── Time (Right zone) ──
+  clock: "text",
+  duration: "accent",
+  // ── Thinking levels ──
   thinking: "accent",
   thinkingMinimal: "thinkingMinimal",
   thinkingLow: "thinkingLow",
   thinkingMedium: "thinkingMedium",
   thinkingHigh: "thinkingHigh",
   thinkingXhigh: "thinkingXhigh",
+  // ── UI chrome ──
+  separator: "dim",
+  border: "dim",
 };
 
 /**

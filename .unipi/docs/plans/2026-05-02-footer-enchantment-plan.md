@@ -17,7 +17,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
 
 ## Tasks
 
-- unstarted: Task 1 — Type System & Segment Metadata
+- completed: Task 1 — Type System & Segment Metadata
   - Description: Extend FooterSegment and SemanticColor types to support zones, descriptions, short labels, and all new color semantics. Assign metadata to all 41 existing segments.
   - Dependencies: None
   - Acceptance Criteria: TypeScript compiles clean. Every segment has zone, description, and shortLabel. New SemanticColor entries compile and have defaults in DEFAULT_COLOR_MAP.

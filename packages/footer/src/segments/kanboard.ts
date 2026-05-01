@@ -68,8 +68,8 @@ function renderTaskPctSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const KANBOARD_SEGMENTS: FooterSegment[] = [
-  { id: "docs_count", label: "Docs Count", icon: "", render: renderDocsCountSegment, defaultShow: true },
-  { id: "tasks_done", label: "Tasks Done", icon: "", render: renderTasksDoneSegment, defaultShow: true },
-  { id: "tasks_total", label: "Tasks Total", icon: "", render: renderTasksTotalSegment, defaultShow: true },
-  { id: "task_pct", label: "Task %", icon: "", render: renderTaskPctSegment, defaultShow: true },
+  { id: "docs_count", label: "Docs", shortLabel: "doc", description: "Workflow documents count", zone: "center", icon: "", render: renderDocsCountSegment, defaultShow: true },
+  { id: "tasks_done", label: "Done", shortLabel: "dne", description: "Completed tasks", zone: "center", icon: "", render: renderTasksDoneSegment, defaultShow: true },
+  { id: "tasks_total", label: "Total", shortLabel: "tsk", description: "Total tasks", zone: "center", icon: "", render: renderTasksTotalSegment, defaultShow: true },
+  { id: "task_pct", label: "Progress", shortLabel: "pct", description: "Task completion percentage", zone: "center", icon: "", render: renderTaskPctSegment, defaultShow: true },
 ];

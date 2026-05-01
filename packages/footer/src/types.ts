@@ -9,39 +9,64 @@ import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 
 // ─── Semantic Colors ────────────────────────────────────────────────────────
 
+/** Zone assignment for segment positioning */
+export type SegmentZone = "left" | "center" | "right";
+
 /** Semantic color names mapped to segment groups */
 export type SemanticColor =
+  // ── Model & Identity (Left zone) ──
   | "model"
   | "path"
   | "git"
+  | "gitClean"
+  | "gitDirty"
+  | "session"
+  | "worktree"
+  // ── Workflow (Left zone) ──
+  | "workflow"
+  | "workflowNone"
+  | "workflowBrainstorm"
+  | "workflowPlan"
+  | "workflowWork"
+  | "workflowReview"
+  | "workflowAuto"
+  | "workflowDebug"
+  | "workflowChoreExec"
+  | "workflowOther"
+  // ── TPS tiers (Center zone) ──
+  | "tpsSlow"
+  | "tpsModerate"
+  | "tpsGood"
+  | "tpsFast"
+  | "tpsBlazing"
+  | "tpsIdle"
+  // ── Metrics (Center zone) ──
   | "compactor"
   | "memory"
   | "mcp"
   | "ralph"
   | "ralphOn"
   | "ralphOff"
-  | "workflow"
-  | "workflowBrainstorm"
-  | "workflowPlan"
-  | "workflowWork"
-  | "workflowReview"
-  | "workflowAuto"
-  | "workflowOther"
   | "kanboard"
   | "notify"
-  | "separator"
-  | "border"
   | "context"
   | "contextWarn"
   | "contextError"
   | "cost"
   | "tokens"
+  // ── Time (Right zone) ──
+  | "clock"
+  | "duration"
+  // ── Thinking levels ──
   | "thinking"
   | "thinkingMinimal"
   | "thinkingLow"
   | "thinkingMedium"
   | "thinkingHigh"
-  | "thinkingXhigh";
+  | "thinkingXhigh"
+  // ── UI chrome ──
+  | "separator"
+  | "border";
 
 /** A theme color name or custom hex color */
 export type ColorValue = ThemeColor | `#${string}`;
@@ -107,8 +132,14 @@ export type SegmentRenderFn = (ctx: FooterSegmentContext) => RenderedSegment;
 export interface FooterSegment {
   /** Unique segment identifier (e.g., "model", "compactions") */
   id: string;
-  /** Display label */
+  /** Display label (full name, used in labeled mode) */
   label: string;
+  /** Compact display name (used in compact mode, e.g. "ses", "tps", "ctx") */
+  shortLabel: string;
+  /** Human-readable description (shown in footer-help overlay) */
+  description: string;
+  /** Layout zone assignment */
+  zone: SegmentZone;
   /** Icon glyph (Nerd Font or ASCII) */
   icon: string;
   /** Render function */

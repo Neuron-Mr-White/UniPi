@@ -93,8 +93,8 @@ function renderServersFailedSegment(ctx: FooterSegmentContext): RenderedSegment 
 }
 
 export const MCP_SEGMENTS: FooterSegment[] = [
-  { id: "servers_total", label: "Servers Total", icon: "", render: renderServersTotalSegment, defaultShow: true },
-  { id: "servers_active", label: "Servers Active", icon: "", render: renderServersActiveSegment, defaultShow: true },
-  { id: "tools_total", label: "Tools Total", icon: "", render: renderToolsTotalSegment, defaultShow: true },
-  { id: "servers_failed", label: "Servers Failed", icon: "", render: renderServersFailedSegment, defaultShow: true },
+  { id: "servers_total", label: "Servers", shortLabel: "srv", description: "Total MCP servers configured", zone: "center", icon: "", render: renderServersTotalSegment, defaultShow: true },
+  { id: "servers_active", label: "Active", shortLabel: "act", description: "Currently connected MCP servers", zone: "center", icon: "", render: renderServersActiveSegment, defaultShow: true },
+  { id: "tools_total", label: "Tools", shortLabel: "tls", description: "Total MCP tools available", zone: "center", icon: "", render: renderToolsTotalSegment, defaultShow: true },
+  { id: "servers_failed", label: "Failed", shortLabel: "err", description: "Failed MCP server connections", zone: "center", icon: "", render: renderServersFailedSegment, defaultShow: true },
 ];
