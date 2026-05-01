@@ -1,10 +1,8 @@
 # @pi-unipi/workflow
 
-Structured development workflow commands for Pi coding agent.
+20 slash commands that take work from idea to shipped code. Each command loads a skill file that tells the agent exactly what to do — brainstorm, plan, execute, review, or fix.
 
-## Overview
-
-19 slash commands that guide work from idea to completion. Each command maps to a skill that instructs the agent on what to do.
+The core loop: brainstorm an idea, plan the implementation, execute in a worktree, review the result, consolidate what you learned. Everything else supports this cycle.
 
 ## Commands
 
@@ -30,16 +28,13 @@ Structured development workflow commands for Pi coding agent.
 | `/unipi:chore-create` | Create reusable chore definition | `<string>` |
 | `/unipi:chore-execute` | Execute a saved chore | `chore:<path> <string>` |
 
-## Workflow
+## Typical Flow
 
 ```
 brainstorm → plan → work → review-work → consolidate
     ↑                                        │
     └────────────────────────────────────────┘
-                    (loop)
 ```
-
-### Typical Flow
 
 ```bash
 # 1. Brainstorm an idea
@@ -60,34 +55,26 @@ brainstorm → plan → work → review-work → consolidate
 
 ### Quick Tasks
 
+For small tasks that skip the full flow:
+
 ```bash
-# For small tasks that don't need full flow
 /unipi:quick-work fix typo in README
 ```
 
-### Research & Advisory
+### Research and Advisory
 
 ```bash
-# Gather context before brainstorming
 /unipi:gather-context how we handle errors
-
-# Get expert advice
 /unipi:consultant should we use GraphQL or REST?
-
-# Generate documentation
 /unipi:document the auth module
-
-# Deep research with bash access
 /unipi:research TypeScript 5.0 migration path
-
-# Find issues (passive scan)
 /unipi:scan-issues focus on security
 ```
 
 ### Bug Fixing
 
 ```bash
-# Debug and fix a bug (full flow)
+# Full debug flow
 /unipi:debug TypeError in auth middleware
 /unipi:fix debug:2026-04-28-auth-typeerror-debug
 
@@ -98,27 +85,46 @@ brainstorm → plan → work → review-work → consolidate
 ### Chores
 
 ```bash
-# Create reusable chores
 /unipi:chore-create push to github main
-/unipi:chore-create publish package to npm
-
-# Execute saved chores
 /unipi:chore-execute chore:push-github-main
-/unipi:chore-execute chore:publish-npm
 ```
 
 ### Worktree Management
 
 ```bash
-# Create worktree
 /unipi:worktree-create feat/new-feature
-
-# List worktrees
 /unipi:worktree-list
-
-# Merge back to main
-/ununi:worktree-merge feat/new-feature
+/unipi:worktree-merge feat/new-feature
 ```
+
+## Special Triggers
+
+Workflow skills detect installed packages and enhance their behavior automatically. This is the coexists system — each package adds capabilities without requiring configuration.
+
+| Package Present | Skills Affected | What Changes |
+|-----------------|-----------------|--------------|
+| `@pi-unipi/ask-user` | All skills | Structured user input for decisions |
+| `@pi-unipi/subagents` | brainstorm, document, gather-context, review-work, scan-issues, work | Parallel execution with file locking |
+| `@pi-unipi/mcp` | All skills | MCP server tools available |
+| `@pi-unipi/web-api` | research, gather-context, consultant | Web search and page reading |
+| `@pi-unipi/compactor` | All skills (main agent) | Context tools available |
+| `@pi-unipi/ralph` | work, review-work | Ralph loop for 3+ tasks |
+
+When `@pi-unipi/ask-user` is installed, skills use `ask_user` for decision gates — presenting options instead of guessing. When `@pi-unipi/subagents` is installed, investigation skills spawn parallel agents to explore code faster.
+
+The footer package subscribes to workflow events (`WORKFLOW_START`, `WORKFLOW_END`) to show current command and duration. Info-screen displays workflow state in its dashboard.
+
+## How Skills Work
+
+Each command maps to a skill file in `packages/workflow/skills/{name}/SKILL.md`. When you run `/unipi:brainstorm`, Pi loads the brainstorm skill and follows its instructions.
+
+Skills define:
+- What the agent should do step by step
+- What tools to use (subagents, web search, ask-user)
+- What output to produce (specs, plans, reviews)
+- Where to save results (`.unipi/docs/`)
+
+The agent reads the skill, executes the steps, and produces artifacts in the `.unipi/` directory.
 
 ## Directory Structure
 
@@ -140,31 +146,9 @@ brainstorm → plan → work → review-work → consolidate
     └── fix/login-bug/
 ```
 
-## Integration
+## Configuration
 
-- **@pi-unipi/core** — shared constants, events, utilities
-- **@pi-unipi/memory** — memory hooks for consolidate (optional)
-- **@pi-unipi/subagents** — parallel research for gather-context, scan-issues (optional)
-- **@pi-unipi/ralph** — loop integration for long-running tasks (optional)
-- **@pi-unipi/ask-user** — structured user input for all skills (optional)
-- **@pi-unipi/mcp** — MCP server tools for all skills (optional)
-- **@pi-unipi/web-api** — web research for research-type skills (optional)
-- **@pi-unipi/compactor** — compactor tools for main agent (optional)
-
-See [docs/coexist-triggers.md](docs/coexist-triggers.md) for detailed integration behavior.
-
-## Installation
-
-```bash
-npm install @pi-unipi/workflow
-```
-
-Add to pi settings:
-```json
-{
-  "extensions": ["@unipi/workflow"]
-}
-```
+Workflow has no configuration. Skills are static files — the agent follows them as-is. Behavior changes come from which packages are installed (see Special Triggers above).
 
 ## License
 

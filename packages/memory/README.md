@@ -1,37 +1,8 @@
 # @pi-unipi/memory
 
-Persistent cross-session memory with vector search for Pi coding agent.
+Persistent memory that survives across sessions. Stores facts, preferences, and decisions in SQLite with vector search, so the agent remembers what you told it last week.
 
-## Features
-
-- **Two-tier storage:** SQLite + sqlite-vec for vector search, markdown files for human-readable memory
-- **Project-scoped + global memory:** Each project gets its own DB, global memories accessible cross-project
-- **Hybrid search:** Vector similarity + fuzzy text matching for best recall
-- **Session injection:** Agent sees memory titles at session start
-- **Auto-consolidation:** Memories extracted during compaction
-- **Update-first:** Prevents memory duplication
-
-## Installation
-
-```bash
-# All-in-one (includes memory)
-pi install npm:unipi
-
-# Standalone
-pi install npm:@pi-unipi/memory
-```
-
-## Tools
-
-| Tool | Description |
-|------|-------------|
-| `memory_store` | Store/update memory (project scope) |
-| `memory_search` | Search memories (project scope) |
-| `memory_delete` | Delete memory by ID or title |
-| `memory_list` | List all project memories |
-| `global_memory_store` | Store/update memory (global scope) |
-| `global_memory_search` | Search global memories |
-| `global_memory_list` | List all global memories |
+Two storage tiers: SQLite + sqlite-vec for vector similarity search, markdown files for human-readable memories you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
 
 ## Commands
 
@@ -45,9 +16,31 @@ pi install npm:@pi-unipi/memory
 | `/unipi:global-memory-search <term>` | Search global memories |
 | `/unipi:global-memory-list` | List all global memories |
 
-## Memory File Format
+## Special Triggers
 
-Memories are stored as markdown with YAML frontmatter:
+At session start, the agent sees memory titles injected into context. This gives it a summary of what it should remember without loading full memory content.
+
+During compaction (if `@pi-unipi/compactor` is installed), memories are auto-extracted from the conversation. The `memory-consolidate` command also triggers this manually.
+
+Memory registers with the info-screen dashboard, showing project memory count, total count, and consolidation count. The footer subscribes to `MEMORY_STORED`, `MEMORY_DELETED`, and `MEMORYCONSOLIDATED` events to display memory stats.
+
+## Agent Tools
+
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `memory_store` | Project | Store or update a memory |
+| `memory_search` | Project | Search memories by query |
+| `memory_delete` | Project | Delete memory by ID or title |
+| `memory_list` | Project | List all project memories |
+| `global_memory_store` | Global | Store or update global memory |
+| `global_memory_search` | Global | Search global memories |
+| `global_memory_list` | Global | List all global memories |
+
+The agent uses `memory_store` when it learns something worth remembering — a user preference, a technical decision, a code pattern. `memory_search` is used to recall relevant context before answering questions.
+
+## Memory Format
+
+Memories are markdown files with YAML frontmatter:
 
 ```markdown
 ---
@@ -65,16 +58,18 @@ User prefers short-lived access tokens (15min) with long-lived refresh tokens (3
 Always implement token rotation on refresh.
 ```
 
-## Naming Convention
+### Naming Convention
 
-**Format:** `<most_important>_<less_important>_<lesser>`
+Format: `<most_important>_<less_important>_<lesser>`
 
 Examples:
 - `auth_jwt_prefer_refresh_tokens`
 - `db_postgres_use_connection_pooling`
 - `style_typescript_strict_mode_always`
 
-## Storage Layout
+## Configurables
+
+Memory has no configuration file. Storage paths are fixed:
 
 ```
 ~/.unipi/memory/
@@ -88,7 +83,11 @@ Examples:
 
 ## Dependencies
 
-- `better-sqlite3` - SQLite database
-- `sqlite-vec` - Vector search extension
-- `js-yaml` - YAML frontmatter parsing
-- `@pi-unipi/core` - Shared utilities
+- `better-sqlite3` — SQLite database
+- `sqlite-vec` — Vector search extension
+- `js-yaml` — YAML frontmatter parsing
+- `@pi-unipi/core` — Shared utilities
+
+## License
+
+MIT

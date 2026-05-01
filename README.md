@@ -1,281 +1,106 @@
 # Unipi
 
-All-in-one extension suite for the [Pi coding agent](https://github.com/badlogic/pi-mono).
+18 packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, and a live status bar — all wired together through a shared event system.
 
-## Install
-
-**All-in-one:**
+One command installs everything:
 ```bash
 pi install npm:@pi-unipi/unipi
 ```
 
-**Individual packages:**
-```bash
-pi install npm:@pi-unipi/core
-pi install npm:@pi-unipi/workflow
-pi install npm:@pi-unipi/ralph
-pi install npm:@pi-unipi/memory
-pi install npm:@pi-unipi/info-screen
-pi install npm:@pi-unipi/subagents
-pi install npm:@pi-unipi/btw
-pi install npm:@pi-unipi/web-api
-pi install npm:@pi-unipi/compactor
-pi install npm:@pi-unipi/notify
-pi install npm:@pi-unipi/utility
-pi install npm:@pi-unipi/mcp
-pi install npm:@pi-unipi/ask-user
-pi install npm:@pi-unipi/milestone
-pi install npm:@pi-unipi/kanboard
-pi install npm:@pi-unipi/footer
-pi install npm:@pi-unipi/updater
+## What You Get
+
+**Workflow** — 20 commands that take ideas to shipped code. Brainstorm, plan, execute in worktrees, review, consolidate. The agent follows skill files step by step.
+
+**Ralph** — Long-running loops that persist across sessions. Start a task, iterate through checklist items, resume after crashes. Progress tracked, state saved.
+
+**Memory** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
+
+**Compactor** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, sandbox execution, FTS5 search.
+
+**Subagents** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
+
+**Web API** — Web search, page reading, content summarization. Smart-fetch engine with browser-grade TLS fingerprinting — free, no API key. Paid providers as fallbacks.
+
+**MCP** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
+
+**Notify** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing. Configure once, get alerts everywhere.
+
+**Footer** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling.
+
+**BTW** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
+
+**Ask User** — Structured input for decision gates. Single-select, multi-select, freeform. The agent asks instead of guessing.
+
+**Milestone** — Track project goals across workflow cycles. MILESTONES.md stays in sync with specs, plans, and completed work.
+
+**Kanboard** — Web UI and TUI overlay for kanban boards. Parses all workflow documents into cards with progress indicators.
+
+**Info Screen** — Dashboard overlay showing module status, tools, and custom data groups.
+
+**Utility** — Environment info, diagnostics, cleanup, name badge, and Shiki-powered diff rendering.
+
+**Updater** — Checks npm for new versions on session start. Changelog browser and readme browser in TUI overlays.
+
+**Input Shortcuts** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
+
+## Architecture
+
+Packages discover each other through events, not direct imports. Core defines the event types and constants. Every package emits `MODULE_READY` on load and subscribes to events it cares about.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        Core                             │
+│              Events, Constants, Utilities                │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+    ┌───────────────────┼───────────────────┐
+    │                   │                   │
+    ▼                   ▼                   ▼
+┌─────────┐       ┌──────────┐       ┌──────────┐
+│ Workflow │       │ Compactor│       │  Memory  │
+│  Skills  │       │  Engine  │       │  Store   │
+└────┬─────┘       └────┬─────┘       └────┬─────┘
+     │                  │                  │
+     └──────────────────┼──────────────────┘
+                        ▼
+                  ┌──────────┐
+                  │  Footer  │ ← Subscribes to all events
+                  └──────────┘
 ```
 
-## Packages
+Coexists triggers enhance behavior when packages are installed together. Workflow skills detect subagents and inject parallel strategies. All skills get MCP tools when MCP is installed. Web-api adds web research to investigation skills. Each package works standalone.
 
-| Package | Description |
-|---------|-------------|
-| `@pi-unipi/core` | Shared utilities, event types, constants |
-| `@pi-unipi/workflow` | 20 structured development workflow commands |
-| `@pi-unipi/ralph` | Long-running iterative development loops |
-| `@pi-unipi/memory` | Persistent cross-session memory with vector search |
-| `@pi-unipi/info-screen` | Dashboard and module registry overlay |
-| `@pi-unipi/subagents` | Parallel sub-agent execution with file locking |
-| `@pi-unipi/btw` | Parallel side conversations with `/btw` |
-| `@pi-unipi/web-api` | Web search, read, and summarize with provider selection |
-| `@pi-unipi/compactor` | Session compaction, context management, batch execution |
-| `@pi-unipi/notify` | Cross-platform notifications (native, Gotify, Telegram, ntfy) |
-| `@pi-unipi/utility` | Environment info, diagnostics, settings inspector, cleanup |
-| `@pi-unipi/mcp` | MCP server discovery, connection, and tool integration |
-| `@pi-unipi/ask-user` | Structured user input with options and freeform text |
-| `@pi-unipi/milestone` | Milestone tracking and project progress management |
-| `@pi-unipi/kanboard` | Kanboard visualization server with TUI overlay |
-| `@pi-unipi/footer` | Persistent status bar with live stats from all packages |
-| `@pi-unipi/updater` | Auto-updater, changelog browser, and readme browser |
+## Commands (Brief)
 
-## Commands
+| Category | Prefix | Examples |
+|----------|--------|----------|
+| Workflow | `/unipi:` | brainstorm, plan, work, review-work, consolidate, quick-work, debug, fix |
+| Ralph | `/unipi:ralph` | start, stop, resume, status |
+| Memory | `/unipi:memory-` | process, search, consolidate, forget |
+| Compactor | `/unipi:compact` | compact, stats, settings, preset |
+| Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
+| MCP | `/unipi:mcp-` | add, settings, sync, status |
+| Web | `/unipi:web-` | settings, cache-clear |
+| BTW | `/btw` | question, new, tangent, inject, summarize |
+| Utility | `/unipi:` | env, doctor, status, cleanup, name-badge |
+| Milestone | `/unipi:milestone-` | onboard, update |
+| Kanboard | `/unipi:kanboard` | toggle, doctor |
+| Footer | `/unipi:footer` | toggle, settings |
+| Updater | `/unipi:` | readme, changelog, updater-settings |
+| Info | `/unipi:info` | dashboard, settings |
 
-### Workflow (`/unipi:*`)
+## Agent Tools (Brief)
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:brainstorm` | Collaborative discovery |
-| `/unipi:plan` | Strategic planning |
-| `/unipi:work` | Execute plan in worktree |
-| `/unipi:review-work` | Review what was built |
-| `/unipi:consolidate` | Merge findings, update docs |
-| `/unipi:auto` | Full pipeline — brainstorm → plan → work → review → merge |
-| `/unipi:worktree-create` | Create git worktree |
-| `/unipi:worktree-list` | List all worktrees |
-| `/unipi:worktree-merge` | Merge worktree back |
-| `/unipi:consultant` | Expert panel review |
-| `/unipi:quick-work` | Fast single-task execution |
-| `/unipi:gather-context` | Research codebase |
-| `/unipi:document` | Generate documentation |
-| `/unipi:scan-issues` | Find bugs, anti-patterns |
-| `/unipi:debug` | Active bug investigation — reproduce, diagnose, root-cause |
-| `/unipi:fix` | Fix bugs using debug reports |
-| `/unipi:quick-fix` | Fast one-shot fix for clear bugs |
-| `/unipi:research` | Deep codebase investigation and documentation review |
-| `/unipi:chore-create` | Create reusable chore (deploy, publish, etc.) |
-| `/unipi:chore-execute` | Run a saved chore |
-
-### Ralph (`/unipi:ralph`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:ralph start <name>` | Start a loop |
-| `/unipi:ralph stop` | Pause current loop |
-| `/unipi:ralph resume <name>` | Resume a paused loop |
-| `/unipi:ralph status` | Show all loops |
-| `/unipi:ralph cancel <name>` | Delete loop state |
-| `/unipi:ralph archive <name>` | Archive completed loop |
-| `/unipi:ralph clean` | Clean completed loops |
-| `/unipi:ralph nuke` | Delete all ralph data |
-
-### Memory (`/unipi:*-memory-*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:memory-process <text>` | Store extracted memories |
-| `/unipi:memory-search <term>` | Search project memories |
-| `/unipi:memory-consolidate` | Consolidate session into memory |
-| `/unipi:memory-forget <title>` | Delete a memory |
-| `/unipi:global-memory-search <term>` | Search global memories |
-| `/unipi:global-memory-list` | List all global memories |
-
-### BTW (`/btw*`)
-
-| Command | Description |
-|---------|-------------|
-| `/btw [--save] <question>` | Side conversation (contextual) |
-| `/btw:tangent [--save] <q>` | Contextless tangent thread |
-| `/btw:new [question]` | Fresh thread with main-session context |
-| `/btw:clear` | Dismiss and clear thread |
-| `/btw:inject [instructions]` | Send full thread to main agent |
-| `/btw:summarize [instr]` | Summarize and inject into main agent |
-
-### Info Screen (`/unipi:info*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:info` | Show info dashboard |
-| `/unipi:info-settings` | Configure info display |
-
-### Web API (`/unipi:web-*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:web-settings` | Configure providers and API keys |
-| `/unipi:web-cache-clear` | Clear all cached web content |
-
-### Compactor (`/unipi:compact*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:compact` | Compact session into brief |
-| `/unipi:compact-recall` | Recall from compacted sessions |
-| `/unipi:compact-stats` | Show compaction statistics |
-| `/unipi:compact-doctor` | Diagnose compactor issues |
-| `/unipi:compact-settings` | Configure compactor |
-| `/unipi:compact-preset` | Apply compaction presets |
-| `/unipi:compact-index` | Index context for search |
-| `/unipi:compact-search` | Search indexed context |
-| `/unipi:compact-purge` | Purge old compacted data |
-
-### Notify (`/unipi:notify-*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:notify-settings` | Configure notification platforms |
-| `/unipi:notify-set-gotify` | Set Gotify server config |
-| `/unipi:notify-set-tg` | Set Telegram bot config |
-| `/unipi:notify-set-ntfy` | Set ntfy topic and server |
-| `/unipi:notify-recap-model` | Set model for notification recaps |
-| `/unipi:notify-test` | Test notification delivery |
-
-### Utility (`/unipi:*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:env` | Show environment info |
-| `/unipi:doctor` | Run diagnostics |
-| `/unipi:status` | Show module status |
-| `/unipi:cleanup` | Clean stale temp files |
-| `/unipi:reload` | Reload extensions |
-| `/unipi:name-badge` | Toggle session name badge overlay |
-| `/unipi:badge-gen` | Generate session name via background agent |
-| `/unipi:badge-toggle` | Configure badge settings |
-
-### MCP (`/unipi:mcp-*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:mcp-add` | Add MCP server |
-| `/unipi:mcp-settings` | Configure MCP servers |
-| `/unipi:mcp-sync` | Sync MCP tools |
-| `/unipi:mcp-status` | Show MCP connection status |
-| `/unipi:mcp-reload` | Reload MCP connections |
-
-### Tools
-
-| Tool | Package | Description |
-|------|---------|-------------|
-| `ralph_start` | ralph | Start a ralph loop |
-| `ralph_done` | ralph | Signal iteration complete |
-| `spawn_helper` | subagents | Spawn parallel sub-agent |
-| `get_helper_result` | subagents | Retrieve background agent result |
-| `memory_store` | memory | Store/update memory |
-| `memory_search` | memory | Search project memories |
-| `memory_delete` | memory | Delete memory by ID |
-| `memory_list` | memory | List project memories |
-| `global_memory_search` | memory | Search global memories |
-| `global_memory_list` | memory | List global memories |
-| `web_search` | web-api | Search the web via provider |
-| `web_read` | web-api | Extract content from URL |
-| `web_llm_summarize` | web-api | Summarize web content via LLM |
-| `notify_user` | notify | Send cross-platform notifications |
-| `ask_user` | ask-user | Structured user input with options |
-| `compact` | compactor | Compact session context |
-| `vcc_recall` | compactor | Recall from compacted sessions |
-| `ctx_execute` | compactor | Execute with context management |
-| `ctx_batch_execute` | compactor | Batch execute with rollback |
-| `ctx_index` | compactor | Index context for search |
-| `ctx_search` | compactor | Search indexed context |
-| `ctx_fetch_and_index` | compactor | Fetch and index web content |
-| `ctx_stats` | compactor | Show compaction statistics |
-| `ctx_doctor` | compactor | Diagnose compactor issues |
-| `set_session_name` | utility | Set session name for badge display |
-| `ctx_batch` | utility | Atomic batch execution with rollback |
-| `ctx_env` | utility | Show environment information |
-
-### Milestone (`/unipi:milestone-*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:milestone-onboard` | Create MILESTONES.md from existing workflow docs |
-| `/unipi:milestone-update` | Sync MILESTONES.md with completed work |
-
-### Kanboard (`/unipi:kanboard*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:kanboard` | Toggle kanboard visualization server |
-| `/unipi:kanboard-doctor` | Diagnose and fix kanboard parser issues |
-
-### Footer (`/unipi:footer*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:footer` | Toggle footer or switch preset |
-| `/unipi:footer-settings` | Open footer settings — toggle groups and segments |
-
-### Updater (`/unipi:updater*`)
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:readme [package]` | Browse package README files in TUI overlay |
-| `/unipi:changelog` | Browse CHANGELOG.md with version list and detail view |
-| `/unipi:updater-settings` | Configure check interval and auto-update mode |
-
-### Name Badge
-
-## How It Works
-
-**Core** provides shared infrastructure — event types, constants, utilities — so modules discover each other without tight coupling.
-
-**Workflow** provides 20 commands guiding work from idea to completion: brainstorm → plan → work → review → consolidate, plus quick-fix, debug, research, chore, and more.
-
-**Ralph** enables long-running iterative tasks. Start a loop, the agent works through iterations, reflects periodically, and completes when done.
-
-**Memory** provides persistent cross-session memory with SQLite + vector search. Project-scoped and global memories with hybrid search.
-
-**Info Screen** is a dashboard overlay showing module status, registered tools, and custom groups from all modules.
-
-**BTW** adds a parallel side-conversation channel. Ask questions while the main agent keeps working, then inject or summarize the thread back.
-
-**Subagents** enables parallel execution with file locking, activity tracking, and custom agent types.
-
-**Web API** provides web search, page reading, and LLM summarization through a ranked provider system. DuckDuckGo and Jina work out of the box; paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are configured via `/unipi:web-settings`.
-
-**Compactor** manages session context with compaction, indexing, search, and batch execution. Keep context lean without losing important information.
-
-**Notify** sends notifications across platforms — native OS, Gotify, and Telegram. Configure once, get alerts everywhere.
-
-**Utility** provides environment info, diagnostics, settings inspection, and cleanup tools for maintaining your development environment.
-
-**MCP** integrates Model Context Protocol servers — discover, connect, and use external tool servers seamlessly.
-
-**Ask User** provides structured user input with multiple-choice, multi-select, and freeform text options.
-
-**Milestone** tracks project progress with MILESTONES.md — onboards existing work and syncs with completed tasks.
-
-**Kanboard** provides a visualization server with htmx + Alpine.js UI for kanban boards, workflow timelines, and milestone progress. Includes a TUI overlay for quick access.
-
-**Footer** renders a persistent status bar at the bottom of the terminal, showing live stats from all Unipi packages — compactor tokens, memory count, MCP status, Ralph loops, workflow state, kanboard tasks, and notifications. Fully configurable with presets and per-segment toggles.
-
-## Module Discovery
-
-Modules announce presence via `pi.events`. When `@pi-unipi/workflow` detects `@pi-unipi/ralph`, it enables loop integration. Each module works standalone.
+| Tool | Package | What It Does |
+|------|---------|--------------|
+| `ralph_start` / `ralph_done` | ralph | Loop control |
+| `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
+| `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
+| `web_search` / `web_read` / `web_llm_summarize` | web-api | Web research |
+| `notify_user` | notify | Push notifications |
+| `ask_user` | ask-user | User input |
+| `compact` / `session_recall` / `sandbox` | compactor | Context management |
+| `ctx_batch` / `ctx_env` | utility | Batch execution, env info |
 
 ## Development
 
@@ -285,6 +110,58 @@ cd unipi
 npm install
 npm run typecheck
 ```
+
+### Project Structure
+
+```
+unipi/
+├── packages/
+│   ├── core/           # Shared constants, events, utilities
+│   ├── workflow/       # 20 skill-based commands
+│   ├── ralph/          # Iterative loops
+│   ├── memory/         # SQLite + vector search
+│   ├── compactor/      # Context engine
+│   ├── subagents/      # Parallel execution
+│   ├── web-api/        # Web research
+│   ├── mcp/            # MCP server integration
+│   ├── notify/         # Push notifications
+│   ├── footer/         # Status bar
+│   ├── btw/            # Side conversations
+│   ├── ask-user/       # Structured input
+│   ├── milestone/      # Goal tracking
+│   ├── kanboard/       # Kanban visualization
+│   ├── info-screen/    # Dashboard overlay
+│   ├── utility/        # Diagnostics, diff rendering
+│   ├── updater/        # Auto-update, browsers
+│   ├── input-shortcuts/ # Keyboard shortcuts
+│   └── unipi/          # Umbrella package
+├── .unipi/             # Runtime data (specs, plans, worktrees)
+└── CHANGELOG.md
+```
+
+### Adding a Package
+
+1. Create `packages/your-package/` with `package.json` and `index.ts`
+2. Depend on `@pi-unipi/core` for constants and events
+3. Emit `MODULE_READY` on load
+4. Add to umbrella package dependencies and imports
+5. Run `npm run typecheck`
+
+### Running Tests
+
+```bash
+npm test
+```
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch
+3. Make your changes
+4. Run `npm run typecheck` and `npm test`
+5. Submit a pull request
+
+Keep packages focused. One package, one responsibility. Use events for cross-package communication — no direct imports between packages.
 
 ## License
 

@@ -1,17 +1,8 @@
 # @pi-unipi/info-screen
 
-Dashboard and module registry for [Unipi](https://github.com/Neuron-Mr-White/unipi). Shows a configurable info overlay on boot with tabbed groups from all registered modules.
+Dashboard overlay that shows what's running. Displays module status, registered tools, custom data groups, and load times in a tabbed interface.
 
-## Install
-
-```bash
-pi install npm:@pi-unipi/info-screen
-```
-
-Or as part of the full suite:
-```bash
-pi install npm:unipi
-```
+Every Unipi module registers itself via `MODULE_READY` events. Info-screen picks these up and builds a live dashboard. Other packages add their own data groups — ralph shows active loops, memory shows counts, compactor shows token savings.
 
 ## Commands
 
@@ -20,18 +11,11 @@ pi install npm:unipi
 | `/unipi:info` | Show info screen dashboard |
 | `/unipi:info-settings` | Configure info display (groups, stats, visibility) |
 
-## Features
+## Special Triggers
 
-- **Module discovery** — listens for `MODULE_READY` events, tracks all registered modules
-- **Tabbed groups** — each module registers info groups with custom data providers
-- **Configurable** — per-group and per-stat visibility via settings
-- **Boot overlay** — shows dashboard on session start (configurable)
-- **Styled dialog chrome** — uses pi-tui theme API for consistent borders, scrollable content, and navigation hints (matching the overlay style used by @pi-unipi/btw)
-- **Core groups** — modules, tools, load time, session info out of the box
+Info-screen listens for `MODULE_READY` events from `@pi-unipi/core`. When a module loads, info-screen adds it to the modules group automatically. No registration needed for basic module tracking.
 
-## Registering a Group
-
-Other modules register info groups via the global registry:
+Packages that want custom data groups use the registry API:
 
 ```typescript
 import { infoRegistry } from "@pi-unipi/info-screen";
@@ -55,11 +39,9 @@ infoRegistry.registerGroup({
 });
 ```
 
-## API
+The footer package reads info-screen data for its extension status segment.
 
-### `infoRegistry`
-
-Singleton registry instance. Also available globally via `globalThis.__unipi_info_registry`.
+## Registry API
 
 | Method | Description |
 |--------|-------------|
@@ -72,12 +54,13 @@ Singleton registry instance. Also available globally via `globalThis.__unipi_inf
 | `getVisibleStats(id)` | Get enabled stats for a group |
 | `invalidateCache(id)` | Invalidate cached data |
 
+The registry is a singleton, also available globally via `globalThis.__unipi_info_registry`.
+
 ### Load Tracking
 
 ```typescript
 import { startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart } from "@pi-unipi/info-screen";
 
-// Track module load times
 startLoadTracking();
 recordModuleStart("@pi-unipi/memory");
 // ... module loads ...
@@ -85,9 +68,9 @@ recordLoadTime("@pi-unipi/memory", "module", 150);
 finishLoadTracking();
 ```
 
-## Settings
+## Configurables
 
-Configure in pi `settings.json`:
+Settings in pi `settings.json`:
 
 ```json
 {
@@ -106,9 +89,12 @@ Configure in pi `settings.json`:
 }
 ```
 
-## Dependencies
-
-- `@pi-unipi/core` — shared constants and events
+| Setting | Default | What It Does |
+|---------|---------|--------------|
+| `showOnBoot` | true | Show dashboard when session starts |
+| `bootTimeoutMs` | 8000 | How long to wait for modules before showing |
+| `groups.{id}.show` | true | Toggle group visibility |
+| `groupOrder` | priority sort | Custom group ordering |
 
 ## License
 

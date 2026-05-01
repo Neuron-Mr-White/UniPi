@@ -1,32 +1,45 @@
 # @pi-unipi/mcp
 
-MCP (Model Context Protocol) server management extension for Pi coding agent. Browse a catalog of 7,800+ MCP servers, add them interactively, and use their tools seamlessly within pi.
+Browse a catalog of 7,800+ MCP servers, add them interactively, and use their tools in Pi. MCP (Model Context Protocol) servers expose external capabilities — GitHub operations, database queries, file system access — as tools the agent can call.
 
-## Features
-
-- **Browse Catalog**: Search and discover MCP servers from the awesome-mcp-servers collection
-- **Interactive Add**: Split-pane overlay with server browser + JSON config editor
-- **Settings Management**: Enable/disable, edit, delete servers with scope switching
-- **Config Hierarchy**: Global defaults with project-level overrides
-- **Auto-Discovery**: Tools from MCP servers are automatically registered as pi tools
-- **Offline Support**: Bundled seed catalog with 49 curated servers as fallback
+The add command opens a split-pane overlay: server browser on the left, JSON config editor on the right. Pick a server, edit its config, save. Tools from added servers are automatically registered as Pi tools with the pattern `{serverName}__{toolName}`.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:mcp-add` | Open browse + editor overlay to add MCP servers |
+| `/unipi:mcp-add` | Open browse and editor overlay to add MCP servers |
 | `/unipi:mcp-settings` | Interactive settings with enable/disable/edit |
 | `/unipi:mcp-sync` | Force sync server catalog from GitHub |
 | `/unipi:mcp-status` | Text summary of all configured servers |
 
-## Setup
+### Setup Flow
 
-1. Install as part of the unipi extension suite
-2. Add MCP servers via `/unipi:mcp-add` or manually edit config files
-3. Restart pi to activate newly added servers
+1. Run `/unipi:mcp-add`
+2. Browse or search the server catalog
+3. Edit the config in the right pane
+4. Save and restart Pi to activate
 
-## Configuration
+## Special Triggers
+
+When MCP is installed, all workflow skills get access to MCP server tools. Tools are named `{serverName}__{toolName}` — for example, `github__search_code` or `filesystem__read_file`.
+
+MCP registers with the info-screen dashboard, showing server count, active servers, and total tools. The footer subscribes to `MCP_SERVER_STARTED`, `MCP_SERVER_STOPPED`, and `MCP_SERVER_ERROR` events to display MCP status.
+
+## Agent Tools
+
+MCP tools are registered dynamically based on configured servers. Once a server is added and Pi restarts, its tools become available to the agent.
+
+Example tool calls:
+```
+github__search_code({ query: "authentication middleware" })
+github__list_pull_requests({ state: "open" })
+filesystem__read_file({ path: "/home/user/config.json" })
+```
+
+The agent doesn't need to know about MCP directly — tools appear in its tool list with the server prefix.
+
+## Configurables
 
 ### File Locations
 
@@ -63,47 +76,21 @@ MCP (Model Context Protocol) server management extension for Pi coding agent. Br
 
 ### Config Merge Rules
 
-1. Server exists only in global → loaded normally
-2. Server exists only in project → loaded normally
-3. Server exists in both → **project wins entirely**
-4. `"enabled": false` in project metadata → **disabled** even if defined globally
-
-## Tool Naming
-
-MCP tools are registered with the pattern `{serverName}__{toolName}`:
-- `github__search_code`
-- `filesystem__read_file`
-- `brave-search__brave_web_search`
-
-## Architecture
-
-```
-packages/mcp/
-├── src/
-│   ├── index.ts              # Extension entry, command registration
-│   ├── types.ts              # TypeScript interfaces
-│   ├── config/
-│   │   ├── schema.ts         # Defaults and validation
-│   │   ├── manager.ts        # Config read/merge/write
-│   │   └── sync.ts           # Catalog fetch and caching
-│   ├── bridge/
-│   │   ├── client.ts         # MCP JSON-RPC client (stdio)
-│   │   ├── translator.ts     # MCP tool → pi tool
-│   │   └── registry.ts       # Server lifecycle management
-│   └── tui/
-│       ├── add-overlay.ts    # /unipi:mcp-add UI
-│       └── settings-overlay.ts # /unipi:mcp-settings UI
-├── data/
-│   └── seed-servers.json     # Offline fallback catalog (49 servers)
-├── skills/mcp/
-│   └── SKILL.md              # Agent instructions
-├── package.json
-└── README.md
-```
+1. Server exists only in global — loaded normally
+2. Server exists only in project — loaded normally
+3. Server exists in both — project wins entirely
+4. `"enabled": false` in project metadata — disabled even if defined globally
 
 ## Troubleshooting
 
-- **Server won't start**: Check `/unipi:mcp-status` for errors, verify command exists
-- **Tools not appearing**: Ensure server is running, check MCP protocol support
-- **Config issues**: Validate JSON syntax, check file permissions
-- **Sync issues**: Run `/unipi:mcp-sync`, check network, seed catalog available offline
+**Server won't start:** Check `/unipi:mcp-status` for errors, verify the command exists on your system.
+
+**Tools not appearing:** Ensure the server is running and supports the MCP protocol.
+
+**Config issues:** Validate JSON syntax and check file permissions.
+
+**Sync issues:** Run `/unipi:mcp-sync`, check network. The seed catalog (49 servers) is available offline as fallback.
+
+## License
+
+MIT

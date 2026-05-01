@@ -1,19 +1,8 @@
 # @pi-unipi/ralph
 
-Long-running iterative development loops for [Pi coding agent](https://github.com/badlogic/pi-mono).
+Long-running iterative loops that persist across sessions. Start a loop, the agent works through tasks, calls `ralph_done` after each step, and reflects periodically. If the session crashes or you close Pi, the loop resumes where it left off.
 
-Start a loop, the agent works through iterations, reflects periodically, and completes when done. State persists across sessions.
-
-## Install
-
-```bash
-pi install npm:@pi-unipi/ralph
-```
-
-Or as part of the full suite:
-```bash
-pi install npm:unipi
-```
+Ralph is for work that takes more than one pass — migrating a codebase, implementing a multi-step feature, or processing a backlog. The agent iterates until the task is done or it hits the iteration limit.
 
 ## Commands
 
@@ -37,28 +26,24 @@ pi install npm:unipi
 | `--items-per-iteration N` | Suggest N items per turn (prompt hint) |
 | `--reflect-every N` | Reflect every N iterations |
 
-## Tools
+## Special Triggers
 
-| Tool | Description |
-|------|-------------|
-| `ralph_start` | Start a ralph loop (called by agent) |
-| `ralph_done` | Signal iteration complete (called by agent) |
+The workflow `work` skill detects ralph and encourages loops when a plan has 3 or more subtasks. Instead of executing everything in one pass, the agent starts a ralph loop and iterates through the checklist.
 
-## How It Works
+Ralph registers with the info-screen dashboard, showing active loops, total iterations, and loop status. The footer package subscribes to `RALPH_LOOP_START`, `RALPH_LOOP_END`, and `RALPH_ITERATION_DONE` events to display loop stats in the status bar.
 
-1. **Start** — creates a task file in `.unipi/ralph/` and begins iteration loop
-2. **Iterate** — agent works on task, updates progress, calls `ralph_done`
-3. **Reflect** — optional reflection prompts at configurable intervals
-4. **Complete** — agent emits `COMPLETE` marker or max iterations reached
-5. **Persist** — state saved to disk, survives session restarts
+## How the Agent Uses Ralph
 
-```
-start → iterate → done → iterate → ... → complete
-  ↑                                        │
-  └──── resume ────────────────────────────┘
-```
+1. Agent calls `ralph_start` with a task description and checklist
+2. Ralph creates a task file in `.unipi/ralph/` and begins the loop
+3. Agent works on the first checklist item, then calls `ralph_done`
+4. Ralph marks the item complete and returns the next iteration
+5. At reflection intervals, the agent pauses to review progress
+6. When all items are done (or max iterations reached), the loop ends
 
-## Task File Format
+The `ralph_done` tool signals completion of one iteration. The agent decides what to do each iteration — ralph just tracks progress and persists state.
+
+### Task File Format
 
 Loops operate on markdown task files:
 
@@ -81,6 +66,18 @@ Redesign the authentication system.
 Session 1: Completed token rotation design.
 ```
 
+## Configurables
+
+Loop behavior is controlled per-invocation via flags:
+
+| Setting | Default | What It Does |
+|---------|---------|--------------|
+| `max-iterations` | 50 | Hard stop after N iterations |
+| `items-per-iteration` | 3 | Hint for how many checklist items per pass |
+| `reflect-every` | 5 | Iterations between reflection prompts |
+
+These are set when starting a loop, not in a config file. Each loop can have different settings.
+
 ## State Storage
 
 ```
@@ -91,10 +88,7 @@ Session 1: Completed token rotation design.
     └── loop-name.*         ← archived loops
 ```
 
-## Integration
-
-- **@pi-unipi/core** — event types, constants, utilities
-- **@pi-unipi/info-screen** — registers info group showing loop status
+State persists across sessions. Close Pi, reopen, resume the loop — it picks up where it left off.
 
 ## License
 

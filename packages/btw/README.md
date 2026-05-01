@@ -1,26 +1,32 @@
 # @pi-unipi/btw
 
-A [pi](https://github.com/badlogic/pi-mono) extension for parallel side conversations with `/btw` — part of the [Unipi](https://github.com/Neuron-Mr-White/unipi) suite.
+Side conversations that run in parallel. Ask a question using `/btw` while the main agent keeps working — the answer streams into a modal overlay without interrupting the current task.
 
-`/btw` opens a real pi sub-session with coding-tool access, running immediately even while the main agent is still busy.
+BTW opens a real Pi sub-session with coding-tool access. Use it to clarify something, explore an idea, or think through next steps without derailing the main turn. When you're ready, inject the thread back or summarize it.
 
 Based on [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.
 
-## Install
+## Commands
 
-As part of the full Unipi suite:
+| Command | Description |
+|---------|-------------|
+| `/btw [--save] <question>` | Ask a question in a side thread |
+| `/btw:new [question]` | Start a fresh thread with main-session context |
+| `/btw:tangent [--save] <question>` | Contextless tangent thread |
+| `/btw:clear` | Dismiss modal and clear thread |
+| `/btw:inject [instructions]` | Send full thread to main agent |
+| `/btw:summarize [instructions]` | Summarize thread and inject into main agent |
 
-```bash
-pi install npm:unipi
-```
+### Keyboard Shortcuts
 
-Standalone:
+| Key | Action |
+|-----|--------|
+| `Alt+/` | Toggle focus between BTW and main editor |
+| `Ctrl+Alt+W` | Fallback focus toggle |
+| `Esc` | Dismiss BTW overlay |
+| `PgUp`/`PgDn` | Scroll transcript |
 
-```bash
-pi install npm:@pi-unipi/btw
-```
-
-## Usage
+### Examples
 
 ```text
 /btw what file defines this route?
@@ -30,65 +36,30 @@ pi install npm:@pi-unipi/btw
 /btw:tangent brainstorm from first principles without using the current chat context
 /btw:inject implement the plan we just discussed
 /btw:summarize turn that side thread into a short handoff
-/btw:clear
 ```
 
-## Commands
+## Special Triggers
 
-### /btw [--save] <question>
+BTW is a standalone package. It doesn't register with other packages or trigger coexists behavior.
 
-- runs right away, works while pi is busy
-- creates or reuses a real BTW sub-session
-- continues the current BTW thread
-- opens a focused BTW modal shell
-- streams into the BTW modal transcript/status surface
-- persists the BTW exchange as hidden thread state
-- with `--save`, also saves that single exchange as a visible session note
+The BTW overlay opens top-centered so the main session remains visible underneath. The modal uses Pi's TUI system for consistent styling.
 
-### /btw:new [question]
+## How It Works
 
-- clears the current BTW thread
-- starts a fresh thread that still inherits the current main-session context
-- optionally asks the first question in the new thread immediately
+1. `/btw` creates or reuses a BTW sub-session
+2. Your question runs in a real Pi session with tool access
+3. The answer streams into the BTW modal overlay
+4. The thread continues until you clear it or inject it back
 
-### /btw:tangent [--save] <question>
+`/btw:inject` sends the full thread to the main agent as a user message. If Pi is busy, it queues as a follow-up. `/btw:summarize` does the same but summarizes first.
 
-- starts or continues a contextless tangent thread
-- does not inherit the current main-session conversation
-- with `--save`, also saves that single exchange as a visible session note
+`/btw:tangent` starts a separate thread that doesn't inherit the main session's conversation context. Use it for unrelated exploration.
 
-### /btw:clear
+The `--save` flag saves that single exchange as a visible session note.
 
-- dismisses the BTW modal/widget
-- clears the current BTW thread
+## Configurables
 
-### /btw:inject [instructions]
-
-- sends the full BTW thread back to the main agent as a user message
-- if pi is busy, queues it as a follow-up
-- clears the BTW thread after sending
-
-### /btw:summarize [instructions]
-
-- summarizes the BTW thread with the current model
-- injects the summary into the main agent
-- clears the BTW thread after sending
-
-## Overlay controls
-
-- `Alt+/` toggles focus between BTW and the main editor without closing the overlay
-- `Ctrl+Alt+W` is a fallback focus toggle for terminals that do not deliver `Alt+/` as a usable shortcut
-- `Esc` still dismisses BTW immediately while the overlay is focused
-- `PgUp`/`PgDn` scrolls the transcript
-- BTW opens top-centered so the main session remains visible underneath
-
-## Why
-
-Sometimes you want to:
-
-- ask a clarifying question while the main agent keeps working
-- think through next steps without derailing the current turn
-- explore an idea, then inject it back once it's ready
+BTW has no configuration. Thread state is session-scoped and clears when you dismiss it.
 
 ## License
 

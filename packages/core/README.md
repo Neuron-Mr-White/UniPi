@@ -1,17 +1,8 @@
 # @pi-unipi/core
 
-Shared utilities, event types, and constants for the [Unipi](https://github.com/Neuron-Mr-White/unipi) extension suite.
+Shared infrastructure for every Unipi package. Provides constants, event types, and utility functions so packages can discover each other without tight coupling.
 
-## Install
-
-```bash
-pi install npm:@pi-unipi/core
-```
-
-Or as part of the full suite:
-```bash
-pi install npm:unipi
-```
+Other packages import from `@pi-unipi/core` to emit events, read module names, and use common file operations. Without it, each package would need its own event definitions and utilities.
 
 ## Usage
 
@@ -33,6 +24,7 @@ const safeName = sanitize("my/feature: branch");
 ## Exports
 
 ### Constants
+
 - `UNIPI_PREFIX` — Command prefix (`unipi:`)
 - `MODULES` — All module names
 - `WORKFLOW_COMMANDS` — Workflow command names
@@ -43,6 +35,7 @@ const safeName = sanitize("my/feature: branch");
 - `RALPH_COMPLETE_MARKER` — Loop completion marker
 
 ### Events
+
 - `UNIPI_EVENTS` — Event names
 - `UnipiModuleEvent` — Module ready/gone payload
 - `UnipiWorkflowEvent` — Workflow start/end payload
@@ -51,6 +44,7 @@ const safeName = sanitize("my/feature: branch");
 - `UnipiStatusRequestEvent` / `UnipiStatusResponseEvent` — Status payloads
 
 ### Utilities
+
 - `sanitize(name)` — Sanitize string for filenames
 - `ensureDir(path)` — Create parent directories
 - `tryDelete(path)` — Safe file deletion
@@ -68,6 +62,21 @@ const safeName = sanitize("my/feature: branch");
 - `getPackageVersion(dir)` — Read package version
 - `isModuleAvailable(cwd, name)` — Check if npm module exists
 - `emitEvent(pi, name, payload)` — Safe event emission
+
+## How Packages Use Core
+
+Every Unipi package depends on `@pi-unipi/core`. On load, each package:
+
+1. Imports `MODULES` to register its own name
+2. Imports `UNIPI_EVENTS` to subscribe to lifecycle events
+3. Calls `emitEvent(pi, UNIPI_EVENTS.MODULE_READY, ...)` to announce itself
+4. Uses utility functions for file I/O and path resolution
+
+This creates a loose coupling — packages discover each other through events, not direct imports.
+
+## Configuration
+
+Core has no configuration. It's a pure utility layer.
 
 ## License
 

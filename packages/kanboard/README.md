@@ -1,58 +1,27 @@
 # @pi-unipi/kanboard
 
-Visualization layer for unipi workflow data. Kanboard provides an HTTP server with htmx + Alpine.js UI, modular parsers for all workflow document types, two web pages (Milestones + Workflow), a TUI overlay with tasks list and kanban board, and a doctor skill for parser diagnostics.
+Visualization for workflow data. An HTTP server with htmx + Alpine.js UI shows your milestones, specs, plans, and tasks in a web browser. A TUI overlay gives you a kanban board without leaving Pi.
 
-## Quick Start
+Parses 8 document types from `.unipi/docs/` — specs, plans, milestones, quick-work, debug, fix, chore, and review — and renders them as cards with progress indicators.
 
-```bash
-# Start the kanboard server
-/unipi:kanboard
+## Commands
 
-# Diagnose parser issues
-/unipi:kanboard-doctor
-```
-
-## Architecture
-
-```
-kanboard/
-├── server/          # HTTP server with port allocation
-│   ├── index.ts     # Server core (KanboardServer class)
-│   └── routes/      # Route handlers (milestone, workflow)
-├── parser/          # Document parsers
-│   ├── index.ts     # ParserRegistry + createDefaultRegistry()
-│   ├── specs.ts     # Spec parser (checklist items)
-│   ├── plans.ts     # Plan parser (task statuses)
-│   ├── milestones.ts # Milestone parser
-│   └── remaining.ts # Quick-work, debug, fix, chore, review
-├── ui/              # Web UI
-│   ├── layouts/     # Base HTML layout
-│   ├── static/      # CSS + JS (style.css, app.js)
-│   ├── components/  # Reusable components
-│   ├── milestone/   # Milestone page renderer
-│   └── workflow/    # Workflow page renderer
-├── tui/             # TUI overlay
-│   └── kanboard-overlay.ts
-├── skills/          # Skills
-│   └── kanboard-doctor/ # Parser diagnostics
-├── commands.ts      # Command registration
-├── types.ts         # Shared TypeScript types
-└── index.ts         # Extension entry point
-```
+| Command | Description |
+|---------|-------------|
+| `/unipi:kanboard` | Toggle kanboard server on/off |
+| `/unipi:kanboard-doctor` | Diagnose and fix parser issues |
 
 ## Web Pages
 
 ### Milestones (`/`)
-- Displays MILESTONES.md phases with progress bars
-- Checklist items with status indicators (✓ done, ○ todo)
+- Phases with progress bars
+- Checklist items with status indicators (done/todo)
 - Collapsible sections per phase
-- Copy-to-clipboard for `/unipi:milestone-update`
 
 ### Workflow (`/workflow`)
-- Cards grouped by document type (specs, plans, fixes, etc.)
+- Cards grouped by document type
 - Progress indicators per card
-- Alpine.js filtering by status (All, To Do, In Progress, Done)
-- Copy-to-clipboard for relevant commands
+- Filtering by status (All, To Do, In Progress, Done)
 
 ## TUI Overlay
 
@@ -62,26 +31,23 @@ Two tabs accessible via the kanboard overlay:
 - **Board** — Kanban columns (To Do / In Progress / Done)
 
 ### Controls
-- `j/k` — Navigate up/down
-- `h/l` — Switch columns (Board tab)
-- `Tab` or `b` — Switch between Tasks/Board tabs
-- `t` — Switch to Tasks tab
-- `gg/G` — Jump to top/bottom
-- `q/Esc` — Close overlay
 
-## API Endpoints
+| Key | Action |
+|-----|--------|
+| `j/k` | Navigate up/down |
+| `h/l` | Switch columns (Board tab) |
+| `Tab` or `b` | Switch between Tasks/Board tabs |
+| `t` | Switch to Tasks tab |
+| `gg/G` | Jump to top/bottom |
+| `q/Esc` | Close overlay |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Milestone page |
-| GET | `/workflow` | Workflow page |
-| GET | `/api/milestones` | Milestone JSON data |
-| GET | `/api/workflow` | Workflow JSON data |
-| POST | `/api/docs/:type/:file/items/:line` | Update item status |
+## Special Triggers
+
+Kanboard registers with the info-screen dashboard, showing document count, tasks done, total tasks, and completion percentage. The footer subscribes to kanboard registry data to display task stats in the status bar.
 
 ## Parser System
 
-Kanboard parses 8 document types from `.unipi/docs/`:
+Kanboard parses 8 document types:
 
 | Type | Directory | What's Parsed |
 |------|-----------|---------------|
@@ -94,29 +60,21 @@ Kanboard parses 8 document types from `.unipi/docs/`:
 | Chore | `chore/` | Chore steps as checklist items |
 | Review | `reviews/` | Review remarks as checklist items |
 
-### Parser Warnings
+Parsers are resilient — they collect warnings per file and return partial results. Warnings are surfaced in the kanboard-doctor skill.
 
-Parsers are resilient — they collect warnings per file and return partial results:
-- Empty checkbox text
-- Malformed checkboxes
-- Missing frontmatter
-- Unparseable lines
+## API Endpoints
 
-Warnings are surfaced in the kanboard-doctor skill.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Milestone page |
+| GET | `/workflow` | Workflow page |
+| GET | `/api/milestones` | Milestone JSON data |
+| GET | `/api/workflow` | Workflow JSON data |
+| POST | `/api/docs/:type/:file/items/:line` | Update item status |
 
-## Doctor Skill
+## Configurables
 
-The `kanboard-doctor` skill runs all parsers and produces a diagnostic report:
-
-1. **Run All Parsers** — Parse every document
-2. **Collect Errors** — Group warnings by file
-3. **Present Report** — Structured error listing
-4. **Fix One by One** — Suggest fixes, ask user to confirm
-5. **Re-validate** — Re-run parser after each fix
-
-## Server Configuration
-
-Default configuration (from `@pi-unipi/core`):
+Default port configuration from `@pi-unipi/core`:
 
 ```typescript
 KANBOARD_DEFAULTS = {
@@ -128,10 +86,7 @@ KANBOARD_DEFAULTS = {
 - Port allocation: tries 8165, increments on EADDRINUSE
 - PID file: `.unipi/kanboard.pid`
 - Graceful shutdown on SIGINT/SIGTERM
-- Static files served from `ui/static/`
 
-## Dependencies
+## License
 
-- `@pi-unipi/core` — Shared constants and utilities
-- `@mariozechner/pi-coding-agent` — Extension API
-- `@mariozechner/pi-tui` — TUI overlay API
+MIT

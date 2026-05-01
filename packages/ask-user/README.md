@@ -1,30 +1,24 @@
 # @pi-unipi/ask-user
 
-Structured user input tool for the Pi coding agent — part of the Unipi suite.
+Structured user input for decision gates. When the agent needs you to pick between options — which database, which approach, which files to change — it calls `ask_user` instead of guessing.
 
-## Features
+Three input modes: single-select (pick one), multi-select (toggle several), freeform (type your own). The agent presents the question, you answer, it continues.
 
-### `ask_user` Tool
+## Commands
 
-Ask the user a question with structured options. Supports three modes:
+Ask-user has no user commands. It's an agent tool package — the agent calls it when it needs input.
 
-- **Single-select** — Pick one option from a list
-- **Multi-select** — Toggle multiple options, then submit
-- **Freeform** — Type a custom answer
+## Special Triggers
 
-### Usage
+All workflow skills detect ask-user and use it for decision gates. Instead of the agent deciding on its own, it presents options and waits for your input. This happens naturally during brainstorm, plan, work, and other skills when the agent faces ambiguity.
 
-The agent calls the tool when it needs user input:
+The bundled skill guides the agent to use `ask_user` for high-stakes decisions — architecture choices, database selection, naming decisions, anything with lasting impact.
 
-```typescript
-ask_user({
-  question: "Which database should we use?",
-  options: [
-    { label: "PostgreSQL", description: "Reliable, feature-rich" },
-    { label: "SQLite", description: "Simple, serverless" },
-  ],
-})
-```
+## Agent Tool
+
+| Tool | Description |
+|------|-------------|
+| `ask_user` | Structured user input with options |
 
 ### Parameters
 
@@ -37,12 +31,24 @@ ask_user({
 | `allowFreeform` | boolean? | true | Allow freeform text input |
 | `timeout` | number? | — | Auto-dismiss after N ms |
 
+### Example
+
+```typescript
+ask_user({
+  question: "Which database should we use?",
+  options: [
+    { label: "PostgreSQL", description: "Reliable, feature-rich" },
+    { label: "SQLite", description: "Simple, serverless" },
+  ],
+})
+```
+
 ### Keyboard Controls
 
 | Mode | Keys |
 |------|------|
-| Single-select | ↑↓ navigate, Enter select, Esc cancel |
-| Multi-select | ↑↓ navigate, Space toggle, Enter submit, Esc cancel |
+| Single-select | Up/Down navigate, Enter select, Esc cancel |
+| Multi-select | Up/Down navigate, Space toggle, Enter submit, Esc cancel |
 | Freeform | Type text, Enter submit, Esc back |
 
 ### TUI Display
@@ -57,7 +63,7 @@ ask_user({
    Option C
    Type something...
 
- ↑↓ navigate • Enter select • Esc cancel
+ Up/Down navigate, Enter select, Esc cancel
 ─────────────────────────────
 ```
 
@@ -66,34 +72,19 @@ ask_user({
 ─────────────────────────────
  Which features to enable?
 ─────────────────────────────
- > [✓] Logging
+ > [x] Logging
    [ ] Metrics
-   [✓] Tracing
+   [x] Tracing
    [ ] Type something...
 
- ↑↓ navigate • Space toggle • Enter submit • Esc cancel
+ Up/Down navigate, Space toggle, Enter submit, Esc cancel
 ─────────────────────────────
 ```
 
-## Installation
+## Configurables
 
-```bash
-pi install npm:@pi-unipi/ask-user
-```
+Ask-user has no configuration. Input mode is determined by the `allowMultiple` and `allowFreeform` parameters the agent passes.
 
-Or install the full Unipi suite:
+## License
 
-```bash
-pi install npm:@pi-unipi/unipi
-```
-
-## Bundled Skill
-
-The package includes a skill that guides the agent to use `ask_user` for high-stakes decisions. The skill is automatically discovered when the extension loads.
-
-## Dependencies
-
-- `@pi-unipi/core` — Shared constants and utilities
-- `@mariozechner/pi-coding-agent` — Pi extension API
-- `@mariozechner/pi-tui` — TUI components
-- `@sinclair/typebox` — Schema validation
+MIT

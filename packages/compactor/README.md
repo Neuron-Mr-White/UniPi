@@ -1,14 +1,8 @@
 # @pi-unipi/compactor
 
-Context engine for Pi coding agent. Fuses zero-LLM compaction, session continuity, sandbox execution, FTS5 search, and tool display optimization into a single cohesive package.
+Context engine that keeps sessions lean. Compacts conversations, indexes code, searches history, and runs sandboxed code — all without burning LLM tokens on compaction.
 
-## Features
-
-- **Zero-LLM Compaction** — 6-stage pipeline (normalize → filter → build sections → brief → format → merge) achieves 95%+ token reduction with zero API cost
-- **Session Continuity** — XML resume snapshots survive compaction, preserving context across session boundaries
-- **Sandbox Execution** — 11 languages with process isolation, security hardening, and output capping
-- **FTS5 Search** — Full-text search over indexed content with auto-chunking
-- **Tool Display** — Mode-aware rendering for read, grep, find, ls, bash, edit, write tools
+The zero-LLM pipeline compresses context through 6 stages (normalize, filter, build sections, brief, format, merge) to hit 95%+ token reduction at zero API cost. Session continuity preserves context across compaction boundaries with XML resume snapshots.
 
 ## Commands
 
@@ -25,6 +19,12 @@ Context engine for Pi coding agent. Fuses zero-LLM compaction, session continuit
 | `/unipi:compact-preset <name>` | Apply quick preset |
 | `/unipi:compact-help` | Show detailed documentation |
 
+## Special Triggers
+
+Compactor tools are available to the main agent when installed. All workflow skills can use compactor tools for context management.
+
+Compactor registers with the info-screen dashboard, showing compaction count, tokens saved, compression ratio, and indexed documents. The footer subscribes to `COMPACTOR_STATSUPDATED` events to display compaction stats in the status bar.
+
 ## Agent Tools
 
 | Tool | Family | Description |
@@ -34,19 +34,19 @@ Context engine for Pi coding agent. Fuses zero-LLM compaction, session continuit
 | `sandbox` | sandbox | Run code in sandbox (11 languages) |
 | `sandbox_file` | sandbox | Execute file via FILE_CONTENT |
 | `sandbox_batch` | sandbox | Atomic batch of commands + searches |
-| `content_index` | content | Chunk content → FTS5 index |
+| `content_index` | content | Chunk content to FTS5 index |
 | `content_search` | content | Query indexed content |
-| `content_fetch` | content | Fetch URL → index |
+| `content_fetch` | content | Fetch URL and index |
 | `compactor_stats` | compactor | Context savings dashboard |
 | `compactor_doctor` | compactor | Diagnostics checklist |
 | `context_budget` | compactor | Estimate remaining context window |
 
 ## Two-Tier Skills
 
-- **Tier 1** (`compactor`): ~175 tokens, always loaded. Routing + critical rules + Ralph awareness.
+- **Tier 1** (`compactor`): ~175 tokens, always loaded. Routing and critical rules.
 - **Tier 2** (`compactor-detail`): On-demand. Full tool reference, anti-patterns, sandbox languages, FTS5 modes, workflows.
 
-## Configuration
+## Configurables
 
 Config lives at `~/.unipi/config/compactor/config.json`. Per-project overrides at `<project>/.unipi/config/compactor.json`.
 
@@ -78,7 +78,7 @@ Tabbed settings interface (Presets / Strategies / Pipeline):
 - `/` key opens search filter in Strategies tab
 - Preset selection shows 3-line preview
 - Per-project override checkbox (`o` key)
-- Keyboard: `←→` cycle modes, `Space` toggle, `s` save, `Esc` cancel
+- Keyboard: left/right cycle modes, Space toggle, `s` save, Esc cancel
 
 ## Architecture
 
@@ -93,18 +93,6 @@ Tabbed settings interface (Presets / Strategies / Pipeline):
                     ┌─────────────────────┐
                     │   Config Manager    │
                     └─────────────────────┘
-```
-
-## Installation
-
-Included in `@pi-unipi/unipi` metapackage. To use standalone:
-
-```json
-{
-  "pi": {
-    "extensions": ["node_modules/@pi-unipi/compactor/src/index.ts"]
-  }
-}
 ```
 
 ## License

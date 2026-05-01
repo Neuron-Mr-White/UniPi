@@ -1,34 +1,46 @@
 # @pi-unipi/subagents
 
-Parallel sub-agent execution for [Pi coding agent](https://github.com/badlogic/pi-mono). Spawn background or foreground agents, track activity, and manage concurrent work.
+Parallel execution with file locking. Spawn background or foreground agents to work on tasks concurrently — research files, fix lint errors, run tests — while the main agent keeps going.
 
-## Install
+Two built-in agent types: `explore` for read-only research, `work` for file modifications with transparent locking. Define your own types as markdown files.
 
-```bash
-pi install npm:@pi-unipi/subagents
-```
+## Commands
 
-Or as part of the full suite:
-```bash
-pi install npm:unipi
-```
+Subagents has no user commands. It's an agent tool package — the agent calls it directly.
 
-## Tools
+## Special Triggers
+
+Workflow skills detect subagents and inject parallel strategies. When `@pi-unipi/subagents` is installed, these skills get enhanced:
+
+| Skill | What Changes |
+|-------|--------------|
+| `brainstorm` | Parallel research for different approaches |
+| `document` | Parallel documentation of different modules |
+| `gather-context` | Parallel codebase exploration |
+| `review-work` | Parallel task verification |
+| `scan-issues` | Parallel scanning by category |
+| `work` | Parallel task execution (with file locking) |
+
+Subagents registers with the info-screen dashboard, showing active agents and their status. The footer displays agent activity in its extension status segment.
+
+## Agent Tools
 
 | Tool | Description |
 |------|-------------|
 | `spawn_helper` | Launch a sub-agent for parallel work |
 | `get_helper_result` | Check status and retrieve results from a background agent |
 
-## Agent Types
+### spawn_helper Parameters
 
-| Type | Description |
-|------|-------------|
-| `explore` | Parallel file reads, research, analysis |
-| `work` | Parallel file writes with transparent locking |
-| Custom | Define your own in `~/.unipi/config/agents/<name>.md` |
-
-## Usage
+| Parameter | Description |
+|-----------|-------------|
+| `type` | Agent type (`explore`, `work`, or custom) |
+| `prompt` | Task for the agent |
+| `description` | Short description (3-5 words) |
+| `run_in_background` | Return immediately, notify on completion |
+| `max_turns` | Max agentic turns before stopping |
+| `model` | Model override (e.g. `"haiku"`, `"sonnet"`) |
+| `thinking` | Thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
 
 ### Foreground (blocks until done)
 
@@ -57,18 +69,6 @@ spawn_helper(
 get_helper_result(agent_id: "helper_abc123")
 ```
 
-## Options
-
-| Parameter | Description |
-|-----------|-------------|
-| `type` | Agent type (`explore`, `work`, or custom) |
-| `prompt` | Task for the agent |
-| `description` | Short description (3-5 words) |
-| `run_in_background` | Return immediately, notify on completion |
-| `max_turns` | Max agentic turns before stopping |
-| `model` | Model override (e.g. `"haiku"`, `"sonnet"`) |
-| `thinking` | Thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
-
 ## Custom Agent Types
 
 Create markdown files defining agent behavior:
@@ -81,7 +81,7 @@ Create markdown files defining agent behavior:
 <workspace>/.unipi/config/agents/deployer.md
 ```
 
-## Configuration
+## Configurables
 
 ```json
 // ~/.unipi/config/subagents.json
@@ -95,19 +95,11 @@ Create markdown files defining agent behavior:
 }
 ```
 
-## Features
-
-- **Concurrent execution** — run up to N agents simultaneously
-- **File locking** — transparent locking for parallel writes
-- **ESC propagation** — kill all agents with ESC
-- **Activity tracking** — real-time widget showing agent progress
-- **Info screen integration** — agent status in dashboard
-
-## Dependencies
-
-- `@pi-unipi/core` — shared utilities
-- `@pi-unipi/workflow` — workflow integration
-- `@pi-unipi/info-screen` — dashboard registration
+| Setting | Default | What It Does |
+|---------|---------|--------------|
+| `enabled` | true | Enable/disable subagents |
+| `maxConcurrent` | 3 | Max agents running at once |
+| `types.{name}.enabled` | true | Toggle agent types |
 
 ## License
 

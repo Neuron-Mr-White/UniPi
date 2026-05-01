@@ -1,21 +1,52 @@
 # @pi-unipi/notify
 
-Cross-platform notification extension for Pi. Sends push notifications to native OS, Gotify, Telegram, and ntfy when agent lifecycle events occur.
+Push notifications when things happen. Workflow finishes, Ralph loop completes, MCP server errors — notify sends alerts to native OS, Gotify, Telegram, or ntfy.
 
-## What it does
+Configure once, get alerts everywhere. Per-event platform routing lets you send critical errors to Telegram and routine completions to Gotify.
 
-- Listens to Pi lifecycle events (workflow complete, Ralph loop done, MCP errors, etc.)
-- Routes notifications to your configured platforms
-- Provides `notify_user` tool for agent-initiated notifications
-- Per-event platform configuration with sensible defaults
+## Commands
 
-## Installation
+| Command | Description |
+|---------|-------------|
+| `/unipi:notify-settings` | Open settings overlay to configure platforms and events |
+| `/unipi:notify-set-gotify` | Configure Gotify server connection |
+| `/unipi:notify-set-tg` | Interactive Telegram bot setup |
+| `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
+| `/unipi:notify-recap-model` | Set model for notification recaps |
+| `/unipi:notify-test` | Send test notification to all enabled platforms |
 
-Part of the `@pi-unipi/unipi` meta-package. No separate install needed.
+## Special Triggers
+
+Notify subscribes to Pi lifecycle events and routes notifications based on your config:
+
+| Event | Default | Description |
+|-------|---------|-------------|
+| `workflow_end` | On | Workflow command completes |
+| `ralph_loop_end` | On | Ralph loop completes |
+| `mcp_server_error` | On | MCP server error |
+| `agent_end` | Off | Agent finishes responding |
+| `memory_consolidated` | Off | Memory auto-saved |
+| `session_shutdown` | Off | Session ends |
+
+Notify registers with the info-screen dashboard, showing enabled platforms and last notification time. The footer subscribes to `NOTIFICATION_SENT` events to display notification stats.
+
+## Agent Tool
+
+| Tool | Description |
+|------|-------------|
+| `notify_user` | Send cross-platform notification |
+
+```
+notify_user({
+  title: "Build Failed",
+  message: "TypeScript compilation failed with 12 errors.",
+  priority: "high"
+})
+```
 
 ## Platforms
 
-### Native OS (default)
+### Native OS
 
 Desktop notifications via [node-notifier](https://github.com/mikaelbr/node-notifier):
 - **Windows:** SnoreToast (no admin required)
@@ -26,7 +57,7 @@ Zero configuration — works out of the box.
 
 ### Gotify
 
-Self-hosted push notification server. Configure in settings:
+Self-hosted push notification server:
 
 ```json
 {
@@ -41,26 +72,14 @@ Self-hosted push notification server. Configure in settings:
 
 ### Telegram
 
-Bot API notifications. Run setup command:
-
-```
-/unipi:notify-set-tg
-```
-
-This guides you through:
-1. Creating a bot via @BotFather
-2. Pasting the bot token
-3. Auto-detecting your chat ID
+Bot API notifications. Run `/unipi:notify-set-tg` for interactive setup:
+1. Create a bot via @BotFather
+2. Paste the bot token
+3. Auto-detect your chat ID
 
 ### ntfy
 
-HTTP-based pub-sub notifications via [ntfy.sh](https://ntfy.sh) or self-hosted. Run setup command:
-
-```
-/unipi:notify-set-ntfy
-```
-
-Or configure manually:
+HTTP-based pub-sub notifications via [ntfy.sh](https://ntfy.sh) or self-hosted:
 
 ```json
 {
@@ -73,54 +92,12 @@ Or configure manually:
 }
 ```
 
-## Commands
+## Configurables
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:notify-settings` | Open settings overlay to configure platforms and events |
-| `/unipi:notify-set-gotify` | Configure Gotify server connection |
-| `/unipi:notify-set-tg` | Interactive Telegram bot setup |
-| `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
-| `/unipi:notify-test` | Send test notification to all enabled platforms |
+Settings stored at `~/.unipi/config/notify/config.json`. Edit via `/unipi:notify-settings` or manual JSON editing.
 
-## Agent Tool
+Per-event platform routing lets you control where each event type goes. The settings overlay shows all events with platform toggles.
 
-The `notify_user` tool is available to the agent for ad-hoc notifications:
+## License
 
-```
-notify_user({
-  title: "Build Failed",
-  message: "TypeScript compilation failed with 12 errors.",
-  priority: "high"
-})
-```
-
-See the bundled `notify` skill for full parameter documentation.
-
-## Event Configuration
-
-Notifications are triggered by these events (configurable in settings):
-
-| Event | Default | Description |
-|-------|---------|-------------|
-| `workflow_end` | On | Workflow command completes |
-| `ralph_loop_end` | On | Ralph loop completes |
-| `mcp_server_error` | On | MCP server error |
-| `agent_end` | Off | Agent finishes responding |
-| `memory_consolidated` | Off | Memory auto-saved |
-| `session_shutdown` | Off | Session ends |
-
-## Configuration
-
-Settings stored at `~/.unipi/config/notify/config.json`. Edit via:
-- Settings overlay: `/unipi:notify-settings`
-- Manual JSON editing
-- The agent can read config via the settings module
-
-## Info-Screen Integration
-
-The notify module registers with the info screen showing:
-- Enabled platform count
-- Active event subscriptions
-- Last notification timestamp
-- Total notifications sent this session
+MIT
