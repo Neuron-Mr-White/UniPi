@@ -125,7 +125,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     7. Load/save `showFullLabels` in config.ts
     8. Add help icon and icons for help-related UI
 
-- unstarted: Task 7 — Unified Settings TUI & Command Cleanup
+- completed: Task 7 — Unified Settings TUI & Command Cleanup
   - Description: Replace 2-tab settings TUI with 3-category unified layout. Simplify `/unipi:footer` to toggle-only. Move sep/icon/preset args into settings TUI.
   - Dependencies: Task 5 (zone settings), Task 6 (label settings)
   - Acceptance Criteria: `/unipi:footer-settings` opens 3-category TUI. `/unipi:footer` only toggles on/off. All appearance settings are in the TUI.

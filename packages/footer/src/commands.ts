@@ -8,35 +8,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
-import { PRESET_NAMES } from "./presets.js";
 import { showFooterSettings } from "./tui/settings-tui.js";
 import { showFooterHelp } from "./help.js";
-import type { FooterGroup, FooterSegment, SeparatorStyle, IconStyle } from "./types.js";
-import { setIconStyle } from "./rendering/icons.js";
-
-/** Minimal autocomplete item (compatible with pi-tui AutocompleteItem) */
-interface ArgSuggestion {
-  value: string;
-  label: string;
-  description?: string;
-}
-
-/** All valid separator styles */
-const SEPARATOR_STYLES: SeparatorStyle[] = [
-  "powerline",
-  "powerline-thin",
-  "slash",
-  "pipe",
-  "dot",
-  "ascii",
-];
-
-/** All valid icon styles */
-const ICON_STYLES: IconStyle[] = [
-  "nerd",
-  "emoji",
-  "text",
-];
+import type { FooterGroup, FooterSegment } from "./types.js";
 
 /** Extension state interface */
 interface FooterState {
@@ -60,69 +34,13 @@ export function registerCommands(
   state: FooterState,
   groups?: FooterGroup[],
 ): void {
-  // /unipi:footer — toggle or switch preset
+  // /unipi:footer — toggle on/off only
   pi.registerCommand(`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`, {
-    description: "Toggle footer or switch preset (default, minimal, compact, full, nerd, ascii)",
-    getArgumentCompletions(argumentPrefix: string): ArgSuggestion[] | null {
-      const allOptions: ArgSuggestion[] = [
-        ...PRESET_NAMES.map(p => ({
-          value: p,
-          label: p,
-          description: `Switch to ${p} preset`,
-        })),
-        ...SEPARATOR_STYLES.map(s => ({
-          value: `sep:${s}`,
-          label: `sep:${s}`,
-          description: `Set separator style: ${s}`,
-        })),
-        ...ICON_STYLES.map(s => ({
-          value: `icon:${s}`,
-          label: `icon:${s}`,
-          description: `Set icon style: ${s}`,
-        })),
-        {
-          value: "on",
-          label: "on",
-          description: "Enable footer",
-        },
-        {
-          value: "off",
-          label: "off",
-          description: "Disable footer",
-        },
-      ];
-
-      if (!argumentPrefix) return allOptions;
-
-      const prefix = argumentPrefix.toLowerCase();
-      const filtered = allOptions.filter(o =>
-        o.value.toLowerCase().startsWith(prefix),
-      );
-      return filtered.length > 0 ? filtered : null;
-    },
+    description: "Toggle footer on/off",
     handler: async (args, ctx) => {
-      if (!args?.trim()) {
-        // Toggle on/off
-        state.enabled = !state.enabled;
-        state.renderer.setActive(state.enabled);
+      const arg = args?.trim().toLowerCase();
 
-        if (state.enabled) {
-          state.setupUI?.(pi, ctx);
-          ctx.ui.notify("Footer enabled", "info");
-        } else {
-          ctx.ui.setFooter(undefined);
-          ctx.ui.setWidget("footer-top", undefined);
-          ctx.ui.setWidget("footer-secondary", undefined);
-          ctx.ui.notify("Footer disabled", "info");
-        }
-
-        saveFooterSettings({ enabled: state.enabled });
-        return;
-      }
-
-      const arg = args.trim().toLowerCase();
-
-      // on / off
+      // on
       if (arg === "on") {
         state.enabled = true;
         state.renderer.setActive(true);
@@ -131,6 +49,8 @@ export function registerCommands(
         ctx.ui.notify("Footer enabled", "info");
         return;
       }
+
+      // off
       if (arg === "off") {
         state.enabled = false;
         state.renderer.setActive(false);
@@ -142,42 +62,21 @@ export function registerCommands(
         return;
       }
 
-      // sep:<style> — change separator
-      if (arg.startsWith("sep:")) {
-        const style = arg.slice(4) as SeparatorStyle;
-        if (SEPARATOR_STYLES.includes(style)) {
-          saveFooterSettings({ separator: style });
-          state.renderer.resetLayoutCache();
-          ctx.ui.notify(`Separator: ${style}`, "info");
-          return;
-        }
-        ctx.ui.notify(`Unknown separator. Available: ${SEPARATOR_STYLES.join(", ")}`, "warning");
-        return;
+      // Toggle (no args or unknown args)
+      state.enabled = !state.enabled;
+      state.renderer.setActive(state.enabled);
+
+      if (state.enabled) {
+        state.setupUI?.(pi, ctx);
+        ctx.ui.notify("Footer enabled", "info");
+      } else {
+        ctx.ui.setFooter(undefined);
+        ctx.ui.setWidget("footer-top", undefined);
+        ctx.ui.setWidget("footer-secondary", undefined);
+        ctx.ui.notify("Footer disabled", "info");
       }
 
-      // icon:<style> — change icon style
-      if (arg.startsWith("icon:")) {
-        const style = arg.slice(5) as IconStyle;
-        if (ICON_STYLES.includes(style)) {
-          saveFooterSettings({ iconStyle: style });
-          setIconStyle(style);
-          state.renderer.resetLayoutCache();
-          ctx.ui.notify(`Icon style: ${style}`, "info");
-          return;
-        }
-        ctx.ui.notify(`Unknown icon style. Available: ${ICON_STYLES.join(", ")}`, "warning");
-        return;
-      }
-
-      // Preset name
-      if (PRESET_NAMES.includes(arg)) {
-        state.renderer.setPreset(arg);
-        saveFooterSettings({ preset: arg });
-        ctx.ui.notify(`Footer preset: ${arg}`, "info");
-        return;
-      }
-
-      ctx.ui.notify(`Unknown argument. Use a preset (${PRESET_NAMES.join(", ")}), sep:<style>, icon:<style>, on, or off`, "info");
+      saveFooterSettings({ enabled: state.enabled });
     },
   });
 
