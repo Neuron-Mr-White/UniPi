@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -28,9 +28,11 @@
     "publish:all": "npm publish --workspaces --access public"
   },
   "files": [
-    "packages/*/index.ts",
+    "packages/*/*.ts",
     "packages/*/src/**/*.ts",
     "packages/*/extensions/**/*.ts",
+    "packages/*/platforms/*",
+    "packages/*/tui/*",
     "packages/*/skills/**/*",
     "packages/*/README.md"
   ],
