@@ -24,6 +24,7 @@
     "commands.ts",
     "settings.ts",
     "events.ts",
+    "ntfy-config.ts",
     "summarize.ts",
     "types.ts",
     "platforms/*",
