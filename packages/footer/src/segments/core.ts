@@ -113,16 +113,13 @@ function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 function renderApiStateSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // API state is not directly exposed in piContext yet.
-  // Show a placeholder that indicates the segment exists.
-  // TODO: Connect to actual API state when pi exposes it.
-  const content = withIcon("apiState", "ok");
+  // Show WEB to indicate the web-api package is active.
+  const content = withIcon("apiState", "WEB");
   return { content: color(ctx, "model", content), visible: true };
 }
 
 function renderToolCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   // Tool count is not directly exposed in piContext yet.
-  // Show a placeholder that indicates the segment exists.
   // TODO: Connect to actual tool count when pi exposes it.
   const content = withIcon("toolCount", "—");
   return { content: color(ctx, "model", content), visible: true };
@@ -231,7 +228,7 @@ function renderTimeSegment(ctx: FooterSegmentContext): RenderedSegment {
 
 export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "model", label: "Model", icon: "", render: renderModelSegment, defaultShow: true },
-  { id: "api_state", label: "API State", icon: "", render: renderApiStateSegment, defaultShow: true },
+  { id: "api_state", label: "WEB", icon: "", render: renderApiStateSegment, defaultShow: true },
   { id: "tool_count", label: "Tool Count", icon: "", render: renderToolCountSegment, defaultShow: true },
   { id: "git", label: "Git", icon: "", render: renderGitSegment, defaultShow: true },
   { id: "context_pct", label: "Context %", icon: "", render: renderContextPctSegment, defaultShow: true },

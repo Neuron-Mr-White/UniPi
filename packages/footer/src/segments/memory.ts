@@ -21,8 +21,10 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../ty
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
 
-/** Nerd Font icon for memory:  */
-const MEMORY_ICON = "\uee9c";
+function withIcon(segmentId: string, text: string): string {
+  const icon = getIcon(segmentId);
+  return icon ? `${icon} ${text}` : text;
+}
 
 /**
  * Shape of the info-screen memory group data:
@@ -84,11 +86,11 @@ function renderProjectCountSegment(ctx: FooterSegmentContext): RenderedSegment {
 
   // Show as 76/102 format when both are available
   if (counts.total !== null) {
-    const content = `${MEMORY_ICON} ${counts.project}/${counts.total}`;
+    const content = withIcon("projectCount", `${counts.project}/${counts.total}`);
     return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
   }
 
-  const content = `${MEMORY_ICON} ${counts.project}`;
+  const content = withIcon("projectCount", `${counts.project}`);
   return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
 }
 
@@ -106,7 +108,7 @@ function renderTotalCountSegment(ctx: FooterSegmentContext): RenderedSegment {
     return { content: "", visible: false };
   }
 
-  const content = `${MEMORY_ICON} ${counts.total}`;
+  const content = withIcon("totalCount", `${counts.total}`);
   return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
 }
 
@@ -116,7 +118,7 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
   // Check for explicit consolidations stat from info registry
   const consolidationsValue = infoData?.consolidations?.value;
   if (consolidationsValue !== undefined && consolidationsValue !== null) {
-    const content = `${MEMORY_ICON} cns:${consolidationsValue}`;
+    const content = withIcon("consolidations", `cns:${consolidationsValue}`);
     return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
   }
 
@@ -129,7 +131,7 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
     return { content: "", visible: false };
   }
 
-  const content = `${MEMORY_ICON} cns:${count}`;
+  const content = withIcon("consolidations", `cns:${count}`);
   return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
 }
 

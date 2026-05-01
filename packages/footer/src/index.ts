@@ -53,7 +53,7 @@ function buildSegmentLookup(): Map<string, FooterSegment> {
 }
 
 /** Extension state */
-interface FooterState {
+export interface FooterState {
   enabled: boolean;
   registry: FooterRegistry;
   renderer: FooterRenderer;
@@ -63,6 +63,8 @@ interface FooterState {
   footerData: unknown;
   tuiRef: any;
   refreshTimer: ReturnType<typeof setInterval> | null;
+  /** Re-register footer + widgets with pi UI (for live enable) */
+  setupUI: ((pi: ExtensionAPI, ctx: any) => void) | null;
 }
 
 export default function footerExtension(pi: ExtensionAPI): void {
@@ -84,6 +86,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     footerData: null,
     tuiRef: null,
     refreshTimer: null,
+    setupUI: null,
   };
 
   // Register all groups in the registry
@@ -107,6 +110,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
     // Setup footer + widgets
     setupFooterUI(pi, ctx, state);
+    state.setupUI = (p: ExtensionAPI, c: any) => setupFooterUI(p, c, state);
   });
 
   pi.on("session_shutdown", async () => {

@@ -47,6 +47,7 @@ interface FooterState {
     resetLayoutCache(): void;
   };
   piContext: unknown;
+  setupUI: ((pi: ExtensionAPI, ctx: any) => void) | null;
 }
 
 /**
@@ -104,6 +105,7 @@ export function registerCommands(
         state.renderer.setActive(state.enabled);
 
         if (state.enabled) {
+          state.setupUI?.(pi, ctx);
           ctx.ui.notify("Footer enabled", "info");
         } else {
           ctx.ui.setFooter(undefined);
@@ -123,6 +125,7 @@ export function registerCommands(
         state.enabled = true;
         state.renderer.setActive(true);
         saveFooterSettings({ enabled: true });
+        state.setupUI?.(pi, ctx);
         ctx.ui.notify("Footer enabled", "info");
         return;
       }
