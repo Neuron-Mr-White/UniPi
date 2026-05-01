@@ -7,7 +7,8 @@
  */
 
 import { existsSync, readFileSync } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
+import { findPackageRoot } from "@pi-unipi/core";
 import { MODULES } from "@pi-unipi/core";
 import type { ReadmeEntry } from "../types.js";
 
@@ -35,14 +36,12 @@ const PACKAGE_MAP: Record<string, string> = {
   updater: MODULES.UPDATER,
 };
 
-/** Resolve the unipi monorepo root directory */
+/** Resolve the unipi package root directory */
 function resolveUnipiRoot(): string {
-  // Walk up from this file to find the monorepo root (has package.json with @pi-unipi/unipi)
-  let dir = new URL(".", import.meta.url).pathname;
-  // From src/updater/src/ → go up 4 levels to reach monorepo root
-  // Actually: packages/updater/src/readme.ts → ../../.. = monorepo root
-  dir = resolve(dir, "../../..");
-  return dir;
+  // Walk up from this file to find @pi-unipi/unipi by name
+  const dir = new URL(".", import.meta.url).pathname;
+  const root = findPackageRoot(dir, "@pi-unipi/unipi");
+  return root ?? join(dir, ".."); // fallback to parent
 }
 
 /** Get version from a package.json at the given directory */

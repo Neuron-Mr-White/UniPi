@@ -142,6 +142,36 @@ export function getPackageVersion(packageDir: string): string {
 }
 
 /**
+ * Walk up from `startDir` to find a package.json with the given `name`.
+ * Returns the directory containing that package.json, or null if not found.
+ * Stops after `maxSteps` levels (default 10).
+ */
+export function findPackageRoot(startDir: string, packageName: string, maxSteps = 10): string | null {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i < maxSteps; i++) {
+    const pkgPath = path.join(dir, "package.json");
+    const pkg = readJson<{ name?: string }>(pkgPath);
+    if (pkg?.name === packageName) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Get the installed version of a named package by walking up from startDir.
+ * Returns "0.0.0" if the package cannot be found.
+ */
+export function getInstalledPackageVersion(startDir: string, packageName: string): string {
+  const root = findPackageRoot(startDir, packageName);
+  if (!root) return "0.0.0";
+  return getPackageVersion(root);
+}
+
+/**
  * Check if a module is available in node_modules.
  */
 export function isModuleAvailable(cwd: string, moduleName: string): boolean {

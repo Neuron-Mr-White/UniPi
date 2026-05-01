@@ -11,7 +11,7 @@ import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { parseChangelog } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
-import { getPackageVersion } from "@pi-unipi/core";
+import { getInstalledPackageVersion } from "@pi-unipi/core";
 import type { ChangelogEntry } from "../../types.js";
 
 type View = "list" | "detail";
@@ -44,8 +44,9 @@ export function renderChangelogOverlay() {
     _kb: any,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
-    const installedVersion = getPackageVersion(
-      new URL("../../..", import.meta.url).pathname,
+    const installedVersion = getInstalledPackageVersion(
+      new URL("..", import.meta.url).pathname,
+      "@pi-unipi/unipi",
     );
 
     const state: ChangelogState = {

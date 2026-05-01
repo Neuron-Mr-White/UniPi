@@ -5,7 +5,7 @@
  * respects check interval from config/cache.
  */
 
-import { getPackageVersion } from "@pi-unipi/core";
+import { getInstalledPackageVersion } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
 import { readLastCheck, writeLastCheck, isCheckDue } from "./cache.js";
 import type { UpdateCheckResult } from "../types.js";
@@ -15,9 +15,9 @@ const NPM_REGISTRY_URL = "https://registry.npmjs.org/@pi-unipi/unipi";
 
 /** Resolve the installed version of @pi-unipi/unipi */
 function getInstalledVersion(): string {
-  // Walk up from this file to find the monorepo root
-  const dir = new URL("../../..", import.meta.url).pathname;
-  return getPackageVersion(dir);
+  // Walk up from this file to find the @pi-unipi/unipi package by name
+  const dir = new URL("..", import.meta.url).pathname;
+  return getInstalledPackageVersion(dir, "@pi-unipi/unipi");
 }
 
 /**

@@ -7,7 +7,7 @@
 
 import { exec } from "child_process";
 import { promisify } from "util";
-import { getPackageVersion, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { getInstalledPackageVersion, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { InstallResult } from "../types.js";
 
 const execAsync = promisify(exec);
@@ -23,9 +23,8 @@ const INSTALL_TIMEOUT_MS = 60000;
 export async function installUpdate(
   pi?: { events: { emit: (name: string, payload: unknown) => void } },
 ): Promise<InstallResult> {
-  const installedBefore = getPackageVersion(
-    new URL("../../..", import.meta.url).pathname,
-  );
+  const thisDir = new URL("..", import.meta.url).pathname;
+  const installedBefore = getInstalledPackageVersion(thisDir, "@pi-unipi/unipi");
 
   try {
     const { stdout, stderr } = await execAsync(
@@ -37,9 +36,7 @@ export async function installUpdate(
     );
 
     // Get new version after install
-    const installedAfter = getPackageVersion(
-      new URL("../../..", import.meta.url).pathname,
-    );
+    const installedAfter = getInstalledPackageVersion(thisDir, "@pi-unipi/unipi");
 
     const result: InstallResult = {
       success: true,
