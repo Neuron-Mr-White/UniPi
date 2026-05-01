@@ -4,11 +4,11 @@
  * Registers ALT+S (chord overlay) and ALT+I (tab insert) shortcuts.
  * Provides /unipi:stash-settings command for keybinding customization.
  *
- * IMPORTANT ARCHITECTURE:
- * The chord overlay ONLY captures the user's action selection.
- * All actions (stash, undo, copy, etc.) execute OUTSIDE the overlay
- * where ctx.ui.getEditorText() and setEditorText() actually work.
- * The overlay blocks the editor API while it's open.
+ * ARCHITECTURE:
+ * - The overlay ONLY captures action selection (pure UI, no side effects)
+ * - All actions execute OUTSIDE the overlay via callbacks after done()
+ * - Undo works via onTerminalInput: snapshots text before each keypress
+ * - Cut/Copy: overlay closes immediately, then action runs (non-blocking)
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -48,13 +48,61 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   const registers = new RegisterStore();
   const undoRedo = new UndoRedoBuffer();
 
+  // Persistent UI reference (captured on first handler call, persists for session)
+  let ui: ExtensionContext["ui"] | null = null;
+  let inputListenerRegistered = false;
+
+  // ─── Text change detection via onTerminalInput ────────────────────────
+  // Snapshots the editor text BEFORE each keypress, enabling undo for typed text.
+  // Uses debouncing: only commits a snapshot after 500ms of no typing.
+
+  let pendingSnapshot: string | null = null;
+  let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  const SNAPSHOT_DEBOUNCE_MS = 500;
+
+  function setupInputListener(): void {
+    if (inputListenerRegistered || !ui) return;
+    inputListenerRegistered = true;
+
+    ui.onTerminalInput((data: string) => {
+      if (!ui) return;
+
+      // Only snapshot for printable characters, backspace, delete, enter
+      const isEditKey = data.length === 1 || data === "\x7f" || data === "\x1b[3~" || data === "\r" || data === "\n";
+      if (!isEditKey) return;
+
+      // Capture text BEFORE the keypress is processed by the editor
+      const textBefore = ui.getEditorText();
+
+      // If there's a pending snapshot timer, reset it (user is still typing)
+      if (snapshotTimer) {
+        clearTimeout(snapshotTimer);
+        snapshotTimer = null;
+      }
+
+      // Store the pending snapshot (text before this keypress)
+      if (pendingSnapshot === null) {
+        pendingSnapshot = textBefore;
+      }
+
+      // After debounce: commit the snapshot (the text BEFORE typing started)
+      snapshotTimer = setTimeout(() => {
+        if (pendingSnapshot !== null) {
+          undoRedo.snapshot(pendingSnapshot);
+          pendingSnapshot = null;
+        }
+        snapshotTimer = null;
+      }, SNAPSHOT_DEBOUNCE_MS);
+    });
+  }
+
   // ─── Action implementations ───────────────────────────────────────────
   // These run OUTSIDE the overlay — editor API is fully accessible.
 
   function doStash(ctx: ExtensionContext): void {
     const text = ctx.ui.getEditorText();
     if (text.length > 0) {
-      undoRedo.snapshot(text);  // snapshot before clearing
+      undoRedo.snapshot(text); // snapshot before clearing
       registers.setStash(text);
       ctx.ui.setEditorText("");
       showSuccess(ctx, "✓ stash saved");
@@ -64,7 +112,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
         showError(ctx, "stash empty");
         return;
       }
-      undoRedo.snapshot("");  // snapshot empty state before restoring
+      undoRedo.snapshot(""); // snapshot empty state before restoring
       ctx.ui.setEditorText(stash);
       showSuccess(ctx, "✓ stash restored");
     }
@@ -138,7 +186,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     }
     const result = copyToClipboard(text);
     if (result.ok) {
-      undoRedo.snapshot(text);  // snapshot before clearing
+      undoRedo.snapshot(text); // snapshot before clearing
       ctx.ui.setEditorText("");
       showSuccess(ctx, "✓ cut");
     } else {
@@ -146,14 +194,14 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     }
   }
 
-  function doToggleThinking(ctx: ExtensionContext): void {
+  function doToggleThinking(): void {
     const current = pi.getThinkingLevel();
     const THINKING_CYCLE = ["off", "low", "medium", "high", "xhigh"] as const;
     const idx = THINKING_CYCLE.indexOf(current as any);
     const nextIdx = idx >= 0 ? (idx + 1) % THINKING_CYCLE.length : 0;
     const next = THINKING_CYCLE[nextIdx];
     pi.setThinkingLevel(next as any);
-    showSuccess(ctx, `thinking: ${next}`);
+    // Note: no ctx available here for status, but thinking level is visible in UI
   }
 
   // ─── Register ALT+S shortcut — opens chord overlay ─────────────────────
@@ -163,8 +211,11 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     handler: async (ctx: ExtensionContext) => {
       if (!ctx.hasUI) return;
 
-      // Snapshot current text before opening overlay (for undo on stash/cut)
-      const preText = ctx.ui.getEditorText();
+      // Capture persistent UI reference and setup input listener (once)
+      if (!ui) {
+        ui = ctx.ui;
+        setupInputListener();
+      }
 
       void ctx.ui.custom<void>(
         async (tui, theme, keybindings, done) => {
@@ -176,7 +227,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
             onAppendStash: () => doAppendStash(ctx),
             onCopy: () => doCopy(ctx),
             onCut: () => doCut(ctx),
-            onToggleThinking: () => doToggleThinking(ctx),
+            onToggleThinking: () => doToggleThinking(),
           };
 
           return new ChordOverlay(tui, theme, keybindings, done, callbacks);
@@ -232,6 +283,11 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   // ─── Session lifecycle ─────────────────────────────────────────────────
 
   pi.on("session_shutdown", async () => {
+    if (snapshotTimer) {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = null;
+    }
+    pendingSnapshot = null;
     undoRedo.clear();
   });
 
