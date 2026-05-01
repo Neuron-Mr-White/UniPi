@@ -34,7 +34,11 @@
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*"
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "devDependencies": {
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "vitest": "^4.1.5"
   }
 }
