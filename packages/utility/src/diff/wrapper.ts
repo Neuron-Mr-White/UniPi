@@ -200,7 +200,12 @@ export function registerEnhancedWriteTool(pi: ExtensionAPI, cwd: string): void {
           },
         } as any;
       } catch {
-        return null as any;
+        const fallback = "(diff rendering failed)";
+        return {
+          setText: () => {},
+          text: fallback,
+          render: (width: number) => (width > 0 ? [fallback.slice(0, width)] : [fallback]),
+        } as any;
       }
     },
   });
@@ -286,7 +291,15 @@ export function registerEnhancedEditTool(pi: ExtensionAPI, cwd: string): void {
     renderResult(result: any, _options: any, theme: any): any {
       const details = result?.details as DiffToolDetails | undefined;
       if (!details || !details.diff || !details.diff.lines || details.diff.lines.length === 0) {
-        return null as any;
+        // Error or empty-diff case: render the message from result.content so the
+        // user sees "Could not find text to replace..." etc. Never return null here
+        // because Container.render() will crash on null child.
+        const msg = result?.content?.[0]?.text ?? "";
+        return {
+          setText: () => {},
+          text: msg,
+          render: (width: number) => (width > 0 ? [msg.slice(0, width)] : [msg]),
+        } as any;
       }
 
       try {
@@ -314,7 +327,12 @@ export function registerEnhancedEditTool(pi: ExtensionAPI, cwd: string): void {
           },
         } as any;
       } catch {
-        return null as any;
+        const fallback = "(diff rendering failed)";
+        return {
+          setText: () => {},
+          text: fallback,
+          render: (width: number) => (width > 0 ? [fallback.slice(0, width)] : [fallback]),
+        } as any;
       }
     },
   });
