@@ -125,11 +125,11 @@ export async function getInfoScreenData(
         detail: top5Detail,
       },
       compactions: {
-        value: String(report.continuity.compact_count),
+        value: String(Math.max(report.continuity.compact_count, report.continuity.all_time_compact_count)),
         detail: compactStats
           ? `Last: ${compactStats.summarized} msgs summarized, ${compactStats.kept} kept (~${formatTokens(compactStats.keptTokensEst)} tok)`
-          : report.continuity.compact_count > 0
-            ? `${report.continuity.compact_count} compaction(s) this session`
+          : report.continuity.all_time_compact_count > 0
+            ? `${report.continuity.all_time_compact_count} compaction(s) across all sessions`
             : "No compactions yet",
       },
       toolCalls: {

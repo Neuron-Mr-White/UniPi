@@ -117,7 +117,12 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     executor = new PolyglotExecutor();
   };
 
-  registerCompactionHooks(pi);
+  // Register compaction hooks with lazy deps — sessionDB/sessionId may not be
+  // available at registration time, but will be by the time events fire.
+  registerCompactionHooks(pi, {
+    getSessionDB: () => sessionDB,
+    getSessionId: () => currentSessionId,
+  });
 
   // Commands registered inside session_start after init() when deps are ready
   const getCommandDeps = () => ({
@@ -283,7 +288,9 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   pi.on("session_before_compact", async (event, _ctx) => {
     if (sessionDB) {
-      const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+      // Use closure currentSessionId — Pi's session_before_compact event
+      // does not include sessionId at the top level.
+      const sessionId = currentSessionId;
       const events = sessionDB.getEvents(sessionId, { limit: 1000 });
       const stats = sessionDB.getSessionStats(sessionId);
       debug("session_before_compact", { sessionId, eventCount: events.length, compactCount: stats?.compact_count ?? 0 });
@@ -297,18 +304,23 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   pi.on("session_compact", async (event, _ctx) => {
     if (sessionDB) {
-      const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+      // Use closure currentSessionId — Pi's session_compact event does not
+      // include sessionId at the top level (it's inside compactionEntry).
+      const sessionId = currentSessionId;
       sessionDB.incrementCompactCount(sessionId);
       counters.compactions++;
+
+      // Pi's session_compact event structure: { compactionEntry, fromExtension }
+      // tokensBefore is inside compactionEntry, not at event root.
+      const compactionEntry = (event as any).compactionEntry;
+      const tokensBefore = compactionEntry?.tokensBefore ?? 0;
 
       // Use actual runtimeStats for byte measurement instead of heuristic
       const totalBytesReturned = Object.values(runtimeStats.bytesReturned).reduce((s, b) => s + b, 0);
       const totalBytesProcessed = runtimeStats.bytesIndexed + runtimeStats.bytesSandboxed + totalBytesReturned;
-      // charsBefore = total bytes processed by all tools (proxy for context window usage)
-      // charsKept = bytes that stayed in context (bytesReturned, minus what compaction removed)
-      const tokensBefore = (event as any).tokensBefore ?? 0;
-      if (totalBytesProcessed > 0 && tokensBefore > 0) {
-        // Use actual token count from Pi, estimate chars from it
+
+      if (tokensBefore > 0) {
+        // Use actual token count from Pi's compactionEntry
         const charsBefore = tokensBefore * 4;
         // Estimate kept chars: proportional to what remains after compaction
         const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.15);
@@ -316,13 +328,19 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         const messagesSummarized = Math.max(1, Math.round(tokensBefore / 500));
         counters.totalTokensCompacted += tokensBefore - tokensAfter;
         sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
-      } else if (tokensBefore > 0) {
-        // Fallback: only tokensBefore available, use conservative estimate
-        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.15);
-        counters.totalTokensCompacted += tokensBefore - tokensAfter;
-        sessionDB.addCompactionStats(sessionId, tokensBefore * 4, tokensAfter * 4, 1);
+      } else {
+        // Fallback: estimate from runtime byte stats when tokensBefore unavailable
+        if (totalBytesProcessed > 0) {
+          const charsBefore = totalBytesProcessed;
+          const charsKept = totalBytesReturned;
+          const messagesSummarized = Math.max(1, Math.round(totalBytesProcessed / 2000));
+          const estTokensBefore = Math.round(totalBytesProcessed / 4);
+          const estTokensAfter = Math.round(totalBytesReturned / 4);
+          counters.totalTokensCompacted += Math.max(0, estTokensBefore - estTokensAfter);
+          sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
+        }
       }
-      debug("session_compact", { sessionId, tokensBefore, totalBytesProcessed });
+      debug("session_compact", { sessionId, tokensBefore, totalBytesProcessed, hasCompactionEntry: !!compactionEntry });
     }
   });
 
@@ -412,7 +430,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   pi.on("tool_result", async (event, _ctx) => {
     if (!sessionDB) return;
-    const sessionId = `${(event as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
+    // Use closure currentSessionId — tool_result events use the same session
+    const sessionId = currentSessionId;
     const toolNameRaw = (event as any).toolName ?? "";
     const isError = (event as any).isError ?? false;
 

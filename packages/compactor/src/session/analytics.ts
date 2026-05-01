@@ -66,6 +66,7 @@ export interface FullReport {
   continuity: {
     total_events: number;
     compact_count: number;
+    all_time_compact_count: number;
     resume_ready: boolean;
   };
   /** Persistent project memory — all events across all sessions */
@@ -135,6 +136,11 @@ export class AnalyticsEngine {
     ).get(sid) as { compact_count: number } | undefined;
     const compactCount = meta?.compact_count ?? 0;
 
+    // ── All-time compaction count across all sessions ──
+    const allTimeCompactions = (this.db.prepare(
+      "SELECT COALESCE(SUM(compact_count), 0) as total FROM session_meta",
+    ).get() as { total: number }).total;
+
     const resume = this.db.prepare(
       "SELECT event_count, consumed FROM session_resume WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
     ).get(sid) as { event_count: number; consumed: number } | undefined;
@@ -165,6 +171,7 @@ export class AnalyticsEngine {
       continuity: {
         total_events: eventTotal,
         compact_count: compactCount,
+        all_time_compact_count: allTimeCompactions,
         resume_ready: resumeReady,
       },
       projectMemory: {
@@ -188,7 +195,7 @@ export function createMinimalDb(): DatabaseAdapter {
   // so AnalyticsEngine queries don't fail.
   const emptyStmt = {
     run: (..._params: unknown[]) => {},
-    get: (..._params: unknown[]) => ({ cnt: 0, sessions: 0, compact_count: 0, session_id: "", event_count: 0, consumed: 1 }),
+    get: (..._params: unknown[]) => ({ cnt: 0, sessions: 0, compact_count: 0, total: 0, session_id: "", event_count: 0, consumed: 1 }),
     all: (..._params: unknown[]) => [] as unknown[],
   };
 
