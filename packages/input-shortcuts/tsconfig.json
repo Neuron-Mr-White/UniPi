@@ -9,7 +9,9 @@
     "declaration": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src/**/*", "index.ts"],
   "exclude": ["node_modules", "dist", "tests"]

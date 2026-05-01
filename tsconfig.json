@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "types": ["node"],
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true

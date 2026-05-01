@@ -7,8 +7,8 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { RegisterData } from "./types.js";
-import { REGISTERS_FILE } from "./types.js";
+import type { RegisterData } from "./types.ts";
+import { REGISTERS_FILE } from "./types.ts";
 
 const EMPTY_DATA: RegisterData = {
   stash: "",

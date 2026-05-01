@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { STATUS_SUCCESS_MS, STATUS_ERROR_MS } from "./types.js";
+import { STATUS_SUCCESS_MS, STATUS_ERROR_MS } from "./types.ts";
 
 const STATUS_KEY = "input-shortcuts";
 

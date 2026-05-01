@@ -8,8 +8,8 @@ import type { Component } from "@mariozechner/pi-tui";
 import { SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { InputShortcutsConfig } from "./types.js";
-import { CONFIG_FILE, DEFAULT_CONFIG } from "./types.js";
+import type { InputShortcutsConfig } from "./types.ts";
+import { CONFIG_FILE, DEFAULT_CONFIG } from "./types.ts";
 
 // ─── Available ALT key options ───────────────────────────────────────────────
 

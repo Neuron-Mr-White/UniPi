@@ -7,8 +7,8 @@
  * - Redo buffer cleared on new snapshot
  */
 
-import type { TextSnapshot } from "./types.js";
-import { MAX_UNDO_SNAPSHOTS, UNDO_DEBOUNCE_MS, UNDO_THROTTLE_MS } from "./types.js";
+import type { TextSnapshot } from "./types.ts";
+import { MAX_UNDO_SNAPSHOTS, UNDO_DEBOUNCE_MS, UNDO_THROTTLE_MS } from "./types.ts";
 
 export interface UndoRedoResult {
   text: string;

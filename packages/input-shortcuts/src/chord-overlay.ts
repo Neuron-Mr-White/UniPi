@@ -16,12 +16,12 @@ import {
   type TUI,
   type KeybindingsManager,
 } from "@mariozechner/pi-tui";
-import type { ChordState } from "./types.js";
-import { CHORD_TIMEOUT_MS, THINKING_CYCLE } from "./types.js";
-import type { RegisterStore } from "./registers.js";
-import type { UndoRedoBuffer } from "./undo-redo.js";
-import { copyToClipboard } from "./clipboard.js";
-import { showSuccess, showError, clearStatus } from "./status.js";
+import type { ChordState } from "./types.ts";
+import { CHORD_TIMEOUT_MS, THINKING_CYCLE } from "./types.ts";
+import type { RegisterStore } from "./registers.ts";
+import type { UndoRedoBuffer } from "./undo-redo.ts";
+import { copyToClipboard } from "./clipboard.ts";
+import { showSuccess, showError, clearStatus } from "./status.ts";
 
 /** Theme-like interface matching pi-coding-agent's Theme */
 interface ThemeLike {

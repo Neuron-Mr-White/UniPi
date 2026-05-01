@@ -7,11 +7,11 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
-import { RegisterStore } from "./registers.js";
-import { UndoRedoBuffer } from "./undo-redo.js";
-import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.js";
-import { SettingsOverlay } from "./settings-overlay.js";
-import { loadConfig } from "./settings-overlay.js";
+import { RegisterStore } from "./registers.ts";
+import { UndoRedoBuffer } from "./undo-redo.ts";
+import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
+import { SettingsOverlay } from "./settings-overlay.ts";
+import { loadConfig } from "./settings-overlay.ts";
 
 export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   // Shared state
