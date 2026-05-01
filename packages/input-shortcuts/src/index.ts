@@ -275,8 +275,22 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
         setupInputListener();
       }
 
+      // Suppress input listener while overlay is open.
+      // The onTerminalInput handler fires for the ALT+S keypress itself,
+      // capturing the current text as a pending snapshot. If we don't suppress,
+      // that snapshot would be committed after undo runs, creating a "undo undoes undo" loop.
+      suppressInputListener = true;
+      if (snapshotTimer) { clearTimeout(snapshotTimer); snapshotTimer = null; }
+      pendingSnapshot = null;
+      keystrokeCount = 0;
+
       void ctx.ui.custom<void>(
         async (tui, theme, keybindings, done) => {
+          const wrappedDone = () => {
+            suppressInputListener = false;
+            done();
+          };
+
           const callbacks: ChordCallbacks = {
             onStash: () => doStash(ctx),
             onUndo: () => doUndo(ctx),
@@ -288,7 +302,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
             onToggleThinking: () => doToggleThinking(),
           };
 
-          return new ChordOverlay(tui, theme, keybindings, done, callbacks);
+          return new ChordOverlay(tui, theme, keybindings, wrappedDone, callbacks);
         },
         {
           overlay: true,
