@@ -7,7 +7,15 @@
 /** Supported capabilities for web providers */
 export type WebCapability = "search" | "read" | "summarize";
 
-/** Ranking structure for provider selection */
+/**
+ * Ranking for capability selection.
+ * Lower number = simpler/cheaper provider (preferred for auto-selection).
+ * 0 means provider doesn't support that capability.
+ *
+ * Note: For "read" capability, rank 0 is reserved for the smart-fetch engine.
+ * It is not a registered provider, but the default when source=0 or omitted.
+ * Registered read providers use ranks 1+ (Jina Reader=1, Firecrawl=2, Perplexity=3).
+ */
 export interface ProviderRanking {
   search: number;
   read: number;

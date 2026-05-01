@@ -14,7 +14,11 @@ import {
   isProviderEnabled,
   setProviderEnabled,
   validateApiKeyFormat,
+  loadSmartFetchSettings,
+  saveSmartFetchSettings,
+  resetSmartFetchSettings,
 } from "../settings.js";
+import { BROWSER_PROFILES, OS_PROFILES } from "../engine/profiles.js";
 import { getProviderOptions, getProviderStatuses } from "./provider-selector.js";
 
 /**
@@ -27,6 +31,13 @@ export async function showSettingsDialog(ctx: ExtensionCommandContext): Promise<
 
   while (running) {
     const options = getProviderOptions();
+
+    // Add smart-fetch defaults option at the top
+    options.unshift({
+      label: "⚡ Smart Fetch Defaults",
+      value: "__smart_fetch__",
+      description: "Configure default browser, OS, and fetch settings",
+    });
 
     // Add exit option
     options.push({
@@ -63,6 +74,12 @@ export async function showSettingsDialog(ctx: ExtensionCommandContext): Promise<
     }
 
     lastSelected = selectedValue;
+
+    // Handle smart-fetch defaults
+    if (selectedValue === "__smart_fetch__") {
+      await configureSmartFetch(ctx);
+      continue;
+    }
 
     // Show provider configuration
     await configureProvider(ctx, selectedValue);
@@ -188,5 +205,156 @@ async function inputApiKey(
       `API key saved for ${providerName} — enabled`,
       "info",
     );
+  }
+}
+
+/**
+ * Configure smart-fetch defaults.
+ */
+async function configureSmartFetch(
+  ctx: ExtensionCommandContext
+): Promise<void> {
+  const settings = loadSmartFetchSettings();
+
+  const options = [
+    {
+      label: `Browser: ${settings.browser}`,
+      value: "browser",
+      description: "TLS fingerprint browser profile",
+    },
+    {
+      label: `OS: ${settings.os}`,
+      value: "os",
+      description: "OS fingerprint",
+    },
+    {
+      label: `Max Chars: ${settings.maxChars.toLocaleString()}`,
+      value: "maxChars",
+      description: "Maximum content characters",
+    },
+    {
+      label: `Timeout: ${settings.timeoutMs}ms`,
+      value: "timeoutMs",
+      description: "Request timeout",
+    },
+    {
+      label: `Concurrency: ${settings.batchConcurrency}`,
+      value: "batchConcurrency",
+      description: "Batch concurrent requests",
+    },
+    {
+      label: `Remove Images: ${settings.removeImages ? "Yes" : "No"}`,
+      value: "removeImages",
+      description: "Strip image references",
+    },
+    {
+      label: `Include Replies: ${settings.includeReplies}`,
+      value: "includeReplies",
+      description: "Include comments/replies",
+    },
+    {
+      label: "Reset to Defaults",
+      value: "__reset__",
+      description: "Reset all settings to defaults",
+    },
+    {
+      label: "← Back",
+      value: "__back__",
+      description: "Return to main menu",
+    },
+  ];
+
+  const labels = options.map(o => `${o.label} — ${o.description}`);
+  const selected = await ctx.ui.select("Smart Fetch Defaults", labels);
+  const selectedOpt = options.find(o => `${o.label} — ${o.description}` === selected);
+  const selectedValue = selectedOpt?.value;
+
+  switch (selectedValue) {
+    case "browser": {
+      const browserOptions = [...BROWSER_PROFILES].reverse(); // Show newest first
+      const browser = await ctx.ui.select("Browser Profile", browserOptions);
+      if (browser) {
+        saveSmartFetchSettings({ browser });
+        ctx.ui.notify(`Browser set to ${browser}`, "info");
+      }
+      break;
+    }
+
+    case "os": {
+      const os = await ctx.ui.select("OS Fingerprint", [...OS_PROFILES]);
+      if (os) {
+        saveSmartFetchSettings({ os });
+        ctx.ui.notify(`OS set to ${os}`, "info");
+      }
+      break;
+    }
+
+    case "maxChars": {
+      const input = await ctx.ui.input("Max Characters", String(settings.maxChars));
+      if (input) {
+        const maxChars = parseInt(input, 10);
+        if (!isNaN(maxChars) && maxChars > 0) {
+          saveSmartFetchSettings({ maxChars });
+          ctx.ui.notify(`Max chars set to ${maxChars.toLocaleString()}`, "info");
+        }
+      }
+      break;
+    }
+
+    case "timeoutMs": {
+      const input = await ctx.ui.input("Timeout (ms)", String(settings.timeoutMs));
+      if (input) {
+        const timeoutMs = parseInt(input, 10);
+        if (!isNaN(timeoutMs) && timeoutMs > 0) {
+          saveSmartFetchSettings({ timeoutMs });
+          ctx.ui.notify(`Timeout set to ${timeoutMs}ms`, "info");
+        }
+      }
+      break;
+    }
+
+    case "batchConcurrency": {
+      const input = await ctx.ui.input("Batch Concurrency", String(settings.batchConcurrency));
+      if (input) {
+        const batchConcurrency = parseInt(input, 10);
+        if (!isNaN(batchConcurrency) && batchConcurrency > 0) {
+          saveSmartFetchSettings({ batchConcurrency });
+          ctx.ui.notify(`Concurrency set to ${batchConcurrency}`, "info");
+        }
+      }
+      break;
+    }
+
+    case "removeImages": {
+      const removeImages = await ctx.ui.select("Remove Images", ["Yes", "No"]);
+      if (removeImages) {
+        saveSmartFetchSettings({ removeImages: removeImages === "Yes" });
+        ctx.ui.notify(`Remove images set to ${removeImages}`, "info");
+      }
+      break;
+    }
+
+    case "includeReplies": {
+      const includeReplies = await ctx.ui.select("Include Replies", [
+        "extractors",
+        "Yes",
+        "No",
+      ]);
+      if (includeReplies) {
+        const value = includeReplies === "Yes" ? true : includeReplies === "No" ? false : "extractors";
+        saveSmartFetchSettings({ includeReplies: value as boolean | "extractors" });
+        ctx.ui.notify(`Include replies set to ${includeReplies}`, "info");
+      }
+      break;
+    }
+
+    case "__reset__":
+      resetSmartFetchSettings();
+      ctx.ui.notify("Smart-fetch settings reset to defaults", "info");
+      break;
+
+    case "__back__":
+    default:
+      break;
   }
 }

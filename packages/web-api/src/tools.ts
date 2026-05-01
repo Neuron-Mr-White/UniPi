@@ -1,7 +1,7 @@
 /**
  * @unipi/web-api — Agent tools registration
  *
- * Registers web-search, web-read, and web-llm-summarize tools.
+ * Registers web-search, multi-web-content-read, and web-llm-summarize tools.
  * Implements smart provider selection based on ranking.
  */
 
@@ -19,12 +19,20 @@ import {
   getApiKey,
   isProviderEnabled,
   loadConfig,
+  loadSmartFetchSettings,
 } from "./settings.js";
+import { webCache } from "./cache.js";
+import {
+  defuddleFetch,
+  defuddleFetchMultiple,
+} from "./engine/extract.js";
+import type { FetchOptions, FetchResult, BatchFetchResult } from "./engine/types.js";
+import { formatSingleResult, formatBatchResult, formatErrorResult } from "./engine/format.js";
 
 /** Tool names */
 export const WEB_TOOLS = {
   SEARCH: "web_search",
-  READ: "web_read",
+  READ: "multi_web_content_read",
   SUMMARIZE: "web_llm_summarize",
 } as const;
 
@@ -113,9 +121,9 @@ async function executeSearch(
 }
 
 /**
- * Execute web read.
+ * Execute web read via provider.
  */
-async function executeRead(
+async function executeProviderRead(
   url: string,
   sourceRank?: number
 ): Promise<ReadResult> {
@@ -149,6 +157,85 @@ async function executeSummarize(
   const config = { enabled: true, apiKey };
 
   return provider.summarize(url, prompt, config);
+}
+
+/**
+ * Generate cache key for smart-fetch results.
+ */
+function generateSmartFetchKey(
+  url: string,
+  options: Partial<FetchOptions>
+): string {
+  const parts = [
+    url,
+    options.browser || "",
+    options.format || "",
+    String(options.maxChars || ""),
+  ];
+  return parts.join(":");
+}
+
+/**
+ * Execute smart-fetch read (single URL).
+ */
+async function executeSmartFetchRead(
+  url: string,
+  options: Partial<FetchOptions> = {}
+): Promise<FetchResult> {
+  // Check cache first
+  const cacheKey = generateSmartFetchKey(url, options);
+  const cached = webCache.get(cacheKey, "smart-fetch");
+  if (cached) {
+    return cached as FetchResult;
+  }
+
+  // Load defaults
+  const defaults = loadSmartFetchSettings();
+  const fetchOptions: FetchOptions = {
+    browser: options.browser || defaults.browser,
+    os: options.os || defaults.os,
+    format: options.format || "markdown",
+    maxChars: options.maxChars || defaults.maxChars,
+    timeoutMs: options.timeoutMs || defaults.timeoutMs,
+    removeImages: options.removeImages ?? defaults.removeImages,
+    includeReplies: options.includeReplies ?? defaults.includeReplies,
+    proxy: options.proxy,
+    headers: options.headers,
+  };
+
+  // Execute fetch
+  const result = await defuddleFetch(url, fetchOptions);
+
+  // Cache result
+  webCache.set(cacheKey, "smart-fetch", result);
+
+  return result;
+}
+
+/**
+ * Execute smart-fetch batch read.
+ */
+async function executeSmartFetchBatch(
+  urls: string[],
+  options: Partial<FetchOptions> & { batchConcurrency?: number } = {}
+): Promise<BatchFetchResult> {
+  // Load defaults
+  const defaults = loadSmartFetchSettings();
+  const fetchOptions: FetchOptions & { batchConcurrency?: number } = {
+    browser: options.browser || defaults.browser,
+    os: options.os || defaults.os,
+    format: options.format || "markdown",
+    maxChars: options.maxChars || defaults.maxChars,
+    timeoutMs: options.timeoutMs || defaults.timeoutMs,
+    removeImages: options.removeImages ?? defaults.removeImages,
+    includeReplies: options.includeReplies ?? defaults.includeReplies,
+    proxy: options.proxy,
+    headers: options.headers,
+    batchConcurrency: options.batchConcurrency || defaults.batchConcurrency,
+  };
+
+  // Execute batch fetch
+  return defuddleFetchMultiple(urls, fetchOptions);
 }
 
 /**
@@ -221,43 +308,213 @@ export function registerWebTools(pi: ExtensionAPI): void {
     },
   });
 
-  // --- web_read tool ---
+  // --- multi_web_content_read tool ---
   pi.registerTool({
     name: WEB_TOOLS.READ,
-    label: "Web Read",
+    label: "Multi Web Content Read",
     description:
-      "Read and extract content from a URL. " +
-      "Extracts main content, strips navigation/ads. Returns markdown.",
-    promptSnippet: "Read content from a URL.",
+      "Read and extract content from URLs using the smart-fetch engine (default) or provider fallbacks. " +
+      "Supports single URL or batch URLs. " +
+      "Returns clean markdown with metadata (title, author, site, word count).",
+    promptSnippet: "Read content from one or more URLs.",
     promptGuidelines: [
-      "Use web_read to extract content from a web page.",
-      "Returns main content as markdown.",
-      "Lower source = simpler providers (Jina Reader).",
-      "Higher source = more capable providers (Firecrawl, Perplexity).",
+      "Use multi_web_content_read to extract content from web pages.",
+      "Pass a single URL string or an array of URLs for batch reading.",
+      "Default source (0 or omitted) uses the local smart-fetch engine — free, no API key.",
+      "source 1-3 uses provider fallbacks: Jina Reader, Firecrawl, Perplexity.",
+      "Batch mode: pass an array of URLs, returns results for each.",
     ],
     parameters: Type.Object({
-      url: Type.String({ description: "URL to read" }),
+      url: Type.Union([
+        Type.String({ description: "Single URL to read" }),
+        Type.Array(Type.String(), { description: "Array of URLs to read in batch" }),
+      ], { description: "URL or array of URLs to read" }),
       source: Type.Optional(
         Type.Number({
           description:
-            "Provider selection (1=Jina Reader, 2=Firecrawl, 3=Perplexity). " +
-            "Omit for auto-selection.",
-          minimum: 1,
+            "Provider selection (0=smart-fetch engine, 1=Jina Reader, 2=Firecrawl, 3=Perplexity). " +
+            "Default is 0 (smart-fetch).",
+          minimum: 0,
           maximum: 3,
+        })
+      ),
+      browser: Type.Optional(
+        Type.String({
+          description: "TLS fingerprint browser profile (e.g., chrome_145). Default: chrome_145.",
+        })
+      ),
+      os: Type.Optional(
+        Type.String({
+          description: "OS fingerprint (windows, macos, linux). Default: windows.",
+        })
+      ),
+      format: Type.Optional(
+        Type.Union([
+          Type.Literal("markdown"),
+          Type.Literal("html"),
+          Type.Literal("text"),
+          Type.Literal("json"),
+        ], { description: "Output format. Default: markdown." })
+      ),
+      maxChars: Type.Optional(
+        Type.Number({
+          description: "Maximum characters in output. Default: 50000.",
+        })
+      ),
+      timeoutMs: Type.Optional(
+        Type.Number({
+          description: "Request timeout in milliseconds. Default: 15000.",
+        })
+      ),
+      removeImages: Type.Optional(
+        Type.Boolean({
+          description: "Strip image references from content. Default: false.",
+        })
+      ),
+      includeReplies: Type.Optional(
+        Type.Union([
+          Type.Boolean(),
+          Type.Literal("extractors"),
+        ], { description: "Include replies/comments. Default: extractors." })
+      ),
+      proxy: Type.Optional(
+        Type.String({
+          description: "Proxy URL for requests.",
+        })
+      ),
+      batchConcurrency: Type.Optional(
+        Type.Number({
+          description: "Concurrent requests for batch mode. Default: 8.",
+        })
+      ),
+      verbose: Type.Optional(
+        Type.Boolean({
+          description: "Include metadata header in output. Default: true.",
         })
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      try {
-        const result = await executeRead(params.url, params.source);
+      const source = params.source ?? 0;
+      const verbose = params.verbose ?? true;
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Content from ${result.url}:\n\n${result.content}`,
+      try {
+        // Single URL
+        if (typeof params.url === "string") {
+          // Provider fallback
+          if (source >= 1) {
+            const result = await executeProviderRead(params.url, source);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Content from ${result.url}:\n\n${result.content}`,
+                },
+              ],
+              details: {},
+            };
+          }
+
+          // Smart-fetch engine
+          const result = await executeSmartFetchRead(params.url, {
+            browser: params.browser,
+            os: params.os,
+            format: params.format as FetchOptions["format"],
+            maxChars: params.maxChars,
+            timeoutMs: params.timeoutMs,
+            removeImages: params.removeImages,
+            includeReplies: params.includeReplies as FetchOptions["includeReplies"],
+            proxy: params.proxy,
+          });
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: formatSingleResult(result, verbose),
+              },
+            ],
+            details: {
+              url: result.url,
+              finalUrl: result.finalUrl,
+              title: result.title,
+              wordCount: result.wordCount,
             },
-          ],
+          };
+        }
+
+        // Batch URLs
+        if (Array.isArray(params.url)) {
+          if (params.url.length === 0) {
+            return {
+              content: [{ type: "text", text: "No URLs provided." }],
+              details: {},
+            };
+          }
+
+          // Provider fallback for batch (fetch each individually)
+          if (source >= 1) {
+            const results = await Promise.all(
+              params.url.map(async (url) => {
+                try {
+                  const result = await executeProviderRead(url, source);
+                  return { url, status: "done", content: result.content };
+                } catch (error) {
+                  return {
+                    url,
+                    status: "error",
+                    error: error instanceof Error ? error.message : String(error),
+                  };
+                }
+              })
+            );
+
+            const text = results
+              .map((r, i) => {
+                if (r.status === "done") {
+                  return `[${i + 1}] ${r.url}\n${r.content}`;
+                }
+                return `[${i + 1}] ${r.url}\nError: ${r.error}`;
+              })
+              .join("\n\n---\n\n");
+
+            return {
+              content: [{ type: "text", text }],
+              details: { total: results.length },
+            };
+          }
+
+          // Smart-fetch batch
+          const result = await executeSmartFetchBatch(params.url, {
+            browser: params.browser,
+            os: params.os,
+            format: params.format as FetchOptions["format"],
+            maxChars: params.maxChars,
+            timeoutMs: params.timeoutMs,
+            removeImages: params.removeImages,
+            includeReplies: params.includeReplies as FetchOptions["includeReplies"],
+            proxy: params.proxy,
+            batchConcurrency: params.batchConcurrency,
+          });
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: formatBatchResult(result),
+              },
+            ],
+            details: {
+              total: result.total,
+              succeeded: result.succeeded,
+              failed: result.failed,
+            },
+          };
+        }
+
+        // Should never reach here
+        return {
+          content: [{ type: "text", text: "Invalid url parameter." }],
+          isError: true,
           details: {},
         };
       } catch (error) {
