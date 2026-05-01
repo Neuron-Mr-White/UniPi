@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-05-02
+
+### Added
+- `ask-user`: session launcher overlay for `new_session` action — spawns a new pi session with the selected model
+- `footer`: zone-aware renderer with `zone`, `description`, `shortLabel` on every `FooterSegment`; extended `SemanticColor` with TPS tiers, zone colors, and workflow types
+- `footer`: TPS (turns-per-second) tracker segment showing real-time agent throughput
+- `footer`: clock and duration segments with live 1-second refresh timer
+- `footer`: `hexColor` palette from spec — semantic colors mapped to exact hex values for consistent rendering
+- `footer`: `/unipi:footer-help` command with full-label mode and help overlay showing all segments and their meanings
+- `footer`: unified 3-category settings TUI (`Groups`, `Segments`, `Theme`) — simplifies the `/unipi:footer-settings` experience
+- `autocomplete`: 4-tier sorting for cross-group command suggestions — unipi matches first, then unipi non-matches, system matches, system non-matches
+- `autocomplete`: 37 tests for sorting logic, match quality, and cross-group behavior
+
+### Fixed
+- `compactor`: compaction stats always zero — fixed 5 interrelated bugs in stats tracking pipeline
+- `updater`: resolve `@pi-unipi/unipi` version by package name instead of hardcoded relative path
+- `unipi`: include all package `.ts` files in npm bundle (was missing source files)
+- `notify`: add `ntfy-config.ts` to `package.json` files array so it ships on npm
+- `autocomplete`: sort by match quality across unipi/system items — exact matches ranked above partial
+- `footer`: apply hex color palette from spec for consistent segment colors
+- `footer`: update workflow color mapping and add thinking level segment color
+- `footer`: add TPS tracker icon entries and clock/duration segment definitions
+
+### Changed
+- Docs: all package READMEs rewritten with consistent 5-section format
+- Docs: package titles deep-linked to their individual README files
+- Footer preset updates and label mode support for compact display
+
 ## [0.1.16] — 2026-05-01
 
 ### Added
