@@ -14,8 +14,7 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColo
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
 
-/** Nerd Font icon for ralph: 󰼉 */
-const RALPH_ICON = "\udb81\udf09";
+
 
 /** Green dot indicator (with explicit ANSI codes) */
 const GREEN_DOT = "\x1b[38;5;82m●\x1b[0m";
@@ -52,6 +51,8 @@ function renderActiveLoopsSegment(ctx: FooterSegmentContext): RenderedSegment {
 
   const dot = active ? GREEN_DOT : RED_DOT;
 
+  const ralphIcon = getIcon("activeLoops");
+
   if (active) {
     // Active: green dot + iteration stats
     const iterStr = iteration !== undefined
@@ -59,15 +60,11 @@ function renderActiveLoopsSegment(ctx: FooterSegmentContext): RenderedSegment {
       : "";
     const nameStr = name ? ` ${name}` : "";
     // Color the icon and text parts, keep dot's own color
-    const iconAndText = `${RALPH_ICON} ${iterStr}${nameStr}`;
-    const coloredText = colorText(ctx, "ralphOn", iconAndText);
-    // Insert the dot after the icon
-    const content = `${RALPH_ICON} ${dot} ${colorText(ctx, "ralphOn", `${iterStr}${nameStr}`)}`;
+    const content = `${ralphIcon} ${dot} ${colorText(ctx, "ralphOn", `${iterStr}${nameStr}`)}`;
     return { content, visible: true };
   } else {
     // Off/inactive: red dot
-    const content = `${RALPH_ICON} ${dot}`;
-    return { content: `${colorText(ctx, "ralphOff", RALPH_ICON)} ${dot}`, visible: true };
+    return { content: `${colorText(ctx, "ralphOff", ralphIcon)} ${dot}`, visible: true };
   }
 }
 
@@ -80,9 +77,10 @@ function renderTotalIterationsSegment(ctx: FooterSegmentContext): RenderedSegmen
   const maxIterations = data.maxIterations;
   const display = maxIterations ? `${iteration}/${maxIterations}` : `${iteration}`;
 
+  const ralphIcon = getIcon("activeLoops");
   const dot = active ? GREEN_DOT : RED_DOT;
   const semantic: SemanticColor = active ? "ralphOn" : "ralphOff";
-  const content = `${colorText(ctx, semantic, RALPH_ICON)} ${dot} ${colorText(ctx, semantic, display)}`;
+  const content = `${colorText(ctx, semantic, ralphIcon)} ${dot} ${colorText(ctx, semantic, display)}`;
   return { content, visible: true };
 }
 
@@ -92,13 +90,14 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
   const name = data.name as string | undefined;
   if (!status && !name) return { content: "", visible: false };
 
+  const ralphIcon = getIcon("activeLoops");
   const dot = status === "active" ? GREEN_DOT : status === "completed" ? GREEN_DOT : RED_DOT;
   const statusIcon = status === "active" ? "▶" : status === "paused" ? "⏸" : status === "completed" ? "✓" : "";
   const display = name ? `${statusIcon} ${name}` : `${statusIcon}`;
 
   const active = status === "active" || status === "completed";
   const semantic: SemanticColor = active ? "ralphOn" : "ralphOff";
-  const content = `${colorText(ctx, semantic, RALPH_ICON)} ${dot} ${colorText(ctx, semantic, display)}`;
+  const content = `${colorText(ctx, semantic, ralphIcon)} ${dot} ${colorText(ctx, semantic, display)}`;
   return { content, visible: true };
 }
 

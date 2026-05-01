@@ -10,8 +10,7 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColo
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
 
-/** Nerd Font icon for workflow:  */
-const WORKFLOW_ICON = "\uf52e";
+
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -46,15 +45,17 @@ function renderCurrentCommandSegment(ctx: FooterSegmentContext): RenderedSegment
   const active = data.active === true;
   const command = data.command as string | undefined;
 
+  const workflowIcon = getIcon("currentCommand");
+
   // No workflow — show dash
   if (!command) {
-    const content = `${WORKFLOW_ICON} -`;
+    const content = withIcon("currentCommand", "-");
     return { content: applyColor("workflow", content, ctx.theme, ctx.colors), visible: true };
   }
 
   const statusPrefix = active ? "▶" : "✓";
   const semanticColor = getWorkflowSemanticColor(command);
-  const content = `${WORKFLOW_ICON} ${statusPrefix} ${command}`;
+  const content = `${workflowIcon} ${statusPrefix} ${command}`;
   return { content: applyColor(semanticColor, content, ctx.theme, ctx.colors), visible: true };
 }
 
