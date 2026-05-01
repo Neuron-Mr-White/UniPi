@@ -54,11 +54,53 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   // ─── Text change detection via onTerminalInput ────────────────────────
   // Snapshots the editor text BEFORE each keypress, enabling undo for typed text.
-  // Uses debouncing: only commits a snapshot after 500ms of no typing.
+  //
+  // Three independent triggers commit a snapshot (they don't conflict):
+  //   1. Pause: user stops typing for 500ms → snapshot the text before this typing session
+  //   2. Count: user types 20+ characters since last snapshot → snapshot mid-typing
+  //   3. Time: 3 seconds elapsed since last snapshot (even if still typing) → snapshot
+  //
+  // How it works:
+  //   - On each keypress, capture text BEFORE the editor processes it
+  //   - `pendingSnapshot` = text before the current typing session started (first keypress)
+  //   - `keystrokeCount` = how many edit keys pressed since last snapshot
+  //   - `lastSnapshotAt` = timestamp of last snapshot commit
+  //   - 500ms timer resets on each keypress (fires only on pause)
+  //
+  // Example: user types "hello world" continuously:
+  //   - Key 1: pendingSnapshot = "", count=1
+  //   - Key 10: count=10 (no trigger yet)
+  //   - Key 20: count=20 → COMMIT snapshot="", reset. Now pendingSnapshot=current
+  //   - User pauses 500ms → COMMIT snapshot=current, reset
+  //
+  // Example: user types slowly (1 char per second):
+  //   - Key 1: pendingSnapshot="", count=1, timer starts
+  //   - Key 2 (1s later): timer was reset, count=2
+  //   - ... (timer fires after each pause between keys)
+  //   - Each pause triggers a snapshot
 
   let pendingSnapshot: string | null = null;
+  let keystrokeCount = 0;
+  let lastSnapshotAt = 0;
   let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
-  const SNAPSHOT_DEBOUNCE_MS = 500;
+
+  const SNAPSHOT_PAUSE_MS = 500;    // pause trigger
+  const SNAPSHOT_COUNT_THRESHOLD = 20; // character count trigger
+  const SNAPSHOT_TIME_MS = 3000;    // time trigger
+
+  /** Commit the pending snapshot and reset all tracking state. */
+  function commitSnapshot(): void {
+    if (pendingSnapshot !== null) {
+      undoRedo.snapshot(pendingSnapshot);
+    }
+    pendingSnapshot = null;
+    keystrokeCount = 0;
+    lastSnapshotAt = Date.now();
+    if (snapshotTimer) {
+      clearTimeout(snapshotTimer);
+      snapshotTimer = null;
+    }
+  }
 
   function setupInputListener(): void {
     if (inputListenerRegistered || !ui) return;
@@ -67,32 +109,43 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     ui.onTerminalInput((data: string) => {
       if (!ui) return;
 
-      // Only snapshot for printable characters, backspace, delete, enter
+      // Only snapshot for edit keys (printable, backspace, delete, enter)
       const isEditKey = data.length === 1 || data === "\x7f" || data === "\x1b[3~" || data === "\r" || data === "\n";
       if (!isEditKey) return;
 
       // Capture text BEFORE the keypress is processed by the editor
       const textBefore = ui.getEditorText();
 
-      // If there's a pending snapshot timer, reset it (user is still typing)
-      if (snapshotTimer) {
-        clearTimeout(snapshotTimer);
-        snapshotTimer = null;
-      }
-
-      // Store the pending snapshot (text before this keypress)
+      // On first keypress of a new session, store the pending snapshot
       if (pendingSnapshot === null) {
         pendingSnapshot = textBefore;
+        lastSnapshotAt = Date.now();
       }
 
-      // After debounce: commit the snapshot (the text BEFORE typing started)
+      keystrokeCount++;
+
+      // ─── Trigger 1: Character count threshold (20 chars) ─────────
+      if (keystrokeCount >= SNAPSHOT_COUNT_THRESHOLD) {
+        commitSnapshot();
+        // Don't return — let the pause timer restart below
+      }
+
+      // ─── Trigger 2: Time threshold (3 seconds) ───────────────────
+      if (pendingSnapshot !== null && Date.now() - lastSnapshotAt >= SNAPSHOT_TIME_MS) {
+        commitSnapshot();
+      }
+
+      // ─── Trigger 3: Pause timer (500ms after last keypress) ──────
+      // Reset the pause timer on each keypress
+      if (snapshotTimer) {
+        clearTimeout(snapshotTimer);
+      }
       snapshotTimer = setTimeout(() => {
+        // User stopped typing — commit the snapshot
         if (pendingSnapshot !== null) {
-          undoRedo.snapshot(pendingSnapshot);
-          pendingSnapshot = null;
+          commitSnapshot();
         }
-        snapshotTimer = null;
-      }, SNAPSHOT_DEBOUNCE_MS);
+      }, SNAPSHOT_PAUSE_MS);
     });
   }
 
@@ -288,6 +341,8 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       snapshotTimer = null;
     }
     pendingSnapshot = null;
+    keystrokeCount = 0;
+    lastSnapshotAt = 0;
     undoRedo.clear();
   });
 
