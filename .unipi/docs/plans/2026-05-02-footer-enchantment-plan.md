@@ -171,3 +171,24 @@ Tasks 3 and 4 can be done in parallel after Task 2, but sequential is fine for c
 4. **Settings TUI complexity** — 3-category layout with cycle-selectors is more complex than current 2-tab. Mitigation: pi-tui's `SettingsList` supports cycle values natively via the `values` array.
 
 5. **Segment count bloat** — Adding tps, clock, duration, thinking_level brings core segments from 12 to 16. Mitigation: new segments are carefully scoped; presets control which appear by default.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- Task 1 (Types): ✅ All segments have zone, description, shortLabel. New SemanticColor entries compile. DEFAULT_COLOR_MAP has all entries.
+- Task 2 (Colors): ✅ Full hex palette implemented matching spec. Git uses gitClean/gitDirty based on dirty state. Session uses `session` semantic color.
+- Task 3 (TPS + Clock/Duration): ✅ TpsTracker with 3s sliding window, live/avg display, tier coloring. Clock shows HH:MM:SS. Duration shows H:MM:SS. All 3 icon sets updated.
+- Task 4 (Workflow Colors + Thinking): ✅ Workflow command→color mapping matches spec categories (red/orange/yellow/green/blue/purple). Thinking level segment with 6 levels, `defaultShow: false`.
+- Task 5 (Zone Renderer + Presets): ✅ 3-zone layout with left/center/right alignment, configurable separator, overflow to secondary row. All 6 presets updated.
+- Task 6 (Help + Labels): ✅ `/unipi:footer-help` command registered, help overlay groups by zone, `showFullLabels` setting in config, `labelMode` in types.
+- Task 7 (Settings TUI + Commands): ✅ 3-category TUI (Appearance/Segments/Labels & Help). `/unipi:footer` simplified to toggle-only. Settings persist to settings.json.
+
+Codebase Checks:
+- ✓ TypeScript compiles clean (`tsc --noEmit`)
+- ✓ All 41 tests pass
+- ✓ Root-level typecheck passes
+- N/A Lint (no lint script configured)
+- N/A Build (no build step, TS source consumed directly)
+- N/A Docker (no Dockerfile)
