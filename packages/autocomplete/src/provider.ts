@@ -308,6 +308,26 @@ export function createEnchantedProvider(
       // Check if user explicitly typed /skill: prefix
       const isExplicitSkillQuery = effectivePrefix.replace(/^\//, "").toLowerCase().startsWith("skill:");
 
+      // Extract the query for cross-group match quality scoring
+      const finalQuery = effectivePrefix.replace(/^\//, "").toLowerCase();
+
+      /**
+       * Match quality for any autocomplete item.
+       * Returns 0=exact, 1=prefix, 2=fuzzy — same scale as getMatchPriority
+       * inside getEnhancedUnipiItems.
+       */
+      const crossItemPriority = (
+        item: AutocompleteItem,
+        isUnipi: boolean,
+      ): number => {
+        const name = isUnipi
+          ? item.value.replace("unipi:", "").toLowerCase()
+          : item.value.toLowerCase();
+        if (name === finalQuery) return 0;
+        if (name.startsWith(finalQuery)) return 1;
+        return 2;
+      };
+
       // Build final list based on query context
       let finalItems: AutocompleteItem[];
 
@@ -315,9 +335,25 @@ export function createEnchantedProvider(
         // User explicitly wants skill commands — show them first
         finalItems = [...skillItems, ...enhancedUnipiItems, ...systemItems];
       } else {
-        // Default: unipi commands first, then system commands, hide skill commands
-        // (skill commands are redundant when unipi equivalents exist)
-        finalItems = [...enhancedUnipiItems, ...systemItems];
+        // Merge unipi + system items, sorted by:
+        //   1. Match quality: exact > prefix > fuzzy
+        //   2. Source: non-unipi before unipi (within same quality tier)
+        //   3. Original order within each group (stable sort)
+        const tagged: Array<{ item: AutocompleteItem; isUnipi: boolean }> = [
+          ...systemItems.map((item) => ({ item, isUnipi: false })),
+          ...enhancedUnipiItems.map((item) => ({ item, isUnipi: true })),
+        ];
+
+        tagged.sort((a, b) => {
+          const priA = crossItemPriority(a.item, a.isUnipi);
+          const priB = crossItemPriority(b.item, b.isUnipi);
+          if (priA !== priB) return priA - priB;
+          // Same quality tier: non-unipi first
+          if (a.isUnipi !== b.isUnipi) return a.isUnipi ? 1 : -1;
+          return 0; // preserve original order (stable sort)
+        });
+
+        finalItems = tagged.map((t) => t.item);
       }
 
       return {
