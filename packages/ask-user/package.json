@@ -24,6 +24,7 @@
     "types.ts",
     "tools.ts",
     "ask-ui.ts",
+    "launcher-ui.ts",
     "commands.ts",
     "config.ts",
     "settings-tui.ts",

@@ -638,7 +638,24 @@ export function createRenderResult() {
           0,
           0,
         );
-      case "new_session":
+      case "new_session": {
+        const launchedWith = (response as any).launchedWith;
+        if (launchedWith === "compact") {
+          return new Text(
+            theme.fg("success", "✓ compacted → ") +
+              theme.fg("accent", response.prefill || ""),
+            0,
+            0,
+          );
+        }
+        if (launchedWith === "direct") {
+          return new Text(
+            theme.fg("success", "✓ running → ") +
+              theme.fg("accent", response.prefill || ""),
+            0,
+            0,
+          );
+        }
         return new Text(
           theme.fg("success", "✓ ") +
             theme.fg("muted", "new session") +
@@ -646,6 +663,7 @@ export function createRenderResult() {
           0,
           0,
         );
+      }
       default:
         return new Text(
           theme.fg("text", JSON.stringify(response)),

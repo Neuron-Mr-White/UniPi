@@ -56,7 +56,7 @@ Use the `ask_user` tool to collect structured input from the user.
 | `"select"` | Normal selection (default). Returns immediately. |
 | `"input"` | Enters text input mode. Returns `combined` response with selection + text. |
 | `"end_turn"` | Signals end of agent turn. Returns `end_turn` response kind. |
-| `"new_session"` | Starts a new session. Returns `new_session` response kind with optional `prefill`. |
+| `"new_session"` | Starts a new session. Returns `new_session` response kind with optional `prefill`. Shows a launcher overlay offering **Compact & run** (compacts context first) or **Run directly**. |
 
 ## Examples
 
@@ -150,3 +150,15 @@ ask_user({
 - "I want changes" enters text input mode for the user to explain
 - "Done for now" signals the agent to end its turn
 - "Start fresh" starts a new session with the prefill message
+
+## Session Launcher
+
+When a user selects a `new_session` option, a secondary launcher overlay appears with three choices:
+
+| Choice | Behavior |
+|--------|----------|
+| 🧹 Compact & run | Compacts current context (via `ctx.compact()`), then returns the prefill command to the LLM |
+| ▶ Run directly | Returns the prefill command to the LLM without compaction |
+| ✕ Cancel | Cancels the session launch |
+
+This two-step flow lets the user manage context window usage before starting a new task.

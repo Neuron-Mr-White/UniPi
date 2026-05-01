@@ -11,8 +11,9 @@ import {
   UNIPI_EVENTS,
   emitEvent,
 } from "@pi-unipi/core";
-import type { NormalizedOption, AskUserResponse } from "./types.js";
+import type { NormalizedOption, AskUserResponse, SessionLauncherResult } from "./types.js";
 import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
+import { renderLauncherUI } from "./launcher-ui.js";
 import { getAskUserSettings } from "./config.js";
 
 /**
@@ -329,6 +330,57 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           break;
         default:
           contentText = "No response";
+      }
+
+      // Session launcher intercept: when user selects new_session, offer compact/direct/cancel
+      if (response.kind === "new_session") {
+        const prefill = response.prefill || "";
+        const launcherResult = await ctx.ui.custom<SessionLauncherResult | null>(
+          renderLauncherUI({ prefill }),
+        );
+
+        if (!launcherResult || launcherResult.action === "cancel") {
+          return {
+            content: [{ type: "text", text: "User cancelled the session launch" }],
+            details: {
+              question,
+              options: normalizedOptions.map((o) => o.label),
+              response: {
+                kind: "cancelled",
+                comment: "Session launcher cancelled",
+              } as AskUserResponse,
+            },
+          };
+        }
+
+        if (launcherResult.action === "compact") {
+          try {
+            await new Promise<void>((resolve, reject) => {
+              ctx.compact({
+                customInstructions: `Preparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`,
+                onComplete: () => resolve(),
+                onError: (err) => reject(err),
+              });
+            });
+          } catch (err) {
+            // Compaction failure shouldn't block the session launch — continue anyway
+          }
+        }
+
+        const actionLabel = launcherResult.action === "compact" ? "compacted" : "running";
+        contentText = `User chose to proceed (${actionLabel}): ${prefill}`;
+
+        return {
+          content: [{ type: "text", text: contentText }],
+          details: {
+            question,
+            options: normalizedOptions.map((o) => o.label),
+            response: {
+              ...response,
+              launchedWith: launcherResult.action,
+            },
+          },
+        };
       }
 
       return {

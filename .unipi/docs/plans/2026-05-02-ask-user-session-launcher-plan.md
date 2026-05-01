@@ -17,7 +17,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
 
 ## Tasks
 
-- unstarted: Task 1 — Add `SessionLauncherResult` type to `types.ts`
+- completed: Task 1 — Add `SessionLauncherResult` type to `types.ts`
   - Description: Add the result interface for the launcher UI component.
   - Dependencies: None
   - Acceptance Criteria: Type compiles, no runtime impact (type-only change).
@@ -32,7 +32,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
        }
        ```
 
-- unstarted: Task 2 — Create `packages/ask-user/launcher-ui.ts`
+- completed: Task 2 — Create `packages/ask-user/launcher-ui.ts`
   - Description: Build the standalone launcher TUI component following the same factory pattern as `ask-ui.ts`. Three fixed options: Compact & run, Run directly, Cancel. Shows the prefill command in a header.
   - Dependencies: Task 1 (needs `SessionLauncherResult` type)
   - Acceptance Criteria:
@@ -53,7 +53,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
        - Return `{ render, invalidate, handleInput }`
     6. No Editor, no timeout, no multi-select — this is a simple single-select picker
 
-- unstarted: Task 3 — Modify `tools.ts` execute() to intercept `new_session` and launch overlay
+- completed: Task 3 — Modify `tools.ts` execute() to intercept `new_session` and launch overlay
   - Description: After the existing `ctx.ui.custom()` call returns, detect `new_session` response kind. Open the launcher UI. Handle compact/direct/cancel paths.
   - Dependencies: Task 2 (needs `renderLauncherUI`)
   - Acceptance Criteria:
@@ -102,7 +102,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
        }
        ```
 
-- unstarted: Task 4 — Update `renderResult` in `ask-ui.ts` to display launcher outcome
+- completed: Task 4 — Update `renderResult` in `ask-ui.ts` to display launcher outcome
   - Description: Modify `createRenderResult()` to show launcher-specific text when `launchedWith` is present on a `new_session` response.
   - Dependencies: Task 3 (needs `launchedWith` field on response)
   - Acceptance Criteria:
@@ -117,7 +117,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
        - If `"direct"`: return `✓ running → {prefill}`
        - Otherwise: keep existing behavior (`✓ new session: {prefill}`)
 
-- unstarted: Task 5 — Update `package.json` files array
+- completed: Task 5 — Update `package.json` files array
   - Description: Add `launcher-ui.ts` to the package files list so it's included in publishes.
   - Dependencies: Task 2 (file must exist)
   - Acceptance Criteria: `launcher-ui.ts` listed in `files` array in `package.json`.
@@ -125,7 +125,7 @@ All changes live in `packages/ask-user/`. No Pi core changes needed.
     1. Open `packages/ask-user/package.json`
     2. Add `"launcher-ui.ts"` to the `files` array
 
-- unstarted: Task 6 — Update SKILL.md with launcher behavior docs
+- completed: Task 6 — Update SKILL.md with launcher behavior docs
   - Description: Document the new launcher overlay behavior in the ask-user skill file so LLMs understand what happens with `new_session` options.
   - Dependencies: Task 3 (behavior must be finalized)
   - Acceptance Criteria: SKILL.md mentions the launcher overlay and its Compact/Run/Cancel options.

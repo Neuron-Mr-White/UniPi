@@ -54,6 +54,12 @@ export interface AskUserResponse {
   comment?: string;
 }
 
+/** Result from the session launcher UI */
+export interface SessionLauncherResult {
+  action: "compact" | "direct" | "cancel";
+  prefill: string;
+}
+
 /** Normalized option with resolved value */
 export interface NormalizedOption {
   label: string;
