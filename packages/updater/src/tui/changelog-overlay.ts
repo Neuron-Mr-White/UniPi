@@ -10,6 +10,7 @@ import { join } from "path";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { parseChangelog } from "../changelog.js";
+import { renderMarkdown } from "../markdown.js";
 import { getPackageVersion } from "@pi-unipi/core";
 import type { ChangelogEntry } from "../../types.js";
 
@@ -187,28 +188,16 @@ export function renderChangelogOverlay() {
         theme.fg("accent", "│"),
       );
 
-      const bodyLines = entry.body.split("\n");
+      const bodyLines = renderMarkdown(entry.body, innerWidth - 2, theme);
       const maxScroll = Math.max(0, bodyLines.length - 15);
       state.detailScroll = Math.min(state.detailScroll, maxScroll);
       state.detailScroll = Math.max(0, state.detailScroll);
 
       const visible = bodyLines.slice(state.detailScroll, state.detailScroll + 15);
       for (const line of visible) {
-        const trimmed = line.trim();
-        let styled: string;
-        if (trimmed.startsWith("### ")) {
-          styled = `  ${theme.bold(trimmed.slice(4))}`;
-        } else if (trimmed.startsWith("- ")) {
-          const content = trimmed.slice(2).replace(/`([^`]+)`/g, (_, code) => theme.fg("muted", code));
-          styled = `    • ${content}`;
-        } else if (!trimmed) {
-          styled = "";
-        } else {
-          styled = `  ${trimmed}`;
-        }
         lines.push(
           theme.fg("accent", "│") +
-          padVisible(truncateToWidth(styled, innerWidth), innerWidth) +
+          padVisible(truncateToWidth(`  ${line}`, innerWidth), innerWidth) +
           theme.fg("accent", "│"),
         );
       }

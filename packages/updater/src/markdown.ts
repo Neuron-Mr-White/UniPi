@@ -2,8 +2,45 @@
  * @pi-unipi/updater — Markdown terminal renderer
  *
  * Renders markdown to terminal-formatted strings.
- * Headings → bold/underline, bullets → •, code blocks → dim,
- * inline code → dim, links → underlined text.
+ * When a Theme is provided, uses the full Markdown component from pi-tui
+ * with theme-aware styling. Falls back to simple ANSI rendering otherwise.
+ */
+
+import { Markdown } from "@mariozechner/pi-tui";
+import type { MarkdownTheme } from "@mariozechner/pi-tui";
+import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@mariozechner/pi-coding-agent";
+
+/**
+ * Render markdown text to terminal-formatted lines.
+ *
+ * When a Theme is provided, uses the full Markdown component from pi-tui
+ * with syntax highlighting, proper list nesting, tables, etc.
+ *
+ * @param text - Markdown text to render
+ * @param width - Available width for rendering
+ * @param theme - Optional Theme for styled rendering
+ * @returns Array of rendered terminal lines
+ */
+export function renderMarkdown(text: string, width: number, theme?: Theme): string[] {
+  if (theme) {
+    return renderWithTheme(text, width, theme);
+  }
+  return renderSimple(text, width);
+}
+
+/**
+ * Render using the full Markdown component with theme support.
+ */
+function renderWithTheme(text: string, width: number, theme: Theme): string[] {
+  const mdTheme = getMarkdownTheme();
+  const md = new Markdown(text, 1, 0, mdTheme);
+  return md.render(width);
+}
+
+/**
+ * Simple fallback renderer using basic ANSI codes.
+ * Used when no Theme is available.
  */
 
 /** ANSI escape codes */
@@ -62,10 +99,9 @@ function formatInline(text: string): string {
 }
 
 /**
- * Render markdown text to terminal-formatted lines.
- * Each line is word-wrapped to fit the given width.
+ * Simple markdown renderer (fallback).
  */
-export function renderMarkdown(text: string, width: number): string[] {
+function renderSimple(text: string, width: number): string[] {
   const lines = text.split("\n");
   const result: string[] = [];
   let inCodeBlock = false;

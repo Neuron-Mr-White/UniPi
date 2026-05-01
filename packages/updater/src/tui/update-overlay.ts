@@ -10,6 +10,7 @@ import { join } from "path";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { parseChangelog, getNewerVersions } from "../changelog.js";
+import { renderMarkdown } from "../markdown.js";
 import { installUpdate } from "../installer.js";
 import { writeSkippedVersion } from "../cache.js";
 import { loadConfig } from "../settings.js";
@@ -57,19 +58,17 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
       // No changelog
     }
 
-    // Build content lines from changelog
+    // Build content lines from changelog using markdown renderer
     const contentLines: string[] = [];
     for (const entry of newerVersions) {
       const title = entry.date
         ? `${theme.bold(entry.version)} — ${theme.fg("muted", entry.date)}`
         : `${theme.bold(entry.version)} — ${theme.fg("muted", "Unreleased")}`;
       contentLines.push(`  ${title}`);
-      for (const [section, items] of Object.entries(entry.sections)) {
-        contentLines.push(`  ${theme.fg("muted", section)}`);
-        for (const item of items) {
-          const formatted = item.replace(/`([^`]+)`/g, (_, code) => theme.fg("muted", code));
-          contentLines.push(`    • ${formatted}`);
-        }
+      // Use markdown renderer for the body content
+      const bodyLines = renderMarkdown(entry.body, (tui.width ?? 80) - 6, theme);
+      for (const line of bodyLines) {
+        contentLines.push(`  ${line}`);
       }
       contentLines.push("");
     }
