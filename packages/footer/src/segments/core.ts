@@ -2,9 +2,11 @@
  * @pi-unipi/footer — Core segments
  *
  * Segment renderers for the core group: model, api_state, tool_count, git,
- * context_pct, cost, tokens_total, tokens_in, tokens_out.
+ * context_pct, cost, tokens_total, tokens_in, tokens_out, session,
+ * hostname, time.
  */
 
+import { hostname as osHostname } from "node:os";
 import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColor } from "../types.js";
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
@@ -202,7 +204,28 @@ function renderTokensSegment(variant: "total" | "in" | "out"): (ctx: FooterSegme
   };
 }
 
+function renderSessionSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  const sessionId = (piCtx?.sessionManager as any)?.getSessionId?.();
+  const display = sessionId?.slice(0, 8) || "new";
+  const content = withIcon("session", display);
+  return { content: color(ctx, "model", content), visible: true };
+}
 
+function renderHostnameSegment(_ctx: FooterSegmentContext): RenderedSegment {
+  const name = osHostname().split(".")[0];
+  const content = withIcon("hostname", name);
+  return { content, visible: true };
+}
+
+function renderTimeSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const now = new Date();
+  const hours = now.getHours();
+  const mins = now.getMinutes().toString().padStart(2, "0");
+  const timeStr = `${hours}:${mins}`;
+  const content = withIcon("time", timeStr);
+  return { content, visible: true };
+}
 
 // ─── Core segments array ────────────────────────────────────────────────────
 
@@ -216,4 +239,7 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "tokens_total", label: "Tokens Total", icon: "", render: renderTokensSegment("total"), defaultShow: false },
   { id: "tokens_in", label: "Tokens In", icon: "", render: renderTokensSegment("in"), defaultShow: false },
   { id: "tokens_out", label: "Tokens Out", icon: "", render: renderTokensSegment("out"), defaultShow: false },
+  { id: "session", label: "Session", icon: "", render: renderSessionSegment, defaultShow: false },
+  { id: "hostname", label: "Hostname", icon: "", render: renderHostnameSegment, defaultShow: false },
+  { id: "time", label: "Time", icon: "", render: renderTimeSegment, defaultShow: false },
 ];

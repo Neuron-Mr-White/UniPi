@@ -24,6 +24,9 @@ export interface IconSet {
   tokens: string;
   tokensIn: string;
   tokensOut: string;
+  session: string;
+  hostname: string;
+  time: string;
 
   // Compactor segments
   sessionEvents: string;
@@ -86,6 +89,9 @@ export const NERD_ICONS: IconSet = {
   tokens:          "\uF07B", //  tokens icon
   tokensIn:        "\uF07B", //  tokens in icon
   tokensOut:       "\uF07B", //  tokens out icon
+  session:         "\uF550", // nf-md-identifier
+  hostname:        "\uF109", // nf-fa-laptop
+  time:            "\uF017", // nf-fa-clock_o
 
   // Compactor
   sessionEvents:   "\uDBB1\uDECF", // 󰲏 session events icon
@@ -147,6 +153,9 @@ export const EMOJI_ICONS: IconSet = {
   tokens:          "⊛",
   tokensIn:        "→",
   tokensOut:       "←",
+  session:         "#",
+  hostname:        "⌂",
+  time:            "⏱",
 
   // Compactor
   sessionEvents:   "⚡",
@@ -208,6 +217,9 @@ export const TEXT_ICONS: IconSet = {
   tokens:          "TOK",
   tokensIn:        "TKI",
   tokensOut:       "TKO",
+  session:         "SES",
+  hostname:        "HST",
+  time:            "TIM",
 
   // Compactor
   sessionEvents:   "EVT",
