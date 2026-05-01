@@ -283,24 +283,24 @@ Replace current two-tab layout + scattered command args with single unified over
 
 ## Implementation Checklist
 
-- [ ] Add `zone` field to `FooterSegment` type (left/center/right) and assign zones to all 41 segments
-- [ ] Implement TPS tracking — sliding buffer in `FooterRegistry`, subscribe to session output token events
-- [ ] Add `tps` segment to `CORE_SEGMENTS` with tier-based coloring
-- [ ] Update `DEFAULT_COLOR_MAP` in `theme.ts` with new palette (zone families, TPS tiers, workflow types)
-- [ ] Add workflow type color mapping (red/orange/yellow/green/blue/purple by command name)
-- [ ] Add thinking level segment (optional, default off) with 6-level colors + rainbow mode
-- [ ] Add `clock` segment to `CORE_SEGMENTS` (wall time, HH:MM:SS, 1s refresh)
-- [ ] Update `duration` segment label from `TIM` to `dur`, format to `H:MM:SS`/`MM:SS`
-- [ ] Add `description` field to `FooterSegment` type for help overlay
-- [ ] Implement `/unipi:footer-help` command — overlay listing enabled segments by zone
-- [ ] Add full-label mode toggle (compact vs labeled segment display)
-- [ ] Implement zone-aware rendering in `FooterRenderer` — group by zone, apply alignment
-- [ ] Redesign settings TUI — 3 categories (Appearance / Segments / Labels) replacing 2-tab layout
-- [ ] Move preset/separator/icon settings from command args into settings TUI Appearance category
-- [ ] Update `/unipi:footer` command to only handle toggle on/off
-- [ ] Test TPS accuracy — verify rolling window calculation matches manual measurement
-- [ ] Test timer reactivity — verify clock and duration update every second
-- [ ] Test all color tiers — verify TPS, workflow, thinking colors render correctly
+- [x] Add `zone` field to `FooterSegment` type (left/center/right) and assign zones to all 41 segments — Task 1
+- [x] Implement TPS tracking — sliding buffer in `FooterRegistry`, subscribe to session output token events — Task 3
+- [x] Add `tps` segment to `CORE_SEGMENTS` with tier-based coloring — Task 3
+- [x] Update `DEFAULT_COLOR_MAP` in `theme.ts` with new palette (zone families, TPS tiers, workflow types) — Task 2
+- [x] Add workflow type color mapping (red/orange/yellow/green/blue/purple by command name) — Task 4
+- [x] Add thinking level segment (optional, default off) with 6-level colors + rainbow mode — Task 4
+- [x] Add `clock` segment to `CORE_SEGMENTS` (wall time, HH:MM:SS, 1s refresh) — Task 3
+- [x] Update `duration` segment label from `TIM` to `dur`, format to `H:MM:SS`/`MM:SS` — Task 3
+- [x] Add `description` field to `FooterSegment` type for help overlay — Task 1
+- [x] Implement `/unipi:footer-help` command — overlay listing enabled segments by zone — Task 6
+- [x] Add full-label mode toggle (compact vs labeled segment display) — Task 6
+- [x] Implement zone-aware rendering in `FooterRenderer` — group by zone, apply alignment — Task 5
+- [x] Redesign settings TUI — 3 categories (Appearance / Segments / Labels) replacing 2-tab layout — Task 7
+- [x] Move preset/separator/icon settings from command args into settings TUI Appearance category — Task 7
+- [x] Update `/unipi:footer` command to only handle toggle on/off — Task 7
+- [x] Test TPS accuracy — verify rolling window calculation matches manual measurement — Task 3
+- [x] Test timer reactivity — verify clock and duration update every second — Task 3
+- [x] Test all color tiers — verify TPS, workflow, thinking colors render correctly — Task 4
 
 ## Open Questions
 
