@@ -3,7 +3,14 @@
  *
  * Two states: root chord (action menu) and register sub-chord (register list).
  * Uses ctx.ui.custom() pattern from btw/compactor.
- * Closes on ESC or after executing an action. No timeout.
+ *
+ * IMPORTANT: The overlay ONLY captures the user's action selection.
+ * Actions are NOT executed inside the overlay — they are deferred to the
+ * caller via callbacks (onStash, onUndo, etc.). The caller closes the
+ * overlay via done(), then executes the action outside the overlay context
+ * where ctx.ui.getEditorText() / setEditorText() actually work.
+ *
+ * Closes on ESC or after selecting an action. No timeout.
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -18,10 +25,6 @@ import {
 } from "@mariozechner/pi-tui";
 import type { ChordState } from "./types.ts";
 import { THINKING_CYCLE } from "./types.ts";
-import type { RegisterStore } from "./registers.ts";
-import type { UndoRedoBuffer } from "./undo-redo.ts";
-import { copyToClipboard } from "./clipboard.ts";
-import { showSuccess, showError, clearStatus } from "./status.ts";
 
 /** Theme-like interface matching pi-coding-agent's Theme */
 interface ThemeLike {
@@ -31,18 +34,24 @@ interface ThemeLike {
   italic?(text: string): string;
 }
 
-/** Callbacks for actions that need the pi API object */
+/** Action callbacks — actions execute OUTSIDE the overlay context */
 export interface ChordCallbacks {
-  getThinkingLevel: () => string;
-  setThinkingLevel: (level: string) => void;
+  onStash: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onAppendRegister: (index: number) => void;
+  onAppendStash: () => void;
+  onCopy: () => void;
+  onCut: () => void;
+  onToggleThinking: () => void;
 }
 
 // ─── Action menu lines ──────────────────────────────────────────────────────
 
 const ROOT_ACTIONS: Array<{ key: string; label: string }> = [
-  { key: "S", label: "Stash/Restore" },
-  { key: "R", label: "Redo" },
+  { key: "S", label: "Stash / Restore" },
   { key: "U", label: "Undo" },
+  { key: "R", label: "Redo" },
   { key: "A", label: "Append from register" },
   { key: "Y", label: "Copy to clipboard" },
   { key: "D", label: "Cut to clipboard" },
@@ -67,9 +76,6 @@ export class ChordOverlay extends Container implements Focusable {
   private tui: TUI;
   private theme: ThemeLike;
   private done: () => void;
-  private ctx: ExtensionContext;
-  private registers: RegisterStore;
-  private undoRedo: UndoRedoBuffer;
   private callbacks: ChordCallbacks;
 
   get focused(): boolean {
@@ -85,18 +91,12 @@ export class ChordOverlay extends Container implements Focusable {
     theme: ThemeLike,
     _keybindings: KeybindingsManager,
     done: () => void,
-    ctx: ExtensionContext,
-    registers: RegisterStore,
-    undoRedo: UndoRedoBuffer,
     callbacks: ChordCallbacks,
   ) {
     super();
     this.tui = tui;
     this.theme = theme;
     this.done = done;
-    this.ctx = ctx;
-    this.registers = registers;
-    this.undoRedo = undoRedo;
     this.callbacks = callbacks;
 
     this.renderRootMenu();
@@ -141,157 +141,63 @@ export class ChordOverlay extends Container implements Focusable {
   private handleRootKey(key: string): void {
     switch (key) {
       case "s":
-        this.actionStash();
-        break;
-      case "r":
-        this.actionRedo();
+        this.closeThenExecute(() => this.callbacks.onStash());
         break;
       case "u":
-        this.actionUndo();
+        this.closeThenExecute(() => this.callbacks.onUndo());
+        break;
+      case "r":
+        this.closeThenExecute(() => this.callbacks.onRedo());
         break;
       case "a":
         this.enterRegChord();
-        return; // don't close
+        return; // don't close — show register sub-menu
       case "y":
-        this.actionCopy();
+        this.closeThenExecute(() => this.callbacks.onCopy());
         break;
       case "d":
-        this.actionCut();
+        this.closeThenExecute(() => this.callbacks.onCut());
         break;
       case "t":
-        this.actionToggleThinking();
+        this.closeThenExecute(() => this.callbacks.onToggleThinking());
         break;
       default:
         // Unknown key — silent close
+        this.close();
         break;
     }
-    this.close();
   }
 
   private handleRegKey(key: string): void {
     if (key === "s") {
-      this.actionAppendStash();
+      this.closeThenExecute(() => this.callbacks.onAppendStash());
     } else if (/^[0-9]$/.test(key)) {
-      this.actionAppendRegister(parseInt(key, 10));
+      const index = parseInt(key, 10);
+      this.closeThenExecute(() => this.callbacks.onAppendRegister(index));
     } else {
       // Unknown key — silent close
+      this.close();
     }
-    this.close();
   }
 
   private enterRegChord(): void {
     this.renderRegisterMenu();
   }
 
-  // ─── Actions ───────────────────────────────────────────────────────────────
-
-  private actionStash(): void {
-    const text = this.ctx.ui.getEditorText();
-    if (text.length > 0) {
-      this.undoRedo.snapshot(text);
-      this.registers.setStash(text);
-      this.ctx.ui.setEditorText("");
-      showSuccess(this.ctx, "✓ stash saved");
-    } else {
-      const stash = this.registers.getStash();
-      if (stash.length === 0) {
-        showError(this.ctx, "stash empty");
-        return;
-      }
-      this.ctx.ui.setEditorText(stash);
-      showSuccess(this.ctx, "✓ stash restored");
-    }
-  }
-
-  private actionRedo(): void {
-    const current = this.ctx.ui.getEditorText();
-    const result = this.undoRedo.redo(current);
-    if (result.ok) {
-      this.ctx.ui.setEditorText(result.text);
-      showSuccess(this.ctx, "✓ redo");
-    } else {
-      showError(this.ctx, "nothing to redo");
-    }
-  }
-
-  private actionUndo(): void {
-    const current = this.ctx.ui.getEditorText();
-    const result = this.undoRedo.undo(current);
-    if (result.ok) {
-      this.ctx.ui.setEditorText(result.text);
-      showSuccess(this.ctx, "✓ undo");
-    } else {
-      showError(this.ctx, result.reason === "throttled" ? "undo throttled" : "nothing to undo");
-    }
-  }
-
-  private actionAppendRegister(index: number): void {
-    const regText = this.registers.getRegister(index);
-    if (regText.length === 0) {
-      showError(this.ctx, `register ${index} empty`);
-      return;
-    }
-    const current = this.ctx.ui.getEditorText();
-    this.undoRedo.snapshot(current);
-    this.ctx.ui.setEditorText(current + regText);
-    showSuccess(this.ctx, `✓ register ${index} appended`);
-  }
-
-  private actionAppendStash(): void {
-    const stashText = this.registers.getStash();
-    if (stashText.length === 0) {
-      showError(this.ctx, "stash empty");
-      return;
-    }
-    const current = this.ctx.ui.getEditorText();
-    this.undoRedo.snapshot(current);
-    this.ctx.ui.setEditorText(current + stashText);
-    showSuccess(this.ctx, "✓ stash appended");
-  }
-
-  private actionCopy(): void {
-    const text = this.ctx.ui.getEditorText();
-    if (text.length === 0) {
-      showError(this.ctx, "nothing to copy");
-      return;
-    }
-    const result = copyToClipboard(text);
-    if (result.ok) {
-      showSuccess(this.ctx, "✓ copied");
-    } else {
-      showError(this.ctx, result.reason ?? "clipboard unavailable");
-    }
-  }
-
-  private actionCut(): void {
-    const text = this.ctx.ui.getEditorText();
-    if (text.length === 0) {
-      showError(this.ctx, "nothing to cut");
-      return;
-    }
-    const result = copyToClipboard(text);
-    if (result.ok) {
-      this.undoRedo.snapshot(text);
-      this.ctx.ui.setEditorText("");
-      showSuccess(this.ctx, "✓ cut");
-    } else {
-      showError(this.ctx, result.reason ?? "clipboard unavailable");
-    }
-  }
-
-  private actionToggleThinking(): void {
-    const current = this.callbacks.getThinkingLevel();
-    const idx = THINKING_CYCLE.indexOf(current as any);
-    const nextIdx = idx >= 0 ? (idx + 1) % THINKING_CYCLE.length : 0;
-    const next = THINKING_CYCLE[nextIdx];
-    this.callbacks.setThinkingLevel(next);
-    showSuccess(this.ctx, `thinking: ${next}`);
+  /**
+   * Close the overlay, then execute the action.
+   * The action runs AFTER the overlay is dismissed, so ctx.ui.getEditorText()
+   * and setEditorText() work correctly (they don't work while overlay is open).
+   */
+  private closeThenExecute(action: () => void): void {
+    this.done(); // close the overlay
+    // Use setTimeout(0) to defer action to next tick — overlay will be dismissed by then
+    setTimeout(action, 0);
   }
 
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   private close(): void {
-    clearStatus(this.ctx);
     this.done();
   }
 
