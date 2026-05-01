@@ -2,8 +2,11 @@
  * @pi-unipi/footer — Presets system
  *
  * Preset definitions: default, minimal, compact, full, nerd, ascii.
- * Each preset defines which segments appear on left, right, and secondary rows,
+ * Each preset defines which segments appear (left/center/right/secondary),
  * plus separator style and color scheme.
+ *
+ * Segments are grouped by their zone field regardless of which array they're
+ * listed in. The arrays define ordering within the preset.
  */
 
 import type { PresetDef, SeparatorStyle, ColorScheme } from "./types.js";
@@ -15,10 +18,13 @@ const DEFAULT_PRESET: PresetDef = {
     "model", "api_state", "tool_count", "git",
   ],
   rightSegments: [
+    "tps", "context_pct", "cost",
+    "compactions", "tokens_saved", "project_count",
+    "current_command", "loop_status", "extension_statuses",
     "clock", "duration",
   ],
   secondarySegments: [
-    "current_command", "session",
+    "session",
   ],
   separator: "powerline-thin",
   colors: getDefaultColors(),
@@ -30,6 +36,7 @@ const MINIMAL_PRESET: PresetDef = {
     "model", "git",
   ],
   rightSegments: [
+    "context_pct",
     "clock",
   ],
   secondarySegments: [],
@@ -43,6 +50,7 @@ const COMPACT_PRESET: PresetDef = {
     "model", "git",
   ],
   rightSegments: [
+    "tps", "context_pct", "cost",
     "clock", "duration",
   ],
   secondarySegments: [],
@@ -53,15 +61,24 @@ const COMPACT_PRESET: PresetDef = {
 /** Full preset — everything */
 const FULL_PRESET: PresetDef = {
   leftSegments: [
-    "model", "api_state", "tool_count", "git", "session",
+    "model", "api_state", "tool_count", "git", "current_command", "session",
   ],
   rightSegments: [
+    "tps", "context_pct", "cost", "tokens_total",
+    "session_events", "compactions", "tokens_saved",
+    "project_count", "total_count",
+    "servers_total", "servers_active", "tools_total",
+    "active_loops", "loop_status",
+    "docs_count", "tasks_done", "task_pct",
+    "extension_statuses",
     "clock", "duration",
   ],
   secondarySegments: [
     "hostname",
-    "platforms_enabled", "last_sent",
     "tokens_in", "tokens_out",
+    "compression_ratio", "indexed_docs",
+    "platforms_enabled", "last_sent",
+    "thinking_level",
   ],
   separator: "powerline-thin",
   colors: getDefaultColors(),
@@ -70,16 +87,24 @@ const FULL_PRESET: PresetDef = {
 /** Nerd preset — maximum detail for Nerd Font users */
 const NERD_PRESET: PresetDef = {
   leftSegments: [
-    "model", "api_state", "tool_count", "git", "session",
+    "model", "api_state", "tool_count", "git", "current_command", "session",
   ],
   rightSegments: [
+    "tps", "context_pct", "cost", "tokens_total",
+    "session_events", "compactions", "tokens_saved",
+    "project_count", "total_count",
+    "servers_total", "servers_active", "tools_total",
+    "active_loops", "loop_status",
+    "docs_count", "tasks_done", "task_pct",
+    "extension_statuses",
     "clock", "duration",
   ],
   secondarySegments: [
     "hostname",
+    "tokens_in", "tokens_out",
     "compression_ratio", "indexed_docs",
     "platforms_enabled", "last_sent",
-    "tokens_in", "tokens_out",
+    "thinking_level",
   ],
   separator: "powerline",
   colors: getDefaultColors(),
@@ -91,6 +116,7 @@ const ASCII_PRESET: PresetDef = {
     "model", "git",
   ],
   rightSegments: [
+    "tps", "context_pct", "cost",
     "clock", "duration",
   ],
   secondarySegments: [],

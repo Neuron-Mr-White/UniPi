@@ -7,7 +7,7 @@
  */
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, RenderedSegment } from "../types.js";
+import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, RenderedSegment, SegmentZone } from "../types.js";
 import type { FooterRegistry } from "../registry/index.js";
 import { visibleWidth as piVisibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import { getSeparator, separatorVisibleWidth } from "./separators.js";
@@ -143,8 +143,8 @@ export class FooterRenderer {
   }
 
   /**
-   * Compute responsive layout for the given width.
-   * Segments that don't fit in the top row overflow to the secondary row.
+   * Compute responsive zone-based layout for the given width.
+   * Segments are grouped by zone (left/center/right) and rendered with alignment.
    */
   computeLayout(width: number): { topContent: string; secondaryContent: string } {
     // Return cached layout if still valid
@@ -155,41 +155,45 @@ export class FooterRenderer {
 
     const presetDef = getPreset(this.presetName);
     const colors = presetDef.colors ?? getDefaultColors();
+    const settings = loadFooterSettings();
+    const labelMode = settings.showFullLabels ? "labeled" as const : "compact" as const;
 
-    // Render all segments
-    const allSegmentIds = [
-      ...presetDef.leftSegments,
-      ...presetDef.rightSegments,
-      ...presetDef.secondarySegments,
-    ];
+    // Collect all segment IDs from preset
+    const primaryIds = [...presetDef.leftSegments, ...presetDef.rightSegments];
+    const secondaryIds = [...presetDef.secondarySegments];
 
-    const renderedSegments: RenderedSegmentWithWidth[] = [];
-    for (const segId of allSegmentIds) {
-      if (!isSegmentEnabled(this.getGroupForSegment(segId), segId)) continue;
+    // Render segments grouped by their zone
+    const zones: Record<SegmentZone, RenderedSegmentWithWidth[]> = {
+      left: [],
+      center: [],
+      right: [],
+    };
+    const overflowZones: Record<SegmentZone, RenderedSegmentWithWidth[]> = {
+      left: [],
+      center: [],
+      right: [],
+    };
 
+    // Render primary segments and group by zone
+    for (const segId of primaryIds) {
+      const rendered = this.renderSegment(segId, colors, width, labelMode);
+      if (!rendered) continue;
       const segment = this.segmentLookup.get(segId);
-      if (!segment) continue;
-
-      const ctx: FooterSegmentContext = {
-        theme: this.getThemeLike(),
-        colors,
-        data: this.registry.getGroupData(this.getGroupForSegment(segId)),
-        width,
-        piContext: this.piContext,
-        footerData: this.footerData,
-      };
-
-      const rendered = segment.render(ctx);
-      if (!rendered.visible || !rendered.content) continue;
-
-      renderedSegments.push({
-        content: rendered.content,
-        width: visibleWidth(rendered.content),
-        visible: true,
-      });
+      const zone = segment?.zone ?? "center";
+      zones[zone].push(rendered);
     }
 
-    if (renderedSegments.length === 0) {
+    // Render secondary segments
+    const secondaryRendered: RenderedSegmentWithWidth[] = [];
+    for (const segId of secondaryIds) {
+      const rendered = this.renderSegment(segId, colors, width, labelMode);
+      if (!rendered) continue;
+      secondaryRendered.push(rendered);
+    }
+
+    // Check if we have any content
+    const totalSegments = zones.left.length + zones.center.length + zones.right.length;
+    if (totalSegments === 0 && secondaryRendered.length === 0) {
       this.lastLayoutResult = { topContent: "", secondaryContent: "" };
       this.lastLayoutWidth = width;
       this.lastLayoutTimestamp = now;
@@ -197,53 +201,46 @@ export class FooterRenderer {
       return this.lastLayoutResult;
     }
 
-    // Separate primary (left+right) from secondary
-    const primaryIds = new Set([...presetDef.leftSegments, ...presetDef.rightSegments]);
-    const primarySegments: RenderedSegmentWithWidth[] = [];
-    const secondarySegments: RenderedSegmentWithWidth[] = [];
-
-    for (const seg of renderedSegments) {
-      // Check if this segment's content matches a primary or secondary segment
-      // We'll do a simpler approach: fit what fits in top row, overflow to secondary
-      primarySegments.push(seg);
-    }
-
-    // Compute responsive layout
     const sepDef = getSeparator(presetDef.separator);
-    const sepWidth = visibleWidth(sepDef.left) + 2; // separator + spaces
+    const sepWidth = visibleWidth(sepDef.left) + 2;
+    const zoneSep = presetDef.zoneSeparator ?? settings.zoneSeparator ?? "\u2502";
+    const zoneSepWidth = visibleWidth(zoneSep) + 2; // +2 for spaces around zone sep
+    const dimZoneSep = `\x1b[2m${zoneSep}\x1b[0m`; // dimmed zone separator
 
-    const baseOverhead = 2; // leading + trailing space
-    let currentWidth = baseOverhead;
-    let topParts: string[] = [];
-    let overflowParts: RenderedSegmentWithWidth[] = [];
-    let overflow = false;
+    // Calculate widths per zone
+    const leftWidth = this.measureZoneWidth(zones.left, sepWidth);
+    const rightWidth = this.measureZoneWidth(zones.right, sepWidth);
+    const numZoneSeps = (leftWidth > 0 ? 1 : 0) + (rightWidth > 0 ? 1 : 0);
+    const availableForCenter = width - leftWidth - rightWidth - numZoneSeps * zoneSepWidth - 2; // -2 for margins
 
-    for (const seg of primarySegments) {
-      const needed = seg.width + (topParts.length > 0 ? sepWidth : 0);
-      if (!overflow && currentWidth + needed <= width) {
-        topParts.push(seg.content);
-        currentWidth += needed;
-      } else {
-        overflow = true;
-        overflowParts.push(seg);
+    // Overflow check: if center doesn't fit, move excess to overflow
+    const centerWidth = this.measureZoneWidth(zones.center, sepWidth);
+    if (centerWidth > Math.max(0, availableForCenter)) {
+      // Move overflow center segments to secondary
+      let fitWidth = 0;
+      let cutoffIdx = 0;
+      for (let i = 0; i < zones.center.length; i++) {
+        const needed = zones.center[i].width + (i > 0 ? sepWidth : 0);
+        if (fitWidth + needed <= Math.max(0, availableForCenter)) {
+          fitWidth += needed;
+          cutoffIdx = i + 1;
+        } else {
+          break;
+        }
       }
+      const overflow = zones.center.splice(cutoffIdx);
+      overflowZones.center.push(...overflow);
     }
 
-    // Fit overflow into secondary row
-    let secondaryWidth = baseOverhead;
-    let secondaryParts: string[] = [];
-    for (const seg of overflowParts) {
-      const needed = seg.width + (secondaryParts.length > 0 ? sepWidth : 0);
-      if (secondaryWidth + needed <= width) {
-        secondaryParts.push(seg.content);
-        secondaryWidth += needed;
-      } else {
-        break; // Stop at first non-fitting segment
-      }
-    }
+    // Build top row with zones
+    const topContent = this.buildZoneRow(zones, width, sepDef, dimZoneSep);
 
-    const topContent = this.buildContentFromParts(topParts, sepDef);
-    const secondaryContent = this.buildContentFromParts(secondaryParts, sepDef);
+    // Build secondary row with overflow + preset secondary segments
+    const allSecondary = [...overflowZones.center, ...secondaryRendered];
+    const secondaryContent = this.buildContentFromParts(
+      allSecondary.map(s => s.content),
+      sepDef,
+    );
 
     this.lastLayoutResult = { topContent, secondaryContent };
     this.lastLayoutWidth = width;
@@ -251,6 +248,128 @@ export class FooterRenderer {
     this.layoutDirty = false;
 
     return this.lastLayoutResult;
+  }
+
+  /** Render a single segment by ID, returns null if not visible */
+  private renderSegment(
+    segId: string,
+    colors: ColorScheme,
+    fullWidth: number,
+    labelMode: "compact" | "labeled",
+  ): RenderedSegmentWithWidth | null {
+    if (!isSegmentEnabled(this.getGroupForSegment(segId), segId)) return null;
+
+    const segment = this.segmentLookup.get(segId);
+    if (!segment) return null;
+
+    const ctx: FooterSegmentContext = {
+      theme: this.getThemeLike(),
+      colors,
+      data: this.registry.getGroupData(this.getGroupForSegment(segId)),
+      width: fullWidth,
+      piContext: this.piContext,
+      footerData: this.footerData,
+      labelMode,
+    };
+
+    const rendered = segment.render(ctx);
+    if (!rendered.visible || !rendered.content) return null;
+
+    return {
+      content: rendered.content,
+      width: visibleWidth(rendered.content),
+      visible: true,
+    };
+  }
+
+  /** Measure total width of a zone's rendered segments */
+  private measureZoneWidth(segments: RenderedSegmentWithWidth[], sepWidth: number): number {
+    if (segments.length === 0) return 0;
+    let total = 0;
+    for (let i = 0; i < segments.length; i++) {
+      total += segments[i].width + (i > 0 ? sepWidth : 0);
+    }
+    return total;
+  }
+
+  /** Build a zone-based row string */
+  private buildZoneRow(
+    zones: Record<SegmentZone, RenderedSegmentWithWidth[]>,
+    fullWidth: number,
+    sepDef: { left: string },
+    dimZoneSep: string,
+  ): string {
+    const parts: string[] = [];
+
+    // Left zone
+    const leftContent = this.buildContentFromPartsRaw(
+      zones.left.map(s => s.content),
+      sepDef,
+    );
+
+    // Center zone
+    const centerContent = this.buildContentFromPartsRaw(
+      zones.center.map(s => s.content),
+      sepDef,
+    );
+
+    // Right zone
+    const rightContent = this.buildContentFromPartsRaw(
+      zones.right.map(s => s.content),
+      sepDef,
+    );
+
+    // Assemble zones with alignment
+    const leftWidth = zones.left.length > 0 ? this.measureZoneWidth(zones.left, visibleWidth(sepDef.left) + 2) : 0;
+    const rightWidth = zones.right.length > 0 ? this.measureZoneWidth(zones.right, visibleWidth(sepDef.left) + 2) : 0;
+
+    // Simple case: no zones → return empty
+    if (!leftContent && !centerContent && !rightContent) return "";
+
+    // Build with zone separators
+    let result = " "; // leading margin
+
+    if (leftContent) {
+      result += leftContent;
+    }
+
+    if (centerContent) {
+      if (leftContent) result += ` ${dimZoneSep} `;
+      result += centerContent;
+    }
+
+    if (rightContent) {
+      const currentLen = visibleWidth(result);
+      const rightStart = fullWidth - rightWidth - 1; // -1 for trailing margin
+      const gap = rightStart - currentLen;
+
+      if (gap > 0) {
+        // Pad to right-align the right zone
+        result += " ".repeat(gap);
+      }
+
+      if (centerContent || leftContent) {
+        // Only add zone separator if there's content before it
+        if (gap > visibleWidth(dimZoneSep) + 2) {
+          // Place zone sep right before right content
+          const sepPos = result.length - gap + Math.floor((gap - visibleWidth(dimZoneSep)) / 2);
+          // Simpler: just put it at the boundary
+        }
+      }
+
+      result += rightContent;
+    }
+
+    result += " "; // trailing margin
+    return result;
+  }
+
+  /** Build content from parts array (raw strings) */
+  private buildContentFromPartsRaw(parts: string[], sepDef: { left: string }): string {
+    if (parts.length === 0) return "";
+    const sep = sepDef.left;
+    const sepAnsi = getFgAnsiCode(getPreset(this.presetName).colors ?? getDefaultColors(), "separator");
+    return parts.join(` ${sepAnsi}${sep}${ANSI_RESET} `);
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────

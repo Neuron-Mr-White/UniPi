@@ -123,6 +123,8 @@ export interface FooterSegmentContext {
   piContext?: unknown;
   /** Footer data provider (for core segments that need git, extension statuses) */
   footerData?: unknown;
+  /** Label mode: compact (shortLabel) or labeled (full label) */
+  labelMode?: "compact" | "labeled";
 }
 
 /** Segment render function type */
@@ -184,6 +186,10 @@ export interface FooterSettings {
   separator: SeparatorStyle;
   /** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */
   iconStyle: IconStyle;
+  /** Zone separator string (between zones, default: "│") */
+  zoneSeparator?: string;
+  /** Show full labels instead of compact short labels */
+  showFullLabels?: boolean;
   /** Per-group settings */
   groups: Record<string, FooterGroupSettings>;
 }
@@ -211,4 +217,8 @@ export interface PresetDef {
   colors?: ColorScheme;
   /** Per-segment options */
   segmentOptions?: Record<string, Record<string, unknown>>;
+  /** Zone order (default: left, center, right) */
+  zoneOrder?: ("left" | "center" | "right")[];
+  /** Zone separator string (between zones) */
+  zoneSeparator?: string;
 }

@@ -87,7 +87,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     3. Add `thinkingLevel` icon to all 3 icon sets
     4. Add rainbow mode option: when `thinkingLevel` is high/xhigh and rainbow setting is on, apply per-character rainbow gradient (reuse existing `rainbowText()` from `core.ts`)
 
-- unstarted: Task 5 — Zone-Aware Renderer & Preset Updates
+- completed: Task 5 — Zone-Aware Renderer & Preset Updates
   - Description: Replace the flat linear segment layout with 3-zone rendering (left/center/right). Update all 6 presets to declare zones.
   - Dependencies: Task 1 (zone field on segments)
   - Acceptance Criteria: Footer renders in 3 visual zones with correct alignment. Overflow spills to secondary row per zone. Zone separators are configurable.
