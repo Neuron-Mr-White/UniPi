@@ -114,7 +114,7 @@ function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
 
 function renderApiStateSegment(ctx: FooterSegmentContext): RenderedSegment {
   // Show WEB to indicate the web-api package is active.
-  const content = withIcon("apiState", "WEB");
+  const content = "WEB";
   return { content: color(ctx, "model", content), visible: true };
 }
 
