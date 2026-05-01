@@ -231,7 +231,7 @@ export const TEXT_ICONS: IconSet = {
   searchQueries:   "QRY",
 
   // Memory
-  projectCount:    "mem",
+  projectCount:    "MEM",
   totalCount:      "MEM",
   consolidations:  "CNS",
 

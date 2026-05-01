@@ -7,7 +7,7 @@
  * Status keys from packages:
  *   "unipi-workflow" → "⚡ wf:brainstorm ✓ rl"  (active command shown)
  *   "ralph"          → "rl:loop-name 3/50"
- *   "unipi-memory"   → "⚡ mem 75p/101all"
+ *   "unipi-memory"   → "⚡ MEM 75p/101all"
  *   "subagents"      → various
  */
 
@@ -19,17 +19,16 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 /** Map status keys to short display names and segment IDs for icons */
 const STATUS_DISPLAY: Record<string, { short: string; segmentId: string }> = {
-  "unipi-workflow": { short: "wf", segmentId: "currentCommand" },
-  workflow: { short: "wf", segmentId: "currentCommand" },
-  ralph: { short: "rl", segmentId: "activeLoops" },
-  "unipi-memory": { short: "mem", segmentId: "projectCount" },
-  memory: { short: "mem", segmentId: "projectCount" },
-  compactor: { short: "cmp", segmentId: "compactions" },
-  mcp: { short: "mcp", segmentId: "serversTotal" },
-  notify: { short: "ntf", segmentId: "platformsEnabled" },
-  kanboard: { short: "kb", segmentId: "docsCount" },
-  info: { short: "info", segmentId: "extensionStatuses" },
-  subagents: { short: "sa", segmentId: "extensionStatuses" },
+  "unipi-workflow": { short: "WF", segmentId: "currentCommand" },
+  workflow: { short: "WF", segmentId: "currentCommand" },
+  ralph: { short: "RL", segmentId: "activeLoops" },
+  memory: { short: "MEM", segmentId: "projectCount" },
+  compactor: { short: "CMP", segmentId: "compactions" },
+  mcp: { short: "MCP", segmentId: "serversTotal" },
+  notify: { short: "NTF", segmentId: "platformsEnabled" },
+  kanboard: { short: "KB", segmentId: "docsCount" },
+  info: { short: "INF", segmentId: "extensionStatuses" },
+  subagents: { short: "SA", segmentId: "extensionStatuses" },
 };
 
 /** Get the separator character for the current settings */
