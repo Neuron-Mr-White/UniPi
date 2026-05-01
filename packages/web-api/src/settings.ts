@@ -27,11 +27,41 @@ export interface CacheSettings {
   ttlMs: number;
 }
 
+/** Smart-fetch default settings */
+export interface SmartFetchSettings {
+  /** TLS fingerprint browser profile */
+  browser: string;
+  /** OS fingerprint */
+  os: string;
+  /** Maximum content characters */
+  maxChars: number;
+  /** Request timeout in ms */
+  timeoutMs: number;
+  /** Batch concurrency */
+  batchConcurrency: number;
+  /** Strip image references */
+  removeImages: boolean;
+  /** Include replies/comments */
+  includeReplies: boolean | "extractors";
+}
+
 /** Config storage structure */
 export interface WebApiConfig {
   providers: Record<string, ProviderSettings>;
   cache: CacheSettings;
+  smartFetch?: Partial<SmartFetchSettings>;
 }
+
+/** Default smart-fetch settings */
+const DEFAULT_SMART_FETCH_SETTINGS: SmartFetchSettings = {
+  browser: "chrome_145",
+  os: "windows",
+  maxChars: 50000,
+  timeoutMs: 15000,
+  batchConcurrency: 8,
+  removeImages: false,
+  includeReplies: "extractors",
+};
 
 /** Default configuration */
 const DEFAULT_CONFIG: WebApiConfig = {
@@ -49,6 +79,7 @@ const DEFAULT_CONFIG: WebApiConfig = {
     enabled: true,
     ttlMs: 3600000, // 1 hour
   },
+  smartFetch: {},
 };
 
 /**
@@ -260,4 +291,39 @@ export function validateApiKeyFormat(providerId: string, apiKey: string): boolea
       // Generic validation
       return apiKey.length >= 8;
   }
+}
+
+/**
+ * Load smart-fetch settings.
+ * Merges defaults with saved config.
+ * @returns Smart-fetch settings
+ */
+export function loadSmartFetchSettings(): SmartFetchSettings {
+  const config = loadConfig();
+  return {
+    ...DEFAULT_SMART_FETCH_SETTINGS,
+    ...config.smartFetch,
+  };
+}
+
+/**
+ * Save smart-fetch settings.
+ * @param settings - Partial settings to save
+ */
+export function saveSmartFetchSettings(settings: Partial<SmartFetchSettings>): void {
+  const config = loadConfig();
+  config.smartFetch = {
+    ...config.smartFetch,
+    ...settings,
+  };
+  saveConfig(config);
+}
+
+/**
+ * Reset smart-fetch settings to defaults.
+ */
+export function resetSmartFetchSettings(): void {
+  const config = loadConfig();
+  config.smartFetch = {};
+  saveConfig(config);
 }

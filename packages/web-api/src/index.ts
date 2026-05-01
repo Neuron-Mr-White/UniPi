@@ -2,7 +2,7 @@
  * @unipi/web-api — Extension entry
  *
  * Web search, read, and summarize tools with provider-based backend selection.
- * Provides agent tools: web-search, web-read, web-llm-summarize
+ * Provides agent tools: web-search, multi-web-content-read, web-llm-summarize
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -15,7 +15,8 @@ import {
 import { registerWebTools, WEB_TOOLS } from "./tools.js";
 import { registerWebCommands, WEB_COMMANDS } from "./commands.js";
 import { webCache } from "./cache.js";
-import { loadConfig } from "./settings.js";
+import { loadConfig, loadSmartFetchSettings } from "./settings.js";
+import { checkDependencies } from "./engine/dependencies.js";
 import "./providers/duckduckgo.js";
 import "./providers/jina-search.js";
 import "./providers/jina-reader.js";
@@ -79,6 +80,7 @@ export default function (pi: ExtensionAPI) {
           showByDefault: true,
           stats: [
             { id: "providers", label: "Enabled Providers", show: true },
+            { id: "smartFetch", label: "Smart-Fetch", show: true },
             { id: "cacheEntries", label: "Cache Entries", show: true },
             { id: "cacheSize", label: "Cache Size", show: true },
             { id: "expired", label: "Expired Entries", show: true },
@@ -91,8 +93,13 @@ export default function (pi: ExtensionAPI) {
             (p) => p.enabled
           ).length;
 
+          // Check smart-fetch engine availability
+          const deps = await checkDependencies();
+          const smartFetchStatus = deps.available ? "✓ Ready" : `Missing: ${deps.missing.join(", ")}`;
+
           return {
             providers: { value: String(enabledCount) },
+            smartFetch: { value: smartFetchStatus },
             cacheEntries: { value: String(stats.totalEntries) },
             cacheSize: { value: `${(stats.totalSizeBytes / 1024).toFixed(1)} KB` },
             expired: { value: String(stats.expiredEntries) },

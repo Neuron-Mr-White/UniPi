@@ -38,13 +38,20 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "*"
+    "@pi-unipi/core": "*",
+    "defuddle": "^0.18.1",
+    "linkedom": "^0.18.12",
+    "lodash": "^4.17.21",
+    "mime-types": "^2.1.35",
+    "wreq-js": "^2.3.0"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.24",
     "@types/node": "^25.6.0"
   }
 }
