@@ -155,38 +155,38 @@ export const EMOJI_ICONS: IconSet = {
   model:           "🤖",
   apiState:        "🔄",
   toolCount:       "🔧",
-  git:             "⎇",
+  git:             "🔀",
   context:         "🗄️",
   cost:            "💲",
-  tokens:          "⊛",
-  tokensIn:        "→",
-  tokensOut:       "←",
-  session:         "#",
-  hostname:        "⌂",
+  tokens:          "📊",
+  tokensIn:        "⬇️",
+  tokensOut:       "⬆️",
+  session:         "📋",
+  hostname:        "🏠",
   time:            "⏱",
 
-  tps:             "↑",
+  tps:             "⚡",
   clock:           "🕔",
   duration:        "⏱",
   thinkingLevel:   "💡",
 
   // Compactor
-  sessionEvents:   "⚡",
-  compactions:     "◧",
+  sessionEvents:   "📈",
+  compactions:     "🗜️",
   tokensSaved:     "💲",
-  compressionRatio:"⇄",
-  indexedDocs:     "☰",
-  sandboxRuns:     "▶",
-  searchQueries:   "⊗",
+  compressionRatio:"📐",
+  indexedDocs:     "📑",
+  sandboxRuns:     "▶️",
+  searchQueries:   "🔍",
 
   // Memory
   projectCount:    "🧠",
   totalCount:      "🧠",
-  consolidations:  "🧠",
+  consolidations:  "🔄",
 
   // MCP
   serversTotal:    "🖥️",
-  serversActive:   "●",
+  serversActive:   "🟢",
   toolsTotal:      "🔧",
   serversFailed:   "⚠️",
 
@@ -201,17 +201,17 @@ export const EMOJI_ICONS: IconSet = {
   commandDuration: "⏱",
 
   // Kanboard
-  docsCount:       "☰",
-  tasksDone:       "✓",
-  tasksTotal:      "☐",
-  taskPct:         "%",
+  docsCount:       "📑",
+  tasksDone:       "✅",
+  tasksTotal:      "📋",
+  taskPct:         "📊",
 
   // Notify
-  platformsEnabled:"♮",
+  platformsEnabled:"🔔",
   lastSent:        "⏱",
 
   // Extension status
-  extensionStatuses:"▦",
+  extensionStatuses:"🧩",
 
   separator:       "|",
 };

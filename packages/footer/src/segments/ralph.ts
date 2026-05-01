@@ -11,8 +11,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColor } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 
 
@@ -47,7 +48,13 @@ function renderActiveLoopsSegment(ctx: FooterSegmentContext): RenderedSegment {
   const maxIterations = data.maxIterations as number | undefined;
 
   // Always show when there's ralph data (even when off, to show red dot)
-  if (!active && !name && iteration === undefined) return { content: "", visible: false };
+  if (!active && !name && iteration === undefined) {
+    // Show muted placeholder when enabled but no data
+    if (isSegmentEnabled("ralph", "active_loops")) {
+      return { content: mutedPlaceholder("🔁 RL OFF"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
 
   const dot = active ? GREEN_DOT : RED_DOT;
 
@@ -73,7 +80,12 @@ function renderTotalIterationsSegment(ctx: FooterSegmentContext): RenderedSegmen
   const active = data.active === true;
   const lastIteration = data.lastIteration as Record<string, unknown> | undefined;
   const iteration = data.iteration ?? lastIteration?.iteration;
-  if (iteration === undefined || iteration === null) return { content: "", visible: false };
+  if (iteration === undefined || iteration === null) {
+    if (isSegmentEnabled("ralph", "total_iterations")) {
+      return { content: mutedPlaceholder("🔁 RL 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const maxIterations = data.maxIterations;
   const display = maxIterations ? `${iteration}/${maxIterations}` : `${iteration}`;
 
@@ -88,7 +100,12 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
   const data = getRalphData(ctx);
   const status = data.status as string | undefined;
   const name = data.name as string | undefined;
-  if (!status && !name) return { content: "", visible: false };
+  if (!status && !name) {
+    if (isSegmentEnabled("ralph", "loop_status")) {
+      return { content: mutedPlaceholder("🔁 RL OFF"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
 
   const ralphIcon = getIcon("activeLoops");
   const dot = status === "active" ? GREEN_DOT : status === "completed" ? GREEN_DOT : RED_DOT;
@@ -102,7 +119,7 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const RALPH_SEGMENTS: FooterSegment[] = [
-  { id: "active_loops", label: "Loops", shortLabel: "rl", description: "Active Ralph loops", zone: "center", icon: "", render: renderActiveLoopsSegment, defaultShow: true },
-  { id: "total_iterations", label: "Iterations", shortLabel: "itr", description: "Total Ralph loop iterations", zone: "center", icon: "", render: renderTotalIterationsSegment, defaultShow: true },
-  { id: "loop_status", label: "Status", shortLabel: "sts", description: "Current loop status", zone: "center", icon: "", render: renderLoopStatusSegment, defaultShow: true },
+  { id: "active_loops", label: "Loops", shortLabel: "RL", description: "Active Ralph loops", zone: "center", icon: "", render: renderActiveLoopsSegment, defaultShow: true },
+  { id: "total_iterations", label: "Iterations", shortLabel: "ITR", description: "Total Ralph loop iterations", zone: "center", icon: "", render: renderTotalIterationsSegment, defaultShow: true },
+  { id: "loop_status", label: "Status", shortLabel: "STS", description: "Current loop status", zone: "center", icon: "", render: renderLoopStatusSegment, defaultShow: true },
 ];

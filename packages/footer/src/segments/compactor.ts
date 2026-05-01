@@ -10,8 +10,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -50,7 +51,12 @@ function getSessionEvents(ctx: FooterSegmentContext): any[] {
 function renderSessionEventsSegment(ctx: FooterSegmentContext): RenderedSegment {
   const events = getSessionEvents(ctx);
   const count = events.length;
-  if (count === 0) return hidden();
+  if (count === 0) {
+    if (isSegmentEnabled("compactor", "session_events")) {
+      return { content: mutedPlaceholder("📈 CMP 0"), visible: true };
+    }
+    return hidden();
+  }
 
   const content = withIcon("sessionEvents", `${count}`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
@@ -66,7 +72,12 @@ function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
       compactionCount++;
     }
   }
-  if (compactionCount === 0) return hidden();
+  if (compactionCount === 0) {
+    if (isSegmentEnabled("compactor", "compactions")) {
+      return { content: mutedPlaceholder("🗜️ CMP 0"), visible: true };
+    }
+    return hidden();
+  }
 
   const content = withIcon("compactions", `${compactionCount}`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
@@ -125,11 +136,11 @@ function renderSearchQueriesSegment(_ctx: FooterSegmentContext): RenderedSegment
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [
-  { id: "session_events", label: "Session Events", shortLabel: "evt", description: "Number of session events", zone: "center", icon: "", render: renderSessionEventsSegment, defaultShow: true },
-  { id: "compactions", label: "Compactions", shortLabel: "cmp", description: "Number of context compactions", zone: "center", icon: "", render: renderCompactionsSegment, defaultShow: true },
-  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "svd", description: "Tokens saved by compaction", zone: "center", icon: "", render: renderTokensSavedSegment, defaultShow: true },
-  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "rat", description: "Last compaction compression ratio", zone: "center", icon: "", render: renderCompressionRatioSegment, defaultShow: false },
-  { id: "indexed_docs", label: "Indexed Docs", shortLabel: "idx", description: "Number of indexed documents", zone: "center", icon: "", render: renderIndexedDocsSegment, defaultShow: false },
-  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "sbx", description: "Number of sandbox code runs", zone: "center", icon: "", render: renderSandboxRunsSegment, defaultShow: false },
-  { id: "search_queries", label: "Search Queries", shortLabel: "qry", description: "Number of search queries", zone: "center", icon: "", render: renderSearchQueriesSegment, defaultShow: false },
+  { id: "session_events", label: "Session Events", shortLabel: "EVT", description: "Number of session events", zone: "center", icon: "", render: renderSessionEventsSegment, defaultShow: true },
+  { id: "compactions", label: "Compactions", shortLabel: "CMP", description: "Number of context compactions", zone: "center", icon: "", render: renderCompactionsSegment, defaultShow: true },
+  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "SVD", description: "Tokens saved by compaction", zone: "center", icon: "", render: renderTokensSavedSegment, defaultShow: true },
+  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "RAT", description: "Last compaction compression ratio", zone: "center", icon: "", render: renderCompressionRatioSegment, defaultShow: false },
+  { id: "indexed_docs", label: "Indexed Docs", shortLabel: "IDX", description: "Number of indexed documents", zone: "center", icon: "", render: renderIndexedDocsSegment, defaultShow: false },
+  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "SBX", description: "Number of sandbox code runs", zone: "center", icon: "", render: renderSandboxRunsSegment, defaultShow: false },
+  { id: "search_queries", label: "Search Queries", shortLabel: "QRY", description: "Number of search queries", zone: "center", icon: "", render: renderSearchQueriesSegment, defaultShow: false },
 ];

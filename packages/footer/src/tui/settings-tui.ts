@@ -65,10 +65,10 @@ function visibleWidth(text: string): number {
 
 // ─── Show the footer settings overlay ──────────────────────────────────
 
-export function showFooterSettings(ctx: any, groups: FooterGroup[]): void {
+export function showFooterSettings(ctx: any, groups: FooterGroup[], onSettingsChanged?: () => void): void {
   ctx.ui.custom(
     (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
-      const overlay = new FooterSettingsOverlay(groups);
+      const overlay = new FooterSettingsOverlay(groups, onSettingsChanged);
       overlay.onClose = () => done();
 
       return {
@@ -102,6 +102,7 @@ class FooterSettingsOverlay {
   private section: Section = "appearance";
   private selectedGroupId: string | null = null;
   onClose?: () => void;
+  private onSettingsChanged?: () => void;
 
   // Per-section SettingsList instances
   private appearanceList!: SettingsList;
@@ -109,9 +110,10 @@ class FooterSettingsOverlay {
   private segmentList: SettingsList | null = null;
   private labelsList!: SettingsList;
 
-  constructor(groups: FooterGroup[]) {
+  constructor(groups: FooterGroup[], onSettingsChanged?: () => void) {
     this.settings = loadFooterSettings();
     this.groups = groups;
+    this.onSettingsChanged = onSettingsChanged;
     this.buildAppearanceList();
     this.buildGroupList();
     this.buildLabelsList();
@@ -141,9 +143,58 @@ class FooterSettingsOverlay {
       return;
     }
 
-    // Escape / q — close
-    if (data === "\x1b" || data === "q") {
+    // q — always close
+    if (data === "q") {
       this.onClose?.();
+      return;
+    }
+
+    // Escape — back from drill-down, or close at root
+    if (data === "\x1b") {
+      if (this.section === "segments" && this.selectedGroupId) {
+        this.backToGroups();
+      } else {
+        this.onClose?.();
+      }
+      return;
+    }
+
+    // j — navigate down (same as down arrow)
+    if (data === "j") {
+      this.currentList?.handleInput("\x1b[B");
+      return;
+    }
+
+    // k — navigate up (same as up arrow)
+    if (data === "k") {
+      this.currentList?.handleInput("\x1b[A");
+      return;
+    }
+
+    // l — drill into group from segments section (same as Enter)
+    if (data === "l" && this.section === "segments" && !this.selectedGroupId) {
+      const focusedId = this.getFocusedGroupId();
+      if (focusedId) {
+        this.enterSegmentsMode(focusedId);
+      }
+      return;
+    }
+
+    // Space — toggle on/off
+    if (data === " ") {
+      this.currentList?.handleInput("\r");
+      return;
+    }
+
+    // h — back from segment drill-down
+    if (data === "h" && this.section === "segments" && this.selectedGroupId) {
+      this.backToGroups();
+      return;
+    }
+
+    // / — focus search in segments section
+    if (data === "/") {
+      this.currentList?.handleInput("/");
       return;
     }
 
@@ -157,7 +208,7 @@ class FooterSettingsOverlay {
     }
 
     // Left arrow / backspace in segment drill-down — back to groups
-    if (this.section === "segments" && this.selectedGroupId && (data === "\x1b[D" || data === "h" || data === "\x7f")) {
+    if (this.section === "segments" && this.selectedGroupId && (data === "\x1b[D" || data === "\x7f")) {
       this.backToGroups();
       return;
     }
@@ -328,6 +379,7 @@ class FooterSettingsOverlay {
     }
     saveFooterSettings(this.settings);
     this.appearanceList.updateValue(id, newValue);
+    this.onSettingsChanged?.();
   }
 
   private onGroupChange(groupId: string, newValue: string): void {
@@ -336,6 +388,7 @@ class FooterSettingsOverlay {
     this.settings.groups[groupId] = groupSettings;
     saveFooterSettings(this.settings);
     this.groupList.updateValue(groupId, newValue);
+    this.onSettingsChanged?.();
   }
 
   private onSegmentChange(groupId: string, segmentId: string, newValue: string): void {
@@ -345,6 +398,7 @@ class FooterSettingsOverlay {
     this.settings.groups[groupId] = groupSettings;
     saveFooterSettings(this.settings);
     this.segmentList?.updateValue(segmentId, newValue);
+    this.onSettingsChanged?.();
   }
 
   private onLabelsChange(id: string, newValue: string): void {
@@ -360,6 +414,7 @@ class FooterSettingsOverlay {
     }
     saveFooterSettings(this.settings);
     this.labelsList.updateValue(id, newValue);
+    this.onSettingsChanged?.();
   }
 
   // ─── Section navigation ────────────────────────────────────────────
@@ -415,11 +470,11 @@ class FooterSettingsOverlay {
 
     let hints: string;
     if (this.section === "segments" && this.selectedGroupId) {
-      hints = "↑↓ navigate · Space toggle · ← back · / search · q close";
+      hints = "j/k navigate · Space toggle · h/Esc back · / search · q close";
     } else if (this.section === "segments") {
-      hints = "↑↓ navigate · Space toggle · Enter segments · / search · q close";
+      hints = "j/k navigate · Space toggle · l/Enter segments · / search · q close";
     } else {
-      hints = "↑↓ navigate · Space/Enter change · Tab section · q close";
+      hints = "j/k navigate · Space/Enter change · Tab section · q close";
     }
     lines.push(frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
     lines.push(borderLine(innerWidth, "bottom"));

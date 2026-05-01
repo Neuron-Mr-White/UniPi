@@ -18,8 +18,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -81,6 +82,9 @@ function getMemoryCounts(): { project: number | null; total: number | null } {
 function renderProjectCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   const counts = getMemoryCounts();
   if (counts.project === null) {
+    if (isSegmentEnabled("memory", "project_count")) {
+      return { content: mutedPlaceholder("🧠 MEM 0"), visible: true };
+    }
     return { content: "", visible: false };
   }
 
@@ -136,7 +140,7 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
 }
 
 export const MEMORY_SEGMENTS: FooterSegment[] = [
-  { id: "project_count", label: "Project Memory", shortLabel: "mem", description: "Memory entries for this project", zone: "center", icon: "", render: renderProjectCountSegment, defaultShow: true },
-  { id: "total_count", label: "Total Memory", shortLabel: "tot", description: "Total memory entries across projects", zone: "center", icon: "", render: renderTotalCountSegment, defaultShow: true },
-  { id: "consolidations", label: "Consolidations", shortLabel: "cns", description: "Number of memory consolidations", zone: "center", icon: "", render: renderConsolidationsSegment, defaultShow: false },
+  { id: "project_count", label: "Project Memory", shortLabel: "MEM", description: "Memory entries for this project", zone: "center", icon: "", render: renderProjectCountSegment, defaultShow: true },
+  { id: "total_count", label: "Total Memory", shortLabel: "TOT", description: "Total memory entries across projects", zone: "center", icon: "", render: renderTotalCountSegment, defaultShow: true },
+  { id: "consolidations", label: "Consolidations", shortLabel: "CNS", description: "Number of memory consolidations", zone: "center", icon: "", render: renderConsolidationsSegment, defaultShow: false },
 ];

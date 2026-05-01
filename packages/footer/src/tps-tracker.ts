@@ -1,139 +1,202 @@
 /**
  * @pi-unipi/footer — TPS (Tokens Per Second) tracker
  *
- * Sliding-window TPS calculation for live generation rate display.
- * Maintains a rolling buffer of token events for live TPS and
- * cumulative totals for session average.
+ * Per-message TPS calculation for live generation rate display.
+ * Tracks individual assistant messages with start/stop timestamps
+ * to measure generation rate excluding idle/tool-execution time.
  */
 
-/** A single token event in the sliding buffer */
-interface TokenEvent {
-  /** Timestamp of the event (Date.now()) */
-  timestamp: number;
-  /** Cumulative output token count at this event */
-  cumulativeOutput: number;
+/** Per-message TPS record */
+interface MessageTpsRecord {
+  /** Message index in the session */
+  messageIndex: number;
+  /** Output tokens for this message */
+  outputTokens: number;
+  /** When generation started (Date.now()) */
+  startedAt: number;
+  /** When generation completed (Date.now()), 0 if still generating */
+  completedAt: number;
+  /** Computed TPS for this message */
+  tps: number;
 }
 
-/** Sliding window duration in milliseconds */
-const WINDOW_MS = 3000;
-
-/** Time since last event to consider generation "idle" */
-const IDLE_THRESHOLD_MS = 2000;
-
 /**
- * Tracks output token events and computes TPS metrics.
+ * Tracks per-message TPS and computes live/session metrics.
  *
- * Usage: Call `onTokenEvent()` whenever output tokens change.
- * The tracker maintains a sliding 3-second window for live TPS
- * and cumulative totals for session average.
+ * Usage: Call `onMessageUpdate()` whenever output tokens change.
+ * The tracker records generation start/stop per message and computes
+ * live TPS from the current message and session averages excluding idle time.
  */
 export class TpsTracker {
-  /** Sliding buffer of token events (kept within WINDOW_MS) */
-  private buffer: TokenEvent[] = [];
+  /** Per-message records */
+  private records: MessageTpsRecord[] = [];
 
-  /** Total output tokens for the session */
+  /** Highest message index seen so far (for dedup) */
+  private lastSeenMessageCount = 0;
+
+  /** Total output tokens across all completed messages */
   private totalOutput = 0;
 
-  /** Session start timestamp */
-  private sessionStart = 0;
-
-  /** Previous cumulative output (to detect deltas) */
-  private lastCumulativeOutput = 0;
-
-  /** Whether the session has started */
-  private started = false;
-
   /**
-   * Record a token event. Call this when output token count changes.
-   * @param timestamp Current time (Date.now())
-   * @param cumulativeOutput Total output tokens so far
+   * Update with the latest message data from the session.
+   * Call this on every tick (e.g. 1s interval) with the current state.
+   *
+   * @param messageIndex - Index of the assistant message (0-based, sequential)
+   * @param outputTokens - Output tokens for this message
+   * @param hasStopReason - Whether this message has completed (has stopReason)
    */
-  onTokenEvent(timestamp: number, cumulativeOutput: number): void {
-    if (!this.started) {
-      this.started = true;
-      this.sessionStart = timestamp;
+  onMessageUpdate(messageIndex: number, outputTokens: number, hasStopReason: boolean): void {
+    const now = Date.now();
+
+    // New message — create a record
+    if (messageIndex >= this.records.length) {
+      // Fill gaps if indices jump
+      while (this.records.length < messageIndex) {
+        this.records.push({
+          messageIndex: this.records.length,
+          outputTokens: 0,
+          startedAt: 0,
+          completedAt: 0,
+          tps: 0,
+        });
+      }
+
+      if (hasStopReason && outputTokens > 0) {
+        // Fast message: already completed on first sighting
+        // Estimate duration: floor of 1 second, or outputTokens/100, whichever is smaller
+        const estimatedDuration = Math.max(1, outputTokens / 100);
+        const tps = outputTokens / estimatedDuration;
+
+        this.records.push({
+          messageIndex,
+          outputTokens,
+          startedAt: now - estimatedDuration * 1000,
+          completedAt: now,
+          tps,
+        });
+        this.totalOutput += outputTokens;
+      } else {
+        // Just started — mark start time
+        this.records.push({
+          messageIndex,
+          outputTokens,
+          startedAt: now,
+          completedAt: 0,
+          tps: 0,
+        });
+      }
+      this.lastSeenMessageCount = messageIndex + 1;
+      return;
     }
 
-    // Only record if there's actual new output
-    if (cumulativeOutput <= this.lastCumulativeOutput) return;
+    // Update existing message
+    const record = this.records[messageIndex];
+    if (!record) return;
 
-    const delta = cumulativeOutput - this.lastCumulativeOutput;
-    this.totalOutput += delta;
-    this.lastCumulativeOutput = cumulativeOutput;
+    record.outputTokens = outputTokens;
 
-    this.buffer.push({ timestamp, cumulativeOutput });
-    this.evictOld(timestamp);
+    if (record.completedAt === 0 && hasStopReason) {
+      // Message just completed
+      record.completedAt = now;
+      const durationSec = (record.completedAt - record.startedAt) / 1000;
+      record.tps = durationSec > 0 ? outputTokens / durationSec : outputTokens;
+      this.totalOutput += outputTokens;
+    } else if (record.completedAt === 0) {
+      // Still generating — update output tokens (live TPS computed on demand)
+    }
   }
 
   /**
-   * Get the live TPS rate from the sliding window.
-   * Returns 0 if not enough data.
+   * Get the live TPS from the currently generating message.
+   * Returns the instantaneous rate based on tokens generated so far
+   * in the current message divided by elapsed time.
    */
   getLiveTps(): number {
-    const now = Date.now();
-    this.evictOld(now);
-
-    if (this.buffer.length < 2) return 0;
-
-    const oldest = this.buffer[0];
-    const newest = this.buffer[this.buffer.length - 1];
-    const timeDeltaSec = (newest.timestamp - oldest.timestamp) / 1000;
-
-    if (timeDeltaSec <= 0) return 0;
-
-    const tokenDelta = newest.cumulativeOutput - oldest.cumulativeOutput;
-    return tokenDelta / timeDeltaSec;
+    // Find the last record that's still generating
+    for (let i = this.records.length - 1; i >= 0; i--) {
+      const record = this.records[i];
+      if (record.completedAt === 0 && record.startedAt > 0) {
+        // Currently generating
+        const elapsedSec = (Date.now() - record.startedAt) / 1000;
+        if (elapsedSec <= 0) return 0;
+        return record.outputTokens / elapsedSec;
+      }
+    }
+    // No active generation — return the last completed message's TPS
+    if (this.records.length > 0) {
+      const last = this.records[this.records.length - 1];
+      return last.tps;
+    }
+    return 0;
   }
 
   /**
-   * Get the session average TPS.
-   * Returns 0 if session hasn't started or no time has elapsed.
+   * Get the session average TPS, excluding idle/tool-execution time.
+   * Computed as total output tokens / total generation time.
    */
   getSessionAvgTps(): number {
-    if (!this.started) return 0;
+    let totalTokens = 0;
+    let totalDurationSec = 0;
 
-    const elapsedSec = (Date.now() - this.sessionStart) / 1000;
-    if (elapsedSec <= 0) return 0;
+    for (const record of this.records) {
+      if (record.completedAt > 0 && record.startedAt > 0) {
+        totalTokens += record.outputTokens;
+        totalDurationSec += (record.completedAt - record.startedAt) / 1000;
+      }
+    }
 
-    return this.totalOutput / elapsedSec;
+    // Include currently generating message in average
+    for (let i = this.records.length - 1; i >= 0; i--) {
+      if (this.records[i].completedAt === 0 && this.records[i].startedAt > 0) {
+        totalTokens += this.records[i].outputTokens;
+        totalDurationSec += (Date.now() - this.records[i].startedAt) / 1000;
+        break;
+      }
+    }
+
+    if (totalDurationSec <= 0) return 0;
+    return totalTokens / totalDurationSec;
   }
 
   /**
-   * Whether the model is currently generating tokens.
-   * True if there are events within the last 2 seconds.
+   * Whether the model is currently streaming tokens.
+   * True if the latest message has started but not completed.
+   */
+  isStreaming(): boolean {
+    if (this.records.length === 0) return false;
+    const last = this.records[this.records.length - 1];
+    return last.startedAt > 0 && last.completedAt === 0;
+  }
+
+  /**
+   * Whether the model was recently generating tokens.
+   * Kept for backward compatibility with renderer.
    */
   isGenerating(): boolean {
-    if (this.buffer.length === 0) return false;
-    const lastEvent = this.buffer[this.buffer.length - 1];
-    return (Date.now() - lastEvent.timestamp) < IDLE_THRESHOLD_MS;
+    return this.isStreaming();
   }
 
   /**
    * Get total output tokens for the session.
    */
   getTotalOutput(): number {
-    return this.totalOutput;
+    // Include tokens from incomplete messages too
+    let total = this.totalOutput;
+    for (const record of this.records) {
+      if (record.completedAt === 0 && record.startedAt > 0) {
+        total += record.outputTokens;
+      }
+    }
+    return total;
   }
 
   /**
    * Reset the tracker (e.g., on session shutdown).
    */
   reset(): void {
-    this.buffer = [];
+    this.records = [];
+    this.lastSeenMessageCount = 0;
     this.totalOutput = 0;
-    this.sessionStart = 0;
-    this.lastCumulativeOutput = 0;
-    this.started = false;
-  }
-
-  /**
-   * Evict events older than WINDOW_MS from the buffer.
-   */
-  private evictOld(now: number): void {
-    const cutoff = now - WINDOW_MS;
-    while (this.buffer.length > 0 && this.buffer[0].timestamp < cutoff) {
-      this.buffer.shift();
-    }
   }
 }
 

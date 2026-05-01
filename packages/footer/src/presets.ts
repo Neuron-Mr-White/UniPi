@@ -26,7 +26,6 @@ const DEFAULT_PRESET: PresetDef = {
   secondarySegments: [
     "session",
   ],
-  separator: "powerline-thin",
   colors: getDefaultColors(),
 };
 
@@ -40,7 +39,6 @@ const MINIMAL_PRESET: PresetDef = {
     "clock",
   ],
   secondarySegments: [],
-  separator: "pipe",
   colors: getDefaultColors(),
 };
 
@@ -54,7 +52,6 @@ const COMPACT_PRESET: PresetDef = {
     "clock", "duration",
   ],
   secondarySegments: [],
-  separator: "dot",
   colors: getDefaultColors(),
 };
 
@@ -80,7 +77,6 @@ const FULL_PRESET: PresetDef = {
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],
-  separator: "powerline-thin",
   colors: getDefaultColors(),
 };
 
@@ -106,7 +102,6 @@ const NERD_PRESET: PresetDef = {
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],
-  separator: "powerline",
   colors: getDefaultColors(),
 };
 
@@ -120,7 +115,6 @@ const ASCII_PRESET: PresetDef = {
     "clock", "duration",
   ],
   secondarySegments: [],
-  separator: "ascii",
   colors: getDefaultColors(),
 };
 

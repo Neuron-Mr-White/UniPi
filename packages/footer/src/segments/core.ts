@@ -238,7 +238,7 @@ function getTpsSemanticColor(tps: number): SemanticColor {
 }
 
 function renderTpsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const generating = tpsTracker.isGenerating();
+  const streaming = tpsTracker.isStreaming();
   const liveTps = tpsTracker.getLiveTps();
   const avgTps = tpsTracker.getSessionAvgTps();
 
@@ -247,12 +247,12 @@ function renderTpsSegment(ctx: FooterSegmentContext): RenderedSegment {
 
   const icon = getIcon("tps");
 
-  if (generating && liveTps > 0) {
+  if (streaming && liveTps > 0) {
     // Active generation: show live rate + avg
     const liveDisplay = Math.round(liveTps);
     const avgDisplay = Math.round(avgTps);
-    const liveText = `\u2191 ${liveDisplay} t/s`;
-    const avgText = `avg ${avgDisplay}`;
+    const liveText = `\u2191 ${liveDisplay} T/S`;
+    const avgText = `AVG ${avgDisplay}`;
     const liveColored = applyColor(getTpsSemanticColor(liveTps), liveText, ctx.theme, ctx.colors);
     const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
     const content = icon ? `${icon} ${liveColored} \u00b7 ${avgColored}` : `${liveColored} \u00b7 ${avgColored}`;
@@ -261,10 +261,10 @@ function renderTpsSegment(ctx: FooterSegmentContext): RenderedSegment {
 
   // Idle: show session average
   const avgDisplay = Math.round(avgTps);
-  const avgText = `avg ${avgDisplay} t/s`;
+  const avgText = `AVG ${avgDisplay} T/S`;
   const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
   const content = icon ? `${icon} ${avgColored}` : avgColored;
-  return { content: avgColored, visible: true };
+  return { content, visible: true };
 }
 
 function renderClockSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -332,19 +332,19 @@ function renderThinkingLevelSegment(ctx: FooterSegmentContext): RenderedSegment 
 // ─── Core segments array ────────────────────────────────────────────────────
 
 export const CORE_SEGMENTS: FooterSegment[] = [
-  { id: "model", label: "Model", shortLabel: "mdl", description: "Current model name", zone: "left", icon: "", render: renderModelSegment, defaultShow: true },
-  { id: "api_state", label: "API", shortLabel: "api", description: "API connection state", zone: "left", icon: "", render: renderApiStateSegment, defaultShow: true },
-  { id: "tool_count", label: "Tool Count", shortLabel: "tls", description: "Number of tools available", zone: "left", icon: "", render: renderToolCountSegment, defaultShow: true },
-  { id: "git", label: "Git", shortLabel: "git", description: "Current git branch + dirty/clean status", zone: "left", icon: "", render: renderGitSegment, defaultShow: true },
-  { id: "tps", label: "TPS", shortLabel: "tps", description: "Tokens per second \u2014 live during generation", zone: "center", icon: "", render: renderTpsSegment, defaultShow: true },
-  { id: "context_pct", label: "Context %", shortLabel: "ctx", description: "Context window usage percentage", zone: "center", icon: "", render: renderContextPctSegment, defaultShow: true },
-  { id: "cost", label: "Cost", shortLabel: "cst", description: "Session cost in USD", zone: "center", icon: "", render: renderCostSegment, defaultShow: true },
-  { id: "tokens_total", label: "Tokens Total", shortLabel: "tok", description: "Total tokens used this session", zone: "center", icon: "", render: renderTokensSegment("total"), defaultShow: false },
-  { id: "tokens_in", label: "Tokens In", shortLabel: "tin", description: "Input tokens consumed", zone: "center", icon: "", render: renderTokensSegment("in"), defaultShow: false },
-  { id: "tokens_out", label: "Tokens Out", shortLabel: "tout", description: "Output tokens generated", zone: "center", icon: "", render: renderTokensSegment("out"), defaultShow: false },
-  { id: "session", label: "Session", shortLabel: "ses", description: "Session identifier", zone: "left", icon: "", render: renderSessionSegment, defaultShow: false },
-  { id: "hostname", label: "Hostname", shortLabel: "hst", description: "Machine hostname", zone: "left", icon: "", render: renderHostnameSegment, defaultShow: false },
-  { id: "clock", label: "Clock", shortLabel: "clk", description: "Current wall time (HH:MM:SS)", zone: "right", icon: "", render: renderClockSegment, defaultShow: true },
-  { id: "duration", label: "Duration", shortLabel: "dur", description: "Session duration", zone: "right", icon: "", render: renderDurationSegment, defaultShow: true },
-  { id: "thinking_level", label: "Thinking", shortLabel: "thk", description: "Current model thinking level", zone: "center", icon: "", render: renderThinkingLevelSegment, defaultShow: false },
+  { id: "model", label: "Model", shortLabel: "MDL", description: "Current model name", zone: "left", icon: "", render: renderModelSegment, defaultShow: true },
+  { id: "api_state", label: "API", shortLabel: "API", description: "API connection state", zone: "left", icon: "", render: renderApiStateSegment, defaultShow: true },
+  { id: "tool_count", label: "Tool Count", shortLabel: "TLS", description: "Number of tools available", zone: "left", icon: "", render: renderToolCountSegment, defaultShow: true },
+  { id: "git", label: "Git", shortLabel: "GIT", description: "Current git branch + dirty/clean status", zone: "left", icon: "", render: renderGitSegment, defaultShow: true },
+  { id: "tps", label: "TPS", shortLabel: "TPS", description: "Tokens per second \u2014 live during generation", zone: "center", icon: "", render: renderTpsSegment, defaultShow: true },
+  { id: "context_pct", label: "Context %", shortLabel: "CTX", description: "Context window usage percentage", zone: "center", icon: "", render: renderContextPctSegment, defaultShow: true },
+  { id: "cost", label: "Cost", shortLabel: "CST", description: "Session cost in USD", zone: "center", icon: "", render: renderCostSegment, defaultShow: true },
+  { id: "tokens_total", label: "Tokens Total", shortLabel: "TOK", description: "Total tokens used this session", zone: "center", icon: "", render: renderTokensSegment("total"), defaultShow: false },
+  { id: "tokens_in", label: "Tokens In", shortLabel: "TIN", description: "Input tokens consumed", zone: "center", icon: "", render: renderTokensSegment("in"), defaultShow: false },
+  { id: "tokens_out", label: "Tokens Out", shortLabel: "TOUT", description: "Output tokens generated", zone: "center", icon: "", render: renderTokensSegment("out"), defaultShow: false },
+  { id: "session", label: "Session", shortLabel: "SES", description: "Session identifier", zone: "left", icon: "", render: renderSessionSegment, defaultShow: false },
+  { id: "hostname", label: "Hostname", shortLabel: "HST", description: "Machine hostname", zone: "left", icon: "", render: renderHostnameSegment, defaultShow: false },
+  { id: "clock", label: "Clock", shortLabel: "CLK", description: "Current wall time (HH:MM:SS)", zone: "right", icon: "", render: renderClockSegment, defaultShow: true },
+  { id: "duration", label: "Duration", shortLabel: "DUR", description: "Session duration", zone: "right", icon: "", render: renderDurationSegment, defaultShow: true },
+  { id: "thinking_level", label: "Thinking", shortLabel: "THK", description: "Current model thinking level", zone: "center", icon: "", render: renderThinkingLevelSegment, defaultShow: false },
 ];

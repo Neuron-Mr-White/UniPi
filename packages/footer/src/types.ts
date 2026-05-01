@@ -211,8 +211,6 @@ export interface PresetDef {
   rightSegments: string[];
   /** Secondary row segments (shown when terminal is narrow) */
   secondarySegments: string[];
-  /** Separator style for this preset */
-  separator: SeparatorStyle;
   /** Color scheme for this preset */
   colors?: ColorScheme;
   /** Per-segment options */

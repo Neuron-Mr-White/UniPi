@@ -154,22 +154,24 @@ function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
     // Start periodic refresh for time-sensitive segments (e.g. clock)
     if (!state.refreshTimer) {
       state.refreshTimer = setInterval(() => {
-        // Feed TPS tracker with current output token count
+        // Feed TPS tracker with per-message data
         try {
           const piCtx = state.piContext as Record<string, unknown> | undefined;
           if (piCtx?.sessionManager) {
             const sm = (piCtx as any).sessionManager;
             const events = sm?.getBranch?.() ?? [];
-            let totalOutput = 0;
+            let msgIndex = 0;
             for (const e of events) {
               if (!e || typeof e !== "object") continue;
               if (e.type !== "message") continue;
               const m = e.message;
               if (!m || m.role !== "assistant") continue;
               if (m.stopReason === "error" || m.stopReason === "aborted") continue;
-              totalOutput += m.usage?.output ?? 0;
+              const output = m.usage?.output ?? 0;
+              const hasStop = !!m.stopReason;
+              tpsTracker.onMessageUpdate(msgIndex, output, hasStop);
+              msgIndex++;
             }
-            tpsTracker.onTokenEvent(Date.now(), totalOutput);
           }
         } catch {
           // Silently ignore — TPS is best-effort

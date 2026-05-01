@@ -120,5 +120,5 @@ function renderExtensionStatusesSegment(ctx: FooterSegmentContext): RenderedSegm
 }
 
 export const STATUS_EXT_SEGMENTS: FooterSegment[] = [
-  { id: "extension_statuses", label: "Extensions", shortLabel: "ext", description: "Extension statuses overview", zone: "center", icon: "", render: renderExtensionStatusesSegment, defaultShow: true },
+  { id: "extension_statuses", label: "Extensions", shortLabel: "EXT", description: "Extension statuses overview", zone: "center", icon: "", render: renderExtensionStatusesSegment, defaultShow: true },
 ];

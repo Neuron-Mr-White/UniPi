@@ -6,8 +6,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -23,7 +24,12 @@ function getNotifyData(ctx: FooterSegmentContext): Record<string, unknown> {
 function renderPlatformsEnabledSegment(ctx: FooterSegmentContext): RenderedSegment {
   const data = getNotifyData(ctx);
   const platforms = data.platforms as string[] | undefined;
-  if (!platforms || platforms.length === 0) return { content: "", visible: false };
+  if (!platforms || platforms.length === 0) {
+    if (isSegmentEnabled("notify", "platforms_enabled")) {
+      return { content: mutedPlaceholder("NTF OFF"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
 
   const content = withIcon("platformsEnabled", platforms.join(","));
   return { content: applyColor("notify", content, ctx.theme, ctx.colors), visible: true };
@@ -32,7 +38,12 @@ function renderPlatformsEnabledSegment(ctx: FooterSegmentContext): RenderedSegme
 function renderLastSentSegment(ctx: FooterSegmentContext): RenderedSegment {
   const data = getNotifyData(ctx);
   const timestamp = data.timestamp as string | undefined;
-  if (!timestamp) return { content: "", visible: false };
+  if (!timestamp) {
+    if (isSegmentEnabled("notify", "last_sent")) {
+      return { content: mutedPlaceholder("NTF 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
 
   // Show relative time
   const sent = new Date(timestamp);
@@ -45,6 +56,6 @@ function renderLastSentSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const NOTIFY_SEGMENTS: FooterSegment[] = [
-  { id: "platforms_enabled", label: "Platforms", shortLabel: "ntf", description: "Active notification platforms", zone: "center", icon: "", render: renderPlatformsEnabledSegment, defaultShow: true },
-  { id: "last_sent", label: "Last Sent", shortLabel: "lst", description: "Time of last notification sent", zone: "center", icon: "", render: renderLastSentSegment, defaultShow: true },
+  { id: "platforms_enabled", label: "Platforms", shortLabel: "NTF", description: "Active notification platforms", zone: "center", icon: "", render: renderPlatformsEnabledSegment, defaultShow: true },
+  { id: "last_sent", label: "Last Sent", shortLabel: "LST", description: "Time of last notification sent", zone: "center", icon: "", render: renderLastSentSegment, defaultShow: true },
 ];

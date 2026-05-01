@@ -13,8 +13,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 /** Shape of aggregate MCP stats from globalThis or registry */
 interface McpStats {
@@ -64,21 +65,37 @@ function hasUsefulValue(value: unknown): value is number {
 
 function renderServersTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const stats = getMcpStats(ctx);
-  if (!hasUsefulValue(stats.serversTotal)) return { content: "", visible: false };
+  if (!hasUsefulValue(stats.serversTotal)) {
+    if (isSegmentEnabled("mcp", "servers_total")) {
+      return { content: mutedPlaceholder("🖥️ MCP 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("serversTotal", `${stats.serversTotal}`);
   return { content: applyColor("mcp", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderServersActiveSegment(ctx: FooterSegmentContext): RenderedSegment {
   const stats = getMcpStats(ctx);
-  if (!hasUsefulValue(stats.serversActive)) return { content: "", visible: false };
+  if (!hasUsefulValue(stats.serversActive)) {
+    if (isSegmentEnabled("mcp", "servers_active")) {
+      const total = stats.serversTotal ?? 0;
+      return { content: mutedPlaceholder(`🖥️ MCP ${total}/0`), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("serversActive", `${stats.serversActive}`);
   return { content: applyColor("mcp", content, ctx.theme, ctx.colors), visible: true };
 }
 
 function renderToolsTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const stats = getMcpStats(ctx);
-  if (!hasUsefulValue(stats.toolsTotal)) return { content: "", visible: false };
+  if (!hasUsefulValue(stats.toolsTotal)) {
+    if (isSegmentEnabled("mcp", "tools_total")) {
+      return { content: mutedPlaceholder("🖥️ MCP 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("toolsTotal", `${stats.toolsTotal}`);
   return { content: applyColor("mcp", content, ctx.theme, ctx.colors), visible: true };
 }
@@ -93,8 +110,8 @@ function renderServersFailedSegment(ctx: FooterSegmentContext): RenderedSegment 
 }
 
 export const MCP_SEGMENTS: FooterSegment[] = [
-  { id: "servers_total", label: "Servers", shortLabel: "srv", description: "Total MCP servers configured", zone: "center", icon: "", render: renderServersTotalSegment, defaultShow: true },
-  { id: "servers_active", label: "Active", shortLabel: "act", description: "Currently connected MCP servers", zone: "center", icon: "", render: renderServersActiveSegment, defaultShow: true },
-  { id: "tools_total", label: "Tools", shortLabel: "tls", description: "Total MCP tools available", zone: "center", icon: "", render: renderToolsTotalSegment, defaultShow: true },
-  { id: "servers_failed", label: "Failed", shortLabel: "err", description: "Failed MCP server connections", zone: "center", icon: "", render: renderServersFailedSegment, defaultShow: true },
+  { id: "servers_total", label: "Servers", shortLabel: "SRV", description: "Total MCP servers configured", zone: "center", icon: "", render: renderServersTotalSegment, defaultShow: true },
+  { id: "servers_active", label: "Active", shortLabel: "ACT", description: "Currently connected MCP servers", zone: "center", icon: "", render: renderServersActiveSegment, defaultShow: true },
+  { id: "tools_total", label: "Tools", shortLabel: "TLS", description: "Total MCP tools available", zone: "center", icon: "", render: renderToolsTotalSegment, defaultShow: true },
+  { id: "servers_failed", label: "Failed", shortLabel: "ERR", description: "Failed MCP server connections", zone: "center", icon: "", render: renderServersFailedSegment, defaultShow: true },
 ];

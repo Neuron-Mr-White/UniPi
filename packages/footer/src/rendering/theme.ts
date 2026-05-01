@@ -8,6 +8,11 @@
 import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "../types.js";
 
+/** Wrap text in dim ANSI codes for muted placeholder display */
+export function mutedPlaceholder(text: string): string {
+  return `\x1b[2m${text}\x1b[0m`;
+}
+
 /** Default semantic-to-theme-color mapping */
 const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor | `#${string}`> = {
   // ── Model & Identity (Left zone) ──

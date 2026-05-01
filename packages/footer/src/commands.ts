@@ -90,7 +90,12 @@ export function registerCommands(
       }
 
       if (groups && groups.length > 0) {
-        showFooterSettings(ctx, groups);
+        showFooterSettings(ctx, groups, () => {
+          // Re-read settings and update renderer
+          const updated = loadFooterSettings();
+          state.renderer.setPreset(updated.preset);
+          state.renderer.resetLayoutCache();
+        });
       } else {
         // Fallback: show text summary
         const settings = loadFooterSettings();

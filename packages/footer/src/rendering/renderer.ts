@@ -201,7 +201,7 @@ export class FooterRenderer {
       return this.lastLayoutResult;
     }
 
-    const sepDef = getSeparator(presetDef.separator);
+    const sepDef = getSeparator(settings.separator);
     const sepWidth = visibleWidth(sepDef.left) + 2;
     const zoneSep = presetDef.zoneSeparator ?? settings.zoneSeparator ?? "\u2502";
     const zoneSepWidth = visibleWidth(zoneSep) + 2; // +2 for spaces around zone sep

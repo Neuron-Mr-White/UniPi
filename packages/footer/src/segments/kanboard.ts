@@ -7,8 +7,9 @@
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor } from "../rendering/theme.js";
+import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
+import { isSegmentEnabled } from "../config.js";
 
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
@@ -32,7 +33,12 @@ function getKanboardData(): Record<string, unknown> | null {
 function renderDocsCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
   const value = kb?.docsCount;
-  if (value === undefined || value === null) return { content: "", visible: false };
+  if (value === undefined || value === null) {
+    if (isSegmentEnabled("kanboard", "docs_count")) {
+      return { content: mutedPlaceholder("KB 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("docsCount", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }
@@ -40,7 +46,12 @@ function renderDocsCountSegment(ctx: FooterSegmentContext): RenderedSegment {
 function renderTasksDoneSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
   const value = kb?.tasksDone;
-  if (value === undefined || value === null) return { content: "", visible: false };
+  if (value === undefined || value === null) {
+    if (isSegmentEnabled("kanboard", "tasks_done")) {
+      return { content: mutedPlaceholder("KB 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("tasksDone", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }
@@ -48,7 +59,12 @@ function renderTasksDoneSegment(ctx: FooterSegmentContext): RenderedSegment {
 function renderTasksTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const kb = getKanboardData();
   const value = kb?.tasksTotal;
-  if (value === undefined || value === null) return { content: "", visible: false };
+  if (value === undefined || value === null) {
+    if (isSegmentEnabled("kanboard", "tasks_total")) {
+      return { content: mutedPlaceholder("KB 0"), visible: true };
+    }
+    return { content: "", visible: false };
+  }
   const content = withIcon("tasksTotal", `${value}`);
   return { content: applyColor("kanboard", content, ctx.theme, ctx.colors), visible: true };
 }
@@ -68,8 +84,8 @@ function renderTaskPctSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const KANBOARD_SEGMENTS: FooterSegment[] = [
-  { id: "docs_count", label: "Docs", shortLabel: "doc", description: "Workflow documents count", zone: "center", icon: "", render: renderDocsCountSegment, defaultShow: true },
-  { id: "tasks_done", label: "Done", shortLabel: "dne", description: "Completed tasks", zone: "center", icon: "", render: renderTasksDoneSegment, defaultShow: true },
-  { id: "tasks_total", label: "Total", shortLabel: "tsk", description: "Total tasks", zone: "center", icon: "", render: renderTasksTotalSegment, defaultShow: true },
-  { id: "task_pct", label: "Progress", shortLabel: "pct", description: "Task completion percentage", zone: "center", icon: "", render: renderTaskPctSegment, defaultShow: true },
+  { id: "docs_count", label: "Docs", shortLabel: "DOC", description: "Workflow documents count", zone: "center", icon: "", render: renderDocsCountSegment, defaultShow: true },
+  { id: "tasks_done", label: "Done", shortLabel: "DNE", description: "Completed tasks", zone: "center", icon: "", render: renderTasksDoneSegment, defaultShow: true },
+  { id: "tasks_total", label: "Total", shortLabel: "TSK", description: "Total tasks", zone: "center", icon: "", render: renderTasksTotalSegment, defaultShow: true },
+  { id: "task_pct", label: "Progress", shortLabel: "PCT", description: "Task completion percentage", zone: "center", icon: "", render: renderTaskPctSegment, defaultShow: true },
 ];
