@@ -52,7 +52,8 @@
       "node_modules/@pi-unipi/kanboard/index.ts",
       "node_modules/@pi-unipi/command-enchantment/src/index.ts",
       "node_modules/@pi-unipi/footer/src/index.ts",
-      "node_modules/@pi-unipi/updater/src/index.ts"
+      "node_modules/@pi-unipi/updater/src/index.ts",
+      "node_modules/@pi-unipi/input-shortcuts/src/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -93,7 +94,8 @@
     "@pi-unipi/web-api": "*",
     "@pi-unipi/workflow": "*",
     "@pi-unipi/footer": "*",
-    "@pi-unipi/updater": "*"
+    "@pi-unipi/updater": "*",
+    "@pi-unipi/input-shortcuts": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

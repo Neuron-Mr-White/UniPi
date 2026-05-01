@@ -183,3 +183,15 @@ Task 9 wires everything together.
 4. **Config file path** — Spec says `.unipi/config/` (per-project). For keybindings, global (`~/.unipi/config/`) might be better since users likely want the same shortcuts across projects. Will use global config path for keybindings, per-project for register storage.
 
 5. **`ALT+S` conflict check** — `alt+s` is NOT in the built-in keybindings list, so it's free. Verified.
+
+## Fix Applied (2026-05-01)
+
+**Test failures resolved:** `registers.test.ts` and `undo-redo.test.ts` failed with `ERR_MODULE_NOT_FOUND` for `types.js`.
+
+**Root cause:** Node's `--experimental-strip-types` resolves `.ts` imports but does NOT resolve `.js` → `.ts` for value imports. Footer tests pass because all their transitive `.js` imports are `import type` (erased by TS, never hits resolver). Input-shortcuts had value imports like `import { REGISTERS_FILE } from "./types.js"` which hit the resolver and fail.
+
+**Fix:**
+- Changed all source imports from `.js` to `.ts` extensions (6 files)
+- Added `allowImportingTsExtensions: true` + `noEmit: true` to root tsconfig and package tsconfig
+- Root tsconfig already had `noEmit: true`, so `allowImportingTsExtensions` is safe
+- All 19 tests pass, typecheck clean
