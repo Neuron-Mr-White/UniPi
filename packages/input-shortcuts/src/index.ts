@@ -51,6 +51,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   // Persistent UI reference (captured on first handler call, persists for session)
   let ui: ExtensionContext["ui"] | null = null;
   let inputListenerRegistered = false;
+  let suppressInputListener = false; // set during undo/redo to prevent self-referencing snapshots
 
   // ─── Text change detection via onTerminalInput ────────────────────────
   // Snapshots the editor text BEFORE each keypress, enabling undo for typed text.
@@ -107,7 +108,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     inputListenerRegistered = true;
 
     ui.onTerminalInput((data: string) => {
-      if (!ui) return;
+      if (!ui || suppressInputListener) return;
 
       // Only snapshot for edit keys (printable, backspace, delete, enter)
       const isEditKey = data.length === 1 || data === "\x7f" || data === "\x1b[3~" || data === "\r" || data === "\n";
@@ -172,6 +173,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   }
 
   function doUndo(ctx: ExtensionContext): void {
+    suppressInputListener = true;
     const current = ctx.ui.getEditorText();
     const result = undoRedo.undo(current);
     if (result.ok) {
@@ -180,9 +182,11 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     } else {
       showError(ctx, "nothing to undo");
     }
+    suppressInputListener = false;
   }
 
   function doRedo(ctx: ExtensionContext): void {
+    suppressInputListener = true;
     const current = ctx.ui.getEditorText();
     const result = undoRedo.redo(current);
     if (result.ok) {
@@ -191,6 +195,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     } else {
       showError(ctx, "nothing to redo");
     }
+    suppressInputListener = false;
   }
 
   function doAppendRegister(ctx: ExtensionContext, index: number): void {
