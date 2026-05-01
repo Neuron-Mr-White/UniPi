@@ -9,57 +9,57 @@ import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "../types.js";
 
 /** Default semantic-to-theme-color mapping */
-const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor> = {
+const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor | `#${string}`> = {
   // ── Model & Identity (Left zone) ──
-  model: "accent",
+  model: "#c792ea",           // Soft purple — model name
   path: "text",
-  git: "accent",
-  gitClean: "success",
-  gitDirty: "warning",
-  session: "accent",
-  worktree: "accent",
+  git: "#82cc6f",            // Green (clean default)
+  gitClean: "#82cc6f",       // Green — clean branch
+  gitDirty: "#e5c07b",       // Amber — dirty branch
+  session: "#61afef",        // Blue — session name
+  worktree: "#61afef",       // Blue — worktree indicator
   // ── Workflow (Left zone) ──
-  workflow: "accent",
-  workflowNone: "dim",
-  workflowBrainstorm: "warning",
-  workflowPlan: "success",
-  workflowWork: "accent",
-  workflowReview: "muted",
-  workflowAuto: "thinkingHigh",
-  workflowDebug: "error",
-  workflowChoreExec: "warning",
-  workflowOther: "dim",
+  workflow: "#c792ea",       // Purple (default)
+  workflowNone: "#4a6a7a",   // Muted teal — idle
+  workflowBrainstorm: "#e06c75", // Red
+  workflowPlan: "#d19a66",   // Orange
+  workflowWork: "#e5c07b",   // Yellow
+  workflowReview: "#82cc6f", // Green
+  workflowAuto: "#c792ea",   // Purple
+  workflowDebug: "#e06c75",  // Red
+  workflowChoreExec: "#d19a66", // Orange
+  workflowOther: "#c792ea",  // Purple
   // ── TPS tiers (Center zone) ──
-  tpsSlow: "error",
-  tpsModerate: "warning",
-  tpsGood: "accent",
-  tpsFast: "success",
-  tpsBlazing: "thinkingHigh",
-  tpsIdle: "dim",
+  tpsSlow: "#e06c75",        // Red — < 30 t/s
+  tpsModerate: "#e5c07b",    // Amber — 30-50 t/s
+  tpsGood: "#56d4bc",        // Teal — 50-100 t/s
+  tpsFast: "#82cc6f",        // Green — 100-200 t/s
+  tpsBlazing: "#c792ea",     // Purple — > 200 t/s
+  tpsIdle: "#4a6a7a",        // Muted teal — session avg when idle
   // ── Metrics (Center zone) ──
-  compactor: "muted",
-  memory: "accent",
-  mcp: "success",
-  ralph: "warning",
-  ralphOn: "success",
-  ralphOff: "error",
-  kanboard: "dim",
-  notify: "muted",
-  context: "muted",
-  contextWarn: "warning",
-  contextError: "error",
-  cost: "text",
-  tokens: "muted",
+  compactor: "#56b6c2",      // Cyan — compaction stats
+  memory: "#61afef",         // Blue — memory count
+  mcp: "#82cc6f",            // Green — MCP status
+  ralph: "#e5c07b",          // Amber — ralph loops
+  ralphOn: "#82cc6c",        // Green — ralph active
+  ralphOff: "#e06c75",       // Red — ralph inactive
+  kanboard: "#c678dd",       // Purple — kanboard
+  notify: "#56b6c2",         // Cyan — notifications
+  context: "muted",          // Theme token for OK context
+  contextWarn: "#e5c07b",    // Amber — context 70-90%
+  contextError: "#e06c75",   // Red — context > 90%
+  cost: "#d19a66",           // Gold — cost
+  tokens: "#abb2bf",         // Silver — token counts
   // ── Time (Right zone) ──
-  clock: "text",
-  duration: "accent",
+  clock: "#abb2bf",          // Silver — wall clock
+  duration: "#61afef",       // Blue — session duration
   // ── Thinking levels ──
-  thinking: "accent",
-  thinkingMinimal: "thinkingMinimal",
-  thinkingLow: "thinkingLow",
-  thinkingMedium: "thinkingMedium",
-  thinkingHigh: "thinkingHigh",
-  thinkingXhigh: "thinkingXhigh",
+  thinking: "#61afef",
+  thinkingMinimal: "#56b6c2", // Cyan
+  thinkingLow: "#61afef",    // Blue
+  thinkingMedium: "#c792ea", // Purple
+  thinkingHigh: "#d19a66",   // Gold
+  thinkingXhigh: "#e06c75",  // Red
   // ── UI chrome ──
   separator: "dim",
   border: "dim",

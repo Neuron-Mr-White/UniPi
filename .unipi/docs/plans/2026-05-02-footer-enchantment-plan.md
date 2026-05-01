@@ -31,7 +31,7 @@ Transform the footer from functional-but-lifeless to vibrant and informative. Fi
     7. Zone assignments per spec: Left (model, git, session, current_command), Center (tps, context_pct, tokens_total, cost, all compactor/memory/mcp/ralph/kanboard/notify metrics), Right (clock, duration)
     8. Verify TypeScript compiles: `npx tsc --noEmit` from footer package
 
-- unstarted: Task 2 — Color Palette
+- completed: Task 2 — Color Palette
   - Description: Replace the current theme-token-only palette with the spec's hex-based zone-family colors. All visual personality lives here.
   - Dependencies: Task 1 (new SemanticColor entries)
   - Acceptance Criteria: `DEFAULT_COLOR_MAP` contains all hex values from spec. `applyColor()` correctly resolves them (already works for hex). Workflow segments render with command-type colors.

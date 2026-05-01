@@ -130,8 +130,10 @@ function renderGitSegment(ctx: FooterSegmentContext): RenderedSegment {
   const branch = footerData?.getGitBranch?.() ?? null;
   if (!branch) return { content: "", visible: false };
 
+  const isDirty = footerData?.getGitDirty?.() ?? false;
+  const semanticColor: SemanticColor = isDirty ? "gitDirty" : "gitClean";
   const content = withIcon("git", branch);
-  return { content: color(ctx, "git", content), visible: true };
+  return { content: color(ctx, semanticColor, content), visible: true };
 }
 
 function renderContextPctSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -206,7 +208,7 @@ function renderSessionSegment(ctx: FooterSegmentContext): RenderedSegment {
   const sessionId = (piCtx?.sessionManager as any)?.getSessionId?.();
   const display = sessionId?.slice(0, 8) || "new";
   const content = withIcon("session", display);
-  return { content: color(ctx, "model", content), visible: true };
+  return { content: color(ctx, "session", content), visible: true };
 }
 
 function renderHostnameSegment(_ctx: FooterSegmentContext): RenderedSegment {
