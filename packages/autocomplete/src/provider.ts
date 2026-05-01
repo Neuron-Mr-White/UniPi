@@ -312,20 +312,32 @@ export function createEnchantedProvider(
       const finalQuery = effectivePrefix.replace(/^\//, "").toLowerCase();
 
       /**
-       * Match quality for any autocomplete item.
-       * Returns 0=exact, 1=prefix, 2=fuzzy — same scale as getMatchPriority
-       * inside getEnhancedUnipiItems.
+       * 4-tier match quality for cross-group sorting:
+       *   Tier 0 — Base command exact match (full value equals query).
+       *             Also catches /unipi:abc when user typed "unipi:abc".
+       *   Tier 1 — Unipi short-name exact match.
+       *             E.g. query "brainstorm" → unipi:brainstorm.
+       *   Tier 2 — Prefix match (name starts with query).
+       *   Tier 3 — Fuzzy match (character subsequence), sorted by
+       *             similarity (shorter edit distance first).
        */
       const crossItemPriority = (
         item: AutocompleteItem,
         isUnipi: boolean,
       ): number => {
-        const name = isUnipi
+        const full = item.value.toLowerCase();
+        const short = isUnipi
           ? item.value.replace("unipi:", "").toLowerCase()
-          : item.value.toLowerCase();
-        if (name === finalQuery) return 0;
-        if (name.startsWith(finalQuery)) return 1;
-        return 2;
+          : full;
+
+        // Tier 0: exact full-value match
+        if (full === finalQuery) return 0;
+        // Tier 1: unipi short-name exact match
+        if (isUnipi && short === finalQuery) return 1;
+        // Tier 2: prefix match
+        if (short.startsWith(finalQuery) || full.startsWith(finalQuery)) return 2;
+        // Tier 3: fuzzy
+        return 3;
       };
 
       // Build final list based on query context
@@ -335,10 +347,7 @@ export function createEnchantedProvider(
         // User explicitly wants skill commands — show them first
         finalItems = [...skillItems, ...enhancedUnipiItems, ...systemItems];
       } else {
-        // Merge unipi + system items, sorted by:
-        //   1. Match quality: exact > prefix > fuzzy
-        //   2. Source: non-unipi before unipi (within same quality tier)
-        //   3. Original order within each group (stable sort)
+        // Merge unipi + system items, sorted by 4-tier quality then source
         const tagged: Array<{ item: AutocompleteItem; isUnipi: boolean }> = [
           ...systemItems.map((item) => ({ item, isUnipi: false })),
           ...enhancedUnipiItems.map((item) => ({ item, isUnipi: true })),
@@ -348,8 +357,14 @@ export function createEnchantedProvider(
           const priA = crossItemPriority(a.item, a.isUnipi);
           const priB = crossItemPriority(b.item, b.isUnipi);
           if (priA !== priB) return priA - priB;
-          // Same quality tier: non-unipi first
+          // Same tier: non-unipi first
           if (a.isUnipi !== b.isUnipi) return a.isUnipi ? 1 : -1;
+          // Tier 3 (fuzzy): sort by similarity — shorter name = closer match
+          if (priA === 3) {
+            const lenA = a.item.value.length;
+            const lenB = b.item.value.length;
+            if (lenA !== lenB) return lenA - lenB;
+          }
           return 0; // preserve original order (stable sort)
         });
 
