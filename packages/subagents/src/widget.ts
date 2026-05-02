@@ -11,6 +11,7 @@
  */
 
 import { truncateToWidth } from "@mariozechner/pi-tui";
+import type { ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { AgentManager } from "./agent-manager.js";
 import type { AgentActivity } from "./types.js";
 
@@ -94,8 +95,8 @@ function describeActivity(activeTools: Map<string, string>, responseText?: strin
 export class AgentWidget {
   private spinnerFrame = 0;
   private timer?: ReturnType<typeof setInterval>;
-  private uiCtx?: any;
-  private tui?: any;
+  private uiCtx?: ExtensionUIContext;
+  private tui?: import("@mariozechner/pi-tui").TUI;
   private widgetRegistered = false;
   /** Last content key — skips requestRender when only spinner changed. */
   private lastContentKey = "";
@@ -112,7 +113,7 @@ export class AgentWidget {
     private activity: Map<string, AgentActivity>,
   ) {}
 
-  setUICtx(ctx: any) {
+  setUICtx(ctx: ExtensionUIContext) {
     if (ctx !== this.uiCtx) {
       this.uiCtx = ctx;
       this.widgetRegistered = false;

@@ -4,7 +4,7 @@
  * Registers /unipi:readme [package], /unipi:changelog, /unipi:updater-settings
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, UPDATER_COMMANDS } from "@pi-unipi/core";
 import { renderReadmeOverlay } from "./tui/readme-overlay.js";
 import { renderChangelogOverlay } from "./tui/changelog-overlay.js";
@@ -14,9 +14,9 @@ import { renderSettingsOverlay } from "./tui/settings-overlay.js";
 const OVERLAY_OPTIONS = {
   overlay: true,
   overlayOptions: {
-    width: "80%",
+    width: "80%" as const,
     minWidth: 60,
-    anchor: "center",
+    anchor: "center" as const,
     margin: 2,
   },
 };
@@ -28,7 +28,7 @@ export function registerCommands(pi: ExtensionAPI): void {
     `${UNIPI_PREFIX}${UPDATER_COMMANDS.README}`,
     {
       description: "Browse package README files",
-      handler: async (args: string, ctx: any) => {
+      handler: async (args: string, ctx: ExtensionCommandContext) => {
         const packageName = args.trim() || undefined;
         try {
           await ctx.ui.custom(
@@ -47,7 +47,7 @@ export function registerCommands(pi: ExtensionAPI): void {
     `${UNIPI_PREFIX}${UPDATER_COMMANDS.CHANGELOG}`,
     {
       description: "Browse changelog (Keep a Changelog format)",
-      handler: async (_args: string, ctx: any) => {
+      handler: async (_args: string, ctx: ExtensionCommandContext) => {
         try {
           await ctx.ui.custom(
             renderChangelogOverlay(),
@@ -65,7 +65,7 @@ export function registerCommands(pi: ExtensionAPI): void {
     `${UNIPI_PREFIX}${UPDATER_COMMANDS.UPDATER_SETTINGS}`,
     {
       description: "Configure updater — check interval and auto-update mode",
-      handler: async (_args: string, ctx: any) => {
+      handler: async (_args: string, ctx: ExtensionCommandContext) => {
         try {
           const result = await ctx.ui.custom(
             renderSettingsOverlay(),

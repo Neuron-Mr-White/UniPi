@@ -13,11 +13,10 @@
  * Old names kept as deprecated aliases for backward compatibility.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
-import { getLastCompactionStats } from "../compaction/hooks.js";
-import { compactTool } from "../tools/compact.js";
+import { getLastCompactionStats, COMPACTOR_INSTRUCTION } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
@@ -38,22 +37,73 @@ function deprecationLog(_oldName: string, _newName: string): void {
   // Deprecation logging disabled — was writing to stdout causing TUI rendering issues.
 }
 
+const formatTokens = (n: number): string => {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+};
+
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
-  // ── /unipi:compact ──────────────────────────────────
+  // ── /unipi:lossless-compact ──────────────────────────
+  // Triggers immediate compaction via ctx.compact() with our zero-LLM
+  // structured summary pipeline (same pattern as pi-vcc).
+  // Named "lossless-compact" to avoid confusion with Pi's built-in /compact.
+  pi.registerCommand("unipi:lossless-compact", {
+    description: "Immediate zero-LLM compaction — structured summary with full recall",
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      ctx.compact({
+        customInstructions: COMPACTOR_INSTRUCTION,
+        onComplete: () => {
+          const stats = getLastCompactionStats();
+          if (stats) {
+            ctx.ui.notify(
+              `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
+              "info",
+            );
+          } else {
+            ctx.ui.notify("Compaction completed.", "info");
+          }
+        },
+        onError: (err: Error) => {
+          if (err.message === "Compaction cancelled" || err.message === "Already compacted") {
+            ctx.ui.notify("Nothing to compact.", "info");
+          } else {
+            ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
+          }
+        },
+      });
+    },
+  });
+  // Deprecated alias — old name
   pi.registerCommand("unipi:compact", {
-    description: "Trigger manual compaction with stats",
-    handler: async (_args: string, ctx: any) => {
-      const result = compactTool();
-      const stats = getLastCompactionStats();
-      const msg = stats
-        ? `🗜️ Compaction: ${stats.summarized} summarized, ${stats.kept} kept (~${stats.keptTokensEst} tok)\n${result.message}`
-        : `🗜️ ${result.message}`;
-      ctx.ui.notify(msg, "info");
+    description: "(DEPRECATED) Use /unipi:lossless-compact instead",
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      deprecationLog("/unipi:compact", "/unipi:lossless-compact");
+      ctx.compact({
+        customInstructions: COMPACTOR_INSTRUCTION,
+        onComplete: () => {
+          const stats = getLastCompactionStats();
+          if (stats) {
+            ctx.ui.notify(
+              `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
+              "info",
+            );
+          } else {
+            ctx.ui.notify("Compaction completed.", "info");
+          }
+        },
+        onError: (err: Error) => {
+          if (err.message === "Compaction cancelled" || err.message === "Already compacted") {
+            ctx.ui.notify("Nothing to compact.", "info");
+          } else {
+            ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
+          }
+        },
+      });
     },
   });
 
   // ── /unipi:session-recall (new) ─────────────────────
-  const sessionRecallHandler = async (args: string, ctx: any) => {
+  const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext) => {
     const query = args.trim();
     if (!query) {
       ctx.ui.notify("Usage: /unipi:session-recall <query>", "warning");
@@ -81,7 +131,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // Deprecated alias
   pi.registerCommand("unipi:compact-recall", {
     description: "(DEPRECATED) Search session history — use /unipi:session-recall instead",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       deprecationLog("/unipi:compact-recall", "/unipi:session-recall");
       return sessionRecallHandler(args, ctx);
     },
@@ -90,7 +140,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:compact-stats ─────────────────────────────
   pi.registerCommand("unipi:compact-stats", {
     description: "Show context savings dashboard",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       if (!deps?.sessionDB || !deps?.contentStore) {
         ctx.ui.notify("Compactor services not initialized.", "error");
         return;
@@ -116,7 +166,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:compact-doctor ────────────────────────────
   pi.registerCommand("unipi:compact-doctor", {
     description: "Run diagnostics checklist",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       if (!deps?.sessionDB || !deps?.contentStore) {
         ctx.ui.notify("Compactor services not initialized.", "error");
         return;
@@ -139,7 +189,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:compact-settings ──────────────────────────
   pi.registerCommand("unipi:compact-settings", {
     description: "Open TUI settings overlay",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       try {
         const cwd = (ctx as any).cwd ?? process.cwd();
         const { renderSettingsOverlay } = await import("../tui/settings-overlay.js");
@@ -158,7 +208,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:compact-preset ────────────────────────────
   pi.registerCommand("unipi:compact-preset", {
     description: "Apply quick preset (precise/balanced/thorough/lean)",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       const presetName = parsePreset(args.trim());
       if (!presetName) {
         ctx.ui.notify("Unknown preset. Use: precise, balanced, thorough, lean", "error");
@@ -175,7 +225,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
 
   // ── /unipi:content-index (new) / /unipi:compact-index (deprecated) ──
-  const contentIndexHandler = async (_args: string, ctx: any) => {
+  const contentIndexHandler = async (_args: string, ctx: ExtensionCommandContext) => {
     if (!deps?.contentStore) {
       ctx.ui.notify("Content store not initialized. Enable fts5Index in config.", "warning");
       return;
@@ -233,14 +283,14 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
   pi.registerCommand("unipi:compact-index", {
     description: "(DEPRECATED) Index project files — use /unipi:content-index instead",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       deprecationLog("/unipi:compact-index", "/unipi:content-index");
       return contentIndexHandler(args, ctx);
     },
   });
 
   // ── /unipi:content-search (new) / /unipi:compact-search (deprecated) ──
-  const contentSearchHandler = async (args: string, ctx: any) => {
+  const contentSearchHandler = async (args: string, ctx: ExtensionCommandContext) => {
     const query = args.trim();
     if (!query) {
       ctx.ui.notify("Usage: /unipi:content-search <query>", "warning");
@@ -270,14 +320,14 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
   pi.registerCommand("unipi:compact-search", {
     description: "(DEPRECATED) Search indexed content — use /unipi:content-search instead",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       deprecationLog("/unipi:compact-search", "/unipi:content-search");
       return contentSearchHandler(args, ctx);
     },
   });
 
   // ── /unipi:content-purge (new) / /unipi:compact-purge (deprecated) ──
-  const contentPurgeHandler = async (_args: string, ctx: any) => {
+  const contentPurgeHandler = async (_args: string, ctx: ExtensionCommandContext) => {
     if (!deps?.contentStore) {
       ctx.ui.notify("Content store not initialized.", "warning");
       return;
@@ -295,7 +345,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
   pi.registerCommand("unipi:compact-purge", {
     description: "(DEPRECATED) Wipe indexed content — use /unipi:content-purge instead",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       deprecationLog("/unipi:compact-purge", "/unipi:content-purge");
       return contentPurgeHandler(args, ctx);
     },
@@ -304,12 +354,12 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:compact-help ──────────────────────────────
   pi.registerCommand("unipi:compact-help", {
     description: "Show detailed compactor documentation (tier-2 skill)",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       // Load tier-2 skill content — delegates to skill loading system
       ctx.ui.notify(
         "🗜️ Compactor Help — Use your compactor-detail skill for full documentation.\n" +
         "Quick commands:\n" +
-        "  /unipi:compact — trigger compaction\n" +
+        "  /unipi:lossless-compact — trigger immediate compaction\n" +
         "  /unipi:session-recall <query> — search session history\n" +
         "  /unipi:content-index — index project files\n" +
         "  /unipi:content-search <query> — search indexed content\n" +

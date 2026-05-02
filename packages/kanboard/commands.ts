@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, KANBOARD_COMMANDS, KANBOARD_DIRS, UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { startServer, KanboardServer } from "./server/index.js";
 import { renderKanboardOverlay } from "./tui/kanboard-overlay.js";
@@ -38,7 +38,7 @@ export function registerCommands(pi: ExtensionAPI): void {
     `${UNIPI_PREFIX}${KANBOARD_COMMANDS.KANBOARD}`,
     {
       description: "Toggle kanboard visualization server",
-      handler: async (_args: string, ctx: any) => {
+      handler: async (_args: string, ctx: ExtensionCommandContext) => {
         const pidFile = path.resolve(KANBOARD_DIRS.PID_FILE);
 
         try {
@@ -75,7 +75,7 @@ export function registerCommands(pi: ExtensionAPI): void {
     `${UNIPI_PREFIX}${KANBOARD_COMMANDS.KANBOARD_DOCTOR}`,
     {
       description: "Diagnose and fix kanboard parser issues",
-      handler: async (_args: string, ctx: any) => {
+      handler: async (_args: string, ctx: ExtensionCommandContext) => {
         ctx.ui.notify("Loading kanboard-doctor skill...", "info");
         // The skill will be loaded by the skill system via resources_discover
       },

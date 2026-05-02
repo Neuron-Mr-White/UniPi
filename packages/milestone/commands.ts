@@ -6,7 +6,7 @@
  * loads SKILL.md content and sends it as a user message.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, MILESTONE_COMMANDS, MILESTONE_DIRS } from "@pi-unipi/core";
 import { parseMilestones } from "./milestone.js";
 import { readFileSync } from "node:fs";
@@ -33,7 +33,7 @@ export function registerCommands(pi: ExtensionAPI): void {
   // milestone-onboard — create milestones from existing work
   pi.registerCommand(`${UNIPI_PREFIX}${MILESTONE_COMMANDS.ONBOARD}`, {
     description: "Create MILESTONES.md from existing workflow docs — scan, propose, refine, write",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       const skillContent = loadSkill("milestone-onboard");
 
       let message = "Execute the milestone-onboard workflow.";
@@ -55,7 +55,7 @@ export function registerCommands(pi: ExtensionAPI): void {
   // milestone-update — sync milestones with completed work
   pi.registerCommand(`${UNIPI_PREFIX}${MILESTONE_COMMANDS.UPDATE}`, {
     description: "Sync MILESTONES.md with completed work — scan docs, diff checkboxes, auto-update",
-    handler: async (args: string, ctx: any) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       const skillContent = loadSkill("milestone-update");
 
       let message = "Execute the milestone-update workflow.";

@@ -9,7 +9,7 @@
  *   /unipi:info-settings - Configure info display
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent, type UnipiInfoGroupEvent } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
 import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart } from "./core-groups.js";
@@ -105,9 +105,9 @@ export default function (pi: ExtensionAPI) {
    * Cache-first: opens with whatever data is cached (even empty).
    * Background: each group fetches independently, overlay re-renders reactively.
    */
-  function showOverlay(ctx: any): void {
-    ctx.ui.custom(
-      (tui: any, theme: any, _keybindings: any, done: () => void) => {
+  function showOverlay(ctx: ExtensionContext): void {
+    ctx.ui.custom<void>(
+      (tui, theme, _keybindings, done) => {
         const overlay = new InfoOverlay();
         overlay.setTheme(theme);
         overlay.onClose = () => {
@@ -127,9 +127,9 @@ export default function (pi: ExtensionAPI) {
       {
         overlay: true,
         overlayOptions: {
-          width: "80%",
+          width: "80%" as const,
           minWidth: 60,
-          anchor: "center",
+          anchor: "center" as const,
           margin: 2,
         },
       }

@@ -5,7 +5,7 @@
  * initializes renderer on session_start.
  */
 
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
@@ -65,7 +65,7 @@ export interface FooterState {
   tuiRef: any;
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Re-register footer + widgets with pi UI (for live enable) */
-  setupUI: ((pi: ExtensionAPI, ctx: any) => void) | null;
+  setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
 }
 
 export default function footerExtension(pi: ExtensionAPI): void {
@@ -146,7 +146,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
 // ─── Footer UI setup ────────────────────────────────────────────────────────
 
-function setupFooterUI(pi: ExtensionAPI, ctx: any, state: FooterState): void {
+function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterState): void {
   // Register footer (minimal — handles branch changes)
   ctx.ui.setFooter((tui: any, _theme: Theme, footerData: any) => {
     state.tuiRef = tui;

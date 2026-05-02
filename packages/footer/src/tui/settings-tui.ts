@@ -9,7 +9,7 @@
  * Uses pi-tui SettingsList for vim/arrow keybinding support.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
@@ -66,7 +66,7 @@ function visibleWidth(text: string): number {
 
 // ─── Show the footer settings overlay ──────────────────────────────────
 
-export function showFooterSettings(ctx: any, groups: FooterGroup[], onSettingsChanged?: () => void): void {
+export function showFooterSettings(ctx: ExtensionCommandContext, groups: FooterGroup[], onSettingsChanged?: () => void): void {
   ctx.ui.custom(
     (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
       const overlay = new FooterSettingsOverlay(groups, onSettingsChanged);
@@ -86,8 +86,7 @@ export function showFooterSettings(ctx: any, groups: FooterGroup[], onSettingsCh
     {
       overlay: true,
       overlayOptions: () => ({
-        verticalAlign: "center",
-        horizontalAlign: "center",
+        anchor: "center" as const,
       }),
     },
   ).catch(() => {

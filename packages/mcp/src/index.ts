@@ -4,7 +4,7 @@
  * Registers commands, handles session lifecycle, wires up MCP server management.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -177,7 +177,7 @@ export default function (pi: ExtensionAPI) {
   // /unipi:mcp-status — text summary of all servers
   pi.registerCommand(`unipi:${MCP_COMMANDS.STATUS}`, {
     description: "Show status of all configured MCP servers",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const reg = getRegistry();
       if (!reg) {
         ctx.ui.notify("MCP extension not initialized", "warning");
@@ -225,7 +225,7 @@ export default function (pi: ExtensionAPI) {
   // /unipi:mcp-sync — force catalog sync
   pi.registerCommand(`unipi:${MCP_COMMANDS.SYNC}`, {
     description: "Sync MCP server catalog from GitHub",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       try {
         ctx.ui.notify("Syncing MCP catalog from GitHub...", "info");
         const catalog = await syncCatalog();
@@ -249,7 +249,7 @@ export default function (pi: ExtensionAPI) {
   // /unipi:mcp-add — add server overlay
   pi.registerCommand(`unipi:${MCP_COMMANDS.ADD}`, {
     description: "Add an MCP server (browse catalog or custom config)",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("MCP Add requires an interactive UI.", "warning");
         return;
@@ -277,7 +277,7 @@ export default function (pi: ExtensionAPI) {
   // /unipi:mcp-settings — settings overlay
   pi.registerCommand(`unipi:${MCP_COMMANDS.SETTINGS}`, {
     description: "Manage MCP server settings",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("MCP Settings requires an interactive UI.", "warning");
         return;
@@ -311,7 +311,7 @@ export default function (pi: ExtensionAPI) {
   // /unipi:mcp-reload — restart all MCP servers
   pi.registerCommand(`unipi:${MCP_COMMANDS.RELOAD}`, {
     description: "Reload all MCP servers (restart with current config)",
-    handler: async (_args: string, ctx: any) => {
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const reg = getRegistry();
       if (!reg) {
         ctx.ui.notify("MCP extension not initialized", "warning");

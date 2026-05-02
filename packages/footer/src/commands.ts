@@ -5,7 +5,7 @@
  * /unipi:footer-settings.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { showFooterSettings } from "./tui/settings-tui.js";
@@ -23,7 +23,7 @@ interface FooterState {
   };
   segmentLookup: Map<string, FooterSegment>;
   piContext: unknown;
-  setupUI: ((pi: ExtensionAPI, ctx: any) => void) | null;
+  setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
 }
 
 /**
