@@ -143,13 +143,13 @@ export function renderMcpAddOverlay(params?: {
     }
 
     const editorTheme: EditorTheme = {
-      borderColor: (s: any) => theme.fg("accent", s),
+      borderColor: (s: string) => theme.fg("accent", s),
       selectList: {
-        selectedPrefix: (t: any) => theme.fg("accent", t),
-        selectedText: (t: any) => theme.fg("accent", t),
-        description: (t: any) => theme.fg("muted", t),
-        scrollInfo: (t: any) => theme.fg("dim", t),
-        noMatch: (t: any) => theme.fg("warning", t),
+        selectedPrefix: (t: string) => theme.fg("accent", t),
+        selectedText: (t: string) => theme.fg("accent", t),
+        description: (t: string) => theme.fg("muted", t),
+        scrollInfo: (t: string) => theme.fg("dim", t),
+        noMatch: (t: string) => theme.fg("warning", t),
       },
     };
     const editor = new Editor(tui, editorTheme);

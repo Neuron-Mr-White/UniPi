@@ -62,7 +62,7 @@ export interface FooterState {
   unsubscribeEvents: (() => void) | null;
   piContext: unknown;
   footerData: unknown;
-  tuiRef: any;
+  tuiRef: import("@mariozechner/pi-tui").TUI | null | undefined;
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Re-register footer + widgets with pi UI (for live enable) */
   setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
@@ -111,7 +111,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
     // Setup footer + widgets
     setupFooterUI(pi, ctx, state);
-    state.setupUI = (p: ExtensionAPI, c: any) => setupFooterUI(p, c, state);
+    state.setupUI = (p: ExtensionAPI, c: ExtensionContext) => setupFooterUI(p, c, state);
   });
 
   pi.on("session_shutdown", async () => {
