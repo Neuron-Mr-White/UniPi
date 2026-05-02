@@ -12,7 +12,7 @@ import { Type } from "@sinclair/typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { emitEvent, MODULES, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, MODULES, UNIPI_EVENTS, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
@@ -351,7 +351,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Listen for badge generation requests — spawn background agent
-  pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (event: any) => {
+  pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (data) => {
+    const event = data as UnipiBadgeGenerateRequestEvent;
     if (!sessionCtx) return;
 
     const summary = event?.conversationSummary ?? "";

@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion } from "@pi-unipi/core";
+import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent, type UnipiInfoGroupEvent } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
 import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart } from "./core-groups.js";
 
@@ -69,7 +69,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Listen for module announcements — track and trigger reactive updates
-  pi.events.on(UNIPI_EVENTS.MODULE_READY, (event: any) => {
+  pi.events.on(UNIPI_EVENTS.MODULE_READY, (data) => {
+    const event = data as UnipiModuleEvent;
     if (event.name && event.name !== MODULES.INFO_SCREEN) {
       moduleReadyBatch.push({
         name: event.name,
@@ -84,7 +85,7 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.events.on(UNIPI_EVENTS.INFO_GROUP_REGISTERED, (_event: any) => {
+  pi.events.on(UNIPI_EVENTS.INFO_GROUP_REGISTERED, (_data) => {
     // Group already registered via globalThis in registerGroup()
   });
 

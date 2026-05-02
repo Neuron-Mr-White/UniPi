@@ -16,6 +16,7 @@ import {
   UNIPI_PREFIX,
   emitEvent,
   getPackageVersion,
+  type UnipiUpdateCheckEvent,
 } from "@pi-unipi/core";
 import { registerCommands } from "./commands.js";
 import { loadConfig } from "./settings.js";
@@ -90,7 +91,8 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       });
 
       // Subscribe to events to update cached data
-      pi.events.on(UNIPI_EVENTS.UPDATE_CHECK, (payload: any) => {
+      pi.events.on(UNIPI_EVENTS.UPDATE_CHECK, (data) => {
+        const payload = data as UnipiUpdateCheckEvent;
         cachedResult = {
           currentVersion: payload.currentVersion,
           latestVersion: payload.latestVersion,
@@ -103,7 +105,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
         });
       });
 
-      pi.events.on(UNIPI_EVENTS.UPDATE_AVAILABLE, (_payload: any) => {
+      pi.events.on(UNIPI_EVENTS.UPDATE_AVAILABLE, (_data: unknown) => {
         if (cachedResult) {
           cachedResult.updateAvailable = true;
         }
@@ -113,7 +115,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
         });
       });
 
-      pi.events.on(UNIPI_EVENTS.UPDATE_APPLIED, (_payload: any) => {
+      pi.events.on(UNIPI_EVENTS.UPDATE_APPLIED, (_data: unknown) => {
         if (cachedResult) {
           cachedResult.updateAvailable = false;
         }

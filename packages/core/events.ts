@@ -102,6 +102,8 @@ export interface UnipiModuleEvent {
   commands: string[];
   /** Tools registered by this module */
   tools: string[];
+  /** Load time in milliseconds (optional) */
+  loadTimeMs?: number;
 }
 
 /** Payload for WORKFLOW_START / WORKFLOW_END */
