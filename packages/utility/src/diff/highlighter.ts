@@ -249,7 +249,7 @@ export function normalizeShikiContrast(
 // ─── Shiki Highlighter ──────────────────────────────────────────────────────────
 
 /** Shiki highlighter instance (lazy singleton) */
-let shikiHighlighter: any = null;
+let shikiHighlighter: import("shiki").Highlighter | null = null;
 let shikiInitPromise: Promise<any> | null = null;
 
 /**

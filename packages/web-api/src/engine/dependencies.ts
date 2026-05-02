@@ -5,10 +5,10 @@
  * Uses dynamic imports to handle optional native binding failures gracefully.
  */
 
-let wreqModule: any = null;
-let defuddleModule: any = null;
-let lodashModule: any = null;
-let mimeTypesModule: any = null;
+let wreqModule: Record<string, unknown> | null = null;
+let defuddleModule: Record<string, unknown> | null = null;
+let lodashModule: Record<string, unknown> | null = null;
+let mimeTypesModule: typeof import("mime-types") | null = null;
 
 /**
  * Get the wreq-js module.
