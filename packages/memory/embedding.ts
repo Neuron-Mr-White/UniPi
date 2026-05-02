@@ -55,7 +55,7 @@ export async function generateEmbedding(
   try {
     const truncated = text.slice(0, 8000); // OpenRouter/OpenAI limit ~8192 tokens
 
-    const body: any = {
+    const body: Record<string, unknown> = {
       model: config.model,
       input: truncated,
     };
@@ -128,7 +128,7 @@ export async function generateEmbeddingsBatch(
   try {
     const truncated = texts.map((t) => t.slice(0, 8000));
 
-    const body: any = {
+    const body: Record<string, unknown> = {
       model: config.model,
       input: truncated,
     };
@@ -153,10 +153,10 @@ export async function generateEmbeddingsBatch(
       return texts.map(() => null);
     }
 
-    const data = await response.json() as any;
+    const data = await response.json() as { data?: Array<{ embedding?: number[] }> };
     const dims = config.dimensions;
 
-    return (data?.data || []).map((item: any) => {
+    return (data?.data || []).map((item) => {
       if (!Array.isArray(item.embedding)) return null;
       const vec = new Float32Array(dims);
       for (let i = 0; i < Math.min(item.embedding.length, dims); i++) {
@@ -233,7 +233,7 @@ export function bufferToVector(buf: Buffer): Float32Array {
 /**
  * Check if embeddings are available (sqlite-vec loaded).
  */
-export function hasEmbeddings(db: any): boolean {
+export function hasEmbeddings(db: { prepare(sql: string): { get(...args: unknown[]): unknown } }): boolean {
   try {
     db.prepare("SELECT * FROM memories_vec LIMIT 1").get();
     return true;

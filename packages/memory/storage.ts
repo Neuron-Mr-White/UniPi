@@ -13,6 +13,29 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { randomUUID } from "node:crypto";
 
+/** Memory row from SQLite queries */
+interface MemoryRow {
+  id: string;
+  title: string;
+  content?: string;
+  type?: string;
+  project?: string;
+  tags?: string;
+  created?: string;
+  updated?: string;
+  embedding?: { buffer: ArrayBuffer };
+}
+
+/** Search result row from vector queries */
+interface SearchResultRow {
+  id: string;
+  title: string;
+  distance: number;
+  rowid?: number;
+  title_match?: number;
+  content_match?: number;
+}
+
 /** Memory record interface */
 export interface MemoryRecord {
   id: string;
@@ -435,7 +458,7 @@ export class MemoryStorage {
 
     // Get existing IDs from DB
     const existingIds = new Set(
-      (this.db.prepare("SELECT id FROM memories").all() as any[])
+      (this.db.prepare("SELECT id FROM memories").all() as MemoryRow[])
         .map(r => r.id)
     );
 
@@ -496,7 +519,7 @@ export class MemoryStorage {
   findSimilarByTitle(title: string, threshold = 0.6): Array<{ record: MemoryRecord; similarity: number }> {
     if (!this.db) throw new Error("Storage not initialized");
 
-    const allRows = this.db.prepare("SELECT id, title FROM memories").all() as any[];
+    const allRows = this.db.prepare("SELECT id, title FROM memories").all() as MemoryRow[];
     const results: Array<{ record: MemoryRecord; similarity: number }> = [];
 
     const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, " ");
@@ -528,18 +551,18 @@ export class MemoryStorage {
   getById(id: string): MemoryRecord | null {
     if (!this.db) throw new Error("Storage not initialized");
 
-    const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as any;
+    const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as MemoryRow | undefined;
     if (!row) return null;
 
     return {
       id: row.id,
       title: row.title,
-      content: row.content,
+      content: row.content ?? "",
       tags: JSON.parse(row.tags || "[]"),
-      project: row.project,
-      type: row.type,
-      created: row.created,
-      updated: row.updated,
+      project: row.project ?? "",
+      type: (row.type ?? "summary") as MemoryRecord["type"],
+      created: row.created ?? "",
+      updated: row.updated ?? "",
       embedding: row.embedding ? new Float32Array(row.embedding.buffer) : null,
     };
   }
@@ -551,34 +574,34 @@ export class MemoryStorage {
     if (!this.db) throw new Error("Storage not initialized");
 
     // Try exact match first
-    const exact = this.db.prepare("SELECT * FROM memories WHERE title = ?").get(title) as any;
+    const exact = this.db.prepare("SELECT * FROM memories WHERE title = ?").get(title) as MemoryRow | undefined;
     if (exact) {
       return {
         id: exact.id,
         title: exact.title,
-        content: exact.content,
+        content: exact.content ?? "",
         tags: JSON.parse(exact.tags || "[]"),
-        project: exact.project,
-        type: exact.type,
-        created: exact.created,
-        updated: exact.updated,
+        project: exact.project ?? "",
+        type: (exact.type ?? "summary") as MemoryRecord["type"],
+        created: exact.created ?? "",
+        updated: exact.updated ?? "",
         embedding: exact.embedding ? new Float32Array(exact.embedding.buffer) : null,
       };
     }
 
     // Try case-insensitive match
-    const row = this.db.prepare("SELECT * FROM memories WHERE LOWER(title) = LOWER(?)").get(title) as any;
+    const row = this.db.prepare("SELECT * FROM memories WHERE LOWER(title) = LOWER(?)").get(title) as MemoryRow | undefined;
     if (!row) return null;
 
     return {
       id: row.id,
       title: row.title,
-      content: row.content,
+      content: row.content ?? "",
       tags: JSON.parse(row.tags || "[]"),
-      project: row.project,
-      type: row.type,
-      created: row.created,
-      updated: row.updated,
+      project: row.project ?? "",
+      type: (row.type ?? "summary") as MemoryRecord["type"],
+      created: row.created ?? "",
+      updated: row.updated ?? "",
       embedding: row.embedding ? new Float32Array(row.embedding.buffer) : null,
     };
   }
@@ -589,8 +612,8 @@ export class MemoryStorage {
   listAll(): Array<{ id: string; title: string; type: string }> {
     if (!this.db) throw new Error("Storage not initialized");
 
-    const rows = this.db.prepare("SELECT id, title, type FROM memories ORDER BY updated DESC").all() as any[];
-    return rows.map((r) => ({ id: r.id, title: r.title, type: r.type }));
+    const rows = this.db.prepare("SELECT id, title, type FROM memories ORDER BY updated DESC").all() as MemoryRow[];
+    return rows.map((r) => ({ id: r.id, title: r.title, type: r.type ?? "" }));
   }
 
   /**
@@ -649,7 +672,7 @@ export class MemoryStorage {
              ORDER BY distance
              LIMIT ?`
           )
-          .all(Buffer.from(embedding.buffer), limit * 2) as any[];
+          .all(Buffer.from(embedding.buffer), limit * 2) as SearchResultRow[];
 
         for (const vr of vecResults) {
           const memoryId = this.rowidToId(Number(vr.rowid));
@@ -687,11 +710,11 @@ export class MemoryStorage {
         `%${query}%`,
         ...queryWords.flatMap(w => [`%${w}%`, `%${w}%`]),
         limit * 2
-      ) as any[];
+      ) as SearchResultRow[];
 
     for (const fr of fuzzyResults) {
       const existing = results.get(fr.id);
-      const fuzzyScore = (fr.title_match * 0.7 + fr.content_match * 0.3);
+      const fuzzyScore = ((fr.title_match ?? 0) * 0.7 + (fr.content_match ?? 0) * 0.3);
       const record = this.getById(fr.id);
       if (record) {
         const snippet = this.extractSnippet(record.content, query);
