@@ -53,7 +53,7 @@ function renderSessionEventsSegment(ctx: FooterSegmentContext): RenderedSegment 
   const count = events.length;
   if (count === 0) {
     if (isSegmentEnabled("compactor", "session_events")) {
-      return { content: mutedPlaceholder("📈 CMP 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("sessionEvents", "0")), visible: true };
     }
     return hidden();
   }
@@ -74,7 +74,7 @@ function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
   }
   if (compactionCount === 0) {
     if (isSegmentEnabled("compactor", "compactions")) {
-      return { content: mutedPlaceholder("🗜️ CMP 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("compactions", "0")), visible: true };
     }
     return hidden();
   }

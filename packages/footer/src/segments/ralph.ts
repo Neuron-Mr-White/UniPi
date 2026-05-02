@@ -106,7 +106,8 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
 
   const ralphIcon = getIcon("activeLoops");
   const dot = status === "active" ? GREEN_DOT : status === "completed" ? GREEN_DOT : RED_DOT;
-  const statusIcon = status === "active" ? "▶" : status === "paused" ? "⏸" : status === "completed" ? "✓" : "";
+  // Small geometric status indicators (▶ ⏸ ✓) work in all icon styles
+  const statusIcon = status === "active" ? "\u25B6" : status === "paused" ? "\u23F8" : status === "completed" ? "\u2713" : "";
   const display = name ? `${statusIcon} ${name}` : `${statusIcon}`;
 
   const active = status === "active" || status === "completed";

@@ -176,7 +176,8 @@ function renderCostSegment(ctx: FooterSegmentContext): RenderedSegment {
   if (!stats.cost && !usingSubscription) return { content: "", visible: false };
 
   const costDisplay = usingSubscription ? "(sub)" : `$${stats.cost.toFixed(2)}`;
-  return { content: color(ctx, "cost", costDisplay), visible: true };
+  const content = withIcon("cost", costDisplay);
+  return { content: color(ctx, "cost", content), visible: true };
 }
 
 function renderTokensSegment(variant: "total" | "in" | "out"): (ctx: FooterSegmentContext) => RenderedSegment {

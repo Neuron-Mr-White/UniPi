@@ -75,7 +75,8 @@ function renderCurrentCommandSegment(ctx: FooterSegmentContext): RenderedSegment
     return { content: applyColor("workflow", content, ctx.theme, ctx.colors), visible: true };
   }
 
-  const statusPrefix = active ? "▶" : "✓";
+  // Small geometric status indicators work in all icon styles
+  const statusPrefix = active ? "\u25B6" : "\u2713";
   const semanticColor = getWorkflowSemanticColor(command);
   const content = `${workflowIcon} ${statusPrefix} ${command}`;
   return { content: applyColor(semanticColor, content, ctx.theme, ctx.colors), visible: true };
