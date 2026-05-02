@@ -53,7 +53,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
     });
 
     // Register info-screen group
-    const infoRegistry = (globalThis as any).__unipi_info_registry;
+    const infoRegistry = globalThis.__unipi_info_registry;
     if (infoRegistry) {
       let cachedResult: { currentVersion: string; latestVersion: string; updateAvailable: boolean; lastCheck: string } | null = null;
 

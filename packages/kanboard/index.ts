@@ -29,8 +29,7 @@ export default function (pi: ExtensionAPI): void {
   // Kanboard no longer manages badge generation to avoid duplication.
 
   // Register info-screen group
-  const globalObj = globalThis as any;
-  const registry = globalObj.__unipi_info_registry;
+  const registry = globalThis.__unipi_info_registry;
   if (registry) {
     registry.registerGroup({
       id: "kanboard",

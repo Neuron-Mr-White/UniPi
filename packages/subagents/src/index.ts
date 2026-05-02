@@ -21,8 +21,7 @@ import { AgentWidget } from "./widget.js";
 
 /** Get info registry from global */
 function getInfoRegistry() {
-  const g = globalThis as any;
-  return g.__unipi_info_registry;
+  return globalThis.__unipi_info_registry;
 }
 
 // ---- Formatting helpers (shared between renderers and inline text) ----

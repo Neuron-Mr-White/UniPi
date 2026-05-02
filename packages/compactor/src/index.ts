@@ -170,7 +170,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     registerCommands(pi, getCommandDeps());
 
     // Register info-screen group
-    const infoRegistry = (globalThis as any).__unipi_info_registry;
+    const infoRegistry = globalThis.__unipi_info_registry;
     if (infoRegistry && sessionDB) {
       const sdb = sessionDB;
       const sid = () => currentSessionId;
@@ -193,7 +193,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         dataProvider: async () => {
           try {
             const { getInfoScreenData } = await import("./info-screen.js");
-            const data = await getInfoScreenData(sdb, sid(), runtimeStats);
+            const data = await getInfoScreenData(sdb, sid(), getCounters());
             return {
               tokensSaved: { value: data.tokensSaved.value, detail: data.tokensSaved.detail },
               costSaved: { value: data.costSaved.value, detail: data.costSaved.detail },
@@ -315,32 +315,35 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const compactionEntry = (event as any).compactionEntry;
       const tokensBefore = compactionEntry?.tokensBefore ?? 0;
 
-      // Use actual runtimeStats for byte measurement instead of heuristic
-      const totalBytesReturned = Object.values(runtimeStats.bytesReturned).reduce((s, b) => s + b, 0);
-      const totalBytesProcessed = runtimeStats.bytesIndexed + runtimeStats.bytesSandboxed + totalBytesReturned;
-
       if (tokensBefore > 0) {
-        // Use actual token count from Pi's compactionEntry
+        // Use actual token count from Pi's compactionEntry.
+        // Compaction typically keeps ~10-15% of original context.
         const charsBefore = tokensBefore * 4;
-        // Estimate kept chars: proportional to what remains after compaction
-        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.15);
+        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.12);
         const charsKept = tokensAfter * 4;
         const messagesSummarized = Math.max(1, Math.round(tokensBefore / 500));
         counters.totalTokensCompacted += tokensBefore - tokensAfter;
         sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
       } else {
-        // Fallback: estimate from runtime byte stats when tokensBefore unavailable
-        if (totalBytesProcessed > 0) {
-          const charsBefore = totalBytesProcessed;
-          const charsKept = totalBytesReturned;
-          const messagesSummarized = Math.max(1, Math.round(totalBytesProcessed / 2000));
-          const estTokensBefore = Math.round(totalBytesProcessed / 4);
-          const estTokensAfter = Math.round(totalBytesReturned / 4);
-          counters.totalTokensCompacted += Math.max(0, estTokensBefore - estTokensAfter);
-          sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
+        // tokensBefore unavailable — use session event count as a rough heuristic.
+        // This happens when Pi's compaction doesn't report tokensBefore.
+        // We estimate from the number of events stored in this session.
+        try {
+          const eventCount = sessionDB.getEventCount(sessionId);
+          if (eventCount > 0) {
+            // Rough estimate: ~500 tokens per event on average
+            const estTokensBefore = eventCount * 500;
+            const estTokensAfter = Math.round(estTokensBefore * 0.12);
+            const charsBefore = estTokensBefore * 4;
+            const charsKept = estTokensAfter * 4;
+            counters.totalTokensCompacted += estTokensBefore - estTokensAfter;
+            sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, eventCount);
+          }
+        } catch {
+          // Non-fatal: heuristic estimation failed
         }
       }
-      debug("session_compact", { sessionId, tokensBefore, totalBytesProcessed, hasCompactionEntry: !!compactionEntry });
+      debug("session_compact", { sessionId, tokensBefore, hasCompactionEntry: !!compactionEntry });
     }
   });
 

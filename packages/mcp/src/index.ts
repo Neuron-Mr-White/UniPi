@@ -27,8 +27,7 @@ let registry: ServerRegistry | null = null;
 
 /** Get info registry from global */
 function getInfoRegistry() {
-  const g = globalThis as any;
-  return g.__unipi_info_registry;
+  return globalThis.__unipi_info_registry;
 }
 
 /** Get the server registry (for commands) */

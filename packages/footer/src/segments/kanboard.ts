@@ -22,7 +22,7 @@ function withIcon(segmentId: string, text: string): string {
  */
 function getKanboardData(): Record<string, unknown> | null {
   try {
-    const registry = (globalThis as Record<string, unknown>).__unipi_kanboard_registry;
+    const registry = globalThis.__unipi_kanboard_registry;
     if (!registry || typeof registry !== "object") return null;
     return registry as Record<string, unknown>;
   } catch {

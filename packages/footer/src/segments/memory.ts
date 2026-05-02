@@ -51,8 +51,7 @@ interface InfoRegistryLike {
  */
 function getInfoRegistryMemoryData(): InfoMemoryData | null {
   try {
-    const g = globalThis as Record<string, unknown>;
-    const registry = g.__unipi_info_registry;
+    const registry = globalThis.__unipi_info_registry;
     if (!registry || typeof registry !== "object") return null;
 
     // The info registry exposes getCachedData(groupId) synchronously

@@ -17,8 +17,7 @@ import {
 
 // Get info registry from global
 function getInfoRegistry() {
-  const g = globalThis as any;
-  return g.__unipi_info_registry;
+  return globalThis.__unipi_info_registry;
 }
 import { RalphLoopManager } from "./ralph-loop.js";
 import { registerRalphTools } from "./tools.js";

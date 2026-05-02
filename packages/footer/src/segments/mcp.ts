@@ -25,14 +25,6 @@ interface McpStats {
   toolsTotal?: number;
 }
 
-/** Shape of the global escape-hatch object */
-interface GlobalMcpStats extends McpStats {}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __unipi_mcp_stats: GlobalMcpStats | undefined;
-}
-
 function withIcon(segmentId: string, text: string): string {
   const icon = getIcon(segmentId);
   return icon ? `${icon} ${text}` : text;

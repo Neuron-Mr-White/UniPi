@@ -31,8 +31,7 @@ const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
 
 // Get info registry from global (avoids direct import issues with pi's extension loading)
 function getInfoRegistry() {
-  const g = globalThis as any;
-  return g.__unipi_info_registry;
+  return globalThis.__unipi_info_registry;
 }
 
 export default function (pi: ExtensionAPI) {

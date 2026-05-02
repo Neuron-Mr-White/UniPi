@@ -156,5 +156,5 @@ export function resetFooterRegistry(): void {
 
 // Expose on globalThis for cross-package access
 if (typeof globalThis !== "undefined") {
-  (globalThis as Record<string, unknown>).__unipi_footer_registry = getFooterRegistry();
+  globalThis.__unipi_footer_registry = getFooterRegistry();
 }

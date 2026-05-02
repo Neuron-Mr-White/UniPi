@@ -263,10 +263,9 @@ class InfoRegistry {
 export const infoRegistry = new InfoRegistry();
 
 // Expose globally so other modules can access without direct imports
-const globalObj = globalThis as any;
-if (!globalObj.__unipi_info_registry) {
-  globalObj.__unipi_info_registry = infoRegistry;
+if (!globalThis.__unipi_info_registry) {
+  globalThis.__unipi_info_registry = infoRegistry;
 }
 export const getGlobalRegistry = (): InfoRegistry => {
-  return globalObj.__unipi_info_registry || infoRegistry;
+  return (globalThis.__unipi_info_registry as InfoRegistry | undefined) ?? infoRegistry;
 };
