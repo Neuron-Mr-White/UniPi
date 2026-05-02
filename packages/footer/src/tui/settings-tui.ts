@@ -430,7 +430,16 @@ class FooterSettingsOverlay {
   // ─── Section navigation ────────────────────────────────────────────
 
   private getFocusedGroupId(): string | null {
-    return this.selectedGroupId ?? this.groups[0]?.id ?? null;
+    if (this.selectedGroupId) return this.selectedGroupId;
+    // Access SettingsList internal state — it doesn't expose a getSelectedId() method
+    const list = this.groupList as unknown as {
+      selectedIndex: number;
+      items: SettingItem[];
+      filteredItems: SettingItem[];
+      searchEnabled: boolean;
+    };
+    const displayItems = list.searchEnabled ? list.filteredItems : list.items;
+    return displayItems[list.selectedIndex]?.id ?? null;
   }
 
   private enterSegmentsMode(groupId: string): void {
