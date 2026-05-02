@@ -203,9 +203,11 @@ export class FooterRenderer {
 
     const sepDef = getSeparator(settings.separator);
     const sepWidth = visibleWidth(sepDef.left) + 2;
-    const zoneSep = presetDef.zoneSeparator ?? settings.zoneSeparator ?? "\u2502";
-    const zoneSepWidth = visibleWidth(zoneSep) + 2; // +2 for spaces around zone sep
-    const dimZoneSep = `\x1b[2m${zoneSep}\x1b[0m`; // dimmed zone separator
+    const rawZoneSep = presetDef.zoneSeparator ?? settings.zoneSeparator ?? "\u2502";
+    const zoneSepHidden = !rawZoneSep || rawZoneSep === "none";
+    const zoneSep = zoneSepHidden ? "" : rawZoneSep;
+    const zoneSepWidth = zoneSepHidden ? 0 : visibleWidth(zoneSep) + 2; // +2 for spaces around zone sep
+    const dimZoneSep = zoneSepHidden ? "" : `\x1b[2m${zoneSep}\x1b[0m`; // dimmed zone separator
 
     // Calculate widths per zone
     const leftWidth = this.measureZoneWidth(zones.left, sepWidth);
@@ -334,7 +336,7 @@ export class FooterRenderer {
     }
 
     if (centerContent) {
-      if (leftContent) result += ` ${dimZoneSep} `;
+      if (leftContent && dimZoneSep) result += ` ${dimZoneSep} `;
       result += centerContent;
     }
 

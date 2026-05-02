@@ -30,6 +30,7 @@ const SECTION_LABELS: Record<Section, string> = {
 
 const SEPARATOR_STYLES: SeparatorStyle[] = ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"];
 const ICON_STYLES: IconStyle[] = ["nerd", "emoji", "text"];
+const ZONE_SEPARATOR_OPTIONS = ["│", "╎", "·", "─", "none"];
 
 // ─── Theme for SettingsList ────────────────────────────────────────────
 
@@ -252,6 +253,13 @@ class FooterSettingsOverlay {
         values: ICON_STYLES,
       },
       {
+        id: "zoneSeparator",
+        label: "Zone Separator",
+        description: "Divider between zones (left · center · right)",
+        currentValue: this.settings.zoneSeparator ?? "│",
+        values: ZONE_SEPARATOR_OPTIONS,
+      },
+      {
         id: "showFullLabels",
         label: "Full Labels",
         description: "Show descriptive labels instead of abbreviations",
@@ -370,6 +378,9 @@ class FooterSettingsOverlay {
       case "iconStyle":
         this.settings.iconStyle = newValue as IconStyle;
         setIconStyle(newValue as IconStyle);
+        break;
+      case "zoneSeparator":
+        this.settings.zoneSeparator = newValue;
         break;
       case "showFullLabels":
         this.settings.showFullLabels = newValue === "on";
