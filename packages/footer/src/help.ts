@@ -101,7 +101,7 @@ export function showFooterHelp(
   // Use pi's custom UI overlay
   const ctx = (pi as any)._ctx;
   if (ctx?.ui?.custom) {
-    ctx.ui.custom((tui: any) => {
+    ctx.ui.custom((tui: import("@mariozechner/pi-tui").TUI) => {
       let scrollOffset = 0;
 
       return {

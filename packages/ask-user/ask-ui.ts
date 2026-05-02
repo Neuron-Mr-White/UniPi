@@ -5,7 +5,8 @@
  * Uses ctx.ui.custom() callback pattern following question.ts/questionnaire.ts.
  */
 
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import type { Theme, AgentToolResult } from "@mariozechner/pi-coding-agent";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -31,9 +32,9 @@ export function renderAskUI(params: {
   allowFreeform: boolean;
   timeout?: number;
 }): (
-  tui: any,
-  theme: any,
-  kb: any,
+  tui: TUI,
+  theme: Theme,
+  kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
   done: (result: AskUIResult | null) => void,
 ) => {
   render: (width: number) => string[];
@@ -446,7 +447,7 @@ export function renderAskUI(params: {
     function renderOptions(
       lines: string[],
       add: (s: string) => void,
-      theme: any,
+      theme: Theme,
       width: number,
     ) {
       for (let i = 0; i < displayOptions.length; i++) {
@@ -561,8 +562,8 @@ export function renderAskUI(params: {
  * Create a renderCall function for the ask_user tool.
  */
 export function createRenderCall() {
-  return (args: any, theme: any, _context: any) => {
-    const question = args.question || "";
+  return (args: Record<string, unknown>, theme: Theme, _context: unknown) => {
+    const question = (args.question as string) || "";
     const options = Array.isArray(args.options) ? args.options : [];
     const mode = args.allowMultiple ? "multi-select" : "single-select";
     const count = options.length;
@@ -581,14 +582,15 @@ export function createRenderCall() {
  * Create a renderResult function for the ask_user tool.
  */
 export function createRenderResult() {
-  return (result: any, _options: any, theme: any, _context: any) => {
-    const details = result.details;
+  return (result: AgentToolResult<unknown>, _options: unknown, theme: Theme, _context: unknown) => {
+    const details = result.details as Record<string, unknown> | undefined;
     if (!details) {
-      const text = result.content?.[0];
-      return new Text(text?.type === "text" ? text.text : "", 0, 0);
+      const content = result.content as unknown as Array<Record<string, unknown>> | undefined;
+      const text = content?.[0];
+      return new Text(text?.type === "text" ? (text.text as string) : "", 0, 0);
     }
 
-    const response = details.response as AskUserResponse;
+    const response = (details as { response: AskUserResponse }).response;
     if (!response) {
       return new Text(theme.fg("warning", "No response"), 0, 0);
     }

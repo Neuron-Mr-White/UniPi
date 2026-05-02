@@ -41,9 +41,9 @@ interface UpdateState {
  */
 export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
   return (
-    tui: any,
+    tui: import("@mariozechner/pi-tui").TUI,
     theme: Theme,
-    _kb: any,
+    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
     done: (result: { updated: boolean } | null) => void,
   ) => {
     const config = loadConfig();
@@ -66,7 +66,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
         : `${theme.bold(entry.version)} — ${theme.fg("muted", "Unreleased")}`;
       contentLines.push(`  ${title}`);
       // Use markdown renderer for the body content
-      const bodyLines = renderMarkdown(entry.body, (tui.width ?? 80) - 6, theme);
+      const bodyLines = renderMarkdown(entry.body, (tui.terminal?.columns ?? 80) - 6, theme);
       for (const line of bodyLines) {
         contentLines.push(`  ${line}`);
       }

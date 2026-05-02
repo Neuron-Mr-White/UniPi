@@ -148,7 +148,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
 function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterState): void {
   // Register footer (minimal — handles branch changes)
-  ctx.ui.setFooter((tui: any, _theme: Theme, footerData: any) => {
+  ctx.ui.setFooter((tui, _theme, footerData) => {
     state.tuiRef = tui;
 
     // Start periodic refresh for time-sensitive segments (e.g. clock)
@@ -199,7 +199,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
   });
 
   // Top row widget
-  ctx.ui.setWidget("footer-top", (_tui: any, theme: Theme) => {
+  ctx.ui.setWidget("footer-top", (_tui, theme) => {
     // Update the renderer's theme-like
     const themeLike = { fg: (color: string, text: string) => theme.fg(color as any, text) };
     // We need to patch the context with proper theme
@@ -221,7 +221,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
   }, { placement: "aboveEditor" });
 
   // Secondary row widget
-  ctx.ui.setWidget("footer-secondary", (_tui: any, _theme: Theme) => {
+  ctx.ui.setWidget("footer-secondary", (_tui, _theme) => {
     return {
       dispose() {},
       invalidate() {

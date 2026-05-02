@@ -5,7 +5,8 @@
  * edit, delete, scope switching, and sync trigger.
  */
 
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@mariozechner/pi-tui";
+import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { ServerState } from "../types.js";
 import {
   loadMcpConfig,
@@ -49,9 +50,9 @@ export function renderMcpSettingsOverlay(params?: {
   onComplete?: () => void;
 }) {
   return (
-    tui: any,
-    theme: any,
-    _kb: any,
+    tui: TUI,
+    theme: Theme,
+    _kb: KeybindingsManager,
     done: (result: { action?: string } | null) => void,
   ) => {
     const registry = params?.registry;

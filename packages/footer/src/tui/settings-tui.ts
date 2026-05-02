@@ -67,8 +67,8 @@ function visibleWidth(text: string): number {
 // ─── Show the footer settings overlay ──────────────────────────────────
 
 export function showFooterSettings(ctx: ExtensionCommandContext, groups: FooterGroup[], onSettingsChanged?: () => void): void {
-  ctx.ui.custom(
-    (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
+  ctx.ui.custom<void>(
+    (tui, _theme, _keybindings, done) => {
       const overlay = new FooterSettingsOverlay(groups, onSettingsChanged);
       overlay.onClose = () => done();
 

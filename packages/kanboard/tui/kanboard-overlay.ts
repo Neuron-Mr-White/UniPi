@@ -9,8 +9,10 @@ import {
   Key,
   matchesKey,
   truncateToWidth,
+  type TUI,
   visibleWidth,
 } from "@mariozechner/pi-tui";
+import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { ParsedDoc, ParsedItem, ItemStatus } from "../types.js";
 import { createDefaultRegistry } from "../parser/index.js";
 
@@ -59,9 +61,9 @@ export function renderKanboardOverlay(params?: {
   onComplete?: () => void;
 }) {
   return (
-    tui: any,
-    theme: any,
-    _kb: any,
+    tui: TUI,
+    theme: Theme,
+    _kb: KeybindingsManager,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
     const state: KanboardState = {
@@ -105,8 +107,8 @@ export function renderKanboardOverlay(params?: {
     const render = async () => {
       await ensureLoaded();
 
-      const width = tui.width;
-      const height = tui.height;
+      const width = tui.terminal?.columns ?? 80;
+      const height = tui.terminal?.rows ?? 24;
       const lines: string[] = [];
 
       // Header
@@ -134,7 +136,7 @@ export function renderKanboardOverlay(params?: {
       const footer = " j/k: navigate  Tab: switch tab  q/Esc: close ";
       lines.push(truncateToWidth(footer, width));
 
-      tui.setContent(lines);
+      (tui as unknown as { setContent(lines: string[]): void }).setContent(lines);
     };
 
     const renderTasksTab = (lines: string[], width: number, maxLines: number) => {
@@ -221,7 +223,7 @@ export function renderKanboardOverlay(params?: {
       }
     };
 
-    const handleKey = async (key: any) => {
+    const handleKey = async (key: string) => {
       await ensureLoaded();
 
       // Close
@@ -293,6 +295,6 @@ export function renderKanboardOverlay(params?: {
 
     // Start
     render();
-    tui.on("key", handleKey);
+    (tui as unknown as { on(event: string, handler: (data: string) => void): void }).on("key", handleKey);
   };
 }

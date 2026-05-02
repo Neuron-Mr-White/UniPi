@@ -215,15 +215,28 @@ export class FooterRenderer {
     const numZoneSeps = (leftWidth > 0 ? 1 : 0) + (rightWidth > 0 ? 1 : 0);
     const availableForCenter = width - leftWidth - rightWidth - numZoneSeps * zoneSepWidth - 2; // -2 for margins
 
+    // Progressive segment dropping: if left + right already exceed width,
+    // drop right-zone segments from the end until they fit.
+    const marginWidth = 2; // leading + trailing space
+    let adjustedRightWidth = rightWidth;
+    while (zones.right.length > 0 && leftWidth + adjustedRightWidth + marginWidth > width) {
+      const dropped = zones.right.pop()!;
+      adjustedRightWidth = this.measureZoneWidth(zones.right, sepWidth);
+      overflowZones.right.push(dropped);
+    }
+    // Recalculate available center after possible right-zone dropping
+    const adjNumZoneSeps = (zones.left.length > 0 ? 1 : 0) + (zones.right.length > 0 ? 1 : 0);
+    const adjAvailableForCenter = width - leftWidth - adjustedRightWidth - adjNumZoneSeps * zoneSepWidth - marginWidth;
+
     // Overflow check: if center doesn't fit, move excess to overflow
     const centerWidth = this.measureZoneWidth(zones.center, sepWidth);
-    if (centerWidth > Math.max(0, availableForCenter)) {
+    if (centerWidth > Math.max(0, adjAvailableForCenter)) {
       // Move overflow center segments to secondary
       let fitWidth = 0;
       let cutoffIdx = 0;
       for (let i = 0; i < zones.center.length; i++) {
         const needed = zones.center[i].width + (i > 0 ? sepWidth : 0);
-        if (fitWidth + needed <= Math.max(0, availableForCenter)) {
+        if (fitWidth + needed <= Math.max(0, adjAvailableForCenter)) {
           fitWidth += needed;
           cutoffIdx = i + 1;
         } else {
@@ -238,10 +251,11 @@ export class FooterRenderer {
     const topContent = this.buildZoneRow(zones, width, sepDef, dimZoneSep);
 
     // Build secondary row with overflow + preset secondary segments
-    const allSecondary = [...overflowZones.center, ...secondaryRendered];
+    const allSecondary = [...overflowZones.center, ...overflowZones.right, ...secondaryRendered];
     const secondaryContent = this.buildContentFromParts(
       allSecondary.map(s => s.content),
       sepDef,
+      width,
     );
 
     this.lastLayoutResult = { topContent, secondaryContent };
@@ -350,20 +364,22 @@ export class FooterRenderer {
         result += " ".repeat(gap);
       }
 
-      if (centerContent || leftContent) {
-        // Only add zone separator if there's content before it
-        if (gap > visibleWidth(dimZoneSep) + 2) {
-          // Place zone sep right before right content
-          const sepPos = result.length - gap + Math.floor((gap - visibleWidth(dimZoneSep)) / 2);
-          // Simpler: just put it at the boundary
-        }
+      // If gap is negative, right zone doesn't fit — skip it to prevent overflow.
+      // truncateToWidth below is the safety net for any remaining excess.
+      if (gap > visibleWidth(dimZoneSep) + 2) {
+        // Enough room for zone separator aesthetic
       }
 
-      result += rightContent;
+      // Only append right zone if it fits within terminal width
+      if (gap >= 0) {
+        result += rightContent;
+      }
     }
 
     result += " "; // trailing margin
-    return result;
+
+    // Safety net: never exceed terminal width
+    return truncateToWidth(result, fullWidth);
   }
 
   /** Build content from parts array (raw strings) */
@@ -376,11 +392,16 @@ export class FooterRenderer {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  private buildContentFromParts(parts: string[], sepDef: { left: string }): string {
+  private buildContentFromParts(parts: string[], sepDef: { left: string }, maxWidth?: number): string {
     if (parts.length === 0) return "";
     const sep = sepDef.left;
     const sepAnsi = getFgAnsiCode(getPreset(this.presetName).colors ?? getDefaultColors(), "separator");
-    return " " + parts.join(` ${sepAnsi}${sep}${ANSI_RESET} `) + ANSI_RESET + " ";
+    const result = " " + parts.join(` ${sepAnsi}${sep}${ANSI_RESET} `) + ANSI_RESET + " ";
+    // Safety net: never exceed maxWidth if provided
+    if (maxWidth && maxWidth > 0) {
+      return truncateToWidth(result, maxWidth);
+    }
+    return result;
   }
 
   /** Map a segment ID to its group ID */

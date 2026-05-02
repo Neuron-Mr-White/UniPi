@@ -84,15 +84,20 @@ function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Sum tokens saved from compaction events if available
+  // Sum tokens saved from compaction entries.
+  // Pi's CompactionEntry has tokensBefore (total tokens before compaction).
+  // Compaction keeps ~10-15% of context, so tokens saved ≈ tokensBefore × 0.85.
   const events = getSessionEvents(ctx);
   let tokensSaved = 0;
   let hasCompaction = false;
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
-    if (e.type === "compaction" || e.type === "compacted") {
+    if (e.type === "compaction") {
       hasCompaction = true;
-      tokensSaved += Number(e.tokensSaved ?? e.tokens_saved ?? 0);
+      const tokensBefore = Number(e.tokensBefore ?? 0);
+      // Estimate tokens kept at ~12% (compaction summary + recent messages)
+      const tokensAfter = Math.round(tokensBefore * 0.12);
+      tokensSaved += Math.max(0, tokensBefore - tokensAfter);
     }
   }
   if (!hasCompaction || tokensSaved === 0) return hidden();
@@ -102,21 +107,25 @@ function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Check last compaction event for compression ratio
+  // Calculate compression ratio from Pi's CompactionEntry.tokensBefore.
+  // Compaction keeps ~12% of context, giving ~8:1 compression.
   const events = getSessionEvents(ctx);
-  let lastRatio: number | undefined;
+  let totalBefore = 0;
+  let totalAfter = 0;
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
-    if (e.type === "compaction" || e.type === "compacted") {
-      const ratio = e.compressionRatio ?? e.compression_ratio;
-      if (ratio !== undefined && ratio !== null) {
-        lastRatio = Number(ratio);
+    if (e.type === "compaction") {
+      const before = Number(e.tokensBefore ?? 0);
+      if (before > 0) {
+        totalBefore += before;
+        totalAfter += Math.round(before * 0.12);
       }
     }
   }
-  if (lastRatio === undefined) return hidden();
+  if (totalBefore === 0 || totalAfter === 0) return hidden();
 
-  const content = withIcon("compressionRatio", `${lastRatio.toFixed(1)}x`);
+  const ratio = totalBefore / totalAfter;
+  const content = withIcon("compressionRatio", `${ratio.toFixed(1)}x`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 

@@ -35,7 +35,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, theme: any, _keybindings: any, done: any) => {
+          (tui, theme, _keybindings, done) => {
             const overlay = new NotifySettingsOverlay();
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
@@ -103,7 +103,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, theme: any, _keybindings: any, done: any) => {
+          (tui, theme, _keybindings, done) => {
             const overlay = new RecapModelSelectorOverlay();
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
@@ -143,7 +143,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, theme: any, _keybindings: any, done: any) => {
+          (tui, theme, _keybindings, done) => {
             const overlay = new GotifySetupOverlay();
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
@@ -183,7 +183,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, theme: any, _keybindings: any, done: any) => {
+          (tui, theme, _keybindings, done) => {
             const overlay = new TelegramSetupOverlay();
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);
@@ -223,7 +223,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         }
 
         ctx.ui.custom(
-          (tui: any, theme: any, _keybindings: any, done: any) => {
+          (tui, theme, _keybindings, done) => {
             const overlay = new NtfySetupOverlay();
             overlay.setTheme(theme);
             overlay.onClose = () => done(undefined);

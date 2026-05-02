@@ -38,9 +38,9 @@ function padVisible(content: string, targetWidth: number): string {
  */
 export function renderReadmeOverlay(params?: { openDirect?: string }) {
   return (
-    tui: any,
+    tui: import("@mariozechner/pi-tui").TUI,
     theme: Theme,
-    _kb: any,
+    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
     const state: ReadmeState = {
@@ -61,7 +61,7 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
         const readmePath = resolveReadmePath(params.openDirect);
         if (readmePath) {
           const content = readFileSync(readmePath, "utf-8");
-          state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 4, theme);
+          state.contentLines = renderMarkdown(content, (tui.terminal?.columns ?? 80) - 4, theme);
           state.view = "content";
         }
       }
@@ -203,7 +203,7 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
             const entry = state.entries[state.listIndex]!;
             try {
               const content = readFileSync(entry.path, "utf-8");
-              state.contentLines = renderMarkdown(content, (tui.width ?? 80) - 4, theme);
+              state.contentLines = renderMarkdown(content, (tui.terminal?.columns ?? 80) - 4, theme);
               state.contentScroll = 0;
               state.view = "content";
             } catch {

@@ -5,7 +5,8 @@
  * Offers Compact & run, Run directly, or Cancel.
  */
 
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@mariozechner/pi-tui";
+import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { SessionLauncherResult } from "./types.js";
 
 /** Launcher option definition */
@@ -30,9 +31,9 @@ const OPTIONS: LauncherOption[] = [
 export function renderLauncherUI(params: {
   prefill: string;
 }): (
-  tui: any,
-  theme: any,
-  kb: any,
+  tui: TUI,
+  theme: Theme,
+  kb: KeybindingsManager,
   done: (result: SessionLauncherResult | null) => void,
 ) => {
   render: (width: number) => string[];

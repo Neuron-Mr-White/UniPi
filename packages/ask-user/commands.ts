@@ -23,7 +23,7 @@ export function registerAskUserCommands(pi: ExtensionAPI): void {
       }
 
       ctx.ui.custom(
-        (tui: any, _theme: any, _keybindings: any, done: any) => {
+        (tui, _theme, _keybindings, done) => {
           const overlay = new AskUserSettingsOverlay();
           overlay.onClose = () => done(undefined);
           return {

@@ -16,8 +16,10 @@ import {
   Key,
   matchesKey,
   truncateToWidth,
+  type TUI,
   visibleWidth,
 } from "@mariozechner/pi-tui";
+import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import type { CatalogEntry, CatalogData, McpConfig, McpMetadata } from "../types.js";
 import { loadCatalog } from "../config/sync.js";
 import {
@@ -106,9 +108,9 @@ export function renderMcpAddOverlay(params?: {
   onComplete?: () => void;
 }) {
   return (
-    tui: any,
-    theme: any,
-    _kb: any,
+    tui: TUI,
+    theme: Theme,
+    _kb: KeybindingsManager,
     done: (result: { saved: boolean } | null) => void,
   ) => {
     const scope = params?.scope ?? "global";

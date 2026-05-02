@@ -109,7 +109,7 @@ export function registerNameBadgeCommands(
 
       // Redirect to unified settings
       ctx.ui.custom(
-        (tui: any, _theme: any, _keybindings: any, done: any) => {
+        (tui, _theme, _keybindings, done) => {
           const overlay = new UtilSettingsTui();
           overlay.onClose = () => done(undefined);
           overlay.requestRender = () => tui.requestRender();
@@ -145,7 +145,7 @@ export function registerNameBadgeCommands(
       }
 
       ctx.ui.custom(
-        (tui: any, _theme: any, _keybindings: any, done: any) => {
+        (tui, _theme, _keybindings, done) => {
           const overlay = new UtilSettingsTui();
           overlay.onClose = () => done(undefined);
           overlay.requestRender = () => tui.requestRender();

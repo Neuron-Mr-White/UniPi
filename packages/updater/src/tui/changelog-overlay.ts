@@ -39,9 +39,9 @@ function padVisible(content: string, targetWidth: number): string {
  */
 export function renderChangelogOverlay() {
   return (
-    tui: any,
+    tui: import("@mariozechner/pi-tui").TUI,
     theme: Theme,
-    _kb: any,
+    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
     const installedVersion = getInstalledPackageVersion(
