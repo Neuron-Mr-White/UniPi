@@ -144,6 +144,18 @@ export function isSegmentEnabled(groupId: string, segmentId: string): boolean {
   return true;
 }
 
+/**
+ * Check if a segment is explicitly enabled by user settings (toggled on).
+ * Returns true only if the segment appears in the settings with value `true`.
+ * Segments that are enabled by default but not explicitly configured return false.
+ */
+export function isSegmentExplicitlyEnabled(groupId: string, segmentId: string): boolean {
+  const settings = loadFooterSettings();
+  const groupSettings = settings.groups[groupId];
+  if (!groupSettings) return false;
+  return groupSettings.segments?.[segmentId] === true;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function isValidSeparator(value: unknown): boolean {

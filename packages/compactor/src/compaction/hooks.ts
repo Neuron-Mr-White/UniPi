@@ -4,9 +4,16 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { convertToLlm } from "@mariozechner/pi-coding-agent";
+import type {
+  SessionEntry,
+  SessionMessageEntry,
+  SessionBeforeCompactEvent,
+  SessionCompactEvent,
+} from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { compile } from "./summarize.js";
 import { loadConfig } from "../config/manager.js";
-import { buildOwnCut } from "./cut.js";
+import { buildOwnCut, type OwnCutResult } from "./cut.js";
 import type { CompactionStats } from "../types.js";
 import type { SessionDB } from "../session/db.js";
 
@@ -26,37 +33,60 @@ const dbg = (_debug: boolean, _event: string, _data?: Record<string, unknown>) =
   return;
 };
 
-const previewContent = (content: unknown): string => {
-  if (typeof content === "string") return content.slice(0, 300);
-  if (Array.isArray(content)) {
-    return content
-      .map((c: any) => {
-        if (c?.type === "text") return c.text ?? "";
-        if (c?.type === "toolCall") return `[toolCall:${c.name}]`;
-        if (c?.type === "thinking") return `[thinking]`;
-        if (c?.type === "image") return `[image:${c.mimeType}]`;
-        return `[${c?.type ?? "unknown"}]`;
-      })
-      .join("\n")
-      .slice(0, 300);
-  }
-  return "";
-};
-
 const REASON_MESSAGES: Record<import("./cut.js").OwnCutCancelReason, string> = {
   no_live_messages: "compactor: Nothing to compact (no live messages)",
   too_few_live_messages: "compactor: Too few messages to compact",
   no_user_message: "compactor: Cannot compact — no user message found",
 };
 
+/** Count chars in a content part array (TextContent, ToolCall, ToolResult, etc.) */
+function contentPartsChars(parts: Array<{ text?: string; name?: string; input?: unknown; content?: unknown }>): number {
+  return parts.reduce((s: number, p) => {
+    if (p.text) return s + p.text.length;
+    if (p.name) {
+      // ToolCall
+      const inputStr = typeof p.input === "string" ? p.input : JSON.stringify(p.input ?? "");
+      return s + p.name.length + inputStr.length;
+    }
+    if (p.content !== undefined) {
+      // ToolResult
+      const contentStr = typeof p.content === "string" ? p.content : JSON.stringify(p.content ?? "");
+      return s + contentStr.length;
+    }
+    return s;
+  }, 0);
+}
+
+/** Estimate char count for an AgentMessage (unwrapped — has role + content directly) */
+function messageChars(msg: AgentMessage): number {
+  const c = (msg as { content: unknown }).content;
+  if (typeof c === "string") return c.length;
+  if (Array.isArray(c)) return contentPartsChars(c as Array<{ text?: string; name?: string; input?: unknown; content?: unknown }>);
+  return 0;
+}
+
+/** Estimate char count for a SessionMessageEntry's message */
+function entryMessageChars(entry: SessionMessageEntry): number {
+  return messageChars(entry.message);
+}
+
+/** Filter entries to only SessionMessageEntry */
+function filterMessageEntries(entries: SessionEntry[]): SessionMessageEntry[] {
+  return entries.filter((e): e is SessionMessageEntry => e.type === "message");
+}
+
 export function registerCompactionHooks(
   pi: ExtensionAPI,
   deps?: { getSessionDB?: () => SessionDB | null; getSessionId?: () => string },
 ): void {
-  pi.on("session_before_compact", (event, ctx) => {
+  pi.on("session_before_compact", (event: SessionBeforeCompactEvent, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
-    dbg(config.debug, "session_before_compact:enter", { entryCount: (branchEntries as any[])?.length, hasPrevSummary: !!preparation?.previousSummary, isCompactor: customInstructions === COMPACTOR_INSTRUCTION });
+    dbg(config.debug, "session_before_compact:enter", {
+      entryCount: branchEntries.length,
+      hasPrevSummary: !!preparation?.previousSummary,
+      isCompactor: customInstructions === COMPACTOR_INSTRUCTION,
+    });
 
     const isCompactor = customInstructions === COMPACTOR_INSTRUCTION;
     if (!isCompactor && !config.overrideDefaultCompaction) {
@@ -64,38 +94,44 @@ export function registerCompactionHooks(
       return;
     }
 
-    const ownCut = buildOwnCut(branchEntries as any[]);
-    dbg(config.debug, "buildOwnCut", { ok: ownCut.ok, reason: !ownCut.ok ? (ownCut as any).reason : undefined });
+    const ownCut: OwnCutResult = buildOwnCut(branchEntries);
+    dbg(config.debug, "buildOwnCut", {
+      ok: ownCut.ok,
+      reason: !ownCut.ok ? (ownCut as { ok: false; reason: string }).reason : undefined,
+    });
     if (!ownCut.ok) {
       try {
-        ctx?.ui?.notify?.(REASON_MESSAGES[ownCut.reason], "warning");
+        ctx?.ui?.notify?.(REASON_MESSAGES[(ownCut as { ok: false; reason: import("./cut.js").OwnCutCancelReason }).reason], "warning");
       } catch {}
       return { cancel: true };
     }
 
-    const agentMessages = ownCut.messages;
-    const firstKeptEntryId = ownCut.firstKeptEntryId;
+    const { messages: agentMessages, firstKeptEntryId } = ownCut;
     const messages = convertToLlm(agentMessages);
 
-    const keptIdx = (branchEntries as any[]).findIndex((e: any) => e.id === firstKeptEntryId);
-    const keptEntries = keptIdx >= 0
-      ? (branchEntries as any[]).slice(keptIdx).filter((e: any) => e.type === "message")
+    // Find kept entries (from cut point onward)
+    const keptIdx = branchEntries.findIndex((e: SessionEntry) => e.id === firstKeptEntryId);
+    const keptMessageEntries: SessionMessageEntry[] = keptIdx >= 0
+      ? filterMessageEntries(branchEntries.slice(keptIdx))
       : [];
-    const keptChars = keptEntries.reduce((sum: number, e: any) => {
-      const c = e.message?.content;
-      if (typeof c === "string") return sum + c.length;
-      if (Array.isArray(c)) return sum + c.reduce((s: number, p: any) => {
-        if (p.text) return s + p.text.length;
-        if (p.type === "toolCall") return s + (p.name?.length ?? 0) + (typeof p.input === "string" ? p.input.length : JSON.stringify(p.input ?? "").length);
-        if (p.type === "toolResult") return s + (typeof p.content === "string" ? p.content.length : JSON.stringify(p.content ?? "").length);
-        return s;
-      }, 0);
-      return sum;
-    }, 0);
+
+    // Compute char estimates for proportional token estimation
+    const summarizedChars = agentMessages.reduce((sum, msg) => sum + messageChars(msg), 0);
+    const keptChars = keptMessageEntries.reduce((sum, e) => sum + entryMessageChars(e), 0);
+    const totalChars = summarizedChars + keptChars;
+
+    // Use Pi's real token count for "before", estimate "after" proportionally
+    const tokensBefore = preparation.tokensBefore;
+    const tokensAfterEst = totalChars > 0
+      ? Math.round(tokensBefore * keptChars / totalChars)
+      : 0;
+
     lastStats = {
       summarized: agentMessages.length,
-      kept: keptEntries.length,
-      keptTokensEst: Math.round(keptChars / 4),
+      kept: keptMessageEntries.length,
+      totalMessages: agentMessages.length + keptMessageEntries.length,
+      tokensBefore,
+      tokensAfterEst,
     };
 
     // Persist cumulative compaction stats
@@ -103,13 +139,7 @@ export function registerCompactionHooks(
     if (sessionDB && deps?.getSessionId) {
       try {
         const sessionId = deps.getSessionId();
-        const charsBefore = agentMessages.reduce((sum: number, msg: any) => {
-          const c = msg.message?.content;
-          if (typeof c === "string") return sum + c.length;
-          if (Array.isArray(c)) return sum + c.reduce((s: number, p: any) => s + (p.text?.length ?? 0), 0);
-          return sum;
-        }, 0);
-        sessionDB.addCompactionStats(sessionId, charsBefore, keptChars, agentMessages.length);
+        sessionDB.addCompactionStats(sessionId, summarizedChars, keptChars, agentMessages.length);
       } catch {
         // non-fatal
       }
@@ -154,7 +184,7 @@ export function registerCompactionHooks(
     };
   });
 
-  pi.on("session_compact", (event, ctx) => {
+  pi.on("session_compact", (event: SessionCompactEvent, ctx) => {
     const config = loadConfig();
     dbg(config.debug, "session_compact", { fromExtension: event.fromExtension, lastCompactWasCompactor });
     if (!event.fromExtension) return;
@@ -164,7 +194,7 @@ export function registerCompactionHooks(
     setTimeout(() => {
       try {
         ctx?.ui?.notify?.(
-          `compactor: ${stats.summarized} source entries processed; tail kept ${stats.kept} (~${formatTokens(stats.keptTokensEst)} tok).`,
+          `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
           "info",
         );
       } catch {}

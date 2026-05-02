@@ -7,28 +7,32 @@ export type OwnCutCancelReason =
   | "too_few_live_messages"
   | "no_user_message";
 
+import type { SessionEntry, SessionMessageEntry, CompactionEntry } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
 export type OwnCutResult =
-  | { ok: true; messages: any[]; firstKeptEntryId: string; compactAll: boolean }
+  | { ok: true; messages: AgentMessage[]; firstKeptEntryId: string; compactAll: boolean }
   | { ok: false; reason: OwnCutCancelReason };
 
 interface EntryWithMessage {
-  entry: { id: string; type: string };
-  message: { role: string; content: unknown };
+  entry: SessionEntry;
+  message: AgentMessage;
 }
 
-export function buildOwnCut(branchEntries: any[]): OwnCutResult {
+export function buildOwnCut(branchEntries: SessionEntry[]): OwnCutResult {
   let lastCompactionIdx = -1;
   let lastKeptId: string | undefined;
   for (let i = branchEntries.length - 1; i >= 0; i--) {
     if (branchEntries[i].type === "compaction") {
       lastCompactionIdx = i;
-      lastKeptId = branchEntries[i].firstKeptEntryId;
+      const ce = branchEntries[i] as CompactionEntry;
+      lastKeptId = ce.firstKeptEntryId;
       break;
     }
   }
 
   const hasPriorCompaction = lastCompactionIdx >= 0;
-  const hasValidKeptId = !!lastKeptId && branchEntries.some((e: any) => e.id === lastKeptId);
+  const hasValidKeptId = !!lastKeptId && branchEntries.some((e) => e.id === lastKeptId);
   const orphanRecovery = hasPriorCompaction && !hasValidKeptId;
 
   const liveMessages: EntryWithMessage[] = [];

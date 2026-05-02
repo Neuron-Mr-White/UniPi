@@ -14,11 +14,13 @@ import { getSeparator, separatorVisibleWidth } from "./separators.js";
 import { getDefaultColors } from "./theme.js";
 import { setIconStyle } from "./icons.js";
 import { getPreset } from "../presets.js";
-import { isSegmentEnabled, loadFooterSettings } from "../config.js";
+import { isSegmentEnabled, isSegmentExplicitlyEnabled, loadFooterSettings } from "../config.js";
 
 /** Segment lookup by ID across all groups */
 interface SegmentLookup {
   get(id: string): FooterSegment | undefined;
+  /** All known segment IDs */
+  allIds(): string[];
 }
 
 /** Rendered segment with width info */
@@ -161,6 +163,19 @@ export class FooterRenderer {
     // Collect all segment IDs from preset
     const primaryIds = [...presetDef.leftSegments, ...presetDef.rightSegments];
     const secondaryIds = [...presetDef.secondarySegments];
+
+    // Also include segments explicitly enabled by user that are NOT in the preset.
+    // This ensures toggling a segment "on" in the settings TUI makes it visible
+    // even when the active preset doesn't include it.
+    if (this.segmentLookup.allIds) {
+      for (const segId of this.segmentLookup.allIds()) {
+        if (primaryIds.includes(segId) || secondaryIds.includes(segId)) continue;
+        const groupId = this.getGroupForSegment(segId);
+        if (isSegmentExplicitlyEnabled(groupId, segId)) {
+          primaryIds.push(segId);
+        }
+      }
+    }
 
     // Render segments grouped by their zone
     const zones: Record<SegmentZone, RenderedSegmentWithWidth[]> = {

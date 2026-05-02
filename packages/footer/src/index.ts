@@ -78,7 +78,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     registry: getFooterRegistry(),
     renderer: new FooterRenderer(
       getFooterRegistry(),
-      { get: (id: string) => segmentLookup.get(id) },
+      { get: (id: string) => segmentLookup.get(id), allIds: () => Array.from(segmentLookup.keys()) },
       loadFooterSettings().preset,
     ),
     segmentLookup,

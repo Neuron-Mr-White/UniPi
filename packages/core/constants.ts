@@ -231,6 +231,7 @@ export const COMPACTOR_TOOLS = {
 
 /** Compactor command names */
 export const COMPACTOR_COMMANDS = {
+  LOSSLESS_COMPACT: "lossless-compact",
   COMPACT: "compact",
   COMPACT_RECALL: "compact-recall",
   COMPACT_STATS: "compact-stats",

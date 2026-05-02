@@ -1,15 +1,19 @@
 /**
  * Info-screen integration for @pi-unipi/compactor
  *
- * Budget-focused stats: tokensSaved, costSaved, pctReduction,
- * topTools, compactions, toolCalls.
+ * Stats driven by COMPACTION SAVINGS (the compactor's actual value),
+ * not sandbox/index diversion bytes.
+ *
+ * Data sources (in priority order):
+ * 1. Runtime counters (in-memory, current session only)
+ * 2. DB compaction stats (total_chars_before/kept in session_meta)
+ * 3. Session event counts (session_events table, always reliable)
  */
 
 import type { SessionDB } from "./session/db.js";
-import type { RuntimeStats, FullReport } from "./session/analytics.js";
-import { AnalyticsEngine, createMinimalDb } from "./session/analytics.js";
 import { getLastCompactionStats } from "./compaction/hooks.js";
 import { parseUsageStats } from "@pi-unipi/info-screen/usage-parser.js";
+import type { RuntimeCounters } from "./types.js";
 
 export interface CompactorInfoData {
   tokensSaved: { value: string; detail: string };
@@ -45,7 +49,6 @@ function estimateCostPerToken(): number | null {
     const models = usage.byModelToday;
     const todayKeys = Object.keys(models);
     if (todayKeys.length > 0) {
-      // Pick the model with most tokens today
       const topModel = todayKeys.reduce((a, b) => models[a].tokens > models[b].tokens ? a : b);
       const entry = models[topModel];
       if (entry.tokens > 0 && entry.cost > 0) {
@@ -70,40 +73,92 @@ function estimateCostPerToken(): number | null {
 export async function getInfoScreenData(
   sessionDB: SessionDB,
   sessionId: string,
-  runtimeStats: RuntimeStats,
+  counters?: RuntimeCounters,
 ): Promise<CompactorInfoData> {
   try {
-    const db = sessionDB.getDb();
-    const adapter = db ?? createMinimalDb();
-    const engine = new AnalyticsEngine(adapter);
-    const report = engine.queryAll(runtimeStats);
-    const compactStats = getLastCompactionStats();
+    // ── Compaction savings (the compactor's actual value) ──
+    // Priority: in-memory counter → DB per-session stats → DB all-time stats
+    let tokensSaved = counters?.totalTokensCompacted ?? 0;
+    let charsBefore = 0;
+    let charsKept = 0;
 
-    // Tokens saved: bytes kept out of context / 4
-    const tokensSaved = Math.round(report.savings.kept_out / 4);
+    if (tokensSaved === 0) {
+      // Try DB per-session stats
+      const sessionStats = sessionDB.getSessionStats(sessionId);
+      if (sessionStats) {
+        charsBefore = (sessionStats as any).total_chars_before ?? 0;
+        charsKept = (sessionStats as any).total_chars_kept ?? 0;
+        tokensSaved = Math.round((charsBefore - charsKept) / 4);
+      }
+    }
 
-    // Per-tool breakdown table for tokensSaved detail
-    const toolsWithCalls = report.savings.by_tool
-      .filter(t => t.calls > 0)
-      .sort((a, b) => b.tokens - a.tokens);
-    const toolBreakdown = toolsWithCalls.length > 0
-      ? toolsWithCalls.map(t =>
-          `  ${t.tool.padEnd(20)} ${String(t.calls).padStart(4)} calls  ${formatTokens(t.tokens).padStart(8)} tok`
-        ).join("\n")
+    if (tokensSaved === 0) {
+      // Try DB all-time stats
+      const allTime = sessionDB.getAllTimeStats();
+      charsBefore = allTime.allCharsBefore;
+      charsKept = allTime.allCharsKept;
+      tokensSaved = Math.round((charsBefore - charsKept) / 4);
+    }
+
+    // ── Compaction count ──
+    let compactionCount = counters?.compactions ?? 0;
+    if (compactionCount === 0) {
+      const allTime = sessionDB.getAllTimeStats();
+      compactionCount = allTime.allCompactions;
+    }
+
+    // ── Compression ratio / pct reduction ──
+    let pctReduction = 0;
+    if (charsBefore > 0) {
+      pctReduction = Math.round((1 - charsKept / charsBefore) * 100);
+    }
+
+    // ── Tool call counts from session_events (always reliable) ──
+    // The session_events table captures every tool_result event, so this
+    // is an accurate count regardless of runtimeStats state.
+    interface ToolCountRow { category: string; cnt: number }
+    let toolCountRows: ToolCountRow[] = [];
+    let totalToolCalls = 0;
+    try {
+      const db = sessionDB.getDb();
+      if (db) {
+        toolCountRows = db.prepare(
+          "SELECT category, COUNT(*) as cnt FROM session_events WHERE session_id = ? GROUP BY category",
+        ).all(sessionId) as ToolCountRow[];
+        for (const row of toolCountRows) {
+          totalToolCalls += row.cnt;
+        }
+      }
+    } catch {
+      // Non-fatal: DB query failed, show zero
+    }
+
+    // Build per-tool breakdown for display
+    const toolBreakdown = toolCountRows.length > 0
+      ? toolCountRows
+          .sort((a, b) => b.cnt - a.cnt)
+          .map(r => `  ${r.category.padEnd(20)} ${String(r.cnt).padStart(5)} events`)
+          .join("\n")
       : "No tool calls yet";
 
-    // Cost saved: tokensSaved × cost per token
+    const topCategory = toolCountRows.length > 0
+      ? toolCountRows.reduce((a, b) => a.cnt > b.cnt ? a : b)
+      : null;
+
+    const top5Detail = toolCountRows.length > 0
+      ? toolCountRows
+          .sort((a, b) => b.cnt - a.cnt)
+          .slice(0, 5)
+          .map(r => `${r.category}: ${r.cnt} events`)
+          .join("\n")
+      : "No tool calls yet";
+
+    // ── Cost saved estimate ──
     const costPerToken = estimateCostPerToken();
     const costSaved = costPerToken !== null ? tokensSaved * costPerToken : null;
 
-    // Top consuming tool
-    const topTool = toolsWithCalls[0];
-    const top5Tools = toolsWithCalls.slice(0, 5);
-    const top5Detail = top5Tools.length > 0
-      ? top5Tools.map(t =>
-          `${t.tool}: ${formatTokens(t.tokens)} (${t.calls} calls)`
-        ).join("\n")
-      : "No tool calls yet";
+    // ── Last compaction details ──
+    const compactStats = getLastCompactionStats();
 
     return {
       tokensSaved: {
@@ -117,24 +172,26 @@ export async function getInfoScreenData(
           : "Cost data unavailable for current model",
       },
       pctReduction: {
-        value: `${report.savings.pct}%`,
-        detail: `${formatTokens(Math.round(report.savings.processed_kb * 1024 / 4))} processed → ${formatTokens(Math.round(report.savings.entered_kb * 1024 / 4))} entered context`,
+        value: `${pctReduction}%`,
+        detail: charsBefore > 0
+          ? `${formatTokens(Math.round(charsBefore / 4))} before → ${formatTokens(Math.round(charsKept / 4))} after compaction`
+          : "No compaction data yet",
       },
       topTools: {
-        value: topTool ? `${topTool.tool}: ${formatTokens(topTool.tokens)}` : "N/A",
+        value: topCategory ? `${topCategory.category}: ${topCategory.cnt}` : "N/A",
         detail: top5Detail,
       },
       compactions: {
-        value: String(Math.max(report.continuity.compact_count, report.continuity.all_time_compact_count)),
+        value: String(compactionCount),
         detail: compactStats
-          ? `Last: ${compactStats.summarized} msgs summarized, ${compactStats.kept} kept (~${formatTokens(compactStats.keptTokensEst)} tok)`
-          : report.continuity.all_time_compact_count > 0
-            ? `${report.continuity.all_time_compact_count} compaction(s) across all sessions`
+          ? `Last: ${compactStats.totalMessages} messages (~${formatTokens(compactStats.tokensBefore)} tokens) → ${compactStats.kept} messages (~${formatTokens(compactStats.tokensAfterEst)} tokens)`
+          : compactionCount > 0
+            ? `${compactionCount} compaction(s) across all sessions`
             : "No compactions yet",
       },
       toolCalls: {
-        value: String(report.savings.total_calls),
-        detail: `${report.savings.total_calls} total tool calls across ${toolsWithCalls.length} tool${toolsWithCalls.length !== 1 ? "s" : ""}`,
+        value: String(totalToolCalls),
+        detail: `${totalToolCalls} events across ${toolCountRows.length} categor${toolCountRows.length !== 1 ? "ies" : "y"}`,
       },
     };
   } catch {

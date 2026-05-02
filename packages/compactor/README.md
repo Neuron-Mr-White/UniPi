@@ -8,7 +8,7 @@ The zero-LLM pipeline compresses context through 6 stages (normalize, filter, bu
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:compact` | Manual compaction with stats |
+| `/unipi:lossless-compact` | Immediate zero-LLM compaction with structured summary |
 | `/unipi:session-recall` | Search session history (BM25 or regex) |
 | `/unipi:content-index` | Index current project into FTS5 |
 | `/unipi:content-search` | Search indexed content |
@@ -18,6 +18,8 @@ The zero-LLM pipeline compresses context through 6 stages (normalize, filter, bu
 | `/unipi:compact-settings` | TUI settings overlay |
 | `/unipi:compact-preset <name>` | Apply quick preset |
 | `/unipi:compact-help` | Show detailed documentation |
+
+> **Note:** `/unipi:compact` still works as a deprecated alias for `/unipi:lossless-compact`.
 
 ## Special Triggers
 

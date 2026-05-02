@@ -1,5 +1,7 @@
 /**
  * ctx_stats tool — context savings dashboard
+ *
+ * Stats driven by compaction savings (DB-first) with runtime counter fallback.
  */
 
 import type { SessionDB } from "../session/db.js";
@@ -50,11 +52,21 @@ export async function ctxStats(
     compactions = allTime.allCompactions;
   }
 
+  // Compression ratio
+  let ratio = "N/A";
+  if (sessionStats) {
+    const before = (sessionStats as any).total_chars_before ?? 0;
+    const kept = (sessionStats as any).total_chars_kept ?? 0;
+    if (before > 0 && kept > 0) {
+      ratio = `${(before / kept).toFixed(1)}:1`;
+    }
+  }
+
   return {
     sessionEvents: sessionStats?.event_count ?? 0,
     compactions,
     tokensSaved,
-    compressionRatio: "N/A",
+    compressionRatio: ratio,
     indexedDocs: storeStats.sources,
     indexedChunks: storeStats.chunks,
     sandboxRuns: counters?.sandboxRuns ?? 0,

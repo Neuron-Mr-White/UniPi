@@ -84,65 +84,65 @@ export interface IconSet {
 /** Nerd Font glyphs — requires a Nerd Font installed in the terminal */
 export const NERD_ICONS: IconSet = {
   // Core
-  model:           "\uDB81\uDE5B", // 󰚩 custom model icon
-  apiState:        "\uF725", // 󱂛 api state icon
-  toolCount:       "\uF0AD", //  tool count icon
-  git:             "\uF0E8", //  git icon
-  context:         "\uF8D8", //  context icon
-  cost:            "\uF155", //  cost icon
-  tokens:          "\uF07B", //  tokens icon
-  tokensIn:        "\uF07B", //  tokens in icon
-  tokensOut:       "\uF07B", //  tokens out icon
-  session:         "\uF550", // nf-md-identifier
-  hostname:        "\uF109", // nf-fa-laptop
-  time:            "\uF017", // nf-fa-clock_o
-  tps:             "\uF062", // \u2191 up arrow
-  clock:           "\uF017", // nf-fa-clock_o
-  duration:        "\uF49B", // nf-md-timer_outline
-  thinkingLevel:   "\uF4D8", // nf-fa-lightbulb_o
+  model:           "\u{F06A9}", // 󰚩
+  apiState:        "\u{F109B}", // 󱂛
+  toolCount:       "\u{F1064}", // 󱁤
+  git:             "\uEAFE", // 
+  context:         "\u{F0077}", // 󰁷
+  cost:            "\uF155", // 
+  tokens:          "\uEDE8", // 
+  tokensIn:        "\uEDE8", // 
+  tokensOut:       "\uEDE8", // 
+  session:         "\uF03A", // 
+  hostname:        "\uEA7A", // 
+  time:            "\uF017", // 
+  tps:             "\u{F04C5}", // 󰓅
+  clock:           "\uF017", // 
+  duration:        "\u{F13AB}", // 󱎫
+  thinkingLevel:   "\uF400", // 
 
   // Compactor
-  sessionEvents:   "\uDBB1\uDECF", // 󰲏 session events icon
-  compactions:     "\uDBB1\uDECF", // 󰲏 compactions icon
-  tokensSaved:     "\uF155", //  tokens saved icon
-  compressionRatio:"\uDBB1\uDECF", // 󰲏 compression ratio icon
-  indexedDocs:     "\uDB81\uDE19", // 󰈙 indexed docs icon
-  sandboxRuns:     "\uF121", //  sandbox runs icon
-  searchQueries:   "\uF002", //  search queries icon
+  sessionEvents:   "\uEA86", // 
+  compactions:     "\u{F0C8F}", // 󰲏
+  tokensSaved:     "\uF155", //  (kept — missing from customization)
+  compressionRatio:"\u{F0C8F}", // 󰲏
+  indexedDocs:     "\u{F0219}", // 󰈙
+  sandboxRuns:     "\uF233", // 
+  searchQueries:   "\uF002", // 
 
   // Memory
-  projectCount:    "\uDB81\uDED4", // 󰍚 memory icon
-  totalCount:      "\uEB9C", //  total count icon
-  consolidations:  "\uDB81\uDED4", // 󰍚 consolidations icon
+  projectCount:    "\uEE9C", // 
+  totalCount:      "\uEE9C", // 
+  consolidations:  "\uEE9C", // 
 
   // MCP
-  serversTotal:    "\uF0F6", //  servers total icon
-  serversActive:   "\uF058", //  servers active icon
-  toolsTotal:      "\uF0AD", //  tools total icon
-  serversFailed:   "\uF467", //  servers failed icon
+  serversTotal:    "\u{F05B7}", // 󰖷
+  serversActive:   "\u{F05B7}", // 󰖷
+  toolsTotal:      "\u{F05B7}", // 󰖷
+  serversFailed:   "\u{F05B7}", // 󰖷
 
   // Ralph
-  activeLoops:     "\udb81\udf09", // 󰼉 ralph loop icon
-  totalIterations: "\udb81\udf09", // 󰼉 ralph loop icon
-  loopStatus:      "\udb81\udf09", // 󰼉 ralph loop icon
+  activeLoops:     "\u{F0709}", // 󰜉
+  totalIterations: "\u{F0709}", // 󰜉
+  loopStatus:      "\u{F0709}", // 󰜉
 
   // Workflow
-  currentCommand:  "\uF0E8", //  current command icon
-  sandboxLevel:    "\uDBB1\uDDFE", // 󰟾 sandbox level icon
-  commandDuration: "\uDBB9\uDEAB", // 󱎫 command duration icon
+  currentCommand:  "\uF124", // 
+  sandboxLevel:    "\u{F07FE}", // 󰟾
+  commandDuration: "\u{F13AB}", // 󱎫
 
   // Kanboard
-  docsCount:       "\uDB81\uDE19", // 󰈙 docs count icon
-  tasksDone:       "\uF0E8", //  tasks done icon
-  tasksTotal:      "\uF0E8", //  tasks total icon
-  taskPct:         "\uF0E8", //  task pct icon
+  docsCount:       "\u{F09EE}", // 󰧮
+  tasksDone:       "\u{F1A9A}", // 󱪚
+  tasksTotal:      "\uF4A0", // 
+  taskPct:         "\uF4A0", // 
 
   // Notify
-  platformsEnabled:"\uF0E0", // nf-fa-envelope
-  lastSent:        "\uF017", // nf-fa-clock_o
+  platformsEnabled:"\uEB9A", // 
+  lastSent:        "\u{F13AB}", // 󱎫
 
   // Extension status
-  extensionStatuses:"\uDBB5\uDEAB", // 󱖫 extension statuses icon
+  extensionStatuses:"\u{F15AB}", // 󱖫
 
   separator:       "\uE0B1", // nf-pl-left_soft_divider
 };

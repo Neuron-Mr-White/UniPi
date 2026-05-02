@@ -123,7 +123,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:web-settings":    "web-api",
   "unipi:web-cache-clear": "web-api",
 
-  // compact (9 commands)
+  // compact (10 commands)
+  "unipi:lossless-compact": "compact",
   "unipi:compact":         "compact",
   "unipi:compact-recall":  "compact",
   "unipi:compact-stats":   "compact",
@@ -226,7 +227,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:web-settings":    "Configure web search settings",
   "unipi:web-cache-clear": "Clear web search cache",
 
-  "unipi:compact":          "Compact context window",
+  "unipi:lossless-compact": "Immediate zero-LLM compaction",
+  "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",
   "unipi:compact-recall":   "Recall a compacted session",
   "unipi:compact-stats":    "Show compaction statistics",
   "unipi:compact-doctor":   "Diagnose compaction issues",
