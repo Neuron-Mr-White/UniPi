@@ -13,7 +13,7 @@ export function defaultDBPath(name: string): string {
   return path;
 }
 
-let sqliteLib: any = null;
+let sqliteLib: unknown = null;
 let sqliteFlavor: "bun" | "better-sqlite3" | null = null;
 
 export async function loadSQLite() {
@@ -39,7 +39,7 @@ export async function loadSQLite() {
   }
 }
 
-export function applyWALPragmas(db: any): void {
+export function applyWALPragmas(db: { exec(sql: string): void }): void {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
   // Memory-map the DB file for read-heavy FTS5 search workloads (if enabled)
@@ -56,7 +56,7 @@ export function applyWALPragmas(db: any): void {
 }
 
 export function withRetry<T>(fn: () => T, maxRetries = 3): T {
-  let lastErr: any;
+  let lastErr: unknown;
   for (let i = 0; i < maxRetries; i++) {
     try {
       return fn();
@@ -73,15 +73,15 @@ export function withRetry<T>(fn: () => T, maxRetries = 3): T {
   throw lastErr;
 }
 
-export function isSQLiteCorruptionError(err: any): boolean {
-  const msg = String(err?.message ?? "").toLowerCase();
+export function isSQLiteCorruptionError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return msg.includes("database disk image is malformed") ||
     msg.includes("database is locked") ||
     msg.includes("file is not a database");
 }
 
 export interface PreparedStatement {
-  get(...args: any[]): any;
-  all(...args: any[]): any[];
-  run(...args: any[]): { changes: number };
+  get(...args: unknown[]): unknown;
+  all(...args: unknown[]): unknown[];
+  run(...args: unknown[]): { changes: number };
 }

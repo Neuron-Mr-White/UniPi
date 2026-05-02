@@ -59,9 +59,9 @@ async function getSQLite() {
 }
 
 interface PreparedStatement {
-  get(...args: any[]): any;
-  all(...args: any[]): any[];
-  run(...args: any[]): { changes: number };
+  get(...args: unknown[]): unknown;
+  all(...args: unknown[]): unknown[];
+  run(...args: unknown[]): { changes: number };
 }
 
 const MAX_EVENTS_PER_SESSION = 1000;
@@ -294,7 +294,7 @@ export class SessionDB {
   }
 
   /** Expose the underlying db for AnalyticsEngine (read-only queries). Returns null if init failed. */
-  getDb(): any { return this.db ?? null; }
+  getDb(): { prepare(sql: string): { get(...args: unknown[]): unknown; all(...args: unknown[]): unknown[]; run(...args: unknown[]): { changes: number } }; exec(sql: string): void; close(): void } | null { return this.db as ReturnType<typeof this.getDb> ?? null; }
 
   close(): void {
     try { this.db.close(); } catch { /* ignore */ }

@@ -56,7 +56,7 @@ export function chunkJSON(text: string, maxChunkSize: number = 4096): Chunk[] {
   }
 }
 
-function chunkObject(obj: any, path: string, maxChunkSize: number): Chunk[] {
+function chunkObject(obj: unknown, path: string, maxChunkSize: number): Chunk[] {
   const chunks: Chunk[] = [];
 
   if (typeof obj !== "object" || obj === null) {

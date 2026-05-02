@@ -296,12 +296,14 @@ export class ContentStore {
   }
 
   async init(): Promise<void> {
-    const { lib } = await loadSQLite();
+    const { lib } = await loadSQLite() as { lib: Record<string, unknown>; flavor: string };
     // Handle different SQLite API shapes:
     // - bun:sqlite exports Database as a named export
     // - better-sqlite3 (CJS) exports the constructor as default when imported via ESM
-    const Database = lib.Database ?? lib.default?.Database ?? lib.default ?? lib;
-    this.db = new Database(this.dbPath);
+    const Database = (lib as Record<string, unknown>).Database ??
+      ((lib as Record<string, unknown>).default as Record<string, unknown> | undefined)?.Database ??
+      (lib as Record<string, unknown>).default ?? lib;
+    this.db = new (Database as new (path: string) => Record<string, unknown>)(this.dbPath);
     applyWALPragmas(this.db);
     this.initSchema();
     this.prepareStatements();
