@@ -337,7 +337,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Store session context for badge generation
-  let sessionCtx: any = null;
+  let sessionCtx: import("@mariozechner/pi-coding-agent").ExtensionContext | null = null;
 
   // Session start: emit MODULE_READY + capture context
   pi.on("session_start", async (_event, ctx) => {

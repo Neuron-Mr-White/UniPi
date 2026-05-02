@@ -8,6 +8,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { infoRegistry } from "./registry.js";
 import { parseUsageStats, formatTokens, formatCost } from "./usage-parser.js";
 import type { InfoGroup } from "./types.js";
@@ -309,12 +310,12 @@ const registeredTools: Array<{ name: string; source: string }> = [];
 /**
  * Reference to pi API for getting tools.
  */
-let piApi: any = null;
+let piApi: ExtensionAPI | null = null;
 
 /**
  * Set the pi API reference.
  */
-export function setPiApi(api: any): void {
+export function setPiApi(api: ExtensionAPI): void {
   piApi = api;
 }
 
