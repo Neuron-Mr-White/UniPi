@@ -12,7 +12,7 @@ export interface LineageRange {
  * the most recent compaction boundary.
  */
 export function getRecallScope(
-  branchEntries: any[],
+  branchEntries: Array<{ type: string; [key: string]: unknown }>,
   opts?: { expand?: boolean },
 ): LineageRange {
   let lastCompactionIdx = -1;

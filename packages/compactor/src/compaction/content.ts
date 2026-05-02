@@ -7,8 +7,8 @@ export function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((c: any) => {
-        if (c?.type === "text") return c.text ?? "";
+      .map((c: Record<string, unknown>) => {
+        if (c?.type === "text") return (c.text as string) ?? "";
         if (c?.type === "toolCall") return `[toolCall:${c.name}]`;
         if (c?.type === "thinking") return "[thinking]";
         if (c?.type === "image") return `[image:${c.mimeType}]`;

@@ -62,7 +62,11 @@ export interface CompileInput {
 export interface CompactionStats {
   summarized: number;
   kept: number;
-  keptTokensEst: number;
+  totalMessages: number;
+  /** Actual token count from Pi's preparation */
+  tokensBefore: number;
+  /** Estimated tokens after compaction (proportional from kept/total chars) */
+  tokensAfterEst: number;
 }
 
 export type OwnCutCancelReason =
@@ -71,7 +75,7 @@ export type OwnCutCancelReason =
   | "no_user_message";
 
 export type OwnCutResult =
-  | { ok: true; messages: any[]; firstKeptEntryId: string; compactAll: boolean }
+  | { ok: true; messages: Message[]; firstKeptEntryId: string; compactAll: boolean }
   | { ok: false; reason: OwnCutCancelReason };
 
 // ─────────────────────────────────────────────────────────
