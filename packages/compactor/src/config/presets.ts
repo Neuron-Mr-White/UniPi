@@ -11,16 +11,16 @@ const preset = (
 ): CompactorConfig => ({
   ...structuredClone(DEFAULT_COMPACTOR_CONFIG),
   ...overrides,
-  sessionGoals: { ...DEFAULT_COMPACTOR_CONFIG.sessionGoals, ...(overrides.sessionGoals as any) },
-  filesAndChanges: { ...DEFAULT_COMPACTOR_CONFIG.filesAndChanges, ...(overrides.filesAndChanges as any) },
-  commits: { ...DEFAULT_COMPACTOR_CONFIG.commits, ...(overrides.commits as any) },
-  outstandingContext: { ...DEFAULT_COMPACTOR_CONFIG.outstandingContext, ...(overrides.outstandingContext as any) },
-  userPreferences: { ...DEFAULT_COMPACTOR_CONFIG.userPreferences, ...(overrides.userPreferences as any) },
-  briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, ...(overrides.briefTranscript as any) },
-  sessionContinuity: { ...DEFAULT_COMPACTOR_CONFIG.sessionContinuity, ...(overrides.sessionContinuity as any) },
-  fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, ...(overrides.fts5Index as any) },
-  sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution as any) },
-  toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, ...(overrides.toolDisplay as any) },
+  sessionGoals: { ...DEFAULT_COMPACTOR_CONFIG.sessionGoals, ...(overrides.sessionGoals ?? {}) },
+  filesAndChanges: { ...DEFAULT_COMPACTOR_CONFIG.filesAndChanges, ...(overrides.filesAndChanges ?? {}) },
+  commits: { ...DEFAULT_COMPACTOR_CONFIG.commits, ...(overrides.commits ?? {}) },
+  outstandingContext: { ...DEFAULT_COMPACTOR_CONFIG.outstandingContext, ...(overrides.outstandingContext ?? {}) },
+  userPreferences: { ...DEFAULT_COMPACTOR_CONFIG.userPreferences, ...(overrides.userPreferences ?? {}) },
+  briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, ...(overrides.briefTranscript ?? {}) },
+  sessionContinuity: { ...DEFAULT_COMPACTOR_CONFIG.sessionContinuity, ...(overrides.sessionContinuity ?? {}) },
+  fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, ...(overrides.fts5Index ?? {}) },
+  sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution ?? {}) },
+  toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, ...(overrides.toolDisplay ?? {}) },
 });
 
 // Pipeline feature defaults per preset:
