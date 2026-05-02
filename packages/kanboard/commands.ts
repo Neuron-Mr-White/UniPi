@@ -63,8 +63,8 @@ export function registerCommands(pi: ExtensionAPI): void {
           const { server, url } = await startServer();
           runningServer = server;
           ctx.ui.notify(`Kanboard running at ${url}`, "info");
-        } catch (err: any) {
-          ctx.ui.notify(`Kanboard error: ${err.message}`, "error");
+        } catch (err: unknown) {
+          ctx.ui.notify(`Kanboard error: ${err instanceof Error ? err.message : String(err)}`, "error");
         }
       },
     },

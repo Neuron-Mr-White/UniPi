@@ -52,8 +52,11 @@ export async function installUpdate(
     }
 
     return result;
-  } catch (err: any) {
-    const errorMessage = err.stderr || err.message || "Unknown install error";
+  } catch (err: unknown) {
+    const errorMessage = (err instanceof Error && 'stderr' in err ? String((err as Error & { stderr?: string }).stderr) : undefined)
+      || (err instanceof Error ? err.message : undefined)
+      || String(err)
+      || "Unknown install error";
 
     // Emit error event
     if (pi) {

@@ -122,11 +122,11 @@ export class PolyglotExecutor {
       }
 
       return result;
-    } catch (err: any) {
+    } catch (err: unknown) {
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
       return {
         stdout: "",
-        stderr: err?.message ?? String(err),
+        stderr: (err instanceof Error ? err.message : String(err)),
         exitCode: 1,
         timedOut: false,
       };
@@ -228,10 +228,10 @@ export class PolyglotExecutor {
         timeout: timeout / 2,
         stdio: ["ignore", "pipe", "pipe"],
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         stdout: "",
-        stderr: err?.stderr?.toString?.() ?? err?.message ?? "Rust compilation failed",
+        stderr: (err instanceof Error && 'stderr' in err ? String((err as Error & { stderr?: Buffer }).stderr) : '') || (err instanceof Error ? err.message : String(err)) || "Rust compilation failed",
         exitCode: 1,
         timedOut: false,
       };

@@ -71,14 +71,14 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       latestVersion,
       currentVersion,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Network error — return cached info if available
     const cache = readLastCheck();
     return {
       updateAvailable: false,
       latestVersion: cache?.latestVersion ?? "",
       currentVersion,
-      error: err.message ?? "Unknown error",
+      error: err instanceof Error ? err.message : String(err) || "Unknown error",
     };
   }
 }

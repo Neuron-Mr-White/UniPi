@@ -130,8 +130,8 @@ export class KanboardServer {
       try {
         await this.listen(port);
         return port;
-      } catch (err: any) {
-        if (err.code === "EADDRINUSE") {
+      } catch (err: unknown) {
+        if ((err instanceof Error && (err as NodeJS.ErrnoException).code === "EADDRINUSE")) {
           // Removed console.log — port allocation is silent.
           continue;
         }
@@ -173,7 +173,7 @@ export class KanboardServer {
         });
         try {
           await route.handler(req, res, params);
-        } catch (_err: any) {
+        } catch (_err: unknown) {
           // Silently ignore — route handler error, send generic 500.
           res.writeHead(500, { "Content-Type": "text/plain" });
           res.end("Internal Server Error");
@@ -236,7 +236,7 @@ export class KanboardServer {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(this.config.pidFile, String(process.pid));
-    } catch (_err: any) {
+    } catch (_err: unknown) {
       // PID write failure — non-critical, kanboard still works.
     }
   }

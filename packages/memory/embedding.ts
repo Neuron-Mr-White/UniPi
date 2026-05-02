@@ -99,8 +99,8 @@ export async function generateEmbedding(
     }
 
     return vec;
-  } catch (err: any) {
-    if (err?.name === "TimeoutError") {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "TimeoutError") {
       // Removed console.warn — timeout causes fallback to fuzzy search.
     } else {
       // Removed console.warn — embedding error causes fallback to fuzzy search.

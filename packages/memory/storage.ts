@@ -208,12 +208,14 @@ export class MemoryStorage {
       try {
         this.initDb(dbPath);
         return; // Success
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : "";
+        const errCode = (err instanceof Error && 'code' in err) ? (err as NodeJS.ErrnoException).code : undefined;
         const isTransient =
-          err?.message?.includes("disk I/O error") ||
-          err?.code === "SQLITE_IOERR" ||
-          err?.code === "SQLITE_BUSY" ||
-          err?.message?.includes("database is locked");
+          errMsg.includes("disk I/O error") ||
+          errCode === "SQLITE_IOERR" ||
+          errCode === "SQLITE_BUSY" ||
+          errMsg.includes("database is locked");
 
         this.close();
 

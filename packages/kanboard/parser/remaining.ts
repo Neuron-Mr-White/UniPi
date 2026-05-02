@@ -45,8 +45,8 @@ export class QuickWorkParser implements DocParser {
 
     try {
       content = fs.readFileSync(filePath, "utf-8");
-    } catch (err: any) {
-      warnings.push(`Could not read file: ${err.message}`);
+    } catch (err: unknown) {
+      warnings.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
       return this.emptyDoc(filePath, warnings);
     }
 
@@ -110,8 +110,8 @@ export class DebugParser implements DocParser {
 
     try {
       content = fs.readFileSync(filePath, "utf-8");
-    } catch (err: any) {
-      warnings.push(`Could not read file: ${err.message}`);
+    } catch (err: unknown) {
+      warnings.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
       return this.emptyDoc(filePath, warnings);
     }
 
@@ -189,8 +189,8 @@ export class FixParser implements DocParser {
 
     try {
       content = fs.readFileSync(filePath, "utf-8");
-    } catch (err: any) {
-      warnings.push(`Could not read file: ${err.message}`);
+    } catch (err: unknown) {
+      warnings.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
       return this.emptyDoc(filePath, warnings);
     }
 
@@ -268,8 +268,8 @@ export class ChoreParser implements DocParser {
 
     try {
       content = fs.readFileSync(filePath, "utf-8");
-    } catch (err: any) {
-      warnings.push(`Could not read file: ${err.message}`);
+    } catch (err: unknown) {
+      warnings.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
       return this.emptyDoc(filePath, warnings);
     }
 
@@ -333,8 +333,8 @@ export class ReviewParser implements DocParser {
 
     try {
       content = fs.readFileSync(filePath, "utf-8");
-    } catch (err: any) {
-      warnings.push(`Could not read file: ${err.message}`);
+    } catch (err: unknown) {
+      warnings.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
       return this.emptyDoc(filePath, warnings);
     }
 

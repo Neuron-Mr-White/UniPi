@@ -143,8 +143,8 @@ export class SessionDB {
       const safeAddColumn = (table: string, col: string, def: string) => {
         try {
           this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
-        } catch (e: any) {
-          if (e?.message?.includes("duplicate column")) return;
+        } catch (e: unknown) {
+          if (e instanceof Error && e.message.includes("duplicate column")) return;
           throw e;
         }
       };

@@ -60,9 +60,9 @@ export function withRetry<T>(fn: () => T, maxRetries = 3): T {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return fn();
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastErr = err;
-      if (err?.code === "SQLITE_BUSY" && i < maxRetries - 1) {
+      if ((err instanceof Error && (err as NodeJS.ErrnoException).code === "SQLITE_BUSY") && i < maxRetries - 1) {
         const delay = Math.pow(2, i) * 10 + Math.random() * 10;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.floor(delay));
         continue;
