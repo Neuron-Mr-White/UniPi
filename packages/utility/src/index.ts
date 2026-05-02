@@ -12,7 +12,7 @@
  * - TUI: settings inspector pattern, name badge
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, InputEvent, AgentEndEvent } from "@mariozechner/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -44,7 +44,7 @@ let firstMessageSeen = false;
 let firstUserText = "";
 
 /** Stored UI context from first input, used to show badge overlay after agent responds */
-let firstInputCtx: any = null;
+let firstInputCtx: import("@mariozechner/pi-coding-agent").ExtensionContext | null = null;
 
 /** All commands registered by this module */
 const ALL_COMMANDS = [
@@ -124,7 +124,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // First-message hook: capture user text for deferred badge generation
-  pi.on("input", async (_event: any, ctx: any) => {
+  pi.on("input", async (_event, ctx) => {
     // Only trigger on first user message
     if (firstMessageSeen) return;
     firstMessageSeen = true;
@@ -138,12 +138,14 @@ export default function (pi: ExtensionAPI) {
     if (sessionName) return;
 
     // Store first message text for later use in agent_end
-    firstUserText = typeof _event?.content === "string"
-      ? _event.content
-      : Array.isArray(_event?.content)
-        ? _event.content
-            .filter((c: any) => c.type === "text")
-            .map((c: any) => c.text)
+    // Note: InputEvent.text is the documented property; content may exist at runtime
+    const content = (_event as unknown as Record<string, unknown>).content;
+    firstUserText = typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? (content as Array<Record<string, unknown>>)
+            .filter((c) => c.type === "text")
+            .map((c) => String(c.text))
             .join(" ")
         : "";
 
@@ -152,7 +154,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // After agent completes first response, generate badge name with full conversation context
-  pi.on("agent_end", async (event: any, _ctx: any) => {
+  pi.on("agent_end", async (event, _ctx) => {
     // Only act if we captured a first input and are waiting for badge generation
     if (!firstInputCtx) return;
     const ctx = firstInputCtx;
@@ -168,7 +170,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Build conversation summary from full message history (user + assistant)
-    const messages: any[] = event?.messages ?? [];
+    const messages = event.messages;
     const summaryParts: string[] = [];
 
     // Include the user's first message
@@ -177,16 +179,17 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Include assistant's response text
-    const assistantMsgs = messages.filter((m: any) => m.role === "assistant");
+    const assistantMsgs = messages.filter((m) => m.role === "assistant");
     for (const msg of assistantMsgs) {
-      if (Array.isArray(msg.content)) {
-        const textParts = msg.content
-          .filter((c: any) => c.type === "text")
-          .map((c: any) => c.text)
+      const content = msg.content;
+      if (Array.isArray(content)) {
+        const textParts = content
+          .filter((c): c is { type: "text"; text: string } => "text" in c && c.type === "text")
+          .map((c) => c.text)
           .join(" ");
         if (textParts) summaryParts.push(`Assistant: ${textParts}`);
-      } else if (typeof msg.content === "string" && msg.content) {
-        summaryParts.push(`Assistant: ${msg.content}`);
+      } else if (typeof content === "string" && content) {
+        summaryParts.push(`Assistant: ${content}`);
       }
     }
 
