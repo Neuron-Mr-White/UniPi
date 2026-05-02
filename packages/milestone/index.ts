@@ -62,7 +62,7 @@ export default function milestoneExtension(pi: ExtensionAPI): void {
   }
 
   // Emit module ready event
-  emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+  emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
     name: MODULES.MILESTONE,
     version: "0.1.0",
     commands: Object.values(MILESTONE_COMMANDS),

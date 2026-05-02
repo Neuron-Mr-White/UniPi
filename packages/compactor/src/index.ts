@@ -209,7 +209,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       });
     }
 
-    emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.COMPACTOR,
       version: "0.1.0",
       commands: Object.values(COMPACTOR_COMMANDS),

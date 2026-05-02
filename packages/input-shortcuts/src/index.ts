@@ -401,7 +401,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   // ─── Module ready event ──────────────────────────────────────────────────
 
-  emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+  emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
     name: MODULES.INPUT_SHORTCUTS,
     version: "0.1.0",
     commands: [`unipi:${INPUT_SHORTCUTS_COMMANDS.STASH_SETTINGS}`],

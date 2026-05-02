@@ -135,7 +135,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
   // ─── Emit MODULE_READY ──────────────────────────────────────────────────
 
   pi.on("session_start", async () => {
-    emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: "@pi-unipi/footer",
       version: "0.1.0",
       commands: [`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`, `${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_SETTINGS}`, `${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_HELP}`],

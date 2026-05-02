@@ -41,7 +41,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
   // Session lifecycle — check for updates and announce module
   pi.on("session_start", async (_event, ctx) => {
     // Emit MODULE_READY
-    emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.UPDATER,
       version: VERSION,
       commands: [
@@ -97,7 +97,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
           updateAvailable: payload.updateAvailable,
           lastCheck: new Date().toLocaleTimeString(),
         };
-        emitEvent(pi as any, UNIPI_EVENTS.INFO_DATA_UPDATED, {
+        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
           groupId: "updater",
           keys: ["current", "latest", "status", "lastCheck"],
         });
@@ -107,7 +107,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
         if (cachedResult) {
           cachedResult.updateAvailable = true;
         }
-        emitEvent(pi as any, UNIPI_EVENTS.INFO_DATA_UPDATED, {
+        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
           groupId: "updater",
           keys: ["status"],
         });
@@ -117,7 +117,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
         if (cachedResult) {
           cachedResult.updateAvailable = false;
         }
-        emitEvent(pi as any, UNIPI_EVENTS.INFO_DATA_UPDATED, {
+        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
           groupId: "updater",
           keys: ["status"],
         });
@@ -132,7 +132,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       const result = await checkForUpdates();
 
       // Emit check event
-      emitEvent(pi as any, UNIPI_EVENTS.UPDATE_CHECK, result);
+      emitEvent(pi, UNIPI_EVENTS.UPDATE_CHECK, result);
 
       if (!result.updateAvailable || result.error) return;
 
@@ -140,7 +140,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       if (isVersionSkipped(result.latestVersion)) return;
 
       // Emit available event
-      emitEvent(pi as any, UNIPI_EVENTS.UPDATE_AVAILABLE, {
+      emitEvent(pi, UNIPI_EVENTS.UPDATE_AVAILABLE, {
         currentVersion: result.currentVersion,
         latestVersion: result.latestVersion,
       });
