@@ -83,7 +83,7 @@ function renderProjectCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   const counts = getMemoryCounts();
   if (counts.project === null) {
     if (isSegmentEnabled("memory", "project_count")) {
-      return { content: mutedPlaceholder("🧠 MEM 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("projectCount", "0")), visible: true };
     }
     return { content: "", visible: false };
   }

@@ -51,7 +51,8 @@ function renderActiveLoopsSegment(ctx: FooterSegmentContext): RenderedSegment {
   if (!active && !name && iteration === undefined) {
     // Show muted placeholder when enabled but no data
     if (isSegmentEnabled("ralph", "active_loops")) {
-      return { content: mutedPlaceholder("🔁 RL OFF"), visible: true };
+      const ralphIcon = getIcon("activeLoops");
+      return { content: mutedPlaceholder(`${ralphIcon} OFF`), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -81,9 +82,7 @@ function renderTotalIterationsSegment(ctx: FooterSegmentContext): RenderedSegmen
   const lastIteration = data.lastIteration as Record<string, unknown> | undefined;
   const iteration = data.iteration ?? lastIteration?.iteration;
   if (iteration === undefined || iteration === null) {
-    if (isSegmentEnabled("ralph", "total_iterations")) {
-      return { content: mutedPlaceholder("🔁 RL 0"), visible: true };
-    }
+    // No data — hide to avoid duplicating active_loops placeholder
     return { content: "", visible: false };
   }
   const maxIterations = data.maxIterations;
@@ -101,9 +100,7 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
   const status = data.status as string | undefined;
   const name = data.name as string | undefined;
   if (!status && !name) {
-    if (isSegmentEnabled("ralph", "loop_status")) {
-      return { content: mutedPlaceholder("🔁 RL OFF"), visible: true };
-    }
+    // No data — hide to avoid duplicating active_loops placeholder
     return { content: "", visible: false };
   }
 

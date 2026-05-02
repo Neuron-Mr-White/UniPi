@@ -35,7 +35,7 @@ function renderDocsCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   const value = kb?.docsCount;
   if (value === undefined || value === null) {
     if (isSegmentEnabled("kanboard", "docs_count")) {
-      return { content: mutedPlaceholder("KB 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("docsCount", "0")), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -48,7 +48,7 @@ function renderTasksDoneSegment(ctx: FooterSegmentContext): RenderedSegment {
   const value = kb?.tasksDone;
   if (value === undefined || value === null) {
     if (isSegmentEnabled("kanboard", "tasks_done")) {
-      return { content: mutedPlaceholder("KB 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("tasksDone", "0")), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -61,7 +61,7 @@ function renderTasksTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const value = kb?.tasksTotal;
   if (value === undefined || value === null) {
     if (isSegmentEnabled("kanboard", "tasks_total")) {
-      return { content: mutedPlaceholder("KB 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("tasksTotal", "0")), visible: true };
     }
     return { content: "", visible: false };
   }

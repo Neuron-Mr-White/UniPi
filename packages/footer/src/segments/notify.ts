@@ -26,7 +26,7 @@ function renderPlatformsEnabledSegment(ctx: FooterSegmentContext): RenderedSegme
   const platforms = data.platforms as string[] | undefined;
   if (!platforms || platforms.length === 0) {
     if (isSegmentEnabled("notify", "platforms_enabled")) {
-      return { content: mutedPlaceholder("NTF OFF"), visible: true };
+      return { content: mutedPlaceholder(withIcon("platformsEnabled", "OFF")), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -40,7 +40,7 @@ function renderLastSentSegment(ctx: FooterSegmentContext): RenderedSegment {
   const timestamp = data.timestamp as string | undefined;
   if (!timestamp) {
     if (isSegmentEnabled("notify", "last_sent")) {
-      return { content: mutedPlaceholder("NTF 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("lastSent", "0")), visible: true };
     }
     return { content: "", visible: false };
   }

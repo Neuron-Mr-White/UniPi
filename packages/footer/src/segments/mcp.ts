@@ -67,7 +67,7 @@ function renderServersTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const stats = getMcpStats(ctx);
   if (!hasUsefulValue(stats.serversTotal)) {
     if (isSegmentEnabled("mcp", "servers_total")) {
-      return { content: mutedPlaceholder("🖥️ MCP 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("serversTotal", "0")), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -80,7 +80,7 @@ function renderServersActiveSegment(ctx: FooterSegmentContext): RenderedSegment 
   if (!hasUsefulValue(stats.serversActive)) {
     if (isSegmentEnabled("mcp", "servers_active")) {
       const total = stats.serversTotal ?? 0;
-      return { content: mutedPlaceholder(`🖥️ MCP ${total}/0`), visible: true };
+      return { content: mutedPlaceholder(withIcon("serversActive", `${total}/0`)), visible: true };
     }
     return { content: "", visible: false };
   }
@@ -92,7 +92,7 @@ function renderToolsTotalSegment(ctx: FooterSegmentContext): RenderedSegment {
   const stats = getMcpStats(ctx);
   if (!hasUsefulValue(stats.toolsTotal)) {
     if (isSegmentEnabled("mcp", "tools_total")) {
-      return { content: mutedPlaceholder("🖥️ MCP 0"), visible: true };
+      return { content: mutedPlaceholder(withIcon("toolsTotal", "0")), visible: true };
     }
     return { content: "", visible: false };
   }
