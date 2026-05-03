@@ -73,6 +73,43 @@ export function extractEventsFromToolResult(result: ToolResult): SessionEvent[] 
     });
   }
 
+  // Sandbox execution
+  if (["sandbox", "ctx_execute", "sandbox_file", "ctx_execute_file", "sandbox_batch", "ctx_batch_execute"].includes(result.toolName)) {
+    const language = String(result.toolInput.language ?? "unknown");
+    const code = String(result.toolInput.code ?? "").slice(0, 200);
+    events.push({
+      type: "sandbox_execution",
+      category: "sandbox",
+      data: `[${language}] ${code}`,
+      priority: EventPriority.LOW,
+      data_hash: "",
+    });
+  }
+
+  // Content search queries
+  if (["content_search", "ctx_search"].includes(result.toolName)) {
+    const query = String(result.toolInput.query ?? "").slice(0, 200);
+    events.push({
+      type: "content_search",
+      category: "search",
+      data: query,
+      priority: EventPriority.LOW,
+      data_hash: "",
+    });
+  }
+
+  // Content indexing
+  if (["content_index", "ctx_index", "content_fetch", "ctx_fetch_and_index"].includes(result.toolName)) {
+    const label = String(result.toolInput.label ?? result.toolInput.url ?? "").slice(0, 200);
+    events.push({
+      type: "content_indexed",
+      category: "index",
+      data: label,
+      priority: EventPriority.LOW,
+      data_hash: "",
+    });
+  }
+
   return events;
 }
 

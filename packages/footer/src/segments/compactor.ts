@@ -134,14 +134,39 @@ function renderIndexedDocsSegment(_ctx: FooterSegmentContext): RenderedSegment {
   return hidden();
 }
 
-function renderSandboxRunsSegment(_ctx: FooterSegmentContext): RenderedSegment {
-  // No reliable data source for sandbox run count
-  return hidden();
+function renderSandboxRunsSegment(ctx: FooterSegmentContext): RenderedSegment {
+  // Count sandbox events from session manager branch
+  const events = getSessionEvents(ctx);
+  let sandboxCount = 0;
+  for (const e of events) {
+    if (!e || typeof e !== "object") continue;
+    // Count tool calls that are sandbox/execute tools
+    const name = String((e as any).name ?? "").toLowerCase();
+    if (name.includes("sandbox") || name.includes("ctx_execute") || name === "execute") {
+      sandboxCount++;
+    }
+  }
+  if (sandboxCount === 0) return hidden();
+
+  const content = withIcon("sandboxRuns", `${sandboxCount}`);
+  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
-function renderSearchQueriesSegment(_ctx: FooterSegmentContext): RenderedSegment {
-  // No reliable data source for search query count
-  return hidden();
+function renderSearchQueriesSegment(ctx: FooterSegmentContext): RenderedSegment {
+  // Count search events from session manager branch
+  const events = getSessionEvents(ctx);
+  let searchCount = 0;
+  for (const e of events) {
+    if (!e || typeof e !== "object") continue;
+    const name = String((e as any).name ?? "").toLowerCase();
+    if (name.includes("search") || name.includes("ctx_search")) {
+      searchCount++;
+    }
+  }
+  if (searchCount === 0) return hidden();
+
+  const content = withIcon("searchQueries", `${searchCount}`);
+  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [

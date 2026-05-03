@@ -69,7 +69,37 @@ export async function ctxStats(
     compressionRatio: ratio,
     indexedDocs: storeStats.sources,
     indexedChunks: storeStats.chunks,
-    sandboxRuns: counters?.sandboxRuns ?? 0,
-    searchQueries: counters?.searchQueries ?? 0,
+    sandboxRuns: computeSandboxRuns(counters, sessionDB, sessionId),
+    searchQueries: computeSearchQueries(counters, sessionDB, sessionId),
   };
+}
+
+/** Compute sandbox runs: prefer in-memory counter, fall back to DB. */
+function computeSandboxRuns(counters: RuntimeCounters | undefined, sessionDB: SessionDB, sessionId: string): number {
+  // Priority: in-memory counter (current session) → per-session DB → all-time DB
+  let sandboxRuns = counters?.sandboxRuns ?? 0;
+  if (sandboxRuns === 0) {
+    const sessionStats = sessionDB.getSessionStats(sessionId);
+    sandboxRuns = (sessionStats as any)?.sandbox_runs ?? 0;
+  }
+  if (sandboxRuns === 0) {
+    const allTime = sessionDB.getAllTimeStats();
+    sandboxRuns = allTime.allSandboxRuns;
+  }
+  return sandboxRuns;
+}
+
+/** Compute search queries: prefer in-memory counter, fall back to DB. */
+function computeSearchQueries(counters: RuntimeCounters | undefined, sessionDB: SessionDB, sessionId: string): number {
+  // Priority: in-memory counter (current session) → per-session DB → all-time DB
+  let searchQueries = counters?.searchQueries ?? 0;
+  if (searchQueries === 0) {
+    const sessionStats = sessionDB.getSessionStats(sessionId);
+    searchQueries = (sessionStats as any)?.search_queries ?? 0;
+  }
+  if (searchQueries === 0) {
+    const allTime = sessionDB.getAllTimeStats();
+    searchQueries = allTime.allSearchQueries;
+  }
+  return searchQueries;
 }

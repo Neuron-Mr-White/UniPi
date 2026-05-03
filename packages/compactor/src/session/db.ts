@@ -156,6 +156,21 @@ export class SessionDB {
       safeAddColumn("session_events", "data_hash", "TEXT NOT NULL DEFAULT ''");
       this.db.pragma("user_version = 1");
     }
+
+    if (currentVersion < 2) {
+      // V2: Add sandbox/search counter columns for persistent stats
+      const safeAddColumn = (table: string, col: string, def: string) => {
+        try {
+          this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+        } catch (e: unknown) {
+          if (e instanceof Error && e.message.includes("duplicate column")) return;
+          throw e;
+        }
+      };
+      safeAddColumn("session_meta", "sandbox_runs", "INTEGER NOT NULL DEFAULT 0");
+      safeAddColumn("session_meta", "search_queries", "INTEGER NOT NULL DEFAULT 0");
+      this.db.pragma("user_version = 2");
+    }
   }
 
   private prepareStatements(): void {
@@ -171,10 +186,12 @@ export class SessionDB {
     p("evictLowestPriority", `DELETE FROM session_events WHERE id = (SELECT id FROM session_events WHERE session_id = ? ORDER BY priority ASC, id ASC LIMIT 1)`);
     p("updateMetaLastEvent", `UPDATE session_meta SET last_event_at = datetime('now'), event_count = event_count + 1 WHERE session_id = ?`);
     p("ensureSession", `INSERT OR IGNORE INTO session_meta (session_id, project_dir) VALUES (?, ?)`);
-    p("getSessionStats", `SELECT session_id, project_dir, started_at, last_event_at, event_count, compact_count, total_chars_before, total_chars_kept, total_messages_summarized FROM session_meta WHERE session_id = ?`);
+    p("getSessionStats", `SELECT session_id, project_dir, started_at, last_event_at, event_count, compact_count, total_chars_before, total_chars_kept, total_messages_summarized, sandbox_runs, search_queries FROM session_meta WHERE session_id = ?`);
     p("incrementCompactCount", `UPDATE session_meta SET compact_count = compact_count + 1 WHERE session_id = ?`);
     p("addCompactionStats", `UPDATE session_meta SET total_chars_before = total_chars_before + ?, total_chars_kept = total_chars_kept + ?, total_messages_summarized = total_messages_summarized + ? WHERE session_id = ?`);
-    p("getAllTimeStats", `SELECT COALESCE(SUM(total_chars_before), 0) AS all_chars_before, COALESCE(SUM(total_chars_kept), 0) AS all_chars_kept, COALESCE(SUM(total_messages_summarized), 0) AS all_messages_summarized, COALESCE(SUM(compact_count), 0) AS all_compactions FROM session_meta`);
+    p("getAllTimeStats", `SELECT COALESCE(SUM(total_chars_before), 0) AS all_chars_before, COALESCE(SUM(total_chars_kept), 0) AS all_chars_kept, COALESCE(SUM(total_messages_summarized), 0) AS all_messages_summarized, COALESCE(SUM(compact_count), 0) AS all_compactions, COALESCE(SUM(sandbox_runs), 0) AS all_sandbox_runs, COALESCE(SUM(search_queries), 0) AS all_search_queries FROM session_meta`);
+    p("incrementSandboxRuns", `UPDATE session_meta SET sandbox_runs = sandbox_runs + 1 WHERE session_id = ?`);
+    p("incrementSearchQueries", `UPDATE session_meta SET search_queries = search_queries + 1 WHERE session_id = ?`);
     p("upsertResume", `INSERT INTO session_resume (session_id, snapshot, event_count) VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET snapshot = excluded.snapshot, event_count = excluded.event_count, created_at = datetime('now'), consumed = 0`);
     p("getResume", `SELECT snapshot, event_count, consumed FROM session_resume WHERE session_id = ?`);
     p("markResumeConsumed", `UPDATE session_resume SET consumed = 1 WHERE session_id = ?`);
@@ -248,15 +265,27 @@ export class SessionDB {
     this.stmt("addCompactionStats").run(charsBefore, charsKept, messagesSummarized, sessionId);
   }
 
-  getAllTimeStats(): { allCharsBefore: number; allCharsKept: number; allMessagesSummarized: number; allCompactions: number } {
-    if (!this.stmts) return { allCharsBefore: 0, allCharsKept: 0, allMessagesSummarized: 0, allCompactions: 0 };
-    const row = this.stmt("getAllTimeStats").get() as { all_chars_before: number; all_chars_kept: number; all_messages_summarized: number; all_compactions: number };
+  getAllTimeStats(): { allCharsBefore: number; allCharsKept: number; allMessagesSummarized: number; allCompactions: number; allSandboxRuns: number; allSearchQueries: number } {
+    if (!this.stmts) return { allCharsBefore: 0, allCharsKept: 0, allMessagesSummarized: 0, allCompactions: 0, allSandboxRuns: 0, allSearchQueries: 0 };
+    const row = this.stmt("getAllTimeStats").get() as { all_chars_before: number; all_chars_kept: number; all_messages_summarized: number; all_compactions: number; all_sandbox_runs: number; all_search_queries: number };
     return {
       allCharsBefore: row?.all_chars_before ?? 0,
       allCharsKept: row?.all_chars_kept ?? 0,
       allMessagesSummarized: row?.all_messages_summarized ?? 0,
       allCompactions: row?.all_compactions ?? 0,
+      allSandboxRuns: row?.all_sandbox_runs ?? 0,
+      allSearchQueries: row?.all_search_queries ?? 0,
     };
+  }
+
+  incrementSandboxRuns(sessionId: string): void {
+    if (!this.stmts) return;
+    this.stmt("incrementSandboxRuns").run(sessionId);
+  }
+
+  incrementSearchQueries(sessionId: string): void {
+    if (!this.stmts) return;
+    this.stmt("incrementSearchQueries").run(sessionId);
   }
 
   upsertResume(sessionId: string, snapshot: string, eventCount?: number): void {

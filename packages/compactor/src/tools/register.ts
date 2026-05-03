@@ -226,6 +226,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
+      deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
       const result = await ctxExecute(params as CtxExecuteInput);
       const parts: string[] = [];
       if (result.stdout) parts.push(result.stdout);
@@ -245,6 +246,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
+      deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
       const result = await ctxExecuteFile(params as CtxExecuteFileInput);
       const parts: string[] = [];
       if (result.stdout) parts.push(result.stdout);
@@ -263,6 +265,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; c.searchQueries++; }
+      deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
+      deps.sessionDB.incrementSearchQueries(deps.getSessionId());
       const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
       const summaries = result.results.map((r, i) => {
         if (r.type === "execute") {
@@ -299,6 +303,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     try {
       const c = deps.getCounters?.();
       if (c) { c.searchQueries++; }
+      deps.sessionDB.incrementSearchQueries(deps.getSessionId());
       const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
       if (results.length === 0) {
         return textResult(`No results for "${params.query}".`);

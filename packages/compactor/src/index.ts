@@ -144,6 +144,17 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     debug("session_start", { sessionId: fullSessionId, projectDir });
 
+    // Seed runtime counters from DB so they reflect prior usage
+    if (sessionDB) {
+      try {
+        const allTime = sessionDB.getAllTimeStats();
+        counters.sandboxRuns = allTime.allSandboxRuns;
+        counters.searchQueries = allTime.allSearchQueries;
+      } catch {
+        // Non-fatal: counter seeding from DB failed
+      }
+    }
+
     // Reset runtime stats for new session
     runtimeStats.bytesReturned = {};
     runtimeStats.bytesIndexed = 0;
