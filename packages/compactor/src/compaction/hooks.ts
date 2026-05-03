@@ -17,7 +17,7 @@ import { buildOwnCut, type OwnCutResult } from "./cut.js";
 import type { CompactionStats } from "../types.js";
 import type { SessionDB } from "../session/db.js";
 
-export const COMPACTOR_INSTRUCTION = "__compactor__";
+import { COMPACTOR_INSTRUCTION } from "@pi-unipi/core";
 
 let lastStats: CompactionStats | null = null;
 let lastCompactWasCompactor = false;
@@ -82,13 +82,13 @@ export function registerCompactionHooks(
   pi.on("session_before_compact", (event: SessionBeforeCompactEvent, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
+    const isCompactor = customInstructions?.startsWith(COMPACTOR_INSTRUCTION) ?? false;
     dbg(config.debug, "session_before_compact:enter", {
       entryCount: branchEntries.length,
       hasPrevSummary: !!preparation?.previousSummary,
-      isCompactor: customInstructions === COMPACTOR_INSTRUCTION,
+      isCompactor,
     });
 
-    const isCompactor = customInstructions === COMPACTOR_INSTRUCTION;
     if (!isCompactor && !config.overrideDefaultCompaction) {
       dbg(config.debug, "session_before_compact:skip", { reason: "not_compactor_and_no_override" });
       return;

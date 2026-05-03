@@ -8,6 +8,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
   ASK_USER_TOOLS,
+  COMPACTOR_INSTRUCTION,
   UNIPI_EVENTS,
   emitEvent,
 } from "@pi-unipi/core";
@@ -318,6 +319,9 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           break;
         }
         case "end_turn":
+          // Abort the agent immediately — no LLM follow-up, no wasted tokens.
+          // The tool result is still recorded in session history.
+          ctx.abort();
           contentText = "User chose to end the turn.";
           break;
         case "new_session":
@@ -355,15 +359,28 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
 
         if (launcherResult.action === "compact") {
           try {
+            // Use the compactor sentinel so @pi-unipi/compactor's zero-LLM
+            // pipeline intercepts. If compactor is not installed, Pi's built-in
+            // LLM-based compaction runs instead.
+            const compactInstructions = `${COMPACTOR_INSTRUCTION}\nPreparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`;
             await new Promise<void>((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error("Compaction timed out after 30 seconds"));
+              }, 30_000);
               ctx.compact({
-                customInstructions: `Preparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`,
-                onComplete: () => resolve(),
-                onError: (err) => reject(err),
+                customInstructions: compactInstructions,
+                onComplete: () => {
+                  clearTimeout(timeout);
+                  resolve();
+                },
+                onError: (err) => {
+                  clearTimeout(timeout);
+                  reject(err);
+                },
               });
             });
           } catch (err) {
-            // Compaction failure shouldn't block the session launch — continue anyway
+            // Compaction failure or timeout shouldn't block the session launch — continue anyway
           }
         }
 

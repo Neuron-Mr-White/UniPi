@@ -215,6 +215,11 @@ export const MCP_DEFAULTS = {
   TOOL_NAME_SEPARATOR: "__",
 } as const;
 
+/** Compactor sentinel — when passed as customInstructions to ctx.compact(),
+ *  the compactor extension recognizes it and uses its zero-LLM pipeline.
+ *  Other extensions can use this to trigger compactor-aware compaction. */
+export const COMPACTOR_INSTRUCTION = "__compactor__" as const;
+
 /** Compactor tool names */
 export const COMPACTOR_TOOLS = {
   COMPACT: "compact",

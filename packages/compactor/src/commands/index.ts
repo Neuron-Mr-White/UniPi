@@ -16,7 +16,8 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
-import { getLastCompactionStats, COMPACTOR_INSTRUCTION } from "../compaction/hooks.js";
+import { COMPACTOR_INSTRUCTION } from "@pi-unipi/core";
+import { getLastCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
