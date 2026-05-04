@@ -85,7 +85,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     4. Add `COCOINDEX_COMMANDS` constant: `{ UPDATE: "cocoindex-update", STATUS: "cocoindex-status", INIT: "cocoindex-init", SETTINGS: "cocoindex-settings" }`
     5. Add cocoindex events to `packages/core/events.ts`: `COCOINDEX_UPDATE_STARTED`, `COCOINDEX_UPDATE_COMPLETED`, `COCOINDEX_SEARCH_PERFORMED`
 
-- unstarted: Task 6 — Remove content indexing from compactor
+- in-progress: Task 6 — Remove content indexing from compactor
   - Description: Strip FTS5-based content store, tools, and commands from compactor package
   - Dependencies: Task 5 (constants must be ready so removal doesn't leave dangling refs)
   - Acceptance Criteria: No ContentStore references remain; compactor still works for compaction, session recall, sandbox, stats, doctor; `npm run typecheck` passes

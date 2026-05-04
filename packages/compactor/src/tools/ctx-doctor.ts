@@ -5,7 +5,6 @@
 import { existsSync } from "node:fs";
 import { COMPACTOR_CONFIG_PATH } from "../config/manager.js";
 import type { SessionDB } from "../session/db.js";
-import type { ContentStore } from "../store/index.js";
 
 export interface DoctorResult {
   healthy: boolean;
@@ -18,7 +17,6 @@ export interface DoctorResult {
 
 export async function ctxDoctor(
   sessionDB: SessionDB,
-  contentStore: ContentStore,
 ): Promise<DoctorResult> {
   const checks: DoctorResult["checks"] = [];
 
@@ -42,22 +40,6 @@ export async function ctxDoctor(
       name: "Session DB",
       status: "fail",
       message: `Connection failed: ${err}`,
-    });
-  }
-
-  // Content store check
-  try {
-    const stats = await contentStore.getStats();
-    checks.push({
-      name: "Content Store",
-      status: "pass",
-      message: `FTS5 index: ${stats.sources} sources, ${stats.chunks} chunks`,
-    });
-  } catch (err) {
-    checks.push({
-      name: "Content Store",
-      status: "fail",
-      message: `FTS5 error: ${err}`,
     });
   }
 

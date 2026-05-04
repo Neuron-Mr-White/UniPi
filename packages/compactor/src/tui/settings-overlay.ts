@@ -128,16 +128,6 @@ const STRATEGIES: StrategyDef[] = [
     setMode: (c, v) => (c.sessionContinuity.mode = v as any),
   },
   {
-    key: "fts5Index",
-    label: "FTS5 Index",
-    description: "Full-text search index",
-    modes: ["auto", "manual", "off"],
-    getEnabled: (c) => c.fts5Index.enabled,
-    setEnabled: (c, v) => (c.fts5Index.enabled = v),
-    getMode: (c) => c.fts5Index.mode,
-    setMode: (c, v) => (c.fts5Index.mode = v as any),
-  },
-  {
     key: "sandboxExecution",
     label: "Sandbox Execution",
     description: "Polyglot code execution",
@@ -165,27 +155,27 @@ const PIPELINE_ITEMS: PipelineDef[] = [
   { key: "mmapPragma", label: "MMap Pragma", description: "Use mmap for SQLite I/O", group: "On Compaction", getValue: (c) => c.pipeline.mmapPragma, setValue: (c, v) => (c.pipeline.mmapPragma = v) },
   { key: "proximityReranking", label: "Proximity Reranking", description: "Rerank search results by proximity", group: "On Search", getValue: (c) => c.pipeline.proximityReranking, setValue: (c, v) => (c.pipeline.proximityReranking = v) },
   { key: "timelineSort", label: "Timeline Sort", description: "Sort session events chronologically", group: "On Search", getValue: (c) => c.pipeline.timelineSort, setValue: (c, v) => (c.pipeline.timelineSort = v) },
-  { key: "progressiveThrottling", label: "Progressive Throttling", description: "Slow down indexing for large projects", group: "On Index", getValue: (c) => c.pipeline.progressiveThrottling, setValue: (c, v) => (c.pipeline.progressiveThrottling = v) },
+  { key: "progressiveThrottling", label: "Progressive Throttling", description: "Slow down processing for large projects", group: "On Compaction", getValue: (c) => c.pipeline.progressiveThrottling, setValue: (c, v) => (c.pipeline.progressiveThrottling = v) },
 ];
 
 const PRESETS: CompactorPreset[] = ["precise", "balanced", "thorough", "lean"];
 
 const PRESET_DESCRIPTIONS: Record<string, { summary: string; detail: string }> = {
   precise: {
-    summary: "Code-heavy, minimal waste — compaction: full, FTS5: manual, pipeline: 2/6 on",
-    detail: "Max token savings. Compaction: full. Display: minimal.\nFTS5: manual. Sandbox: safe-only. Pipeline: ttlCache+mmap on.",
+    summary: "Code-heavy, minimal waste — compaction: full, sandbox: safe-only",
+    detail: "Max token savings. Compaction: full. Display: minimal.\nSandbox: safe-only. Pipeline: ttlCache+mmap on.",
   },
   balanced: {
-    summary: "Daily use (default) — all strategies moderate, pipeline: all on",
-    detail: "Moderate all strategies. Display: balanced.\nFTS5: auto. Sandbox: all. Pipeline: all 6 on.",
+    summary: "Daily use (default) — all strategies moderate",
+    detail: "Moderate all strategies. Display: balanced.\nSandbox: all. Pipeline: all 6 on.",
   },
   thorough: {
-    summary: "Debug/audit — everything on, full transcript, pipeline: all on",
-    detail: "Everything enabled. Display: verbose.\nFTS5: auto. Sandbox: all. Pipeline: all 6 on.",
+    summary: "Debug/audit — everything on, full transcript",
+    detail: "Everything enabled. Display: verbose.\nSandbox: all. Pipeline: all 6 on.",
   },
   lean: {
-    summary: "Quick fixes, short sessions — compaction only, pipeline: all off",
-    detail: "Compaction only. Display: opencode.\nFTS5: off. Sandbox: off. Pipeline: all 6 off.",
+    summary: "Quick fixes, short sessions — compaction only",
+    detail: "Compaction only. Display: opencode.\nSandbox: off. Pipeline: all 6 off.",
   },
 };
 

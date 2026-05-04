@@ -197,31 +197,9 @@ export type Language =
   | "elixir";
 
 // ─────────────────────────────────────────────────────────
-// Content store (from context-mode)
+// Content store — REMOVED (moved to @pi-unipi/cocoindex)
+// SearchResult, IndexResult, StoreStats types no longer needed.
 // ─────────────────────────────────────────────────────────
-
-export interface IndexResult {
-  sourceId: number;
-  label: string;
-  totalChunks: number;
-  codeChunks: number;
-}
-
-export interface SearchResult {
-  title: string;
-  content: string;
-  source: string;
-  rank: number;
-  contentType: "code" | "prose";
-  matchLayer?: "porter" | "trigram" | "fuzzy" | "rrf" | "rrf-fuzzy";
-  highlighted?: string;
-}
-
-export interface StoreStats {
-  sources: number;
-  chunks: number;
-  codeChunks: number;
-}
 
 // ─────────────────────────────────────────────────────────
 // Security (from context-mode)

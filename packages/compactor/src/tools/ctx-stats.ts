@@ -5,7 +5,6 @@
  */
 
 import type { SessionDB } from "../session/db.js";
-import type { ContentStore } from "../store/index.js";
 import type { RuntimeCounters } from "../types.js";
 
 export interface CtxStatsResult {
@@ -13,20 +12,16 @@ export interface CtxStatsResult {
   compactions: number;
   tokensSaved: number;
   compressionRatio: string;
-  indexedDocs: number;
-  indexedChunks: number;
   sandboxRuns: number;
   searchQueries: number;
 }
 
 export async function ctxStats(
   sessionDB: SessionDB,
-  contentStore: ContentStore,
   sessionId: string,
   counters?: RuntimeCounters,
 ): Promise<CtxStatsResult> {
   const sessionStats = sessionDB.getSessionStats(sessionId);
-  const storeStats = await contentStore.getStats();
 
   // Compute tokensSaved: prefer in-memory counters (current session),
   // fall back to per-session DB stats, then all-time DB stats.
@@ -67,8 +62,6 @@ export async function ctxStats(
     compactions,
     tokensSaved,
     compressionRatio: ratio,
-    indexedDocs: storeStats.sources,
-    indexedChunks: storeStats.chunks,
     sandboxRuns: computeSandboxRuns(counters, sessionDB, sessionId),
     searchQueries: computeSearchQueries(counters, sessionDB, sessionId),
   };
@@ -76,7 +69,6 @@ export async function ctxStats(
 
 /** Compute sandbox runs: prefer in-memory counter, fall back to DB. */
 function computeSandboxRuns(counters: RuntimeCounters | undefined, sessionDB: SessionDB, sessionId: string): number {
-  // Priority: in-memory counter (current session) → per-session DB → all-time DB
   let sandboxRuns = counters?.sandboxRuns ?? 0;
   if (sandboxRuns === 0) {
     const sessionStats = sessionDB.getSessionStats(sessionId);
@@ -91,7 +83,6 @@ function computeSandboxRuns(counters: RuntimeCounters | undefined, sessionDB: Se
 
 /** Compute search queries: prefer in-memory counter, fall back to DB. */
 function computeSearchQueries(counters: RuntimeCounters | undefined, sessionDB: SessionDB, sessionId: string): number {
-  // Priority: in-memory counter (current session) → per-session DB → all-time DB
   let searchQueries = counters?.searchQueries ?? 0;
   if (searchQueries === 0) {
     const sessionStats = sessionDB.getSessionStats(sessionId);

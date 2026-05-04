@@ -1,10 +1,9 @@
 /**
- * ctx_batch_execute tool — atomic batch of commands + searches
+ * ctx_batch_execute tool — atomic batch of commands
  */
 
 import { PolyglotExecutor } from "../executor/executor.js";
-import type { ContentStore } from "../store/index.js";
-import type { Language, ExecResult, SearchResult } from "../types.js";
+import type { Language, ExecResult } from "../types.js";
 
 export interface BatchCommand {
   type: "execute";
@@ -13,22 +12,15 @@ export interface BatchCommand {
   timeout?: number;
 }
 
-export interface BatchSearch {
-  type: "search";
-  query: string;
-  limit?: number;
-}
-
-export type BatchItem = BatchCommand | BatchSearch;
+export type BatchItem = BatchCommand;
 
 export interface BatchResult {
   results: Array<
-    | { type: "execute"; result: ExecResult }
-    | { type: "search"; results: SearchResult[] }
+    { type: "execute"; result: ExecResult }
   >;
 }
 
-export async function ctxBatchExecute(store: ContentStore, items: BatchItem[]): Promise<BatchResult> {
+export async function ctxBatchExecute(items: BatchItem[]): Promise<BatchResult> {
   const results: BatchResult["results"] = [];
   const executor = new PolyglotExecutor();
 
@@ -40,9 +32,6 @@ export async function ctxBatchExecute(store: ContentStore, items: BatchItem[]): 
         timeout: item.timeout ?? 30000,
       });
       results.push({ type: "execute", result });
-    } else {
-      const searchResults = await store.search(item.query, { limit: item.limit ?? 10 });
-      results.push({ type: "search", results: searchResults });
     }
   }
 

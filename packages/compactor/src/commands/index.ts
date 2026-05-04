@@ -2,15 +2,7 @@
  * All /unipi:compact-* commands
  *
  * Commands perform real work by calling tool implementations directly.
- * Dependencies (sessionDB, contentStore, sessionId) are injected at registration time.
- *
- * New command names (v0.2.0):
- *   /unipi:session-recall (was /unipi:compact-recall)
- *   /unipi:content-index (was /unipi:compact-index)
- *   /unipi:content-search (was /unipi:compact-search)
- *   /unipi:content-purge (was /unipi:compact-purge)
- *
- * Old names kept as deprecated aliases for backward compatibility.
+ * Dependencies (sessionDB, sessionId) are injected at registration time.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
@@ -21,14 +13,11 @@ import { getLastCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
-import { ctxSearch } from "../tools/ctx-search.js";
-import { ContentStore } from "../store/index.js";
 import type { SessionDB } from "../session/db.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
 export interface CommandDeps {
   sessionDB: SessionDB | null;
-  contentStore: ContentStore | null;
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
   getCounters?: () => RuntimeCounters;
@@ -45,9 +34,6 @@ const formatTokens = (n: number): string => {
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:lossless-compact ──────────────────────────
-  // Triggers immediate compaction via ctx.compact() with our zero-LLM
-  // structured summary pipeline (same pattern as pi-vcc).
-  // Named "lossless-compact" to avoid confusion with Pi's built-in /compact.
   pi.registerCommand("unipi:lossless-compact", {
     description: "Immediate zero-LLM compaction — structured summary with full recall",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -142,18 +128,17 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   pi.registerCommand("unipi:compact-stats", {
     description: "Show context savings dashboard",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      if (!deps?.sessionDB || !deps?.contentStore) {
+      if (!deps?.sessionDB) {
         ctx.ui.notify("Compactor services not initialized.", "error");
         return;
       }
       try {
-        const stats = await ctxStats(deps.sessionDB, deps.contentStore, deps.getSessionId(), deps.getCounters?.());
+        const stats = await ctxStats(deps.sessionDB, deps.getSessionId(), deps.getCounters?.());
         const lines = [
           "📊 Compactor Stats",
           `Session events: ${stats.sessionEvents}`,
           `Compactions: ${stats.compactions}`,
           `Tokens saved: ${stats.tokensSaved}`,
-          `Indexed docs: ${stats.indexedDocs} (${stats.indexedChunks} chunks)`,
           `Sandbox runs: ${stats.sandboxRuns}`,
           `Search queries: ${stats.searchQueries}`,
         ];
@@ -168,12 +153,12 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   pi.registerCommand("unipi:compact-doctor", {
     description: "Run diagnostics checklist",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      if (!deps?.sessionDB || !deps?.contentStore) {
+      if (!deps?.sessionDB) {
         ctx.ui.notify("Compactor services not initialized.", "error");
         return;
       }
       try {
-        const result = await ctxDoctor(deps.sessionDB, deps.contentStore);
+        const result = await ctxDoctor(deps.sessionDB);
         const icon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
         const lines = [
           result.healthy ? "🩺 All checks passed" : "🩺 Issues found",
@@ -225,150 +210,24 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  // ── /unipi:content-index (new) / /unipi:compact-index (deprecated) ──
-  const contentIndexHandler = async (_args: string, ctx: ExtensionCommandContext) => {
-    if (!deps?.contentStore) {
-      ctx.ui.notify("Content store not initialized. Enable fts5Index in config.", "warning");
-      return;
-    }
-    try {
-      const cwd = (ctx as any).cwd ?? process.cwd();
-      const { readdirSync, readFileSync, statSync } = await import("node:fs");
-      const { join, relative, extname } = await import("node:path");
-
-      const indexable = [".md", ".txt", ".ts", ".js", ".json", ".py", ".sh"];
-      const files: string[] = [];
-
-      const walk = (dir: string, depth = 0) => {
-        if (depth > 3) return;
-        try {
-          for (const entry of readdirSync(dir, { withFileTypes: true })) {
-            if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-            const full = join(dir, entry.name);
-            if (entry.isDirectory()) {
-              walk(full, depth + 1);
-            } else if (indexable.includes(extname(entry.name))) {
-              files.push(full);
-            }
-          }
-        } catch {
-          // skip unreadable dirs
-        }
-      };
-
-      walk(cwd);
-      let totalChunks = 0;
-      for (const file of files.slice(0, 100)) {
-        try {
-          const content = readFileSync(file, "utf-8");
-          if (content.length < 50) continue;
-          const ext = extname(file);
-          const ct = ext === ".md" ? "markdown" : ext === ".json" ? "json" : "plain";
-          const result = await deps.contentStore!.index(relative(cwd, file), content, {
-            contentType: ct,
-            source: file,
-          });
-          totalChunks += result.totalChunks;
-        } catch {
-          // skip unreadable files
-        }
-      }
-      ctx.ui.notify(`Indexed ${Math.min(files.length, 100)} files (${totalChunks} chunks).`, "info");
-    } catch (err) {
-      ctx.ui.notify(`Index error: ${err}`, "error");
-    }
-  };
-  pi.registerCommand("unipi:content-index", {
-    description: "Index current project files into FTS5",
-    handler: contentIndexHandler,
-  });
-  pi.registerCommand("unipi:compact-index", {
-    description: "(DEPRECATED) Index project files — use /unipi:content-index instead",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      deprecationLog("/unipi:compact-index", "/unipi:content-index");
-      return contentIndexHandler(args, ctx);
-    },
-  });
-
-  // ── /unipi:content-search (new) / /unipi:compact-search (deprecated) ──
-  const contentSearchHandler = async (args: string, ctx: ExtensionCommandContext) => {
-    const query = args.trim();
-    if (!query) {
-      ctx.ui.notify("Usage: /unipi:content-search <query>", "warning");
-      return;
-    }
-    if (!deps?.contentStore) {
-      ctx.ui.notify("Content store not initialized.", "warning");
-      return;
-    }
-    try {
-      const results = await ctxSearch(deps.contentStore!, { query, limit: 10 });
-      if (results.length === 0) {
-        ctx.ui.notify(`No results for "${query}".`, "info");
-        return;
-      }
-      const lines = results.map(
-        (r, i) => `[${i + 1}] ${r.title} (rank: ${r.rank.toFixed(3)})\n${r.content.slice(0, 200)}`,
-      );
-      ctx.ui.notify(`Found ${results.length} results:\n${lines.join("\n\n")}`, "info");
-    } catch (err) {
-      ctx.ui.notify(`Search error: ${err}`, "error");
-    }
-  };
-  pi.registerCommand("unipi:content-search", {
-    description: "Search indexed content",
-    handler: contentSearchHandler,
-  });
-  pi.registerCommand("unipi:compact-search", {
-    description: "(DEPRECATED) Search indexed content — use /unipi:content-search instead",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      deprecationLog("/unipi:compact-search", "/unipi:content-search");
-      return contentSearchHandler(args, ctx);
-    },
-  });
-
-  // ── /unipi:content-purge (new) / /unipi:compact-purge (deprecated) ──
-  const contentPurgeHandler = async (_args: string, ctx: ExtensionCommandContext) => {
-    if (!deps?.contentStore) {
-      ctx.ui.notify("Content store not initialized.", "warning");
-      return;
-    }
-    try {
-      await deps.contentStore!.purge();
-      ctx.ui.notify("All indexed content purged.", "info");
-    } catch (err) {
-      ctx.ui.notify(`Purge error: ${err}`, "error");
-    }
-  };
-  pi.registerCommand("unipi:content-purge", {
-    description: "Wipe all indexed content from FTS5",
-    handler: contentPurgeHandler,
-  });
-  pi.registerCommand("unipi:compact-purge", {
-    description: "(DEPRECATED) Wipe indexed content — use /unipi:content-purge instead",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      deprecationLog("/unipi:compact-purge", "/unipi:content-purge");
-      return contentPurgeHandler(args, ctx);
-    },
-  });
-
   // ── /unipi:compact-help ──────────────────────────────
   pi.registerCommand("unipi:compact-help", {
     description: "Show detailed compactor documentation (tier-2 skill)",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      // Load tier-2 skill content — delegates to skill loading system
       ctx.ui.notify(
-        "🗜️ Compactor Help — Use your compactor-detail skill for full documentation.\n" +
+        "🗜️ Compactor Help\n" +
         "Quick commands:\n" +
         "  /unipi:lossless-compact — trigger immediate compaction\n" +
         "  /unipi:session-recall <query> — search session history\n" +
-        "  /unipi:content-index — index project files\n" +
-        "  /unipi:content-search <query> — search indexed content\n" +
-        "  /unipi:content-purge — wipe indexed content\n" +
         "  /unipi:compact-stats — view stats\n" +
         "  /unipi:compact-doctor — run diagnostics\n" +
         "  /unipi:compact-settings — TUI settings\n" +
-        "  /unipi:compact-preset <name> — apply preset",
+        "  /unipi:compact-preset <name> — apply preset\n" +
+        "\n" +
+        "Content indexing has moved to @pi-unipi/cocoindex:\n" +
+        "  /unipi:cocoindex-init — initialize pipeline\n" +
+        "  /unipi:cocoindex-update — index project files\n" +
+        "  cocoindex_search — search indexed content",
         "info",
       );
     },

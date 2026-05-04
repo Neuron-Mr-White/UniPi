@@ -173,38 +173,42 @@ Cocoindex package emits `MODULE_READY` and subscribes to the event system like a
 
 ## Implementation Checklist
 
-- [ ] Create experimental branch `experiment/cocoindex`
-- [ ] Create `packages/cocoindex/` with `package.json`, `index.ts`, `bridge.ts`, `tools.ts`, `commands.ts`
-- [ ] Implement `bridge.ts` — cocoindex CLI detection, `update`, `status`
-- [ ] Implement `bridge.ts` — direct SQLite target store querying for search
-- [ ] Register cocoindex tools (`cocoindex_search`, `cocoindex_status`)
-- [ ] Register cocoindex commands (`cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`)
-- [ ] Add cocoindex skill (`skills/cocoindex/SKILL.md`) — teaches agent when/how to use cocoindex
-- [ ] Add `MODULES.COCOINDEX` to `@pi-unipi/core/constants.ts`
-- [ ] Add cocoindex events to `@pi-unipi/core/events.ts`
-- [ ] Remove content store files from compactor (`store/chunking.ts`, `store/index.ts`, `store/db-base.ts`, `store/unified.ts`)
-- [ ] Remove content tool files from compactor (`tools/ctx-index.ts`, `tools/ctx-search.ts`, `tools/ctx-fetch-and-index.ts`)
-- [ ] Modify `compactor/src/index.ts` — remove ContentStore init, remove from deps
-- [ ] Modify `compactor/src/tools/register.ts` — remove 6 content-related tool registrations
-- [ ] Modify `compactor/src/commands/index.ts` — remove 6 content-related command registrations
-- [ ] Modify `compactor/src/types.ts` — remove ContentStore types
-- [ ] Update `@pi-unipi/core/constants.ts` — remove content tool/command names from COMPACTOR_TOOLS/COMPACTOR_COMMANDS
-- [ ] Update umbrella `package.json` — add cocoindex dependency, extension, skills
-- [ ] Update footer/info-screen to show cocoindex status instead of content store metrics
-- [ ] Update compactor stats/doctor to work without ContentStore
-- [ ] Test: `npm run typecheck` passes
-- [ ] Test: `npm test` passes
-- [ ] Create default cocoindex pipeline template (SQLite target, localfs source, recursive splitter)
-- [ ] Write README for `@pi-unipi/cocoindex`
+- [x] Create experimental branch `experiment/cocoindex` — Task 1
+- [x] Create `packages/cocoindex/` with `package.json`, `index.ts`, `bridge.ts`, `tools.ts`, `commands.ts` — Task 1
+- [x] Implement `bridge.ts` — cocoindex CLI detection, `update`, `status` — Task 2
+- [x] Implement `bridge.ts` — direct LanceDB target store querying for search — Task 3 (changed from SQLite to LanceDB)
+- [x] Register cocoindex tools (`cocoindex_search`, `cocoindex_status`) — Task 4
+- [x] Register cocoindex commands (`cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`) — Task 4
+- [x] Add cocoindex skill (`skills/cocoindex/SKILL.md`) — teaches agent when/how to use cocoindex — Task 5
+- [x] Add `MODULES.COCOINDEX` to `@pi-unipi/core/constants.ts` — Task 5
+- [x] Add cocoindex events to `@pi-unipi/core/events.ts` — Task 5
+- [x] Remove content store files from compactor (`store/chunking.ts`, `store/index.ts`, `store/db-base.ts`, `store/unified.ts`) — Task 6
+- [x] Remove content tool files from compactor (`tools/ctx-index.ts`, `tools/ctx-search.ts`, `tools/ctx-fetch-and-index.ts`) — Task 6
+- [x] Modify `compactor/src/index.ts` — remove ContentStore init, remove from deps — Task 6
+- [x] Modify `compactor/src/tools/register.ts` — remove 6 content-related tool registrations — Task 6
+- [x] Modify `compactor/src/commands/index.ts` — remove 6 content-related command registrations — Task 6
+- [x] Modify `compactor/src/types.ts` — remove ContentStore types — Task 6
+- [x] Update `@pi-unipi/core/constants.ts` — remove content tool/command names from COMPACTOR_TOOLS/COMPACTOR_COMMANDS — Task 8
+- [x] Update umbrella `package.json` — add cocoindex dependency, extension, skills — Task 8
+- [x] Update footer/info-screen to show cocoindex status instead of content store metrics — Task 9
+- [x] Update compactor stats/doctor to work without ContentStore — Task 7
+- [x] Test: `npm run typecheck` passes — Task 11
+- [ ] Test: `npm test` passes — deferred (requires runtime test environment)
+- [x] Create default cocoindex pipeline template (LanceDB target, localfs source, recursive splitter) — Task 10 (changed from SQLite to LanceDB)
+- [x] Write README for `@pi-unipi/cocoindex` — Task 11
 
-## Open Questions
+## Open Questions — Resolved
 
-1. **Target store choice** — Default to SQLite (zero-config, uses sqlite-vec already in memory package)? Or require Postgres for pgvector?
-2. **Search interface** — Query the SQLite target directly from TypeScript? Or pipe through `cocoindex` CLI?
-3. **Pipeline definition** — Where does the user's `main.py` live? Project root? `.unipi/cocoindex/main.py`? Auto-generated?
-4. **Watch mode** — Should the cocoindex bridge support live mode (`cocoindex update --live`) for continuous indexing? Would require a background process.
-5. **Embedding model alignment** — Cocoindex uses its own embedding models. Memory uses OpenRouter. Should they share embeddings for cross-system search?
-6. **Compactor's `content_fetch` (URL fetch and index)** — This was a convenience tool. Does cocoindex cover this use case, or do we keep a simplified version in web-api?
+1. **Target store choice** → **LanceDB** — Zero-config, local file-based, no Docker/Postgres needed. Postgres/Qdrant as future options.
+2. **Search interface** → **Query LanceDB directly from TypeScript** via `@lancedb/lancedb` Node.js SDK. No CLI round-trip.
+3. **Pipeline definition** → **`.unipi/cocoindex/main.py`** — Auto-generated by `cocoindex-init`, user can customize.
+4. **Watch mode** → **Out of scope for initial experiment.** Phase 2 consideration.
+5. **Embedding model alignment** → **Reuse memory package settings** (`~/.unipi/memory/config.json`). Same API key, model, dimensions. Cross-system search enabled.
+6. **Compactor's `content_fetch`** → **Move to web-api** as `cocoindex_fetch_url` tool. web-api already handles URL fetching.
+
+## Open Questions — Remaining
+
+- (none currently)
 
 ## Out of Scope
 

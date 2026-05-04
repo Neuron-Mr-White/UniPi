@@ -4,30 +4,26 @@
  * Each tool is registered via pi.registerTool() with proper TypeBox schemas
  * so the LLM can discover and invoke them.
  *
- * New naming convention (v0.2.0):
+ * Tool names:
  *   compact, session_recall, sandbox, sandbox_file, sandbox_batch,
- *   content_index, content_search, content_fetch, compactor_stats, compactor_doctor
+ *   compactor_stats, compactor_doctor, context_budget
  *
- * Old names kept as deprecated aliases for backward compatibility:
+ * Deprecated aliases for backward compatibility:
  *   vcc_recall, ctx_execute, ctx_execute_file, ctx_batch_execute,
- *   ctx_index, ctx_search, ctx_fetch_and_index, ctx_stats, ctx_doctor
+ *   ctx_stats, ctx_doctor
  */
 
-import { Type, type Static } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { compactTool } from "./compact.js";
 import { vccRecall, type RecallInput } from "./vcc-recall.js";
 import { ctxExecute, type CtxExecuteInput } from "./ctx-execute.js";
 import { ctxExecuteFile, type CtxExecuteFileInput } from "./ctx-execute-file.js";
 import { ctxBatchExecute, type BatchItem } from "./ctx-batch-execute.js";
-import { ctxIndex, type CtxIndexInput } from "./ctx-index.js";
-import { ctxSearch, type CtxSearchInput } from "./ctx-search.js";
-import { ctxFetchAndIndex, type CtxFetchAndIndexInput } from "./ctx-fetch-and-index.js";
 import { ctxStats, type CtxStatsResult } from "./ctx-stats.js";
 import { ctxDoctor, type DoctorResult } from "./ctx-doctor.js";
 import { contextBudgetTool } from "./context-budget.js";
 import type { SessionDB } from "../session/db.js";
-import type { ContentStore } from "../store/index.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
 // --- TypeBox Schemas for each tool ---
@@ -81,38 +77,9 @@ const SandboxBatchParams = Type.Object({
         code: Type.String(),
         timeout: Type.Optional(Type.Number()),
       }),
-      Type.Object({
-        type: Type.Literal("search"),
-        query: Type.String(),
-        limit: Type.Optional(Type.Number()),
-      }),
     ]),
-    { description: "Array of execute or search commands to run atomically" },
+    { description: "Array of execute commands to run atomically" },
   ),
-});
-
-const ContentIndexParams = Type.Object({
-  label: Type.String({ description: "Label for the indexed content" }),
-  content: Type.Optional(Type.String({ description: "Content to index (or use filePath)" })),
-  filePath: Type.Optional(Type.String({ description: "Path to file to index" })),
-  contentType: Type.Optional(Type.Union([
-    Type.Literal("markdown"),
-    Type.Literal("json"),
-    Type.Literal("plain"),
-  ], { description: "Content type for chunking strategy" })),
-  chunkSize: Type.Optional(Type.Number({ description: "Chunk size in characters", minimum: 100 })),
-});
-
-const ContentSearchParams = Type.Object({
-  query: Type.String({ description: "Search query against indexed content" }),
-  limit: Type.Optional(Type.Number({ description: "Max results (default 10)", minimum: 1 })),
-  offset: Type.Optional(Type.Number({ description: "Pagination offset", minimum: 0 })),
-});
-
-const ContentFetchParams = Type.Object({
-  url: Type.String({ description: "URL to fetch, convert to markdown, and index" }),
-  label: Type.Optional(Type.String({ description: "Label for the indexed content" })),
-  chunkSize: Type.Optional(Type.Number({ description: "Chunk size in characters", minimum: 100 })),
 });
 
 const StatsParams = Type.Object({});
@@ -147,9 +114,6 @@ const VccRecallParams = RecallParams;
 const CtxExecuteParams = SandboxParams;
 const CtxExecuteFileParams = SandboxFileParams;
 const CtxBatchExecuteParams = SandboxBatchParams;
-const CtxIndexParams = ContentIndexParams;
-const CtxSearchParams = ContentSearchParams;
-const CtxFetchAndIndexParams = ContentFetchParams;
 const CtxStatsParams = StatsParams;
 const CtxDoctorParams = DoctorParams;
 
@@ -157,7 +121,6 @@ const CtxDoctorParams = DoctorParams;
 
 export interface CompactorToolDeps {
   sessionDB: SessionDB;
-  contentStore: ContentStore | null;
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
   getCounters?: () => RuntimeCounters;
@@ -260,94 +223,34 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "sandbox_file", label: "Sandbox File", description: "Execute a file in the sandbox. File content is injected as FILE_CONTENT variable.", parameters: SandboxFileParams, execute: sandboxFileExec } as any);
   pi.registerTool({ name: "ctx_execute_file", label: "Sandbox File", description: "Execute file in sandbox. (DEPRECATED: use sandbox_file instead)", parameters: CtxExecuteFileParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute_file", "sandbox_file"); return sandboxFileExec(tcId, p); } } as any);
 
-  // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch
+  // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch (execute only)
   const sandboxBatchExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const c = deps.getCounters?.();
-      if (c) { c.sandboxRuns++; c.searchQueries++; }
+      if (c) { c.sandboxRuns++; }
       deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
-      deps.sessionDB.incrementSearchQueries(deps.getSessionId());
-      const result = await ctxBatchExecute(deps.contentStore!, params.items as BatchItem[]);
+      const result = await ctxBatchExecute(params.items as BatchItem[]);
       const summaries = result.results.map((r, i) => {
-        if (r.type === "execute") {
-          const s = r.result.stdout?.slice(0, 200) || "(no output)";
-          return `[${i}] execute → ${r.result.exitCode === 0 ? "ok" : "fail"}: ${s}`;
-        }
-        return `[${i}] search → ${r.results.length} results`;
+        const s = r.result.stdout?.slice(0, 200) || "(no output)";
+        return `[${i}] execute → ${r.result.exitCode === 0 ? "ok" : "fail"}: ${s}`;
       });
       return textResult(`Batch results (${result.results.length} items):\n${summaries.join("\n")}`, result as unknown as Record<string, unknown>);
     } catch (err) {
       return textResult(`Batch error: ${err}`, { error: true });
     }
   };
-  pi.registerTool({ name: "sandbox_batch", label: "Sandbox Batch", description: "Run multiple code executions and searches atomically as a batch.", parameters: SandboxBatchParams, execute: sandboxBatchExec } as any);
+  pi.registerTool({ name: "sandbox_batch", label: "Sandbox Batch", description: "Run multiple code executions atomically as a batch.", parameters: SandboxBatchParams, execute: sandboxBatchExec } as any);
   pi.registerTool({ name: "ctx_batch_execute", label: "Sandbox Batch", description: "Run batch operations. (DEPRECATED: use sandbox_batch instead)", parameters: CtxBatchExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_batch_execute", "sandbox_batch"); return sandboxBatchExec(tcId, p); } } as any);
 
-  // 6. content_index (new) / ctx_index (deprecated) — index content into FTS5
-  const contentIndexExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
-    try {
-      const result = await ctxIndex(deps.contentStore!, params as CtxIndexInput);
-      return textResult(
-        `Indexed "${result.label}": ${result.totalChunks} chunks (${result.codeChunks} code)`,
-        result as unknown as Record<string, unknown>,
-      );
-    } catch (err) {
-      return textResult(`Index error: ${err}`, { error: true });
-    }
-  };
-  pi.registerTool({ name: "content_index", label: "Content Index", description: "Chunk content or a file and index into FTS5 for fast search.", parameters: ContentIndexParams, execute: contentIndexExec } as any);
-  pi.registerTool({ name: "ctx_index", label: "Content Index", description: "Index content into FTS5. (DEPRECATED: use content_index instead)", parameters: CtxIndexParams, async execute(tcId: string, p: any) { deprecationLog("ctx_index", "content_index"); return contentIndexExec(tcId, p); } } as any);
-
-  // 7. content_search (new) / ctx_search (deprecated) — query FTS5 content store
-  const contentSearchExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
-    try {
-      const c = deps.getCounters?.();
-      if (c) { c.searchQueries++; }
-      deps.sessionDB.incrementSearchQueries(deps.getSessionId());
-      const results = await ctxSearch(deps.contentStore!, params as CtxSearchInput);
-      if (results.length === 0) {
-        return textResult(`No results for "${params.query}".`);
-      }
-      const lines = results.map(
-        (r, i) =>
-          `[${i + 1}] ${r.title} (rank: ${r.rank.toFixed(3)})\n${r.content.slice(0, 300)}`,
-      );
-      return textResult(
-        `Found ${results.length} results:\n\n${lines.join("\n\n")}`,
-        { results } as unknown as Record<string, unknown>,
-      );
-    } catch (err) {
-      return textResult(`Search error: ${err}`, { error: true });
-    }
-  };
-  pi.registerTool({ name: "content_search", label: "Content Search", description: "Search indexed content using FTS5 full-text search.", parameters: ContentSearchParams, execute: contentSearchExec } as any);
-  pi.registerTool({ name: "ctx_search", label: "Content Search", description: "Search indexed content. (DEPRECATED: use content_search instead)", parameters: CtxSearchParams, async execute(tcId: string, p: any) { deprecationLog("ctx_search", "content_search"); return contentSearchExec(tcId, p); } } as any);
-
-  // 8. content_fetch (new) / ctx_fetch_and_index (deprecated) — fetch URL
-  const contentFetchExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
-    try {
-      const result = await ctxFetchAndIndex(deps.contentStore!, params as CtxFetchAndIndexInput);
-      return textResult(
-        `Fetched and indexed "${result.label}": ${result.totalChunks} chunks`,
-        result as unknown as Record<string, unknown>,
-      );
-    } catch (err) {
-      return textResult(`Fetch error: ${err}`, { error: true });
-    }
-  };
-  pi.registerTool({ name: "content_fetch", label: "Content Fetch", description: "Fetch a URL, convert to markdown, and index into FTS5 content store.", parameters: ContentFetchParams, execute: contentFetchExec } as any);
-  pi.registerTool({ name: "ctx_fetch_and_index", label: "Content Fetch", description: "Fetch URL and index. (DEPRECATED: use content_fetch instead)", parameters: CtxFetchAndIndexParams, async execute(tcId: string, p: any) { deprecationLog("ctx_fetch_and_index", "content_fetch"); return contentFetchExec(tcId, p); } } as any);
-
-  // 9. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
+  // 6. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
   const statsExec = async (): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
-      const result = await ctxStats(deps.sessionDB, deps.contentStore!, deps.getSessionId(), deps.getCounters?.());
+      const result = await ctxStats(deps.sessionDB, deps.getSessionId(), deps.getCounters?.());
       const lines = [
         `📊 Compactor Stats`,
         `Session events: ${result.sessionEvents}`,
         `Compactions: ${result.compactions}`,
         `Tokens saved: ${result.tokensSaved}`,
-        `Indexed docs: ${result.indexedDocs} (${result.indexedChunks} chunks)`,
         `Sandbox runs: ${result.sandboxRuns}`,
         `Search queries: ${result.searchQueries}`,
       ];
@@ -356,13 +259,13 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       return textResult(`Stats error: ${err}`, { error: true });
     }
   };
-  pi.registerTool({ name: "compactor_stats", label: "Compactor Stats", description: "Show context savings dashboard — session events, compactions, indexed content.", parameters: StatsParams, execute: statsExec } as any);
+  pi.registerTool({ name: "compactor_stats", label: "Compactor Stats", description: "Show context savings dashboard — session events, compactions, tool usage.", parameters: StatsParams, execute: statsExec } as any);
   pi.registerTool({ name: "ctx_stats", label: "Compactor Stats", description: "Show stats dashboard. (DEPRECATED: use compactor_stats instead)", parameters: CtxStatsParams, async execute() { deprecationLog("ctx_stats", "compactor_stats"); return statsExec(); } } as any);
 
-  // 10. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
+  // 7. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
   const doctorExec = async (): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
-      const result = await ctxDoctor(deps.sessionDB, deps.contentStore!);
+      const result = await ctxDoctor(deps.sessionDB);
       const icon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
       const lines = [
         result.healthy ? "🩺 All checks passed" : "🩺 Issues found",
@@ -374,10 +277,10 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       return textResult(`Doctor error: ${err}`, { error: true });
     }
   };
-  pi.registerTool({ name: "compactor_doctor", label: "Compactor Doctor", description: "Run diagnostics checklist — validate config, DB, FTS5, runtimes.", parameters: DoctorParams, execute: doctorExec } as any);
+  pi.registerTool({ name: "compactor_doctor", label: "Compactor Doctor", description: "Run diagnostics checklist — validate config, DB, runtimes.", parameters: DoctorParams, execute: doctorExec } as any);
   pi.registerTool({ name: "ctx_doctor", label: "Compactor Doctor", description: "Run diagnostics. (DEPRECATED: use compactor_doctor instead)", parameters: CtxDoctorParams, async execute() { deprecationLog("ctx_doctor", "compactor_doctor"); return doctorExec(); } } as any);
 
-  // 11. context_budget — estimate remaining context window
+  // 8. context_budget — estimate remaining context window
   pi.registerTool(({
     name: "context_budget",
     label: "Context Budget",

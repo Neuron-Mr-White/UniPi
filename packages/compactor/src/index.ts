@@ -9,7 +9,6 @@ import { registerCompactionHooks } from "./compaction/hooks.js";
 import { SessionDB, getWorktreeSuffix } from "./session/db.js";
 import { extractEventsFromToolResult } from "./session/extract.js";
 import { injectResumeSnapshot } from "./session/resume-inject.js";
-import { ContentStore } from "./store/index.js";
 import { PolyglotExecutor } from "./executor/executor.js";
 import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
@@ -57,7 +56,6 @@ function isIndexTool(_name: string): boolean {
 
 export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
-  let contentStore: ContentStore | null = null;
   let executor: PolyglotExecutor | null = null;
   let config = loadConfig();
   let cachedBlocks: NormalizedBlock[] = [];
@@ -101,19 +99,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       sessionDB = null;
     }
 
-    // Initialize ContentStore independently — its failure shouldn't
-    // prevent SessionDB commands from working.
-    if (config.fts5Index.enabled) {
-      try {
-        const cs = new ContentStore();
-        await cs.init();
-        contentStore = cs;
-      } catch {
-        // Silently ignore — ContentStore init failure is handled gracefully.
-        contentStore = null;
-      }
-    }
-
     executor = new PolyglotExecutor();
   };
 
@@ -127,7 +112,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   // Commands registered inside session_start after init() when deps are ready
   const getCommandDeps = () => ({
     sessionDB,
-    contentStore,
     getSessionId: () => currentSessionId,
     getBlocks: () => cachedBlocks,
     getCounters,
@@ -170,7 +154,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (sessionDB) {
       registerCompactorTools(pi, {
         sessionDB,
-        contentStore,
         getSessionId: () => currentSessionId,
         getBlocks: () => cachedBlocks,
         getCounters,
@@ -229,10 +212,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     debug("MODULE_READY", { commands: Object.values(COMPACTOR_COMMANDS), tools: Object.values(COMPACTOR_TOOLS) });
 
-    if (config.fts5Index.mode === "auto" && contentStore) {
-      // TODO: index project files
-    }
-
     ctx.ui.notify("🗜️  Compactor ready", "info");
   });
 
@@ -248,7 +227,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const { join } = await import("node:path");
       const strategies: Array<{ key: string; config: CompactorStrategyConfig }> = [
         { key: "commits", config: config.commits },
-        { key: "fts5Index", config: config.fts5Index },
       ];
       for (const { key, config: strat } of strategies) {
         if ((strat as any).autoDetect === "git") {
@@ -360,13 +338,10 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async (_event, _ctx) => {
     debug("session_shutdown");
-    // WAL checkpoint: TRUNCATE on shutdown to keep DB file size down
-    contentStore?.checkpointWAL("TRUNCATE");
     if (sessionDB) {
       sessionDB.cleanupOldSessions(7);
     }
     executor?.cleanupBackgrounded();
-    contentStore?.close();
     sessionDB?.close();
   });
 
