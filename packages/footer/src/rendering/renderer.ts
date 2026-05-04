@@ -239,9 +239,17 @@ export class FooterRenderer {
       adjustedRightWidth = this.measureZoneWidth(zones.right, sepWidth);
       overflowZones.right.push(dropped);
     }
+    // If left zone alone exceeds width, drop segments from the end until it fits.
+    let adjustedLeftWidth = leftWidth;
+    while (zones.left.length > 1 && adjustedLeftWidth + marginWidth > width) {
+      const dropped = zones.left.pop()!;
+      adjustedLeftWidth = this.measureZoneWidth(zones.left, sepWidth);
+      overflowZones.left.push(dropped);
+    }
     // Recalculate available center after possible right-zone dropping
+    const adjLeftWidth = zones.left.length > 0 ? this.measureZoneWidth(zones.left, sepWidth) : 0;
     const adjNumZoneSeps = (zones.left.length > 0 ? 1 : 0) + (zones.right.length > 0 ? 1 : 0);
-    const adjAvailableForCenter = width - leftWidth - adjustedRightWidth - adjNumZoneSeps * zoneSepWidth - marginWidth;
+    const adjAvailableForCenter = width - adjLeftWidth - adjustedRightWidth - adjNumZoneSeps * zoneSepWidth - marginWidth;
 
     // Overflow check: if center doesn't fit, move excess to overflow
     const centerWidth = this.measureZoneWidth(zones.center, sepWidth);
@@ -266,7 +274,7 @@ export class FooterRenderer {
     const topContent = this.buildZoneRow(zones, width, sepDef, dimZoneSep);
 
     // Build secondary row with overflow + preset secondary segments
-    const allSecondary = [...overflowZones.center, ...overflowZones.right, ...secondaryRendered];
+    const allSecondary = [...overflowZones.left, ...overflowZones.center, ...overflowZones.right, ...secondaryRendered];
     const secondaryContent = this.buildContentFromParts(
       allSecondary.map(s => s.content),
       sepDef,
@@ -413,10 +421,11 @@ export class FooterRenderer {
     const sepAnsi = getFgAnsiCode(getPreset(this.presetName).colors ?? getDefaultColors(), "separator");
     const result = " " + parts.join(` ${sepAnsi}${sep}${ANSI_RESET} `) + ANSI_RESET + " ";
     // Safety net: never exceed maxWidth if provided
-    if (maxWidth && maxWidth > 0) {
+    if (maxWidth != null && maxWidth > 0) {
       return truncateToWidth(result, maxWidth);
     }
-    return result;
+    // If no maxWidth, truncate to a reasonable default to prevent unbounded output
+    return truncateToWidth(result, 200);
   }
 
   /** Map a segment ID to its group ID */

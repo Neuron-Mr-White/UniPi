@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI, Theme, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
@@ -211,11 +212,17 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         state.renderer.resetLayoutCache();
       },
       render(width: number): string[] {
-        if (!state.enabled || !state.piContext) return [];
+        if (!state.enabled || !state.piContext || width <= 0) return [];
 
         // Build layout with proper theme by creating segment contexts
         const layout = state.renderer.computeLayout(width);
-        return layout.topContent ? [layout.topContent] : [];
+        if (!layout.topContent) return [];
+
+        // Hard safety net: never return a line wider than the terminal.
+        // This catches any edge cases in layout math or visibleWidth()
+        // inconsistencies with PUA characters + ANSI codes.
+        const line = layout.topContent;
+        return [visibleWidth(line) > width ? truncateToWidth(line, width) : line];
       },
     };
   }, { placement: "aboveEditor" });
@@ -228,13 +235,15 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         state.renderer.resetLayoutCache();
       },
       render(width: number): string[] {
-        if (!state.enabled || !state.piContext) return [];
+        if (!state.enabled || !state.piContext || width <= 0) return [];
 
         const lines: string[] = [];
 
         const layout = state.renderer.computeLayout(width);
         if (layout.secondaryContent) {
-          lines.push(layout.secondaryContent);
+          // Hard safety net: never return a line wider than the terminal.
+          const line = layout.secondaryContent;
+          lines.push(visibleWidth(line) > width ? truncateToWidth(line, width) : line);
         }
 
         return lines;
