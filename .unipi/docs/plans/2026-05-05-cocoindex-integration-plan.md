@@ -130,7 +130,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     7. Update `UnipiCompactorStatsEvent` in `core/events.ts` — remove `indexedDocs` field
     8. Run `npm run typecheck` at root — must pass
 
-- in-progress: Task 9 — Update footer to show cocoindex status instead of content metrics
+- completed: Task 9 — Update footer to show cocoindex status instead of content metrics
   - Description: Replace footer's `indexed_docs` segment with cocoindex indexing status
   - Dependencies: Task 8
   - Acceptance Criteria: Footer shows cocoindex status (indexed/no-index) instead of FTS5 doc count; no broken references to content store
@@ -141,7 +141,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     4. Check `footer/src/rendering/renderer.ts` — update compactorIds list if needed
     5. Check `footer/src/help.ts` — update help text for the segment
 
-- unstarted: Task 10 — Create default cocoindex pipeline template
+- completed: Task 10 — Create default cocoindex pipeline template
   - Description: Write the default `main.py` template that `cocoindex-init` scaffolds
   - Dependencies: Task 5
   - Acceptance Criteria: Template uses LanceDB target, localfs source, recursive splitter, EmbedText with OpenRouter, and works with `cocoindex update`
@@ -154,7 +154,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     6. Exports to LanceDB at `.unipi/cocoindex/.lancedb/`
     7. Template is customizable — user can edit `main.py` after init
 
-- unstarted: Task 11 — Write README and test typecheck
+- completed: Task 11 — Write README and test typecheck
   - Description: Document the cocoindex package and verify everything compiles
   - Dependencies: Task 10
   - Acceptance Criteria: `npm run typecheck` passes; README explains setup, usage, architecture

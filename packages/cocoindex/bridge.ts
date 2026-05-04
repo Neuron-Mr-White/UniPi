@@ -294,6 +294,7 @@ export async function search(
     }
 
     // Dynamic import — LanceDB SDK may not be installed
+    // @ts-ignore — optional dependency, may not be installed
     const lancedb = await import("@lancedb/lancedb");
     const db = await lancedb.connect(lancedbPath);
 
