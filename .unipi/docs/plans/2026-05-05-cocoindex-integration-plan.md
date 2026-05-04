@@ -116,7 +116,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     5. Update `compactor/src/info-screen.ts` — if it references contentStore metrics, remove those
     6. Update `compactor/src/index.ts` — remove contentStore from info-screen data provider if present
 
-- in-progress: Task 8 — Update umbrella package and core constants cleanup
+- completed: Task 8 — Update umbrella package and core constants cleanup
   - Description: Wire cocoindex into the umbrella package, remove old content tool/command constants from core
   - Dependencies: Task 7
   - Acceptance Criteria: Umbrella `package.json` includes cocoindex; `npm run typecheck` passes at root; old content constants removed from core
@@ -130,7 +130,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     7. Update `UnipiCompactorStatsEvent` in `core/events.ts` — remove `indexedDocs` field
     8. Run `npm run typecheck` at root — must pass
 
-- unstarted: Task 9 — Update footer to show cocoindex status instead of content metrics
+- in-progress: Task 9 — Update footer to show cocoindex status instead of content metrics
   - Description: Replace footer's `indexed_docs` segment with cocoindex indexing status
   - Dependencies: Task 8
   - Acceptance Criteria: Footer shows cocoindex status (indexed/no-index) instead of FTS5 doc count; no broken references to content store

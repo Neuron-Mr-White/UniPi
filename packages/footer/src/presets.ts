@@ -73,7 +73,7 @@ const FULL_PRESET: PresetDef = {
   secondarySegments: [
     "hostname",
     "tokens_in", "tokens_out",
-    "compression_ratio", "indexed_docs",
+    "compression_ratio", "cocoindex_status",
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],
@@ -98,7 +98,7 @@ const NERD_PRESET: PresetDef = {
   secondarySegments: [
     "hostname",
     "tokens_in", "tokens_out",
-    "compression_ratio", "indexed_docs",
+    "compression_ratio", "cocoindex_status",
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],

@@ -435,7 +435,7 @@ export class FooterRenderer {
     if (coreIds.includes(segId)) return "core";
 
     // Compactor segments
-    const compactorIds = ["session_events", "compactions", "tokens_saved", "compression_ratio", "indexed_docs", "sandbox_runs", "search_queries"];
+    const compactorIds = ["session_events", "compactions", "tokens_saved", "compression_ratio", "cocoindex_status", "sandbox_runs", "search_queries"];
     if (compactorIds.includes(segId)) return "compactor";
 
     // Memory segments
