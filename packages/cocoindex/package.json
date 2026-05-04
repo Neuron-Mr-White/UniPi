@@ -1,0 +1,41 @@
+{
+  "name": "@pi-unipi/cocoindex",
+  "version": "0.1.0",
+  "description": "CocoIndex integration for Pi — AST-aware content indexing, semantic vector search, and incremental pipeline management",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "cocoindex",
+    "content-indexing",
+    "vector-search"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "*"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb": "^0.21.0"
+  },
+  "files": [
+    "index.ts",
+    "bridge.ts",
+    "tools.ts",
+    "commands.ts",
+    "skills/**/*",
+    "README.md"
+  ]
+}

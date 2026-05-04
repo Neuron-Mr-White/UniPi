@@ -38,6 +38,7 @@ export const MODULES = {
   FOOTER: "@pi-unipi/footer",
   UPDATER: "@pi-unipi/updater",
   INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
+  COCOINDEX: "@pi-unipi/cocoindex",
 } as const;
 
 /** Workflow command names */
@@ -227,9 +228,6 @@ export const COMPACTOR_TOOLS = {
   CTX_EXECUTE: "ctx_execute",
   CTX_EXECUTE_FILE: "ctx_execute_file",
   CTX_BATCH_EXECUTE: "ctx_batch_execute",
-  CTX_INDEX: "ctx_index",
-  CTX_SEARCH: "ctx_search",
-  CTX_FETCH_AND_INDEX: "ctx_fetch_and_index",
   CTX_STATS: "ctx_stats",
   CTX_DOCTOR: "ctx_doctor",
 } as const;
@@ -243,9 +241,6 @@ export const COMPACTOR_COMMANDS = {
   COMPACT_DOCTOR: "compact-doctor",
   COMPACT_SETTINGS: "compact-settings",
   COMPACT_PRESET: "compact-preset",
-  COMPACT_INDEX: "compact-index",
-  COMPACT_SEARCH: "compact-search",
-  COMPACT_PURGE: "compact-purge",
 } as const;
 
 /** Compactor directory paths */
@@ -340,5 +335,18 @@ export const COMPACTOR_DEFAULTS = {
   DEFAULT_TIMEOUT_MS: 30000,
   SESSION_TTL_DAYS: 7,
   CACHE_TTL_HOURS: 24,
-  FTS5_CHUNK_SIZE: 4096,
+} as const;
+
+/** CocoIndex tool names */
+export const COCOINDEX_TOOLS = {
+  SEARCH: "cocoindex_search",
+  STATUS: "cocoindex_status",
+} as const;
+
+/** CocoIndex command names */
+export const COCOINDEX_COMMANDS = {
+  UPDATE: "cocoindex-update",
+  STATUS: "cocoindex-status",
+  INIT: "cocoindex-init",
+  SETTINGS: "cocoindex-settings",
 } as const;

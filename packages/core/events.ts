@@ -90,6 +90,13 @@ export const UNIPI_EVENTS = {
   UPDATE_APPLIED: "unipi:update:applied",
   /** Update error */
   UPDATE_ERROR: "unipi:update:error",
+
+  /** CocoIndex: update started */
+  COCOINDEX_UPDATE_STARTED: "unipi:cocoindex:update:started",
+  /** CocoIndex: update completed */
+  COCOINDEX_UPDATE_COMPLETED: "unipi:cocoindex:update:completed",
+  /** CocoIndex: search performed */
+  COCOINDEX_SEARCH_PERFORMED: "unipi:cocoindex:search:performed",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -270,8 +277,6 @@ export interface UnipiCompactorStatsEvent {
   compactions: number;
   /** Tokens saved total */
   tokensSaved: number;
-  /** Indexed documents count */
-  indexedDocs: number;
   /** Sandbox executions count */
   sandboxRuns: number;
   /** Search queries count */
@@ -370,6 +375,32 @@ export interface UnipiUpdateErrorEvent {
   phase: "check" | "install";
 }
 
+/** Payload for COCOINDEX_UPDATE_STARTED */
+export interface UnipiCocoindexUpdateStartedEvent {
+  /** Project directory being indexed */
+  projectDir: string;
+}
+
+/** Payload for COCOINDEX_UPDATE_COMPLETED */
+export interface UnipiCocoindexUpdateCompletedEvent {
+  /** Whether the update succeeded */
+  success: boolean;
+  /** Number of chunks processed */
+  chunksProcessed: number;
+  /** Duration in ms */
+  durationMs: number;
+  /** Error message if failed */
+  error?: string;
+}
+
+/** Payload for COCOINDEX_SEARCH_PERFORMED */
+export interface UnipiCocoindexSearchPerformedEvent {
+  /** Search query */
+  query: string;
+  /** Number of results */
+  resultCount: number;
+}
+
 /** Payload for NOTIFICATION_SENT */
 export interface UnipiNotificationSentEvent {
   /** Event type that triggered notification */
@@ -410,4 +441,7 @@ export type UnipiEventPayload =
   | UnipiUpdateCheckEvent
   | UnipiUpdateAvailableEvent
   | UnipiUpdateAppliedEvent
-  | UnipiUpdateErrorEvent;
+  | UnipiUpdateErrorEvent
+  | UnipiCocoindexUpdateStartedEvent
+  | UnipiCocoindexUpdateCompletedEvent
+  | UnipiCocoindexSearchPerformedEvent;
