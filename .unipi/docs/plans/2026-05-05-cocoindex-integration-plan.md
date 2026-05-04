@@ -85,7 +85,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     4. Add `COCOINDEX_COMMANDS` constant: `{ UPDATE: "cocoindex-update", STATUS: "cocoindex-status", INIT: "cocoindex-init", SETTINGS: "cocoindex-settings" }`
     5. Add cocoindex events to `packages/core/events.ts`: `COCOINDEX_UPDATE_STARTED`, `COCOINDEX_UPDATE_COMPLETED`, `COCOINDEX_SEARCH_PERFORMED`
 
-- in-progress: Task 6 — Remove content indexing from compactor
+- completed: Task 6 — Remove content indexing from compactor
   - Description: Strip FTS5-based content store, tools, and commands from compactor package
   - Dependencies: Task 5 (constants must be ready so removal doesn't leave dangling refs)
   - Acceptance Criteria: No ContentStore references remain; compactor still works for compaction, session recall, sandbox, stats, doctor; `npm run typecheck` passes
@@ -104,7 +104,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     12. Modify `compactor/src/types.ts` — remove `IndexResult`, `SearchResult`, `StoreStats` types
     13. Remove `compactor/src/store/` directory if empty
 
-- unstarted: Task 7 — Update compactor stats and doctor without ContentStore
+- completed: Task 7 — Update compactor stats and doctor without ContentStore
   - Description: Refactor ctx-stats and ctx-doctor to work without ContentStore dependency
   - Dependencies: Task 6
   - Acceptance Criteria: `compactor_stats` shows session stats without indexed docs count; `compactor_doctor` passes without FTS5 check; both accept null contentStore
@@ -116,7 +116,7 @@ Replace compactor's FTS5-based content indexing subsystem with a new `@pi-unipi/
     5. Update `compactor/src/info-screen.ts` — if it references contentStore metrics, remove those
     6. Update `compactor/src/index.ts` — remove contentStore from info-screen data provider if present
 
-- unstarted: Task 8 — Update umbrella package and core constants cleanup
+- in-progress: Task 8 — Update umbrella package and core constants cleanup
   - Description: Wire cocoindex into the umbrella package, remove old content tool/command constants from core
   - Dependencies: Task 7
   - Acceptance Criteria: Umbrella `package.json` includes cocoindex; `npm run typecheck` passes at root; old content constants removed from core

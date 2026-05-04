@@ -55,7 +55,8 @@
       "node_modules/@pi-unipi/command-enchantment/src/index.ts",
       "node_modules/@pi-unipi/footer/src/index.ts",
       "node_modules/@pi-unipi/updater/src/index.ts",
-      "node_modules/@pi-unipi/input-shortcuts/src/index.ts"
+      "node_modules/@pi-unipi/input-shortcuts/src/index.ts",
+      "node_modules/@pi-unipi/cocoindex/index.ts"
     ],
     "skills": [
       "node_modules/@pi-unipi/workflow/skills",
@@ -69,7 +70,8 @@
       "node_modules/@pi-unipi/notify/skills",
       "node_modules/@pi-unipi/milestone/skills",
       "node_modules/@pi-unipi/kanboard/skills",
-      "node_modules/@pi-unipi/updater/skills"
+      "node_modules/@pi-unipi/updater/skills",
+      "node_modules/@pi-unipi/cocoindex/skills"
     ]
   },
   "peerDependencies": {
@@ -97,7 +99,8 @@
     "@pi-unipi/workflow": "*",
     "@pi-unipi/footer": "*",
     "@pi-unipi/updater": "*",
-    "@pi-unipi/input-shortcuts": "*"
+    "@pi-unipi/input-shortcuts": "*",
+    "@pi-unipi/cocoindex": "*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
