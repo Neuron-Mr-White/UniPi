@@ -34,7 +34,7 @@ The plan also accounts for codebase-specific details found during review:
     5. Export a safe bin resolver or `getCocoindexBinPath()` wrapper; extend resolution to check `~/.local/bin/cocoindex` before falling back to `cocoindex`.
     6. Add `resetAvailabilityCache()` or an uncached availability path so post-install verification does not reuse a stale `false`.
 
-- unstarted: Task 2 — Create installer module with planning, shell detection, and command execution
+- completed: Task 2 — Create installer module with planning, shell detection, and command execution
   - Description: Add `packages/cocoindex/installer.ts` with the pure detection/planning helpers and side-effecting executor described by the spec.
   - Dependencies: Task 1
   - Acceptance Criteria: `installer.ts` exports `InstallPlan`, `InstallStep`, `InstallResult`, `detectShell()`, `hasTool()`, `dryRun()`, and `execute()`; install plans prefer `uv`, fall back through `mise`, and produce manual instructions when neither is available; command failures preserve stderr/stdout enough for user-facing errors; no command runs without later consent from `ensureCocoindex()`.

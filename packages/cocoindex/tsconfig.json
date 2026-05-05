@@ -11,6 +11,6 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["index.ts", "bridge.ts", "tools.ts", "commands.ts"],
+  "include": ["index.ts", "bridge.ts", "tools.ts", "commands.ts", "installer.ts"],
   "exclude": ["node_modules", "dist"]
 }
