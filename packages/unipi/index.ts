@@ -29,6 +29,7 @@ import compactor from "@pi-unipi/compactor";
 import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
+import cocoindex from "@pi-unipi/cocoindex";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -49,4 +50,5 @@ export default function (pi: ExtensionAPI) {
   footer(pi);
   updater(pi);
   inputShortcuts(pi);
+  cocoindex(pi);
 }
