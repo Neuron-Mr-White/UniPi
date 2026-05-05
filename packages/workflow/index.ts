@@ -16,7 +16,7 @@ import {
   getPackageVersion,
   initUnipiDirs,
   type SandboxLevel,
-  getToolsForLevel,
+  getBlockedToolsForLevel,
 } from "@pi-unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
 
@@ -35,6 +35,9 @@ let sandboxActive = false;
 /** Current sandbox level (null = no sandbox) */
 let currentSandboxLevel: SandboxLevel | null = null;
 
+/** Current active tools after sandbox filtering */
+let currentSandboxTools: string[] | null = null;
+
 export default function (pi: ExtensionAPI) {
   // Register skills directory with pi's resource loader
   const skillsDir = new URL("./skills", import.meta.url).pathname;
@@ -52,6 +55,7 @@ export default function (pi: ExtensionAPI) {
       pi.setActiveTools(tools);
       sandboxActive = true;
       currentSandboxLevel = level;
+      currentSandboxTools = tools;
     },
     saveTools: (tools: string[]) => {
       savedTools = tools;
@@ -62,7 +66,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, _ctx) => {
     if (!sandboxActive || !currentSandboxLevel) return;
 
-    const allowed = getToolsForLevel(currentSandboxLevel);
+    const allowed = currentSandboxTools ?? [];
     if (!allowed.includes(event.toolName)) {
       return {
         block: true,
@@ -75,11 +79,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, _ctx) => {
     if (!sandboxActive || !currentSandboxLevel) return;
 
-    const allowed = getToolsForLevel(currentSandboxLevel);
-    const blocked = ["read", "write", "edit", "bash", "grep", "find", "ls"]
-      .filter((t) => !allowed.includes(t));
+    const allowed = currentSandboxTools ?? pi.getActiveTools();
+    const blocked = getBlockedToolsForLevel(currentSandboxLevel);
 
-    const base = `\n\n<sandbox>\nSandbox mode: ${currentSandboxLevel}.\nAvailable tools: ${allowed.join(", ")}.\nBlocked tools: ${blocked.join(", ")} — removed from your tool list.`;
+    const blockedLine = blocked.length > 0
+      ? `\nBlocked tools: ${blocked.join(", ")} — removed from your tool list.`
+      : "\nNo tools were blocked by this sandbox.";
+    const base = `\n\n<sandbox>\nSandbox mode: ${currentSandboxLevel}.\nAvailable tools: ${allowed.join(", ")}.${blockedLine}`;
 
     if (currentSandboxLevel === "brainstorm") {
       return {
@@ -114,6 +120,7 @@ export default function (pi: ExtensionAPI) {
       savedTools = null;
       sandboxActive = false;
       currentSandboxLevel = null;
+      currentSandboxTools = null;
     }
   });
 

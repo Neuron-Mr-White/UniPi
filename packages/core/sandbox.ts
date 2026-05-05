@@ -10,18 +10,38 @@ import { WORKFLOW_COMMANDS } from "./constants.js";
 /** Sandbox levels */
 export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "review" | "full";
 
-/** Tool sets per sandbox level */
-const SANDBOX_TOOLS: Record<SandboxLevel, readonly string[]> = {
-  /** Only read-only tools — no bash, no write, no edit */
+/**
+ * Built-in workflow tools used when no active tool list is supplied.
+ *
+ * Workflow commands should normally call filterToolsForLevel() with the current
+ * active tool list. That keeps safe extension tools (memory, ask-user, web,
+ * notify, etc.) available while removing only tools that violate the sandbox.
+ */
+const FALLBACK_TOOLS: Record<SandboxLevel, readonly string[]> = {
+  /** Only read-only file tools — no bash, no write, no edit */
   read_only: ["read", "grep", "find", "ls"],
-  /** Read + constrained write + bash (setup only) — only to .unipi/docs/specs/ */
+  /** Read + constrained write + bash (setup only) — only to .unipi/docs/specs/ by instruction */
   brainstorm: ["read", "grep", "find", "ls", "write", "bash"],
   /** Read + write/edit + file discovery — no bash */
   write_unipi: ["read", "write", "edit", "grep", "find", "ls"],
-  /** Read + write + bash for git operations — no code editing outside .unipi */
+  /** Read + write/edit + bash for git/checks — no code editing by instruction */
   review: ["read", "write", "edit", "grep", "find", "ls", "bash"],
-  /** All tools */
+  /** Full workflow access */
   full: ["read", "write", "edit", "bash"],
+};
+
+/** Tools that are removed from the current active tool set at each level. */
+const BLOCKED_TOOLS: Record<SandboxLevel, readonly string[]> = {
+  /** Read-only workflows must not mutate files or run shell commands. */
+  read_only: ["write", "edit", "bash"],
+  /** Brainstorm may write specs and run limited setup commands, but should not edit existing files. */
+  brainstorm: ["edit"],
+  /** Planning/docs workflows may write .unipi docs, but should not run shell commands. */
+  write_unipi: ["bash"],
+  /** Review workflows rely on command instructions to constrain writes to reviewer remarks. */
+  review: [],
+  /** Full workflows do not filter active tools. */
+  full: [],
 };
 
 /** Command to sandbox level mapping */
@@ -56,25 +76,53 @@ export function getSandboxLevel(commandName: string): SandboxLevel {
 }
 
 /**
- * Get allowed tools for a sandbox level.
+ * Get fallback tools for a sandbox level.
+ *
+ * Prefer filterToolsForLevel(level, activeTools) when applying a sandbox so
+ * extension tools are preserved unless explicitly blocked.
  */
 export function getToolsForLevel(level: SandboxLevel): readonly string[] {
-  return SANDBOX_TOOLS[level];
+  return FALLBACK_TOOLS[level];
+}
+
+/**
+ * Get tool names explicitly blocked by a sandbox level.
+ */
+export function getBlockedToolsForLevel(level: SandboxLevel): readonly string[] {
+  return BLOCKED_TOOLS[level];
+}
+
+/**
+ * Filter the current active tool set for a sandbox level.
+ *
+ * This preserves safe extension tools (memory_search, memory_store, ask_user,
+ * web tools, notifications, etc.) instead of replacing the tool list with a
+ * small built-in allow-list. Only tools that violate the level are removed.
+ */
+export function filterToolsForLevel(
+  level: SandboxLevel,
+  activeTools: readonly string[],
+): readonly string[] {
+  const blocked = new Set(BLOCKED_TOOLS[level]);
+  return activeTools.filter((tool) => !blocked.has(tool));
 }
 
 /**
  * Get allowed tools for a command.
  */
-export function getToolsForCommand(commandName: string): readonly string[] {
+export function getToolsForCommand(
+  commandName: string,
+  activeTools?: readonly string[],
+): readonly string[] {
   const level = getSandboxLevel(commandName);
-  return getToolsForLevel(level);
+  return activeTools ? filterToolsForLevel(level, activeTools) : getToolsForLevel(level);
 }
 
 /**
  * Check if a tool is allowed at a sandbox level.
  */
 export function isToolAllowed(level: SandboxLevel, toolName: string): boolean {
-  return SANDBOX_TOOLS[level].includes(toolName);
+  return !BLOCKED_TOOLS[level].includes(toolName);
 }
 
 /**
@@ -82,7 +130,7 @@ export function isToolAllowed(level: SandboxLevel, toolName: string): boolean {
  */
 export function hasWriteAccess(commandName: string): boolean {
   const level = getSandboxLevel(commandName);
-  return level === "write_unipi" || level === "full";
+  return !BLOCKED_TOOLS[level].includes("write");
 }
 
 /**
@@ -90,5 +138,5 @@ export function hasWriteAccess(commandName: string): boolean {
  */
 export function hasBashAccess(commandName: string): boolean {
   const level = getSandboxLevel(commandName);
-  return level === "full" || level === "brainstorm";
+  return !BLOCKED_TOOLS[level].includes("bash");
 }

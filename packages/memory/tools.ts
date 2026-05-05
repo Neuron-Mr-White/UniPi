@@ -29,14 +29,21 @@ export const MEMORY_TOOLS = {
 // Keep old name as alias for backward compat
 export const GLOBAL_SEARCH_ALIAS = "global_memory_search";
 
+export interface MemoryToolActivityCallbacks {
+  /** Called when a recall-style tool is used (search/list). */
+  onRecall?: () => void;
+  /** Called when memory state is changed (store/delete). */
+  onStore?: () => void;
+}
+
 /**
  * Register memory tools.
- * @param onActivity - called when recall/store happens (marks lifecycle state)
+ * @param activity - callbacks for lifecycle reminders
  */
 export function registerMemoryTools(
   pi: ExtensionAPI,
   getStorage: () => MemoryStorage,
-  onActivity?: () => void
+  activity?: MemoryToolActivityCallbacks
 ): void {
   // --- memory_store tool ---
   pi.registerTool({
@@ -69,8 +76,8 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      activity?.onStore?.(); // Mark store as done for lifecycle
       const storage = getStorage();
-      onActivity?.(); // Mark store as done for lifecycle
 
       // Step 1: Check for exact duplicate
       const existing = storage.getByTitle(params.title);
@@ -224,7 +231,7 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      onActivity?.(); // Mark recall as done for lifecycle
+      activity?.onRecall?.(); // Mark recall as done for lifecycle
       const limit = params.limit || 10;
       const scope = (params as any).scope || "all";
 
@@ -285,7 +292,7 @@ export function registerMemoryTools(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate) {
-      onActivity?.();
+      activity?.onRecall?.();
       const results = searchAllProjects(params.query, params.limit || 10);
 
       if (results.length === 0) {
@@ -317,6 +324,7 @@ export function registerMemoryTools(
       id: Type.Optional(Type.String({ description: "Memory ID to delete" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      activity?.onStore?.();
       const storage = getStorage();
 
       let deleted = false;
@@ -348,6 +356,7 @@ export function registerMemoryTools(
     promptSnippet: "List all project memories.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      activity?.onRecall?.();
       const storage = getStorage();
       const memories = storage.listAll();
 
@@ -384,6 +393,7 @@ export function registerMemoryTools(
     promptSnippet: "List all memories across projects.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      activity?.onRecall?.();
       const memories = listAllProjects();
 
       if (memories.length === 0) {

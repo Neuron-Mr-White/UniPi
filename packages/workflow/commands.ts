@@ -388,7 +388,7 @@ export function registerWorkflowCommands(
         // Apply sandbox — save current tools, set command's tools
         const currentTools = options.getActiveTools();
         options.saveTools(currentTools);
-        const sandboxTools = getToolsForCommand(cmd.name);
+        const sandboxTools = getToolsForCommand(cmd.name, currentTools);
         const sandboxLevel = getSandboxLevel(cmd.name);
         options.setActiveTools([...sandboxTools], sandboxLevel);
 

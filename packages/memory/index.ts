@@ -60,7 +60,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Register tools and commands
-  registerMemoryTools(pi, getStorage, () => { recallDone = true; storeDone = true; });
+  registerMemoryTools(pi, getStorage, {
+    onRecall: () => { recallDone = true; },
+    onStore: () => { storeDone = true; },
+  });
   registerMemoryCommands(pi, getStorage);
 
   // Session lifecycle
@@ -185,9 +188,21 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Inject memory recall reminder at agent start (hidden message, not system prompt)
-  pi.on("before_agent_start", async (event, ctx) => {
+  pi.on("before_agent_start", async (_event, ctx) => {
     if (recallDone) return;
     if (!projectStorage) return;
+
+    // Workflow sandboxes and user presets can change the active tool set. Only
+    // instruct the agent to use memory tools that are actually callable now.
+    const activeTools = new Set(pi.getActiveTools());
+    const canSearch = activeTools.has(MEMORY_TOOLS.SEARCH) || activeTools.has(GLOBAL_SEARCH_ALIAS);
+    const canStore = activeTools.has(MEMORY_TOOLS.STORE);
+
+    if (!canSearch && !canStore) {
+      recallDone = true;
+      storeDone = true;
+      return;
+    }
 
     const projectName = getProjectName(ctx.cwd);
     let projectMemories: Array<{ id: string; title: string; type: string }> = [];
@@ -198,31 +213,49 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (projectMemories.length === 0) {
-      recallDone = true; // Nothing to recall, skip
+    if (projectMemories.length === 0 && !canStore) {
+      recallDone = true; // Nothing to recall and no store tool available
       return;
     }
 
-    const titleList = projectMemories.slice(0, 20).map(m => `- ${m.title}`).join("\n");
-    const extra = projectMemories.length > 20 ? `\n... and ${projectMemories.length - 20} more` : "";
+    const lines = [
+      "## 🧠 Memory System Active",
+      "",
+      `You have ${projectMemories.length} memories stored for project "${projectName}".`,
+    ];
+
+    if (canSearch && projectMemories.length > 0) {
+      const titleList = projectMemories.slice(0, 20).map(m => `- ${m.title}`).join("\n");
+      const extra = projectMemories.length > 20 ? `\n... and ${projectMemories.length - 20} more` : "";
+      lines.push(
+        "**BEFORE starting work**, call `memory_search` with relevant keywords to check for existing context.",
+        "",
+        "Available memories:",
+        titleList + extra,
+      );
+    } else {
+      recallDone = true;
+    }
+
+    if (canStore) {
+      lines.push(
+        "",
+        "**AFTER completing the task**, if you learned something non-obvious,",
+        "call `memory_store` to save it for future sessions.",
+      );
+    } else {
+      storeDone = true;
+    }
+
+    lines.push(
+      "",
+      "Guardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+    );
 
     return {
       message: {
         customType: "unipi-memory-recall-reminder",
-        content: [
-          "## 🧠 Memory System Active",
-          "",
-          `You have ${projectMemories.length} memories stored for project "${projectName}".`,
-          "**BEFORE starting work**, call `memory_search` with relevant keywords to check for existing context.",
-          "",
-          "Available memories:",
-          titleList + extra,
-          "",
-          "**AFTER completing the task**, if you learned something non-obvious,",
-          "call `memory_store` to save it for future sessions.",
-          "",
-          "Guardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
-        ].join("\n"),
+        content: lines.join("\n"),
         display: false,
       },
     };
@@ -231,6 +264,7 @@ export default function (pi: ExtensionAPI) {
   // After each agent response, remind LLM to save if it hasn't yet
   pi.on("agent_end", async (_event, _ctx) => {
     if (storeDone || !recallDone) return;
+    if (!pi.getActiveTools().includes(MEMORY_TOOLS.STORE)) return;
 
     pi.sendMessage(
       {
