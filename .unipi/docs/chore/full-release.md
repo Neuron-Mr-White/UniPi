@@ -44,6 +44,7 @@ Before running this chore, ensure:
 | `packages/footer` | `@pi-unipi/footer` | 0.1.3 |
 | `packages/milestone` | `@pi-unipi/milestone` | 0.1.8 |
 | `packages/updater` | `@pi-unipi/updater` | 0.1.1 |
+| `packages/cocoindex` | `@pi-unipi/cocoindex` | 0.1.0 |
 | `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.16 |
 
 ---
@@ -210,6 +211,20 @@ grep -oP 'WEB_COMMANDS\.\K[A_]+' packages/web-api/src/commands.ts | sort -u > /t
 diff /tmp/expected_web.txt /tmp/registered_web.txt
 ```
 Expected: No differences.
+
+**CocoIndex commands** (registered in `packages/cocoindex/commands.ts`):
+```bash
+grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_cocoindex.txt
+grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/cocoindex/commands.ts | sort -u > /tmp/registered_cocoindex.txt
+diff /tmp/expected_cocoindex.txt /tmp/registered_cocoindex.txt
+```
+Expected: No differences. CocoIndex commands: `cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`.
+
+**All-in-one entry check** — verify `packages/unipi/index.ts` imports and calls cocoindex:
+```bash
+grep 'cocoindex' packages/unipi/index.ts
+```
+Expected: Both `import cocoindex` and `cocoindex(pi)` lines present.
 
 **Info-screen commands** (registered in `packages/info-screen/index.ts`):
 ```bash
