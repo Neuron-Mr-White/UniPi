@@ -10,10 +10,11 @@
  * - Search (query LanceDB directly via Node.js SDK)
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { COCOINDEX_MIN_VERSION } from "@pi-unipi/core";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -70,26 +71,67 @@ const DEFAULT_LANCEDB_PATH = ".unipi/cocoindex/.lancedb";
 
 let cachedAvailable: boolean | null = null;
 
+export interface AvailabilityOptions {
+  /** Bypass the cached availability result. */
+  useCache?: boolean;
+}
+
+/** Extract a semver-ish version from `cocoindex --version` output. */
+export function parseVersion(versionStr: string): string | null {
+  const match = versionStr.match(/(?:^|[^0-9])(\d+\.\d+(?:\.\d+)?)(?:[^0-9]|$)/);
+  return match?.[1] ?? null;
+}
+
+/** Compare semver-ish strings. Missing/invalid versions are not acceptable. */
+export function isVersionAtLeast(version: string | null | undefined, minimum = COCOINDEX_MIN_VERSION): boolean {
+  const parsed = version ? parseVersion(version) : null;
+  const parsedMinimum = parseVersion(minimum);
+  if (!parsed || !parsedMinimum) return false;
+
+  const actualParts = parsed.split(".").map((part) => Number.parseInt(part, 10));
+  const minParts = parsedMinimum.split(".").map((part) => Number.parseInt(part, 10));
+  const len = Math.max(actualParts.length, minParts.length, 3);
+
+  for (let i = 0; i < len; i++) {
+    const actual = actualParts[i] ?? 0;
+    const min = minParts[i] ?? 0;
+    if (!Number.isFinite(actual) || !Number.isFinite(min)) return false;
+    if (actual > min) return true;
+    if (actual < min) return false;
+  }
+  return true;
+}
+
+/** Reset cached availability, used after installer mutations. */
+export function resetAvailabilityCache(): void {
+  cachedAvailable = null;
+}
+
 /** Check if cocoindex CLI is installed and available. */
-export async function isAvailable(): Promise<boolean> {
-  if (cachedAvailable !== null) return cachedAvailable;
+export async function isAvailable(options: AvailabilityOptions = {}): Promise<boolean> {
+  const useCache = options.useCache ?? true;
+  if (useCache && cachedAvailable !== null) return cachedAvailable;
+
+  let available = false;
   try {
-    const result = execSync(resolveCocoindexBin() + " --version", {
+    const result = execFileSync(getCocoindexBinPath(), ["--version"], {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    cachedAvailable = result.trim().length > 0;
+    available = result.trim().length > 0;
   } catch {
-    cachedAvailable = false;
+    available = false;
   }
-  return cachedAvailable;
+
+  if (useCache) cachedAvailable = available;
+  return available;
 }
 
 /** Get cocoindex CLI version string. */
 export async function getVersion(): Promise<string | null> {
   try {
-    const result = execSync(resolveCocoindexBin() + " --version", {
+    const result = execFileSync(getCocoindexBinPath(), ["--version"], {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["pipe", "pipe", "pipe"],
@@ -100,21 +142,29 @@ export async function getVersion(): Promise<string | null> {
   }
 }
 
-/** Resolve cocoindex binary path — checks PATH, then common mise locations. */
+/** Resolve cocoindex binary path — checks PATH, uv tool bin path, then common mise locations. */
+export function getCocoindexBinPath(): string {
+  return resolveCocoindexBin();
+}
+
 function resolveCocoindexBin(): string {
-  // Try plain command first (respects PATH)
+  // Try PATH first.
   try {
-    const which = execSync("which cocoindex 2>/dev/null", {
+    const resolved = execFileSync("sh", ["-c", "command -v cocoindex"], {
       encoding: "utf-8",
       timeout: 3000,
       stdio: ["pipe", "pipe", "pipe"],
-    });
-    if (which.trim()) return "cocoindex";
+    }).trim();
+    if (resolved) return resolved;
   } catch {
     // Not on PATH
   }
 
-  // Try mise python installations
+  // uv tool install exposes binaries here by default.
+  const uvToolBin = join(homedir(), ".local", "bin", "cocoindex");
+  if (existsSync(uvToolBin)) return uvToolBin;
+
+  // Try mise python installations.
   const miseRoot = join(homedir(), ".local", "share", "mise", "installs", "python");
   try {
     const versions = readdirSync(miseRoot).sort().reverse();
@@ -195,7 +245,7 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
       success: false,
       chunksProcessed: 0,
       durationMs: 0,
-      error: "CocoIndex CLI not found. Install with: pip install cocoindex",
+      error: "CocoIndex CLI not found. Run /unipi:cocoindex-init to install cocoindex[lancedb]>=1.0.",
     };
   }
 
