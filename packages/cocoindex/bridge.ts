@@ -258,13 +258,28 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
   });
 }
 
-/** Parse the number of chunks processed from cocoindex output. */
+/** Parse the number of files processed from cocoindex v1.0+ output. */
 function parseChunksProcessed(output: string): number {
-  // Try to extract number from cocoindex output like "Processed 42 chunks"
-  const match = output.match(/processed\s+(\d+)\s+chunks?/i)
+  // v1.0+ format: "✅ process_file: 604 total | 604 added"
+  // Capture the last "added" or "reprocessed" count for process_file
+  const lines = output.split("\n");
+  let lastProcessLine: string | undefined;
+  for (const line of lines) {
+    if (line.includes("process_file:") && (line.includes("added") || line.includes("reprocessed"))) {
+      lastProcessLine = line;
+    }
+  }
+  if (lastProcessLine) {
+    // Match the number before "added" or "reprocessed"
+    const match = lastProcessLine.match(/(\d+)\s+(?:added|reprocessed)/);
+    if (match) return parseInt(match[1], 10);
+  }
+
+  // Fallback: old format "Processed 42 chunks"
+  const fallback = output.match(/processed\s+(\d+)\s+chunks?/i)
     ?? output.match(/(\d+)\s+chunks?\s+processed/i)
     ?? output.match(/indexed\s+(\d+)/i);
-  return match ? parseInt(match[1], 10) : 0;
+  return fallback ? parseInt(fallback[1], 10) : 0;
 }
 
 // ─────────────────────────────────────────────────────────
