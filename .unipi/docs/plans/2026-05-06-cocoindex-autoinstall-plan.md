@@ -74,7 +74,7 @@ The plan also accounts for codebase-specific details found during review:
     5. Update the session-start notification in `packages/cocoindex/index.ts` so missing CLI messaging points to `/unipi:cocoindex-init` instead of raw pip commands.
     6. Preserve synchronous command registration; only perform installation work inside async command handlers.
 
-- unstarted: Task 5 — Update non-interactive tools and package exports
+- completed: Task 5 — Update non-interactive tools and package exports
   - Description: Ensure tools and package metadata reflect the new installer while preserving the rule that tools do not prompt or install.
   - Dependencies: Tasks 1 and 3
   - Acceptance Criteria: `cocoindex_search` returns a clear “Search Unavailable” guidance result when the CLI is missing; `cocoindex_status` includes install guidance when unavailable; `installer.ts` is included in package publishing metadata and optionally exported from `index.ts`; no tool calls `ensureCocoindex()` directly.

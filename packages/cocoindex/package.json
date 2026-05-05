@@ -33,6 +33,7 @@
   "files": [
     "index.ts",
     "bridge.ts",
+    "installer.ts",
     "tools.ts",
     "commands.ts",
     "skills/**/*",

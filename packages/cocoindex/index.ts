@@ -52,3 +52,4 @@ export default function cocoindexExtension(pi: ExtensionAPI): void {
 }
 
 export { bridge };
+export * as installer from "./installer.js";
