@@ -95,6 +95,52 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
     },
   });
 
+  // ── /unipi:cocoindex-search ──────────────────────────
+  pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.SEARCH}`, {
+    description: "Search indexed codebase with semantic vector search",
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
+      const projectDir = (ctx as any).cwd ?? process.cwd();
+      const query = args.trim();
+
+      if (!query) {
+        ctx.ui.notify("Usage: /unipi:cocoindex-search <query>", "warning");
+        return;
+      }
+
+      const pipelineDir = bridge.getPipelineDir(projectDir);
+      const lancedbPath = bridge.getPipelineDir(projectDir) + "/.lancedb";
+      const { existsSync } = await import("fs");
+      if (!existsSync(lancedbPath)) {
+        ctx.ui.notify("❌ No index found. Run /unipi:cocoindex-update first.", "error");
+        return;
+      }
+
+      ctx.ui.notify(`🔍 Searching: "${query}"...`, "info");
+
+      try {
+        const results = await bridge.search(projectDir, query, { limit: 10 });
+
+        if (results.length === 0) {
+          ctx.ui.notify(`No results for "${query}".`, "info");
+          return;
+        }
+
+        const lines = results.map((r, i) => {
+          const dist = r.rank != null ? ` (${r.rank.toFixed(3)})` : "";
+          const file = r.source || r.title;
+          const snippet = r.content.slice(0, 150).replace(/\n/g, " ");
+          return `${i + 1}. ${file}${dist}\n   ${snippet}...`;
+        });
+        ctx.ui.notify(
+          `🔍 ${results.length} results for "${query}":\n\n${lines.join("\n\n")}`,
+          "info",
+        );
+      } catch (err: any) {
+        ctx.ui.notify(`❌ Search failed: ${err.message}`, "error");
+      }
+    },
+  });
+
   // ── /unipi:cocoindex-settings ──────────────────────────
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.SETTINGS}`, {
     description: "Show CocoIndex configuration and settings",

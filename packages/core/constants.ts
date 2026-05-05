@@ -349,4 +349,5 @@ export const COCOINDEX_COMMANDS = {
   STATUS: "cocoindex-status",
   INIT: "cocoindex-init",
   SETTINGS: "cocoindex-settings",
+  SEARCH: "cocoindex-search",
 } as const;

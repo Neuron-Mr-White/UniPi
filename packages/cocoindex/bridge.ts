@@ -416,16 +416,19 @@ interface EmbeddingConfig {
   baseUrl: string;
 }
 
-/** Load embedding config from memory package settings. */
+/** Load embedding config — env var takes priority, then config file, then defaults. */
 function loadEmbeddingConfig(): EmbeddingConfig {
+  // Env var takes top priority
+  const envKey = process.env.OPENROUTER_API_KEY ?? null;
+
   const configPath = join(homedir(), ".unipi", "memory", "config.json");
   try {
     if (existsSync(configPath)) {
       const raw = readFileSync(configPath, "utf-8");
       const config = JSON.parse(raw);
       return {
-        apiKey: config.openrouterApiKey ?? config.apiKey ?? null,
-        model: config.embeddingModel ?? "openai/text-embedding-3-small",
+        apiKey: envKey ?? config.openrouterApiKey ?? config.apiKey ?? null,
+        model: config.embeddingModel ?? "qwen/qwen3-embedding-8b",
         baseUrl: config.openrouterBaseUrl ?? "https://openrouter.ai/api/v1",
       };
     }
@@ -433,8 +436,8 @@ function loadEmbeddingConfig(): EmbeddingConfig {
     // Fall through to defaults
   }
   return {
-    apiKey: null,
-    model: "openai/text-embedding-3-small",
+    apiKey: envKey,
+    model: "qwen/qwen3-embedding-8b",
     baseUrl: "https://openrouter.ai/api/v1",
   };
 }
