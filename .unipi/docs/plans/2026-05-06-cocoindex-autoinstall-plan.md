@@ -48,7 +48,7 @@ The plan also accounts for codebase-specific details found during review:
     7. Implement `execute(plan, onProgress?)` to run steps sequentially, report progress before each step, stop on required-step failure, and return structured errors with command output.
     8. Include a fallback from failed mise installation/use of uv to the official uv installer instructions rather than silently failing.
 
-- unstarted: Task 3 — Implement consent-based `ensureCocoindex(ctx)` orchestrator
+- completed: Task 3 — Implement consent-based `ensureCocoindex(ctx)` orchestrator
   - Description: Connect bridge detection, install planning, UI confirmation, execution, version verification, and status cleanup into the installer’s main entry point.
   - Dependencies: Tasks 1 and 2
   - Acceptance Criteria: Existing CocoIndex v1.0+ returns `{ ok: true, binPath, version }` without prompting; missing CocoIndex prompts once with an understandable summary; declining returns `{ ok: false, skipped: true }`; successful install verifies with a fresh availability/version check; existing versions below v1.0 produce an upgrade-needed message and do not continue; status text is cleared after success or failure.

@@ -8,7 +8,9 @@
 import { execFileSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
-import { COCOINDEX_PACKAGE_SPEC } from "@pi-unipi/core";
+import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { COCOINDEX_MIN_VERSION, COCOINDEX_PACKAGE_SPEC } from "@pi-unipi/core";
+import * as bridge from "./bridge.js";
 
 export type SupportedShell = "bash" | "zsh" | "fish" | "unknown";
 export type InstallPlanKind = "auto" | "manual";
@@ -148,6 +150,112 @@ export async function execute(plan: InstallPlan, onProgress?: InstallProgress): 
   }
 
   return { ok: true };
+}
+
+/**
+ * Ensure CocoIndex v1.0+ exists, prompting the user before any install.
+ * Tools should not call this; it is intended for interactive commands only.
+ */
+export async function ensureCocoindex(ctx: ExtensionCommandContext): Promise<InstallResult> {
+  const existing = await getExistingInstall();
+  if (existing.ok) return existing;
+  if (existing.error === "upgrade-needed") {
+    const message = upgradeMessage(existing.version);
+    notify(ctx, message, "warning");
+    return { ok: false, error: message, version: existing.version };
+  }
+
+  const plan = dryRun();
+  if (plan.kind === "manual") {
+    const message = plan.summary;
+    notify(ctx, message, "warning");
+    return { ok: false, error: "Manual CocoIndex installation is required.", manualInstructions: plan.manualInstructions };
+  }
+
+  if (!hasConfirm(ctx)) {
+    const message = [
+      "CocoIndex CLI is not installed and this command is running without an interactive confirmation UI.",
+      "Please install manually, then re-run /unipi:cocoindex-init:",
+      `  uv tool install '${COCOINDEX_PACKAGE_SPEC}'`,
+    ].join("\n");
+    notify(ctx, message, "warning");
+    return { ok: false, error: message };
+  }
+
+  const confirmed = await ctx.ui.confirm("Install CocoIndex?", plan.summary);
+  if (!confirmed) {
+    notify(ctx, "CocoIndex install skipped. /unipi:cocoindex-init can try again later.", "info");
+    return { ok: false, skipped: true };
+  }
+
+  try {
+    const result = await execute(plan, (message) => {
+      setStatus(ctx, message);
+    });
+
+    if (!result.ok) {
+      notify(ctx, `❌ CocoIndex install failed:\n${result.error ?? "Unknown error"}`, "error");
+      return result;
+    }
+
+    bridge.resetAvailabilityCache();
+    const verified = await getExistingInstall();
+    if (verified.ok) {
+      notify(ctx, `✅ CocoIndex ${verified.version ?? ""} installed and ready.`, "info");
+      return verified;
+    }
+
+    const message = verified.error === "upgrade-needed"
+      ? upgradeMessage(verified.version)
+      : "CocoIndex installation finished, but the CLI could not be verified. Make sure ~/.local/bin is on PATH.";
+    notify(ctx, message, verified.error === "upgrade-needed" ? "warning" : "error");
+    return { ok: false, error: message, version: verified.version };
+  } finally {
+    setStatus(ctx, undefined);
+  }
+}
+
+async function getExistingInstall(): Promise<InstallResult & { error?: string }> {
+  const available = await bridge.isAvailable({ useCache: false });
+  if (!available) return { ok: false, error: "missing" };
+
+  const versionOutput = await bridge.getVersion();
+  const version = versionOutput ? bridge.parseVersion(versionOutput) : null;
+  if (!bridge.isVersionAtLeast(version, COCOINDEX_MIN_VERSION)) {
+    return { ok: false, error: "upgrade-needed", version: version ?? versionOutput ?? undefined };
+  }
+
+  return {
+    ok: true,
+    binPath: bridge.getCocoindexBinPath(),
+    version: version ?? versionOutput ?? undefined,
+  };
+}
+
+function upgradeMessage(version: string | undefined): string {
+  return [
+    `CocoIndex ${COCOINDEX_MIN_VERSION}+ is required${version ? ` (found ${version})` : ""}.`,
+    "Please upgrade before continuing:",
+    "  uv tool upgrade cocoindex",
+    `or reinstall with: uv tool install '${COCOINDEX_PACKAGE_SPEC}' --force`,
+  ].join("\n");
+}
+
+function hasConfirm(ctx: ExtensionCommandContext): boolean {
+  const anyCtx = ctx as any;
+  return anyCtx.hasUI === true && typeof anyCtx.ui?.confirm === "function";
+}
+
+function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error"): void {
+  const anyCtx = ctx as any;
+  if (typeof anyCtx.ui?.notify === "function") anyCtx.ui.notify(message, type);
+}
+
+function setStatus(ctx: ExtensionCommandContext, message: string | undefined): void {
+  const anyCtx = ctx as any;
+  if (anyCtx.hasUI === true && typeof anyCtx.ui?.setStatus === "function") {
+    anyCtx.ui.setStatus("cocoindex-installer", message);
+  }
 }
 
 function automaticPlan(shell: SupportedShell, steps: InstallStep[]): InstallPlan {
