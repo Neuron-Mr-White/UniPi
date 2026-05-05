@@ -133,3 +133,25 @@ Recommended execution order: Task 1, Task 2, Task 3, Task 4, Task 5, then Task 6
 | Shell quoting issues in command execution | Package spec with brackets may be interpreted incorrectly | Task 2 should prefer argv-based execution where practical, or thoroughly quote command strings. |
 | Existing CocoIndex v0.x installation | Pipeline template may fail against old API | Task 3 blocks versions below `COCOINDEX_MIN_VERSION` with explicit upgrade guidance. |
 | Testing clean install mutates developer machine | Validation may be risky or environment-dependent | Task 6 allows PATH/env stubs and records any manual validation that could not be safely performed. |
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done 6/6
+- Tasks 1–6 verified against the acceptance criteria in the implementation: version constants and bridge primitives, installer planning/execution, consent-based `ensureCocoindex(ctx)`, command integration, non-interactive tool guidance, package metadata/export coverage, and validation scenarios are present.
+- Clean-environment review was performed with Docker (no project Dockerfile exists, so ad-hoc disposable containers were used): clean `npm ci` + typechecks passed in `node:24-bookworm`; a true clean `uv tool install "cocoindex[lancedb]>=1.0"` passed in `ghcr.io/astral-sh/uv:python3.12-bookworm` and produced `cocoindex version 1.0.3`.
+- Targeted scenario checks passed via `tsx`: version parsing/comparison, uv dry-run plan, no-uv/no-mise manual fallback, consent decline without command execution, v0.x rejection before prompt, simulated post-install verification from `~/.local/bin`, and installer status cleanup.
+- Package publishing dry-run includes `installer.ts`.
+- Follow-up note: `packages/cocoindex/README.md` and `packages/cocoindex/skills/cocoindex/SKILL.md` still contain old `pip install cocoindex` guidance; command/tool/session guidance is updated, but docs/skill guidance should be refreshed before broad release.
+- Working tree note: `package-lock.json` is modified and generated `.unipi/cocoindex/` database/cache directories are untracked; the autoinstall design spec is also untracked.
+
+Codebase Checks:
+- ✓ `npm run typecheck --workspace=@pi-unipi/cocoindex` passed locally.
+- ✓ `npm run typecheck` passed locally.
+- ✓ Docker clean source check passed: `npm ci --ignore-scripts`, package typecheck, and root typecheck in `node:24-bookworm`.
+- ✓ Docker clean install check passed: `uv tool install "cocoindex[lancedb]>=1.0"` in a fresh uv/Python container, followed by `cocoindex --version`.
+- ✓ `npm pack --dry-run --workspace=@pi-unipi/cocoindex --json` passed and listed `installer.ts`.
+- ⚠ `npm run lint` failed because no root `lint` script is configured.
+- ⚠ `npm run build` failed because no root `build` script is configured.
+- ⚠ `npm test` exited 1 because many workspaces do not define `test`; workspaces with configured tests that did run passed.

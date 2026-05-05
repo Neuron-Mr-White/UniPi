@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-05-06
+
+### Breaking Changes
+- BREAKING: `compactor` no longer provides project content indexing/search tools or commands (`content_index`, `ctx_index`, `content_search`, `ctx_search`, `content_fetch`, `ctx_fetch_and_index`, `/unipi:compact-index`, `/unipi:compact-search`, `/unipi:compact-purge`). Use `/unipi:cocoindex-init`, `/unipi:cocoindex-update`, `/unipi:cocoindex-search`, `cocoindex_search`, and `cocoindex_status` instead.
+- BREAKING: `sandbox_batch` no longer accepts embedded search items from the removed compactor content store; run `cocoindex_search` as a separate search tool call.
+
+### Added
+- `@pi-unipi/cocoindex` package — CocoIndex CLI bridge with LanceDB-backed project indexing and semantic search.
+- `/unipi:cocoindex-init`, `/unipi:cocoindex-update`, `/unipi:cocoindex-status`, `/unipi:cocoindex-settings`, and `/unipi:cocoindex-search` commands.
+- `cocoindex_search` and `cocoindex_status` tools for agent-accessible indexed content search and status diagnostics.
+- Consent-based CocoIndex auto-install flow using `uv tool install 'cocoindex[lancedb]>=1.0'`, with `mise` fallback and shell-aware manual guidance.
+- Default `.unipi/cocoindex/main.py` pipeline template using CocoIndex v1.0+ APIs, local filesystem ingestion, recursive splitting, OpenRouter embeddings, and LanceDB output.
+
+### Changed
+- `compactor`: project content indexing responsibilities moved to `@pi-unipi/cocoindex`; compactor now focuses on session compaction, recall, sandbox execution, diagnostics, and context budgeting.
+- `footer`: replaced the old indexed-docs content-store segment with a CocoIndex status segment.
+- `autocomplete`: removed old compactor content commands and added CocoIndex command suggestions.
+- `workflow`: sandbox tool filtering now preserves safe extension tools (memory, web, ask-user, notifications) while removing only blocked tools for the active workflow level.
+- `memory`: lifecycle reminders now respect the currently active tool set and track recall/store activity independently.
+- `full-release` chore updated with CocoIndex package inventory, command registry checks, and explicit breaking-change changelog guidance.
+
+### Fixed
+- `cocoindex`: command registration now happens synchronously at extension load time instead of during `session_start`.
+- `cocoindex`: pipeline template updated for CocoIndex v1.0+ APIs after `flow_def` removal.
+- `cocoindex`: parsed v1.0+ files-processed output correctly during indexing.
+- `cocoindex`: all-in-one `@pi-unipi/unipi` entry now imports and registers the CocoIndex extension.
+
 ## [0.1.17] — 2026-05-02
 
 ### Added

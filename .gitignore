@@ -10,5 +10,8 @@ packages/unipi/bundled.js
 
 .unipi/worktrees/
 .unipi/memory/
+.unipi/cocoindex/.lancedb/
+.unipi/cocoindex/cocoindex.db/
+.unipi/cocoindex/__pycache__/
 .pi/
 .unipi/config/

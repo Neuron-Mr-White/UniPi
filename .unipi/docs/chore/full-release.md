@@ -25,27 +25,27 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.10 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.8 |
-| `packages/btw` | `@pi-unipi/btw` | 0.1.9 |
-| `packages/compactor` | `@pi-unipi/compactor` | 0.2.2 |
-| `packages/core` | `@pi-unipi/core` | 0.1.15 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.21 |
-| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 0.1.1 |
-| `packages/mcp` | `@pi-unipi/mcp` | 0.1.14 |
-| `packages/memory` | `@pi-unipi/memory` | 0.1.13 |
-| `packages/notify` | `@pi-unipi/notify` | 0.1.9 |
-| `packages/ralph` | `@pi-unipi/ralph` | 0.1.10 |
-| `packages/subagents` | `@pi-unipi/subagents` | 0.2.7 |
-| `packages/utility` | `@pi-unipi/utility` | 0.2.8 |
-| `packages/web-api` | `@pi-unipi/web-api` | 0.1.15 |
-| `packages/workflow` | `@pi-unipi/workflow` | 0.1.16 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.8 |
-| `packages/footer` | `@pi-unipi/footer` | 0.1.3 |
-| `packages/milestone` | `@pi-unipi/milestone` | 0.1.8 |
-| `packages/updater` | `@pi-unipi/updater` | 0.1.1 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.11 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.9 |
+| `packages/btw` | `@pi-unipi/btw` | 0.1.10 |
 | `packages/cocoindex` | `@pi-unipi/cocoindex` | 0.1.0 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.16 |
+| `packages/compactor` | `@pi-unipi/compactor` | 0.2.3 |
+| `packages/core` | `@pi-unipi/core` | 0.1.16 |
+| `packages/footer` | `@pi-unipi/footer` | 0.1.4 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.22 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 0.1.2 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.9 |
+| `packages/mcp` | `@pi-unipi/mcp` | 0.1.15 |
+| `packages/memory` | `@pi-unipi/memory` | 0.1.14 |
+| `packages/milestone` | `@pi-unipi/milestone` | 0.1.9 |
+| `packages/notify` | `@pi-unipi/notify` | 0.1.11 |
+| `packages/ralph` | `@pi-unipi/ralph` | 0.1.11 |
+| `packages/subagents` | `@pi-unipi/subagents` | 0.2.8 |
+| `packages/updater` | `@pi-unipi/updater` | 0.1.2 |
+| `packages/utility` | `@pi-unipi/utility` | 0.2.9 |
+| `packages/web-api` | `@pi-unipi/web-api` | 0.1.16 |
+| `packages/workflow` | `@pi-unipi/workflow` | 0.1.17 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.18 |
 
 ---
 
@@ -186,7 +186,7 @@ grep -oP 'COMPACTOR_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/
 grep 'registerCommand' packages/compactor/src/commands/index.ts | grep -oP 'registerCommand\("\K[^"]+' | sort > /tmp/registered_compactor.txt
 diff /tmp/expected_compactor.txt /tmp/registered_compactor.txt
 ```
-Expected: No differences. Compactor commands: `compact`, `compact-recall`, `compact-stats`, `compact-doctor`, `compact-settings`, `compact-preset`, `compact-index`, `compact-search`, `compact-purge`.
+Expected: No differences. Compactor commands: `lossless-compact`, `compact`, `compact-recall`, `compact-stats`, `compact-doctor`, `compact-settings`, `compact-preset`. Content-indexing commands were removed from compactor; use CocoIndex commands below.
 
 **Notify commands** (registered in `packages/notify/index.ts`):
 ```bash
@@ -218,7 +218,7 @@ grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/
 grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/cocoindex/commands.ts | sort -u > /tmp/registered_cocoindex.txt
 diff /tmp/expected_cocoindex.txt /tmp/registered_cocoindex.txt
 ```
-Expected: No differences. CocoIndex commands: `cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`.
+Expected: No differences. CocoIndex commands: `cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`, `cocoindex-search`.
 
 **All-in-one entry check** — verify `packages/unipi/index.ts` imports and calls cocoindex:
 ```bash
@@ -238,7 +238,7 @@ grep -rhoP 'registerCommand\("unipi:\K[a-z-]+' packages/ | sort -u > /tmp/all_re
 cat /tmp/expected_*.txt | sed 's/_/-/g' | tr '[:upper:]' '[:lower:]' | sort -u > /tmp/all_expected.txt
 diff /tmp/all_registered.txt /tmp/all_expected.txt
 ```
-Expected: Every registered command has a matching constant. No orphan commands.
+Expected: Every registered command has a matching constant. No orphan commands. When this fails after a breaking command removal, update both the constants and this chore so the release checklist reflects the new public surface.
 
 If any diff shows differences:
 1. Add missing `registerCommand` calls to the package
@@ -303,8 +303,9 @@ git log --oneline <last-release-commit>..HEAD
 1. Create a new `## [X.Y.Z] — YYYY-MM-DD` section below `[Unreleased]`
 2. Move all items from `[Unreleased]` into the new section
 3. Add any additional changes discovered from `git log` since last release
-4. Keep `[Unreleased]` empty (with just the heading) for future work
-5. Ensure format follows [Keep a Changelog](https://keepachangelog.com/)
+4. If any public commands, tools, APIs, config keys, or package behavior were removed or made incompatible, add a `### Breaking Changes` section that starts each item with `BREAKING:` and gives the migration path
+5. Keep `[Unreleased]` empty (with just the heading) for future work
+6. Ensure format follows [Keep a Changelog](https://keepachangelog.com/)
 
 **Changelog Tone — Slightly Technical:**
 - **README** (non-technical): Tell user what command changed, what agent tool added, what behaviour modified. Focus on features, changes, and fixes from user perspective.
@@ -528,6 +529,6 @@ After successful completion:
 - **Dependency order matters** for npm publish — `core` should be published first since other packages depend on it
 - **`packages/unipi`** is just an `index.ts` barrel — it doesn't have its own `package.json`, the root `package.json` IS `@pi-unipi/unipi`
 - **`packages/autocomplete`** contains `@pi-unipi/command-enchantment` (directory name differs from package name)
-- **Version strategy**: Bump patch by default. Use minor for new features, major for breaking changes
+- **Version strategy**: Bump patch by default. Use minor for new features. For breaking changes, choose the appropriate pre-1.0 compatibility bump and document `BREAKING:` migration notes in `CHANGELOG.md`.
 - **Documentation tone**: Be proud of what Unipi does. It's not just another tool — it's a structured development system with memory, parallelism, and iterative loops
 - **Command registry**: All commands use `unipi:` prefix via `UNIPI_PREFIX` from `@pi-unipi/core`. Constants are the source of truth — if a constant exists, a registration must exist
