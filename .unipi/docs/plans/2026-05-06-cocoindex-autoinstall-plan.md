@@ -86,7 +86,7 @@ The plan also accounts for codebase-specific details found during review:
     5. Export installer helpers from `packages/cocoindex/index.ts` if useful for tests or downstream package consumers.
     6. Keep tool descriptions accurate: tools are diagnostic/search only, commands perform interactive install.
 
-- unstarted: Task 6 — Validate install, fallback, decline, and version paths
+- completed: Task 6 — Validate install, fallback, decline, and version paths
   - Description: Verify the implementation through typechecks and targeted scenario checks, using mocks/stubs where a clean machine is not available.
   - Dependencies: Tasks 1–5
   - Acceptance Criteria: Root `npm run typecheck` passes; `npm run typecheck --workspace=@pi-unipi/cocoindex` passes; clean-environment install path is tested or documented with evidence; no-uv/no-mise manual fallback is tested via PATH/env stubbing; consent-decline path is tested; v0.x rejection is tested; validation notes are recorded in the final work summary.
@@ -98,6 +98,15 @@ The plan also accounts for codebase-specific details found during review:
     5. Test a fake `ctx.ui.confirm()` returning false and verify `{ ok: false, skipped: true }` with no executed commands.
     6. Test fake `cocoindex --version` outputs below v1.0 and malformed outputs.
     7. If true clean-environment installation cannot be run in the current session, document the limitation and exact manual command to validate later.
+
+## Validation Notes
+
+- `npm run typecheck --workspace=@pi-unipi/cocoindex` passed.
+- Root `npm run typecheck` passed.
+- Developer machine has CocoIndex v1.0.3 at `/home/pi/.local/share/mise/installs/python/3.14.4/bin/cocoindex`, uv v0.11.7, and mise 2026.4.4.
+- Scenario checks passed via `tsx` with PATH/HOME stubs: version parsing/comparison, uv dry-run plan, no-uv/no-mise manual fallback, consent decline with no command execution, v0.x rejection before prompt, existing v1.0+ acceptance without prompt.
+- Simulated clean uv install path passed: fake uv created `$HOME/.local/bin/cocoindex`, `ensureCocoindex()` verified via fresh bin resolution/cache reset and cleared installer status.
+- True networked clean-machine install was not run to avoid mutating the developer environment; manual validation command is `uv tool install 'cocoindex[lancedb]>=1.0'`.
 
 ## Sequencing
 
