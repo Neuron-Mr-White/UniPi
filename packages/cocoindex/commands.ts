@@ -12,8 +12,9 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { COCOINDEX_COMMANDS } from "@pi-unipi/core";
+import { COCOINDEX_COMMANDS, COCOINDEX_PACKAGE_SPEC } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
+import { ensureCocoindex } from "./installer.js";
 
 export function registerCocoindexCommands(pi: ExtensionAPI): void {
   // ── /unipi:cocoindex-update ────────────────────────────
@@ -21,14 +22,8 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
     description: "Run CocoIndex update to index the current project",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const projectDir = (ctx as any).cwd ?? process.cwd();
-      const available = await bridge.isAvailable();
-      if (!available) {
-        ctx.ui.notify(
-          "❌ CocoIndex CLI not found. Install with:\n" +
-          "  pip install cocoindex\n" +
-          "  pip install 'cocoindex[lancedb]'", "error");
-        return;
-      }
+      const ensured = await ensureCocoindex(ctx);
+      if (!ensured.ok) return;
 
       const pipelineDir = bridge.getPipelineDir(projectDir);
       const initialized = await bridge.isPipelineInitialized(pipelineDir);
@@ -67,7 +62,12 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
       ];
 
       if (!info.cliAvailable) {
-        lines.push("", "Setup: pip install cocoindex");
+        lines.push(
+          "",
+          "Setup: run /unipi:cocoindex-init for guided install.",
+          `Manual: uv tool install '${COCOINDEX_PACKAGE_SPEC}'`,
+          "Fallback: mise use -g uv@latest",
+        );
       }
       if (!info.pipelineConfigured) {
         lines.push("", "Initialize: /unipi:cocoindex-init");
@@ -82,6 +82,9 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
     description: "Initialize CocoIndex pipeline for the current project",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const projectDir = (ctx as any).cwd ?? process.cwd();
+      const ensured = await ensureCocoindex(ctx);
+      if (!ensured.ok) return;
+
       const result = await bridge.initPipeline(projectDir);
       if (result.success) {
         ctx.ui.notify(

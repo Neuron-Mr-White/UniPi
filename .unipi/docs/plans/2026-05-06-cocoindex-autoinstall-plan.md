@@ -62,7 +62,7 @@ The plan also accounts for codebase-specific details found during review:
     7. Verify availability and version after execution, returning `binPath` and parsed version on success.
     8. Clear `cocoindex-installer` status in a `finally` block.
 
-- unstarted: Task 4 — Wire installer into interactive CocoIndex commands
+- completed: Task 4 — Wire installer into interactive CocoIndex commands
   - Description: Update interactive command handlers to call `ensureCocoindex(ctx)` before operations that need the CLI, replacing the current plain pip-install message.
   - Dependencies: Task 3
   - Acceptance Criteria: `/unipi:cocoindex-init` ensures CocoIndex before scaffolding `.unipi/cocoindex/main.py`; `/unipi:cocoindex-update` ensures CocoIndex before checking/running the pipeline; user decline or install failure stops cleanly without running init/update; command status output uses the new install guidance; root/package typecheck passes.

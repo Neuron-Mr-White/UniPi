@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MODULES, UNIPI_EVENTS, COCOINDEX_TOOLS, COCOINDEX_COMMANDS, emitEvent } from "@pi-unipi/core";
+import { MODULES, UNIPI_EVENTS, COCOINDEX_TOOLS, COCOINDEX_COMMANDS, COCOINDEX_PACKAGE_SPEC, emitEvent } from "@pi-unipi/core";
 import { registerCocoindexTools } from "./tools.js";
 import { registerCocoindexCommands } from "./commands.js";
 import * as bridge from "./bridge.js";
@@ -43,7 +43,10 @@ export default function cocoindexExtension(pi: ExtensionAPI): void {
     if (available) {
       ctx.ui.notify("📦 CocoIndex ready", "info");
     } else {
-      ctx.ui.notify("📦 CocoIndex: CLI not found — install with `pip install cocoindex`", "info");
+      ctx.ui.notify(
+        `📦 CocoIndex: CLI not found — run /unipi:cocoindex-init for guided install (manual: uv tool install '${COCOINDEX_PACKAGE_SPEC}').`,
+        "info",
+      );
     }
   });
 }
