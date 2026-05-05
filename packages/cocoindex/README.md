@@ -15,7 +15,7 @@ Replaces the compactor's FTS5-based content indexing with [CocoIndex](https://co
 ## Prerequisites
 
 1. **Python 3.10+**
-2. **CocoIndex CLI**: `pip install cocoindex 'cocoindex[lancedb]'`
+2. **CocoIndex CLI**: `pip install cocoindex 'cocoindex[lancedb]'` (requires cocoindex >= 1.0)
 3. **LanceDB SDK** (optional, for search): `npm install @lancedb/lancedb`
 4. **Embedding API key** — configured via `/unipi:memory-settings`
 
@@ -35,20 +35,24 @@ cocoindex_search({ query: "how does authentication work?" })
 ## Architecture
 
 ```
-Project files ──→ LocalFile source
+Project files ──→ localfs.walk_dir (recursive)
                       │
                       ▼
-              SplitRecursively (AST-aware)
+              chunk_text (@coco.fn, memoized)
                       │
                       ▼
-              EmbedText (OpenRouter)
-                      │
-                      ▼
-                LanceDB (.unipi/cocoindex/.lancedb/)
+              LanceDB target (via ContextKey)
                       │
                       ▼
               Vector search → ranked results
 ```
+
+Uses cocoindex v1.0+ App/fn/mount API with:
+- `@coco.lifespan` for async environment setup (LanceDB connection)
+- `@coco.fn` for memoized processing functions
+- `coco.mount()` / `coco.mount_target()` for component management
+- `localfs.walk_dir` for file enumeration
+- `lancedb.TableTarget` for row-level target state management
 
 ## Tools
 
