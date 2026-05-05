@@ -15,22 +15,18 @@ import { registerCocoindexCommands } from "./commands.js";
 import * as bridge from "./bridge.js";
 
 export default function cocoindexExtension(pi: ExtensionAPI): void {
+  // Register commands at extension load time (synchronous).
+  // Commands resolve projectDir from ctx.cwd at handler invocation time.
+  registerCocoindexCommands(pi);
+
   pi.on("session_start", async (_event, ctx) => {
     const projectDir = (ctx as any).cwd ?? process.cwd();
 
-    // Initialize pipeline if not already present
+    // Register tools — these need projectDir for search context
     const pipelineDir = bridge.getPipelineDir(projectDir);
     const initialized = await bridge.isPipelineInitialized(pipelineDir);
 
-    // Register tools
     registerCocoindexTools(pi, {
-      projectDir,
-      pipelineDir,
-      initialized,
-    });
-
-    // Register commands
-    registerCocoindexCommands(pi, {
       projectDir,
       pipelineDir,
       initialized,

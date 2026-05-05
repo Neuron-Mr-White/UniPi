@@ -6,18 +6,21 @@
  * - /unipi:cocoindex-status  — Show status
  * - /unipi:cocoindex-init    — Scaffold pipeline
  * - /unipi:cocoindex-settings — TUI settings
+ *
+ * Commands are registered at extension load time (synchronous).
+ * Project directory is resolved from ctx.cwd at handler invocation time.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { COCOINDEX_COMMANDS } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
-import type { CocoindexDeps } from "./bridge.js";
 
-export function registerCocoindexCommands(pi: ExtensionAPI, deps: CocoindexDeps): void {
+export function registerCocoindexCommands(pi: ExtensionAPI): void {
   // ── /unipi:cocoindex-update ────────────────────────────
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.UPDATE}`, {
     description: "Run CocoIndex update to index the current project",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      const projectDir = (ctx as any).cwd ?? process.cwd();
       const available = await bridge.isAvailable();
       if (!available) {
         ctx.ui.notify(
@@ -27,14 +30,16 @@ export function registerCocoindexCommands(pi: ExtensionAPI, deps: CocoindexDeps)
         return;
       }
 
-      if (!deps.initialized) {
+      const pipelineDir = bridge.getPipelineDir(projectDir);
+      const initialized = await bridge.isPipelineInitialized(pipelineDir);
+      if (!initialized) {
         ctx.ui.notify("⚠️ Pipeline not initialized. Run /unipi:cocoindex-init first.", "warning");
         return;
       }
 
       ctx.ui.notify("🔄 Running CocoIndex update...", "info");
 
-      const result = await bridge.indexProject(deps.projectDir);
+      const result = await bridge.indexProject(projectDir);
       if (result.success) {
         ctx.ui.notify(
           `✅ CocoIndex update complete: ${result.chunksProcessed} chunks in ${(result.durationMs / 1000).toFixed(1)}s`,
@@ -50,7 +55,8 @@ export function registerCocoindexCommands(pi: ExtensionAPI, deps: CocoindexDeps)
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.STATUS}`, {
     description: "Show CocoIndex indexing status",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const info = await bridge.status(deps.projectDir);
+      const projectDir = (ctx as any).cwd ?? process.cwd();
+      const info = await bridge.status(projectDir);
       const lines = [
         "📦 CocoIndex Status",
         `CLI: ${info.cliAvailable ? "✅ installed" : "❌ not found"}`,
@@ -75,9 +81,9 @@ export function registerCocoindexCommands(pi: ExtensionAPI, deps: CocoindexDeps)
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.INIT}`, {
     description: "Initialize CocoIndex pipeline for the current project",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const result = await bridge.initPipeline(deps.projectDir);
+      const projectDir = (ctx as any).cwd ?? process.cwd();
+      const result = await bridge.initPipeline(projectDir);
       if (result.success) {
-        deps.initialized = true;
         ctx.ui.notify(
           "✅ CocoIndex pipeline initialized at .unipi/cocoindex/main.py\n" +
           "Run /unipi:cocoindex-update to start indexing.",
@@ -93,11 +99,13 @@ export function registerCocoindexCommands(pi: ExtensionAPI, deps: CocoindexDeps)
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.SETTINGS}`, {
     description: "Show CocoIndex configuration and settings",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const info = await bridge.status(deps.projectDir);
+      const projectDir = (ctx as any).cwd ?? process.cwd();
+      const pipelineDir = bridge.getPipelineDir(projectDir);
+      const info = await bridge.status(projectDir);
       const lines = [
         "⚙️ CocoIndex Settings",
         "",
-        `Pipeline: ${deps.pipelineDir}/main.py`,
+        `Pipeline: ${pipelineDir}/main.py`,
         `Target store: ${info.targetStore}`,
         `Embedding model: (from memory config)`,
         "",
