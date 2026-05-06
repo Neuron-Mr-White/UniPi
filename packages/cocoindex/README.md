@@ -58,7 +58,7 @@ Uses cocoindex v1.0+ App/fn/mount API with:
 
 | Tool | Description |
 |------|-------------|
-| `cocoindex_search` | Search indexed content (semantic + full-text) |
+| `cocoindex_search` | Search indexed content (semantic vector when available, LanceDB FTS when available, lexical fallback for text-only indexes) |
 | `cocoindex_status` | Check indexing status, freshness, doc count |
 
 ## Commands
@@ -75,6 +75,7 @@ Uses cocoindex v1.0+ App/fn/mount API with:
 - **Pipeline**: `.unipi/cocoindex/main.py` — auto-generated, fully customizable
 - **Data store**: `.unipi/cocoindex/.lancedb/`
 - **Embeddings**: `~/.unipi/memory/config.json` (shared with memory package)
+- **Search fallback**: Existing text-only LanceDB tables remain searchable through a lexical scan fallback when no vector column or FTS index exists
 
 ## What Changed from FTS5
 

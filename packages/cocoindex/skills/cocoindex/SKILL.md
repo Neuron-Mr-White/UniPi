@@ -26,7 +26,7 @@ Use CocoIndex tools and commands when you need to:
 ## Tools
 
 ### `cocoindex_search`
-Search indexed content using semantic vector search.
+Search indexed content. It uses semantic vector search when the LanceDB table has vectors, LanceDB full-text search when an inverted index exists, and a lexical fallback for older text-only indexes.
 
 ```
 cocoindex_search({ query: "how authentication works", limit: 10 })

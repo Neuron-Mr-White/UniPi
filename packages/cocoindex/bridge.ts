@@ -64,6 +64,7 @@ export interface CocoindexDeps {
 const COCOINDEX_STATE_DIR = ".cocoindex";
 const DEFAULT_PIPELINE_DIR = ".unipi/cocoindex";
 const DEFAULT_LANCEDB_PATH = ".unipi/cocoindex/.lancedb";
+const DEFAULT_LEXICAL_SCAN_LIMIT = 50_000;
 
 // ─────────────────────────────────────────────────────────
 // CLI Detection
@@ -381,47 +382,43 @@ export async function search(
   options?: SearchOptions,
 ): Promise<SearchResult[]> {
   const limit = options?.limit ?? 10;
+  const offset = options?.offset ?? 0;
 
-  // Try LanceDB SDK first
   try {
     const lancedbPath = join(getPipelineDir(projectDir), ".lancedb");
     if (!existsSync(lancedbPath)) {
       return [];
     }
 
-    // Dynamic import — LanceDB SDK may not be installed
+    // Dynamic import — LanceDB SDK may not be installed.
     // @ts-ignore — optional dependency, may not be installed
     const lancedb = await import("@lancedb/lancedb");
     const db = await lancedb.connect(lancedbPath);
 
-    // Get table names
     const tableNames = await db.tableNames();
     if (tableNames.length === 0) return [];
 
     const table = await db.openTable(tableNames[0]);
 
-    // Generate embedding for the query using the same model as indexing
+    // Prefer semantic vector search when the pipeline/table provides a vector
+    // column. Older generated pipelines only contain path/chunk_index/content;
+    // LanceDB throws for those tables, so continue to FTS/lexical fallback.
     const queryVector = await generateQueryEmbedding(query);
-    if (!queryVector) {
-      // Fall back to full-text search if embedding fails
-      return fullTextSearch(table, query, limit);
+    if (queryVector) {
+      const vectorResults = await vectorSearch(table, queryVector, limit, offset);
+      if (vectorResults.length > 0) return vectorResults;
     }
 
-    // Vector search
-    const results = await table.search(queryVector)
-      .limit(limit)
-      .toArray();
+    // Prefer LanceDB's native FTS when an inverted index exists on content.
+    const ftsResults = await fullTextSearch(table, query, limit, offset);
+    if (ftsResults.length > 0) return ftsResults;
 
-    return results.map((r: any, i: number) => ({
-      title: r.title ?? r.path ?? `Result ${i + 1}`,
-      content: r.content ?? r.text ?? String(r),
-      source: r.source ?? r.path ?? "",
-      rank: r._distance ?? (1 - (r.score ?? 0)),
-      contentType: (r.content_type === "code" || r.path?.match(/\.(ts|js|py|rs|go)$/)) ? "code" as const : "prose" as const,
-      matchLayer: "vector" as const,
-    }));
+    // Last-resort compatibility path for existing text-only LanceDB tables.
+    // This keeps indexed projects searchable immediately instead of returning
+    // a misleading "run cocoindex-update" message when no vector/FTS index is
+    // available yet.
+    return lexicalSearch(table, query, limit, offset);
   } catch (err: any) {
-    // LanceDB not available or search failed — return empty rather than crash
     if (err?.code === "MODULE_NOT_FOUND" || err?.message?.includes("Cannot find module")) {
       return [{
         title: "Search Unavailable",
@@ -432,28 +429,122 @@ export async function search(
         matchLayer: "fulltext",
       }];
     }
+    return [{
+      title: "Search Error",
+      content: `CocoIndex LanceDB search failed: ${err?.message ?? String(err)}`,
+      source: "",
+      rank: 0,
+      contentType: "prose",
+      matchLayer: "fulltext",
+    }];
+  }
+}
+
+async function vectorSearch(table: any, queryVector: number[], limit: number, offset: number): Promise<SearchResult[]> {
+  try {
+    const results = await table.search(queryVector)
+      .limit(limit + offset)
+      .toArray();
+
+    return results.slice(offset).map((r: any, i: number) => rowToSearchResult(r, i, "vector"));
+  } catch {
     return [];
   }
 }
 
 /** Fallback full-text search when vector search isn't available. */
-async function fullTextSearch(table: any, query: string, limit: number): Promise<SearchResult[]> {
+async function fullTextSearch(table: any, query: string, limit: number, offset: number): Promise<SearchResult[]> {
   try {
     const results = await table.search(query, "fts")
-      .limit(limit)
+      .limit(limit + offset)
       .toArray();
 
-    return results.map((r: any, i: number) => ({
-      title: r.title ?? r.path ?? `Result ${i + 1}`,
-      content: r.content ?? r.text ?? String(r),
-      source: r.source ?? r.path ?? "",
-      rank: r._distance ?? (1 - (r.score ?? 0)),
-      contentType: "prose" as const,
-      matchLayer: "fulltext" as const,
+    return results.slice(offset).map((r: any, i: number) => rowToSearchResult(r, i, "fulltext"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Compatibility fallback for existing LanceDB tables that contain text chunks
+ * but no vector column or full-text inverted index.
+ */
+async function lexicalSearch(table: any, query: string, limit: number, offset: number): Promise<SearchResult[]> {
+  try {
+    const terms = tokenize(query);
+    if (terms.length === 0) return [];
+
+    const rows = await table.query()
+      .limit(DEFAULT_LEXICAL_SCAN_LIMIT)
+      .toArray();
+
+    const phrase = query.trim().toLowerCase();
+    const scored = rows
+      .map((row: any) => {
+        const content = String(row.content ?? row.text ?? "");
+        const path = String(row.path ?? row.source ?? "");
+        const haystack = `${path}\n${content}`.toLowerCase();
+        let score = 0;
+
+        for (const term of terms) {
+          const contentMatches = countOccurrences(content.toLowerCase(), term);
+          const pathMatches = countOccurrences(path.toLowerCase(), term);
+          score += contentMatches + pathMatches * 3;
+        }
+
+        if (phrase && haystack.includes(phrase)) score += terms.length * 4;
+        return { row, score };
+      })
+      .filter((item: { score: number }) => item.score > 0)
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+      .slice(offset, offset + limit);
+
+    return scored.map((item: { row: any; score: number }, i: number) => ({
+      ...rowToSearchResult(item.row, i, "fulltext"),
+      rank: item.score,
     }));
   } catch {
     return [];
   }
+}
+
+function rowToSearchResult(r: any, i: number, matchLayer: SearchResult["matchLayer"]): SearchResult {
+  const path = r.path ?? r.source ?? "";
+  return {
+    title: r.title ?? path ?? `Result ${i + 1}`,
+    content: r.content ?? r.text ?? String(r),
+    source: r.source ?? path ?? "",
+    rank: r._distance ?? (1 - (r.score ?? 0)),
+    contentType: (r.content_type === "code" || path?.match(/\.(ts|tsx|js|jsx|py|rs|go|sh|bash)$/)) ? "code" : "prose",
+    matchLayer,
+  };
+}
+
+function tokenize(query: string): string[] {
+  const seen = new Set<string>();
+  const stopwords = new Set(["a", "an", "and", "are", "as", "at", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with"]);
+  const terms = query
+    .toLowerCase()
+    .split(/[^a-z0-9_+#.-]+/i)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 1 && !stopwords.has(term));
+
+  return terms.filter((term) => {
+    if (seen.has(term)) return false;
+    seen.add(term);
+    return true;
+  });
+}
+
+function countOccurrences(value: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let index = value.indexOf(needle);
+  while (index !== -1) {
+    count += 1;
+    index = value.indexOf(needle, index + needle.length);
+  }
+  return count;
 }
 
 // ─────────────────────────────────────────────────────────

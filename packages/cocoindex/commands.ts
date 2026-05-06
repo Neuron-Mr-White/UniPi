@@ -100,7 +100,7 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
 
   // ── /unipi:cocoindex-search ──────────────────────────
   pi.registerCommand(`unipi:${COCOINDEX_COMMANDS.SEARCH}`, {
-    description: "Search indexed codebase with semantic vector search",
+    description: "Search indexed codebase with semantic/vector, full-text, or lexical search",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const projectDir = (ctx as any).cwd ?? process.cwd();
       const query = args.trim();
@@ -124,7 +124,10 @@ export function registerCocoindexCommands(pi: ExtensionAPI): void {
         const results = await bridge.search(projectDir, query, { limit: 10 });
 
         if (results.length === 0) {
-          ctx.ui.notify(`No results for "${query}".`, "info");
+          ctx.ui.notify(
+            `No results for "${query}" in the current CocoIndex data. Run /unipi:cocoindex-update if the index may be stale.`,
+            "info",
+          );
           return;
         }
 

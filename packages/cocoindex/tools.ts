@@ -53,7 +53,7 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
     name: COCOINDEX_TOOLS.SEARCH,
     label: "CocoIndex Search",
     description:
-      "Search indexed content using semantic vector search. " +
+      "Search indexed content using semantic vector search when available, with full-text/lexical fallbacks. " +
       "Diagnostic/search only: this tool never installs CocoIndex. " +
       "Use /unipi:cocoindex-init to set up/install, then /unipi:cocoindex-update to index.",
     parameters: SearchParams,
@@ -76,8 +76,8 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
 
         if (results.length === 0) {
           return textResult(
-            `No results for "${params.query}". ` +
-            "Make sure the project is indexed with /unipi:cocoindex-update.",
+            `No results for "${params.query}" in the current CocoIndex data. ` +
+            "If this seems wrong, run /unipi:cocoindex-status to confirm the pipeline has data, then /unipi:cocoindex-update to refresh it.",
           );
         }
 
