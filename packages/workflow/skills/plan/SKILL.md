@@ -179,22 +179,45 @@ Do NOT re-read or re-edit the spec checkboxes — Phase 4 already wrote them.
 
 ## Phase 6: Present & Handoff
 
-Present plan summary to user. Then ask:
+Present plan summary to user. Then ask what to do next. If `ask_user` is available, prefer structured handoff options using `action: "new_session"` so the selected workflow can be queued automatically:
 
-1. **Proceed to /unipi:work** — Start implementing in a worktree
-2. **Proceed to /unipi:auto** — Run full pipeline (work → review → merge)
-3. **Revise plan** — Adjust tasks or scope
-4. **Done for now** — Return later
+```ts
+ask_user({
+  question: "What would you like to do next?",
+  options: [
+    {
+      label: "Proceed to /unipi:work",
+      description: "Start implementing the plan",
+      value: "work",
+      action: "new_session",
+      prefill: "<work-command>",
+    },
+    {
+      label: "Proceed to /unipi:auto",
+      description: "Run full pipeline (work → review → merge)",
+      value: "auto",
+      action: "new_session",
+      prefill: "/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md",
+    },
+    { label: "Revise plan", description: "Adjust tasks or scope", value: "revise" },
+    { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
+  ],
+  allowFreeform: false,
+})
+```
 
-If user selects "Proceed to /unipi:work":
-- **Worktree branch** → suggest: `/unipi:work worktree:<branch-name> specs:YYYY-MM-DD-<topic>-plan`
-- **Main branch** → suggest: `/unipi:work specs:YYYY-MM-DD-<topic>-plan` (no worktree arg)
+Use the correct `<work-command>`:
+- **Worktree branch** → `/unipi:work worktree:<branch-name> specs:YYYY-MM-DD-<topic>-plan`
+- **Main branch** → `/unipi:work specs:YYYY-MM-DD-<topic>-plan` (no worktree arg)
 
-If user selects "Proceed to /unipi:auto":
-- **Worktree branch** → suggest: `/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md`
-- **Main branch** → suggest: `/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md` (same — auto reads workbranch from plan)
+Copyable fallback commands when `ask_user` is unavailable:
+```
+/unipi:work worktree:<branch-name> specs:YYYY-MM-DD-<topic>-plan
+/unipi:work specs:YYYY-MM-DD-<topic>-plan
+/unipi:auto plan:YYYY-MM-DD-<topic>-plan.md
+```
 
-Recommend starting a **new session** for work if using a worktree.
+Recommend starting a **new session** for work if using a worktree; the ask_user launcher handles compact/direct queuing when available.
 
 ---
 

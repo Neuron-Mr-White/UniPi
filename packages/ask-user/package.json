@@ -32,6 +32,9 @@
     "skills/**/*",
     "README.md"
   ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
+  },
   "pi": {
     "extensions": [
       "index.ts"

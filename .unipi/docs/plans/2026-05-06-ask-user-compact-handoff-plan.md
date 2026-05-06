@@ -57,7 +57,7 @@ Planning decisions:
     4. Update the ask-user skill documentation's Action Types and Session Launcher sections to say the launcher queues/submits the prefill command and aborts unnecessary LLM follow-up.
     5. Update the ask-user README session-launcher documentation if it contains the old return-to-LLM behavior.
 
-- unstarted: Task 4 — Add verification coverage and manual test notes
+- completed: Task 4 — Add verification coverage and manual test notes
   - Description: Verify the compact/direct handoff behavior with the strongest available project checks, and document manual scenarios for UI behavior that cannot be exercised by the current test harness.
   - Dependencies: Task 3
   - Acceptance Criteria: `npm run typecheck` passes; if a suitable test harness exists, helper-level tests cover direct queue, compact callback, compact fallback timeout, cancellation/empty prefill, and send failure editor fallback; if no suitable harness exists, the plan receives manual verification notes covering those scenarios; normal non-`new_session` ask_user responses are explicitly regression-checked.
@@ -68,7 +68,7 @@ Planning decisions:
     4. Manually verify or document how to verify: Compact & run immediate return, callback delivery, fallback delivery exactly once, Run directly immediate delivery, Cancel, send failure fallback-to-editor, and unchanged normal ask_user selection/freeform/combined/timed-out/end_turn behavior.
     5. Record verification results in the plan's Reviewer Remarks during `/unipi:work` or `/unipi:review-work`.
 
-- unstarted: Task 5 — Audit workflow handoff examples for `new_session` usage
+- completed: Task 5 — Audit workflow handoff examples for `new_session` usage
   - Description: Review related workflow and ask-user handoff examples so suggested next workflow commands can benefit from the fixed automatic handoff when `ask_user` is available.
   - Dependencies: Task 3
   - Acceptance Criteria: Handoff sections in relevant workflow skills are audited; at minimum `brainstorm`, `plan`, `work`, and `review-work` handoffs either use `ask_user` options with `action: "new_session"` and `prefill` for suggested next commands, or explicitly preserve text-only fallback when `ask_user` is unavailable; no workflow phase semantics are changed beyond the handoff mechanism; documentation still provides copyable slash commands.
@@ -94,6 +94,16 @@ Task 4 (verification)
 ```
 
 Tasks 1–3 are the core behavior change and should be completed in order. Task 4 validates the behavior. Task 5 is documentation/skill hygiene and should not block the core fix unless it reveals a contradiction in handoff semantics.
+
+## Reviewer Remarks
+
+### /unipi:work verification — 2026-05-06
+
+- Added `packages/ask-user/tests/handoff.test.ts` using the existing Node test style; coverage includes direct follow-up queuing, empty-prefill cancellation, send failure editor fallback, compact completion callback delivery, compact fallback timer delivery, idempotency, and synchronous compact-start failure.
+- Ran `npm test --workspace @pi-unipi/ask-user` — pass (6 tests).
+- Ran `npm run typecheck` — pass.
+- Audited workflow handoff sections in `brainstorm`, `plan`, `work`, and `review-work`; each now prefers `ask_user` `action: "new_session"` handoffs when available while retaining copyable slash-command fallbacks.
+- Manual UI scenarios still recommended before release: exercise the launcher with Compact & run immediate return, Run directly immediate return, Cancel, and normal selection/freeform/combined/timed-out/end_turn responses in a live Pi TUI.
 
 ## Risks
 

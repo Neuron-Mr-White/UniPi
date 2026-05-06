@@ -177,13 +177,27 @@ Wait for user response. If changes requested, make them and re-run self-review.
 
 ## Phase 8: Handoff
 
-Ask user what to do next:
+Ask user what to do next. If `ask_user` is available, prefer structured options so the plan handoff can run automatically:
 
-1. **Proceed to /unipi:plan** — Turn decisions into implementation plan
-2. **Keep exploring** — More questions or refine decisions
-3. **Done for now** — Return later
+```ts
+ask_user({
+  question: "What would you like to do next?",
+  options: [
+    {
+      label: "Proceed to /unipi:plan",
+      description: "Turn decisions into an implementation plan",
+      value: "plan",
+      action: "new_session",
+      prefill: "/unipi:plan specs:YYYY-MM-DD-<topic>-design",
+    },
+    { label: "Keep exploring", description: "Refine questions or decisions", value: "explore" },
+    { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
+  ],
+  allowFreeform: false,
+})
+```
 
-If user selects "Proceed to /unipi:plan", suggest:
+If `ask_user` is unavailable, ask conversationally with the same options. Keep this copyable fallback command visible:
 ```
 /unipi:plan specs:YYYY-MM-DD-<topic>-design
 ```

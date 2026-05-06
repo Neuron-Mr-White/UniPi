@@ -163,13 +163,34 @@ When all tasks are `completed:`:
 
 **If working in worktree:**
 > "All tasks complete. Worktree: `{branch}`. Recommend reviewing before merge."
+
+If `ask_user` is available, offer an automatic handoff:
+```ts
+ask_user({
+  question: "Review this work now?",
+  options: [
+    {
+      label: "Proceed to /unipi:review-work",
+      description: "Review before merge",
+      value: "review",
+      action: "new_session",
+      prefill: "/unipi:review-work plan:<plan-path>",
+    },
+    { label: "Done for now", value: "done", action: "end_turn" },
+  ],
+  allowFreeform: false,
+})
+```
+Copyable fallback:
 ```
 /unipi:review-work plan:<plan-path>
 ```
-**Recommend starting a new session** for review.
+**Recommend starting a new session** for review; the ask_user launcher can compact/direct queue the command.
 
 **If working on main branch:**
 > "All tasks complete. All changes committed directly on main."
+
+If `ask_user` is available, offer the same review handoff with `prefill: "/unipi:review-work plan:<plan-path>"`. Copyable fallback:
 ```
 /unipi:review-work plan:<plan-path>
 ```

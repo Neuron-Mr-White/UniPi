@@ -117,18 +117,34 @@ Followed by description explaining the status.
 
 ## Phase 5: Handoff
 
-Based on review results:
+Based on review results, use `ask_user` `new_session` options when available so the selected next workflow command can be queued automatically. If `ask_user` is unavailable, present the same choices conversationally and keep copyable commands visible.
 
 **If all tasks done and checks pass:**
 
 *If `workbranch` is set (worktree):*
 > "All tasks complete and verified. Ready to merge back to main."
+
+Offer:
+```ts
+ask_user({
+  question: "Merge this worktree now?",
+  options: [
+    { label: "Proceed to /unipi:worktree-merge", value: "merge", action: "new_session", prefill: "/unipi:worktree-merge" },
+    { label: "Consolidate learnings", value: "consolidate", action: "new_session", prefill: "/unipi:consolidate" },
+    { label: "Done for now", value: "done", action: "end_turn" },
+  ],
+  allowFreeform: false,
+})
+```
+Copyable fallback:
 ```
 /unipi:worktree-merge
 ```
 
 *If `workbranch` is empty (main branch):*
 > "All tasks complete and verified. Changes already on main — no merge needed."
+
+Offer `/unipi:consolidate` as a `new_session` handoff when available. Copyable fallback:
 ```
 /unipi:consolidate
 ```
@@ -140,6 +156,8 @@ Either way, user can consolidate learnings:
 
 **If tasks incomplete or checks fail:**
 > "Tasks remaining and/or checks failing. Continue work?"
+
+Offer the applicable `/unipi:work ...` command as a `new_session` handoff when available.
 
 *If `workbranch` is set:*
 ```
@@ -153,6 +171,8 @@ Either way, user can consolidate learnings:
 
 **If scoped review complete:**
 > "Scoped review complete. Run full review or continue work?"
+
+Offer both commands as `new_session` options when available:
 ```
 /unipi:review-work plan:<plan-path>  (full review)
 /unipi:work specs:<plan-path>        (continue work)
