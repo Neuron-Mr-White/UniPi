@@ -48,6 +48,7 @@ cocoindex_status({})
 | `/unipi:cocoindex-update` | Run `cocoindex update` on current project |
 | `/unipi:cocoindex-status` | Show indexing status |
 | `/unipi:cocoindex-init` | Scaffold a default pipeline |
+| `/unipi:cocoindex-search <query>` | Search indexed codebase semantically |
 | `/unipi:cocoindex-settings` | Show configuration |
 
 ## Prerequisites

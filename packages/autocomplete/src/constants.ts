@@ -57,7 +57,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (58 verified commands) */
+/** Mapping of full command name → package name (80 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
   // workflow (20 commands)
   "unipi:brainstorm":     "workflow",
@@ -81,8 +81,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:chore-create":   "workflow",
   "unipi:chore-execute":  "workflow",
 
-  // ralph (2 commands)
+  // ralph (3 commands)
   "unipi:ralph":          "ralph",
+  "unipi:ralph-start":    "ralph",
   "unipi:ralph-stop":     "ralph",
 
   // memory (7 commands)
@@ -101,7 +102,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:mcp-settings": "mcp",
   "unipi:mcp-reload":   "mcp",
 
-  // utility (10 commands)
+  // utility (11 commands)
   "unipi:continue":   "utility",
   "unipi:reload":     "utility",
   "unipi:status":     "utility",
@@ -134,10 +135,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-settings": "compact",
   "unipi:compact-preset":  "compact",
 
-  // cocoindex (4 commands)
+  // cocoindex (5 commands)
   "unipi:cocoindex-update":  "cocoindex",
   "unipi:cocoindex-status":  "cocoindex",
   "unipi:cocoindex-init":    "cocoindex",
+  "unipi:cocoindex-search":  "cocoindex",
   "unipi:cocoindex-settings": "cocoindex",
 
   // milestone (2 commands)
@@ -152,13 +154,14 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:notify-test":      "notify",
   "unipi:notify-recap-model": "notify",
 
-  // kanboard (3 commands)
+  // kanboard (2 commands)
   "unipi:kanboard":          "kanboard",
   "unipi:kanboard-doctor":   "kanboard",
 
-  // footer (2 commands)
+  // footer (3 commands)
   "unipi:footer":            "footer",
   "unipi:footer-settings":   "footer",
+  "unipi:footer-help":       "footer",
 
   // updater (3 commands)
   "unipi:readme":            "updater",
@@ -193,7 +196,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:chore-create":   "Create reusable chore definition",
   "unipi:chore-execute":  "Execute a saved chore",
 
-  "unipi:ralph":          "Ralph loop — start/resume coding session",
+  "unipi:ralph":          "Ralph loop — start/resume/status commands",
+  "unipi:ralph-start":    "Start a ralph loop for the current task",
   "unipi:ralph-stop":     "Stop the active ralph loop",
 
   "unipi:memory-process":     "Process and store conversation learnings",
@@ -242,6 +246,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:cocoindex-update":  "Run CocoIndex update to index project",
   "unipi:cocoindex-status":  "Show CocoIndex indexing status",
   "unipi:cocoindex-init":    "Initialize CocoIndex pipeline",
+  "unipi:cocoindex-search":  "Search indexed codebase semantically",
   "unipi:cocoindex-settings": "Show CocoIndex configuration",
 
   "unipi:notify-settings":  "Configure notification platforms and events",
@@ -256,6 +261,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:footer":            "Toggle footer or switch preset",
   "unipi:footer-settings":   "Open footer settings — toggle groups and segments",
+  "unipi:footer-help":       "Show footer segment guide",
 
   "unipi:readme":            "Browse package README files",
   "unipi:changelog":         "Browse changelog (Keep a Changelog format)",

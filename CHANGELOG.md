@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-05-06
+
+### Breaking Changes
+- BREAKING: `compactor` no longer provides project content indexing/search tools or commands (`content_index`, `ctx_index`, `content_search`, `ctx_search`, `content_fetch`, `ctx_fetch_and_index`). Use `/unipi:cocoindex-init`, `/unipi:cocoindex-update`, `/unipi:cocoindex-status`, `/unipi:cocoindex-search`, and `cocoindex_status` instead.
+- BREAKING: `@pi-unipi/compactor` removed public content-command surface in favor of `@pi-unipi/cocoindex`; this is a breaking command and dependency migration.
+
+### Added
+- `@pi-unipi/cocoindex` package now includes optional `@lancedb/lancedb` dependency and first-class CLI bridge for workspace indexing/search.
+- Added `/unipi:cocoindex-search` command and `/unipi:cocoindex-settings` status/management flow.
+- Added `cocoindex_status` and `cocoindex_search` agent tools for index diagnostics/search.
+- Added deprecation-aware UX and autocomplete registry checks in full-release checks.
+
+### Changed
+- `autocomplete` now explicitly includes CocoIndex + footer + ralph helper command suggestions and validates `/unipi:*` completeness.
+- `worktree-merge/review` and ask-user documentation updates for workflow consistency.
+
+### Fixed
+- `autocomplete`: add missing suggestions for `/unipi:cocoindex-search`, `/unipi:footer-help`, and `/unipi:ralph-start`.
+- `full-release`: add an enhanced autocomplete registry audit to catch registered commands missing from command suggestions.
+
 ## [0.1.18] — 2026-05-06
 
 ### Breaking Changes

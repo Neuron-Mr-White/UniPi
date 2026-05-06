@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-05-01 (v0.1.16)
+last-run: 2026-05-06 (v2.0.0)
 ---
 
 # Full Release Pipeline
@@ -25,27 +25,27 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 0.1.11 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 0.1.9 |
-| `packages/btw` | `@pi-unipi/btw` | 0.1.10 |
-| `packages/cocoindex` | `@pi-unipi/cocoindex` | 0.1.0 |
-| `packages/compactor` | `@pi-unipi/compactor` | 0.2.3 |
-| `packages/core` | `@pi-unipi/core` | 0.1.16 |
-| `packages/footer` | `@pi-unipi/footer` | 0.1.4 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 0.1.22 |
-| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 0.1.2 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 0.1.9 |
-| `packages/mcp` | `@pi-unipi/mcp` | 0.1.15 |
-| `packages/memory` | `@pi-unipi/memory` | 0.1.14 |
-| `packages/milestone` | `@pi-unipi/milestone` | 0.1.9 |
-| `packages/notify` | `@pi-unipi/notify` | 0.1.11 |
-| `packages/ralph` | `@pi-unipi/ralph` | 0.1.11 |
-| `packages/subagents` | `@pi-unipi/subagents` | 0.2.8 |
-| `packages/updater` | `@pi-unipi/updater` | 0.1.2 |
-| `packages/utility` | `@pi-unipi/utility` | 0.2.9 |
-| `packages/web-api` | `@pi-unipi/web-api` | 0.1.16 |
-| `packages/workflow` | `@pi-unipi/workflow` | 0.1.17 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 0.1.18 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 2.0.0 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.0.0 |
+| `packages/btw` | `@pi-unipi/btw` | 2.0.0 |
+| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.0.0 |
+| `packages/compactor` | `@pi-unipi/compactor` | 2.0.0 |
+| `packages/core` | `@pi-unipi/core` | 2.0.0 |
+| `packages/footer` | `@pi-unipi/footer` | 2.0.0 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 2.0.0 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.0.0 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 2.0.0 |
+| `packages/mcp` | `@pi-unipi/mcp` | 2.0.0 |
+| `packages/memory` | `@pi-unipi/memory` | 2.0.0 |
+| `packages/milestone` | `@pi-unipi/milestone` | 2.0.0 |
+| `packages/notify` | `@pi-unipi/notify` | 2.0.0 |
+| `packages/ralph` | `@pi-unipi/ralph` | 2.0.0 |
+| `packages/subagents` | `@pi-unipi/subagents` | 2.0.0 |
+| `packages/updater` | `@pi-unipi/updater` | 2.0.0 |
+| `packages/utility` | `@pi-unipi/utility` | 2.0.0 |
+| `packages/web-api` | `@pi-unipi/web-api` | 2.0.0 |
+| `packages/workflow` | `@pi-unipi/workflow` | 2.0.0 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.0.0 |
 
 ---
 
@@ -240,10 +240,82 @@ diff /tmp/all_registered.txt /tmp/all_expected.txt
 ```
 Expected: Every registered command has a matching constant. No orphan commands. When this fails after a breaking command removal, update both the constants and this chore so the release checklist reflects the new public surface.
 
+**Enhanced autocomplete registry check** — verify registered `/unipi:*` commands are represented in `packages/autocomplete/src/constants.ts` (`COMMAND_REGISTRY` and `COMMAND_DESCRIPTIONS`). This catches commands that work when typed manually but disappear from enchanted autocomplete suggestions:
+
+```bash
+python - <<'PY'
+import pathlib, re, sys
+root = pathlib.Path('.')
+
+# Resolve simple command constants used in template-string registrations.
+consts = {'UNIPI_PREFIX': 'unipi:'}
+for path in [root / 'packages/core/constants.ts', *root.glob('packages/**/commands.ts')]:
+    if not path.exists():
+        continue
+    text = path.read_text()
+    for obj in re.finditer(r'(?:export\s+)?const (\w+_COMMANDS) = \{([\s\S]*?)\} as const;', text):
+        name, body = obj.group(1), obj.group(2)
+        for item in re.finditer(r'(\w+):\s*"([^"]+)"', body):
+            consts[f'{name}.{item.group(1)}'] = item.group(2)
+
+def eval_command_expr(expr: str) -> str | None:
+    expr = expr.strip()
+    if expr.startswith(('"', "'")):
+        return expr[1:-1]
+    if expr.startswith('`') and expr.endswith('`'):
+        value = expr[1:-1]
+        def repl(match):
+            key = match.group(1).strip()
+            return consts.get(key, '${' + key + '}')
+        return re.sub(r'\$\{([^}]+)\}', repl, value)
+    return None
+
+registered = set()
+command_files = sorted(root.glob('packages/**/commands.ts')) + [
+    root / 'packages/ralph/index.ts',
+    root / 'packages/mcp/src/index.ts',
+    root / 'packages/input-shortcuts/src/index.ts',
+    root / 'packages/info-screen/index.ts',
+]
+for path in command_files:
+    if not path.exists():
+        continue
+    text = path.read_text()
+    for match in re.finditer(r'\.registerCommand\(\s*([^,\n]+)', text):
+        command = eval_command_expr(match.group(1))
+        if command and command.startswith('unipi:'):
+            registered.add(command)
+
+constants_text = (root / 'packages/autocomplete/src/constants.ts').read_text()
+registry_body = re.search(r'export const COMMAND_REGISTRY[^=]*= \{([\s\S]*?)\n\};', constants_text)
+registry = set(re.findall(r'"(unipi:[^"]+)"\s*:', registry_body.group(1))) if registry_body else set()
+descriptions_body = re.search(r'export const COMMAND_DESCRIPTIONS[^=]*= \{([\s\S]*?)\n\};', constants_text)
+descriptions = set(re.findall(r'"(unipi:[^"]+)"\s*:', descriptions_body.group(1))) if descriptions_body else set()
+
+missing_registry = sorted(registered - registry)
+missing_descriptions = sorted(registry - descriptions)
+
+if missing_registry:
+    print('Registered commands missing from autocomplete COMMAND_REGISTRY:')
+    for cmd in missing_registry:
+        print(f'  {cmd}')
+if missing_descriptions:
+    print('Autocomplete commands missing COMMAND_DESCRIPTIONS entries:')
+    for cmd in missing_descriptions:
+        print(f'  {cmd}')
+if missing_registry or missing_descriptions:
+    sys.exit(1)
+print(f'OK: {len(registry)} autocomplete commands have registry + descriptions entries')
+PY
+```
+
+Expected: `OK`. If this fails, add the missing command(s) to both `COMMAND_REGISTRY` and `COMMAND_DESCRIPTIONS`. Pay special attention to newly added package commands such as `cocoindex-search` and helper commands such as `footer-help`.
+
 If any diff shows differences:
 1. Add missing `registerCommand` calls to the package
 2. Or add missing constants to `core/constants.ts`
 3. Ensure the command prefix is `unipi:` (using `UNIPI_PREFIX`)
+4. Ensure enhanced autocomplete mirrors public commands in `packages/autocomplete/src/constants.ts`
 
 ### Step 8: Run Tests for Each Package
 

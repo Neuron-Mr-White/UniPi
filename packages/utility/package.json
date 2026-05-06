@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "0.2.9",
+  "version": "2.0.0",
   "description": "Utility commands and tools for Pi coding agent — lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "license": "MIT",
