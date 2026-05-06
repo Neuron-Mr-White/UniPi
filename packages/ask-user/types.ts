@@ -40,6 +40,20 @@ export interface AskUserParams {
   timeout?: number;
 }
 
+export type SessionLaunchAction = "compact" | "direct";
+
+export type SessionLaunchStatus = "scheduled" | "queued" | "editor_prefill" | "cancelled" | "failed";
+
+export type SessionLaunchReason =
+  | "direct"
+  | "compact-started"
+  | "compacted"
+  | "compaction-error"
+  | "fallback-timeout"
+  | "compact-start-failed"
+  | "empty-prefill"
+  | "send-failed";
+
 /** Response from ask_user tool */
 export interface AskUserResponse {
   /** Response kind */
@@ -52,6 +66,14 @@ export interface AskUserResponse {
   prefill?: string;
   /** Optional user comment */
   comment?: string;
+  /** Session launcher action, when a new_session handoff was launched */
+  launchedWith?: SessionLaunchAction;
+  /** Session launcher delivery/scheduling status */
+  launchStatus?: SessionLaunchStatus;
+  /** Session launcher status reason */
+  launchReason?: SessionLaunchReason;
+  /** Best-effort error message for handoff fallback/failure paths */
+  launchError?: string;
 }
 
 /** Result from the session launcher UI */

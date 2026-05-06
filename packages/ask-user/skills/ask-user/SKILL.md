@@ -56,7 +56,7 @@ Use the `ask_user` tool to collect structured input from the user.
 | `"select"` | Normal selection (default). Returns immediately. |
 | `"input"` | Enters text input mode. Returns `combined` response with selection + text. |
 | `"end_turn"` | Signals end of agent turn. Returns `end_turn` response kind. |
-| `"new_session"` | Starts a new session. Returns `new_session` response kind with optional `prefill`. Shows a launcher overlay offering **Compact & run** (compacts context first) or **Run directly**. |
+| `"new_session"` | Starts a handoff. Returns `new_session` response kind with optional `prefill`. Shows a launcher overlay offering **Compact & run** (compact first, then queue/submit the prefill) or **Run directly** (queue/submit immediately). The current LLM follow-up is aborted after a successful queue or editor fallback. |
 
 ## Examples
 
@@ -149,7 +149,7 @@ ask_user({
 - "Looks good" returns immediately with selection
 - "I want changes" enters text input mode for the user to explain
 - "Done for now" signals the agent to end its turn
-- "Start fresh" starts a new session with the prefill message
+- "Start fresh" opens the launcher; **Compact & run** or **Run directly** queues the prefill message automatically
 
 ## Session Launcher
 
@@ -157,8 +157,8 @@ When a user selects a `new_session` option, a secondary launcher overlay appears
 
 | Choice | Behavior |
 |--------|----------|
-| 🧹 Compact & run | Compacts current context (via `ctx.compact()`), then returns the prefill command to the LLM |
-| ▶ Run directly | Returns the prefill command to the LLM without compaction |
-| ✕ Cancel | Cancels the session launch |
+| 🧹 Compact & run | Starts `ctx.compact()` without waiting in the tool spinner, then queues/submits the prefill as a follow-up message after compaction or a short fallback timer |
+| ▶ Run directly | Queues/submits the prefill immediately as a follow-up message, without compaction |
+| ✕ Cancel | Cancels the session launch; no prefill is queued |
 
-This two-step flow lets the user manage context window usage before starting a new task.
+The prefill can be a slash command (for example `/unipi:work specs:...`) or any non-empty message. If automatic delivery fails, ask_user places the prefill in the editor and warns the user to press Enter. This two-step flow lets the user manage context window usage before starting a new task while avoiding unnecessary LLM follow-up in the old session.

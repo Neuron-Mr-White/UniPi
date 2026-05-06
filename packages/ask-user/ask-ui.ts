@@ -641,19 +641,39 @@ export function createRenderResult() {
           0,
         );
       case "new_session": {
-        const launchedWith = (response as any).launchedWith;
-        if (launchedWith === "compact") {
+        const prefill = response.prefill || "";
+        if (response.launchStatus === "editor_prefill") {
+          const label = response.launchedWith === "compact"
+            ? "⚠ compact editor prefill → "
+            : "⚠ direct editor prefill → ";
           return new Text(
-            theme.fg("success", "✓ compacted → ") +
-              theme.fg("accent", response.prefill || ""),
+            theme.fg("warning", label) + theme.fg("accent", prefill),
             0,
             0,
           );
         }
-        if (launchedWith === "direct") {
+        if (response.launchStatus === "failed") {
+          const label = response.launchedWith === "compact"
+            ? "handoff failed (compact) → "
+            : "handoff failed (direct) → ";
           return new Text(
-            theme.fg("success", "✓ running → ") +
-              theme.fg("accent", response.prefill || ""),
+            theme.fg("error", label) + theme.fg("accent", prefill),
+            0,
+            0,
+          );
+        }
+        if (response.launchedWith === "compact") {
+          return new Text(
+            theme.fg("success", "✓ queued compact → ") +
+              theme.fg("accent", prefill),
+            0,
+            0,
+          );
+        }
+        if (response.launchedWith === "direct") {
+          return new Text(
+            theme.fg("success", "✓ queued direct → ") +
+              theme.fg("accent", prefill),
             0,
             0,
           );
@@ -661,7 +681,7 @@ export function createRenderResult() {
         return new Text(
           theme.fg("success", "✓ ") +
             theme.fg("muted", "new session") +
-            (response.prefill ? theme.fg("accent", `: ${response.prefill}`) : ""),
+            (prefill ? theme.fg("accent", `: ${prefill}`) : ""),
           0,
           0,
         );

@@ -16,6 +16,7 @@ import type { NormalizedOption, AskUserResponse, SessionLauncherResult } from ".
 import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
 import { renderLauncherUI } from "./launcher-ui.js";
 import { getAskUserSettings } from "./config.js";
+import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
 
 /**
  * Register ask-user tools.
@@ -37,7 +38,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       "Use allowFreeform: false to restrict to predefined options only.",
       "Use action: 'input' on an option to let the user add custom text before submitting.",
       "Use action: 'end_turn' on an option to let the user signal end of turn.",
-      "Use action: 'new_session' with prefill to let the user start a new session.",
+      "Use action: 'new_session' with prefill to let the user hand off to a queued follow-up message or slash command."
     ],
     parameters: Type.Object({
       question: Type.String({
@@ -78,7 +79,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
                 {
                   description:
                     "Special action: 'select' (default), 'input' (text input), " +
-                    "'end_turn' (signal end of turn), 'new_session' (start new session with prefill).",
+                    "'end_turn' (signal end of turn), 'new_session' (queue handoff with prefill).",
                 },
               ),
             ),
@@ -326,8 +327,8 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           break;
         case "new_session":
           contentText = response.prefill
-            ? `User chose to start a new session: ${response.prefill}`
-            : "User chose to start a new session.";
+            ? `User chose to hand off to: ${response.prefill}`
+            : "User chose a handoff without a prefill.";
           break;
         case "timed_out":
           contentText = "User did not respond (timed out)";
@@ -357,35 +358,48 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           };
         }
 
-        if (launcherResult.action === "compact") {
-          try {
-            // Use the compactor sentinel so @pi-unipi/compactor's zero-LLM
-            // pipeline intercepts. If compactor is not installed, Pi's built-in
-            // LLM-based compaction runs instead.
-            const compactInstructions = `${COMPACTOR_INSTRUCTION}\nPreparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`;
-            await new Promise<void>((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                reject(new Error("Compaction timed out after 30 seconds"));
-              }, 30_000);
-              ctx.compact({
-                customInstructions: compactInstructions,
-                onComplete: () => {
-                  clearTimeout(timeout);
-                  resolve();
-                },
-                onError: (err) => {
-                  clearTimeout(timeout);
-                  reject(err);
-                },
-              });
-            });
-          } catch (err) {
-            // Compaction failure or timeout shouldn't block the session launch — continue anyway
-          }
+        const handoff = launcherResult.action === "compact"
+          ? queueCompactHandoff({
+              pi,
+              ctx,
+              prefill,
+              // Use the compactor sentinel so @pi-unipi/compactor's zero-LLM
+              // pipeline intercepts. If compactor is not installed, Pi's built-in
+              // LLM-based compaction runs instead.
+              customInstructions: `${COMPACTOR_INSTRUCTION}\nPreparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`,
+            })
+          : queueDirectHandoff(pi, ctx, prefill);
+
+        if (handoff.status === "cancelled") {
+          return {
+            content: [{ type: "text", text: "Session launch cancelled: no prefill message was provided." }],
+            details: {
+              question,
+              options: normalizedOptions.map((o) => o.label),
+              response: {
+                kind: "cancelled",
+                comment: "Session launcher had no prefill to queue",
+                launchStatus: handoff.status,
+                launchReason: handoff.reason,
+              } as AskUserResponse,
+            },
+          };
         }
 
-        const actionLabel = launcherResult.action === "compact" ? "compacted" : "running";
-        contentText = `User chose to proceed (${actionLabel}): ${prefill}`;
+        if (handoff.status !== "failed") {
+          // Handoff is scheduled/queued or recoverably editor-prefilled; abort the
+          // current turn so the queued command can run without LLM follow-up.
+          ctx.abort();
+        }
+
+        const launchLabel = launcherResult.action === "compact" ? "compact" : "direct";
+        if (handoff.status === "editor_prefill") {
+          contentText = `Queued ${launchLabel} handoff fell back to editor prefill: ${handoff.prefill}`;
+        } else if (handoff.status === "failed") {
+          contentText = `Failed to queue ${launchLabel} handoff: ${handoff.prefill ?? prefill}`;
+        } else {
+          contentText = `Queued ${launchLabel} handoff: ${handoff.prefill ?? prefill}`;
+        }
 
         return {
           content: [{ type: "text", text: contentText }],
@@ -394,7 +408,11 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
             options: normalizedOptions.map((o) => o.label),
             response: {
               ...response,
+              prefill: handoff.prefill ?? prefill,
               launchedWith: launcherResult.action,
+              launchStatus: handoff.status,
+              launchReason: handoff.reason,
+              launchError: handoff.error,
             },
           },
         };

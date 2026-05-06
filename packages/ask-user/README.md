@@ -12,6 +12,8 @@ Ask-user has no user commands. It's an agent tool package — the agent calls it
 
 All workflow skills detect ask-user and use it for decision gates. Instead of the agent deciding on its own, it presents options and waits for your input. This happens naturally during brainstorm, plan, work, and other skills when the agent faces ambiguity.
 
+For workflow handoffs, options can use `action: "new_session"` with a `prefill`. Selecting one opens a launcher where **Compact & run** queues the prefill after compaction (or a short fallback) and **Run directly** queues it immediately. If automatic queuing fails, the prefill is placed in the editor for you to submit manually.
+
 The bundled skill guides the agent to use `ask_user` for high-stakes decisions — architecture choices, database selection, naming decisions, anything with lasting impact.
 
 ## Agent Tool
@@ -42,6 +44,34 @@ ask_user({
   ],
 })
 ```
+
+### `new_session` Handoffs
+
+```typescript
+ask_user({
+  question: "Continue with implementation?",
+  options: [
+    {
+      label: "Proceed to work",
+      value: "work",
+      action: "new_session",
+      prefill: "/unipi:work specs:2026-05-06-feature-plan.md",
+    },
+    { label: "Done for now", value: "done", action: "end_turn" },
+  ],
+  allowFreeform: false,
+})
+```
+
+When the user chooses a `new_session` option:
+
+| Launcher choice | Behavior |
+|-----------------|----------|
+| 🧹 Compact & run | Starts context compaction, returns immediately, then queues/submits the prefill as a follow-up message from the compaction callback or a short fallback timer |
+| ▶ Run directly | Queues/submits the prefill immediately as a follow-up message |
+| ✕ Cancel | Cancels the handoff; no message is queued |
+
+The tool result is rendered as `queued compact → ...` or `queued direct → ...`. If automatic delivery fails, ask-user falls back to editor prefill and warns you to press Enter.
 
 ### Keyboard Controls
 

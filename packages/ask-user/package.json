@@ -23,6 +23,7 @@
     "index.ts",
     "types.ts",
     "tools.ts",
+    "handoff.ts",
     "ask-ui.ts",
     "launcher-ui.ts",
     "commands.ts",
