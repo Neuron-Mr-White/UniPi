@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "^0.1.6"
+    "@pi-unipi/core": "^2.0.0"
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",
