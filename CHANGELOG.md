@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - No unreleased changes yet.
 
+## [2.0.1] — 2026-05-15
+
+### Fixed
+- `workflow`: require `@pi-unipi/core@^2.0.0` so npm installs do not load stale nested core 0.1.x copies that lack `getBlockedToolsForLevel`.
+- `ralph`: align the internal `@pi-unipi/core` dependency range with the 2.x suite to avoid the same stale nested-core risk.
+- `cocoindex`: extend update timeout handling with clearer timeout/error output and make `COCOINDEX_UPDATE_TIMEOUT_MS` configurable.
+- `cocoindex`: skip huge generated/lock files in the default pipeline template to avoid runaway indexing and noisy generated artifacts.
+- `ask-user`: render full questions, context, options, descriptions, actions, and prefill text in the tool-call display with wrapping for long prompts.
+
 ## [2.0.0] — 2026-05-06
 
 ### Breaking Changes

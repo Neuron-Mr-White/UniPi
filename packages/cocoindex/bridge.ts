@@ -64,6 +64,7 @@ export interface CocoindexDeps {
 const COCOINDEX_STATE_DIR = ".cocoindex";
 const DEFAULT_PIPELINE_DIR = ".unipi/cocoindex";
 const DEFAULT_LANCEDB_PATH = ".unipi/cocoindex/.lancedb";
+const DEFAULT_UPDATE_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_LEXICAL_SCAN_LIMIT = 50_000;
 
 // ─────────────────────────────────────────────────────────
@@ -268,11 +269,22 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
     const proc = spawn(cocoindexBin, ["update", "main.py"], {
       cwd: pipelineDir,
       stdio: ["pipe", "pipe", "pipe"],
-      timeout: 300000, // 5 min timeout
     });
 
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    let settled = false;
+    const timeoutMs = getUpdateTimeoutMs();
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        if (!settled) proc.kill("SIGKILL");
+      }, 5000).unref();
+    }, timeoutMs);
+    timer.unref();
 
     proc.stdout.on("data", (data: Buffer) => {
       stdout += data.toString();
@@ -282,7 +294,9 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
       stderr += data.toString();
     });
 
-    proc.on("close", (code: number | null) => {
+    proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      settled = true;
+      clearTimeout(timer);
       const durationMs = Date.now() - start;
       const chunksProcessed = parseChunksProcessed(stdout);
 
@@ -293,12 +307,14 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
           success: false,
           chunksProcessed,
           durationMs,
-          error: stderr.trim() || `Process exited with code ${code}`,
+          error: formatIndexFailure({ code, signal, timedOut, timeoutMs, stdout, stderr }),
         });
       }
     });
 
     proc.on("error", (err: Error) => {
+      settled = true;
+      clearTimeout(timer);
       resolve({
         success: false,
         chunksProcessed: 0,
@@ -310,6 +326,46 @@ export async function indexProject(projectDir: string): Promise<IndexResult> {
 }
 
 /** Parse the number of files processed from cocoindex v1.0+ output. */
+function getUpdateTimeoutMs(): number {
+  const raw = process.env.COCOINDEX_UPDATE_TIMEOUT_MS;
+  if (!raw) return DEFAULT_UPDATE_TIMEOUT_MS;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_UPDATE_TIMEOUT_MS;
+  return parsed;
+}
+
+function formatIndexFailure(args: {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  timeoutMs: number;
+  stdout: string;
+  stderr: string;
+}): string {
+  const parts: string[] = [];
+
+  if (args.timedOut) {
+    parts.push(`Timed out after ${(args.timeoutMs / 1000).toFixed(0)}s`);
+  } else if (args.signal) {
+    parts.push(`Process terminated by ${args.signal}`);
+  } else {
+    parts.push(`Process exited with code ${args.code ?? "unknown"}`);
+  }
+
+  const stderr = tailText(args.stderr.trim(), 4000);
+  const stdout = tailText(args.stdout.trim(), 2000);
+  if (stderr) parts.push(`stderr:\n${stderr}`);
+  if (stdout) parts.push(`stdout:\n${stdout}`);
+
+  return parts.join("\n\n");
+}
+
+function tailText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `…${text.slice(-maxChars)}`;
+}
+
 function parseChunksProcessed(output: string): number {
   // v1.0+ format: "✅ process_file: 604 total | 604 added"
   // Capture the last "added" or "reprocessed" count for process_file
@@ -321,9 +377,14 @@ function parseChunksProcessed(output: string): number {
     }
   }
   if (lastProcessLine) {
-    // Match the number before "added" or "reprocessed"
-    const match = lastProcessLine.match(/(\d+)\s+(?:added|reprocessed)/);
-    if (match) return parseInt(match[1], 10);
+    // Prefer completed work counts. Lines can contain multiple counters, e.g.
+    // "process_file: 615 total | 8 added, 606 reprocessed".
+    const matches = [...lastProcessLine.matchAll(/(\d+)\s+(?:added|reprocessed|skipped|deleted)/g)];
+    const completed = matches.reduce((sum, match) => sum + parseInt(match[1], 10), 0);
+    if (completed > 0) return completed;
+
+    const total = lastProcessLine.match(/process_file:\s*(\d+)\s+total/);
+    if (total) return parseInt(total[1], 10);
   }
 
   // Fallback: old format "Processed 42 chunks"
@@ -634,6 +695,8 @@ import os
 
 # ── Configuration ────────────────────────────────────
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", "${projectDir}")
+# Safety limit for huge generated/lock files. Set COCO_MAX_FILE_CHARS=0 to disable.
+MAX_FILE_CHARS = int(os.environ.get("COCO_MAX_FILE_CHARS", "200000"))
 
 # ── LanceDB context key ──────────────────────────────
 db_key = coco.ContextKey("lancedb/${projectBasename}")
@@ -703,6 +766,8 @@ async def process_file(
 
     if not content.strip():
         return
+    if MAX_FILE_CHARS > 0 and len(content) > MAX_FILE_CHARS:
+        return
 
     relative = file.file_path.path.as_posix()
     chunks = await chunk_text(content)
@@ -750,7 +815,10 @@ async def app_main() -> None:
             excluded_patterns=[
                 "**/node_modules/**", "**/.git/**", "**/dist/**",
                 "**/build/**", "**/.next/**", "**/__pycache__/**",
-                "**/.unipi/cocoindex/**",
+                "**/coverage/**", "**/.turbo/**", "**/.cache/**",
+                "**/.unipi/**",
+                "**/*.min.js", "**/bundled.js", "**/bundle.js", "**/*bundle*.js",
+                "**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock",
             ],
         ),
     )

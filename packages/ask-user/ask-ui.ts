@@ -450,6 +450,20 @@ export function renderAskUI(params: {
       theme: Theme,
       width: number,
     ) {
+      const addWrappedOptionLine = (prefix: string, content: string) => {
+        const prefixWidth = visibleWidth(prefix);
+        const contentWidth = Math.max(1, width - prefixWidth);
+        const continuationPrefix = " ".repeat(prefixWidth);
+        const wrapped = wrapTextWithAnsi(content, contentWidth);
+        for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
+          add((lineIndex === 0 ? prefix : continuationPrefix) + wrapped[lineIndex]);
+        }
+      };
+
+      const addWrappedDescription = (description: string) => {
+        addWrappedOptionLine("     ", theme.fg("muted", description));
+      };
+
       for (let i = 0; i < displayOptions.length; i++) {
         const opt = displayOptions[i];
         const isSelected = i === optionIndex;
@@ -467,11 +481,9 @@ export function renderAskUI(params: {
             label = `${opt.label}: "${customText}"`;
           }
           
-          add(
-            prefix +
-              theme.fg(color, `[${box}]`) +
-              " " +
-              theme.fg(isSelected ? "accent" : "text", label),
+          addWrappedOptionLine(
+            prefix + theme.fg(color, `[${box}]`) + " ",
+            theme.fg(isSelected ? "accent" : "text", label),
           );
           
           // Show edit indicator if in edit mode for this option
@@ -493,11 +505,9 @@ export function renderAskUI(params: {
             label = `${opt.label}: "${optCustom}"`;
           }
           
-          add(
-            prefix +
-              theme.fg(color, `[${box}]`) +
-              " " +
-              theme.fg(isSelected ? "accent" : "text", label),
+          addWrappedOptionLine(
+            prefix + theme.fg(color, `[${box}]`) + " ",
+            theme.fg(isSelected ? "accent" : "text", label),
           );
           
           // Show edit indicator if in edit mode for this option
@@ -525,11 +535,11 @@ export function renderAskUI(params: {
             label += theme.fg("dim", " ↗");
           }
           
-          add(
-            prefix +
-              (isSelected
-                ? theme.fg("accent", label)
-                : theme.fg("text", label)),
+          addWrappedOptionLine(
+            prefix,
+            isSelected
+              ? theme.fg("accent", label)
+              : theme.fg("text", label),
           );
           
           // Show edit indicator if in edit mode for this option
@@ -543,7 +553,7 @@ export function renderAskUI(params: {
 
         // Description
         if (opt.description) {
-          add(`     ${theme.fg("muted", opt.description)}`);
+          addWrappedDescription(opt.description);
         }
       }
     }
@@ -564,17 +574,46 @@ export function renderAskUI(params: {
 export function createRenderCall() {
   return (args: Record<string, unknown>, theme: Theme, _context: unknown) => {
     const question = (args.question as string) || "";
-    const options = Array.isArray(args.options) ? args.options : [];
+    const context = (args.context as string | undefined) || "";
+    const options = Array.isArray(args.options)
+      ? (args.options as Array<Record<string, unknown>>)
+      : [];
     const mode = args.allowMultiple ? "multi-select" : "single-select";
+    const allowFreeform = args.allowFreeform !== false;
     const count = options.length;
 
-    let text =
-      theme.fg("toolTitle", theme.bold("ask_user ")) +
-      theme.fg("muted", question);
-    if (count > 0) {
-      text += theme.fg("dim", ` (${count} option${count !== 1 ? "s" : ""}, ${mode})`);
+    const lines: string[] = [];
+    lines.push(
+      theme.fg("toolTitle", theme.bold("ask_user")) +
+        theme.fg("dim", ` (${count} option${count !== 1 ? "s" : ""}, ${mode}${allowFreeform ? ", freeform" : ""})`),
+    );
+    if (context) {
+      lines.push(theme.fg("muted", "Context: ") + theme.fg("text", context));
     }
-    return new Text(text, 0, 0);
+    lines.push(theme.fg("muted", "Question: ") + theme.fg("text", question));
+
+    if (count > 0) {
+      lines.push(theme.fg("muted", "Options:"));
+      options.forEach((option, index) => {
+        const label = String(option.label ?? option.value ?? `Option ${index + 1}`);
+        const action = typeof option.action === "string" && option.action !== "select"
+          ? theme.fg("dim", ` [${option.action}]`)
+          : "";
+        lines.push(
+          theme.fg("dim", `  ${index + 1}. `) +
+            theme.fg("text", label) +
+            action,
+        );
+        if (typeof option.description === "string" && option.description.trim()) {
+          lines.push(theme.fg("muted", `     ${option.description}`));
+        }
+        if (typeof option.prefill === "string" && option.prefill.trim()) {
+          lines.push(theme.fg("dim", `     prefill: ${option.prefill}`));
+        }
+      });
+    }
+
+    return new Text(lines.join("\n"), 0, 0);
   };
 }
 

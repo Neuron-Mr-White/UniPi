@@ -27,6 +27,8 @@ EMBEDDING_MODEL = os.environ.get(
 )
 EMBEDDING_DIM = int(os.environ.get("COCO_EMBEDDING_DIM", "4096"))
 EMBED_BATCH_SIZE = int(os.environ.get("COCO_EMBED_BATCH_SIZE", "64"))
+# Safety limit for huge generated/lock files. Set COCO_MAX_FILE_CHARS=0 to disable.
+MAX_FILE_CHARS = int(os.environ.get("COCO_MAX_FILE_CHARS", "200000"))
 
 # ── LanceDB context key ──────────────────────────────
 db_key = coco.ContextKey("lancedb/unipi")
@@ -148,6 +150,8 @@ async def process_file(
 
     if not content.strip():
         return
+    if MAX_FILE_CHARS > 0 and len(content) > MAX_FILE_CHARS:
+        return
 
     relative = file.file_path.path.as_posix()
     chunks = await chunk_text(content)
@@ -210,8 +214,11 @@ async def app_main() -> None:
             ],
             excluded_patterns=[
                 "**/node_modules/**", "**/.git/**", "**/dist/**",
-                "**/build/**", "**/.next/**", "__pycache__/**",
-                "**/.unipi/cocoindex/**",
+                "**/build/**", "**/.next/**", "**/__pycache__/**",
+                "**/coverage/**", "**/.turbo/**", "**/.cache/**",
+                "**/.unipi/**",
+                "**/*.min.js", "**/bundled.js", "**/bundle.js", "**/*bundle*.js",
+                "**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock",
             ],
         ),
     )
