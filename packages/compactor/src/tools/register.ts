@@ -14,7 +14,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { compactTool } from "./compact.js";
 import { vccRecall, type RecallInput } from "./vcc-recall.js";
 import { ctxExecute, type CtxExecuteInput } from "./ctx-execute.js";
@@ -23,6 +23,9 @@ import { ctxBatchExecute, type BatchItem } from "./ctx-batch-execute.js";
 import { ctxStats, type CtxStatsResult } from "./ctx-stats.js";
 import { ctxDoctor, type DoctorResult } from "./ctx-doctor.js";
 import { contextBudgetTool } from "./context-budget.js";
+import { recallBlocksFromContext } from "../session/recall-blocks.js";
+import { filterNoise } from "../compaction/filter-noise.js";
+import { loadConfig } from "../config/manager.js";
 import type { SessionDB } from "../session/db.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
@@ -157,10 +160,12 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   } as any));
 
   // 2. session_recall (new) / vcc_recall (deprecated) — search session history
-  const recallExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const recallExec = async (_toolCallId: string, params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
     const c = deps.getCounters?.();
     if (c) { c.recallQueries++; }
-    const blocks = deps.getBlocks();
+    const config = loadConfig(ctx?.cwd ?? process.cwd());
+    const liveBlocks = ctx ? filterNoise(recallBlocksFromContext(ctx), config.pipeline?.customNoisePatterns) : [];
+    const blocks = liveBlocks.length > 0 ? liveBlocks : deps.getBlocks();
     const input: RecallInput = {
       query: params.query,
       mode: params.mode,

@@ -13,6 +13,8 @@ import { getLastCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
+import { recallBlocksFromContext } from "../session/recall-blocks.js";
+import { filterNoise } from "../compaction/filter-noise.js";
 import type { SessionDB } from "../session/db.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
@@ -90,13 +92,19 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
 
   // ── /unipi:session-recall (new) ─────────────────────
-  const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext) => {
+  const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext, commandName = "/unipi:session-recall") => {
     const query = args.trim();
     if (!query) {
-      ctx.ui.notify("Usage: /unipi:session-recall <query>", "warning");
+      const suffix = commandName === "/unipi:compact-recall" ? " (deprecated; use /unipi:session-recall <query>)" : "";
+      ctx.ui.notify(`Usage: ${commandName} <query>${suffix}`, "warning");
       return;
     }
-    const blocks = deps?.getBlocks() ?? [];
+
+    // Prefer the live session branch over cached blocks. The branch includes raw
+    // pre-compaction messages that are omitted from the compacted LLM context.
+    const config = loadConfig((ctx as any).cwd ?? process.cwd());
+    const liveBlocks = filterNoise(recallBlocksFromContext(ctx), config.pipeline?.customNoisePatterns);
+    const blocks = liveBlocks.length > 0 ? liveBlocks : (deps?.getBlocks() ?? []);
     if (blocks.length === 0) {
       ctx.ui.notify("No session history available for search.", "warning");
       return;
@@ -120,7 +128,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     description: "(DEPRECATED) Search session history — use /unipi:session-recall instead",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       deprecationLog("/unipi:compact-recall", "/unipi:session-recall");
-      return sessionRecallHandler(args, ctx);
+      return sessionRecallHandler(args, ctx, "/unipi:compact-recall");
     },
   });
 

@@ -1,0 +1,85 @@
+import { describe, expect, it } from "bun:test";
+import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import { recallBlocksFromContext, recallBlocksFromSessionEntries } from "../src/session/recall-blocks.js";
+import { vccRecall } from "../src/tools/vcc-recall.js";
+
+function entry(id: string, parentId: string | null, message: any): SessionEntry {
+  return {
+    type: "message",
+    id,
+    parentId,
+    timestamp: "2026-05-16T00:00:00.000Z",
+    message,
+  } as SessionEntry;
+}
+
+describe("recall block extraction", () => {
+  it("includes raw messages before compaction", () => {
+  const entries: SessionEntry[] = [
+    entry("u1", null, { role: "user", content: "Remember the secret keyword: nebula" }),
+    entry("a1", "u1", { role: "assistant", content: [{ type: "text", text: "Noted." }] }),
+    {
+      type: "compaction",
+      id: "c1",
+      parentId: "a1",
+      timestamp: "2026-05-16T00:00:01.000Z",
+      summary: "Conversation compacted.",
+      firstKeptEntryId: "a1",
+      tokensBefore: 1000,
+    } as SessionEntry,
+    entry("u2", "c1", { role: "user", content: "What was the keyword?" }),
+  ];
+
+  const blocks = recallBlocksFromSessionEntries(entries);
+  const result = vccRecall(blocks, { query: "nebula", limit: 5, expand: true });
+
+    expect(result.hits).toHaveLength(1);
+    expect(result.hits[0].text).toMatch(/secret keyword: nebula/);
+  });
+
+  it("reads sessionManager branch instead of compacted context only", () => {
+  const branch: SessionEntry[] = [
+    entry("u1", null, { role: "user", content: "Pre-compaction detail: zircon" }),
+    {
+      type: "compaction",
+      id: "c1",
+      parentId: "u1",
+      timestamp: "2026-05-16T00:00:01.000Z",
+      summary: "Old detail omitted from summary.",
+      firstKeptEntryId: "u1",
+      tokensBefore: 1000,
+    } as SessionEntry,
+  ];
+  const ctx = {
+    sessionManager: {
+      getBranch: () => branch,
+      buildSessionContext: () => ({ messages: [{ role: "user", content: "Only compacted context" }] }),
+    },
+  };
+
+  const blocks = recallBlocksFromContext(ctx);
+  const result = vccRecall(blocks, { query: "zircon", limit: 5, expand: true });
+
+    expect(result.hits).toHaveLength(1);
+    expect(result.hits[0].text).toMatch(/zircon/);
+  });
+
+  it("indexes Pi-specific bashExecution messages", () => {
+  const entries: SessionEntry[] = [
+    entry("b1", null, {
+      role: "bashExecution",
+      command: "grep zircon notes.txt",
+      output: "zircon found",
+      exitCode: 0,
+      cancelled: false,
+    }),
+  ];
+
+  const blocks = recallBlocksFromSessionEntries(entries);
+  const result = vccRecall(blocks, { query: "zircon", limit: 5, expand: true });
+
+    expect(result.hits).toHaveLength(1);
+    expect(result.hits[0].kind).toBe("tool_result");
+    expect(result.hits[0].text).toMatch(/grep zircon/);
+  });
+});

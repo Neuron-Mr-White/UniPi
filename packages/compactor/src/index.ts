@@ -14,6 +14,7 @@ import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
+import { recallBlocksFromContext } from "./session/recall-blocks.js";
 import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
 import type { RuntimeStats } from "./session/analytics.js";
 
@@ -242,12 +243,20 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       // Non-fatal
     }
 
-    // Re-cache normalized blocks for vcc_recall
+    // Re-cache normalized blocks for session_recall/vcc_recall.
+    // Command/event contexts do not expose ctx.messages; use the append-only
+    // session branch so recall can find raw messages hidden by compaction.
     try {
-      const messages = (ctx as any).messages ?? [];
-      if (messages.length > 0) {
-        const normalized = normalizeMessages(messages);
-        cachedBlocks = filterNoise(normalized, config.pipeline?.customNoisePatterns);
+      const sessionBlocks = recallBlocksFromContext(ctx);
+      if (sessionBlocks.length > 0) {
+        cachedBlocks = filterNoise(sessionBlocks, config.pipeline?.customNoisePatterns);
+      } else {
+        // Defensive fallback for older Pi contexts that happened to expose messages.
+        const messages = (ctx as any).messages ?? [];
+        if (messages.length > 0) {
+          const normalized = normalizeMessages(messages);
+          cachedBlocks = filterNoise(normalized, config.pipeline?.customNoisePatterns);
+        }
       }
     } catch {
       // Non-fatal: recall will work on empty blocks
