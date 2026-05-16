@@ -1,6 +1,6 @@
 # Unipi
 
-18 packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, and a live status bar — all wired together through a shared event system.
+20 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
 
 One command installs everything:
 ```bash
@@ -16,6 +16,8 @@ pi install npm:@pi-unipi/unipi
 **[Memory](./packages/memory/README.md)** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
 
 **[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, sandbox execution, FTS5 search.
+
+**[CocoIndex](./packages/cocoindex/README.md)** — Project indexing and semantic code search backed by CocoIndex and LanceDB. Agent tools and slash commands for status, init, update, and search.
 
 **[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
 
@@ -42,6 +44,8 @@ pi install npm:@pi-unipi/unipi
 **[Updater](./packages/updater/README.md)** — Checks npm for new versions on session start. Changelog browser and readme browser in TUI overlays.
 
 **[Input Shortcuts](./packages/input-shortcuts/README.md)** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
+
+**[Command Enchantment](./packages/autocomplete/README.md)** — Enhanced `/unipi:*` autocomplete with package grouping, descriptions, colors, and registry audits that catch stale command docs before release.
 
 ## Architecture
 
@@ -78,6 +82,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Ralph | `/unipi:ralph` | start, stop, resume, status |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
 | Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-settings, compact-preset, compact-help |
+| CocoIndex | `/unipi:cocoindex-` | init, update, status, search, settings |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |
@@ -121,6 +126,7 @@ unipi/
 │   ├── ralph/          # Iterative loops
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine
+│   ├── cocoindex/      # Project indexing and semantic search
 │   ├── subagents/      # Parallel execution
 │   ├── web-api/        # Web research
 │   ├── mcp/            # MCP server integration
@@ -134,6 +140,7 @@ unipi/
 │   ├── utility/        # Diagnostics, diff rendering
 │   ├── updater/        # Auto-update, browsers
 │   ├── input-shortcuts/ # Keyboard shortcuts
+│   ├── autocomplete/   # Enhanced command autocomplete
 │   └── unipi/          # Umbrella package
 ├── .unipi/             # Runtime data (specs, plans, worktrees)
 └── CHANGELOG.md

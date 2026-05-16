@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-05-16 (v2.0.2)
+last-run: 2026-05-16 (v2.0.3)
 ---
 
 # Full Release Pipeline
@@ -25,27 +25,27 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 2.0.2 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.0.2 |
-| `packages/btw` | `@pi-unipi/btw` | 2.0.2 |
-| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.0.2 |
-| `packages/compactor` | `@pi-unipi/compactor` | 2.0.2 |
-| `packages/core` | `@pi-unipi/core` | 2.0.2 |
-| `packages/footer` | `@pi-unipi/footer` | 2.0.2 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 2.0.2 |
-| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.0.2 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 2.0.2 |
-| `packages/mcp` | `@pi-unipi/mcp` | 2.0.2 |
-| `packages/memory` | `@pi-unipi/memory` | 2.0.2 |
-| `packages/milestone` | `@pi-unipi/milestone` | 2.0.2 |
-| `packages/notify` | `@pi-unipi/notify` | 2.0.2 |
-| `packages/ralph` | `@pi-unipi/ralph` | 2.0.2 |
-| `packages/subagents` | `@pi-unipi/subagents` | 2.0.2 |
-| `packages/updater` | `@pi-unipi/updater` | 2.0.2 |
-| `packages/utility` | `@pi-unipi/utility` | 2.0.2 |
-| `packages/web-api` | `@pi-unipi/web-api` | 2.0.2 |
-| `packages/workflow` | `@pi-unipi/workflow` | 2.0.2 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.0.2 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 2.0.3 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.0.3 |
+| `packages/btw` | `@pi-unipi/btw` | 2.0.3 |
+| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.0.3 |
+| `packages/compactor` | `@pi-unipi/compactor` | 2.0.3 |
+| `packages/core` | `@pi-unipi/core` | 2.0.3 |
+| `packages/footer` | `@pi-unipi/footer` | 2.0.3 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 2.0.3 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.0.3 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 2.0.3 |
+| `packages/mcp` | `@pi-unipi/mcp` | 2.0.3 |
+| `packages/memory` | `@pi-unipi/memory` | 2.0.3 |
+| `packages/milestone` | `@pi-unipi/milestone` | 2.0.3 |
+| `packages/notify` | `@pi-unipi/notify` | 2.0.3 |
+| `packages/ralph` | `@pi-unipi/ralph` | 2.0.3 |
+| `packages/subagents` | `@pi-unipi/subagents` | 2.0.3 |
+| `packages/updater` | `@pi-unipi/updater` | 2.0.3 |
+| `packages/utility` | `@pi-unipi/utility` | 2.0.3 |
+| `packages/web-api` | `@pi-unipi/web-api` | 2.0.3 |
+| `packages/workflow` | `@pi-unipi/workflow` | 2.0.3 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.0.3 |
 
 ---
 
@@ -125,14 +125,23 @@ Check that info-screen's dependencies and references are consistent:
 
 ```bash
 # Verify info-screen's dependencies exist in the monorepo
-for dep in $(cat packages/info-screen/package.json | jq -r '.dependencies // {} | keys[]' | grep '@pi-unipi'); do
-  pkg=$(echo "$dep" | sed 's/@pi-unipi\///')
-  if [ ! -d "packages/$pkg" ]; then
-    echo "MISSING: packages/$pkg (dependency of info-screen)"
-  else
-    echo "OK: packages/$pkg"
-  fi
-done
+node - <<'JS'
+const fs = require('fs');
+const deps = Object.keys(JSON.parse(fs.readFileSync('packages/info-screen/package.json', 'utf8')).dependencies ?? {})
+  .filter((dep) => dep.startsWith('@pi-unipi/'));
+let missing = false;
+for (const dep of deps) {
+  const pkg = dep.replace('@pi-unipi/', '');
+  const path = `packages/${pkg}`;
+  if (!fs.existsSync(path)) {
+    console.log(`MISSING: ${path} (dependency of info-screen)`);
+    missing = true;
+  } else {
+    console.log(`OK: ${path}`);
+  }
+}
+process.exit(missing ? 1 : 0);
+JS
 ```
 
 Expected: All info-screen dependencies resolve within the monorepo.
@@ -353,13 +362,17 @@ Expected: ~4-6s (includes bash startup). If >10s, the alias may be loading from 
 ### Step 15: Verify npm Publications
 
 ```bash
-for pkg in packages/*/; do
-  if [ -f "$pkg/package.json" ]; then
-    name=$(cat "$pkg/package.json" | jq -r '.name')
-    version=$(cat "$pkg/package.json" | jq -r '.version')
-    echo "Checking $name@$version..."
-    npm view "$name" version 2>/dev/null || echo "NOT FOUND: $name"
-  fi
+node - <<'JS' | while read -r name version; do
+const fs = require('fs');
+for (const dir of fs.readdirSync('packages')) {
+  const pkgPath = `packages/${dir}/package.json`;
+  if (!fs.existsSync(pkgPath)) continue;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  console.log(`${pkg.name} ${pkg.version}`);
+}
+JS
+  echo "Checking $name@$version..."
+  npm view "$name" version 2>/dev/null || echo "NOT FOUND: $name"
 done
 ```
 
@@ -382,7 +395,7 @@ Expected: Push succeeds, remote is up to date.
 ### Step 17: Create Git Tag (Optional)
 
 ```bash
-VERSION=$(cat package.json | jq -r '.version')
+VERSION=$(node -p "require('./package.json').version")
 git tag "v$VERSION"
 git push origin "v$VERSION"
 ```

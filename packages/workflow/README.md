@@ -97,6 +97,8 @@ For small tasks that skip the full flow:
 /unipi:worktree-merge feat/new-feature
 ```
 
+Worktree command arguments autocomplete from `.unipi/worktrees`. Suggestions are cached after the first scan in a Pi session so large worktree directories do not slow down repeated `/unipi:worktree-merge` completions.
+
 ## Special Triggers
 
 Workflow skills detect installed packages and enhance their behavior automatically. This is the coexists system — each package adds capabilities without requiring configuration.

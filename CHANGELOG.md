@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.3] — 2026-05-16
+
+### Fixed
+- `ask-user`: expanded historical `ask_user` results now show the previous question, context, and available options when toggled with Ctrl+O.
+- `workflow`: cached worktree argument completions per working directory so `/unipi:worktree-merge` suggestions do not rescan `.unipi/worktrees` on every autocomplete call.
+
 ### Changed
-- No unreleased changes yet.
+- `ask-user`: tool result details now preserve normalized options and input-mode metadata for richer TUI history rendering.
+- `unipi`: regenerated the bundled all-in-one extension after the ask-user and workflow fixes.
 
 ## [2.0.2] — 2026-05-16
 

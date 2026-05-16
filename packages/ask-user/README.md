@@ -73,6 +73,10 @@ When the user chooses a `new_session` option:
 
 The tool result is rendered as `queued compact → ...` or `queued direct → ...`. If automatic delivery fails, ask-user falls back to editor prefill and warns you to press Enter.
 
+### History Expansion
+
+Completed `ask_user` calls stay readable in chat history. The collapsed result shows the selected answer; press Ctrl+O on the tool result to expand the original question, context, and options that were presented.
+
 ### Keyboard Controls
 
 | Mode | Keys |
