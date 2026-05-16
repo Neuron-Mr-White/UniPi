@@ -621,7 +621,7 @@ export function createRenderCall() {
  * Create a renderResult function for the ask_user tool.
  */
 export function createRenderResult() {
-  return (result: AgentToolResult<unknown>, _options: unknown, theme: Theme, _context: unknown) => {
+  return (result: AgentToolResult<unknown>, options: unknown, theme: Theme, _context: unknown) => {
     const details = result.details as Record<string, unknown> | undefined;
     if (!details) {
       const content = result.content as unknown as Array<Record<string, unknown>> | undefined;
@@ -634,103 +634,110 @@ export function createRenderResult() {
       return new Text(theme.fg("warning", "No response"), 0, 0);
     }
 
-    switch (response.kind) {
-      case "cancelled":
-        return new Text(theme.fg("warning", "Cancelled"), 0, 0);
-      case "timed_out":
-        return new Text(theme.fg("warning", "Timed out"), 0, 0);
-      case "freeform":
-        return new Text(
-          theme.fg("success", "✓ ") +
+    const renderOptionSummary = (): string[] => {
+      const rawOptions = (details as { options?: unknown }).options;
+      if (!Array.isArray(rawOptions) || rawOptions.length === 0) return [];
+      return rawOptions.map((opt, index) => {
+        if (typeof opt === "string") {
+          return theme.fg("dim", `  ${index + 1}. `) + theme.fg("text", opt);
+        }
+        const record = opt as Record<string, unknown>;
+        const label = String(record.label ?? record.value ?? `Option ${index + 1}`);
+        const value = typeof record.value === "string" && record.value !== label
+          ? theme.fg("dim", ` (${record.value})`)
+          : "";
+        const action = typeof record.action === "string" && record.action !== "select"
+          ? theme.fg("dim", ` [${record.action}]`)
+          : "";
+        const description = typeof record.description === "string" && record.description.trim()
+          ? `\n${theme.fg("muted", `     ${record.description}`)}`
+          : "";
+        return theme.fg("dim", `  ${index + 1}. `) + theme.fg("text", label) + value + action + description;
+      });
+    };
+
+    const answerText = (() => {
+      switch (response.kind) {
+        case "cancelled":
+          return theme.fg("warning", "Cancelled");
+        case "timed_out":
+          return theme.fg("warning", "Timed out");
+        case "freeform":
+          return theme.fg("success", "✓ ") +
             theme.fg("muted", "(wrote) ") +
-            theme.fg("accent", response.text || ""),
-          0,
-          0,
-        );
-      case "selection": {
-        const selections = response.selections || [];
-        const display =
-          selections.length === 1
+            theme.fg("accent", response.text || "");
+        case "selection": {
+          const selections = response.selections || [];
+          const display = selections.length === 1 ? selections[0] : selections.join(", ");
+          return theme.fg("success", "✓ ") + theme.fg("accent", display);
+        }
+        case "combined": {
+          const selections = response.selections || [];
+          const selDisplay = selections.length === 1
             ? selections[0]
             : selections.join(", ");
-        return new Text(
-          theme.fg("success", "✓ ") + theme.fg("accent", display),
-          0,
-          0,
-        );
-      }
-      case "combined": {
-        const selections = response.selections || [];
-        const selDisplay = selections.length === 1
-          ? selections[0]
-          : selections.join(", ");
-        return new Text(
-          theme.fg("success", "✓ ") +
+          return theme.fg("success", "✓ ") +
             theme.fg("accent", selDisplay) +
             theme.fg("muted", " and wrote ") +
-            theme.fg("accent", response.text || ""),
-          0,
-          0,
-        );
-      }
-      case "end_turn":
-        return new Text(
-          theme.fg("success", "✓ ") + theme.fg("muted", "end turn"),
-          0,
-          0,
-        );
-      case "new_session": {
-        const prefill = response.prefill || "";
-        if (response.launchStatus === "editor_prefill") {
-          const label = response.launchedWith === "compact"
-            ? "⚠ compact editor prefill → "
-            : "⚠ direct editor prefill → ";
-          return new Text(
-            theme.fg("warning", label) + theme.fg("accent", prefill),
-            0,
-            0,
-          );
+            theme.fg("accent", response.text || "");
         }
-        if (response.launchStatus === "failed") {
-          const label = response.launchedWith === "compact"
-            ? "handoff failed (compact) → "
-            : "handoff failed (direct) → ";
-          return new Text(
-            theme.fg("error", label) + theme.fg("accent", prefill),
-            0,
-            0,
-          );
-        }
-        if (response.launchedWith === "compact") {
-          return new Text(
-            theme.fg("success", "✓ queued compact → ") +
-              theme.fg("accent", prefill),
-            0,
-            0,
-          );
-        }
-        if (response.launchedWith === "direct") {
-          return new Text(
-            theme.fg("success", "✓ queued direct → ") +
-              theme.fg("accent", prefill),
-            0,
-            0,
-          );
-        }
-        return new Text(
-          theme.fg("success", "✓ ") +
+        case "end_turn":
+          return theme.fg("success", "✓ ") + theme.fg("muted", "end turn");
+        case "new_session": {
+          const prefill = response.prefill || "";
+          if (response.launchStatus === "editor_prefill") {
+            const label = response.launchedWith === "compact"
+              ? "⚠ compact editor prefill → "
+              : "⚠ direct editor prefill → ";
+            return theme.fg("warning", label) + theme.fg("accent", prefill);
+          }
+          if (response.launchStatus === "failed") {
+            const label = response.launchedWith === "compact"
+              ? "handoff failed (compact) → "
+              : "handoff failed (direct) → ";
+            return theme.fg("error", label) + theme.fg("accent", prefill);
+          }
+          if (response.launchedWith === "compact") {
+            return theme.fg("success", "✓ queued compact → ") + theme.fg("accent", prefill);
+          }
+          if (response.launchedWith === "direct") {
+            return theme.fg("success", "✓ queued direct → ") + theme.fg("accent", prefill);
+          }
+          return theme.fg("success", "✓ ") +
             theme.fg("muted", "new session") +
-            (prefill ? theme.fg("accent", `: ${prefill}`) : ""),
-          0,
-          0,
-        );
+            (prefill ? theme.fg("accent", `: ${prefill}`) : "");
+        }
+        default:
+          return theme.fg("text", JSON.stringify(response));
       }
-      default:
-        return new Text(
-          theme.fg("text", JSON.stringify(response)),
-          0,
-          0,
-        );
+    })();
+
+    const expanded = typeof options === "object" && options !== null && "expanded" in options
+      ? Boolean((options as { expanded?: boolean }).expanded)
+      : false;
+    if (!expanded) {
+      const question = typeof (details as { question?: unknown }).question === "string"
+        ? (details as { question: string }).question
+        : "";
+      const expandHint = question
+        ? theme.fg("dim", "  · Ctrl+O question/options")
+        : "";
+      return new Text(answerText + expandHint, 0, 0);
     }
+
+    const lines = [answerText];
+    const question = (details as { question?: unknown }).question;
+    const context = (details as { context?: unknown }).context;
+    if (typeof question === "string" && question.trim()) {
+      lines.push(theme.fg("muted", "Question: ") + theme.fg("text", question));
+    }
+    if (typeof context === "string" && context.trim()) {
+      lines.push(theme.fg("muted", "Context: ") + theme.fg("text", context));
+    }
+    const optionLines = renderOptionSummary();
+    if (optionLines.length > 0) {
+      lines.push(theme.fg("muted", "Options:"), ...optionLines);
+    }
+    return new Text(lines.join("\n"), 0, 0);
   };
 }

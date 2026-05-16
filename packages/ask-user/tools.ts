@@ -252,6 +252,13 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         action: (opt.action as NormalizedOption["action"]) ?? "select",
         prefill: opt.prefill,
       }));
+      const detailsBase = {
+        question,
+        context,
+        options: normalizedOptions,
+        allowMultiple,
+        allowFreeform,
+      };
 
       // Emit ASK_USER_PROMPT event if notifyOnAsk is enabled
       if (settings.notifyOnAsk) {
@@ -286,8 +293,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
             },
           ],
           details: {
-            question,
-            options: normalizedOptions.map((o) => o.label),
+            ...detailsBase,
             response: {
               kind: "cancelled",
             } as AskUserResponse,
@@ -348,8 +354,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           return {
             content: [{ type: "text", text: "User cancelled the session launch" }],
             details: {
-              question,
-              options: normalizedOptions.map((o) => o.label),
+              ...detailsBase,
               response: {
                 kind: "cancelled",
                 comment: "Session launcher cancelled",
@@ -374,8 +379,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           return {
             content: [{ type: "text", text: "Session launch cancelled: no prefill message was provided." }],
             details: {
-              question,
-              options: normalizedOptions.map((o) => o.label),
+              ...detailsBase,
               response: {
                 kind: "cancelled",
                 comment: "Session launcher had no prefill to queue",
@@ -404,8 +408,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: contentText }],
           details: {
-            question,
-            options: normalizedOptions.map((o) => o.label),
+            ...detailsBase,
             response: {
               ...response,
               prefill: handoff.prefill ?? prefill,
@@ -421,8 +424,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       return {
         content: [{ type: "text", text: contentText }],
         details: {
-          question,
-          options: normalizedOptions.map((o) => o.label),
+          ...detailsBase,
           response,
         },
       };

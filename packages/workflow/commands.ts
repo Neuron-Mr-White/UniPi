@@ -10,6 +10,8 @@ import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
 import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@pi-unipi/core";
 
+type CompletionItem = { value: string; label: string; description: string };
+
 /** Options for command registration */
 export interface WorkflowCommandOptions {
   /** Check if ralph module is detected */
@@ -36,7 +38,7 @@ interface WorkflowCommand {
 /**
  * Suggest spec files from .unipi/docs/specs/ for plan command.
  */
-function suggestSpecFiles(prefix: string): { value: string; label: string; description: string }[] {
+function suggestSpecFiles(prefix: string): CompletionItem[] {
   const specsDir = join(process.cwd(), ".unipi", "docs", "specs");
   if (!existsSync(specsDir)) return [];
 
@@ -61,7 +63,7 @@ function suggestSpecFiles(prefix: string): { value: string; label: string; descr
 /**
  * Suggest plan files from .unipi/docs/plans/ for work and review-work commands.
  */
-function suggestPlanFiles(prefix: string): { value: string; label: string; description: string }[] {
+function suggestPlanFiles(prefix: string): CompletionItem[] {
   const plansDir = join(process.cwd(), ".unipi", "docs", "plans");
   if (!existsSync(plansDir)) return [];
 
@@ -86,7 +88,7 @@ function suggestPlanFiles(prefix: string): { value: string; label: string; descr
 /**
  * Suggest debug files from .unipi/docs/debug/ for fix command.
  */
-function suggestDebugFiles(prefix: string): { value: string; label: string; description: string }[] {
+function suggestDebugFiles(prefix: string): CompletionItem[] {
   const debugDir = join(process.cwd(), ".unipi", "docs", "debug");
   if (!existsSync(debugDir)) return [];
 
@@ -111,7 +113,7 @@ function suggestDebugFiles(prefix: string): { value: string; label: string; desc
 /**
  * Suggest chore files from .unipi/docs/chore/ for chore-execute command.
  */
-function suggestChoreFiles(prefix: string): { value: string; label: string; description: string }[] {
+function suggestChoreFiles(prefix: string): CompletionItem[] {
   const choreDir = join(process.cwd(), ".unipi", "docs", "chore");
   if (!existsSync(choreDir)) return [];
 
@@ -133,16 +135,29 @@ function suggestChoreFiles(prefix: string): { value: string; label: string; desc
   }
 }
 
+/** Cached per-cwd worktree suggestions. Worktree autocomplete can be invoked on every
+ * keystroke, so the recursive scan is intentionally paid only once per session/cwd.
+ */
+let worktreeSuggestionsCache: { cwd: string; items: CompletionItem[] } | null = null;
+
 /**
  * Suggest existing worktree names for merge/list commands.
  * Recursively scans for actual git worktrees (directories containing .git files).
  */
-function suggestWorktrees(): { value: string; label: string; description: string }[] {
-  const worktreesDir = join(process.cwd(), ".unipi", "worktrees");
-  if (!existsSync(worktreesDir)) return [];
+function suggestWorktrees(): CompletionItem[] {
+  const cwd = process.cwd();
+  if (worktreeSuggestionsCache?.cwd === cwd) {
+    return worktreeSuggestionsCache.items;
+  }
+
+  const worktreesDir = join(cwd, ".unipi", "worktrees");
+  if (!existsSync(worktreesDir)) {
+    worktreeSuggestionsCache = { cwd, items: [] };
+    return worktreeSuggestionsCache.items;
+  }
 
   try {
-    const results: { value: string; label: string; description: string }[] = [];
+    const results: CompletionItem[] = [];
 
     /**
      * Recursively find worktree directories (those containing a .git file).
@@ -176,9 +191,11 @@ function suggestWorktrees(): { value: string; label: string; description: string
     }
 
     findWorktrees(worktreesDir, "");
-    return results;
+    worktreeSuggestionsCache = { cwd, items: results };
+    return worktreeSuggestionsCache.items;
   } catch {
-    return [];
+    worktreeSuggestionsCache = { cwd, items: [] };
+    return worktreeSuggestionsCache.items;
   }
 }
 
@@ -334,7 +351,7 @@ export function registerWorkflowCommands(
     pi.registerCommand(fullCommand, {
       description: cmd.description,
       getArgumentCompletions: (prefix: string) => {
-        let items: { value: string; label: string; description: string }[] | null = null;
+        let items: CompletionItem[] | null = null;
 
         // Plan command: suggest spec files
         if (cmd.name === WORKFLOW_COMMANDS.PLAN) {
