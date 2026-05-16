@@ -273,12 +273,13 @@ Expected: Module ready event emitted with commands list.
 
 ### Step 10: Verify Registration
 
-Run type check:
+Run type check and the autocomplete command-registry audit:
 ```bash
 npx tsc --noEmit
+npm --workspace packages/autocomplete test
 ```
 
-Expected: No errors.
+Expected: No errors. The autocomplete audit must report that every registered package command uses the `unipi:` prefix and has matching entries in `COMMAND_REGISTRY`, `COMMAND_DESCRIPTIONS`, and `PACKAGE_LABELS`.
 
 Expected: Info screen shows the new module with its stats. Footer shows the new module's segments (if registered).
 
@@ -330,12 +331,14 @@ After successful completion:
 - [ ] Info-screen group registered with stats
 - [ ] Module ready event emitted
 - [ ] Type check passes (`npx tsc --noEmit`)
+- [ ] Autocomplete registry audit passes (`npm --workspace packages/autocomplete test`)
 
 ## Notes
 
 - **Root barrel file is CRITICAL:** Without `packages/<name>/index.ts`, the extension silently fails to load. This is the #1 registration bug.
 - **Command prefix is CRITICAL:** `pi.registerCommand("cmd")` creates `/cmd`, not `/unipi:cmd`. Always use `"unipi:cmd"` or `\`${UNIPI_PREFIX}cmd\``.
 - **5 places in constants.ts**: PACKAGE_ORDER, PACKAGE_COLORS, COMMAND_REGISTRY, COMMAND_DESCRIPTIONS, PACKAGE_LABELS
+- **Registry audit is the backstop:** `packages/autocomplete/src/__tests__/command-registry.audit.test.ts` catches missing registry/description/label entries and non-`unipi:` package commands.
 - **Color palette**: Avoid duplicating existing colors — check PACKAGE_COLORS before assigning
 - **Priority convention**: workflow=10, ralph=20, memory=30, milestone=40, mcp=50, utility=60, ask-user=70, info=80, web-api=90, compact=100, notify=110, kanboard=120, input-shortcuts=115
 - **Info-screen is optional**: Some packages (like workflow, command-enchantment) don't need info-screen groups

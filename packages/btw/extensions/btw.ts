@@ -1,19 +1,19 @@
 /**
  * @pi-unipi/btw — Side Conversation Extension
  *
- * A /btw side conversation channel that opens a real pi sub-session
+ * A /unipi:btw side conversation channel that opens a real pi sub-session
  * with coding-tool access, running immediately even while the main
  * agent is still busy.
  *
  * Based on pi-btw by Dan Bachelder, adapted for the Unipi suite.
  *
  * Commands:
- *   /btw [--save] <question>   - Side conversation (contextual)
- *   /btw:tangent [--save] <q>  - Contextless tangent thread
- *   /btw:new [question]        - Fresh thread with main-session context
- *   /btw:clear                 - Dismiss and clear thread
- *   /btw:inject [instructions] - Send full thread to main agent
- *   /btw:summarize [instr]     - Summarize and inject into main agent
+ *   /unipi:btw [--save] <question>       - Side conversation (contextual)
+ *   /unipi:btw-tangent [--save] <q>      - Contextless tangent thread
+ *   /unipi:btw-new [question]            - Fresh thread with main-session context
+ *   /unipi:btw-clear                     - Dismiss and clear thread
+ *   /unipi:btw-inject [instructions]     - Send full thread to main agent
+ *   /unipi:btw-summarize [instructions]  - Summarize and inject into main agent
  */
 
 import {
@@ -44,6 +44,7 @@ import {
   type OverlayHandle,
   type TUI,
 } from "@mariozechner/pi-tui";
+import { BTW_COMMANDS, UNIPI_PREFIX } from "@pi-unipi/core";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1615,15 +1616,23 @@ export default function (pi: ExtensionAPI) {
 
   function parseOverlayBtwCommand(value: string): { name: string; args: string } | null {
     const trimmed = value.trim();
-    const match = trimmed.match(/^\/(btw:(?:new|tangent|clear|inject|summarize))(?:\s+(.*))?$/);
-    if (!match) {
-      return null;
+    const legacy = trimmed.match(/^\/(btw:(?:new|tangent|clear|inject|summarize))(?:\s+(.*))?$/);
+    if (legacy) {
+      return {
+        name: legacy[1],
+        args: legacy[2]?.trim() ?? "",
+      };
     }
 
-    return {
-      name: match[1],
-      args: match[2]?.trim() ?? "",
-    };
+    const unipi = trimmed.match(/^\/unipi:btw-(new|tangent|clear|inject|summarize)(?:\s+(.*))?$/);
+    if (unipi) {
+      return {
+        name: `btw:${unipi[1]}`,
+        args: unipi[2]?.trim() ?? "",
+      };
+    }
+
+    return null;
   }
 
   async function submitFromOverlay(ctx: ExtensionCommandContext | ExtensionContext, value: string): Promise<void> {
@@ -1928,42 +1937,42 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  pi.registerCommand("btw", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.BTW}`, {
     description: "Continue a side conversation in a focused BTW modal. Add --save to also persist a visible note.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw", args, ctx);
     },
   });
 
-  pi.registerCommand("btw:tangent", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.TANGENT}`, {
     description: "Start or continue a contextless BTW tangent in the focused BTW modal.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw:tangent", args, ctx);
     },
   });
 
-  pi.registerCommand("btw:new", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.NEW}`, {
     description: "Start a fresh BTW thread with main-session context. Optionally ask the first question immediately.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw:new", args, ctx);
     },
   });
 
-  pi.registerCommand("btw:clear", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.CLEAR}`, {
     description: "Dismiss the BTW modal/widget and clear the current thread.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw:clear", args, ctx);
     },
   });
 
-  pi.registerCommand("btw:inject", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.INJECT}`, {
     description: "Inject the full BTW thread into the main agent as a user message.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw:inject", args, ctx);
     },
   });
 
-  pi.registerCommand("btw:summarize", {
+  pi.registerCommand(`${UNIPI_PREFIX}${BTW_COMMANDS.SUMMARIZE}`, {
     description: "Summarize the BTW thread, then inject the summary into the main agent.",
     handler: async (args, ctx) => {
       await dispatchBtwCommand("btw:summarize", args, ctx);

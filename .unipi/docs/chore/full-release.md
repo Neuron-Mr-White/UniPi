@@ -142,180 +142,27 @@ Expected: All info-screen dependencies resolve within the monorepo.
 
 ### Step 7: Verify Command Registry
 
-Ensure every command constant in `@pi-unipi/core/constants.ts` is actually registered by its owning package, and that no orphan commands exist.
+Run the canonical autocomplete command-registry audit. This verifies that every package command registered with `pi.registerCommand()`:
 
-**Workflow commands** (20 commands, registered in `packages/workflow/commands.ts`):
-```bash
-# Extract expected commands from constants
-grep -oP 'WORKFLOW_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_workflow.txt
-
-# Extract actually registered commands
-grep -oP 'WORKFLOW_COMMANDS\.\K[A_]+' packages/workflow/commands.ts | sort -u > /tmp/registered_workflow.txt
-
-diff /tmp/expected_workflow.txt /tmp/registered_workflow.txt
-```
-Expected: No differences. All 20 workflow commands registered: `brainstorm`, `plan`, `work`, `review-work`, `consolidate`, `worktree-create`, `worktree-list`, `worktree-merge`, `consultant`, `quick-work`, `gather-context`, `document`, `scan-issues`, `auto`, `debug`, `fix`, `quick-fix`, `research`, `chore-create`, `chore-execute`.
-
-**Ralph commands** (registered in `packages/ralph/index.ts`):
-```bash
-grep -oP 'RALPH_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_ralph.txt
-grep 'registerCommand.*ralph' packages/ralph/index.ts | grep -oP 'unipi:\K[a-z-]+' | sort > /tmp/registered_ralph.txt
-diff /tmp/expected_ralph.txt /tmp/registered_ralph.txt
-```
-Expected: No differences. Ralph commands: `ralph-start`, `ralph-stop`, `ralph-resume`, `ralph-status`, `ralph-cancel`, `ralph-archive`, `ralph-clean`, `ralph-list`, `ralph-nuke`.
-
-**Utility commands** (registered in `packages/utility/src/commands.ts`):
-```bash
-grep -oP 'UTILITY_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_utility.txt
-grep -oP 'UTILITY_COMMANDS\.\K[A_]+' packages/utility/src/commands.ts | sort -u > /tmp/registered_utility.txt
-diff /tmp/expected_utility.txt /tmp/registered_utility.txt
-```
-Expected: No differences. Utility commands: `continue`, `reload`, `status`, `cleanup`, `env`, `doctor`.
-
-**MCP commands** (registered in `packages/mcp/src/index.ts`):
-```bash
-grep -oP 'MCP_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_mcp.txt
-grep -oP 'MCP_COMMANDS\.\K[A_]+' packages/mcp/src/index.ts | sort -u > /tmp/registered_mcp.txt
-diff /tmp/expected_mcp.txt /tmp/registered_mcp.txt
-```
-Expected: No differences. MCP commands: `mcp-add`, `mcp-settings`, `mcp-sync`, `mcp-status`, `mcp-reload`.
-
-**Compactor commands** (registered in `packages/compactor/src/commands/index.ts`):
-```bash
-grep -oP 'COMPACTOR_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_compactor.txt
-grep 'registerCommand' packages/compactor/src/commands/index.ts | grep -oP 'registerCommand\("\K[^"]+' | sort > /tmp/registered_compactor.txt
-diff /tmp/expected_compactor.txt /tmp/registered_compactor.txt
-```
-Expected: No differences. Compactor commands: `lossless-compact`, `compact`, `compact-recall`, `compact-stats`, `compact-doctor`, `compact-settings`, `compact-preset`. Content-indexing commands were removed from compactor; use CocoIndex commands below.
-
-**Notify commands** (registered in `packages/notify/index.ts`):
-```bash
-grep -oP 'NOTIFY_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_notify.txt
-grep 'registerCommand' packages/notify/index.ts | grep -oP 'unipi:\K[a-z-]+' | sort > /tmp/registered_notify.txt
-diff /tmp/expected_notify.txt /tmp/registered_notify.txt
-```
-Expected: No differences. Notify commands: `notify-settings`, `notify-set-gotify`, `notify-set-tg`, `notify-test`.
-
-**Updater commands** (registered in `packages/updater/src/commands.ts`):
-```bash
-grep -oP 'UPDATER_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_updater.txt
-grep -oP 'UPDATER_COMMANDS\.\K[A_]+' packages/updater/src/commands.ts | sort -u > /tmp/registered_updater.txt
-diff /tmp/expected_updater.txt /tmp/registered_updater.txt
-```
-Expected: No differences. Updater commands: `readme`, `changelog`, `updater-settings`.
-
-**Web-api commands** (registered in `packages/web-api/src/commands.ts`):
-```bash
-grep -oP 'WEB_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_web.txt
-grep -oP 'WEB_COMMANDS\.\K[A_]+' packages/web-api/src/commands.ts | sort -u > /tmp/registered_web.txt
-diff /tmp/expected_web.txt /tmp/registered_web.txt
-```
-Expected: No differences.
-
-**CocoIndex commands** (registered in `packages/cocoindex/commands.ts`):
-```bash
-grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/core/constants.ts | sort > /tmp/expected_cocoindex.txt
-grep -oP 'COCOINDEX_COMMANDS\.\K[A_]+' packages/cocoindex/commands.ts | sort -u > /tmp/registered_cocoindex.txt
-diff /tmp/expected_cocoindex.txt /tmp/registered_cocoindex.txt
-```
-Expected: No differences. CocoIndex commands: `cocoindex-update`, `cocoindex-status`, `cocoindex-init`, `cocoindex-settings`, `cocoindex-search`.
-
-**All-in-one entry check** — verify `packages/unipi/index.ts` imports and calls cocoindex:
-```bash
-grep 'cocoindex' packages/unipi/index.ts
-```
-Expected: Both `import cocoindex` and `cocoindex(pi)` lines present.
-
-**Info-screen commands** (registered in `packages/info-screen/index.ts`):
-```bash
-grep 'registerCommand' packages/info-screen/index.ts
-```
-Expected: `unipi:info` and `unipi:info-settings` registered.
-
-**Reverse check — no orphan registrations** (commands registered but missing from constants):
-```bash
-grep -rhoP 'registerCommand\("unipi:\K[a-z-]+' packages/ | sort -u > /tmp/all_registered.txt
-cat /tmp/expected_*.txt | sed 's/_/-/g' | tr '[:upper:]' '[:lower:]' | sort -u > /tmp/all_expected.txt
-diff /tmp/all_registered.txt /tmp/all_expected.txt
-```
-Expected: Every registered command has a matching constant. No orphan commands. When this fails after a breaking command removal, update both the constants and this chore so the release checklist reflects the new public surface.
-
-**Enhanced autocomplete registry check** — verify registered `/unipi:*` commands are represented in `packages/autocomplete/src/constants.ts` (`COMMAND_REGISTRY` and `COMMAND_DESCRIPTIONS`). This catches commands that work when typed manually but disappear from enchanted autocomplete suggestions:
+- uses the full `unipi:` prefix (no bare `/foo` or `/foo:bar` package commands)
+- exists in `packages/autocomplete/src/constants.ts` `COMMAND_REGISTRY`
+- has a matching `COMMAND_DESCRIPTIONS` entry
+- uses a package key that has a `PACKAGE_LABELS` entry
 
 ```bash
-python - <<'PY'
-import pathlib, re, sys
-root = pathlib.Path('.')
-
-# Resolve simple command constants used in template-string registrations.
-consts = {'UNIPI_PREFIX': 'unipi:'}
-for path in [root / 'packages/core/constants.ts', *root.glob('packages/**/commands.ts')]:
-    if not path.exists():
-        continue
-    text = path.read_text()
-    for obj in re.finditer(r'(?:export\s+)?const (\w+_COMMANDS) = \{([\s\S]*?)\} as const;', text):
-        name, body = obj.group(1), obj.group(2)
-        for item in re.finditer(r'(\w+):\s*"([^"]+)"', body):
-            consts[f'{name}.{item.group(1)}'] = item.group(2)
-
-def eval_command_expr(expr: str) -> str | None:
-    expr = expr.strip()
-    if expr.startswith(('"', "'")):
-        return expr[1:-1]
-    if expr.startswith('`') and expr.endswith('`'):
-        value = expr[1:-1]
-        def repl(match):
-            key = match.group(1).strip()
-            return consts.get(key, '${' + key + '}')
-        return re.sub(r'\$\{([^}]+)\}', repl, value)
-    return None
-
-registered = set()
-command_files = sorted(root.glob('packages/**/commands.ts')) + [
-    root / 'packages/ralph/index.ts',
-    root / 'packages/mcp/src/index.ts',
-    root / 'packages/input-shortcuts/src/index.ts',
-    root / 'packages/info-screen/index.ts',
-]
-for path in command_files:
-    if not path.exists():
-        continue
-    text = path.read_text()
-    for match in re.finditer(r'\.registerCommand\(\s*([^,\n]+)', text):
-        command = eval_command_expr(match.group(1))
-        if command and command.startswith('unipi:'):
-            registered.add(command)
-
-constants_text = (root / 'packages/autocomplete/src/constants.ts').read_text()
-registry_body = re.search(r'export const COMMAND_REGISTRY[^=]*= \{([\s\S]*?)\n\};', constants_text)
-registry = set(re.findall(r'"(unipi:[^"]+)"\s*:', registry_body.group(1))) if registry_body else set()
-descriptions_body = re.search(r'export const COMMAND_DESCRIPTIONS[^=]*= \{([\s\S]*?)\n\};', constants_text)
-descriptions = set(re.findall(r'"(unipi:[^"]+)"\s*:', descriptions_body.group(1))) if descriptions_body else set()
-
-missing_registry = sorted(registered - registry)
-missing_descriptions = sorted(registry - descriptions)
-
-if missing_registry:
-    print('Registered commands missing from autocomplete COMMAND_REGISTRY:')
-    for cmd in missing_registry:
-        print(f'  {cmd}')
-if missing_descriptions:
-    print('Autocomplete commands missing COMMAND_DESCRIPTIONS entries:')
-    for cmd in missing_descriptions:
-        print(f'  {cmd}')
-if missing_registry or missing_descriptions:
-    sys.exit(1)
-print(f'OK: {len(registry)} autocomplete commands have registry + descriptions entries')
-PY
+npm --workspace packages/autocomplete test -- src/__tests__/command-registry.audit.test.ts
 ```
 
-Expected: `OK`. If this fails, add the missing command(s) to both `COMMAND_REGISTRY` and `COMMAND_DESCRIPTIONS`. Pay special attention to newly added package commands such as `cocoindex-search` and helper commands such as `footer-help`.
+Expected: audit test passes. If it fails:
+1. Add missing `registerCommand` calls to the package, or add missing command constants to `packages/core/constants.ts`.
+2. Ensure command registration uses `unipi:` (prefer `UNIPI_PREFIX` + `*_COMMANDS` constants).
+3. Update all five autocomplete structures as needed: `PACKAGE_ORDER`, `PACKAGE_COLORS`, `COMMAND_REGISTRY`, `COMMAND_DESCRIPTIONS`, `PACKAGE_LABELS`.
+4. Re-run the audit test before continuing.
 
-If any diff shows differences:
-1. Add missing `registerCommand` calls to the package
-2. Or add missing constants to `core/constants.ts`
-3. Ensure the command prefix is `unipi:` (using `UNIPI_PREFIX`)
-4. Ensure enhanced autocomplete mirrors public commands in `packages/autocomplete/src/constants.ts`
+Notes:
+- Workflow dynamically registers `WORKFLOW_COMMANDS` via `fullCommand`; the audit understands this pattern.
+- `/unipi:ralph` is a command with subcommands; do not require each `RALPH_COMMANDS` constant to be a separate registered slash command unless the package actually registers it.
+- BTW commands must stay under `/unipi:btw*` and remain in the autocomplete registry.
 
 ### Step 8: Run Tests for Each Package
 

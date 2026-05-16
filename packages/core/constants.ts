@@ -236,11 +236,13 @@ export const COMPACTOR_TOOLS = {
 export const COMPACTOR_COMMANDS = {
   LOSSLESS_COMPACT: "lossless-compact",
   COMPACT: "compact",
+  SESSION_RECALL: "session-recall",
   COMPACT_RECALL: "compact-recall",
   COMPACT_STATS: "compact-stats",
   COMPACT_DOCTOR: "compact-doctor",
   COMPACT_SETTINGS: "compact-settings",
   COMPACT_PRESET: "compact-preset",
+  COMPACT_HELP: "compact-help",
 } as const;
 
 /** Compactor directory paths */
@@ -285,6 +287,16 @@ export const NOTIFY_TOOLS = {
 /** Notify directory paths */
 export const NOTIFY_DIRS = {
   CONFIG: "~/.unipi/config/notify",
+} as const;
+
+/** BTW command names */
+export const BTW_COMMANDS = {
+  BTW: "btw",
+  TANGENT: "btw-tangent",
+  NEW: "btw-new",
+  CLEAR: "btw-clear",
+  INJECT: "btw-inject",
+  SUMMARIZE: "btw-summarize",
 } as const;
 
 /** Milestone command names */

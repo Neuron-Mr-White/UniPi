@@ -20,6 +20,7 @@ export const PACKAGE_ORDER: string[] = [
   "workflow",
   "ralph",
   "memory",
+  "btw",
   "milestone",
   "mcp",
   "utility",
@@ -41,6 +42,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   workflow:  `${ESC}[91m`, // Bright Red
   ralph:     `${ESC}[33m`, // Yellow/Orange
   memory:    `${ESC}[93m`, // Bright Yellow
+  btw:       `${ESC}[95m`, // Bright Magenta
   milestone: `${ESC}[32m`, // Green
   mcp:       `${ESC}[32m`, // Green
   utility:   `${ESC}[36m`, // Cyan
@@ -57,7 +59,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (80 verified commands) */
+/** Mapping of full command name → package name (88 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
   // workflow (20 commands)
   "unipi:brainstorm":     "workflow",
@@ -95,6 +97,14 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:global-memory-list":   "memory",
   "unipi:memory-settings":   "memory",
 
+  // btw (6 commands)
+  "unipi:btw":           "btw",
+  "unipi:btw-tangent":   "btw",
+  "unipi:btw-new":       "btw",
+  "unipi:btw-clear":     "btw",
+  "unipi:btw-inject":    "btw",
+  "unipi:btw-summarize": "btw",
+
   // mcp (5 commands)
   "unipi:mcp-status":   "mcp",
   "unipi:mcp-sync":     "mcp",
@@ -126,14 +136,16 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:web-settings":    "web-api",
   "unipi:web-cache-clear": "web-api",
 
-  // compact (7 commands)
+  // compact (9 commands)
   "unipi:lossless-compact": "compact",
   "unipi:compact":         "compact",
+  "unipi:session-recall":  "compact",
   "unipi:compact-recall":  "compact",
   "unipi:compact-stats":   "compact",
   "unipi:compact-doctor":  "compact",
   "unipi:compact-settings": "compact",
   "unipi:compact-preset":  "compact",
+  "unipi:compact-help":    "compact",
 
   // cocoindex (5 commands)
   "unipi:cocoindex-update":  "cocoindex",
@@ -208,6 +220,13 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:global-memory-list":   "List all project memories",
   "unipi:memory-settings":   "Configure memory settings",
 
+  "unipi:btw":           "Run a parallel side conversation",
+  "unipi:btw-tangent":   "Start a contextless BTW tangent thread",
+  "unipi:btw-new":       "Start a fresh BTW thread with session context",
+  "unipi:btw-clear":     "Dismiss and clear the BTW thread",
+  "unipi:btw-inject":    "Inject the BTW thread into the main agent",
+  "unipi:btw-summarize": "Summarize and inject the BTW thread",
+
   "unipi:mcp-status":   "Show MCP server status",
   "unipi:mcp-sync":     "Sync MCP server connections",
   "unipi:mcp-add":      "Add a new MCP server",
@@ -238,11 +257,13 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:lossless-compact": "Immediate zero-LLM compaction",
   "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",
-  "unipi:compact-recall":   "Recall a compacted session",
+  "unipi:session-recall":   "Search session history, including compacted-away messages",
+  "unipi:compact-recall":   "(DEPRECATED) Use /unipi:session-recall instead",
   "unipi:compact-stats":    "Show compaction statistics",
   "unipi:compact-doctor":   "Diagnose compaction issues",
   "unipi:compact-settings": "Configure compaction settings",
   "unipi:compact-preset":   "Manage compaction presets",
+  "unipi:compact-help":     "Show compactor command help",
   "unipi:cocoindex-update":  "Run CocoIndex update to index project",
   "unipi:cocoindex-status":  "Show CocoIndex indexing status",
   "unipi:cocoindex-init":    "Initialize CocoIndex pipeline",
@@ -276,6 +297,7 @@ export const PACKAGE_LABELS: Record<string, string> = {
   workflow:  "workflow",
   ralph:     "ralph",
   memory:    "memory",
+  btw:       "btw",
   milestone: "milestone",
   mcp:       "mcp",
   utility:   "utility",
@@ -288,4 +310,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   footer:    "footer",
   updater:   "updater",
   "input-shortcuts": "input-shortcuts",
+  cocoindex: "cocoindex",
 };

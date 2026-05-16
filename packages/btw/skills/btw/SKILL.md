@@ -1,6 +1,6 @@
 ---
 name: btw
-description: Helps you use the /btw side-conversation workflow effectively. Use when you want to think in parallel, ask side questions without interrupting ongoing work, or inject a side thread back into the main agent.
+description: Helps you use the /unipi:btw side-conversation workflow effectively. Use when you want to think in parallel, ask side questions without interrupting ongoing work, or inject a side thread back into the main agent.
 ---
 
 # BTW
@@ -21,14 +21,14 @@ Prefer the BTW workflow when the user wants to:
 Use these commands in your guidance to the user:
 
 ```text
-/btw <question>
-/btw --save <question>
-/btw:new [question]
-/btw:tangent <question>
-/btw:tangent --save <question>
-/btw:clear
-/btw:inject [instructions]
-/btw:summarize [instructions]
+/unipi:btw <question>
+/unipi:btw --save <question>
+/unipi:btw-new [question]
+/unipi:btw-tangent <question>
+/unipi:btw-tangent --save <question>
+/unipi:btw-clear
+/unipi:btw-inject [instructions]
+/unipi:btw-summarize [instructions]
 ```
 
 ## How to guide the user
@@ -38,7 +38,7 @@ Use these commands in your guidance to the user:
 Recommend:
 
 ```text
-/btw <question>
+/unipi:btw <question>
 ```
 
 Use this when the user wants an immediate aside and does not need a visible saved note.
@@ -48,7 +48,7 @@ Use this when the user wants an immediate aside and does not need a visible save
 Recommend:
 
 ```text
-/btw --save <question>
+/unipi:btw --save <question>
 ```
 
 Use this when the user wants the exchange to appear as a visible BTW note in the session transcript.
@@ -58,13 +58,13 @@ Use this when the user wants the exchange to appear as a visible BTW note in the
 Recommend:
 
 ```text
-/btw:new
+/unipi:btw-new
 ```
 
 or
 
 ```text
-/btw:new <question>
+/unipi:btw-new <question>
 ```
 
 Use this when the previous BTW discussion is no longer relevant, but you still want the new side thread to inherit the current main-session context.
@@ -74,13 +74,13 @@ Use this when the previous BTW discussion is no longer relevant, but you still w
 Recommend:
 
 ```text
-/btw:tangent <question>
+/unipi:btw-tangent <question>
 ```
 
 or
 
 ```text
-/btw:tangent --save <question>
+/unipi:btw-tangent --save <question>
 ```
 
 Use this when the user wants a side conversation that does not include the current main-session context.
@@ -90,7 +90,7 @@ Use this when the user wants a side conversation that does not include the curre
 Recommend:
 
 ```text
-/btw:inject <instructions>
+/unipi:btw-inject <instructions>
 ```
 
 Use this when the exact discussion matters and the user wants the main agent to act on it.
@@ -100,19 +100,19 @@ Use this when the exact discussion matters and the user wants the main agent to 
 Recommend:
 
 ```text
-/btw:summarize <instructions>
+/unipi:btw-summarize <instructions>
 ```
 
 Use this when the thread is long and only the distilled outcome should go back into the main agent.
 
 ## Recommendation rules
 
-- Prefer `/btw` over normal chat when the user explicitly wants a side conversation.
-- Prefer `/btw:tangent` when the user wants that side conversation to be contextless.
-- Prefer `/btw:summarize` over `/btw:inject` for long exploratory threads.
-- Prefer `/btw:inject` when precise wording, detailed tradeoffs, or a full plan matters.
-- Suggest `/btw:new` before starting a totally unrelated side topic when main-session context is still useful.
-- Suggest `/btw:clear` when the widget/thread should be dismissed.
+- Prefer `/unipi:btw` over normal chat when the user explicitly wants a side conversation.
+- Prefer `/unipi:btw-tangent` when the user wants that side conversation to be contextless.
+- Prefer `/unipi:btw-summarize` over `/unipi:btw-inject` for long exploratory threads.
+- Prefer `/unipi:btw-inject` when precise wording, detailed tradeoffs, or a full plan matters.
+- Suggest `/unipi:btw-new` before starting a totally unrelated side topic when main-session context is still useful.
+- Suggest `/unipi:btw-clear` when the widget/thread should be dismissed.
 
 ## Response style
 
@@ -127,23 +127,23 @@ When helping the user use BTW:
 ### Example: brainstorm while coding continues
 
 ```text
-/btw what are the risks of switching this to optimistic updates?
+/unipi:btw what are the risks of switching this to optimistic updates?
 ```
 
 ### Example: create a clean new thread
 
 ```text
-/btw:new sketch a safer migration plan
+/unipi:btw-new sketch a safer migration plan
 ```
 
 ### Example: start a contextless tangent
 
 ```text
-/btw:tangent think through this from first principles without using the current chat context
+/unipi:btw-tangent think through this from first principles without using the current chat context
 ```
 
 ### Example: send the result back
 
 ```text
-/btw:summarize implement the recommended migration plan
+/unipi:btw-summarize implement the recommended migration plan
 ```

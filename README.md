@@ -77,12 +77,12 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Workflow | `/unipi:` | brainstorm, plan, work, review-work, consolidate, quick-work, debug, fix |
 | Ralph | `/unipi:ralph` | start, stop, resume, status |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
-| Compactor | `/unipi:` | lossless-compact, compact-stats, compact-settings, compact-preset, session-recall, content-index, content-search |
+| Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-settings, compact-preset, compact-help |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |
-| BTW | `/btw` | question, new, tangent, inject, summarize |
-| Utility | `/unipi:` | env, doctor, status, cleanup, name-badge |
+| BTW | `/unipi:btw` | question, btw-new, btw-tangent, btw-inject, btw-summarize |
+| Utility | `/unipi:` | env, doctor, status, cleanup, badge-name |
 | Milestone | `/unipi:milestone-` | onboard, update |
 | Kanboard | `/unipi:kanboard` | toggle, doctor |
 | Footer | `/unipi:footer` | toggle, settings |
