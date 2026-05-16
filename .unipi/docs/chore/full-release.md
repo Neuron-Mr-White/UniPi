@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-05-06 (v2.0.0)
+last-run: 2026-05-16 (v2.0.2)
 ---
 
 # Full Release Pipeline
@@ -25,27 +25,27 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 2.0.0 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.0.0 |
-| `packages/btw` | `@pi-unipi/btw` | 2.0.0 |
-| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.0.0 |
-| `packages/compactor` | `@pi-unipi/compactor` | 2.0.0 |
-| `packages/core` | `@pi-unipi/core` | 2.0.0 |
-| `packages/footer` | `@pi-unipi/footer` | 2.0.0 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 2.0.0 |
-| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.0.0 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 2.0.0 |
-| `packages/mcp` | `@pi-unipi/mcp` | 2.0.0 |
-| `packages/memory` | `@pi-unipi/memory` | 2.0.0 |
-| `packages/milestone` | `@pi-unipi/milestone` | 2.0.0 |
-| `packages/notify` | `@pi-unipi/notify` | 2.0.0 |
-| `packages/ralph` | `@pi-unipi/ralph` | 2.0.0 |
-| `packages/subagents` | `@pi-unipi/subagents` | 2.0.0 |
-| `packages/updater` | `@pi-unipi/updater` | 2.0.0 |
-| `packages/utility` | `@pi-unipi/utility` | 2.0.0 |
-| `packages/web-api` | `@pi-unipi/web-api` | 2.0.0 |
-| `packages/workflow` | `@pi-unipi/workflow` | 2.0.0 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.0.0 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 2.0.2 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.0.2 |
+| `packages/btw` | `@pi-unipi/btw` | 2.0.2 |
+| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.0.2 |
+| `packages/compactor` | `@pi-unipi/compactor` | 2.0.2 |
+| `packages/core` | `@pi-unipi/core` | 2.0.2 |
+| `packages/footer` | `@pi-unipi/footer` | 2.0.2 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 2.0.2 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.0.2 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 2.0.2 |
+| `packages/mcp` | `@pi-unipi/mcp` | 2.0.2 |
+| `packages/memory` | `@pi-unipi/memory` | 2.0.2 |
+| `packages/milestone` | `@pi-unipi/milestone` | 2.0.2 |
+| `packages/notify` | `@pi-unipi/notify` | 2.0.2 |
+| `packages/ralph` | `@pi-unipi/ralph` | 2.0.2 |
+| `packages/subagents` | `@pi-unipi/subagents` | 2.0.2 |
+| `packages/updater` | `@pi-unipi/updater` | 2.0.2 |
+| `packages/utility` | `@pi-unipi/utility` | 2.0.2 |
+| `packages/web-api` | `@pi-unipi/web-api` | 2.0.2 |
+| `packages/workflow` | `@pi-unipi/workflow` | 2.0.2 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.0.2 |
 
 ---
 
@@ -96,31 +96,28 @@ Expected: No lint errors (or lint not configured).
 
 ### Step 5: Verify Mounts — @packages/unipi/
 
-Verify all packages listed in root `package.json` `pi.extensions` and `pi.skills` actually exist:
+Verify all paths listed in root `package.json` `pi.extensions` and `pi.skills` resolve after `npm install`:
 
 ```bash
-# Check all extension paths resolve
-for ext in $(cat package.json | jq -r '.pi.extensions[]' | sed 's|node_modules/@pi-unipi/||'); do
-  pkg=$(echo "$ext" | cut -d'/' -f1)
-  if [ ! -d "packages/$pkg" ]; then
-    echo "MISSING: packages/$pkg (referenced in pi.extensions)"
-  else
-    echo "OK: packages/$pkg"
-  fi
-done
-
-# Check all skill paths resolve
-for skill in $(cat package.json | jq -r '.pi.skills[]' | sed 's|node_modules/@pi-unipi/||'); do
-  pkg=$(echo "$skill" | cut -d'/' -f1)
-  if [ ! -d "packages/$pkg" ]; then
-    echo "MISSING: packages/$pkg (referenced in pi.skills)"
-  else
-    echo "OK: packages/$pkg"
-  fi
-done
+node - <<'JS'
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+let missing = false;
+for (const key of ['extensions', 'skills']) {
+  for (const item of pkg.pi[key]) {
+    if (!fs.existsSync(item)) {
+      console.log(`MISSING: ${item} (referenced in pi.${key})`);
+      missing = true;
+    } else {
+      console.log(`OK: ${item}`);
+    }
+  }
+}
+process.exit(missing ? 1 : 0);
+JS
 ```
 
-Expected: All packages resolve. No MISSING entries.
+Expected: All mounted extension/skill paths resolve. No MISSING entries. This path-based check correctly handles packages whose npm name differs from the workspace directory (for example `@pi-unipi/command-enchantment` lives in `packages/autocomplete`).
 
 ### Step 6: Verify Mounts — @packages/info-screen/
 
@@ -199,6 +196,7 @@ npx esbuild packages/unipi/index.ts \
   --format=esm \
   --target=node24 \
   --external:better-sqlite3 \
+  --external:@lancedb/* \
   --outfile=packages/unipi/bundled.js
 ```
 

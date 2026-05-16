@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/btw",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A pi extension for parallel side conversations with /unipi:btw — part of the Unipi suite",
   "type": "module",
   "license": "MIT",

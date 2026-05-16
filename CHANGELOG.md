@@ -9,6 +9,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - No unreleased changes yet.
 
+## [2.0.2] — 2026-05-16
+
+### Breaking Changes
+- BREAKING: `btw` commands moved from `/btw`, `/btw:new`, `/btw:tangent`, `/btw:clear`, `/btw:inject`, and `/btw:summarize` to `/unipi:btw`, `/unipi:btw-new`, `/unipi:btw-tangent`, `/unipi:btw-clear`, `/unipi:btw-inject`, and `/unipi:btw-summarize`.
+
+### Fixed
+- `compactor`: `/unipi:session-recall` now searches the append-only session branch so messages omitted by compaction remain searchable.
+- `compactor`: `/unipi:compact-recall` keeps working as a deprecated alias and points users to `/unipi:session-recall`.
+- `autocomplete`: command registry now includes all working compactor commands, including `session-recall` and `compact-help`.
+- `autocomplete`: registry now includes BTW commands and the CocoIndex package label.
+
+### Changed
+- `btw`: moved public commands from the bare `/btw*` namespace to `/unipi:btw*` for consistency with the Unipi command registry.
+- `full-release`: replaced fragile manual command-registry checks with an automated autocomplete registry audit test.
+
 ## [2.0.1] — 2026-05-15
 
 ### Fixed

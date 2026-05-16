@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/cocoindex",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "CocoIndex integration for Pi — AST-aware content indexing, semantic vector search, and incremental pipeline management",
   "type": "module",
   "main": "index.ts",
