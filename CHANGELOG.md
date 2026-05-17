@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.4] — 2026-05-18
+
+### Added
+- `notify`: added `suppressWhenFocused` support for native notifications so noisy completion/attention alerts can be skipped when Pi is already focused.
+- `compactor`: added optional UniPi-managed percentage auto-compaction with configurable threshold, cooldown, repeat-growth safeguards, and notifications.
+
+### Fixed
+- `notify`: validated Linux focus detection and corrected Windows foreground PID typing for reliable focus suppression.
+- `compactor`: fixed preset/profile application so the Pipeline tab reflects selected profiles (`precise`, `balanced`, `thorough`, `lean`) instead of staying all `off`.
+- `compactor`: handled Pi's post-compaction `null` context usage state and repeated long-session auto-compactions without triggering compaction loops.
+
+### Changed
+- `compactor`: expanded README and skill docs with user commands, settings, agent tools/skills, benchmark notes, and chronological Pi hook flow.
+- `unipi`: regenerated the bundled all-in-one extension for the release.
+
 ## [2.0.3] — 2026-05-16
 
 ### Fixed

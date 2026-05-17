@@ -2,7 +2,7 @@
 
 Push notifications when things happen. Workflow finishes, Ralph loop completes, MCP server errors — notify sends alerts to native OS, Gotify, Telegram, or ntfy.
 
-Configure once, get alerts everywhere. Per-event platform routing lets you send critical errors to Telegram and routine completions to Gotify.
+Configure once, get alerts everywhere. Per-event platform routing lets you send critical errors to Telegram and routine completions to Gotify. Native desktop notifications can also be suppressed while the Pi window is focused.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Desktop notifications via [node-notifier](https://github.com/mikaelbr/node-notif
 - **macOS:** terminal-notifier
 - **Linux:** notify-send / libnotify
 
-Zero configuration — works out of the box.
+Zero configuration — works out of the box. Set `native.suppressWhenFocused` to `true` to skip native notifications when the active/focused window is already Pi.
 
 ### Gotify
 

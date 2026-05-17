@@ -15,7 +15,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Memory](./packages/memory/README.md)** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
 
-**[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, sandbox execution, FTS5 search.
+**[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, percentage auto-compaction, session recall, and sandbox execution.
 
 **[CocoIndex](./packages/cocoindex/README.md)** — Project indexing and semantic code search backed by CocoIndex and LanceDB. Agent tools and slash commands for status, init, update, and search.
 
@@ -25,7 +25,7 @@ pi install npm:@pi-unipi/unipi
 
 **[MCP](./packages/mcp/README.md)** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
 
-**[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing. Configure once, get alerts everywhere.
+**[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing plus native focus suppression so alerts can stay quiet while Pi is already focused.
 
 **[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling.
 

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ask-user",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Structured user input tool for Pi coding agent — single-select, multi-select, freeform",
   "type": "module",
   "license": "MIT",
