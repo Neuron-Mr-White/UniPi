@@ -19,6 +19,12 @@ export interface NativeConfig {
   enabled: boolean;
   /** Windows appID to show instead of "SnoreToast" */
   windowsAppId?: string;
+  /**
+   * When true, suppresses the notification if the terminal window is the
+   * foreground (active) window. Only effective on supported platforms
+   * (currently Windows). Default: false.
+   */
+  suppressWhenFocused?: boolean;
 }
 
 /** Gotify notification platform config */
@@ -101,6 +107,8 @@ export interface NotifyResult {
   platform: NotifyPlatform;
   /** Whether the send succeeded */
   success: boolean;
+  /** True when the notification was intentionally suppressed (e.g. window focused) */
+  suppressed?: boolean;
   /** Error message if failed */
   error?: string;
 }

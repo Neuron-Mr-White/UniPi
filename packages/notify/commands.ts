@@ -14,7 +14,7 @@ import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
 import { RecapModelSelectorOverlay } from "./tui/recap-model-selector.js";
 import { loadConfig } from "./settings.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
-import { sendNativeNotification } from "./platforms/native.js";
+import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
@@ -267,12 +267,17 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           try {
             await sendNativeNotification(title, message, {
               windowsAppId: config.native.windowsAppId,
+              suppressWhenFocused: config.native.suppressWhenFocused,
             });
             results.push("✓ Native: sent");
           } catch (err) {
-            results.push(
-              `✗ Native: ${err instanceof Error ? err.message : "failed"}`
-            );
+            if (err instanceof SuppressedError) {
+              results.push("— Native: suppressed (window focused)");
+            } else {
+              results.push(
+                `✗ Native: ${err instanceof Error ? err.message : "failed"}`
+              );
+            }
           }
         }
 

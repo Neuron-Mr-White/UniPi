@@ -9,7 +9,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
-import { sendNativeNotification } from "./platforms/native.js";
+import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
@@ -184,6 +184,10 @@ export async function dispatchNotification(
         await sendToPlatform(platform, title, message, config, cwd);
         return { platform, success: true };
       } catch (err) {
+        // SuppressedError is intentional, not a failure
+        if (err instanceof SuppressedError) {
+          return { platform, success: true, suppressed: true };
+        }
         // Silently ignore — platform send failure is tracked in results.
         return {
           platform,
@@ -194,13 +198,18 @@ export async function dispatchNotification(
     })
   );
 
-  const allSuccess = results.length > 0 && results.every((r) => r.success);
+  const unsuppressed = results.filter((r) => !r.suppressed);
+  const allSuccess = results.length > 0 && unsuppressed.every((r) => r.success);
+  const suppressedPlatforms = results
+    .filter((r) => r.suppressed)
+    .map((r) => r.platform);
 
   // Emit notification sent event
   emitEvent(pi, UNIPI_EVENTS.NOTIFICATION_SENT, {
     eventType,
     platforms: enabledPlatforms,
     success: allSuccess,
+    ...(suppressedPlatforms.length > 0 && { suppressedPlatforms }),
     timestamp: new Date().toISOString(),
   });
 
@@ -219,6 +228,7 @@ async function sendToPlatform(
     case "native":
       await sendNativeNotification(title, message, {
         windowsAppId: config.native.windowsAppId,
+        suppressWhenFocused: config.native.suppressWhenFocused,
       });
       break;
     case "gotify":

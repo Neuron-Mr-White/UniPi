@@ -85,7 +85,7 @@ export class NotifySettingsOverlay implements Component {
   }
 
   private get maxItems(): number {
-    if (this.section === "platforms") return 4; // native, gotify, telegram, ntfy
+    if (this.section === "platforms") return 5; // native, gotify, telegram, ntfy + suppress option
     if (this.section === "recap") return 1; // toggle
     return Object.keys(this.config.events).length;
   }
@@ -98,12 +98,17 @@ export class NotifySettingsOverlay implements Component {
         "telegram",
         "ntfy",
       ];
-      const key = platforms[this.selectedIndex];
-      if (key === "ntfy") {
-        // ntfy toggle updates the resolved ntfy config
-        this.ntfyConfig.enabled = !this.ntfyConfig.enabled;
-      } else if (key) {
-        this.config[key].enabled = !this.config[key].enabled;
+      if (this.selectedIndex < platforms.length) {
+        const key = platforms[this.selectedIndex];
+        if (key === "ntfy") {
+          // ntfy toggle updates the resolved ntfy config
+          this.ntfyConfig.enabled = !this.ntfyConfig.enabled;
+        } else if (key) {
+          this.config[key].enabled = !this.config[key].enabled;
+        }
+      } else {
+        // suppressWhenFocused toggle (index 4)
+        this.config.native.suppressWhenFocused = !this.config.native.suppressWhenFocused;
       }
     } else if (this.section === "recap") {
       this.config.recap.enabled = !this.config.recap.enabled;
@@ -269,6 +274,27 @@ export class NotifySettingsOverlay implements Component {
       lines.push(
         this.frameLine(
           `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}  ${this.fg("dim", p.detail)}`,
+          innerWidth
+        )
+      );
+    }
+
+    // suppressWhenFocused toggle (index 4)
+    {
+      const i = platforms.length;
+      const isSelected = i === this.selectedIndex;
+      const isEnabled = this.config.native.suppressWhenFocused === true;
+      const toggleOn = this.fg("success", "●");
+      const toggleOff = this.fg("dim", "○");
+      const toggle = isEnabled ? toggleOn : toggleOff;
+      const label = isSelected
+        ? this.bold("Suppress when focused")
+        : this.fg("dim", "Suppress when focused");
+      const detail = this.fg("dim", isEnabled ? "Windows only — terminal in foreground → skip" : "Windows only");
+
+      lines.push(
+        this.frameLine(
+          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}  ${detail}`,
           innerWidth
         )
       );

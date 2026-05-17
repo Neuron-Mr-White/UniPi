@@ -30,6 +30,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   },
   native: {
     enabled: true,
+    suppressWhenFocused: false,
   },
   gotify: {
     enabled: false,
