@@ -186,3 +186,30 @@ The implementation should support multiple compactions in a long session, but no
 ## Acceptance Summary
 
 The work is complete when a user can enable percentage auto-compaction, set a threshold, and have UniPi trigger zero-LLM compaction at that percentage on large-context models, with tests proving it can compact again later without immediately re-triggering in a loop.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- Reviewed completed Task 1–7 against acceptance criteria; all are implemented.
+- Work is on `main` with `workbranch: ""`; no worktree merge is needed.
+- Ralph loop was not used for this work. Existing `.unipi/ralph/*` files predate this issue.
+- Implementation commit reviewed: `672ac94 feat: add compactor percent auto-trigger`.
+
+Task Verification:
+- ✓ Task 1: `autoCompaction` config added with disabled-by-default percentage trigger settings, migration support, and preset compatibility.
+- ✓ Task 2: Pure `auto-trigger` helper covers disabled/unknown/below/crossing/in-flight/cooldown/repeat-growth decisions.
+- ✓ Task 3: `turn_end` runtime wiring uses `ctx.getContextUsage()` and triggers `ctx.compact({ customInstructions: COMPACTOR_INSTRUCTION })` with completion/error state reset.
+- ✓ Task 4: Settings overlay, compact help, and README expose/document the feature.
+- ✓ Task 5: `context_budget` uses live context usage when available and mentions enabled percentage trigger without claiming it always fires.
+- ✓ Task 6: Config and auto-trigger regression tests cover migration/defaults and repeated-trigger safeguards.
+- ✓ Task 7: Verification suite and smoke import pass.
+
+Codebase Checks:
+- N/A Lint: no `lint` script is defined.
+- ✓ Type check passed: `npm run typecheck`.
+- ✓ Tests passed: `npm test`.
+- N/A Build: no `build` script is defined.
+- N/A Docker: no `Dockerfile` found.
+- ✓ Smoke import passed: `node --import tsx -e "import('./packages/compactor/src/index.ts').then(()=>console.log('compactor extension import ok'))"`.
