@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "typecheck": "npx tsc --noEmit --skipLibCheck",
-    "test": "npm test --workspaces",
+    "test": "npm test --workspaces --if-present",
     "publish:all": "npm publish --workspaces --access public"
   },
   "files": [

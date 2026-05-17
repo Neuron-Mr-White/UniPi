@@ -34,7 +34,7 @@ public class WinAPI {
 }
 '@ | Out-Null
 $fgHwnd = [WinAPI]::GetForegroundWindow()
-$fgPid = 0
+[uint32]$fgPid = 0
 [void][WinAPI]::GetWindowThreadProcessId($fgHwnd, [ref]$fgPid)
 $curPid = $targetPid
 $maxDepth = 20
