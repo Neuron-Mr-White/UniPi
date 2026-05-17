@@ -409,6 +409,8 @@ export interface UnipiNotificationSentEvent {
   platforms: string[];
   /** Whether all platforms succeeded */
   success: boolean;
+  /** Platforms where notification was suppressed (e.g. window focused) */
+  suppressedPlatforms?: string[];
   /** ISO timestamp */
   timestamp: string;
 }
