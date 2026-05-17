@@ -58,6 +58,13 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     mmapPragma: false,
     customNoisePatterns: [],
   },
+  autoCompaction: {
+    enabled: false,
+    thresholdPercent: 80,
+    cooldownMs: 60_000,
+    repeatMinGrowthTokens: 4_000,
+    notify: true,
+  },
   overrideDefaultCompaction: true,
   debug: false,
   showTruncationHints: true,

@@ -25,6 +25,8 @@ The zero-LLM pipeline compresses context through 6 stages (normalize, filter, bu
 
 Compactor tools are available to the main agent when installed. All workflow skills can use compactor tools for context management.
 
+UniPi can also trigger zero-LLM compaction at a configured context percentage. This extension-managed trigger is disabled by default and is separate from Pi core's `compaction.reserveTokens` behavior: Pi still keeps its own overflow safety net, while UniPi can compact earlier on very large context-window models.
+
 Compactor registers with the info-screen dashboard, showing compaction count, tokens saved, compression ratio, and indexed documents. The footer subscribes to `COMPACTOR_STATSUPDATED` events to display compaction stats in the status bar.
 
 ## Agent Tools
@@ -63,6 +65,27 @@ Config lives at `~/.unipi/config/compactor/config.json`. Per-project overrides a
 
 Apply via `/unipi:compact-preset <name>`.
 
+### Percentage Auto-Compaction
+
+Disabled by default for backward compatibility. Enable it globally in `~/.unipi/config/compactor/config.json`, per project in `<project>/.unipi/config/compactor.json`, or through `/unipi:compact-settings` → Auto.
+
+```json
+{
+  "autoCompaction": {
+    "enabled": true,
+    "thresholdPercent": 80,
+    "cooldownMs": 60000,
+    "repeatMinGrowthTokens": 4000,
+    "notify": true
+  }
+}
+```
+
+- `thresholdPercent` uses Pi's live `ctx.getContextUsage()` percentage (0-100).
+- `cooldownMs` prevents rapid repeated compaction attempts.
+- `repeatMinGrowthTokens` allows long sessions to compact again later while avoiding immediate loops if usage remains above the threshold after compaction.
+- `notify` controls user-visible notifications for UniPi-triggered compactions.
+
 ### Pipeline Features
 
 | Feature | Description | Context |
@@ -76,7 +99,7 @@ Apply via `/unipi:compact-preset <name>`.
 
 ### TUI
 
-Tabbed settings interface (Presets / Strategies / Pipeline):
+Tabbed settings interface (Presets / Strategies / Auto / Pipeline):
 - `/` key opens search filter in Strategies tab
 - Preset selection shows 3-line preview
 - Per-project override checkbox (`o` key)

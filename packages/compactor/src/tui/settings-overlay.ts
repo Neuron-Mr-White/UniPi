@@ -18,8 +18,8 @@ import { existsSync, unlinkSync } from "node:fs";
 
 // ─── Section types ─────────────────────────────────────────────────────
 
-type Section = "presets" | "strategies" | "pipeline";
-const SECTIONS: Section[] = ["presets", "strategies", "pipeline"];
+type Section = "presets" | "strategies" | "auto" | "pipeline";
+const SECTIONS: Section[] = ["presets", "strategies", "auto", "pipeline"];
 
 // ─── Strategy item definition ──────────────────────────────────────────
 
@@ -160,6 +160,10 @@ const PIPELINE_ITEMS: PipelineDef[] = [
 
 const PRESETS: CompactorPreset[] = ["precise", "balanced", "thorough", "lean"];
 
+const THRESHOLD_VALUES = ["60%", "70%", "75%", "80%", "85%", "90%", "95%"];
+const COOLDOWN_VALUES = ["0s", "30s", "60s", "5m", "10m"];
+const REPEAT_GROWTH_VALUES = ["0", "1k", "4k", "8k", "16k", "32k"];
+
 const PRESET_DESCRIPTIONS: Record<string, { summary: string; detail: string }> = {
   precise: {
     summary: "Code-heavy, minimal waste — compaction: full, sandbox: safe-only",
@@ -207,6 +211,40 @@ function borderLine(innerWidth: number, edge: "top" | "bottom"): string {
   return `\x1b[90m${left}${"─".repeat(innerWidth)}${right}\x1b[0m`;
 }
 
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value)}%`;
+}
+
+function parsePercent(value: string): number {
+  return Number(value.replace("%", ""));
+}
+
+function formatCooldown(ms: number): string {
+  if (ms === 0) return "0s";
+  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
+  return `${Math.round(ms / 1000)}s`;
+}
+
+function parseCooldown(value: string): number {
+  if (value.endsWith("m")) return Number(value.slice(0, -1)) * 60_000;
+  if (value.endsWith("s")) return Number(value.slice(0, -1)) * 1000;
+  return Number(value);
+}
+
+function formatGrowthTokens(tokens: number): string {
+  if (tokens >= 1000 && tokens % 1000 === 0) return `${tokens / 1000}k`;
+  return String(tokens);
+}
+
+function parseGrowthTokens(value: string): number {
+  if (value.endsWith("k")) return Number(value.slice(0, -1)) * 1000;
+  return Number(value);
+}
+
 // ─── Main component ────────────────────────────────────────────────────
 
 /**
@@ -224,6 +262,7 @@ export class CompactorSettingsOverlay implements Component {
   // Per-section SettingsList instances
   private presetList!: SettingsList;
   private strategyList!: SettingsList;
+  private autoList!: SettingsList;
   private pipelineList!: SettingsList;
 
   constructor(opts?: { cwd?: string }) {
@@ -290,6 +329,53 @@ export class CompactorSettingsOverlay implements Component {
       { enableSearch: true },
     );
 
+    // ── Auto-compaction trigger list ──────────────────────────────────
+    const autoItems: SettingItem[] = [
+      {
+        id: "auto:enabled",
+        label: "Percentage Trigger",
+        description: "UniPi-managed auto-compaction based on context percentage",
+        currentValue: this.config.autoCompaction.enabled ? "on" : "off",
+        values: ["on", "off"],
+      },
+      {
+        id: "auto:thresholdPercent",
+        label: "Threshold",
+        description: "Trigger when Pi reports context usage at or above this percent",
+        currentValue: formatPercent(this.config.autoCompaction.thresholdPercent),
+        values: uniqueValues([...THRESHOLD_VALUES, formatPercent(this.config.autoCompaction.thresholdPercent)]),
+      },
+      {
+        id: "auto:cooldownMs",
+        label: "Cooldown",
+        description: "Minimum delay between UniPi-triggered compaction attempts",
+        currentValue: formatCooldown(this.config.autoCompaction.cooldownMs),
+        values: uniqueValues([...COOLDOWN_VALUES, formatCooldown(this.config.autoCompaction.cooldownMs)]),
+      },
+      {
+        id: "auto:repeatMinGrowthTokens",
+        label: "Repeat Growth",
+        description: "If still above threshold after compaction, require this many new tokens",
+        currentValue: formatGrowthTokens(this.config.autoCompaction.repeatMinGrowthTokens),
+        values: uniqueValues([...REPEAT_GROWTH_VALUES, formatGrowthTokens(this.config.autoCompaction.repeatMinGrowthTokens)]),
+      },
+      {
+        id: "auto:notify",
+        label: "Notifications",
+        description: "Notify when UniPi auto-compaction triggers or fails",
+        currentValue: this.config.autoCompaction.notify ? "on" : "off",
+        values: ["on", "off"],
+      },
+    ];
+
+    this.autoList = new SettingsList(
+      autoItems,
+      8,
+      THEME,
+      (id, newValue) => this.onAutoChange(id, newValue),
+      () => this.onCancel(),
+    );
+
     // ── Pipeline list ─────────────────────────────────────────────────
     const pipelineItems: SettingItem[] = PIPELINE_ITEMS.map((p) => ({
       id: `pipeline:${p.key}`,
@@ -312,6 +398,7 @@ export class CompactorSettingsOverlay implements Component {
 
   private get currentList(): SettingsList {
     if (this.section === "strategies") return this.strategyList;
+    if (this.section === "auto") return this.autoList;
     if (this.section === "pipeline") return this.pipelineList;
     return this.presetList;
   }
@@ -332,8 +419,9 @@ export class CompactorSettingsOverlay implements Component {
     const presetName = id.replace("preset:", "") as CompactorPreset;
     if (PRESETS.includes(presetName)) {
       this.config = applyPreset(presetName);
-      // Update all strategy/pipeline items to reflect new config
+      // Update all strategy/auto/pipeline items to reflect new config
       this.refreshStrategyValues();
+      this.refreshAutoValues();
       this.refreshPipelineValues();
       // Update preset indicators
       for (const name of PRESETS) {
@@ -358,6 +446,39 @@ export class CompactorSettingsOverlay implements Component {
     this.strategyList.updateValue(id, this.formatStrategyValue(strat));
 
     // Update preset indicators since config may no longer match a preset
+    for (const name of PRESETS) {
+      this.presetList.updateValue(
+        `preset:${name}`,
+        detectPreset(this.config) === name ? "✓ active" : "",
+      );
+    }
+  }
+
+  private onAutoChange(id: string, newValue: string): void {
+    const key = id.replace("auto:", "");
+    switch (key) {
+      case "enabled":
+        this.config.autoCompaction.enabled = newValue === "on";
+        break;
+      case "thresholdPercent":
+        this.config.autoCompaction.thresholdPercent = parsePercent(newValue);
+        break;
+      case "cooldownMs":
+        this.config.autoCompaction.cooldownMs = parseCooldown(newValue);
+        break;
+      case "repeatMinGrowthTokens":
+        this.config.autoCompaction.repeatMinGrowthTokens = parseGrowthTokens(newValue);
+        break;
+      case "notify":
+        this.config.autoCompaction.notify = newValue === "on";
+        break;
+      default:
+        return;
+    }
+
+    this.autoList.updateValue(id, this.formatAutoValue(key));
+
+    // Update preset indicators
     for (const name of PRESETS) {
       this.presetList.updateValue(
         `preset:${name}`,
@@ -395,9 +516,27 @@ export class CompactorSettingsOverlay implements Component {
     return mode;
   }
 
+  private formatAutoValue(key: string): string {
+    const auto = this.config.autoCompaction;
+    switch (key) {
+      case "enabled": return auto.enabled ? "on" : "off";
+      case "thresholdPercent": return formatPercent(auto.thresholdPercent);
+      case "cooldownMs": return formatCooldown(auto.cooldownMs);
+      case "repeatMinGrowthTokens": return formatGrowthTokens(auto.repeatMinGrowthTokens);
+      case "notify": return auto.notify ? "on" : "off";
+      default: return "";
+    }
+  }
+
   private refreshStrategyValues(): void {
     for (const s of STRATEGIES) {
       this.strategyList.updateValue(`strategy:${s.key}`, this.formatStrategyValue(s));
+    }
+  }
+
+  private refreshAutoValues(): void {
+    for (const key of ["enabled", "thresholdPercent", "cooldownMs", "repeatMinGrowthTokens", "notify"]) {
+      this.autoList.updateValue(`auto:${key}`, this.formatAutoValue(key));
     }
   }
 

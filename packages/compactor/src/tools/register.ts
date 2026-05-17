@@ -291,17 +291,25 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     label: "Context Budget",
     description: "Estimate remaining context window (% full, tokens left) and get advice on whether to compact.",
     parameters: Type.Object({}),
-    async execute(): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> {
-      const blocks = deps.getBlocks();
-      const estimatedTokens = blocks.reduce((sum, b) => {
-        const text = b.kind === "tool_call"
-          ? `${b.name} ${JSON.stringify((b as any).args ?? {})}`
-          : b.kind === "tool_result"
-            ? `${b.name} ${(b as any).text ?? ""}`
-            : (b as any).text ?? "";
-        return sum + Math.ceil(text.length / 4);
-      }, 0);
-      const message = contextBudgetTool(estimatedTokens);
+    async execute(_toolCallId: string, _params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> {
+      const config = loadConfig(ctx?.cwd ?? process.cwd());
+      const liveUsage = ctx?.getContextUsage?.();
+      let estimatedTokens: number | undefined = liveUsage?.tokens ?? undefined;
+      let contextWindow = liveUsage?.contextWindow;
+
+      if (estimatedTokens === undefined) {
+        const blocks = deps.getBlocks();
+        estimatedTokens = blocks.reduce((sum, b) => {
+          const text = b.kind === "tool_call"
+            ? `${b.name} ${JSON.stringify((b as any).args ?? {})}`
+            : b.kind === "tool_result"
+              ? `${b.name} ${(b as any).text ?? ""}`
+              : (b as any).text ?? "";
+          return sum + Math.ceil(text.length / 4);
+        }, 0);
+      }
+
+      const message = contextBudgetTool(estimatedTokens, contextWindow, config.autoCompaction);
       return textResult(message);
     },
   } as any));

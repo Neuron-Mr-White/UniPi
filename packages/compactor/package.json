@@ -20,6 +20,9 @@
     "sandbox",
     "fts5"
   ],
+  "scripts": {
+    "test": "bun test tests"
+  },
   "files": [
     "index.ts",
     "src/**/*.ts",

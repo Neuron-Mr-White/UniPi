@@ -10,6 +10,19 @@ describe("config", () => {
     expect(config.debug).toBe(true);
     expect(config.sessionGoals).toBeDefined();
     expect(config.sessionGoals.enabled).toBe(true);
+    expect(config.autoCompaction).toEqual(DEFAULT_COMPACTOR_CONFIG.autoCompaction);
+  });
+
+  it("migrateConfig merges partial auto-compaction settings", () => {
+    const config = migrateConfig({
+      autoCompaction: { enabled: true, thresholdPercent: 85 } as any,
+    });
+
+    expect(config.autoCompaction.enabled).toBe(true);
+    expect(config.autoCompaction.thresholdPercent).toBe(85);
+    expect(config.autoCompaction.cooldownMs).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.cooldownMs);
+    expect(config.autoCompaction.repeatMinGrowthTokens).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.repeatMinGrowthTokens);
+    expect(config.autoCompaction.notify).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.notify);
   });
 
   it("detectPreset returns custom for modified config", () => {
@@ -27,6 +40,8 @@ describe("config", () => {
   it("loadConfig returns defaults when no file", () => {
     const config = loadConfig();
     expect(config).toBeDefined();
-    expect(config.overrideDefaultCompaction).toBe(false);
+    expect(config.overrideDefaultCompaction).toBe(true);
+    expect(config.autoCompaction.enabled).toBe(false);
+    expect(config.autoCompaction.thresholdPercent).toBe(80);
   });
 });

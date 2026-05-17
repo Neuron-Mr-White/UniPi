@@ -88,6 +88,20 @@ export interface CompactorStrategyConfig {
   autoDetect?: "git" | null;
 }
 
+/** UniPi-managed percentage auto-compaction trigger settings. */
+export interface AutoCompactionConfig {
+  /** Enable the extension-managed percentage trigger. Disabled by default for backward compatibility. */
+  enabled: boolean;
+  /** Trigger when Pi reports context usage at or above this percent (0-100 scale). */
+  thresholdPercent: number;
+  /** Minimum delay between UniPi-triggered compaction attempts. */
+  cooldownMs: number;
+  /** When usage stays above threshold after compaction, require this many new tokens before repeating. */
+  repeatMinGrowthTokens: number;
+  /** Show user notifications for UniPi-triggered compaction attempts/results. */
+  notify: boolean;
+}
+
 export interface CompactorConfig {
   // Compaction strategies
   sessionGoals: CompactorStrategyConfig & { mode: "full" | "brief" | "off" };
@@ -111,6 +125,9 @@ export interface CompactorConfig {
     mmapPragma: boolean;
     customNoisePatterns: string[];
   };
+
+  // Auto compaction trigger
+  autoCompaction: AutoCompactionConfig;
 
   // Global settings
   overrideDefaultCompaction: boolean;

@@ -3,9 +3,16 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, emitEvent } from "@pi-unipi/core";
+import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, COMPACTOR_INSTRUCTION, emitEvent } from "@pi-unipi/core";
 import { scaffoldConfig, loadConfig } from "./config/manager.js";
 import { registerCompactionHooks } from "./compaction/hooks.js";
+import {
+  createAutoCompactionState,
+  decideAutoCompaction,
+  markAutoCompactionComplete,
+  markAutoCompactionError,
+  type AutoCompactionState,
+} from "./compaction/auto-trigger.js";
 import { SessionDB, getWorktreeSuffix } from "./session/db.js";
 import { extractEventsFromToolResult } from "./session/extract.js";
 import { injectResumeSnapshot } from "./session/resume-inject.js";
@@ -25,6 +32,12 @@ function createDebugLogger(getConfig: () => { debug: boolean }) {
     return;
   };
 }
+
+const formatTokenCount = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+};
 
 /** Measure byte size of a tool_result event's response content. */
 function measureResponseBytes(event: any): number {
@@ -59,6 +72,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
   let executor: PolyglotExecutor | null = null;
   let config = loadConfig();
+  let autoCompactionState: AutoCompactionState = createAutoCompactionState();
   let cachedBlocks: NormalizedBlock[] = [];
   let currentSessionId = "default";
   const counters: RuntimeCounters = {
@@ -148,6 +162,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     runtimeStats.sessionStart = Date.now();
     runtimeStats.cacheHits = 0;
     runtimeStats.cacheBytesSaved = 0;
+    autoCompactionState = createAutoCompactionState();
 
     sessionDB?.ensureSession(fullSessionId, projectDir);
 
@@ -280,6 +295,64 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         } catch (err) {
           debug("auto_injection_error", { error: String(err) });
         }
+      }
+    }
+  });
+
+  pi.on("turn_end", async (_event, ctx) => {
+    const cwd = (ctx as any).cwd ?? process.cwd();
+    config = loadConfig(cwd);
+
+    const decision = decideAutoCompaction({
+      config: config.autoCompaction,
+      usage: ctx.getContextUsage?.(),
+      state: autoCompactionState,
+      nowMs: Date.now(),
+    });
+    autoCompactionState = decision.state;
+
+    debug("auto_compaction_decision", {
+      enabled: config.autoCompaction.enabled,
+      reason: decision.reason,
+      shouldTrigger: decision.shouldTrigger,
+      percent: decision.usage?.percent,
+      tokens: decision.usage?.tokens,
+      thresholdPercent: decision.thresholdPercent,
+      cooldownRemainingMs: decision.cooldownRemainingMs,
+      tokenGrowth: decision.tokenGrowth,
+    });
+
+    if (!decision.shouldTrigger) return;
+
+    const notify = config.autoCompaction.notify;
+    if (notify && decision.usage) {
+      ctx.ui.notify(
+        `Auto-compacting at ${decision.usage.percent.toFixed(1)}% context (~${formatTokenCount(decision.usage.tokens)} tokens; threshold ${decision.thresholdPercent}%).`,
+        "info",
+      );
+    }
+
+    try {
+      ctx.compact({
+        customInstructions: COMPACTOR_INSTRUCTION,
+        onComplete: () => {
+          autoCompactionState = markAutoCompactionComplete(autoCompactionState);
+          if (notify) {
+            ctx.ui.notify("Auto-compaction completed.", "info");
+          }
+        },
+        onError: (err: Error) => {
+          autoCompactionState = markAutoCompactionError(autoCompactionState, Date.now());
+          const benign = err.message === "Compaction cancelled" || err.message === "Already compacted";
+          if (notify && !benign) {
+            ctx.ui.notify(`Auto-compaction failed: ${err.message}`, "warning");
+          }
+        },
+      });
+    } catch (err) {
+      autoCompactionState = markAutoCompactionError(autoCompactionState, Date.now());
+      if (notify) {
+        ctx.ui.notify(`Auto-compaction failed: ${err instanceof Error ? err.message : String(err)}`, "warning");
       }
     }
   });

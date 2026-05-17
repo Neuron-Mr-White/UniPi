@@ -21,6 +21,7 @@ const preset = (
   fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, ...(overrides.fts5Index ?? {}) },
   sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution ?? {}) },
   toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, ...(overrides.toolDisplay ?? {}) },
+  autoCompaction: { ...DEFAULT_COMPACTOR_CONFIG.autoCompaction, ...(overrides.autoCompaction ?? {}) },
 });
 
 // Pipeline feature defaults per preset:

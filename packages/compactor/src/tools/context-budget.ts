@@ -2,6 +2,8 @@
  * context_budget tool — estimate remaining context window
  */
 
+import type { AutoCompactionConfig } from "../types.js";
+
 export interface ContextBudgetResult {
   percentFull: number;
   remainingTokens: number;
@@ -13,6 +15,7 @@ export interface ContextBudgetResult {
 export function estimateContextBudget(
   tokensBefore?: number,
   contextWindowSize?: number,
+  autoCompaction?: Pick<AutoCompactionConfig, "enabled" | "thresholdPercent">,
 ): ContextBudgetResult | null {
   const windowSize = contextWindowSize ?? 200000; // Default 200K context
   const used = tokensBefore ?? 0;
@@ -33,6 +36,15 @@ export function estimateContextBudget(
     advice = "Context has plenty of room. No compaction needed yet.";
   }
 
+  if (autoCompaction?.enabled) {
+    const threshold = autoCompaction.thresholdPercent;
+    if (percentFull >= threshold) {
+      advice += ` UniPi percentage auto-compaction is enabled at ${threshold}% and usage is above that threshold, subject to cooldown/repeat safeguards.`;
+    } else {
+      advice += ` UniPi percentage auto-compaction is enabled at ${threshold}%.`;
+    }
+  }
+
   const message = `Context: ~${percentFull}% full (estimated ${remaining.toLocaleString()} tokens remaining)`;
 
   return { percentFull, remainingTokens: remaining, totalTokens: windowSize, message, advice };
@@ -42,8 +54,12 @@ export function estimateContextBudget(
  * The context_budget tool handler.
  * Called from the tool registration — receives tokensBefore from Pi context.
  */
-export function contextBudgetTool(tokensBefore?: number): string {
-  const budget = estimateContextBudget(tokensBefore);
+export function contextBudgetTool(
+  tokensBefore?: number,
+  contextWindowSize?: number,
+  autoCompaction?: Pick<AutoCompactionConfig, "enabled" | "thresholdPercent">,
+): string {
+  const budget = estimateContextBudget(tokensBefore, contextWindowSize, autoCompaction);
   if (!budget) return "Context budget: Unknown (no token data available from session).";
 
   return `${budget.message}\nAdvice: ${budget.advice}`;

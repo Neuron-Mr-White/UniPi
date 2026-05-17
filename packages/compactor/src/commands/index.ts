@@ -229,8 +229,11 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         "  /unipi:session-recall <query> — search session history\n" +
         "  /unipi:compact-stats — view stats\n" +
         "  /unipi:compact-doctor — run diagnostics\n" +
-        "  /unipi:compact-settings — TUI settings\n" +
+        "  /unipi:compact-settings — TUI settings, including optional % auto-compaction\n" +
         "  /unipi:compact-preset <name> — apply preset\n" +
+        "\n" +
+        "Percentage trigger:\n" +
+        "  Disabled by default. Enable in /unipi:compact-settings to compact at a context % before Pi's reserve-token limit.\n" +
         "\n" +
         "Content indexing has moved to @pi-unipi/cocoindex:\n" +
         "  /unipi:cocoindex-init — initialize pipeline\n" +

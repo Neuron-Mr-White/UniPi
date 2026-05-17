@@ -116,6 +116,7 @@ export function migrateConfig(partial: Partial<CompactorConfig>): CompactorConfi
     sandboxExecution: mergeStrategy("sandboxExecution", defaults.sandboxExecution, partial.sandboxExecution),
     toolDisplay: mergeStrategy("toolDisplay", defaults.toolDisplay, partial.toolDisplay),
     pipeline: mergeStrategy("pipeline", defaults.pipeline, (partial as any).pipeline) as any,
+    autoCompaction: mergeStrategy("autoCompaction", defaults.autoCompaction, partial.autoCompaction),
     overrideDefaultCompaction: partial.overrideDefaultCompaction ?? defaults.overrideDefaultCompaction,
     debug: partial.debug ?? defaults.debug,
     showTruncationHints: partial.showTruncationHints ?? defaults.showTruncationHints,
