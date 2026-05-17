@@ -11,9 +11,8 @@ description: Context management — compact session, recall history, run code, s
 - `compactor_stats` → check savings. `compactor_doctor` → diagnose.
 
 ## Finding Past Work
-- `session_recall(query)` → search this session (BM25 or regex).
-- `content_search(query)` → search indexed files/docs.
-  → Index first: `content_index` or `content_fetch(url)`.
+- `session_recall(query)` → search this session (BM25 or regex), including raw messages that may no longer be in live context after compaction.
+- For indexed project/file search, use the CocoIndex package (`cocoindex_search`) when installed; content indexing no longer lives in compactor.
 
 ## Running Code
 - `sandbox(lang, code)` → single script. `sandbox_batch(items)` → atomic.

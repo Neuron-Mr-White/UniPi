@@ -37,6 +37,40 @@ describe("config", () => {
     expect(config.briefTranscript.mode).toBe("minimal");
   });
 
+  it("applyPreset applies pipeline profile settings", () => {
+    expect(applyPreset("precise").pipeline).toMatchObject({
+      ttlCache: true,
+      autoInjection: false,
+      proximityReranking: false,
+      timelineSort: false,
+      progressiveThrottling: false,
+      mmapPragma: true,
+    });
+    expect(applyPreset("balanced").pipeline).toMatchObject({
+      ttlCache: true,
+      autoInjection: true,
+      proximityReranking: true,
+      timelineSort: true,
+      progressiveThrottling: true,
+      mmapPragma: true,
+    });
+    expect(applyPreset("thorough").pipeline).toEqual(applyPreset("balanced").pipeline);
+    expect(applyPreset("lean").pipeline).toMatchObject({
+      ttlCache: false,
+      autoInjection: false,
+      proximityReranking: false,
+      timelineSort: false,
+      progressiveThrottling: false,
+      mmapPragma: false,
+    });
+  });
+
+  it("new and legacy preset aliases produce matching pipeline settings", () => {
+    expect(applyPreset("opencode").pipeline).toEqual(applyPreset("precise").pipeline);
+    expect(applyPreset("verbose").pipeline).toEqual(applyPreset("thorough").pipeline);
+    expect(applyPreset("minimal").pipeline).toEqual(applyPreset("lean").pipeline);
+  });
+
   it("loadConfig returns defaults when no file", () => {
     const config = loadConfig();
     expect(config).toBeDefined();

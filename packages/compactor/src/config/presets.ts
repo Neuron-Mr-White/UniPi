@@ -6,6 +6,21 @@ import { createHash } from "node:crypto";
 import type { CompactorConfig, CompactorPreset } from "../types.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
+const pipeline = (overrides: Partial<CompactorConfig["pipeline"]> = {}): CompactorConfig["pipeline"] => ({
+  ...DEFAULT_COMPACTOR_CONFIG.pipeline,
+  ...overrides,
+  customNoisePatterns: [...(overrides.customNoisePatterns ?? DEFAULT_COMPACTOR_CONFIG.pipeline.customNoisePatterns)],
+});
+
+const pipelineAllOn = (): CompactorConfig["pipeline"] => pipeline({
+  ttlCache: true,
+  autoInjection: true,
+  proximityReranking: true,
+  timelineSort: true,
+  progressiveThrottling: true,
+  mmapPragma: true,
+});
+
 const preset = (
   overrides: Partial<CompactorConfig>,
 ): CompactorConfig => ({
@@ -21,6 +36,7 @@ const preset = (
   fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, ...(overrides.fts5Index ?? {}) },
   sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution ?? {}) },
   toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, ...(overrides.toolDisplay ?? {}) },
+  pipeline: pipeline(overrides.pipeline),
   autoCompaction: { ...DEFAULT_COMPACTOR_CONFIG.autoCompaction, ...(overrides.autoCompaction ?? {}) },
 });
 
@@ -33,13 +49,17 @@ const preset = (
 export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
   // New preset names
   precise: preset({
+    pipeline: pipeline({ ttlCache: true, mmapPragma: true }),
+    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "safe-only" },
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "opencode" },
   }),
   thorough: preset({
+    pipeline: pipelineAllOn(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "full" },
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "verbose" },
   }),
   lean: preset({
+    pipeline: pipeline(),
     sessionGoals: { ...DEFAULT_COMPACTOR_CONFIG.sessionGoals, enabled: true, mode: "brief" },
     filesAndChanges: { ...DEFAULT_COMPACTOR_CONFIG.filesAndChanges, enabled: true, mode: "modified-only" },
     commits: { ...DEFAULT_COMPACTOR_CONFIG.commits, enabled: false, mode: "off" },
@@ -52,6 +72,7 @@ export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, enabled: true, mode: "opencode" },
   }),
   balanced: preset({
+    pipeline: pipelineAllOn(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "compact" },
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "balanced" },
     fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, mode: "auto" },
@@ -59,13 +80,17 @@ export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
 
   // Backward-compat aliases — map old names to new
   opencode: preset({
+    pipeline: pipeline({ ttlCache: true, mmapPragma: true }),
+    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "safe-only" },
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "opencode" },
   }),
   verbose: preset({
+    pipeline: pipelineAllOn(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "full" },
     toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "verbose" },
   }),
   minimal: preset({
+    pipeline: pipeline(),
     sessionGoals: { ...DEFAULT_COMPACTOR_CONFIG.sessionGoals, enabled: true, mode: "brief" },
     filesAndChanges: { ...DEFAULT_COMPACTOR_CONFIG.filesAndChanges, enabled: true, mode: "modified-only" },
     commits: { ...DEFAULT_COMPACTOR_CONFIG.commits, enabled: false, mode: "off" },
