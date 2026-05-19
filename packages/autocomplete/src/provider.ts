@@ -44,6 +44,18 @@ function fuzzyMatch(text: string, query: string): boolean {
 // ─── Namespace detection ─────────────────────────────────────────────
 
 /**
+ * Pi prefixes extension command descriptions with source tags such as
+ * `[u:npm:@pi-unipi/unipi]`. The enchanted provider replaces that with
+ * package tags (`[workflow]`, `[memory]`, …), so strip the source tag from
+ * base descriptions before reusing them.
+ */
+function stripPiSourceTag(description: string): string {
+  return description
+    .replace(/^\[(?:[upt])(?::[^\]]+)?\]\s*/, "")
+    .trimStart();
+}
+
+/**
  * If the query looks like a package namespace (e.g. "workflow", "memory",
  * "utility"), return that package name so its commands sort to the top.
  * Returns null when the query isn't a pure namespace search.
@@ -174,7 +186,7 @@ function getEnhancedUnipiItems(
 
     return {
       value: cmd,
-      label: cmd.replace("unipi:", ""),
+      label: cmd,
       description: desc ? `${tag} ${desc}` : tag,
     };
   });
@@ -261,7 +273,10 @@ export function createEnchantedProvider(
         for (const item of baseSuggestions.items) {
           if (item.value.startsWith("unipi:")) {
             if (item.description) {
-              descriptionOverrides.set(item.value, item.description);
+              const cleanDescription = stripPiSourceTag(item.description);
+              if (cleanDescription) {
+                descriptionOverrides.set(item.value, cleanDescription);
+              }
             }
           } else {
             nonUnipiItems.push(item);
