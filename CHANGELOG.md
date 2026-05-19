@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.5] — 2026-05-19
+
+### Added
+- `footer`: added terminal-aware `colorMode` support (`auto`, `truecolor`, `256`, `none`) with xterm-256 downgrading for terminals that do not support 24-bit color.
+- `footer`: added Apple Terminal detection so footer hex colors render with 256-color ANSI escapes instead of being swallowed.
+
+### Fixed
+- `autocomplete`: stripped Pi source tags like `[u:npm:@pi-unipi/unipi]` from enchanted `/unipi:*` suggestions while keeping package tags such as `[workflow]`.
+- `footer`: preserved distinct workflow/category colors on non-truecolor terminals and expanded color-mode tests for truecolor, 256-color, no-color, and Apple Terminal paths.
+- `utility`: aligned terminal capability detection with footer color fallback behavior, including Apple Terminal truecolor suppression.
+
+### Changed
+- `unipi`: regenerated the bundled all-in-one extension for the release.
+
 ## [2.0.4] — 2026-05-18
 
 ### Added

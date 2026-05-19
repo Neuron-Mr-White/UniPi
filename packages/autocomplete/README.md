@@ -9,6 +9,7 @@ Command Enchantment has no user commands. It improves the editor autocomplete ex
 ## What It Does
 
 - Groups `/unipi:*` commands by package so workflow, memory, web, footer, and other commands are visually distinct.
+- Shows full command values like `unipi:brainstorm` while replacing Pi source tags with concise package tags like `[workflow]`.
 - Sorts matches in predictable tiers: exact Unipi matches first, then other Unipi matches, then system commands.
 - Preserves dynamic argument completions from command providers, including workflow document and worktree suggestions.
 - Ships an audit test that checks registered Unipi commands are represented in the autocomplete registry and have descriptions.

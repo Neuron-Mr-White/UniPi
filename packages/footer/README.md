@@ -69,6 +69,7 @@ Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
       "preset": "default",
       "separator": "powerline-thin",
       "iconStyle": "nerd",
+      "colorMode": "auto",
       "groups": {
         "compactor": {
           "show": true,
@@ -104,6 +105,17 @@ Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
 | `text` | Plain text abbreviations (works everywhere) |
 
 When `iconStyle` is not set, footer auto-detects Nerd Font support and defaults to `nerd` if available, `emoji` otherwise.
+
+### Color Mode
+
+| Mode | Description |
+|------|-------------|
+| `auto` | Detect terminal support from environment (default) |
+| `truecolor` | Force 24-bit ANSI color |
+| `256` | Force xterm-256 color fallback |
+| `none` | Disable footer color escapes |
+
+`auto` uses truecolor where supported and downgrades to xterm-256 colors for terminals such as Apple Terminal that do not reliably render 24-bit color escapes.
 
 ### Responsive Layout
 

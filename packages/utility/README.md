@@ -128,8 +128,11 @@ import { detectCapabilities, getIcon } from "@pi-unipi/utility/display/capabilit
 
 const caps = detectCapabilities();
 console.log("Nerd Font:", caps.nerdFont);
+console.log("Truecolor:", caps.truecolor);
 console.log(getIcon("󰘳", "[OK]")); // Uses Nerd Font if available
 ```
+
+Capability detection distinguishes basic color, xterm-256-compatible terminals, and truecolor-capable terminals. Apple Terminal is treated as color-capable but not truecolor-capable so renderers can fall back safely.
 
 ## Privacy
 

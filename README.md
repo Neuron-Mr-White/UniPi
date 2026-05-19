@@ -27,7 +27,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing plus native focus suppression so alerts can stay quiet while Pi is already focused.
 
-**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling.
+**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling, and terminal-aware color fallback.
 
 **[BTW](./packages/btw/README.md)** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
 
@@ -45,7 +45,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Input Shortcuts](./packages/input-shortcuts/README.md)** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
 
-**[Command Enchantment](./packages/autocomplete/README.md)** — Enhanced `/unipi:*` autocomplete with package grouping, descriptions, colors, and registry audits that catch stale command docs before release.
+**[Command Enchantment](./packages/autocomplete/README.md)** — Enhanced `/unipi:*` autocomplete with full command names, package tags, descriptions, colors, and registry audits that catch stale command docs before release.
 
 ## Architecture
 
