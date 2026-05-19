@@ -8,6 +8,7 @@
 import { getInstalledPackageVersion } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
 import { readLastCheck, writeLastCheck, isCheckDue } from "./cache.js";
+import { compareVersions, isNewerVersion } from "./version.js";
 import type { UpdateCheckResult } from "../types.js";
 
 /** NPM registry URL for the unipi umbrella package */
@@ -18,6 +19,16 @@ function getInstalledVersion(): string {
   // Walk up from this file to find the @pi-unipi/unipi package by name
   const dir = new URL("..", import.meta.url).pathname;
   return getInstalledPackageVersion(dir, "@pi-unipi/unipi");
+}
+
+
+/** Build an update result without ever reporting downgrades as updates. */
+function toUpdateResult(latestVersion: string, currentVersion: string): UpdateCheckResult {
+  return {
+    updateAvailable: isNewerVersion(latestVersion, currentVersion),
+    latestVersion,
+    currentVersion,
+  };
 }
 
 /**
@@ -31,15 +42,14 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   try {
     const config = loadConfig();
 
-    // Check if we need to fetch (interval not elapsed)
-    if (!isCheckDue(config.checkIntervalMs)) {
-      const cache = readLastCheck();
-      if (cache) {
-        return {
-          updateAvailable: cache.latestVersion !== currentVersion,
-          latestVersion: cache.latestVersion,
-          currentVersion,
-        };
+    // Check if we need to fetch (interval not elapsed). If the cached npm
+    // version is older than the installed version, ignore the interval and
+    // refresh: this happens immediately after a local/source release before
+    // the updater cache has seen the new npm dist-tag.
+    const cache = readLastCheck();
+    if (cache && !isCheckDue(config.checkIntervalMs)) {
+      if (compareVersions(cache.latestVersion, currentVersion) >= 0) {
+        return toUpdateResult(cache.latestVersion, currentVersion);
       }
     }
 
@@ -66,16 +76,13 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       latestVersion,
     });
 
-    return {
-      updateAvailable: latestVersion !== currentVersion,
-      latestVersion,
-      currentVersion,
-    };
+    return toUpdateResult(latestVersion, currentVersion);
   } catch (err: unknown) {
-    // Network error — return cached info if available
+    // Network error — return cached info if available, but never suggest a
+    // downgrade from a stale cache.
     const cache = readLastCheck();
     return {
-      updateAvailable: false,
+      updateAvailable: cache ? isNewerVersion(cache.latestVersion, currentVersion) : false,
       latestVersion: cache?.latestVersion ?? "",
       currentVersion,
       error: err instanceof Error ? err.message : String(err) || "Unknown error",
