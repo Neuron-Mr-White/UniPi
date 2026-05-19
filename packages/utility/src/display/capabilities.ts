@@ -42,24 +42,38 @@ function detectColorSupport(): { color: boolean; truecolor: boolean } {
   const term = env.TERM || "";
   const termProgram = env.TERM_PROGRAM || "";
 
-  // Truecolor support
-  const truecolorTerms = [
-    "truecolor",
-    "24bit",
-    "xterm-256color",
-    "screen-256color",
-    "tmux-256color",
-    "alacritty",
-    "kitty",
-    "wezterm",
-    "iTerm",
+  // Apple Terminal.app does NOT support 24-bit truecolor (longstanding
+  // limitation as of macOS 26). Force 256-colour even if some wrapper
+  // leaked COLORTERM=truecolor into the environment.
+  const isAppleTerminal = termProgram === "Apple_Terminal";
+
+  // Truecolor TERM_PROGRAM allow-list. Note: terminfo names like
+  // "xterm-256color" / "screen-256color" / "tmux-256color" advertise
+  // 256-colour, NOT truecolor — they must not appear here.
+  const truecolorTermPrograms = [
+    "iTerm.app",
+    "WezTerm",
+    "Alacritty",
+    "vscode",
+    "Hyper",
+    "Warp",
     "ghostty",
+    "Ghostty",
+    "zed",
+    "Zed",
+    "cursor",
+    "Cursor",
   ];
 
-  const hasTruecolor =
-    env.COLORTERM === "truecolor" ||
-    env.COLORTERM === "24bit" ||
-    truecolorTerms.some((t) => term.includes(t) || termProgram.includes(t));
+  // Truecolor TERM tokens (the rare TERM that *does* advertise truecolor).
+  const truecolorTermTokens = ["truecolor", "24bit", "alacritty", "kitty", "wezterm"];
+
+  const hasTruecolor = isAppleTerminal
+    ? false
+    : env.COLORTERM === "truecolor" ||
+      env.COLORTERM === "24bit" ||
+      truecolorTermPrograms.includes(termProgram) ||
+      truecolorTermTokens.some((t) => term.includes(t));
 
   // Basic color support
   const hasColor =

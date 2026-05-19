@@ -82,6 +82,9 @@ export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 /** Icon style — determines which icon set is used for segments */
 export type IconStyle = "nerd" | "emoji" | "text";
 
+/** Colour-emission mode for terminal output. */
+export type ColorMode = "auto" | "truecolor" | "256" | "none";
+
 /** Separator styles for segment dividers */
 export type SeparatorStyle =
   | "powerline"
@@ -190,6 +193,8 @@ export interface FooterSettings {
   zoneSeparator?: string;
   /** Show full labels instead of compact short labels */
   showFullLabels?: boolean;
+  /** Terminal colour mode override (default: "auto" — env-detected). */
+  colorMode?: ColorMode;
   /** Per-group settings */
   groups: Record<string, FooterGroupSettings>;
 }

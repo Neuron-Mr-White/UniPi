@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle } from "./types.js";
+import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle, ColorMode } from "./types.js";
 import { UNIPI_SETTINGS_KEY } from "@pi-unipi/core";
 
 /** Default footer settings */
@@ -19,6 +19,7 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   iconStyle: "nerd",
   zoneSeparator: "\u2502", // │
   showFullLabels: false,
+  colorMode: "auto",
   groups: {
     core: { show: true, segments: {} },
     compactor: { show: true, segments: {} },
@@ -96,6 +97,7 @@ export function loadFooterSettings(): FooterSettings {
       iconStyle: isValidIconStyle(footer.iconStyle) ? footer.iconStyle as IconStyle : DEFAULT_FOOTER_SETTINGS.iconStyle,
       zoneSeparator: typeof footer.zoneSeparator === "string" ? footer.zoneSeparator : DEFAULT_FOOTER_SETTINGS.zoneSeparator,
       showFullLabels: typeof footer.showFullLabels === "boolean" ? footer.showFullLabels : DEFAULT_FOOTER_SETTINGS.showFullLabels,
+      colorMode: isValidColorMode(footer.colorMode) ? footer.colorMode as ColorMode : DEFAULT_FOOTER_SETTINGS.colorMode,
       groups: mergeGroupSettings(
         DEFAULT_FOOTER_SETTINGS.groups,
         footer.groups as Record<string, FooterGroupSettings> | undefined,
@@ -167,6 +169,12 @@ function isValidSeparator(value: unknown): boolean {
 function isValidIconStyle(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const valid: string[] = ["nerd", "emoji", "text"];
+  return valid.includes(value);
+}
+
+function isValidColorMode(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const valid: string[] = ["auto", "truecolor", "256", "none"];
   return valid.includes(value);
 }
 
