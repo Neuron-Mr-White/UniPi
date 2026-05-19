@@ -11,7 +11,7 @@ import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, Rende
 import type { FooterRegistry } from "../registry/index.js";
 import { visibleWidth as piVisibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import { getSeparator, separatorVisibleWidth } from "./separators.js";
-import { getDefaultColors } from "./theme.js";
+import { getDefaultColors, setColorMode, refreshColorMode } from "./theme.js";
 import { setIconStyle } from "./icons.js";
 import { getPreset } from "../presets.js";
 import { isSegmentEnabled, isSegmentExplicitlyEnabled, loadFooterSettings } from "../config.js";
@@ -104,6 +104,19 @@ export class FooterRenderer {
   private syncIconStyle(): void {
     const settings = loadFooterSettings();
     setIconStyle(settings.iconStyle);
+    this.syncColorMode(settings);
+  }
+
+  /** Sync the colour-emission mode from settings to the theme module. */
+  private syncColorMode(settings?: ReturnType<typeof loadFooterSettings>): void {
+    const s = settings ?? loadFooterSettings();
+    const mode = s.colorMode ?? "auto";
+    if (mode === "auto") {
+      setColorMode(null);
+      refreshColorMode();
+    } else {
+      setColorMode(mode);
+    }
   }
 
   /** Get the active preset name */
