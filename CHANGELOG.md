@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.6] — 2026-05-19
+
+### Fixed
+- `updater`: compare versions numerically instead of using string inequality so stale cache entries never prompt downgrades like `2.0.5 → 2.0.4`.
+- `updater`: bypass the check interval when the cached npm version is older than the installed version, forcing a fresh registry check after local/source releases.
+
 ## [2.0.5] — 2026-05-19
 
 ### Added
