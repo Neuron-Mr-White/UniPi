@@ -18,6 +18,17 @@ import { summarizeLastMessage } from "./summarize.js";
 /** Stored session context for modelRegistry access */
 let sessionCtx: ExtensionContext | null = null;
 
+/** Unsubscribe functions for pi.events.on() listeners. Cleared before each registration to avoid accumulation across reloads. */
+const unsubs: Array<() => void> = [];
+
+/** Unregister all previously registered pi.events.on() listeners. */
+function unregisterAll(): void {
+  for (const unsub of unsubs) {
+    try { unsub(); } catch { /* ignore */ }
+  }
+  unsubs.length = 0;
+}
+
 /** Store session context (called from index.ts on session_start) */
 export function setSessionContext(ctx: ExtensionContext): void {
   sessionCtx = ctx;
@@ -43,6 +54,12 @@ export const BUILTIN_EVENTS: Record<
 };
 
 /**
+ * Pi lifecycle event types (dispatched by ExtensionRunner).
+ * These must use pi.on() — not pi.events.on() — to receive events.
+ */
+const LIFECYCLE_EVENTS = new Set(["agent_end", "session_shutdown"]);
+
+/**
  * Register event listeners for all enabled notification events.
  * Attaches listeners to pi hooks and routes notifications to platforms.
  */
@@ -51,6 +68,9 @@ export function registerEventListeners(
   config: NotifyConfig,
   cwd: string
 ): void {
+  // Remove all previously registered EventBus listeners to prevent accumulation
+  // across reloads (EventBus persists but module instances are replaced).
+  unregisterAll();
   // Register built-in events (except agent_end which has custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
     if (eventKey === "agent_end") continue; // handled separately below
@@ -69,7 +89,37 @@ export function registerEventListeners(
       );
     };
 
-    (pi as any).on(def.hook, handler);
+    // pi lifecycle events (agent_end, session_shutdown) are dispatched via
+    // ExtensionRunner — must use pi.on(). These are stored in
+    // extension.handlers and automatically replaced on reload, so they
+    // do NOT accumulate like EventBus listeners.
+    if (LIFECYCLE_EVENTS.has(eventKey)) {
+      (pi as any).on(def.hook, handler);
+    } else {
+      unsubs.push(pi.events.on(def.hook, handler));
+    }
+  }
+
+  // Listen for rpiv:ask-user:prompt from @juicesharp/rpiv-ask-user-question
+  const askUserConfig = config.events["ask_user_prompt"];
+  if (askUserConfig?.enabled) {
+    unsubs.push(pi.events.on("rpiv:ask-user:prompt", (payload: unknown) => {
+      const p =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)
+          : {};
+      const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
+      const question = String(p.question ?? "A question");
+      const context = p.context == null ? "" : String(p.context);
+      const message = context
+        ? `Agent asks: ${question} — ${context}`
+        : `Agent asks: ${question}`;
+      dispatchNotification(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd).catch(
+        () => {
+          // Silently ignore — background notification failure is non-blocking.
+        }
+      );
+    }));
   }
 
   // agent_end — custom handler with session name and recap support
@@ -130,7 +180,7 @@ export function registerEventListeners(
       // For now, modules register their own events through MODULE_READY
     }
   };
-  (pi as any).on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
+  unsubs.push(pi.events.on(UNIPI_EVENTS.MODULE_READY, moduleHandler));
 }
 
 /** Get all platforms that are currently enabled in config */
@@ -144,7 +194,9 @@ function getEnabledPlatforms(config: NotifyConfig, ntfyEnabled: boolean): Notify
 }
 
 /** No-op — cleanup handled by session teardown */
-export function unregisterEventListeners(): void {}
+export function unregisterEventListeners(): void {
+  unregisterAll();
+}
 
 /**
  * Dispatch a notification to the configured platforms.
