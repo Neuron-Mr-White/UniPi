@@ -18,6 +18,9 @@
     "notify",
     "notifications"
   ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test src/__tests__/*.test.ts"
+  },
   "files": [
     "index.ts",
     "tools.ts",
