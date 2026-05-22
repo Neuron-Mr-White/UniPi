@@ -43,6 +43,12 @@ export const BUILTIN_EVENTS: Record<
 };
 
 /**
+ * Pi lifecycle event types (dispatched by ExtensionRunner).
+ * These must use pi.on() — not pi.events.on() — to receive events.
+ */
+const LIFECYCLE_EVENTS = new Set(["agent_end", "session_shutdown"]);
+
+/**
  * Register event listeners for all enabled notification events.
  * Attaches listeners to pi hooks and routes notifications to platforms.
  */
@@ -69,7 +75,31 @@ export function registerEventListeners(
       );
     };
 
-    (pi as any).on(def.hook, handler);
+    // pi lifecycle events (agent_end, session_shutdown) are dispatched via
+    // ExtensionRunner — must use pi.on(). Custom unipi events (unipi:*)
+    // use pi.events.on() (the shared EventBus for extension communication).
+    if (LIFECYCLE_EVENTS.has(eventKey)) {
+      (pi as any).on(def.hook, handler);
+    } else {
+      pi.events.on(def.hook, handler);
+    }
+  }
+
+  // Listen for rpiv:ask-user:prompt from @juicesharp/rpiv-ask-user-question
+  const askUserConfig = config.events["ask_user_prompt"];
+  if (askUserConfig?.enabled) {
+    pi.events.on("rpiv:ask-user:prompt", (payload: unknown) => {
+      const p = payload as Record<string, unknown>;
+      const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
+      const message = p.context
+        ? `Agent asks: ${String(p.question || "")} — ${String(p.context)}`
+        : `Agent asks: ${String(p.question || "A question")}`;
+      dispatchNotification(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd).catch(
+        () => {
+          // Silently ignore — background notification failure is non-blocking.
+        }
+      );
+    });
   }
 
   // agent_end — custom handler with session name and recap support
@@ -130,7 +160,7 @@ export function registerEventListeners(
       // For now, modules register their own events through MODULE_READY
     }
   };
-  (pi as any).on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
+  pi.events.on(UNIPI_EVENTS.MODULE_READY, moduleHandler);
 }
 
 /** Get all platforms that are currently enabled in config */
