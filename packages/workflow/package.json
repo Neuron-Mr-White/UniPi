@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/workflow",
-  "version": "2.0.5",
+  "version": "2.0.7",
   "description": "Structured development workflow commands for Pi coding agent",
   "type": "module",
   "license": "MIT",

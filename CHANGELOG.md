@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.7] — 2026-05-24
+
+### Fixed
+- `unipi`: changed the umbrella package manifest to load its package-internal all-in-one extension instead of hoisted `node_modules/@pi-unipi/*` paths, fixing npm installs where no `/unipi:*` commands or skills loaded.
+- `unipi`: ships package metadata and root `SKILL.md` files needed by package-internal extension and skill paths.
+- `notify`: supports the lossless `rpiv:ask-user:prompt` payload shape while preserving UniPi's existing flat `ask_user_prompt` payload formatting.
+- `notify`: avoids a type-only dependency on an unpublished `@juicesharp/rpiv-ask-user-question/events` subpath so `tsc --noEmit` passes with the current npm package.
+
+### Changed
+- `notify`: extracted ask-user prompt notification formatting into `ask-user-prompt-message.ts` with regression coverage for lossless and legacy payloads.
+- `unipi`: added a package-manifest regression test that verifies npm pack output contains every path declared in the Pi manifest.
+
 ## [2.0.6] — 2026-05-19
 
 ### Fixed

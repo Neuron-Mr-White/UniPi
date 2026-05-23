@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.0.5",
+  "version": "2.0.7",
   "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
   "license": "MIT",
