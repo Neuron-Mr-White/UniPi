@@ -13,26 +13,13 @@ import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
-import type { AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
 
-// ─── rpiv:ask-user:prompt event contract ──────────────────────────────
-//
-// This event is emitted by @juicesharp/rpiv-ask-user-question before
-// showing the questionnaire UI. UniPi listens to deliver a cross-platform
-// notification so the user knows a question awaits them.
-//
-// Type-only references to the canonical event constant + payload type
-// ensure compile-time drift detection without a hard runtime dependency.
-// -----------------------------------------------------------------------
-
-const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" satisfies
-  typeof import("@juicesharp/rpiv-ask-user-question/events").ASK_USER_PROMPT_EVENT;
-
-// Payload type check: keeps this file tied to the upstream contract even
-// though we parse defensively at runtime.
-type _AskUserPromptPayload = AskUserPromptEventPayload;
+// Event emitted by @juicesharp/rpiv-ask-user-question before showing its UI.
+// Keep this as a local string until that package publishes an importable
+// `./events` contract in npm.
+const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
 
 /** Stored session context for modelRegistry access */
 let sessionCtx: ExtensionContext | null = null;

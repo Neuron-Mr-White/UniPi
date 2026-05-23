@@ -10,8 +10,10 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
-import { buildAskUserPromptMessage } from "../../ask-user-prompt-message.ts";
+import {
+  buildAskUserPromptMessage,
+  type AskUserPromptEventPayload,
+} from "../../ask-user-prompt-message.ts";
 
 describe("buildAskUserPromptMessage", () => {
   it("standard lossless payload", () => {
@@ -131,5 +133,27 @@ describe("buildAskUserPromptMessage", () => {
     } satisfies AskUserPromptEventPayload;
 
     assert.equal(buildAskUserPromptMessage(payload), "Agent asks: Just type?");
+  });
+
+  it("legacy flat UniPi payload preserves question and context", () => {
+    const payload = {
+      question: "Proceed with deploy?",
+      context: "Production, with smoke tests",
+      optionCount: 2,
+      allowMultiple: false,
+      allowFreeform: true,
+    };
+
+    assert.equal(
+      buildAskUserPromptMessage(payload),
+      "Agent asks: Proceed with deploy? — Production, with smoke tests",
+    );
+  });
+
+  it("legacy flat UniPi payload works without context", () => {
+    assert.equal(
+      buildAskUserPromptMessage({ question: "Proceed?", context: "" }),
+      "Agent asks: Proceed?",
+    );
   });
 });
