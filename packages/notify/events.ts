@@ -13,7 +13,26 @@ import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
+import type { AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
+import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
+
+// ─── rpiv:ask-user:prompt event contract ──────────────────────────────
+//
+// This event is emitted by @juicesharp/rpiv-ask-user-question before
+// showing the questionnaire UI. UniPi listens to deliver a cross-platform
+// notification so the user knows a question awaits them.
+//
+// Type-only references to the canonical event constant + payload type
+// ensure compile-time drift detection without a hard runtime dependency.
+// -----------------------------------------------------------------------
+
+const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" satisfies
+  typeof import("@juicesharp/rpiv-ask-user-question/events").ASK_USER_PROMPT_EVENT;
+
+// Payload type check: keeps this file tied to the upstream contract even
+// though we parse defensively at runtime.
+type _AskUserPromptPayload = AskUserPromptEventPayload;
 
 /** Stored session context for modelRegistry access */
 let sessionCtx: ExtensionContext | null = null;
@@ -103,17 +122,9 @@ export function registerEventListeners(
   // Listen for rpiv:ask-user:prompt from @juicesharp/rpiv-ask-user-question
   const askUserConfig = config.events["ask_user_prompt"];
   if (askUserConfig?.enabled) {
-    unsubs.push(pi.events.on("rpiv:ask-user:prompt", (payload: unknown) => {
-      const p =
-        payload && typeof payload === "object"
-          ? (payload as Record<string, unknown>)
-          : {};
+    unsubs.push(pi.events.on(ASK_USER_PROMPT_EVENT, (payload: unknown) => {
       const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
-      const question = String(p.question ?? "A question");
-      const context = p.context == null ? "" : String(p.context);
-      const message = context
-        ? `Agent asks: ${question} — ${context}`
-        : `Agent asks: ${question}`;
+      const message = buildAskUserPromptMessage(payload);
       dispatchNotification(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd).catch(
         () => {
           // Silently ignore — background notification failure is non-blocking.
@@ -343,9 +354,7 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
     case "session_shutdown":
       return "Session ending";
     case "ask_user_prompt":
-      return p.context
-        ? `Agent asks: ${String(p.question || "")} — ${String(p.context)}`
-        : `Agent asks: ${String(p.question || "A question")}`;
+      return buildAskUserPromptMessage(payload);
     default:
       return p.message ? String(p.message) : "Event occurred";
   }

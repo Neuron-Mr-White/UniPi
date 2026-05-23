@@ -19,7 +19,8 @@
     "notifications"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test src/__tests__/*.test.ts"
+    "test": "tsc --noEmit && node --experimental-strip-types --test src/__tests__/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "files": [
     "index.ts",
@@ -27,6 +28,7 @@
     "commands.ts",
     "settings.ts",
     "events.ts",
+    "ask-user-prompt-message.ts",
     "ntfy-config.ts",
     "summarize.ts",
     "types.ts",
@@ -45,6 +47,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@juicesharp/rpiv-ask-user-question": "^1.12.0"
   },
   "dependencies": {
     "@pi-unipi/core": "*",
