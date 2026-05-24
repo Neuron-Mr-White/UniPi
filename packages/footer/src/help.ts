@@ -5,7 +5,7 @@
  * with icons, short labels, and descriptions.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { FooterSegment, SegmentZone } from "./types.js";
 import { getIcon } from "./rendering/icons.js";
 import { loadFooterSettings, isSegmentEnabled } from "./config.js";
@@ -101,7 +101,7 @@ export function showFooterHelp(
   // Use pi's custom UI overlay
   const ctx = (pi as any)._ctx;
   if (ctx?.ui?.custom) {
-    ctx.ui.custom((tui: import("@mariozechner/pi-tui").TUI) => {
+    ctx.ui.custom((tui: import("@earendil-works/pi-tui").TUI) => {
       let scrollOffset = 0;
 
       return {

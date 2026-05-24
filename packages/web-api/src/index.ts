@@ -5,7 +5,7 @@
  * Provides agent tools: web-search, multi-web-content-read, web-llm-summarize
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,

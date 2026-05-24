@@ -6,8 +6,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Model } from "@mariozechner/pi-ai";
-import type { AgentSession, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
+import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { resolveModel, type ModelRegistry } from "./model-resolver.js";
 import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel } from "./types.js";

@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, KANBOARD_COMMANDS, KANBOARD_DIRS, UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { startServer, KanboardServer } from "./server/index.js";
 import { renderKanboardOverlay } from "./tui/kanboard-overlay.js";

@@ -4,7 +4,7 @@
  * Registers /unipi:readme [package], /unipi:changelog, /unipi:updater-settings
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, UPDATER_COMMANDS } from "@pi-unipi/core";
 import { renderReadmeOverlay } from "./tui/readme-overlay.js";
 import { renderChangelogOverlay } from "./tui/changelog-overlay.js";

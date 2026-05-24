@@ -8,7 +8,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { COCOINDEX_MIN_VERSION, COCOINDEX_PACKAGE_SPEC } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
 

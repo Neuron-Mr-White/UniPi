@@ -5,7 +5,7 @@
  * injects context on session start, auto-syncs on session end.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MODULES, MILESTONE_COMMANDS, MILESTONE_DIRS, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 import { registerSessionStartHook, registerSessionEndHook } from "./hooks.js";
 import { registerCommands } from "./commands.js";

@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "./registry.js";
 import { parseUsageStats, formatTokens, formatCost } from "./usage-parser.js";
 import type { InfoGroup } from "./types.js";
@@ -34,9 +34,9 @@ function getPiVersion(): string {
   // Try to find pi's package.json in various locations
   const possiblePaths = [
     // Global npm install
-    join(homedir(), ".local", "share", "mise", "installs", "node", "24.14.1", "lib", "node_modules", "@mariozechner", "pi-coding-agent", "package.json"),
+    join(homedir(), ".local", "share", "mise", "installs", "node", "24.14.1", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
     // Alternative locations
-    join(homedir(), ".local", "share", "mise", "installs", "node", "lib", "node_modules", "@mariozechner", "pi-coding-agent", "package.json"),
+    join(homedir(), ".local", "share", "mise", "installs", "node", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
   ];
 
   for (const pkgPath of possiblePaths) {

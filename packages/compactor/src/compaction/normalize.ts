@@ -2,7 +2,7 @@
  * Stage 1: Normalize — Message[] → NormalizedBlock[]
  */
 
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import type { NormalizedBlock } from "../types.js";
 import { textOf } from "./content.js";
 import { sanitize } from "./sanitize.js";

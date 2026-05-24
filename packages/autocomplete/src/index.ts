@@ -9,7 +9,7 @@
  * Setting: autocompleteEnhanced (default: true)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createEnchantedProvider } from "./provider.js";
 import { isAutocompleteEnhanced } from "./settings.js";
 

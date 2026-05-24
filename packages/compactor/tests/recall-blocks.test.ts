@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { recallBlocksFromContext, recallBlocksFromSessionEntries } from "../src/session/recall-blocks.js";
 import { vccRecall } from "../src/tools/vcc-recall.js";
 

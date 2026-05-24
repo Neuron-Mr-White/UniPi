@@ -4,8 +4,8 @@
  * Registers ask_user tool for structured user input.
  */
 
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   ASK_USER_TOOLS,
   COMPACTOR_INSTRUCTION,

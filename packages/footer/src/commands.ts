@@ -5,7 +5,7 @@
  * /unipi:footer-settings.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { showFooterSettings } from "./tui/settings-tui.js";

@@ -7,7 +7,7 @@
  * Note: pi.events.on() returns an unsubscribe function directly.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS } from "@pi-unipi/core";
 import type { FooterRegistry } from "./registry/index.js";
 

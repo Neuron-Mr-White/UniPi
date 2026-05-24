@@ -8,7 +8,7 @@
  * openai/text-embedding-3 supports custom dimensions via API param.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   loadEmbeddingConfig,
   getApiKey,

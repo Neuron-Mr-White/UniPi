@@ -4,7 +4,7 @@
  * Registers utility stats group for the info-screen overlay.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,

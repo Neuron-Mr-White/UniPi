@@ -7,9 +7,9 @@
  * preset preview, per-project override.
  */
 
-import type { Component, TUI } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
-import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
+import type { Component, TUI } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
+import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig, projectConfigPath } from "../config/manager.js";
 import { applyPreset, detectPreset } from "../config/presets.js";
 import type { CompactorPreset } from "../types.js";

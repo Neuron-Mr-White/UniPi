@@ -4,8 +4,8 @@
  * Registers the `notify_user` tool for ad-hoc notifications.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { NOTIFY_TOOLS } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
 import { dispatchNotification } from "./events.js";

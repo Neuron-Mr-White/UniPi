@@ -15,7 +15,7 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../ty
 import { getIcon } from "../rendering/icons.js";
 import { loadFooterSettings } from "../config.js";
 import { getSeparator } from "../rendering/separators.js";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 /** Map status keys to short display names and segment IDs for icons */
 const STATUS_DISPLAY: Record<string, { short: string; segmentId: string }> = {

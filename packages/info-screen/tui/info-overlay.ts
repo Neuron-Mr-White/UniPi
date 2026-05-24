@@ -7,9 +7,9 @@
  * Shows humanized "last updated" timestamps.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
 import type { InfoGroup, GroupData } from "../types.js";

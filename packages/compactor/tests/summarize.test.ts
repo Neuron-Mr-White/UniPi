@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { compile } from "../src/compaction/summarize.js";
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 
 describe("compile", () => {
   it("compiles a summary from messages", () => {

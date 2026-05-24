@@ -5,8 +5,8 @@
  * All storage is project-scoped. "Global" tools search across all projects.
  */
 
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   MemoryStorage,
   searchAllProjects,

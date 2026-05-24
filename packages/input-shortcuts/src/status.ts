@@ -2,7 +2,7 @@
  * Status bar feedback helper using ctx.ui.setStatus() with auto-clear.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { STATUS_SUCCESS_MS, STATUS_ERROR_MS } from "./types.ts";
 
 const STATUS_KEY = "input-shortcuts";

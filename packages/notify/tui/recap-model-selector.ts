@@ -5,9 +5,9 @@
  * Uses the project-wide cached model list from ~/.unipi/config/models-cache.json.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { readModelCache, type CachedModel } from "@pi-unipi/core";
 import { loadConfig, saveConfig } from "../settings.js";
 

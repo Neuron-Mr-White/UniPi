@@ -10,8 +10,8 @@ import type {
   AutocompleteItem,
   AutocompleteProvider,
   AutocompleteSuggestions,
-} from "@mariozechner/pi-tui";
-import { fuzzyFilter } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
+import { fuzzyFilter } from "@earendil-works/pi-tui";
 
 import {
   COMMAND_REGISTRY,

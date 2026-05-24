@@ -5,7 +5,7 @@
  * Supports built-in events and dynamic discovery via MODULE_READY.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types.js";
 import { loadNtfyConfig } from "./ntfy-config.js";

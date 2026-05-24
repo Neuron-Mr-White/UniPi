@@ -6,8 +6,8 @@
  * Model list loaded from shared model cache (~/.unipi/config/models-cache.json).
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { CachedModel } from "@pi-unipi/core";
 import { readModelCache } from "@pi-unipi/core";
 import {

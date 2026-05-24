@@ -2,7 +2,7 @@
  * Main compile() orchestrator — all 6 stages
  */
 
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import type { CompileInput, FileOps } from "../types.js";
 import { normalizeMessages } from "./normalize.js";
 import { filterNoise } from "./filter-noise.js";

@@ -5,7 +5,7 @@
  * multi-select, and freeform modes. Includes bundled skill for agent guidance.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,

@@ -4,7 +4,7 @@
  * Registers slash commands for notification configuration and testing.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
 import { NOTIFY_COMMANDS } from "@pi-unipi/core";
 import { NotifySettingsOverlay } from "./tui/settings-overlay.js";

@@ -4,7 +4,7 @@
  * Registers settings command for ask_user tool.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
 import { AskUserSettingsOverlay } from "./settings-tui.js";
 

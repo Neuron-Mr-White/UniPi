@@ -8,8 +8,8 @@
  * Replaces badge-settings-tui.ts as the primary settings interface.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { CachedModel } from "@pi-unipi/core";
 import { readModelCache } from "@pi-unipi/core";
 import {

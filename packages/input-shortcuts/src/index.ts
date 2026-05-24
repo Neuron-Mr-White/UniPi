@@ -11,8 +11,8 @@
  * - Cut/Copy: overlay closes immediately, then action runs (non-blocking)
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Key } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
 import { MODULES, emitEvent, UNIPI_EVENTS, INPUT_SHORTCUTS_COMMANDS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
 import { UndoRedoBuffer } from "./undo-redo.ts";

@@ -8,7 +8,7 @@
  * - Generate session name via background agent event
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { NameBadgeComponent } from "./name-badge.js";
 import { readBadgeSettings } from "./badge-settings.js";

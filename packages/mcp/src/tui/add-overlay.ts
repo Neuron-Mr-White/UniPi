@@ -18,8 +18,8 @@ import {
   truncateToWidth,
   type TUI,
   visibleWidth,
-} from "@mariozechner/pi-tui";
-import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-tui";
+import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { CatalogEntry, CatalogData, McpConfig, McpMetadata } from "../types.js";
 import { loadCatalog } from "../config/sync.js";
 import {

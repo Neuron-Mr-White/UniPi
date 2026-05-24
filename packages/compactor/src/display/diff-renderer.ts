@@ -3,7 +3,7 @@
  * syntax highlighting, and Nerd Font detection
  */
 
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 
 export type DiffLayout = "auto" | "split" | "unified";
 export type DiffIndicator = "bars" | "classic" | "nerd" | "none";

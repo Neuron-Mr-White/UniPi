@@ -5,8 +5,8 @@
  * Uses ctx.ui.custom() callback pattern following question.ts/questionnaire.ts.
  */
 
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
-import type { Theme, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import type { Theme, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -34,7 +34,7 @@ export function renderAskUI(params: {
 }): (
   tui: TUI,
   theme: Theme,
-  kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
+  kb: import("@earendil-works/pi-coding-agent").KeybindingsManager,
   done: (result: AskUIResult | null) => void,
 ) => {
   render: (width: number) => string[];

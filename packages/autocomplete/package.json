@@ -31,8 +31,8 @@
     "README.md"
   ],
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*"
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-tui": "^0.75.5"
   },
   "scripts": {
     "test": "vitest run"

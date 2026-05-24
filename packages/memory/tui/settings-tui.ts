@@ -5,7 +5,7 @@
  * Uses ctx.ui primitives (select, input, notify).
  */
 
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   loadEmbeddingConfig,
   saveEmbeddingConfig,

@@ -5,7 +5,7 @@
  * Dependencies (sessionDB, sessionId) are injected at registration time.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
 import { COMPACTOR_INSTRUCTION } from "@pi-unipi/core";

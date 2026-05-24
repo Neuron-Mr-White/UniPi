@@ -42,9 +42,9 @@ function trunc(text: string, width: number): string {
  */
 export function renderSettingsOverlay() {
   return (
-    tui: import("@mariozechner/pi-tui").TUI,
-    _theme: import("@mariozechner/pi-coding-agent").Theme,
-    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
+    tui: import("@earendil-works/pi-tui").TUI,
+    _theme: import("@earendil-works/pi-coding-agent").Theme,
+    _kb: import("@earendil-works/pi-coding-agent").KeybindingsManager,
     done: (result: { saved: boolean } | null) => void,
   ) => {
     const state = {

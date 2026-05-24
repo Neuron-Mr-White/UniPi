@@ -6,10 +6,10 @@
  * Segments fit into available width; overflow goes to secondary.
  */
 
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, RenderedSegment, SegmentZone } from "../types.js";
 import type { FooterRegistry } from "../registry/index.js";
-import { visibleWidth as piVisibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth as piVisibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 import { getSeparator, separatorVisibleWidth } from "./separators.js";
 import { getDefaultColors, setColorMode, refreshColorMode } from "./theme.js";
 import { setIconStyle } from "./icons.js";

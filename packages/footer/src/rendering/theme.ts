@@ -11,7 +11,7 @@
  * silently swallows 24-bit escapes and renders the text uncoloured).
  */
 
-import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "../types.js";
 
 // ─── Color mode detection ──────────────────────────────────────────────────

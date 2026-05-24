@@ -18,7 +18,7 @@
  * edit tool's Box nesting (approx 4-6 chars of padding).
  */
 
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 
 /** Rendering overhead from Box nesting in edit tool components */
 const RENDER_OVERHEAD = 6;

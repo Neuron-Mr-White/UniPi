@@ -6,7 +6,7 @@
  * measurement when pi-tui is unavailable.
  */
 
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 
 /**
  * Clamp each line to maxWidth visible columns.

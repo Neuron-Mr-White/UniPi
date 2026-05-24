@@ -46,8 +46,8 @@
     "@types/diff": "^7.0.2"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@sinclair/typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "typebox": "^1.1.38"
   },
   "scripts": {
     "test": "npx tsx --test tests/**/*.test.ts"

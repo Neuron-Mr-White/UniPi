@@ -6,9 +6,9 @@
  * ESC propagation: all children abort on parent ESC
  */
 
-import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -337,7 +337,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   // Store session context for badge generation
-  let sessionCtx: import("@mariozechner/pi-coding-agent").ExtensionContext | null = null;
+  let sessionCtx: import("@earendil-works/pi-coding-agent").ExtensionContext | null = null;
 
   // Session start: emit MODULE_READY + capture context
   pi.on("session_start", async (_event, ctx) => {

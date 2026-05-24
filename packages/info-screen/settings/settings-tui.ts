@@ -5,8 +5,8 @@
  * Displays all groups with toggle switches.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings, saveInfoSettings, getGroupSettings, setGroupSettings } from "../config.js";
 import type { InfoScreenSettings, GroupSettings } from "../types.js";

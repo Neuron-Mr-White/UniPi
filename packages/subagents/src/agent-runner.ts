@@ -5,8 +5,8 @@
  * Forwards abort signals for ESC propagation.
  */
 
-import type { Model } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { Model } from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
   type AgentSessionEvent,
@@ -16,7 +16,7 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { BUILTIN_CONFIGS, type AgentConfig, type AgentType, type ThinkingLevel } from "./types.js";
 
 /** Tools excluded from subagents to prevent nesting. */

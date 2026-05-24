@@ -6,10 +6,10 @@
  * with theme-aware styling. Falls back to simple ANSI rendering otherwise.
  */
 
-import { Markdown } from "@mariozechner/pi-tui";
-import type { MarkdownTheme } from "@mariozechner/pi-tui";
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { Markdown } from "@earendil-works/pi-tui";
+import type { MarkdownTheme } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 /**
  * Render markdown text to terminal-formatted lines.

@@ -2,7 +2,7 @@
  * @pi-unipi/compactor — Extension entry point
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, COMPACTOR_INSTRUCTION, emitEvent } from "@pi-unipi/core";
 import { scaffoldConfig, loadConfig } from "./config/manager.js";
 import { registerCompactionHooks } from "./compaction/hooks.js";

@@ -5,7 +5,7 @@
  * slash commands that load and invoke the appropriate skill.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
 import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@pi-unipi/core";

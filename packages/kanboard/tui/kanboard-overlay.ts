@@ -11,8 +11,8 @@ import {
   truncateToWidth,
   type TUI,
   visibleWidth,
-} from "@mariozechner/pi-tui";
-import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-tui";
+import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { ParsedDoc, ParsedItem, ItemStatus } from "../types.js";
 import { createDefaultRegistry } from "../parser/index.js";
 

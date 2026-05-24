@@ -4,7 +4,7 @@
  * Queues launcher prefill messages without waiting for LLM follow-up.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SessionLaunchReason, SessionLaunchStatus } from "./types.js";
 
 /** Compact handoff fallback timer. Keeps the launcher from stalling if callbacks wait for the tool turn to finish. */

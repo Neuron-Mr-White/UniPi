@@ -5,7 +5,7 @@
  * Uses pi's TUI components for provider selection and key input.
  */
 
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { registry } from "../providers/registry.js";
 import {
   getApiKey,

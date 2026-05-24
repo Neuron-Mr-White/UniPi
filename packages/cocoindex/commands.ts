@@ -11,7 +11,7 @@
  * Project directory is resolved from ctx.cwd at handler invocation time.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { COCOINDEX_COMMANDS, COCOINDEX_PACKAGE_SPEC } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
 import { ensureCocoindex } from "./installer.js";

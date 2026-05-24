@@ -7,8 +7,8 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { parseChangelog } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
 import { getInstalledPackageVersion } from "@pi-unipi/core";
@@ -39,9 +39,9 @@ function padVisible(content: string, targetWidth: number): string {
  */
 export function renderChangelogOverlay() {
   return (
-    tui: import("@mariozechner/pi-tui").TUI,
+    tui: import("@earendil-works/pi-tui").TUI,
     theme: Theme,
-    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
+    _kb: import("@earendil-works/pi-coding-agent").KeybindingsManager,
     done: (result: { viewed: boolean } | null) => void,
   ) => {
     const installedVersion = getInstalledPackageVersion(

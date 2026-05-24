@@ -46,12 +46,13 @@
     "wreq-js": "^2.3.0"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
-    "@sinclair/typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-tui": "^0.75.5",
+    "typebox": "^1.1.38"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",
+    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.6.0"
   }
 }

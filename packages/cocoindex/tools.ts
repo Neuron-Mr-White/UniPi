@@ -6,8 +6,8 @@
  * - cocoindex_status: Show indexing status
  */
 
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { COCOINDEX_PACKAGE_SPEC, COCOINDEX_TOOLS } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
 import type { CocoindexDeps } from "./bridge.js";

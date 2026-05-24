@@ -5,8 +5,8 @@
  * Implements smart provider selection based on ranking.
  */
 
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registry } from "./providers/registry.js";
 import type {
   WebProvider,

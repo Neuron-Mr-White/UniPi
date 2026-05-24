@@ -13,7 +13,7 @@
  * Closes on ESC or after selecting an action. No timeout.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   Key,
@@ -22,7 +22,7 @@ import {
   type Focusable,
   type TUI,
   type KeybindingsManager,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import type { ChordState } from "./types.ts";
 import { THINKING_CYCLE } from "./types.ts";
 

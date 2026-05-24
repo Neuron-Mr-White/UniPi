@@ -7,8 +7,8 @@
  * branch directly.
  */
 
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { normalizeMessages } from "../compaction/normalize.js";
 import { sanitize } from "../compaction/sanitize.js";
 import { textOf } from "../compaction/content.js";

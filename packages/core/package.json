@@ -23,12 +23,12 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.70.0",
-    "@sinclair/typebox": ">=0.34.0"
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.70.2",
-    "@sinclair/typebox": "^0.34.49",
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "typebox": "^1.1.38",
     "@types/node": "^22.0.0"
   }
 }

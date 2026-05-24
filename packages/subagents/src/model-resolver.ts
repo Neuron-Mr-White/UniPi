@@ -5,7 +5,7 @@
  * to actual Model instances using the registry.
  */
 
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 
 export interface ModelRegistry {
   find(provider: string, modelId: string): Model<any> | undefined;

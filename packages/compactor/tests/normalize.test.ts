@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { normalizeMessages } from "../src/compaction/normalize.js";
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 
 describe("normalizeMessages", () => {
   it("normalizes user text messages", () => {

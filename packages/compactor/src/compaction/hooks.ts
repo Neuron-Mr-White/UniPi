@@ -2,15 +2,15 @@
  * Hook integration — session_before_compact + session_compact
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { convertToLlm } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type {
   SessionEntry,
   SessionMessageEntry,
   SessionBeforeCompactEvent,
   SessionCompactEvent,
-} from "@mariozechner/pi-coding-agent";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compile } from "./summarize.js";
 import { loadConfig } from "../config/manager.js";
 import { buildOwnCut, type OwnCutResult } from "./cut.js";

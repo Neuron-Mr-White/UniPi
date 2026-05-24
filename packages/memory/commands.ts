@@ -5,7 +5,7 @@
  * All storage is project-scoped. "Global" commands search across all projects.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MemoryStorage, searchAllProjects, listAllProjects } from "./storage.js";
 import { showMemorySettings } from "./tui/settings-tui.js";
 import { isEmbeddingReady, hasModelChanged, loadEmbeddingConfig } from "./settings.js";

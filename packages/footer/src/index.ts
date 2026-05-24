@@ -5,8 +5,8 @@
  * initializes renderer on session_start.
  */
 
-import type { ExtensionAPI, Theme, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
@@ -63,7 +63,7 @@ export interface FooterState {
   unsubscribeEvents: (() => void) | null;
   piContext: unknown;
   footerData: unknown;
-  tuiRef: import("@mariozechner/pi-tui").TUI | null | undefined;
+  tuiRef: import("@earendil-works/pi-tui").TUI | null | undefined;
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Re-register footer + widgets with pi UI (for live enable) */
   setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;

@@ -51,8 +51,8 @@
     "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@sinclair/typebox": "*"
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "typebox": "^1.1.38"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",

@@ -12,7 +12,7 @@
  * - TUI: settings inspector pattern, name badge
  */
 
-import type { ExtensionAPI, InputEvent, AgentEndEvent } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, InputEvent, AgentEndEvent } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -44,7 +44,7 @@ let firstMessageSeen = false;
 let firstUserText = "";
 
 /** Stored UI context from first input, used to show badge overlay after agent responds */
-let firstInputCtx: import("@mariozechner/pi-coding-agent").ExtensionContext | null = null;
+let firstInputCtx: import("@earendil-works/pi-coding-agent").ExtensionContext | null = null;
 
 /** All commands registered by this module */
 const ALL_COMMANDS = [

@@ -6,7 +6,7 @@
  * loads SKILL.md content and sends it as a user message.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, MILESTONE_COMMANDS, MILESTONE_DIRS } from "@pi-unipi/core";
 import { parseMilestones } from "./milestone.js";
 import { readFileSync } from "node:fs";

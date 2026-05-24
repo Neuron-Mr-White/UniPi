@@ -11,8 +11,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI, ToolDefinition, AgentToolResult } from "@mariozechner/pi-coding-agent";
-import { visibleWidth as piVisibleWidth, truncateToWidth as piTruncateToWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ToolDefinition, AgentToolResult } from "@earendil-works/pi-coding-agent";
+import { visibleWidth as piVisibleWidth, truncateToWidth as piTruncateToWidth } from "@earendil-works/pi-tui";
 import { readDiffSettings } from "./settings.js";
 import { parseDiff } from "./parser.js";
 import { resolveDiffColors, applyDiffPalette } from "./theme.js";

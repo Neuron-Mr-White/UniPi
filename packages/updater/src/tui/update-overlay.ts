@@ -7,8 +7,8 @@
  */
 
 import { join } from "path";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { parseChangelog, getNewerVersions } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
 import { installUpdate } from "../installer.js";
@@ -41,9 +41,9 @@ interface UpdateState {
  */
 export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
   return (
-    tui: import("@mariozechner/pi-tui").TUI,
+    tui: import("@earendil-works/pi-tui").TUI,
     theme: Theme,
-    _kb: import("@mariozechner/pi-coding-agent").KeybindingsManager,
+    _kb: import("@earendil-works/pi-coding-agent").KeybindingsManager,
     done: (result: { updated: boolean } | null) => void,
   ) => {
     const config = loadConfig();

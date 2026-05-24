@@ -5,8 +5,8 @@
  * edit, delete, scope switching, and sync trigger.
  */
 
-import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@mariozechner/pi-tui";
-import type { Theme, KeybindingsManager } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { ServerState } from "../types.js";
 import {
   loadMcpConfig,

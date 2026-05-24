@@ -73,7 +73,7 @@ function getPiVersion(): string {
     const piPkg = resolve(
       process.cwd(),
       "node_modules",
-      "@mariozechner",
+      "@earendil-works",
       "pi-coding-agent",
       "package.json",
     );

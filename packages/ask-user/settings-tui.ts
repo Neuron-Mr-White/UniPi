@@ -5,8 +5,8 @@
  * Allows enabling/disabling the tool and configuring allowed question formats.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getAskUserSettings, saveAskUserSettings, type AskUserSettings } from "./config.js";
 
 /** ANSI escape codes */

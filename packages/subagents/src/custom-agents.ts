@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./types.js";
 
 /** Backup a corrupted file by renaming to .bak */

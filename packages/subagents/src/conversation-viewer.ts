@@ -6,7 +6,7 @@
  * Supports keyboard navigation: ↑↓, PgUp/PgDn, Home/End, Esc/q to close.
  */
 
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   matchesKey,
@@ -14,7 +14,7 @@ import {
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import type { AgentActivity } from "./types.js";
 
 /** Lines consumed by chrome: top border + header + header sep + footer sep + footer + bottom border. */

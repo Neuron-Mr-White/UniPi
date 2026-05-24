@@ -3,7 +3,7 @@
  */
 
 import type { DiffLayout } from "../types.js";
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 
 export function selectDiffLayout(
   terminalWidth: number,

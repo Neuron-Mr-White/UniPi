@@ -5,7 +5,7 @@
  * HTTP server with htmx + Alpine.js UI, modular parsers, TUI overlay, and kanban board.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MODULES, KANBOARD_COMMANDS } from "@pi-unipi/core";
 import { registerCommands } from "./commands.js";
 

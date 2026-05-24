@@ -4,7 +4,7 @@
  * Registers /unipi:web-settings and /unipi:web-cache-clear commands.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
 import { showSettingsDialog } from "./tui/settings-dialog.js";
 import { webCache } from "./cache.js";

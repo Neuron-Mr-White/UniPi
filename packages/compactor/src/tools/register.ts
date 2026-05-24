@@ -13,8 +13,8 @@
  *   ctx_stats, ctx_doctor
  */
 
-import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { compactTool } from "./compact.js";
 import { vccRecall, type RecallInput } from "./vcc-recall.js";
 import { ctxExecute, type CtxExecuteInput } from "./ctx-execute.js";
@@ -140,7 +140,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     label: "Compact",
     description: "Trigger manual context compaction. Reduces session history while preserving continuity. Use dryRun:true to preview without compacting.",
     parameters: CompactParams,
-    async execute(_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> {
+    async execute(_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> {
       if (params.dryRun) {
         const blocks = deps.getBlocks();
         const totalMessages = blocks.length;
@@ -160,7 +160,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   } as any));
 
   // 2. session_recall (new) / vcc_recall (deprecated) — search session history
-  const recallExec = async (_toolCallId: string, params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const recallExec = async (_toolCallId: string, params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     const c = deps.getCounters?.();
     if (c) { c.recallQueries++; }
     const config = loadConfig(ctx?.cwd ?? process.cwd());
@@ -190,7 +190,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "vcc_recall", label: "Session Recall", description: "Search session history using BM25 or regex. (DEPRECATED: use session_recall instead)", parameters: VccRecallParams, async execute(tcId: string, p: any) { deprecationLog("vcc_recall", "session_recall"); return recallExec(tcId, p); } } as any);
 
   // 3. sandbox (new) / ctx_execute (deprecated) — run code in sandbox
-  const sandboxExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const sandboxExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
@@ -210,7 +210,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "ctx_execute", label: "Sandbox", description: "Run code in sandbox. (DEPRECATED: use sandbox instead)", parameters: CtxExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute", "sandbox"); return sandboxExec(tcId, p); } } as any);
 
   // 4. sandbox_file (new) / ctx_execute_file (deprecated) — execute file
-  const sandboxFileExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const sandboxFileExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
@@ -229,7 +229,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "ctx_execute_file", label: "Sandbox File", description: "Execute file in sandbox. (DEPRECATED: use sandbox_file instead)", parameters: CtxExecuteFileParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute_file", "sandbox_file"); return sandboxFileExec(tcId, p); } } as any);
 
   // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch (execute only)
-  const sandboxBatchExec = async (_toolCallId: string, params: any): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const sandboxBatchExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
@@ -248,7 +248,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "ctx_batch_execute", label: "Sandbox Batch", description: "Run batch operations. (DEPRECATED: use sandbox_batch instead)", parameters: CtxBatchExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_batch_execute", "sandbox_batch"); return sandboxBatchExec(tcId, p); } } as any);
 
   // 6. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
-  const statsExec = async (): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const statsExec = async (): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const result = await ctxStats(deps.sessionDB, deps.getSessionId(), deps.getCounters?.());
       const lines = [
@@ -268,7 +268,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "ctx_stats", label: "Compactor Stats", description: "Show stats dashboard. (DEPRECATED: use compactor_stats instead)", parameters: CtxStatsParams, async execute() { deprecationLog("ctx_stats", "compactor_stats"); return statsExec(); } } as any);
 
   // 7. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
-  const doctorExec = async (): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> => {
+  const doctorExec = async (): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const result = await ctxDoctor(deps.sessionDB);
       const icon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
@@ -291,7 +291,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     label: "Context Budget",
     description: "Estimate remaining context window (% full, tokens left) and get advice on whether to compact.",
     parameters: Type.Object({}),
-    async execute(_toolCallId: string, _params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@mariozechner/pi-coding-agent").AgentToolResult<unknown>> {
+    async execute(_toolCallId: string, _params: any, _signal?: AbortSignal, _onUpdate?: unknown, ctx?: ExtensionContext): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> {
       const config = loadConfig(ctx?.cwd ?? process.cwd());
       const liveUsage = ctx?.getContextUsage?.();
       let estimatedTokens: number | undefined = liveUsage?.tokens ?? undefined;

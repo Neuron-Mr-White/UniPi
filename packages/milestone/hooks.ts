@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MILESTONE_DIRS, safeMtimeMs, tryRead } from "@pi-unipi/core";
 import { parseMilestones, getProgressSummary, updateItemStatus } from "./milestone.js";
 

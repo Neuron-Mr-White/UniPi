@@ -27,8 +27,8 @@ import {
   type ExtensionCommandContext,
   type ExtensionContext,
   type ResourceLoader,
-} from "@mariozechner/pi-coding-agent";
-import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@earendil-works/pi-ai";
 import {
   Box,
   Container,
@@ -43,7 +43,7 @@ import {
   type KeybindingsManager,
   type OverlayHandle,
   type TUI,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { BTW_COMMANDS, UNIPI_PREFIX } from "@pi-unipi/core";
 
 // ─── Constants ──────────────────────────────────────────────────────────────

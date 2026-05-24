@@ -9,7 +9,7 @@
  *   mise run unipi
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import workflow from "@pi-unipi/workflow";
 import ralph from "@pi-unipi/ralph";

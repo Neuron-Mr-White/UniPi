@@ -11,7 +11,7 @@ import {
   sortTaggedItems,
   type TaggedItem,
 } from "../sorting.js";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 

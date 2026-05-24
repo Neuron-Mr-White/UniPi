@@ -4,8 +4,8 @@
  * Persists config to .unipi/config/input-shortcuts-config.json.
  */
 
-import type { Component } from "@mariozechner/pi-tui";
-import { SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
+import { SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { InputShortcutsConfig } from "./types.ts";

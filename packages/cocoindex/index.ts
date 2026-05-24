@@ -8,7 +8,7 @@
  * Embedding model: reuses memory package settings (OpenRouter API key + model).
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MODULES, UNIPI_EVENTS, COCOINDEX_TOOLS, COCOINDEX_COMMANDS, COCOINDEX_PACKAGE_SPEC, emitEvent } from "@pi-unipi/core";
 import { registerCocoindexTools } from "./tools.js";
 import { registerCocoindexCommands } from "./commands.js";

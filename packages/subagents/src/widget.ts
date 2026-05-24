@@ -10,8 +10,8 @@
  * - ANSI-aware truncation via pi-tui
  */
 
-import { truncateToWidth } from "@mariozechner/pi-tui";
-import type { ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "./agent-manager.js";
 import type { AgentActivity } from "./types.js";
 
@@ -96,7 +96,7 @@ export class AgentWidget {
   private spinnerFrame = 0;
   private timer?: ReturnType<typeof setInterval>;
   private uiCtx?: ExtensionUIContext;
-  private tui?: import("@mariozechner/pi-tui").TUI;
+  private tui?: import("@earendil-works/pi-tui").TUI;
   private widgetRegistered = false;
   /** Last content key — skips requestRender when only spinner changed. */
   private lastContentKey = "";

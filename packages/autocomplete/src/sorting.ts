@@ -4,7 +4,7 @@
  * Extracted cross-item priority and merge-sort for testability.
  */
 
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 // ─── Types ───────────────────────────────────────────────────────────
 

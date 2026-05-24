@@ -13,7 +13,7 @@ import type { ParsedDiff, DiffLine } from "./parser.js";
 import type { DiffColors } from "./theme.js";
 import { hexToBgAnsi, hexToFgAnsi } from "./theme.js";
 import { hlBlock, detectLanguage } from "./highlighter.js";
-import { truncateToWidth as piTruncateToWidth, visibleWidth as piVisibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth as piTruncateToWidth, visibleWidth as piVisibleWidth } from "@earendil-works/pi-tui";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 

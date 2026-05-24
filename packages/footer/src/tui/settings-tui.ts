@@ -9,8 +9,8 @@
  * Uses pi-tui SettingsList for vim/arrow keybinding support.
  */
 
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { SettingsList, type SettingItem, type SettingsListTheme } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
