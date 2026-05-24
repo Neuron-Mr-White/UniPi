@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.8] — 2026-05-24
+
+### Added
+- `ci`: added a GitHub Actions workflow that installs dependencies, typechecks, and runs the workspace test suite on push and pull request.
+- `repo`: added the MIT license file to the repository.
+
+### Changed
+- `unipi`: migrated Pi extension imports and peer dependencies from the legacy `@mariozechner/*` packages to the current `@earendil-works/*` Pi base.
+- `tools`: migrated tool schemas from `@sinclair/typebox` to Pi's current `typebox` package.
+- `deps`: updated the Pi peer dependency family to `0.75.5` and aligned lockfile resolution across workspaces.
+
+### Fixed
+- `info-screen` and `utility`: updated Pi package discovery paths to look under `@earendil-works/pi-coding-agent`.
+- `web-api`: added missing `@types/mime-types` for clean typechecking with the updated dependency graph.
+
 ## [2.0.7] — 2026-05-24
 
 ### Fixed
