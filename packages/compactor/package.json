@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
   "type": "module",
+  "main": "src/index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {

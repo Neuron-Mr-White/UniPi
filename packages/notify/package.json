@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "Cross-platform notification extension for Pi — native OS, Gotify, and Telegram notifications for agent lifecycle events",
   "type": "module",
+  "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {

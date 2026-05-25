@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "Web search, read, and summarize tools with provider-based backend selection for Pi coding agent",
   "type": "module",
+  "main": "src/index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {

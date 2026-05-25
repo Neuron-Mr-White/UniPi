@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "Persistent cross-session memory with vector search for Pi coding agent",
   "type": "module",
+  "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {

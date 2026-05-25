@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "MCP server management extension for Pi coding agent — browse, add, configure, and use MCP servers",
   "type": "module",
+  "main": "src/index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {

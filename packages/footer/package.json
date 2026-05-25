@@ -3,6 +3,7 @@
   "version": "2.0.8",
   "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
+  "main": "src/index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {
