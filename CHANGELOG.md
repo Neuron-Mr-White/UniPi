@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.9] — 2026-05-28
+
+### Fixed
+- `kanboard`: updated the npm package `files` manifest so runtime sources imported by `index.ts` (`commands.ts`, `parser/`, `server/`, `tui/`, and `types.ts`) are included in the published tarball.
+
 ## [2.0.8] — 2026-05-24
 
 ### Added

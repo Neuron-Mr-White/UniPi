@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/milestone",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Lifecycle layer for project-level goals — MILESTONES.md tracking, session hooks, auto-sync",
   "type": "module",
   "main": "index.ts",

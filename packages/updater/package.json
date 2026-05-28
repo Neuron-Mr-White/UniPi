@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/updater",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Auto-updater, changelog browser, and readme browser for Unipi — checks npm registry, renders CHANGELOG.md and README.md files in TUI overlays",
   "type": "module",
   "main": "src/index.ts",
