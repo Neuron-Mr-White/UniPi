@@ -36,13 +36,6 @@ function getRegistry(): ServerRegistry | null {
 }
 
 export default function (pi: ExtensionAPI) {
-  // Register skills directory
-  const skillsDir = new URL("../skills", import.meta.url).pathname;
-  pi.on("resources_discover", async (_event, _ctx) => {
-    return {
-      skillPaths: [skillsDir],
-    };
-  });
 
   // Session start — load configs, start servers
   pi.on("session_start", async (_event, ctx) => {

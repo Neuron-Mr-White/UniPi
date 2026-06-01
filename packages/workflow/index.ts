@@ -39,13 +39,6 @@ let currentSandboxLevel: SandboxLevel | null = null;
 let currentSandboxTools: string[] | null = null;
 
 export default function (pi: ExtensionAPI) {
-  // Register skills directory with pi's resource loader
-  const skillsDir = new URL("./skills", import.meta.url).pathname;
-  pi.on("resources_discover", async (_event, _ctx) => {
-    return {
-      skillPaths: [skillsDir],
-    };
-  });
 
   // Register all workflow commands
   registerWorkflowCommands(pi, {

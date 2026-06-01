@@ -13,14 +13,6 @@ import { registerCommands } from "./commands.js";
 const VERSION = "0.1.0";
 
 export default function (pi: ExtensionAPI): void {
-  // Register skills directory
-  const skillsDir = new URL("./skills", import.meta.url).pathname;
-
-  pi.on("resources_discover", async () => {
-    return {
-      skillPaths: [skillsDir],
-    };
-  });
 
   // Register commands
   registerCommands(pi);

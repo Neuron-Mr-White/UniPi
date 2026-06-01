@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/web-api",
-  "version": "2.0.12",
+  "version": "2.0.13",
   "description": "Web search, read, and summarize tools with provider-based backend selection for Pi coding agent",
   "type": "module",
   "main": "src/index.ts",
@@ -31,7 +31,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "2.0.12",
+    "@pi-unipi/core": "2.0.13",
     "defuddle": "^0.18.1",
     "linkedom": "^0.18.12",
     "lodash": "^4.17.21",

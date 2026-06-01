@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "2.0.12",
+  "version": "2.0.13",
   "description": "Persistent cross-session memory with vector search for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -40,8 +40,8 @@
     "better-sqlite3": "^12.9.0",
     "sqlite-vec": "^0.1.9",
     "js-yaml": "^4.1.0",
-    "@pi-unipi/core": "2.0.12",
-    "@pi-unipi/info-screen": "2.0.12"
+    "@pi-unipi/core": "2.0.13",
+    "@pi-unipi/info-screen": "2.0.13"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.0",

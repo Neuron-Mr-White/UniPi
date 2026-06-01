@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.13] — 2026-06-01
+
+### Fixed
+- Removed duplicate `resources_discover` skill registration from split extension modules. The umbrella package manifest is now the sole source of skill resources, preventing collisions between `@pi-unipi/unipi/packages/*/skills` and sibling `@pi-unipi/*/skills`.
+
 ## [2.0.12] — 2026-06-01
 
 ### Fixed

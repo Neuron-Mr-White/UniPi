@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
@@ -32,6 +33,26 @@ describe("umbrella package pi manifest", () => {
         !resource.path.startsWith("node_modules/@pi-unipi/"),
         `${resource.type} path ${resource.path} must be package-internal so npm hoisting cannot break it`,
       );
+    }
+  });
+
+  it("split extension modules do not dynamically register skill directories", () => {
+    for (const dir of readdirSync("packages")) {
+      const pkgPath = `packages/${dir}/package.json`;
+      if (!existsSync(pkgPath)) continue;
+      const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      if (!workspacePkg.files?.some((entry) => String(entry).includes("skills"))) continue;
+
+      const files = ["index.ts", "src/index.ts"]
+        .map((file) => join("packages", dir, file))
+        .filter((file) => existsSync(file));
+      for (const file of files) {
+        const source = readFileSync(file, "utf8");
+        assert.ok(
+          !source.includes('pi.on("resources_discover"'),
+          `${file} must not return skillPaths; root @pi-unipi/unipi pi.skills is the only skill source`,
+        );
+      }
     }
   });
 

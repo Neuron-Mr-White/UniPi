@@ -20,13 +20,6 @@ import { registerAskUserCommands } from "./commands.js";
 const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
 
 export default function (pi: ExtensionAPI) {
-  // Register skills directory
-  const skillsDir = new URL("./skills", import.meta.url).pathname;
-  pi.on("resources_discover", async () => {
-    return {
-      skillPaths: [skillsDir],
-    };
-  });
 
   // Register tools and commands
   registerAskUserTools(pi);

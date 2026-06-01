@@ -35,13 +35,6 @@ function getInfoRegistry() {
 }
 
 export default function (pi: ExtensionAPI) {
-  // Register skills directory
-  const skillsDir = new URL("../skills", import.meta.url).pathname;
-  pi.on("resources_discover", async (_event, _ctx) => {
-    return {
-      skillPaths: [skillsDir],
-    };
-  });
 
   // Register tools and commands
   registerWebTools(pi);
