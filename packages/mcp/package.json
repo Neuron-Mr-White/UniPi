@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/mcp",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "MCP server management extension for Pi coding agent \u2014 browse, add, configure, and use MCP servers",
   "type": "module",
   "main": "src/index.ts",
@@ -36,5 +36,11 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }

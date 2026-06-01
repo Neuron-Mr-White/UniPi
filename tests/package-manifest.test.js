@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
@@ -13,6 +13,19 @@ function manifestResources() {
 }
 
 describe("umbrella package pi manifest", () => {
+  it("split workspace packages explicitly disable Pi resource discovery", () => {
+    for (const dir of readdirSync("packages")) {
+      const pkgPath = `packages/${dir}/package.json`;
+      if (!existsSync(pkgPath)) continue;
+      const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      assert.deepEqual(
+        workspacePkg.pi,
+        { extensions: [], skills: [], prompts: [], themes: [] },
+        `${workspacePkg.name} must explicitly disable Pi resources so umbrella dependencies are not auto-discovered`,
+      );
+    }
+  });
+
   it("does not point at hoisted node_modules resources", () => {
     for (const resource of manifestResources()) {
       assert.ok(

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Utility commands and tools for Pi coding agent \u2014 lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "main": "src/index.ts",
@@ -47,5 +47,11 @@
   },
   "scripts": {
     "test": "npx tsx --test tests/**/*.test.ts"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.11] — 2026-06-01
+
+### Fixed
+- `packages`: added explicit empty Pi manifests to split dependency packages so Pi treats them as non-resource packages instead of falling back to conventional `skills/` discovery.
+
 ## [2.0.10] — 2026-06-01
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Context engine for Pi \u2014 zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
   "type": "module",
   "main": "src/index.ts",
@@ -49,5 +49,11 @@
   },
   "optionalDependencies": {
     "better-sqlite3": ">=11.0.0"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }

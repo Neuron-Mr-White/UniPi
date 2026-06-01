@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Persistent cross-session memory with vector search for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -51,5 +51,11 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^25.6.0"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }

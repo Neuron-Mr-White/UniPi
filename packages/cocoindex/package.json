@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/cocoindex",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "CocoIndex integration for Pi \u2014 AST-aware content indexing, semantic vector search, and incremental pipeline management",
   "type": "module",
   "main": "index.ts",
@@ -38,5 +38,11 @@
     "commands.ts",
     "skills/**/*",
     "README.md"
-  ]
+  ],
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
 }

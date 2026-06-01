@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/command-enchantment",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Enhanced TUI autocomplete for /unipi:* commands \u2014 colored, sorted, and grouped by package",
   "type": "module",
   "main": "src/index.ts",
@@ -36,5 +36,11 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "vitest": "^4.1.5"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }

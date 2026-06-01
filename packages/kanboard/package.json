@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Visualization layer for unipi workflow \u2014 HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
   "type": "module",
   "main": "index.ts",
@@ -48,5 +48,11 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "typescript": "^6.0.0"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [],
+    "prompts": [],
+    "themes": []
   }
 }
