@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/core",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Shared utilities, event types, and constants for Unipi extension suite",
   "type": "module",
   "license": "MIT",
@@ -23,11 +23,11 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
     "typebox": "^1.1.38",
     "@types/node": "^22.0.0"
   }

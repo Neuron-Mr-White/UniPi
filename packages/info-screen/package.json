@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "2.0.9",
-  "description": "Dashboard and module registry for Unipi — configurable info overlay with tabbed groups",
+  "version": "2.0.10",
+  "description": "Dashboard and module registry for Unipi \u2014 configurable info overlay with tabbed groups",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -23,11 +23,6 @@
     "info-screen",
     "dashboard"
   ],
-  "pi": {
-    "extensions": [
-      "index.ts"
-    ]
-  },
   "files": [
     "*.ts",
     "tui/*.ts",
@@ -41,8 +36,8 @@
     "@pi-unipi/core": "*"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

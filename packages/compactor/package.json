@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "2.0.9",
-  "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
+  "version": "2.0.10",
+  "description": "Context engine for Pi \u2014 zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -30,25 +30,17 @@
     "skills/**/*",
     "README.md"
   ],
-  "pi": {
-    "extensions": [
-      "src/index.ts"
-    ],
-    "skills": [
-      "skills"
-    ]
-  },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
     "@pi-unipi/core": "*",
     "@pi-unipi/info-screen": "*",
-    "@earendil-works/pi-agent-core": "^0.75.5"
+    "@earendil-works/pi-agent-core": "^0.78.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

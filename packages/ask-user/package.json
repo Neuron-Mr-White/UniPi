@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/ask-user",
-  "version": "2.0.9",
-  "description": "Structured user input tool for Pi coding agent — single-select, multi-select, freeform",
+  "version": "2.0.10",
+  "description": "Structured user input tool for Pi coding agent \u2014 single-select, multi-select, freeform",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -36,14 +36,6 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   },
-  "pi": {
-    "extensions": [
-      "index.ts"
-    ],
-    "skills": [
-      "skills"
-    ]
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -51,8 +43,8 @@
     "@pi-unipi/core": "*"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "typebox": "^1.1.38"
   }
 }

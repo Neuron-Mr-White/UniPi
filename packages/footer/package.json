@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.0.9",
-  "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
+  "version": "2.0.10",
+  "description": "Persistent status bar for Unipi \u2014 subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -25,14 +25,6 @@
     "skills/**/*",
     "README.md"
   ],
-  "pi": {
-    "extensions": [
-      "src/index.ts"
-    ],
-    "skills": [
-      "skills"
-    ]
-  },
   "scripts": {
     "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   },
@@ -43,8 +35,8 @@
     "@pi-unipi/core": "*"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5"
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

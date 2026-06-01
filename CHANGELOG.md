@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.10] — 2026-06-01
+
+### Fixed
+- `updater`: resolve the installed `@pi-unipi/unipi` package from sibling `node_modules/@pi-unipi/*` packages so nested installs report the real version instead of `0.0.0`.
+- `packages`: removed Pi resource manifests from split dependency packages so installing the umbrella `@pi-unipi/unipi` package no longer double-loads skills from both `packages/*/skills` and sibling `@pi-unipi/*/skills` packages.
+
+### Changed
+- `deps`: updated Pi peer and development dependencies to the current `@earendil-works/*` `0.78.0` package family.
+
 ## [2.0.9] — 2026-05-28
 
 ### Fixed

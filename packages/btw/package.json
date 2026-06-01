@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/btw",
-  "version": "2.0.9",
-  "description": "A pi extension for parallel side conversations with /unipi:btw — part of the Unipi suite",
+  "version": "2.0.10",
+  "description": "A pi extension for parallel side conversations with /unipi:btw \u2014 part of the Unipi suite",
   "type": "module",
   "main": "extensions/btw.ts",
   "license": "MIT",
@@ -31,18 +31,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "pi": {
-    "extensions": [
-      "./extensions/btw.ts"
-    ],
-    "skills": [
-      "./skills"
-    ]
-  },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.75.5",
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5"
+    "@earendil-works/pi-ai": "^0.78.0",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0"
   },
   "dependencies": {
     "@pi-unipi/core": "*"

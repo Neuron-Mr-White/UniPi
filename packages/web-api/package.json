@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/web-api",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Web search, read, and summarize tools with provider-based backend selection for Pi coding agent",
   "type": "module",
   "main": "src/index.ts",
@@ -25,14 +25,6 @@
     "read",
     "summarize"
   ],
-  "pi": {
-    "extensions": [
-      "src/index.ts"
-    ],
-    "skills": [
-      "skills"
-    ]
-  },
   "files": [
     "src/**/*.ts",
     "skills/**/*",
@@ -47,8 +39,8 @@
     "wreq-js": "^2.3.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

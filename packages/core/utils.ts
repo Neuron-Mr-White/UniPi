@@ -148,12 +148,28 @@ export function getPackageVersion(packageDir: string): string {
  */
 export function findPackageRoot(startDir: string, packageName: string, maxSteps = 10): string | null {
   let dir = path.resolve(startDir);
+  const visited = new Set<string>();
+
   for (let i = 0; i < maxSteps; i++) {
+    visited.add(dir);
     const pkgPath = path.join(dir, "package.json");
     const pkg = readJson<{ name?: string }>(pkgPath);
     if (pkg?.name === packageName) {
       return dir;
     }
+
+    const nodeModulesIndex = dir.lastIndexOf(`${path.sep}node_modules${path.sep}`);
+    if (nodeModulesIndex >= 0) {
+      const nodeModulesDir = dir.slice(0, nodeModulesIndex + `${path.sep}node_modules`.length);
+      const siblingPackageDir = path.join(nodeModulesDir, packageName);
+      if (!visited.has(siblingPackageDir)) {
+        const siblingPkg = readJson<{ name?: string }>(path.join(siblingPackageDir, "package.json"));
+        if (siblingPkg?.name === packageName) {
+          return siblingPackageDir;
+        }
+      }
+    }
+
     const parent = path.dirname(dir);
     if (parent === dir) break; // filesystem root
     dir = parent;

@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/command-enchantment",
-  "version": "2.0.9",
-  "description": "Enhanced TUI autocomplete for /unipi:* commands — colored, sorted, and grouped by package",
+  "version": "2.0.10",
+  "description": "Enhanced TUI autocomplete for /unipi:* commands \u2014 colored, sorted, and grouped by package",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -22,18 +22,13 @@
     "unipi",
     "autocomplete"
   ],
-  "pi": {
-    "extensions": [
-      "src/index.ts"
-    ]
-  },
   "files": [
     "src/**/*.ts",
     "README.md"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5"
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0"
   },
   "scripts": {
     "test": "vitest run"

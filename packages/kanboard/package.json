@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/kanboard",
-  "version": "2.0.9",
-  "description": "Visualization layer for unipi workflow — HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
+  "version": "2.0.10",
+  "description": "Visualization layer for unipi workflow \u2014 HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -35,14 +35,6 @@
     "skills/**/*",
     "README.md"
   ],
-  "pi": {
-    "extensions": [
-      "index.ts"
-    ],
-    "skills": [
-      "skills"
-    ]
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -50,8 +42,8 @@
     "@pi-unipi/core": "*"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5"
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

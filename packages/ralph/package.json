@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ralph",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -23,25 +23,17 @@
     "SKILL.md",
     "README.md"
   ],
-  "pi": {
-    "extensions": [
-      "./index.ts"
-    ],
-    "skills": [
-      "./SKILL.md"
-    ]
-  },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "^2.0.0",
+    "@pi-unipi/core": "^2.0.10",
     "@pi-unipi/info-screen": "*"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.75.5",
-    "@earendil-works/pi-coding-agent": "^0.75.5",
-    "@earendil-works/pi-tui": "^0.75.5",
+    "@earendil-works/pi-ai": "^0.78.0",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "typebox": "^1.1.38"
   }
 }
