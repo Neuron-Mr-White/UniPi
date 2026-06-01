@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/btw",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "A pi extension for parallel side conversations with /unipi:btw \u2014 part of the Unipi suite",
   "type": "module",
   "main": "extensions/btw.ts",
@@ -37,7 +37,7 @@
     "@earendil-works/pi-tui": "^0.78.0"
   },
   "dependencies": {
-    "@pi-unipi/core": "*"
+    "@pi-unipi/core": "2.0.12"
   },
   "pi": {
     "extensions": [],
