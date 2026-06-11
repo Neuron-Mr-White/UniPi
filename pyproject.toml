@@ -1,0 +1,20 @@
+[tool.uv]
+python-preference = "managed"
+package = false
+
+[tool.black]
+target-version = ["py312"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D407",   # Missing dashed underline after section ("Returns") # formatting docstrings
+    "FA102",  # future-required-type-annotation (FA102) # we dont use old python
+    "FA100",  # see above
+    "UP015",  # Unnecessary open mode parameters
+    "PTH123", # `open()` should be replaced by `Path.open()`
+]
+
