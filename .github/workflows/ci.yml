@@ -35,3 +35,33 @@ jobs:
 
       - name: Test
         run: npm test
+
+  lint-python:
+    name: Lint Python (black, ruff, ty)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Create venv and install tools
+        run: |
+          uv venv .venv
+          uv pip install black ruff ty 'cocoindex[lancedb]'
+
+      - name: Black (formatting)
+        run: .venv/bin/black --check packages/cocoindex/pipeline-template.py
+
+      - name: Ruff (linting)
+        run: .venv/bin/ruff check packages/cocoindex/pipeline-template.py
+
+      - name: ty (type checking)
+        run: |
+          .venv/bin/ty check packages/cocoindex/pipeline-template.py
