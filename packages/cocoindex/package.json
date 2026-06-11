@@ -36,6 +36,7 @@
     "installer.ts",
     "tools.ts",
     "commands.ts",
+    "pipeline-template.py",
     "skills/**/*",
     "README.md"
   ],
