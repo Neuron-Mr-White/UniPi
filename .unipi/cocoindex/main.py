@@ -3,6 +3,7 @@ CocoIndex pipeline for unipi
 Updated for cocoindex v1.0+ — uses App/fn/mount API.
 Embeddings via OpenRouter (httpx, no litellm).
 """
+
 import asyncio
 import json
 import pathlib
@@ -22,9 +23,7 @@ import os
 
 # ── Configuration ────────────────────────────────────
 PROJECT_ROOT = os.environ.get("PROJECT_ROOT", "/home/pi/dev/unipi")
-EMBEDDING_MODEL = os.environ.get(
-    "COCO_EMBEDDING_MODEL", "qwen/qwen3-embedding-8b"
-)
+EMBEDDING_MODEL = os.environ.get("COCO_EMBEDDING_MODEL", "qwen/qwen3-embedding-8b")
 EMBEDDING_DIM = int(os.environ.get("COCO_EMBEDDING_DIM", "4096"))
 EMBED_BATCH_SIZE = int(os.environ.get("COCO_EMBED_BATCH_SIZE", "64"))
 # Safety limit for huge generated/lock files. Set COCO_MAX_FILE_CHARS=0 to disable.
@@ -98,6 +97,7 @@ async def coco_lifespan(builder: coco.EnvironmentBuilder) -> AsyncIterator[None]
 @dataclass
 class IndexRow:
     """A single indexed chunk with embedding stored in LanceDB."""
+
     path: str
     chunk_index: int
     content: str
@@ -164,17 +164,19 @@ async def process_file(
     all_embeddings: list[list[float]] = []
 
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
-        batch = texts[i:i + EMBED_BATCH_SIZE]
+        batch = texts[i : i + EMBED_BATCH_SIZE]
         batch_embs = await embed_texts(batch)
         all_embeddings.extend(batch_embs)
 
     for (chunk_idx, _text), emb in zip(chunks, all_embeddings):
-        table.declare_row(row=IndexRow(
-            path=relative,
-            chunk_index=chunk_idx,
-            content=_text,
-            embedding=np.array(emb, dtype=np.float32),
-        ))
+        table.declare_row(
+            row=IndexRow(
+                path=relative,
+                chunk_index=chunk_idx,
+                content=_text,
+                embedding=np.array(emb, dtype=np.float32),
+            )
+        )
 
 
 # ── Main app function ────────────────────────────────
@@ -207,18 +209,39 @@ async def app_main() -> None:
         recursive=True,
         path_matcher=PatternFilePathMatcher(
             included_patterns=[
-                "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx",
-                "**/*.py", "**/*.rs", "**/*.go",
-                "**/*.md", "**/*.txt", "**/*.json", "**/*.yaml", "**/*.yml",
-                "**/*.sh", "**/*.bash",
+                "**/*.ts",
+                "**/*.tsx",
+                "**/*.js",
+                "**/*.jsx",
+                "**/*.py",
+                "**/*.rs",
+                "**/*.go",
+                "**/*.md",
+                "**/*.txt",
+                "**/*.json",
+                "**/*.yaml",
+                "**/*.yml",
+                "**/*.sh",
+                "**/*.bash",
             ],
             excluded_patterns=[
-                "**/node_modules/**", "**/.git/**", "**/dist/**",
-                "**/build/**", "**/.next/**", "**/__pycache__/**",
-                "**/coverage/**", "**/.turbo/**", "**/.cache/**",
+                "**/node_modules/**",
+                "**/.git/**",
+                "**/dist/**",
+                "**/build/**",
+                "**/.next/**",
+                "**/__pycache__/**",
+                "**/coverage/**",
+                "**/.turbo/**",
+                "**/.cache/**",
                 "**/.unipi/**",
-                "**/*.min.js", "**/bundled.js", "**/bundle.js", "**/*bundle*.js",
-                "**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock",
+                "**/*.min.js",
+                "**/bundled.js",
+                "**/bundle.js",
+                "**/*bundle*.js",
+                "**/package-lock.json",
+                "**/pnpm-lock.yaml",
+                "**/yarn.lock",
             ],
         ),
     )
