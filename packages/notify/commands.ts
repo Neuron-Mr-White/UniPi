@@ -34,7 +34,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           return;
         }
 
-        ctx.ui.custom(
+        await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
             const overlay = new NotifySettingsOverlay();
             overlay.setTheme(theme);
@@ -42,7 +42,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
             overlay.requestRender = () => tui.requestRender();
             overlay.onOpenModelSelector = () => {
               // Open model selector as nested overlay
-              ctx.ui.custom(
+              void ctx.ui.custom(
                 (innerTui: any, innerTheme: any, _innerKb: any, innerDone: any) => {
                   const selector = new RecapModelSelectorOverlay();
                   selector.setTheme(innerTheme);
@@ -102,7 +102,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           return;
         }
 
-        ctx.ui.custom(
+        await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
             const overlay = new RecapModelSelectorOverlay();
             overlay.setTheme(theme);
@@ -142,7 +142,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           return;
         }
 
-        ctx.ui.custom(
+        await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
             const overlay = new GotifySetupOverlay();
             overlay.setTheme(theme);
@@ -182,7 +182,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           return;
         }
 
-        ctx.ui.custom(
+        await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
             const overlay = new TelegramSetupOverlay();
             overlay.setTheme(theme);
@@ -222,7 +222,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           return;
         }
 
-        ctx.ui.custom(
+        await ctx.ui.custom(
           (tui, theme, _keybindings, done) => {
             const overlay = new NtfySetupOverlay();
             overlay.setTheme(theme);
