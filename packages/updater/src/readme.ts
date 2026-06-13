@@ -6,6 +6,8 @@
  * node_modules/@pi-unipi/{name}/README.md.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { findPackageRoot } from "@pi-unipi/core";
@@ -39,7 +41,7 @@ const PACKAGE_MAP: Record<string, string> = {
 /** Resolve the unipi package root directory */
 function resolveUnipiRoot(): string {
   // Walk up from this file to find @pi-unipi/unipi by name
-  const dir = new URL(".", import.meta.url).pathname;
+  const dir = dirname(fileURLToPath(import.meta.url));
   const root = findPackageRoot(dir, "@pi-unipi/unipi");
   return root ?? join(dir, ".."); // fallback to parent
 }

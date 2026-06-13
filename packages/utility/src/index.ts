@@ -12,6 +12,8 @@
  * - TUI: settings inspector pattern, name badge
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, InputEvent, AgentEndEvent } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -35,7 +37,7 @@ import { registerInfoScreen } from "./info-screen.js";
 export { readBadgeSettings } from "./tui/badge-settings.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Whether we've seen the first user message (for auto badge generation) */
 let firstMessageSeen = false;

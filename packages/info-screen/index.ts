@@ -9,6 +9,8 @@
  *   /unipi:info-settings - Configure info display
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent, type UnipiInfoGroupEvent } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
@@ -21,7 +23,7 @@ import { InfoOverlay } from "./tui/info-overlay.js";
 import { SettingsOverlay } from "./settings/settings-tui.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 export default function (pi: ExtensionAPI) {
   setPiApi(pi);

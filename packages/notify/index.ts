@@ -5,6 +5,8 @@
  * Bridges agent lifecycle events to external platforms (native OS, Gotify, Telegram).
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -24,7 +26,7 @@ import {
 } from "./events.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 export default function (pi: ExtensionAPI) {
 

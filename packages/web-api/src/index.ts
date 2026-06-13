@@ -5,6 +5,8 @@
  * Provides agent tools: web-search, multi-web-content-read, web-llm-summarize
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -27,7 +29,7 @@ import "./providers/perplexity.js";
 import "./providers/llm-summarize.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 // Get info registry from global (avoids direct import issues with pi's extension loading)
 function getInfoRegistry() {

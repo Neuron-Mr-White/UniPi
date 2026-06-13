@@ -5,6 +5,8 @@
  * Emits MODULE_READY, RALPH_LOOP_START/END events.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -23,7 +25,7 @@ import { RalphLoopManager } from "./ralph-loop.js";
 import { registerRalphTools } from "./tools.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Current loop manager instance (recreated on session reload) */
 let manager: RalphLoopManager | null = null;

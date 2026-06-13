@@ -4,6 +4,8 @@
  * Registers commands, handles session lifecycle, wires up MCP server management.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -20,7 +22,7 @@ import { renderMcpAddOverlay } from "./tui/add-overlay.js";
 import { renderMcpSettingsOverlay } from "./tui/settings-overlay.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Module-local registry instance */
 let registry: ServerRegistry | null = null;

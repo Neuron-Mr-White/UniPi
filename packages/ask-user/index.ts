@@ -5,6 +5,8 @@
  * multi-select, and freeform modes. Includes bundled skill for agent guidance.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -17,7 +19,7 @@ import { registerAskUserTools } from "./tools.js";
 import { registerAskUserCommands } from "./commands.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 export default function (pi: ExtensionAPI) {
 

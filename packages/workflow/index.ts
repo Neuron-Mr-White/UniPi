@@ -7,6 +7,8 @@
  * Applies sandbox (tool filtering) per command.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -21,7 +23,7 @@ import {
 import { registerWorkflowCommands } from "./commands.js";
 
 /** Package version (read from package.json at load time) */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Whether ralph module is detected */
 let ralphDetected = false;

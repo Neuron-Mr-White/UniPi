@@ -6,14 +6,15 @@
  * loads SKILL.md content and sends it as a user message.
  */
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, MILESTONE_COMMANDS, MILESTONE_DIRS } from "@pi-unipi/core";
 import { parseMilestones } from "./milestone.js";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 /** Resolve the skills directory relative to this file */
-const SKILLS_DIR = join(new URL(".", import.meta.url).pathname, "skills");
+const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), "skills");
 
 /**
  * Load SKILL.md content for a given skill name.

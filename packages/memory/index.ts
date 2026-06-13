@@ -7,6 +7,8 @@
  * Auto-consolidates on compaction.
  */
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
@@ -30,7 +32,7 @@ import { registerMemoryCommands } from "./commands.js";
 import { isEmbeddingReady, hasModelChanged } from "./settings.js";
 
 /** Package version */
-const VERSION = getPackageVersion(new URL(".", import.meta.url).pathname);
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Storage instance for current project */
 let projectStorage: MemoryStorage | null = null;
