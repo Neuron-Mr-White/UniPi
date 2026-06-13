@@ -50,18 +50,18 @@ jobs:
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
+          activate-environment: "true"
 
       - name: Create venv and install tools
         run: |
-          uv venv .venv
           uv pip install black ruff ty 'cocoindex[lancedb]'
 
       - name: Black (formatting)
-        run: .venv/bin/black --check packages/cocoindex/pipeline-template.py
+        run: black --check packages/cocoindex/pipeline-template.py
 
       - name: Ruff (linting)
-        run: .venv/bin/ruff check packages/cocoindex/pipeline-template.py
+        run: ruff check packages/cocoindex/pipeline-template.py
 
       - name: ty (type checking)
         run: |
-          .venv/bin/ty check packages/cocoindex/pipeline-template.py
+          ty check packages/cocoindex/pipeline-template.py
