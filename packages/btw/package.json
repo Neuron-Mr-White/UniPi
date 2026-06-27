@@ -32,9 +32,9 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.78.0",
-    "@earendil-works/pi-coding-agent": "^0.78.0",
-    "@earendil-works/pi-tui": "^0.78.0"
+    "@earendil-works/pi-ai": "^0.80.0",
+    "@earendil-works/pi-coding-agent": "^0.80.0",
+    "@earendil-works/pi-tui": "^0.80.0"
   },
   "dependencies": {
     "@pi-unipi/core": "2.0.13"

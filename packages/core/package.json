@@ -23,11 +23,11 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-coding-agent": "^0.80.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-coding-agent": "^0.80.0",
     "typebox": "^1.1.38",
     "@types/node": "^22.0.0"
   },

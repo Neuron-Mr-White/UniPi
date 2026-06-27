@@ -32,8 +32,8 @@
     "@pi-unipi/core": "2.0.13"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.78.0",
-    "@earendil-works/pi-tui": "^0.78.0",
+    "@earendil-works/pi-coding-agent": "^0.80.0",
+    "@earendil-works/pi-tui": "^0.80.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
