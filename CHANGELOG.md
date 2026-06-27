@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `memory`: MemPalace is now the primary storage backend. On first load the package auto-installs MemPalace via `uv`, performs a one-way read-only migration of all legacy SQLite + markdown memories into MemPalace drawers, and serves all reads/writes/searches from MemPalace. Falls back to the bundled SQLite + sqlite-vec store when MemPalace or `uv` is unavailable. Markdown files remain the durable human-readable tier.
+- Bumped `@earendil-works/*` peer dependencies from `^0.78.0` to `^0.80.0` (resolves to 0.80.2).
+
+### Fixed
+- `tests/package-manifest.test.js`: allow split packages to register package-internal extensions (e.g. notify's `./index.ts`) instead of asserting all `pi` fields are empty.
+
 ## [2.0.13] — 2026-06-01
 
 ### Fixed

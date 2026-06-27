@@ -1,8 +1,10 @@
 /**
  * @unipi/memory — Storage layer
  *
- * Two-tier storage: SQLite + sqlite-vec for vector search,
- * markdown files for human-readable memory.
+ * Primary backend: MemPalace (auto-installed via uv, auto-migrated from
+ * legacy data). Falls back to SQLite + sqlite-vec when MemPalace/uv is
+ * unavailable, so memory never hard-fails. Markdown files remain the
+ * durable human-readable tier and the migration source.
  */
 
 import Database from "better-sqlite3";
@@ -12,6 +14,44 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { randomUUID } from "node:crypto";
+import {
+  ensureMempalace,
+  runBridge,
+  isMigrated,
+  markMigrated,
+  DEFAULT_PALACE,
+  type MempalaceInstall,
+  type MempalaceRecord,
+  type MempalaceSearchResult,
+  type MempalaceListItem,
+  type MempalaceListItemAll,
+} from "./mempalace.js";
+
+export type MemoryBackend = "mempalace" | "sqlite";
+
+/** Convert a MemPalace record (plain JSON) into a MemoryRecord. */
+function toMemoryRecord(r: MempalaceRecord): MemoryRecord {
+  return {
+    id: r.id,
+    title: r.title,
+    content: r.content,
+    tags: Array.isArray(r.tags) ? r.tags : [],
+    project: r.project,
+    type: (r.type as MemoryRecord["type"]) || "summary",
+    created: r.created || "",
+    updated: r.updated || "",
+    embedding: null,
+  };
+}
+
+/** Whether MemPalace is detectable on this machine (for status display). */
+export function isMempalaceAvailable(): boolean {
+  try {
+    return ensureMempalace() !== null;
+  } catch {
+    return false;
+  }
+}
 
 /** Memory row from SQLite queries */
 interface MemoryRow {
@@ -203,27 +243,43 @@ export class MemoryStorage {
   private db: Database.Database | null = null;
   private projectName: string;
   private scopeDir: string;
+  private backend: MemoryBackend = "sqlite";
+  private mempalaceInstall: MempalaceInstall | null = null;
+  private palacePath: string = DEFAULT_PALACE;
 
   constructor(projectName: string) {
     this.projectName = projectName;
     this.scopeDir = getProjectDir(projectName);
   }
 
+  /** Active backend ("mempalace" when available, else "sqlite"). */
+  getBackend(): MemoryBackend {
+    return this.backend;
+  }
+
+  /** True when the MemPalace backend is active for this instance. */
+  isMempalace(): boolean {
+    return this.backend === "mempalace" && this.mempalaceInstall !== null;
+  }
+
   /**
-   * Initialize the storage (create DB, tables, load extension).
-   *
-   * Uses retry logic to handle concurrent access from multiple Pi sessions,
-   * especially on WSL/Windows filesystem where SQLite locking can be flaky.
-   *
-   * IMPORTANT: We never delete the DB here — another session may have it open.
-   * If all retries fail, we throw and let this session run without memory.
+   * Initialize storage. Tries MemPalace first (auto-install + one-way
+   * auto-migration of legacy memories); falls back to SQLite if MemPalace
+   * is unavailable. Never throws for backend unavailability — only throws
+   * if the SQLite fallback itself fails to open.
    */
   init(): void {
-    // Ensure directory exists
+    // Ensure directory exists (used by both backends for markdown tier).
     if (!fs.existsSync(this.scopeDir)) {
       fs.mkdirSync(this.scopeDir, { recursive: true });
     }
 
+    if (this.tryInitMempalace()) {
+      return;
+    }
+
+    // Fallback: SQLite + sqlite-vec.
+    this.backend = "sqlite";
     const dbPath = path.join(this.scopeDir, MEMORY_DB_NAME);
     const maxRetries = 5;
 
@@ -243,25 +299,52 @@ export class MemoryStorage {
         this.close();
 
         if (isTransient && attempt < maxRetries) {
-          // Likely concurrent access — back off and retry.
-          // Do NOT delete the DB: another session may have it open
-          // and deleting open files on WSL/Windows is unsafe.
           const delayMs = 50 * Math.pow(2, attempt - 1); // 50, 100, 200, 400
-          // Removed console.warn — transient retries are normal during concurrent access.
-          // Memory availability visible via info-screen memory group.
           const end = Date.now() + delayMs;
           while (Date.now() < end) { /* busy wait */ }
           continue;
         }
 
-        // Either non-transient error, or retries exhausted.
-        // Log and throw — this session will run without memory.
-        if (isTransient) {
-          // Removed console.warn — memory unavailable status visible via info-screen.
-        }
         throw err;
       }
     }
+  }
+
+  /**
+   * Attempt to initialize the MemPalace backend. Returns true on success.
+   * Handles auto-install and one-way auto-migration of legacy memories.
+   * Never throws — any failure returns false so the SQLite fallback runs.
+   */
+  private tryInitMempalace(): boolean {
+    let install: MempalaceInstall | null;
+    try {
+      install = ensureMempalace();
+    } catch {
+      return false;
+    }
+    if (!install) return false;
+
+    // Sanity ping — if the palace/bridge is broken, fall back.
+    const ok = runBridge<string>(install, this.palacePath, "ping");
+    if (ok !== "pong") return false;
+
+    this.mempalaceInstall = install;
+    this.backend = "mempalace";
+
+    // One-way auto-migration of legacy memories (idempotent).
+    if (!isMigrated()) {
+      try {
+        runBridge(install, this.palacePath, "migrate", {
+          source_dir: getMemoryBaseDir(),
+        });
+        markMigrated();
+      } catch {
+        // Migration failed — palace still usable for new stores; legacy
+        // memories can be re-migrated later. Do not block.
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -341,6 +424,7 @@ export class MemoryStorage {
    * Check if database is healthy.
    */
   isHealthy(): boolean {
+    if (this.isMempalace()) return true;
     if (!this.db) return false;
     try {
       this.db.prepare("SELECT 1").get();
@@ -355,8 +439,6 @@ export class MemoryStorage {
    * Uses transaction to ensure atomicity — either all writes succeed or none do.
    */
   store(record: MemoryRecord): void {
-    if (!this.db) throw new Error("Storage not initialized");
-
     // Generate ID from title if not provided
     if (!record.id) {
       record.id = record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -369,6 +451,13 @@ export class MemoryStorage {
 
     // Set project if not provided
     if (!record.project) record.project = this.projectName;
+
+    if (this.isMempalace()) {
+      this.storeMempalace(record);
+      return;
+    }
+
+    if (!this.db) throw new Error("Storage not initialized");
 
     // Prepare markdown content BEFORE transaction (fail fast)
     const mdPath = path.join(this.scopeDir, `${record.id}.md`);
@@ -445,12 +534,52 @@ export class MemoryStorage {
   }
 
   /**
+   * Store a record via the MemPalace backend. Also writes the markdown
+   * tier so the human-readable file and legacy migration source stay
+   * consistent and durable as a fallback source.
+   */
+  private storeMempalace(record: MemoryRecord): void {
+    const install = this.mempalaceInstall!;
+    runBridge(install, this.palacePath, "store", {
+      record: {
+        id: record.id,
+        title: record.title,
+        content: record.content,
+        tags: record.tags,
+        project: record.project,
+        type: record.type,
+        created: record.created,
+        updated: record.updated,
+        source_kind: "markdown",
+      },
+    });
+    // Markdown tier (durable human copy + fallback source).
+    try {
+      const mdPath = path.join(this.scopeDir, `${record.id}.md`);
+      const dir = path.dirname(mdPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      writeMemoryFile(mdPath, record);
+    } catch {
+      // Palace write succeeded; markdown is best-effort.
+    }
+  }
+
+  /**
    * Sync orphaned markdown files into the database.
    * Reads all .md files in the project dir, parses frontmatter,
    * and inserts any that are missing from the DB.
    * Returns count of synced files.
    */
   syncOrphanedFiles(): number {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const synced = runBridge<number>(install, this.palacePath, "sync_orphaned", {
+        project_dir: this.scopeDir,
+        wing: this.projectName,
+      });
+      return synced ?? 0;
+    }
+
     if (!this.db) throw new Error("Storage not initialized");
 
     const files = fs.readdirSync(this.scopeDir)
@@ -506,6 +635,13 @@ export class MemoryStorage {
    * Check if a memory with the given title already exists.
    */
   hasByTitle(title: string): boolean {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      return runBridge<boolean>(install, this.palacePath, "has_title", {
+        wing: this.projectName,
+        title,
+      }) ?? false;
+    }
     if (!this.db) throw new Error("Storage not initialized");
     const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
     const row = this.db.prepare("SELECT 1 FROM memories WHERE id = ?").get(id);
@@ -517,6 +653,14 @@ export class MemoryStorage {
    * Returns array of { record, similarity } sorted by similarity desc.
    */
   findSimilarByTitle(title: string, threshold = 0.6): Array<{ record: MemoryRecord; similarity: number }> {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const rows = runBridge<Array<{ record: MempalaceRecord; similarity: number }>>(
+        install, this.palacePath, "find_similar",
+        { wing: this.projectName, title, threshold },
+      ) ?? [];
+      return rows.map((r) => ({ record: toMemoryRecord(r.record), similarity: r.similarity }));
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     const allRows = this.db.prepare("SELECT id, title FROM memories").all() as MemoryRow[];
@@ -549,6 +693,11 @@ export class MemoryStorage {
    * Get a memory record by ID.
    */
   getById(id: string): MemoryRecord | null {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const rec = runBridge<MempalaceRecord | null>(install, this.palacePath, "get", { id });
+      return rec ? toMemoryRecord(rec) : null;
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as MemoryRow | undefined;
@@ -571,6 +720,14 @@ export class MemoryStorage {
    * Get a memory record by title (fuzzy match).
    */
   getByTitle(title: string): MemoryRecord | null {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const rec = runBridge<MempalaceRecord | null>(install, this.palacePath, "get_by_title", {
+        wing: this.projectName,
+        title,
+      });
+      return rec ? toMemoryRecord(rec) : null;
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     // Try exact match first
@@ -610,6 +767,13 @@ export class MemoryStorage {
    * List all memories (titles only).
    */
   listAll(): Array<{ id: string; title: string; type: string }> {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const items = runBridge<MempalaceListItem[]>(install, this.palacePath, "list", {
+        wing: this.projectName,
+      }) ?? [];
+      return items;
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     const rows = this.db.prepare("SELECT id, title, type FROM memories ORDER BY updated DESC").all() as MemoryRow[];
@@ -620,6 +784,16 @@ export class MemoryStorage {
    * Delete a memory by ID.
    */
   delete(id: string): boolean {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const ok = runBridge<boolean>(install, this.palacePath, "delete", { id }) ?? false;
+      // Also remove the markdown tier if present.
+      try {
+        const mdPath = path.join(this.scopeDir, `${id}.md`);
+        if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath);
+      } catch { /* ignore */ }
+      return ok;
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     // Delete from vector table
@@ -658,6 +832,19 @@ export class MemoryStorage {
    * Search memories using hybrid approach.
    */
   search(query: string, limit = 10, embedding?: Float32Array | null): SearchResult[] {
+    if (this.isMempalace()) {
+      const install = this.mempalaceInstall!;
+      const rows = runBridge<MempalaceSearchResult[]>(install, this.palacePath, "search", {
+        query,
+        wing: this.projectName,
+        limit,
+      }) ?? [];
+      return rows.map((r) => ({
+        record: toMemoryRecord(r),
+        score: r.score,
+        snippet: r.snippet,
+      }));
+    }
     if (!this.db) throw new Error("Storage not initialized");
 
     const results: Map<string, SearchResult> = new Map();
@@ -801,6 +988,21 @@ export function searchAllProjects(
   query: string,
   limit = 10
 ): SearchResult[] {
+  // MemPalace global path: query across all wings in one call.
+  const install = ensureMempalace();
+  if (install) {
+    const rows = runBridge<MempalaceSearchResult[]>(install, DEFAULT_PALACE, "search", {
+      query,
+      limit,
+    }) ?? [];
+    return rows.map((r) => ({
+      record: toMemoryRecord(r),
+      score: r.score,
+      snippet: r.snippet,
+    }));
+  }
+
+  // SQLite fallback: iterate project directories.
   const projectDirs = getAllProjectDirs();
   const allResults: SearchResult[] = [];
 
@@ -835,6 +1037,19 @@ export function listAllProjects(): Array<{
   title: string;
   type: string;
 }> {
+  // MemPalace global path: list all drawers across wings.
+  const install = ensureMempalace();
+  if (install) {
+    const items = runBridge<MempalaceListItemAll[]>(install, DEFAULT_PALACE, "list_all", {}) ?? [];
+    return items.map((m) => ({
+      project: m.project,
+      id: m.id,
+      title: m.title,
+      type: m.type,
+    }));
+  }
+
+  // SQLite fallback: iterate project directories.
   const projectDirs = getAllProjectDirs();
   const allMemories: Array<{
     project: string;

@@ -1,8 +1,10 @@
 # @pi-unipi/memory
 
-Persistent memory that survives across sessions. Stores facts, preferences, and decisions in SQLite with vector search, so the agent remembers what you told it last week.
+Persistent memory that survives across sessions. Stores facts, preferences, and decisions with semantic vector search, so the agent remembers what you told it last week.
 
-Two storage tiers: SQLite + sqlite-vec for vector similarity search, markdown files for human-readable memories you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
+**Primary backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with one-way auto-migration of any existing legacy memories. If MemPalace or `uv` is unavailable, the package transparently falls back to the bundled SQLite + sqlite-vec store, so memory never hard-fails.
+
+Two storage tiers: MemPalace (or SQLite) for vector similarity search, markdown files for a durable human-readable copy you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
 
 ## Commands
 
@@ -72,19 +74,61 @@ Examples:
 Memory has no configuration file. Storage paths are fixed:
 
 ```
-~/.unipi/memory/
+~/.unipi/memory/                 # UniPi memory root (legacy + markdown tier)
+├── .mempalace-install           # Cached MemPalace venv detection
+├── .mempalace-migrated          # One-way migration completion flag
 ├── global/
-│   ├── memory.db              # Global vector DB
+│   ├── memory.db              # Global vector DB (SQLite fallback)
 │   └── *.md                   # Global memory files
 └── <project_name>/
-    ├── memory.db              # Project vector DB
+    ├── memory.db              # Project vector DB (SQLite fallback)
     └── *.md                   # Project memory files
+
+~/.mempalace/palace/             # MemPalace palace (primary backend)
 ```
+
+## MemPalace backend
+
+On first load, the memory package:
+1. Detects MemPalace; if missing and `uv` is available, runs
+   `uv tool install mempalace` once (caches the venv python path in
+   `~/.unipi/memory/.mempalace-install`).
+2. Pings the bridge to confirm the palace is usable.
+3. If `~/.unipi/memory/.mempalace-migrated` is absent, performs a one-way
+   read-only migration of every legacy memory (SQLite rows + markdown files
+   across all projects) into MemPalace drawers, then writes the flag.
+   Migration is idempotent (deterministic drawer IDs) and never deletes or
+   mutates legacy files.
+
+Each memory operation invokes a bundled Python bridge
+(`bridge/mempalace_bridge.py`) once via `spawnSync` (~0.5s per call). The
+first MemPalace use on a machine also downloads the default ONNX embedding
+model (~80MB, cached at `~/.cache/chroma/onnx_models/`).
+
+### Forcing re-detection / re-migration
+
+```bash
+rm ~/.unipi/memory/.mempalace-install    # re-detect MemPalace next session
+rm ~/.unipi/memory/.mempalace-migrated   # re-run one-way migration next session
+```
+
+### Backend override
+
+Set `UNIPI_MEMPALACE_BACKEND` to force a MemPalace backend
+(`sqlite_exact`, `qdrant`, `pgvector`, default `chroma`).
+
+### Embedder identity
+
+MemPalace enforces embedder identity. If a palace was created with a
+different embedding model, writes are rejected — the package then falls
+back to SQLite for that session. Use `mempalace palace set-embedder`
+intentionally to realign, then remove the install cache to re-detect.
 
 ## Dependencies
 
-- `better-sqlite3` — SQLite database
-- `sqlite-vec` — Vector search extension
+- `mempalace` (Python, auto-installed via `uv`) — primary backend
+- `better-sqlite3` — SQLite fallback database
+- `sqlite-vec` — Vector search extension (fallback)
 - `js-yaml` — YAML frontmatter parsing
 - `@pi-unipi/core` — Shared utilities
 

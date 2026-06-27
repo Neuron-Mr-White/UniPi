@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/memory",
   "version": "2.0.13",
-  "description": "Persistent cross-session memory with vector search for Pi coding agent",
+  "description": "Persistent cross-session memory with MemPalace backend (auto-installed) and SQLite fallback for Pi coding agent",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "pi-coding-agent",
     "unipi",
     "memory",
+    "mempalace",
     "vector-search",
     "sqlite-vec"
   ],
@@ -32,6 +33,8 @@
     "settings.ts",
     "tools.ts",
     "commands.ts",
+    "mempalace.ts",
+    "bridge/mempalace_bridge.py",
     "tui/**/*",
     "skills/**/*",
     "README.md"

@@ -172,11 +172,12 @@ export default function (pi: ExtensionAPI) {
       } catch (_err) {
         // Count unavailable — status bar shows 0.
       }
-      const vecReady = isEmbeddingReady();
-      const vecIcon = vecReady ? "⚡" : "📝";
+      const mempalaceActive = projectStorage?.isMempalace() ?? false;
+      const backendIcon = mempalaceActive ? "🧠" : (isEmbeddingReady() ? "⚡" : "📝");
+      const warn = hasModelChanged() ? " ⚠" : "";
       ctx.ui.setStatus(
         "unipi-memory",
-        `${vecIcon} mem ${projectCount}p/${projectCountAll}all${hasModelChanged() ? " ⚠" : ""}`
+        `${backendIcon} mem ${projectCount}p/${projectCountAll}all${warn}`
       );
     }
   });
