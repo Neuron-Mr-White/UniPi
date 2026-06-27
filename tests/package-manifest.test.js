@@ -14,16 +14,27 @@ function manifestResources() {
 }
 
 describe("umbrella package pi manifest", () => {
-  it("split workspace packages explicitly disable Pi resource discovery", () => {
+  it("split workspace packages do not auto-discover Pi resources", () => {
+    // Split packages may explicitly register package-internal extensions
+    // (e.g. notify's ./index.ts), but they must NOT auto-discover skills,
+    // prompts, or themes — those are owned by the umbrella manifest.
     for (const dir of readdirSync("packages")) {
       const pkgPath = `packages/${dir}/package.json`;
       if (!existsSync(pkgPath)) continue;
       const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+      const pi = workspacePkg.pi ?? {};
       assert.deepEqual(
-        workspacePkg.pi,
-        { extensions: [], skills: [], prompts: [], themes: [] },
-        `${workspacePkg.name} must explicitly disable Pi resources so umbrella dependencies are not auto-discovered`,
+        [pi.skills, pi.prompts, pi.themes],
+        [[], [], []],
+        `${workspacePkg.name} must not auto-discover skills/prompts/themes (umbrella owns those)`,
       );
+      // Any explicitly-listed extension must be package-internal, not hoisted.
+      for (const ext of pi.extensions ?? []) {
+        assert.ok(
+          !ext.startsWith("node_modules/"),
+          `${workspacePkg.name} extension ${ext} must be package-internal`,
+        );
+      }
     }
   });
 
