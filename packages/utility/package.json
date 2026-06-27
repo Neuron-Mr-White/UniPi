@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "2.0.13",
+  "version": "2.1.0",
   "description": "Utility commands and tools for Pi coding agent \u2014 lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "main": "src/index.ts",
@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.0.13",
+    "@pi-unipi/core": "2.1.0",
     "diff": "^7.0.0",
     "@shikijs/cli": "^4.0.2"
   },

@@ -13,5 +13,6 @@ packages/unipi/bundled.js
 .unipi/cocoindex/.lancedb/
 .unipi/cocoindex/cocoindex.db/
 .unipi/cocoindex/__pycache__/
+__pycache__/
 .pi/
 .unipi/config/
