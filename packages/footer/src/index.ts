@@ -96,6 +96,14 @@ export default function footerExtension(pi: ExtensionAPI): void {
     state.registry.registerGroup(group);
   }
 
+  // ─── TPS streaming-event hooks (registered once) ────────────────────────
+  // pi.on() has no unsubscribe, so we register these exactly once at factory
+  // time (not per session_start) to avoid duplicate handlers accumulating
+  // across session restarts. The streamingIndex counter is reset on each
+  // session_shutdown. These hooks feed the TPS tracker in real time; the
+  // 1s branch-scan in the refresh timer only reconciles persisted messages.
+  wireTpsStreamingEvents(pi);
+
   // ─── Session lifecycle ──────────────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
@@ -127,6 +135,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     }
     state.tuiRef = null;
     tpsTracker.reset();
+    resetTpsStreamingIndex();
   });
 
   // ─── Register commands ──────────────────────────────────────────────────
@@ -152,10 +161,14 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
   ctx.ui.setFooter((tui, _theme, footerData) => {
     state.tuiRef = tui;
 
-    // Start periodic refresh for time-sensitive segments (e.g. clock)
+    // Start periodic refresh for time-sensitive segments (e.g. clock, TPS)
     if (!state.refreshTimer) {
       state.refreshTimer = setInterval(() => {
-        // Feed TPS tracker with per-message data
+        // Re-seed TPS tracker from the session branch on each tick.
+        // Streaming events (message_start/update/end) handle live updates
+        // in real time; this scan reconciles the tracker with persisted
+        // messages after compactions, branch switches, or session reloads
+        // where in-flight streaming state may have been lost.
         try {
           const piCtx = state.piContext as Record<string, unknown> | undefined;
           if (piCtx?.sessionManager) {
@@ -168,9 +181,10 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               const m = e.message;
               if (!m || m.role !== "assistant") continue;
               if (m.stopReason === "error" || m.stopReason === "aborted") continue;
-              const output = m.usage?.output ?? 0;
               const hasStop = !!m.stopReason;
-              tpsTracker.onMessageUpdate(msgIndex, output, hasStop);
+              // Pass the whole message: TPS tracker counts tokens from content,
+              // not from usage.output (which is 0 during streaming).
+              tpsTracker.onMessageUpdate(msgIndex, m, hasStop);
               msgIndex++;
             }
           }
@@ -250,4 +264,57 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
       },
     };
   }, { placement: "belowEditor" });
+}
+
+// ─── TPS streaming-event hooks ──────────────────────────────────────────────
+
+/**
+ * Sequential index of the currently-streaming assistant message. Tracked
+ * locally because pi does not expose a stable message index on streaming
+ * events, and the TPS tracker keys records off this index.
+ */
+let tpsStreamingIndex = -1;
+
+/** Reset the streaming index (called on session_shutdown). */
+function resetTpsStreamingIndex(): void {
+  tpsStreamingIndex = -1;
+}
+
+/**
+ * Subscribe to pi's message streaming events and feed the TPS tracker in real
+ * time. This complements the 1s branch-scan in the refresh timer, which only
+ * sees persisted (completed) messages. Without these hooks the tracker would
+ * never observe an in-flight assistant message, so live TPS would stay frozen
+ * at the last completed message's value.
+ *
+ * Registered once at extension-factory time (pi.on has no unsubscribe, so we
+ * must not re-register per session_start or handlers would accumulate).
+ */
+function wireTpsStreamingEvents(pi: ExtensionAPI): void {
+  const safe = (fn: () => void) => {
+    try { fn(); } catch { /* TPS is best-effort */ }
+  };
+
+  pi.on("message_start", ((event: { message: unknown }) => safe(() => {
+    const m = event.message as Record<string, unknown> | undefined;
+    if (!m || m.role !== "assistant") return;
+    if (m.stopReason === "error" || m.stopReason === "aborted") return;
+    tpsStreamingIndex++;
+    tpsTracker.onMessageUpdate(tpsStreamingIndex, m, false);
+  })) as (event: unknown) => void);
+
+  pi.on("message_update", ((event: { message: unknown }) => safe(() => {
+    if (tpsStreamingIndex < 0) return;
+    const m = event.message as Record<string, unknown> | undefined;
+    if (!m || m.role !== "assistant") return;
+    tpsTracker.onMessageUpdate(tpsStreamingIndex, m, false);
+  })) as (event: unknown) => void);
+
+  pi.on("message_end", ((event: { message: unknown }) => safe(() => {
+    if (tpsStreamingIndex < 0) return;
+    const m = event.message as Record<string, unknown> | undefined;
+    if (!m || m.role !== "assistant") return;
+    if (m.stopReason === "error" || m.stopReason === "aborted") return;
+    tpsTracker.onMessageUpdate(tpsStreamingIndex, m, true);
+  })) as (event: unknown) => void);
 }

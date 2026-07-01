@@ -22,6 +22,10 @@ export const DEFAULT_PALACE = path.join(os.homedir(), ".mempalace", "palace");
 
 const INSTALL_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-install");
 const MIGRATED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-migrated");
+/** Flag written after a successful ping, so subsequent sessions can skip
+ *  the ~0.5s Python cold-start sanity check. Stale after PING_VERIFIED_TTL_MS. */
+const PING_VERIFIED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-ping-verified");
+const PING_VERIFIED_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** Path to the bundled bridge script. */
 const BRIDGE_PATH = path.join(dirname(fileURLToPath(import.meta.url)), "bridge", "mempalace_bridge.py");
@@ -166,6 +170,30 @@ export function ensureMempalace(): MempalaceInstall | null {
 /** Drop the cached install record (forces re-detection next session). */
 export function invalidateInstallCache(): void {
   try { if (fs.existsSync(INSTALL_FLAG)) fs.unlinkSync(INSTALL_FLAG); } catch { /* ignore */ }
+  invalidatePingVerified();
+}
+
+/** Was the palace ping-verified recently enough to trust without re-pinging? */
+export function isPingVerified(): boolean {
+  try {
+    if (!fs.existsSync(PING_VERIFIED_FLAG)) return false;
+    const ts = Number.parseInt(fs.readFileSync(PING_VERIFIED_FLAG, "utf-8").trim(), 10);
+    if (!Number.isFinite(ts)) return false;
+    return Date.now() - ts < PING_VERIFIED_TTL_MS;
+  } catch { return false; }
+}
+
+/** Mark the palace as ping-verified (written after a successful ping). */
+export function markPingVerified(): void {
+  try {
+    fs.mkdirSync(path.dirname(PING_VERIFIED_FLAG), { recursive: true });
+    fs.writeFileSync(PING_VERIFIED_FLAG, String(Date.now()), "utf-8");
+  } catch { /* ignore */ }
+}
+
+/** Drop the ping-verified flag (forces a real ping next session). */
+export function invalidatePingVerified(): void {
+  try { if (fs.existsSync(PING_VERIFIED_FLAG)) fs.unlinkSync(PING_VERIFIED_FLAG); } catch { /* ignore */ }
 }
 
 /** Has the one-way legacy migration been completed? */

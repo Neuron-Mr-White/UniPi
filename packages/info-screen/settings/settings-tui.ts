@@ -35,6 +35,8 @@ export class SettingsOverlay implements Component {
   private settings: InfoScreenSettings;
   private groups: Array<{ id: string; name: string; icon: string }>;
   private selectedIndex = 0;
+  /** Index of the "Show on boot" toggle row (above the group list). */
+  private static readonly BOOT_TOGGLE_INDEX = 0;
   private savedGroupIndex = 0; // Saved position before entering stats mode
   private mode: "groups" | "stats" = "groups";
   private selectedGroupId: string | null = null;
@@ -81,28 +83,41 @@ export class SettingsOverlay implements Component {
    * Handle input in groups mode.
    */
   private handleGroupsInput(data: string): void {
+    const lastIndex = this.groups.length; // boot toggle is index 0, groups occupy 1..length
     switch (data) {
       case "\x1b[A": // Up
       case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + this.groups.length) % this.groups.length;
+        this.selectedIndex = (this.selectedIndex - 1 + (lastIndex + 1)) % (lastIndex + 1);
         break;
       case "\x1b[B": // Down
       case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % this.groups.length;
+        this.selectedIndex = (this.selectedIndex + 1) % (lastIndex + 1);
         break;
-      case " ": // Space - toggle visibility
-        this.toggleGroupVisibility(this.groups[this.selectedIndex].id);
+      case " ": // Space - toggle
+        if (this.selectedIndex === SettingsOverlay.BOOT_TOGGLE_INDEX) {
+          this.toggleShowOnBoot();
+        } else {
+          this.toggleGroupVisibility(this.groups[this.selectedIndex - 1].id);
+        }
         break;
       case "\r": // Enter - enter stats mode
       case "\x1b[C": // Right - enter stats mode
       case "l":
-        this.enterStatsMode(this.groups[this.selectedIndex].id);
+        if (this.selectedIndex === SettingsOverlay.BOOT_TOGGLE_INDEX) {
+          this.toggleShowOnBoot();
+        } else {
+          this.enterStatsMode(this.groups[this.selectedIndex - 1].id);
+        }
         break;
       case "J": // Shift+J - move group down
-        this.moveGroupDown();
+        if (this.selectedIndex > SettingsOverlay.BOOT_TOGGLE_INDEX) {
+          this.moveGroupDown();
+        }
         break;
       case "K": // Shift+K - move group up
-        this.moveGroupUp();
+        if (this.selectedIndex > SettingsOverlay.BOOT_TOGGLE_INDEX) {
+          this.moveGroupUp();
+        }
         break;
       case "q": // Quit
       case "\x1b": // Escape
@@ -181,6 +196,14 @@ export class SettingsOverlay implements Component {
   }
 
   /**
+   * Toggle the "show on boot" setting.
+   */
+  private toggleShowOnBoot(): void {
+    this.settings.showOnBoot = !this.settings.showOnBoot;
+    saveInfoSettings(this.settings);
+  }
+
+  /**
    * Enter stats editing mode for a group.
    */
   private enterStatsMode(groupId: string): void {
@@ -194,8 +217,8 @@ export class SettingsOverlay implements Component {
    * Move selected group up in order.
    */
   private moveGroupUp(): void {
-    if (this.selectedIndex <= 0) return;
-    const i = this.selectedIndex;
+    if (this.selectedIndex <= SettingsOverlay.BOOT_TOGGLE_INDEX + 1) return;
+    const i = this.selectedIndex - 1; // map back to groups array index
     // Swap with previous
     const temp = this.groups[i]!;
     this.groups[i] = this.groups[i - 1]!;
@@ -208,8 +231,8 @@ export class SettingsOverlay implements Component {
    * Move selected group down in order.
    */
   private moveGroupDown(): void {
-    if (this.selectedIndex >= this.groups.length - 1) return;
-    const i = this.selectedIndex;
+    if (this.selectedIndex >= this.groups.length) return; // boot toggle occupies 0, groups 1..length
+    const i = this.selectedIndex - 1; // map back to groups array index
     // Swap with next
     const temp = this.groups[i]!;
     this.groups[i] = this.groups[i + 1]!;
@@ -261,9 +284,25 @@ export class SettingsOverlay implements Component {
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
     // Group list
+    // Boot toggle row (index 0)
+    {
+      const isSelected = SettingsOverlay.BOOT_TOGGLE_INDEX === this.selectedIndex;
+      const isEnabled = this.settings.showOnBoot;
+      const toggle = isEnabled ? TOGGLE_ON : TOGGLE_OFF;
+      const indicator = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
+      let line = `  ${indicator} ${toggle} 🚀 Show on boot`;
+      if (isSelected) {
+        line += `  ${ansi.dim}→ toggle${ansi.reset}`;
+      }
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
+    }
+    lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
+
     for (let i = 0; i < this.groups.length; i++) {
       const group = this.groups[i];
-      const isSelected = i === this.selectedIndex;
+      // index 0 is the boot toggle; groups start at row index 1
+      const rowIndex = i + 1;
+      const isSelected = rowIndex === this.selectedIndex;
       const groupSettings = getGroupSettings(group.id);
       const isEnabled = groupSettings.show;
 

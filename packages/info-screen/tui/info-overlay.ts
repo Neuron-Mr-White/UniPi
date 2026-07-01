@@ -94,15 +94,24 @@ export class InfoOverlay implements Component {
 
   /**
    * Fetch all groups in background. Each resolves independently.
+   *
+   * Each fetch is deferred to a macrotask (setTimeout 0) so the constructor
+   * returns immediately. Without this, getGroupData() runs each group's
+   * dataProvider synchronously up to its first `await` before yielding —
+   * heavy providers (usage stats parse 1GB+ of session files, memory scans)
+   * blocked the session_start handler for seconds.
    */
-  private async fetchAllBackground(): Promise<void> {
+  private fetchAllBackground(): void {
     for (const group of this.groups) {
-      // Fire each fetch independently — don't await sequentially
-      infoRegistry.getGroupData(group.id).then(() => {
-        this.groupLoading.set(group.id, false);
-      }).catch(() => {
-        this.groupLoading.set(group.id, false);
-      });
+      // Defer each fetch to a macrotask so the overlay constructs instantly.
+      setTimeout(() => {
+        if (this._destroyed) return;
+        infoRegistry.getGroupData(group.id).then(() => {
+          this.groupLoading.set(group.id, false);
+        }).catch(() => {
+          this.groupLoading.set(group.id, false);
+        });
+      }, 0);
     }
   }
 

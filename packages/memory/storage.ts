@@ -19,6 +19,9 @@ import {
   runBridge,
   isMigrated,
   markMigrated,
+  isPingVerified,
+  markPingVerified,
+  invalidatePingVerified,
   DEFAULT_PALACE,
   type MempalaceInstall,
   type MempalaceRecord,
@@ -263,6 +266,22 @@ export class MemoryStorage {
   }
 
   /**
+   * Run a MemPalace bridge command, invalidating the ping-verified flag
+   * when the call fails. This ensures a palace that breaks after the
+   * startup ping-skip gets re-verified on the next session.
+   */
+  private memPalaceCall<T>(cmd: string, args: Record<string, unknown> = {}): T | null {
+    const install = this.mempalaceInstall;
+    if (!install) return null;
+    const result = runBridge<T>(install, this.palacePath, cmd, args);
+    if (result === null) {
+      // Backend didn't respond — force a real ping next session.
+      invalidatePingVerified();
+    }
+    return result;
+  }
+
+  /**
    * Initialize storage. Tries MemPalace first (auto-install + one-way
    * auto-migration of legacy memories); falls back to SQLite if MemPalace
    * is unavailable. Never throws for backend unavailability — only throws
@@ -325,8 +344,14 @@ export class MemoryStorage {
     if (!install) return false;
 
     // Sanity ping — if the palace/bridge is broken, fall back.
-    const ok = runBridge<string>(install, this.palacePath, "ping");
-    if (ok !== "pong") return false;
+    // Skip the ~0.5s Python cold-start when we ping-verified recently;
+    // the flag is invalidated on any backend failure so a broken palace
+    // is re-checked on the next session.
+    if (!isPingVerified()) {
+      const ok = runBridge<string>(install, this.palacePath, "ping");
+      if (ok !== "pong") return false;
+      markPingVerified();
+    }
 
     this.mempalaceInstall = install;
     this.backend = "mempalace";
@@ -539,8 +564,7 @@ export class MemoryStorage {
    * consistent and durable as a fallback source.
    */
   private storeMempalace(record: MemoryRecord): void {
-    const install = this.mempalaceInstall!;
-    runBridge(install, this.palacePath, "store", {
+    this.memPalaceCall("store", {
       record: {
         id: record.id,
         title: record.title,
@@ -572,8 +596,7 @@ export class MemoryStorage {
    */
   syncOrphanedFiles(): number {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const synced = runBridge<number>(install, this.palacePath, "sync_orphaned", {
+      const synced = this.memPalaceCall<number>("sync_orphaned", {
         project_dir: this.scopeDir,
         wing: this.projectName,
       });
@@ -636,8 +659,7 @@ export class MemoryStorage {
    */
   hasByTitle(title: string): boolean {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      return runBridge<boolean>(install, this.palacePath, "has_title", {
+      return this.memPalaceCall<boolean>("has_title", {
         wing: this.projectName,
         title,
       }) ?? false;
@@ -654,9 +676,8 @@ export class MemoryStorage {
    */
   findSimilarByTitle(title: string, threshold = 0.6): Array<{ record: MemoryRecord; similarity: number }> {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const rows = runBridge<Array<{ record: MempalaceRecord; similarity: number }>>(
-        install, this.palacePath, "find_similar",
+      const rows = this.memPalaceCall<Array<{ record: MempalaceRecord; similarity: number }>>(
+        "find_similar",
         { wing: this.projectName, title, threshold },
       ) ?? [];
       return rows.map((r) => ({ record: toMemoryRecord(r.record), similarity: r.similarity }));
@@ -694,8 +715,7 @@ export class MemoryStorage {
    */
   getById(id: string): MemoryRecord | null {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const rec = runBridge<MempalaceRecord | null>(install, this.palacePath, "get", { id });
+      const rec = this.memPalaceCall<MempalaceRecord | null>("get", { id });
       return rec ? toMemoryRecord(rec) : null;
     }
     if (!this.db) throw new Error("Storage not initialized");
@@ -721,8 +741,7 @@ export class MemoryStorage {
    */
   getByTitle(title: string): MemoryRecord | null {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const rec = runBridge<MempalaceRecord | null>(install, this.palacePath, "get_by_title", {
+      const rec = this.memPalaceCall<MempalaceRecord | null>("get_by_title", {
         wing: this.projectName,
         title,
       });
@@ -768,8 +787,7 @@ export class MemoryStorage {
    */
   listAll(): Array<{ id: string; title: string; type: string }> {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const items = runBridge<MempalaceListItem[]>(install, this.palacePath, "list", {
+      const items = this.memPalaceCall<MempalaceListItem[]>("list", {
         wing: this.projectName,
       }) ?? [];
       return items;
@@ -785,8 +803,7 @@ export class MemoryStorage {
    */
   delete(id: string): boolean {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const ok = runBridge<boolean>(install, this.palacePath, "delete", { id }) ?? false;
+      const ok = this.memPalaceCall<boolean>("delete", { id }) ?? false;
       // Also remove the markdown tier if present.
       try {
         const mdPath = path.join(this.scopeDir, `${id}.md`);
@@ -833,8 +850,7 @@ export class MemoryStorage {
    */
   search(query: string, limit = 10, embedding?: Float32Array | null): SearchResult[] {
     if (this.isMempalace()) {
-      const install = this.mempalaceInstall!;
-      const rows = runBridge<MempalaceSearchResult[]>(install, this.palacePath, "search", {
+      const rows = this.memPalaceCall<MempalaceSearchResult[]>("search", {
         query,
         wing: this.projectName,
         limit,
