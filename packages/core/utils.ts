@@ -240,3 +240,29 @@ export function emitEvent(
     return false;
   }
 }
+
+/**
+ * Wrap an awaitable blocking-UI operation with herdr `blocked` state reporting.
+ *
+ * Emits `herdr:blocked` active (with a label) before awaiting `fn`, and
+ * inactive (with matching label) afterwards — including on throw. This lets
+ * the herdr integration surface `blocked` agent status for ask_user and other
+ * stop-and-continue UIs instead of `working`.
+ *
+ * The label should match what's shown to the user so herdr's sidebar reads
+ * meaningfully (e.g. "ask_user", "helper viewer").
+ */
+export async function withHerdrBlocked<T>(
+  pi: { events: { emit: (name: string, payload: unknown) => void } },
+  label: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const event = (active: boolean) =>
+    emitEvent(pi, "herdr:blocked", { active, label });
+  event(true);
+  try {
+    return await fn();
+  } finally {
+    event(false);
+  }
+}

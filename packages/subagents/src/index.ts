@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { emitEvent, MODULES, UNIPI_EVENTS, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
+import { emitEvent, MODULES, UNIPI_EVENTS, withHerdrBlocked, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
@@ -758,28 +758,32 @@ Guidelines:
         // Open conversation viewer overlay if requested
         if (params.view && record.session) {
           const activity = agentActivity.get(record.id);
-          await ctx.ui.custom<undefined>(
-            (tui, theme, _keybindings, done) => {
-              return new ConversationViewer(
-                tui,
-                record.session!,
-                {
-                  type: record.type,
-                  description: record.description,
-                  status: record.status,
-                  toolUses: record.toolUses,
-                  startedAt: record.startedAt,
-                  completedAt: record.completedAt,
-                },
-                activity,
-                theme,
-                done,
-              );
-            },
-            {
-              overlay: true,
-              overlayOptions: { anchor: "center", width: "90%" },
-            },
+          await withHerdrBlocked(
+            pi,
+            "helper viewer",
+            () => ctx.ui.custom<undefined>(
+              (tui, theme, _keybindings, done) => {
+                return new ConversationViewer(
+                  tui,
+                  record.session!,
+                  {
+                    type: record.type,
+                    description: record.description,
+                    status: record.status,
+                    toolUses: record.toolUses,
+                    startedAt: record.startedAt,
+                    completedAt: record.completedAt,
+                  },
+                  activity,
+                  theme,
+                  done,
+                );
+              },
+              {
+                overlay: true,
+                overlayOptions: { anchor: "center", width: "90%" },
+              },
+            ),
           );
         }
 

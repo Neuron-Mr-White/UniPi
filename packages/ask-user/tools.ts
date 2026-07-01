@@ -11,6 +11,7 @@ import {
   COMPACTOR_INSTRUCTION,
   UNIPI_EVENTS,
   emitEvent,
+  withHerdrBlocked,
 } from "@pi-unipi/core";
 import type { NormalizedOption, AskUserResponse, SessionLauncherResult } from "./types.js";
 import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
@@ -272,15 +273,19 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       }
 
       // Render interactive UI
-      const result = await ctx.ui.custom<{ response: AskUserResponse } | null>(
-        renderAskUI({
-          question,
-          context,
-          options: normalizedOptions,
-          allowMultiple,
-          allowFreeform,
-          timeout,
-        }),
+      const result = await withHerdrBlocked(
+        pi,
+        "ask_user",
+        () => ctx.ui.custom<{ response: AskUserResponse } | null>(
+          renderAskUI({
+            question,
+            context,
+            options: normalizedOptions,
+            allowMultiple,
+            allowFreeform,
+            timeout,
+          }),
+        ),
       );
 
       // Handle cancel
@@ -346,8 +351,12 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       // Session launcher intercept: when user selects new_session, offer compact/direct/cancel
       if (response.kind === "new_session") {
         const prefill = response.prefill || "";
-        const launcherResult = await ctx.ui.custom<SessionLauncherResult | null>(
-          renderLauncherUI({ prefill }),
+        const launcherResult = await withHerdrBlocked(
+          pi,
+          "ask_user: launch",
+          () => ctx.ui.custom<SessionLauncherResult | null>(
+            renderLauncherUI({ prefill }),
+          ),
         );
 
         if (!launcherResult || launcherResult.action === "cancel") {
