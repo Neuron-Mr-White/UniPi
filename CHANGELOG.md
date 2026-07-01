@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-07-02
+
+### Added
+- `core`: new `withHerdrBlocked(pi, label, fn)` helper that emits `herdr:blocked` active/inactive around an awaited blocking UI so the herdr integration surfaces `blocked` agent status.
+- `ask-user`/`subagents`: agent-driven blocking overlays now report `blocked` to herdr — `ask_user` (label `ask_user`), session launcher (label `ask_user: launch`), and the `get_helper_result` live conversation viewer (label `helper viewer`).
+- `info-screen`: new "Show on boot" toggle at the top of `/unipi:info-settings` (persisted via `saveInfoSettings`).
+
+### Fixed
+- `info-screen`: the info overlay no longer blocks startup. `fetchAllBackground()` now defers each group's `dataProvider()` to a background macrotask with a `_destroyed` guard instead of running them synchronously before the first `await`. Startup cost dropped from ~4750ms to ~1ms; data loads reactively after the TUI is up.
+- `memory`: skip the Python `ping` `spawnSync` when recently verified via `~/.unipi/memory/.mempalace-ping-verified` (24h TTL). New `memPalaceCall<T>()` wrapper invalidates the flag on a null result so a broken palace gets re-verified next session. Warm-start saving ~484ms.
+
 ## [2.1.0] — 2026-06-27
 
 ### Breaking Changes
