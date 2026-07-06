@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-07-06
+
+### Fixed
+- `compactor`: registered the package extension and skills in `packages/compactor/package.json` (`pi.extensions` pointing at `./index.ts`, `pi.skills` at `./skills`) so the standalone `@pi-unipi/compactor` package loads its extension and skills without relying on umbrella auto-discovery (fixes #23). Mirrors the notify fix from #18.
+
 ## [2.1.1] — 2026-07-02
 
 ### Added

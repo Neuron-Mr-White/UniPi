@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ralph",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -27,8 +27,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.1.1",
-    "@pi-unipi/info-screen": "2.1.1"
+    "@pi-unipi/core": "2.1.2",
+    "@pi-unipi/info-screen": "2.1.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.0",
