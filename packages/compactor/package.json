@@ -51,8 +51,8 @@
     "better-sqlite3": ">=11.0.0"
   },
   "pi": {
-    "extensions": [],
-    "skills": [],
+    "extensions": ["./index.ts"],
+    "skills": ["./skills"],
     "prompts": [],
     "themes": []
   }
