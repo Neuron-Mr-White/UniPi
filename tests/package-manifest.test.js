@@ -24,10 +24,17 @@ describe("umbrella package pi manifest", () => {
       const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
       const pi = workspacePkg.pi ?? {};
       assert.deepEqual(
-        [pi.skills, pi.prompts, pi.themes],
-        [[], [], []],
-        `${workspacePkg.name} must not auto-discover skills/prompts/themes (umbrella owns those)`,
+        [pi.prompts, pi.themes],
+        [[], []],
+        `${workspacePkg.name} must not auto-discover prompts/themes (umbrella owns those)`,
       );
+      // Explicitly-listed extensions and skills must be package-internal, not hoisted.
+      for (const skill of pi.skills ?? []) {
+        assert.ok(
+          !skill.startsWith("node_modules/"),
+          `${workspacePkg.name} skill ${skill} must be package-internal`,
+        );
+      }
       // Any explicitly-listed extension must be package-internal, not hoisted.
       for (const ext of pi.extensions ?? []) {
         assert.ok(
@@ -52,7 +59,9 @@ describe("umbrella package pi manifest", () => {
       const pkgPath = `packages/${dir}/package.json`;
       if (!existsSync(pkgPath)) continue;
       const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-      if (!workspacePkg.files?.some((entry) => String(entry).includes("skills"))) continue;
+      const hasSkillFiles = workspacePkg.files?.some((entry) => String(entry).includes("skills"));
+      const hasPiSkills = (workspacePkg.pi?.skills ?? []).length > 0;
+      if (!hasSkillFiles && !hasPiSkills) continue;
 
       const files = ["index.ts", "src/index.ts"]
         .map((file) => join("packages", dir, file))

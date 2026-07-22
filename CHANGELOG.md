@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.3] — 2026-07-22
+
 ### Added
 - `notify`: support Pi's `agent_settled` lifecycle event as a separate configurable notification from `agent_end`, so users can route retry/error runs and final settled completion to different platforms or sounds (fixes #24).
+
+### Fixed
+- `tests`: run TypeScript test suites through `tsx` instead of Node's built-in TypeScript stripping so the workspace test suite passes on Node builds without `--experimental-strip-types` support.
+- `tests/package-manifest`: allow split packages such as `@pi-unipi/compactor` to declare package-internal `pi.skills` while still blocking hoisted `node_modules` resource paths.
 
 ## [2.1.2] — 2026-07-06
 

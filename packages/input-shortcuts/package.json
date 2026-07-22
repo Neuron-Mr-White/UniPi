@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/input-shortcuts",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Keyboard shortcuts for stash/restore, undo/redo, clipboard, and thinking toggle — chord-based overlay system",
   "type": "module",
   "main": "src/index.ts",
@@ -27,13 +27,13 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
+    "test": "npx tsx --test tests/**/*.test.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.1.2"
+    "@pi-unipi/core": "2.1.3"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.0",
