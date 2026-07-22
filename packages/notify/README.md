@@ -24,7 +24,8 @@ Notify subscribes to Pi lifecycle events and routes notifications based on your 
 | `workflow_end` | On | Workflow command completes |
 | `ralph_loop_end` | On | Ralph loop completes |
 | `mcp_server_error` | On | MCP server error |
-| `agent_end` | Off | Agent finishes responding |
+| `agent_end` | Off | Low-level agent run ends (may fire again on retries) |
+| `agent_settled` | Off | Agent fully settles after retries, compaction, and queued continuations |
 | `memory_consolidated` | Off | Memory auto-saved |
 | `session_shutdown` | Off | Session ends |
 

@@ -50,7 +50,8 @@ export const BUILTIN_EVENTS: Record<
   string,
   { hook: string; label: string }
 > = {
-  agent_end: { hook: "agent_end", label: "Agent Complete" },
+  agent_end: { hook: "agent_end", label: "Agent Run Complete" },
+  agent_settled: { hook: "agent_settled", label: "Agent Complete" },
   workflow_end: { hook: UNIPI_EVENTS.WORKFLOW_END, label: "Workflow Done" },
   ralph_loop_end: { hook: UNIPI_EVENTS.RALPH_LOOP_END, label: "Ralph Complete" },
   mcp_server_error: { hook: UNIPI_EVENTS.MCP_SERVER_ERROR, label: "MCP Error" },
@@ -63,7 +64,7 @@ export const BUILTIN_EVENTS: Record<
  * Pi lifecycle event types (dispatched by ExtensionRunner).
  * These must use pi.on() — not pi.events.on() — to receive events.
  */
-const LIFECYCLE_EVENTS = new Set(["agent_end", "session_shutdown"]);
+const LIFECYCLE_EVENTS = new Set(["agent_end", "agent_settled", "session_shutdown"]);
 
 /**
  * Register event listeners for all enabled notification events.
@@ -77,9 +78,9 @@ export function registerEventListeners(
   // Remove all previously registered EventBus listeners to prevent accumulation
   // across reloads (EventBus persists but module instances are replaced).
   unregisterAll();
-  // Register built-in events (except agent_end which has custom logic)
+  // Register built-in events (except agent lifecycle notifications which have custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
-    if (eventKey === "agent_end") continue; // handled separately below
+    if (isAgentNotificationEvent(eventKey)) continue; // handled separately below
 
     const eventConfig = config.events[eventKey];
     if (!eventConfig?.enabled) continue;
@@ -95,8 +96,8 @@ export function registerEventListeners(
       );
     };
 
-    // pi lifecycle events (agent_end, session_shutdown) are dispatched via
-    // ExtensionRunner — must use pi.on(). These are stored in
+    // Pi lifecycle events are dispatched via ExtensionRunner — must use
+    // pi.on(). These are stored in
     // extension.handlers and automatically replaced on reload, so they
     // do NOT accumulate like EventBus listeners.
     if (LIFECYCLE_EVENTS.has(eventKey)) {
@@ -120,55 +121,8 @@ export function registerEventListeners(
     }));
   }
 
-  // agent_end — custom handler with session name and recap support
-  const agentEndConfig = config.events["agent_end"];
-  if (agentEndConfig?.enabled) {
-    const handler = (payload: unknown) => {
-      // Fire-and-forget: build message and dispatch in background,
-      // don't block agent_end from completing
-      const sessionName = pi.getSessionName?.();
-      const title = `Pi — ${BUILTIN_EVENTS.agent_end.label}`;
-
-      if (config.recap.enabled) {
-        // Recap mode: summarize asynchronously, then dispatch
-        const lastText = extractLastAssistantText(payload);
-        if (lastText && sessionCtx?.modelRegistry) {
-          const provider = extractProvider(config.recap.model);
-          const modelId = extractModelId(config.recap.model);
-          const model = sessionCtx.modelRegistry.find(provider, modelId);
-          if (model) {
-            sessionCtx.modelRegistry.getApiKeyAndHeaders(model)
-              .then((apiKeyResult) => {
-                const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
-                if (apiKey) {
-                  return summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId)
-                    .then((recap) => sessionName ? `${sessionName}: ${recap}` : recap);
-                }
-                return buildAgentEndMessage(sessionName);
-              })
-              .catch(() => buildAgentEndMessage(sessionName))
-              .then((message) =>
-                dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config, cwd)
-              )
-              .catch(() => {
-                // Silently ignore — background agent_end notification failure is non-blocking.
-              });
-            return;
-          }
-        }
-      }
-
-      // No recap or recap unavailable: dispatch immediately in background
-      const message = buildAgentEndMessage(sessionName);
-      dispatchNotification(pi, title, message, agentEndConfig.platforms, "agent_end", config, cwd).catch(
-        () => {
-          // Silently ignore — background agent_end notification failure is non-blocking.
-        }
-      );
-    };
-
-    (pi as any).on("agent_end", handler);
-  }
+  registerAgentNotification(pi, "agent_end", config, cwd);
+  registerAgentNotification(pi, "agent_settled", config, cwd);
 
   // Listen for dynamic module events
   const moduleHandler = async (payload: unknown) => {
@@ -335,7 +289,9 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
     case "mcp_server_error":
       return `Server "${String(p.name || "unknown")}" error: ${String(p.error || "unknown error")}`;
     case "agent_end":
-      return "Agent finished responding";
+      return "Agent run finished responding";
+    case "agent_settled":
+      return "Agent is complete";
     case "memory_consolidated":
       return `Memory consolidated (${p.count || 0} items)`;
     case "session_shutdown":
@@ -347,13 +303,93 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
   }
 }
 
-/** Build agent_end message using session name */
-function buildAgentEndMessage(sessionName: string | undefined): string {
-  if (sessionName) return `${sessionName} - Agent is complete`;
-  return "Agent is complete";
+/** Register an agent lifecycle notification with session name and recap support. */
+function registerAgentNotification(
+  pi: ExtensionAPI,
+  eventKey: "agent_end" | "agent_settled",
+  config: NotifyConfig,
+  cwd: string
+): void {
+  const eventConfig = config.events[eventKey];
+  if (!eventConfig?.enabled) return;
+
+  const handler = (payload: unknown) => {
+    // Fire-and-forget: build message and dispatch in background,
+    // don't block agent lifecycle hooks from completing.
+    const sessionName = pi.getSessionName?.();
+    const title = `Pi — ${BUILTIN_EVENTS[eventKey].label}`;
+
+    if (config.recap.enabled) {
+      // Recap mode: summarize asynchronously, then dispatch.
+      // agent_settled does not currently include a messages payload, so fall
+      // back to the latest assistant message in the session.
+      const lastText = extractLastAssistantText(payload) ?? extractLastAssistantTextFromSession();
+      if (lastText && sessionCtx?.modelRegistry) {
+        const provider = extractProvider(config.recap.model);
+        const modelId = extractModelId(config.recap.model);
+        const model = sessionCtx.modelRegistry.find(provider, modelId);
+        if (model) {
+          sessionCtx.modelRegistry.getApiKeyAndHeaders(model)
+            .then((apiKeyResult) => {
+              const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
+              if (apiKey) {
+                return summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId)
+                  .then((recap) => sessionName ? `${sessionName}: ${recap}` : recap);
+              }
+              return buildAgentLifecycleMessage(eventKey, sessionName);
+            })
+            .catch(() => buildAgentLifecycleMessage(eventKey, sessionName))
+            .then((message) =>
+              dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd)
+            )
+            .catch(() => {
+              // Silently ignore — background agent notification failure is non-blocking.
+            });
+          return;
+        }
+      }
+    }
+
+    // No recap or recap unavailable: dispatch immediately in background.
+    const message = buildAgentLifecycleMessage(eventKey, sessionName);
+    dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd).catch(
+      () => {
+        // Silently ignore — background agent notification failure is non-blocking.
+      }
+    );
+  };
+
+  (pi as any).on(eventKey, handler);
 }
 
-/** Extract text from the last assistant message in agent_end payload */
+/** Whether an event key is an agent lifecycle notification with custom handling. */
+function isAgentNotificationEvent(eventKey: string): eventKey is "agent_end" | "agent_settled" {
+  return eventKey === "agent_end" || eventKey === "agent_settled";
+}
+
+/** Build agent lifecycle message using session name. */
+function buildAgentLifecycleMessage(
+  eventKey: "agent_end" | "agent_settled",
+  sessionName: string | undefined
+): string {
+  const status = eventKey === "agent_end" ? "Agent run is complete" : "Agent is complete";
+  if (sessionName) return `${sessionName} - ${status}`;
+  return status;
+}
+
+/** Extract text from the latest assistant message in the current session. */
+function extractLastAssistantTextFromSession(): string | null {
+  const entries = sessionCtx?.sessionManager.getEntries() ?? [];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry?.type !== "message") continue;
+    const text = extractAssistantText(entry.message);
+    if (text) return text;
+  }
+  return null;
+}
+
+/** Extract text from the last assistant message in an agent lifecycle payload. */
 function extractLastAssistantText(payload: unknown): string | null {
   const p = payload as { messages?: Array<{ role?: string; content?: unknown }> };
   if (!p?.messages || !Array.isArray(p.messages)) return null;
@@ -363,21 +399,31 @@ function extractLastAssistantText(payload: unknown): string | null {
     const msg = p.messages[i];
     if (msg?.role !== "assistant") continue;
 
-    const content = msg.content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      // Extract text blocks from content array
-      const textParts: string[] = [];
-      for (const block of content) {
-        if (typeof block === "object" && block !== null) {
-          const b = block as { type?: string; text?: string };
-          if (b.type === "text" && typeof b.text === "string") {
-            textParts.push(b.text);
-          }
+    const text = extractAssistantText(msg);
+    if (text) return text;
+  }
+
+  return null;
+}
+
+/** Extract text from an assistant message-like object. */
+function extractAssistantText(message: { role?: string; content?: unknown }): string | null {
+  if (message.role !== "assistant") return null;
+
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    // Extract text blocks from content array.
+    const textParts: string[] = [];
+    for (const block of content) {
+      if (typeof block === "object" && block !== null) {
+        const b = block as { type?: string; text?: string };
+        if (b.type === "text" && typeof b.text === "string") {
+          textParts.push(b.text);
         }
       }
-      if (textParts.length > 0) return textParts.join("\n");
     }
+    if (textParts.length > 0) return textParts.join("\n");
   }
 
   return null;
@@ -393,12 +439,4 @@ function extractProvider(modelRef: string): string {
 function extractModelId(modelRef: string): string {
   const slashIdx = modelRef.indexOf("/");
   return slashIdx > 0 ? modelRef.slice(slashIdx + 1) : modelRef;
-}
-
-/** Resolve API key for a provider from environment variables */
-function resolveApiKey(modelRef: string): string | undefined {
-  const provider = extractProvider(modelRef);
-  // Try standard env var patterns
-  const envKey = `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
-  return process.env[envKey];
 }

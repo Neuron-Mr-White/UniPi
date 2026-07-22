@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `notify`: support Pi's `agent_settled` lifecycle event as a separate configurable notification from `agent_end`, so users can route retry/error runs and final settled completion to different platforms or sounds (fixes #24).
+
 ## [2.1.2] — 2026-07-06
 
 ### Fixed

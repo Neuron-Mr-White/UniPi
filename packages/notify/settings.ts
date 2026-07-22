@@ -24,6 +24,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     ralph_loop_end: { enabled: true, platforms: [] },
     mcp_server_error: { enabled: true, platforms: [] },
     agent_end: { enabled: false, platforms: [] },
+    agent_settled: { enabled: false, platforms: [] },
     memory_consolidated: { enabled: false, platforms: [] },
     session_shutdown: { enabled: false, platforms: [] },
     ask_user_prompt: { enabled: false, platforms: [] },

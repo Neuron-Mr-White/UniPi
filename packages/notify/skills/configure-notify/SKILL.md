@@ -34,6 +34,7 @@ Help users configure the `@pi-unipi/notify` notification system.
     "ralph_loop_end": { "enabled": true, "platforms": [] },
     "mcp_server_error": { "enabled": true, "platforms": [] },
     "agent_end": { "enabled": false, "platforms": [] },
+    "agent_settled": { "enabled": false, "platforms": [] },
     "memory_consolidated": { "enabled": false, "platforms": [] },
     "session_shutdown": { "enabled": false, "platforms": [] }
   },
@@ -150,7 +151,8 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 | `workflow_end` | On | Workflow command completes |
 | `ralph_loop_end` | On | Ralph loop completes |
 | `mcp_server_error` | On | MCP server error |
-| `agent_end` | Off | Agent finishes responding |
+| `agent_end` | Off | Low-level agent run ends (may fire again on retries) |
+| `agent_settled` | Off | Agent fully settles after retries, compaction, and queued continuations |
 | `memory_consolidated` | Off | Memory auto-saved |
 | `session_shutdown` | Off | Session ends |
 

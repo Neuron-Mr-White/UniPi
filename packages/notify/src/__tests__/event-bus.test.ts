@@ -27,6 +27,7 @@ function readSource(relativePath: string): string {
 
 const LIFECYCLE_EVENTS = new Set([
   "agent_end",
+  "agent_settled",
   "session_shutdown",
 ]);
 
@@ -47,7 +48,7 @@ describe("notify — event bus registration", () => {
     assert.deepStrictEqual(
       parsed.sort(),
       [...LIFECYCLE_EVENTS].sort(),
-      "LIFECYCLE_EVENTS should contain exactly agent_end and session_shutdown",
+      "LIFECYCLE_EVENTS should contain exactly agent_end, agent_settled, and session_shutdown",
     );
   });
 
@@ -67,7 +68,7 @@ describe("notify — event bus registration", () => {
     );
   });
 
-  it("lifecycle events (agent_end, session_shutdown) still use pi.on()", () => {
+  it("lifecycle events (agent_end, agent_settled, session_shutdown) still use pi.on()", () => {
     const src = readSource("packages/notify/events.ts");
 
     assert.ok(
