@@ -71,6 +71,26 @@ function selectProvider(
   capability: WebCapability,
   sourceRank?: number
 ): WebProvider {
+  const candidates = selectProviderChain(capability, sourceRank);
+  return candidates[0];
+}
+
+/**
+ * Build the ordered list of providers to try for a capability.
+ *
+ * With an explicit `sourceRank` the user named a provider, so exactly that one
+ * is returned — their intent is respected and a failure is reported rather
+ * than silently served by someone else.
+ *
+ * Without one, the full ranked list is returned so a failing provider can fall
+ * through to the next. This matters because the rank-1 provider (wigolo) is a
+ * local engine that requires a separate `npx wigolo init`: without
+ * fallthrough, an enabled-but-uninitialized wigolo would break every web call.
+ */
+export function selectProviderChain(
+  capability: WebCapability,
+  sourceRank?: number
+): WebProvider[] {
   const available = getAvailableProviders(capability);
 
   if (available.length === 0) {
@@ -79,7 +99,7 @@ function selectProvider(
     throw new Error(
       `No ${capability} provider configured.\n` +
       `→ Run /unipi:web-settings to enable providers and add API keys.\n` +
-      `→ Free options: DuckDuckGo (search), Jina Reader (read).\n` +
+      `→ Free options: wigolo (search + read, local), DuckDuckGo (search), Jina Reader (read).\n` +
       `→ Available providers: ${providerNames}`
     );
   }
@@ -94,11 +114,42 @@ function selectProvider(
         `Available ranks: ${availableRanks}`
       );
     }
-    return provider;
+    return [provider];
   }
 
-  // Return lowest-ranked (cheapest/simplest) available provider
-  return available[0];
+  // Ranked cheapest/simplest first
+  return available;
+}
+
+/**
+ * Run `attempt` against each candidate provider in turn, returning the first
+ * success. If every candidate fails, the first error is rethrown with the
+ * later failures appended, so the message explains the whole chain rather
+ * than only the last hop.
+ */
+export async function withProviderFallthrough<T>(
+  providers: WebProvider[],
+  attempt: (provider: WebProvider) => Promise<T>
+): Promise<T> {
+  const failures: string[] = [];
+
+  for (const provider of providers) {
+    try {
+      return await attempt(provider);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${provider.name}: ${message}`);
+    }
+  }
+
+  if (failures.length === 1) {
+    throw new Error(failures[0]);
+  }
+
+  throw new Error(
+    `All ${failures.length} providers failed:\n` +
+    failures.map((f) => `→ ${f}`).join("\n")
+  );
 }
 
 /**
@@ -108,16 +159,18 @@ async function executeSearch(
   query: string,
   sourceRank?: number
 ): Promise<SearchResult[]> {
-  const provider = selectProvider("search", sourceRank);
+  const candidates = selectProviderChain("search", sourceRank);
 
-  if (!provider.search) {
-    throw new Error(`Provider "${provider.name}" does not support search`);
-  }
+  return withProviderFallthrough(candidates, async (provider) => {
+    if (!provider.search) {
+      throw new Error(`Provider "${provider.name}" does not support search`);
+    }
 
-  const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
-  const config = { enabled: true, apiKey };
+    const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
+    const config = { enabled: true, apiKey };
 
-  return provider.search(query, config);
+    return provider.search(query, config);
+  });
 }
 
 /**
@@ -127,16 +180,18 @@ async function executeProviderRead(
   url: string,
   sourceRank?: number
 ): Promise<ReadResult> {
-  const provider = selectProvider("read", sourceRank);
+  const candidates = selectProviderChain("read", sourceRank);
 
-  if (!provider.read) {
-    throw new Error(`Provider "${provider.name}" does not support read`);
-  }
+  return withProviderFallthrough(candidates, async (provider) => {
+    if (!provider.read) {
+      throw new Error(`Provider "${provider.name}" does not support read`);
+    }
 
-  const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
-  const config = { enabled: true, apiKey };
+    const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
+    const config = { enabled: true, apiKey };
 
-  return provider.read(url, config);
+    return provider.read(url, config);
+  });
 }
 
 /**
@@ -147,16 +202,18 @@ async function executeSummarize(
   prompt?: string,
   sourceRank?: number
 ): Promise<SummarizeResult> {
-  const provider = selectProvider("summarize", sourceRank);
+  const candidates = selectProviderChain("summarize", sourceRank);
 
-  if (!provider.summarize) {
-    throw new Error(`Provider "${provider.name}" does not support summarize`);
-  }
+  return withProviderFallthrough(candidates, async (provider) => {
+    if (!provider.summarize) {
+      throw new Error(`Provider "${provider.name}" does not support summarize`);
+    }
 
-  const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
-  const config = { enabled: true, apiKey };
+    const apiKey = provider.requiresApiKey ? getApiKey(provider.id) : undefined;
+    const config = { enabled: true, apiKey };
 
-  return provider.summarize(url, prompt, config);
+    return provider.summarize(url, prompt, config);
+  });
 }
 
 /**
@@ -248,24 +305,24 @@ export function registerWebTools(pi: ExtensionAPI): void {
     label: "Web Search",
     description:
       "Search the web for information using various providers. " +
-      "Lower source = simpler/cheaper providers (DuckDuckGo, Jina Search). " +
+      "Lower source = simpler/cheaper providers (wigolo, DuckDuckGo, Jina Search). " +
       "Higher source = more capable providers (SerpAPI, Tavily, Perplexity).",
     promptSnippet: "Search the web for information.",
     promptGuidelines: [
       "Use web_search to find information on the web.",
-      "Omit source for auto-selection (cheapest available).",
-      "Specify source number for specific provider (1=DuckDuckGo, 2=Jina, 3=SerpAPI, 4=Tavily, 5=Perplexity).",
-      "Quick facts: source 1-2. Research: source 3-5.",
+      "Omit source for auto-selection (cheapest available, falling through on failure).",
+      "Specify source number for specific provider (1=wigolo, 2=DuckDuckGo, 3=Jina, 4=SerpAPI, 5=Tavily, 6=Perplexity).",
+      "Quick facts: source 1-3. Research: source 4-6.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Search query string" }),
       source: Type.Optional(
         Type.Number({
           description:
-            "Provider selection (1=DuckDuckGo, 2=Jina Search, 3=SerpAPI, 4=Tavily, 5=Perplexity). " +
+            "Provider selection (1=wigolo, 2=DuckDuckGo, 3=Jina Search, 4=SerpAPI, 5=Tavily, 6=Perplexity). " +
             "Omit for auto-selection.",
           minimum: 1,
-          maximum: 5,
+          maximum: 6,
         })
       ),
     }),
@@ -321,7 +378,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
       "Use multi_web_content_read to extract content from web pages.",
       "Pass a single URL string or an array of URLs for batch reading.",
       "Default source (0 or omitted) uses the local smart-fetch engine — free, no API key.",
-      "source 1-3 uses provider fallbacks: Jina Reader, Firecrawl, Perplexity.",
+      "source 1-4 uses provider fallbacks: wigolo, Jina Reader, Firecrawl, Perplexity.",
       "Batch mode: pass an array of URLs, returns results for each.",
     ],
     parameters: Type.Object({
@@ -332,10 +389,10 @@ export function registerWebTools(pi: ExtensionAPI): void {
       source: Type.Optional(
         Type.Number({
           description:
-            "Provider selection (0=smart-fetch engine, 1=Jina Reader, 2=Firecrawl, 3=Perplexity). " +
+            "Provider selection (0=smart-fetch engine, 1=wigolo, 2=Jina Reader, 3=Firecrawl, 4=Perplexity). " +
             "Default is 0 (smart-fetch).",
           minimum: 0,
-          maximum: 3,
+          maximum: 4,
         })
       ),
       browser: Type.Optional(
@@ -556,10 +613,10 @@ export function registerWebTools(pi: ExtensionAPI): void {
       source: Type.Optional(
         Type.Number({
           description:
-            "Provider selection for content fetch (1=Jina Reader, 2=Firecrawl, 3=Perplexity). " +
+            "Provider selection for content fetch (1=Perplexity, 2=LLM summarize). " +
             "Omit for auto-selection.",
           minimum: 1,
-          maximum: 3,
+          maximum: 2,
         })
       ),
     }),

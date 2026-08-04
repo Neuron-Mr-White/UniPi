@@ -19,6 +19,8 @@ import { registerWebCommands, WEB_COMMANDS } from "./commands.js";
 import { webCache } from "./cache.js";
 import { loadConfig, loadSmartFetchSettings } from "./settings.js";
 import { checkDependencies } from "./engine/dependencies.js";
+import { closeWigoloClient, isWigoloInstalled } from "./providers/wigolo-client.js";
+import "./providers/wigolo.js";
 import "./providers/duckduckgo.js";
 import "./providers/jina-search.js";
 import "./providers/jina-reader.js";
@@ -74,6 +76,7 @@ export default function (pi: ExtensionAPI) {
           showByDefault: true,
           stats: [
             { id: "providers", label: "Enabled Providers", show: true },
+            { id: "wigolo", label: "wigolo", show: true },
             { id: "smartFetch", label: "Smart-Fetch", show: true },
             { id: "cacheEntries", label: "Cache Entries", show: true },
             { id: "cacheSize", label: "Cache Size", show: true },
@@ -91,8 +94,18 @@ export default function (pi: ExtensionAPI) {
           const deps = await checkDependencies();
           const smartFetchStatus = deps.available ? "✓ Ready" : `Missing: ${deps.missing.join(", ")}`;
 
+          // wigolo status — only probe when the user has it enabled, so a
+          // disabled provider never pays the daemon-startup cost.
+          let wigoloStatus = "Disabled";
+          if (config.providers.wigolo?.enabled !== false) {
+            wigoloStatus = (await isWigoloInstalled())
+              ? "✓ Installed"
+              : "Not installed (npx wigolo init)";
+          }
+
           return {
             providers: { value: String(enabledCount) },
+            wigolo: { value: wigoloStatus },
             smartFetch: { value: smartFetchStatus },
             cacheEntries: { value: String(stats.totalEntries) },
             cacheSize: { value: `${(stats.totalSizeBytes / 1024).toFixed(1)} KB` },
@@ -106,5 +119,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async (_event, _ctx) => {
     // Cleanup: clear expired cache entries
     webCache.clearExpired();
+    // Stop the wigolo daemon if this session started it.
+    await closeWigoloClient();
   });
 }

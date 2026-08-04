@@ -63,7 +63,7 @@ const jinaReaderProvider: WebProvider = {
   apiKeyEnv: "JINA_API_KEY",
   ranking: {
     search: 0,
-    read: 1,
+    read: 2,
     summarize: 0,
   },
   config: {},

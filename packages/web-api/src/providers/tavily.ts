@@ -65,7 +65,7 @@ const tavilyProvider: WebProvider = {
   requiresApiKey: true,
   apiKeyEnv: "TAVILY_API_KEY",
   ranking: {
-    search: 4,
+    search: 5,
     read: 0,
     summarize: 0,
   },

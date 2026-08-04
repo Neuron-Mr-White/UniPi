@@ -138,8 +138,8 @@ const perplexityProvider: WebProvider = {
   requiresApiKey: true,
   apiKeyEnv: "PERPLEXITY_API_KEY",
   ranking: {
-    search: 5,
-    read: 3,
+    search: 6,
+    read: 4,
     summarize: 1,
   },
   config: {},

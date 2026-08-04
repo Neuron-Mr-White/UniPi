@@ -21,7 +21,7 @@ Search the web for information. Lower `source` = simpler/cheaper providers.
 **Examples:**
 ```
 web_search(query: "TypeScript generics tutorial")
-web_search(query: "latest AI research", source: 4)  # Use Tavily
+web_search(query: "latest AI research", source: 5)  # Use Tavily
 ```
 
 ## multi_web_content_read
@@ -87,24 +87,50 @@ web_llm_summarize(url: "https://example.com/research", prompt: "Extract key find
 - Specify `source` number for specific provider
 - If provider unavailable, tool throws descriptive error
 
+**Auto-selection falls through on failure.** With `source` omitted, a failing
+provider is skipped and the next-ranked one is tried, so an uninitialized
+wigolo never blocks a search. With an explicit `source`, the choice is
+respected and the error is reported instead.
+
 ### Provider Rankings
 
 **Search providers:**
-1. DuckDuckGo (free)
-2. Jina AI Search (freemium)
-3. SerpAPI (paid)
-4. Tavily (paid)
-5. Perplexity (paid)
+1. wigolo (free, local) — default
+2. DuckDuckGo (free)
+3. Jina AI Search (freemium)
+4. SerpAPI (paid)
+5. Tavily (paid)
+6. Perplexity (paid)
 
 **Read providers:**
 0. **Smart-Fetch Engine** (free, local) — default
-1. Jina AI Reader (freemium)
-2. Firecrawl (paid)
-3. Perplexity (paid)
+1. wigolo (free, local)
+2. Jina AI Reader (freemium)
+3. Firecrawl (paid)
+4. Perplexity (paid)
 
 **Summarize providers:**
 1. Perplexity (paid)
 2. LLM Summarize (uses pi's LLM)
+
+## wigolo
+
+[wigolo](https://github.com/KnockOutEZ/wigolo) is a local-first web engine:
+multi-engine search (18 direct adapters) with rank fusion and on-device
+reranking, plus a tiered fetch router that escalates to a headless browser on
+anti-bot challenges. No API key, nothing leaves the machine, $0 per query.
+
+It is **not bundled** — wigolo is AGPL-licensed and UniPi is MIT, so it is an
+optional dependency loaded at runtime only when the user installed it:
+
+```bash
+npm install -g wigolo && npx wigolo init
+```
+
+If it is missing or uninitialized, the provider raises an actionable error and
+auto-selection falls through to the next provider. Never tell the user wigolo
+is broken — tell them to run `npx wigolo init`, or to disable it in
+`/unipi:web-settings`.
 
 ## Smart-Fetch Engine
 
@@ -127,6 +153,7 @@ The smart-fetch engine is a local content extraction pipeline:
 ## Cost Awareness
 
 - **Smart-Fetch Engine:** Free (read only, no API key)
+- **wigolo:** Free (search + read, local, no API key) — prefer this
 - **DuckDuckGo:** Free (search only)
 - **Jina:** Freemium (search + read)
 - **SerpAPI/Tavily:** Paid (search)

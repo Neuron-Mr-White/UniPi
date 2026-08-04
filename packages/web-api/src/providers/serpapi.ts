@@ -56,7 +56,7 @@ const serpapiProvider: WebProvider = {
   requiresApiKey: true,
   apiKeyEnv: "SERPAPI_KEY",
   ranking: {
-    search: 3,
+    search: 4,
     read: 0,
     summarize: 0,
   },

@@ -2,7 +2,22 @@
 
 Web search, page reading, and content summarization for the agent. The read path uses a local smart-fetch engine by default — free, no API key, browser-grade TLS fingerprinting that bypasses Cloudflare.
 
-Paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are available as fallbacks. DuckDuckGo and Jina work out of the box for search.
+[wigolo](https://github.com/KnockOutEZ/wigolo) is the default search and read provider when installed — a local-first engine with multi-engine search, rank fusion and on-device reranking, at $0/query with no API key. Paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are available as fallbacks, and DuckDuckGo and Jina work out of the box.
+
+### wigolo (optional, recommended)
+
+wigolo is ranked first for both search and read but is **not bundled** — it is an
+AGPL-licensed project while UniPi is MIT, so it is an optional dependency loaded
+at runtime only if you installed it. Set it up once:
+
+```bash
+npm install -g wigolo
+npx wigolo init      # downloads the browser engine + on-device models (~1.5 GB)
+npx wigolo doctor    # verify
+```
+
+Until then, web calls fall through automatically to the next-ranked provider, so
+nothing breaks if you skip it. Disable it entirely in `/unipi:web-settings`.
 
 ## Commands
 
@@ -39,7 +54,7 @@ The footer and info-screen don't display web-api data — it's a tool package, n
 web_search(query: "TypeScript generics")
 
 # Use specific provider
-web_search(query: "latest AI research", source: 4)  # Tavily
+web_search(query: "latest AI research", source: 5)  # Tavily
 ```
 
 ### multi_web_content_read
@@ -51,7 +66,7 @@ multi_web_content_read(url: "https://example.com/article")
 # Batch URLs
 multi_web_content_read(url: ["https://example.com/a", "https://example.com/b"])
 
-# Provider fallback (Jina Reader)
+# Provider fallback (wigolo)
 multi_web_content_read(url: "https://example.com/article", source: 1)
 
 # Custom options
@@ -83,20 +98,22 @@ Outputs clean markdown with metadata (title, author, site, word count). Supports
 
 | Provider | Rank | Cost | API Key |
 |----------|------|------|---------|
-| DuckDuckGo | 1 | Free | No |
-| Jina AI Search | 2 | Freemium | Optional |
-| SerpAPI | 3 | Paid | Required |
-| Tavily | 4 | Paid | Required |
-| Perplexity | 5 | Paid | Required |
+| wigolo (local) | 1 | Free | No |
+| DuckDuckGo | 2 | Free | No |
+| Jina AI Search | 3 | Freemium | Optional |
+| SerpAPI | 4 | Paid | Required |
+| Tavily | 5 | Paid | Required |
+| Perplexity | 6 | Paid | Required |
 
 ### Read
 
 | Provider | Rank | Cost | API Key |
 |----------|------|------|---------|
 | Smart-Fetch Engine | 0 | Free | No |
-| Jina AI Reader | 1 | Freemium | Optional |
-| Firecrawl | 2 | Paid | Required |
-| Perplexity | 3 | Paid | Required |
+| wigolo (local) | 1 | Free | No |
+| Jina AI Reader | 2 | Freemium | Optional |
+| Firecrawl | 3 | Paid | Required |
+| Perplexity | 4 | Paid | Required |
 
 ### Summarize
 

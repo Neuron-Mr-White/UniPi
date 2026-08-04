@@ -76,7 +76,7 @@ const firecrawlProvider: WebProvider = {
   apiKeyEnv: "FIRECRAWL_API_KEY",
   ranking: {
     search: 0,
-    read: 2,
+    read: 3,
     summarize: 0,
   },
   config: {},

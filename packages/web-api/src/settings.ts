@@ -66,6 +66,7 @@ const DEFAULT_SMART_FETCH_SETTINGS: SmartFetchSettings = {
 /** Default configuration */
 const DEFAULT_CONFIG: WebApiConfig = {
   providers: {
+    wigolo: { enabled: true },
     duckduckgo: { enabled: true },
     "jina-search": { enabled: true },
     "jina-reader": { enabled: true },

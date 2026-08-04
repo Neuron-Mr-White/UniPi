@@ -61,7 +61,7 @@ const jinaSearchProvider: WebProvider = {
   requiresApiKey: false,
   apiKeyEnv: "JINA_API_KEY",
   ranking: {
-    search: 2,
+    search: 3,
     read: 0,
     summarize: 0,
   },
