@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `image`: new `@pi-unipi/image` package with two agent tools. `image_generate` creates images from a text prompt using pi-ai's image catalog (34 models — FLUX.2, Gemini 3 Pro Image, GPT-5 Image, Recraft, Riverflow — served through OpenRouter), returning them inline and saving them to disk (default `~/.unipi/images`). `image_recognize` analyzes an image with any model whose input modality includes `image`, accepting a local file path, `data:` URL, or base64, with a customizable system prompt. Both are configured via `/unipi:image-settings`, which includes a filterable model picker.
+- `web-api`: [wigolo](https://github.com/KnockOutEZ/wigolo) is now the default search and read provider (rank 1 for both, enabled by default) — a local-first engine with multi-engine search, rank fusion and on-device reranking, at $0/query with no API key. It is an **optional** dependency loaded through a dynamic `import()`, because wigolo-sdk is AGPL-3.0-only while UniPi is MIT; UniPi therefore ships no AGPL code. Install with `npm install -g wigolo && npx wigolo init`. Existing providers renumbered: search `2`=DuckDuckGo `3`=Jina `4`=SerpAPI `5`=Tavily `6`=Perplexity; read `2`=Jina Reader `3`=Firecrawl `4`=Perplexity.
+- `web-api`: auto-selection now falls through to the next-ranked provider when one fails, so an enabled-but-uninitialized wigolo cannot break every web call. An explicit `source:` stays strict so the user's choice is respected and reported.
+- `notify`: new built-in `permission_request` event bound to `@gotgenes/pi-permission-system`'s `permissions:ui_prompt` broadcast, which fires only when a human-facing permission prompt is about to be shown (no spam from policy auto-allow/deny or session approvals). Forwarded subagent prompts are marked `(forwarded)`. Disabled by default (closes #25).
+- `core`: new `tui-width` helpers (`normalizeWidth`, `boxInnerWidth`, `adaptiveInnerWidth`, `shouldRenderBorder`, `contentWidth`, `safeRepeat`, `WidthKeyedCache`) encoding the invariant that a rendered line must never exceed the terminal width.
+
+### Fixed
+- `ask-user`/`tui`: Pi no longer crashes on terminals narrower than 42 columns. Every box-drawing component floored its content width at `Math.max(40, width - 2)`, emitting lines of at least 42 columns regardless of the real terminal width; pi-tui's differential renderer throws on any over-wide line, stopping the TUI and taking the agent down. `ask-ui` and `launcher-ui` were fully exposed since they mount in the editor container at the raw terminal width. Components now clamp to the available width and drop the border below 12 columns. Applied to the same pattern in 15 other overlays across updater, info-screen, compactor, footer, mcp, notify and utility.
+- `ask-user`/`mcp`: render caches are now keyed on width. `requestRender()` does not invalidate on resize, so shrinking the terminal previously returned stale, over-wide lines and the next frame threw.
+- `ask-user`: `launcher-ui` measured its header with `String.length` on a string containing an astral emoji; now uses `visibleWidth`.
+- `web-api`: the DuckDuckGo provider returned zero results against live markup. Snippet bodies contain `<b>` query highlights so the `[^<]*` pattern never matched; results were paired by index across two independent match streams, so one snippet-less result shifted every later snippet onto the wrong title; and URLs were returned as `//duckduckgo.com/l/?uddg=…` redirect wrappers rather than real destinations, with HTML entities left undecoded.
+
 ## [2.1.3] — 2026-07-22
 
 ### Added
