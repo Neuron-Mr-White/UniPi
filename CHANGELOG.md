@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.7] — 2026-08-04
+
+### Fixed
+- `ralph`/`subagents`/`memory`: these still pinned `@pi-unipi/info-screen@2.2.0`, so npm installed a second, **pre-fix** copy of the info-screen overlay nested under each of them — meaning the Escape-key fix released in 2.2.5 did not reach the info overlay for those install paths. Republished with the pin updated to `2.2.1`. No functional change to the packages themselves; this is purely a dependency-consistency fix.
+
 ## [2.2.6] — 2026-08-04
 
 ### Fixed
