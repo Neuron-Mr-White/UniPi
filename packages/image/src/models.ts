@@ -105,6 +105,23 @@ export async function getImagesModels(): Promise<ImagesModelsLike | null> {
   return cachedImagesModels;
 }
 
+/**
+ * Providers pi-ai's images collection can actually generate with.
+ *
+ * This is NOT the same set as pi's chat model registry: a chat provider
+ * registered by another extension may list image models that image generation
+ * cannot drive. Empty means "unknown", which callers treat as permissive.
+ */
+export async function getGeneratingProviders(): Promise<string[]> {
+  const images = await getImagesModels();
+  if (!images) return [];
+  try {
+    return [...new Set(images.getModels().map((m) => m.provider))];
+  } catch {
+    return [];
+  }
+}
+
 /** List available image-generation models. Empty when unavailable. */
 export async function listImageGenModels(): Promise<ImageGenModel[]> {
   const images = await getImagesModels();

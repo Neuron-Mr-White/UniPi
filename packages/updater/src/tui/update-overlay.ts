@@ -9,7 +9,7 @@
 import { join } from "path";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { parseChangelog, getNewerVersions } from "../changelog.js";
+import { parseChangelog, getNewerVersions, resolveChangelogPath } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
 import { installUpdate } from "../installer.js";
 import { writeSkippedVersion } from "../cache.js";
@@ -51,7 +51,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
 
     // Load changelog for newer versions
     let newerVersions: ChangelogEntry[] = [];
-    const changelogPath = join(process.cwd(), "CHANGELOG.md");
+    const changelogPath = resolveChangelogPath();
     try {
       const entries = parseChangelog(changelogPath);
       newerVersions = getNewerVersions(entries, checkResult.currentVersion);

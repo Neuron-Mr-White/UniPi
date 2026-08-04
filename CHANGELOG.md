@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.6] — 2026-08-04
+
+### Fixed
+- `updater`: **the changelog never appeared after an update.** `CHANGELOG.md` was not in the published tarball at all, and both the update prompt and `/unipi:changelog` resolved it from `process.cwd()` — which only exists when pi happens to be running inside the UniPi checkout. The file now ships, and a new `resolveChangelogPath()` resolves it from the installed package location with a working-directory fallback.
+- `updater`: `getNewerVersions()` stopped only on an *exact* version match, so when the installed version was absent from the changelog (a local build, or a version newer than any entry) it reported every historical release as new. It now compares versions properly via `isNewerVersion()`.
+- `image`: `image_generate` failed with a bare `Unknown provider: omniroute`. pi-ai's images collection carries its own provider set (currently only `openrouter`) and is separate from pi's chat model registry, so a chat provider's image models were selectable but could never generate. The error now names the providers that can generate and points at `/unipi:image-settings`, models that cannot generate are marked `(cannot generate)` in the picker, and selecting one requires a confirming second Enter.
+
 ## [2.2.5] — 2026-08-04
 
 ### Fixed

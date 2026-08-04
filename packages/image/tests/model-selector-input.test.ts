@@ -271,3 +271,42 @@ test("escape sequences are never typed into the filter as text", () => {
   const out = overlay.render(80).join("\n");
   assert.doesNotMatch(out, /\[A/, "arrow sequence must not land in the filter text");
 });
+
+// ─── Unavailable models ──────────────────────────────────────────────
+
+test("marks an unavailable model in the list", () => {
+  const overlay = new ImageModelSelectorOverlay("generate", [
+    { provider: "openrouter", id: "ok/model" },
+    { provider: "omniroute", id: "dead/model", unavailable: "cannot generate" },
+  ]);
+  const out = overlay.render(90).join("\n");
+  assert.match(out, /cannot generate/);
+});
+
+test("requires a confirming Enter before selecting an unavailable model", () => {
+  const models = [
+    { provider: "omniroute", id: "dead/model", unavailable: "cannot generate" },
+  ];
+  const overlay = new ImageModelSelectorOverlay("generate", models);
+  const selected: string[] = [];
+  overlay.onSelect = (r) => selected.push(r);
+  overlay.onClose = () => {};
+
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, [], "first Enter warns instead of selecting");
+  assert.match(overlay.render(90).join("\n"), /press Enter again/);
+
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, ["omniroute/dead/model"], "second Enter confirms");
+});
+
+test("a usable model still selects on the first Enter", () => {
+  const overlay = new ImageModelSelectorOverlay("generate", [
+    { provider: "openrouter", id: "ok/model" },
+  ]);
+  const selected: string[] = [];
+  overlay.onSelect = (r) => selected.push(r);
+  overlay.onClose = () => {};
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, ["openrouter/ok/model"]);
+});

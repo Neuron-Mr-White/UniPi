@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/image",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "Image generation and image recognition tools for the Pi coding agent",
   "type": "module",
   "main": "src/index.ts",

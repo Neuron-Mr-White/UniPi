@@ -14,6 +14,8 @@ export interface SelectableModel {
   provider: string;
   id: string;
   name?: string;
+  /** Set when the model is listed but not usable, with the reason. */
+  unavailable?: string;
 }
 
 export type ModelSelectorKind = "generate" | "recognize";
@@ -212,6 +214,12 @@ export class ImageModelSelectorOverlay implements Component {
       this.error = "No model selected";
       return;
     }
+    // Require a deliberate second Enter on a model that cannot be used, rather
+    // than silently saving a choice that will fail at call time.
+    if (model.unavailable && this.error === null) {
+      this.error = `${model.id} ${model.unavailable} — press Enter again to select anyway`;
+      return;
+    }
 
     this.onSelect?.(`${model.provider}/${model.id}`);
     this.saved = true;
@@ -335,9 +343,12 @@ export class ImageModelSelectorOverlay implements Component {
         const marker = isSelected ? this.fg("accent", "▸") : " ";
         const label = model.name || model.id;
         const providerTag = this.fg("dim", `[${model.provider}]`);
-        const display = isSelected
+        const base = isSelected
           ? `${providerTag} ${this.bold(label)}`
           : `${providerTag} ${this.fg("dim", label)}`;
+        const display = model.unavailable
+          ? `${base} ${this.fg("warning", `(${model.unavailable})`)}`
+          : base;
         lines.push(this.frameLine(`  ${marker} ${display}`, innerWidth));
       }
     }

@@ -9,7 +9,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { parseChangelog } from "../changelog.js";
+import { parseChangelog, resolveChangelogPath } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
 import { getInstalledPackageVersion, boxInnerWidth } from "@pi-unipi/core";
 import type { ChangelogEntry } from "../../types.js";
@@ -62,7 +62,7 @@ export function renderChangelogOverlay() {
     let loaded = false;
     const ensureLoaded = () => {
       if (loaded) return;
-      const changelogPath = join(process.cwd(), "CHANGELOG.md");
+      const changelogPath = resolveChangelogPath();
       if (existsSync(changelogPath)) {
         state.entries = parseChangelog(changelogPath);
       }

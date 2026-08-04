@@ -231,3 +231,66 @@ test("vision: a registered text-only model is still rejected clearly", () => {
   assert.equal(typeof resolved, "string");
   assert.match(resolved as string, /does not accept image input/);
 });
+
+// ─── Generation provider capability ──────────────────────────────────
+
+/**
+ * pi-ai's images collection has its OWN provider set (currently just
+ * `openrouter`), entirely separate from pi's chat model registry. A chat
+ * provider registered by another extension can therefore list image models
+ * that generation cannot drive — pi-ai answers with a bare
+ * "Unknown provider: omniroute". These pin the friendlier behaviour.
+ */
+
+import { generateImage } from "../src/generate.js";
+
+test("rejects a provider the images collection cannot generate with", async () => {
+  await assert.rejects(
+    () =>
+      generateImage({
+        prompt: "a hexagon",
+        model: { provider: "omniroute", id: "fal/fal-ai/flux-2-pro", api: "" },
+        images: imagesApiOf(BUILTIN),
+      }),
+    (err: Error) => {
+      assert.match(err.message, /cannot generate images/);
+      assert.match(err.message, /openrouter/);
+      assert.match(err.message, /image-settings/);
+      return true;
+    },
+  );
+});
+
+test("allows a provider the images collection does support", async () => {
+  // Must reach the API rather than being blocked by the capability check.
+  const api = {
+    ...imagesApiOf(BUILTIN),
+    generateImages: async () => ({
+      output: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+      stopReason: "stop",
+    }),
+  };
+  const result = await generateImage({
+    prompt: "a hexagon",
+    model: BUILTIN[0],
+    images: api as never,
+  });
+  assert.equal(result.images.length, 1);
+});
+
+test("does not block generation when the catalog is empty", async () => {
+  // Unknown capability ⇒ permissive; the real call reports its own error.
+  const api = {
+    ...imagesApiOf([]),
+    generateImages: async () => ({
+      output: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+      stopReason: "stop",
+    }),
+  };
+  const result = await generateImage({
+    prompt: "x",
+    model: { provider: "anything", id: "some/model", api: "" },
+    images: api as never,
+  });
+  assert.equal(result.images.length, 1);
+});

@@ -6,7 +6,34 @@
  */
 
 import { existsSync, readFileSync } from "fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { findPackageRoot } from "@pi-unipi/core";
+import { isNewerVersion } from "./version.js";
 import type { ChangelogEntry } from "../types.js";
+
+/**
+ * Locate the shipped CHANGELOG.md.
+ *
+ * Resolving from `process.cwd()` only works when pi happens to be running
+ * inside the UniPi checkout — for everyone else the update prompt and
+ * `/unipi:changelog` came up empty. Resolve from this module's own location
+ * instead, and fall back to the working directory so a repo checkout still
+ * shows its local (possibly unreleased) notes.
+ */
+export function resolveChangelogPath(): string {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const root = findPackageRoot(dir, "@pi-unipi/unipi");
+    if (root) {
+      const packaged = join(root, "CHANGELOG.md");
+      if (existsSync(packaged)) return packaged;
+    }
+  } catch {
+    // Fall through to the working directory.
+  }
+  return join(process.cwd(), "CHANGELOG.md");
+}
 
 /** Regex for version headers: ## [x.y.z] — YYYY-MM-DD or ## [Unreleased] */
 const VERSION_HEADER_RE = /^## \[(.+?)\](?:\s*[-—–]\s*(.+))?$/;
@@ -119,7 +146,11 @@ export function getNewerVersions(
       result.push(entry);
       continue;
     }
-    if (entry.version === installedVersion) break;
+    // Compare rather than test for equality. Stopping only on an exact match
+    // meant that when the installed version was absent from the changelog
+    // (a local build, a yanked release, or simply a newer version) every
+    // historical entry was reported as "new".
+    if (!isNewerVersion(entry.version, installedVersion)) break;
     result.push(entry);
   }
   return result;

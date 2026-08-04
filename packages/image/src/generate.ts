@@ -103,6 +103,26 @@ export function saveImage(
   }
 }
 
+/** Providers pi-ai's images collection can actually generate with. */
+function supportedProviders(imagesApi: ImagesModelsLike): string[] {
+  try {
+    return [...new Set(imagesApi.getModels().map((m) => m.provider))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether generation can route to a provider. Unknown/empty catalogs are
+ * treated as capable so a stubbed or future pi-ai is never blocked by this
+ * check — the real call still reports its own error.
+ */
+function providerCanGenerate(imagesApi: ImagesModelsLike, provider: string): boolean {
+  const providers = supportedProviders(imagesApi);
+  if (providers.length === 0) return true;
+  return providers.includes(provider);
+}
+
 export interface GenerateOptions {
   prompt: string;
   model: ImageGenModel;
@@ -131,6 +151,22 @@ export async function generateImage(options: GenerateOptions): Promise<GenerateR
   if (!imagesApi) {
     throw new Error(
       "Image generation is unavailable — this version of pi-ai does not expose an image API.",
+    );
+  }
+
+  // pi-ai's images collection carries its own provider set (currently only
+  // `openrouter`) and is entirely separate from pi's chat model registry.
+  // A chat provider registered by another extension can therefore list image
+  // models that generation cannot actually drive — pi-ai answers with a bare
+  // "Unknown provider: x". Detect that here and say something useful.
+  if (!providerCanGenerate(imagesApi, model.provider)) {
+    const supported = supportedProviders(imagesApi);
+    throw new Error(
+      `Provider "${model.provider}" cannot generate images.\n` +
+        `→ Image generation is served by: ${supported.join(", ") || "openrouter"}.\n` +
+        `→ "${model.provider}" is a chat provider; its image models are listed for ` +
+        `recognition and reference, but generation must go through a supported provider.\n` +
+        "→ Pick one with /unipi:image-settings.",
     );
   }
 

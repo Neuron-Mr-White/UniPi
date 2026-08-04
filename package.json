@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "publish:all": "npm publish --workspaces --access public"
   },
   "files": [
+    "CHANGELOG.md",
     "packages/*/package.json",
     "packages/*/*.ts",
     "packages/*/src/**/*.ts",
@@ -83,7 +84,7 @@
     "@pi-unipi/web-api": "2.2.0",
     "@pi-unipi/workflow": "2.2.0",
     "@pi-unipi/footer": "2.2.1",
-    "@pi-unipi/updater": "2.2.0",
+    "@pi-unipi/updater": "2.2.1",
     "@pi-unipi/input-shortcuts": "2.2.0",
     "@pi-unipi/cocoindex": "2.2.0"
   },

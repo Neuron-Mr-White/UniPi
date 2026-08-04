@@ -17,6 +17,7 @@ import {
 } from "../settings.js";
 import {
   formatModelRef,
+  getGeneratingProviders,
   listAllImageGenModels,
   listVisionModels,
   type ChatModelRegistry,
@@ -241,7 +242,20 @@ async function collectModels(
     // Include models from providers registered by other extensions, not just
     // pi-ai's built-in OpenRouter catalog.
     const models = await listAllImageGenModels(registry);
-    return models.map((m) => ({ provider: m.provider, id: m.id, name: m.name }));
+    const generating = await getGeneratingProviders();
+
+    return models.map((m) => ({
+      provider: m.provider,
+      id: m.id,
+      name: m.name,
+      // pi-ai's images collection has its own provider set. A chat provider's
+      // image models are listed for reference but cannot actually generate,
+      // so flag them rather than letting the user pick a dead option.
+      unavailable:
+        generating.length > 0 && !generating.includes(m.provider)
+          ? "cannot generate"
+          : undefined,
+    }));
   }
 
   if (!registry) return [];
