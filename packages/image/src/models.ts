@@ -244,12 +244,18 @@ export function resolveImageGenModel(
   input: string,
   models: ImageGenModel[],
 ): ImageGenModel | string {
-  const query = input.trim().toLowerCase();
+  const raw = input.trim();
+  const query = raw.toLowerCase();
   if (!query) return "No image model specified.";
   if (models.length === 0) {
+    // A fully-qualified reference still works: detection is heuristic, so the
+    // user must be able to name a model we failed to discover.
+    const explicit = asExplicitModelRef(raw);
+    if (explicit) return explicit;
     return (
       "No image generation models are available.\n" +
-      "→ Image generation requires an OpenRouter account: https://openrouter.ai/keys"
+      "→ Image generation requires an OpenRouter account: https://openrouter.ai/keys\n" +
+      "→ Or set an exact model with /unipi:image-settings (press c to enter one manually)."
     );
   }
 
@@ -285,12 +291,33 @@ export function resolveImageGenModel(
 
   if (best && bestScore > 0) return best;
 
+  // Nothing matched, but an explicit "provider/model-id" is taken at face
+  // value — the catalog is not authoritative for third-party providers.
+  const explicit = asExplicitModelRef(raw);
+  if (explicit) return explicit;
+
   const sample = models.slice(0, 10).map((m) => `  ${formatModelRef(m)}`).join("\n");
   return (
     `Unknown image model "${input}".\n` +
     `Available models (${models.length} total):\n${sample}` +
     (models.length > 10 ? "\n  …run /unipi:image-settings to browse all" : "")
   );
+}
+
+/**
+ * Treat a well-formed "provider/model-id" as a usable model even when it is
+ * absent from the catalog.
+ *
+ * Generator detection is heuristic and third-party providers publish no image
+ * metadata, so refusing an unknown-but-well-formed reference would make some
+ * models permanently unreachable. Requiring the provider segment keeps this
+ * from swallowing plain typos, which still get the "Unknown image model" list.
+ */
+function asExplicitModelRef(raw: string): ImageGenModel | null {
+  const parts = splitModelRef(raw);
+  if (!parts) return null;
+  if (/\s/.test(raw)) return null;
+  return { id: parts.id, provider: parts.provider, api: "" };
 }
 
 /**
@@ -331,8 +358,13 @@ export function resolveVisionModel(
   registry: ChatModelRegistry,
 ): VisionModel | string {
   const vision = listVisionModels(registry);
+  const raw = input.trim();
 
   if (vision.length === 0) {
+    // Accept an explicit reference so a provider we cannot introspect is still
+    // usable (mirrors resolveImageGenModel).
+    const explicit = asExplicitVisionRef(raw);
+    if (explicit) return explicit;
     return (
       "No vision-capable models are configured.\n" +
       "→ image_recognize needs a model that accepts image input " +
@@ -341,7 +373,7 @@ export function resolveVisionModel(
     );
   }
 
-  const query = input.trim().toLowerCase();
+  const query = raw.toLowerCase();
   if (!query) return "No model specified.";
 
   const exact = vision.find((m) => formatModelRef(m).toLowerCase() === query);
@@ -398,8 +430,22 @@ export function resolveVisionModel(
       .join(", ")}`;
   }
 
+  // Unknown to the registry, but well-formed — accept it. Checked after
+  // `knownButBlind` so a registered text-only model still gets the precise
+  // "does not accept image input" error rather than being waved through.
+  const explicit = asExplicitVisionRef(raw);
+  if (explicit) return explicit;
+
   return (
     `Unknown model "${input}".\n` +
     `Vision-capable models: ${vision.map(formatModelRef).join(", ")}`
   );
+}
+
+/** Accept a well-formed "provider/model-id" the registry does not know. */
+function asExplicitVisionRef(raw: string): VisionModel | null {
+  const parts = splitModelRef(raw);
+  if (!parts) return null;
+  if (/\s/.test(raw)) return null;
+  return { id: parts.id, provider: parts.provider, input: ["text", "image"] };
 }

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.3] — 2026-08-04
+
+### Added
+- `image`: the model pickers now accept a **custom model reference** — press `c` in `/unipi:image-settings` and type any `provider/model-id`. Image-generator detection is necessarily heuristic (third-party providers publish no image metadata), so this guarantees no model is ever unreachable. `resolveImageGenModel()` and `resolveVisionModel()` accept a well-formed reference even when it is absent from the catalog, while a bare typo with no provider segment still gets the "Unknown model" list, and a registered text-only model still gets the precise "does not accept image input" error. An empty catalog is no longer a dead end — the picker opens anyway so a model can be entered by hand.
+
 ## [2.2.2] — 2026-08-04
 
 ### Fixed

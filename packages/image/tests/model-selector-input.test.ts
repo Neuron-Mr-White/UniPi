@@ -127,3 +127,75 @@ test("render never exceeds the given width", () => {
     }
   }
 });
+
+// ─── Custom model entry ──────────────────────────────────────────────
+
+test("c enters custom mode and Enter saves a typed reference", () => {
+  // Generator detection is heuristic, so the user must be able to name a
+  // model the catalog never discovered.
+  const { overlay, closes, selected } = makeOverlay();
+  overlay.handleInput("c");
+  for (const ch of "omniroute/fal/fal-ai/some-new-model") overlay.handleInput(ch);
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, ["omniroute/fal/fal-ai/some-new-model"]);
+  assert.equal(closes.length, 1);
+});
+
+test("custom mode rejects a reference with no provider segment", () => {
+  const { overlay, closes, selected } = makeOverlay();
+  overlay.handleInput("c");
+  for (const ch of "just-a-model") overlay.handleInput(ch);
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, []);
+  assert.equal(closes.length, 0, "stays open so the user can correct it");
+  assert.match(overlay.render(80).join("\n"), /provider\/model-id/);
+});
+
+test("custom mode rejects an empty reference", () => {
+  const { overlay, selected } = makeOverlay();
+  overlay.handleInput("c");
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, []);
+  assert.match(overlay.render(80).join("\n"), /Enter a model as provider\/model-id/);
+});
+
+test("backspace edits the custom reference", () => {
+  const { overlay, selected } = makeOverlay();
+  overlay.handleInput("c");
+  for (const ch of "prov/modelX") overlay.handleInput(ch);
+  overlay.handleInput("\x7f");
+  overlay.handleInput("\r");
+  assert.deepEqual(selected, ["prov/model"]);
+});
+
+test("Esc leaves custom mode without closing the overlay", () => {
+  const { overlay, closes, selected } = makeOverlay();
+  overlay.handleInput("c");
+  overlay.handleInput("x");
+  overlay.handleInput("\x1b");
+  assert.equal(closes.length, 0, "first Esc only exits custom mode");
+  overlay.handleInput("\r"); // back on the list — selects normally
+  assert.deepEqual(selected, ["openrouter/google/gemini-3-pro-image"]);
+});
+
+test("Ctrl+C escapes from custom mode", () => {
+  const { overlay, closes } = makeOverlay();
+  overlay.handleInput("c");
+  overlay.handleInput("x");
+  overlay.handleInput("\x03");
+  assert.equal(closes.length, 1);
+});
+
+test("custom mode renders within the given width", () => {
+  const { overlay } = makeOverlay();
+  overlay.handleInput("c");
+  for (const ch of "omniroute/fal/fal-ai/a-very-long-model-identifier-here") {
+    overlay.handleInput(ch);
+  }
+  const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+  for (let width = 10; width <= 120; width += 7) {
+    for (const line of overlay.render(width)) {
+      assert.ok(strip(line).length <= width, `exceeds width ${width}`);
+    }
+  }
+});

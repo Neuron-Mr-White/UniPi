@@ -63,8 +63,11 @@ magic numbers, so a misnamed extension still works.
 
 `/unipi:image-settings` configures both tools:
 
-- Generation model (picker over the image catalog)
+- Generation model (picker over the built-in catalog plus image models from
+  any provider registered by another extension)
 - Recognition model (picker over vision-capable models only)
+- Either picker accepts a **custom** `provider/model-id` — press `c` — for a
+  model the catalog does not list
 - Enable/disable either tool
 - Output directory and whether to save to disk
 - The recognition system prompt

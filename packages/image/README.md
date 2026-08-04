@@ -22,10 +22,20 @@ image_generate(prompt: "A cutaway diagram of a submarine, technical illustration
 image_generate(prompt: "...", model: "flux.2-pro")
 ```
 
-Models come from pi-ai's image catalog — 34 models including FLUX.2,
-Gemini 3 Pro Image, GPT-5 Image, Recraft and Riverflow — all served through
-**OpenRouter**, so an OpenRouter key is required
-([get one](https://openrouter.ai/keys)).
+Models come from two places, merged into one list:
+
+- pi-ai's built-in image catalog — 34 models including FLUX.2, Gemini 3 Pro
+  Image, GPT-5 Image, Recraft and Riverflow — served through **OpenRouter**
+  ([get a key](https://openrouter.ai/keys)).
+- **Any provider registered by another extension.** Third-party providers
+  publish no image metadata, so these are detected by name; a real registry
+  with 393 models contributed 12 generators (FLUX, Nano Banana, Ideogram,
+  Recraft, Seedream, Stable Diffusion) alongside the built-ins.
+
+Because that detection is heuristic, the picker has a **custom entry** — press
+`c` in `/unipi:image-settings` and type any `provider/model-id`. A
+well-formed reference is always accepted, even when the catalog has never
+heard of it, so no model is ever unreachable.
 
 The `model` parameter is fuzzy-matched, so `flux`, `recraft` and
 `gemini-3-pro` all work. Omit it to use the model chosen in

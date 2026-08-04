@@ -28,6 +28,9 @@ export class ImageModelSelectorOverlay implements Component {
   private saved = false;
   private error: string | null = null;
   private theme: Theme | null = null;
+  /** Free-text entry, for models the catalog does not know about. */
+  private customMode = false;
+  private custom = "";
 
   onClose?: () => void;
   onSelect?: (modelRef: string) => void;
@@ -63,6 +66,11 @@ export class ImageModelSelectorOverlay implements Component {
       return;
     }
 
+    if (this.customMode) {
+      this.handleCustomInput(data);
+      return;
+    }
+
     if (this.filterMode) {
       this.handleFilterInput(data);
       return;
@@ -80,6 +88,14 @@ export class ImageModelSelectorOverlay implements Component {
       case "/":
         this.filterMode = true;
         this.filter = "";
+        break;
+      case "c":
+      case "C":
+        // Escape hatch: generator detection is heuristic, so a provider may
+        // expose a model the catalog cannot recognise. Let the user name it.
+        this.customMode = true;
+        this.custom = "";
+        this.error = null;
         break;
       case "\r":
         this.commit();
@@ -113,6 +129,50 @@ export class ImageModelSelectorOverlay implements Component {
       this.applyFilter();
       this.clampSelection();
     }
+  }
+
+  /** Free-text "provider/model-id" entry. */
+  private handleCustomInput(data: string): void {
+    if (data === "\r") {
+      this.commitCustom();
+      return;
+    }
+    if (data === "\x1b") {
+      this.customMode = false;
+      this.custom = "";
+      this.error = null;
+      return;
+    }
+    if (data === "\x7f" || data === "\b") {
+      this.custom = this.custom.slice(0, -1);
+      this.error = null;
+      return;
+    }
+    if (data.length === 1 && data >= " ") {
+      this.custom += data;
+      this.error = null;
+    }
+  }
+
+  private commitCustom(): void {
+    const ref = this.custom.trim();
+    if (!ref) {
+      this.error = "Enter a model as provider/model-id";
+      return;
+    }
+    // Validate here rather than letting a malformed ref fail later with an
+    // opaque provider error.
+    const slash = ref.indexOf("/");
+    if (slash <= 0 || slash === ref.length - 1) {
+      this.error = `"${ref}" must be in the form provider/model-id`;
+      return;
+    }
+
+    this.customMode = false;
+    this.onSelect?.(ref);
+    this.saved = true;
+    this.error = null;
+    this.onClose?.();
   }
 
   private clampSelection(): void {
@@ -203,7 +263,20 @@ export class ImageModelSelectorOverlay implements Component {
     lines.push(this.ruleLine(innerWidth));
 
     // Filter bar
-    if (this.filterMode) {
+    if (this.customMode) {
+      lines.push(
+        this.frameLine(
+          `  ${this.fg("accent", "Model:")} ${this.custom}${this.fg("accent", "█")}`,
+          innerWidth,
+        ),
+      );
+      lines.push(
+        this.frameLine(
+          `  ${this.fg("dim", "e.g. omniroute/fal/fal-ai/flux-2-pro")}`,
+          innerWidth,
+        ),
+      );
+    } else if (this.filterMode) {
       lines.push(
         this.frameLine(
           `  ${this.fg("accent", "Filter:")} ${this.filter}${this.fg("accent", "█")}`,
@@ -220,7 +293,7 @@ export class ImageModelSelectorOverlay implements Component {
     } else {
       lines.push(
         this.frameLine(
-          `  ${this.fg("dim", `${this.models.length} models · press / to filter`)}`,
+          `  ${this.fg("dim", `${this.models.length} models · / filter · c custom`)}`,
           innerWidth,
         ),
       );
@@ -233,7 +306,9 @@ export class ImageModelSelectorOverlay implements Component {
     const start = Math.max(0, this.selectedIndex - Math.floor(maxVisible / 2));
     const end = Math.min(this.filtered.length, start + maxVisible);
 
-    if (this.filtered.length === 0) {
+    if (this.customMode) {
+      // The list is noise while typing a model reference.
+    } else if (this.filtered.length === 0) {
       const empty =
         this.models.length === 0
           ? this.kind === "generate"
@@ -255,7 +330,7 @@ export class ImageModelSelectorOverlay implements Component {
       }
     }
 
-    if (this.filtered.length > maxVisible) {
+    if (!this.customMode && this.filtered.length > maxVisible) {
       const pct = Math.round(((this.selectedIndex + 1) / this.filtered.length) * 100);
       lines.push(
         this.frameLine(
@@ -277,7 +352,12 @@ export class ImageModelSelectorOverlay implements Component {
     lines.push(this.ruleLine(innerWidth));
     lines.push(
       this.frameLine(
-        this.fg("dim", "↑↓ navigate · / filter · Enter select · Esc cancel"),
+        this.fg(
+          "dim",
+          this.customMode
+            ? "Enter save · Esc back to list"
+            : "↑↓ navigate · / filter · c custom · Enter select · Esc cancel",
+        ),
         innerWidth,
       ),
     );

@@ -178,3 +178,56 @@ test("returns registry models even when pi-ai's catalog is unavailable", async (
   assert.deepEqual(all, ["omniroute/fal/fal-ai/flux-2-pro"]);
   __setImagesModelsForTests(null);
 });
+
+// ─── Custom / explicit model references ──────────────────────────────
+
+import { resolveImageGenModel, resolveVisionModel } from "../src/models.js";
+
+test("accepts an explicit provider/model-id absent from the catalog", () => {
+  // Detection is heuristic; a user-supplied reference must not be refused.
+  const resolved = resolveImageGenModel("omniroute/fal/fal-ai/brand-new", BUILTIN);
+  assert.notEqual(typeof resolved, "string");
+  assert.equal(formatModelRef(resolved as ImageGenModel), "omniroute/fal/fal-ai/brand-new");
+});
+
+test("accepts an explicit reference when the catalog is empty", () => {
+  const resolved = resolveImageGenModel("omniroute/fal/fal-ai/flux-2-pro", []);
+  assert.notEqual(typeof resolved, "string");
+  assert.equal(formatModelRef(resolved as ImageGenModel), "omniroute/fal/fal-ai/flux-2-pro");
+});
+
+test("still reports a bare typo with the available list", () => {
+  // No provider segment ⇒ a mistake, not a deliberate custom reference.
+  const resolved = resolveImageGenModel("gemin", BUILTIN);
+  // "gemin" fuzzy-matches the real gemini model, so use something unmatchable.
+  assert.ok(resolved);
+  const bad = resolveImageGenModel("zzzznope", BUILTIN);
+  assert.equal(typeof bad, "string");
+  assert.match(bad as string, /Unknown image model/);
+});
+
+test("prefers a catalog match over treating input as a custom reference", () => {
+  const resolved = resolveImageGenModel("openrouter/google/gemini-3-pro-image", BUILTIN);
+  assert.notEqual(typeof resolved, "string");
+  assert.equal((resolved as ImageGenModel).api, "openrouter-images", "must be the catalog entry");
+});
+
+test("vision: accepts an explicit reference the registry does not know", () => {
+  const registry = registryOf([
+    { provider: "omniroute", id: "antigravity/claude-sonnet-4-6", input: ["text", "image"] },
+  ]);
+  const resolved = resolveVisionModel("omniroute/some/new-vision-model", registry);
+  assert.notEqual(typeof resolved, "string");
+  assert.equal(formatModelRef(resolved as any), "omniroute/some/new-vision-model");
+});
+
+test("vision: a registered text-only model is still rejected clearly", () => {
+  // The precise error must win over the custom-reference fallback.
+  const registry = registryOf([
+    { provider: "omniroute", id: "vision/ok", input: ["text", "image"] },
+    { provider: "omniroute", id: "text/only", input: ["text"] },
+  ]);
+  const resolved = resolveVisionModel("omniroute/text/only", registry);
+  assert.equal(typeof resolved, "string");
+  assert.match(resolved as string, /does not accept image input/);
+});

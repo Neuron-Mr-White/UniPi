@@ -165,19 +165,20 @@ async function pickModel(
 ): Promise<void> {
   const models = await collectModels(ctx, kind);
 
-  if (models.length === 0) {
-    ctx.ui.notify(
-      kind === "generate"
-        ? "No image models available. Add an OpenRouter key with /login, or register a provider that exposes image models."
-        : "No vision-capable models configured. Add a model that accepts image input.",
-      "warning",
-    );
-    return;
-  }
-
   if (!ctx.hasUI) {
     ctx.ui.notify("Model selection requires an interactive UI.", "warning");
     return;
+  }
+
+  // An empty catalog is NOT a dead end: the overlay's custom entry (`c`) is
+  // precisely the escape hatch for a provider whose models we cannot detect.
+  if (models.length === 0) {
+    ctx.ui.notify(
+      kind === "generate"
+        ? "No image models detected — press c to enter one manually."
+        : "No vision-capable models detected — press c to enter one manually.",
+      "warning",
+    );
   }
 
   const current =
