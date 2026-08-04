@@ -199,3 +199,75 @@ test("custom mode renders within the given width", () => {
     }
   }
 });
+
+// ─── Kitty keyboard protocol encodings ───────────────────────────────
+
+/**
+ * Under the kitty keyboard protocol (and modifyOtherKeys) Escape does NOT
+ * arrive as a bare "\x1b" — it comes as "\x1b[27u" / "\x1b[27;1;27~".
+ * Comparing `data === "\x1b"` silently fails, so the overlay could not be
+ * cancelled and the filter could not be exited. All key handling now goes
+ * through pi-tui's matchesKey().
+ */
+const ESC_ENCODINGS = ["\x1b", "\x1b[27u", "\x1b[27;1u", "\x1b[27;1;27~"];
+
+for (const esc of ESC_ENCODINGS) {
+  const label = JSON.stringify(esc);
+
+  test(`Esc ${label} closes the overlay`, () => {
+    const { overlay, closes } = makeOverlay();
+    overlay.handleInput(esc);
+    assert.equal(closes.length, 1, `${label} must close the overlay`);
+  });
+
+  test(`Esc ${label} exits filter mode`, () => {
+    const { overlay, closes, selected } = makeOverlay();
+    overlay.handleInput("/");
+    overlay.handleInput("o");
+    overlay.handleInput(esc);
+    assert.equal(closes.length, 0, "clears the filter rather than closing");
+    // Filter cleared ⇒ the full list is back and index reset to the first item.
+    overlay.handleInput("\r");
+    assert.deepEqual(selected, ["openrouter/google/gemini-3-pro-image"]);
+  });
+
+  test(`Esc ${label} exits custom mode`, () => {
+    const { overlay, closes } = makeOverlay();
+    overlay.handleInput("c");
+    overlay.handleInput("x");
+    overlay.handleInput(esc);
+    assert.equal(closes.length, 0);
+    overlay.handleInput(esc); // now on the list — closes
+    assert.equal(closes.length, 1);
+  });
+}
+
+test("kitty-encoded Ctrl+C closes the overlay", () => {
+  const { overlay, closes } = makeOverlay();
+  overlay.handleInput("\x1b[99;5u");
+  assert.equal(closes.length, 1);
+});
+
+test("kitty-encoded Enter selects", () => {
+  const { overlay, selected } = makeOverlay();
+  overlay.handleInput("\x1b[13u");
+  assert.deepEqual(selected, ["openrouter/google/gemini-3-pro-image"]);
+});
+
+test("arrow keys navigate while filtering", () => {
+  const { overlay, selected } = makeOverlay();
+  overlay.handleInput("/");
+  for (const ch of "flux") overlay.handleInput(ch);
+  overlay.handleInput("\x1b[B"); // down, without leaving the filter
+  overlay.handleInput("\r"); // leave filter
+  overlay.handleInput("\r"); // select
+  assert.deepEqual(selected, ["omniroute/fal/fal-ai/flux-2-pro"]);
+});
+
+test("escape sequences are never typed into the filter as text", () => {
+  const { overlay } = makeOverlay();
+  overlay.handleInput("/");
+  overlay.handleInput("\x1b[A"); // arrow key
+  const out = overlay.render(80).join("\n");
+  assert.doesNotMatch(out, /\[A/, "arrow sequence must not land in the filter text");
+});

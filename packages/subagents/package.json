@@ -19,7 +19,7 @@
   "dependencies": {
     "@pi-unipi/core": "2.2.0",
     "@pi-unipi/workflow": "2.2.0",
-    "@pi-unipi/info-screen": "2.2.0",
+    "@pi-unipi/info-screen": "2.2.1",
     "@earendil-works/pi-agent-core": "^0.80.0"
   },
   "devDependencies": {

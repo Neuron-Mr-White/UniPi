@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -68,11 +68,11 @@
   "dependencies": {
     "@pi-unipi/ask-user": "2.2.0",
     "@pi-unipi/btw": "2.2.0",
-    "@pi-unipi/compactor": "2.2.0",
-    "@pi-unipi/notify": "2.2.1",
+    "@pi-unipi/compactor": "2.2.1",
+    "@pi-unipi/notify": "2.2.2",
     "@pi-unipi/command-enchantment": "2.2.0",
     "@pi-unipi/core": "2.2.0",
-    "@pi-unipi/info-screen": "2.2.0",
+    "@pi-unipi/info-screen": "2.2.1",
     "@pi-unipi/mcp": "2.2.0",
     "@pi-unipi/memory": "2.2.0",
     "@pi-unipi/ralph": "2.2.0",
@@ -82,7 +82,7 @@
     "@pi-unipi/kanboard": "2.2.0",
     "@pi-unipi/web-api": "2.2.0",
     "@pi-unipi/workflow": "2.2.0",
-    "@pi-unipi/footer": "2.2.0",
+    "@pi-unipi/footer": "2.2.1",
     "@pi-unipi/updater": "2.2.0",
     "@pi-unipi/input-shortcuts": "2.2.0",
     "@pi-unipi/cocoindex": "2.2.0"

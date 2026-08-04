@@ -8,7 +8,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
@@ -200,7 +200,7 @@ export class InfoOverlay implements Component {
     } else if (data === "R") {
       // Refresh all
       this.refreshAll();
-    } else if (data === "q" || data === "\x1b") {
+    } else if (data === "q" || matchesKey(data, "escape")) {
       this.destroy();
       this.onClose?.();
     }

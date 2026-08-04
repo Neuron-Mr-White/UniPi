@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { readModelCache, type CachedModel, boxInnerWidth } from "@pi-unipi/core";
 import { loadConfig, saveConfig } from "../settings.js";
@@ -56,7 +56,7 @@ export class RecapModelSelectorOverlay implements Component {
         this.filterMode = false;
         return;
       }
-      if (data === "\x1b") {
+      if (matchesKey(data, "escape")) {
         // Escape — clear filter and exit filter mode
         this.filter = "";
         this.filterMode = false;

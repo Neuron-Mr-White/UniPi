@@ -7,7 +7,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendNtfyNotification } from "../platforms/ntfy.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
@@ -70,7 +70,7 @@ export class NtfySetupOverlay implements Component {
       case "instructions":
         if (data === "\r" || data === " ") {
           this.phase = "scope";
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -85,7 +85,7 @@ export class NtfySetupOverlay implements Component {
         } else if (data === "\r" || data === " ") {
           this.scope = this.scopeIndex === 1 ? "project" : "global";
           this.phase = this.serverUrl ? "topic" : "server-url";
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -114,7 +114,7 @@ export class NtfySetupOverlay implements Component {
       case "priority":
         if (data === "\r" && this.isValidPriority()) {
           this.testConnection();
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.onClose?.();
         } else if (data === "\x7f" || data === "\b") {
           this.priority = this.priority.slice(0, -1);
@@ -127,7 +127,7 @@ export class NtfySetupOverlay implements Component {
         break;
 
       case "testing":
-        if (data === "\x1b") {
+        if (matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -135,7 +135,7 @@ export class NtfySetupOverlay implements Component {
       case "success":
       case "error":
       case "test-failed":
-        if (data === "\r" || data === " " || data === "\x1b") {
+        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -173,7 +173,7 @@ export class NtfySetupOverlay implements Component {
     }
     if (data === "\r") {
       onEnter();
-    } else if (data === "\x1b") {
+    } else if (matchesKey(data, "escape")) {
       // Escape during token phase — skip token (optional field)
       if (target === "token") {
         this.phase = "priority";

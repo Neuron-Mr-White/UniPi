@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { pollForChatId } from "../platforms/telegram.js";
 import { updateConfig } from "../settings.js";
@@ -48,7 +48,7 @@ export class TelegramSetupOverlay implements Component {
       case "instructions":
         if (data === "\r" || data === " ") {
           this.phase = "token";
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.cleanup();
           this.onClose?.();
         }
@@ -75,7 +75,7 @@ export class TelegramSetupOverlay implements Component {
         }
         if (data === "\r" && this.botToken.length > 0) {
           this.startPolling();
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.cleanup();
           this.onClose?.();
         } else if (data === "\x7f" || data === "\b") {
@@ -85,7 +85,7 @@ export class TelegramSetupOverlay implements Component {
         }
         break;
       case "polling":
-        if (data === "\x1b") {
+        if (matchesKey(data, "escape")) {
           this.cleanup();
           this.onClose?.();
         }
@@ -93,7 +93,7 @@ export class TelegramSetupOverlay implements Component {
       case "success":
       case "error":
       case "timeout":
-        if (data === "\r" || data === " " || data === "\x1b") {
+        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
           this.cleanup();
           this.onClose?.();
         }

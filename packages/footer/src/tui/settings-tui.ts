@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
+import { matchesKey, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
@@ -151,7 +151,7 @@ class FooterSettingsOverlay {
     }
 
     // Escape — back from drill-down, or close at root
-    if (data === "\x1b") {
+    if (matchesKey(data, "escape")) {
       if (this.section === "segments" && this.selectedGroupId) {
         this.backToGroups();
       } else {

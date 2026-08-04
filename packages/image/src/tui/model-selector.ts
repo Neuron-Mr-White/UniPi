@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { boxInnerWidth, safeRepeat } from "@pi-unipi/core";
 
@@ -61,7 +61,7 @@ export class ImageModelSelectorOverlay implements Component {
   handleInput(data: string): void {
     // Ctrl+C must always escape, even mid-filter. Without this the overlay traps
     // the user with no way out.
-    if (data === "\x03") {
+    if (matchesKey(data, "ctrl+c")) {
       this.onClose?.();
       return;
     }
@@ -76,49 +76,61 @@ export class ImageModelSelectorOverlay implements Component {
       return;
     }
 
-    switch (data) {
-      case "\x1b[A":
-      case "k":
-        this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-        break;
-      case "\x1b[B":
-      case "j":
-        this.selectedIndex = Math.min(this.filtered.length - 1, this.selectedIndex + 1);
-        break;
-      case "/":
-        this.filterMode = true;
-        this.filter = "";
-        break;
-      case "c":
-      case "C":
-        // Escape hatch: generator detection is heuristic, so a provider may
-        // expose a model the catalog cannot recognise. Let the user name it.
-        this.customMode = true;
-        this.custom = "";
-        this.error = null;
-        break;
-      case "\r":
-        this.commit();
-        break;
-      case "\x1b":
-        this.onClose?.();
-        break;
+    // Escape is checked via matchesKey, not `data === "\x1b"`: under the kitty
+    // keyboard protocol it arrives as "\x1b[27u" (and as "\x1b[27;1;27~" with
+    // modifyOtherKeys), so a bare comparison silently fails to close.
+    if (matchesKey(data, "escape")) {
+      this.onClose?.();
+      return;
+    }
+    if (matchesKey(data, "up") || data === "k") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      return;
+    }
+    if (matchesKey(data, "down") || data === "j") {
+      this.selectedIndex = Math.min(this.filtered.length - 1, this.selectedIndex + 1);
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      this.commit();
+      return;
+    }
+    if (data === "/") {
+      this.filterMode = true;
+      this.filter = "";
+      return;
+    }
+    if (data === "c" || data === "C") {
+      // Escape hatch: generator detection is heuristic, so a provider may
+      // expose a model the catalog cannot recognise. Let the user name it.
+      this.customMode = true;
+      this.custom = "";
+      this.error = null;
     }
   }
 
   private handleFilterInput(data: string): void {
-    if (data === "\r") {
+    if (matchesKey(data, "enter")) {
       this.filterMode = false;
       return;
     }
-    if (data === "\x1b") {
+    if (matchesKey(data, "escape")) {
       this.filter = "";
       this.filterMode = false;
       this.applyFilter();
       this.selectedIndex = 0;
       return;
     }
-    if (data === "\x7f" || data === "\b") {
+    // Let the list be navigated without leaving the filter.
+    if (matchesKey(data, "up")) {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      return;
+    }
+    if (matchesKey(data, "down")) {
+      this.selectedIndex = Math.min(this.filtered.length - 1, this.selectedIndex + 1);
+      return;
+    }
+    if (matchesKey(data, "backspace") || data === "\x7f" || data === "\b") {
       this.filter = this.filter.slice(0, -1);
       this.applyFilter();
       this.clampSelection();
@@ -133,17 +145,17 @@ export class ImageModelSelectorOverlay implements Component {
 
   /** Free-text "provider/model-id" entry. */
   private handleCustomInput(data: string): void {
-    if (data === "\r") {
+    if (matchesKey(data, "enter")) {
       this.commitCustom();
       return;
     }
-    if (data === "\x1b") {
+    if (matchesKey(data, "escape")) {
       this.customMode = false;
       this.custom = "";
       this.error = null;
       return;
     }
-    if (data === "\x7f" || data === "\b") {
+    if (matchesKey(data, "backspace") || data === "\x7f" || data === "\b") {
       this.custom = this.custom.slice(0, -1);
       this.error = null;
       return;

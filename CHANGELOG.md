@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.5] — 2026-08-04
+
+### Fixed
+- `image`/`notify`/`compactor`/`footer`/`info-screen`: **Escape did not close overlays or exit a filter/search field.** Every overlay detected Escape with `data === "\x1b"`, but under the kitty keyboard protocol Escape arrives as `\x1b[27u` (and as `\x1b[27;1;27~` with modifyOtherKeys), so the comparison silently failed and the overlay could not be cancelled. All 19 occurrences across 8 files now use pi-tui's `matchesKey(data, "escape")`, which understands every encoding. Arrow keys, Enter and Ctrl+C in the image model selector were converted to `matchesKey` for the same reason.
+- `image`: the model selector's filter now supports arrow-key navigation without leaving the filter, and escape sequences can no longer be typed into the filter as literal text.
+
 ## [2.2.4] — 2026-08-04
 
 ### Fixed

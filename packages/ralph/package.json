@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@pi-unipi/core": "2.2.0",
-    "@pi-unipi/info-screen": "2.2.0"
+    "@pi-unipi/info-screen": "2.2.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.0",

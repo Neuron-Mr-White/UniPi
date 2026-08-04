@@ -7,7 +7,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendGotifyNotification } from "../platforms/gotify.js";
 import { updateConfig, loadConfig } from "../settings.js";
@@ -59,7 +59,7 @@ export class GotifySetupOverlay implements Component {
       case "instructions":
         if (data === "\r" || data === " ") {
           this.phase = this.serverUrl ? "app-token" : "server-url";
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -79,7 +79,7 @@ export class GotifySetupOverlay implements Component {
       case "priority":
         if (data === "\r" && this.isValidPriority()) {
           this.testConnection();
-        } else if (data === "\x1b") {
+        } else if (matchesKey(data, "escape")) {
           this.onClose?.();
         } else if (data === "\x7f" || data === "\b") {
           this.priority = this.priority.slice(0, -1);
@@ -92,7 +92,7 @@ export class GotifySetupOverlay implements Component {
         break;
 
       case "testing":
-        if (data === "\x1b") {
+        if (matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -100,7 +100,7 @@ export class GotifySetupOverlay implements Component {
       case "success":
       case "error":
       case "test-failed":
-        if (data === "\r" || data === " " || data === "\x1b") {
+        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -137,7 +137,7 @@ export class GotifySetupOverlay implements Component {
     }
     if (data === "\r") {
       onEnter();
-    } else if (data === "\x1b") {
+    } else if (matchesKey(data, "escape")) {
       this.onClose?.();
     } else if (data === "\x7f" || data === "\b") {
       if (target === "server-url") {
