@@ -202,3 +202,85 @@ describe("recognizeImage — failures", () => {
     );
   });
 });
+
+// ─── SSE / streamed responses ────────────────────────────────────────
+
+/**
+ * Some OpenAI-compatible gateways return `text/event-stream` even when
+ * streaming was never requested. Calling `response.json()` on that body throws
+ * `Unexpected token 'd', "data: {"id"...`, which is opaque to the user.
+ * Reproduced live against a real gateway before this was fixed.
+ */
+function stubSseFetch(frames: string[]) {
+  const body = frames.map((f) => `data: ${f}`).join("\n\n") + "\n\ndata: [DONE]\n\n";
+  const impl = (async () =>
+    ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => {
+        throw new SyntaxError(`Unexpected token 'd', "${body.slice(0, 10)}..." is not valid JSON`);
+      },
+      text: async () => body,
+    }) as unknown as Response) as unknown as typeof fetch;
+  return impl;
+}
+
+describe("recognizeImage — streamed (SSE) responses", () => {
+  it("parses an OpenAI-style delta stream", async () => {
+    const impl = stubSseFetch([
+      JSON.stringify({ choices: [{ delta: { role: "assistant" } }] }),
+      JSON.stringify({ choices: [{ delta: { content: "A dark " } }] }),
+      JSON.stringify({ choices: [{ delta: { content: "cyan stripe." } }] }),
+    ]);
+    const result = await recognizeImage(baseOptions({ fetchImpl: impl }));
+    assert.equal(result.text, "A dark cyan stripe.");
+  });
+
+  it("parses an Anthropic-style delta stream", async () => {
+    const impl = stubSseFetch([
+      JSON.stringify({ type: "content_block_delta", delta: { text: "Hello " } }),
+      JSON.stringify({ type: "content_block_delta", delta: { text: "world." } }),
+    ]);
+    const result = await recognizeImage(
+      baseOptions({ fetchImpl: impl, api: "anthropic-messages" }),
+    );
+    assert.equal(result.text, "Hello world.");
+  });
+
+  it("ignores malformed frames instead of failing the whole request", async () => {
+    const impl = stubSseFetch([
+      JSON.stringify({ choices: [{ delta: { content: "ok" } }] }),
+      "{not json",
+      JSON.stringify({ choices: [{ delta: { content: " still ok" } }] }),
+    ]);
+    const result = await recognizeImage(baseOptions({ fetchImpl: impl }));
+    assert.equal(result.text, "ok still ok");
+  });
+
+  it("requests a non-streamed response", async () => {
+    const { impl, calls } = stubFetch({
+      choices: [{ message: { content: "x" } }],
+    });
+    await recognizeImage(baseOptions({ fetchImpl: impl }));
+    assert.equal(calls[0].body.stream, false);
+  });
+
+  it("reports unparseable non-SSE bodies readably", async () => {
+    const impl = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => {
+          throw new SyntaxError("bad");
+        },
+        text: async () => "<html>gateway error</html>",
+      }) as unknown as Response) as unknown as typeof fetch;
+
+    await assert.rejects(
+      () => recognizeImage(baseOptions({ fetchImpl: impl })),
+      /could not be parsed/,
+    );
+  });
+});

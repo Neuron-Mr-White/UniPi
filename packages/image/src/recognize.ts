@@ -100,6 +100,7 @@ async function callAnthropic(options: RecognizeOptions): Promise<string> {
       body: JSON.stringify({
         model: modelId,
         max_tokens: maxTokens,
+        stream: false,
         system: systemPrompt,
         messages: [
           {
@@ -123,11 +124,14 @@ async function callAnthropic(options: RecognizeOptions): Promise<string> {
 
     if (!response.ok) throw new Error(await describeHttpError(response));
 
-    const data = (await response.json()) as {
-      content?: Array<{ type?: string; text?: string }>;
-    };
+    const data = await readJsonOrStream(response);
 
-    return (data.content ?? [])
+    // A streamed response arrives as deltas rather than a `content` array.
+    const streamed = collectStreamedText(data);
+    if (streamed !== null) return streamed;
+
+    const typed = data as { content?: Array<{ type?: string; text?: string }> };
+    return (typed.content ?? [])
       .filter((block) => block.type === "text" && typeof block.text === "string")
       .map((block) => block.text as string)
       .join("\n")
@@ -135,6 +139,79 @@ async function callAnthropic(options: RecognizeOptions): Promise<string> {
   } finally {
     cleanup();
   }
+}
+
+/**
+ * Read a response body as JSON, tolerating a Server-Sent Events stream.
+ *
+ * Some OpenAI-compatible gateways (omniroute, for one) reply with
+ * `text/event-stream` even when streaming was never requested. Calling
+ * `response.json()` on that throws `Unexpected token 'd', "data: {"id"...`,
+ * which tells the user nothing. Parse the SSE frames instead and hand back a
+ * synthetic payload carrying the concatenated deltas.
+ */
+async function readJsonOrStream(response: Response): Promise<unknown> {
+  const body = await response.text();
+  const trimmed = body.trimStart();
+
+  if (!trimmed.startsWith("data:")) {
+    try {
+      return JSON.parse(body) as unknown;
+    } catch {
+      throw new Error(
+        `The model returned a response that could not be parsed:\n${body.slice(0, 200)}`,
+      );
+    }
+  }
+
+  const parts: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+
+    let frame: unknown;
+    try {
+      frame = JSON.parse(payload);
+    } catch {
+      continue; // Ignore a partial or malformed frame rather than failing.
+    }
+    parts.push(...extractDeltaText(frame));
+  }
+
+  return { __streamedText: parts.join("") };
+}
+
+/** Pull text out of one SSE frame, in both OpenAI and Anthropic shapes. */
+function extractDeltaText(frame: unknown): string[] {
+  if (frame === null || typeof frame !== "object") return [];
+  const out: string[] = [];
+
+  // OpenAI: choices[].delta.content (or a non-streamed message.content)
+  const choices = (frame as { choices?: unknown }).choices;
+  if (Array.isArray(choices)) {
+    for (const choice of choices) {
+      if (choice === null || typeof choice !== "object") continue;
+      const delta = (choice as { delta?: { content?: unknown } }).delta;
+      if (typeof delta?.content === "string") out.push(delta.content);
+      const message = (choice as { message?: { content?: unknown } }).message;
+      if (typeof message?.content === "string") out.push(message.content);
+    }
+  }
+
+  // Anthropic: content_block_delta → delta.text
+  const delta = (frame as { delta?: { text?: unknown } }).delta;
+  if (typeof delta?.text === "string") out.push(delta.text);
+
+  return out;
+}
+
+/** Text collected from a streamed body, or null when it was ordinary JSON. */
+function collectStreamedText(data: unknown): string | null {
+  if (data === null || typeof data !== "object") return null;
+  const streamed = (data as { __streamedText?: unknown }).__streamedText;
+  if (typeof streamed !== "string") return null;
+  return streamed.trim();
 }
 
 /** OpenAI-compatible chat completions — image parts use a data: URL. */
@@ -159,6 +236,9 @@ async function callOpenAICompatible(options: RecognizeOptions): Promise<string> 
         body: JSON.stringify({
           model: modelId,
           max_tokens: maxTokens,
+          // Ask for a single payload. Gateways may stream regardless, which
+          // readJsonOrStream handles.
+          stream: false,
           messages: [
             { role: "system", content: systemPrompt },
             {
@@ -181,11 +261,16 @@ async function callOpenAICompatible(options: RecognizeOptions): Promise<string> 
 
     if (!response.ok) throw new Error(await describeHttpError(response));
 
-    const data = (await response.json()) as {
+    const data = await readJsonOrStream(response);
+
+    const streamed = collectStreamedText(data);
+    if (streamed !== null) return streamed;
+
+    const typed = data as {
       choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
     };
 
-    const content = data.choices?.[0]?.message?.content;
+    const content = typed.choices?.[0]?.message?.content;
     if (typeof content === "string") return content.trim();
     if (Array.isArray(content)) {
       return content.map((part) => part?.text ?? "").join("").trim();

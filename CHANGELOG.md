@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.4] — 2026-08-04
+
+### Fixed
+- `image`: `image_recognize` failed with `Unexpected token 'd', "data: {"id"... is not valid JSON` against OpenAI-compatible gateways that reply with `text/event-stream` even when streaming was not requested (omniroute does this). Both the OpenAI and Anthropic paths called `response.json()` on an SSE body. Responses are now read as text and, when the body is a `data:`-framed stream, the deltas are parsed and concatenated — handling OpenAI `choices[].delta.content` and Anthropic `content_block_delta` shapes, skipping malformed frames rather than failing the request. Both requests now also send `stream: false`. A non-SSE body that still cannot be parsed reports its first 200 characters instead of a bare parser error.
+
 ## [2.2.3] — 2026-08-04
 
 ### Added
