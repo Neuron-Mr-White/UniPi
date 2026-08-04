@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/notify",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Cross-platform notification extension for Pi — native OS, Gotify, and Telegram notifications for agent lifecycle events",
   "type": "module",
   "main": "index.ts",
@@ -24,15 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "files": [
-    "index.ts",
-    "tools.ts",
-    "commands.ts",
-    "settings.ts",
-    "events.ts",
-    "ask-user-prompt-message.ts",
-    "ntfy-config.ts",
-    "summarize.ts",
-    "types.ts",
+    "*.ts",
     "platforms/*",
     "tui/*",
     "skills/**/*",

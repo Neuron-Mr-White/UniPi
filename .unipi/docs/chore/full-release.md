@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-08-04 (v2.2.0)
+last-run: 2026-08-04 (v2.2.1)
 ---
 
 # Full Release Pipeline

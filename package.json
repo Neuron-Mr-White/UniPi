@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -69,7 +69,7 @@
     "@pi-unipi/ask-user": "2.2.0",
     "@pi-unipi/btw": "2.2.0",
     "@pi-unipi/compactor": "2.2.0",
-    "@pi-unipi/notify": "2.2.0",
+    "@pi-unipi/notify": "2.2.1",
     "@pi-unipi/command-enchantment": "2.2.0",
     "@pi-unipi/core": "2.2.0",
     "@pi-unipi/info-screen": "2.2.0",

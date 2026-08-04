@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-08-04
+
+### Fixed
+- `notify`: `permission-prompt-message.ts` was missing from the published tarball, so `@pi-unipi/notify@2.2.0` failed at load with `Cannot find module './permission-prompt-message.js'` — which took the whole umbrella extension down on a clean install. The package's `files` array was an explicit per-file whitelist and the new module was never added to it; it is now a `*.ts` glob so root-level modules cannot be omitted again. Caught by booting the published tarball in a clean directory rather than testing the workspace copy.
+
 ## [2.2.0] — 2026-08-04
 
 ### Breaking Changes
