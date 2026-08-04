@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-08-04
+
+### Fixed
+- `image`: the model pickers only offered pi-ai's built-in OpenRouter catalog, so image models from providers registered by other extensions (such as `pi-omniroute-bridge`) could not be selected. The obvious filter — `output.includes("image")` — matches nothing, because third-party providers surface text-to-image endpoints as ordinary chat models with no declared output modality. `listAllImageGenModels()` now merges the built-in catalog with registry-contributed generators, de-duplicated by `provider/id`; `image_generate` resolves against the same merged list. Against a real 393-model omniroute registry this goes from 34 to 46 selectable generation models with no false positives.
+- `image`: **critical** — opening a model picker left both the overlay and the settings menu holding keyboard focus, so arrow keys drove the hidden menu and neither could be closed or toggled. `pickModel()` called `ctx.ui.custom()` without awaiting the promise it returns, letting the settings loop mount the next `ctx.ui.select` while the overlay was still on screen. It is now awaited, and the chosen model is persisted only after the overlay closes so cancelling leaves the config untouched.
+- `image`: the model-selector overlay swallowed `Ctrl+C`, leaving no way out, and deferred its close by 500ms after selection — which let the caller resume while the overlay still had focus. `Ctrl+C` now always closes, including mid-filter, and selection closes synchronously.
+
 ## [2.2.1] — 2026-08-04
 
 ### Fixed
