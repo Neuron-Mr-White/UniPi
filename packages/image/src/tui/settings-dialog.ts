@@ -17,7 +17,7 @@ import {
 } from "../settings.js";
 import {
   formatModelRef,
-  listImageGenModels,
+  listAllImageGenModels,
   listVisionModels,
   type ChatModelRegistry,
 } from "../models.js";
@@ -168,7 +168,7 @@ async function pickModel(
   if (models.length === 0) {
     ctx.ui.notify(
       kind === "generate"
-        ? "No image models available. Image generation is served through OpenRouter — add a key with /login."
+        ? "No image models available. Add an OpenRouter key with /login, or register a provider that exposes image models."
         : "No vision-capable models configured. Add a model that accepts image input.",
       "warning",
     );
@@ -183,18 +183,22 @@ async function pickModel(
   const current =
     kind === "generate" ? config.generate.model : config.recognize.model;
 
-  await new Promise<void>((resolve) => {
-    ctx.ui.custom(
+  // `ctx.ui.custom` resolves only when the factory calls `done()`. It MUST be
+  // awaited: returning early leaves the overlay on screen while the settings
+  // loop mounts the next `ctx.ui.select`, so two focused components fight over
+  // the same keystrokes and neither can be closed.
+  let picked: string | undefined;
+
+  try {
+    picked = await ctx.ui.custom<string | undefined>(
       (tui, theme, _keybindings, done) => {
         const overlay = new ImageModelSelectorOverlay(kind, models, current);
         overlay.setTheme(theme);
+        overlay.requestRender = () => tui.requestRender();
         overlay.onSelect = (modelRef) => {
-          const next = loadConfig();
-          if (kind === "generate") next.generate.model = modelRef;
-          else next.recognize.model = modelRef;
-          saveConfig(next);
+          picked = modelRef;
         };
-        overlay.onClose = () => done(undefined);
+        overlay.onClose = () => done(picked);
         return {
           render: (width: number) => overlay.render(width),
           invalidate: () => overlay.invalidate(),
@@ -209,21 +213,36 @@ async function pickModel(
         overlayOptions: { width: "80%", minWidth: 50, anchor: "center", margin: 2 },
       },
     );
-    resolve();
-  });
+  } catch (err) {
+    ctx.ui.notify(`Model selector error: ${err}`, "error");
+    return;
+  }
+
+  // Persist only after the overlay has fully closed, so a cancel leaves the
+  // existing config untouched.
+  if (!picked) return;
+
+  const next = loadConfig();
+  if (kind === "generate") next.generate.model = picked;
+  else next.recognize.model = picked;
+  saveConfig(next);
+  ctx.ui.notify(`${kind === "generate" ? "Generation" : "Recognition"} model set to ${picked}`, "info");
 }
 
 async function collectModels(
   ctx: ExtensionCommandContext,
   kind: "generate" | "recognize",
 ): Promise<SelectableModel[]> {
+  const registry = (ctx as unknown as { modelRegistry?: ChatModelRegistry })
+    .modelRegistry;
+
   if (kind === "generate") {
-    const models = await listImageGenModels();
+    // Include models from providers registered by other extensions, not just
+    // pi-ai's built-in OpenRouter catalog.
+    const models = await listAllImageGenModels(registry);
     return models.map((m) => ({ provider: m.provider, id: m.id, name: m.name }));
   }
 
-  const registry = (ctx as unknown as { modelRegistry?: ChatModelRegistry })
-    .modelRegistry;
   if (!registry) return [];
 
   return listVisionModels(registry).map((m) => ({

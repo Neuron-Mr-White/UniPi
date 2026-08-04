@@ -56,6 +56,13 @@ export class ImageModelSelectorOverlay implements Component {
   invalidate(): void {}
 
   handleInput(data: string): void {
+    // Ctrl+C must always escape, even mid-filter. Without this the overlay traps
+    // the user with no way out.
+    if (data === "\x03") {
+      this.onClose?.();
+      return;
+    }
+
     if (this.filterMode) {
       this.handleFilterInput(data);
       return;
@@ -137,7 +144,9 @@ export class ImageModelSelectorOverlay implements Component {
     this.onSelect?.(`${model.provider}/${model.id}`);
     this.saved = true;
     this.error = null;
-    setTimeout(() => this.onClose?.(), 500);
+    // Close immediately. A deferred close leaves the overlay focused while the
+    // caller resumes, which is what let input reach two components at once.
+    this.onClose?.();
   }
 
   // ─── Theme helpers ───────────────────────────────────────────────────

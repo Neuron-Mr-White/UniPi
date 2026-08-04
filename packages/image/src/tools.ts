@@ -14,7 +14,7 @@ import { generateImage } from "./generate.js";
 import { loadImage } from "./image-source.js";
 import {
   formatModelRef,
-  listImageGenModels,
+  listAllImageGenModels,
   resolveImageGenModel,
   resolveVisionModel,
   splitModelRef,
@@ -108,7 +108,10 @@ function registerGenerateTool(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       try {
         const config = loadConfig();
-        const models = await listImageGenModels();
+        const registry = getRegistry(ctx);
+        // Include image models contributed by registered providers, so the
+        // tool can resolve anything the settings picker offers.
+        const models = await listAllImageGenModels(registry);
 
         const requested = params.model?.trim() || config.generate.model;
         const resolved = resolveImageGenModel(requested, models);
@@ -116,7 +119,6 @@ function registerGenerateTool(pi: ExtensionAPI): void {
 
         // pi-ai resolves image auth from its own credential store; only fall
         // back to pi's chat-provider key when that comes up empty.
-        const registry = getRegistry(ctx);
         const fallbackKey = await resolveApiKey(registry, resolved.provider);
 
         const result = await generateImage({

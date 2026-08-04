@@ -72,10 +72,20 @@ let imagesModelsAttempted = false;
 /**
  * Load pi-ai's built-in images collection.
  *
- * `getImageModels`/`generateImages` are not re-exported from the pi-ai package
- * root, but `providers/all` exports `builtinImagesModels()`, which is the
- * supported entry point and also resolves auth. A failure is not fatal: it
- * degrades to null and callers report that no models are available.
+ * ⚠️ Do NOT reach for `getImageModels`/`getImageProviders`/`generateImages`:
+ *
+ *   - They are NOT re-exported from the pi-ai package root. Importing
+ *     `@earendil-works/pi-ai` and calling `getImageModels("openrouter")`
+ *     returns an EMPTY ARRAY rather than throwing, so the mistake looks like
+ *     "no models are installed" and costs a long debugging session.
+ *   - The file that defines them, `dist/image-models.js`, is not a permitted
+ *     subpath in pi-ai's `exports` map, so importing it directly throws
+ *     ERR_PACKAGE_PATH_NOT_EXPORTED.
+ *
+ * The supported entry point is `@earendil-works/pi-ai/providers/all` →
+ * `builtinImagesModels()`, which returns the catalog AND resolves auth.
+ * A failure is not fatal: it degrades to null and callers report that no
+ * models are available.
  */
 export async function getImagesModels(): Promise<ImagesModelsLike | null> {
   if (cachedImagesModels || imagesModelsAttempted) return cachedImagesModels;
@@ -104,6 +114,111 @@ export async function listImageGenModels(): Promise<ImageGenModel[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Heuristic: does a chat-registry model look like an image generator?
+ *
+ * Third-party providers registered by other extensions (pi-omniroute-bridge,
+ * for example) surface text-to-image endpoints as ordinary chat models. They
+ * declare no `output` modality at all, so a strict `output.includes("image")`
+ * check finds nothing and the user sees only pi-ai's built-in OpenRouter
+ * catalog. We therefore accept an explicit image output when present, and
+ * otherwise fall back to well-known generator naming.
+ */
+const GENERATOR_NAME_HINTS = [
+  "text-to-image",
+  "flux",
+  "dall-e",
+  "dalle",
+  "imagen",
+  "recraft",
+  "seedream",
+  "riverflow",
+  "grok-imagine",
+  "stable-diffusion",
+  "sdxl",
+  "midjourney",
+  "ideogram",
+  "nano-banana",
+];
+
+export function looksLikeImageGenerator(model: {
+  id: string;
+  name?: string;
+  output?: string[];
+}): boolean {
+  // An explicit declaration always wins.
+  if (Array.isArray(model.output)) {
+    if (model.output.includes("image")) return true;
+    // Declared, but text-only — trust it and do not guess from the name.
+    if (model.output.length > 0) return false;
+  }
+
+  const haystack = `${model.id} ${model.name ?? ""}`.toLowerCase();
+  // Match "image" as a delimited segment ("gpt-5-image", "gemini-3-pro-image"),
+  // not the bare word anywhere — which would wrongly catch vision models such
+  // as "claude-image-understanding". \b handles the whitespace between id and
+  // name; a character class alone missed ids ending the id portion.
+  if (/(^|[/\-_\s])image\b/.test(haystack) && !haystack.includes("understand")) {
+    return true;
+  }
+  return GENERATOR_NAME_HINTS.some((hint) => haystack.includes(hint));
+}
+
+/**
+ * Image-generation models discovered from the chat registry — i.e. providers
+ * registered by other extensions, which pi-ai's built-in catalog knows nothing
+ * about.
+ */
+export function listRegistryImageGenModels(
+  registry: ChatModelRegistry,
+): ImageGenModel[] {
+  let models: unknown[];
+  try {
+    models = registry.getAvailable?.() ?? registry.getAll();
+  } catch {
+    return [];
+  }
+
+  const out: ImageGenModel[] = [];
+  for (const model of models) {
+    if (model === null || typeof model !== "object") continue;
+    const candidate = model as Partial<ImageGenModel>;
+    if (typeof candidate.id !== "string" || typeof candidate.provider !== "string") {
+      continue;
+    }
+    if (!looksLikeImageGenerator(candidate as ImageGenModel)) continue;
+    out.push({
+      id: candidate.id,
+      provider: candidate.provider,
+      name: candidate.name,
+      api: candidate.api ?? "",
+      ...(candidate.output ? { output: candidate.output } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Every selectable generation model: pi-ai's built-in catalog plus anything
+ * contributed by registered providers, de-duplicated by "provider/id".
+ */
+export async function listAllImageGenModels(
+  registry?: ChatModelRegistry | null,
+): Promise<ImageGenModel[]> {
+  const builtin = await listImageGenModels();
+  const fromRegistry = registry ? listRegistryImageGenModels(registry) : [];
+
+  const seen = new Set(builtin.map((m) => formatModelRef(m).toLowerCase()));
+  const merged = [...builtin];
+  for (const model of fromRegistry) {
+    const key = formatModelRef(model).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(model);
+  }
+  return merged;
 }
 
 /** Inject a stub images collection. Test-only. */
