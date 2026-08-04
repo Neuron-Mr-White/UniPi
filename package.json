@@ -55,7 +55,8 @@
       "packages/milestone/skills",
       "packages/kanboard/skills",
       "packages/updater/skills",
-      "packages/cocoindex/skills"
+      "packages/cocoindex/skills",
+      "packages/image/skills"
     ]
   },
   "peerDependencies": {

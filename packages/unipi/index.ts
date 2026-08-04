@@ -30,6 +30,7 @@ import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import cocoindex from "@pi-unipi/cocoindex";
+import image from "../image/src/index.js";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -51,4 +52,5 @@ export default function (pi: ExtensionAPI) {
   updater(pi);
   inputShortcuts(pi);
   cocoindex(pi);
+  image(pi);
 }

@@ -39,6 +39,7 @@ export const MODULES = {
   UPDATER: "@pi-unipi/updater",
   INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
   COCOINDEX: "@pi-unipi/cocoindex",
+  IMAGE: "@pi-unipi/image",
 } as const;
 
 /** Workflow command names */
@@ -190,6 +191,23 @@ export const UTILITY_DIRS = {
 /** Ask-user tool names */
 export const ASK_USER_TOOLS = {
   ASK: "ask_user",
+} as const;
+
+/** Image tool names */
+export const IMAGE_TOOLS = {
+  GENERATE: "image_generate",
+  RECOGNIZE: "image_recognize",
+} as const;
+
+/** Image command names */
+export const IMAGE_COMMANDS = {
+  SETTINGS: "image-settings",
+} as const;
+
+/** Image directory paths */
+export const IMAGE_DIRS = {
+  CONFIG: "~/.unipi/config/image",
+  OUTPUT: "~/.unipi/images",
 } as const;
 
 /** MCP directory paths */
