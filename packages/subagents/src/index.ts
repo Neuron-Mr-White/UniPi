@@ -137,10 +137,40 @@ export default function (pi: ExtensionAPI) {
   // Activity tracking for widget
   const agentActivity = new Map<string, AgentActivity>();
 
+  /**
+   * Set once `session_shutdown` fires — after which `pi` must not be touched.
+   *
+   * Pi disposes the session as soon as the shutdown handlers resolve, and
+   * `AgentSession.dispose()` invalidates the extension runtime. Every
+   * `assertActive`-gated method (`sendMessage`, `setSessionName`,
+   * `appendEntry`, `setModel`, …) then throws "This extension ctx is stale
+   * after session replacement or reload".
+   *
+   * Background agents outlive that moment: `abortAll()` only signals their
+   * AbortController, so the in-flight promise settles a microtask *later* and
+   * fires this completion callback against a dead runtime — an unhandled
+   * throw that crashed the process on exit.
+   *
+   * Scoped to the extension factory rather than module scope on purpose:
+   * `session_shutdown` also fires for `/new`, `/fork` and `/resume` (reasons
+   * "new" / "fork" / "resume"), and pi re-invokes the extension factory for
+   * the replacement session. A fresh closure therefore starts with
+   * `sessionEnded = false`, so the guard can never latch permanently.
+   * Verified: `/new` emits `shutdown reason=new` then re-runs the factory.
+   *
+   * `pi.events` is NOT gated, so cross-module events still fire.
+   */
+  let sessionEnded = false;
+
   // Create manager with completion callback
   const manager = new AgentManager(
     (record) => {
       agentActivity.delete(record.id);
+
+      // After shutdown the UI is gone and the runtime is stale — nothing here
+      // is deliverable, and touching `pi` would throw.
+      if (sessionEnded) return;
+
       widget.markFinished(record.id);
       widget.update();
 
@@ -159,6 +189,7 @@ export default function (pi: ExtensionAPI) {
         }
         record.resultConsumed = true;
       }
+
 
       // Send styled notification via message renderer
       const status = getStatusLabel(record.status, record.error);
@@ -180,15 +211,22 @@ export default function (pi: ExtensionAPI) {
       ].join("\n");
 
       if (!record.resultConsumed) {
-        pi.sendMessage<NotificationDetails>(
-          {
-            customType: "subagent-notification",
-            content: notificationXml,
-            display: true,
-            details,
-          },
-          { deliverAs: "followUp", triggerTurn: true },
-        );
+        // Defence in depth: `sessionEnded` covers the ordinary shutdown path,
+        // but a session can also be replaced mid-flight. Delivering a
+        // notification is best-effort — it must never take the process down.
+        try {
+          pi.sendMessage<NotificationDetails>(
+            {
+              customType: "subagent-notification",
+              content: notificationXml,
+              display: true,
+              details,
+            },
+            { deliverAs: "followUp", triggerTurn: true },
+          );
+        } catch {
+          // Runtime went stale between the guard and here — nothing to notify.
+        }
       }
 
       pi.events.emit("subagents:completed", {
@@ -394,8 +432,12 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  // ESC propagation: abort all agents on session shutdown
+  // ESC propagation: abort all agents on session shutdown.
+  // Set the guard FIRST: abortAll() settles in-flight promises, whose
+  // completion callbacks would otherwise reach a runtime that pi is about to
+  // invalidate.
   pi.on("session_shutdown", async () => {
+    sessionEnded = true;
     manager.abortAll();
     manager.dispose();
   });

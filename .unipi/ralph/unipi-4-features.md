@@ -144,3 +144,72 @@ Config-dir override for tests: web-api hardcodes `os.homedir()`, so `process.chd
 4. Push to `upstream/main` — this closes issue #25.
 5. Update `CHANGELOG.md`.
 6. Do NOT bump versions or publish to npm unless explicitly asked.
+
+---
+
+# ✅ COMPLETE — 2026-08-04
+
+All 4 tasks done, verified, and pushed to `upstream/main` (`c9de4e8`).
+
+## Done criteria
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | `npx tsc --noEmit --skipLibCheck` clean | ✅ exit 0 |
+| 2 | `npm test` green at root | ✅ 519 pass / 0 fail (3 skipped) |
+| 3 | 4 commits, Task 1 contains `Closes #25` | ✅ `d610bf5` |
+| 4 | Pushed to `upstream/main`, issue closed | ✅ closed 2026-08-04T01:53:46Z |
+| 5 | `CHANGELOG.md` updated | ✅ `c9de4e8` |
+| 6 | No version bump / npm publish | ✅ still 2.1.3, not published |
+
+## Commits
+- `d610bf5` feat(notify): add built-in permission_request event — Closes #25
+- `a7aea1d` fix(tui): stop crashing on narrow terminals
+- `f2a6165` feat(web-api): add wigolo as the default search and read provider
+- `5dff0c5` feat(image): add image_generate and image_recognize tools
+- `c9de4e8` docs: update changelog
+
+## Task 1 — notify `permission_request`
+Local-const `PERMISSION_UI_PROMPT_EVENT` (third-party pattern, matching the
+rpiv event). EventBus not lifecycle. New `permission-prompt-message.ts` with
+defensive formatting + `(forwarded)` marker. Default disabled. 13 tests.
+Regex-over-source `event-bus.test.ts` still passes.
+
+## Task 2 — narrow-terminal crash
+Root cause: `Math.max(40, width - 2)` floor → every line ≥42 cols → pi-tui
+throws on over-wide lines → agent dies on any terminal <42 cols. Plus
+width-unkeyed render caches serving stale lines after a shrink.
+New `packages/core/tui-width.ts` (normalizeWidth, boxInnerWidth,
+adaptiveInnerWidth, shouldRenderBorder, contentWidth, safeRepeat,
+WidthKeyedCache). ask-user drops the border below 12 cols. Fixed the same
+pattern in 15 other overlays. Tests assert `visibleWidth(line) <= width` for
+every width 1..200 + resize-shrink regressions; verified they fail on the old
+formula.
+
+## Task 3 — wigolo
+**Licensing deviation from the brief (user-approved):** wigolo-sdk is
+AGPL-3.0-only, UniPi is MIT. Used `optionalDependencies` + dynamic `import()`
+instead of a hard dependency, so UniPi ships no AGPL code. Same UX.
+Rank 1 for search + read, others renumbered. Added `selectProviderChain()` +
+`withProviderFallthrough()` so a broken rank-1 wigolo cannot break every web
+call; explicit `source:` stays strict. Lazy singleton daemon, closed on
+session_shutdown, failed attempts not cached.
+**Bonus fix:** DuckDuckGo (the fallback) returned 0 results against live
+markup — 3 pre-existing bugs (snippet regex broken by `<b>`, index-based
+pairing misaligning snippets, un-decoded redirect-wrapper URLs). Fixed+tested.
+47 tests (web-api had none before).
+
+## Task 4 — packages/image
+`image_generate` (34 models, filterable picker, inline + saved to disk) and
+`image_recognize` (image-input models only, customizable system prompt,
+file/data-URL/base64 with magic-number detection).
+**Deviation from the brief:** pi-ai does NOT export `getImageModels`/
+`generateImages` from its package root — `providers/all` →
+`builtinImagesModels()` is the supported entry point and resolves auth itself.
+`generateImages` never rejects; failures arrive as `stopReason: "error"`.
+Config at `~/.unipi/config/image/config.json`, `UNIPI_IMAGE_CONFIG_DIR`
+override for tests. 99 tests, all network stubbed.
+
+## Known unrelated issue
+`pi -p` smoke test surfaces a stale-ctx error from
+`packages/subagents/src/index.ts:183`. Confirmed pre-existing against a
+stashed baseline — NOT caused by this work. Worth its own fix.
