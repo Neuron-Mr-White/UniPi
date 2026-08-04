@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-08-04 (v2.2.1)
+last-run: 2026-08-04 (v2.2.7)
 ---
 
 # Full Release Pipeline
@@ -273,6 +273,37 @@ npm version patch --no-git-tag-version
 Expected: All package.json versions incremented.
 
 **Note:** If you want minor or major bumps, adjust accordingly. Review `git log` since last release to decide.
+
+
+### Step 10b: Republish Every Dependent of a Bumped Package
+
+**Bumping a package is not enough.** If package X is bumped, every package that
+*depends* on X must also be republished — otherwise npm resolves the old pin in
+their published tarballs and installs a **nested stale copy**, so the fix never
+reaches users:
+
+```
+node_modules/@pi-unipi/ralph/node_modules/@pi-unipi/info-screen -> 2.2.0  (pre-fix!)
+```
+
+Find dependents before publishing:
+
+```bash
+node -e "
+const fs=require('fs');const bumped=process.argv[1];
+for(const d of fs.readdirSync('packages')){const f='packages/'+d+'/package.json';if(!fs.existsSync(f))continue;
+const j=JSON.parse(fs.readFileSync(f,'utf8'));
+if((j.dependencies||{})['@pi-unipi/'+bumped])console.log(j.name,'depends on',bumped);}
+" info-screen
+```
+
+Verify after publishing with a clean install, never the workspace:
+
+```bash
+cd /tmp && rm -rf verify && mkdir verify && cd verify && npm init -y >/dev/null
+npm install @pi-unipi/unipi@<version> --prefer-online
+find node_modules -path "*/node_modules/@pi-unipi/*" -maxdepth 4   # must be empty
+```
 
 ### Step 11: Update Documentation
 
