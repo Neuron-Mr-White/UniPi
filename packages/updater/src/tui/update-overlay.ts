@@ -15,6 +15,7 @@ import { installUpdate } from "../installer.js";
 import { writeSkippedVersion } from "../cache.js";
 import { loadConfig } from "../settings.js";
 import type { ChangelogEntry, UpdateCheckResult } from "../../types.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 /**
  * Pad content to exact visible width.
@@ -119,7 +120,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
     };
 
     const render = (width: number): string[] => {
-      const innerWidth = Math.max(22, width - 2);
+      const innerWidth = boxInnerWidth(width);
       const lines: string[] = [];
 
       // ── Header ──────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import {
   getGlobalConfigDir,
   getProjectConfigDir,
 } from "../config/manager.js";
+import { boxInnerWidth, normalizeWidth, WidthKeyedCache } from "@pi-unipi/core";
 
 /** Server display item */
 interface ServerDisplayItem {
@@ -65,7 +66,8 @@ export function renderMcpSettingsOverlay(params?: {
       confirmDelete: null,
     };
 
-    let cachedLines: string[] | undefined;
+    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
+    const lineCache = new WidthKeyedCache();
 
     function refreshServers() {
       const configDir =
@@ -115,7 +117,7 @@ export function renderMcpSettingsOverlay(params?: {
     refreshServers();
 
     function refresh() {
-      cachedLines = undefined;
+      lineCache.clear();
       tui.requestRender();
     }
 
@@ -275,11 +277,13 @@ export function renderMcpSettingsOverlay(params?: {
       return content + " ".repeat(pad);
     }
 
-    function render(width: number): string[] {
-      if (cachedLines) return cachedLines;
+    function render(rawWidth: number): string[] {
+      const width = normalizeWidth(rawWidth);
+      const cached = lineCache.get(width);
+      if (cached) return cached;
 
       const lines: string[] = [];
-      const innerWidth = Math.max(22, width - 2);
+      const innerWidth = boxInnerWidth(width);
 
       // ── Header ──────────────────────────────────────────────────────
       const header = " MCP Settings ";
@@ -356,8 +360,7 @@ export function renderMcpSettingsOverlay(params?: {
       );
       lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
 
-      cachedLines = lines;
-      return lines;
+      return lineCache.set(width, lines);
     }
 
     return { render, invalidate: refresh, handleInput };

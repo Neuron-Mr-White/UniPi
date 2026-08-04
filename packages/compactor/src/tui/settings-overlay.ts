@@ -15,6 +15,7 @@ import { applyPreset, detectPreset } from "../config/presets.js";
 import type { CompactorPreset } from "../types.js";
 import type { CompactorConfig } from "../types.js";
 import { existsSync, unlinkSync } from "node:fs";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 // ─── Section types ─────────────────────────────────────────────────────
 
@@ -577,7 +578,7 @@ export class CompactorSettingsOverlay implements Component {
   // ─── Render ────────────────────────────────────────────────────────
 
   render(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
     // Header

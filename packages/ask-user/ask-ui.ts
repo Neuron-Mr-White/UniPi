@@ -7,6 +7,7 @@
 
 import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Theme, AgentToolResult } from "@earendil-works/pi-coding-agent";
+import { adaptiveInnerWidth, contentWidth, normalizeWidth, safeRepeat, shouldRenderBorder, WidthKeyedCache } from "@pi-unipi/core";
 import type { NormalizedOption, AskUserResponse } from "./types.js";
 
 /** Result returned by the ask UI */
@@ -60,7 +61,8 @@ export function renderAskUI(params: {
     let optionIndex = 0;
     let editMode = false;
     let editTarget: "freeform" | number = "freeform"; // which option is being edited
-    let cachedLines: string[] | undefined;
+    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
+    const lineCache = new WidthKeyedCache();
     const selected = new Set<string>();
     let customText: string | null = null; // Store custom text (global freeform)
     const optionCustomTexts = new Map<string, string>(); // Per-option custom text for allowCustom
@@ -157,7 +159,7 @@ export function renderAskUI(params: {
     }
 
     function refresh() {
-      cachedLines = undefined;
+      lineCache.clear();
       tui.requestRender();
     }
 
@@ -363,29 +365,39 @@ export function renderAskUI(params: {
       }
     }
 
-    function render(width: number): string[] {
-      if (cachedLines) return cachedLines;
+    function render(rawWidth: number): string[] {
+      const width = normalizeWidth(rawWidth);
+      const cached = lineCache.get(width);
+      if (cached) return cached;
 
       const lines: string[] = [];
-      const innerWidth = Math.max(40, width - 2);
+      // Never exceed the terminal width — pi-tui throws on over-wide lines.
+      // On very narrow terminals the box border is dropped so the little
+      // width available all goes to content.
+      const innerWidth = adaptiveInnerWidth(width);
+      const bordered = shouldRenderBorder(width);
       const border = (s: string) => theme.fg("accent", s);
 
       function padVisible(content: string, targetWidth: number): string {
         const vw = visibleWidth(content);
-        const pad = Math.max(0, targetWidth - vw);
-        return content + " ".repeat(pad);
+        return content + safeRepeat(" ", targetWidth - vw);
       }
 
-      const add = (s: string) => lines.push(border("│") + padVisible(truncateToWidth(s, innerWidth), innerWidth) + border("│"));
+      const frame = (content: string) => {
+        const body = padVisible(truncateToWidth(content, innerWidth), innerWidth);
+        return bordered ? border("│") + body + border("│") : body;
+      };
+
+      const add = (s: string) => lines.push(frame(s));
       const addWrapped = (s: string) => {
         for (const line of wrapTextWithAnsi(s, innerWidth)) {
-          lines.push(border("│") + padVisible(truncateToWidth(line, innerWidth), innerWidth) + border("│"));
+          lines.push(frame(line));
         }
       };
-      const addEmpty = () => lines.push(border("│") + " ".repeat(innerWidth) + border("│"));
+      const addEmpty = () => lines.push(frame(""));
 
       // Top border
-      lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+      if (bordered) lines.push(border(`╭${safeRepeat("─", innerWidth)}╮`));
 
       // Context
       if (context) {
@@ -438,10 +450,9 @@ export function renderAskUI(params: {
       }
 
       // Bottom border
-      lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+      if (bordered) lines.push(border(`╰${safeRepeat("─", innerWidth)}╯`));
 
-      cachedLines = lines;
-      return lines;
+      return lineCache.set(width, lines);
     }
 
     function renderOptions(
@@ -452,16 +463,28 @@ export function renderAskUI(params: {
     ) {
       const addWrappedOptionLine = (prefix: string, content: string) => {
         const prefixWidth = visibleWidth(prefix);
-        const contentWidth = Math.max(1, width - prefixWidth);
-        const continuationPrefix = " ".repeat(prefixWidth);
-        const wrapped = wrapTextWithAnsi(content, contentWidth);
+        const wrapWidth = contentWidth(width, prefixWidth);
+        const continuationPrefix = safeRepeat(" ", prefixWidth);
+        const wrapped = wrapTextWithAnsi(content, wrapWidth);
         for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
           add((lineIndex === 0 ? prefix : continuationPrefix) + wrapped[lineIndex]);
         }
       };
 
+      // Indent descriptions under the option label, but give up the indent
+      // entirely when the terminal is too narrow to afford it.
+      const descriptionIndent = safeRepeat(" ", width > 10 ? 5 : 0);
       const addWrappedDescription = (description: string) => {
-        addWrappedOptionLine("     ", theme.fg("muted", description));
+        addWrappedOptionLine(descriptionIndent, theme.fg("muted", description));
+      };
+
+      // Inline editor, inset by 3 columns where there is room for it.
+      const editorIndent = safeRepeat(" ", width > 8 ? 3 : 0);
+      const addInlineEditor = () => {
+        add(`${editorIndent}${theme.fg("muted", "Type your response:")}`);
+        for (const line of editor.render(contentWidth(width, visibleWidth(editorIndent) + 1))) {
+          add(`${editorIndent}${line}`);
+        }
       };
 
       for (let i = 0; i < displayOptions.length; i++) {
@@ -488,10 +511,7 @@ export function renderAskUI(params: {
           
           // Show edit indicator if in edit mode for this option
           if (editMode && editTarget === "freeform" && isSelected) {
-            add(`   ${theme.fg("muted", "Type your response:")}`);
-            for (const line of editor.render(width - 4)) {
-              add(`   ${line}`);
-            }
+            addInlineEditor();
           }
         } else if (allowMultiple) {
           // Multi-select: show checkbox
@@ -512,10 +532,7 @@ export function renderAskUI(params: {
           
           // Show edit indicator if in edit mode for this option
           if (editMode && editTarget === i && isSelected) {
-            add(`   ${theme.fg("muted", "Type your response:")}`);
-            for (const line of editor.render(width - 4)) {
-              add(`   ${line}`);
-            }
+            addInlineEditor();
           }
         } else {
           // Single-select: option
@@ -544,10 +561,7 @@ export function renderAskUI(params: {
           
           // Show edit indicator if in edit mode for this option
           if (editMode && editTarget === i && isSelected) {
-            add(`   ${theme.fg("muted", "Type your response:")}`);
-            for (const line of editor.render(width - 4)) {
-              add(`   ${line}`);
-            }
+            addInlineEditor();
           }
         }
 
@@ -561,7 +575,7 @@ export function renderAskUI(params: {
     return {
       render,
       invalidate: () => {
-        cachedLines = undefined;
+        lineCache.clear();
       },
       handleInput,
     };

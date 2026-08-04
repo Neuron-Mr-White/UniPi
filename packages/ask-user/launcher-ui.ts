@@ -7,6 +7,7 @@
 
 import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import { adaptiveInnerWidth, contentWidth, normalizeWidth, safeRepeat, shouldRenderBorder, WidthKeyedCache } from "@pi-unipi/core";
 import type { SessionLauncherResult } from "./types.js";
 
 /** Launcher option definition */
@@ -45,10 +46,11 @@ export function renderLauncherUI(params: {
 
     // State
     let optionIndex = 0;
-    let cachedLines: string[] | undefined;
+    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
+    const lineCache = new WidthKeyedCache();
 
     function refresh() {
-      cachedLines = undefined;
+      lineCache.clear();
       _tui.requestRender();
     }
 
@@ -79,34 +81,37 @@ export function renderLauncherUI(params: {
       }
     }
 
-    function render(width: number): string[] {
-      if (cachedLines) return cachedLines;
+    function render(rawWidth: number): string[] {
+      const width = normalizeWidth(rawWidth);
+      const cached = lineCache.get(width);
+      if (cached) return cached;
 
       const lines: string[] = [];
-      const innerWidth = Math.max(40, width - 2);
+      // Never exceed the terminal width — pi-tui throws on over-wide lines.
+      const innerWidth = adaptiveInnerWidth(width);
+      const bordered = shouldRenderBorder(width);
       const border = (s: string) => theme.fg("accent", s);
 
       function padVisible(content: string, targetWidth: number): string {
         const vw = visibleWidth(content);
-        const pad = Math.max(0, targetWidth - vw);
-        return content + " ".repeat(pad);
+        return content + safeRepeat(" ", targetWidth - vw);
       }
 
-      const add = (s: string) =>
-        lines.push(
-          border("│") +
-            padVisible(truncateToWidth(s, innerWidth), innerWidth) +
-            border("│"),
-        );
-      const addEmpty = () =>
-        lines.push(border("│") + " ".repeat(innerWidth) + border("│"));
+      const frame = (content: string) => {
+        const body = padVisible(truncateToWidth(content, innerWidth), innerWidth);
+        return bordered ? border("│") + body + border("│") : body;
+      };
+
+      const add = (s: string) => lines.push(frame(s));
+      const addEmpty = () => lines.push(frame(""));
 
       // Top border
-      lines.push(border(`╭${"─".repeat(innerWidth)}╮`));
+      if (bordered) lines.push(border(`╭${safeRepeat("─", innerWidth)}╮`));
 
-      // Header: show prefill command (truncated)
+      // Header: show prefill command (truncated).
+      // visibleWidth, not .length — the prefix holds an astral emoji.
       const headerPrefix = " 🚀 ";
-      const maxPrefillWidth = innerWidth - headerPrefix.length - 1;
+      const maxPrefillWidth = contentWidth(innerWidth, visibleWidth(headerPrefix) + 1);
       const truncatedPrefill = truncateToWidth(prefill || "(no command)", maxPrefillWidth);
       add(theme.fg("accent", headerPrefix) + theme.fg("text", truncatedPrefill));
       addEmpty();
@@ -126,16 +131,15 @@ export function renderLauncherUI(params: {
       add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
 
       // Bottom border
-      lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
+      if (bordered) lines.push(border(`╰${safeRepeat("─", innerWidth)}╯`));
 
-      cachedLines = lines;
-      return lines;
+      return lineCache.set(width, lines);
     }
 
     return {
       render,
       invalidate: () => {
-        cachedLines = undefined;
+        lineCache.clear();
       },
       handleInput,
     };

@@ -31,6 +31,7 @@ import {
   getProjectConfigDir,
 } from "../config/manager.js";
 import { validateMcpConfig, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
+import { boxInnerWidth, normalizeWidth, WidthKeyedCache } from "@pi-unipi/core";
 
 type Mode = "normal" | "search" | "editor";
 type StatusKind = "info" | "success" | "warn" | "error";
@@ -158,11 +159,12 @@ export function renderMcpAddOverlay(params?: {
     // Ctrl+S handles saving; no submit path needed.
     (editor as any).disableSubmit = true;
 
-    let cachedLines: string[] | undefined;
+    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
+    const lineCache = new WidthKeyedCache();
     let lastListHeight = 12;
 
     function refresh() {
-      cachedLines = undefined;
+      lineCache.clear();
       tui.requestRender();
     }
 
@@ -537,11 +539,13 @@ export function renderMcpAddOverlay(params?: {
 
     // ─── Rendering ────────────────────────────────────────────────────
 
-    function render(width: number): string[] {
-      if (cachedLines) return cachedLines;
+    function render(rawWidth: number): string[] {
+      const width = normalizeWidth(rawWidth);
+      const cached = lineCache.get(width);
+      if (cached) return cached;
 
       const lines: string[] = [];
-      const innerWidth = Math.max(40, width - 2);
+      const innerWidth = boxInnerWidth(width);
 
       // Pane widths: account for left │, middle │, right │ borders
       const leftW = Math.floor((innerWidth - 1) / 2);
@@ -776,8 +780,7 @@ export function renderMcpAddOverlay(params?: {
       );
       lines.push(border(`╰${"─".repeat(innerWidth)}╯`));
 
-      cachedLines = lines;
-      return lines;
+      return lineCache.set(width, lines);
     }
 
     return { render, invalidate: refresh, handleInput };

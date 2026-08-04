@@ -8,7 +8,7 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { readModelCache, type CachedModel } from "@pi-unipi/core";
+import { readModelCache, type CachedModel, boxInnerWidth } from "@pi-unipi/core";
 import { loadConfig, saveConfig } from "../settings.js";
 
 const DEFAULT_MODEL = "openrouter/openai/gpt-oss-20b";
@@ -170,7 +170,7 @@ export class RecapModelSelectorOverlay implements Component {
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(40, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
     lines.push(this.borderLine(innerWidth, "top"));

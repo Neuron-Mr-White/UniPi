@@ -11,7 +11,7 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { CachedModel } from "@pi-unipi/core";
-import { readModelCache } from "@pi-unipi/core";
+import { readModelCache, boxInnerWidth } from "@pi-unipi/core";
 import {
   readUtilSettings,
   writeUtilSettings,
@@ -370,7 +370,7 @@ export class UtilSettingsTui implements Component {
    */
   render(width: number): string[] {
     const lines: string[] = [];
-    const innerWidth = Math.max(52, width - 2);
+    const innerWidth = boxInnerWidth(width);
 
     const padVisible = (content: string, targetWidth: number): string => {
       const vw = visibleWidth(content);

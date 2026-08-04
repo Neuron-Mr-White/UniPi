@@ -12,6 +12,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { discoverReadmes, resolveReadmePath } from "../readme.js";
 import { renderMarkdown } from "../markdown.js";
 import type { ReadmeEntry } from "../../types.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 type View = "list" | "content";
 
@@ -71,7 +72,7 @@ export function renderReadmeOverlay(params?: { openDirect?: string }) {
     const render = (width: number): string[] => {
       ensureLoaded();
 
-      const innerWidth = Math.max(22, width - 2);
+      const innerWidth = boxInnerWidth(width);
       const lines: string[] = [];
 
       // ── Header ──────────────────────────────────────────────────────

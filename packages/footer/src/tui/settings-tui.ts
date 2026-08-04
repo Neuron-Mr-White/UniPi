@@ -15,6 +15,7 @@ import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
 import type { FooterGroup, FooterSettings, SeparatorStyle, IconStyle } from "../types.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 // ─── Section types ─────────────────────────────────────────────────────
 
@@ -457,7 +458,7 @@ class FooterSettingsOverlay {
   // ─── Render ────────────────────────────────────────────────────────
 
   render(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
     // Header

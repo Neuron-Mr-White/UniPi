@@ -15,6 +15,7 @@ import {
 } from "../settings.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
 import type { NotifyConfig, NtfyConfig } from "../types.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 /** Section types */
 type Section = "platforms" | "events" | "recap";
@@ -174,7 +175,7 @@ export class NotifySettingsOverlay implements Component {
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
     lines.push(this.borderLine(innerWidth, "top"));

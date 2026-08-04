@@ -13,6 +13,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
 import type { InfoGroup, GroupData } from "../types.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 /** Tab color palette */
 const TAB_FG: Array<"accent" | "success" | "warning" | "error"> = [
@@ -275,7 +276,7 @@ export class InfoOverlay implements Component {
   // ─── State views ─────────────────────────────────────────────────────
 
   private renderEmpty(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
     lines.push(this.borderLine(innerWidth, "top"));
     lines.push(this.frameLine(this.fg("accent", this.bold("📊 UniPi Info Screen")), innerWidth));
@@ -292,7 +293,7 @@ export class InfoOverlay implements Component {
   // ─── Dashboard ───────────────────────────────────────────────────────
 
   private renderDashboard(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const group = this.groups[this.activeTabIndex];
     const data = this.groupData.get(group.id) ?? {};
     const isLoading = this.groupLoading.get(group.id) ?? false;

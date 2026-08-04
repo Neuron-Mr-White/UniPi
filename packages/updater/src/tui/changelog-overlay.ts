@@ -11,7 +11,7 @@ import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { parseChangelog } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
-import { getInstalledPackageVersion } from "@pi-unipi/core";
+import { getInstalledPackageVersion, boxInnerWidth } from "@pi-unipi/core";
 import type { ChangelogEntry } from "../../types.js";
 
 type View = "list" | "detail";
@@ -72,7 +72,7 @@ export function renderChangelogOverlay() {
     const render = (width: number): string[] => {
       ensureLoaded();
 
-      const innerWidth = Math.max(22, width - 2);
+      const innerWidth = boxInnerWidth(width);
       const lines: string[] = [];
 
       // ── Header ──────────────────────────────────────────────────────

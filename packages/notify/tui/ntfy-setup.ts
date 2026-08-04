@@ -11,6 +11,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendNtfyNotification } from "../platforms/ntfy.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
+import { boxInnerWidth } from "@pi-unipi/core";
 
 type SetupPhase =
   | "instructions"
@@ -281,7 +282,7 @@ export class NtfySetupOverlay implements Component {
   }
 
   render(width: number): string[] {
-    const innerWidth = Math.max(22, width - 2);
+    const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
     lines.push(this.borderLine(innerWidth, "top"));

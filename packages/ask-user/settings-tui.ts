@@ -7,6 +7,7 @@
 
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { adaptiveInnerWidth, normalizeWidth, safeRepeat, shouldRenderBorder } from "@pi-unipi/core";
 import { getAskUserSettings, saveAskUserSettings, type AskUserSettings } from "./config.js";
 
 /** ANSI escape codes */
@@ -140,26 +141,38 @@ export class AskUserSettingsOverlay implements Component {
   /**
    * Render the overlay.
    */
-  render(width: number): string[] {
+  render(rawWidth: number): string[] {
+    const width = normalizeWidth(rawWidth);
     const lines: string[] = [];
-    const innerWidth = Math.max(40, width - 2);
+    // Never exceed the given width — pi-tui throws on over-wide lines.
+    const innerWidth = adaptiveInnerWidth(width);
+    const bordered = shouldRenderBorder(width);
 
     function padVisible(content: string, targetWidth: number): string {
       const vw = visibleWidth(content);
-      const pad = Math.max(0, targetWidth - vw);
-      return content + " ".repeat(pad);
+      return content + safeRepeat(" ", targetWidth - vw);
     }
 
-    const add = (s: string) => lines.push(`${ansi.cyan}│${ansi.reset}` + padVisible(truncateToWidth(s, innerWidth), innerWidth) + `${ansi.cyan}│${ansi.reset}`);
-    const addEmpty = () => lines.push(`${ansi.cyan}│${ansi.reset}` + " ".repeat(innerWidth) + `${ansi.cyan}│${ansi.reset}`);
+    const frame = (content: string) => {
+      const body = padVisible(truncateToWidth(content, innerWidth), innerWidth);
+      return bordered
+        ? `${ansi.cyan}│${ansi.reset}` + body + `${ansi.cyan}│${ansi.reset}`
+        : body;
+    };
+
+    const add = (s: string) => lines.push(frame(s));
+    const addEmpty = () => lines.push(frame(""));
 
     // Top border
-    lines.push(`${ansi.cyan}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
+    if (bordered) lines.push(`${ansi.cyan}╭${safeRepeat("─", innerWidth)}╮${ansi.reset}`);
 
     // Header
     add(`${ansi.bold}${ansi.cyan}Ask User Settings${ansi.reset}`);
     add(`${ansi.dim}Configure how the agent can ask you questions${ansi.reset}`);
     addEmpty();
+
+    // Indent descriptions, unless the terminal is too narrow to afford it.
+    const descIndent = safeRepeat(" ", width > 10 ? 3 : 0);
 
     // Settings list
     for (let i = 0; i < SETTINGS.length; i++) {
@@ -171,7 +184,7 @@ export class AskUserSettingsOverlay implements Component {
       const descColor = ansi.gray;
 
       add(`${isSelected ? ansi.cyan + "▸" + ansi.reset : " "} ${toggle} ${labelColor}${item.label}${ansi.reset}`);
-      add(`   ${descColor}${item.description}${ansi.reset}`);
+      add(`${descIndent}${descColor}${item.description}${ansi.reset}`);
     }
 
     // Footer
@@ -179,7 +192,7 @@ export class AskUserSettingsOverlay implements Component {
     add(`${ansi.dim}↑↓ navigate • Space toggle • Enter save • Esc cancel${ansi.reset}`);
 
     // Bottom border
-    lines.push(`${ansi.cyan}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
+    if (bordered) lines.push(`${ansi.cyan}╰${safeRepeat("─", innerWidth)}╯${ansi.reset}`);
 
     return lines;
   }
