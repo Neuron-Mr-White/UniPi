@@ -14,12 +14,20 @@ import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
+import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
 
 // Event emitted by @juicesharp/rpiv-ask-user-question before showing its UI.
 // Keep this as a local string until that package publishes an importable
 // `./events` contract in npm.
 const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
+
+// Event emitted by @gotgenes/pi-permission-system immediately before the
+// user-facing permission UI is invoked. Fires only for prompts a human must
+// answer — policy auto-allow/deny and session approvals do not emit it.
+// Kept as a local string (like the rpiv event above) because it belongs to a
+// third-party package rather than the unipi event contract.
+const PERMISSION_UI_PROMPT_EVENT = "permissions:ui_prompt" as const;
 
 /** Stored session context for modelRegistry access */
 let sessionCtx: ExtensionContext | null = null;
@@ -58,6 +66,7 @@ export const BUILTIN_EVENTS: Record<
   memory_consolidated: { hook: UNIPI_EVENTS.MEMORY_CONSOLIDATED, label: "Memory Saved" },
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
   ask_user_prompt: { hook: UNIPI_EVENTS.ASK_USER_PROMPT, label: "Question Asked" },
+  permission_request: { hook: PERMISSION_UI_PROMPT_EVENT, label: "Permission Request" },
 };
 
 /**
@@ -298,6 +307,8 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
       return "Session ending";
     case "ask_user_prompt":
       return buildAskUserPromptMessage(payload);
+    case "permission_request":
+      return buildPermissionPromptMessage(payload);
     default:
       return p.message ? String(p.message) : "Event occurred";
   }

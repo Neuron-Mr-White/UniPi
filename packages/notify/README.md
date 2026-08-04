@@ -28,6 +28,8 @@ Notify subscribes to Pi lifecycle events and routes notifications based on your 
 | `agent_settled` | Off | Agent fully settles after retries, compaction, and queued continuations |
 | `memory_consolidated` | Off | Memory auto-saved |
 | `session_shutdown` | Off | Session ends |
+| `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
+| `permission_request` | Off | A permission prompt is about to be shown (requires [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system)) |
 
 Notify registers with the info-screen dashboard, showing enabled platforms and last notification time. The footer subscribes to `NOTIFICATION_SENT` events to display notification stats.
 

@@ -36,7 +36,9 @@ Help users configure the `@pi-unipi/notify` notification system.
     "agent_end": { "enabled": false, "platforms": [] },
     "agent_settled": { "enabled": false, "platforms": [] },
     "memory_consolidated": { "enabled": false, "platforms": [] },
-    "session_shutdown": { "enabled": false, "platforms": [] }
+    "session_shutdown": { "enabled": false, "platforms": [] },
+    "ask_user_prompt": { "enabled": false, "platforms": [] },
+    "permission_request": { "enabled": false, "platforms": [] }
   },
   "native": {
     "enabled": true,
@@ -155,8 +157,33 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 | `agent_settled` | Off | Agent fully settles after retries, compaction, and queued continuations |
 | `memory_consolidated` | Off | Memory auto-saved |
 | `session_shutdown` | Off | Session ends |
+| `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
+| `permission_request` | Off | A permission prompt is about to be shown |
 
 Each event can override `platforms` — empty array means use `defaultPlatforms`.
+
+### `permission_request`
+
+Fires on the `permissions:ui_prompt` broadcast from
+[`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system),
+emitted immediately before the user-facing permission UI is invoked. Policy
+auto-allow, policy deny, session approvals, and infrastructure auto-allowed
+requests do **not** emit it, so this event does not produce notification spam.
+Forwarded subagent prompts are handled too — the parent UI session emits the
+event right before showing the forwarded dialog, and the notification is
+suffixed with `(forwarded)`.
+
+The notification is formatted defensively from the payload's `agentName`,
+`surface`, `value` and `message` fields:
+
+```text
+Pi — Permission Request
+Current agent requested bash 'npm test'. Allow this command?
+```
+
+Enable it when you run Pi in a background pane and don't want to miss a
+permission prompt. If the permission system is not installed the event simply
+never fires.
 
 ## Agent workflow
 

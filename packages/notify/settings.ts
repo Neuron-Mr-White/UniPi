@@ -28,6 +28,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     memory_consolidated: { enabled: false, platforms: [] },
     session_shutdown: { enabled: false, platforms: [] },
     ask_user_prompt: { enabled: false, platforms: [] },
+    permission_request: { enabled: false, platforms: [] },
   },
   native: {
     enabled: true,
