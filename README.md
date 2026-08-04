@@ -21,7 +21,9 @@ pi install npm:@pi-unipi/unipi
 
 **[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
 
-**[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Smart-fetch engine with browser-grade TLS fingerprinting — free, no API key. Paid providers as fallbacks.
+**[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Defaults to [wigolo](https://github.com/KnockOutEZ/wigolo), a local-first engine with multi-engine search and on-device reranking — $0/query, no API key. Plus a smart-fetch engine with browser-grade TLS fingerprinting. Paid providers as fallbacks, and auto-selection falls through when a provider is unavailable.
+
+**[Image](./packages/image/README.md)** — Generate images from a text prompt and analyze existing ones. 34 image models, plus vision analysis on any model that accepts image input, with a customizable system prompt.
 
 **[MCP](./packages/mcp/README.md)** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
 
@@ -101,7 +103,8 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `ralph_start` / `ralph_done` | ralph | Loop control |
 | `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
 | `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
-| `web_search` / `web_read` / `web_llm_summarize` | web-api | Web research |
+| `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
+| `image_generate` / `image_recognize` | image | Image generation and vision |
 | `notify_user` | notify | Push notifications |
 | `ask_user` | ask-user | User input |
 | `compact` / `session_recall` / `sandbox` | compactor | Context management |
@@ -129,6 +132,7 @@ unipi/
 │   ├── cocoindex/      # Project indexing and semantic search
 │   ├── subagents/      # Parallel execution
 │   ├── web-api/        # Web research
+│   ├── image/          # Image generation and vision
 │   ├── mcp/            # MCP server integration
 │   ├── notify/         # Push notifications
 │   ├── footer/         # Status bar

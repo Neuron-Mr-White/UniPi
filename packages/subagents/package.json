@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "dist/index.js",
@@ -17,9 +17,9 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.1.3",
-    "@pi-unipi/workflow": "2.1.3",
-    "@pi-unipi/info-screen": "2.1.3",
+    "@pi-unipi/core": "2.2.0",
+    "@pi-unipi/workflow": "2.2.0",
+    "@pi-unipi/info-screen": "2.2.0",
     "@earendil-works/pi-agent-core": "^0.80.0"
   },
   "devDependencies": {

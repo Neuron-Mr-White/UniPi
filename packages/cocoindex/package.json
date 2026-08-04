@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/cocoindex",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "description": "CocoIndex integration for Pi — AST-aware content indexing, semantic vector search, and incremental pipeline management",
   "type": "module",
   "main": "index.ts",
@@ -25,7 +25,7 @@
     "typebox": "^1.1.38"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.1.3"
+    "@pi-unipi/core": "2.2.0"
   },
   "optionalDependencies": {
     "@lancedb/lancedb": "^0.21.0"

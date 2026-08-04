@@ -34,6 +34,7 @@ export const PACKAGE_ORDER: string[] = [
   "updater",
   "input-shortcuts",
   "cocoindex",
+  "image",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -56,6 +57,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   updater:   `${ESC}[93m`, // Bright Yellow
   "input-shortcuts": `${ESC}[95m`, // Bright Magenta
   cocoindex: `${ESC}[97m`, // Bright White
+  image:     `${ESC}[35m`, // Magenta
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -135,6 +137,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // web-api (2 commands)
   "unipi:web-settings":    "web-api",
   "unipi:web-cache-clear": "web-api",
+  "unipi:image-settings":  "image",
 
   // compact (9 commands)
   "unipi:lossless-compact": "compact",
@@ -254,6 +257,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:web-settings":    "Configure web search settings",
   "unipi:web-cache-clear": "Clear web search cache",
+  "unipi:image-settings":  "Configure image generation and recognition models",
 
   "unipi:lossless-compact": "Immediate zero-LLM compaction",
   "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",
@@ -311,4 +315,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   updater:   "updater",
   "input-shortcuts": "input-shortcuts",
   cocoindex: "cocoindex",
+  image:     "image",
 };

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-08-04
+
+### Breaking Changes
+- **BREAKING:** `web-api` provider `source:` numbers changed, because wigolo was inserted at rank 1 for both search and read. Search is now `1`=wigolo `2`=DuckDuckGo `3`=Jina Search `4`=SerpAPI `5`=Tavily `6`=Perplexity (was `1`=DuckDuckGo `2`=Jina `3`=SerpAPI `4`=Tavily `5`=Perplexity). Read is now `1`=wigolo `2`=Jina Reader `3`=Firecrawl `4`=Perplexity (was `1`=Jina Reader `2`=Firecrawl `3`=Perplexity); read `0` is still the built-in smart-fetch engine. Migration: if you pass an explicit `source:` to `web_search` or `multi_web_content_read`, add 1 to the old number — or simply omit `source:` and let auto-selection pick, which now also falls through on provider failure. Omitting `source:` requires no change.
+- **BREAKING:** `web_llm_summarize`'s `source:` range is corrected to `1`=Perplexity `2`=LLM Summarize (`maximum` was previously documented as `3` and listed read providers, which never matched the registered summarize providers). Migration: use `1` or `2`, or omit `source:`.
+
 ### Added
 - `image`: new `@pi-unipi/image` package with two agent tools. `image_generate` creates images from a text prompt using pi-ai's image catalog (34 models — FLUX.2, Gemini 3 Pro Image, GPT-5 Image, Recraft, Riverflow — served through OpenRouter), returning them inline and saving them to disk (default `~/.unipi/images`). `image_recognize` analyzes an image with any model whose input modality includes `image`, accepting a local file path, `data:` URL, or base64, with a customizable system prompt. Both are configured via `/unipi:image-settings`, which includes a filterable model picker.
 - `web-api`: [wigolo](https://github.com/KnockOutEZ/wigolo) is now the default search and read provider (rank 1 for both, enabled by default) — a local-first engine with multi-engine search, rank fusion and on-device reranking, at $0/query with no API key. It is an **optional** dependency loaded through a dynamic `import()`, because wigolo-sdk is AGPL-3.0-only while UniPi is MIT; UniPi therefore ships no AGPL code. Install with `npm install -g wigolo && npx wigolo init`. Existing providers renumbered: search `2`=DuckDuckGo `3`=Jina `4`=SerpAPI `5`=Tavily `6`=Perplexity; read `2`=Jina Reader `3`=Firecrawl `4`=Perplexity.

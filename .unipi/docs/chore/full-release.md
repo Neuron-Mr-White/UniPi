@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-07-22 (v2.1.3)
+last-run: 2026-08-04 (v2.2.0)
 ---
 
 # Full Release Pipeline
@@ -25,27 +25,28 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 2.1.3 |
-| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.1.3 |
-| `packages/btw` | `@pi-unipi/btw` | 2.1.3 |
-| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.1.3 |
-| `packages/compactor` | `@pi-unipi/compactor` | 2.1.3 |
-| `packages/core` | `@pi-unipi/core` | 2.1.3 |
-| `packages/footer` | `@pi-unipi/footer` | 2.1.3 |
-| `packages/info-screen` | `@pi-unipi/info-screen` | 2.1.3 |
-| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.1.3 |
-| `packages/kanboard` | `@pi-unipi/kanboard` | 2.1.3 |
-| `packages/mcp` | `@pi-unipi/mcp` | 2.1.3 |
-| `packages/memory` | `@pi-unipi/memory` | 2.1.3 |
-| `packages/milestone` | `@pi-unipi/milestone` | 2.1.3 |
-| `packages/notify` | `@pi-unipi/notify` | 2.1.3 |
-| `packages/ralph` | `@pi-unipi/ralph` | 2.1.3 |
-| `packages/subagents` | `@pi-unipi/subagents` | 2.1.3 |
-| `packages/updater` | `@pi-unipi/updater` | 2.1.3 |
-| `packages/utility` | `@pi-unipi/utility` | 2.1.3 |
-| `packages/web-api` | `@pi-unipi/web-api` | 2.1.3 |
-| `packages/workflow` | `@pi-unipi/workflow` | 2.1.3 |
-| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.1.3 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 2.2.0 |
+| `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.2.0 |
+| `packages/btw` | `@pi-unipi/btw` | 2.2.0 |
+| `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.2.0 |
+| `packages/compactor` | `@pi-unipi/compactor` | 2.2.0 |
+| `packages/core` | `@pi-unipi/core` | 2.2.0 |
+| `packages/footer` | `@pi-unipi/footer` | 2.2.0 |
+| `packages/image` | `@pi-unipi/image` | 2.2.0 |
+| `packages/info-screen` | `@pi-unipi/info-screen` | 2.2.0 |
+| `packages/input-shortcuts` | `@pi-unipi/input-shortcuts` | 2.2.0 |
+| `packages/kanboard` | `@pi-unipi/kanboard` | 2.2.0 |
+| `packages/mcp` | `@pi-unipi/mcp` | 2.2.0 |
+| `packages/memory` | `@pi-unipi/memory` | 2.2.0 |
+| `packages/milestone` | `@pi-unipi/milestone` | 2.2.0 |
+| `packages/notify` | `@pi-unipi/notify` | 2.2.0 |
+| `packages/ralph` | `@pi-unipi/ralph` | 2.2.0 |
+| `packages/subagents` | `@pi-unipi/subagents` | 2.2.0 |
+| `packages/updater` | `@pi-unipi/updater` | 2.2.0 |
+| `packages/utility` | `@pi-unipi/utility` | 2.2.0 |
+| `packages/web-api` | `@pi-unipi/web-api` | 2.2.0 |
+| `packages/workflow` | `@pi-unipi/workflow` | 2.2.0 |
+| `packages/unipi` | `@pi-unipi/unipi` (root) | 2.2.0 |
 
 ---
 
