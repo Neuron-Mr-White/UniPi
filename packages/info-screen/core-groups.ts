@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getPiVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { parseUsageStats, formatTokens, formatCost } from "./usage-parser.js";
+import { parseUsageStatsAsync, formatTokens, formatCost } from "./usage-parser.js";
 import type { InfoGroup } from "./types.js";
 
 /**
@@ -397,7 +397,9 @@ export function registerCoreGroups(): void {
       ],
     },
     dataProvider: async () => {
-      const stats = parseUsageStats();
+      // Async variant yields to the event loop between files, so a cold parse
+      // cannot block keystrokes or the initial paint.
+      const stats = await parseUsageStatsAsync();
 
       // Find top model for each period
       const findTopModel = (modelStats: Record<string, { tokens: number; cost: number; sessions: number }> | undefined) => {

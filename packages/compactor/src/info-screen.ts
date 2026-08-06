@@ -12,7 +12,7 @@
 
 import type { SessionDB } from "./session/db.js";
 import { getLastCompactionStats } from "./compaction/hooks.js";
-import { parseUsageStats } from "@pi-unipi/info-screen/usage-parser.js";
+import { parseUsageStatsAsync } from "@pi-unipi/info-screen/usage-parser.js";
 import type { RuntimeCounters } from "./types.js";
 
 export interface CompactorInfoData {
@@ -42,9 +42,9 @@ function formatCost(n: number): string {
 }
 
 /** Estimate cost per token for the most-used model in the current session. */
-function estimateCostPerToken(): number | null {
+async function estimateCostPerToken(): Promise<number | null> {
   try {
-    const usage = parseUsageStats();
+    const usage = await parseUsageStatsAsync();
     // Use today's most-used model if available, otherwise all-time
     const models = usage.byModelToday;
     const todayKeys = Object.keys(models);
@@ -154,7 +154,7 @@ export async function getInfoScreenData(
       : "No tool calls yet";
 
     // ── Cost saved estimate ──
-    const costPerToken = estimateCostPerToken();
+    const costPerToken = await estimateCostPerToken();
     const costSaved = costPerToken !== null ? tokensSaved * costPerToken : null;
 
     // ── Last compaction details ──
