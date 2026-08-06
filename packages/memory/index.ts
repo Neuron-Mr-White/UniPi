@@ -25,7 +25,8 @@ import {
   MemoryStorage,
   getProjectName,
   searchAllProjects,
-  listAllProjects,
+  listAllProjectsCached,
+  invalidateAllProjectsCache,
 } from "./storage.js";
 import { registerMemoryTools, MEMORY_TOOLS, GLOBAL_SEARCH_ALIAS } from "./tools.js";
 import { registerMemoryCommands } from "./commands.js";
@@ -38,6 +39,26 @@ const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 let projectStorage: MemoryStorage | null = null;
 
 /**
+ * Whether orphaned-file sync still owes this session a run.
+ *
+ * The sync spawns a Python bridge (~0.5s). Running it in session_start delayed
+ * every startup for a job that only matters once memory is actually used, so it
+ * is deferred to the first storage access instead.
+ */
+let orphanSyncPending = false;
+
+/** Run the deferred orphaned-file sync exactly once per session. */
+function ensureOrphanSync(storage: MemoryStorage): void {
+  if (!orphanSyncPending) return;
+  orphanSyncPending = false;
+  try {
+    storage.syncOrphanedFiles();
+  } catch {
+    // Sync failure must not break the tool call that triggered it.
+  }
+}
+
+/**
  * Get storage for the current project.
  */
 function getStorage(): MemoryStorage {
@@ -45,6 +66,8 @@ function getStorage(): MemoryStorage {
     // Fallback: create new instance (shouldn't happen after session_start)
     return new MemoryStorage("unknown");
   }
+  // Any real use of memory picks up markdown files added out of band.
+  ensureOrphanSync(projectStorage);
   return projectStorage;
 }
 
@@ -56,7 +79,12 @@ export default function (pi: ExtensionAPI) {
   // Register tools and commands
   registerMemoryTools(pi, getStorage, {
     onRecall: () => { recallDone = true; },
-    onStore: () => { storeDone = true; },
+    onStore: () => {
+      storeDone = true;
+      // Fires on store and delete; drop the cached cross-project counts so
+      // the info overlay reflects the write.
+      invalidateAllProjectsCache();
+    },
   });
   registerMemoryCommands(pi, getStorage);
 
@@ -71,11 +99,11 @@ export default function (pi: ExtensionAPI) {
     projectStorage = new MemoryStorage(projectName);
     try {
       projectStorage.init();
-      
-      // Sync any orphaned markdown files into the database
-      const synced = projectStorage.syncOrphanedFiles();
-      // Removed console.warn — orphaned file sync is informational only.
-      // Visible via memory tool list or info-screen memory group.
+
+      // Orphaned markdown files are synced lazily on first storage access
+      // (see ensureOrphanSync) — the Python bridge spawn is too slow to run
+      // on the startup path, and nothing reads the result until memory is used.
+      orphanSyncPending = true;
     } catch (_err) {
       // Memory init failure — running without memory. Silent startup.
       projectStorage = null;
@@ -136,7 +164,9 @@ export default function (pi: ExtensionAPI) {
           let allMemories: Array<{ project: string; id: string; title: string; type: string }> = [];
           try {
             projectMemories = projectStorage.listAll();
-            allMemories = listAllProjects();
+            // Display-only counter: a short-lived cached value avoids a
+            // ~1.1s Python bridge spawn on the startup path.
+            allMemories = listAllProjectsCached();
           } catch (_err) {
             // Info panel data unavailable — shows empty values.
           }
@@ -168,7 +198,7 @@ export default function (pi: ExtensionAPI) {
       let projectCountAll = 0;
       try {
         projectCount = projectStorage?.listAll()?.length ?? 0;
-        projectCountAll = listAllProjects().length;
+        projectCountAll = listAllProjectsCached().length;
       } catch (_err) {
         // Count unavailable — status bar shows 0.
       }

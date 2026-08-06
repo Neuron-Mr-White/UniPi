@@ -1043,16 +1043,47 @@ export function searchAllProjects(
     .slice(0, limit);
 }
 
+/** Result shape shared by listAllProjects and its cached wrapper. */
+type AllProjectsEntry = { project: string; id: string; title: string; type: string };
+
+/**
+ * Cached view of listAllProjects().
+ *
+ * The uncached call spawns a Python MemPalace bridge (~1.1s). It backs two
+ * display-only counters in the info overlay, so a slightly stale number is
+ * strictly better than a 1.1s stall on every startup.
+ */
+let allProjectsCache: { at: number; value: AllProjectsEntry[] } | null = null;
+
+/** How long a cached cross-project listing stays valid. */
+const ALL_PROJECTS_TTL_MS = 60_000;
+
+/**
+ * listAllProjects() with a short TTL, for display paths that run at startup.
+ *
+ * Callers that must observe a write immediately should use listAllProjects()
+ * directly, or call invalidateAllProjectsCache() after mutating.
+ */
+export function listAllProjectsCached(): AllProjectsEntry[] {
+  const now = Date.now();
+  if (allProjectsCache && now - allProjectsCache.at < ALL_PROJECTS_TTL_MS) {
+    return allProjectsCache.value;
+  }
+  const value = listAllProjects();
+  allProjectsCache = { at: now, value };
+  return value;
+}
+
+/** Drop the cached cross-project listing (call after storing/deleting). */
+export function invalidateAllProjectsCache(): void {
+  allProjectsCache = null;
+}
+
 /**
  * List memories from ALL projects.
  * Returns memories with project name prefix.
  */
-export function listAllProjects(): Array<{
-  project: string;
-  id: string;
-  title: string;
-  type: string;
-}> {
+export function listAllProjects(): AllProjectsEntry[] {
   // MemPalace global path: list all drawers across wings.
   const install = ensureMempalace();
   if (install) {
@@ -1067,12 +1098,7 @@ export function listAllProjects(): Array<{
 
   // SQLite fallback: iterate project directories.
   const projectDirs = getAllProjectDirs();
-  const allMemories: Array<{
-    project: string;
-    id: string;
-    title: string;
-    type: string;
-  }> = [];
+  const allMemories: AllProjectsEntry[] = [];
 
   for (const { name: projectName, dir } of projectDirs) {
     const dbPath = path.join(dir, MEMORY_DB_NAME);
