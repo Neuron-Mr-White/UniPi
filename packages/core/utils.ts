@@ -187,6 +187,43 @@ export function getInstalledPackageVersion(startDir: string, packageName: string
   return getPackageVersion(root);
 }
 
+/** Cached pi version — resolved at most once per process. */
+let cachedPiVersion: string | null = null;
+
+/**
+ * Get the running Pi agent's version.
+ *
+ * Resolves by walking up from Pi's own entry point (`process.argv[1]`), which
+ * must be `realpath`'d first: the executable on PATH is typically a symlink
+ * (e.g. mise shims `~/.local/share/mise/installs/node/lts/bin/pi`), and the
+ * package.json lives next to the *real* `dist/cli.js`, not the link.
+ *
+ * Never spawns a subprocess. A previous implementation fell back to
+ * `execSync("pi --version")`, which cost ~350ms per call and still returned
+ * "unknown" because it matched against a `v` prefix that Pi no longer emits.
+ */
+export function getPiVersion(): string {
+  if (cachedPiVersion !== null) return cachedPiVersion;
+
+  const PI_PACKAGE = "@earendil-works/pi-coding-agent";
+  const entry = process.argv[1];
+  if (entry) {
+    try {
+      const realEntry = fs.realpathSync(entry);
+      const root = findPackageRoot(path.dirname(realEntry), PI_PACKAGE);
+      if (root) {
+        cachedPiVersion = getPackageVersion(root);
+        return cachedPiVersion;
+      }
+    } catch {
+      // Fall through to "unknown".
+    }
+  }
+
+  cachedPiVersion = "unknown";
+  return cachedPiVersion;
+}
+
 /**
  * Check if a module is available in node_modules.
  */

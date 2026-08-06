@@ -7,6 +7,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { getPiVersion } from "@pi-unipi/core";
 import type { EnvironmentInfo } from "../types.js";
 
 /** Collect environment information */
@@ -64,28 +65,6 @@ export function getEnvironmentInfo(): EnvironmentInfo {
     configPaths,
     extensionPaths,
   };
-}
-
-/** Try to determine Pi version */
-function getPiVersion(): string {
-  try {
-    // Try to read from pi's package
-    const piPkg = resolve(
-      process.cwd(),
-      "node_modules",
-      "@earendil-works",
-      "pi-coding-agent",
-      "package.json",
-    );
-    if (existsSync(piPkg)) {
-      const { readFileSync } = require("node:fs");
-      const pkg = JSON.parse(readFileSync(piPkg, "utf-8"));
-      return pkg.version || "unknown";
-    }
-  } catch {
-    // Best effort
-  }
-  return "unknown";
 }
 
 /** Format environment info as markdown */

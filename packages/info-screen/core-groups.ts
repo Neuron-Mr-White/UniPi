@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getPiVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
 import { parseUsageStats, formatTokens, formatCost } from "./usage-parser.js";
 import type { InfoGroup } from "./types.js";
@@ -25,43 +26,6 @@ function getPackageVersion(packageDir: string): string {
   } catch {
     return "0.0.0";
   }
-}
-
-/**
- * Get pi version from its package.json.
- */
-function getPiVersion(): string {
-  // Try to find pi's package.json in various locations
-  const possiblePaths = [
-    // Global npm install
-    join(homedir(), ".local", "share", "mise", "installs", "node", "24.14.1", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
-    // Alternative locations
-    join(homedir(), ".local", "share", "mise", "installs", "node", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "package.json"),
-  ];
-
-  for (const pkgPath of possiblePaths) {
-    try {
-      if (existsSync(pkgPath)) {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        return pkg?.version ?? "unknown";
-      }
-    } catch {
-      // Continue to next path
-    }
-  }
-
-  // Fallback: try to run pi --version
-  try {
-    const { execSync } = require("node:child_process");
-    const version = execSync("pi --version 2>/dev/null", { encoding: "utf-8" }).trim();
-    // Extract version number from output like "pi v0.42.4"
-    const match = version.match(/v([\d.]+)/);
-    if (match) return match[1];
-  } catch {
-    // Ignore
-  }
-
-  return "unknown";
 }
 
 /**
