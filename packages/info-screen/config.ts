@@ -5,11 +5,11 @@
  * under the "unipi.info" key.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
-import type { InfoScreenSettings, GroupSettings } from "./types.js";
-import { DEFAULT_SETTINGS } from "./types.js";
+import type { InfoScreenSettings, GroupSettings, BootMode } from "./types.js";
+import { DEFAULT_SETTINGS, BOOT_MODES } from "./types.js";
 
 /** Settings path */
 const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
@@ -44,9 +44,11 @@ function readSettingsFile(): Record<string, unknown> {
  * Write the full settings file.
  */
 function writeSettingsFile(data: Record<string, unknown>): void {
-  const dir = require("node:path").dirname(SETTINGS_PATH);
+  // These were require() calls in an ESM module, which throws under Node's
+  // module-format detection as soon as the directory is missing.
+  const dir = dirname(SETTINGS_PATH);
   if (!existsSync(dir)) {
-    require("node:fs").mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true });
   }
   writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
@@ -68,12 +70,30 @@ export function getInfoSettings(): InfoScreenSettings {
   const info = unipi.info as Record<string, unknown>;
 
   cachedSettings = {
-    showOnBoot: typeof info.showOnBoot === "boolean" ? info.showOnBoot : DEFAULT_SETTINGS.showOnBoot,
+    bootMode: parseBootMode(info),
     bootTimeoutMs: typeof info.bootTimeoutMs === "number" ? info.bootTimeoutMs : DEFAULT_SETTINGS.bootTimeoutMs,
     groups: isRecord(info.groups) ? parseGroupSettings(info.groups) : {},
   };
 
   return cachedSettings;
+}
+
+/**
+ * Resolve the boot mode, migrating the legacy `showOnBoot` boolean.
+ *
+ * `showOnBoot: false` maps to "off". `showOnBoot: true` maps to "on" rather
+ * than the new "auto-close" default, so an existing config keeps behaving the
+ * way its owner configured it.
+ */
+function parseBootMode(info: Record<string, unknown>): BootMode {
+  const raw = info.bootMode;
+  if (typeof raw === "string" && (BOOT_MODES as string[]).includes(raw)) {
+    return raw as BootMode;
+  }
+  if (typeof info.showOnBoot === "boolean") {
+    return info.showOnBoot ? "on" : "off";
+  }
+  return DEFAULT_SETTINGS.bootMode;
 }
 
 /**
@@ -118,7 +138,7 @@ export function saveInfoSettings(settings: InfoScreenSettings): void {
   }
 
   (file[SETTINGS_KEY] as Record<string, unknown>).info = {
-    showOnBoot: settings.showOnBoot,
+    bootMode: settings.bootMode,
     bootTimeoutMs: settings.bootTimeoutMs,
     groups: settings.groups,
   };

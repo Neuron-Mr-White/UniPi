@@ -34,6 +34,10 @@ export default function (pi: ExtensionAPI) {
   // Start load tracking
   startLoadTracking();
 
+  // Whether an info overlay is currently on screen. Module announcements only
+  // trigger a re-fetch when something is actually displaying the result.
+  let overlayVisible = false;
+
   // Debounced MODULE_READY handling — batch module announcements
   // to prevent layout shift from rapid per-module cache invalidation.
   let moduleReadyBatch: Array<{ name: string; version: string; tools?: string[]; loadTimeMs?: number }> = [];
@@ -60,14 +64,18 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // Single cache invalidation for all modules
+    // Single cache invalidation for all modules.
+    //
+    // Only re-fetch while an overlay is actually on screen. Otherwise this
+    // ran every module announcement even with the dashboard disabled,
+    // doing work nobody would see.
     infoRegistry.invalidateCache("overview");
-    infoRegistry.getGroupData("overview");
+    if (hasTools) infoRegistry.invalidateCache("tools");
 
-    if (hasTools) {
-      infoRegistry.invalidateCache("tools");
-      infoRegistry.getGroupData("tools");
-    }
+    if (!overlayVisible) return;
+
+    infoRegistry.getGroupData("overview");
+    if (hasTools) infoRegistry.getGroupData("tools");
   }
 
   // Listen for module announcements — track and trigger reactive updates
@@ -107,16 +115,22 @@ export default function (pi: ExtensionAPI) {
    * Cache-first: opens with whatever data is cached (even empty).
    * Background: each group fetches independently, overlay re-renders reactively.
    */
-  function showOverlay(ctx: ExtensionContext): void {
+  function showOverlay(ctx: ExtensionContext, autoCloseMs?: number): void {
     ctx.ui.custom<void>(
       (tui, theme, _keybindings, done) => {
         const overlay = new InfoOverlay();
         overlay.setTheme(theme);
+        overlayVisible = true;
         overlay.onClose = () => {
+          overlayVisible = false;
           overlay.destroy();
           done();
         };
         overlay.requestRender = () => tui.requestRender();
+        // Boot dashboard dismisses itself; any keypress cancels the timer.
+        if (autoCloseMs && autoCloseMs > 0) {
+          overlay.startBootTimer(autoCloseMs);
+        }
         return {
           render: (w: number) => overlay.render(w),
           invalidate: () => overlay.invalidate(),
@@ -142,9 +156,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (event, ctx) => {
     const settings = getInfoSettings();
 
-    if (settings.showOnBoot && event.reason === "startup") {
-      // Open immediately — cache-first, no waiting
-      showOverlay(ctx);
+    if (settings.bootMode !== "off" && event.reason === "startup") {
+      // Open immediately — cache-first, no waiting. In "auto-close" mode the
+      // overlay dismisses itself after bootTimeoutMs; any keypress cancels it.
+      showOverlay(ctx, settings.bootMode === "auto-close" ? settings.bootTimeoutMs : 0);
     }
 
     finishLoadTracking();

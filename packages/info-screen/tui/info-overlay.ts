@@ -15,6 +15,14 @@ import { getInfoSettings } from "../config.js";
 import type { InfoGroup, GroupData } from "../types.js";
 import { boxInnerWidth } from "@pi-unipi/core";
 
+/**
+ * How long to wait before warming the non-visible tabs.
+ *
+ * Long enough that startup and the first paint finish first, short enough that
+ * a tab switch a second later is already warm.
+ */
+const PREFETCH_DELAY_MS = 1500;
+
 /** Tab color palette */
 const TAB_FG: Array<"accent" | "success" | "warning" | "error"> = [
   "accent",
@@ -48,6 +56,10 @@ export class InfoOverlay implements Component {
   private lastGlobalUpdate = 0;
   private unsubscribers: Array<() => void> = [];
   private _destroyed = false;
+  /** Groups whose fetch has already been kicked off (lazy-load bookkeeping). */
+  private fetched = new Set<string>();
+  private prefetchTimer: ReturnType<typeof setTimeout> | null = null;
+  private bootTimer: ReturnType<typeof setTimeout> | null = null;
 
   onClose?: () => void;
   requestRender?: () => void;
@@ -89,31 +101,55 @@ export class InfoOverlay implements Component {
       })
     );
 
-    // Start background fetch for all groups (non-blocking)
-    this.fetchAllBackground();
+    // Fetch the visible tab now; everything else waits for idle.
+    this.fetchActiveGroup();
+    this.schedulePrefetch();
+  }
+
+  /** Fetch one group, tracking its loading state. Safe to call repeatedly. */
+  private fetchGroup(groupId: string): void {
+    if (this._destroyed) return;
+    if (this.fetched.has(groupId)) return;
+    this.fetched.add(groupId);
+    infoRegistry.getGroupData(groupId).then(() => {
+      this.groupLoading.set(groupId, false);
+    }).catch(() => {
+      this.groupLoading.set(groupId, false);
+    });
   }
 
   /**
-   * Fetch all groups in background. Each resolves independently.
+   * Fetch the currently visible group.
    *
-   * Each fetch is deferred to a macrotask (setTimeout 0) so the constructor
-   * returns immediately. Without this, getGroupData() runs each group's
-   * dataProvider synchronously up to its first `await` before yielding —
-   * heavy providers (usage stats parse 1GB+ of session files, memory scans)
-   * blocked the session_start handler for seconds.
+   * Deferred to a macrotask because an async dataProvider still runs
+   * synchronously up to its first `await`; calling it inline would put that
+   * work back on the constructor's caller (session_start).
    */
-  private fetchAllBackground(): void {
-    for (const group of this.groups) {
-      // Defer each fetch to a macrotask so the overlay constructs instantly.
-      setTimeout(() => {
-        if (this._destroyed) return;
-        infoRegistry.getGroupData(group.id).then(() => {
-          this.groupLoading.set(group.id, false);
-        }).catch(() => {
-          this.groupLoading.set(group.id, false);
-        });
-      }, 0);
-    }
+  private fetchActiveGroup(): void {
+    const group = this.groups[this.activeTabIndex];
+    if (!group) return;
+    setTimeout(() => this.fetchGroup(group.id), 0);
+  }
+
+  /**
+   * Warm the remaining tabs once the app is idle.
+   *
+   * Fetching every group up front cost seconds of startup for panels the user
+   * may never open. Prefetching after a delay keeps tab switches instant
+   * without paying for them before the first prompt is ready.
+   */
+  private schedulePrefetch(): void {
+    if (this.prefetchTimer) return;
+    this.prefetchTimer = setTimeout(() => {
+      this.prefetchTimer = null;
+      if (this._destroyed) return;
+      for (const group of this.groups) {
+        if (group.id === this.groups[this.activeTabIndex]?.id) continue;
+        this.fetchGroup(group.id);
+      }
+    }, PREFETCH_DELAY_MS);
+    // Never hold the process open just to warm a panel.
+    this.prefetchTimer.unref?.();
   }
 
   /**
@@ -127,28 +163,29 @@ export class InfoOverlay implements Component {
       this.applyOrder();
     }
 
-    // Ensure every group has real (non-empty) data.
-    // Registration notifications inject `{}` to trigger re-sync; we must
-    // not treat that as fetched data or the stats render as "—".
+    // Adopt any data the registry already has. Registration notifications
+    // inject `{}` to trigger a re-sync; that is not real data and must not be
+    // treated as fetched, or the stats render as "—".
+    //
+    // Groups are NOT fetched here: doing so would defeat lazy loading, since
+    // syncGroups() runs on every render. Fetches are driven by tab visibility
+    // (fetchActiveGroup) and the idle prefetch instead.
     for (const group of this.groups) {
       const existing = this.groupData.get(group.id);
       const hasRealData = existing && Object.keys(existing).length > 0;
-      if (!hasRealData) {
-        const cached = infoRegistry.getCachedData(group.id);
-        if (cached && Object.keys(cached).length > 0) {
-          this.groupData.set(group.id, cached);
-        } else if (!this.groupLoading.get(group.id)) {
-          this.groupLoading.set(group.id, true);
-          infoRegistry.getGroupData(group.id).then((data) => {
-            this.groupData.set(group.id, data);
-            this.groupLoading.set(group.id, false);
-            this.lastGlobalUpdate = Date.now();
-            this.requestRender?.();
-          }).catch(() => {
-            this.groupLoading.set(group.id, false);
-          });
-        }
+      if (hasRealData) continue;
+
+      const cached = infoRegistry.getCachedData(group.id);
+      if (cached && Object.keys(cached).length > 0) {
+        this.groupData.set(group.id, cached);
       }
+    }
+
+    // A late-arriving group may now be the visible one, and the prefetch pass
+    // may have already run — make sure the active tab still gets its data.
+    if (hadNewGroups) {
+      this.fetchActiveGroup();
+      this.schedulePrefetch();
     }
   }
 
@@ -169,10 +206,41 @@ export class InfoOverlay implements Component {
    */
   destroy(): void {
     this._destroyed = true;
+    this.cancelBootTimer();
+    if (this.prefetchTimer) {
+      clearTimeout(this.prefetchTimer);
+      this.prefetchTimer = null;
+    }
     for (const unsub of this.unsubscribers) {
       unsub();
     }
     this.unsubscribers = [];
+  }
+
+  /** Stop the boot auto-close timer, if one is pending. */
+  private cancelBootTimer(): void {
+    if (this.bootTimer) {
+      clearTimeout(this.bootTimer);
+      this.bootTimer = null;
+    }
+  }
+
+  /**
+   * Auto-close the overlay after `ms`, unless the user interacts first.
+   *
+   * Used when the overlay is shown on boot: the dashboard is informational, so
+   * it should get out of the way on its own rather than requiring a keypress.
+   */
+  startBootTimer(ms: number): void {
+    this.cancelBootTimer();
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    this.bootTimer = setTimeout(() => {
+      this.bootTimer = null;
+      if (this._destroyed) return;
+      this.destroy();
+      this.onClose?.();
+    }, ms);
+    this.bootTimer.unref?.();
   }
 
   invalidate(): void {
@@ -180,12 +248,17 @@ export class InfoOverlay implements Component {
   }
 
   handleInput(data: string): void {
+    // Any keypress means the user is driving; stop the boot auto-close.
+    this.cancelBootTimer();
+
     if (data === "\x1b[C" || data === "l") {
       this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
       this.scrollOffset = 0;
+      this.fetchActiveGroup();
     } else if (data === "\x1b[D" || data === "h") {
       this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
       this.scrollOffset = 0;
+      this.fetchActiveGroup();
     } else if (data === "\x1b[B" || data === "j") {
       this.scrollOffset++;
     } else if (data === "\x1b[A" || data === "k") {
@@ -211,12 +284,15 @@ export class InfoOverlay implements Component {
     if (!group) return;
     this.groupLoading.set(group.id, true);
     this.requestRender?.();
+    // Explicit refresh must bypass the lazy-load guard.
+    this.fetched.add(group.id);
     infoRegistry.refreshGroup(group.id);
   }
 
   private refreshAll(): void {
     for (const group of this.groups) {
       this.groupLoading.set(group.id, true);
+      this.fetched.add(group.id);
     }
     this.requestRender?.();
     infoRegistry.refreshAll();

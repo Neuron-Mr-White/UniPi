@@ -47,11 +47,26 @@ export interface InfoGroup {
   dataProvider: () => Promise<GroupData>;
 }
 
+/** How the dashboard behaves at startup. */
+export type BootMode = "on" | "off" | "auto-close";
+
+/** All valid boot modes, in the order the settings UI cycles them. */
+export const BOOT_MODES: BootMode[] = ["on", "auto-close", "off"];
+
 /** Settings for info-screen in settings.json */
 export interface InfoScreenSettings {
-  /** Whether to show dashboard on boot */
-  showOnBoot: boolean;
-  /** Timeout in ms waiting for modules at boot */
+  /**
+   * What the dashboard does at startup:
+   *  - "on":         show it and leave it up until dismissed (q/Esc)
+   *  - "off":        do not show it at all (no data is fetched)
+   *  - "auto-close": show it, then close after `bootTimeoutMs`
+   */
+  bootMode: BootMode;
+  /**
+   * How long the boot dashboard stays up in "auto-close" mode, in ms.
+   * Any keypress cancels the timer and keeps the overlay open.
+   * Does not apply to the overlay opened via /unipi:info.
+   */
   bootTimeoutMs: number;
   /** Per-group settings */
   groups: Record<string, GroupSettings>;
@@ -69,8 +84,8 @@ export interface GroupSettings {
 
 /** Default settings */
 export const DEFAULT_SETTINGS: InfoScreenSettings = {
-  showOnBoot: true,
-  bootTimeoutMs: 8000,
+  bootMode: "auto-close",
+  bootTimeoutMs: 2000,
   groups: {},
   groupOrder: [],
 };

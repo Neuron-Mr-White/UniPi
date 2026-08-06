@@ -76,8 +76,8 @@ Settings in pi `settings.json`:
 {
   "unipi": {
     "infoScreen": {
-      "showOnBoot": true,
-      "bootTimeoutMs": 8000,
+      "bootMode": "auto-close",
+      "bootTimeoutMs": 2000,
       "groups": {
         "modules": { "show": true },
         "ralph": { "show": true },
@@ -91,8 +91,8 @@ Settings in pi `settings.json`:
 
 | Setting | Default | What It Does |
 |---------|---------|--------------|
-| `showOnBoot` | true | Show dashboard when session starts |
-| `bootTimeoutMs` | 8000 | How long to wait for modules before showing |
+| `bootMode` | `"auto-close"` | `"on"` keeps the dashboard up until dismissed, `"auto-close"` closes it after `bootTimeoutMs`, `"off"` never shows it |
+| `bootTimeoutMs` | 2000 | Auto-close delay, in ms. Any keypress cancels it. Ignored unless `bootMode` is `"auto-close"` |
 | `groups.{id}.show` | true | Toggle group visibility |
 | `groupOrder` | priority sort | Custom group ordering |
 

@@ -9,7 +9,8 @@ import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings, saveInfoSettings, getGroupSettings, setGroupSettings } from "../config.js";
-import type { InfoScreenSettings, GroupSettings } from "../types.js";
+import type { InfoScreenSettings, GroupSettings, BootMode } from "../types.js";
+import { BOOT_MODES } from "../types.js";
 
 /** ANSI escape codes */
 const ansi = {
@@ -28,6 +29,13 @@ const ansi = {
 const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
 const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
+/** How each boot mode is presented in the settings list. */
+const BOOT_MODE_LABELS: Record<BootMode, string> = {
+  "on": `${ansi.green}● On${ansi.reset}`,
+  "auto-close": `${ansi.cyan}◐ Auto-close${ansi.reset}`,
+  "off": `${ansi.dim}○ Off${ansi.reset}`,
+};
+
 /**
  * Settings overlay component.
  */
@@ -36,7 +44,11 @@ export class SettingsOverlay implements Component {
   private groups: Array<{ id: string; name: string; icon: string }>;
   private selectedIndex = 0;
   /** Index of the "Show on boot" toggle row (above the group list). */
-  private static readonly BOOT_TOGGLE_INDEX = 0;
+  /** Row 0 cycles the boot mode; row 1 edits the auto-close delay. */
+  private static readonly BOOT_MODE_INDEX = 0;
+  private static readonly BOOT_TIMEOUT_INDEX = 1;
+  /** Number of settings rows rendered above the group list. */
+  private static readonly HEADER_ROWS = 2;
   private savedGroupIndex = 0; // Saved position before entering stats mode
   private mode: "groups" | "stats" = "groups";
   private selectedGroupId: string | null = null;
@@ -83,39 +95,54 @@ export class SettingsOverlay implements Component {
    * Handle input in groups mode.
    */
   private handleGroupsInput(data: string): void {
-    const lastIndex = this.groups.length; // boot toggle is index 0, groups occupy 1..length
+    const H = SettingsOverlay.HEADER_ROWS;
+    const rowCount = this.groups.length + H; // header rows, then groups
+    const onBootMode = this.selectedIndex === SettingsOverlay.BOOT_MODE_INDEX;
+    const onBootTimeout = this.selectedIndex === SettingsOverlay.BOOT_TIMEOUT_INDEX;
     switch (data) {
       case "\x1b[A": // Up
       case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + (lastIndex + 1)) % (lastIndex + 1);
+        this.selectedIndex = (this.selectedIndex - 1 + rowCount) % rowCount;
         break;
       case "\x1b[B": // Down
       case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % (lastIndex + 1);
+        this.selectedIndex = (this.selectedIndex + 1) % rowCount;
         break;
-      case " ": // Space - toggle
-        if (this.selectedIndex === SettingsOverlay.BOOT_TOGGLE_INDEX) {
-          this.toggleShowOnBoot();
+      case " ": // Space - toggle / cycle
+        if (onBootMode) {
+          this.cycleBootMode();
+        } else if (onBootTimeout) {
+          this.adjustBootTimeout(500);
         } else {
-          this.toggleGroupVisibility(this.groups[this.selectedIndex - 1].id);
+          this.toggleGroupVisibility(this.groups[this.selectedIndex - H].id);
         }
         break;
       case "\r": // Enter - enter stats mode
       case "\x1b[C": // Right - enter stats mode
       case "l":
-        if (this.selectedIndex === SettingsOverlay.BOOT_TOGGLE_INDEX) {
-          this.toggleShowOnBoot();
+        if (onBootMode) {
+          this.cycleBootMode();
+        } else if (onBootTimeout) {
+          this.adjustBootTimeout(500);
         } else {
-          this.enterStatsMode(this.groups[this.selectedIndex - 1].id);
+          this.enterStatsMode(this.groups[this.selectedIndex - H].id);
+        }
+        break;
+      case "\x1b[D": // Left - cycle back / decrease
+      case "h":
+        if (onBootMode) {
+          this.cycleBootMode(-1);
+        } else if (onBootTimeout) {
+          this.adjustBootTimeout(-500);
         }
         break;
       case "J": // Shift+J - move group down
-        if (this.selectedIndex > SettingsOverlay.BOOT_TOGGLE_INDEX) {
+        if (this.selectedIndex >= H) {
           this.moveGroupDown();
         }
         break;
       case "K": // Shift+K - move group up
-        if (this.selectedIndex > SettingsOverlay.BOOT_TOGGLE_INDEX) {
+        if (this.selectedIndex >= H) {
           this.moveGroupUp();
         }
         break;
@@ -195,11 +222,23 @@ export class SettingsOverlay implements Component {
     this.settings.groups[groupId] = groupSettings;
   }
 
+  /** Cycle the boot mode: on → auto-close → off → on. */
+  private cycleBootMode(step = 1): void {
+    const current = BOOT_MODES.indexOf(this.settings.bootMode);
+    const next = (current + step + BOOT_MODES.length) % BOOT_MODES.length;
+    this.settings.bootMode = BOOT_MODES[next]!;
+    saveInfoSettings(this.settings);
+  }
+
   /**
-   * Toggle the "show on boot" setting.
+   * Adjust the auto-close delay in 500ms steps.
+   *
+   * Clamped to a sane range: below 500ms the dashboard would vanish before it
+   * could be read, and beyond 30s "auto-close" stops meaning anything.
    */
-  private toggleShowOnBoot(): void {
-    this.settings.showOnBoot = !this.settings.showOnBoot;
+  private adjustBootTimeout(deltaMs: number): void {
+    const next = this.settings.bootTimeoutMs + deltaMs;
+    this.settings.bootTimeoutMs = Math.min(30_000, Math.max(500, next));
     saveInfoSettings(this.settings);
   }
 
@@ -217,8 +256,9 @@ export class SettingsOverlay implements Component {
    * Move selected group up in order.
    */
   private moveGroupUp(): void {
-    if (this.selectedIndex <= SettingsOverlay.BOOT_TOGGLE_INDEX + 1) return;
-    const i = this.selectedIndex - 1; // map back to groups array index
+    // Already the first group; nothing above it but the settings rows.
+    if (this.selectedIndex <= SettingsOverlay.HEADER_ROWS) return;
+    const i = this.selectedIndex - SettingsOverlay.HEADER_ROWS;
     // Swap with previous
     const temp = this.groups[i]!;
     this.groups[i] = this.groups[i - 1]!;
@@ -231,8 +271,9 @@ export class SettingsOverlay implements Component {
    * Move selected group down in order.
    */
   private moveGroupDown(): void {
-    if (this.selectedIndex >= this.groups.length) return; // boot toggle occupies 0, groups 1..length
-    const i = this.selectedIndex - 1; // map back to groups array index
+    // Header rows occupy 0..HEADER_ROWS-1; groups follow.
+    if (this.selectedIndex >= this.groups.length + SettingsOverlay.HEADER_ROWS - 1) return;
+    const i = this.selectedIndex - SettingsOverlay.HEADER_ROWS;
     // Swap with next
     const temp = this.groups[i]!;
     this.groups[i] = this.groups[i + 1]!;
@@ -283,16 +324,30 @@ export class SettingsOverlay implements Component {
     lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.bold}⚙️  Info Screen Settings${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
 
-    // Group list
-    // Boot toggle row (index 0)
+    // Boot mode row (index 0)
     {
-      const isSelected = SettingsOverlay.BOOT_TOGGLE_INDEX === this.selectedIndex;
-      const isEnabled = this.settings.showOnBoot;
-      const toggle = isEnabled ? TOGGLE_ON : TOGGLE_OFF;
+      const isSelected = SettingsOverlay.BOOT_MODE_INDEX === this.selectedIndex;
       const indicator = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
-      let line = `  ${indicator} ${toggle} 🚀 Show on boot`;
+      const label = BOOT_MODE_LABELS[this.settings.bootMode];
+      let line = `  ${indicator} 🚀 Show on boot   ${ansi.bold}${label}${ansi.reset}`;
       if (isSelected) {
-        line += `  ${ansi.dim}→ toggle${ansi.reset}`;
+        line += `  ${ansi.dim}←/→ change${ansi.reset}`;
+      }
+      lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
+    }
+
+    // Auto-close delay row (index 1) — only meaningful in auto-close mode.
+    {
+      const isSelected = SettingsOverlay.BOOT_TIMEOUT_INDEX === this.selectedIndex;
+      const active = this.settings.bootMode === "auto-close";
+      const indicator = isSelected ? `${ansi.cyan}▸${ansi.reset}` : " ";
+      const seconds = `${(this.settings.bootTimeoutMs / 1000).toFixed(1)}s`;
+      const value = active ? `${ansi.bold}${seconds}${ansi.reset}` : `${ansi.dim}${seconds}${ansi.reset}`;
+      let line = active
+        ? `  ${indicator} ⏱️  Auto-close after ${value}`
+        : `  ${indicator} ${ansi.dim}⏱️  Auto-close after${ansi.reset} ${value}`;
+      if (isSelected && active) {
+        line += `  ${ansi.dim}←/→ ±0.5s${ansi.reset}`;
       }
       lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(line, innerWidth)}${ansi.dim}│${ansi.reset}`);
     }
@@ -300,8 +355,8 @@ export class SettingsOverlay implements Component {
 
     for (let i = 0; i < this.groups.length; i++) {
       const group = this.groups[i];
-      // index 0 is the boot toggle; groups start at row index 1
-      const rowIndex = i + 1;
+      // Header rows occupy 0..HEADER_ROWS-1; groups follow.
+      const rowIndex = i + SettingsOverlay.HEADER_ROWS;
       const isSelected = rowIndex === this.selectedIndex;
       const groupSettings = getGroupSettings(group.id);
       const isEnabled = groupSettings.show;
@@ -324,7 +379,7 @@ export class SettingsOverlay implements Component {
 
     // Footer
     lines.push(`${ansi.dim}├${"─".repeat(innerWidth)}┤${ansi.reset}`);
-    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.dim}↑↓ select  Space toggle  Enter/→ stats  J/K reorder  q close${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
+    lines.push(`${ansi.dim}│${ansi.reset}${this.padToWidth(this.renderCentered(`${ansi.dim}↑↓ select  ←→ change  Space toggle  Enter stats  J/K reorder  q close${ansi.reset}`, innerWidth), innerWidth)}${ansi.dim}│${ansi.reset}`);
     lines.push(`${ansi.dim}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;
