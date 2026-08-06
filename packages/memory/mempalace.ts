@@ -11,7 +11,7 @@
  * hard-fail because the backend is missing.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -252,6 +252,71 @@ export function runBridge<T = unknown>(
   } catch {
     return null;
   }
+}
+
+/**
+ * Async variant of runBridge that does not block the event loop.
+ *
+ * spawnSync freezes the process for the whole Python round-trip (~0.5-1.1s).
+ * Use this from any path that runs while the UI is live — startup status,
+ * background refreshes — so keystrokes stay responsive.
+ */
+export function runBridgeAsync<T = unknown>(
+  install: MempalaceInstall,
+  palace: string,
+  cmd: string,
+  args: Record<string, unknown> = {},
+): Promise<T | null> {
+  return new Promise((resolve) => {
+    let argsJson: string;
+    try {
+      argsJson = JSON.stringify(args);
+    } catch {
+      resolve(null);
+      return;
+    }
+
+    let child;
+    try {
+      child = spawn(install.python, [BRIDGE_PATH, palace, cmd, argsJson], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    } catch {
+      resolve(null);
+      return;
+    }
+
+    let out = "";
+    let settled = false;
+    const finish = (value: T | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* already gone */ }
+      finish(null);
+    }, 60_000);
+    // Do not hold the process open purely for a background bridge call.
+    timer.unref?.();
+
+    child.stdout?.setEncoding("utf-8");
+    child.stdout?.on("data", (chunk) => { out += chunk; });
+    child.on("error", () => finish(null));
+    child.on("close", (code) => {
+      if (code !== 0) return finish(null);
+      const trimmed = out.trim();
+      if (!trimmed) return finish(null);
+      try {
+        const parsed = JSON.parse(trimmed) as BridgeResponse<T>;
+        finish(parsed.ok ? ((parsed.result ?? null) as T | null) : null);
+      } catch {
+        finish(null);
+      }
+    });
+  });
 }
 
 /** Ping the bridge — returns true if the backend is alive. */

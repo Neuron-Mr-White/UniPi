@@ -25,7 +25,7 @@ import {
   MemoryStorage,
   getProjectName,
   searchAllProjects,
-  listAllProjectsCached,
+  listAllProjectsCachedAsync,
   invalidateAllProjectsCache,
 } from "./storage.js";
 import { registerMemoryTools, MEMORY_TOOLS, GLOBAL_SEARCH_ALIAS } from "./tools.js";
@@ -163,10 +163,10 @@ export default function (pi: ExtensionAPI) {
           let projectMemories: Array<{ id: string; title: string; type: string }> = [];
           let allMemories: Array<{ project: string; id: string; title: string; type: string }> = [];
           try {
-            projectMemories = projectStorage.listAll();
-            // Display-only counter: a short-lived cached value avoids a
-            // ~1.1s Python bridge spawn on the startup path.
-            allMemories = listAllProjectsCached();
+            // Async twins: the MemPalace backend spawns Python, which would
+            // otherwise block the UI while the overlay is open.
+            projectMemories = await projectStorage.listAllAsync();
+            allMemories = await listAllProjectsCachedAsync();
           } catch (_err) {
             // Info panel data unavailable — shows empty values.
           }
@@ -192,23 +192,31 @@ export default function (pi: ExtensionAPI) {
       });
     }
 
-    // Show memory status in UI
+    // Show memory status in UI.
+    //
+    // Both counts come from the Python MemPalace bridge (~1.5s combined) and
+    // only produce a status-bar string, so they are resolved after startup and
+    // the status is filled in when they land. Blocking session_start on them
+    // delayed the whole extension chain.
     if (ctx.hasUI) {
-      let projectCount = 0;
-      let projectCountAll = 0;
-      try {
-        projectCount = projectStorage?.listAll()?.length ?? 0;
-        projectCountAll = listAllProjectsCached().length;
-      } catch (_err) {
-        // Count unavailable — status bar shows 0.
-      }
       const mempalaceActive = projectStorage?.isMempalace() ?? false;
       const backendIcon = mempalaceActive ? "🧠" : (isEmbeddingReady() ? "⚡" : "📝");
       const warn = hasModelChanged() ? " ⚠" : "";
-      ctx.ui.setStatus(
-        "unipi-memory",
-        `${backendIcon} mem ${projectCount}p/${projectCountAll}all${warn}`
-      );
+      const setStatus = (counts: string) =>
+        ctx.ui.setStatus("unipi-memory", `${backendIcon} mem ${counts}${warn}`);
+
+      setStatus("…");
+      void (async () => {
+        let projectCount = 0;
+        let projectCountAll = 0;
+        try {
+          projectCount = (await projectStorage?.listAllAsync())?.length ?? 0;
+          projectCountAll = (await listAllProjectsCachedAsync()).length;
+        } catch (_err) {
+          // Count unavailable — status bar shows 0.
+        }
+        setStatus(`${projectCount}p/${projectCountAll}all`);
+      })();
     }
   });
 

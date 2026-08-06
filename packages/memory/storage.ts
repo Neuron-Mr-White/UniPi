@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import {
   ensureMempalace,
   runBridge,
+  runBridgeAsync,
   isMigrated,
   markMigrated,
   isPingVerified,
@@ -279,6 +280,32 @@ export class MemoryStorage {
       invalidatePingVerified();
     }
     return result;
+  }
+
+  /** Async twin of memPalaceCall, for paths that must not block the UI. */
+  private async memPalaceCallAsync<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T | null> {
+    const install = this.mempalaceInstall;
+    if (!install) return null;
+    const result = await runBridgeAsync<T>(install, this.palacePath, cmd, args);
+    if (result === null) {
+      invalidatePingVerified();
+    }
+    return result;
+  }
+
+  /**
+   * Async twin of listAll().
+   *
+   * The SQLite path is already fast and stays synchronous; only the MemPalace
+   * path (a Python spawn) actually needs to yield.
+   */
+  async listAllAsync(): Promise<Array<{ id: string; title: string; type: string }>> {
+    if (this.isMempalace()) {
+      return (await this.memPalaceCallAsync<MempalaceListItem[]>("list", {
+        wing: this.projectName,
+      })) ?? [];
+    }
+    return this.listAll();
   }
 
   /**
@@ -1058,25 +1085,35 @@ let allProjectsCache: { at: number; value: AllProjectsEntry[] } | null = null;
 /** How long a cached cross-project listing stays valid. */
 const ALL_PROJECTS_TTL_MS = 60_000;
 
+/** Drop the cached cross-project listing (call after storing/deleting). */
+export function invalidateAllProjectsCache(): void {
+  allProjectsCache = null;
+}
+
 /**
- * listAllProjects() with a short TTL, for display paths that run at startup.
+ * Async twin of listAllProjectsCached(), for UI paths.
  *
- * Callers that must observe a write immediately should use listAllProjects()
- * directly, or call invalidateAllProjectsCache() after mutating.
+ * On a cache miss the MemPalace path spawns Python; doing that synchronously
+ * froze the UI for ~1.1s. Only the bridge call is async — the SQLite fallback
+ * is fast enough to run inline.
  */
-export function listAllProjectsCached(): AllProjectsEntry[] {
+export async function listAllProjectsCachedAsync(): Promise<AllProjectsEntry[]> {
   const now = Date.now();
   if (allProjectsCache && now - allProjectsCache.at < ALL_PROJECTS_TTL_MS) {
     return allProjectsCache.value;
   }
-  const value = listAllProjects();
+
+  const install = ensureMempalace();
+  let value: AllProjectsEntry[];
+  if (install) {
+    const items = (await runBridgeAsync<MempalaceListItemAll[]>(install, DEFAULT_PALACE, "list_all", {})) ?? [];
+    value = items.map((m) => ({ project: m.project, id: m.id, title: m.title, type: m.type }));
+  } else {
+    value = listAllProjects();
+  }
+
   allProjectsCache = { at: now, value };
   return value;
-}
-
-/** Drop the cached cross-project listing (call after storing/deleting). */
-export function invalidateAllProjectsCache(): void {
-  allProjectsCache = null;
 }
 
 /**
