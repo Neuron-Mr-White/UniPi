@@ -5,7 +5,9 @@ dist/
 .env
 .DS_Store
 
-# Bundled file contains third-party secrets from npm dependencies
+# Build artifact (npm run build). Generated at publish time via prepublishOnly.
+# Third-party deps are externalized, so it contains only @pi-unipi sources, and
+# the build refuses to emit anything matching a credential pattern.
 packages/unipi/bundled.js
 
 .unipi/worktrees/

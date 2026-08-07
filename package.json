@@ -23,9 +23,12 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npx tsc --noEmit --skipLibCheck",
+    "build": "node scripts/build-bundle.mjs",
+    "prepare": "node scripts/build-bundle.mjs --if-missing",
+    "prepublishOnly": "npm run build",
+    "publish:all": "npm publish --workspaces --access public",
     "test": "npx tsx --test tests/*.test.js && npm test --workspaces --if-present",
-    "publish:all": "npm publish --workspaces --access public"
+    "typecheck": "npx tsc --noEmit --skipLibCheck"
   },
   "files": [
     "CHANGELOG.md",
@@ -37,11 +40,12 @@
     "packages/*/tui/*",
     "packages/*/SKILL.md",
     "packages/*/skills/**/*",
-    "packages/*/README.md"
+    "packages/*/README.md",
+    "packages/unipi/bundled.js"
   ],
   "pi": {
     "extensions": [
-      "packages/unipi/index.ts"
+      "packages/unipi/bundled.js"
     ],
     "skills": [
       "packages/workflow/skills",
@@ -94,6 +98,8 @@
     "@earendil-works/pi-coding-agent": "^0.80.0",
     "@earendil-works/pi-tui": "^0.80.0",
     "@types/node": "^25.6.0",
+    "diff": "^7.0.0",
+    "esbuild": "^0.27.7",
     "tsx": "^4.21.0",
     "typescript": "^6.0.0"
   }
