@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-08-07
+
+Startup went from **23.1s to 0.75s** — 31× faster, and within ~0.7s of bare `pi` with no extensions at all. A cold start (empty cache) is now the same speed as a warm one.
+
+### Changed
+
+- **`info-screen`: `showOnBoot` is now `bootMode`, with three states.** `"on"` keeps the dashboard up until you dismiss it, `"auto-close"` (the new default) closes it after `bootTimeoutMs`, and `"off"` never builds it at all. All three are configurable from `/unipi:info-settings` — `←/→` cycles the mode, and the row below adjusts the delay in 0.5s steps (clamped 0.5–30s). Any keypress cancels the auto-close, so the dashboard stays put if you are reading it. `/unipi:info` opened by hand never auto-closes.
+
+  Existing configs migrate automatically on read: `showOnBoot: true` → `"on"`, `false` → `"off"`. Note that `true` maps to `"on"` rather than the new `"auto-close"` default, so nobody's startup behaviour changes underneath them. An explicit `bootMode` always wins over the legacy key.
+
+- **`info-screen`: dashboard panels load lazily.** Only the visible tab fetches at boot; the rest are prefetched 1.5s later, and any tab opened before that fetches on demand. Previously all ~17 panels were built before the first prompt was ready, including when the dashboard was disabled entirely.
+
+- **`memory`: orphaned markdown is imported on first use rather than at startup.** `syncOrphanedFiles()` spawns a Python bridge; nothing reads its result until memory is actually used. A `.md` file dropped into a project directory is now picked up by the first memory tool call instead of at boot. Still runs exactly once per session; nothing is lost.
+
+- **`unipi`: the all-in-one entry now ships as a prebuilt bundle.** pi loads extensions through jiti with its module cache disabled, so every startup transpiled ~577 TypeScript files from scratch — the factory calls themselves take 5ms, the cost was entirely transpilation. `pi.extensions` points at `packages/unipi/bundled.js`, built by `npm run build` and regenerated automatically by `prepublishOnly`. Only `@pi-unipi` sources are bundled; every third-party dependency stays external and resolves from `node_modules` at runtime.
+
+### Performance
+
+- **`info-screen`: usage stats are cached per file (8,671ms → 70ms).** `parseUsageStats()` re-read and re-parsed the entire session history on every call — 2.6GB across 600 JSONL files — and ran twice per startup. Results are now cached in `~/.unipi/cache/usage-stats.json`, keyed on each file's mtime and size. Statting 600 files costs ~1ms while only ~11 change on a busy day, so ~96% of the work was recomputing an immutable result.
+
+  This single function was the dominant startup cost. Because it never yielded, every other extension's `session_start` handler queued behind it — which is why earlier profiling rounds blamed unrelated extensions for ~9s each. They were waiting on this, not doing work.
+
+- **`info-screen`: the usage parser no longer blocks the event loop.** A new `parseUsageStatsAsync()` yields via `setImmediate` between files, so even a cold parse cannot freeze keystrokes or the first paint. The reader also streams line-by-line instead of `readFileSync` — the largest single session file here is 213MB and was being materialized in full, along with its `split("\n")` array.
+
+- **`memory`: MemPalace bridge calls are async (1,581ms → ~0ms of blocked loop).** The status-bar counts called `listAll()` and the cross-project listing through `spawnSync`, freezing the process for the full Python round-trip just to render `mem 32p/2262all`. Added `runBridgeAsync` plus `listAllAsync()` / `listAllProjectsCachedAsync()`; the status bar paints immediately and fills in when the bridge answers. The cross-project listing is additionally cached for 60s, invalidated on any store or delete.
+
+- **`info-screen`/`utility`: pi's version is resolved without spawning a subprocess (710ms → ~1ms).** `getPiVersion()` probed a hardcoded path for one specific Node version and, on any other, fell through to `execSync("pi --version")` — starting a whole second pi process, synchronously, twice per startup. A shared implementation in `@pi-unipi/core` now walks up from pi's own entry point, resolving the symlink first (the binary on `PATH` is typically a shim), and caches the result.
+
+### Fixed
+
+- `info-screen`: the overview panel displayed **`Pi Version: unknown`**. The `execSync` fallback matched `/v([\d.]+)/`, requiring a literal `v` prefix that pi no longer emits — so it paid 710ms per startup *and* still failed. Now shows the real version.
+- `info-screen`: `bootTimeoutMs` had existed in `InfoScreenSettings` and in user configs since the beginning but was never connected to anything. It now drives the auto-close timer.
+- `info-screen`: `writeSettingsFile()` called `require()` from an ESM module, which throws under Node's module-format detection whenever the settings directory does not already exist.
+- `unipi`: `diff` is a dependency of `@pi-unipi/utility` and lives in that package's own `node_modules`. That resolves fine under jiti (each file resolves from its own location) and fine when installed (npm hoists it), but was unresolvable from a single bundle in a local checkout. Now declared at the root.
+
 ## [2.2.7] — 2026-08-04
 
 ### Fixed
