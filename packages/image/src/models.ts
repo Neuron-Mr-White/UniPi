@@ -211,10 +211,38 @@ export function listRegistryImageGenModels(
       provider: candidate.provider,
       name: candidate.name,
       api: candidate.api ?? "",
+      // Carry the endpoint through. The generic images adapter POSTs to
+      // `{baseUrl}/images/generations`, and this is the only place the
+      // registry's baseUrl is available — dropping it here surfaces later as
+      // "No baseUrl for image model ..." once generation is attempted.
+      ...(candidate.baseUrl ? { baseUrl: candidate.baseUrl } : {}),
       ...(candidate.output ? { output: candidate.output } : {}),
     });
   }
   return out;
+}
+
+/**
+ * Find a provider's API endpoint in pi's registry.
+ *
+ * Needed because a model can reach generation without one: a user-typed
+ * "provider/model-id" is accepted at face value by `asExplicitModelRef`, and
+ * carries no baseUrl of its own.
+ */
+export function findProviderBaseUrl(
+  registry: ChatModelRegistry | undefined,
+  provider: string,
+): string | undefined {
+  if (!registry) return undefined;
+  try {
+    const models = (registry.getAvailable?.() ?? registry.getAll()) as Array<{
+      provider?: string;
+      baseUrl?: string;
+    }>;
+    return models.find((m) => m?.provider === provider && m.baseUrl)?.baseUrl;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

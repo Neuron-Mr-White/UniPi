@@ -21,6 +21,7 @@ import {
 import { registerImageCommands } from "./commands.js";
 import { registerImageTools } from "./tools.js";
 import { listImageGenModels, listVisionModels, type ChatModelRegistry } from "./models.js";
+import { registerRegistryImageProviders } from "./register-providers.js";
 import { loadConfig } from "./settings.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -42,6 +43,13 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     const config = loadConfig();
+
+    // Bridge pi's configured providers into pi-ai's images collection up front,
+    // so the settings picker and the info screen see them without a prior
+    // image_generate call. Best-effort: never block session start.
+    void registerRegistryImageProviders(
+      (ctx as unknown as { modelRegistry?: ChatModelRegistry }).modelRegistry,
+    ).catch(() => undefined);
 
     const tools: string[] = [];
     if (config.generate.enabled) tools.push(IMAGE_TOOLS.GENERATE);

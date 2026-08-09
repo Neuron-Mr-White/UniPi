@@ -131,6 +131,8 @@ export interface GenerateOptions {
   signal?: AbortSignal;
   /** Absolute directory for saved images; omit to skip saving. */
   outputDir?: string;
+  /** Source image; when set the request is an edit rather than a generation. */
+  inputImage?: { data: string; mimeType: string };
   now?: Date;
   /** Injected images collection, for tests. */
   images?: ImagesModelsLike;
@@ -141,7 +143,7 @@ export interface GenerateOptions {
  * @throws {Error} with an actionable message when generation fails.
  */
 export async function generateImage(options: GenerateOptions): Promise<GenerateResult> {
-  const { prompt, model, signal, outputDir, now } = options;
+  const { prompt, model, signal, outputDir, now, inputImage } = options;
 
   if (!prompt.trim()) {
     throw new Error("A non-empty prompt is required.");
@@ -154,19 +156,19 @@ export async function generateImage(options: GenerateOptions): Promise<GenerateR
     );
   }
 
-  // pi-ai's images collection carries its own provider set (currently only
-  // `openrouter`) and is entirely separate from pi's chat model registry.
-  // A chat provider registered by another extension can therefore list image
-  // models that generation cannot actually drive — pi-ai answers with a bare
-  // "Unknown provider: x". Detect that here and say something useful.
+  // pi-ai's images collection has its own provider set, separate from pi's
+  // chat registry. `registerRegistryImageProviders()` bridges pi's providers
+  // in, but a model may still name a provider with no image route at all —
+  // pi-ai would answer with a bare "Unknown provider: x", so say something
+  // useful instead.
   if (!providerCanGenerate(imagesApi, model.provider)) {
     const supported = supportedProviders(imagesApi);
     throw new Error(
-      `Provider "${model.provider}" cannot generate images.\n` +
-        `→ Image generation is served by: ${supported.join(", ") || "openrouter"}.\n` +
-        `→ "${model.provider}" is a chat provider; its image models are listed for ` +
-        `recognition and reference, but generation must go through a supported provider.\n` +
-        "→ Pick one with /unipi:image-settings.",
+      `Provider "${model.provider}" has no image-generation route.\n` +
+        `→ Available: ${supported.join(", ") || "openrouter"}.\n` +
+        "→ Providers are bridged from pi automatically; one without a baseUrl " +
+        "or an API key cannot be used.\n" +
+        "→ Pick another with /unipi:image-settings.",
     );
   }
 
@@ -174,7 +176,13 @@ export async function generateImage(options: GenerateOptions): Promise<GenerateR
   // a bare OPENROUTER_API_KEY still works.
   let apiKey: string | undefined;
   try {
-    apiKey = (await imagesApi.getAuth(model))?.apiKey;
+    // pi-ai resolves to an `AuthResult`, i.e. `{ auth: { apiKey } }`. Older
+    // shapes put the key at the top level, so accept both — reading only one
+    // fails silently and looks like a missing credential.
+    const resolvedAuth = (await imagesApi.getAuth(model)) as
+      | { apiKey?: string; auth?: { apiKey?: string } }
+      | undefined;
+    apiKey = resolvedAuth?.auth?.apiKey ?? resolvedAuth?.apiKey;
   } catch {
     // Reported as a missing key below.
   }
@@ -183,14 +191,25 @@ export async function generateImage(options: GenerateOptions): Promise<GenerateR
   if (!apiKey) {
     throw new Error(
       `No API key for provider "${model.provider}".\n` +
-        `→ Add one with /login, or set the provider's API key environment variable.\n` +
-        `→ Image models are served through OpenRouter: https://openrouter.ai/keys`,
+        "→ Sign in with /login, or set the provider's API key environment variable.\n" +
+        `→ Expected environment variable: ` +
+        `${model.provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`,
     );
+  }
+
+  const input: Array<{ type: string; text?: string; data?: string; mimeType?: string }> =
+    [{ type: "text", text: prompt }];
+  if (inputImage) {
+    input.push({
+      type: "image",
+      data: inputImage.data,
+      mimeType: inputImage.mimeType,
+    });
   }
 
   const result = (await imagesApi.generateImages(
     model,
-    { input: [{ type: "text", text: prompt }] },
+    { input } as { input: Array<{ type: string; text?: string }> },
     { apiKey, ...(signal ? { signal } : {}) },
   )) as AssistantImagesLike;
 

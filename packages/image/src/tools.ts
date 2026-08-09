@@ -12,7 +12,9 @@ import { IMAGE_TOOLS } from "@pi-unipi/core";
 
 import { generateImage } from "./generate.js";
 import { loadImage } from "./image-source.js";
+import { registerRegistryImageProviders } from "./register-providers.js";
 import {
+  findProviderBaseUrl,
   formatModelRef,
   listAllImageGenModels,
   resolveImageGenModel,
@@ -84,12 +86,15 @@ function registerGenerateTool(pi: ExtensionAPI): void {
     name: IMAGE_TOOLS.GENERATE,
     label: "Generate Image",
     description:
-      "Generate an image from a text prompt using an image model. " +
-      "The image is returned inline and, when enabled, saved to disk.",
+      "Generate an image from a text prompt, or edit an existing image by " +
+      "passing `image`. The result is returned inline and, when enabled, saved to disk.",
     promptSnippet: "Generate an image from a text prompt.",
     promptGuidelines: [
       "Use image_generate to create images from a text description.",
       "Write a detailed prompt — subject, style, composition and lighting all help.",
+      "Pass `image` to edit an existing image instead of generating a new one.",
+      "Editing regenerates the whole image, so unmentioned details may change.",
+      "Describe what you DO want; negation is unreliable in image models.",
       "Omit model to use the one configured in /unipi:image-settings.",
       "Generated images cost money per call; do not regenerate without being asked.",
     ],
@@ -97,6 +102,13 @@ function registerGenerateTool(pi: ExtensionAPI): void {
       prompt: Type.String({
         description: "Description of the image to generate. Be specific.",
       }),
+      image: Type.Optional(
+        Type.String({
+          description:
+            "Source image to edit: a local file path, data: URL, or base64 data. " +
+            "When set, the model edits this image instead of generating from scratch.",
+        }),
+      ),
       model: Type.Optional(
         Type.String({
           description:
@@ -109,22 +121,41 @@ function registerGenerateTool(pi: ExtensionAPI): void {
       try {
         const config = loadConfig();
         const registry = getRegistry(ctx);
+        // Bridge pi's own providers into pi-ai's images collection so the user
+        // is not forced onto OpenRouter. Idempotent and best-effort.
+        await registerRegistryImageProviders(registry);
         // Include image models contributed by registered providers, so the
         // tool can resolve anything the settings picker offers.
         const models = await listAllImageGenModels(registry);
 
         const requested = params.model?.trim() || config.generate.model;
-        const resolved = resolveImageGenModel(requested, models);
-        if (typeof resolved === "string") return errorResult(resolved);
+        const maybeResolved = resolveImageGenModel(requested, models);
+        if (typeof maybeResolved === "string") return errorResult(maybeResolved);
+
+        // A model may arrive without an endpoint — notably a user-typed
+        // "provider/model-id", accepted at face value. Fill it in from the
+        // registry so the adapter knows where to POST.
+        const registryBaseUrl = maybeResolved.baseUrl
+          ? undefined
+          : findProviderBaseUrl(registry, maybeResolved.provider);
+        const resolved = registryBaseUrl
+          ? { ...maybeResolved, baseUrl: registryBaseUrl }
+          : maybeResolved;
 
         // pi-ai resolves image auth from its own credential store; only fall
         // back to pi's chat-provider key when that comes up empty.
         const fallbackKey = await resolveApiKey(registry, resolved.provider);
 
+        // An input image switches the request into edit mode.
+        const sourceImage = params.image?.trim()
+          ? loadImage(params.image, ctx.cwd ?? process.cwd())
+          : undefined;
+
         const result = await generateImage({
           prompt: params.prompt,
           model: resolved,
           ...(fallbackKey ? { apiKey: fallbackKey } : {}),
+          ...(sourceImage ? { inputImage: sourceImage } : {}),
           signal,
           outputDir: config.generate.saveToDisk ? getOutputDir(config) : undefined,
         });
@@ -134,8 +165,8 @@ function registerGenerateTool(pi: ExtensionAPI): void {
           .filter((path): path is string => Boolean(path));
 
         const summary = [
-          `Generated ${result.images.length} image${result.images.length === 1 ? "" : "s"} ` +
-            `with ${formatModelRef(resolved)}.`,
+          `${sourceImage ? "Edited" : "Generated"} ${result.images.length} ` +
+            `image${result.images.length === 1 ? "" : "s"} with ${formatModelRef(resolved)}.`,
           saved.length > 0 ? `Saved to:\n${saved.map((p) => `  ${p}`).join("\n")}` : "",
           config.generate.saveToDisk && saved.length === 0
             ? "Could not write to the output directory — returning the image inline only."

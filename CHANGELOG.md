@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-08-09
+
+Image generation no longer requires an OpenRouter account, and `image_generate` can now edit an existing image.
+
+### Added
+
+- **`image`: image editing.** `image_generate` takes an optional `image` argument — a file path, `data:` URL, or raw base64 — and edits that image instead of generating from scratch. The result is saved and returned like any other generation.
+
+  Editing regenerates the whole image rather than masking a region, so details you did not mention can still shift. Which model you pick matters a lot here: in testing, `flux.2-pro` preserved unmentioned elements faithfully, while the `gemini-*-image` family tended to reinterpret the whole scene. Note also that image models respond to what you *describe*, not to what you negate — "no text" is as likely to add text as remove it.
+
+### Changed
+
+- **`image`: generation works with any OpenAI-compatible provider configured in pi.** Previously pi-ai shipped exactly one image provider (`openrouter`), so generating an image meant holding an OpenRouter key even when you had several other providers signed in. Every provider in pi's model registry is now bridged into pi-ai's images collection at session start, backed by a single generic adapter that posts to `{baseUrl}/images/generations`.
+
+  Credentials come from pi's existing auth — there is no separate image login. Gateways disagree on the response shape, so three known forms are normalized (`b64_json` + `media_type`, `b64_json` + `revised_prompt`, and a `data:` URL under `url`); a remote `url` is surfaced as text rather than silently dropped.
+
+  Model *discovery* remains heuristic. pi's `ProviderModelConfig` has no `output` field and the provider composer rebuilds each model from a fixed field list, so an extension cannot record "this model emits images" — hence the name-based matching, with an explicit `provider/model-id` always accepted as the escape hatch.
+
+- **`image`: errors name the provider you are actually using.** A missing key now points at that provider's environment variable and `/login` instead of unconditionally linking OpenRouter, and an unusable provider reports "no image-generation route" rather than the misleading "cannot generate images".
+
+### Fixed
+
+- **`image`: a valid API key could be reported as missing.** pi-ai resolves credentials to an `AuthResult` — `{ auth: { apiKey } }` — but the key was read from the top level, so generation failed with "No API key for provider" while a perfectly good credential sat one level down. Both shapes are now accepted.
+
+- **`image`: models discovered from the registry lost their endpoint.** Provider registration rebuilt each model from a field list that omitted `baseUrl`, so setup appeared to succeed and only the first real request failed with "No baseUrl for image model". The endpoint is now carried through discovery, and filled in from the registry at resolve time for hand-typed `provider/model-id` references, which never carry one.
+
 ## [2.3.0] — 2026-08-07
 
 Startup went from **23.1s to 0.75s** — 31× faster, and within ~0.7s of bare `pi` with no extensions at all. A cold start (empty cache) is now the same speed as a warm one.

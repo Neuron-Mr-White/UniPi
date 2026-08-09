@@ -253,7 +253,7 @@ test("rejects a provider the images collection cannot generate with", async () =
         images: imagesApiOf(BUILTIN),
       }),
     (err: Error) => {
-      assert.match(err.message, /cannot generate images/);
+      assert.match(err.message, /no image-generation route/);
       assert.match(err.message, /openrouter/);
       assert.match(err.message, /image-settings/);
       return true;

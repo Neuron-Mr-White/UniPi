@@ -23,6 +23,7 @@ import {
   type ChatModelRegistry,
 } from "../models.js";
 import { ImageModelSelectorOverlay, type SelectableModel } from "./model-selector.js";
+import { registerRegistryImageProviders } from "../register-providers.js";
 
 const EXIT = "__exit__";
 
@@ -239,6 +240,10 @@ async function collectModels(
     .modelRegistry;
 
   if (kind === "generate") {
+    // Bridge pi's providers in first, so a model the user can actually run is
+    // not flagged "no image route" purely because we had not registered it yet.
+    await registerRegistryImageProviders(registry);
+
     // Include models from providers registered by other extensions, not just
     // pi-ai's built-in OpenRouter catalog.
     const models = await listAllImageGenModels(registry);
@@ -253,7 +258,7 @@ async function collectModels(
       // so flag them rather than letting the user pick a dead option.
       unavailable:
         generating.length > 0 && !generating.includes(m.provider)
-          ? "cannot generate"
+          ? "no image route"
           : undefined,
     }));
   }

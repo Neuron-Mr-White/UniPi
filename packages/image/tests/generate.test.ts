@@ -284,7 +284,10 @@ describe("generateImage", () => {
         }),
       (error: Error) => {
         assert.match(error.message, /No API key/);
-        assert.match(error.message, /openrouter\.ai/);
+        // Provider-agnostic now: image generation is no longer OpenRouter-only,
+        // so the remedy names the provider's own env var and /login.
+        assert.match(error.message, /\/login/);
+        assert.match(error.message, /_API_KEY/);
         return true;
       },
     );
@@ -350,4 +353,49 @@ describe("generateImage", () => {
     });
     assert.equal(result.images[0].mimeType, "image/png");
   });
+});
+
+/**
+ * pi-ai's `ImagesModels.getAuth()` resolves an `AuthResult` — `{ auth: { apiKey } }`
+ * — not a bare `{ apiKey }`. Reading only the top level made a perfectly good
+ * credential look missing, and the resulting "No API key" error sent debugging
+ * in entirely the wrong direction. Both shapes must work.
+ */
+describe("auth resolution", () => {
+  it("reads the key from an AuthResult-shaped getAuth", async () => {
+  const images: ImagesModelsLike = {
+    getModels: () => [MODEL],
+    getModel: () => MODEL,
+    getAuth: async () => ({ auth: { apiKey: "nested-key" } }) as never,
+    generateImages: async () => OK_RESULT,
+  };
+
+  const result = await generateImage({
+    prompt: "a circle",
+    model: MODEL,
+    images,
+  });
+
+  assert.equal(result.images.length, 1);
+});
+
+  it("names the expected environment variable when auth is missing", async () => {
+  await assert.rejects(
+    () =>
+      generateImage({
+        prompt: "a circle",
+        model: { ...MODEL, provider: "my-gateway" },
+        images: {
+          getModels: () => [{ ...MODEL, provider: "my-gateway" }],
+          getModel: () => ({ ...MODEL, provider: "my-gateway" }),
+          getAuth: async () => undefined,
+          generateImages: async () => OK_RESULT,
+        },
+      }),
+    (err: Error) => {
+      assert.match(err.message, /MY_GATEWAY_API_KEY/);
+      return true;
+    },
+  );
+});
 });
