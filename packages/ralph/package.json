@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ralph",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "main": "index.ts",

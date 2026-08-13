@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-08-13
+
+### Fixed
+
+- **`ralph`: loop status no longer invalidates the DeepSeek prefix cache.** The `before_agent_start` hook appended `[RALPH LOOP - name - Iteration N]` to the system prompt on every turn; because the iteration number changes each turn, this mutated the request prefix on every turn of a Ralph loop, forcing a full DeepSeek prefix-cache miss (~60K tokens re-billed at uncached price) per turn. The loop status now rides a hidden tail message (`unipi-ralph-loop-reminder`) so the cacheable prefix (system prompt + prior history) stays byte-stable across turns. The model still sees the loop name, iteration, and instructions.
+
 ## [2.4.0] — 2026-08-09
 
 Image generation no longer requires an OpenRouter account, and `image_generate` can now edit an existing image.
