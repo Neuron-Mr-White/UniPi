@@ -145,8 +145,11 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Inject ralph instructions when loop is active
-  pi.on("before_agent_start", async (event, ctx) => {
+  // Inject ralph instructions when loop is active.
+  // NOTE: injected as a hidden tail message (not the system prompt) so the
+  // cacheable prefix (system prompt + prior history) stays byte-stable across
+  // turns. The iteration number changes every turn and must never touch the prefix.
+  pi.on("before_agent_start", async (_event, ctx) => {
     const mgr = getManager(ctx, pi);
     const currentLoop = mgr.getCurrentLoop();
     if (!currentLoop) return;
@@ -165,9 +168,11 @@ export default function (pi: ExtensionAPI) {
     instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
 
     return {
-      systemPrompt:
-        event.systemPrompt +
-        `\n[RALPH LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
+      message: {
+        customType: "unipi-ralph-loop-reminder",
+        content: `[RALPH LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
+        display: false,
+      },
     };
   });
 
