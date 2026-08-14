@@ -18,8 +18,8 @@
 - [x] Back up this PC's memory stores.
 - [x] Run safe local migration/catch-up and verify project/global counts and spot-check recent memories.
 - [x] Run full test/build verification.
-- [ ] Execute `.unipi/docs/chore/full-release.md` completely and verify rollout.
-- [ ] Store final findings in memory.
+- [x] Execute `.unipi/docs/chore/full-release.md` completely and verify rollout.
+- [x] Store final findings in memory.
 
 ## Safety constraints
 - Do not modify or discard the existing unrelated dirty MCP/milestone changes.
@@ -30,3 +30,5 @@
 ## Notes
 
 Iteration 1: Root cause confirmed: bundled umbrella resolved a non-shipped bridge and silently fell back to SQLite. Added multi-layout bridge discovery, umbrella tarball inclusion, versioned source-fingerprint migration state, explicit migration verification/failure counts, unchanged-record skipping, regression tests, and docs. Targeted tests/typecheck/build pass. Backed up active palace to `/home/oi/.mempalace.backup.20260814182254` with matching SHA-256. Local catch-up result: 2,653 discovered, 391 imported/updated, 2,262 unchanged skipped, 0 failed, 2,653 verified. Palace now has 2,654 total drawers (2,653 UniPi identities plus one non-UniPi drawer); `unipi` wing has 85 and recent `release_v2_4_2_full_rollout_complete` plus this audit memory resolve with full content. Wrote verified v2 migration state with source fingerprint `c606b256...`. Reviewer caught two edge cases: markdown did not preserve authoritative IDs and migration verification was optimistic. Added `id` frontmatter with legacy fallback plus post-write exact-document reread verification. Final targeted tests (12), root typecheck, command-registry audit, bundle secret scan, tarball bridge runtime ping, and complete root/workspace tests all pass. A final migration pass was fully idempotent: 0 imported, 2,653 skipped, 0 failed, 2,653 verified.
+
+Rollout: released all 22 packages as v2.5.0 after clean typecheck/build/registry/full-test gates. npm registry reports 2.5.0 for every workspace and root; a clean `/tmp` install contains the bridge and successfully pings MemPalace. Commit `e03a2fd` was pushed to `upstream/main` and annotated tag `v2.5.0` was pushed. Alias smoke passed in 6.72s. Existing npm audit baseline remains 12 vulnerabilities (2 low, 4 moderate, 6 high).
