@@ -34,7 +34,7 @@ Phase 1 (Ralph, milestone snapshots, workflow sandbox stability, deterministic M
 - [x] Review the implementation for security, correctness, cache regressions, sensitive-data leakage, and host-API assumptions; fix all findings.
 - [x] Commit coherent changes.
 - [x] Execute the full release chore: version/changelog/docs, publish required changed packages and dependents, verify clean npm install/no stale nested copies, push main, and verify published versions.
-- [ ] Save final project memory with exact implementation, tests, release version, limitations, and follow-ups.
+- [x] Save final project memory with exact implementation, tests, release version, limitations, and follow-ups.
 
 ## Constraints
 - Do not fabricate final-payload control or cache metrics that Pi does not expose; investigate and document host limitations.
@@ -366,3 +366,24 @@ Release push verification:
 - Public npm `latest` for `@pi-unipi/unipi` is 2.6.0.
 
 Only the final project-memory/checklist closure remains.
+
+### Iteration 15 — final memory and closure
+
+Saved the final project memory with exact release identifiers, implementation surfaces, validation results, explicit host/provider limitations, artifact-retention constraints, audit findings, and follow-ups. All checklist items are complete.
+
+Final state:
+
+- Release: `@pi-unipi/unipi@2.6.0` plus all 21 workspaces at 2.6.0.
+- Tag target: `41d43e4e91ad56a2e00690b1694fdeafc5d0279d` (`v2.6.0`).
+- Main includes follow-up release-verification docs at `07fdd9d`.
+- Full tests, typecheck, build, bundle secret scan/syntax, standalone/root tarballs, clean public install, nested-version audit, npm registry versions, GitHub main, and annotated tag all verified.
+
+Known truthful limitations retained in docs:
+
+- Pi's `before_provider_request` is provider-native but not guaranteed to be final HTTP wire bytes; later extension/transport behavior remains host-owned.
+- Structural prefix eligibility does not prove a provider cache hit. Cache metrics appear only when Pi/provider usage reports them.
+- Final cross-extension tool order, cwd/base prompt, routing, retries, session projection, and cache-control serialization remain Pi/provider-owned epoch surfaces.
+- Raw artifact retention is capped at 16 MiB per result, defaults to seven-day cleanup, and can fail safely to preview-only. Search and recall use pagination rather than raw spills.
+- No paid DeepSeek request was run; provider-native tests are keyless and abort before network I/O.
+
+No unresolved UniPi-owned prefix mutation or release blocker remains.
