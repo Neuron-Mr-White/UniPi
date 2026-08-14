@@ -90,6 +90,8 @@ export interface AgentRecord {
   description: string;
   status: "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
   result?: string;
+  /** Private artifact holding the complete result when model-visible output is bounded. */
+  resultArtifactPath?: string;
   error?: string;
   toolUses: number;
   startedAt: number;

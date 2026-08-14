@@ -35,6 +35,54 @@ import { isEmbeddingReady, hasModelChanged } from "./settings.js";
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
+interface MemoryReminderInput {
+  projectName: string;
+  memories: Array<{ title: string }>;
+  canSearch: boolean;
+  canStore: boolean;
+}
+
+/**
+ * Build the deterministic, model-visible first-turn memory reminder.
+ * Exported so provider-payload regressions can exercise the exact production
+ * content without initializing a storage backend.
+ */
+export function buildMemoryRecallReminder(input: MemoryReminderInput): string {
+  const lines = [
+    "## 🧠 Memory System Active",
+    "",
+    `You have ${input.memories.length} memories stored for project "${input.projectName}".`,
+  ];
+
+  if (input.canSearch && input.memories.length > 0) {
+    const titleList = input.memories.slice(0, 20).map((memory) => `- ${memory.title}`).join("\n");
+    const extra = input.memories.length > 20
+      ? `\n... and ${input.memories.length - 20} more`
+      : "";
+    lines.push(
+      "**BEFORE starting work**, call `memory_search` with relevant keywords to check for existing context.",
+      "",
+      "Available memories:",
+      titleList + extra,
+    );
+  }
+
+  if (input.canStore) {
+    lines.push(
+      "",
+      "**AFTER completing the task**, if you learned something non-obvious,",
+      "call `memory_store` to save it for future sessions.",
+    );
+  }
+
+  lines.push(
+    "",
+    "Guardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+  );
+
+  return lines.join("\n");
+}
+
 /** Storage instance for current project */
 let projectStorage: MemoryStorage | null = null;
 
@@ -251,44 +299,18 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const lines = [
-      "## 🧠 Memory System Active",
-      "",
-      `You have ${projectMemories.length} memories stored for project "${projectName}".`,
-    ];
-
-    if (canSearch && projectMemories.length > 0) {
-      const titleList = projectMemories.slice(0, 20).map(m => `- ${m.title}`).join("\n");
-      const extra = projectMemories.length > 20 ? `\n... and ${projectMemories.length - 20} more` : "";
-      lines.push(
-        "**BEFORE starting work**, call `memory_search` with relevant keywords to check for existing context.",
-        "",
-        "Available memories:",
-        titleList + extra,
-      );
-    } else {
-      recallDone = true;
-    }
-
-    if (canStore) {
-      lines.push(
-        "",
-        "**AFTER completing the task**, if you learned something non-obvious,",
-        "call `memory_store` to save it for future sessions.",
-      );
-    } else {
-      storeDone = true;
-    }
-
-    lines.push(
-      "",
-      "Guardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
-    );
+    if (!canSearch || projectMemories.length === 0) recallDone = true;
+    if (!canStore) storeDone = true;
 
     return {
       message: {
         customType: "unipi-memory-recall-reminder",
-        content: lines.join("\n"),
+        content: buildMemoryRecallReminder({
+          projectName,
+          memories: projectMemories,
+          canSearch,
+          canStore,
+        }),
         display: false,
       },
     };

@@ -76,4 +76,32 @@ describe("AgentManager type enablement", () => {
       manager.dispose();
     }
   });
+
+  it("returns provider-visible public type names in deterministic code-unit order", () => {
+    const cwd = tempWorkspace();
+    const dir = join(cwd, ".unipi", "config", "agents");
+    mkdirSync(dir, { recursive: true });
+    for (const name of ["zeta", "Alpha", "reviewer"]) {
+      writeFileSync(
+        join(dir, `${name}.md`),
+        `---\ndescription: ${name}\n---\n${name} prompt.\n`,
+      );
+    }
+
+    const manager = new AgentManager(
+      undefined,
+      4,
+      undefined,
+      { omega: { enabled: true }, beta: { enabled: true } },
+      cwd,
+    );
+    try {
+      const known = manager.getKnownTypes();
+      assert.deepEqual(known, [...known].sort((a, b) => a < b ? -1 : a > b ? 1 : 0));
+      assert.deepEqual(known, ["Alpha", "beta", "explore", "omega", "reviewer", "work", "zeta"]);
+      assert.equal(known.includes("name-gen"), false);
+    } finally {
+      manager.dispose();
+    }
+  });
 });

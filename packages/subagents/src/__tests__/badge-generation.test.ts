@@ -205,7 +205,8 @@ describe("Badge generation — event bus (CRITICAL FIX)", () => {
     const validLifecycleEvents = [
       "session_start", "session_shutdown", "input",
       "tool_call", "tool_execution_start",
-      "agent_end", "before_agent_start",
+      "agent_end", "before_agent_start", "before_provider_request",
+      "model_select", "thinking_level_select", "session_compact", "session_tree",
     ];
 
     // Check that pi.on() is only used with lifecycle events
@@ -244,9 +245,9 @@ describe("Badge generation — event flow", () => {
     );
 
     // agent_end handler should emit BADGE_GENERATE_REQUEST
-    const agentEndBlock = src.match(/pi\.on\("agent_end"[\s\S]*?(?=pi\.on\(|$)/)?.[0] ?? "";
+    const agentEndBlocks = src.match(/pi\.on\("agent_end"[\s\S]*?(?=pi\.on\(|$)/g) ?? [];
     assert.ok(
-      agentEndBlock.includes("BADGE_GENERATE_REQUEST"),
+      agentEndBlocks.some((block) => block.includes("BADGE_GENERATE_REQUEST")),
       "agent_end handler should emit BADGE_GENERATE_REQUEST with full conversation context",
     );
   });

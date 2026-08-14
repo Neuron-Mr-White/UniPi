@@ -13,6 +13,10 @@ import { resolveModel, type ModelRegistry } from "./model-resolver.js";
 import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel, SubagentsConfig } from "./types.js";
 import { BUILTIN_CONFIGS } from "./types.js";
 import { loadCustomAgents } from "./custom-agents.js";
+
+function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
 import { FileLock } from "./file-lock.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
@@ -88,7 +92,7 @@ export class AgentManager {
       ...Object.keys(BUILTIN_CONFIGS).filter((type) => type !== "name-gen"),
       ...this.customAgents.keys(),
       ...Object.keys(this.typeSettings),
-    ])];
+    ])].sort(compareCodeUnits);
   }
 
   /** A type is enabled only when both JSON config and agent frontmatter allow it. */

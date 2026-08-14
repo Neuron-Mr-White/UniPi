@@ -69,6 +69,8 @@ spawn_helper(
 get_helper_result(agent_id: "helper_abc123")
 ```
 
+Foreground and retrieved background results have a hard 64 KiB model-visible ceiling. For raw results up to 16 MiB, larger output includes a bounded head/tail preview and a path to the complete private mode-0600 artifact under a mode-0700 `~/.unipi/tool-results/` directory. Use `read` with offset/limit to inspect only the needed region. Repeated retrieval reuses the same artifact. Results above the safety cap or artifact-write failures still return a preview with an explicit non-retention warning.
+
 ## Custom Agent Types
 
 Create markdown files defining agent behavior:

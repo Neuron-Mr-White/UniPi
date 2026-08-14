@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   canonicalizeJsonSchema,
   compareCodeUnits,
   translateMcpTool,
 } from "../src/bridge/translator.js";
+
+const homes: string[] = [];
+const originalHome = process.env.HOME;
+afterEach(() => {
+  process.env.HOME = originalHome;
+  while (homes.length) rmSync(homes.pop()!, { recursive: true, force: true });
+});
 
 const client = {
   async callTool() {
@@ -75,4 +85,28 @@ test("translated tools have deterministic labels and canonical Pi-facing schemas
   assert.deepEqual(Object.keys(translated.parameters.properties), ["a", "z"]);
   assert.deepEqual(translated.parameters.required, []);
   assert.deepEqual(inputSchema, original, "translation must not mutate MCP schema");
+});
+
+test("translated tools bound large model-visible output and retain exact raw text privately", async () => {
+  const home = mkdtempSync(join(tmpdir(), "unipi-mcp-output-"));
+  homes.push(home);
+  process.env.HOME = home;
+  const raw = "MCP result α\n".repeat(10_000);
+  const largeClient = {
+    async callTool() {
+      return { content: [{ type: "text", text: raw }] };
+    },
+  };
+  const translated = translateMcpTool(
+    { name: "large", inputSchema: { type: "object" } },
+    "server",
+    largeClient as any,
+  );
+
+  const result = await translated.execute("call", {});
+  const details = result.details!;
+  assert.equal(details.truncated, true);
+  assert.equal(readFileSync(details.artifactPath as string, "utf8"), raw);
+  assert.ok(Buffer.byteLength(result.content[0].text, "utf8") < 66_000);
+  assert.match(result.content[0].text, /Full output:/);
 });

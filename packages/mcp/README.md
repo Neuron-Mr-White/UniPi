@@ -39,6 +39,10 @@ MCP input properties are cloned and recursively canonicalized before registratio
 
 Pi 0.80 cannot remove dynamically registered tools. Enabling, disabling, deleting, or changing MCP servers is therefore applied on the next Pi restart rather than mutating the tool list mid-session. This prevents stale schemas and makes the restart an explicit cache-epoch boundary.
 
+### Bounded Results
+
+MCP text results are model-visible up to a hard 64 KiB ceiling. A larger result keeps a bounded head/tail preview and, when the raw result is at most 16 MiB, writes the complete text to a private mode-0600 artifact under `~/.unipi/tool-results/`. Existing result directories are tightened to mode 0700. The returned result includes the path and directs the agent to use `read` with offset/limit. Results above the raw safety cap or filesystem write failures still return a bounded preview with an explicit non-retention warning. MCP image bytes are not written by this text bridge; image blocks remain represented by MIME metadata as before.
+
 Example tool calls:
 ```
 github__search_code({ query: "authentication middleware" })

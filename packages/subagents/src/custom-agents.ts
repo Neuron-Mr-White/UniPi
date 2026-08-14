@@ -12,6 +12,10 @@ import { homedir } from "node:os";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./types.js";
 
+function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** Backup a corrupted file by renaming to .bak */
 function backupCorrupted(filePath: string): void {
   const backupPath = filePath + ".bak";
@@ -93,7 +97,9 @@ export function loadCustomAgents(cwd: string): Map<string, AgentConfig> {
   // Load global agents first
   const globalDir = getGlobalAgentsDir();
   if (existsSync(globalDir)) {
-    const files = readdirSync(globalDir).filter((f) => f.endsWith(".md"));
+    const files = readdirSync(globalDir)
+      .filter((f) => f.endsWith(".md"))
+      .sort(compareCodeUnits);
     for (const file of files) {
       const agent = loadAgentFromFile(join(globalDir, file), "global");
       if (agent) {
@@ -105,7 +111,9 @@ export function loadCustomAgents(cwd: string): Map<string, AgentConfig> {
   // Load project agents (overrides global)
   const projectDir = getProjectAgentsDir(cwd);
   if (existsSync(projectDir)) {
-    const files = readdirSync(projectDir).filter((f) => f.endsWith(".md"));
+    const files = readdirSync(projectDir)
+      .filter((f) => f.endsWith(".md"))
+      .sort(compareCodeUnits);
     for (const file of files) {
       const agent = loadAgentFromFile(join(projectDir, file), "project");
       if (agent) {

@@ -227,7 +227,7 @@ export interface EnvironmentInfo {
 /** Result of a cleanup operation */
 export interface CleanupResult {
   /** What was cleaned */
-  category: "db" | "temp" | "session" | "cache" | "log";
+  category: "db" | "temp" | "tool-results" | "session" | "cache" | "log";
   /** Items removed */
   removed: number;
   /** Bytes freed (approximate) */

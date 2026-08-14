@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { buildResumeContextMessage, isSessionContinuityEnabled } from "../src/session/resume-inject.js";
+import { buildResumeSnapshot } from "../src/session/snapshot.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
 import type { StoredEvent } from "../src/types.js";
 
@@ -52,6 +53,15 @@ describe("post-compaction resume context", () => {
     const off = structuredClone(DEFAULT_COMPACTOR_CONFIG);
     off.sessionContinuity.mode = "off";
     expect(isSessionContinuityEnabled(off)).toBe(false);
+  });
+
+  it("renders a deterministic snapshot without model-visible wall-clock data", () => {
+    const first = buildResumeSnapshot([EVENT], { compactCount: 2 });
+    const second = buildResumeSnapshot([EVENT], { compactCount: 2 });
+
+    expect(second).toBe(first);
+    expect(first).toContain('<session_resume events="1" compact_count="2">');
+    expect(first).not.toContain("generated_at=");
   });
 
   it("returns the snapshot as a hidden message without changing the system prompt", async () => {

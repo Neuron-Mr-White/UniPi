@@ -17,6 +17,8 @@ pi install npm:@pi-unipi/unipi
 
 **[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, percentage auto-compaction, session recall, and sandbox execution.
 
+**[Prefix-cache architecture](./docs/prefix-cache-architecture.md)** — Append-only request discipline, explicit cache epochs, deterministic tools, privacy-safe diagnostics, provider limitations, and bounded cold-epoch output.
+
 **[CocoIndex](./packages/cocoindex/README.md)** — Project indexing and semantic code search backed by CocoIndex and LanceDB. Agent tools and slash commands for status, init, update, and search.
 
 **[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.

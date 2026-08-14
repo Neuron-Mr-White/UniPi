@@ -9,10 +9,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { RALPH_COMPLETE_MARKER, RALPH_DEFAULTS, RALPH_TOOLS } from "@pi-unipi/core";
 import { RalphLoopManager, DEFAULT_REFLECT_INSTRUCTIONS } from "./ralph-loop.js";
 
+type ManagerProvider = (ctx: ExtensionContext) => RalphLoopManager;
+
 /**
  * Register ralph_start and ralph_done tools.
  */
-export function registerRalphTools(pi: ExtensionAPI, manager: RalphLoopManager): void {
+export function registerRalphTools(pi: ExtensionAPI, getManager: ManagerProvider): void {
   // --- ralph_start tool ---
   pi.registerTool({
     name: RALPH_TOOLS.START,
@@ -44,6 +46,7 @@ export function registerRalphTools(pi: ExtensionAPI, manager: RalphLoopManager):
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const manager = getManager(ctx);
       const taskFile = `.unipi/ralph/${params.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.md`;
 
       if (manager.loadState(params.name)?.status === "active") {
@@ -92,6 +95,7 @@ export function registerRalphTools(pi: ExtensionAPI, manager: RalphLoopManager):
     ],
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const manager = getManager(ctx);
       if (!manager.getCurrentLoop()) {
         return {
           content: [{ type: "text", text: "No active Ralph loop." }],

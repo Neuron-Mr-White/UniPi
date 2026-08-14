@@ -168,6 +168,7 @@ export const UTILITY_COMMANDS = {
   BADGE_TOGGLE: "badge-toggle",
   BADGE_SETTINGS: "badge-settings",
   UTIL_SETTINGS: "util-settings",
+  PREFIX_CACHE: "prefix-cache",
 } as const;
 
 /** Utility tool names */
@@ -232,6 +233,7 @@ export const MCP_DEFAULTS = {
   STARTUP_TIMEOUT_MS: 10000,
   MAX_SERVERS: 20,
   TOOL_NAME_SEPARATOR: "__",
+  MAX_MODEL_OUTPUT_BYTES: 64 * 1024,
 } as const;
 
 /** Compactor sentinel — when passed as customInstructions to ctx.compact(),

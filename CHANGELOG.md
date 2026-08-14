@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-08-14
+
+This release completes UniPi's provider prefix-cache preservation rollout, making model-visible state append-only within explicit cache epochs while adding privacy-safe diagnostics and bounded external results.
+
+### Added
+
+- **Provider-native prefix regression tests:** keyless tests capture real `pi-ai` OpenAI-compatible payloads before network I/O and verify ordinary turns plus Ralph, Memory, Milestone, Workflow, and Compactor snapshots extend the exact prior message prefix.
+- **Privacy-safe cache diagnostics:** `/unipi:prefix-cache` reports session-local request/envelope HMAC fingerprints, structural prefix transitions, explicit epochs, and provider-reported cache-read/cache-write tokens without retaining raw prompts, arguments, schemas, or payloads.
+- **Bounded result artifacts:** MCP and helper text has a hard 64 KiB model-visible ceiling. Raw results up to 16 MiB spill to private local artifacts with selective-read references and seven-day cleanup integration.
+- **Prefix-cache architecture guide:** documents the append-only invariant, superseding snapshot semantics, cache-reset events, Pi/provider ownership boundaries, DeepSeek expectations, and compaction behavior.
+
+### Changed
+
+- **Deterministic tool lifecycle:** Ralph and CocoIndex tools register at extension construction time; custom subagent types and filesystem discovery use locale-independent deterministic ordering.
+- **Compaction continuity is byte-stable:** resume snapshots no longer include wall-clock generation text, and UniPi's optional percentage compaction trigger remains disabled by default.
+- **Ralph reminders are superseding snapshots:** unchanged reminders deduplicate within an epoch and reappear once after compaction.
+- **Search output is bounded:** CocoIndex and session recall default to 10 results and hard-cap pages at 50; expanded recall hits are capped at 16 KiB.
+
+### Fixed
+
+- **Helper isolation recognizes current tool names:** child agents cannot recursively invoke `spawn_helper` or `get_helper_result` through stale exclusions.
+- **Oversized external output no longer inflates every later cold request:** bounded previews retain useful head/tail context and fail safely if private artifact creation is unavailable.
+- **Cache usage accounting counts distinct identical responses correctly** while deduplicating repeated active-context message objects.
+
 ## [2.5.0] — 2026-08-14
 
 This release makes persistent memory migration reliable across standalone and all-in-one installs, while stabilizing workflow tool schemas and MCP registration.

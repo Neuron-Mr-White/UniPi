@@ -32,6 +32,7 @@ import { registerEnhancedWriteTool, registerEnhancedEditTool } from "./diff/wrap
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
+import { PrefixCacheTracker, formatPrefixCacheStats } from "./prefix-cache.js";
 
 /** Re-export readBadgeSettings for cross-package use */
 export { readBadgeSettings } from "./tui/badge-settings.js";
@@ -61,6 +62,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.BADGE_TOGGLE,
   UTILITY_COMMANDS.BADGE_SETTINGS,
   UTILITY_COMMANDS.UTIL_SETTINGS,
+  UTILITY_COMMANDS.PREFIX_CACHE,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -72,6 +74,52 @@ export default function (pi: ExtensionAPI) {
 
   // Initialize analytics collector
   const analytics = getAnalyticsCollector();
+
+  // Session-local provider prefix observability. The random HMAC key and all
+  // payload-derived fingerprints remain in memory and are discarded on reload.
+  const prefixCache = new PrefixCacheTracker();
+  pi.registerCommand(`unipi:${UTILITY_COMMANDS.PREFIX_CACHE}`, {
+    description: "Show privacy-safe provider prefix-cache diagnostics",
+    handler: async (_args, ctx) => {
+      const report = formatPrefixCacheStats(prefixCache.getSnapshot());
+      if (ctx.hasUI) {
+        ctx.ui.notify(report, "info");
+      } else {
+        pi.sendMessage({ customType: "unipi-response", content: report, display: true }, { deliverAs: "followUp" });
+      }
+    },
+  });
+
+  pi.on("session_start", () => {
+    // A replacement/reloaded session has a distinct provider prefix lineage.
+    // The extension factory is normally recreated, but reset explicitly so
+    // custom hosts that reuse one factory cannot leak counts across sessions.
+    prefixCache.reset();
+  });
+
+  pi.on("before_provider_request", (event, ctx) => {
+    prefixCache.observeRequest(event.payload, ctx.model);
+    // Observe only: never replace or mutate provider payloads.
+  });
+
+  pi.on("agent_end", (event) => {
+    prefixCache.observeMessages(event.messages);
+  });
+
+  pi.on("model_select", (event) => {
+    if (event.previousModel && (
+      event.previousModel.provider !== event.model.provider ||
+      event.previousModel.id !== event.model.id ||
+      event.previousModel.api !== event.model.api
+    )) {
+      prefixCache.markBoundary("envelope_changed");
+    }
+  });
+  pi.on("thinking_level_select", (event) => {
+    if (event.previousLevel !== event.level) prefixCache.markBoundary("envelope_changed");
+  });
+  pi.on("session_compact", () => prefixCache.markBoundary("history_rewritten"));
+  pi.on("session_tree", () => prefixCache.markBoundary("history_rewritten"));
 
   // Register cleanup on shutdown
   lifecycle.registerCleanup(async () => {

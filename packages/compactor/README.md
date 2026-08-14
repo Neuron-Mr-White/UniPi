@@ -108,6 +108,8 @@ Config-only legacy field: `fts5Index` remains in the schema for compatibility, b
 
 These settings control UniPi-managed percentage auto-compaction. They are separate from Pi core's own `compaction.reserveTokens` behavior.
 
+**Prefix-cache policy:** every compaction replaces provider-visible history and starts a new cache epoch. UniPi therefore keeps this second percentage trigger **off by default** and does not compact repeatedly merely to shorten a cache-hit request. Pi core remains the default safety trigger: with its documented defaults it compacts when estimated context exceeds `contextWindow - 16,384` reserved response tokens, while keeping about 20,000 recent tokens. If you deliberately enable the UniPi percentage trigger, 80% is an earlier explicit boundary and the cooldown/growth guards prevent loops. UniPi's compiler is deterministic and zero-LLM; it does not issue a second summarizer request.
+
 | Setting | Default | Meaning |
 |---|---:|---|
 | `Percentage Trigger` | `off` | When on, UniPi checks context usage at `turn_end` and can call compaction when the threshold is reached. Disabled by default for backward compatibility. |
@@ -157,7 +159,7 @@ The extension registers tools during `session_start` after the session DB is ini
 | Tool | Purpose |
 |---|---|
 | `compact` | Agent-facing compaction request; supports `dryRun: true` preview. Slash command `/unipi:lossless-compact` is the user-facing immediate compaction path. |
-| `session_recall` | Search current session history with BM25 or regex. |
+| `session_recall` | Search current session history with BM25 or regex. Defaults to 10 hits, hard-caps pages at 50, and caps expanded hit text at 16 KiB. |
 | `vcc_recall` | Deprecated alias for `session_recall`. |
 | `sandbox` | Run code in a sandboxed environment. Languages: JavaScript, TypeScript, Python, shell, Ruby, Go, Rust, PHP, Perl, R, Elixir. |
 | `sandbox_file` | Execute a file with its content injected as `FILE_CONTENT`. |
@@ -255,7 +257,7 @@ When UniPi handles `session_before_compact`, it transforms old messages through 
 5. **Format** — emit a structured markdown summary.
 6. **Merge** — merge with the previous summary when Pi provides one.
 
-The resulting summary is optimized for continuity, not for perfect archival fidelity. Use `session_recall` when the agent needs details from the raw session branch.
+The resulting summary is optimized for continuity, not for perfect archival fidelity. Use `session_recall` when the agent needs details from the raw session branch. Recall is deliberately paginated: request another offset page or narrow the query instead of injecting an unbounded result set. Even with `expand: true`, each hit is capped at 16 KiB to prevent a single historical message or tool result from dominating future cold-cache requests.
 
 ---
 

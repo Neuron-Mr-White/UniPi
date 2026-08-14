@@ -30,6 +30,7 @@ const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 /** Current loop manager instance (recreated on session reload) */
 let manager: RalphLoopManager | null = null;
 
+
 /**
  * Get or create the loop manager for the current context.
  */
@@ -42,9 +43,14 @@ function getManager(ctx: ExtensionContext, pi: ExtensionAPI): RalphLoopManager {
   return manager;
 }
 
+export { buildRalphLoopReminder } from "./reminder.js";
+import { buildRalphLoopReminder, latestRalphReminder, RALPH_REMINDER_TYPE } from "./reminder.js";
+
 export default function (pi: ExtensionAPI) {
-  // Register tools
-  // (Manager will be created lazily on first use)
+  // Register static tool definitions at extension load. Their executors resolve
+  // the session-scoped manager lazily, so schemas never arrive late or reorder
+  // the provider tool array during session_start.
+  registerRalphTools(pi, (ctx) => getManager(ctx, pi));
 
   // Register commands
   registerCommands(pi);
@@ -157,20 +163,13 @@ export default function (pi: ExtensionAPI) {
     const state = mgr.loadState(currentLoop);
     if (!state || state.status !== "active") return;
 
-    const iterStr = `${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`;
-
-    let instructions = `You are in a Ralph loop working on: ${state.taskFile}\n`;
-    if (state.itemsPerIteration > 0) {
-      instructions += `- Work on ~${state.itemsPerIteration} items this iteration\n`;
-    }
-    instructions += `- Update the task file as you progress\n`;
-    instructions += `- When FULLY COMPLETE: ${RALPH_COMPLETE_MARKER}\n`;
-    instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
+    const content = buildRalphLoopReminder(state);
+    if (latestRalphReminder(ctx) === content) return;
 
     return {
       message: {
-        customType: "unipi-ralph-loop-reminder",
-        content: `[RALPH LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
+        customType: RALPH_REMINDER_TYPE,
+        content,
         display: false,
       },
     };
@@ -187,11 +186,6 @@ export default function (pi: ExtensionAPI) {
     manager = null;
   });
 
-  // Register tools after manager setup
-  pi.on("session_start", async (_event, ctx) => {
-    const mgr = getManager(ctx, pi);
-    registerRalphTools(pi, mgr);
-  });
 }
 
 /**

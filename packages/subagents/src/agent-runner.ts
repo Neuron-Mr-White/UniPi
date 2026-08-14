@@ -19,8 +19,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_CONFIGS, type AgentConfig, type AgentType, type ThinkingLevel } from "./types.js";
 
-/** Tools excluded from subagents to prevent nesting. */
-const EXCLUDED_TOOL_NAMES = ["Agent", "get_result"];
+/** Tools excluded from subagents to prevent nesting. Legacy names remain for older hosts. */
+const EXCLUDED_TOOL_NAMES = ["spawn_helper", "get_helper_result", "Agent", "get_result"];
 
 /** All known built-in tool names. */
 const BUILTIN_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];

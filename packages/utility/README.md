@@ -16,6 +16,7 @@ The diff rendering is the standout feature — Shiki-powered syntax-highlighted 
 | `/unipi:name-badge` | Toggle name badge overlay |
 | `/unipi:badge-gen` | Generate session name via LLM and enable badge |
 | `/unipi:util-settings` | Unified settings for badge and diff rendering |
+| `/unipi:prefix-cache` | Show privacy-safe request-prefix transitions and provider cache token counters |
 
 ### Examples
 
@@ -31,6 +32,14 @@ The diff rendering is the standout feature — Shiki-powered syntax-highlighted 
 ## Special Triggers
 
 Utility registers with the info-screen dashboard, showing module status and diagnostic results. The footer subscribes to utility events for its extension status segment.
+
+## Provider prefix-cache diagnostics
+
+`/unipi:prefix-cache` observes Pi's provider-native request payloads without modifying them. It reports session-local cache epochs, exact structural prefix extensions, retries, request-envelope/history boundaries, and provider-reported `cacheRead`/`cacheWrite` token totals.
+
+The fingerprints are keyed HMAC-SHA-256 values using a random in-memory key that is discarded on reload. Raw prompts, messages, tool arguments, tool schemas, and provider payloads are never retained or logged by this diagnostic. Fingerprints therefore cannot be compared across process lifetimes. A reported prefix extension means the request is structurally eligible for reuse; provider TTL, routing, and cache policy still decide whether a hit occurs.
+
+`/unipi:cleanup` includes private `~/.unipi/tool-results/` artifacts in the normal temporary-file retention policy (7 days by default). Use dry-run mode to review candidates before deletion.
 
 The diff rendering feature wraps Pi's built-in `write` and `edit` tools. When enabled, these tools show syntax-highlighted diffs instead of plain output. This is a transparent replacement — the agent doesn't need to know about it.
 

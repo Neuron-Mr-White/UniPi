@@ -16,7 +16,7 @@
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { compactTool } from "./compact.js";
-import { vccRecall, type RecallInput } from "./vcc-recall.js";
+import { MAX_RECALL_RESULTS, vccRecall, type RecallInput } from "./vcc-recall.js";
 import { ctxExecute, type CtxExecuteInput } from "./ctx-execute.js";
 import { ctxExecuteFile, type CtxExecuteFileInput } from "./ctx-execute-file.js";
 import { ctxBatchExecute, type BatchItem } from "./ctx-batch-execute.js";
@@ -55,7 +55,11 @@ const RecallParams = Type.Object({
   mode: Type.Optional(Type.Union([Type.Literal("bm25"), Type.Literal("regex")], {
     description: "Search mode: bm25 (default) or regex fallback",
   })),
-  limit: Type.Optional(Type.Number({ description: "Max results to return (default 10)", minimum: 1 })),
+  limit: Type.Optional(Type.Number({
+    description: `Max results to return (default 10, hard cap ${MAX_RECALL_RESULTS})`,
+    minimum: 1,
+    maximum: MAX_RECALL_RESULTS,
+  })),
   offset: Type.Optional(Type.Number({ description: "Pagination offset", minimum: 0 })),
   expand: Type.Optional(Type.Boolean({ description: "Return full message content for hits" })),
 });

@@ -121,6 +121,34 @@ function cleanDbs(options: Required<CleanupOptions>): CleanupResult {
   return result;
 }
 
+/** Clean private tool-result artifacts after the configured temp retention. */
+function cleanToolResults(options: Required<CleanupOptions>): CleanupResult {
+  const result: CleanupResult = {
+    category: "tool-results",
+    removed: 0,
+    bytesFreed: 0,
+    paths: [],
+  };
+  const dir = expandHome("~/.unipi/tool-results");
+  if (!existsSync(dir)) return result;
+
+  let entries: string[];
+  try { entries = readdirSync(dir); } catch { return result; }
+  for (const entry of entries) {
+    if (!/^(?:tool-result|mcp-[a-zA-Z0-9_-]+|helper)-[a-f0-9-]+\.txt$/.test(entry)) continue;
+    const path = join(dir, entry);
+    try {
+      const stats = statSync(path);
+      if (!stats.isFile() || !isStale(path, options.tempMaxAgeDays)) continue;
+      result.paths.push(path);
+      result.bytesFreed += stats.size;
+      if (!options.dryRun) unlinkSync(path);
+      result.removed++;
+    } catch { /* best effort */ }
+  }
+  return result;
+}
+
 /** Clean temp files matching unipi patterns */
 function cleanTemps(options: Required<CleanupOptions>): CleanupResult {
   const result: CleanupResult = {
@@ -288,6 +316,7 @@ export function cleanupStale(options: CleanupOptions = {}): CleanupReport {
   const results: CleanupResult[] = [
     cleanDbs(opts),
     cleanTemps(opts),
+    cleanToolResults(opts),
     cleanSessions(opts),
     cleanCache(opts),
   ];

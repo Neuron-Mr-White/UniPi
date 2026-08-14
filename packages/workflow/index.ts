@@ -71,7 +71,7 @@ function sandboxRestrictions(level: SandboxLevel): string[] {
 }
 
 /** Build a persistent snapshot that explicitly invalidates earlier sandbox state. */
-function formatActiveSandboxSnapshot(command: string, level: SandboxLevel): string {
+export function formatActiveSandboxSnapshot(command: string, level: SandboxLevel): string {
   const blocked = getBlockedToolsForLevel(level);
   const blockedLine = blocked.length > 0
     ? blocked.join(", ")
@@ -89,7 +89,7 @@ function formatActiveSandboxSnapshot(command: string, level: SandboxLevel): stri
   ].join("\n\n");
 }
 
-function formatInactiveSandboxSnapshot(): string {
+export function formatInactiveSandboxSnapshot(): string {
   return [
     "# UniPi Workflow Sandbox Snapshot",
     "This snapshot supersedes all prior UniPi workflow sandbox snapshots; use only this snapshot for workflow sandbox status and restrictions.",

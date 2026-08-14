@@ -51,7 +51,7 @@ function formatMilestoneContext(filePath: string): string | null {
 }
 
 /** Build an append-only snapshot that explicitly invalidates earlier snapshots. */
-function formatMilestoneSnapshot(workspace: string, context: string | null): string {
+export function formatMilestoneSnapshot(workspace: string, context: string | null): string {
   return [
     "# UniPi Milestone Snapshot",
     "This snapshot supersedes all prior UniPi milestone snapshots; use only this snapshot for milestone status.",

@@ -58,7 +58,7 @@ Uses cocoindex v1.0+ App/fn/mount API with:
 
 | Tool | Description |
 |------|-------------|
-| `cocoindex_search` | Search indexed content (semantic vector when available, LanceDB FTS when available, lexical fallback for text-only indexes) |
+| `cocoindex_search` | Search indexed content (semantic vector when available, LanceDB FTS when available, lexical fallback for text-only indexes); defaults to 10 results and hard-caps each page at 50 |
 | `cocoindex_status` | Check indexing status, freshness, doc count |
 
 ## Commands
@@ -76,6 +76,7 @@ Uses cocoindex v1.0+ App/fn/mount API with:
 - **Data store**: `.unipi/cocoindex/.lancedb/`
 - **Embeddings**: `~/.unipi/memory/config.json` (shared with memory package)
 - **Search fallback**: Existing text-only LanceDB tables remain searchable through a lexical scan fallback when no vector column or FTS index exists
+- **Provider context bound**: Search pages are limited to 50 results, each rendered with a 300-character excerpt. Request another offset page instead of placing an unbounded result set into conversation history.
 
 ## What Changed from FTS5
 

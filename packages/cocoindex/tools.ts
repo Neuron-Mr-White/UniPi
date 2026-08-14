@@ -7,18 +7,36 @@
  */
 
 import { Type } from "typebox";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { COCOINDEX_PACKAGE_SPEC, COCOINDEX_TOOLS } from "@pi-unipi/core";
 import * as bridge from "./bridge.js";
-import type { CocoindexDeps } from "./bridge.js";
+
+export interface CocoindexToolDeps {
+  getProjectDir(ctx: ExtensionContext): string;
+}
 
 // ─────────────────────────────────────────────────────────
 // Schemas
 // ─────────────────────────────────────────────────────────
 
+export const MAX_SEARCH_RESULTS = 50;
+
+export function normalizeSearchPage(limit?: number, offset?: number): { limit: number; offset: number } {
+  const requestedLimit = Number.isFinite(limit) ? Math.floor(limit!) : 10;
+  const requestedOffset = Number.isFinite(offset) ? Math.floor(offset!) : 0;
+  return {
+    limit: Math.min(MAX_SEARCH_RESULTS, Math.max(1, requestedLimit)),
+    offset: Math.max(0, requestedOffset),
+  };
+}
+
 const SearchParams = Type.Object({
   query: Type.String({ description: "Search query against indexed content" }),
-  limit: Type.Optional(Type.Number({ description: "Max results (default 10)", minimum: 1 })),
+  limit: Type.Optional(Type.Number({
+    description: `Max results (default 10, hard cap ${MAX_SEARCH_RESULTS})`,
+    minimum: 1,
+    maximum: MAX_SEARCH_RESULTS,
+  })),
   offset: Type.Optional(Type.Number({ description: "Pagination offset", minimum: 0 })),
 });
 
@@ -39,7 +57,7 @@ function textResult(text: string, details?: Record<string, unknown>): any {
 // Registration
 // ─────────────────────────────────────────────────────────
 
-export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): void {
+export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexToolDeps): void {
   // cocoindex_search — search indexed content via LanceDB
   pi.registerTool({
     name: COCOINDEX_TOOLS.SEARCH,
@@ -49,7 +67,13 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
       "Diagnostic/search only: this tool never installs CocoIndex. " +
       "Use /unipi:cocoindex-init to set up/install, then /unipi:cocoindex-update to index.",
     parameters: SearchParams,
-    async execute(_toolCallId: string, params: any): Promise<any> {
+    async execute(
+      _toolCallId: string,
+      params: any,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<any> {
       try {
         const available = await bridge.isAvailable();
         if (!available) {
@@ -61,9 +85,12 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
           );
         }
 
-        const results = await bridge.search(deps.projectDir, params.query, {
-          limit: params.limit,
-          offset: params.offset,
+        // Clamp in execution as well as schema validation: Pi extensions may
+        // mutate tool inputs after validation and custom hosts may skip it.
+        const { limit, offset } = normalizeSearchPage(params.limit, params.offset);
+        const results = await bridge.search(deps.getProjectDir(ctx), params.query, {
+          limit,
+          offset,
         });
 
         if (results.length === 0) {
@@ -79,7 +106,8 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
         );
         return textResult(
           `Found ${results.length} results for "${params.query}":\n\n${lines.join("\n\n")}`,
-          { results } as unknown as Record<string, unknown>,
+          // Avoid duplicating full result content in model-visible details.
+          { count: results.length, query: params.query, limit, offset },
         );
       } catch (err) {
         return textResult(`CocoIndex search error: ${err}`, { error: true });
@@ -93,9 +121,15 @@ export function registerCocoindexTools(pi: ExtensionAPI, deps: CocoindexDeps): v
     label: "CocoIndex Status",
     description: "Check CocoIndex indexing status. Diagnostic only; use commands for interactive install/update.",
     parameters: StatusParams,
-    async execute(): Promise<any> {
+    async execute(
+      _toolCallId: string,
+      _params: Record<string, never>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
+    ): Promise<any> {
       try {
-        const info = await bridge.status(deps.projectDir);
+        const info = await bridge.status(deps.getProjectDir(ctx));
         const lines = [
           `📦 CocoIndex Status`,
           `CLI available: ${info.cliAvailable ? "✅" : "❌"}`,

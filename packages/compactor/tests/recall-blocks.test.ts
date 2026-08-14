@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { recallBlocksFromContext, recallBlocksFromSessionEntries } from "../src/session/recall-blocks.js";
-import { vccRecall } from "../src/tools/vcc-recall.js";
+import { MAX_EXPANDED_HIT_BYTES, MAX_RECALL_RESULTS, vccRecall } from "../src/tools/vcc-recall.js";
 
 function entry(id: string, parentId: string | null, message: any): SessionEntry {
   return {
@@ -62,6 +62,27 @@ describe("recall block extraction", () => {
 
     expect(result.hits).toHaveLength(1);
     expect(result.hits[0].text).toMatch(/zircon/);
+  });
+
+  it("hard-caps result count even when validation is bypassed", () => {
+    const blocks = Array.from({ length: 100 }, (_, i) => ({
+      kind: "user" as const,
+      text: `needle ${i}`,
+      index: i,
+    }));
+    const result = vccRecall(blocks as any, { query: "needle", mode: "regex", limit: 10_000 });
+    expect(result.hits).toHaveLength(MAX_RECALL_RESULTS);
+  });
+
+  it("bounds each expanded hit so one message cannot flood provider history", () => {
+    const text = `needle ${"x".repeat(MAX_EXPANDED_HIT_BYTES * 2)}`;
+    const result = vccRecall([{ kind: "user", text, index: 0 }] as any, {
+      query: "needle",
+      mode: "regex",
+      expand: true,
+    });
+    expect(Buffer.byteLength(result.hits[0].text, "utf8")).toBeLessThan(MAX_EXPANDED_HIT_BYTES + 200);
+    expect(result.hits[0].text).toMatch(/bytes omitted/);
   });
 
   it("indexes Pi-specific bashExecution messages", () => {

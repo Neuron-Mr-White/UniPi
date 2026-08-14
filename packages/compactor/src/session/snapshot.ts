@@ -257,7 +257,6 @@ export function buildResumeSnapshot(
 ): string {
   const compactCount = opts?.compactCount ?? 1;
   const searchTool = opts?.searchTool ?? "ctx_search";
-  const now = new Date().toISOString();
 
   const fileEvents: StoredEvent[] = [];
   const taskEvents: StoredEvent[] = [];
@@ -316,7 +315,9 @@ export function buildResumeSnapshot(
   const intent = buildIntentSection(intentEvents);
   if (intent) sections.push(intent);
 
-  const header = `<session_resume events="${events.length}" compact_count="${compactCount}" generated_at="${now}">`;
+  // Deliberately omit wall-clock time. This snapshot is model-visible on the
+  // first post-compaction request and must be reproducible from stored events.
+  const header = `<session_resume events="${events.length}" compact_count="${compactCount}">`;
   const footer = `</session_resume>`;
   const body = sections.join("\n\n");
   if (body) {

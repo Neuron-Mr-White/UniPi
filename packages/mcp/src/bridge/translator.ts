@@ -5,7 +5,7 @@
  * Naming convention: {serverName}__{toolName}
  */
 
-import { MCP_DEFAULTS } from "@pi-unipi/core";
+import { MCP_DEFAULTS, boundModelOutput } from "@pi-unipi/core";
 import type { McpTool, McpToolResult } from "../types.js";
 import type { McpClient } from "./client.js";
 
@@ -170,21 +170,28 @@ export function translateMcpTool(
         }
       }
 
-      if (result.isError) {
-        const errorText = blocks.map((b) => b.text).join("\n") || "Unknown error";
-        return {
-          content: [{ type: "text", text: `MCP tool error from ${serverName}: ${errorText}` }],
-          details: { error: true, server: serverName, tool: mcpTool.name },
-        };
+      if (blocks.length === 0) {
+        blocks.push({ type: "text", text: result.isError ? "Unknown error" : "(no output)" });
       }
 
-      if (blocks.length === 0) {
-        blocks.push({ type: "text", text: "(no output)" });
-      }
+      const rawText = blocks.map((block) => block.text).join("\n");
+      const wrapper = result.isError ? `MCP tool error from ${serverName}: ` : "";
+      const output = boundModelOutput(rawText, {
+        maxBytes: Math.max(1024, MCP_DEFAULTS.MAX_MODEL_OUTPUT_BYTES - Buffer.byteLength(wrapper, "utf8")),
+        artifactPrefix: `mcp-${serverName}-${mcpTool.name}`,
+      });
+      const visibleText = `${wrapper}${output.text}`;
 
       return {
-        content: blocks,
-        details: { server: serverName, tool: mcpTool.name },
+        content: [{ type: "text", text: visibleText }],
+        details: {
+          error: result.isError || undefined,
+          server: serverName,
+          tool: mcpTool.name,
+          truncated: output.truncated,
+          originalBytes: output.originalBytes,
+          artifactPath: output.artifactPath,
+        },
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

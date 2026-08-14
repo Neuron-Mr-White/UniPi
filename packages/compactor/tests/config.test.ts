@@ -4,6 +4,15 @@ import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
 import { detectPreset, applyPreset } from "../src/config/presets.js";
 
 describe("config", () => {
+  it("keeps the extra percentage compaction boundary disabled by default", () => {
+    expect(DEFAULT_COMPACTOR_CONFIG.autoCompaction).toMatchObject({
+      enabled: false,
+      thresholdPercent: 80,
+      cooldownMs: 60_000,
+      repeatMinGrowthTokens: 4_000,
+    });
+  });
+
   it("migrateConfig fills missing keys", () => {
     const partial = { debug: true } as any;
     const config = migrateConfig(partial);

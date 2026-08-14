@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { emitEvent, MODULES, UNIPI_EVENTS, withHerdrBlocked, type UnipiBadgeGenerateRequestEvent } from "./core-compat.js";
+import { boundHelperOutput, emitEvent, MODULES, UNIPI_EVENTS, withHerdrBlocked, type UnipiBadgeGenerateRequestEvent } from "./core-compat.js";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
@@ -756,9 +756,11 @@ Guidelines:
           });
         }
 
+        const output = boundHelperOutput(record.result?.trim() || "No output.");
+        record.resultArtifactPath = output.artifactPath;
         return textResult(
           `Agent completed in ${(durationMs / 1000).toFixed(1)}s (${record.toolUses} tool uses${tokenText ? `, ${tokenText} tokens` : ""}).\n\n` +
-            (record.result?.trim() || "No output."),
+            output.text,
           {
             status: "completed",
             toolUses: record.toolUses,
@@ -766,6 +768,9 @@ Guidelines:
             durationMs,
             turnCount: fgState.turnCount,
             maxTurns: fgState.maxTurns,
+            truncated: output.truncated,
+            originalBytes: output.originalBytes,
+            artifactPath: output.artifactPath,
           },
         );
       },
@@ -851,7 +856,13 @@ Guidelines:
         } else if (record.status === "error") {
           output += `Error: ${record.error}`;
         } else {
-          output += record.result?.trim() || "No output.";
+          const bounded = boundHelperOutput(
+            record.result?.trim() || "No output.",
+            64 * 1024,
+            record.resultArtifactPath,
+          );
+          record.resultArtifactPath = bounded.artifactPath;
+          output += bounded.text;
         }
 
         if (record.status !== "running" && record.status !== "queued") {
