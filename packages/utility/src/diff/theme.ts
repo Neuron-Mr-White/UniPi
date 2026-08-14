@@ -101,9 +101,6 @@ const PRESETS: Record<string, DiffPreset> = {
   },
 };
 
-/** Hardcoded fallback colors (last resort) */
-const HARDCODED_FALLBACK: DiffColors = PRESETS.default.colors;
-
 // ─── Preset Access ──────────────────────────────────────────────────────────────
 
 /**

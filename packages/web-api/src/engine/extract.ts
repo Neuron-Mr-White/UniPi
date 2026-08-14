@@ -35,7 +35,6 @@ import { truncateContent, formatContent } from "./format.js";
 const MAX_REDIRECTS = 5;
 
 /** Maximum alternate link fallbacks to try */
-const MAX_ALTERNATE_LINKS = 3;
 
 /**
  * Validate a URL for fetching.
@@ -191,31 +190,6 @@ function findMetaRefresh(document: Document): string | null {
   }
 
   return match[1];
-}
-
-/**
- * Check for alternate JSON content links.
- *
- * @param document - DOM document
- * @returns Array of alternate URLs
- */
-function findAlternateLinks(document: Document): string[] {
-  const alternates: string[] = [];
-
-  // Look for JSON feeds, oEmbed, etc.
-  const links = document.querySelectorAll(
-    'link[rel="alternate"][type="application/json"], ' +
-    'link[rel="alternate"][type="application/ld+json"]'
-  );
-
-  for (const link of Array.from(links)) {
-    const href = link.getAttribute("href");
-    if (href) {
-      alternates.push(href);
-    }
-  }
-
-  return alternates.slice(0, MAX_ALTERNATE_LINKS);
 }
 
 /**

@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
-import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel } from "@pi-unipi/core";
+import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel, type UnipiWorkflowEvent } from "@pi-unipi/core";
 
 type CompletionItem = { value: string; label: string; description: string };
 
@@ -22,6 +22,8 @@ export interface WorkflowCommandOptions {
   setActiveTools: (tools: string[], level: SandboxLevel) => void;
   /** Save tools for later restore */
   saveTools: (tools: string[]) => void;
+  /** Begin one workflow lifecycle; false means another workflow is active. */
+  startWorkflow: (event: UnipiWorkflowEvent) => boolean;
 }
 
 /** Command definition */
@@ -402,6 +404,16 @@ export function registerWorkflowCommands(
         return null;
       },
       handler: async (args, ctx) => {
+        const workflowEvent: UnipiWorkflowEvent = {
+          command: cmd.name,
+          fullCommand: `/${fullCommand}`,
+          args: args?.trim() ?? "",
+        };
+        if (!options.startWorkflow(workflowEvent)) {
+          if (ctx.hasUI) ctx.ui.notify("Another UniPi workflow is still active", "warning");
+          return;
+        }
+
         // Apply sandbox — save current tools, set command's tools
         const currentTools = options.getActiveTools();
         options.saveTools(currentTools);

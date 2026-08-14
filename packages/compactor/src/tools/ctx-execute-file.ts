@@ -12,11 +12,13 @@ export interface CtxExecuteFileInput {
   timeout?: number;
 }
 
-export async function ctxExecuteFile(input: CtxExecuteFileInput): Promise<ExecResult> {
+export async function ctxExecuteFile(
+  input: CtxExecuteFileInput,
+  executor = new PolyglotExecutor(),
+): Promise<ExecResult> {
   const content = readFileSync(input.path, "utf-8");
   const code = `const FILE_CONTENT = ${JSON.stringify(content)};\n// User script follows:\n`;
   
-  const executor = new PolyglotExecutor();
   return executor.executeFile({
     language: input.language,
     path: input.path,

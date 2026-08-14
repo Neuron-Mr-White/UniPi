@@ -51,13 +51,6 @@ function formatTurns(turn: number, max?: number): string {
   return max != null ? `⟳${turn}≤${max}` : `⟳${turn}`;
 }
 
-/** Format token count compactly: "33.8k token", "1.2M token". */
-function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M token`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k token`;
-  return `${count} token`;
-}
-
 /**
  * Build a human-readable activity string from currently-running tools.
  * Groups by tool type with counts: "reading 3 files, searching 2 patterns".

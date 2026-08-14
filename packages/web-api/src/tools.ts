@@ -63,19 +63,6 @@ function getAvailableProviders(capability: WebCapability): WebProvider[] {
 }
 
 /**
- * Select provider for a capability.
- * If sourceRank is specified, use that rank.
- * Otherwise, use the lowest-ranked available provider.
- */
-function selectProvider(
-  capability: WebCapability,
-  sourceRank?: number
-): WebProvider {
-  const candidates = selectProviderChain(capability, sourceRank);
-  return candidates[0];
-}
-
-/**
  * Build the ordered list of providers to try for a capability.
  *
  * With an explicit `sourceRank` the user named a provider, so exactly that one

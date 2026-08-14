@@ -21,6 +21,7 @@ import {
   getBlockedToolsForLevel,
 } from "@pi-unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
+import { WorkflowLifecycle } from "./lifecycle.js";
 
 /** Package version (read from package.json at load time) */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -41,6 +42,7 @@ let currentSandboxLevel: SandboxLevel | null = null;
 let currentSandboxTools: string[] | null = null;
 
 export default function (pi: ExtensionAPI) {
+  const workflowLifecycle = new WorkflowLifecycle();
 
   // Register all workflow commands
   registerWorkflowCommands(pi, {
@@ -54,6 +56,11 @@ export default function (pi: ExtensionAPI) {
     },
     saveTools: (tools: string[]) => {
       savedTools = tools;
+    },
+    startWorkflow: (event) => {
+      if (!workflowLifecycle.start(event)) return false;
+      emitEvent(pi, UNIPI_EVENTS.WORKFLOW_START, event);
+      return true;
     },
   });
 
@@ -109,7 +116,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Restore tools when agent finishes
-  pi.on("agent_end", async (_event, _ctx) => {
+  pi.on("agent_end", async (event, _ctx) => {
     if (sandboxActive && savedTools) {
       pi.setActiveTools(savedTools);
       savedTools = null;
@@ -117,6 +124,9 @@ export default function (pi: ExtensionAPI) {
       currentSandboxLevel = null;
       currentSandboxTools = null;
     }
+
+    const completedWorkflow = workflowLifecycle.complete(event.messages);
+    if (completedWorkflow) emitEvent(pi, UNIPI_EVENTS.WORKFLOW_END, completedWorkflow);
   });
 
   // Announce module presence on session start
@@ -163,5 +173,6 @@ export default function (pi: ExtensionAPI) {
     ralphDetected = false;
     savedTools = null;
     sandboxActive = false;
+    workflowLifecycle.reset();
   });
 }

@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
-import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult } from "./types.js";
+import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult, NotifyPriority } from "./types.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
@@ -170,7 +170,8 @@ export async function dispatchNotification(
   eventPlatforms: NotifyPlatform[],
   eventType: string,
   config: NotifyConfig,
-  cwd: string
+  cwd: string,
+  priority?: NotifyPriority,
 ): Promise<NotifyDispatchResult> {
   // Resolve ntfy config from project/global ntfy.json
   const ntfyConfig = loadNtfyConfig(cwd);
@@ -194,8 +195,8 @@ export async function dispatchNotification(
   const results = await Promise.all(
     enabledPlatforms.map(async (platform) => {
       try {
-        await sendToPlatform(platform, title, message, config, cwd);
-        return { platform, success: true };
+        const effectivePriority = await sendToPlatform(platform, title, message, config, cwd, priority);
+        return { platform, success: true, ...(effectivePriority === undefined ? {} : { priority: effectivePriority }) };
       } catch (err) {
         // SuppressedError is intentional, not a failure
         if (err instanceof SuppressedError) {
@@ -230,20 +231,29 @@ export async function dispatchNotification(
 }
 
 /** Send to a single platform */
+export function mapNotifyPriority(platform: "gotify" | "ntfy", priority: NotifyPriority): number {
+  const mappings = {
+    gotify: { low: 2, normal: 5, high: 8 },
+    ntfy: { low: 2, normal: 3, high: 5 },
+  } as const;
+  return mappings[platform][priority];
+}
+
 async function sendToPlatform(
   platform: NotifyPlatform,
   title: string,
   message: string,
   config: NotifyConfig,
-  cwd: string
-): Promise<void> {
+  cwd: string,
+  priority?: NotifyPriority,
+): Promise<number | undefined> {
   switch (platform) {
     case "native":
       await sendNativeNotification(title, message, {
         windowsAppId: config.native.windowsAppId,
         suppressWhenFocused: config.native.suppressWhenFocused,
       });
-      break;
+      return undefined;
     case "gotify":
       if (!config.gotify.serverUrl || !config.gotify.appToken) {
         throw new Error("Gotify: serverUrl and appToken are required");
@@ -253,9 +263,9 @@ async function sendToPlatform(
         config.gotify.appToken,
         title,
         message,
-        config.gotify.priority
+        priority ? mapNotifyPriority("gotify", priority) : config.gotify.priority
       );
-      break;
+      return priority ? mapNotifyPriority("gotify", priority) : config.gotify.priority;
     case "telegram":
       if (!config.telegram.botToken || !config.telegram.chatId) {
         throw new Error("Telegram: botToken and chatId are required");
@@ -266,10 +276,10 @@ async function sendToPlatform(
         title,
         message
       );
-      break;
+      return undefined;
     case "ntfy": {
       const ntfyConfig = loadNtfyConfig(cwd);
-      if (!ntfyConfig.enabled) return;
+      if (!ntfyConfig.enabled) return undefined;
       if (!ntfyConfig.serverUrl || !ntfyConfig.topic) {
         throw new Error("ntfy: serverUrl and topic are required");
       }
@@ -278,10 +288,10 @@ async function sendToPlatform(
         ntfyConfig.topic,
         title,
         message,
-        ntfyConfig.priority,
+        priority ? mapNotifyPriority("ntfy", priority) : ntfyConfig.priority,
         ntfyConfig.token
       );
-      break;
+      return priority ? mapNotifyPriority("ntfy", priority) : ntfyConfig.priority;
     }
   }
 }

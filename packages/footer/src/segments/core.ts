@@ -219,15 +219,6 @@ function renderHostnameSegment(_ctx: FooterSegmentContext): RenderedSegment {
   return { content, visible: true };
 }
 
-function renderTimeSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const now = new Date();
-  const hours = now.getHours();
-  const mins = now.getMinutes().toString().padStart(2, "0");
-  const timeStr = `${hours}:${mins}`;
-  const content = withIcon("time", timeStr);
-  return { content, visible: true };
-}
-
 // ─── TPS tier color function ────────────────────────────────────────────────
 
 function getTpsSemanticColor(tps: number): SemanticColor {

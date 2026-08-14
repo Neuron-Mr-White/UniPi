@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-08-13
+
+This release closes the unreachable-code and misleading-contract audit across runtime behavior, package artifacts, and integration events.
+
+### Added
+
+- **Release contracts:** added package-entry, production-graph, all-tarball manifest, standalone Subagents import, and isolated Utility dependency checks.
+- **Workflow lifecycle events:** workflow commands now emit one start/end pair around their agent run; Milestone synchronizes on completion while retaining shutdown fallback.
+- **Compactor event delivery:** successful compactions now emit the documented completion event, and Ralph emits iteration completion only after a real advance.
+
+### Changed
+
+- **Compactor configuration is now truthful.** Session continuity and sandbox off modes are enforced; language allowlists and output limits are active. Unsupported FTS5, display, and pipeline controls are hidden/deprecated rather than presented as working features.
+- **Subagents honors type enablement.** JSON and custom-agent frontmatter disables are enforced before records or queue entries are created.
+- **Notification priority is effective.** Explicit low/normal/high requests map to Gotify 2/5/8 and ntfy 2/3/5; omission preserves configured platform priorities.
+- **Standalone Subagents ships built ESM.** The package now prebuilds verified `dist` JavaScript/declarations, publishes no tests or raw source, and exposes a standalone Pi extension entry.
+- **Utility declares its real dependencies.** Direct Shiki usage is backed by `shiki`, and Pi TUI is declared as a host-shared peer.
+- **Package roots and manifests were tightened.** Meaningful Footer/Updater barrels are canonical, redundant wrappers are gone, and root/workspace tarballs exclude tests while retaining every declared main.
+
+### Fixed
+
+- **Compactor resume context reaches the model once.** The hidden one-shot snapshot no longer gets consumed and discarded, and the system prompt remains prefix-cache stable.
+- **Compactor sandbox policy is enforced.** Disabled tools are not registered, disallowed languages are rejected, and configured output limits reach shared executors.
+- **`/unipi:status` responds immediately and truthfully.** Removed the dead request broadcast and guaranteed 500 ms wait; the command now points to live info and diagnostics surfaces.
+- **Footer event wiring no longer waits on stale stats events.** Live Compactor segments continue reading session state directly.
+- **Standalone package resolution works in strict installs.** Subagents imports by package name, and Utility resolves Shiki and Pi TUI from its installed package root.
+
+### Removed
+
+- Nine compiler-proven private declarations with no reads or callers.
+- Fourteen source modules absent from the production graph, after preserving active `SectionData` and `RuntimeStats` type contracts.
+- Permanently-zero Compactor indexed-byte accounting and unused package-root pass-through wrappers.
+
+### Known issue
+
+- The rank-2 LLM summarization provider still returns placeholder text. Its resolution is intentionally deferred pending the broader Wigolo/web-fetch architecture decision.
+
 ## [2.4.1] — 2026-08-13
 
 ### Fixed

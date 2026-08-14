@@ -35,14 +35,6 @@ function textResult(text: string, details?: Record<string, unknown>): any {
   };
 }
 
-function jsonResult(data: unknown, label?: string): any {
-  const text = label ? `${label}:\n${JSON.stringify(data, null, 2)}` : JSON.stringify(data, null, 2);
-  return {
-    content: [{ type: "text", text }],
-    details: data as Record<string, unknown>,
-  };
-}
-
 // ─────────────────────────────────────────────────────────
 // Registration
 // ─────────────────────────────────────────────────────────

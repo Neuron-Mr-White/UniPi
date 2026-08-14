@@ -9,8 +9,8 @@ import { extractFiles } from "./extract/files.js";
 import { extractPreferences, dedupPreferencesAgainstGoals } from "./extract/preferences.js";
 import { extractCommits, formatCommits } from "./extract/commits.js";
 import { buildBriefSections, sectionsToTranscript, stringifyBrief } from "./brief.js";
-import type { SectionData } from "./sections.js";
-export type { SectionData } from "./sections.js";
+import type { SectionData } from "../types.js";
+export type { SectionData } from "../types.js";
 
 const BLOCKER_RE =
   /\b(fail(ed|s|ure|ing)?|broken|cannot|can't|won't work|does not work|doesn't work|still (broken|failing|wrong)|blocked|blocker|not (fixed|resolved|working)|crash(es|ed|ing)?)\b/i;

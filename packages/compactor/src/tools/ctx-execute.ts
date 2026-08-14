@@ -11,8 +11,10 @@ export interface CtxExecuteInput {
   timeout?: number;
 }
 
-export async function ctxExecute(input: CtxExecuteInput): Promise<ExecResult> {
-  const executor = new PolyglotExecutor();
+export async function ctxExecute(
+  input: CtxExecuteInput,
+  executor = new PolyglotExecutor(),
+): Promise<ExecResult> {
   return executor.execute({
     language: input.language,
     code: input.code,

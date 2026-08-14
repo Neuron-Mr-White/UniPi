@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { MILESTONE_DIRS, safeMtimeMs, tryRead } from "@pi-unipi/core";
+import { MILESTONE_DIRS, UNIPI_EVENTS, safeMtimeMs, tryRead } from "@pi-unipi/core";
 import { parseMilestones, getProgressSummary, updateItemStatus } from "./milestone.js";
 
 /** Track when the session started for diffing modified files */
@@ -167,19 +167,7 @@ export function registerSessionEndHook(pi: ExtensionAPI): void {
     }
   });
 
-  // Listen for WORKFLOW_END events
-  pi.on("input", (event) => {
-    // Check if this is a unipi event emission for WORKFLOW_END
-    // The input event fires for tool calls; we need to detect when
-    // the workflow ends. We'll use the events system instead.
-    return undefined;
-  });
-
-  // Use tool_result to detect workflow end
-  // Actually, we should listen for the UNIPI_EVENTS.WORKFLOW_END via pi.events
-  // But the ExtensionAPI doesn't expose pi.events.on() directly.
-  // Instead, we'll hook into session_shutdown to do a final sync.
-  pi.on("session_shutdown", () => {
+  const syncModifiedDocs = () => {
     const cwd = process.cwd();
     const milestonesPath = path.join(cwd, MILESTONE_DIRS.MILESTONES);
 
@@ -204,5 +192,11 @@ export function registerSessionEndHook(pi: ExtensionAPI): void {
         updateItemStatus(milestonesPath, phase, text, true);
       }
     }
-  });
+  };
+
+  // Workflow emits this once its follow-up agent loop drains.
+  pi.events.on(UNIPI_EVENTS.WORKFLOW_END, syncModifiedDocs);
+
+  // Final fallback for changes made outside a workflow or before event wiring.
+  pi.on("session_shutdown", syncModifiedDocs);
 }

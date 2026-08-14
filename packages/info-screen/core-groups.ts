@@ -15,20 +15,6 @@ import { parseUsageStatsAsync, formatTokens, formatCost } from "./usage-parser.j
 import type { InfoGroup } from "./types.js";
 
 /**
- * Get package version from package.json.
- */
-function getPackageVersion(packageDir: string): string {
-  try {
-    const pkgPath = join(packageDir, "package.json");
-    if (!existsSync(pkgPath)) return "0.0.0";
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-    return pkg?.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
-
-/**
  * Discover loaded extensions by scanning filesystem.
  */
 function discoverExtensions(): Array<{ name: string; source: string; version: string }> {

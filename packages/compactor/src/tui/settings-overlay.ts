@@ -122,7 +122,7 @@ const STRATEGIES: StrategyDef[] = [
     key: "sessionContinuity",
     label: "Session Continuity",
     description: "XML resume snapshot for compaction survival",
-    modes: ["full", "essential-only", "off"],
+    modes: ["full", "off"],
     getEnabled: (c) => c.sessionContinuity.enabled,
     setEnabled: (c, v) => (c.sessionContinuity.enabled = v),
     getMode: (c) => c.sessionContinuity.mode,
@@ -132,31 +132,18 @@ const STRATEGIES: StrategyDef[] = [
     key: "sandboxExecution",
     label: "Sandbox Execution",
     description: "Polyglot code execution",
-    modes: ["all", "safe-only", "off"],
+    modes: ["all", "off"],
     getEnabled: (c) => c.sandboxExecution.enabled,
     setEnabled: (c, v) => (c.sandboxExecution.enabled = v),
     getMode: (c) => c.sandboxExecution.mode,
     setMode: (c, v) => (c.sandboxExecution.mode = v as any),
   },
-  {
-    key: "toolDisplay",
-    label: "Tool Display",
-    description: "Override tool output rendering",
-    modes: ["opencode", "balanced", "verbose", "custom"],
-    getEnabled: (c) => c.toolDisplay.enabled,
-    setEnabled: (c, v) => (c.toolDisplay.enabled = v),
-    getMode: (c) => c.toolDisplay.mode,
-    setMode: (c, v) => (c.toolDisplay.mode = v as any),
-  },
 ];
 
 const PIPELINE_ITEMS: PipelineDef[] = [
-  { key: "ttlCache", label: "TTL Cache", description: "Cache with time-based expiry", group: "On Compaction", getValue: (c) => c.pipeline.ttlCache, setValue: (c, v) => (c.pipeline.ttlCache = v) },
+  // Only expose implemented behavior. Reserved compatibility fields remain in
+  // the persisted schema so existing config files continue to load.
   { key: "autoInjection", label: "Auto Injection", description: "Inject behavioral state after compaction", group: "On Compaction", getValue: (c) => c.pipeline.autoInjection, setValue: (c, v) => (c.pipeline.autoInjection = v) },
-  { key: "mmapPragma", label: "MMap Pragma", description: "Use mmap for SQLite I/O", group: "On Compaction", getValue: (c) => c.pipeline.mmapPragma, setValue: (c, v) => (c.pipeline.mmapPragma = v) },
-  { key: "proximityReranking", label: "Proximity Reranking", description: "Rerank search results by proximity", group: "On Search", getValue: (c) => c.pipeline.proximityReranking, setValue: (c, v) => (c.pipeline.proximityReranking = v) },
-  { key: "timelineSort", label: "Timeline Sort", description: "Sort session events chronologically", group: "On Search", getValue: (c) => c.pipeline.timelineSort, setValue: (c, v) => (c.pipeline.timelineSort = v) },
-  { key: "progressiveThrottling", label: "Progressive Throttling", description: "Slow down processing for large projects", group: "On Compaction", getValue: (c) => c.pipeline.progressiveThrottling, setValue: (c, v) => (c.pipeline.progressiveThrottling = v) },
 ];
 
 const PRESETS: CompactorPreset[] = ["precise", "balanced", "thorough", "lean"];
@@ -167,20 +154,20 @@ const REPEAT_GROWTH_VALUES = ["0", "1k", "4k", "8k", "16k", "32k"];
 
 const PRESET_DESCRIPTIONS: Record<string, { summary: string; detail: string }> = {
   precise: {
-    summary: "Code-heavy, minimal waste — compaction: full, sandbox: safe-only",
-    detail: "Max token savings. Compaction: full. Display: minimal.\nSandbox: safe-only. Pipeline: ttlCache+mmap on.",
+    summary: "Code-heavy, minimal waste — compaction: full, sandbox: all",
+    detail: "Max token savings. Compaction: full.\nSandbox: all. Auto injection: off.",
   },
   balanced: {
     summary: "Daily use (default) — all strategies moderate",
-    detail: "Moderate all strategies. Display: balanced.\nSandbox: all. Pipeline: all 6 on.",
+    detail: "Moderate all strategies.\nSandbox: all. Auto injection: on.",
   },
   thorough: {
     summary: "Debug/audit — everything on, full transcript",
-    detail: "Everything enabled. Display: verbose.\nSandbox: all. Pipeline: all 6 on.",
+    detail: "Everything enabled.\nSandbox: all. Auto injection: on.",
   },
   lean: {
     summary: "Quick fixes, short sessions — compaction only",
-    detail: "Compaction only. Display: opencode.\nSandbox: off. Pipeline: all 6 off.",
+    detail: "Compaction only.\nSandbox: off. Auto injection: off.",
   },
 };
 

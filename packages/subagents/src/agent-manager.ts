@@ -10,7 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { resolveModel, type ModelRegistry } from "./model-resolver.js";
-import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel } from "./types.js";
+import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel, SubagentsConfig } from "./types.js";
 import { BUILTIN_CONFIGS } from "./types.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import { FileLock } from "./file-lock.js";
@@ -52,6 +52,7 @@ export class AgentManager {
   private onStart?: OnAgentStart;
   private maxConcurrent: number;
   private customAgents: Map<string, AgentConfig>;
+  private typeSettings: SubagentsConfig["types"];
 
   /** Per-file transparent locking for write agents. */
   readonly fileLock = new FileLock();
@@ -61,17 +62,45 @@ export class AgentManager {
   /** Number of currently running background agents. */
   private runningBackground = 0;
 
-  constructor(onComplete?: OnAgentComplete, maxConcurrent = DEFAULT_MAX_CONCURRENT, onStart?: OnAgentStart) {
+  constructor(
+    onComplete?: OnAgentComplete,
+    maxConcurrent = DEFAULT_MAX_CONCURRENT,
+    onStart?: OnAgentStart,
+    typeSettings: SubagentsConfig["types"] = {},
+    agentsCwd = process.cwd(),
+  ) {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.maxConcurrent = maxConcurrent;
-    this.customAgents = loadCustomAgents(process.cwd());
+    this.typeSettings = typeSettings;
+    this.customAgents = loadCustomAgents(agentsCwd);
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
   }
 
   /** Get resolved agent config for a type. */
   getAgentConfig(type: AgentType): AgentConfig | undefined {
     return this.customAgents.get(type) ?? BUILTIN_CONFIGS[type];
+  }
+
+  /** Public agent types known from built-ins, custom files, or JSON config. */
+  getKnownTypes(): string[] {
+    return [...new Set([
+      ...Object.keys(BUILTIN_CONFIGS).filter((type) => type !== "name-gen"),
+      ...this.customAgents.keys(),
+      ...Object.keys(this.typeSettings),
+    ])];
+  }
+
+  /** A type is enabled only when both JSON config and agent frontmatter allow it. */
+  isTypeEnabled(type: AgentType): boolean {
+    const agentConfig = this.getAgentConfig(type);
+    return this.typeSettings[type]?.enabled !== false && agentConfig?.enabled !== false;
+  }
+
+  private assertTypeEnabled(type: AgentType): void {
+    if (!this.isTypeEnabled(type)) {
+      throw new Error(`Agent type "${type}" is disabled by configuration.`);
+    }
   }
 
   setMaxConcurrent(n: number) {
@@ -93,6 +122,10 @@ export class AgentManager {
     prompt: string,
     options: SpawnOptions,
   ): string {
+    // Reject before allocating a record or queue entry. This applies equally to
+    // foreground and background spawns and avoids ghost disabled agents.
+    this.assertTypeEnabled(type);
+
     const id = randomUUID().slice(0, 17);
     const abortController = new AbortController();
     const record: AgentRecord = {
@@ -125,10 +158,13 @@ export class AgentManager {
     if (options.isBackground) this.runningBackground++;
     this.onStart?.(record);
 
-    // Resolve model: explicit input > config model > parent model
+    const agentConfig = this.getAgentConfig(type);
+
+    // Resolve model: explicit input > per-agent config > parent model.
     let model = options.model;
-    if (options.modelInput && options.modelRegistry) {
-      const resolved = resolveModel(options.modelInput, options.modelRegistry);
+    const modelInput = options.modelInput ?? agentConfig?.model;
+    if (!model && modelInput && options.modelRegistry) {
+      const resolved = resolveModel(modelInput, options.modelRegistry);
       if (typeof resolved === "string") {
         // Error message — return early with error
         record.status = "error";
@@ -143,15 +179,14 @@ export class AgentManager {
       model = resolved;
     }
 
-    const agentConfig = this.getAgentConfig(type);
     const promise = runAgent(ctx, type, prompt, {
       pi,
       model,
       agentConfig,
-      maxTurns: options.maxTurns,
-      isolated: options.isolated,
-      inheritContext: options.inheritContext,
-      thinkingLevel: options.thinkingLevel,
+      maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
+      isolated: options.isolated ?? agentConfig?.isolated,
+      inheritContext: options.inheritContext ?? agentConfig?.inheritContext,
+      thinkingLevel: options.thinkingLevel ?? agentConfig?.thinking,
       signal: record.abortController!.signal,
       onToolActivity: (activity) => {
         if (activity.type === "end") record.toolUses++;

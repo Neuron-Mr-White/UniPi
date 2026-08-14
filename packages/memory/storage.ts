@@ -455,24 +455,6 @@ export class MemoryStorage {
   }
 
   /**
-   * Remove corrupted database files (db, wal, shm).
-   */
-  private removeCorruptedDb(): void {
-    const dbPath = path.join(this.scopeDir, MEMORY_DB_NAME);
-    const files = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
-    for (const file of files) {
-      try {
-        if (fs.existsSync(file)) {
-          fs.unlinkSync(file);
-          // Removed console.warn — corrupted file cleanup is silent.
-        }
-      } catch {
-        // Ignore removal errors
-      }
-    }
-  }
-
-  /**
    * Check if database is healthy.
    */
   isHealthy(): boolean {

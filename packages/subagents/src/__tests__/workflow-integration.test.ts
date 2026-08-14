@@ -11,6 +11,11 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const subagentsDir = join(fileURLToPath(new URL(".", import.meta.url)), "../..");
 
 // Test type definitions
 const BUILTIN_TYPES = ["explore", "work"] as const;
@@ -291,6 +296,24 @@ describe("Workflow Integration", () => {
 
       assert.deepEqual(events, ["1", "2", "3"]);
       release3();
+    });
+  });
+
+  describe("Custom Agent Defaults", () => {
+    it("should apply a custom agent model when no spawn override is provided", () => {
+      const managerSource = readFileSync(join(subagentsDir, "src/agent-manager.ts"), "utf-8");
+      assert.ok(
+        managerSource.includes("options.modelInput ?? agentConfig?.model"),
+        "custom agent model should be the fallback after an explicit spawn model",
+      );
+    });
+
+    it("should apply custom agent execution defaults", () => {
+      const managerSource = readFileSync(join(subagentsDir, "src/agent-manager.ts"), "utf-8");
+      assert.ok(managerSource.includes("options.thinkingLevel ?? agentConfig?.thinking"));
+      assert.ok(managerSource.includes("options.maxTurns ?? agentConfig?.maxTurns"));
+      assert.ok(managerSource.includes("options.isolated ?? agentConfig?.isolated"));
+      assert.ok(managerSource.includes("options.inheritContext ?? agentConfig?.inheritContext"));
     });
   });
 

@@ -72,14 +72,14 @@ Keyboard:
 
 ### Presets tab
 
-Presets are profiles that set strategies, pipeline switches, sandbox mode, and display mode.
+Presets are profiles that set strategies, the implemented Auto Injection pipeline behavior, and sandbox mode.
 
 | Preset | Intended use | Important effects |
 |---|---|---|
-| `precise` | Code-heavy work, minimal waste | Full compaction sections, safe-only sandbox, opencode display, Pipeline: `ttlCache` + `mmapPragma` on. |
-| `balanced` | Daily/default profile | Compact transcript, balanced display, FTS mode auto, sandbox all, Pipeline: all six switches on. |
-| `thorough` | Debug/audit sessions | Full transcript, verbose display, sandbox all, Pipeline: all six switches on. |
-| `lean` | Quick fixes or short sessions | Brief/minimal compaction sections, no sandbox, no session continuity, Pipeline: all off. |
+| `precise` | Code-heavy work, minimal waste | Full compaction sections, sandbox enabled, Auto Injection off. |
+| `balanced` | Daily/default profile | Compact transcript, sandbox enabled, Auto Injection on. |
+| `thorough` | Debug/audit sessions | Full transcript, sandbox enabled, Auto Injection on. |
+| `lean` | Quick fixes or short sessions | Brief/minimal compaction sections, no sandbox, no session continuity, Auto Injection off. |
 
 The **Project Override** row controls where settings are saved:
 
@@ -99,11 +99,10 @@ These settings control what is extracted into compaction summaries or how relate
 | `Outstanding Context` | `full`, `critical-only`, `off` | Keeps blockers, TODOs, pending decisions, and follow-ups. |
 | `User Preferences` | `all`, `recent-only`, `off` | Preserves user preferences learned during the session. |
 | `Brief Transcript` | `full`, `compact`, `minimal`, `off` | Keeps a rolling recent transcript after the structured sections. |
-| `Session Continuity` | `full`, `essential-only`, `off` | Controls XML-style resume snapshots that help the next turn continue after compaction. |
-| `Sandbox Execution` | `all`, `safe-only`, `off` | Controls agent-facing sandbox availability/intent. Safe-only is intended for less risky execution. |
-| `Tool Display` | `opencode`, `balanced`, `verbose`, `custom` | Controls built-in tool output rendering style and diff display behavior. |
+| `Session Continuity` | `full`, `off` | Controls XML-style resume snapshots. Off prevents snapshot creation and injection; Pi’s normal compaction summary still remains. |
+| `Sandbox Execution` | `all`, `off` | Controls sandbox tool registration. Changes require a session reload. Allowed languages and output limit are enforced from config. |
 
-Config-only legacy field: `fts5Index` remains in the schema for compatibility, but project indexing has moved to `@pi-unipi/cocoindex`.
+Config-only legacy field: `fts5Index` remains in the schema for compatibility, but project indexing has moved to `@pi-unipi/cocoindex`. It is hidden from Compactor settings and presets. Legacy `sessionContinuity.mode: "essential-only"`, `eventCategories`, and `sandboxExecution.mode: "safe-only"` values remain loadable; essential-only behaves as full and safe-only behaves as enabled/all until explicit filtering/security policies are designed. Legacy `toolDisplay` and `showTruncationHints` fields also remain loadable but are deprecated and ignored; their profile names were never mapped to runtime renderer modes. Narrow-terminal diff clamping remains active as independent safety behavior.
 
 ### Auto tab
 
@@ -133,20 +132,15 @@ Example config:
 
 ### Pipeline tab
 
-Pipeline switches are low-level feature flags used by presets and advanced users.
+The Pipeline tab exposes only behavior implemented by the current runtime.
 
 | Setting | Preset behavior | Current effect |
 |---|---|---|
-| `TTL Cache` | On in `precise`, `balanced`, `thorough`; off in `lean` | Reserved/compatibility switch for cache behavior. Search has an internal cache, but this toggle is not currently required for it. |
-| `Auto Injection` | On in `balanced`, `thorough`; off in `precise`, `lean` | Active. Adds behavioral/session state to the resume snapshot after compaction. |
-| `MMap Pragma` | On in `precise`, `balanced`, `thorough`; off in `lean` | Reserved/compatibility switch for SQLite mmap tuning. |
-| `Proximity Reranking` | On in `balanced`, `thorough`; off in `precise`, `lean` | Reserved/compatibility switch for future recall/search ranking. |
-| `Timeline Sort` | On in `balanced`, `thorough`; off in `precise`, `lean` | Reserved/compatibility switch for future chronological recall sorting. |
-| `Progressive Throttling` | On in `balanced`, `thorough`; off in `precise`, `lean` | Reserved/compatibility switch for future large-project throttling. |
+| `Auto Injection` | On in `balanced`, `thorough`; off in `precise`, `lean` | Adds behavioral/session state to the one-shot resume context after compaction. |
 
-If all Pipeline values stay `off` after choosing a preset, that means the running version is not applying preset pipeline values correctly. Choose a preset, press **Enter** to save, and verify you are on a version containing the preset pipeline fix.
+Deprecated config-only compatibility fields are still accepted so existing files load without migration failures, but they are ignored and no longer controlled or advertised by presets: `ttlCache`, `mmapPragma`, `proximityReranking`, `timelineSort`, and `progressiveThrottling`.
 
-Config-only pipeline field:
+Other config-only pipeline field:
 
 | Field | Meaning |
 |---|---|
@@ -289,10 +283,12 @@ Practical interpretation:
 
 That means preset application is not updating `config.pipeline`. The intended behavior is:
 
-- `precise`: `ttlCache` + `mmapPragma` on.
-- `balanced`: all six pipeline switches on.
-- `thorough`: all six pipeline switches on.
-- `lean`: all pipeline switches off.
+- `precise`: Auto Injection off.
+- `balanced`: Auto Injection on.
+- `thorough`: Auto Injection on.
+- `lean`: Auto Injection off.
+
+The five deprecated compatibility fields remain off in every preset.
 
 Make sure you are running a version with the preset pipeline fix, select the preset, and press **Enter** to save.
 

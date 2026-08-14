@@ -12,13 +12,11 @@ const pipeline = (overrides: Partial<CompactorConfig["pipeline"]> = {}): Compact
   customNoisePatterns: [...(overrides.customNoisePatterns ?? DEFAULT_COMPACTOR_CONFIG.pipeline.customNoisePatterns)],
 });
 
-const pipelineAllOn = (): CompactorConfig["pipeline"] => pipeline({
-  ttlCache: true,
+// Auto Injection is the only preset-controlled pipeline feature with a runtime
+// implementation. The other persisted fields are retained as ignored legacy
+// compatibility data, but presets must not advertise or enable them.
+const pipelineWithAutoInjection = (): CompactorConfig["pipeline"] => pipeline({
   autoInjection: true,
-  proximityReranking: true,
-  timelineSort: true,
-  progressiveThrottling: true,
-  mmapPragma: true,
 });
 
 const preset = (
@@ -33,30 +31,29 @@ const preset = (
   userPreferences: { ...DEFAULT_COMPACTOR_CONFIG.userPreferences, ...(overrides.userPreferences ?? {}) },
   briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, ...(overrides.briefTranscript ?? {}) },
   sessionContinuity: { ...DEFAULT_COMPACTOR_CONFIG.sessionContinuity, ...(overrides.sessionContinuity ?? {}) },
-  fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, ...(overrides.fts5Index ?? {}) },
+  // Legacy compatibility data only; presets never advertise or alter it.
+  fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index },
   sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution ?? {}) },
-  toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, ...(overrides.toolDisplay ?? {}) },
+  // Legacy compatibility data only; presets never advertise or alter it.
+  toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay },
   pipeline: pipeline(overrides.pipeline),
   autoCompaction: { ...DEFAULT_COMPACTOR_CONFIG.autoCompaction, ...(overrides.autoCompaction ?? {}) },
 });
 
-// Pipeline feature defaults per preset:
-// precise: ttlCache+mmap on, rest off
-// balanced: all on
-// thorough: all on
-// lean: all off
+// Active pipeline behavior per preset:
+// precise/lean: auto-injection off
+// balanced/thorough: auto-injection on
+// Reserved compatibility fields remain at their inert defaults in all presets.
 
 export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
   // New preset names
   precise: preset({
-    pipeline: pipeline({ ttlCache: true, mmapPragma: true }),
-    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "safe-only" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "opencode" },
+    pipeline: pipeline(),
+    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "all" },
   }),
   thorough: preset({
-    pipeline: pipelineAllOn(),
+    pipeline: pipelineWithAutoInjection(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "full" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "verbose" },
   }),
   lean: preset({
     pipeline: pipeline(),
@@ -67,27 +64,21 @@ export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
     userPreferences: { ...DEFAULT_COMPACTOR_CONFIG.userPreferences, enabled: false, mode: "off" },
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, enabled: true, mode: "minimal" },
     sessionContinuity: { ...DEFAULT_COMPACTOR_CONFIG.sessionContinuity, enabled: false, mode: "off" },
-    fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, enabled: false, mode: "off" },
     sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, enabled: false, mode: "off" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, enabled: true, mode: "opencode" },
   }),
   balanced: preset({
-    pipeline: pipelineAllOn(),
+    pipeline: pipelineWithAutoInjection(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "compact" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "balanced" },
-    fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, mode: "auto" },
   }),
 
   // Backward-compat aliases — map old names to new
   opencode: preset({
-    pipeline: pipeline({ ttlCache: true, mmapPragma: true }),
-    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "safe-only" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "opencode" },
+    pipeline: pipeline(),
+    sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, mode: "all" },
   }),
   verbose: preset({
-    pipeline: pipelineAllOn(),
+    pipeline: pipelineWithAutoInjection(),
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, mode: "full" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, mode: "verbose" },
   }),
   minimal: preset({
     pipeline: pipeline(),
@@ -98,9 +89,7 @@ export const PRESET_CONFIGS: Record<CompactorPreset, CompactorConfig> = {
     userPreferences: { ...DEFAULT_COMPACTOR_CONFIG.userPreferences, enabled: false, mode: "off" },
     briefTranscript: { ...DEFAULT_COMPACTOR_CONFIG.briefTranscript, enabled: true, mode: "minimal" },
     sessionContinuity: { ...DEFAULT_COMPACTOR_CONFIG.sessionContinuity, enabled: false, mode: "off" },
-    fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index, enabled: false, mode: "off" },
     sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, enabled: false, mode: "off" },
-    toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay, enabled: true, mode: "opencode" },
   }),
   custom: structuredClone(DEFAULT_COMPACTOR_CONFIG),
 };

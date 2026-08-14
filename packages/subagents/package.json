@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "dist/index.js",
@@ -12,14 +12,12 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/verify-build.mjs",
+    "prepack": "npm run build",
     "dev": "tsc --watch",
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.4.0",
-    "@pi-unipi/workflow": "2.4.0",
-    "@pi-unipi/info-screen": "2.4.0",
     "@earendil-works/pi-agent-core": "^0.80.0"
   },
   "devDependencies": {
@@ -30,8 +28,14 @@
     "@earendil-works/pi-tui": "^0.80.0",
     "typebox": "^1.1.38"
   },
+  "files": [
+    "dist/**",
+    "README.md"
+  ],
   "pi": {
-    "extensions": [],
+    "extensions": [
+      "./dist/index.js"
+    ],
     "skills": [],
     "prompts": [],
     "themes": []

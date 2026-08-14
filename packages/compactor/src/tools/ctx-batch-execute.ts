@@ -20,9 +20,11 @@ export interface BatchResult {
   >;
 }
 
-export async function ctxBatchExecute(items: BatchItem[]): Promise<BatchResult> {
+export async function ctxBatchExecute(
+  items: BatchItem[],
+  executor = new PolyglotExecutor(),
+): Promise<BatchResult> {
   const results: BatchResult["results"] = [];
-  const executor = new PolyglotExecutor();
 
   for (const item of items) {
     if (item.type === "execute") {

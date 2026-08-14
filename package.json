@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -41,7 +41,11 @@
     "packages/*/SKILL.md",
     "packages/*/skills/**/*",
     "packages/*/README.md",
-    "packages/unipi/bundled.js"
+    "packages/unipi/bundled.js",
+    "!packages/**/__tests__/**",
+    "!packages/**/tests/**",
+    "!packages/**/*.test.ts",
+    "!packages/**/*.spec.ts"
   ],
   "pi": {
     "extensions": [
@@ -71,26 +75,26 @@
     "typebox": "^1.1.38"
   },
   "dependencies": {
-    "@pi-unipi/ask-user": "2.4.0",
-    "@pi-unipi/btw": "2.4.0",
-    "@pi-unipi/compactor": "2.4.0",
-    "@pi-unipi/notify": "2.4.0",
-    "@pi-unipi/command-enchantment": "2.4.0",
-    "@pi-unipi/core": "2.4.0",
-    "@pi-unipi/info-screen": "2.4.0",
-    "@pi-unipi/mcp": "2.4.0",
-    "@pi-unipi/memory": "2.4.0",
-    "@pi-unipi/ralph": "2.4.1",
-    "@pi-unipi/subagents": "2.4.0",
-    "@pi-unipi/utility": "2.4.0",
-    "@pi-unipi/milestone": "2.4.0",
-    "@pi-unipi/kanboard": "2.4.0",
-    "@pi-unipi/web-api": "2.4.0",
-    "@pi-unipi/workflow": "2.4.0",
-    "@pi-unipi/footer": "2.4.0",
-    "@pi-unipi/updater": "2.4.0",
-    "@pi-unipi/input-shortcuts": "2.4.0",
-    "@pi-unipi/cocoindex": "2.4.0"
+    "@pi-unipi/ask-user": "2.4.1",
+    "@pi-unipi/btw": "2.4.1",
+    "@pi-unipi/compactor": "2.4.1",
+    "@pi-unipi/notify": "2.4.1",
+    "@pi-unipi/command-enchantment": "2.4.1",
+    "@pi-unipi/core": "2.4.1",
+    "@pi-unipi/info-screen": "2.4.1",
+    "@pi-unipi/mcp": "2.4.1",
+    "@pi-unipi/memory": "2.4.1",
+    "@pi-unipi/ralph": "2.4.2",
+    "@pi-unipi/subagents": "2.4.1",
+    "@pi-unipi/utility": "2.4.1",
+    "@pi-unipi/milestone": "2.4.1",
+    "@pi-unipi/kanboard": "2.4.1",
+    "@pi-unipi/web-api": "2.4.1",
+    "@pi-unipi/workflow": "2.4.1",
+    "@pi-unipi/footer": "2.4.1",
+    "@pi-unipi/updater": "2.4.1",
+    "@pi-unipi/input-shortcuts": "2.4.1",
+    "@pi-unipi/cocoindex": "2.4.1"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.80.0",

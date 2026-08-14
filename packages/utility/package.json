@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Utility commands and tools for Pi coding agent — lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "main": "src/index.ts",
@@ -28,21 +28,24 @@
     "src/types.ts",
     "src/**/*.ts",
     "README.md",
-    "skills/**/*.md"
+    "skills/**/*.md",
+    "!src/__tests__/**",
+    "!src/**/*.test.ts"
   ],
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.4.0",
+    "@pi-unipi/core": "2.4.1",
     "diff": "^7.0.0",
-    "@shikijs/cli": "^4.0.2"
+    "shiki": "^4.0.2"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.0",
+    "@earendil-works/pi-tui": "^0.80.0",
     "typebox": "^1.1.38"
   },
   "scripts": {

@@ -1,0 +1,14 @@
+{
+  "name": "audit-findings-fix",
+  "taskFile": ".unipi/ralph/audit-findings-fix.md",
+  "iteration": 18,
+  "maxIterations": 40,
+  "itemsPerIteration": 1,
+  "reflectEvery": 5,
+  "reflectInstructions": "REFLECTION CHECKPOINT\n\nPause and reflect on your progress:\n1. What has been accomplished so far?\n2. What's working well?\n3. What's not working or blocking progress?\n4. Should the approach be adjusted?\n5. What are the next priorities?\n\nUpdate the task file with your reflection, then continue working.",
+  "active": false,
+  "status": "completed",
+  "startedAt": "2026-08-13T09:26:42.188Z",
+  "lastReflectionAt": 16,
+  "completedAt": "2026-08-13T14:58:16.197Z"
+}

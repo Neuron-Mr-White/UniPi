@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/command-enchantment",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Enhanced TUI autocomplete for /unipi:* commands — colored, sorted, and grouped by package",
   "type": "module",
   "main": "src/index.ts",
@@ -24,7 +24,9 @@
   ],
   "files": [
     "src/**/*.ts",
-    "README.md"
+    "README.md",
+    "!src/__tests__/**",
+    "!src/**/*.test.ts"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.0",

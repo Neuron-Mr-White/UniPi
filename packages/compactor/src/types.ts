@@ -49,6 +49,16 @@ export interface BriefLine {
   lines: string[];
 }
 
+/** Runtime stats tracked during a live session. */
+export interface RuntimeStats {
+  bytesReturned: Record<string, number>;
+  bytesSandboxed: number;
+  calls: Record<string, number>;
+  sessionStart: number;
+  cacheHits: number;
+  cacheBytesSaved: number;
+}
+
 // ─────────────────────────────────────────────────────────
 // Compaction input / output
 // ─────────────────────────────────────────────────────────
@@ -110,18 +120,29 @@ export interface CompactorConfig {
   outstandingContext: CompactorStrategyConfig & { mode: "full" | "critical-only" | "off"; maxItems: number };
   userPreferences: CompactorStrategyConfig & { mode: "all" | "recent-only" | "off"; maxPreferences: number };
   briefTranscript: CompactorStrategyConfig & { mode: "full" | "compact" | "minimal" | "off"; userTokenLimit: number; assistantTokenLimit: number; toolCallLimit: number };
-  sessionContinuity: CompactorStrategyConfig & { mode: "full" | "essential-only" | "off"; eventCategories: string[] };
+  sessionContinuity: CompactorStrategyConfig & {
+    mode: "full" | "essential-only" | "off";
+    /** @deprecated Category filtering was never implemented; ignored by runtime. */
+    eventCategories: string[];
+  };
+  /** @deprecated Project indexing moved to @pi-unipi/cocoindex; retained for config compatibility. */
   fts5Index: CompactorStrategyConfig & { mode: "auto" | "manual" | "off"; chunkSize: number; cacheTtlHours: number };
-  sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: string[]; outputLimit: number };
+  sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: Language[]; outputLimit: number };
+  /** @deprecated Display profiles were never connected to runtime; retained for config compatibility. */
   toolDisplay: CompactorStrategyConfig & { mode: "opencode" | "balanced" | "verbose" | "custom"; diffLayout: "auto" | "split" | "unified"; diffIndicator: "bars" | "classic" | "none"; showThinkingLabels: boolean; showUserMessageBox: boolean; showBashSpinner: boolean; showPendingPreviews: boolean };
 
   // Pipeline features
   pipeline: {
+    /** @deprecated Reserved compatibility field; ignored by runtime. */
     ttlCache: boolean;
     autoInjection: boolean;
+    /** @deprecated Reserved compatibility field; ignored by runtime. */
     proximityReranking: boolean;
+    /** @deprecated Reserved compatibility field; ignored by runtime. */
     timelineSort: boolean;
+    /** @deprecated Reserved compatibility field; ignored by runtime. */
     progressiveThrottling: boolean;
+    /** @deprecated Reserved compatibility field; ignored by runtime. */
     mmapPragma: boolean;
     customNoisePatterns: string[];
   };
@@ -132,6 +153,7 @@ export interface CompactorConfig {
   // Global settings
   overrideDefaultCompaction: boolean;
   debug: boolean;
+  /** @deprecated Truncation hints were never connected to runtime; retained for config compatibility. */
   showTruncationHints: boolean;
 }
 

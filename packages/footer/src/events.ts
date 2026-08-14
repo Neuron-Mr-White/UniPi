@@ -27,16 +27,6 @@ export function subscribeToEvents(
   // ─── Compactor events ───────────────────────────────────────────────────
 
   unsubscribers.push(
-    pi.events.on(UNIPI_EVENTS.COMPACTOR_STATS_UPDATED, (event: unknown) => {
-      try {
-        registry.updateData("compactor", event);
-      } catch {
-        // Silently ignore — event handler errors are non-blocking.
-      }
-    })
-  );
-
-  unsubscribers.push(
     pi.events.on(UNIPI_EVENTS.COMPACTOR_COMPACTED, (event: unknown) => {
       try {
         const existing = registry.getGroupData("compactor") as Record<string, unknown> | undefined;

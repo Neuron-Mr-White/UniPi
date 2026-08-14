@@ -2,7 +2,7 @@
  * Stage 5: Format — Render sections with separators
  */
 
-import type { SectionData } from "./sections.js";
+import type { SectionData } from "../types.js";
 
 const section = (title: string, items: string[]): string => {
   if (items.length === 0) return "";

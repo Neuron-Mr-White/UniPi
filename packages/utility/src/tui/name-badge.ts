@@ -14,15 +14,6 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 const PLACEHOLDER = "Set a name";
 
 /**
- * Pad content to exact visible width.
- */
-function padVisible(content: string, targetWidth: number): string {
-  const vw = visibleWidth(content);
-  const pad = Math.max(0, targetWidth - vw);
-  return content + " ".repeat(pad);
-}
-
-/**
  * NameBadgeComponent — bordered box HUD overlay showing session name.
  *
  * Renders a proper box with opaque background:

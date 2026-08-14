@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { emitEvent, MODULES, UNIPI_EVENTS, withHerdrBlocked, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
+import { emitEvent, MODULES, UNIPI_EVENTS, withHerdrBlocked, type UnipiBadgeGenerateRequestEvent } from "./core-compat.js";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
@@ -246,6 +246,7 @@ export default function (pi: ExtensionAPI) {
         description: record.description,
       });
     },
+    config.types,
   );
 
   // Build notification details for the message renderer
@@ -494,6 +495,8 @@ export default function (pi: ExtensionAPI) {
   // ---- Agent tool ----
 
   const builtinTypes = BUILTIN_TYPES.join(", ");
+  const enabledTypes = manager.getKnownTypes().filter((type) => manager.isTypeEnabled(type));
+  const availableTypes = enabledTypes.join(", ") || "none";
 
   pi.registerTool(
     defineTool({
@@ -501,7 +504,7 @@ export default function (pi: ExtensionAPI) {
       label: "Spawn Helper",
       description: `Launch a sub-agent for parallel work.
 
-Available agent types: ${builtinTypes}
+Available agent types: ${availableTypes}
 Custom types can be defined in:
 - ~/.unipi/config/agents/<name>.md (global)
 - <workspace>/.unipi/config/agents/<name>.md (project)
@@ -514,7 +517,7 @@ Guidelines:
 - Agents inherit the parent model by default`,
       parameters: Type.Object({
         type: Type.String({
-          description: `Agent type: ${builtinTypes}, or custom type from ~/.unipi/config/agents/*.md`,
+          description: `Enabled agent type: ${availableTypes}`,
         }),
         prompt: Type.String({
           description: "The task for the agent to perform.",

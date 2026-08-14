@@ -8,7 +8,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { NOTIFY_TOOLS } from "@pi-unipi/core";
 import { loadConfig } from "./settings.js";
-import { dispatchNotification } from "./events.js";
+import { dispatchNotification, mapNotifyPriority } from "./events.js";
+import type { NotifyPriority } from "./types.js";
 
 /** Schema for notify_user tool parameters */
 const NotifyUserSchema = Type.Object({
@@ -19,7 +20,6 @@ const NotifyUserSchema = Type.Object({
   priority: Type.Optional(
     Type.String({
       enum: ["low", "normal", "high"],
-      default: "normal",
       description: "Priority level",
     })
   ),
@@ -46,12 +46,12 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
       const {
         message,
         title,
-        priority: _priority,
+        priority,
         platforms,
       } = params as {
         message: string;
         title?: string;
-        priority?: "low" | "normal" | "high";
+        priority?: NotifyPriority;
         platforms?: Array<"native" | "gotify" | "telegram" | "ntfy">;
       };
 
@@ -65,17 +65,26 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
 
       // Fire-and-forget: dispatch in background so the tool doesn't block the agent
       const cwd = process.cwd();
-      dispatchNotification(
+      const dispatchPromise = dispatchNotification(
         pi,
         notifTitle,
         message,
         notifPlatforms,
         "agent_tool",
         config,
-        cwd
-      ).catch(() => {
+        cwd,
+        priority,
+      );
+      void dispatchPromise.catch(() => {
         // Silently ignore — background dispatch failure is non-blocking.
       });
+
+      const priorityByPlatform = priority ? Object.fromEntries(
+        notifPlatforms.flatMap((platform) => {
+          if (platform === "gotify" || platform === "ntfy") return [[platform, mapNotifyPriority(platform, priority)]];
+          return [];
+        }),
+      ) : undefined;
 
       return {
         content: [
@@ -84,7 +93,7 @@ export function registerNotifyTools(pi: ExtensionAPI): void {
             text: `Notification sending to ${notifPlatforms.length} platform(s): ${notifPlatforms.join(", ")}`,
           },
         ],
-        details: { platforms: notifPlatforms },
+        details: { platforms: notifPlatforms, priority, priorityByPlatform },
       };
     },
   });

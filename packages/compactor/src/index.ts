@@ -15,15 +15,14 @@ import {
 } from "./compaction/auto-trigger.js";
 import { SessionDB, getWorktreeSuffix } from "./session/db.js";
 import { extractEventsFromToolResult } from "./session/extract.js";
-import { injectResumeSnapshot } from "./session/resume-inject.js";
+import { buildResumeContextMessage, isSessionContinuityEnabled } from "./session/resume-inject.js";
 import { PolyglotExecutor } from "./executor/executor.js";
 import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
 import { recallBlocksFromContext } from "./session/recall-blocks.js";
-import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
-import type { RuntimeStats } from "./session/analytics.js";
+import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters, RuntimeStats } from "./types.js";
 
 /** Debug logger — only logs when config.debug === true */
 function createDebugLogger(getConfig: () => { debug: boolean }) {
@@ -63,11 +62,6 @@ function isSandboxTool(name: string): boolean {
   return name === "bash" || name === "Bash";
 }
 
-/** Check if a tool is an index tool (content goes to FTS5, not context). Future-proofing. */
-function isIndexTool(_name: string): boolean {
-  return false;
-}
-
 export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
   let executor: PolyglotExecutor | null = null;
@@ -86,7 +80,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
   const runtimeStats: RuntimeStats = {
     bytesReturned: {},
-    bytesIndexed: 0,
     bytesSandboxed: 0,
     calls: {},
     sessionStart: Date.now(),
@@ -114,7 +107,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       sessionDB = null;
     }
 
-    executor = new PolyglotExecutor();
+    executor = null;
   };
 
   // Register compaction hooks with lazy deps — sessionDB/sessionId may not be
@@ -156,7 +149,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     // Reset runtime stats for new session
     runtimeStats.bytesReturned = {};
-    runtimeStats.bytesIndexed = 0;
     runtimeStats.bytesSandboxed = 0;
     runtimeStats.calls = {};
     runtimeStats.sessionStart = Date.now();
@@ -168,11 +160,19 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     // Register all compactor tools with Pi (deps now have live sessionDB)
     if (sessionDB) {
+      const sandboxEnabled = config.sandboxExecution.enabled && config.sandboxExecution.mode !== "off";
+      executor = sandboxEnabled
+        ? new PolyglotExecutor({ hardCapBytes: config.sandboxExecution.outputLimit, projectRoot: projectDir })
+        : null;
       registerCompactorTools(pi, {
         sessionDB,
         getSessionId: () => currentSessionId,
         getBlocks: () => cachedBlocks,
         getCounters,
+        sandbox: executor ? {
+          executor,
+          allowedLanguages: config.sandboxExecution.allowedLanguages,
+        } : undefined,
       });
     }
 
@@ -277,25 +277,11 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       // Non-fatal: recall will work on empty blocks
     }
 
-    if (sessionDB) {
-      const snapshot = await injectResumeSnapshot(sessionDB, currentSessionId);
-      debug("resume_snapshot", { injected: !!snapshot });
-
-      // Auto-injection on compact: inject behavioral state after compaction
-      if (snapshot && sessionDB) {
-        try {
-          const { buildAutoInjection } = await import("./session/auto-inject.js");
-          const events = sessionDB.getEvents(currentSessionId, { limit: 100 });
-          const autoInjection = buildAutoInjection(events);
-          if (autoInjection) {
-            debug("auto_injection", { tokens: autoInjection.tokens, length: autoInjection.text.length });
-            // Note: auto-injection is included in the resume snapshot context
-            // The model receives it as part of the session state restoration
-          }
-        } catch (err) {
-          debug("auto_injection_error", { error: String(err) });
-        }
-      }
+    const continuityEnabled = isSessionContinuityEnabled(config);
+    if (sessionDB && continuityEnabled) {
+      const resumeContext = await buildResumeContextMessage(sessionDB, currentSessionId);
+      debug("resume_snapshot", { injected: !!resumeContext });
+      return resumeContext;
     }
   });
 
@@ -358,7 +344,8 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_before_compact", async (event, _ctx) => {
-    if (sessionDB) {
+    const continuityEnabled = isSessionContinuityEnabled(config);
+    if (sessionDB && continuityEnabled) {
       // Use closure currentSessionId — Pi's session_before_compact event
       // does not include sessionId at the top level.
       const sessionId = currentSessionId;
@@ -386,14 +373,21 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const compactionEntry = (event as any).compactionEntry;
       const tokensBefore = compactionEntry?.tokensBefore ?? 0;
 
+      let summarized = 0;
+      let kept = 0;
+      let tokensSaved = 0;
+
       if (tokensBefore > 0) {
         // Use actual token count from Pi's compactionEntry.
         // Compaction typically keeps ~10-15% of original context.
         const charsBefore = tokensBefore * 4;
-        const tokensAfter = (event as any).tokensAfter ?? Math.round(tokensBefore * 0.12);
+        const tokensAfter = Math.round(tokensBefore * 0.12);
+        kept = tokensAfter;
+        tokensSaved = tokensBefore - tokensAfter;
         const charsKept = tokensAfter * 4;
         const messagesSummarized = Math.max(1, Math.round(tokensBefore / 500));
-        counters.totalTokensCompacted += tokensBefore - tokensAfter;
+        summarized = messagesSummarized;
+        counters.totalTokensCompacted += tokensSaved;
         sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, messagesSummarized);
       } else {
         // tokensBefore unavailable — use session event count as a rough heuristic.
@@ -407,13 +401,24 @@ export default function compactorExtension(pi: ExtensionAPI): void {
             const estTokensAfter = Math.round(estTokensBefore * 0.12);
             const charsBefore = estTokensBefore * 4;
             const charsKept = estTokensAfter * 4;
-            counters.totalTokensCompacted += estTokensBefore - estTokensAfter;
+            summarized = eventCount;
+            kept = estTokensAfter;
+            tokensSaved = estTokensBefore - estTokensAfter;
+            counters.totalTokensCompacted += tokensSaved;
             sessionDB.addCompactionStats(sessionId, charsBefore, charsKept, eventCount);
           }
         } catch {
           // Non-fatal: heuristic estimation failed
         }
       }
+      const totalEstimated = tokensSaved + kept;
+      emitEvent(pi, UNIPI_EVENTS.COMPACTOR_COMPACTED, {
+        sessionId,
+        summarized,
+        kept,
+        tokensSaved,
+        compressionRatio: kept > 0 ? `${Math.round(totalEstimated / kept)}:1` : "0:1",
+      });
       debug("session_compact", { sessionId, tokensBefore, hasCompactionEntry: !!compactionEntry });
     }
   });
@@ -531,34 +536,12 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         if (isSandboxTool(tName)) {
           runtimeStats.bytesSandboxed += responseBytes;
         }
-        if (isIndexTool(tName)) {
-          runtimeStats.bytesIndexed += responseBytes;
-        }
       }
     } catch {
       // Non-blocking: byte tracking errors silently skipped
     }
 
-    // Apply display overrides for built-in tools
     const toolName = (event as any).toolName ?? "";
-    const td = config.toolDisplay;
-    const toolConfig = {
-      readOutputMode: td?.mode as any,
-      searchOutputMode: td?.mode as any,
-      bashOutputMode: td?.mode as any,
-      previewLines: 20,
-      bashCollapsedLines: 5,
-      showTruncationHints: true,
-    };
-    try {
-      const { applyToolDisplayOverride } = await import("./display/tool-overrides.js");
-      const override = applyToolDisplayOverride(toolName, event as any, toolConfig);
-      if (override !== undefined) {
-        return override as any;
-      }
-    } catch {
-      // Non-fatal: display override failed
-    }
 
     // Width-safe diff truncation for edit/write tool results.
     // Pi's renderDiff() does not truncate lines to terminal width,

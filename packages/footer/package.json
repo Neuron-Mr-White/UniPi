@@ -1,9 +1,9 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.4.0"
+    "@pi-unipi/core": "2.4.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.0",

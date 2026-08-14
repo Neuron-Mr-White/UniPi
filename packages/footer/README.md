@@ -22,7 +22,7 @@ Footer subscribes to events from every Unipi package:
 | Group | Events | Segments |
 |-------|--------|----------|
 | core | Pi SDK | model, thinking, path, git, context_pct, cost, tokens, session |
-| compactor | `COMPACTOR_STATS_UPDATED` | session_events, compactions, tokens_saved, compression_ratio |
+| compactor | Pi session data + `COMPACTOR_COMPACTED` | session_events, compactions, tokens_saved, compression_ratio |
 | memory | `MEMORY_STORED`/`DELETED`/`CONSOLIDATED` | project_count, total_count, consolidations |
 | mcp | `MCP_SERVER_STARTED`/`STOPPED`/`ERROR` | servers_total, servers_active, tools_total |
 | ralph | `RALPH_LOOP_START`/`END`/`ITERATION_DONE` | active_loops, total_iterations, loop_status |
@@ -48,7 +48,7 @@ Footer works even if packages load after it — late-arriving events update the 
 | Group | Default | Data Source |
 |-------|---------|-------------|
 | **core** | ON | Pi SDK (ctx.sessionManager, footerData) |
-| **compactor** | ON | `COMPACTOR_STATS_UPDATED` event |
+| **compactor** | ON | Live Pi session data; last-compaction event |
 | **memory** | ON | `MEMORY_STORED`/`DELETED`/`CONSOLIDATED` events |
 | **mcp** | ON | `MCP_SERVER_STARTED`/`STOPPED`/`ERROR` events |
 | **ralph** | ON | `RALPH_LOOP_START`/`END`/`ITERATION_DONE` events |

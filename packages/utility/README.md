@@ -10,7 +10,7 @@ The diff rendering is the standout feature — Shiki-powered syntax-highlighted 
 |---------|-------------|
 | `/unipi:env` | Show environment info (Node, Pi, OS, paths) |
 | `/unipi:doctor` | Run diagnostics across all modules |
-| `/unipi:status` | Show status of all unipi modules |
+| `/unipi:status` | Show immediate guidance to the live `/unipi:info` dashboard and `/unipi:doctor` diagnostics |
 | `/unipi:cleanup` | Clean stale DBs, temp files, old sessions |
 | `/unipi:reload` | Explain how to reload extensions |
 | `/unipi:name-badge` | Toggle name badge overlay |

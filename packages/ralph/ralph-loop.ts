@@ -374,6 +374,8 @@ export class RalphLoopManager {
       return null;
     }
 
+    this.emitIterationDone(state);
+
     const needsReflection =
       state.reflectEvery > 0 && (state.iteration - 1) % state.reflectEvery === 0;
     if (needsReflection) state.lastReflectionAt = state.iteration;
@@ -382,6 +384,14 @@ export class RalphLoopManager {
     this.updateUI();
 
     return { state, needsReflection };
+  }
+
+  private emitIterationDone(state: LoopState): void {
+    this.emitFn(UNIPI_EVENTS.RALPH_ITERATION_DONE, {
+      name: state.name,
+      iteration: state.iteration - 1,
+      nextIteration: state.iteration,
+    });
   }
 
   archiveLoop(name: string): boolean {

@@ -27,7 +27,8 @@ import { recallBlocksFromContext } from "../session/recall-blocks.js";
 import { filterNoise } from "../compaction/filter-noise.js";
 import { loadConfig } from "../config/manager.js";
 import type { SessionDB } from "../session/db.js";
-import type { NormalizedBlock, RuntimeCounters } from "../types.js";
+import type { Language, NormalizedBlock, RuntimeCounters } from "../types.js";
+import type { PolyglotExecutor } from "../executor/executor.js";
 
 // --- TypeBox Schemas for each tool ---
 
@@ -127,6 +128,10 @@ export interface CompactorToolDeps {
   getSessionId: () => string;
   getBlocks: () => NormalizedBlock[];
   getCounters?: () => RuntimeCounters;
+  sandbox?: {
+    executor: PolyglotExecutor;
+    allowedLanguages: Language[];
+  };
 }
 
 /**
@@ -189,13 +194,23 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   pi.registerTool({ name: "session_recall", label: "Session Recall", description: "Search session history using BM25 or regex. Find previous goals, files, commits, and context.", parameters: RecallParams, execute: recallExec } as any);
   pi.registerTool({ name: "vcc_recall", label: "Session Recall", description: "Search session history using BM25 or regex. (DEPRECATED: use session_recall instead)", parameters: VccRecallParams, async execute(tcId: string, p: any) { deprecationLog("vcc_recall", "session_recall"); return recallExec(tcId, p); } } as any);
 
+  // Sandbox tools are session-scoped and only registered when enabled.
+  if (deps.sandbox) {
+  const { executor, allowedLanguages } = deps.sandbox;
+  const assertAllowedLanguage = (language: Language): void => {
+    if (!allowedLanguages.includes(language)) {
+      throw new Error(`Language "${language}" is disabled by Compactor sandbox settings. Allowed: ${allowedLanguages.join(", ") || "none"}`);
+    }
+  };
+
   // 3. sandbox (new) / ctx_execute (deprecated) — run code in sandbox
   const sandboxExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
     try {
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
       deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
-      const result = await ctxExecute(params as CtxExecuteInput);
+      assertAllowedLanguage(params.language as Language);
+      const result = await ctxExecute(params as CtxExecuteInput, executor);
       const parts: string[] = [];
       if (result.stdout) parts.push(result.stdout);
       if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
@@ -215,7 +230,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
       deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
-      const result = await ctxExecuteFile(params as CtxExecuteFileInput);
+      assertAllowedLanguage(params.language as Language);
+      const result = await ctxExecuteFile(params as CtxExecuteFileInput, executor);
       const parts: string[] = [];
       if (result.stdout) parts.push(result.stdout);
       if (result.stderr) parts.push(`[stderr] ${result.stderr}`);
@@ -234,7 +250,8 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       const c = deps.getCounters?.();
       if (c) { c.sandboxRuns++; }
       deps.sessionDB.incrementSandboxRuns(deps.getSessionId());
-      const result = await ctxBatchExecute(params.items as BatchItem[]);
+      for (const item of params.items as BatchItem[]) assertAllowedLanguage(item.language);
+      const result = await ctxBatchExecute(params.items as BatchItem[], executor);
       const summaries = result.results.map((r, i) => {
         const s = r.result.stdout?.slice(0, 200) || "(no output)";
         return `[${i}] execute → ${r.result.exitCode === 0 ? "ok" : "fail"}: ${s}`;
@@ -246,6 +263,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
   };
   pi.registerTool({ name: "sandbox_batch", label: "Sandbox Batch", description: "Run multiple code executions atomically as a batch.", parameters: SandboxBatchParams, execute: sandboxBatchExec } as any);
   pi.registerTool({ name: "ctx_batch_execute", label: "Sandbox Batch", description: "Run batch operations. (DEPRECATED: use sandbox_batch instead)", parameters: CtxBatchExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_batch_execute", "sandbox_batch"); return sandboxBatchExec(tcId, p); } } as any);
+  }
 
   // 6. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
   const statsExec = async (): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {

@@ -37,32 +37,35 @@ describe("config", () => {
     expect(config.briefTranscript.mode).toBe("minimal");
   });
 
-  it("applyPreset applies pipeline profile settings", () => {
-    expect(applyPreset("precise").pipeline).toMatchObject({
-      ttlCache: true,
-      autoInjection: false,
-      proximityReranking: false,
-      timelineSort: false,
-      progressiveThrottling: false,
-      mmapPragma: true,
-    });
-    expect(applyPreset("balanced").pipeline).toMatchObject({
-      ttlCache: true,
-      autoInjection: true,
-      proximityReranking: true,
-      timelineSort: true,
-      progressiveThrottling: true,
-      mmapPragma: true,
-    });
-    expect(applyPreset("thorough").pipeline).toEqual(applyPreset("balanced").pipeline);
-    expect(applyPreset("lean").pipeline).toMatchObject({
+  it("presets configure only the implemented pipeline feature", () => {
+    const reservedDefaults = {
       ttlCache: false,
-      autoInjection: false,
       proximityReranking: false,
       timelineSort: false,
       progressiveThrottling: false,
       mmapPragma: false,
+    };
+
+    expect(applyPreset("precise").pipeline).toMatchObject({
+      ...reservedDefaults,
+      autoInjection: false,
     });
+    expect(applyPreset("balanced").pipeline).toMatchObject({
+      ...reservedDefaults,
+      autoInjection: true,
+    });
+    expect(applyPreset("thorough").pipeline).toEqual(applyPreset("balanced").pipeline);
+    expect(applyPreset("lean").pipeline).toMatchObject({
+      ...reservedDefaults,
+      autoInjection: false,
+    });
+  });
+
+  it("presets leave deprecated display compatibility fields at defaults", () => {
+    for (const name of ["precise", "balanced", "thorough", "lean"] as const) {
+      expect(applyPreset(name).toolDisplay).toEqual(DEFAULT_COMPACTOR_CONFIG.toolDisplay);
+      expect(applyPreset(name).showTruncationHints).toBe(DEFAULT_COMPACTOR_CONFIG.showTruncationHints);
+    }
   });
 
   it("new and legacy preset aliases produce matching pipeline settings", () => {

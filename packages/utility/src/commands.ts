@@ -234,19 +234,11 @@ export function registerUtilityCommands(pi: ExtensionAPI): void {
         return;
       }
 
-      // Request status from all modules — responses will be logged
-      const requestId = `status-${Date.now()}`;
-      emitEvent(pi, UNIPI_EVENTS.MODULE_STATUS_REQUEST, { requestId });
-
-      // Give modules a moment to respond, then show what we know
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
       sendResponse(
         pi,
         "## 📊 Module Status\n\n" +
-          "Status request broadcast to all modules.\n" +
-          "Modules that support status reporting will respond via events.\n\n" +
-          `*Request ID: \`${requestId}\`*`,
+          "Use `/unipi:info` for the live module and tool dashboard.\n" +
+          "Use `/unipi:doctor` to run configuration and runtime diagnostics.",
       );
     },
   });

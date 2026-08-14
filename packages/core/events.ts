@@ -9,7 +9,7 @@
 export const UNIPI_EVENTS = {
   /** Module loaded and ready */
   MODULE_READY: "unipi:module:ready",
-  /** Module unloading */
+  /** @deprecated No built-in emitter; retained for external compatibility. */
   MODULE_GONE: "unipi:module:gone",
 
   /** Workflow command started */
@@ -24,9 +24,9 @@ export const UNIPI_EVENTS = {
   /** Ralph loop iteration completed */
   RALPH_ITERATION_DONE: "unipi:ralph:iteration:done",
 
-  /** Request module status (for info-screen) */
+  /** @deprecated No built-in responders; use the info registry and /unipi:info. */
   MODULE_STATUS_REQUEST: "unipi:module:status:request",
-  /** Module status response */
+  /** @deprecated No built-in aggregator; use the info registry and /unipi:info. */
   MODULE_STATUS_RESPONSE: "unipi:module:status:response",
 
   /** Info screen group registered */
@@ -38,7 +38,7 @@ export const UNIPI_EVENTS = {
   MEMORY_STORED: "unipi:memory:stored",
   /** Memory deleted */
   MEMORY_DELETED: "unipi:memory:deleted",
-  /** Memory search performed */
+  /** @deprecated No built-in emitter; retained for external compatibility. */
   MEMORY_SEARCHED: "unipi:memory:searched",
   /** Memory consolidation completed */
   MEMORY_CONSOLIDATED: "unipi:memory:consolidated",
@@ -58,9 +58,9 @@ export const UNIPI_EVENTS = {
 
   /** Compactor: compaction completed */
   COMPACTOR_COMPACTED: "unipi:compactor:compacted",
-  /** Compactor: stats updated */
+  /** @deprecated Footer reads live Pi session data; retained for compatibility. */
   COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
-  /** Utility module cleanup started */
+  /** @deprecated No built-in emitter; retained for external compatibility. */
   UTILITY_CLEANUP_START: "unipi:utility:cleanup:start",
   /** Utility module cleanup completed */
   UTILITY_CLEANUP_DONE: "unipi:utility:cleanup:done",
@@ -68,9 +68,9 @@ export const UNIPI_EVENTS = {
   UTILITY_DIAGNOSTICS_START: "unipi:utility:diagnostics:start",
   /** Utility diagnostics completed */
   UTILITY_DIAGNOSTICS_DONE: "unipi:utility:diagnostics:done",
-  /** Utility cache invalidated */
+  /** @deprecated No built-in emitter; retained for external compatibility. */
   UTILITY_CACHE_INVALIDATED: "unipi:utility:cache:invalidated",
-  /** Utility lifecycle state changed */
+  /** @deprecated No built-in emitter; retained for external compatibility. */
   UTILITY_LIFECYCLE_STATE: "unipi:utility:lifecycle:state",
 
   /** Notification sent */
@@ -91,11 +91,11 @@ export const UNIPI_EVENTS = {
   /** Update error */
   UPDATE_ERROR: "unipi:update:error",
 
-  /** CocoIndex: update started */
+  /** @deprecated Reserved external contract; no built-in emitter. */
   COCOINDEX_UPDATE_STARTED: "unipi:cocoindex:update:started",
-  /** CocoIndex: update completed */
+  /** @deprecated Reserved external contract; no built-in emitter. */
   COCOINDEX_UPDATE_COMPLETED: "unipi:cocoindex:update:completed",
-  /** CocoIndex: search performed */
+  /** @deprecated Reserved external contract; no built-in emitter. */
   COCOINDEX_SEARCH_PERFORMED: "unipi:cocoindex:search:performed",
 } as const;
 
@@ -151,13 +151,13 @@ export interface UnipiRalphIterationEvent {
   nextIteration: number;
 }
 
-/** Payload for MODULE_STATUS_REQUEST */
+/** @deprecated No built-in responders; retained for compatibility. */
 export interface UnipiStatusRequestEvent {
   /** Request ID for correlation */
   requestId: string;
 }
 
-/** Payload for MODULE_STATUS_RESPONSE */
+/** @deprecated No built-in aggregator; retained for compatibility. */
 export interface UnipiStatusResponseEvent {
   /** Request ID this responds to */
   requestId: string;

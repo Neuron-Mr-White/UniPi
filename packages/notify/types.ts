@@ -90,13 +90,15 @@ export interface NotifyConfig {
 }
 
 /** Parameters for the notify_user agent tool */
+export type NotifyPriority = "low" | "normal" | "high";
+
 export interface NotifyUserParams {
   /** Notification message body */
   message: string;
   /** Notification title (default: "Pi Notification") */
   title?: string;
   /** Priority level */
-  priority?: "low" | "normal" | "high";
+  priority?: NotifyPriority;
   /** Override platforms for this notification */
   platforms?: NotifyPlatform[];
 }
@@ -109,6 +111,8 @@ export interface NotifyResult {
   success: boolean;
   /** True when the notification was intentionally suppressed (e.g. window focused) */
   suppressed?: boolean;
+  /** Effective numeric priority for platforms that support it. */
+  priority?: number;
   /** Error message if failed */
   error?: string;
 }

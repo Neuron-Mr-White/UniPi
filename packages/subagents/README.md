@@ -99,7 +99,9 @@ Create markdown files defining agent behavior:
 |---------|---------|--------------|
 | `enabled` | true | Enable/disable subagents |
 | `maxConcurrent` | 3 | Max agents running at once |
-| `types.{name}.enabled` | true | Toggle agent types |
+| `types.{name}.enabled` | true | Disable built-in or custom agent types. Disabled types are omitted from tool guidance and rejected before queueing. |
+
+For custom agents, JSON configuration and Markdown frontmatter are both enforced: the type can run only when neither source sets `enabled: false`. Configuration is loaded when the extension starts, so reload the session after changing enablement.
 
 ## License
 

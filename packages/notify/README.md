@@ -47,6 +47,8 @@ notify_user({
 })
 ```
 
+An explicit semantic priority overrides configured urgency for that dispatch on platforms that support it: `low`/`normal`/`high` map to Gotify `2`/`5`/`8` and ntfy `2`/`3`/`5`. Native and Telegram have no priority input and ignore it. When omitted, Gotify and ntfy retain their configured numeric priorities.
+
 ## Platforms
 
 ### Native OS

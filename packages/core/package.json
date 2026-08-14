@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/core",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Shared utilities, event types, and constants for Unipi extension suite",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,8 @@
   ],
   "files": [
     "*.ts",
-    "README.md"
+    "README.md",
+    "!*.test.ts"
   ],
   "publishConfig": {
     "access": "public"

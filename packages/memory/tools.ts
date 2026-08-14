@@ -15,7 +15,6 @@ import {
   type MemoryRecord,
 } from "./storage.js";
 import { generateEmbedding } from "./embedding.js";
-import { hybridSearch } from "./search.js";
 
 /** Tool names */
 export const MEMORY_TOOLS = {
