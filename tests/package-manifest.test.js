@@ -76,7 +76,7 @@ describe("umbrella package pi manifest", () => {
     }
   });
 
-  it("ships every pi manifest resource in npm pack output", () => {
+  it("ships every pi manifest resource and runtime bridge in npm pack output", () => {
     const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -91,5 +91,10 @@ describe("umbrella package pi manifest", () => {
       );
       assert.ok(isPacked, `${resource.type} path ${resource.path} must be included in npm pack output`);
     }
+
+    assert.ok(
+      packedPaths.includes("packages/memory/bridge/mempalace_bridge.py"),
+      "umbrella tarball must ship the MemPalace bridge used by bundled.js",
+    );
   });
 });

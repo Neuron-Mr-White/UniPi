@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-08-04 (v2.2.7)
+last-run: 2026-08-14 (v2.5.0)
 ---
 
 # Full Release Pipeline
@@ -25,7 +25,7 @@ Before running this chore, ensure:
 
 | Directory | npm Package | Version |
 |-----------|-------------|----------|
-| `packages/ask-user` | `@pi-unipi/ask-user` | 2.2.0 |
+| `packages/ask-user` | `@pi-unipi/ask-user` | 2.5.0 |
 | `packages/autocomplete` | `@pi-unipi/command-enchantment` | 2.2.0 |
 | `packages/btw` | `@pi-unipi/btw` | 2.2.0 |
 | `packages/cocoindex` | `@pi-unipi/cocoindex` | 2.2.0 |

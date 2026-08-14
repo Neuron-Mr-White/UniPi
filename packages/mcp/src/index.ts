@@ -18,6 +18,7 @@ import type { ResolvedServer } from "./types.js";
 import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
 import { syncCatalog, loadCatalog } from "./config/sync.js";
 import { ServerRegistry } from "./bridge/registry.js";
+import { compareCodeUnits } from "./bridge/translator.js";
 import { renderMcpAddOverlay } from "./tui/add-overlay.js";
 import { renderMcpSettingsOverlay } from "./tui/settings-overlay.js";
 
@@ -42,24 +43,32 @@ export default function (pi: ExtensionAPI) {
   // Session start — load configs, start servers
   pi.on("session_start", async (_event, ctx) => {
     // Create registry with pi integration callbacks
+    const toolApi = pi as ExtensionAPI & {
+      registerExternalTool?: (tool: unknown) => void;
+      unregisterTool?: (toolName: string) => void;
+      unregisterExternalTool?: (toolName: string) => void;
+    };
+    const registerTool = typeof toolApi.registerTool === "function"
+      ? (tool: unknown) => toolApi.registerTool(tool as Parameters<typeof toolApi.registerTool>[0])
+      : typeof toolApi.registerExternalTool === "function"
+        ? (tool: unknown) => toolApi.registerExternalTool!(tool)
+        : () => {
+            throw new Error("Pi does not expose a supported MCP tool registration API");
+          };
+    const canUnregisterTools =
+      typeof toolApi.unregisterTool === "function" ||
+      typeof toolApi.unregisterExternalTool === "function";
+    const unregisterTool = typeof toolApi.unregisterTool === "function"
+      ? (toolName: string) => toolApi.unregisterTool!(toolName)
+      : typeof toolApi.unregisterExternalTool === "function"
+        ? (toolName: string) => toolApi.unregisterExternalTool!(toolName)
+        : () => {};
+
     registry = new ServerRegistry({
       emitEvent: (event, payload) => emitEvent(pi, event, payload),
-      registerTool: (tool) => {
-        try {
-          (pi as any).registerTool?.(tool) ??
-            (pi as any).registerExternalTool?.(tool);
-        } catch {
-          // Tool registration may not be available in all contexts
-        }
-      },
-      unregisterTool: (toolName) => {
-        try {
-          (pi as any).unregisterTool?.(toolName) ??
-            (pi as any).unregisterExternalTool?.(toolName);
-        } catch {
-          // Ignore
-        }
-      },
+      registerTool,
+      unregisterTool,
+      canUnregisterTools,
     });
 
     // Load and resolve server configs
@@ -73,21 +82,13 @@ export default function (pi: ExtensionAPI) {
       // Config load failure — servers will be empty, visible via /unipi:mcp-status.
     }
 
-    // Start enabled servers (parallel, non-blocking errors)
-    const startPromises = servers
-      .filter((s) => s.enabled)
-      .map(async (server) => {
-        try {
-          await registry!.startServer(server);
-          // Removed console.log — startup logs cause layout shift in TUI.
-          // Server status visible via /unipi:mcp-status or info screen.
-        } catch (err) {
-          // Removed console.error — errors surfaced via info-screen MCP group.
-          // Server failure tracked in registry state.
-        }
-      });
-
-    await Promise.allSettled(startPromises);
+    // Connect/discover in parallel, then register the successful combined set
+    // after a barrier so tool order is stable across runs.
+    try {
+      await registry.startServers(servers.filter((server) => server.enabled));
+    } catch (_err) {
+      // Errors are tracked in registry state and surfaced by the info screen.
+    }
 
     // Register info-screen group
     const infoRegistry = getInfoRegistry();
@@ -153,16 +154,17 @@ export default function (pi: ExtensionAPI) {
         `unipi:${MCP_COMMANDS.STATUS}`,
         `unipi:${MCP_COMMANDS.RELOAD}`,
       ],
-      tools: activeServers.flatMap((s) =>
-        registry?.getEntry(s.name)?.toolNames ?? [],
-      ),
+      tools: activeServers
+        .flatMap((server) => registry?.getEntry(server.name)?.toolNames ?? [])
+        .sort(compareCodeUnits),
     });
   });
 
-  // Session shutdown — stop all servers
+  // Session shutdown tears down clients. Pi tears down this extension's tool
+  // registry itself, so do not claim per-tool unregistration here.
   pi.on("session_shutdown", async (_event, _ctx) => {
     if (registry) {
-      await registry.stopAll();
+      await registry.disconnectAll();
       registry = null;
     }
   });
@@ -305,38 +307,12 @@ export default function (pi: ExtensionAPI) {
 
   // /unipi:mcp-reload — restart all MCP servers
   pi.registerCommand(`unipi:${MCP_COMMANDS.RELOAD}`, {
-    description: "Reload all MCP servers (restart with current config)",
+    description: "Explain how to reload MCP servers safely",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const reg = getRegistry();
-      if (!reg) {
-        ctx.ui.notify("MCP extension not initialized", "warning");
-        return;
-      }
-
-      const all = reg.getAll();
-      if (all.length === 0) {
-        ctx.ui.notify("No MCP servers configured. Use /unipi:mcp-add to add one.", "info");
-        return;
-      }
-
-      ctx.ui.notify(`Reloading ${all.length} MCP server(s)...`, "info");
-
-      let restarted = 0;
-      let failed = 0;
-      for (const state of all) {
-        try {
-          await reg.restartServer(state.name);
-          restarted++;
-        } catch (_err) {
-          failed++;
-          // Silently ignore — restart failure tracked in failed count.
-        }
-      }
-
-      const msg = failed > 0
-        ? `Reloaded: ${restarted} ok, ${failed} failed`
-        : `Reloaded ${restarted} MCP server(s) successfully`;
-      ctx.ui.notify(msg, failed > 0 ? "warning" : "info");
+      // Pi 0.80 does not expose dynamic tool removal. Restarting in place can
+      // leave stale schemas in the provider-visible tool list, so require a
+      // process/extension restart to establish a clean cache epoch.
+      ctx.ui.notify("Restart Pi to reload MCP servers and tool schemas safely.", "info");
     },
   });
 }

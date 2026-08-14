@@ -245,7 +245,13 @@ def parse_markdown_memory(project: str, path: Path) -> dict[str, Any] | None:
     if parsed is None:
         return None
     fm, body = parsed
-    mid = safe_id_part(str(fm.get("id") or path.stem))
+    # Explicit IDs are authoritative and must not be normalized: UniPi's TS
+    # store permits leading/trailing underscores. Legacy files lack `id`, so
+    # retain their established filename normalization.
+    explicit_id = fm.get("id")
+    mid = str(explicit_id) if explicit_id is not None else safe_id_part(path.stem)
+    if not mid:
+        mid = "unknown"
     return {
         "project": str(fm.get("project") or project),
         "id": mid,
@@ -487,17 +493,91 @@ class Bridge:
         return synced
 
     def migrate(self, source_dir: str, project_filter: list[str] | None = None) -> dict[str, Any]:
+        """Idempotently import and then verify every discovered UniPi record.
+
+        Migration callers must not infer success merely from a bridge process
+        exiting cleanly. Return explicit discovery/failure/verification counts
+        so UniPi only writes its completion marker after full verification.
+        """
         records = discover_legacy_memories(Path(source_dir), project_filter)
         imported = 0
+        skipped = 0
+        failed = 0
+        errors: list[str] = []
         by_project: dict[str, int] = {}
+        expected = {(rec["project"], rec["id"]) for rec in records}
+
+        # Read once and skip unchanged records. Without this, adding one new
+        # markdown memory would re-embed every historical drawer on catch-up.
+        got = self.collection.get()
+        docs = got.documents if hasattr(got, "documents") else got.get("documents", [])
+        metas = got.metadatas if hasattr(got, "metadatas") else got.get("metadatas", [])
+        existing_docs: dict[tuple[str, str], str] = {}
+        for doc, meta in zip(docs, metas):
+            existing = record_from_doc(doc, meta)
+            if not existing:
+                continue
+            existing_docs[(existing["project"], existing["id"])] = doc
+
         for rec in records:
+            key = (rec["project"], rec["id"])
+            expected_doc = build_document(
+                rec["title"], rec["content"], rec["tags"], rec["project"],
+                rec.get("created", ""), rec.get("updated", ""), rec["type"], rec["id"],
+            )
+            if existing_docs.get(key) == expected_doc:
+                skipped += 1
+                continue
             try:
                 self._upsert_one(rec)
                 imported += 1
+                existing_docs[key] = expected_doc
                 by_project[rec["project"]] = by_project.get(rec["project"], 0) + 1
-            except Exception:
-                pass
-        return {"imported": imported, "projects": by_project}
+            except Exception as exc:
+                failed += 1
+                if len(errors) < 20:
+                    errors.append(
+                        f"{rec['project']}/{rec['id']}: {type(exc).__name__}: {exc}"
+                    )
+
+        # Re-read after writes and verify exact durable documents, not just
+        # optimistic in-memory bookkeeping or collection counts. A palace may
+        # also contain drawers created by other harnesses/import recipes.
+        verified_get = self.collection.get()
+        verified_docs = (
+            verified_get.documents
+            if hasattr(verified_get, "documents")
+            else verified_get.get("documents", [])
+        )
+        verified_metas = (
+            verified_get.metadatas
+            if hasattr(verified_get, "metadatas")
+            else verified_get.get("metadatas", [])
+        )
+        persisted: dict[tuple[str, str], str] = {}
+        for doc, meta in zip(verified_docs, verified_metas):
+            persisted_rec = record_from_doc(doc, meta)
+            if persisted_rec:
+                persisted[(persisted_rec["project"], persisted_rec["id"])] = doc
+        verified = 0
+        for rec in records:
+            expected_doc = build_document(
+                rec["title"], rec["content"], rec["tags"], rec["project"],
+                rec.get("created", ""), rec.get("updated", ""), rec["type"], rec["id"],
+            )
+            if persisted.get((rec["project"], rec["id"])) == expected_doc:
+                verified += 1
+
+        return {
+            "discovered": len(records),
+            "imported": imported,
+            "updated": imported,
+            "skipped": skipped,
+            "failed": failed,
+            "verified": verified,
+            "projects": by_project,
+            "errors": errors,
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -15,9 +15,17 @@ Workflow operates at the task level — brainstorm, plan, work, review. Project 
 
 ### Session Start
 
-On `before_agent_start`, milestone reads `.unipi/docs/MILESTONES.md` and appends a progress summary to the system prompt:
+On `before_agent_start`, milestone reads `.unipi/docs/MILESTONES.md` from `ctx.cwd` and appends a hidden `unipi-milestone-snapshot` custom message to the session:
 
 ```
+# UniPi Milestone Snapshot
+
+This snapshot supersedes all prior UniPi milestone snapshots; use only this snapshot for milestone status.
+
+Workspace: /path/to/project
+
+Status: active
+
 ## Project Milestones
 Overall progress: 5/10 items (50%)
   Phase 1: Foundation: 3/5 done
@@ -25,11 +33,11 @@ Overall progress: 5/10 items (50%)
 Current focus: Phase 1: Foundation
 ```
 
-If MILESTONES.md doesn't exist, no context is injected.
+Snapshots are append-only and hidden from the transcript. They keep the system-prompt prefix stable, persist milestone context in session history, and are deduplicated against the latest milestone custom message in the effective (compaction-aware) LLM context. If milestones disappear while an older active snapshot remains effective, an inactive snapshot is appended to supersede it. A clean workspace with no milestones and no effective snapshot receives no injected message.
 
 ### Session End
 
-On `session_shutdown`, milestone scans workflow docs modified during the session. Detects items that changed from `- [ ]` to `- [x]` and auto-updates MILESTONES.md using exact text matching.
+On `session_shutdown`, milestone scans workflow docs modified during the session. It uses the workspace captured from `session_start`'s `ctx.cwd`, detects items that changed from `- [ ]` to `- [x]`, and auto-updates MILESTONES.md using exact text matching.
 
 ### Coexist Triggers
 

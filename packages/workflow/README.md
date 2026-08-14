@@ -128,6 +128,14 @@ Skills define:
 
 The agent reads the skill, executes the steps, and produces artifacts in the `.unipi/` directory.
 
+## Workflow Sandbox
+
+Each workflow activates a command-specific sandbox for the duration of its agent run. The sandbox blocks disallowed tool calls by name (for example, `write`, `edit`, or `bash` in read-only workflows) without changing Pi's active tool list. Keeping the provider tool schemas and their order unchanged makes the workflow prefix cache-stable.
+
+Sandbox instructions are stored as hidden, append-only `unipi-workflow-sandbox-snapshot` messages rather than being injected into the system prompt. An active snapshot explicitly supersedes older snapshots. After the workflow completes at `agent_end`, the next agent start appends an inactive snapshot when needed so stale restrictions no longer apply. Sessions that have never activated a workflow do not receive a marker.
+
+The sandbox preserves the existing command-level semantics; skill instructions still define narrower write locations and setup-only shell usage where applicable.
+
 ## Directory Structure
 
 ```

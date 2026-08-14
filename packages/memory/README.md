@@ -2,7 +2,7 @@
 
 Persistent memory that survives across sessions. Stores facts, preferences, and decisions with semantic vector search, so the agent remembers what you told it last week.
 
-**Primary backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with one-way auto-migration of any existing legacy memories. If MemPalace or `uv` is unavailable, the package transparently falls back to the bundled SQLite + sqlite-vec store, so memory never hard-fails.
+**Primary backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with verified, resumable migration of existing legacy memories. If MemPalace or `uv` is unavailable, the package transparently falls back to the bundled SQLite + sqlite-vec store, so memory never hard-fails.
 
 Two storage tiers: MemPalace (or SQLite) for vector similarity search, markdown files for a durable human-readable copy you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
 
@@ -76,7 +76,7 @@ Memory has no configuration file. Storage paths are fixed:
 ```
 ~/.unipi/memory/                 # UniPi memory root (legacy + markdown tier)
 ├── .mempalace-install           # Cached MemPalace venv detection
-├── .mempalace-migrated          # One-way migration completion flag
+├── .mempalace-migrated          # Versioned migration verification state
 ├── global/
 │   ├── memory.db              # Global vector DB (SQLite fallback)
 │   └── *.md                   # Global memory files
@@ -94,14 +94,18 @@ On first load, the memory package:
    `uv tool install mempalace` once (caches the venv python path in
    `~/.unipi/memory/.mempalace-install`).
 2. Pings the bridge to confirm the palace is usable.
-3. If `~/.unipi/memory/.mempalace-migrated` is absent, performs a one-way
-   read-only migration of every legacy memory (SQLite rows + markdown files
-   across all projects) into MemPalace drawers, then writes the flag.
-   Migration is idempotent (deterministic drawer IDs) and never deletes or
-   mutates legacy files.
+3. Fingerprints the durable SQLite and markdown sources. If they differ from
+   the verified state in `~/.unipi/memory/.mempalace-migrated`, performs an
+   idempotent read-only migration into MemPalace drawers. Unchanged drawers are
+   skipped, new or changed memories are upserted, and the versioned state is
+   written only after every discovered record is verified in MemPalace.
+   Failed or partial migrations remain unmarked and retry on a later session.
+   Legacy files are never deleted or mutated.
 
-Each memory operation invokes a bundled Python bridge
-(`bridge/mempalace_bridge.py`) once via `spawnSync` (~0.5s per call). The
+Each memory operation invokes the packaged Python bridge
+(`bridge/mempalace_bridge.py`) once via `spawnSync` (~0.5s per call). Both the
+standalone memory package and the all-in-one umbrella tarball ship and resolve
+this bridge. The
 first MemPalace use on a machine also downloads the default ONNX embedding
 model (~80MB, cached at `~/.cache/chroma/onnx_models/`).
 
@@ -109,7 +113,7 @@ model (~80MB, cached at `~/.cache/chroma/onnx_models/`).
 
 ```bash
 rm ~/.unipi/memory/.mempalace-install    # re-detect MemPalace next session
-rm ~/.unipi/memory/.mempalace-migrated   # re-run one-way migration next session
+rm ~/.unipi/memory/.mempalace-migrated   # force a full verified migration pass next session
 ```
 
 ### Backend override

@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
-import { UNIPI_PREFIX, WORKFLOW_COMMANDS, getToolsForCommand, getSandboxLevel, type SandboxLevel, type UnipiWorkflowEvent } from "@pi-unipi/core";
+import { UNIPI_PREFIX, WORKFLOW_COMMANDS, type UnipiWorkflowEvent } from "@pi-unipi/core";
 
 type CompletionItem = { value: string; label: string; description: string };
 
@@ -16,14 +16,10 @@ type CompletionItem = { value: string; label: string; description: string };
 export interface WorkflowCommandOptions {
   /** Check if ralph module is detected */
   isRalphDetected: () => boolean;
-  /** Get current active tool names */
-  getActiveTools: () => string[];
-  /** Set active tools with sandbox level */
-  setActiveTools: (tools: string[], level: SandboxLevel) => void;
-  /** Save tools for later restore */
-  saveTools: (tools: string[]) => void;
-  /** Begin one workflow lifecycle; false means another workflow is active. */
-  startWorkflow: (event: UnipiWorkflowEvent) => boolean;
+  /** Begin one workflow lifecycle and activate its sandbox. */
+  activateSandbox: (event: UnipiWorkflowEvent) => boolean;
+  /** Roll back lifecycle and sandbox state after dispatch failure. */
+  abortWorkflow: () => void;
 }
 
 /** Command definition */
@@ -409,19 +405,12 @@ export function registerWorkflowCommands(
           fullCommand: `/${fullCommand}`,
           args: args?.trim() ?? "",
         };
-        if (!options.startWorkflow(workflowEvent)) {
+        if (!options.activateSandbox(workflowEvent)) {
           if (ctx.hasUI) ctx.ui.notify("Another UniPi workflow is still active", "warning");
           return;
         }
 
-        // Apply sandbox — save current tools, set command's tools
-        const currentTools = options.getActiveTools();
-        options.saveTools(currentTools);
-        const sandboxTools = getToolsForCommand(cmd.name, currentTools);
-        const sandboxLevel = getSandboxLevel(cmd.name);
-        options.setActiveTools([...sandboxTools], sandboxLevel);
-
-        // Load skill content from SKILL.md
+        // Load skill content from SKILL.md.
         let skillContent = "";
         try {
           const skillPath = join(
@@ -431,33 +420,34 @@ export function registerWorkflowCommands(
           );
           skillContent = readFileSync(skillPath, "utf-8");
         } catch {
-          // Skill file not found — continue without it
+          // Skill file not found — continue without it.
         }
 
-        // Build skill invocation message
         let message = `Execute the ${cmd.skillName} workflow.`;
 
-        // Add args if provided
         if (args?.trim()) {
           message += `\n\nArguments: ${args.trim()}`;
         }
 
-        // Add ralph hint if applicable
         if (cmd.ralphHint && options.isRalphDetected()) {
           message += `\n\n💡 ${cmd.ralphHint}`;
         }
 
-        // Inject skill content as context
         if (skillContent) {
           message += `\n\n<skill_content>\n${skillContent}\n</skill_content>`;
         }
 
-        // Send as user message to trigger skill processing
-        pi.sendUserMessage(message, { deliverAs: "followUp" });
+        // Any synchronous dispatch failure must not leave a phantom workflow
+        // lifecycle or sandbox behind.
+        try {
+          pi.sendUserMessage(message, { deliverAs: "followUp" });
+        } catch (error) {
+          options.abortWorkflow();
+          throw error;
+        }
 
         if (ctx.hasUI) {
           ctx.ui.notify(`Running /${fullCommand}`, "info");
-          // Update extension status with active command name
           const ralphStatus = options.isRalphDetected() ? "✓ rl" : "○ rl";
           ctx.ui.setStatus("unipi-workflow", `⚡ wf:${cmd.name} ${ralphStatus}`);
         }

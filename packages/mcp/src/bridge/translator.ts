@@ -9,11 +9,15 @@ import { MCP_DEFAULTS } from "@pi-unipi/core";
 import type { McpTool, McpToolResult } from "../types.js";
 import type { McpClient } from "./client.js";
 
-/** Pi-compatible tool parameter schema */
+/** Client operation needed by translated tools. */
+export type ToolCallClient = Pick<McpClient, "callTool">;
+
+/** JSON object used as a Pi-compatible tool parameter schema. */
 interface ToolParameters {
+  [key: string]: unknown;
   type: "object";
   properties: Record<string, unknown>;
-  required?: string[];
+  required: unknown;
 }
 
 /** Content block returned by a pi tool */
@@ -31,6 +35,7 @@ interface PiToolResult {
 /** Pi-compatible external tool */
 export interface PiExternalTool {
   name: string;
+  label: string;
   description: string;
   parameters: ToolParameters;
   execute: (
@@ -39,6 +44,66 @@ export interface PiExternalTool {
     signal?: AbortSignal,
     onUpdate?: (update: string) => void,
   ) => Promise<PiToolResult>;
+}
+
+/**
+ * Compare strings by JavaScript/Unicode UTF-16 code units.
+ *
+ * Unlike localeCompare(), this ordering does not depend on the host locale.
+ */
+export function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const LITERAL_VALUE_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
+
+function canonicalizeValue(
+  value: unknown,
+  key?: string,
+  normalizeSchemaKeywords = true,
+): unknown {
+  if (Array.isArray(value)) {
+    if (
+      normalizeSchemaKeywords &&
+      key === "required" &&
+      value.every((item) => typeof item === "string")
+    ) {
+      return [...new Set(value as string[])].sort(compareCodeUnits);
+    }
+    return value.map((item) => canonicalizeValue(item, undefined, normalizeSchemaKeywords));
+  }
+
+  if (!isObject(value)) return value;
+
+  const canonical: Record<string, unknown> = {};
+  for (const objectKey of Object.keys(value).sort(compareCodeUnits)) {
+    // Values under these JSON Schema keywords are literal application data,
+    // not nested schemas. A property named `required` inside that data must
+    // retain array order (for example under `const`).
+    const childNormalizesSchemaKeywords =
+      normalizeSchemaKeywords && !LITERAL_VALUE_KEYWORDS.has(objectKey);
+    canonical[objectKey] = canonicalizeValue(
+      value[objectKey],
+      objectKey,
+      childNormalizesSchemaKeywords,
+    );
+  }
+  return canonical;
+}
+
+/**
+ * Recursively clone and canonicalize a JSON Schema value.
+ *
+ * Object keys use locale-independent code-unit order. Arrays retain their
+ * original order, except valid `required` arrays (arrays containing only
+ * strings), which are sorted and deduplicated.
+ */
+export function canonicalizeJsonSchema(schema: unknown): unknown {
+  return canonicalizeValue(schema);
 }
 
 /**
@@ -52,19 +117,21 @@ export interface PiExternalTool {
 export function translateMcpTool(
   mcpTool: McpTool,
   serverName: string,
-  client: McpClient,
+  client: ToolCallClient,
 ): PiExternalTool {
   const separator = MCP_DEFAULTS.TOOL_NAME_SEPARATOR;
   const toolName = `${serverName}${separator}${mcpTool.name}`;
 
-  // Ensure inputSchema is a valid JSON Schema object
-  const inputSchema = mcpTool.inputSchema ?? {};
-  const parameters: ToolParameters = {
+  // Preserve the existing Pi-facing top-level shape while cloning and
+  // canonicalizing all nested property schemas. Forwarding additional MCP
+  // top-level keywords is a separate provider-compatibility decision.
+  const inputSchema = isObject(mcpTool.inputSchema) ? mcpTool.inputSchema : {};
+  const normalizedSchema: Record<string, unknown> = {
     type: "object",
-    properties:
-      (inputSchema.properties as Record<string, unknown>) ?? {},
-    required: inputSchema.required as string[] | undefined,
+    properties: isObject(inputSchema.properties) ? inputSchema.properties : {},
+    required: Array.isArray(inputSchema.required) ? inputSchema.required : [],
   };
+  const parameters = canonicalizeJsonSchema(normalizedSchema) as ToolParameters;
 
   const description = [
     mcpTool.description || `MCP tool: ${mcpTool.name}`,
@@ -137,6 +204,7 @@ export function translateMcpTool(
 
   return {
     name: toolName,
+    label: toolName,
     description,
     parameters,
     execute,

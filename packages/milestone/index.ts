@@ -2,7 +2,7 @@
  * @pi-unipi/milestone — Extension entry point
  *
  * Lifecycle layer for project-level goals. Tracks progress via MILESTONES.md,
- * injects context on session start, auto-syncs on session end.
+ * appends hidden context snapshots before agent turns, and auto-syncs on session end.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

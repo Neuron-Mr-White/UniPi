@@ -1,8 +1,10 @@
 # UniPi memory → MemPalace migration
 
-> **Status (2026-06-27):** Migration is now **built in and automatic**. The
-> `@pi-unipi/memory` package auto-installs MemPalace via `uv` on first load
-> and performs the one-way migration described below on first `init()`.
+> **Status (updated 2026-08-14):** Migration is **built in, automatic, and
+> resumable**. The `@pi-unipi/memory` package auto-installs MemPalace via `uv`,
+> fingerprints durable SQLite/markdown sources, and runs an idempotent catch-up
+> whenever those sources change. It records completion only after all discovered
+> records are verified in the palace.
 > The standalone `scripts/migrate-unipi-memory-to-mempalace.py` remains as a
 > manual/audit tool but is no longer required for normal operation. See
 > `packages/memory/README.md` → "MemPalace backend" for the runtime behavior.
@@ -291,7 +293,10 @@ A fake local `mempalace` package was also used to test the `--execute` path with
 
 ## Rollback
 
-The migration is additive and idempotent. It never modifies `~/.unipi/memory`.
+The migration is additive, idempotent, and verified. It never modifies
+`~/.unipi/memory`. The `.mempalace-migrated` file is versioned JSON containing
+its source fingerprint and migration counts; failed or partial runs do not
+replace it and therefore retry automatically.
 
 Before a large real import, back up MemPalace data:
 

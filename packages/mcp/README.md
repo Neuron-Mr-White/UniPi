@@ -12,6 +12,7 @@ The add command opens a split-pane overlay: server browser on the left, JSON con
 | `/unipi:mcp-settings` | Interactive settings with enable/disable/edit |
 | `/unipi:mcp-sync` | Force sync server catalog from GitHub |
 | `/unipi:mcp-status` | Text summary of all configured servers |
+| `/unipi:mcp-reload` | Remind you to restart Pi so tool schemas reload as a clean cache epoch |
 
 ### Setup Flow
 
@@ -29,6 +30,14 @@ MCP registers with the info-screen dashboard, showing server count, active serve
 ## Agent Tools
 
 MCP tools are registered dynamically based on configured servers. Once a server is added and Pi restarts, its tools become available to the agent.
+
+### Deterministic Definitions and Cache Behavior
+
+At session startup, enabled servers connect and discover tools in parallel. Registration waits for all discoveries to settle, then registers the successful combined tool set in canonical `{serverName}__{toolName}` order. Duplicate final names are rejected explicitly instead of allowing one definition to overwrite another.
+
+MCP input properties are cloned and recursively canonicalized before registration: schema object keys use locale-independent UTF-16 code-unit order, valid schema `required` string arrays are sorted and deduplicated, a missing top-level `required` becomes `[]`, and literal-value arrays keep their source order. Each tool also receives a stable label matching its final Pi name. These stable definitions and registration order prevent equivalent MCP configurations from changing the serialized tool list between runs, improving provider prompt-cache reuse. A server that fails discovery is excluded from the combined set; a registration error fails startup for that prepared set and is not reported as successful.
+
+Pi 0.80 cannot remove dynamically registered tools. Enabling, disabling, deleting, or changing MCP servers is therefore applied on the next Pi restart rather than mutating the tool list mid-session. This prevents stale schemas and makes the restart an explicit cache-epoch boundary.
 
 Example tool calls:
 ```

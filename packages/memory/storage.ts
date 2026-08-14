@@ -20,6 +20,7 @@ import {
   runBridgeAsync,
   isMigrated,
   markMigrated,
+  getMemorySourceFingerprint,
   isPingVerified,
   markPingVerified,
   invalidatePingVerified,
@@ -29,6 +30,7 @@ import {
   type MempalaceSearchResult,
   type MempalaceListItem,
   type MempalaceListItemAll,
+  type MigrationResult,
 } from "./mempalace.js";
 
 export type MemoryBackend = "mempalace" | "sqlite";
@@ -102,6 +104,7 @@ export interface SearchResult {
 
 /** Memory file frontmatter */
 interface MemoryFrontmatter {
+  id?: string;
   title: string;
   tags: string[];
   project: string;
@@ -201,7 +204,7 @@ export function parseMemoryContent(content: string): MemoryRecord | null {
   const frontmatter = yaml.load(frontmatterStr) as MemoryFrontmatter;
 
   return {
-    id: "",
+    id: frontmatter.id || "",
     title: frontmatter.title,
     content: body.trim(),
     tags: frontmatter.tags || [],
@@ -217,6 +220,7 @@ export function parseMemoryContent(content: string): MemoryRecord | null {
  */
 export function writeMemoryFile(filePath: string, record: MemoryRecord): void {
   const frontmatter: MemoryFrontmatter = {
+    id: record.id,
     title: record.title,
     tags: record.tags,
     project: record.project,
@@ -383,16 +387,28 @@ export class MemoryStorage {
     this.mempalaceInstall = install;
     this.backend = "mempalace";
 
-    // One-way auto-migration of legacy memories (idempotent).
-    if (!isMigrated()) {
+    // Idempotent migration + automatic catch-up. The source fingerprint turns
+    // the old one-shot timestamp into a resumable state: new/changed markdown
+    // or SQLite sources trigger another verified upsert pass. Never mark a
+    // failed/partial run complete; it will retry on a later session.
+    const sourceFingerprint = getMemorySourceFingerprint(getMemoryBaseDir());
+    if (!isMigrated(sourceFingerprint)) {
       try {
-        runBridge(install, this.palacePath, "migrate", {
+        // First migrations can embed thousands of records. Give the bridge a
+        // practical bounded window rather than the normal per-operation 60s.
+        const result = runBridge<MigrationResult>(install, this.palacePath, "migrate", {
           source_dir: getMemoryBaseDir(),
-        });
-        markMigrated();
+        }, 15 * 60_000);
+        if (
+          result &&
+          result.failed === 0 &&
+          result.verified === result.discovered
+        ) {
+          markMigrated(sourceFingerprint, result);
+        }
       } catch {
-        // Migration failed — palace still usable for new stores; legacy
-        // memories can be re-migrated later. Do not block.
+        // Palace remains available for current writes; durable markdown/SQLite
+        // sources are untouched and migration retries because no state is set.
       }
     }
 
@@ -629,8 +645,9 @@ export class MemoryStorage {
       const record = parseMemoryFile(filePath);
       if (!record) continue;
 
-      // Generate ID from title (same logic as store())
-      const id = record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      // New files preserve the authoritative store ID. Legacy files have no
+      // `id` frontmatter, so retain the historical title-derived fallback.
+      const id = record.id || record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
       if (existingIds.has(id)) continue; // Already in DB
 

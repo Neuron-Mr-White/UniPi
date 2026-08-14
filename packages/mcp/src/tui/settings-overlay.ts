@@ -141,15 +141,9 @@ export function renderMcpSettingsOverlay(params?: {
         };
         saveMetadata(configDir, meta);
 
-        // Try to stop if disabling
-        if (!newEnabled && registry) {
-          try {
-            await registry.stopServer(server.name);
-          } catch {
-            // Ignore stop errors
-          }
-        }
-
+        // Pi 0.80 cannot remove a registered tool definition at runtime.
+        // Persist the setting now; the next Pi restart applies the new set as
+        // one deterministic cache epoch.
         refreshServers();
         refresh();
       } catch (err) {

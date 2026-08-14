@@ -1,22 +1,33 @@
 /**
  * @pi-unipi/milestone — Lifecycle hooks
  *
- * Session start: inject milestone progress as system context.
+ * Agent start: append milestone progress as a hidden, persistent context snapshot.
  * Session end: auto-sync completed items from workflow docs.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionContext,
+  type ExtensionAPI,
+  type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 import { MILESTONE_DIRS, UNIPI_EVENTS, safeMtimeMs, tryRead } from "@pi-unipi/core";
-import { parseMilestones, getProgressSummary, updateItemStatus } from "./milestone.js";
+import { getProgressSummary, updateItemStatus } from "./milestone.js";
 
-/** Track when the session started for diffing modified files */
-let sessionStartMs = 0;
+export const MILESTONE_SNAPSHOT_TYPE = "unipi-milestone-snapshot";
 
-/**
- * Format a progress summary as a context string for the system prompt.
- */
+interface MilestoneSnapshotDetails {
+  active: boolean;
+  workspace: string;
+}
+
+interface EffectiveSnapshot {
+  content: unknown;
+  details?: MilestoneSnapshotDetails;
+}
+
+/** Format the active milestone progress included in a snapshot. */
 function formatMilestoneContext(filePath: string): string | null {
   const summary = getProgressSummary(filePath);
   if (summary.totalItems === 0) return null;
@@ -39,23 +50,84 @@ function formatMilestoneContext(filePath: string): string | null {
     .join("\n");
 }
 
+/** Build an append-only snapshot that explicitly invalidates earlier snapshots. */
+function formatMilestoneSnapshot(workspace: string, context: string | null): string {
+  return [
+    "# UniPi Milestone Snapshot",
+    "This snapshot supersedes all prior UniPi milestone snapshots; use only this snapshot for milestone status.",
+    `Workspace: ${workspace}`,
+    `Status: ${context ? "active" : "inactive"}`,
+    context ?? "No milestones are active for this workspace.",
+  ].join("\n\n");
+}
+
+function latestEffectiveSnapshot(branch: SessionEntry[]): EffectiveSnapshot | undefined {
+  const messages = buildSessionContext(branch).messages;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "custom" && message.customType === MILESTONE_SNAPSHOT_TYPE) {
+      return {
+        content: message.content,
+        details: message.details as MilestoneSnapshotDetails | undefined,
+      };
+    }
+  }
+  return undefined;
+}
+
+/** Find state that may have been folded into a compaction summary. */
+function latestHistoricalSnapshot(branch: SessionEntry[]): EffectiveSnapshot | undefined {
+  for (let index = branch.length - 1; index >= 0; index--) {
+    const entry = branch[index];
+    if (entry.type === "custom_message" && entry.customType === MILESTONE_SNAPSHOT_TYPE) {
+      return {
+        content: entry.content,
+        details: entry.details as MilestoneSnapshotDetails | undefined,
+      };
+    }
+  }
+  return undefined;
+}
+
+function isActiveSnapshot(snapshot: EffectiveSnapshot): boolean {
+  if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
+  return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
+}
+
 /**
- * Register session start hook — injects milestone progress into system context.
+ * Register the agent-start hook. Snapshots are hidden from the transcript but
+ * persist in the append-only session and therefore keep the system prefix stable.
  */
 export function registerSessionStartHook(pi: ExtensionAPI): void {
-  pi.on("before_agent_start", (event) => {
-    sessionStartMs = Date.now();
-
-    const cwd = process.cwd();
-    const milestonesPath = path.join(cwd, MILESTONE_DIRS.MILESTONES);
-
+  pi.on("before_agent_start", (_event, ctx) => {
+    const workspace = ctx.cwd;
+    const milestonesPath = path.join(workspace, MILESTONE_DIRS.MILESTONES);
     const context = formatMilestoneContext(milestonesPath);
-    if (!context) return undefined;
+    const branch = ctx.sessionManager.getBranch();
+    const latest = latestEffectiveSnapshot(branch);
+    const historical = latestHistoricalSnapshot(branch);
 
-    // Append milestone context to the system prompt
-    const currentPrompt = (event as any).systemPrompt ?? "";
+    // A genuinely clean workspace/session needs no synthetic context. Raw
+    // history is checked because compaction may have folded an old active
+    // snapshot into summary prose while removing its custom-message identity.
+    if (!context && !latest && !historical) return undefined;
+
+    const prior = latest ?? historical;
+    if (!context && prior && !isActiveSnapshot(prior)) return undefined;
+
+    const content = formatMilestoneSnapshot(workspace, context);
+    if (latest?.content === content) return undefined;
+
     return {
-      systemPrompt: currentPrompt + "\n\n" + context,
+      message: {
+        customType: MILESTONE_SNAPSHOT_TYPE,
+        content,
+        display: false,
+        details: {
+          active: context !== null,
+          workspace,
+        } satisfies MilestoneSnapshotDetails,
+      },
     };
   });
 }
@@ -140,19 +212,21 @@ function scanModifiedDocs(dirs: string[], since: number): string[] {
  * scans modified docs, and auto-updates MILESTONES.md.
  */
 export function registerSessionEndHook(pi: ExtensionAPI): void {
-  // Store baseline snapshots at session start
+  // Capture the session workspace because process.cwd() can change before shutdown.
   const baselineSnapshots = new Map<string, string>();
+  let sessionStartMs = 0;
+  let sessionWorkspace: string | null = null;
 
   // Capture baselines on session start
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
     sessionStartMs = Date.now();
+    sessionWorkspace = ctx.cwd;
     baselineSnapshots.clear();
 
-    const cwd = process.cwd();
     const scanDirs = [
-      path.join(cwd, ".unipi/docs/specs"),
-      path.join(cwd, ".unipi/docs/plans"),
-      path.join(cwd, ".unipi/docs/quick-work"),
+      path.join(sessionWorkspace, ".unipi/docs/specs"),
+      path.join(sessionWorkspace, ".unipi/docs/plans"),
+      path.join(sessionWorkspace, ".unipi/docs/quick-work"),
     ];
 
     for (const dir of scanDirs) {
@@ -168,15 +242,15 @@ export function registerSessionEndHook(pi: ExtensionAPI): void {
   });
 
   const syncModifiedDocs = () => {
-    const cwd = process.cwd();
-    const milestonesPath = path.join(cwd, MILESTONE_DIRS.MILESTONES);
+    if (!sessionWorkspace) return;
 
+    const milestonesPath = path.join(sessionWorkspace, MILESTONE_DIRS.MILESTONES);
     if (!fs.existsSync(milestonesPath)) return;
 
     const scanDirs = [
-      path.join(cwd, ".unipi/docs/specs"),
-      path.join(cwd, ".unipi/docs/plans"),
-      path.join(cwd, ".unipi/docs/quick-work"),
+      path.join(sessionWorkspace, ".unipi/docs/specs"),
+      path.join(sessionWorkspace, ".unipi/docs/plans"),
+      path.join(sessionWorkspace, ".unipi/docs/quick-work"),
     ];
 
     const modifiedFiles = scanModifiedDocs(scanDirs, sessionStartMs);

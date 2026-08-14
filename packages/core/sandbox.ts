@@ -2,7 +2,8 @@
  * @unipi/core — Sandbox module
  *
  * Defines tool access levels for workflow commands.
- * Used with pi.setActiveTools() to enforce restrictions.
+ * Workflow enforces blocked names at tool_call time so provider tool schemas
+ * and ordering remain stable; filtering helpers remain available to other callers.
  */
 
 import { WORKFLOW_COMMANDS } from "./constants.js";
@@ -13,9 +14,9 @@ export type SandboxLevel = "read_only" | "brainstorm" | "write_unipi" | "review"
 /**
  * Built-in workflow tools used when no active tool list is supplied.
  *
- * Workflow commands should normally call filterToolsForLevel() with the current
- * active tool list. That keeps safe extension tools (memory, ask-user, web,
- * notify, etc.) available while removing only tools that violate the sandbox.
+ * Legacy fallback list used by callers that need an explicit filtered tool set.
+ * The workflow package itself keeps Pi's active tools unchanged and enforces
+ * BLOCKED_TOOLS at tool_call time.
  */
 const FALLBACK_TOOLS: Record<SandboxLevel, readonly string[]> = {
   /** Only read-only file tools — no bash, no write, no edit */
@@ -78,8 +79,8 @@ export function getSandboxLevel(commandName: string): SandboxLevel {
 /**
  * Get fallback tools for a sandbox level.
  *
- * Prefer filterToolsForLevel(level, activeTools) when applying a sandbox so
- * extension tools are preserved unless explicitly blocked.
+ * Prefer isToolAllowed() for cache-stable call-time enforcement. Filtering is
+ * retained for compatibility with callers that intentionally alter tool sets.
  */
 export function getToolsForLevel(level: SandboxLevel): readonly string[] {
   return FALLBACK_TOOLS[level];

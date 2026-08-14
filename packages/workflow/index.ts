@@ -1,15 +1,18 @@
 /**
  * @unipi/workflow — Structured development workflow commands
  *
- * Registers 13 commands that dispatch to skills for LLM instruction.
- * Emits MODULE_READY event for inter-module discovery.
- * Detects @unipi/ralph presence for loop integration.
- * Applies sandbox (tool filtering) per command.
+ * Registers workflow commands that dispatch to skills for LLM instruction.
+ * Emits MODULE_READY for inter-module discovery and detects @unipi/ralph.
+ * Enforces workflow sandboxes without changing Pi's active tool schemas.
  */
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionContext,
+  type ExtensionAPI,
+  type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -17,8 +20,10 @@ import {
   emitEvent,
   getPackageVersion,
   initUnipiDirs,
-  type SandboxLevel,
   getBlockedToolsForLevel,
+  getSandboxLevel,
+  isToolAllowed,
+  type SandboxLevel,
 } from "@pi-unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
 import { WorkflowLifecycle } from "./lifecycle.js";
@@ -26,115 +31,198 @@ import { WorkflowLifecycle } from "./lifecycle.js";
 /** Package version (read from package.json at load time) */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
-/** Whether ralph module is detected */
-let ralphDetected = false;
+export const WORKFLOW_SANDBOX_SNAPSHOT_TYPE = "unipi-workflow-sandbox-snapshot";
 
-/** Saved tools before sandbox was applied (for restore) */
-let savedTools: string[] | null = null;
+interface WorkflowSandboxSnapshotDetails {
+  active: boolean;
+  command?: string;
+  level?: SandboxLevel;
+}
 
-/** Whether sandbox is currently active */
-let sandboxActive = false;
+interface EffectiveSandboxSnapshot {
+  content: unknown;
+  details?: WorkflowSandboxSnapshotDetails;
+}
 
-/** Current sandbox level (null = no sandbox) */
-let currentSandboxLevel: SandboxLevel | null = null;
+function sandboxRestrictions(level: SandboxLevel): string[] {
+  const common = [
+    "Do not attempt to call tools blocked by name.",
+    "If the user requests an action that requires a blocked tool, explain that the workflow sandbox does not allow it.",
+  ];
 
-/** Current active tools after sandbox filtering */
-let currentSandboxTools: string[] | null = null;
+  if (level === "brainstorm") {
+    return [
+      "The write tool is restricted to .unipi/docs/specs/ only.",
+      "Use bash only for specific setup operations such as git init or mkdir; use grep, find, and ls for discovery instead of bash.",
+      ...common,
+    ];
+  }
+
+  if (level === "write_unipi") {
+    return [
+      "The write tool is restricted to .unipi/docs/ only (specs and plans).",
+      "Use grep, find, and ls for file discovery instead of guessing filenames.",
+      "Bash is blocked; use read, write, edit, grep, find, and ls only.",
+      ...common,
+    ];
+  }
+
+  return common;
+}
+
+/** Build a persistent snapshot that explicitly invalidates earlier sandbox state. */
+function formatActiveSandboxSnapshot(command: string, level: SandboxLevel): string {
+  const blocked = getBlockedToolsForLevel(level);
+  const blockedLine = blocked.length > 0
+    ? blocked.join(", ")
+    : "none";
+
+  return [
+    "# UniPi Workflow Sandbox Snapshot",
+    "This snapshot supersedes all prior UniPi workflow sandbox snapshots; use only this snapshot for workflow sandbox status and restrictions.",
+    "Status: active",
+    `Workflow: /unipi:${command}`,
+    `Sandbox level: ${level}`,
+    `Blocked tool names: ${blockedLine}`,
+    "Pi's provider tool schemas and tool order remain unchanged. Calls to blocked tool names are rejected by the workflow sandbox.",
+    ["Restrictions:", ...sandboxRestrictions(level).map((restriction) => `- ${restriction}`)].join("\n"),
+  ].join("\n\n");
+}
+
+function formatInactiveSandboxSnapshot(): string {
+  return [
+    "# UniPi Workflow Sandbox Snapshot",
+    "This snapshot supersedes all prior UniPi workflow sandbox snapshots; use only this snapshot for workflow sandbox status and restrictions.",
+    "Status: inactive",
+    "No UniPi workflow sandbox is active. Prior workflow sandbox restrictions no longer apply.",
+  ].join("\n\n");
+}
+
+function latestEffectiveSandboxSnapshot(
+  branch: SessionEntry[],
+): EffectiveSandboxSnapshot | undefined {
+  const messages = buildSessionContext(branch).messages;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === "custom" && message.customType === WORKFLOW_SANDBOX_SNAPSHOT_TYPE) {
+      return {
+        content: message.content,
+        details: message.details as WorkflowSandboxSnapshotDetails | undefined,
+      };
+    }
+  }
+  return undefined;
+}
+
+/** Find state that may survive only as prose inside a compaction summary. */
+function latestHistoricalSandboxSnapshot(
+  branch: SessionEntry[],
+): EffectiveSandboxSnapshot | undefined {
+  for (let index = branch.length - 1; index >= 0; index--) {
+    const entry = branch[index];
+    if (entry.type === "custom_message" && entry.customType === WORKFLOW_SANDBOX_SNAPSHOT_TYPE) {
+      return {
+        content: entry.content,
+        details: entry.details as WorkflowSandboxSnapshotDetails | undefined,
+      };
+    }
+  }
+  return undefined;
+}
+
+function isActiveSnapshot(snapshot: EffectiveSandboxSnapshot): boolean {
+  if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
+  return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
+}
 
 export default function (pi: ExtensionAPI) {
   const workflowLifecycle = new WorkflowLifecycle();
+  let ralphDetected = false;
+  let sandboxCommand: string | null = null;
 
-  // Register all workflow commands
   registerWorkflowCommands(pi, {
     isRalphDetected: () => ralphDetected,
-    getActiveTools: () => pi.getActiveTools(),
-    setActiveTools: (tools: string[], level: SandboxLevel) => {
-      pi.setActiveTools(tools);
-      sandboxActive = true;
-      currentSandboxLevel = level;
-      currentSandboxTools = tools;
-    },
-    saveTools: (tools: string[]) => {
-      savedTools = tools;
-    },
-    startWorkflow: (event) => {
+    activateSandbox: (event) => {
       if (!workflowLifecycle.start(event)) return false;
+      sandboxCommand = event.command;
       emitEvent(pi, UNIPI_EVENTS.WORKFLOW_START, event);
       return true;
     },
+    abortWorkflow: () => {
+      sandboxCommand = null;
+      workflowLifecycle.reset();
+    },
   });
 
-  // Block tool calls that violate sandbox
+  // Keep tool schemas/order stable and enforce only the existing blocked names.
   pi.on("tool_call", async (event, _ctx) => {
-    if (!sandboxActive || !currentSandboxLevel) return;
+    if (!sandboxCommand) return;
 
-    const allowed = currentSandboxTools ?? [];
-    if (!allowed.includes(event.toolName)) {
+    const level = getSandboxLevel(sandboxCommand);
+    if (!isToolAllowed(level, event.toolName)) {
+      const blocked = getBlockedToolsForLevel(level);
       return {
         block: true,
-        reason: `Tool "${event.toolName}" is not allowed in ${currentSandboxLevel} sandbox. Allowed: ${allowed.join(", ")}`,
+        reason: `Tool "${event.toolName}" is not allowed in ${level} sandbox. Blocked: ${blocked.join(", ")}`,
       };
     }
   });
 
-  // Inject sandbox constraints into system prompt so LLM knows its limits
-  pi.on("before_agent_start", async (event, _ctx) => {
-    if (!sandboxActive || !currentSandboxLevel) return;
+  // Persist hidden append-only sandbox state without mutating the system prompt.
+  pi.on("before_agent_start", async (_event, ctx) => {
+    const branch = ctx.sessionManager.getBranch();
+    const latest = latestEffectiveSandboxSnapshot(branch);
+    const historical = latestHistoricalSandboxSnapshot(branch);
 
-    const allowed = currentSandboxTools ?? pi.getActiveTools();
-    const blocked = getBlockedToolsForLevel(currentSandboxLevel);
+    if (sandboxCommand) {
+      const level = getSandboxLevel(sandboxCommand);
+      const content = formatActiveSandboxSnapshot(sandboxCommand, level);
+      if (latest?.content === content) return undefined;
 
-    const blockedLine = blocked.length > 0
-      ? `\nBlocked tools: ${blocked.join(", ")} — removed from your tool list.`
-      : "\nNo tools were blocked by this sandbox.";
-    const base = `\n\n<sandbox>\nSandbox mode: ${currentSandboxLevel}.\nAvailable tools: ${allowed.join(", ")}.${blockedLine}`;
-
-    if (currentSandboxLevel === "brainstorm") {
       return {
-        systemPrompt:
-          event.systemPrompt +
-          base +
-          `\nThe write tool is available but restricted to .unipi/docs/specs/ only.\nbash is available ONLY for specific setup use case (e.g., git init, mkdir). Do NOT use bash for reading files or listing directories — use grep, find, ls instead.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+        message: {
+          customType: WORKFLOW_SANDBOX_SNAPSHOT_TYPE,
+          content,
+          display: false,
+          details: {
+            active: true,
+            command: sandboxCommand,
+            level,
+          } satisfies WorkflowSandboxSnapshotDetails,
+        },
       };
     }
 
-    if (currentSandboxLevel === "write_unipi") {
-      return {
-        systemPrompt:
-          event.systemPrompt +
-          base +
-          `\nWrite tool is restricted to .unipi/docs/ only (specs and plans).\nUse grep, find, ls for file discovery — do NOT guess filenames.\nbash is blocked — use read, write, edit, grep, find, ls only.\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requests an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
-      };
-    }
+    // A clean session gets no marker. Only an effective active snapshot needs
+    // an append-only inactive successor after agent_end completes the workflow.
+    const prior = latest ?? historical;
+    if (!prior || !isActiveSnapshot(prior)) return undefined;
 
     return {
-      systemPrompt:
-        event.systemPrompt +
-        base +
-        `\nDo NOT attempt to call blocked tools. Do NOT output tool call XML for them.\nIf the user requires an action that requires a blocked tool, respond that you do not have access.\n</sandbox>`,
+      message: {
+        customType: WORKFLOW_SANDBOX_SNAPSHOT_TYPE,
+        content: formatInactiveSandboxSnapshot(),
+        display: false,
+        details: {
+          active: false,
+        } satisfies WorkflowSandboxSnapshotDetails,
+      },
     };
   });
 
-  // Restore tools when agent finishes
+  // Pi 0.80.2 compatibility: agent_end remains the workflow completion boundary.
   pi.on("agent_end", async (event, _ctx) => {
-    if (sandboxActive && savedTools) {
-      pi.setActiveTools(savedTools);
-      savedTools = null;
-      sandboxActive = false;
-      currentSandboxLevel = null;
-      currentSandboxTools = null;
-    }
-
     const completedWorkflow = workflowLifecycle.complete(event.messages);
-    if (completedWorkflow) emitEvent(pi, UNIPI_EVENTS.WORKFLOW_END, completedWorkflow);
+    if (!completedWorkflow) return;
+
+    sandboxCommand = null;
+    emitEvent(pi, UNIPI_EVENTS.WORKFLOW_END, completedWorkflow);
   });
 
-  // Announce module presence on session start
+  // Announce module presence on session start.
   pi.on("session_start", async (_event, ctx) => {
-    // Initialize .unipi directory structure
     initUnipiDirs();
 
-    // Emit MODULE_READY
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.WORKFLOW,
       version: VERSION,
@@ -142,37 +230,29 @@ export default function (pi: ExtensionAPI) {
       tools: [],
     });
 
-    // Listen for ralph module
     if (!ralphDetected) {
       try {
-        // Check if ralph tools exist (indicates @unipi/ralph is loaded)
         const allTools = pi.getAllTools();
-        ralphDetected = allTools.some((t) => t.name === "ralph_start");
+        ralphDetected = allTools.some((tool) => tool.name === "ralph_start");
       } catch {
-        // Ignore — ralph not present
+        // Ignore — ralph not present.
       }
     }
 
-    // Show workflow status in UI
     if (ctx.hasUI) {
       const ralphStatus = ralphDetected ? "✓ rl" : "○ rl";
       ctx.ui.setStatus("unipi-workflow", `⚡ wf ${ralphStatus}`);
     }
   });
 
-  // Listen for ralph module ready event
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (data) => {
     const event = data as { name?: string };
-    if (event?.name === MODULES.RALPH) {
-      ralphDetected = true;
-    }
+    if (event?.name === MODULES.RALPH) ralphDetected = true;
   });
 
-  // Clean up on shutdown
   pi.on("session_shutdown", async () => {
     ralphDetected = false;
-    savedTools = null;
-    sandboxActive = false;
+    sandboxCommand = null;
     workflowLifecycle.reset();
   });
 }

@@ -12,6 +12,8 @@
  */
 
 import { spawnSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -27,11 +29,74 @@ const MIGRATED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-mi
 const PING_VERIFIED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-ping-verified");
 const PING_VERIFIED_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
-/** Path to the bundled bridge script. */
-const BRIDGE_PATH = path.join(dirname(fileURLToPath(import.meta.url)), "bridge", "mempalace_bridge.py");
+/** Migration marker schema. Increment when migration semantics change. */
+export const MIGRATION_STATE_VERSION = 2;
 
-function dirname(p: string): string {
-  return path.dirname(p);
+export interface MigrationResult {
+  discovered: number;
+  imported: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  verified: number;
+  errors?: string[];
+}
+
+export interface MigrationState {
+  version: number;
+  completedAt: string;
+  sourceFingerprint: string;
+  result: MigrationResult;
+}
+
+let cachedBridgePath: string | null | undefined;
+
+function isReadableFile(candidate: string): boolean {
+  try {
+    return fs.statSync(candidate).isFile() && fs.accessSync(candidate, fs.constants.R_OK) === undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the Python bridge in both supported layouts:
+ *
+ * - standalone @pi-unipi/memory: <package>/bridge/mempalace_bridge.py
+ * - bundled @pi-unipi/unipi:     <umbrella>/packages/memory/bridge/...
+ *
+ * The explicit environment override is useful for custom packagers. The
+ * package-resolution fallback handles npm layouts where dependencies are not
+ * hoisted beside the umbrella package.
+ */
+export function resolveMempalaceBridgePath(moduleUrl = import.meta.url): string | null {
+  const moduleDir = path.dirname(fileURLToPath(moduleUrl));
+  const candidates: string[] = [];
+  if (process.env.UNIPI_MEMPALACE_BRIDGE) {
+    candidates.push(path.resolve(process.env.UNIPI_MEMPALACE_BRIDGE));
+  }
+  candidates.push(
+    path.join(moduleDir, "bridge", "mempalace_bridge.py"),
+    path.join(moduleDir, "..", "memory", "bridge", "mempalace_bridge.py"),
+  );
+
+  try {
+    const require = createRequire(moduleUrl);
+    const memoryPackage = require.resolve("@pi-unipi/memory/package.json");
+    candidates.push(path.join(path.dirname(memoryPackage), "bridge", "mempalace_bridge.py"));
+  } catch { /* standalone/source layout may not expose package resolution */ }
+
+  return candidates.find(isReadableFile) ?? null;
+}
+
+function getBridgePath(): string | null {
+  if (cachedBridgePath === undefined) cachedBridgePath = resolveMempalaceBridgePath();
+  return cachedBridgePath;
+}
+
+/** Clear bridge discovery cache (primarily for recovery/tests). */
+export function invalidateBridgePathCache(): void {
+  cachedBridgePath = undefined;
 }
 
 export interface BridgeResponse<T> {
@@ -196,22 +261,99 @@ export function invalidatePingVerified(): void {
   try { if (fs.existsSync(PING_VERIFIED_FLAG)) fs.unlinkSync(PING_VERIFIED_FLAG); } catch { /* ignore */ }
 }
 
-/** Has the one-way legacy migration been completed? */
-export function isMigrated(): boolean {
-  return fs.existsSync(MIGRATED_FLAG);
+/**
+ * Fingerprint all durable legacy sources. This makes migration catch-up
+ * automatic for existing installations instead of treating a years-old
+ * timestamp flag as permanently complete.
+ */
+export function getMemorySourceFingerprint(
+  sourceDir = path.join(os.homedir(), ".unipi", "memory"),
+): string {
+  const hash = createHash("sha256");
+  if (!fs.existsSync(sourceDir)) return hash.update("missing").digest("hex");
+
+  const visit = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      hash.update(`unreadable:${dir}`);
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(full);
+        continue;
+      }
+      if (!entry.isFile() || (entry.name !== "memory.db" && !entry.name.endsWith(".md"))) continue;
+      try {
+        const stat = fs.statSync(full);
+        hash.update(`${path.relative(sourceDir, full)}\0${stat.size}\0${stat.mtimeMs}\n`);
+      } catch {
+        hash.update(`unreadable:${path.relative(sourceDir, full)}\n`);
+      }
+    }
+  };
+  visit(sourceDir);
+  return hash.digest("hex");
 }
 
-/** Mark the one-way legacy migration complete. */
-export function markMigrated(): void {
+/** Read a verified v2 migration state. Legacy timestamp markers return null. */
+export function readMigrationState(flagPath = MIGRATED_FLAG): MigrationState | null {
   try {
-    fs.mkdirSync(path.dirname(MIGRATED_FLAG), { recursive: true });
-    fs.writeFileSync(MIGRATED_FLAG, new Date().toISOString(), "utf-8");
-  } catch { /* ignore */ }
+    const parsed = JSON.parse(fs.readFileSync(flagPath, "utf-8")) as MigrationState;
+    if (
+      parsed?.version !== MIGRATION_STATE_VERSION ||
+      typeof parsed.completedAt !== "string" ||
+      typeof parsed.sourceFingerprint !== "string" ||
+      !parsed.result ||
+      parsed.result.failed !== 0 ||
+      parsed.result.verified !== parsed.result.discovered
+    ) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Is the palace verified against the current durable source set? */
+export function isMigrated(
+  sourceFingerprint = getMemorySourceFingerprint(),
+  flagPath = MIGRATED_FLAG,
+): boolean {
+  return readMigrationState(flagPath)?.sourceFingerprint === sourceFingerprint;
+}
+
+/** Mark migration complete only after the caller has verified every record. */
+export function markMigrated(
+  sourceFingerprint: string,
+  result: MigrationResult,
+  flagPath = MIGRATED_FLAG,
+): boolean {
+  if (result.failed !== 0 || result.verified !== result.discovered) return false;
+  try {
+    fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+    const state: MigrationState = {
+      version: MIGRATION_STATE_VERSION,
+      completedAt: new Date().toISOString(),
+      sourceFingerprint,
+      result,
+    };
+    const temp = `${flagPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(temp, flagPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Force re-migration by clearing the flag. */
-export function clearMigratedFlag(): void {
-  try { if (fs.existsSync(MIGRATED_FLAG)) fs.unlinkSync(MIGRATED_FLAG); } catch { /* ignore */ }
+export function clearMigratedFlag(flagPath = MIGRATED_FLAG): void {
+  try { if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath); } catch { /* ignore */ }
 }
 
 /**
@@ -223,7 +365,10 @@ export function runBridge<T = unknown>(
   palace: string,
   cmd: string,
   args: Record<string, unknown> = {},
+  timeoutMs = 60_000,
 ): T | null {
+  const bridgePath = getBridgePath();
+  if (!bridgePath) return null;
   let argsJson: string;
   try {
     argsJson = JSON.stringify(args);
@@ -232,9 +377,9 @@ export function runBridge<T = unknown>(
   }
   let res;
   try {
-    res = spawnSync(install.python, [BRIDGE_PATH, palace, cmd, argsJson], {
+    res = spawnSync(install.python, [bridgePath, palace, cmd, argsJson], {
       encoding: "utf-8",
-      timeout: 60_000,
+      timeout: timeoutMs,
       maxBuffer: 64 * 1024 * 1024,
     });
   } catch {
@@ -266,8 +411,14 @@ export function runBridgeAsync<T = unknown>(
   palace: string,
   cmd: string,
   args: Record<string, unknown> = {},
+  timeoutMs = 60_000,
 ): Promise<T | null> {
   return new Promise((resolve) => {
+    const bridgePath = getBridgePath();
+    if (!bridgePath) {
+      resolve(null);
+      return;
+    }
     let argsJson: string;
     try {
       argsJson = JSON.stringify(args);
@@ -278,7 +429,7 @@ export function runBridgeAsync<T = unknown>(
 
     let child;
     try {
-      child = spawn(install.python, [BRIDGE_PATH, palace, cmd, argsJson], {
+      child = spawn(install.python, [bridgePath, palace, cmd, argsJson], {
         stdio: ["ignore", "pipe", "ignore"],
       });
     } catch {
@@ -298,7 +449,7 @@ export function runBridgeAsync<T = unknown>(
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* already gone */ }
       finish(null);
-    }, 60_000);
+    }, timeoutMs);
     // Do not hold the process open purely for a background bridge call.
     timer.unref?.();
 

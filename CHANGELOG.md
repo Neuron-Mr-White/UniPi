@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-08-14
+
+This release makes persistent memory migration reliable across standalone and all-in-one installs, while stabilizing workflow tool schemas and MCP registration.
+
+### Added
+
+- **Verified MemPalace catch-up:** migration state now records a source fingerprint and explicit discovered/imported/skipped/failed/verified counts. New or changed legacy memories trigger an idempotent catch-up, and partial runs retry instead of being marked complete.
+- **MemPalace packaging contracts:** the umbrella tarball now ships the Python bridge and resolves it across standalone, bundled, nested npm, and explicit override layouts.
+- **Deterministic MCP registration:** server discovery runs in parallel behind an atomic registration barrier with canonical tool ordering, duplicate-name rejection, rollback, and orderly disconnect.
+- **Workflow lifecycle tests:** added coverage for call-time tool enforcement, nested workflow restoration, MCP schema stability, concurrent completion, and Milestone completion fallback.
+
+### Changed
+
+- **Workflow tools are enforced at execution time.** UniPi no longer mutates Pi's active tool list between workflow phases, preserving provider prefix-cache stability and avoiding stale tool schemas.
+- **MCP schemas are canonicalized.** Equivalent JSON schemas now produce stable key/required ordering and Pi-compatible complete object schemas.
+- **Milestone completion is per workflow run.** Overlapping runs are tracked independently and agent shutdown only reconciles runs that missed their normal completion event.
+- **Memory markdown records preserve authoritative IDs** in frontmatter while retaining the legacy filename/title fallback for existing files.
+
+### Fixed
+
+- **All-in-one UniPi installs no longer silently fall back to SQLite** because `mempalace_bridge.py` was absent from the umbrella artifact or resolved relative to the wrong module.
+- **MemPalace migration no longer false-completes** after bridge errors, timeouts, partial writes, or stale timestamp markers; exact persisted documents are re-read and verified before completion is recorded.
+- **MCP no longer registers tools in network-completion order,** leak partial registrations after failure, or retain clients during shutdown.
+- **Workflow completion and sandbox rules no longer bleed across nested or concurrent runs.**
+
 ## [2.4.2] — 2026-08-13
 
 This release closes the unreachable-code and misleading-contract audit across runtime behavior, package artifacts, and integration events.
