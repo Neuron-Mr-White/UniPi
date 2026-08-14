@@ -357,3 +357,12 @@ Validated the published distribution outside the monorepo:
 - Queried all **22 public package names** (umbrella + 21 workspaces); every registry `latest` version is 2.6.0.
 
 The release commit is ready to tag and push. The checklist entry is marked complete in this progress snapshot because tag/push follows immediately after this file is amended into the release commit; remote verification will be recorded next.
+
+Release push verification:
+
+- Final release commit: `41d43e4e91ad56a2e00690b1694fdeafc5d0279d`.
+- `main` pushed to `upstream`; fetched `upstream/main` resolves to the exact same commit.
+- Annotated `v2.6.0` tag pushed; its peeled target resolves to the exact same commit.
+- Public npm `latest` for `@pi-unipi/unipi` is 2.6.0.
+
+Only the final project-memory/checklist closure remains.
