@@ -116,9 +116,10 @@ export default function (pi: ExtensionAPI) {
    * Background: each group fetches independently, overlay re-renders reactively.
    */
   function showOverlay(ctx: ExtensionContext, autoCloseMs?: number): void {
+    let overlay: InfoOverlay;
     ctx.ui.custom<void>(
       (tui, theme, _keybindings, done) => {
-        const overlay = new InfoOverlay();
+        overlay = new InfoOverlay();
         overlay.setTheme(theme);
         overlayVisible = true;
         overlay.onClose = () => {
@@ -127,11 +128,7 @@ export default function (pi: ExtensionAPI) {
           done();
         };
         overlay.requestRender = () => tui.requestRender();
-        // Boot dashboard dismisses itself; any keypress cancels the timer.
-        if (autoCloseMs && autoCloseMs > 0) {
-          overlay.startBootTimer(autoCloseMs);
-        }
-        return {
+        const component = {
           render: (w: number) => overlay.render(w),
           invalidate: () => overlay.invalidate(),
           handleInput: (data: string) => {
@@ -139,6 +136,11 @@ export default function (pi: ExtensionAPI) {
             tui.requestRender();
           },
         };
+        // Boot dashboard dismisses itself; any keypress cancels the timer.
+        if (autoCloseMs && autoCloseMs > 0) {
+          overlay.startBootTimer(autoCloseMs);
+        }
+        return component;
       },
       {
         overlay: true,
@@ -147,6 +149,17 @@ export default function (pi: ExtensionAPI) {
           minWidth: 60,
           anchor: "center" as const,
           margin: 2,
+        },
+        // `done()` (the extension UI's close callback) pops the *topmost* overlay
+        // in the TUI stack, not this one specifically. When another overlay (e.g.
+        // the updater's "Update Available" prompt) is stacked on top, the boot
+        // auto-close timer must not fire `done()` — that would pop the covering
+        // overlay and strand this dashboard with a spent one-shot close the user
+        // can no longer dismiss. `isTopmostOverlay` lets the boot timer defer
+        // until we are the focused (topmost) entry; the user can still press
+        // q/Esc to close once the covering overlay is gone.
+        onHandle: (handle) => {
+          overlay.isTopmostOverlay = () => handle.isFocused();
         },
       }
     );

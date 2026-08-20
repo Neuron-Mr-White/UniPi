@@ -63,6 +63,12 @@ export class InfoOverlay implements Component {
 
   onClose?: () => void;
   requestRender?: () => void;
+  /**
+   * Whether this overlay is the focused (topmost) entry in the TUI overlay
+   * stack. The boot auto-close timer only fires while this is true — see
+   * `startBootTimer` for why.
+   */
+  isTopmostOverlay?: () => boolean;
 
   private theme: Theme | null = null;
 
@@ -230,17 +236,36 @@ export class InfoOverlay implements Component {
    *
    * Used when the overlay is shown on boot: the dashboard is informational, so
    * it should get out of the way on its own rather than requiring a keypress.
+   *
+   * The close callback (`onClose` → `done`) pops the *topmost* overlay in the
+   * TUI stack, not this one specifically. When another overlay (e.g. the
+   * updater's "Update Available" prompt) is stacked on top, firing `done()`
+   * here would remove the covering overlay and strand this dashboard with a
+   * spent one-shot close the user can no longer trigger — leaving the starting
+   * screen stuck. So we defer the auto-close until we are actually the
+   * focused/topmost overlay; the user can still press q/Esc to dismiss it once
+   * the covering overlay is gone.
    */
   startBootTimer(ms: number): void {
     this.cancelBootTimer();
     if (!Number.isFinite(ms) || ms <= 0) return;
-    this.bootTimer = setTimeout(() => {
-      this.bootTimer = null;
-      if (this._destroyed) return;
-      this.destroy();
-      this.onClose?.();
-    }, ms);
-    this.bootTimer.unref?.();
+    const arm = (): void => {
+      this.bootTimer = setTimeout(() => {
+        this.bootTimer = null;
+        if (this._destroyed) return;
+        if (this.isTopmostOverlay && !this.isTopmostOverlay()) {
+          // Something is stacked on top of us — closing now would pop it
+          // instead of this dashboard. Retry shortly; once the covering
+          // overlay closes we'll be topmost and can auto-close safely.
+          arm();
+          return;
+        }
+        this.destroy();
+        this.onClose?.();
+      }, ms);
+      this.bootTimer.unref?.();
+    };
+    arm();
   }
 
   invalidate(): void {
