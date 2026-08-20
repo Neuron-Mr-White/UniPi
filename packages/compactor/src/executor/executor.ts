@@ -73,8 +73,11 @@ interface ExecuteOptions {
   background?: boolean;
 }
 
-interface ExecuteFileOptions extends ExecuteOptions {
+interface ExecuteFileOptions {
+  language: Language;
   path: string;
+  timeout?: number;
+  background?: boolean;
 }
 
 export class PolyglotExecutor {

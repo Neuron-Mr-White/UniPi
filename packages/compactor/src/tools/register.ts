@@ -15,7 +15,6 @@
 
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compactTool } from "./compact.js";
 import { MAX_RECALL_RESULTS, vccRecall, type RecallInput } from "./vcc-recall.js";
 import { ctxExecute, type CtxExecuteInput } from "./ctx-execute.js";
 import { ctxExecuteFile, type CtxExecuteFileInput } from "./ctx-execute-file.js";
@@ -111,20 +110,6 @@ function jsonResult(data: unknown, label?: string): any {
   };
 }
 
-/** Log a deprecation warning when old tool names are used. */
-function deprecationLog(_oldName: string, _newName: string): void {
-  // Deprecation logging disabled — was writing to stdout causing TUI rendering issues.
-}
-
-// --- Old schema names for backward compat aliases ---
-
-const VccRecallParams = RecallParams;
-const CtxExecuteParams = SandboxParams;
-const CtxExecuteFileParams = SandboxFileParams;
-const CtxBatchExecuteParams = SandboxBatchParams;
-const CtxStatsParams = StatsParams;
-const CtxDoctorParams = DoctorParams;
-
 // --- Registration ---
 
 export interface CompactorToolDeps {
@@ -163,8 +148,7 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
       }
       const c = deps.getCounters?.();
       if (c) { c.compactions++; }
-      const result = compactTool();
-      return jsonResult(result, "Compaction triggered");
+      return jsonResult({ success: true, message: "Compaction triggered. Stats will be available after next compact event." }, "Compaction triggered");
     },
   } as any));
 
@@ -196,7 +180,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     );
   };
   pi.registerTool({ name: "session_recall", label: "Session Recall", description: "Search session history using BM25 or regex. Find previous goals, files, commits, and context.", parameters: RecallParams, execute: recallExec } as any);
-  pi.registerTool({ name: "vcc_recall", label: "Session Recall", description: "Search session history using BM25 or regex. (DEPRECATED: use session_recall instead)", parameters: VccRecallParams, async execute(tcId: string, p: any) { deprecationLog("vcc_recall", "session_recall"); return recallExec(tcId, p); } } as any);
 
   // Sandbox tools are session-scoped and only registered when enabled.
   if (deps.sandbox) {
@@ -226,7 +209,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     }
   };
   pi.registerTool({ name: "sandbox", label: "Sandbox", description: "Run code in a sandboxed environment. Supports 11 languages. Only stdout enters context.", parameters: SandboxParams, execute: sandboxExec } as any);
-  pi.registerTool({ name: "ctx_execute", label: "Sandbox", description: "Run code in sandbox. (DEPRECATED: use sandbox instead)", parameters: CtxExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute", "sandbox"); return sandboxExec(tcId, p); } } as any);
 
   // 4. sandbox_file (new) / ctx_execute_file (deprecated) — execute file
   const sandboxFileExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
@@ -246,7 +228,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     }
   };
   pi.registerTool({ name: "sandbox_file", label: "Sandbox File", description: "Execute a file in the sandbox. File content is injected as FILE_CONTENT variable.", parameters: SandboxFileParams, execute: sandboxFileExec } as any);
-  pi.registerTool({ name: "ctx_execute_file", label: "Sandbox File", description: "Execute file in sandbox. (DEPRECATED: use sandbox_file instead)", parameters: CtxExecuteFileParams, async execute(tcId: string, p: any) { deprecationLog("ctx_execute_file", "sandbox_file"); return sandboxFileExec(tcId, p); } } as any);
 
   // 5. sandbox_batch (new) / ctx_batch_execute (deprecated) — atomic batch (execute only)
   const sandboxBatchExec = async (_toolCallId: string, params: any): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
@@ -266,7 +247,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     }
   };
   pi.registerTool({ name: "sandbox_batch", label: "Sandbox Batch", description: "Run multiple code executions atomically as a batch.", parameters: SandboxBatchParams, execute: sandboxBatchExec } as any);
-  pi.registerTool({ name: "ctx_batch_execute", label: "Sandbox Batch", description: "Run batch operations. (DEPRECATED: use sandbox_batch instead)", parameters: CtxBatchExecuteParams, async execute(tcId: string, p: any) { deprecationLog("ctx_batch_execute", "sandbox_batch"); return sandboxBatchExec(tcId, p); } } as any);
   }
 
   // 6. compactor_stats (new) / ctx_stats (deprecated) — context savings dashboard
@@ -287,7 +267,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     }
   };
   pi.registerTool({ name: "compactor_stats", label: "Compactor Stats", description: "Show context savings dashboard — session events, compactions, tool usage.", parameters: StatsParams, execute: statsExec } as any);
-  pi.registerTool({ name: "ctx_stats", label: "Compactor Stats", description: "Show stats dashboard. (DEPRECATED: use compactor_stats instead)", parameters: CtxStatsParams, async execute() { deprecationLog("ctx_stats", "compactor_stats"); return statsExec(); } } as any);
 
   // 7. compactor_doctor (new) / ctx_doctor (deprecated) — diagnostics checklist
   const doctorExec = async (): Promise<import("@earendil-works/pi-coding-agent").AgentToolResult<unknown>> => {
@@ -305,7 +284,6 @@ export function registerCompactorTools(pi: ExtensionAPI, deps: CompactorToolDeps
     }
   };
   pi.registerTool({ name: "compactor_doctor", label: "Compactor Doctor", description: "Run diagnostics checklist — validate config, DB, runtimes.", parameters: DoctorParams, execute: doctorExec } as any);
-  pi.registerTool({ name: "ctx_doctor", label: "Compactor Doctor", description: "Run diagnostics. (DEPRECATED: use compactor_doctor instead)", parameters: CtxDoctorParams, async execute() { deprecationLog("ctx_doctor", "compactor_doctor"); return doctorExec(); } } as any);
 
   // 8. context_budget — estimate remaining context window
   pi.registerTool(({

@@ -25,10 +25,6 @@ export interface CommandDeps {
   getCounters?: () => RuntimeCounters;
 }
 
-function deprecationLog(_oldName: string, _newName: string): void {
-  // Deprecation logging disabled — was writing to stdout causing TUI rendering issues.
-}
-
 const formatTokens = (n: number): string => {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
@@ -36,59 +32,36 @@ const formatTokens = (n: number): string => {
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:lossless-compact ──────────────────────────
+  const losslessCompactHandler = async (_args: string, ctx: ExtensionCommandContext) => {
+    ctx.compact({
+      customInstructions: COMPACTOR_INSTRUCTION,
+      onComplete: () => {
+        const stats = getLastCompactionStats();
+        if (stats) {
+          ctx.ui.notify(
+            `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
+            "info",
+          );
+        } else {
+          ctx.ui.notify("Compaction completed.", "info");
+        }
+      },
+      onError: (err: Error) => {
+        if (err.message === "Compaction cancelled" || err.message === "Already compacted") {
+          ctx.ui.notify("Nothing to compact.", "info");
+        } else {
+          ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
+        }
+      },
+    });
+  };
   pi.registerCommand("unipi:lossless-compact", {
     description: "Immediate zero-LLM compaction — structured summary with full recall",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      ctx.compact({
-        customInstructions: COMPACTOR_INSTRUCTION,
-        onComplete: () => {
-          const stats = getLastCompactionStats();
-          if (stats) {
-            ctx.ui.notify(
-              `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
-              "info",
-            );
-          } else {
-            ctx.ui.notify("Compaction completed.", "info");
-          }
-        },
-        onError: (err: Error) => {
-          if (err.message === "Compaction cancelled" || err.message === "Already compacted") {
-            ctx.ui.notify("Nothing to compact.", "info");
-          } else {
-            ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
-          }
-        },
-      });
-    },
+    handler: losslessCompactHandler,
   });
-  // Deprecated alias — old name
   pi.registerCommand("unipi:compact", {
-    description: "(DEPRECATED) Use /unipi:lossless-compact instead",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      deprecationLog("/unipi:compact", "/unipi:lossless-compact");
-      ctx.compact({
-        customInstructions: COMPACTOR_INSTRUCTION,
-        onComplete: () => {
-          const stats = getLastCompactionStats();
-          if (stats) {
-            ctx.ui.notify(
-              `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
-              "info",
-            );
-          } else {
-            ctx.ui.notify("Compaction completed.", "info");
-          }
-        },
-        onError: (err: Error) => {
-          if (err.message === "Compaction cancelled" || err.message === "Already compacted") {
-            ctx.ui.notify("Nothing to compact.", "info");
-          } else {
-            ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
-          }
-        },
-      });
-    },
+    description: "Alias for /unipi:lossless-compact",
+    handler: losslessCompactHandler,
   });
 
   // ── /unipi:session-recall (new) ─────────────────────
@@ -127,7 +100,6 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   pi.registerCommand("unipi:compact-recall", {
     description: "(DEPRECATED) Search session history — use /unipi:session-recall instead",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
-      deprecationLog("/unipi:compact-recall", "/unipi:session-recall");
       return sessionRecallHandler(args, ctx, "/unipi:compact-recall");
     },
   });

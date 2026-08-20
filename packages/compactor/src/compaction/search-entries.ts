@@ -74,15 +74,6 @@ let cachedDocCount = 0;
 let cachedAvgDocLen = 0;
 let cachedDocLens: Map<number, number> = new Map();
 
-export function invalidateSearchCache(): void {
-  cachedIndexHash = "";
-  cachedDocs = [];
-  cachedIndex = null;
-  cachedDocCount = 0;
-  cachedAvgDocLen = 0;
-  cachedDocLens = new Map();
-}
-
 export function searchEntries(
   blocks: NormalizedBlock[],
   query: string,

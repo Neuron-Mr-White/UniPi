@@ -380,7 +380,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     // Security scanner/evaluator wiring (fail-open pattern)
     try {
-      const { evaluateCommand, evaluateFilePath, loadProjectPermissions } = await import("./security/evaluator.js");
+      const { evaluateCommand, evaluateFilePath } = await import("./security/evaluator.js");
       const { hasShellEscapes, scanForShellEscapes } = await import("./security/scanner.js");
       const { readsOrCreatesPolicy } = await import("./security/policy.js");
 

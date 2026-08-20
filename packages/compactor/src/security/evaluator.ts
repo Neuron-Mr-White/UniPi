@@ -14,28 +14,6 @@ import { parseBashPattern, parseToolPattern, globToRegex, fileGlobToRegex } from
  * Load permission patterns from .pi/settings.json in the given directory.
  * Returns a SecurityPolicy merged with the provided policy.
  */
-export function loadProjectPermissions(
-  cwd: string,
-  basePolicy: SecurityPolicy,
-): SecurityPolicy {
-  const settingsPath = join(cwd, ".pi", "settings.json");
-  if (!existsSync(settingsPath)) return basePolicy;
-
-  try {
-    const raw = readFileSync(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
-    const permissions = settings.permissions ?? settings.security ?? {};
-
-    return {
-      deny: [...basePolicy.deny, ...(permissions.deny ?? [])],
-      ask: [...basePolicy.ask, ...(permissions.ask ?? [])],
-      allow: [...basePolicy.allow, ...(permissions.allow ?? [])],
-    };
-  } catch {
-    return basePolicy;
-  }
-}
-
 export function evaluateCommand(
   command: string,
   policy: SecurityPolicy,
@@ -71,37 +49,6 @@ export function evaluateCommand(
   }
 
   return "allow";
-}
-
-export function splitChainedCommands(command: string): string[] {
-  const commands: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  let quoteChar = "";
-
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-
-    if (!inQuotes && (char === '"' || char === "'" || char === "`")) {
-      inQuotes = true;
-      quoteChar = char;
-      current += char;
-    } else if (inQuotes && char === quoteChar) {
-      inQuotes = false;
-      quoteChar = "";
-      current += char;
-    } else if (!inQuotes && (char === "&" || char === "|" || char === ";")) {
-      if (current.trim()) commands.push(current.trim());
-      current = "";
-      // Skip the next char if it's part of && or ||
-      if ((char === "&" || char === "|") && command[i + 1] === char) i++;
-    } else {
-      current += char;
-    }
-  }
-
-  if (current.trim()) commands.push(current.trim());
-  return commands;
 }
 
 export function evaluateFilePath(
