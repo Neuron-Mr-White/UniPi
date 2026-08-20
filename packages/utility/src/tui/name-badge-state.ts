@@ -12,6 +12,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { NameBadgeComponent } from "./name-badge.js";
 import { readBadgeSettings } from "../settings.js";
+import { detectHerdr, syncPaneTitle, type HerdrEnv } from "../herdr-sync.js";
 
 /** Overlay handle from ctx.ui.custom() */
 interface OverlayHandle {
@@ -54,6 +55,7 @@ export class NameBadgeState {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private component: NameBadgeComponent | null = null;
   private genTimeout: ReturnType<typeof setTimeout> | null = null;
+  private herdr: HerdrEnv = { enabled: false };
 
   /** Whether the badge is currently visible */
   isVisible(): boolean {
@@ -88,6 +90,13 @@ export class NameBadgeState {
     ctx: { hasUI: boolean; ui: any; cwd?: string },
   ): Promise<void> {
     if (this.overlayHandle) return; // Already showing
+
+    // Detect Herdr once per session; sync the current name to its pane title.
+    this.herdr = detectHerdr();
+    if (this.herdr.enabled) {
+      const name = this.safeGetName(pi);
+      void syncPaneTitle(this.herdr, name);
+    }
 
     const name = this.safeGetName(pi);
     this.currentName = name;
@@ -223,6 +232,8 @@ export class NameBadgeState {
       this.currentName = name;
       this.component?.setName(name);
       this.overlayHandle?.requestRender?.();
+      // Sync to Herdr pane title (scroll-proof display)
+      void syncPaneTitle(this.herdr, name);
       // Clear generation timeout if active
       this.clearGenTimeout();
     } catch {
@@ -250,6 +261,8 @@ export class NameBadgeState {
         this.currentName = name;
         this.component?.setName(name);
         this.overlayHandle?.requestRender?.();
+        // Sync to Herdr pane title (scroll-proof display)
+        void syncPaneTitle(this.herdr, name);
       }
     }, POLL_INTERVAL_MS);
   }
