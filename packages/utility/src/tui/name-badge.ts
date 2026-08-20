@@ -75,9 +75,9 @@ export class NameBadgeComponent implements Component {
       fgColor = "muted";
     }
 
-    // Full-width box: borders take 2 cols
+    // Compact box: borders take 2 cols, 1-cell pad each side
     const innerWidth = Math.max(1, width - 2);
-    const maxTextWidth = Math.max(1, innerWidth - 4); // 2-cell pad each side
+    const maxTextWidth = Math.max(1, innerWidth - 2); // 1-cell pad each side
 
     // Truncate name if needed
     if (visibleWidth(displayText) > maxTextWidth) {
@@ -96,7 +96,7 @@ export class NameBadgeComponent implements Component {
       ? this.theme.fg(fgColor as any, displayText)
       : displayText;
 
-    // Build lines with opaque background spanning full width
+    // Build lines with opaque background
     const topLine = bgFn(border("╭" + "─".repeat(innerWidth) + "╮"));
     const contentLine = bgFn(
       border("│") + " ".repeat(leftPad) + nameStyled + " ".repeat(rightPad) + border("│"),
