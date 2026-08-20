@@ -36,11 +36,16 @@ export default function (pi: ExtensionAPI) {
   workflow(pi);
   ralph(pi);
   memory(pi);
+  // Utility loads BEFORE info-screen: the name badge overlay must be pushed
+  // to the BOTTOM of the overlay stack. hideOverlay() pops the topmost entry,
+  // and a capturing overlay's done() callback is one-shot — if the badge were
+  // stacked above the boot info-screen, the info-screen's auto-close would pop
+  // the badge (spending its done()) and strand the dashboard uncloseable.
+  utility(pi);
   infoScreen(pi);
   subagents(pi);
   btw(pi);
   webApi(pi);
-  utility(pi);
   askUser(pi);
   mcp(pi);
   notify(pi);
