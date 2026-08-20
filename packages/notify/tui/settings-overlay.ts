@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
   loadConfig,
@@ -51,37 +51,50 @@ export class NotifySettingsOverlay implements Component {
   invalidate(): void {}
 
   handleInput(data: string): void {
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        this.selectedIndex = Math.min(this.maxItems - 1, this.selectedIndex + 1);
-        break;
-      case " ": // Space - toggle
-        this.toggleCurrent();
-        break;
-      case "\t": // Tab - switch section
-        {
-          const sections: Section[] = ["platforms", "events", "recap"];
-          const idx = sections.indexOf(this.section);
-          this.section = sections[(idx + 1) % sections.length];
-          this.selectedIndex = 0;
-        }
-        break;
-      case "m": // M - open model selector (only in recap section)
-        if (this.section === "recap") {
-          this.onOpenModelSelector?.();
-        }
-        break;
-      case "\r": // Enter - save
-        this.save();
-        break;
-      case "\x1b": // Escape - close
-        this.onClose?.();
-        break;
+    // Ctrl+C always closes — escape hatch for terminals with key encodings
+    // this overlay does not understand (issue #27).
+    if (matchesKey(data, "ctrl+c")) {
+      this.onClose?.();
+      return;
+    }
+    // Navigation keys are matched via matchesKey, never raw byte comparison:
+    // under the kitty keyboard protocol / enhanced encodings (Ghostty, Herdr)
+    // Escape arrives as "\x1b[27u" (or "\x1b[27;1;27~" with modifyOtherKeys)
+    // and arrows as "\x1b[57419u"/"\x1b[57420u" — exact legacy comparisons
+    // like data === "\x1b[A" silently fail there.
+    if (matchesKey(data, "up") || data === "k") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      return;
+    }
+    if (matchesKey(data, "down") || data === "j") {
+      this.selectedIndex = Math.min(this.maxItems - 1, this.selectedIndex + 1);
+      return;
+    }
+    if (matchesKey(data, "space")) {
+      this.toggleCurrent();
+      return;
+    }
+    if (matchesKey(data, "tab")) {
+      const sections: Section[] = ["platforms", "events", "recap"];
+      const idx = sections.indexOf(this.section);
+      this.section = sections[(idx + 1) % sections.length];
+      this.selectedIndex = 0;
+      return;
+    }
+    if (data === "m" || data === "M") {
+      // Open model selector (only in recap section)
+      if (this.section === "recap") {
+        this.onOpenModelSelector?.();
+      }
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      this.save();
+      return;
+    }
+    if (matchesKey(data, "escape")) {
+      this.onClose?.();
+      return;
     }
   }
 

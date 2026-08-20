@@ -297,6 +297,7 @@ export const NOTIFY_COMMANDS = {
   SET_NTFY: "notify-set-ntfy",
   TEST: "notify-test",
   RECAP_MODEL: "notify-recap-model",
+  NOTIFY_EVENT: "notify-event",
 } as const;
 
 /** Notify tool names */

@@ -9,14 +9,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-/** Path to the model cache directory */
-const CACHE_DIR = path.join(
-  process.env.HOME ?? process.env.USERPROFILE ?? "~",
-  ".unipi/config",
-);
+/** Resolve the model cache directory at call time (respects HOME changes). */
+function cacheDir(): string {
+  return path.join(
+    process.env.HOME ?? process.env.USERPROFILE ?? "~",
+    ".unipi/config",
+  );
+}
 
-/** Path to the model cache file */
-const CACHE_FILE = path.join(CACHE_DIR, "models-cache.json");
+/** Resolve the model cache file path at call time. */
+function cacheFile(): string {
+  return path.join(cacheDir(), "models-cache.json");
+}
 
 /** A single cached model entry */
 export interface CachedModel {
@@ -42,8 +46,9 @@ export interface ModelCache {
  */
 export function readModelCache(): CachedModel[] {
   try {
-    if (!fs.existsSync(CACHE_FILE)) return [];
-    const parsed = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+    const file = cacheFile();
+    if (!fs.existsSync(file)) return [];
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
     return Array.isArray(parsed.models) ? parsed.models : [];
   } catch {
     return [];
@@ -56,14 +61,15 @@ export function readModelCache(): CachedModel[] {
  */
 export function writeModelCache(models: CachedModel[]): void {
   try {
-    if (!fs.existsSync(CACHE_DIR)) {
-      fs.mkdirSync(CACHE_DIR, { recursive: true });
+    const dir = cacheDir();
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
     const cache: ModelCache = {
       updatedAt: new Date().toISOString(),
       models,
     };
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2) + "\n", "utf-8");
+    fs.writeFileSync(cacheFile(), JSON.stringify(cache, null, 2) + "\n", "utf-8");
   } catch {
     // Best effort — cache is optional
   }

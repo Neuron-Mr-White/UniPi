@@ -2,7 +2,8 @@
  * @pi-unipi/notify — Recap Model Selector TUI
  *
  * Interactive overlay for selecting the recap summarization model.
- * Uses the project-wide cached model list from ~/.unipi/config/models-cache.json.
+ * Uses models injected from Pi's live model registry (preferred), falling back
+ * to the project-wide cached model list from ~/.unipi/config/models-cache.json.
  */
 
 import type { Component } from "@earendil-works/pi-tui";
@@ -28,9 +29,16 @@ export class RecapModelSelectorOverlay implements Component {
   requestRender?: () => void;
   private theme: Theme | null = null;
 
-  constructor() {
-    // Load all cached models from project-wide cache
-    this.models = readModelCache();
+  /**
+   * @param models Optional model list, preferably collected from Pi's live
+   *   model registry by the command handler. Falls back to the project-wide
+   *   cache file (`~/.unipi/config/models-cache.json`), which may not exist
+   *   (issue #27: selector showed "No models found" while Pi itself had
+   *   models configured in `~/.pi/agent/models.json`).
+   */
+  constructor(models?: CachedModel[]) {
+    // Prefer models injected from Pi's live model registry; fall back to cache.
+    this.models = models ?? readModelCache();
     this.applyFilter();
 
     // Pre-select current config model
@@ -49,23 +57,42 @@ export class RecapModelSelectorOverlay implements Component {
   invalidate(): void {}
 
   handleInput(data: string): void {
+    // Ctrl+C must always close, even mid-filter — without this the overlay
+    // could trap the user on terminals with unexpected key encodings.
+    if (matchesKey(data, "ctrl+c")) {
+      this.onClose?.();
+      return;
+    }
+
     // Filter mode: type to search
     if (this.filterMode) {
-      if (data === "\r") {
+      if (matchesKey(data, "enter")) {
         // Enter — exit filter mode
         this.filterMode = false;
         return;
       }
       if (matchesKey(data, "escape")) {
-        // Escape — clear filter and exit filter mode
+        // Escape — clear filter and exit filter mode (does NOT close overlay)
         this.filter = "";
         this.filterMode = false;
         this.applyFilter();
         this.selectedIndex = 0;
         return;
       }
-      if (data === "\x7f" || data === "\b") {
-        // Backspace
+      // Let the list be navigated without leaving filter mode.
+      if (matchesKey(data, "up")) {
+        this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+        return;
+      }
+      if (matchesKey(data, "down")) {
+        this.selectedIndex = Math.min(
+          Math.max(0, this.filteredModels.length - 1),
+          this.selectedIndex + 1
+        );
+        return;
+      }
+      if (matchesKey(data, "backspace") || data === "\x7f" || data === "\b") {
+        // Backspace (legacy or kitty "\x1b[127u")
         this.filter = this.filter.slice(0, -1);
         this.applyFilter();
         this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
@@ -80,28 +107,36 @@ export class RecapModelSelectorOverlay implements Component {
       return;
     }
 
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        this.selectedIndex = Math.min(
-          this.filteredModels.length - 1,
-          this.selectedIndex + 1
-        );
-        break;
-      case "/": // Start filter
-        this.filterMode = true;
-        this.filter = "";
-        break;
-      case "\r": // Enter — select and save
-        this.selectModel();
-        break;
-      case "\x1b": // Escape — close
-        this.onClose?.();
-        break;
+    // Keys are matched via matchesKey, never raw byte comparison: under the
+    // kitty keyboard protocol / enhanced encodings (Ghostty, Herdr) Escape
+    // arrives as "\x1b[27u" and arrows as "\x1b[57419u"/"\x1b[57420u", so
+    // exact legacy comparisons silently fail there (issue #27).
+    if (matchesKey(data, "up") || data === "k") {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      return;
+    }
+    if (matchesKey(data, "down") || data === "j") {
+      this.selectedIndex = Math.min(
+        Math.max(0, this.filteredModels.length - 1),
+        this.selectedIndex + 1
+      );
+      return;
+    }
+    if (data === "/") {
+      // Start filter
+      this.filterMode = true;
+      this.filter = "";
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      // Enter — select and save
+      this.selectModel();
+      return;
+    }
+    if (matchesKey(data, "escape")) {
+      // Escape — close
+      this.onClose?.();
+      return;
     }
   }
 
@@ -226,9 +261,15 @@ export class RecapModelSelectorOverlay implements Component {
     );
 
     if (this.filteredModels.length === 0) {
+      const emptyMsg =
+        this.filter.length > 0
+          ? `No models match "${this.filter}"`
+          : this.models.length === 0
+            ? "No models — check ~/.pi/agent/models.json or API keys, then reopen"
+            : "No models found";
       lines.push(
         this.frameLine(
-          `  ${this.fg("dim", "No models found")}`,
+          `  ${this.fg("dim", emptyMsg)}`,
           innerWidth
         )
       );
