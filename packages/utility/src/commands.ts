@@ -21,8 +21,7 @@ import { cleanupStale, formatCleanupReport } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
 import type { NameBadgeState } from "./tui/name-badge-state.js";
-import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./tui/badge-settings.js";
-import { BadgeSettingsTui } from "./tui/badge-settings-tui.js";
+import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./settings.js";
 import { UtilSettingsTui } from "./tui/util-settings-tui.js";
 
 /** Send a markdown response via pi.sendMessage */

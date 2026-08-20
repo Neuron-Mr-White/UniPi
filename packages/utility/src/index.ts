@@ -26,16 +26,14 @@ import {
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
-import { readBadgeSettings } from "./tui/badge-settings.js";
-import { readDiffSettings } from "./diff/settings.js";
-import { registerEnhancedWriteTool, registerEnhancedEditTool } from "./diff/wrapper.js";
+import { readBadgeSettings } from "./settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
 import { PrefixCacheTracker, formatPrefixCacheStats } from "./prefix-cache.js";
 
 /** Re-export readBadgeSettings for cross-package use */
-export { readBadgeSettings } from "./tui/badge-settings.js";
+export { readBadgeSettings } from "./settings.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -155,14 +153,6 @@ export default function (pi: ExtensionAPI) {
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
 
-    // Register diff-enhanced tools if enabled
-    const diffSettings = readDiffSettings();
-    if (diffSettings.enabled) {
-      const cwd = process.cwd();
-      registerEnhancedWriteTool(pi, cwd);
-      registerEnhancedEditTool(pi, cwd);
-    }
-
     // Write model cache for TUI components
     if ((ctx as any).modelRegistry) {
       const { writeModelCache } = await import("@pi-unipi/core");
@@ -274,64 +264,6 @@ export default function (pi: ExtensionAPI) {
  * Register utility tools.
  */
 function registerUtilityTools(pi: ExtensionAPI, nameBadgeState: NameBadgeState): void {
-  // ctx_batch — atomic batch execution
-  pi.registerTool({
-    name: UTILITY_TOOLS.BATCH,
-    label: "Batch Execute",
-    description:
-      "Execute a batch of commands atomically with rollback support. " +
-      "Accepts an array of {type, name, args} objects. " +
-      "Options: failFast (default true), commandTimeoutMs, totalTimeoutMs.",
-    promptSnippet: "Run multiple commands as an atomic batch.",
-    parameters: {
-      type: "object",
-      properties: {
-        commands: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              type: { type: "string", enum: ["command", "tool", "search"] },
-              name: { type: "string" },
-              args: { type: "object" },
-            },
-            required: ["type", "name"],
-          },
-        },
-        options: {
-          type: "object",
-          properties: {
-            failFast: { type: "boolean" },
-            commandTimeoutMs: { type: "number" },
-            totalTimeoutMs: { type: "number" },
-          },
-        },
-      },
-      required: ["commands"],
-    },
-    async execute(_toolCallId, params) {
-      const { commands, options } = params as unknown as {
-        commands: Array<{ type: string; name: string; args?: Record<string, unknown> }>;
-        options?: Record<string, unknown>;
-      };
-
-      // Tool implementation delegates to batch executor
-      // The actual executor must be provided by the host
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              "ctx_batch requires a command executor from the host environment. " +
-              `Received ${commands.length} commands. ` +
-              "Use BatchBuilder or executeBatch() directly in code.",
-          },
-        ],
-        details: { commands, options },
-      };
-    },
-  });
-
   // ctx_env — environment info
   pi.registerTool({
     name: UTILITY_TOOLS.ENV,

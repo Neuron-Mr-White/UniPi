@@ -1,11 +1,7 @@
 /**
- * @pi-unipi/utility — Unified Settings TUI Overlay
+ * @pi-unipi/utility — Settings TUI Overlay
  *
- * Single TUI overlay with two navigable sections:
- * - Badge: autoGen, badgeEnabled, agentTool, generationModel
- * - Diff Rendering: enabled, theme preset, shikiTheme
- *
- * Replaces badge-settings-tui.ts as the primary settings interface.
+ * Single TUI overlay for badge settings.
  */
 
 import type { Component } from "@earendil-works/pi-tui";
@@ -16,10 +12,7 @@ import {
   readUtilSettings,
   writeUtilSettings,
   type UtilSettings,
-  type BadgeSettingsSection,
-  type DiffSettings,
-} from "../diff/settings.js";
-import { getAllPresets } from "../diff/theme.js";
+} from "../settings.js";
 
 /** ANSI escape codes */
 const ansi = {
@@ -40,12 +33,11 @@ const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
 const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
 /** Active mode */
-type Mode = "settings" | "model-picker" | "theme-picker" | "shiki-picker";
+type Mode = "settings" | "model-picker";
 
 /** Setting row types */
 interface BooleanSetting {
   type: "boolean";
-  section: "badge" | "diff";
   key: string;
   label: string;
   description: string;
@@ -54,11 +46,10 @@ interface BooleanSetting {
 
 interface PickerSetting {
   type: "picker";
-  section: "badge" | "diff";
   key: string;
   label: string;
   description: string;
-  pickerType: "model" | "theme" | "shiki";
+  pickerType: "model";
   getValue: (s: UtilSettings) => string;
 }
 
@@ -71,11 +62,9 @@ type SettingItem = BooleanSetting | PickerSetting | SectionHeader;
 
 /** All settings items */
 const SETTINGS: SettingItem[] = [
-  // Badge section
   { type: "section", label: "Badge" },
   {
     type: "boolean",
-    section: "badge",
     key: "autoGen",
     label: "Auto generate",
     description: "Generate session name on first user message",
@@ -83,7 +72,6 @@ const SETTINGS: SettingItem[] = [
   },
   {
     type: "boolean",
-    section: "badge",
     key: "badgeEnabled",
     label: "Badge enabled",
     description: "Show the name badge overlay",
@@ -91,7 +79,6 @@ const SETTINGS: SettingItem[] = [
   },
   {
     type: "boolean",
-    section: "badge",
     key: "agentTool",
     label: "Agent tool",
     description: "Allow agents to call set_session_name",
@@ -99,71 +86,16 @@ const SETTINGS: SettingItem[] = [
   },
   {
     type: "picker",
-    section: "badge",
     key: "generationModel",
     label: "Generation model",
     description: "Model for badge name generation",
     pickerType: "model",
     getValue: (s) => s.badge.generationModel,
   },
-  // Diff Rendering section
-  { type: "section", label: "Diff Rendering" },
-  {
-    type: "boolean",
-    section: "diff",
-    key: "enabled",
-    label: "Enabled",
-    description: "Shiki-powered syntax-highlighted diffs",
-    getValue: (s) => s.diff.enabled,
-  },
-  {
-    type: "picker",
-    section: "diff",
-    key: "theme",
-    label: "Theme",
-    description: "Diff color preset",
-    pickerType: "theme",
-    getValue: (s) => s.diff.theme,
-  },
-  {
-    type: "picker",
-    section: "diff",
-    key: "shikiTheme",
-    label: "Shiki theme",
-    description: "Syntax highlighting grammar",
-    pickerType: "shiki",
-    getValue: (s) => s.diff.shikiTheme,
-  },
-];
-
-/** List of known Shiki themes */
-const SHIKI_THEMES = [
-  "github-dark",
-  "github-light",
-  "dracula",
-  "one-dark-pro",
-  "catppuccin-mocha",
-  "catppuccin-latte",
-  "nord",
-  "tokyo-night",
-  "tokyo-night-storm",
-  "night-owl",
-  "material-theme",
-  "material-theme-palenight",
-  "monokai",
-  "solarized-dark",
-  "solarized-light",
-  "vitesse-dark",
-  "vitesse-light",
-  "ayu-dark",
-  "ayu-mirage",
-  "slack-dark",
-  "slack-ochin",
 ];
 
 /**
- * Unified Settings TUI overlay.
- * Combines badge and diff settings in a single navigable interface.
+ * Settings TUI overlay for badge configuration.
  */
 export class UtilSettingsTui implements Component {
   private settings: UtilSettings;
@@ -172,10 +104,7 @@ export class UtilSettingsTui implements Component {
   private scrollOffset = 0;
   private models: CachedModel[] = [];
 
-  /** Callback when overlay should close */
   onClose?: () => void;
-
-  /** Callback to request a re-render */
   requestRender?: () => void;
 
   constructor() {
@@ -183,16 +112,8 @@ export class UtilSettingsTui implements Component {
     this.models = readModelCache();
   }
 
-  /**
-   * Invalidate cached render state.
-   */
-  invalidate(): void {
-    // No cached state to invalidate
-  }
+  invalidate(): void {}
 
-  /**
-   * Handle keyboard input.
-   */
   handleInput(data: string): void {
     switch (this.mode) {
       case "settings":
@@ -201,90 +122,67 @@ export class UtilSettingsTui implements Component {
       case "model-picker":
         this.handlePickerInput(data, this.getModelList(), "model");
         break;
-      case "theme-picker":
-        this.handlePickerInput(data, this.getThemeList(), "theme");
-        break;
-      case "shiki-picker":
-        this.handlePickerInput(data, this.getShikiList(), "shiki");
-        break;
     }
   }
 
-  /**
-   * Handle input in settings mode.
-   */
   private handleSettingsInput(data: string): void {
-    // Get navigable items (skip section headers)
     const navItems = SETTINGS.filter((s) => s.type !== "section");
 
     switch (data) {
-      case "\x1b[A": // Up arrow
+      case "\x1b[A":
       case "k":
         this.selectedIndex = (this.selectedIndex - 1 + navItems.length) % navItems.length;
         break;
-      case "\x1b[B": // Down arrow
+      case "\x1b[B":
       case "j":
         this.selectedIndex = (this.selectedIndex + 1) % navItems.length;
         break;
-      case " ": // Space — toggle boolean settings
+      case " ":
         this.toggleCurrentSetting();
         break;
-      case "\r": // Enter — open picker or toggle
+      case "\r":
         if (navItems[this.selectedIndex]?.type === "picker") {
           this.enterPicker(navItems[this.selectedIndex] as PickerSetting);
         } else {
           this.toggleCurrentSetting();
         }
         break;
-      case "\x1b": // Escape — save and close
+      case "\x1b":
         this.save();
         this.onClose?.();
         break;
     }
   }
 
-  /**
-   * Handle input in picker mode.
-   */
   private handlePickerInput(data: string, items: Array<{ id: string; label: string }>, pickerType: string): void {
     switch (data) {
-      case "\x1b[A": // Up arrow
+      case "\x1b[A":
       case "k":
         this.scrollOffset = (this.scrollOffset - 1 + items.length) % items.length;
         break;
-      case "\x1b[B": // Down arrow
+      case "\x1b[B":
       case "j":
         this.scrollOffset = (this.scrollOffset + 1) % items.length;
         break;
-      case "\r": // Enter — select
+      case "\r":
         this.selectPickerItem(items[this.scrollOffset], pickerType);
         break;
-      case "\x1b": // Escape — cancel
+      case "\x1b":
         this.mode = "settings";
         break;
     }
   }
 
-  /**
-   * Toggle the currently selected boolean setting.
-   */
   private toggleCurrentSetting(): void {
     const navItems = SETTINGS.filter((s) => s.type !== "section");
     const item = navItems[this.selectedIndex];
     if (!item || item.type !== "boolean") return;
 
     const current = item.getValue(this.settings);
-    if (item.section === "badge") {
-      (this.settings.badge as any)[item.key] = !current;
-    } else {
-      (this.settings.diff as any)[item.key] = !current;
-    }
+    (this.settings.badge as any)[item.key] = !current;
     this.save();
   }
 
-  /**
-   * Enter picker mode for a setting.
-   */
   private enterPicker(item: PickerSetting): void {
     switch (item.pickerType) {
       case "model":
@@ -292,41 +190,19 @@ export class UtilSettingsTui implements Component {
         this.scrollOffset = this.getModelList().findIndex((m) => m.id === this.settings.badge.generationModel);
         if (this.scrollOffset < 0) this.scrollOffset = 0;
         break;
-      case "theme":
-        this.mode = "theme-picker";
-        this.scrollOffset = getAllPresets().findIndex((p) => p.name === this.settings.diff.theme);
-        if (this.scrollOffset < 0) this.scrollOffset = 0;
-        break;
-      case "shiki":
-        this.mode = "shiki-picker";
-        this.scrollOffset = SHIKI_THEMES.indexOf(this.settings.diff.shikiTheme);
-        if (this.scrollOffset < 0) this.scrollOffset = 0;
-        break;
     }
   }
 
-  /**
-   * Select an item in a picker.
-   */
   private selectPickerItem(item: { id: string; label: string }, pickerType: string): void {
     switch (pickerType) {
       case "model":
         this.settings.badge.generationModel = item.id;
-        break;
-      case "theme":
-        this.settings.diff.theme = item.id;
-        break;
-      case "shiki":
-        this.settings.diff.shikiTheme = item.id;
         break;
     }
     this.mode = "settings";
     this.save();
   }
 
-  /**
-   * Get model list with "inherit" as first entry.
-   */
   private getModelList(): Array<{ id: string; label: string }> {
     const list: Array<{ id: string; label: string }> = [
       { id: "inherit", label: "inherit (use parent model)" },
@@ -341,33 +217,10 @@ export class UtilSettingsTui implements Component {
     return list;
   }
 
-  /**
-   * Get diff theme preset list.
-   */
-  private getThemeList(): Array<{ id: string; label: string }> {
-    return getAllPresets().map((p) => ({
-      id: p.name,
-      label: `${p.name} — ${p.description}`,
-    }));
-  }
-
-  /**
-   * Get Shiki theme list.
-   */
-  private getShikiList(): Array<{ id: string; label: string }> {
-    return SHIKI_THEMES.map((t) => ({ id: t, label: t }));
-  }
-
-  /**
-   * Save settings to disk.
-   */
   private save(): void {
     writeUtilSettings(this.settings);
   }
 
-  /**
-   * Render the overlay.
-   */
   render(width: number): string[] {
     const lines: string[] = [];
     const innerWidth = boxInnerWidth(width);
@@ -392,15 +245,12 @@ export class UtilSettingsTui implements Component {
           `${ansi.cyan}│${ansi.reset}`,
       );
 
-    // Top border
     lines.push(`${ansi.cyan}╭${"─".repeat(innerWidth)}╮${ansi.reset}`);
 
-    // Header
     add(`${ansi.bold}${ansi.cyan}⚙ Utility Settings${ansi.reset}`);
-    add(`${ansi.dim}Configure badge and diff rendering${ansi.reset}`);
+    add(`${ansi.dim}Configure badge${ansi.reset}`);
     addEmpty();
 
-    // Settings list
     const navItems = SETTINGS.filter((s) => s.type !== "section");
     let navIndex = 0;
 
@@ -422,9 +272,8 @@ export class UtilSettingsTui implements Component {
         add(`   ${ansi.gray}${item.description}${ansi.reset}`);
       } else if (item.type === "picker") {
         const value = item.getValue(this.settings);
-        const icon = item.pickerType === "model" ? "⚙" : "🎨";
         add(
-          `${selector} ${ansi.yellow}${icon}${ansi.reset} ${labelColor}${item.label}${ansi.reset}: ${ansi.white}${value}${ansi.reset}`,
+          `${selector} ${ansi.yellow}⚙${ansi.reset} ${labelColor}${item.label}${ansi.reset}: ${ansi.white}${value}${ansi.reset}`,
         );
         add(`   ${ansi.gray}${item.description}${ansi.reset}`);
         if (isSelected) {
@@ -435,7 +284,6 @@ export class UtilSettingsTui implements Component {
       navIndex++;
     }
 
-    // Picker overlay (inline)
     if (this.mode !== "settings") {
       addEmpty();
       let items: Array<{ id: string; label: string }> = [];
@@ -445,14 +293,6 @@ export class UtilSettingsTui implements Component {
         case "model-picker":
           items = this.getModelList();
           title = "Available Models";
-          break;
-        case "theme-picker":
-          items = this.getThemeList();
-          title = "Diff Theme Presets";
-          break;
-        case "shiki-picker":
-          items = this.getShikiList();
-          title = "Shiki Themes";
           break;
       }
 
@@ -480,7 +320,6 @@ export class UtilSettingsTui implements Component {
       }
     }
 
-    // Footer
     addEmpty();
 
     if (this.mode === "settings") {
@@ -490,7 +329,6 @@ export class UtilSettingsTui implements Component {
       add(`${ansi.dim}↑↓ navigate • Enter select • Esc cancel${ansi.reset}`);
     }
 
-    // Bottom border
     lines.push(`${ansi.cyan}╰${"─".repeat(innerWidth)}╯${ansi.reset}`);
 
     return lines;

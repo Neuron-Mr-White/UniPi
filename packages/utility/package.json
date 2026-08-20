@@ -36,9 +36,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.6.1",
-    "diff": "^7.0.0",
-    "shiki": "^4.0.2"
+    "@pi-unipi/core": "2.6.1"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2"

@@ -11,7 +11,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
 import { NameBadgeComponent } from "./name-badge.js";
-import { readBadgeSettings } from "./badge-settings.js";
+import { readBadgeSettings } from "../settings.js";
 
 /** Overlay handle from ctx.ui.custom() */
 interface OverlayHandle {

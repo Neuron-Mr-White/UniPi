@@ -1,26 +1,14 @@
 /**
- * @pi-unipi/utility — Unified Settings Manager
+ * @pi-unipi/utility — Settings Manager
  *
- * Manages both badge and diff settings in a single `.unipi/config/util-settings.json` file.
+ * Manages badge settings in `.unipi/config/util-settings.json`.
  * Migrates from legacy `badge.json` on first read.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-/** Diff rendering settings */
-export interface DiffSettings {
-  /** Enable Shiki-powered diff rendering for write/edit tools */
-  enabled: boolean;
-  /** Diff theme preset: "default" | "midnight" | "subtle" | "neon" */
-  theme: string;
-  /** Shiki syntax theme name */
-  shikiTheme: string;
-  /** Minimum terminal columns for split view */
-  splitMinWidth: number;
-}
-
-/** Badge settings (matches existing BadgeSettings interface) */
+/** Badge settings */
 export interface BadgeSettingsSection {
   autoGen: boolean;
   badgeEnabled: boolean;
@@ -31,16 +19,7 @@ export interface BadgeSettingsSection {
 /** Unified utility settings */
 export interface UtilSettings {
   badge: BadgeSettingsSection;
-  diff: DiffSettings;
 }
-
-/** Default diff settings */
-const DEFAULT_DIFF_SETTINGS: DiffSettings = {
-  enabled: true,
-  theme: "default",
-  shikiTheme: "github-dark",
-  splitMinWidth: 150,
-};
 
 /** Default badge settings */
 const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
@@ -53,16 +32,12 @@ const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
 /** Default unified settings */
 const DEFAULT_SETTINGS: UtilSettings = {
   badge: { ...DEFAULT_BADGE_SETTINGS },
-  diff: { ...DEFAULT_DIFF_SETTINGS },
 };
 
 /** Config file paths */
 const UTIL_SETTINGS_FILE = ".unipi/config/util-settings.json";
 const BADGE_CONFIG_FILE = ".unipi/config/badge.json";
 
-/**
- * Get absolute path for a config file relative to cwd.
- */
 function getConfigPath(file: string): string {
   return path.resolve(process.cwd(), file);
 }
@@ -87,52 +62,34 @@ function readLegacyBadgeSettings(): BadgeSettingsSection | null {
   }
 }
 
-/**
- * Atomic write: write to temp file then rename.
- * Prevents corruption if two instances write simultaneously.
- */
 function atomicWrite(filePath: string, data: string): void {
   const tmpPath = filePath + ".tmp";
   fs.writeFileSync(tmpPath, data, "utf-8");
   fs.renameSync(tmpPath, filePath);
 }
 
-/**
- * Read the unified util-settings.json.
- * On first read, migrates from badge.json if it exists.
- * Returns defaults if no config exists.
- */
 export function readUtilSettings(): UtilSettings {
   try {
     const configPath = getConfigPath(UTIL_SETTINGS_FILE);
 
-    // Check if unified config exists
     if (fs.existsSync(configPath)) {
       const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       return normalizeSettings(parsed);
     }
 
-    // Migration: import from badge.json if it exists
     const legacyBadge = readLegacyBadgeSettings();
     if (legacyBadge) {
-      const migrated: UtilSettings = {
-        badge: legacyBadge,
-        diff: { ...DEFAULT_DIFF_SETTINGS },
-      };
+      const migrated: UtilSettings = { badge: legacyBadge };
       writeUtilSettings(migrated);
       return migrated;
     }
 
-    // No config at all — return defaults (don't write yet)
-    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS }, diff: { ...DEFAULT_DIFF_SETTINGS } };
+    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
   } catch {
-    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS }, diff: { ...DEFAULT_DIFF_SETTINGS } };
+    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
   }
 }
 
-/**
- * Write the full unified settings to disk.
- */
 export function writeUtilSettings(settings: UtilSettings): void {
   try {
     const configPath = getConfigPath(UTIL_SETTINGS_FILE);
@@ -146,9 +103,6 @@ export function writeUtilSettings(settings: UtilSettings): void {
   }
 }
 
-/**
- * Normalize a parsed JSON object into valid UtilSettings.
- */
 function normalizeSettings(parsed: any): UtilSettings {
   return {
     badge: {
@@ -157,43 +111,45 @@ function normalizeSettings(parsed: any): UtilSettings {
       agentTool: typeof parsed?.badge?.agentTool === "boolean" ? parsed.badge.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
       generationModel: typeof parsed?.badge?.generationModel === "string" ? parsed.badge.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
     },
-    diff: {
-      enabled: typeof parsed?.diff?.enabled === "boolean" ? parsed.diff.enabled : DEFAULT_DIFF_SETTINGS.enabled,
-      theme: typeof parsed?.diff?.theme === "string" ? parsed.diff.theme : DEFAULT_DIFF_SETTINGS.theme,
-      shikiTheme: typeof parsed?.diff?.shikiTheme === "string" ? parsed.diff.shikiTheme : DEFAULT_DIFF_SETTINGS.shikiTheme,
-      splitMinWidth: typeof parsed?.diff?.splitMinWidth === "number" ? parsed.diff.splitMinWidth : DEFAULT_DIFF_SETTINGS.splitMinWidth,
-    },
   };
 }
 
-/**
- * Read only the diff settings section.
- */
-export function readDiffSettings(): DiffSettings {
-  return readUtilSettings().diff;
-}
-
-/**
- * Write partial diff settings (merged with existing).
- */
-export function writeDiffSettings(partial: Partial<DiffSettings>): void {
-  const settings = readUtilSettings();
-  settings.diff = { ...settings.diff, ...partial };
-  writeUtilSettings(settings);
-}
-
-/**
- * Read only the badge settings section.
- */
-export function readBadgeSettingsFromUtil(): BadgeSettingsSection {
+/** Read only the badge settings section. */
+export function readBadgeSettings(): BadgeSettingsSection {
   return readUtilSettings().badge;
 }
 
-/**
- * Write partial badge settings (merged with existing).
- */
-export function writeBadgeSettingsToUtil(partial: Partial<BadgeSettingsSection>): void {
+/** Write partial badge settings (merged with existing). */
+export function writeBadgeSettings(partial: Partial<BadgeSettingsSection>): void {
   const settings = readUtilSettings();
   settings.badge = { ...settings.badge, ...partial };
   writeUtilSettings(settings);
+}
+
+/** Update a single badge setting. */
+export function updateBadgeSetting<K extends keyof BadgeSettingsSection>(
+  key: K,
+  value: BadgeSettingsSection[K],
+): BadgeSettingsSection {
+  const settings = readBadgeSettings();
+  settings[key] = value;
+  writeBadgeSettings(settings);
+  return settings;
+}
+
+/** Format badge settings for display. */
+export function formatBadgeSettings(settings: BadgeSettingsSection): string {
+  const toggle = (v: boolean) => (v ? "✓ enabled" : "✗ disabled");
+  return [
+    "## Badge Settings",
+    "",
+    `| Setting | Status | Description |`,
+    `|---------|--------|-------------|`,
+    `| Auto Generate | ${toggle(settings.autoGen)} | Generate name on first message |`,
+    `| Badge Enabled | ${toggle(settings.badgeEnabled)} | Show badge overlay |`,
+    `| Agent Tool | ${toggle(settings.agentTool)} | Allow agents to call set_session_name |`,
+    `| Generation Model | ${settings.generationModel} | Model for badge name generation |`,
+    "",
+    `Config: .unipi/config/util-settings.json`,
+  ].join("\n");
 }
