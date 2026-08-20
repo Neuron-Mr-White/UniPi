@@ -88,7 +88,7 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [ ] autocomplete fuzzyMatch → pi-tui fuzzyMatch
 - [ ] kanboard parseFrontmatter (4 copies) → pi-coding-agent parseFrontmatter
 - [x] workflow suggestWorktrees → execFileSync git worktree list
-- [ ] updater trunc() → pi-tui truncateToWidth
+- [x] updater trunc() → pi-tui truncateToWidth
 - [ ] ask-user settings-tui ANSI → theme.fg + pi-tui Key
 - [ ] web-api duckduckgo HTML parsing → linkedom querySelectorAll
 - [ ] web-api dom.ts → defuddle/node entry
@@ -99,16 +99,16 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [ ] updater changelog+readme overlay → one ListDetailOverlay
 - [ ] 7 overlays shared ANSI box helpers → one in core
 - [ ] 4 settings.json read/write → one shared helper
-- [ ] compactor formatTokens (4 copies) → one util
+- [x] compactor formatTokens (4 copies) → one util
 - [ ] compactor /unipi:compact → 3-line alias wrapper
 - [ ] compactor two config merge → one
 - [ ] compactor duplicate type declarations → one per type
 - [ ] subagents dedup helpers (3 files) → import from widget
 - [ ] subagents core-compat.ts → declare @pi-unipi/core dep
-- [ ] footer getGroupForSegment (2 copies) → one
+- [x] footer getGroupForSegment (2 copies) → one
 - [ ] web-api duplicate fetchOptions → helper
 - [ ] web-api DEFAULT_SMART_FETCH_SETTINGS vs constants → one
-- [ ] web-api dependencies.ts lazy-loader → static imports
+- [x] web-api dependencies.ts lazy-loader → static imports
 - [ ] ralph completeLoop+stopLoop → one with reason param
 - [ ] workflow 4 suggest* fns → one suggestFilesFrom
 - [ ] ask-user ask-ui renderOptions → one renderer + dispatch

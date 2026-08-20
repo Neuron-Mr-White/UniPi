@@ -219,6 +219,22 @@ function generateSmartFetchKey(
   return parts.join(":");
 }
 
+/** Build a complete FetchOptions from partial user input + loaded defaults. */
+function resolveFetchOptions(options: Partial<FetchOptions>): FetchOptions {
+  const defaults = loadSmartFetchSettings();
+  return {
+    browser: options.browser || defaults.browser,
+    os: options.os || defaults.os,
+    format: options.format || "markdown",
+    maxChars: options.maxChars || defaults.maxChars,
+    timeoutMs: options.timeoutMs || defaults.timeoutMs,
+    removeImages: options.removeImages ?? defaults.removeImages,
+    includeReplies: options.includeReplies ?? defaults.includeReplies,
+    proxy: options.proxy,
+    headers: options.headers,
+  };
+}
+
 /**
  * Execute smart-fetch read (single URL).
  */
@@ -233,19 +249,8 @@ async function executeSmartFetchRead(
     return cached as FetchResult;
   }
 
-  // Load defaults
-  const defaults = loadSmartFetchSettings();
-  const fetchOptions: FetchOptions = {
-    browser: options.browser || defaults.browser,
-    os: options.os || defaults.os,
-    format: options.format || "markdown",
-    maxChars: options.maxChars || defaults.maxChars,
-    timeoutMs: options.timeoutMs || defaults.timeoutMs,
-    removeImages: options.removeImages ?? defaults.removeImages,
-    includeReplies: options.includeReplies ?? defaults.includeReplies,
-    proxy: options.proxy,
-    headers: options.headers,
-  };
+  // Load defaults and build fetch options
+  const fetchOptions = resolveFetchOptions(options);
 
   // Execute fetch
   const result = await defuddleFetch(url, fetchOptions);
@@ -263,18 +268,10 @@ async function executeSmartFetchBatch(
   urls: string[],
   options: Partial<FetchOptions> & { batchConcurrency?: number } = {}
 ): Promise<BatchFetchResult> {
-  // Load defaults
+  // Load defaults and build fetch options
   const defaults = loadSmartFetchSettings();
   const fetchOptions: FetchOptions & { batchConcurrency?: number } = {
-    browser: options.browser || defaults.browser,
-    os: options.os || defaults.os,
-    format: options.format || "markdown",
-    maxChars: options.maxChars || defaults.maxChars,
-    timeoutMs: options.timeoutMs || defaults.timeoutMs,
-    removeImages: options.removeImages ?? defaults.removeImages,
-    includeReplies: options.includeReplies ?? defaults.includeReplies,
-    proxy: options.proxy,
-    headers: options.headers,
+    ...resolveFetchOptions(options),
     batchConcurrency: options.batchConcurrency || defaults.batchConcurrency,
   };
 

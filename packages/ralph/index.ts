@@ -15,6 +15,7 @@ import {
   RALPH_TOOLS,
   emitEvent,
   getPackageVersion,
+  parseArgs,
 } from "@pi-unipi/core";
 
 // Get info registry from global
@@ -200,7 +201,7 @@ To stop: press ESC to interrupt, then run /unipi:ralph-stop when idle`;
   pi.registerCommand("unipi:ralph", {
     description: "Ralph loop commands (start, stop, resume, status, etc.)",
     handler: async (args, ctx) => {
-      const parts = args.trim().split(/\s+/);
+      const parts = parseArgs(args);
       const cmd = parts[0];
       const rest = parts.slice(1).join(" ");
 

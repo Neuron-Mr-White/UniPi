@@ -37,101 +37,48 @@ interface WorkflowCommand {
 /**
  * Suggest spec files from .unipi/docs/specs/ for plan command.
  */
+/** Suggest .md files from a docs subdirectory, sorted by mtime. */
+function suggestFilesFrom(
+  subdir: string,
+  valuePrefix: string,
+  descLabel: string,
+  prefix: string,
+): CompletionItem[] {
+  const dir = join(process.cwd(), ".unipi", "docs", subdir);
+  if (!existsSync(dir)) return [];
+
+  try {
+    const search = prefix?.trim().split(/\s+/).pop() ?? "";
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ name: f, time: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
+    return files
+      .filter((f) => !search || f.name.includes(search))
+      .map((f) => ({
+        value: `${valuePrefix}:${f.name}`,
+        label: basename(f.name, ".md"),
+        description: `${descLabel}: ${f.name}`,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function suggestSpecFiles(prefix: string): CompletionItem[] {
-  const specsDir = join(process.cwd(), ".unipi", "docs", "specs");
-  if (!existsSync(specsDir)) return [];
-
-  try {
-    const search = prefix?.trim().split(/\s+/).pop() ?? "";
-    const files = readdirSync(specsDir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => ({ name: f, time: statSync(join(specsDir, f)).mtimeMs }))
-      .sort((a, b) => b.time - a.time);
-    return files
-      .filter((f) => !search || f.name.includes(search))
-      .map((f) => ({
-        value: `specs:${f.name}`,
-        label: basename(f.name, ".md"),
-        description: `Spec: ${f.name}`,
-      }));
-  } catch {
-    return [];
-  }
+  return suggestFilesFrom("specs", "specs", "Spec", prefix);
 }
 
-/**
- * Suggest plan files from .unipi/docs/plans/ for work and review-work commands.
- */
 function suggestPlanFiles(prefix: string): CompletionItem[] {
-  const plansDir = join(process.cwd(), ".unipi", "docs", "plans");
-  if (!existsSync(plansDir)) return [];
-
-  try {
-    const search = prefix?.trim().split(/\s+/).pop() ?? "";
-    const files = readdirSync(plansDir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => ({ name: f, time: statSync(join(plansDir, f)).mtimeMs }))
-      .sort((a, b) => b.time - a.time);
-    return files
-      .filter((f) => !search || f.name.includes(search))
-      .map((f) => ({
-        value: `plan:${f.name}`,
-        label: basename(f.name, ".md"),
-        description: `Plan: ${f.name}`,
-      }));
-  } catch {
-    return [];
-  }
+  return suggestFilesFrom("plans", "plan", "Plan", prefix);
 }
 
-/**
- * Suggest debug files from .unipi/docs/debug/ for fix command.
- */
 function suggestDebugFiles(prefix: string): CompletionItem[] {
-  const debugDir = join(process.cwd(), ".unipi", "docs", "debug");
-  if (!existsSync(debugDir)) return [];
-
-  try {
-    const search = prefix?.trim().split(/\s+/).pop() ?? "";
-    const files = readdirSync(debugDir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => ({ name: f, time: statSync(join(debugDir, f)).mtimeMs }))
-      .sort((a, b) => b.time - a.time);
-    return files
-      .filter((f) => !search || f.name.includes(search))
-      .map((f) => ({
-        value: `debug:${f.name}`,
-        label: basename(f.name, ".md"),
-        description: `Debug: ${f.name}`,
-      }));
-  } catch {
-    return [];
-  }
+  return suggestFilesFrom("debug", "debug", "Debug", prefix);
 }
 
-/**
- * Suggest chore files from .unipi/docs/chore/ for chore-execute command.
- */
 function suggestChoreFiles(prefix: string): CompletionItem[] {
-  const choreDir = join(process.cwd(), ".unipi", "docs", "chore");
-  if (!existsSync(choreDir)) return [];
-
-  try {
-    const search = prefix?.trim().split(/\s+/).pop() ?? "";
-    const files = readdirSync(choreDir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => ({ name: f, time: statSync(join(choreDir, f)).mtimeMs }))
-      .sort((a, b) => b.time - a.time);
-    return files
-      .filter((f) => !search || f.name.includes(search))
-      .map((f) => ({
-        value: `chore:${f.name}`,
-        label: basename(f.name, ".md"),
-        description: `Chore: ${f.name}`,
-      }));
-  } catch {
-    return [];
-  }
+  return suggestFilesFrom("chore", "chore", "Chore", prefix);
 }
 
 /** Cached per-cwd worktree suggestions. */
