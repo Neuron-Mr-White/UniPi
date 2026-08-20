@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findPackageRoot } from "@pi-unipi/core";
+import { findPackageRoot, compareVersions } from "@pi-unipi/core";
 import { isNewerVersion } from "./version.js";
 import type { ChangelogEntry } from "../types.js";
 
@@ -154,19 +154,4 @@ export function getNewerVersions(
     result.push(entry);
   }
   return result;
-}
-
-/**
- * Compare semver strings (simple lexicographic for x.y.z format).
- * Returns positive if a > b, negative if a < b, 0 if equal.
- */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] ?? 0;
-    const nb = pb[i] ?? 0;
-    if (na !== nb) return na - nb;
-  }
-  return 0;
 }

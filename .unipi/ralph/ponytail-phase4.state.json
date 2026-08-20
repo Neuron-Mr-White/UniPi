@@ -1,7 +1,7 @@
 {
   "name": "ponytail-phase4",
   "taskFile": ".unipi/ralph/ponytail-phase4.md",
-  "iteration": 2,
+  "iteration": 3,
   "maxIterations": 30,
   "itemsPerIteration": 1,
   "reflectEvery": 3,

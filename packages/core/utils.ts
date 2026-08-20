@@ -318,3 +318,31 @@ export function isActiveSnapshot(snapshot: { content: unknown; details?: { activ
   if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
   return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
 }
+
+/** Compare two semver-ish version strings.
+ * Returns 1 when a > b, -1 when a < b, 0 when equal.
+ * Handles `v` prefix, splits on `.` or `-`, ignores non-numeric suffixes. */
+export function compareVersions(a: string, b: string): number {
+  const parse = (version: string): number[] => version
+    .replace(/^v/, "")
+    .split(/[.-]/)
+    .slice(0, 3)
+    .map((part) => {
+      const parsed = Number.parseInt(part, 10);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    });
+
+  const left = parse(a);
+  const right = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    if (diff > 0) return 1;
+    if (diff < 0) return -1;
+  }
+  return 0;
+}
+
+/** Return true only when `latest` is newer than `current`. */
+export function isNewerVersion(latest: string, current: string): boolean {
+  return compareVersions(latest, current) > 0;
+}

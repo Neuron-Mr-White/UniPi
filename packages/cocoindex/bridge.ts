@@ -1,3 +1,5 @@
+import { compareVersions } from "@pi-unipi/core";
+
 /**
  * bridge.ts — CocoIndex CLI interaction layer
  *
@@ -79,19 +81,7 @@ export function isVersionAtLeast(version: string | null | undefined, minimum = C
   const parsed = version ? parseVersion(version) : null;
   const parsedMinimum = parseVersion(minimum);
   if (!parsed || !parsedMinimum) return false;
-
-  const actualParts = parsed.split(".").map((part) => Number.parseInt(part, 10));
-  const minParts = parsedMinimum.split(".").map((part) => Number.parseInt(part, 10));
-  const len = Math.max(actualParts.length, minParts.length, 3);
-
-  for (let i = 0; i < len; i++) {
-    const actual = actualParts[i] ?? 0;
-    const min = minParts[i] ?? 0;
-    if (!Number.isFinite(actual) || !Number.isFinite(min)) return false;
-    if (actual > min) return true;
-    if (actual < min) return false;
-  }
-  return true;
+  return compareVersions(parsed, parsedMinimum) >= 0;
 }
 
 /** Reset cached availability, used after installer mutations. */

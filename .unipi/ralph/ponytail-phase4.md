@@ -33,8 +33,8 @@ Principle: **Migrate existing user data. Prove it works. No back-stabbing.**
 - [x] Typecheck + commit
 
 ### 4. Updater overlay merge (~490 → ~250 lines)
-- [ ] Merge changelog-overlay + readme-overlay into one ListDetailOverlay
-- [ ] Run updater tests
+- [x] Merged into shared ListDetailOverlay (494→405 lines) into one ListDetailOverlay
+- [x] Typecheck passes (pre-existing test issues unrelated)
 - [x] Typecheck + commit
 
 ### 5. Compactor config merge (~30 lines)
