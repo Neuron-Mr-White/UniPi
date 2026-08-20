@@ -255,7 +255,7 @@ export async function defuddleFetch(
   }
 
   // Get wreq-js
-  const wreq = await getWreq();
+  const wreq = getWreq();
 
   // Build request options
   const resolvedBrowser = resolveBrowserProfile(browser);
@@ -356,7 +356,7 @@ export async function defuddleFetch(
       let metadata: Partial<FetchResult> = {};
 
       try {
-        const defuddle = await getDefuddle();
+        const defuddle = getDefuddle();
 
         // defuddle expects a window object with document
         const defuddleOptions = {

@@ -17,16 +17,11 @@ import { buildOwnCut, type OwnCutResult } from "./cut.js";
 import type { CompactionStats } from "../types.js";
 import type { SessionDB } from "../session/db.js";
 
-import { COMPACTOR_INSTRUCTION } from "@pi-unipi/core";
+import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
 
 let lastStats: CompactionStats | null = null;
 let lastCompactWasCompactor = false;
 export const getLastCompactionStats = () => lastStats;
-
-const formatTokens = (n: number): string => {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-};
 
 const REASON_MESSAGES: Record<import("./cut.js").OwnCutCancelReason, string> = {
   no_live_messages: "compactor: Nothing to compact (no live messages)",

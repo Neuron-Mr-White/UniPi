@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, COMPACTOR_INSTRUCTION, emitEvent } from "@pi-unipi/core";
+import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, COMPACTOR_INSTRUCTION, emitEvent, formatTokens } from "@pi-unipi/core";
 import { scaffoldConfig, loadConfig } from "./config/manager.js";
 import { registerCompactionHooks } from "./compaction/hooks.js";
 import {
@@ -24,11 +24,7 @@ import { filterNoise } from "./compaction/filter-noise.js";
 import { recallBlocksFromContext } from "./session/recall-blocks.js";
 import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
 
-const formatTokenCount = (n: number): string => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-};
+
 
 /** Measure byte size of a tool_result event's response content. */
 
@@ -250,7 +246,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const notify = config.autoCompaction.notify;
     if (notify && decision.usage) {
       ctx.ui.notify(
-        `Auto-compacting at ${decision.usage.percent.toFixed(1)}% context (~${formatTokenCount(decision.usage.tokens)} tokens; threshold ${decision.thresholdPercent}%).`,
+        `Auto-compacting at ${decision.usage.percent.toFixed(1)}% context (~${formatTokens(decision.usage.tokens)} tokens; threshold ${decision.thresholdPercent}%).`,
         "info",
       );
     }

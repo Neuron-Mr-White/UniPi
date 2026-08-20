@@ -11,6 +11,7 @@ import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, Rende
 import type { FooterRegistry } from "../registry/index.js";
 import { visibleWidth as piVisibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 import { getSeparator } from "./separators.js";
+import { getGroupForSegment } from "../help.js";
 import { getDefaultColors, setColorMode, refreshColorMode } from "./theme.js";
 import { setIconStyle } from "./icons.js";
 import { getPreset } from "../presets.js";
@@ -182,7 +183,7 @@ export class FooterRenderer {
     if (this.segmentLookup.allIds) {
       for (const segId of this.segmentLookup.allIds()) {
         if (primaryIds.includes(segId) || secondaryIds.includes(segId)) continue;
-        const groupId = this.getGroupForSegment(segId);
+        const groupId = getGroupForSegment(segId);
         if (isSegmentExplicitlyEnabled(groupId, segId)) {
           primaryIds.push(segId);
         }
@@ -308,7 +309,7 @@ export class FooterRenderer {
     fullWidth: number,
     labelMode: "compact" | "labeled",
   ): RenderedSegmentWithWidth | null {
-    if (!isSegmentEnabled(this.getGroupForSegment(segId), segId)) return null;
+    if (!isSegmentEnabled(getGroupForSegment(segId), segId)) return null;
 
     const segment = this.segmentLookup.get(segId);
     if (!segment) return null;
@@ -316,7 +317,7 @@ export class FooterRenderer {
     const ctx: FooterSegmentContext = {
       theme: this.getThemeLike(),
       colors,
-      data: this.registry.getGroupData(this.getGroupForSegment(segId)),
+      data: this.registry.getGroupData(getGroupForSegment(segId)),
       width: fullWidth,
       piContext: this.piContext,
       footerData: this.footerData,
@@ -437,40 +438,6 @@ export class FooterRenderer {
     }
     // If no maxWidth, truncate to a reasonable default to prevent unbounded output
     return truncateToWidth(result, 200);
-  }
-
-  /** Map a segment ID to its group ID */
-  private getGroupForSegment(segId: string): string {
-    // Core segments
-    const coreIds = ["model", "api_state", "tool_count", "git", "context_pct", "cost", "tokens_total", "tokens_in", "tokens_out", "session", "hostname", "time", "tps", "clock", "duration", "thinking_level"];
-    if (coreIds.includes(segId)) return "core";
-
-    // Compactor segments
-    const compactorIds = ["session_events", "compactions", "tokens_saved", "compression_ratio", "cocoindex_status", "sandbox_runs", "search_queries"];
-    if (compactorIds.includes(segId)) return "compactor";
-
-    // Memory segments
-    if (["project_count", "total_count", "consolidations"].includes(segId)) return "memory";
-
-    // MCP segments
-    if (["servers_total", "servers_active", "tools_total", "servers_failed"].includes(segId)) return "mcp";
-
-    // Ralph segments
-    if (["active_loops", "total_iterations", "loop_status"].includes(segId)) return "ralph";
-
-    // Workflow segments
-    if (["current_command", "sandbox_level", "command_duration"].includes(segId)) return "workflow";
-
-    // Kanboard segments
-    if (["docs_count", "tasks_done", "tasks_total", "task_pct"].includes(segId)) return "kanboard";
-
-    // Notify segments
-    if (["platforms_enabled", "last_sent"].includes(segId)) return "notify";
-
-    // Status extension
-    if (segId === "extension_statuses") return "status_ext";
-
-    return "core";
   }
 
   /** Get a ThemeLike object for rendering context */

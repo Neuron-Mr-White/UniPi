@@ -90,7 +90,7 @@ export default function (pi: ExtensionAPI) {
           ).length;
 
           // Check smart-fetch engine availability
-          const deps = await checkDependencies();
+          const deps = checkDependencies();
           const smartFetchStatus = deps.available ? "✓ Ready" : `Missing: ${deps.missing.join(", ")}`;
 
           // wigolo status — only probe when the user has it enabled, so a

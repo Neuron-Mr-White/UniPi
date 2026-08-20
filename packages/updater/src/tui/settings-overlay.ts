@@ -5,6 +5,7 @@
  * Space cycles options, Enter saves, Esc cancels.
  */
 
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
   loadConfig,
   saveConfig,
@@ -21,21 +22,6 @@ const DIM = `${ESC}[2m`;
 const TEAL = `${ESC}[36m`;
 const GREEN = `${ESC}[32m`;
 const RESET = `${ESC}[0m`;
-
-/** Truncate string to visible width */
-function trunc(text: string, width: number): string {
-  let vw = 0;
-  let result = "";
-  let inEsc = false;
-  for (const ch of text) {
-    if (ch === "\x1b") { inEsc = true; result += ch; continue; }
-    if (inEsc) { result += ch; if (ch === "m") inEsc = false; continue; }
-    if (vw >= width) break;
-    result += ch;
-    vw++;
-  }
-  return result;
-}
 
 /**
  * Render the settings overlay.
@@ -58,7 +44,7 @@ export function renderSettingsOverlay() {
     const render = (width: number): string[] => {
       const lines: string[] = [];
 
-      lines.push(trunc(` ${BOLD}⚙ Updater Settings${RESET}`, width));
+      lines.push(truncateToWidth(` ${BOLD}⚙ Updater Settings${RESET}`, width));
       lines.push("─".repeat(width));
       lines.push("");
 
@@ -67,7 +53,7 @@ export function renderSettingsOverlay() {
       const row0Selected = state.row === 0;
       const row0Prefix = row0Selected ? `${TEAL}▸${RESET} ` : "  ";
       lines.push(
-        trunc(
+        truncateToWidth(
           `  ${row0Prefix}${BOLD}Check Interval${RESET}  ${DIM}${intervalLabel}${RESET}`,
           width,
         ),
@@ -81,7 +67,7 @@ export function renderSettingsOverlay() {
             : `${DIM}○ ${opt.label}${RESET}`;
         })
         .join("   ");
-      lines.push(trunc(`      ${intervalLine}`, width));
+      lines.push(truncateToWidth(`      ${intervalLine}`, width));
       lines.push("");
 
       // Row 1: Auto Update
@@ -89,7 +75,7 @@ export function renderSettingsOverlay() {
       const row1Selected = state.row === 1;
       const row1Prefix = row1Selected ? `${TEAL}▸${RESET} ` : "  ";
       lines.push(
-        trunc(
+        truncateToWidth(
           `  ${row1Prefix}${BOLD}Auto Update${RESET}  ${DIM}${modeLabel}${RESET}`,
           width,
         ),
@@ -103,12 +89,12 @@ export function renderSettingsOverlay() {
             : `${DIM}○ ${mode}${RESET}`;
         })
         .join("   ");
-      lines.push(trunc(`      ${modeLine}`, width));
+      lines.push(truncateToWidth(`      ${modeLine}`, width));
       lines.push("");
 
       lines.push("─".repeat(width));
       lines.push(
-        trunc(
+        truncateToWidth(
           `  j/k: navigate  Space: cycle  ${GREEN}Enter: save${RESET}  ${DIM}Esc: cancel${RESET}`,
           width,
         ),

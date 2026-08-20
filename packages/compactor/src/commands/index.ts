@@ -8,7 +8,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
-import { COMPACTOR_INSTRUCTION } from "@pi-unipi/core";
+import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
 import { getLastCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
@@ -24,11 +24,6 @@ export interface CommandDeps {
   getBlocks: () => NormalizedBlock[];
   getCounters?: () => RuntimeCounters;
 }
-
-const formatTokens = (n: number): string => {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-};
 
 export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   // ── /unipi:lossless-compact ──────────────────────────

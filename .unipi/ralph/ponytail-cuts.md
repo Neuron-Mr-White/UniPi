@@ -14,80 +14,80 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 ## Phase 1 — Pure dead code deletes (safest, do first)
 
 ### compactor (biggest)
-- [ ] Delete display/ dead files: diff-renderer.ts(281), tool-overrides.ts(136), render-utils.ts(52), line-width-safety.ts(28). KEEP only clampDiffToWidth in diff-width-safety.ts and sanitizeThinkingArtifacts in thinking-label.ts. Delete their test files.
-- [ ] Delete runtimeStats instrumentation (index.ts:27,81-87,527-539) + dead debug logger + debug config key + TUI toggle
-- [ ] Delete transcriptEntries pipeline (brief.ts:208-331 sectionsToTranscript/parseToolLine/extractRef) + fileOps dead ends (hooks.ts:152, types.ts:35,64-70)
-- [ ] Delete toolDisplay config subtree + dead types (types.ts:186-236, schema.ts:55-58): OutputMode/DiffLayout/DiffIndicator/showTruncationHints/fts5Index/pipeline.ttlCache/proximityReranking/timelineSort/progressiveThrottling/mmapPragma
-- [ ] Delete deprecated alias scaffolding: 6 tools re-registered (register.ts:115,199-308) + 2 commands (commands/index.ts:50-80) + deprecationLog + 8 const param aliases
-- [ ] Delete scattered dead: compileBrief, loadProjectPermissions(imported never called), splitChainedCommands, incrementSearchQueries+search_queries column, message_update/end handlers, ctx-execute-file FILE_CONTENT preamble, compactTool(inline it), invalidateSearchCache
+- [x] Delete display/ dead files: diff-renderer.ts(281), tool-overrides.ts(136), render-utils.ts(52), line-width-safety.ts(28). KEEP only clampDiffToWidth in diff-width-safety.ts and sanitizeThinkingArtifacts in thinking-label.ts. Delete their test files.
+- [x] Delete runtimeStats instrumentation (index.ts:27,81-87,527-539) + dead debug logger + debug config key + TUI toggle
+- [x] Delete transcriptEntries pipeline (brief.ts:208-331 sectionsToTranscript/parseToolLine/extractRef) + fileOps dead ends (hooks.ts:152, types.ts:35,64-70)
+- [x] Delete toolDisplay config subtree + dead types (types.ts:186-236, schema.ts:55-58): OutputMode/DiffLayout/DiffIndicator/showTruncationHints/fts5Index/pipeline.ttlCache/proximityReranking/timelineSort/progressiveThrottling/mmapPragma
+- [x] Delete deprecated alias scaffolding: 6 tools re-registered (register.ts:115,199-308) + 2 commands (commands/index.ts:50-80) + deprecationLog + 8 const param aliases
+- [x] Delete scattered dead: compileBrief, loadProjectPermissions(imported never called), splitChainedCommands, incrementSearchQueries+search_queries column, message_update/end handlers, ctx-execute-file FILE_CONTENT preamble, compactTool(inline it), invalidateSearchCache
 
 ### web-api
-- [ ] Delete lodash dep + getLodash; delete mime-types dep + getMimeTypes (both zero call sites)
-- [ ] Delete llm-summarize stub provider (71 lines, returns placeholder) + DEFAULT_SUMMARY_PROMPT + createLLMSummarizeResult
-- [ ] Delete progress subsystem: FetchProgress/FetchExecutionHooks/FetchProgressStatus/FetchOptions hooks/updateProgress + all hooks calls (~90 lines)
-- [ ] Delete validateApiKey (interface method + 6 impls, never invoked) + config:Record field + dead registry methods (unregister/getBestProvider/getEnabledProviders/count/getProviderByRank)
-- [ ] Delete formatErrorResult, buildErrorText, validateApiKeyFormat, getCacheSettings/updateCacheSettings/CacheSettings/cache config, getWigoloLastError, checkWigoloHealth
+- [x] Delete lodash dep + getLodash; delete mime-types dep + getMimeTypes (both zero call sites)
+- [x] Delete llm-summarize stub provider (71 lines, returns placeholder) + DEFAULT_SUMMARY_PROMPT + createLLMSummarizeResult
+- [x] Delete progress subsystem: FetchProgress/FetchExecutionHooks/FetchProgressStatus/FetchOptions hooks/updateProgress + all hooks calls (~90 lines)
+- [x] Delete validateApiKey (interface method + 6 impls, never invoked) + config:Record field + dead registry methods (unregister/getBestProvider/getEnabledProviders/count/getProviderByRank)
+- [x] Delete formatErrorResult, buildErrorText, validateApiKeyFormat, getCacheSettings/updateCacheSettings/CacheSettings/cache config, getWigoloLastError, checkWigoloHealth
 
 ### utility (biggest single win)
-- [ ] Delete entire diff/ subsystem (~1800 lines): renderer.ts, parser.ts, highlighter.ts, theme.ts, settings.ts, wrapper.ts. Replace registerEnhancedWriteTool/registerEnhancedEditTool by NOT re-registering pi's tools (pi renders its own diffs). Remove shiki dep + diff dep from package.json + @types/*.
+- [x] Delete entire diff/ subsystem (~1800 lines): renderer.ts, parser.ts, highlighter.ts, theme.ts, settings.ts, wrapper.ts. Replace registerEnhancedWriteTool/registerEnhancedEditTool by NOT re-registering pi's tools (pi renders its own diffs). Remove shiki dep + diff dep from package.json + @types/*.
 
 ### footer
-- [ ] Delete: getIcons, resolveColor, separatorVisibleWidth, TpsTracker.isGenerating, FooterConfig, PresetDef.segmentOptions/zoneOrder, rainbowText/rainbowBorder, NERD_PRESET(=FULL_PRESET), invalidateGroup, resetFooterRegistry, globalThis assignment, FooterSegment.icon/FooterGroup.icon fields
+- [x] Delete: getIcons, resolveColor, separatorVisibleWidth, TpsTracker.isGenerating, FooterConfig, PresetDef.segmentOptions/zoneOrder, rainbowText/rainbowBorder, NERD_PRESET(=FULL_PRESET), invalidateGroup, resetFooterRegistry, globalThis assignment, FooterSegment.icon/FooterGroup.icon fields
 
 ### info-screen
-- [ ] Delete: empty INFO_GROUP_REGISTERED listener, recordModuleStart, getLoadTimes, isGroupEnabled, clearSettingsCache, getGlobalRegistry, 5 dead registry methods (unregisterGroup/getGroups/isFetching/per-group subscribe/invalidateAllCaches), sync parseUsageStats + if(!yielder) branch, never-read UsageStats fields, getDialogHeight
+- [x] Delete: empty INFO_GROUP_REGISTERED listener, recordModuleStart, getLoadTimes, isGroupEnabled, clearSettingsCache, getGlobalRegistry, 5 dead registry methods (unregisterGroup/getGroups/isFetching/per-group subscribe/invalidateAllCaches), sync parseUsageStats + if(!yielder) branch, never-read UsageStats fields, getDialogHeight
 
 ### notify
-- [ ] Delete: moduleHandler (empty body), ntfy section of NotifyConfig + validateConfig checks (dispatch uses ntfy.json), getDialogHeight
+- [x] Delete: moduleHandler (empty body), ntfy section of NotifyConfig + validateConfig checks (dispatch uses ntfy.json), getDialogHeight
 
 ### memory
-- [ ] Delete: InMemoryStorage(90 lines), isMempalaceAvailable, getDb/getScopeDir/isHealthy/hasByTitle, dead mempalace exports, dead embedding exports, stale "search.ts" in files
+- [x] Delete: InMemoryStorage(90 lines), isMempalaceAvailable, getDb/getScopeDir/isHealthy/hasByTitle, dead mempalace exports, dead embedding exports, stale "search.ts" in files
 
 ### mcp
-- [ ] Delete: auth subsystem (loadAuth/saveAuth/mergeEnvWithAuth/McpAuth), syncIfNeeded/shouldSync auto-sync, createServerTemplate, unused loadCatalog import, McpClient.isConnected/stderr/cwd option
+- [x] Delete: auth subsystem (loadAuth/saveAuth/mergeEnvWithAuth/McpAuth), syncIfNeeded/shouldSync auto-sync, createServerTemplate, unused loadCatalog import, McpClient.isConnected/stderr/cwd option
 
 ### image
-- [ ] Delete: registeredProviderIds(), splitModelRef re-export
+- [x] Delete: registeredProviderIds(), splitModelRef re-export
 
 ### ralph
-- [ ] Delete: phantom 9 commands in MODULE_READY (only ralph+ralph-stop registered), unused banner param of completeLoop, DEFAULT_TEMPLATE, duplicate task file write in startLoop
+- [x] Delete: phantom 9 commands in MODULE_READY (only ralph+ralph-stop registered), unused banner param of completeLoop, DEFAULT_TEMPLATE, duplicate task file write in startLoop
 
 ### subagents
-- [ ] Delete: FileLock (file-lock.ts + release plumbing), getDefaultMaxTurns/setDefaultMaxTurns/getGraceTurns/setGraceTurns, getAgentConversation, AgentManager.setMaxConcurrent/waitForAll/hasRunning/clearCompleted, inheritContext dead flag, resolveDefaultModel identity wrapper
+- [x] Delete: FileLock (file-lock.ts + release plumbing), getDefaultMaxTurns/setDefaultMaxTurns/getGraceTurns/setGraceTurns, getAgentConversation, AgentManager.setMaxConcurrent/waitForAll/hasRunning/clearCompleted, inheritContext dead flag, resolveDefaultModel identity wrapper
 
 ### cocoindex
-- [ ] Delete: DEFAULT_LANCEDB_PATH, COCOINDEX_STATE_DIR, minScore, CocoindexDeps interface, lexicalSearch/tokenize/countOccurrences/stopword fallback
+- [x] Delete: DEFAULT_LANCEDB_PATH, COCOINDEX_STATE_DIR, minScore, CocoindexDeps interface, lexicalSearch/tokenize/countOccurrences/stopword fallback
 
 ### btw
-- [ ] Delete: dead widget tree (transcript/modeText/summaryText/statusText/hintsText), getTranscriptEntries(), dispatchBtwCommand Promise<boolean> return (all ignore), sessionRuntime in getBtwHandoffThread return, pointless alias const assistantMessage
+- [x] Delete: dead widget tree (transcript/modeText/summaryText/statusText/hintsText), getTranscriptEntries(), dispatchBtwCommand Promise<boolean> return (all ignore), sessionRuntime in getBtwHandoffThread return, pointless alias const assistantMessage
 
 ### updater
-- [ ] Delete: renderSimple+wordWrap+formatInline (no-theme markdown fallback), validateConfig(0 callers), empty session_shutdown handler, installUpdate optional pi param + UPDATE_APPLIED/UPDATE_ERROR dead events
+- [x] Delete: renderSimple+wordWrap+formatInline (no-theme markdown fallback), validateConfig(0 callers), empty session_shutdown handler, installUpdate optional pi param + UPDATE_APPLIED/UPDATE_ERROR dead events
 
 ### kanboard
-- [ ] Delete: detectDocType+PATH_PATTERNS, placeholder POST /api/docs route, checkExistingInstance (computed then discarded)
+- [x] Delete: detectDocType+PATH_PATTERNS, placeholder POST /api/docs route, checkExistingInstance (computed then discarded)
 
 ### input-shortcuts
-- [ ] Delete: setRegister(test-only), UndoRedoBuffer.hasUndo/hasRedo(test-only)+lastUndoAt, duplicate THINKING_CYCLE in index.ts:257, SettingsOverlay baseDir/onSaved unused params
+- [x] Delete: setRegister(test-only), UndoRedoBuffer.hasUndo/hasRedo(test-only)+lastUndoAt, duplicate THINKING_CYCLE in index.ts:257, SettingsOverlay baseDir/onSaved unused params
 
 ### milestone
-- [ ] Delete: writeMilestones (test-only)
+- [x] Delete: writeMilestones (test-only)
 
 ### workflow
-- [ ] Delete: getWorkflowCommandNames (never imported)
+- [x] Delete: getWorkflowCommandNames (never imported)
 
 ### core
-- [ ] Delete: dead event constants (MODULE_GONE, MODULE_STATUS_REQUEST/RESPONSE, MEMORY_SEARCHED, UTILITY_CLEANUP_START/CACHE_INVALIDATED/LIFECYCLE_STATE, COCOINDEX_UPDATE_STARTED/COMPLETED/SEARCH_PERFORMED) + payload interfaces + event-contracts test, MEMORY_TYPES
+- [x] Delete: dead event constants (MODULE_GONE, MODULE_STATUS_REQUEST/RESPONSE, MEMORY_SEARCHED, UTILITY_CLEANUP_START/CACHE_INVALIDATED/LIFECYCLE_STATE, COCOINDEX_UPDATE_STARTED/COMPLETED/SEARCH_PERFORMED) + payload interfaces + event-contracts test, MEMORY_TYPES
 
 ## Phase 2 — Native/stdlib replacements (after P1 verified)
-- [ ] compactor OS_TMPDIR → os.tmpdir()
-- [ ] compactor escapeRegex/convertGlobPart → RegExp.escape
-- [ ] utility removeRecursive → fs.rmSync(recursive,force)
+- [x] compactor OS_TMPDIR → os.tmpdir()
+- [x] compactor escapeRegex/convertGlobPart → RegExp.escape
+- [x] utility removeRecursive → fs.rmSync(recursive,force)
 - [ ] footer detectColorMode/rgbTo256 → pi Theme.fg()
 - [ ] footer hand-rolled visibleWidth → pi-tui visibleWidth
 - [ ] autocomplete fuzzyMatch → pi-tui fuzzyMatch
 - [ ] kanboard parseFrontmatter (4 copies) → pi-coding-agent parseFrontmatter
-- [ ] workflow suggestWorktrees → execFileSync git worktree list
+- [x] workflow suggestWorktrees → execFileSync git worktree list
 - [ ] updater trunc() → pi-tui truncateToWidth
 - [ ] ask-user settings-tui ANSI → theme.fg + pi-tui Key
 - [ ] web-api duckduckgo HTML parsing → linkedom querySelectorAll
