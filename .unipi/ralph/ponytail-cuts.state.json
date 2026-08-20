@@ -1,7 +1,7 @@
 {
   "name": "ponytail-cuts",
   "taskFile": ".unipi/ralph/ponytail-cuts.md",
-  "iteration": 6,
+  "iteration": 7,
   "maxIterations": 60,
   "itemsPerIteration": 4,
   "reflectEvery": 5,

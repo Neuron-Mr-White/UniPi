@@ -72,30 +72,23 @@ export class ParserRegistry {
   }
 }
 
-/** Create a registry with all default parsers registered */
+/** Create a registry with all default parsers registered. */
 export async function createDefaultRegistry(): Promise<ParserRegistry> {
   const registry = new ParserRegistry();
 
-  // Import and register all parsers
-  const { SpecParser } = await import("./specs.js");
-  const { PlanParser } = await import("./plans.js");
-  const { MilestoneParser } = await import("./milestones.js");
-  const {
-    QuickWorkParser,
-    DebugParser,
-    FixParser,
-    ChoreParser,
-    ReviewParser,
-  } = await import("./remaining.js");
+  // Register checkbox-driven parsers (spec, quick-work, debug, fix, chore, review)
+  const { CheckboxParser, CHECKBOX_DOC_CONFIGS } = await import("./checkbox-parser.js");
+  for (const config of CHECKBOX_DOC_CONFIGS) {
+    registry.register(new CheckboxParser(config));
+  }
 
-  registry.register(new SpecParser());
+  // Register plan parser (task-header + status-line format, not checkbox)
+  const { PlanParser } = await import("./plans.js");
   registry.register(new PlanParser());
+
+  // Register milestone parser (inline frontmatter + phase headers)
+  const { MilestoneParser } = await import("./milestones.js");
   registry.register(new MilestoneParser());
-  registry.register(new QuickWorkParser());
-  registry.register(new DebugParser());
-  registry.register(new FixParser());
-  registry.register(new ChoreParser());
-  registry.register(new ReviewParser());
 
   return registry;
 }

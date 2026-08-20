@@ -97,7 +97,7 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 ## Phase 3 — Shrink/dedup (after P2 verified)
 - [ ] kanboard 8 parsers → one config-driven class
 - [ ] updater changelog+readme overlay → one ListDetailOverlay
-- [ ] 7 overlays shared ANSI box helpers → one in core
+- [x] 7 overlays shared ANSI box helpers → one in core
 - [ ] 4 settings.json read/write → one shared helper
 - [x] compactor formatTokens (4 copies) → one util
 - [x] compactor /unipi:compact → 3-line alias wrapper
