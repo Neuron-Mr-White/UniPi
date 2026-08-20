@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, SettingsList, type SettingItem, type SettingsListTheme, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, SettingsList, type SettingItem, type SettingsListTheme, visibleWidth } from "@earendil-works/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
@@ -125,7 +125,7 @@ class FooterSettingsOverlay {
 
   handleInput(data: string): void {
     // Tab cycles sections
-    if (data === "\t" || data === "\x1b[Z") {
+    if (data === "\t" || matchesKey(data, Key.shift("tab"))) {
       const idx = SECTIONS.indexOf(this.section);
       if (data === "\t") {
         this.section = SECTIONS[(idx + 1) % SECTIONS.length];
@@ -205,7 +205,7 @@ class FooterSettingsOverlay {
     }
 
     // Left arrow / backspace in segment drill-down — back to groups
-    if (this.section === "segments" && this.selectedGroupId && (data === "\x1b[D" || data === "\x7f")) {
+    if (this.section === "segments" && this.selectedGroupId && (matchesKey(data, Key.left) || data === "\x7f")) {
       this.backToGroups();
       return;
     }

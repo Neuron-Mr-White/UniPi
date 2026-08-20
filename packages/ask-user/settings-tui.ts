@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { adaptiveInnerWidth, normalizeWidth, safeRepeat, shouldRenderBorder, ansi, TOGGLE_ON, TOGGLE_OFF } from "@pi-unipi/core";
 import { getAskUserSettings, saveAskUserSettings, type AskUserSettings } from "./config.js";
 
@@ -86,25 +86,22 @@ export class AskUserSettingsOverlay implements Component {
    * Handle keyboard input.
    */
   handleInput(data: string): void {
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + SETTINGS.length) % SETTINGS.length;
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % SETTINGS.length;
-        break;
-      case " ": // Space - toggle
-        this.toggleSetting(SETTINGS[this.selectedIndex].key);
-        break;
-      case "\r": // Enter - save and close
-        this.save();
-        this.onClose?.();
-        break;
-      case "\x1b": // Escape - close without saving
-        this.onClose?.();
-        break;
+    if (matchesKey(data, Key.up) || data === "k") {
+      // Up
+      this.selectedIndex = (this.selectedIndex - 1 + SETTINGS.length) % SETTINGS.length;
+    } else if (matchesKey(data, Key.down) || data === "j") {
+      // Down
+      this.selectedIndex = (this.selectedIndex + 1) % SETTINGS.length;
+    } else if (matchesKey(data, Key.space)) {
+      // Space - toggle
+      this.toggleSetting(SETTINGS[this.selectedIndex].key);
+    } else if (matchesKey(data, Key.enter)) {
+      // Enter - save and close
+      this.save();
+      this.onClose?.();
+    } else if (matchesKey(data, Key.escape)) {
+      // Escape - close without saving
+      this.onClose?.();
     }
   }
 

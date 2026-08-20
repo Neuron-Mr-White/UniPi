@@ -8,7 +8,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
@@ -276,17 +276,17 @@ export class InfoOverlay implements Component {
     // Any keypress means the user is driving; stop the boot auto-close.
     this.cancelBootTimer();
 
-    if (data === "\x1b[C" || data === "l") {
+    if (matchesKey(data, Key.right) || data === "l") {
       this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
       this.scrollOffset = 0;
       this.fetchActiveGroup();
-    } else if (data === "\x1b[D" || data === "h") {
+    } else if (matchesKey(data, Key.left) || data === "h") {
       this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
       this.scrollOffset = 0;
       this.fetchActiveGroup();
-    } else if (data === "\x1b[B" || data === "j") {
+    } else if (matchesKey(data, Key.down) || data === "j") {
       this.scrollOffset++;
-    } else if (data === "\x1b[A" || data === "k") {
+    } else if (matchesKey(data, Key.up) || data === "k") {
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
     } else if (data === "g") {
       this.scrollOffset = 0;
@@ -298,7 +298,7 @@ export class InfoOverlay implements Component {
     } else if (data === "R") {
       // Refresh all
       this.refreshAll();
-    } else if (data === "q" || matchesKey(data, "escape")) {
+    } else if (data === "q" || matchesKey(data, Key.escape)) {
       this.destroy();
       this.onClose?.();
     }

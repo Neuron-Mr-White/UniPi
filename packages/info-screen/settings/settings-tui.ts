@@ -7,7 +7,7 @@ import { ansi, TOGGLE_ON, TOGGLE_OFF } from "@pi-unipi/core";
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings, saveInfoSettings, getGroupSettings, setGroupSettings } from "../config.js";
 import type { InfoScreenSettings, GroupSettings, BootMode } from "../types.js";
@@ -87,57 +87,42 @@ export class SettingsOverlay implements Component {
     const rowCount = this.groups.length + H; // header rows, then groups
     const onBootMode = this.selectedIndex === SettingsOverlay.BOOT_MODE_INDEX;
     const onBootTimeout = this.selectedIndex === SettingsOverlay.BOOT_TIMEOUT_INDEX;
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + rowCount) % rowCount;
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % rowCount;
-        break;
-      case " ": // Space - toggle / cycle
-        if (onBootMode) {
-          this.cycleBootMode();
-        } else if (onBootTimeout) {
-          this.adjustBootTimeout(500);
-        } else {
-          this.toggleGroupVisibility(this.groups[this.selectedIndex - H].id);
-        }
-        break;
-      case "\r": // Enter - enter stats mode
-      case "\x1b[C": // Right - enter stats mode
-      case "l":
-        if (onBootMode) {
-          this.cycleBootMode();
-        } else if (onBootTimeout) {
-          this.adjustBootTimeout(500);
-        } else {
-          this.enterStatsMode(this.groups[this.selectedIndex - H].id);
-        }
-        break;
-      case "\x1b[D": // Left - cycle back / decrease
-      case "h":
-        if (onBootMode) {
-          this.cycleBootMode(-1);
-        } else if (onBootTimeout) {
-          this.adjustBootTimeout(-500);
-        }
-        break;
-      case "J": // Shift+J - move group down
-        if (this.selectedIndex >= H) {
-          this.moveGroupDown();
-        }
-        break;
-      case "K": // Shift+K - move group up
-        if (this.selectedIndex >= H) {
-          this.moveGroupUp();
-        }
-        break;
-      case "q": // Quit
-      case "\x1b": // Escape
-        this.onClose?.();
-        break;
+    if (matchesKey(data, Key.up) || data === "k") {
+      this.selectedIndex = (this.selectedIndex - 1 + rowCount) % rowCount;
+    } else if (matchesKey(data, Key.down) || data === "j") {
+      this.selectedIndex = (this.selectedIndex + 1) % rowCount;
+    } else if (data === " ") { // Space - toggle / cycle
+      if (onBootMode) {
+        this.cycleBootMode();
+      } else if (onBootTimeout) {
+        this.adjustBootTimeout(500);
+      } else {
+        this.toggleGroupVisibility(this.groups[this.selectedIndex - H].id);
+      }
+    } else if (data === "\r" || matchesKey(data, Key.right) || data === "l") { // Enter / Right - enter stats mode
+      if (onBootMode) {
+        this.cycleBootMode();
+      } else if (onBootTimeout) {
+        this.adjustBootTimeout(500);
+      } else {
+        this.enterStatsMode(this.groups[this.selectedIndex - H].id);
+      }
+    } else if (matchesKey(data, Key.left) || data === "h") { // Left - cycle back / decrease
+      if (onBootMode) {
+        this.cycleBootMode(-1);
+      } else if (onBootTimeout) {
+        this.adjustBootTimeout(-500);
+      }
+    } else if (data === "J") { // Shift+J - move group down
+      if (this.selectedIndex >= H) {
+        this.moveGroupDown();
+      }
+    } else if (data === "K") { // Shift+K - move group up
+      if (this.selectedIndex >= H) {
+        this.moveGroupUp();
+      }
+    } else if (data === "q" || matchesKey(data, Key.escape)) { // Quit
+      this.onClose?.();
     }
   }
 
@@ -150,27 +135,16 @@ export class SettingsOverlay implements Component {
     const group = infoRegistry.getGroup(this.selectedGroupId);
     if (!group) return;
 
-    switch (data) {
-      case "\x1b[A": // Up
-      case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + group.config.stats.length) % group.config.stats.length;
-        break;
-      case "\x1b[B": // Down
-      case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % group.config.stats.length;
-        break;
-      case " ": // Space - toggle stat
-        this.toggleStatVisibility(this.selectedGroupId, group.config.stats[this.selectedIndex].id);
-        break;
-      case "\x1b[D": // Left - back to groups
-      case "h":
-      case "\r": // Enter - also go back
-        this.backToGroups();
-        break;
-      case "q": // Quit from stats mode
-      case "\x1b":
-        this.onClose?.();
-        break;
+    if (matchesKey(data, Key.up) || data === "k") {
+      this.selectedIndex = (this.selectedIndex - 1 + group.config.stats.length) % group.config.stats.length;
+    } else if (matchesKey(data, Key.down) || data === "j") {
+      this.selectedIndex = (this.selectedIndex + 1) % group.config.stats.length;
+    } else if (data === " ") { // Space - toggle stat
+      this.toggleStatVisibility(this.selectedGroupId, group.config.stats[this.selectedIndex].id);
+    } else if (matchesKey(data, Key.left) || data === "h" || data === "\r") { // Left/Enter - back to groups
+      this.backToGroups();
+    } else if (data === "q" || matchesKey(data, Key.escape)) { // Quit from stats mode
+      this.onClose?.();
     }
   }
 

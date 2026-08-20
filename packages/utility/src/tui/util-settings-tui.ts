@@ -5,7 +5,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { ansi, TOGGLE_ON, TOGGLE_OFF } from "@pi-unipi/core";
 import type { CachedModel } from "@pi-unipi/core";
 import { readModelCache, boxInnerWidth } from "@pi-unipi/core";
@@ -115,48 +115,33 @@ export class UtilSettingsTui implements Component {
   private handleSettingsInput(data: string): void {
     const navItems = SETTINGS.filter((s) => s.type !== "section");
 
-    switch (data) {
-      case "\x1b[A":
-      case "k":
-        this.selectedIndex = (this.selectedIndex - 1 + navItems.length) % navItems.length;
-        break;
-      case "\x1b[B":
-      case "j":
-        this.selectedIndex = (this.selectedIndex + 1) % navItems.length;
-        break;
-      case " ":
+    if (matchesKey(data, Key.up) || data === "k") {
+      this.selectedIndex = (this.selectedIndex - 1 + navItems.length) % navItems.length;
+    } else if (matchesKey(data, Key.down) || data === "j") {
+      this.selectedIndex = (this.selectedIndex + 1) % navItems.length;
+    } else if (matchesKey(data, Key.space)) {
+      this.toggleCurrentSetting();
+    } else if (matchesKey(data, Key.enter)) {
+      if (navItems[this.selectedIndex]?.type === "picker") {
+        this.enterPicker(navItems[this.selectedIndex] as PickerSetting);
+      } else {
         this.toggleCurrentSetting();
-        break;
-      case "\r":
-        if (navItems[this.selectedIndex]?.type === "picker") {
-          this.enterPicker(navItems[this.selectedIndex] as PickerSetting);
-        } else {
-          this.toggleCurrentSetting();
-        }
-        break;
-      case "\x1b":
-        this.save();
-        this.onClose?.();
-        break;
+      }
+    } else if (matchesKey(data, Key.escape)) {
+      this.save();
+      this.onClose?.();
     }
   }
 
   private handlePickerInput(data: string, items: Array<{ id: string; label: string }>, pickerType: string): void {
-    switch (data) {
-      case "\x1b[A":
-      case "k":
-        this.scrollOffset = (this.scrollOffset - 1 + items.length) % items.length;
-        break;
-      case "\x1b[B":
-      case "j":
-        this.scrollOffset = (this.scrollOffset + 1) % items.length;
-        break;
-      case "\r":
-        this.selectPickerItem(items[this.scrollOffset], pickerType);
-        break;
-      case "\x1b":
-        this.mode = "settings";
-        break;
+    if (matchesKey(data, Key.up) || data === "k") {
+      this.scrollOffset = (this.scrollOffset - 1 + items.length) % items.length;
+    } else if (matchesKey(data, Key.down) || data === "j") {
+      this.scrollOffset = (this.scrollOffset + 1) % items.length;
+    } else if (matchesKey(data, Key.enter)) {
+      this.selectPickerItem(items[this.scrollOffset], pickerType);
+    } else if (matchesKey(data, Key.escape)) {
+      this.mode = "settings";
     }
   }
 

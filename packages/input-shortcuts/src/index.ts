@@ -12,7 +12,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Key } from "@earendil-works/pi-tui";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { MODULES, emitEvent, UNIPI_EVENTS, INPUT_SHORTCUTS_COMMANDS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
 import { UndoRedoBuffer } from "./undo-redo.ts";
@@ -112,7 +112,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       if (!ui || suppressInputListener) return;
 
       // Only snapshot for edit keys (printable, backspace, delete, enter)
-      const isEditKey = data.length === 1 || data === "\x7f" || data === "\x1b[3~" || data === "\r" || data === "\n";
+      const isEditKey = data.length === 1 || data === "\x7f" || matchesKey(data, Key.delete) || data === "\r" || data === "\n";
       if (!isEditKey) return;
 
       // Capture text BEFORE the keypress is processed by the editor

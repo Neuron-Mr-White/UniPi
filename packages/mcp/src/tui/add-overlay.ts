@@ -353,7 +353,7 @@ export function renderMcpAddOverlay(params?: {
         return;
       }
       // Arrow keys + j/k navigate list while searching
-      if (matchesKey(data, Key.down) || data === "\x1b[B" || data === "j") {
+      if (matchesKey(data, Key.down) || data === "j") {
         if (state.selectedIndex < state.filteredServers.length - 1) {
           state.selectedIndex++;
           ensureVisible();
@@ -361,7 +361,7 @@ export function renderMcpAddOverlay(params?: {
         }
         return;
       }
-      if (matchesKey(data, Key.up) || data === "\x1b[A" || data === "k") {
+      if (matchesKey(data, Key.up) || data === "k") {
         if (state.selectedIndex > 0) {
           state.selectedIndex--;
           ensureVisible();
@@ -370,13 +370,13 @@ export function renderMcpAddOverlay(params?: {
         return;
       }
       // PgUp/PgDn also work in search
-      if (data === "\x1b[6~") {
+      if (matchesKey(data, Key.pageDown)) {
         state.selectedIndex = Math.min(state.filteredServers.length - 1, state.selectedIndex + lastListHeight);
         ensureVisible();
         refresh();
         return;
       }
-      if (data === "\x1b[5~") {
+      if (matchesKey(data, Key.pageUp)) {
         state.selectedIndex = Math.max(0, state.selectedIndex - lastListHeight);
         ensureVisible();
         refresh();
@@ -463,13 +463,13 @@ export function renderMcpAddOverlay(params?: {
         return;
       }
       // PageDown / PageUp
-      if (data === "\x1b[6~") {
+      if (matchesKey(data, Key.pageDown)) {
         state.selectedIndex = Math.min(listLen - 1, state.selectedIndex + lastListHeight);
         ensureVisible();
         refresh();
         return;
       }
-      if (data === "\x1b[5~") {
+      if (matchesKey(data, Key.pageUp)) {
         state.selectedIndex = Math.max(0, state.selectedIndex - lastListHeight);
         ensureVisible();
         refresh();

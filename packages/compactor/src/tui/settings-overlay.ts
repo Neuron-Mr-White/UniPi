@@ -8,7 +8,7 @@
  */
 
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig, projectConfigPath } from "../config/manager.js";
 import { applyPreset, detectPreset } from "../config/presets.js";
@@ -528,7 +528,7 @@ export class CompactorSettingsOverlay implements Component {
 
   handleInput(data: string): void {
     // Tab switches section
-    if (data === "\t" || data === "\x1b[Z") {
+    if (data === "\t" || matchesKey(data, Key.shift("tab"))) {
       const idx = SECTIONS.indexOf(this.section);
       this.section = SECTIONS[(idx + 1) % SECTIONS.length];
       return;

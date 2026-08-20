@@ -5,7 +5,7 @@
  * Space cycles options, Enter saves, Esc cancels.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import {
   loadConfig,
   saveConfig,
@@ -105,9 +105,10 @@ export function renderSettingsOverlay() {
 
     const handleInput = (data: string) => {
       const key = data.toLowerCase();
+      const keyRaw = data;
 
       // Close without saving
-      if (key === "\x1b") {
+      if (matchesKey(keyRaw, Key.escape)) {
         done({ saved: false });
         return;
       }
@@ -120,9 +121,9 @@ export function renderSettingsOverlay() {
       }
 
       // Navigate rows
-      if (key === "j" || key === "\x1b[B") {
+      if (key === "j" || matchesKey(keyRaw, Key.down)) {
         state.row = Math.min(state.row + 1, 1);
-      } else if (key === "k" || key === "\x1b[A") {
+      } else if (key === "k" || matchesKey(keyRaw, Key.up)) {
         state.row = Math.max(state.row - 1, 0);
       }
 
@@ -142,7 +143,7 @@ export function renderSettingsOverlay() {
       }
 
       // Cycle with left/right
-      if (key === "h" || key === "\x1b[D") {
+      if (key === "h" || matchesKey(keyRaw, Key.left)) {
         if (state.row === 0) {
           const currentIdx = intervalOptions.findIndex(
             (opt) => opt.ms === state.config.checkIntervalMs,
@@ -155,7 +156,7 @@ export function renderSettingsOverlay() {
           state.config.autoUpdate = modeOptions[prevIdx];
         }
       }
-      if (key === "l" || key === "\x1b[C") {
+      if (key === "l" || matchesKey(keyRaw, Key.right)) {
         if (state.row === 0) {
           const currentIdx = intervalOptions.findIndex(
             (opt) => opt.ms === state.config.checkIntervalMs,

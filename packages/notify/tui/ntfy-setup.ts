@@ -7,7 +7,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendNtfyNotification } from "../platforms/ntfy.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
@@ -76,10 +76,10 @@ export class NtfySetupOverlay implements Component {
         break;
 
       case "scope":
-        if (data === "\x1b[A" || data === "k") {
+        if (matchesKey(data, Key.up) || data === "k") {
           // Up
           this.scopeIndex = Math.max(0, this.scopeIndex - 1);
-        } else if (data === "\x1b[B" || data === "j") {
+        } else if (matchesKey(data, Key.down) || data === "j") {
           // Down
           this.scopeIndex = Math.min(1, this.scopeIndex + 1);
         } else if (data === "\r" || data === " ") {
