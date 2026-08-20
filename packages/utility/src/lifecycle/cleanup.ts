@@ -4,7 +4,7 @@
  * Cleans stale DBs, temp files, old sessions across all unipi modules.
  */
 
-import { existsSync, statSync, readdirSync, unlinkSync, rmdirSync } from "node:fs";
+import { existsSync, statSync, readdirSync, unlinkSync, rmSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import type { CleanupReport, CleanupResult, CleanupOptions } from "../types.js";
@@ -229,21 +229,7 @@ function cleanSessions(options: Required<CleanupOptions>): CleanupResult {
         result.paths.push(fullPath);
         if (!options.dryRun) {
           try {
-            // Remove directory contents then directory
-            const removeRecursive = (dir: string) => {
-              const items = readdirSync(dir);
-              for (const item of items) {
-                const itemPath = join(dir, item);
-                const itemStats = statSync(itemPath);
-                if (itemStats.isDirectory()) {
-                  removeRecursive(itemPath);
-                } else {
-                  unlinkSync(itemPath);
-                }
-              }
-              rmdirSync(dir);
-            };
-            removeRecursive(fullPath);
+            rmSync(fullPath, { recursive: true, force: true });
             result.removed++;
           } catch {
             // Best effort
