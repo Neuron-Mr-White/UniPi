@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/image",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Image generation and image recognition tools for the Pi coding agent",
   "type": "module",
   "main": "src/index.ts",
@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.6.0"
+    "@pi-unipi/core": "2.6.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.0",

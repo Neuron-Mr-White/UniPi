@@ -13,6 +13,7 @@ Configure once, get alerts everywhere. Per-event platform routing lets you send 
 | `/unipi:notify-set-tg` | Interactive Telegram bot setup |
 | `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
 | `/unipi:notify-recap-model` | Set model for notification recaps |
+| `/unipi:notify-event` | Toggle a single event without the TUI (`<event> <on\|off>`) — reports the new value; run `/reload` to re-register listeners |
 | `/unipi:notify-test` | Send test notification to all enabled platforms |
 
 ## Special Triggers

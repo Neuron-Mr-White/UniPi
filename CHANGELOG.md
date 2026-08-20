@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-08-20
+
+This release fixes the notify settings overlay and recap model selector in terminals using the kitty keyboard protocol (Ghostty under Herdr), and makes the model selector reflect Pi's live model registry.
+
+### Fixed
+
+- `notify`: settings overlay and recap model selector match Up/Down/Escape/Enter/Tab/Space/Backspace via `matchesKey()` from `@earendil-works/pi-tui` instead of raw byte comparison — under the kitty keyboard protocol Escape arrives as `\x1b[27u` (Ctrl+C as `\x1b[99;5u`), so arrows/Escape silently did nothing and the selector could trap the user (issue #27).
+- `notify`: Ctrl+C now always closes both overlays, even mid-filter.
+- `notify`: recap model selector lists models injected from Pi's live `ctx.modelRegistry` instead of relying solely on `~/.unipi/config/models-cache.json`; when neither source has models it shows an actionable hint instead of a bare "No models found".
+- `core`: model-cache paths are resolved per call (respects `HOME` changes; enables isolated tests).
+
+### Added
+
+- `/unipi:notify-event <event> <on|off>` — toggle a notify event without the TUI (escape hatch for terminals with overlay input problems); reports the resulting value and reminds that `/reload` re-registers listeners.
+
+### Changed
+
+- `notify`: arrows navigate inside selector filter mode without leaving it; `m` and `M` both open the model selector from the Recap tab.
+
 ## [2.6.0] — 2026-08-14
 
 This release completes UniPi's provider prefix-cache preservation rollout, making model-visible state append-only within explicit cache epochs while adding privacy-safe diagnostics and bounded external results.

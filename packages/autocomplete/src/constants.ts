@@ -169,6 +169,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:notify-set-ntfy":  "notify",
   "unipi:notify-test":      "notify",
   "unipi:notify-recap-model": "notify",
+  "unipi:notify-event":     "notify",
 
   // kanboard (2 commands)
   "unipi:kanboard":          "kanboard",
@@ -282,6 +283,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-set-ntfy":  "Set up ntfy push notifications",
   "unipi:notify-test":      "Test all enabled notification platforms",
   "unipi:notify-recap-model": "Select model for notification recaps",
+  "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 
   "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
   "unipi:milestone-update":  "Sync MILESTONES.md with completed work",

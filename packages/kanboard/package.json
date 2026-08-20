@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Visualization layer for unipi workflow — HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
   "type": "module",
   "main": "index.ts",
@@ -39,7 +39,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.6.0"
+    "@pi-unipi/core": "2.6.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.0",

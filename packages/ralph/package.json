@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ralph",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Long-running iterative development loops for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -30,8 +30,8 @@
     "test": "npx tsx --test reminder.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.6.0",
-    "@pi-unipi/info-screen": "2.6.0"
+    "@pi-unipi/core": "2.6.1",
+    "@pi-unipi/info-screen": "2.6.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.0",
