@@ -9,8 +9,6 @@
 export const UNIPI_EVENTS = {
   /** Module loaded and ready */
   MODULE_READY: "unipi:module:ready",
-  /** @deprecated No built-in emitter; retained for external compatibility. */
-  MODULE_GONE: "unipi:module:gone",
 
   /** Workflow command started */
   WORKFLOW_START: "unipi:workflow:start",
@@ -24,10 +22,6 @@ export const UNIPI_EVENTS = {
   /** Ralph loop iteration completed */
   RALPH_ITERATION_DONE: "unipi:ralph:iteration:done",
 
-  /** @deprecated No built-in responders; use the info registry and /unipi:info. */
-  MODULE_STATUS_REQUEST: "unipi:module:status:request",
-  /** @deprecated No built-in aggregator; use the info registry and /unipi:info. */
-  MODULE_STATUS_RESPONSE: "unipi:module:status:response",
 
   /** Info screen group registered */
   INFO_GROUP_REGISTERED: "unipi:info:group:registered",
@@ -38,8 +32,6 @@ export const UNIPI_EVENTS = {
   MEMORY_STORED: "unipi:memory:stored",
   /** Memory deleted */
   MEMORY_DELETED: "unipi:memory:deleted",
-  /** @deprecated No built-in emitter; retained for external compatibility. */
-  MEMORY_SEARCHED: "unipi:memory:searched",
   /** Memory consolidation completed */
   MEMORY_CONSOLIDATED: "unipi:memory:consolidated",
 
@@ -60,18 +52,12 @@ export const UNIPI_EVENTS = {
   COMPACTOR_COMPACTED: "unipi:compactor:compacted",
   /** @deprecated Footer reads live Pi session data; retained for compatibility. */
   COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
-  /** @deprecated No built-in emitter; retained for external compatibility. */
-  UTILITY_CLEANUP_START: "unipi:utility:cleanup:start",
   /** Utility module cleanup completed */
   UTILITY_CLEANUP_DONE: "unipi:utility:cleanup:done",
   /** Utility diagnostics started */
   UTILITY_DIAGNOSTICS_START: "unipi:utility:diagnostics:start",
   /** Utility diagnostics completed */
   UTILITY_DIAGNOSTICS_DONE: "unipi:utility:diagnostics:done",
-  /** @deprecated No built-in emitter; retained for external compatibility. */
-  UTILITY_CACHE_INVALIDATED: "unipi:utility:cache:invalidated",
-  /** @deprecated No built-in emitter; retained for external compatibility. */
-  UTILITY_LIFECYCLE_STATE: "unipi:utility:lifecycle:state",
 
   /** Notification sent */
   NOTIFICATION_SENT: "unipi:notify:sent",
@@ -91,12 +77,6 @@ export const UNIPI_EVENTS = {
   /** Update error */
   UPDATE_ERROR: "unipi:update:error",
 
-  /** @deprecated Reserved external contract; no built-in emitter. */
-  COCOINDEX_UPDATE_STARTED: "unipi:cocoindex:update:started",
-  /** @deprecated Reserved external contract; no built-in emitter. */
-  COCOINDEX_UPDATE_COMPLETED: "unipi:cocoindex:update:completed",
-  /** @deprecated Reserved external contract; no built-in emitter. */
-  COCOINDEX_SEARCH_PERFORMED: "unipi:cocoindex:search:performed",
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
@@ -151,21 +131,7 @@ export interface UnipiRalphIterationEvent {
   nextIteration: number;
 }
 
-/** @deprecated No built-in responders; retained for compatibility. */
-export interface UnipiStatusRequestEvent {
-  /** Request ID for correlation */
-  requestId: string;
-}
 
-/** @deprecated No built-in aggregator; retained for compatibility. */
-export interface UnipiStatusResponseEvent {
-  /** Request ID this responds to */
-  requestId: string;
-  /** Module name */
-  name: string;
-  /** Module status data */
-  status: Record<string, unknown>;
-}
 
 /** Payload for MEMORY_STORED */
 export interface UnipiMemoryStoredEvent {
@@ -191,15 +157,6 @@ export interface UnipiMemoryDeletedEvent {
   project: string;
 }
 
-/** Payload for MEMORY_SEARCHED */
-export interface UnipiMemorySearchedEvent {
-  /** Search query */
-  query: string;
-  /** Number of results */
-  resultCount: number;
-  /** Project scope */
-  project: string;
-}
 
 /** Payload for MEMORY_CONSOLIDATED */
 export interface UnipiMemoryConsolidatedEvent {
@@ -307,15 +264,6 @@ export interface UnipiUtilityDiagnosticsEvent {
   report?: unknown;
 }
 
-/** Payload for UTILITY_LIFECYCLE_STATE */
-export interface UnipiUtilityLifecycleEvent {
-  /** New lifecycle state */
-  state: "running" | "shutting_down" | "orphaned" | "error";
-  /** Previous state */
-  previousState?: string;
-  /** Reason for state change */
-  reason?: string;
-}
 
 /** Payload for BADGE_GENERATE_REQUEST */
 export interface UnipiBadgeGenerateRequestEvent {
@@ -375,31 +323,8 @@ export interface UnipiUpdateErrorEvent {
   phase: "check" | "install";
 }
 
-/** Payload for COCOINDEX_UPDATE_STARTED */
-export interface UnipiCocoindexUpdateStartedEvent {
-  /** Project directory being indexed */
-  projectDir: string;
-}
 
-/** Payload for COCOINDEX_UPDATE_COMPLETED */
-export interface UnipiCocoindexUpdateCompletedEvent {
-  /** Whether the update succeeded */
-  success: boolean;
-  /** Number of chunks processed */
-  chunksProcessed: number;
-  /** Duration in ms */
-  durationMs: number;
-  /** Error message if failed */
-  error?: string;
-}
 
-/** Payload for COCOINDEX_SEARCH_PERFORMED */
-export interface UnipiCocoindexSearchPerformedEvent {
-  /** Search query */
-  query: string;
-  /** Number of results */
-  resultCount: number;
-}
 
 /** Payload for NOTIFICATION_SENT */
 export interface UnipiNotificationSentEvent {
@@ -421,11 +346,8 @@ export type UnipiEventPayload =
   | UnipiWorkflowEvent
   | UnipiRalphLoopEvent
   | UnipiRalphIterationEvent
-  | UnipiStatusRequestEvent
-  | UnipiStatusResponseEvent
   | UnipiMemoryStoredEvent
   | UnipiMemoryDeletedEvent
-  | UnipiMemorySearchedEvent
   | UnipiMemoryConsolidatedEvent
   | UnipiInfoGroupEvent
   | UnipiInfoDataEvent
@@ -436,14 +358,10 @@ export type UnipiEventPayload =
   | UnipiCompactorStatsEvent
   | UnipiUtilityCleanupEvent
   | UnipiUtilityDiagnosticsEvent
-  | UnipiUtilityLifecycleEvent
   | UnipiNotificationSentEvent
   | UnipiBadgeGenerateRequestEvent
   | UnipiAskUserPromptEvent
   | UnipiUpdateCheckEvent
   | UnipiUpdateAvailableEvent
   | UnipiUpdateAppliedEvent
-  | UnipiUpdateErrorEvent
-  | UnipiCocoindexUpdateStartedEvent
-  | UnipiCocoindexUpdateCompletedEvent
-  | UnipiCocoindexSearchPerformedEvent;
+  | UnipiUpdateErrorEvent;

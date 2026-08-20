@@ -134,13 +134,6 @@ export const MEMORY_DEFAULTS = {
 } as const;
 
 /** Memory types */
-export const MEMORY_TYPES = {
-  PREFERENCE: "preference",
-  DECISION: "decision",
-  PATTERN: "pattern",
-  SUMMARY: "summary",
-} as const;
-
 /** Default ralph loop settings */
 export const RALPH_DEFAULTS = {
   MAX_ITERATIONS: 50,
