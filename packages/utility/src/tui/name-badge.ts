@@ -96,13 +96,14 @@ export class NameBadgeComponent implements Component {
       ? this.theme.fg(fgColor as any, displayText)
       : displayText;
 
-    // Build lines with opaque background
-    const topLine = bgFn(border("╭" + "─".repeat(innerWidth) + "╮"));
+    // Build single line with opaque background (no top/bottom borders to
+    // minimize vertical blocking — the badge stays at the top of the screen
+    // and a single line blocks far less content than a 3-line box when
+    // scrolling up to read history).
     const contentLine = bgFn(
       border("│") + " ".repeat(leftPad) + nameStyled + " ".repeat(rightPad) + border("│"),
     );
-    const bottomLine = bgFn(border("╰" + "─".repeat(innerWidth) + "╯"));
 
-    return [topLine, contentLine, bottomLine];
+    return [contentLine];
   }
 }
