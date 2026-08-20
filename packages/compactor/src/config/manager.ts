@@ -91,33 +91,11 @@ export function saveConfig(config: CompactorConfig, opts?: { perProject?: boolea
 
 /**
  * Migrate partial config to full schema, filling missing keys from defaults.
+ * Uses deepMerge so nested strategy objects merge recursively.
  */
 export function migrateConfig(partial: Partial<CompactorConfig>): CompactorConfig {
   const defaults = structuredClone(DEFAULT_COMPACTOR_CONFIG);
-
-  function mergeStrategy<K extends keyof CompactorConfig>(
-    key: K,
-    defaultVal: CompactorConfig[K],
-    partialVal: CompactorConfig[K] | undefined,
-  ): CompactorConfig[K] {
-    if (!partialVal || typeof partialVal !== "object") return defaultVal;
-    return { ...(defaultVal as any), ...(partialVal as any) };
-  }
-
-  return {
-    sessionGoals: mergeStrategy("sessionGoals", defaults.sessionGoals, partial.sessionGoals),
-    filesAndChanges: mergeStrategy("filesAndChanges", defaults.filesAndChanges, partial.filesAndChanges),
-    commits: mergeStrategy("commits", defaults.commits, partial.commits),
-    outstandingContext: mergeStrategy("outstandingContext", defaults.outstandingContext, partial.outstandingContext),
-    userPreferences: mergeStrategy("userPreferences", defaults.userPreferences, partial.userPreferences),
-    briefTranscript: mergeStrategy("briefTranscript", defaults.briefTranscript, partial.briefTranscript),
-    sessionContinuity: mergeStrategy("sessionContinuity", defaults.sessionContinuity, partial.sessionContinuity),
-    fts5Index: mergeStrategy("fts5Index", defaults.fts5Index, partial.fts5Index),
-    sandboxExecution: mergeStrategy("sandboxExecution", defaults.sandboxExecution, partial.sandboxExecution),
-    pipeline: mergeStrategy("pipeline", defaults.pipeline, (partial as any).pipeline) as any,
-    autoCompaction: mergeStrategy("autoCompaction", defaults.autoCompaction, partial.autoCompaction),
-    overrideDefaultCompaction: partial.overrideDefaultCompaction ?? defaults.overrideDefaultCompaction,
-  };
+  return deepMerge(defaults, partial);
 }
 
 /**
