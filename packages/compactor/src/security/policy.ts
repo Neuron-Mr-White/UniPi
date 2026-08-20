@@ -23,14 +23,8 @@ export function parseToolPattern(pattern: string): { tool: string; glob: string 
   return match ? { tool: match[1], glob: match[2] } : null;
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\/\-]/g, "\\$&");
-}
-
 function convertGlobPart(glob: string): string {
-  return glob
-    .replace(/[.+?^${}()|[\]\\/\-]/g, "\\$&")
-    .replace(/\*/g, ".*");
+  return RegExp.escape(glob).replace(/\*/g, ".*");
 }
 
 export function globToRegex(glob: string, caseInsensitive: boolean = false): RegExp {
@@ -39,7 +33,7 @@ export function globToRegex(glob: string, caseInsensitive: boolean = false): Reg
   if (colonIdx !== -1) {
     const command = glob.slice(0, colonIdx);
     const argsGlob = glob.slice(colonIdx + 1);
-    const escapedCmd = escapeRegex(command);
+    const escapedCmd = RegExp.escape(command);
     const argsRegex = convertGlobPart(argsGlob);
     regexStr = `^${escapedCmd}(\\s${argsRegex})?$`;
   } else {
@@ -68,7 +62,7 @@ export function fileGlobToRegex(glob: string, caseInsensitive: boolean = false):
       regexStr += "[^/]";
       i++;
     } else {
-      regexStr += escapeRegex(glob[i]);
+      regexStr += RegExp.escape(glob[i]);
       i++;
     }
   }

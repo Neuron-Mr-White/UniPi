@@ -2,7 +2,7 @@
  * PolyglotExecutor — sandboxed code execution for 11 languages
  */
 
-import { spawn, execSync, execFileSync } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -11,19 +11,7 @@ import type { ExecResult } from "../types.js";
 
 const isWin = process.platform === "win32";
 
-const OS_TMPDIR = (() => {
-  if (isWin) return process.env.TEMP ?? process.env.TMP ?? tmpdir();
-  try {
-    const result = execFileSync(
-      process.platform === "darwin" ? "getconf" : "mktemp",
-      process.platform === "darwin" ? ["DARWIN_USER_TEMP_DIR"] : ["-u", "-d"],
-      { env: { ...process.env, TMPDIR: undefined as unknown as string }, encoding: "utf-8" },
-    ).trim();
-    const dir = process.platform === "darwin" ? result : resolve(result, "..");
-    if (dir && dir !== process.cwd()) return dir;
-  } catch { /* fall through */ }
-  return "/tmp";
-})();
+const OS_TMPDIR = isWin ? (process.env.TEMP ?? process.env.TMP ?? tmpdir()) : tmpdir();
 
 function killTree(proc: ReturnType<typeof spawn>): void {
   if (isWin && proc.pid) {
