@@ -8,14 +8,14 @@
  */
 
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { Key, matchesKey, truncateToWidth, visibleWidth, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
+import { Key, matchesKey, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig, projectConfigPath } from "../config/manager.js";
 import { applyPreset, detectPreset } from "../config/presets.js";
 import type { CompactorPreset } from "../types.js";
 import type { CompactorConfig } from "../types.js";
 import { existsSync, unlinkSync } from "node:fs";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 // ─── Section types ─────────────────────────────────────────────────────
 
@@ -171,23 +171,10 @@ const THEME: SettingsListTheme = {
   hint: (text) => `\x1b[2m${text}\x1b[0m`,
 };
 
-// ─── Helper: frame a line inside box drawing ───────────────────────────
+// ─── Shared box-drawing helper ────────────────────────────────────────
 
-function frameLine(content: string, innerWidth: number): string {
-  const truncated = truncateToWidth(content, innerWidth, "");
-  const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-  return `\x1b[90m│\x1b[0m${truncated}${" ".repeat(padding)}\x1b[90m│\x1b[0m`;
-}
+const overlay = new OverlayTheme();
 
-function ruleLine(innerWidth: number): string {
-  return `\x1b[90m├${"─".repeat(innerWidth)}┤\x1b[0m`;
-}
-
-function borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-  const left = edge === "top" ? "┌" : "└";
-  const right = edge === "top" ? "┐" : "┘";
-  return `\x1b[90m${left}${"─".repeat(innerWidth)}${right}\x1b[0m`;
-}
 
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values)];
@@ -559,8 +546,8 @@ export class CompactorSettingsOverlay implements Component {
     const lines: string[] = [];
 
     // Header
-    lines.push(borderLine(innerWidth, "top"));
-    lines.push(frameLine(`\x1b[1m\x1b[36m🗜️  Compactor Settings\x1b[0m`, innerWidth));
+    lines.push(overlay.borderLine(innerWidth, "top"));
+    lines.push(overlay.frameLine(`\x1b[1m\x1b[36m🗜️  Compactor Settings\x1b[0m`, innerWidth));
 
     // Current preset indicator
     const presetName = detectPreset(this.config);
@@ -568,8 +555,8 @@ export class CompactorSettingsOverlay implements Component {
     const overrideLabel = this.perProjectOverride
       ? `\x1b[33mProject override\x1b[0m`
       : `\x1b[2mGlobal config\x1b[0m`;
-    lines.push(frameLine(`\x1b[2mPreset: ${presetLabel}  ·  ${overrideLabel}\x1b[0m`, innerWidth));
-    lines.push(ruleLine(innerWidth));
+    lines.push(overlay.frameLine(`\x1b[2mPreset: ${presetLabel}  ·  ${overrideLabel}\x1b[0m`, innerWidth));
+    lines.push(overlay.ruleLine(innerWidth));
 
     // Section tabs
     const tabParts = SECTIONS.map((s) => {
@@ -579,28 +566,28 @@ export class CompactorSettingsOverlay implements Component {
       }
       return `\x1b[2m${label}\x1b[0m`;
     });
-    lines.push(frameLine(`  ${tabParts.join("  ")}`, innerWidth));
-    lines.push(ruleLine(innerWidth));
+    lines.push(overlay.frameLine(`  ${tabParts.join("  ")}`, innerWidth));
+    lines.push(overlay.ruleLine(innerWidth));
 
     // Section content (rendered by SettingsList)
     const contentLines = this.currentList.render(innerWidth - 2);
     for (const line of contentLines) {
-      lines.push(frameLine(` ${line}`, innerWidth));
+      lines.push(overlay.frameLine(` ${line}`, innerWidth));
     }
 
     // Saved indicator
     if (this.saved) {
-      lines.push(ruleLine(innerWidth));
-      lines.push(frameLine(`  \x1b[32m✓ Settings saved\x1b[0m`, innerWidth));
+      lines.push(overlay.ruleLine(innerWidth));
+      lines.push(overlay.frameLine(`  \x1b[32m✓ Settings saved\x1b[0m`, innerWidth));
     }
 
     // Footer hints
-    lines.push(ruleLine(innerWidth));
+    lines.push(overlay.ruleLine(innerWidth));
     const hints = this.section === "strategies"
       ? "↑↓ navigate · Space change · Tab switch · / search · Enter save · Esc cancel"
       : "↑↓ navigate · Space change · Tab switch · Enter save · Esc cancel";
-    lines.push(frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
-    lines.push(borderLine(innerWidth, "bottom"));
+    lines.push(overlay.frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
+    lines.push(overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }

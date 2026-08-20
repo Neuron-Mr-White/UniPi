@@ -7,9 +7,9 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { readModelCache, type CachedModel, boxInnerWidth } from "@pi-unipi/core";
+import { readModelCache, type CachedModel, boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 import { loadConfig, saveConfig } from "../settings.js";
 
 const DEFAULT_MODEL = "openrouter/openai/gpt-oss-20b";
@@ -27,7 +27,7 @@ export class RecapModelSelectorOverlay implements Component {
   private error: string | null = null;
   onClose?: () => void;
   requestRender?: () => void;
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
 
   /**
    * @param models Optional model list, preferably collected from Pi's live
@@ -51,7 +51,7 @@ export class RecapModelSelectorOverlay implements Component {
   }
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   invalidate(): void {}
@@ -169,84 +169,49 @@ export class RecapModelSelectorOverlay implements Component {
     setTimeout(() => this.onClose?.(), 500);
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as any, text);
-    const c: Record<string, string> = {
-      accent: "\x1b[36m",
-      success: "\x1b[32m",
-      warning: "\x1b[33m",
-      error: "\x1b[31m",
-      dim: "\x1b[2m",
-      borderMuted: "\x1b[90m",
-    };
-    return `${c[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
-  }
-
   render(width: number): string[] {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
-    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
     lines.push(
-      this.frameLine(
-        this.fg("accent", this.bold("🤖 Recap Model Selector")),
+      this.overlay.frameLine(
+        this.overlay.fg("accent", this.overlay.bold("🤖 Recap Model Selector")),
         innerWidth
       )
     );
     lines.push(
-      this.frameLine(
-        this.fg("dim", "Select model for notification recaps"),
+      this.overlay.frameLine(
+        this.overlay.fg("dim", "Select model for notification recaps"),
         innerWidth
       )
     );
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Filter bar
     if (this.filterMode) {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("accent", "Filter:")} ${this.filter}${this.fg("accent", "█")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("accent", "Filter:")} ${this.filter}${this.overlay.fg("accent", "█")}`,
           innerWidth
         )
       );
     } else if (this.filter) {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", "Filter:")} ${this.filter} ${this.fg("dim", "(press / to edit)")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", "Filter:")} ${this.filter} ${this.overlay.fg("dim", "(press / to edit)")}`,
           innerWidth
         )
       );
     } else {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", `/${this.models.length} models · press / to filter`)}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", `/${this.models.length} models · press / to filter`)}`,
           innerWidth
         )
       );
     }
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Model list
     const terminalRows = process.stdout.rows ?? 30;
@@ -268,8 +233,8 @@ export class RecapModelSelectorOverlay implements Component {
             ? "No models — check ~/.pi/agent/models.json or API keys, then reopen"
             : "No models found";
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", emptyMsg)}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", emptyMsg)}`,
           innerWidth
         )
       );
@@ -277,20 +242,20 @@ export class RecapModelSelectorOverlay implements Component {
       for (let i = startIdx; i < endIdx; i++) {
         const m = this.filteredModels[i];
         const isSelected = i === this.selectedIndex;
-        const marker = isSelected ? this.fg("accent", "▸") : " ";
+        const marker = isSelected ? this.overlay.fg("accent", "▸") : " ";
         const label = m.name || m.id;
         const fullRef = `${m.provider}/${m.id}`;
         const isDefault = fullRef === DEFAULT_MODEL;
         const defaultTag = isDefault
-          ? ` ${this.fg("warning", "(default)")}`
+          ? ` ${this.overlay.fg("warning", "(default)")}`
           : "";
 
-        const providerTag = this.fg("dim", `[${m.provider}]`);
+        const providerTag = this.overlay.fg("dim", `[${m.provider}]`);
         const display = isSelected
-          ? `${providerTag} ${this.bold(label)}${defaultTag}`
-          : `${providerTag} ${this.fg("dim", label)}${defaultTag}`;
+          ? `${providerTag} ${this.overlay.bold(label)}${defaultTag}`
+          : `${providerTag} ${this.overlay.fg("dim", label)}${defaultTag}`;
 
-        lines.push(this.frameLine(`  ${marker} ${display}`, innerWidth));
+        lines.push(this.overlay.frameLine(`  ${marker} ${display}`, innerWidth));
       }
     }
 
@@ -300,8 +265,8 @@ export class RecapModelSelectorOverlay implements Component {
         ((this.selectedIndex + 1) / this.filteredModels.length) * 100
       );
       lines.push(
-        this.frameLine(
-          this.fg("dim", `  ${pct}% (${this.selectedIndex + 1}/${this.filteredModels.length})`),
+        this.overlay.frameLine(
+          this.overlay.fg("dim", `  ${pct}% (${this.selectedIndex + 1}/${this.filteredModels.length})`),
           innerWidth
         )
       );
@@ -309,33 +274,33 @@ export class RecapModelSelectorOverlay implements Component {
 
     // Status messages
     if (this.error) {
-      lines.push(this.ruleLine(innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
       lines.push(
-        this.frameLine(`  ${this.fg("error", `⚠ ${this.error}`)}`, innerWidth)
+        this.overlay.frameLine(`  ${this.overlay.fg("error", `⚠ ${this.error}`)}`, innerWidth)
       );
     }
     if (this.saved) {
-      lines.push(this.ruleLine(innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
       lines.push(
-        this.frameLine(
-          `  ${this.fg("success", "✓ Model saved")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("success", "✓ Model saved")}`,
           innerWidth
         )
       );
     }
 
     // Footer
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
     lines.push(
-      this.frameLine(
-        this.fg(
+      this.overlay.frameLine(
+        this.overlay.fg(
           "dim",
           "↑↓ navigate · / filter · Enter select · Esc cancel"
         ),
         innerWidth
       )
     );
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }

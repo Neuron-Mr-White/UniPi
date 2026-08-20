@@ -10,4 +10,5 @@ export * from "./sandbox.js";
 export * from "./utils.js";
 export * from "./model-cache.js";
 export * from "./tui-width.js";
+export * from "./tui-overlay.js";
 export * from "./bounded-output.js";

@@ -7,11 +7,11 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendNtfyNotification } from "../platforms/ntfy.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 type SetupPhase =
   | "instructions"
@@ -42,7 +42,7 @@ export class NtfySetupOverlay implements Component {
   private pasteBuffer = "";
   onClose?: () => void;
   requestRender?: () => void;
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
 
   constructor() {
     // Determine current scope and pre-fill from resolved config
@@ -60,7 +60,7 @@ export class NtfySetupOverlay implements Component {
   }
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   invalidate(): void {}
@@ -241,41 +241,6 @@ export class NtfySetupOverlay implements Component {
     });
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as any, text);
-    const c: Record<string, string> = {
-      accent: "\x1b[36m",
-      success: "\x1b[32m",
-      warning: "\x1b[33m",
-      error: "\x1b[31m",
-      dim: "\x1b[2m",
-      borderMuted: "\x1b[90m",
-    };
-    return `${c[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
-  }
-
   private maskToken(token: string): string {
     if (token.length <= 8) return token;
     return token.slice(0, 4) + "•".repeat(token.length - 8) + token.slice(-4);
@@ -285,76 +250,76 @@ export class NtfySetupOverlay implements Component {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
-    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
     lines.push(
-      this.frameLine(
-        this.fg("accent", this.bold("📢 ntfy Setup")),
+      this.overlay.frameLine(
+        this.overlay.fg("accent", this.overlay.bold("📢 ntfy Setup")),
         innerWidth
       )
     );
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     switch (this.phase) {
       case "instructions":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Set up ntfy push notifications:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Set up ntfy push notifications:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.bold("1.")} ntfy is a simple HTTP-based notification service`,
-            innerWidth
-          )
-        );
-        lines.push(
-          this.frameLine(
-            `     ${this.fg("dim", "Public: https://ntfy.sh | Self-hosted: any ntfy server")}`,
-            innerWidth
-          )
-        );
-        lines.push(this.frameLine("", innerWidth));
-        lines.push(
-          this.frameLine(
-            `  ${this.bold("2.")} Choose a topic (acts as a channel name)`,
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("1.")} ntfy is a simple HTTP-based notification service`,
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            `     ${this.fg("dim", "Subscribe to the topic in the ntfy app or web UI")}`,
+          this.overlay.frameLine(
+            `     ${this.overlay.fg("dim", "Public: https://ntfy.sh | Self-hosted: any ntfy server")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.bold("3.")} Optionally set an access token for private servers`,
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("2.")} Choose a topic (acts as a channel name)`,
+            innerWidth
+          )
+        );
+        lines.push(
+          this.overlay.frameLine(
+            `     ${this.overlay.fg("dim", "Subscribe to the topic in the ntfy app or web UI")}`,
+            innerWidth
+          )
+        );
+        lines.push(this.overlay.frameLine("", innerWidth));
+        lines.push(
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("3.")} Optionally set an access token for private servers`,
             innerWidth
           )
         );
         if (this.serverUrl) {
           lines.push(
-            this.frameLine(
-              `     ${this.fg("success", "✓")} Server URL pre-filled from existing config`,
+            this.overlay.frameLine(
+              `     ${this.overlay.fg("success", "✓")} Server URL pre-filled from existing config`,
               innerWidth
             )
           );
         }
         if (this.topic) {
           lines.push(
-            this.frameLine(
-              `     ${this.fg("success", "✓")} Topic pre-filled from existing config`,
+            this.overlay.frameLine(
+              `     ${this.overlay.fg("success", "✓")} Topic pre-filled from existing config`,
               innerWidth
             )
           );
         }
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to continue, Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to continue, Esc to cancel"),
             innerWidth
           )
         );
@@ -362,28 +327,28 @@ export class NtfySetupOverlay implements Component {
 
       case "scope": {
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Where should this config be saved?"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Where should this config be saved?"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         const options = ["Global (all projects)", "Project (this project only)"];
         for (let i = 0; i < options.length; i++) {
           const isSelected = i === this.scopeIndex;
-          const label = isSelected ? this.bold(options[i]) : this.fg("dim", options[i]);
+          const label = isSelected ? this.overlay.bold(options[i]) : this.overlay.fg("dim", options[i]);
           lines.push(
-            this.frameLine(
-              `  ${isSelected ? this.fg("accent", "▸") : " "} ${label}`,
+            this.overlay.frameLine(
+              `  ${isSelected ? this.overlay.fg("accent", "▸") : " "} ${label}`,
               innerWidth
             )
           );
         }
-        lines.push(this.frameLine("", innerWidth));
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "↑↓ select · Enter confirm · Esc cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "↑↓ select · Enter confirm · Esc cancel"),
             innerWidth
           )
         );
@@ -392,35 +357,35 @@ export class NtfySetupOverlay implements Component {
 
       case "server-url":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter ntfy server URL:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter ntfy server URL:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", this.bold(this.serverUrl || " "))}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", this.overlay.bold(this.serverUrl || " "))}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Default: https://ntfy.sh (public)"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Default: https://ntfy.sh (public)"),
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Leave empty and press Enter for default"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Leave empty and press Enter for default"),
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to continue · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
             innerWidth
           )
         );
@@ -428,35 +393,35 @@ export class NtfySetupOverlay implements Component {
 
       case "topic":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter topic name:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter topic name:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", this.bold(this.topic || " "))}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", this.overlay.bold(this.topic || " "))}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "e.g. my-pi-notifications, project-alerts"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "e.g. my-pi-notifications, project-alerts"),
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Pick something unique if using public ntfy.sh"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Pick something unique if using public ntfy.sh"),
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to continue · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
             innerWidth
           )
         );
@@ -464,38 +429,38 @@ export class NtfySetupOverlay implements Component {
 
       case "token":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter access token (optional):"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter access token (optional):"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         const displayToken = this.token
-          ? this.fg("accent", this.bold(this.maskToken(this.token)))
+          ? this.overlay.fg("accent", this.overlay.bold(this.maskToken(this.token)))
           : " ";
         lines.push(
-          this.frameLine(
-            `  ${displayToken}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${displayToken}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Only needed for private/authenticated ntfy servers"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Only needed for private/authenticated ntfy servers"),
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Not needed for public ntfy.sh"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Not needed for public ntfy.sh"),
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to continue · Esc to skip"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to continue · Esc to skip"),
             innerWidth
           )
         );
@@ -503,151 +468,151 @@ export class NtfySetupOverlay implements Component {
 
       case "priority":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Set notification priority (1-5):"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Set notification priority (1-5):"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", this.bold(this.priority || " "))}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", this.overlay.bold(this.priority || " "))}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", "1")} = min · ${this.fg("dim", "3")} = default · ${this.fg("dim", "5")} = max`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", "1")} = min · ${this.overlay.fg("dim", "3")} = default · ${this.overlay.fg("dim", "5")} = max`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to test connection · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to test connection · Esc to cancel"),
             innerWidth
           )
         );
         break;
 
       case "testing":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", "⠋")} ${this.bold("Testing connection...")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", "⠋")} ${this.overlay.bold("Testing connection...")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Sending test to ${this.serverUrl}/${this.topic}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Sending test to ${this.serverUrl}/${this.topic}`)}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Esc to cancel"),
             innerWidth
           )
         );
         break;
 
       case "success":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("success", "✓ ntfy configured successfully!")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("success", "✓ ntfy configured successfully!")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Server: ${this.serverUrl}`)}`,
-            innerWidth
-          )
-        );
-        lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Topic: ${this.topic}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Server: ${this.serverUrl}`)}`,
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Priority: ${this.priority}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Topic: ${this.topic}`)}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Closing..."),
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Priority: ${this.priority}`)}`,
+            innerWidth
+          )
+        );
+        lines.push(this.overlay.ruleLine(innerWidth));
+        lines.push(
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Closing..."),
             innerWidth
           )
         );
         break;
 
       case "test-failed":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("error", "✗ Connection test failed")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("error", "✗ Connection test failed")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", this.testError || "Unknown error")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", this.testError || "Unknown error")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", "Check your server URL and topic")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", "Check your server URL and topic")}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to close"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to close"),
             innerWidth
           )
         );
         break;
 
       case "error":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("error", "✗ Setup failed")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("error", "✗ Setup failed")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", this.error || "Unknown error")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", this.error || "Unknown error")}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to close"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to close"),
             innerWidth
           )
         );
         break;
     }
 
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
     return lines;
   }
 }

@@ -13,7 +13,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
 import type { InfoGroup, GroupData } from "../types.js";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 /**
  * How long to wait before warming the non-visible tabs.
@@ -70,10 +70,10 @@ export class InfoOverlay implements Component {
    */
   isTopmostOverlay?: () => boolean;
 
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   constructor() {
@@ -334,55 +334,20 @@ export class InfoOverlay implements Component {
     return this.renderDashboard(width);
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as any, text);
-    const c: Record<string, string> = {
-      accent: "\x1b[36m", success: "\x1b[32m", warning: "\x1b[33m",
-      error: "\x1b[31m", dim: "\x1b[2m", borderMuted: "\x1b[90m",
-    };
-    return `${c[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private bg(color: string, text: string): string {
-    return this.theme ? this.theme.bg(color as any, text) : text;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
-  }
-
   // ─── State views ─────────────────────────────────────────────────────
 
   private renderEmpty(width: number): string[] {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
-    lines.push(this.borderLine(innerWidth, "top"));
-    lines.push(this.frameLine(this.fg("accent", this.bold("📊 UniPi Info Screen")), innerWidth));
-    lines.push(this.ruleLine(innerWidth));
-    lines.push(this.frameLine(this.fg("dim", "No groups registered."), innerWidth));
-    lines.push(this.frameLine(this.fg("dim", "Modules will register groups on startup."), innerWidth));
-    for (let i = 0; i < 4; i++) lines.push(this.frameLine("", innerWidth));
-    lines.push(this.ruleLine(innerWidth));
-    lines.push(this.frameLine(this.fg("dim", "q/Esc close · r refresh"), innerWidth));
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.frameLine(this.overlay.fg("accent", this.overlay.bold("📊 UniPi Info Screen")), innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "No groups registered."), innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Modules will register groups on startup."), innerWidth));
+    for (let i = 0; i < 4; i++) lines.push(this.overlay.frameLine("", innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "q/Esc close · r refresh"), innerWidth));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
     return lines;
   }
 
@@ -397,19 +362,19 @@ export class InfoOverlay implements Component {
     const CONTENT_HEIGHT = 12;
     const lines: string[] = [];
 
-    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
 
     // Header: group name + loading indicator
     const loadingDot = isLoading
-      ? ` ${this.fg("warning", "●")}`
-      : ` ${this.fg("success", "●")}`;
-    const headerText = this.fg("accent", this.bold(` ${group.icon} ${group.name} `)) + loadingDot;
-    lines.push(this.frameLine(headerText, innerWidth));
-    lines.push(this.ruleLine(innerWidth));
+      ? ` ${this.overlay.fg("warning", "●")}`
+      : ` ${this.overlay.fg("success", "●")}`;
+    const headerText = this.overlay.fg("accent", this.overlay.bold(` ${group.icon} ${group.name} `)) + loadingDot;
+    lines.push(this.overlay.frameLine(headerText, innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Tab bar
-    lines.push(this.frameLine(this.renderTabBar(innerWidth), innerWidth));
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.frameLine(this.renderTabBar(innerWidth), innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Content with scrolling
     const contentLines = this.renderGroupContent(innerWidth, group, data);
@@ -419,13 +384,13 @@ export class InfoOverlay implements Component {
 
     const visible = wrapped.slice(this.scrollOffset, this.scrollOffset + CONTENT_HEIGHT);
     for (let i = 0; i < CONTENT_HEIGHT; i++) {
-      lines.push(this.frameLine(visible[i] ?? "", innerWidth));
+      lines.push(this.overlay.frameLine(visible[i] ?? "", innerWidth));
     }
 
     // Footer
-    lines.push(this.ruleLine(innerWidth));
-    lines.push(this.frameLine(this.renderFooter(innerWidth, wrapped.length, CONTENT_HEIGHT), innerWidth));
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.ruleLine(innerWidth));
+    lines.push(this.overlay.frameLine(this.renderFooter(innerWidth, wrapped.length, CONTENT_HEIGHT), innerWidth));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }
@@ -434,7 +399,7 @@ export class InfoOverlay implements Component {
     if (this.groups.length === 0) return "";
 
     const tabWidths = this.groups.map(g => visibleWidth(` ${g.icon} ${g.name} `));
-    const sepW = visibleWidth(this.fg("borderMuted", "│"));
+    const sepW = visibleWidth(this.overlay.fg("borderMuted", "│"));
     const indicatorSpace = 3;
     let maxTabs = 0;
     let totalW = 0;
@@ -463,18 +428,18 @@ export class InfoOverlay implements Component {
       const color = TAB_FG[i % TAB_FG.length]!;
       // Per-tab loading indicator
       const isLoading = this.groupLoading.get(g.id) ?? false;
-      const dot = isLoading ? this.fg("warning", "●") : "";
+      const dot = isLoading ? this.overlay.fg("warning", "●") : "";
 
       if (isActive) {
-        tabs.push(this.fg(color, this.bold(` ${g.icon} ${g.name} ${dot}`)));
+        tabs.push(this.overlay.fg(color, this.overlay.bold(` ${g.icon} ${g.name} ${dot}`)));
       } else {
-        tabs.push(this.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
+        tabs.push(this.overlay.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
       }
     }
 
-    const tabStr = tabs.join(this.fg("borderMuted", "│"));
-    if (this.tabScrollOffset > 0) return `${this.fg("dim", "◀")} ${tabStr}`;
-    if (this.tabScrollOffset + maxTabs < this.groups.length) return `${tabStr} ${this.fg("dim", "▶")}`;
+    const tabStr = tabs.join(this.overlay.fg("borderMuted", "│"));
+    if (this.tabScrollOffset > 0) return `${this.overlay.fg("dim", "◀")} ${tabStr}`;
+    if (this.tabScrollOffset + maxTabs < this.groups.length) return `${tabStr} ${this.overlay.fg("dim", "▶")}`;
     return tabStr;
   }
 
@@ -485,15 +450,15 @@ export class InfoOverlay implements Component {
       const isActive = i === this.activeTabIndex;
       const color = TAB_FG[i % TAB_FG.length]!;
       const isLoading = this.groupLoading.get(g.id) ?? false;
-      const dot = isLoading ? this.fg("warning", "●") : "";
+      const dot = isLoading ? this.overlay.fg("warning", "●") : "";
 
       if (isActive) {
-        tabs.push(this.fg(color, this.bold(` ${g.icon} ${g.name} ${dot}`)));
+        tabs.push(this.overlay.fg(color, this.overlay.bold(` ${g.icon} ${g.name} ${dot}`)));
       } else {
-        tabs.push(this.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
+        tabs.push(this.overlay.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
       }
     }
-    return tabs.join(this.fg("borderMuted", "│"));
+    return tabs.join(this.overlay.fg("borderMuted", "│"));
   }
 
   private renderGroupContent(width: number, group: InfoGroup, data: GroupData): string[] {
@@ -502,14 +467,14 @@ export class InfoOverlay implements Component {
     const visibleStats = infoRegistry.getVisibleStats(group.id);
 
     if (visibleStats.length === 0) {
-      lines.push(`  ${this.fg("dim", "No stats configured for this group.")}`);
+      lines.push(`  ${this.overlay.fg("dim", "No stats configured for this group.")}`);
       return lines;
     }
 
     // If no data yet and loading, show placeholder per stat
     if (Object.keys(data).length === 0 && isLoading) {
       for (const stat of visibleStats) {
-        lines.push(`  ${this.fg("dim", `${stat.label}:`)} ${this.fg("warning", "···")}`);
+        lines.push(`  ${this.overlay.fg("dim", `${stat.label}:`)} ${this.overlay.fg("warning", "···")}`);
       }
       return lines;
     }
@@ -522,12 +487,12 @@ export class InfoOverlay implements Component {
       const detail = statData?.detail;
 
       const label = `${stat.label}:`.padEnd(maxLabelLen + 1);
-      let line = `  ${this.fg("dim", label)} ${this.bold(value)}`;
+      let line = `  ${this.overlay.fg("dim", label)} ${this.overlay.bold(value)}`;
 
       if (detail) {
         const detailLines = detail.split("\n");
         if (detailLines.length === 1) {
-          line += ` ${this.fg("dim", `(${detail})`)}`;
+          line += ` ${this.overlay.fg("dim", `(${detail})`)}`;
         } else {
           lines.push(line);
           for (const dLine of detailLines) {
@@ -556,7 +521,7 @@ export class InfoOverlay implements Component {
     const hasScroll = totalLines > visibleHeight;
     let scrollStr = "";
     if (hasScroll) {
-      scrollStr = this.fg("dim", `${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}`);
+      scrollStr = this.overlay.fg("dim", `${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}`);
     }
 
     // Last updated for active group
@@ -565,17 +530,17 @@ export class InfoOverlay implements Component {
     const age = lastUp > 0 ? humanizeAge(Date.now() - lastUp) : "loading…";
 
     const hints = [
-      `${this.fg("accent", "←/→")} tabs`,
-      `${this.fg("success", "↑/↓")} scroll`,
-      `${this.fg("warning", "r")} refresh`,
-      `${this.fg("error", "q/Esc")} close`,
+      `${this.overlay.fg("accent", "←/→")} tabs`,
+      `${this.overlay.fg("success", "↑/↓")} scroll`,
+      `${this.overlay.fg("warning", "r")} refresh`,
+      `${this.overlay.fg("error", "q/Esc")} close`,
     ];
 
-    const hintStr = hints.join(`  ${this.fg("borderMuted", "•")}  `);
+    const hintStr = hints.join(`  ${this.overlay.fg("borderMuted", "•")}  `);
 
     // Build right side: age + hints
-    const ageStr = this.fg("dim", `⏱ ${age}`);
-    const rightStr = `${ageStr}  ${this.fg("borderMuted", "│")}  ${hintStr}`;
+    const ageStr = this.overlay.fg("dim", `⏱ ${age}`);
+    const rightStr = `${ageStr}  ${this.overlay.fg("borderMuted", "│")}  ${hintStr}`;
 
     const scrollW = visibleWidth(scrollStr);
     const rightW = visibleWidth(rightStr);

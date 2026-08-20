@@ -7,11 +7,11 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sendGotifyNotification } from "../platforms/gotify.js";
 import { updateConfig, loadConfig } from "../settings.js";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 type SetupPhase =
   | "instructions"
@@ -38,7 +38,7 @@ export class GotifySetupOverlay implements Component {
   private pasteTarget: "server-url" | "app-token" = "server-url";
   onClose?: () => void;
   requestRender?: () => void;
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
 
   constructor() {
     // Pre-fill from existing config if available
@@ -49,7 +49,7 @@ export class GotifySetupOverlay implements Component {
   }
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   invalidate(): void {}
@@ -195,41 +195,6 @@ export class GotifySetupOverlay implements Component {
     });
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as any, text);
-    const c: Record<string, string> = {
-      accent: "\x1b[36m",
-      success: "\x1b[32m",
-      warning: "\x1b[33m",
-      error: "\x1b[31m",
-      dim: "\x1b[2m",
-      borderMuted: "\x1b[90m",
-    };
-    return `${c[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
-  }
-
   private maskToken(token: string): string {
     if (token.length <= 8) return token;
     return token.slice(0, 4) + "•".repeat(token.length - 8) + token.slice(-4);
@@ -239,82 +204,82 @@ export class GotifySetupOverlay implements Component {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
-    lines.push(this.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
     lines.push(
-      this.frameLine(
-        this.fg("accent", this.bold("📡 Gotify Setup")),
+      this.overlay.frameLine(
+        this.overlay.fg("accent", this.overlay.bold("📡 Gotify Setup")),
         innerWidth
       )
     );
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     switch (this.phase) {
       case "instructions":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Set up Gotify push notifications:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Set up Gotify push notifications:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.bold("1.")} Run a Gotify server (or use an existing one)`,
-            innerWidth
-          )
-        );
-        lines.push(
-          this.frameLine(
-            `     ${this.fg("dim", "See: https://gotify.net/docs/install")}`,
-            innerWidth
-          )
-        );
-        lines.push(this.frameLine("", innerWidth));
-        lines.push(
-          this.frameLine(
-            `  ${this.bold("2.")} Open your Gotify web UI`,
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("1.")} Run a Gotify server (or use an existing one)`,
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            `     Go to ${this.fg("accent", "Apps")} → Create Application`,
+          this.overlay.frameLine(
+            `     ${this.overlay.fg("dim", "See: https://gotify.net/docs/install")}`,
+            innerWidth
+          )
+        );
+        lines.push(this.overlay.frameLine("", innerWidth));
+        lines.push(
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("2.")} Open your Gotify web UI`,
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            `     Copy the ${this.fg("accent", "app token")}`,
+          this.overlay.frameLine(
+            `     Go to ${this.overlay.fg("accent", "Apps")} → Create Application`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.bold("3.")} Enter your server URL and app token below`,
+          this.overlay.frameLine(
+            `     Copy the ${this.overlay.fg("accent", "app token")}`,
+            innerWidth
+          )
+        );
+        lines.push(this.overlay.frameLine("", innerWidth));
+        lines.push(
+          this.overlay.frameLine(
+            `  ${this.overlay.bold("3.")} Enter your server URL and app token below`,
             innerWidth
           )
         );
         if (this.serverUrl) {
           lines.push(
-            this.frameLine(
-              `     ${this.fg("success", "✓")} Server URL pre-filled from existing config`,
+            this.overlay.frameLine(
+              `     ${this.overlay.fg("success", "✓")} Server URL pre-filled from existing config`,
               innerWidth
             )
           );
         }
         if (this.appToken) {
           lines.push(
-            this.frameLine(
-              `     ${this.fg("success", "✓")} App token pre-filled from existing config`,
+            this.overlay.frameLine(
+              `     ${this.overlay.fg("success", "✓")} App token pre-filled from existing config`,
               innerWidth
             )
           );
         }
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to continue, Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to continue, Esc to cancel"),
             innerWidth
           )
         );
@@ -322,29 +287,29 @@ export class GotifySetupOverlay implements Component {
 
       case "server-url":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter your Gotify server URL:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter your Gotify server URL:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", this.bold(this.serverUrl || " "))}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", this.overlay.bold(this.serverUrl || " "))}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Example: https://gotify.example.com"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Example: https://gotify.example.com"),
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to continue · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
             innerWidth
           )
         );
@@ -352,32 +317,32 @@ export class GotifySetupOverlay implements Component {
 
       case "app-token":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter your app token:"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter your app token:"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         const displayToken = this.appToken
-          ? this.fg("accent", this.bold(this.maskToken(this.appToken)))
+          ? this.overlay.fg("accent", this.overlay.bold(this.maskToken(this.appToken)))
           : " ";
         lines.push(
-          this.frameLine(
-            `  ${displayToken}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${displayToken}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Found in Gotify → Apps → your app"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Found in Gotify → Apps → your app"),
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to continue · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
             innerWidth
           )
         );
@@ -385,145 +350,145 @@ export class GotifySetupOverlay implements Component {
 
       case "priority":
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Set notification priority (1-10):"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Set notification priority (1-10):"),
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", this.bold(this.priority || " "))}${this.fg("dim", "█")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", this.overlay.bold(this.priority || " "))}${this.overlay.fg("dim", "█")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", "1")} = low · ${this.fg("dim", "5")} = normal · ${this.fg("dim", "10")} = high`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", "1")} = low · ${this.overlay.fg("dim", "5")} = normal · ${this.overlay.fg("dim", "10")} = high`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Enter to test connection · Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Enter to test connection · Esc to cancel"),
             innerWidth
           )
         );
         break;
 
       case "testing":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("accent", "⠋")} ${this.bold("Testing connection...")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("accent", "⠋")} ${this.overlay.bold("Testing connection...")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Sending test to ${this.serverUrl}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Sending test to ${this.serverUrl}`)}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Esc to cancel"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Esc to cancel"),
             innerWidth
           )
         );
         break;
 
       case "success":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("success", "✓ Gotify configured successfully!")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("success", "✓ Gotify configured successfully!")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Server: ${this.serverUrl}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Server: ${this.serverUrl}`)}`,
             innerWidth
           )
         );
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", `Priority: ${this.priority}`)}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", `Priority: ${this.priority}`)}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Closing..."),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Closing..."),
             innerWidth
           )
         );
         break;
 
       case "test-failed":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("error", "✗ Connection test failed")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("error", "✗ Connection test failed")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", this.testError || "Unknown error")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", this.testError || "Unknown error")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", "Check your server URL and app token")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", "Check your server URL and app token")}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to close"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to close"),
             innerWidth
           )
         );
         break;
 
       case "error":
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("error", "✗ Setup failed")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("error", "✗ Setup failed")}`,
             innerWidth
           )
         );
-        lines.push(this.frameLine("", innerWidth));
+        lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(
-          this.frameLine(
-            `  ${this.fg("dim", this.error || "Unknown error")}`,
+          this.overlay.frameLine(
+            `  ${this.overlay.fg("dim", this.error || "Unknown error")}`,
             innerWidth
           )
         );
-        lines.push(this.ruleLine(innerWidth));
+        lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
-          this.frameLine(
-            this.fg("dim", "Press Enter to close"),
+          this.overlay.frameLine(
+            this.overlay.fg("dim", "Press Enter to close"),
             innerWidth
           )
         );
         break;
     }
 
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
     return lines;
   }
 }

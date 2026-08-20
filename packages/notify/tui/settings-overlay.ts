@@ -6,7 +6,7 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
   loadConfig,
@@ -15,7 +15,7 @@ import {
 } from "../settings.js";
 import { loadNtfyConfig, saveNtfyConfig, getNtfyConfigScope } from "../ntfy-config.js";
 import type { NotifyConfig, NtfyConfig } from "../types.js";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { OverlayTheme, boxInnerWidth } from "@pi-unipi/core";
 
 /** Section types */
 type Section = "platforms" | "events" | "recap";
@@ -35,7 +35,7 @@ export class NotifySettingsOverlay implements Component {
   requestRender?: () => void;
   /** Called when user presses M in recap section to open model selector */
   onOpenModelSelector?: () => void;
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
 
   constructor() {
     this.config = loadConfig();
@@ -45,7 +45,7 @@ export class NotifySettingsOverlay implements Component {
   }
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   invalidate(): void {}
@@ -151,61 +151,30 @@ export class NotifySettingsOverlay implements Component {
     setTimeout(() => this.onClose?.(), 500);
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as any, text);
-    const c: Record<string, string> = {
-      accent: "\x1b[36m", success: "\x1b[32m", warning: "\x1b[33m",
-      error: "\x1b[31m", dim: "\x1b[2m", borderMuted: "\x1b[90m",
-    };
-    return `${c[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = Math.max(0, innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${"─".repeat(innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
-  }
-
   render(width: number): string[] {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
 
-    lines.push(this.borderLine(innerWidth, "top"));
-    lines.push(this.frameLine(this.fg("accent", this.bold("🔔 Notify Settings")), innerWidth));
-    lines.push(this.frameLine(this.fg("dim", "Configure notification platforms and events"), innerWidth));
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.frameLine(this.overlay.fg("accent", this.overlay.bold("🔔 Notify Settings")), innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Configure notification platforms and events"), innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Section tabs
     const platformTab =
       this.section === "platforms"
-        ? this.fg("accent", this.bold("[Platforms]"))
-        : this.fg("dim", "Platforms");
+        ? this.overlay.fg("accent", this.overlay.bold("[Platforms]"))
+        : this.overlay.fg("dim", "Platforms");
     const eventsTab =
       this.section === "events"
-        ? this.fg("accent", this.bold("[Events]"))
-        : this.fg("dim", "Events");
+        ? this.overlay.fg("accent", this.overlay.bold("[Events]"))
+        : this.overlay.fg("dim", "Events");
     const recapTab =
       this.section === "recap"
-        ? this.fg("accent", this.bold("[Recap]"))
-        : this.fg("dim", "Recap");
-    lines.push(this.frameLine(`  ${platformTab}  ${eventsTab}  ${recapTab}`, innerWidth));
-    lines.push(this.ruleLine(innerWidth));
+        ? this.overlay.fg("accent", this.overlay.bold("[Recap]"))
+        : this.overlay.fg("dim", "Recap");
+    lines.push(this.overlay.frameLine(`  ${platformTab}  ${eventsTab}  ${recapTab}`, innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     if (this.section === "platforms") {
       this.renderPlatforms(lines, innerWidth);
@@ -217,21 +186,21 @@ export class NotifySettingsOverlay implements Component {
 
     // Status messages
     if (this.error) {
-      lines.push(this.ruleLine(innerWidth));
-      lines.push(this.frameLine(`  ${this.fg("error", `⚠ ${this.error}`)}`, innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
+      lines.push(this.overlay.frameLine(`  ${this.overlay.fg("error", `⚠ ${this.error}`)}`, innerWidth));
     }
     if (this.saved) {
-      lines.push(this.ruleLine(innerWidth));
-      lines.push(this.frameLine(`  ${this.fg("success", "✓ Settings saved")}`, innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
+      lines.push(this.overlay.frameLine(`  ${this.overlay.fg("success", "✓ Settings saved")}`, innerWidth));
     }
 
     // Footer
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
     const footerHint = this.section === "recap"
       ? "↑↓ navigate · Space toggle · M change model · Tab switch · Enter save · Esc cancel"
       : "↑↓ navigate · Space toggle · Tab switch · Enter save · Esc cancel";
-    lines.push(this.frameLine(this.fg("dim", footerHint), innerWidth));
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", footerHint), innerWidth));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }
@@ -273,16 +242,16 @@ export class NotifySettingsOverlay implements Component {
     for (let i = 0; i < platforms.length; i++) {
       const p = platforms[i];
       const isSelected = i === this.selectedIndex;
-      const toggleOn = this.fg("success", "●");
-      const toggleOff = this.fg("dim", "○");
+      const toggleOn = this.overlay.fg("success", "●");
+      const toggleOff = this.overlay.fg("dim", "○");
       // ntfy enabled state comes from resolved ntfy.json, not config.json
       const isEnabled = p.key === "ntfy" ? this.ntfyConfig.enabled : this.config[p.key].enabled;
       const toggle = isEnabled ? toggleOn : toggleOff;
-      const label = isSelected ? this.bold(p.label) : this.fg("dim", p.label);
+      const label = isSelected ? this.overlay.bold(p.label) : this.overlay.fg("dim", p.label);
 
       lines.push(
-        this.frameLine(
-          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}  ${this.fg("dim", p.detail)}`,
+        this.overlay.frameLine(
+          `${isSelected ? this.overlay.fg("accent", "▸") : " "} ${toggle} ${label}  ${this.overlay.fg("dim", p.detail)}`,
           innerWidth
         )
       );
@@ -293,17 +262,17 @@ export class NotifySettingsOverlay implements Component {
       const i = platforms.length;
       const isSelected = i === this.selectedIndex;
       const isEnabled = this.config.native.suppressWhenFocused === true;
-      const toggleOn = this.fg("success", "●");
-      const toggleOff = this.fg("dim", "○");
+      const toggleOn = this.overlay.fg("success", "●");
+      const toggleOff = this.overlay.fg("dim", "○");
       const toggle = isEnabled ? toggleOn : toggleOff;
       const label = isSelected
-        ? this.bold("Suppress when focused")
-        : this.fg("dim", "Suppress when focused");
-      const detail = this.fg("dim", isEnabled ? "Windows only — terminal in foreground → skip" : "Windows only");
+        ? this.overlay.bold("Suppress when focused")
+        : this.overlay.fg("dim", "Suppress when focused");
+      const detail = this.overlay.fg("dim", isEnabled ? "Windows only — terminal in foreground → skip" : "Windows only");
 
       lines.push(
-        this.frameLine(
-          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}  ${detail}`,
+        this.overlay.frameLine(
+          `${isSelected ? this.overlay.fg("accent", "▸") : " "} ${toggle} ${label}  ${detail}`,
           innerWidth
         )
       );
@@ -316,14 +285,14 @@ export class NotifySettingsOverlay implements Component {
     for (let i = 0; i < events.length; i++) {
       const [key, cfg] = events[i];
       const isSelected = i === this.selectedIndex;
-      const toggleOn = this.fg("success", "●");
-      const toggleOff = this.fg("dim", "○");
+      const toggleOn = this.overlay.fg("success", "●");
+      const toggleOff = this.overlay.fg("dim", "○");
       const toggle = cfg.enabled ? toggleOn : toggleOff;
-      const label = isSelected ? this.bold(key) : this.fg("dim", key);
+      const label = isSelected ? this.overlay.bold(key) : this.overlay.fg("dim", key);
 
       lines.push(
-        this.frameLine(
-          `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}`,
+        this.overlay.frameLine(
+          `${isSelected ? this.overlay.fg("accent", "▸") : " "} ${toggle} ${label}`,
           innerWidth
         )
       );
@@ -333,27 +302,27 @@ export class NotifySettingsOverlay implements Component {
   private renderRecap(lines: string[], innerWidth: number): void {
     // Toggle
     const isSelected = this.selectedIndex === 0;
-    const toggleOn = this.fg("success", "●");
-    const toggleOff = this.fg("dim", "○");
+    const toggleOn = this.overlay.fg("success", "●");
+    const toggleOff = this.overlay.fg("dim", "○");
     const toggle = this.config.recap.enabled ? toggleOn : toggleOff;
     const label = isSelected
-      ? this.bold("Enable Recap")
-      : this.fg("dim", "Enable Recap");
+      ? this.overlay.bold("Enable Recap")
+      : this.overlay.fg("dim", "Enable Recap");
 
     lines.push(
-      this.frameLine(
-        `${isSelected ? this.fg("accent", "▸") : " "} ${toggle} ${label}`,
+      this.overlay.frameLine(
+        `${isSelected ? this.overlay.fg("accent", "▸") : " "} ${toggle} ${label}`,
         innerWidth
       )
     );
 
     // Current model display
     const modelRef = this.config.recap.model;
-    const modelLabel = this.fg("dim", `  Model: ${modelRef}`);
-    lines.push(this.frameLine(modelLabel, innerWidth));
+    const modelLabel = this.overlay.fg("dim", `  Model: ${modelRef}`);
+    lines.push(this.overlay.frameLine(modelLabel, innerWidth));
     lines.push(
-      this.frameLine(
-        this.fg("dim", "  Press M to change model"),
+      this.overlay.frameLine(
+        this.overlay.fg("dim", "  Press M to change model"),
         innerWidth
       )
     );

@@ -10,12 +10,12 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, SettingsList, type SettingItem, type SettingsListTheme, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
 import type { FooterGroup, FooterSettings, SeparatorStyle, IconStyle } from "../types.js";
-import { boxInnerWidth } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 // ─── Section types ─────────────────────────────────────────────────────
 
@@ -43,23 +43,10 @@ const THEME: SettingsListTheme = {
   hint: (text) => `\x1b[2m${text}\x1b[0m`,
 };
 
-// ─── Helper: frame a line inside box drawing ───────────────────────────
+// ─── Shared box-drawing helper ────────────────────────────────────────
 
-function frameLine(content: string, innerWidth: number): string {
-  const visLen = visibleWidth(content);
-  const pad = Math.max(0, innerWidth - visLen);
-  return `\x1b[90m│\x1b[0m${content}${" ".repeat(pad)}\x1b[90m│\x1b[0m`;
-}
+const overlay = new OverlayTheme();
 
-function ruleLine(innerWidth: number): string {
-  return `\x1b[90m├${"─".repeat(innerWidth)}┤\x1b[0m`;
-}
-
-function borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-  const left = edge === "top" ? "┌" : "└";
-  const right = edge === "top" ? "┐" : "┘";
-  return `\x1b[90m${left}${"─".repeat(innerWidth)}${right}\x1b[0m`;
-}
 
 // ─── Show the footer settings overlay ──────────────────────────────────
 
@@ -458,8 +445,8 @@ class FooterSettingsOverlay {
     const lines: string[] = [];
 
     // Header
-    lines.push(borderLine(innerWidth, "top"));
-    lines.push(frameLine(`\x1b[1m\x1b[36m⚙  Footer Settings\x1b[0m`, innerWidth));
+    lines.push(overlay.borderLine(innerWidth, "top"));
+    lines.push(overlay.frameLine(`\x1b[1m\x1b[36m⚙  Footer Settings\x1b[0m`, innerWidth));
 
     // Section tabs
     const tabParts = SECTIONS.map((s) => {
@@ -469,20 +456,20 @@ class FooterSettingsOverlay {
       }
       return `\x1b[2m${label}\x1b[0m`;
     });
-    lines.push(frameLine(`  ${tabParts.join("  ")}`, innerWidth));
-    lines.push(ruleLine(innerWidth));
+    lines.push(overlay.frameLine(`  ${tabParts.join("  ")}`, innerWidth));
+    lines.push(overlay.ruleLine(innerWidth));
 
     // Section content
     const activeList = this.currentList;
     if (activeList) {
       const contentLines = activeList.render(innerWidth - 2);
       for (const line of contentLines) {
-        lines.push(frameLine(` ${line}`, innerWidth));
+        lines.push(overlay.frameLine(` ${line}`, innerWidth));
       }
     }
 
     // Footer hints
-    lines.push(ruleLine(innerWidth));
+    lines.push(overlay.ruleLine(innerWidth));
 
     let hints: string;
     if (this.section === "segments" && this.selectedGroupId) {
@@ -492,8 +479,8 @@ class FooterSettingsOverlay {
     } else {
       hints = "j/k navigate · Space/Enter change · Tab section · q close";
     }
-    lines.push(frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
-    lines.push(borderLine(innerWidth, "bottom"));
+    lines.push(overlay.frameLine(`\x1b[2m${hints}\x1b[0m`, innerWidth));
+    lines.push(overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }

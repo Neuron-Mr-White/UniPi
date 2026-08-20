@@ -6,9 +6,9 @@
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { boxInnerWidth, safeRepeat } from "@pi-unipi/core";
+import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
 
 export interface SelectableModel {
   provider: string;
@@ -29,7 +29,7 @@ export class ImageModelSelectorOverlay implements Component {
   private filterMode = false;
   private saved = false;
   private error: string | null = null;
-  private theme: Theme | null = null;
+  private overlay = new OverlayTheme();
   /** Free-text entry, for models the catalog does not know about. */
   private customMode = false;
   private custom = "";
@@ -55,7 +55,7 @@ export class ImageModelSelectorOverlay implements Component {
   }
 
   setTheme(theme: Theme): void {
-    this.theme = theme;
+    this.overlay.setTheme(theme);
   }
 
   invalidate(): void {}
@@ -229,41 +229,6 @@ export class ImageModelSelectorOverlay implements Component {
     this.onClose?.();
   }
 
-  // ─── Theme helpers ───────────────────────────────────────────────────
-
-  private fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as never, text);
-    const codes: Record<string, string> = {
-      accent: "\x1b[36m",
-      success: "\x1b[32m",
-      warning: "\x1b[33m",
-      error: "\x1b[31m",
-      dim: "\x1b[2m",
-      borderMuted: "\x1b[90m",
-    };
-    return `${codes[color] ?? ""}${text}\x1b[0m`;
-  }
-
-  private bold(text: string): string {
-    return this.theme ? this.theme.bold(text) : `\x1b[1m${text}\x1b[0m`;
-  }
-
-  private frameLine(content: string, innerWidth: number): string {
-    const truncated = truncateToWidth(content, innerWidth, "");
-    const padding = safeRepeat(" ", innerWidth - visibleWidth(truncated));
-    return `${this.fg("borderMuted", "│")}${truncated}${padding}${this.fg("borderMuted", "│")}`;
-  }
-
-  private ruleLine(innerWidth: number): string {
-    return this.fg("borderMuted", `├${safeRepeat("─", innerWidth)}┤`);
-  }
-
-  private borderLine(innerWidth: number, edge: "top" | "bottom"): string {
-    const left = edge === "top" ? "┌" : "└";
-    const right = edge === "top" ? "┐" : "┘";
-    return this.fg("borderMuted", `${left}${safeRepeat("─", innerWidth)}${right}`);
-  }
-
   render(width: number): string[] {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];
@@ -277,48 +242,48 @@ export class ImageModelSelectorOverlay implements Component {
         ? "Model used by image_generate"
         : "Vision model used by image_recognize";
 
-    lines.push(this.borderLine(innerWidth, "top"));
-    lines.push(this.frameLine(this.fg("accent", this.bold(title)), innerWidth));
-    lines.push(this.frameLine(this.fg("dim", subtitle), innerWidth));
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.borderLine(innerWidth, "top"));
+    lines.push(this.overlay.frameLine(this.overlay.fg("accent", this.overlay.bold(title)), innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", subtitle), innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Filter bar
     if (this.customMode) {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("accent", "Model:")} ${this.custom}${this.fg("accent", "█")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("accent", "Model:")} ${this.custom}${this.overlay.fg("accent", "█")}`,
           innerWidth,
         ),
       );
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", "e.g. omniroute/fal/fal-ai/flux-2-pro")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", "e.g. omniroute/fal/fal-ai/flux-2-pro")}`,
           innerWidth,
         ),
       );
     } else if (this.filterMode) {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("accent", "Filter:")} ${this.filter}${this.fg("accent", "█")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("accent", "Filter:")} ${this.filter}${this.overlay.fg("accent", "█")}`,
           innerWidth,
         ),
       );
     } else if (this.filter) {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", "Filter:")} ${this.filter} ${this.fg("dim", "(press / to edit)")}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", "Filter:")} ${this.filter} ${this.overlay.fg("dim", "(press / to edit)")}`,
           innerWidth,
         ),
       );
     } else {
       lines.push(
-        this.frameLine(
-          `  ${this.fg("dim", `${this.models.length} models · / filter · c custom`)}`,
+        this.overlay.frameLine(
+          `  ${this.overlay.fg("dim", `${this.models.length} models · / filter · c custom`)}`,
           innerWidth,
         ),
       );
     }
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
 
     // Model list
     const terminalRows = process.stdout.rows ?? 30;
@@ -335,47 +300,47 @@ export class ImageModelSelectorOverlay implements Component {
             ? "No image models available (needs OpenRouter)"
             : "No vision-capable models configured"
           : "No models match the filter";
-      lines.push(this.frameLine(`  ${this.fg("dim", empty)}`, innerWidth));
+      lines.push(this.overlay.frameLine(`  ${this.overlay.fg("dim", empty)}`, innerWidth));
     } else {
       for (let i = start; i < end; i++) {
         const model = this.filtered[i];
         const isSelected = i === this.selectedIndex;
-        const marker = isSelected ? this.fg("accent", "▸") : " ";
+        const marker = isSelected ? this.overlay.fg("accent", "▸") : " ";
         const label = model.name || model.id;
-        const providerTag = this.fg("dim", `[${model.provider}]`);
+        const providerTag = this.overlay.fg("dim", `[${model.provider}]`);
         const base = isSelected
-          ? `${providerTag} ${this.bold(label)}`
-          : `${providerTag} ${this.fg("dim", label)}`;
+          ? `${providerTag} ${this.overlay.bold(label)}`
+          : `${providerTag} ${this.overlay.fg("dim", label)}`;
         const display = model.unavailable
-          ? `${base} ${this.fg("warning", `(${model.unavailable})`)}`
+          ? `${base} ${this.overlay.fg("warning", `(${model.unavailable})`)}`
           : base;
-        lines.push(this.frameLine(`  ${marker} ${display}`, innerWidth));
+        lines.push(this.overlay.frameLine(`  ${marker} ${display}`, innerWidth));
       }
     }
 
     if (!this.customMode && this.filtered.length > maxVisible) {
       const pct = Math.round(((this.selectedIndex + 1) / this.filtered.length) * 100);
       lines.push(
-        this.frameLine(
-          this.fg("dim", `  ${pct}% (${this.selectedIndex + 1}/${this.filtered.length})`),
+        this.overlay.frameLine(
+          this.overlay.fg("dim", `  ${pct}% (${this.selectedIndex + 1}/${this.filtered.length})`),
           innerWidth,
         ),
       );
     }
 
     if (this.error) {
-      lines.push(this.ruleLine(innerWidth));
-      lines.push(this.frameLine(`  ${this.fg("error", `⚠ ${this.error}`)}`, innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
+      lines.push(this.overlay.frameLine(`  ${this.overlay.fg("error", `⚠ ${this.error}`)}`, innerWidth));
     }
     if (this.saved) {
-      lines.push(this.ruleLine(innerWidth));
-      lines.push(this.frameLine(`  ${this.fg("success", "✓ Model saved")}`, innerWidth));
+      lines.push(this.overlay.ruleLine(innerWidth));
+      lines.push(this.overlay.frameLine(`  ${this.overlay.fg("success", "✓ Model saved")}`, innerWidth));
     }
 
-    lines.push(this.ruleLine(innerWidth));
+    lines.push(this.overlay.ruleLine(innerWidth));
     lines.push(
-      this.frameLine(
-        this.fg(
+      this.overlay.frameLine(
+        this.overlay.fg(
           "dim",
           this.customMode
             ? "Enter save · Esc back to list"
@@ -384,7 +349,7 @@ export class ImageModelSelectorOverlay implements Component {
         innerWidth,
       ),
     );
-    lines.push(this.borderLine(innerWidth, "bottom"));
+    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
 
     return lines;
   }
