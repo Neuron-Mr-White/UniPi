@@ -112,11 +112,10 @@ export class NameBadgeState {
       {
         overlay: true,
         overlayOptions: {
-          anchor: "top-right",
-          width: 30,
+          anchor: "top-center",
+          width: "100%",
           nonCapturing: true,
-          visible: (termWidth: number) => termWidth >= 40,
-          margin: { top: 0, right: 1 },
+          visible: (termWidth: number) => termWidth >= 20,
         },
         onHandle: (handle: OverlayHandle) => {
           this.overlayHandle = handle;
