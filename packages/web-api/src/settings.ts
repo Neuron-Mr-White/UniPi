@@ -8,6 +8,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import {
+  DEFAULT_BROWSER,
+  DEFAULT_OS,
+  DEFAULT_MAX_CHARS,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_BATCH_CONCURRENCY,
+  DEFAULT_REMOVE_IMAGES,
+  DEFAULT_INCLUDE_REPLIES,
+} from "./engine/constants.js";
 
 /** Auth storage structure (API keys) */
 export interface WebApiAuth {
@@ -45,15 +54,15 @@ export interface WebApiConfig {
   smartFetch?: Partial<SmartFetchSettings>;
 }
 
-/** Default smart-fetch settings */
+/** Default smart-fetch settings — values from engine/constants.ts */
 const DEFAULT_SMART_FETCH_SETTINGS: SmartFetchSettings = {
-  browser: "chrome_145",
-  os: "windows",
-  maxChars: 50000,
-  timeoutMs: 15000,
-  batchConcurrency: 8,
-  removeImages: false,
-  includeReplies: "extractors",
+  browser: DEFAULT_BROWSER,
+  os: DEFAULT_OS,
+  maxChars: DEFAULT_MAX_CHARS,
+  timeoutMs: DEFAULT_TIMEOUT_MS,
+  batchConcurrency: DEFAULT_BATCH_CONCURRENCY,
+  removeImages: DEFAULT_REMOVE_IMAGES,
+  includeReplies: DEFAULT_INCLUDE_REPLIES,
 };
 
 /** Default configuration */

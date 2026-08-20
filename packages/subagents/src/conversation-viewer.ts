@@ -7,6 +7,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { formatMs, describeActivity } from "./widget.js";
 import {
   type Component,
   matchesKey,
@@ -30,13 +31,6 @@ function extractText(content: string | Array<{ type: string; text?: string }>): 
     .join("");
 }
 
-/** Format duration. */
-function formatMs(ms: number): string {
-  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
-  if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
-  return `${ms}ms`;
-}
-
 /** Format tokens compactly. */
 function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M token`;
@@ -45,18 +39,6 @@ function formatTokens(count: number): string {
 }
 
 /** Describe current activity from active tools. */
-function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
-  if (activeTools.size > 0) {
-    const names = [...new Set(activeTools.values())];
-    return names.join(", ") + "…";
-  }
-  if (responseText && responseText.trim().length > 0) {
-    const lastLine = responseText.split("\n").find((l) => l.trim())?.trim() ?? "";
-    if (lastLine.length > 60) return lastLine.slice(0, 60) + "…";
-    if (lastLine.length > 0) return lastLine;
-  }
-  return "thinking…";
-}
 
 interface ViewerRecord {
   type: string;

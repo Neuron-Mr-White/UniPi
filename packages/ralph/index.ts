@@ -337,8 +337,9 @@ function handleStop(ctx: ExtensionContext, pi: ExtensionAPI): void {
     return;
   }
 
-  mgr.stopLoop(
+  mgr.completeLoop(
     state,
+    "cancelled",
     `Stopped Ralph loop: ${state.name} (iteration ${state.iteration})`,
   );
 }

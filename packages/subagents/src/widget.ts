@@ -21,13 +21,13 @@ import type { AgentActivity } from "./types.js";
 const MAX_WIDGET_LINES = 12;
 
 /** Braille spinner frames. */
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Statuses that indicate error/non-success (for linger behavior). */
 const ERROR_STATUSES = new Set(["error", "aborted", "stopped"]);
 
 /** Tool name → human-readable action for activity descriptions. */
-const TOOL_DISPLAY: Record<string, string> = {
+export const TOOL_DISPLAY: Record<string, string> = {
   read: "reading",
   bash: "running command",
   edit: "editing",
@@ -40,14 +40,14 @@ const TOOL_DISPLAY: Record<string, string> = {
 // ---- Formatting helpers ----
 
 /** Format duration. */
-function formatMs(ms: number): string {
+export function formatMs(ms: number): string {
   if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
   if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
   return `${ms}ms`;
 }
 
 /** Format turns with optional max limit: "⟳5≤30" or "⟳5". */
-function formatTurns(turn: number, max?: number): string {
+export function formatTurns(turn: number, max?: number): string {
   return max != null ? `⟳${turn}≤${max}` : `⟳${turn}`;
 }
 
@@ -55,7 +55,7 @@ function formatTurns(turn: number, max?: number): string {
  * Build a human-readable activity string from currently-running tools.
  * Groups by tool type with counts: "reading 3 files, searching 2 patterns".
  */
-function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
+export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {

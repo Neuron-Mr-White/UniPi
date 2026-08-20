@@ -127,7 +127,7 @@ export class RalphLoopManager {
     if (message && this.ctx.hasUI) this.ctx.ui.notify(message, "info");
   }
 
-  completeLoop(state: LoopState): void {
+  completeLoop(state: LoopState, reason: "completed" | "cancelled" = "completed", message?: string): void {
     state.status = "completed";
     state.completedAt = now();
     state.active = false;
@@ -139,26 +139,7 @@ export class RalphLoopManager {
       iteration: state.iteration,
       maxIterations: state.maxIterations,
       status: "completed",
-      reason: "completed",
-    } satisfies UnipiRalphLoopEvent);
-
-    this.currentLoop = null;
-    this.updateUI();
-  }
-
-  stopLoop(state: LoopState, message?: string): void {
-    state.status = "completed";
-    state.completedAt = now();
-    state.active = false;
-    this.saveState(state);
-
-    // Emit event
-    this.emitFn(UNIPI_EVENTS.RALPH_LOOP_END, {
-      name: state.name,
-      iteration: state.iteration,
-      maxIterations: state.maxIterations,
-      status: "completed",
-      reason: "cancelled",
+      reason,
     } satisfies UnipiRalphLoopEvent);
 
     this.currentLoop = null;

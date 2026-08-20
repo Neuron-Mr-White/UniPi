@@ -17,7 +17,7 @@ import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
 import { ConversationViewer } from "./conversation-viewer.js";
-import { AgentWidget } from "./widget.js";
+import { AgentWidget, SPINNER, TOOL_DISPLAY, formatMs, formatTurns, describeActivity } from "./widget.js";
 
 /** Get info registry from global */
 function getInfoRegistry() {
@@ -26,59 +26,13 @@ function getInfoRegistry() {
 
 // ---- Formatting helpers (shared between renderers and inline text) ----
 
-const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Tool name → human-readable action. */
-const TOOL_DISPLAY: Record<string, string> = {
-  read: "reading",
-  bash: "running command",
-  edit: "editing",
-  write: "writing",
-  grep: "searching",
-  find: "finding files",
-  ls: "listing",
-};
 
 function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M token`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k token`;
   return `${count} token`;
-}
-
-function formatTurns(turn: number, max?: number | null): string {
-  return max != null ? `⟳${turn}≤${max}` : `⟳${turn}`;
-}
-
-function formatMs(ms: number): string {
-  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
-  if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)}s`;
-  return `${ms}ms`;
-}
-
-/** Build activity description from active tools. */
-function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
-  if (activeTools.size > 0) {
-    const groups = new Map<string, number>();
-    for (const toolName of activeTools.values()) {
-      const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
-    }
-    const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
-      } else {
-        parts.push(action);
-      }
-    }
-    return parts.join(", ") + "…";
-  }
-  if (responseText && responseText.trim().length > 0) {
-    const line = responseText.split("\n").find((l) => l.trim())?.trim() ?? "";
-    if (line.length > 60) return line.slice(0, 60) + "…";
-    if (line.length > 0) return line;
-  }
-  return "thinking…";
 }
 
 /** Format tokens safely from session. */
