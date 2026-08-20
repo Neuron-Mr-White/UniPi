@@ -2,18 +2,8 @@
  * Runtime detection for sandbox executor
  */
 
-export type Language =
-  | "javascript"
-  | "typescript"
-  | "python"
-  | "shell"
-  | "ruby"
-  | "go"
-  | "rust"
-  | "php"
-  | "perl"
-  | "r"
-  | "elixir";
+import type { Language } from "../types.js";
+export type { Language };
 
 export interface RuntimeMap {
   javascript: string;

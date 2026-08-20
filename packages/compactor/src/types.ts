@@ -198,18 +198,6 @@ export type Language =
 // SearchResult, IndexResult, StoreStats types no longer needed.
 // ─────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────
-// Security (from context-mode)
-// ─────────────────────────────────────────────────────────
-
-export type PermissionDecision = "allow" | "deny" | "ask";
-
-export interface SecurityPolicy {
-  allow: string[];
-  deny: string[];
-  ask: string[];
-}
-
 export interface RuntimeCounters {
   sandboxRuns: number;
   searchQueries: number;

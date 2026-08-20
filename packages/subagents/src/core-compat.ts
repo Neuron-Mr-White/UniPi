@@ -1,32 +1,16 @@
+/**
+ * @pi-unipi/subagents — Local helpers (not in @pi-unipi/core)
+ *
+ * boundHelperOutput: bounded output with artifact-to-disk fallback.
+ * withHerdrBlocked: wraps a fn with herdr:blocked events.
+ */
+
+import { emitEvent } from "@pi-unipi/core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { chmodSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-
-export const MODULES = { SUBAGENTS: "subagents" } as const;
-
-export const UNIPI_EVENTS = {
-  MODULE_READY: "unipi:module:ready",
-  BADGE_GENERATE_REQUEST: "unipi:badge:generate:request",
-} as const;
-
-export interface UnipiBadgeGenerateRequestEvent {
-  conversationSummary?: string;
-}
-
-export function emitEvent(
-  pi: Pick<ExtensionAPI, "events">,
-  eventName: string,
-  payload: unknown,
-): boolean {
-  try {
-    pi.events.emit(eventName, payload);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export interface BoundedHelperOutput {
   text: string;
@@ -35,7 +19,6 @@ export interface BoundedHelperOutput {
   artifactPath?: string;
 }
 
-/** Standalone-package twin of core's bounded-output policy. */
 const MAX_RAW_HELPER_ARTIFACT_BYTES = 16 * 1024 * 1024;
 
 export function boundHelperOutput(

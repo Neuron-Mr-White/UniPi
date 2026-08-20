@@ -11,7 +11,7 @@ import type {
   AutocompleteProvider,
   AutocompleteSuggestions,
 } from "@earendil-works/pi-tui";
-import { fuzzyFilter } from "@earendil-works/pi-tui";
+import { fuzzyMatch as piFuzzyMatch } from "@earendil-works/pi-tui";
 
 import {
   COMMAND_REGISTRY,
@@ -26,20 +26,6 @@ import {
   sortTaggedItems,
 } from "./sorting.js";
 import type { TaggedItem } from "./sorting.js";
-
-// ─── Fuzzy matching ──────────────────────────────────────────────────
-
-/** Simple character-subsequence fuzzy match (case-insensitive) */
-function fuzzyMatch(text: string, query: string): boolean {
-  if (!query) return true;
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-  let qi = 0;
-  for (let i = 0; i < lower.length && qi < q.length; i++) {
-    if (lower[i] === q[qi]) qi++;
-  }
-  return qi === q.length;
-}
 
 // ─── Namespace detection ─────────────────────────────────────────────
 
@@ -131,9 +117,9 @@ function getEnhancedUnipiItems(
     //         commands surface when the user hasn't typed the full prefix.
     matched = entries.filter(([cmd]) => {
       if (isPastUnipiColon) {
-        return fuzzyMatch(cmd.replace("unipi:", "").toLowerCase(), query);
+        return piFuzzyMatch(query, cmd.replace("unipi:", "").toLowerCase()).matches;
       }
-      return fuzzyMatch(cmd.toLowerCase(), query);
+      return piFuzzyMatch(query, cmd.toLowerCase()).matches;
     });
   }
 

@@ -103,13 +103,13 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [x] compactor /unipi:compact → 3-line alias wrapper
 - [ ] compactor two config merge → one
 - [ ] compactor duplicate type declarations → one per type
-- [ ] subagents dedup helpers (3 files) → import from widget
+- [x] subagents dedup helpers (3 files) → import from widget
 - [ ] subagents core-compat.ts → declare @pi-unipi/core dep
 - [x] footer getGroupForSegment (2 copies) → one
 - [x] web-api duplicate fetchOptions → helper
-- [ ] web-api DEFAULT_SMART_FETCH_SETTINGS vs constants → one
+- [x] web-api DEFAULT_SMART_FETCH_SETTINGS vs constants → one
 - [x] web-api dependencies.ts lazy-loader → static imports
-- [ ] ralph completeLoop+stopLoop → one with reason param
+- [x] ralph completeLoop+stopLoop → one with reason param
 - [x] workflow 4 suggest* fns → one suggestFilesFrom
 - [ ] ask-user ask-ui renderOptions → one renderer + dispatch
 - [ ] milestone snapshot trio → extract to core (shared with workflow)

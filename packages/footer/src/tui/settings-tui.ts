@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
+import { matchesKey, SettingsList, type SettingItem, type SettingsListTheme, visibleWidth } from "@earendil-works/pi-tui";
 import { loadFooterSettings, saveFooterSettings } from "../config.js";
 import { PRESET_NAMES } from "../presets.js";
 import { setIconStyle } from "../rendering/icons.js";
@@ -59,10 +59,6 @@ function borderLine(innerWidth: number, edge: "top" | "bottom"): string {
   const left = edge === "top" ? "┌" : "└";
   const right = edge === "top" ? "┐" : "┘";
   return `\x1b[90m${left}${"─".repeat(innerWidth)}${right}\x1b[0m`;
-}
-
-function visibleWidth(text: string): number {
-  return text.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
 
 // ─── Show the footer settings overlay ──────────────────────────────────
