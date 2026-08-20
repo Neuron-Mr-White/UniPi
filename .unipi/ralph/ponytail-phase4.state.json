@@ -1,14 +1,13 @@
 {
-  "name": "ponytail-cuts",
-  "taskFile": ".unipi/ralph/ponytail-cuts.md",
-  "iteration": 8,
-  "maxIterations": 60,
-  "itemsPerIteration": 4,
-  "reflectEvery": 5,
+  "name": "ponytail-phase4",
+  "taskFile": ".unipi/ralph/ponytail-phase4.md",
+  "iteration": 1,
+  "maxIterations": 30,
+  "itemsPerIteration": 1,
+  "reflectEvery": 3,
   "reflectInstructions": "REFLECTION CHECKPOINT\n\nPause and reflect on your progress:\n1. What has been accomplished so far?\n2. What's working well?\n3. What's not working or blocking progress?\n4. Should the approach be adjusted?\n5. What are the next priorities?\n\nUpdate the task file with your reflection, then continue working.",
-  "active": false,
-  "status": "completed",
-  "startedAt": "2026-08-20T09:06:29.044Z",
-  "lastReflectionAt": 6,
-  "completedAt": "2026-08-20T10:31:22.416Z"
+  "active": true,
+  "status": "active",
+  "startedAt": "2026-08-20T11:08:07.637Z",
+  "lastReflectionAt": 0
 }

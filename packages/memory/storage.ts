@@ -1,14 +1,11 @@
 /**
  * @unipi/memory — Storage layer
  *
- * Primary backend: MemPalace (auto-installed via uv, auto-migrated from
- * legacy data). Falls back to SQLite + sqlite-vec when MemPalace/uv is
- * unavailable, so memory never hard-fails. Markdown files remain the
+ * Backend: MemPalace (auto-installed via uv, auto-migrated from
+ * legacy SQLite/markdown data on first run). Markdown files remain the
  * durable human-readable tier and the migration source.
  */
 
-import Database from "better-sqlite3";
-import * as sqliteVec from "sqlite-vec";
 import * as yaml from "js-yaml";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -33,7 +30,6 @@ import {
   type MigrationResult,
 } from "./mempalace.js";
 
-export type MemoryBackend = "mempalace" | "sqlite";
 
 /** Convert a MemPalace record (plain JSON) into a MemoryRecord. */
 function toMemoryRecord(r: MempalaceRecord): MemoryRecord {
@@ -48,29 +44,6 @@ function toMemoryRecord(r: MempalaceRecord): MemoryRecord {
     updated: r.updated || "",
     embedding: null,
   };
-}
-
-/** Memory row from SQLite queries */
-interface MemoryRow {
-  id: string;
-  title: string;
-  content?: string;
-  type?: string;
-  project?: string;
-  tags?: string;
-  created?: string;
-  updated?: string;
-  embedding?: { buffer: ArrayBuffer };
-}
-
-/** Search result row from vector queries */
-interface SearchResultRow {
-  id: string;
-  title: string;
-  distance: number;
-  rowid?: number;
-  title_match?: number;
-  content_match?: number;
 }
 
 /** Memory record interface */
@@ -102,24 +75,6 @@ interface MemoryFrontmatter {
   created: string;
   updated: string;
   type: string;
-}
-
-const MEMORY_DB_NAME = "memory.db";
-/**
- * Get the configured embedding dimensions.
- * Reads from config, falls back to 384.
- */
-function getEmbeddingDims(): number {
-  try {
-    const configPath = path.join(os.homedir(), ".unipi", "memory", "config.json");
-    if (fs.existsSync(configPath)) {
-      const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      if (typeof raw.dimensions === "number" && raw.dimensions >= 64) {
-        return raw.dimensions;
-      }
-    }
-  } catch { /* ignore */ }
-  return 384;
 }
 
 /**
@@ -239,10 +194,8 @@ ${record.content}
  * MemoryStorage class — manages SQLite + markdown storage for a single project.
  */
 export class MemoryStorage {
-  private db: Database.Database | null = null;
   private projectName: string;
   private scopeDir: string;
-  private backend: MemoryBackend = "sqlite";
   private mempalaceInstall: MempalaceInstall | null = null;
   private palacePath: string = DEFAULT_PALACE;
 
@@ -251,14 +204,9 @@ export class MemoryStorage {
     this.scopeDir = getProjectDir(projectName);
   }
 
-  /** Active backend ("mempalace" when available, else "sqlite"). */
-  getBackend(): MemoryBackend {
-    return this.backend;
-  }
-
   /** True when the MemPalace backend is active for this instance. */
   isMempalace(): boolean {
-    return this.backend === "mempalace" && this.mempalaceInstall !== null;
+    return this.mempalaceInstall !== null;
   }
 
   /**
@@ -295,66 +243,29 @@ export class MemoryStorage {
    * path (a Python spawn) actually needs to yield.
    */
   async listAllAsync(): Promise<Array<{ id: string; title: string; type: string }>> {
-    if (this.isMempalace()) {
-      return (await this.memPalaceCallAsync<MempalaceListItem[]>("list", {
-        wing: this.projectName,
-      })) ?? [];
-    }
-    return this.listAll();
+    return (await this.memPalaceCallAsync<MempalaceListItem[]>("list", {
+      wing: this.projectName,
+    })) ?? [];
   }
 
   /**
    * Initialize storage. Tries MemPalace first (auto-install + one-way
-   * auto-migration of legacy memories); falls back to SQLite if MemPalace
-   * is unavailable. Never throws for backend unavailability — only throws
-   * if the SQLite fallback itself fails to open.
+   * auto-migration of legacy memories). Throws if MemPalace is unavailable.
    */
   init(): void {
-    // Ensure directory exists (used by both backends for markdown tier).
     if (!fs.existsSync(this.scopeDir)) {
       fs.mkdirSync(this.scopeDir, { recursive: true });
     }
 
-    if (this.tryInitMempalace()) {
-      return;
-    }
-
-    // Fallback: SQLite + sqlite-vec.
-    this.backend = "sqlite";
-    const dbPath = path.join(this.scopeDir, MEMORY_DB_NAME);
-    const maxRetries = 5;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        this.initDb(dbPath);
-        return; // Success
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : "";
-        const errCode = (err instanceof Error && 'code' in err) ? (err as NodeJS.ErrnoException).code : undefined;
-        const isTransient =
-          errMsg.includes("disk I/O error") ||
-          errCode === "SQLITE_IOERR" ||
-          errCode === "SQLITE_BUSY" ||
-          errMsg.includes("database is locked");
-
-        this.close();
-
-        if (isTransient && attempt < maxRetries) {
-          const delayMs = 50 * Math.pow(2, attempt - 1); // 50, 100, 200, 400
-          const end = Date.now() + delayMs;
-          while (Date.now() < end) { /* busy wait */ }
-          continue;
-        }
-
-        throw err;
-      }
+    if (!this.tryInitMempalace()) {
+      throw new Error("MemPalace backend unavailable. Ensure uv is installed.");
     }
   }
 
   /**
    * Attempt to initialize the MemPalace backend. Returns true on success.
    * Handles auto-install and one-way auto-migration of legacy memories.
-   * Never throws — any failure returns false so the SQLite fallback runs.
+   * Never throws — any failure returns false so init() can throw a clear error.
    */
   private tryInitMempalace(): boolean {
     let install: MempalaceInstall | null;
@@ -376,7 +287,6 @@ export class MemoryStorage {
     }
 
     this.mempalaceInstall = install;
-    this.backend = "mempalace";
 
     // Idempotent migration + automatic catch-up. The source fingerprint turns
     // the old one-shot timestamp into a resumable state: new/changed markdown
@@ -406,59 +316,12 @@ export class MemoryStorage {
     return true;
   }
 
-  /**
-   * Open database and set up schema. Called by init() with retry logic.
-   */
-  private initDb(dbPath: string): void {
-    this.db = new Database(dbPath, { timeout: 5000 });
-
-    // Enable WAL mode for concurrent reads
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("busy_timeout = 5000");
-
-    // Load sqlite-vec extension
-    try {
-      sqliteVec.load(this.db);
-    } catch (_err) {
-      // sqlite-vec unavailable — fuzzy-only mode. Silent startup.
-    }
-
-    // Create tables
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS memories (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        tags TEXT,
-        project TEXT,
-        type TEXT,
-        created TEXT,
-        updated TEXT,
-        embedding BLOB
-      )
-    `);
-
-    // Create vector table if sqlite-vec loaded
-    try {
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[${getEmbeddingDims()}])
-      `);
-    } catch {
-      // vec0 table may already exist or sqlite-vec not loaded
-    }
-
-    // Verify database is usable
-    this.db.prepare("SELECT 1 FROM memories LIMIT 0").get();
-  }
 
   /**
    * Close the database connection.
    */
   close(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
+    // MemPalace is processless; nothing to close.
   }
 
   /**
@@ -479,85 +342,8 @@ export class MemoryStorage {
     // Set project if not provided
     if (!record.project) record.project = this.projectName;
 
-    if (this.isMempalace()) {
-      this.storeMempalace(record);
-      return;
-    }
-
-    if (!this.db) throw new Error("Storage not initialized");
-
-    // Prepare markdown content BEFORE transaction (fail fast)
-    const mdPath = path.join(this.scopeDir, `${record.id}.md`);
-    const frontmatter: MemoryFrontmatter = {
-      title: record.title,
-      tags: record.tags,
-      project: record.project,
-      created: record.created,
-      updated: record.updated,
-      type: record.type,
-    };
-    const mdContent = `---\n${yaml.dump(frontmatter, { lineWidth: -1 })}---\n\n${record.content}\n`;
-
-    // Use transaction for atomicity
-    const storeInTx = this.db.transaction(() => {
-      // Upsert into memories table
-      const stmt = this.db!.prepare(`
-        INSERT OR REPLACE INTO memories (id, title, content, tags, project, type, created, updated, embedding)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const tagsJson = JSON.stringify(record.tags);
-      const embeddingBuf = record.embedding ? Buffer.from(record.embedding.buffer) : null;
-
-      stmt.run(
-        record.id,
-        record.title,
-        record.content,
-        tagsJson,
-        record.project,
-        record.type,
-        record.created,
-        record.updated,
-        embeddingBuf
-      );
-
-      // Update vector table
-      if (record.embedding) {
-        try {
-          // Delete old vector if exists
-          this.db!.prepare("DELETE FROM memories_vec WHERE rowid = ?").run(BigInt(this.idToRowid(record.id)));
-        } catch {
-          // Ignore if not found
-        }
-
-        try {
-          const vecStmt = this.db!.prepare(
-            "INSERT INTO memories_vec(rowid, embedding) VALUES (?, ?)"
-          );
-          vecStmt.run(
-            BigInt(this.idToRowid(record.id)),
-            Buffer.from(record.embedding.buffer)
-          );
-        } catch (_err) {
-          // Vector insert failure — memory still searchable via text/FTS.
-        }
-      }
-    });
-
-    // Execute transaction
-    storeInTx();
-
-    // Write markdown file AFTER successful DB write
-    try {
-      // Ensure directory exists
-      const dir = path.dirname(mdPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(mdPath, mdContent, "utf-8");
-    } catch (_err) {
-      // DB write succeeded but file write failed — memory still in DB and searchable.
-    }
+    this.storeMempalace(record);
+    return;
   }
 
   /**
@@ -597,64 +383,11 @@ export class MemoryStorage {
    * Returns count of synced files.
    */
   syncOrphanedFiles(): number {
-    if (this.isMempalace()) {
-      const synced = this.memPalaceCall<number>("sync_orphaned", {
-        project_dir: this.scopeDir,
-        wing: this.projectName,
-      });
-      return synced ?? 0;
-    }
-
-    if (!this.db) throw new Error("Storage not initialized");
-
-    const files = fs.readdirSync(this.scopeDir)
-      .filter(f => f.endsWith(".md") && !f.startsWith("."));
-
-    // Get existing IDs from DB
-    const existingIds = new Set(
-      (this.db.prepare("SELECT id FROM memories").all() as MemoryRow[])
-        .map(r => r.id)
-    );
-
-    let synced = 0;
-    for (const file of files) {
-      const filePath = path.join(this.scopeDir, file);
-      const record = parseMemoryFile(filePath);
-      if (!record) continue;
-
-      // New files preserve the authoritative store ID. Legacy files have no
-      // `id` frontmatter, so retain the historical title-derived fallback.
-      const id = record.id || record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-
-      if (existingIds.has(id)) continue; // Already in DB
-
-      // Insert into DB
-      try {
-        record.id = id;
-        const tagsJson = JSON.stringify(record.tags);
-        
-        this.db.prepare(`
-          INSERT OR IGNORE INTO memories (id, title, content, tags, project, type, created, updated, embedding)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-        `).run(
-          id,
-          record.title,
-          record.content,
-          tagsJson,
-          record.project || this.projectName,
-          record.type,
-          record.created,
-          record.updated
-        );
-
-        synced++;
-        // Removed console.warn — orphaned file sync is silent.
-      } catch (_err) {
-        // Sync failure — file remains as standalone markdown.
-      }
-    }
-
-    return synced;
+    const synced = this.memPalaceCall<number>("sync_orphaned", {
+      project_dir: this.scopeDir,
+      wing: this.projectName,
+    });
+    return synced ?? 0;
   }
 
   /**
@@ -662,165 +395,53 @@ export class MemoryStorage {
    * Returns array of { record, similarity } sorted by similarity desc.
    */
   findSimilarByTitle(title: string, threshold = 0.6): Array<{ record: MemoryRecord; similarity: number }> {
-    if (this.isMempalace()) {
-      const rows = this.memPalaceCall<Array<{ record: MempalaceRecord; similarity: number }>>(
-        "find_similar",
-        { wing: this.projectName, title, threshold },
-      ) ?? [];
-      return rows.map((r) => ({ record: toMemoryRecord(r.record), similarity: r.similarity }));
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    const allRows = this.db.prepare("SELECT id, title FROM memories").all() as MemoryRow[];
-    const results: Array<{ record: MemoryRecord; similarity: number }> = [];
-
-    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-    const titleWords = new Set(normalizedTitle.split(/\s+/).filter((w: string) => w.length > 2));
-
-    for (const row of allRows) {
-      const normalizedRowTitle = row.title.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-      const rowWords = new Set(normalizedRowTitle.split(/\s+/).filter((w: string) => w.length > 2));
-
-      // Calculate Jaccard similarity
-      const intersection = new Set([...titleWords].filter((w: string) => rowWords.has(w)));
-      const union = new Set([...titleWords, ...rowWords]);
-      const similarity = union.size > 0 ? intersection.size / union.size : 0;
-
-      if (similarity >= threshold) {
-        const record = this.getById(row.id);
-        if (record) {
-          results.push({ record, similarity });
-        }
-      }
-    }
-
-    return results.sort((a, b) => b.similarity - a.similarity);
+    const rows = this.memPalaceCall<Array<{ record: MempalaceRecord; similarity: number }>>(
+      "find_similar",
+      { wing: this.projectName, title, threshold },
+    ) ?? [];
+    return rows.map((r) => ({ record: toMemoryRecord(r.record), similarity: r.similarity }));
   }
 
   /**
    * Get a memory record by ID.
    */
   getById(id: string): MemoryRecord | null {
-    if (this.isMempalace()) {
-      const rec = this.memPalaceCall<MempalaceRecord | null>("get", { id });
-      return rec ? toMemoryRecord(rec) : null;
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(id) as MemoryRow | undefined;
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      content: row.content ?? "",
-      tags: JSON.parse(row.tags || "[]"),
-      project: row.project ?? "",
-      type: (row.type ?? "summary") as MemoryRecord["type"],
-      created: row.created ?? "",
-      updated: row.updated ?? "",
-      embedding: row.embedding ? new Float32Array(row.embedding.buffer) : null,
-    };
+    const rec = this.memPalaceCall<MempalaceRecord | null>("get", { id });
+    return rec ? toMemoryRecord(rec) : null;
   }
 
   /**
    * Get a memory record by title (fuzzy match).
    */
   getByTitle(title: string): MemoryRecord | null {
-    if (this.isMempalace()) {
-      const rec = this.memPalaceCall<MempalaceRecord | null>("get_by_title", {
-        wing: this.projectName,
-        title,
-      });
-      return rec ? toMemoryRecord(rec) : null;
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    // Try exact match first
-    const exact = this.db.prepare("SELECT * FROM memories WHERE title = ?").get(title) as MemoryRow | undefined;
-    if (exact) {
-      return {
-        id: exact.id,
-        title: exact.title,
-        content: exact.content ?? "",
-        tags: JSON.parse(exact.tags || "[]"),
-        project: exact.project ?? "",
-        type: (exact.type ?? "summary") as MemoryRecord["type"],
-        created: exact.created ?? "",
-        updated: exact.updated ?? "",
-        embedding: exact.embedding ? new Float32Array(exact.embedding.buffer) : null,
-      };
-    }
-
-    // Try case-insensitive match
-    const row = this.db.prepare("SELECT * FROM memories WHERE LOWER(title) = LOWER(?)").get(title) as MemoryRow | undefined;
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      title: row.title,
-      content: row.content ?? "",
-      tags: JSON.parse(row.tags || "[]"),
-      project: row.project ?? "",
-      type: (row.type ?? "summary") as MemoryRecord["type"],
-      created: row.created ?? "",
-      updated: row.updated ?? "",
-      embedding: row.embedding ? new Float32Array(row.embedding.buffer) : null,
-    };
+    const rec = this.memPalaceCall<MempalaceRecord | null>("get_by_title", {
+      wing: this.projectName,
+      title,
+    });
+    return rec ? toMemoryRecord(rec) : null;
   }
 
   /**
    * List all memories (titles only).
    */
   listAll(): Array<{ id: string; title: string; type: string }> {
-    if (this.isMempalace()) {
-      const items = this.memPalaceCall<MempalaceListItem[]>("list", {
-        wing: this.projectName,
-      }) ?? [];
-      return items;
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    const rows = this.db.prepare("SELECT id, title, type FROM memories ORDER BY updated DESC").all() as MemoryRow[];
-    return rows.map((r) => ({ id: r.id, title: r.title, type: r.type ?? "" }));
+    const items = this.memPalaceCall<MempalaceListItem[]>("list", {
+      wing: this.projectName,
+    }) ?? [];
+    return items;
   }
 
   /**
    * Delete a memory by ID.
    */
   delete(id: string): boolean {
-    if (this.isMempalace()) {
-      const ok = this.memPalaceCall<boolean>("delete", { id }) ?? false;
-      // Also remove the markdown tier if present.
-      try {
-        const mdPath = path.join(this.scopeDir, `${id}.md`);
-        if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath);
-      } catch { /* ignore */ }
-      return ok;
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    // Delete from vector table
+    const ok = this.memPalaceCall<boolean>("delete", { id }) ?? false;
+    // Also remove the markdown tier if present.
     try {
-      this.db.prepare("DELETE FROM memories_vec WHERE rowid = ?").run(BigInt(this.idToRowid(id)));
-    } catch {
-      // Ignore
-    }
-
-    // Delete from memories table
-    const result = this.db.prepare("DELETE FROM memories WHERE id = ?").run(id);
-
-    // Delete markdown file
-    const mdPath = path.join(this.scopeDir, `${id}.md`);
-    try {
-      if (fs.existsSync(mdPath)) {
-        fs.unlinkSync(mdPath);
-      }
-    } catch {
-      // Ignore
-    }
-
-    return result.changes > 0;
+      const mdPath = path.join(this.scopeDir, `${id}.md`);
+      if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath);
+    } catch { /* ignore */ }
+    return ok;
   }
 
   /**
@@ -836,137 +457,18 @@ export class MemoryStorage {
    * Search memories using hybrid approach.
    */
   search(query: string, limit = 10, embedding?: Float32Array | null): SearchResult[] {
-    if (this.isMempalace()) {
-      const rows = this.memPalaceCall<MempalaceSearchResult[]>("search", {
-        query,
-        wing: this.projectName,
-        limit,
-      }) ?? [];
-      return rows.map((r) => ({
-        record: toMemoryRecord(r),
-        score: r.score,
-        snippet: r.snippet,
-      }));
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-
-    const results: Map<string, SearchResult> = new Map();
-
-    // 1. Vector search (if embedding provided and vec table exists)
-    if (embedding) {
-      try {
-        const vecResults = this.db
-          .prepare(
-            `SELECT rowid, distance FROM memories_vec
-             WHERE embedding MATCH ?
-             ORDER BY distance
-             LIMIT ?`
-          )
-          .all(Buffer.from(embedding.buffer), limit * 2) as SearchResultRow[];
-
-        for (const vr of vecResults) {
-          const memoryId = this.rowidToId(Number(vr.rowid));
-          const record = this.getById(memoryId);
-          if (record) {
-            const score = 1 - Math.min(vr.distance, 1); // Normalize to 0-1
-            const snippet = this.extractSnippet(record.content, query);
-            results.set(record.id, { record, score, snippet });
-          }
-        }
-      } catch (err) {
-        // Vector search failed, continue with fuzzy
-      }
-    }
-
-    // 2. Fuzzy text search (split query into words)
-    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    
-    // Build conditions: each word must match either title OR content
-    const wordConditions = queryWords.map(() => 
-      "(LOWER(title) LIKE LOWER(?) OR LOWER(content) LIKE LOWER(?))"
-    ).join(" AND ");
-    
-    const fuzzyResults = this.db
-      .prepare(
-        `SELECT id, title, content,
-                (CASE WHEN LOWER(title) LIKE LOWER(?) THEN 1 ELSE 0 END) as title_match,
-                (CASE WHEN LOWER(content) LIKE LOWER(?) THEN 1 ELSE 0 END) as content_match
-         FROM memories
-         WHERE ${wordConditions}
-         LIMIT ?`
-      )
-      .all(
-        `%${query}%`,
-        `%${query}%`,
-        ...queryWords.flatMap(w => [`%${w}%`, `%${w}%`]),
-        limit * 2
-      ) as SearchResultRow[];
-
-    for (const fr of fuzzyResults) {
-      const existing = results.get(fr.id);
-      const fuzzyScore = ((fr.title_match ?? 0) * 0.7 + (fr.content_match ?? 0) * 0.3);
-      const record = this.getById(fr.id);
-      if (record) {
-        const snippet = this.extractSnippet(record.content, query);
-        if (existing) {
-          // Boost score if found in both vector and fuzzy
-          existing.score = Math.min(existing.score + fuzzyScore * 0.3, 1);
-        } else {
-          results.set(fr.id, { record, score: fuzzyScore, snippet });
-        }
-      }
-    }
-
-    // 3. Sort by score and return top results
-    return Array.from(results.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+    const rows = this.memPalaceCall<MempalaceSearchResult[]>("search", {
+      query,
+      wing: this.projectName,
+      limit,
+    }) ?? [];
+    return rows.map((r) => ({
+      record: toMemoryRecord(r),
+      score: r.score,
+      snippet: r.snippet,
+    }));
   }
 
-  /**
-   * Extract a snippet around the query match.
-   */
-  private extractSnippet(content: string, query: string, chars = 100): string {
-    const lowerContent = content.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    const idx = lowerContent.indexOf(lowerQuery);
-
-    if (idx === -1) {
-      // No match, return beginning
-      return content.slice(0, chars) + (content.length > chars ? "..." : "");
-    }
-
-    const start = Math.max(0, idx - chars / 2);
-    const end = Math.min(content.length, idx + query.length + chars / 2);
-    let snippet = content.slice(start, end);
-
-    if (start > 0) snippet = "..." + snippet;
-    if (end < content.length) snippet = snippet + "...";
-
-    return snippet;
-  }
-
-  /**
-   * Convert string ID to numeric rowid for sqlite-vec.
-   */
-  private idToRowid(id: string): number {
-    // Simple hash: sum of char codes modulo 1M
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-      hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
-    }
-    return Math.abs(hash) % 1_000_000;
-  }
-
-  /**
-   * Convert numeric rowid back to string ID.
-   */
-  private rowidToId(rowid: number): string {
-    // Look up ID from memories table by rowid
-    if (!this.db) return "";
-    const row = this.db.prepare("SELECT id FROM memories LIMIT 1 OFFSET ?").get(rowid) as any;
-    return row?.id || "";
-  }
 }
 
 /**
@@ -991,29 +493,8 @@ export function searchAllProjects(
     }));
   }
 
-  // SQLite fallback: iterate project directories.
-  const projectDirs = getAllProjectDirs();
-  const allResults: SearchResult[] = [];
 
-  for (const { name: projectName, dir } of projectDirs) {
-    const dbPath = path.join(dir, MEMORY_DB_NAME);
-    if (!fs.existsSync(dbPath)) continue;
-
-    try {
-      const storage = new MemoryStorage(projectName);
-      storage.init();
-      const results = storage.search(query, limit);
-      allResults.push(...results);
-      storage.close();
-    } catch {
-      // Skip projects with corrupted DB
-    }
-  }
-
-  // Sort by score and return top results
-  return allResults
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  return [];
 }
 
 /** Result shape shared by listAllProjects and its cached wrapper. */
@@ -1041,7 +522,7 @@ export function invalidateAllProjectsCache(): void {
  *
  * On a cache miss the MemPalace path spawns Python; doing that synchronously
  * froze the UI for ~1.1s. Only the bridge call is async — the SQLite fallback
- * is fast enough to run inline.
+ * is async.
  */
 export async function listAllProjectsCachedAsync(): Promise<AllProjectsEntry[]> {
   const now = Date.now();
@@ -1050,13 +531,9 @@ export async function listAllProjectsCachedAsync(): Promise<AllProjectsEntry[]> 
   }
 
   const install = ensureMempalace();
-  let value: AllProjectsEntry[];
-  if (install) {
-    const items = (await runBridgeAsync<MempalaceListItemAll[]>(install, DEFAULT_PALACE, "list_all", {})) ?? [];
-    value = items.map((m) => ({ project: m.project, id: m.id, title: m.title, type: m.type }));
-  } else {
-    value = listAllProjects();
-  }
+  if (!install) return [];
+  const items = (await runBridgeAsync<MempalaceListItemAll[]>(install, DEFAULT_PALACE, "list_all", {})) ?? [];
+  const value = items.map((m) => ({ project: m.project, id: m.id, title: m.title, type: m.type }));
 
   allProjectsCache = { at: now, value };
   return value;
@@ -1079,32 +556,7 @@ export function listAllProjects(): AllProjectsEntry[] {
     }));
   }
 
-  // SQLite fallback: iterate project directories.
-  const projectDirs = getAllProjectDirs();
-  const allMemories: AllProjectsEntry[] = [];
 
-  for (const { name: projectName, dir } of projectDirs) {
-    const dbPath = path.join(dir, MEMORY_DB_NAME);
-    if (!fs.existsSync(dbPath)) continue;
-
-    try {
-      const storage = new MemoryStorage(projectName);
-      storage.init();
-      const memories = storage.listAll();
-      allMemories.push(
-        ...memories.map((m) => ({
-          project: projectName,
-          id: m.id,
-          title: m.title,
-          type: m.type,
-        }))
-      );
-      storage.close();
-    } catch {
-      // Skip projects with corrupted DB
-    }
-  }
-
-  return allMemories;
+  return [];
 }
 
