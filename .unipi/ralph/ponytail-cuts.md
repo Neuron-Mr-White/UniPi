@@ -86,7 +86,7 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [ ] footer detectColorMode/rgbTo256 → pi Theme.fg()
 - [x] footer hand-rolled visibleWidth → pi-tui visibleWidth
 - [x] autocomplete fuzzyMatch → pi-tui fuzzyMatch
-- [ ] kanboard parseFrontmatter (4 copies) → pi-coding-agent parseFrontmatter
+- [x] kanboard parseFrontmatter (4 copies) → pi-coding-agent parseFrontmatter
 - [x] workflow suggestWorktrees → execFileSync git worktree list
 - [x] updater trunc() → pi-tui truncateToWidth
 - [ ] ask-user settings-tui ANSI → theme.fg + pi-tui Key
@@ -112,7 +112,7 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [x] ralph completeLoop+stopLoop → one with reason param
 - [x] workflow 4 suggest* fns → one suggestFilesFrom
 - [ ] ask-user ask-ui renderOptions → one renderer + dispatch
-- [ ] milestone snapshot trio → extract to core (shared with workflow)
+- [x] milestone snapshot trio → extract to core (shared with workflow)
 - [ ] updater version.ts semver → consolidate with cocoindex
 
 ## Decision needed (ASK USER — do not auto-cut)
@@ -120,3 +120,35 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 
 ## Completion marker
 Emit "All ponytail cuts complete. <N> lines removed, <M> deps removed." when all phases done.
+## Reflection — Iteration 6
+
+### Accomplished
+- **8,365 lines deleted** (60,302 → 53,312 source lines, ~7000 net removed)
+- **4 deps removed**: shiki, diff, lodash, mime-types
+- **14 commits**, all typechecks passing
+- Phase 1: COMPLETE (all 23 packages cleaned)
+- Phase 2: 9/13 done
+- Phase 3: 12/20 done
+
+### Working well
+- Parallel work agents for Phase 1 batch (5 agents, 15 packages)
+- Per-batch typecheck + commit discipline caught issues early
+- Extracting shared helpers to @pi-unipi/core (formatTokens, isActiveSnapshot, parseFrontmatter)
+
+### Not working / blocked
+- Remaining Phase 2 items are all "risky" — they change rendering/behavior:
+  - footer detectColorMode: deeply integrated color emission system
+  - ask-user settings-tui: would need to thread theme through interface
+  - web-api duckduckgo/dom.ts: HTML parsing rework, needs careful DOM handling
+- Some Phase 3 items have different semantics (compactor config merge, updater semver) — low ROI
+
+### Approach adjustment
+- Focus on remaining SAFE Phase 3 items: updater overlay merge, ask-ui renderOptions dedup
+- Skip items that risk behavior change (footer color, web-api DOM, compactor merge)
+- Flag memory dual-backend decision for user
+
+### Next priorities
+1. updater changelog+readme overlay → one ListDetailOverlay (safe dedup)
+2. ask-user ask-ui renderOptions → one renderer + dispatch (safe dedup)
+3. 7 overlays shared ANSI box helpers → one in core (safe dedup)
+4. kanboard 8 parsers → one config-driven class (bigger but safe)

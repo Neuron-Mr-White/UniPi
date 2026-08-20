@@ -125,3 +125,21 @@ export class WidthKeyedCache {
     this.width = -1;
   }
 }
+
+/** Shared ANSI escape codes for TUI overlays. */
+export const ansi = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  red: "\x1b[31m",
+  gray: "\x1b[90m",
+  white: "\x1b[37m",
+  blue: "\x1b[34m",
+};
+
+/** Toggle symbols for TUI settings overlays. */
+export const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
+export const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;

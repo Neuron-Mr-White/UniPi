@@ -6,6 +6,7 @@
 
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { ansi, TOGGLE_ON, TOGGLE_OFF } from "@pi-unipi/core";
 import type { CachedModel } from "@pi-unipi/core";
 import { readModelCache, boxInnerWidth } from "@pi-unipi/core";
 import {
@@ -15,22 +16,8 @@ import {
 } from "../settings.js";
 
 /** ANSI escape codes */
-const ansi = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  gray: "\x1b[90m",
-  white: "\x1b[37m",
-  blue: "\x1b[34m",
-};
 
 /** Toggle symbols */
-const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
-const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
 /** Active mode */
 type Mode = "settings" | "model-picker";

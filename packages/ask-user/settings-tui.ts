@@ -7,25 +7,12 @@
 
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { adaptiveInnerWidth, normalizeWidth, safeRepeat, shouldRenderBorder } from "@pi-unipi/core";
+import { adaptiveInnerWidth, normalizeWidth, safeRepeat, shouldRenderBorder, ansi, TOGGLE_ON, TOGGLE_OFF } from "@pi-unipi/core";
 import { getAskUserSettings, saveAskUserSettings, type AskUserSettings } from "./config.js";
 
 /** ANSI escape codes */
-const ansi = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  // Colors
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  gray: "\x1b[90m",
-};
 
 /** Toggle symbols */
-const TOGGLE_ON = `${ansi.green}●${ansi.reset}`;
-const TOGGLE_OFF = `${ansi.dim}○${ansi.reset}`;
 
 /** Setting items */
 interface SettingItem {
