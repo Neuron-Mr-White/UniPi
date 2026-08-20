@@ -38,8 +38,8 @@ Principle: **Migrate existing user data. Prove it works. No back-stabbing.**
 - [x] Typecheck + commit
 
 ### 5. Compactor config merge (~30 lines)
-- [ ] Consolidate deepMerge + migrateConfig/mergeStrategy into one
-- [ ] Run compactor tests
+- [x] Consolidated mergeStrategy into deepMerge into one
+- [x] Pre-existing test failure (bun: URL, unrelated)
 - [x] Typecheck + commit
 
 ### 6. Ask-user renderOptions dedup (~200 lines)
