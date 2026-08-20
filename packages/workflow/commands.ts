@@ -8,6 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename } from "path";
+import { execFileSync } from "node:child_process";
 import { UNIPI_PREFIX, WORKFLOW_COMMANDS, type UnipiWorkflowEvent } from "@pi-unipi/core";
 
 type CompletionItem = { value: string; label: string; description: string };
@@ -133,14 +134,12 @@ function suggestChoreFiles(prefix: string): CompletionItem[] {
   }
 }
 
-/** Cached per-cwd worktree suggestions. Worktree autocomplete can be invoked on every
- * keystroke, so the recursive scan is intentionally paid only once per session/cwd.
- */
+/** Cached per-cwd worktree suggestions. */
 let worktreeSuggestionsCache: { cwd: string; items: CompletionItem[] } | null = null;
 
 /**
  * Suggest existing worktree names for merge/list commands.
- * Recursively scans for actual git worktrees (directories containing .git files).
+ * Uses `git worktree list --porcelain` for a fast, native scan.
  */
 function suggestWorktrees(): CompletionItem[] {
   const cwd = process.cwd();
@@ -148,49 +147,26 @@ function suggestWorktrees(): CompletionItem[] {
     return worktreeSuggestionsCache.items;
   }
 
-  const worktreesDir = join(cwd, ".unipi", "worktrees");
-  if (!existsSync(worktreesDir)) {
-    worktreeSuggestionsCache = { cwd, items: [] };
-    return worktreeSuggestionsCache.items;
-  }
-
   try {
+    const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      encoding: "utf-8",
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const results: CompletionItem[] = [];
-
-    /**
-     * Recursively find worktree directories (those containing a .git file).
-     * A worktree's .git file contains: gitdir: /path/to/.git/worktrees/<branch>
-     */
-    function findWorktrees(dir: string, relativePath: string): void {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
-
-        if (entry.name === ".git" && entry.isFile()) {
-          // This is a worktree — extract branch name from gitdir path
-          try {
-            const gitContent = readFileSync(fullPath, "utf-8").trim();
-            const match = gitContent.match(/gitdir:\s+.+?\/([^/]+)$/);
-            const branchName = match?.[1] ?? entry.name;
-            results.push({
-              value: branchName,
-              label: branchName,
-              description: `Worktree: ${relPath}`,
-            });
-          } catch {
-            // Can't read .git file — skip
-          }
-        } else if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") {
-          // Recurse into subdirectories (but not into nested .git or node_modules)
-          findWorktrees(fullPath, relPath);
-        }
+    for (const line of output.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        const path = line.slice("worktree ".length);
+        const branch = basename(path);
+        results.push({
+          value: branch,
+          label: branch,
+          description: `Worktree: ${path}`,
+        });
       }
     }
-
-    findWorktrees(worktreesDir, "");
     worktreeSuggestionsCache = { cwd, items: results };
-    return worktreeSuggestionsCache.items;
+    return results;
   } catch {
     worktreeSuggestionsCache = { cwd, items: [] };
     return worktreeSuggestionsCache.items;
