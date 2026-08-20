@@ -11,12 +11,19 @@
 #   mise run btw
 #   mise run subagents
 #
+# With Omniroute:
+#   mise run dev             # Full Unipi suite + Omniroute bridge (local dev)
+#
 # Utility:
 #   mise run typecheck
 
 [tasks.unipi]
 description = "Launch pi with full Unipi suite"
 run = "pi --no-extensions --no-skills -e packages/unipi/index.ts"
+
+[tasks.dev]
+description = "Launch pi with Unipi suite + Omniroute bridge (local dev)"
+run = "pi --no-extensions --no-skills -e packages/unipi/index.ts -e ~/Projects/Personal/archived/pi-omniroute-bridge/src/index.ts"
 
 [tasks.workflow]
 description = "Launch pi with workflow only"
