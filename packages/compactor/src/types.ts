@@ -49,16 +49,6 @@ export interface BriefLine {
   lines: string[];
 }
 
-/** Runtime stats tracked during a live session. */
-export interface RuntimeStats {
-  bytesReturned: Record<string, number>;
-  bytesSandboxed: number;
-  calls: Record<string, number>;
-  sessionStart: number;
-  cacheHits: number;
-  cacheBytesSaved: number;
-}
-
 // ─────────────────────────────────────────────────────────
 // Compaction input / output
 // ─────────────────────────────────────────────────────────
@@ -152,9 +142,6 @@ export interface CompactorConfig {
 
   // Global settings
   overrideDefaultCompaction: boolean;
-  debug: boolean;
-  /** @deprecated Truncation hints were never connected to runtime; retained for config compatibility. */
-  showTruncationHints: boolean;
 }
 
 export type CompactorPreset = "precise" | "balanced" | "thorough" | "lean" | "opencode" | "verbose" | "minimal" | "custom";

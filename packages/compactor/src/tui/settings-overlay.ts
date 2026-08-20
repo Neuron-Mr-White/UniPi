@@ -49,16 +49,6 @@ interface PipelineDef {
 
 const STRATEGIES: StrategyDef[] = [
   {
-    key: "debug",
-    label: "Verbose Debug",
-    description: "Log ALL compaction events to console",
-    modes: ["on", "off"],
-    getEnabled: (c) => c.debug,
-    setEnabled: (c, v) => (c.debug = v),
-    getMode: (c) => (c.debug ? "on" : "off"),
-    setMode: (c, v) => (c.debug = v === "on"),
-  },
-  {
     key: "sessionGoals",
     label: "Session Goals",
     description: "Extract goals from conversation",

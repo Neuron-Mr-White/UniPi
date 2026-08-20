@@ -28,11 +28,6 @@ const formatTokens = (n: number): string => {
   return String(n);
 };
 
-const dbg = (_debug: boolean, _event: string, _data?: Record<string, unknown>) => {
-  // Debug logging disabled — was writing to stdout causing TUI rendering issues.
-  return;
-};
-
 const REASON_MESSAGES: Record<import("./cut.js").OwnCutCancelReason, string> = {
   no_live_messages: "compactor: Nothing to compact (no live messages)",
   too_few_live_messages: "compactor: Too few messages to compact",
@@ -83,22 +78,12 @@ export function registerCompactionHooks(
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
     const isCompactor = customInstructions?.startsWith(COMPACTOR_INSTRUCTION) ?? false;
-    dbg(config.debug, "session_before_compact:enter", {
-      entryCount: branchEntries.length,
-      hasPrevSummary: !!preparation?.previousSummary,
-      isCompactor,
-    });
 
     if (!isCompactor && !config.overrideDefaultCompaction) {
-      dbg(config.debug, "session_before_compact:skip", { reason: "not_compactor_and_no_override" });
       return;
     }
 
     const ownCut: OwnCutResult = buildOwnCut(branchEntries);
-    dbg(config.debug, "buildOwnCut", {
-      ok: ownCut.ok,
-      reason: !ownCut.ok ? (ownCut as { ok: false; reason: string }).reason : undefined,
-    });
     if (!ownCut.ok) {
       try {
         ctx?.ui?.notify?.(REASON_MESSAGES[(ownCut as { ok: false; reason: import("./cut.js").OwnCutCancelReason }).reason], "warning");
@@ -145,7 +130,6 @@ export function registerCompactionHooks(
       }
     }
 
-    dbg(config.debug, "compile", { messageCount: messages.length, hasPrevSummary: !!preparation.previousSummary });
     const summary = compile({
       messages,
       previousSummary: preparation.previousSummary,
@@ -153,15 +137,6 @@ export function registerCompactionHooks(
         readFiles: [...preparation.fileOps.read],
         modifiedFiles: [...preparation.fileOps.written, ...preparation.fileOps.edited],
       },
-    });
-
-    dbg(config.debug, "compaction_pipeline", {
-      usedOwnCut: true,
-      messagesToSummarize: agentMessages.length,
-      firstKeptEntryId,
-      tokensBefore: preparation.tokensBefore,
-      summaryLength: summary.length,
-      sections: [...summary.matchAll(/^\[(.+?)\]/gm)].map((m) => m[1]),
     });
 
     const details = {
@@ -186,7 +161,6 @@ export function registerCompactionHooks(
 
   pi.on("session_compact", (event: SessionCompactEvent, ctx) => {
     const config = loadConfig();
-    dbg(config.debug, "session_compact", { fromExtension: event.fromExtension, lastCompactWasCompactor });
     if (!event.fromExtension) return;
     if (lastCompactWasCompactor) return;
     const stats = lastStats;

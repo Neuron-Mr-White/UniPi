@@ -22,15 +22,7 @@ import { registerCompactorTools } from "./tools/register.js";
 import { normalizeMessages } from "./compaction/normalize.js";
 import { filterNoise } from "./compaction/filter-noise.js";
 import { recallBlocksFromContext } from "./session/recall-blocks.js";
-import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters, RuntimeStats } from "./types.js";
-
-/** Debug logger — only logs when config.debug === true */
-function createDebugLogger(getConfig: () => { debug: boolean }) {
-  return (_event: string, _data?: Record<string, unknown>) => {
-    // Debug logging disabled — was writing to stdout causing TUI rendering issues.
-    return;
-  };
-}
+import type { NormalizedBlock, CompactorStrategyConfig, RuntimeCounters } from "./types.js";
 
 const formatTokenCount = (n: number): string => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -39,28 +31,8 @@ const formatTokenCount = (n: number): string => {
 };
 
 /** Measure byte size of a tool_result event's response content. */
-function measureResponseBytes(event: any): number {
-  try {
-    const content = event.content;
-    if (typeof content === "string") return Buffer.byteLength(content, "utf-8");
-    if (Array.isArray(content)) {
-      return content.reduce((sum: number, block: any) => {
-        if (typeof block?.text === "string") return sum + Buffer.byteLength(block.text, "utf-8");
-        if (typeof block === "string") return sum + Buffer.byteLength(block, "utf-8");
-        return sum;
-      }, 0);
-    }
-    if (event.output && typeof event.output === "string") return Buffer.byteLength(event.output, "utf-8");
-  } catch {
-    // Non-blocking: byte measurement errors silently skipped
-  }
-  return 0;
-}
 
 /** Check if a tool is a sandbox tool (output stays in sandbox, not context). */
-function isSandboxTool(name: string): boolean {
-  return name === "bash" || name === "Bash";
-}
 
 export default function compactorExtension(pi: ExtensionAPI): void {
   let sessionDB: SessionDB | null = null;
@@ -77,17 +49,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     totalTokensCompacted: 0,
   };
   const getCounters = () => counters;
-
-  const runtimeStats: RuntimeStats = {
-    bytesReturned: {},
-    bytesSandboxed: 0,
-    calls: {},
-    sessionStart: Date.now(),
-    cacheHits: 0,
-    cacheBytesSaved: 0,
-  };
-
-  const debug = createDebugLogger(() => config);
 
   const init = async () => {
     scaffoldConfig();
@@ -134,8 +95,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const fullSessionId = `${sessionId}${suffix}`;
     currentSessionId = fullSessionId;
 
-    debug("session_start", { sessionId: fullSessionId, projectDir });
-
     // Seed runtime counters from DB so they reflect prior usage
     if (sessionDB) {
       try {
@@ -148,12 +107,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     }
 
     // Reset runtime stats for new session
-    runtimeStats.bytesReturned = {};
-    runtimeStats.bytesSandboxed = 0;
-    runtimeStats.calls = {};
-    runtimeStats.sessionStart = Date.now();
-    runtimeStats.cacheHits = 0;
-    runtimeStats.cacheBytesSaved = 0;
     autoCompactionState = createAutoCompactionState();
 
     sessionDB?.ensureSession(fullSessionId, projectDir);
@@ -226,8 +179,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       tools: Object.values(COMPACTOR_TOOLS),
     });
 
-    debug("MODULE_READY", { commands: Object.values(COMPACTOR_COMMANDS), tools: Object.values(COMPACTOR_TOOLS) });
-
     ctx.ui.notify("🗜️  Compactor ready", "info");
   });
 
@@ -235,7 +186,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const cwd = (ctx as any).cwd ?? process.cwd();
     config = loadConfig(cwd);
     currentSessionId = `${(ctx as any).sessionId ?? "default"}${getWorktreeSuffix()}`;
-    debug("before_agent_start", { sessionId: currentSessionId, configDebug: config.debug });
 
     // Evaluate autoDetect conditions for strategies
     try {
@@ -248,7 +198,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         if ((strat as any).autoDetect === "git") {
           const gitDir = join(cwd, ".git");
           if (!existsSync(gitDir)) {
-            debug("autoDetect_disable", { strategy: key, reason: "no .git dir" });
             // Non-destructive: temporarily disable at runtime, don't modify config file
             strat.enabled = false;
           }
@@ -280,7 +229,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const continuityEnabled = isSessionContinuityEnabled(config);
     if (sessionDB && continuityEnabled) {
       const resumeContext = await buildResumeContextMessage(sessionDB, currentSessionId);
-      debug("resume_snapshot", { injected: !!resumeContext });
       return resumeContext;
     }
   });
@@ -296,17 +244,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       nowMs: Date.now(),
     });
     autoCompactionState = decision.state;
-
-    debug("auto_compaction_decision", {
-      enabled: config.autoCompaction.enabled,
-      reason: decision.reason,
-      shouldTrigger: decision.shouldTrigger,
-      percent: decision.usage?.percent,
-      tokens: decision.usage?.tokens,
-      thresholdPercent: decision.thresholdPercent,
-      cooldownRemainingMs: decision.cooldownRemainingMs,
-      tokenGrowth: decision.tokenGrowth,
-    });
 
     if (!decision.shouldTrigger) return;
 
@@ -351,7 +288,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       const sessionId = currentSessionId;
       const events = sessionDB.getEvents(sessionId, { limit: 1000 });
       const stats = sessionDB.getSessionStats(sessionId);
-      debug("session_before_compact", { sessionId, eventCount: events.length, compactCount: stats?.compact_count ?? 0 });
       const { buildResumeSnapshot } = await import("./session/snapshot.js");
       const snapshot = buildResumeSnapshot(events, {
         compactCount: stats?.compact_count ?? 1,
@@ -419,12 +355,10 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         tokensSaved,
         compressionRatio: kept > 0 ? `${Math.round(totalEstimated / kept)}:1` : "0:1",
       });
-      debug("session_compact", { sessionId, tokensBefore, hasCompactionEntry: !!compactionEntry });
     }
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
-    debug("session_shutdown");
     if (sessionDB) {
       sessionDB.cleanupOldSessions(7);
     }
@@ -435,7 +369,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   pi.on("input", async (event, _ctx) => {
     const toolName = (event as any).toolName ?? "";
     const args = (event as any).args ?? {};
-    debug("input", { toolName, args: JSON.stringify(args).slice(0, 200) });
 
     // Existing network tool guard
     if (toolName === "bash" || toolName === "Bash") {
@@ -461,7 +394,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         if (cmd) {
           const decision = evaluateCommand(cmd, denyPolicy);
           if (decision === "deny") {
-            debug("security_deny", { toolName, cmd: cmd.slice(0, 100) });
             return {
               content: [{ type: "text", text: `Command blocked by security policy: ${cmd.slice(0, 80)}` }],
               isError: true,
@@ -478,7 +410,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         if (language && language !== "shell" && code) {
           if (hasShellEscapes(code, language)) {
             const findings = scanForShellEscapes(code, language);
-            debug("security_shell_escapes", { toolName, language, findings });
             // Fail-open: log but don't block (the hooks system is enforcement)
           }
         }
@@ -491,14 +422,12 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         if (filePath) {
           const decision = evaluateFilePath(filePath, denyPolicy, cwd);
           if (decision === "deny") {
-            debug("security_deny_file", { toolName, filePath });
             // Non-fatal: log warning but allow through (fail-open)
           }
         }
       }
     } catch (err) {
       // Fail-open: security checks are advisory, never block on errors
-      debug("security_check_error", { error: String(err) });
     }
 
     return undefined;
@@ -511,8 +440,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     const toolNameRaw = (event as any).toolName ?? "";
     const isError = (event as any).isError ?? false;
 
-    debug("tool_result", { toolName: toolNameRaw, isError, sessionId });
-
     // Extract and store session events
     const toolEvents = extractEventsFromToolResult({
       toolName: (event as any).toolName ?? "",
@@ -523,22 +450,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
 
     for (const ev of toolEvents) {
       sessionDB.insertEvent(sessionId, ev, "PostToolUse");
-      debug("event_stored", { category: ev.category, type: ev.type });
-    }
-
-    // Track byte consumption per tool for analytics
-    try {
-      const responseBytes = measureResponseBytes(event);
-      if (responseBytes > 0) {
-        const tName = (event as any).toolName ?? "unknown";
-        runtimeStats.calls[tName] = (runtimeStats.calls[tName] || 0) + 1;
-        runtimeStats.bytesReturned[tName] = (runtimeStats.bytesReturned[tName] || 0) + responseBytes;
-        if (isSandboxTool(tName)) {
-          runtimeStats.bytesSandboxed += responseBytes;
-        }
-      }
-    } catch {
-      // Non-blocking: byte tracking errors silently skipped
     }
 
     const toolName = (event as any).toolName ?? "";
@@ -558,25 +469,12 @@ export default function compactorExtension(pi: ExtensionAPI): void {
           );
           const clamped = clampDiffToWidth(details.diff);
           if (clamped !== details.diff) {
-            debug("diff_width_clamped", { toolName });
             return { details: { ...details, diff: clamped } } as any;
           }
         }
       } catch (err) {
-        debug("diff_width_clamp_error", { error: String(err) });
       }
     }
-  });
-
-  pi.on("message_update", async (event, _ctx) => {
-    const msg = (event as any).message;
-    if (msg?.thinking) {
-      debug("message_update", { thinking: true, length: String(msg.thinking).length });
-    }
-  });
-
-  pi.on("message_end", async (_event, _ctx) => {
-    debug("message_end");
   });
 
   pi.on("context", async (event, _ctx) => {
@@ -585,7 +483,6 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     if (typeof ctxStr === "string") {
       const sanitized = sanitizeThinkingArtifacts(ctxStr);
       if (sanitized !== ctxStr) {
-        debug("context", { sanitized: true, beforeLen: ctxStr.length, afterLen: sanitized.length });
       }
       (event as any).context = sanitized;
     }

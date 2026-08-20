@@ -66,6 +66,4 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     notify: true,
   },
   overrideDefaultCompaction: true,
-  debug: false,
-  showTruncationHints: true,
 };
