@@ -22,6 +22,7 @@ export interface HerdrEnv {
   enabled: boolean;
   socketPath?: string;
   paneId?: string;
+  tabId?: string;
 }
 
 /** Read Herdr environment (call once per session_start, cheap). */
@@ -29,8 +30,9 @@ export function detectHerdr(): HerdrEnv {
   const env = process.env.HERDR_ENV;
   const socketPath = process.env.HERDR_SOCKET_PATH;
   const paneId = process.env.HERDR_PANE_ID;
+  const tabId = process.env.HERDR_TAB_ID;
   if (env === "1" && socketPath && paneId) {
-    return { enabled: true, socketPath, paneId };
+    return { enabled: true, socketPath, paneId, tabId };
   }
   return { enabled: false };
 }
@@ -56,8 +58,44 @@ function sendRequest(socketPath: string, request: unknown): Promise<void> {
 
 let reportSeq = Date.now();
 
+/** Only rename the tab when its label is a default numeric one (1-3 digits) — never clobber a user-set name. */
+const DEFAULT_TAB_LABEL = /^\d{1,3}$/;
+
+async function fetchJson(socketPath: string, method: string, params: Record<string, unknown>, extract: (result: any) => Record<string, unknown> | null): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value: Record<string, unknown> | null) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(value);
+    };
+    const socket = createConnection(socketPath);
+    let buffer = "";
+    socket.on("error", () => finish(null));
+    socket.on("connect", () =>
+      socket.write(
+        `${JSON.stringify({ id: `unipi:fetch:${method}:${Date.now()}`, method, params })}\n`,
+      ),
+    );
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      try {
+        const parsed = JSON.parse(buffer);
+        finish(extract(parsed?.result));
+      } catch {
+        /* keep buffering */
+      }
+    });
+    socket.on("end", () => finish(null));
+    const timeout = setTimeout(() => finish(null), SEND_TIMEOUT_MS);
+    timeout.unref?.();
+  });
+}
+
 /**
- * Push the session name to Herdr as the pane title.
+ * Push the session name to Herdr as the pane title, and as the tab label
+ * when the tab still has its default numeric label.
  * Fire-and-forget: never throws, resolves after send timeout at worst.
  */
 export async function syncPaneTitle(env: HerdrEnv, sessionName: string | null): Promise<void> {
@@ -79,4 +117,20 @@ export async function syncPaneTitle(env: HerdrEnv, sessionName: string | null): 
     method: "pane.report_metadata",
     params,
   });
+
+  // Also sync the tab label so the name is visible in the tab bar (single-pane
+  // tabs don't render pane borders, so the pane title alone is invisible there).
+  // Only rename when the label is still the default numeric one — a user-set
+  // name always wins.
+  if (sessionName && env.tabId) {
+    const tab = await fetchJson(env.socketPath, "tab.get", { tab_id: env.tabId }, (r) => r?.tab ?? null);
+    const label = tab?.label;
+    if (typeof label !== "string" || DEFAULT_TAB_LABEL.test(label)) {
+      await sendRequest(env.socketPath, {
+        id: `unipi:badge:tab:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        method: "tab.rename",
+        params: { tab_id: env.tabId, label: sessionName },
+      });
+    }
+  }
 }
