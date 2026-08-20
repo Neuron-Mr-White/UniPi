@@ -23,7 +23,6 @@ before(async () => {
   await import("../src/providers/tavily.ts");
   await import("../src/providers/firecrawl.ts");
   await import("../src/providers/perplexity.ts");
-  await import("../src/providers/llm-summarize.ts");
 });
 
 const CAPABILITIES: WebCapability[] = ["search", "read", "summarize"];

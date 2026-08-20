@@ -69,7 +69,6 @@ const tavilyProvider: WebProvider = {
     read: 0,
     summarize: 0,
   },
-  config: {},
 
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.TAVILY_API_KEY;
@@ -79,14 +78,6 @@ const tavilyProvider: WebProvider = {
     return searchTavily(query, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      const results = await searchTavily("test", apiKey);
-      return Array.isArray(results);
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider

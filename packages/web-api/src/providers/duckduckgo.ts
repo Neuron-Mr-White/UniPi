@@ -146,7 +146,6 @@ const duckduckgoProvider: WebProvider = {
     read: 0,
     summarize: 0,
   },
-  config: {},
 
   async search(query: string, _config?: ProviderConfig): Promise<SearchResult[]> {
     return searchDDG(query);

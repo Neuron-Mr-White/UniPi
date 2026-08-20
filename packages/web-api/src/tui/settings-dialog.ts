@@ -13,7 +13,6 @@ import {
   removeApiKey,
   isProviderEnabled,
   setProviderEnabled,
-  validateApiKeyFormat,
   loadSmartFetchSettings,
   saveSmartFetchSettings,
   resetSmartFetchSettings,

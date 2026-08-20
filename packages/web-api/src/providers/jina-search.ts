@@ -65,21 +65,12 @@ const jinaSearchProvider: WebProvider = {
     read: 0,
     summarize: 0,
   },
-  config: {},
 
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.JINA_API_KEY;
     return searchJina(query, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      const results = await searchJina("test", apiKey);
-      return Array.isArray(results);
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider

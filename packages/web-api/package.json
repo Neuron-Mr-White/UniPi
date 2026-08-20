@@ -34,8 +34,6 @@
     "@pi-unipi/core": "2.6.1",
     "defuddle": "^0.18.1",
     "linkedom": "^0.18.12",
-    "lodash": "^4.17.21",
-    "mime-types": "^2.1.35",
     "wreq-js": "^2.3.0"
   },
   "optionalDependencies": {
@@ -47,8 +45,6 @@
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@types/lodash": "^4.17.24",
-    "@types/mime-types": "^3.0.1",
     "@types/node": "^25.6.0"
   },
   "scripts": {

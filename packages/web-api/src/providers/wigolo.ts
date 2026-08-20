@@ -71,7 +71,6 @@ const wigoloProvider: WebProvider = {
     read: 1,
     summarize: 0,
   },
-  config: {},
 
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const client = await getWigoloClient();

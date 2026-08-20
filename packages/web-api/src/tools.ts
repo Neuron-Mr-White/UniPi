@@ -27,7 +27,7 @@ import {
   defuddleFetchMultiple,
 } from "./engine/extract.js";
 import type { FetchOptions, FetchResult, BatchFetchResult } from "./engine/types.js";
-import { formatSingleResult, formatBatchResult, formatErrorResult } from "./engine/format.js";
+import { formatSingleResult, formatBatchResult } from "./engine/format.js";
 
 /** Tool names */
 export const WEB_TOOLS = {

@@ -136,51 +136,6 @@ function stripMarkdown(markdown: string): string {
  * @param error - Fetch error
  * @returns Human-readable error string
  */
-export function buildErrorText(error: FetchError): string {
-  const parts: string[] = [];
-
-  // Main error message
-  parts.push(error.error);
-
-  // Code and phase context
-  parts.push(`(${error.code} during ${error.phase})`);
-
-  // URL context
-  if (error.url) {
-    if (error.finalUrl && error.finalUrl !== error.url) {
-      parts.push(`URL: ${error.url} → ${error.finalUrl}`);
-    } else {
-      parts.push(`URL: ${error.url}`);
-    }
-  }
-
-  // HTTP status
-  if (error.statusCode) {
-    parts.push(`Status: ${error.statusCode}${error.statusText ? ` ${error.statusText}` : ""}`);
-  }
-
-  // Network details
-  if (error.mimeType) {
-    parts.push(`Content-Type: ${error.mimeType}`);
-  }
-  if (error.contentLength !== undefined) {
-    const sizeKB = Math.round(error.contentLength / 1024);
-    parts.push(`Size: ${sizeKB} KB`);
-  }
-  if (error.downloadedBytes !== undefined && error.contentLength) {
-    const percent = Math.round((error.downloadedBytes / error.contentLength) * 100);
-    parts.push(`Downloaded: ${percent}%`);
-  }
-
-  // Retry hint
-  if (error.retryable) {
-    parts.push("This error may be retried.");
-  } else {
-    parts.push("This error is not retryable.");
-  }
-
-  return parts.join("\n");
-}
 
 /**
  * Format a single FetchResult for display.
@@ -274,33 +229,3 @@ export function formatBatchResult(result: BatchFetchResult): string {
  * @param error - Fetch error
  * @returns Formatted error string
  */
-export function formatErrorResult(error: FetchError): string {
-  const lines: string[] = [];
-
-  lines.push(`# Fetch Error`);
-  lines.push("");
-  lines.push(`**${error.error}**`);
-  lines.push("");
-  lines.push(`Code: \`${error.code}\``);
-  lines.push(`Phase: \`${error.phase}\``);
-
-  if (error.url) {
-    lines.push("");
-    lines.push(`URL: ${error.url}`);
-    if (error.finalUrl && error.finalUrl !== error.url) {
-      lines.push(`Final URL: ${error.finalUrl}`);
-    }
-  }
-
-  if (error.statusCode) {
-    lines.push("");
-    lines.push(`HTTP Status: ${error.statusCode}${error.statusText ? ` ${error.statusText}` : ""}`);
-  }
-
-  if (error.retryable) {
-    lines.push("");
-    lines.push(`*This error may be retried.*`);
-  }
-
-  return lines.join("\n");
-}

@@ -66,21 +66,12 @@ const jinaReaderProvider: WebProvider = {
     read: 2,
     summarize: 0,
   },
-  config: {},
 
   async read(url: string, config?: ProviderConfig): Promise<ReadResult> {
     const apiKey = config?.apiKey || process.env.JINA_API_KEY;
     return readJina(url, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      await readJina("https://example.com", apiKey);
-      return true;
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider

@@ -79,7 +79,6 @@ const firecrawlProvider: WebProvider = {
     read: 3,
     summarize: 0,
   },
-  config: {},
 
   async read(url: string, config?: ProviderConfig): Promise<ReadResult> {
     const apiKey = config?.apiKey || process.env.FIRECRAWL_API_KEY;
@@ -89,14 +88,6 @@ const firecrawlProvider: WebProvider = {
     return readFirecrawl(url, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      await readFirecrawl("https://example.com", apiKey);
-      return true;
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider

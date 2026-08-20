@@ -28,7 +28,6 @@ import "./providers/serpapi.js";
 import "./providers/tavily.js";
 import "./providers/firecrawl.js";
 import "./providers/perplexity.js";
-import "./providers/llm-summarize.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));

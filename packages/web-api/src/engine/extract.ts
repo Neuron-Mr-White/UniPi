@@ -9,11 +9,8 @@ import type {
   FetchResult,
   FetchError,
   FetchOptions,
-  FetchProgress,
-  FetchExecutionHooks,
   BatchFetchResult,
   BatchFetchItemResult,
-  FetchProgressStatus,
 } from "./types.js";
 import {
   DEFAULT_BROWSER,
@@ -27,7 +24,7 @@ import {
   DEFAULT_BATCH_CONCURRENCY,
 } from "./constants.js";
 import { resolveBrowserProfile, resolveOSProfile } from "./profiles.js";
-import { getWreq, getDefuddle, getMimeTypes } from "./dependencies.js";
+import { getWreq, getDefuddle } from "./dependencies.js";
 import { parseHTML, extractTextContent, elementToMarkdown } from "./dom.js";
 import { truncateContent, formatContent } from "./format.js";
 
@@ -224,13 +221,11 @@ function detectContentType(
  *
  * @param url - URL to fetch
  * @param options - Fetch options
- * @param hooks - Execution hooks for progress
  * @returns Fetch result or throws FetchError
  */
 export async function defuddleFetch(
   url: string,
   options: FetchOptions = {},
-  hooks?: FetchExecutionHooks
 ): Promise<FetchResult> {
   const {
     browser = DEFAULT_BROWSER,
@@ -244,29 +239,10 @@ export async function defuddleFetch(
     headers: customHeaders,
   } = options;
 
-  // Track progress
-  const updateProgress = (
-    status: FetchProgressStatus,
-    percent: number = 0,
-    phase: string = "",
-    bytesLoaded: number = 0,
-    bytesTotal: number = 0
-  ) => {
-    hooks?.onProgress?.({
-      url,
-      status,
-      percent,
-      bytesLoaded,
-      bytesTotal,
-      phase,
-    });
-  };
-
   let finalUrl = url;
   let redirectCount = 0;
 
   // Validate URL
-  updateProgress("connecting", 0, "validation");
   try {
     validateUrl(url);
   } catch (error) {
@@ -292,7 +268,6 @@ export async function defuddleFetch(
 
   // Main fetch loop (handles meta refresh redirects)
   while (redirectCount < MAX_REDIRECTS) {
-    updateProgress("connecting", 10, "connecting");
 
     try {
       // wreq-js request
@@ -303,8 +278,6 @@ export async function defuddleFetch(
         proxy,
         headers: requestHeaders,
       });
-
-      updateProgress("waiting", 30, "waiting");
 
       // Check HTTP status
       if (!response.ok) {
@@ -322,21 +295,16 @@ export async function defuddleFetch(
         );
       }
 
-      updateProgress("loading", 40, "loading");
-
       // Get response body
       const buffer = await response.arrayBuffer();
       const contentLength = response.headers.get("content-length");
       const bytesTotal = contentLength ? parseInt(contentLength, 10) : buffer.byteLength;
-
-      updateProgress("loading", 60, "loading", buffer.byteLength, bytesTotal);
 
       // Detect content type
       const { mimeType, isBinary } = detectContentType(response, buffer);
 
       // Handle binary content
       if (isBinary) {
-        updateProgress("processing", 80, "processing");
 
         // For binary files, return a placeholder with metadata
         return createResult(url, finalUrl, `[Binary file: ${mimeType}]`, {
@@ -347,7 +315,6 @@ export async function defuddleFetch(
 
       // Handle JSON
       if (mimeType === "application/json") {
-        updateProgress("processing", 80, "processing");
         const text = new TextDecoder().decode(buffer);
         const json = JSON.parse(text);
         const content = JSON.stringify(json, null, 2);
@@ -361,7 +328,6 @@ export async function defuddleFetch(
 
       // Handle plain text
       if (mimeType.startsWith("text/plain")) {
-        updateProgress("processing", 80, "processing");
         const text = new TextDecoder().decode(buffer);
         const truncated = truncateContent(text, maxChars);
 
@@ -372,7 +338,6 @@ export async function defuddleFetch(
       }
 
       // Handle HTML
-      updateProgress("processing", 70, "processing");
 
       const html = new TextDecoder().decode(buffer);
       const { document, window } = parseHTML(html);
@@ -424,8 +389,6 @@ export async function defuddleFetch(
         format,
         maxChars
       );
-
-      updateProgress("done", 100, "done", bytesTotal, bytesTotal);
 
       return createResult(url, finalUrl, formattedContent, {
         ...metadata,
@@ -504,13 +467,11 @@ function fallbackExtraction(document: Document): string {
  *
  * @param urls - URLs to fetch
  * @param options - Fetch options
- * @param hooks - Execution hooks
  * @returns Batch fetch result
  */
 export async function defuddleFetchMultiple(
   urls: string[],
   options: FetchOptions & { batchConcurrency?: number } = {},
-  hooks?: FetchExecutionHooks
 ): Promise<BatchFetchResult> {
   const {
     batchConcurrency = DEFAULT_BATCH_CONCURRENCY,
@@ -518,76 +479,28 @@ export async function defuddleFetchMultiple(
   } = options;
 
   const items: BatchFetchItemResult[] = new Array(urls.length);
-  const progress: FetchProgress[] = urls.map((url) => ({
-    url,
-    status: "queued" as FetchProgressStatus,
-    percent: 0,
-    bytesLoaded: 0,
-    bytesTotal: 0,
-    phase: "queued",
-  }));
-
-  // Worker function
-  const fetchWorker = async (index: number): Promise<void> => {
-    const url = urls[index];
-
-    progress[index] = {
-      url,
-      status: "connecting",
-      percent: 0,
-      bytesLoaded: 0,
-      bytesTotal: 0,
-      phase: "connecting",
-    };
-    hooks?.onUpdate?.([...progress]);
-
-    try {
-      const result = await defuddleFetch(url, fetchOptions, {
-        onProgress: (p) => {
-          progress[index] = p;
-          hooks?.onUpdate?.([...progress]);
-        },
-      });
-
-      items[index] = { status: "done", result };
-      progress[index] = {
-        url,
-        status: "done",
-        percent: 100,
-        bytesLoaded: progress[index].bytesTotal,
-        bytesTotal: progress[index].bytesTotal,
-        phase: "done",
-      };
-    } catch (error) {
-      const fetchError = (error as FetchError).code
-        ? (error as FetchError)
-        : createError("processing_error", "unknown", (error as Error).message, false, { url });
-
-      items[index] = { status: "error", error: fetchError };
-      progress[index] = {
-        url,
-        status: "error",
-        percent: 0,
-        bytesLoaded: 0,
-        bytesTotal: 0,
-        phase: "error",
-        error: fetchError,
-      };
-    }
-
-    hooks?.onUpdate?.([...progress]);
-  };
 
   // Bounded concurrency
   let nextIndex = 0;
   const workers: Promise<void>[] = [];
+
+  const fetchWorker = async (index: number): Promise<void> => {
+    try {
+      const result = await defuddleFetch(urls[index], fetchOptions);
+      items[index] = { status: "done", result };
+    } catch (error) {
+      const fetchError = (error as FetchError).code
+        ? (error as FetchError)
+        : createError("processing_error", "unknown", (error as Error).message, false, { url: urls[index] });
+      items[index] = { status: "error", error: fetchError };
+    }
+  };
 
   const startWorker = (): void => {
     if (nextIndex >= urls.length) return;
     const index = nextIndex++;
     workers.push(
       fetchWorker(index).then(() => {
-        // Start next worker after completion
         if (nextIndex < urls.length) {
           startWorker();
         }
@@ -595,15 +508,12 @@ export async function defuddleFetchMultiple(
     );
   };
 
-  // Start initial workers
   for (let i = 0; i < Math.min(batchConcurrency, urls.length); i++) {
     startWorker();
   }
 
-  // Wait for all workers to complete
   await Promise.all(workers);
 
-  // Calculate statistics
   const succeeded = items.filter((item) => item.status === "done").length;
   const failed = items.filter((item) => item.status === "error").length;
 

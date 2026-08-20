@@ -79,7 +79,6 @@ let clientPromise: Promise<WigoloLocalClient> | null = null;
 let clientOverride: WigoloClientLike | null = null;
 
 /** Last known availability, for the settings TUI and info screen. */
-let lastError: string | null = null;
 
 /** Load the optional SDK. Returns null when it is not installed. */
 async function loadSdk(): Promise<
@@ -127,10 +126,8 @@ export async function getWigoloClient(): Promise<WigoloClientLike> {
 
   try {
     const local = await clientPromise;
-    lastError = null;
     return local.client;
   } catch (error) {
-    lastError = error instanceof Error ? error.message : String(error);
     throw error;
   }
 }
@@ -149,29 +146,6 @@ export async function closeWigoloClient(): Promise<void> {
 }
 
 /** Availability for the settings TUI / info screen. Never throws. */
-export async function checkWigoloHealth(): Promise<{
-  available: boolean;
-  status: string;
-  detail?: string;
-}> {
-  const sdk = await loadSdk();
-  if (!sdk) {
-    return { available: false, status: "not installed", detail: NOT_INSTALLED_MESSAGE };
-  }
-  try {
-    const client = await getWigoloClient();
-    const health = await client.health();
-    const status = typeof health?.status === "string" ? health.status : "unknown";
-    // wigolo reports 200 "ok" when up and 503 with a body when degraded.
-    return { available: status === "ok" || status === "healthy", status };
-  } catch (error) {
-    return {
-      available: false,
-      status: "unreachable",
-      detail: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
 
 /** Whether the SDK is importable, without starting a daemon. Never throws. */
 export async function isWigoloInstalled(): Promise<boolean> {
@@ -179,9 +153,6 @@ export async function isWigoloInstalled(): Promise<boolean> {
 }
 
 /** Last recorded failure, for diagnostics. */
-export function getWigoloLastError(): string | null {
-  return lastError;
-}
 
 /** Inject a stub daemon client. Test-only. */
 export function __setWigoloClientForTests(client: WigoloClientLike | null): void {
@@ -192,5 +163,4 @@ export function __setWigoloClientForTests(client: WigoloClientLike | null): void
 export function __resetWigoloClientForTests(): void {
   clientPromise = null;
   clientOverride = null;
-  lastError = null;
 }

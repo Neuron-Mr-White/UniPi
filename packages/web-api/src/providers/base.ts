@@ -79,9 +79,6 @@ export interface WebProvider {
    */
   ranking: ProviderRanking;
 
-  /** Provider-specific configuration */
-  config: Record<string, unknown>;
-
   /**
    * Search the web.
    * @param query - Search query string
@@ -106,11 +103,4 @@ export interface WebProvider {
    * @returns Summarized content
    */
   summarize?(url: string, prompt?: string, config?: ProviderConfig): Promise<SummarizeResult>;
-
-  /**
-   * Validate API key (optional).
-   * @param apiKey - API key to validate
-   * @returns true if valid
-   */
-  validateApiKey?(apiKey: string): Promise<boolean>;
 }

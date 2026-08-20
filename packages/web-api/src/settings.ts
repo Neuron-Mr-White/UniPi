@@ -21,12 +21,6 @@ export interface ProviderSettings {
   [key: string]: unknown;
 }
 
-/** Cache configuration */
-export interface CacheSettings {
-  enabled: boolean;
-  ttlMs: number;
-}
-
 /** Smart-fetch default settings */
 export interface SmartFetchSettings {
   /** TLS fingerprint browser profile */
@@ -48,7 +42,6 @@ export interface SmartFetchSettings {
 /** Config storage structure */
 export interface WebApiConfig {
   providers: Record<string, ProviderSettings>;
-  cache: CacheSettings;
   smartFetch?: Partial<SmartFetchSettings>;
 }
 
@@ -75,10 +68,6 @@ const DEFAULT_CONFIG: WebApiConfig = {
     firecrawl: { enabled: false },
     perplexity: { enabled: false },
     "llm-summarize": { enabled: true },
-  },
-  cache: {
-    enabled: true,
-    ttlMs: 3600000, // 1 hour
   },
   smartFetch: {},
 };
@@ -159,10 +148,6 @@ export function loadConfig(): WebApiConfig {
           ...DEFAULT_CONFIG.providers,
           ...config.providers,
         },
-        cache: {
-          ...DEFAULT_CONFIG.cache,
-          ...config.cache,
-        },
       };
     }
   } catch {
@@ -237,62 +222,8 @@ export function setProviderEnabled(providerId: string, enabled: boolean): void {
   saveConfig(config);
 }
 
-/**
- * Get cache settings.
- * @returns Cache configuration
- */
-export function getCacheSettings(): CacheSettings {
-  const config = loadConfig();
-  return config.cache;
-}
 
-/**
- * Update cache settings.
- * @param cache - New cache settings
- */
-export function updateCacheSettings(cache: Partial<CacheSettings>): void {
-  const config = loadConfig();
-  config.cache = {
-    ...config.cache,
-    ...cache,
-  };
-  saveConfig(config);
-}
 
-/**
- * Validate API key format (basic validation).
- * @param providerId - Provider ID
- * @param apiKey - API key to validate
- * @returns true if format looks valid
- */
-export function validateApiKeyFormat(providerId: string, apiKey: string): boolean {
-  if (!apiKey || apiKey.trim().length === 0) {
-    return false;
-  }
-
-  // Provider-specific format checks
-  switch (providerId) {
-    case "serpapi":
-      // SerpAPI keys are typically 64 characters
-      return apiKey.length >= 32;
-    case "tavily":
-      // Tavily keys start with "tvly-"
-      return apiKey.startsWith("tvly-") && apiKey.length >= 10;
-    case "firecrawl":
-      // Firecrawl keys are typically longer
-      return apiKey.length >= 20;
-    case "perplexity":
-      // Perplexity keys are typically longer
-      return apiKey.length >= 20;
-    case "jina-search":
-    case "jina-reader":
-      // Jina keys are typically longer
-      return apiKey.length >= 10;
-    default:
-      // Generic validation
-      return apiKey.length >= 8;
-  }
-}
 
 /**
  * Load smart-fetch settings.

@@ -60,7 +60,6 @@ const serpapiProvider: WebProvider = {
     read: 0,
     summarize: 0,
   },
-  config: {},
 
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.SERPAPI_KEY;
@@ -70,14 +69,6 @@ const serpapiProvider: WebProvider = {
     return searchSerpAPI(query, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      const results = await searchSerpAPI("test", apiKey);
-      return Array.isArray(results);
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider

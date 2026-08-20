@@ -142,7 +142,6 @@ const perplexityProvider: WebProvider = {
     read: 4,
     summarize: 1,
   },
-  config: {},
 
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.PERPLEXITY_API_KEY;
@@ -175,14 +174,6 @@ const perplexityProvider: WebProvider = {
     return summarizePerplexity(url, prompt, apiKey);
   },
 
-  async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-      await searchPerplexity("test", apiKey);
-      return true;
-    } catch {
-      return false;
-    }
-  },
 };
 
 // Register provider
