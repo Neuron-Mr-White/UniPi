@@ -50,15 +50,6 @@ function toMemoryRecord(r: MempalaceRecord): MemoryRecord {
   };
 }
 
-/** Whether MemPalace is detectable on this machine (for status display). */
-export function isMempalaceAvailable(): boolean {
-  try {
-    return ensureMempalace() !== null;
-  } catch {
-    return false;
-  }
-}
-
 /** Memory row from SQLite queries */
 interface MemoryRow {
   id: string;
@@ -471,20 +462,6 @@ export class MemoryStorage {
   }
 
   /**
-   * Check if database is healthy.
-   */
-  isHealthy(): boolean {
-    if (this.isMempalace()) return true;
-    if (!this.db) return false;
-    try {
-      this.db.prepare("SELECT 1").get();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Store or update a memory record.
    * Uses transaction to ensure atomicity — either all writes succeed or none do.
    */
@@ -678,22 +655,6 @@ export class MemoryStorage {
     }
 
     return synced;
-  }
-
-  /**
-   * Check if a memory with the given title already exists.
-   */
-  hasByTitle(title: string): boolean {
-    if (this.isMempalace()) {
-      return this.memPalaceCall<boolean>("has_title", {
-        wing: this.projectName,
-        title,
-      }) ?? false;
-    }
-    if (!this.db) throw new Error("Storage not initialized");
-    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-    const row = this.db.prepare("SELECT 1 FROM memories WHERE id = ?").get(id);
-    return !!row;
   }
 
   /**
@@ -963,20 +924,6 @@ export class MemoryStorage {
   }
 
   /**
-   * Get the underlying database for advanced queries.
-   */
-  getDb(): Database.Database | null {
-    return this.db;
-  }
-
-  /**
-   * Get the scope directory.
-   */
-  getScopeDir(): string {
-    return this.scopeDir;
-  }
-
-  /**
    * Extract a snippet around the query match.
    */
   private extractSnippet(content: string, query: string, chars = 100): string {
@@ -1161,99 +1108,3 @@ export function listAllProjects(): AllProjectsEntry[] {
   return allMemories;
 }
 
-/**
- * In-memory storage fallback when SQLite is unavailable.
- */
-export class InMemoryStorage {
-  private records: Map<string, MemoryRecord> = new Map();
-  private projectName: string;
-  private globalScope: boolean;
-
-  constructor(projectName: string, globalScope = false) {
-    this.projectName = projectName;
-    this.globalScope = globalScope;
-  }
-
-  store(record: MemoryRecord): void {
-    if (!record.id) {
-      record.id = record.title.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-    }
-    const now = new Date().toISOString();
-    if (!record.created) record.created = now;
-    record.updated = now;
-    if (!record.project) record.project = this.projectName;
-    this.records.set(record.id, record);
-  }
-
-  getById(id: string): MemoryRecord | null {
-    return this.records.get(id) || null;
-  }
-
-  getByTitle(title: string): MemoryRecord | null {
-    for (const record of this.records.values()) {
-      if (record.title.toLowerCase() === title.toLowerCase()) {
-        return record;
-      }
-    }
-    return null;
-  }
-
-  listAll(): Array<{ id: string; title: string; type: string }> {
-    return Array.from(this.records.values()).map((r) => ({
-      id: r.id,
-      title: r.title,
-      type: r.type,
-    }));
-  }
-
-  delete(id: string): boolean {
-    return this.records.delete(id);
-  }
-
-  deleteByTitle(title: string): boolean {
-    const record = this.getByTitle(title);
-    if (!record) return false;
-    return this.delete(record.id);
-  }
-
-  search(query: string, limit = 10): SearchResult[] {
-    const results: SearchResult[] = [];
-    const lowerQuery = query.toLowerCase();
-
-    for (const record of this.records.values()) {
-      const titleMatch = record.title.toLowerCase().includes(lowerQuery);
-      const contentMatch = record.content.toLowerCase().includes(lowerQuery);
-
-      if (titleMatch || contentMatch) {
-        const score = titleMatch ? 0.7 : 0.3;
-        const snippet = this.extractSnippet(record.content, query);
-        results.push({ record, score, snippet });
-      }
-    }
-
-    return results.sort((a, b) => b.score - a.score).slice(0, limit);
-  }
-
-  close(): void {
-    // No-op for in-memory
-  }
-
-  private extractSnippet(content: string, query: string, chars = 100): string {
-    const lowerContent = content.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    const idx = lowerContent.indexOf(lowerQuery);
-
-    if (idx === -1) {
-      return content.slice(0, chars) + (content.length > chars ? "..." : "");
-    }
-
-    const start = Math.max(0, idx - chars / 2);
-    const end = Math.min(content.length, idx + query.length + chars / 2);
-    let snippet = content.slice(start, end);
-
-    if (start > 0) snippet = "..." + snippet;
-    if (end < content.length) snippet = snippet + "...";
-
-    return snippet;
-  }
-}

@@ -87,9 +87,6 @@ describe("UndoRedoBuffer", () => {
 
     buf.clear();
 
-    assert.equal(buf.hasUndo(), false);
-    assert.equal(buf.hasRedo(), false);
-
     const undo = buf.undo("x");
     assert.equal(undo.ok, false);
 
@@ -134,20 +131,5 @@ describe("UndoRedoBuffer", () => {
     const undo3 = buf.undo("b");
     assert.equal(undo3.ok, true);
     assert.equal(undo3.text, "a");
-  });
-
-  it("hasUndo/hasRedo reflect stack state", () => {
-    const buf = new UndoRedoBuffer();
-
-    assert.equal(buf.hasUndo(), false);
-    assert.equal(buf.hasRedo(), false);
-
-    buf.snapshot("a");
-    assert.equal(buf.hasUndo(), true);
-    assert.equal(buf.hasRedo(), false);
-
-    buf.undo("current");
-    assert.equal(buf.hasUndo(), false);
-    assert.equal(buf.hasRedo(), true);
   });
 });

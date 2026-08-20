@@ -67,17 +67,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.RALPH,
       version: VERSION,
-      commands: [
-        "unipi:ralph-start",
-        "unipi:ralph-stop",
-        "unipi:ralph-resume",
-        "unipi:ralph-status",
-        "unipi:ralph-cancel",
-        "unipi:ralph-archive",
-        "unipi:ralph-clean",
-        "unipi:ralph-list",
-        "unipi:ralph-nuke",
-      ],
+      commands: ["unipi:ralph", "unipi:ralph-stop"],
       tools: [RALPH_TOOLS.START, RALPH_TOOLS.DONE],
     });
 
@@ -142,12 +132,7 @@ export default function (pi: ExtensionAPI) {
         : "";
 
     if (text.includes(RALPH_COMPLETE_MARKER)) {
-      mgr.completeLoop(
-        state,
-        `───────────────────────────────────────────────────────────────────────
-✅ RALPH LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
-───────────────────────────────────────────────────────────────────────`,
-      );
+      mgr.completeLoop(state);
     }
   });
 
@@ -302,25 +287,14 @@ function handleStart(rest: string, ctx: ExtensionContext, pi: ExtensionAPI): voi
     return;
   }
 
-  // Check if task file exists, create if not
+  // Check if task file exists; startLoop writes the task content to disk.
   const fullPath = require("node:path").resolve(ctx.cwd, taskFile);
-  const fs = require("node:fs");
-  if (!fs.existsSync(fullPath)) {
-    const { ensureDir } = require("@pi-unipi/core");
-    ensureDir(fullPath);
-    fs.writeFileSync(
-      fullPath,
-      `# Task\n\nDescribe your task here.\n\n## Goals\n- Goal 1\n\n## Checklist\n- [ ] Item 1\n\n## Notes\n(Update this as you work)\n`,
-      "utf-8",
-    );
-    if (ctx.hasUI) ctx.ui.notify(`Created task file: ${taskFile}`, "info");
-  }
-
   const { tryRead } = require("@pi-unipi/core");
-  const content = tryRead(fullPath);
+  let content = tryRead(fullPath);
   if (!content) {
-    if (ctx.hasUI) ctx.ui.notify(`Could not read task file: ${taskFile}`, "error");
-    return;
+    // File doesn't exist yet — pass the template through so startLoop creates it.
+    content = `# Task\n\nDescribe your task here.\n\n## Goals\n- Goal 1\n\n## Checklist\n- [ ] Item 1\n\n## Notes\n(Update this as you work)\n`;
+    if (ctx.hasUI) ctx.ui.notify(`Created task file: ${taskFile}`, "info");
   }
 
   const state = mgr.startLoop(loopName, taskFile, content, {

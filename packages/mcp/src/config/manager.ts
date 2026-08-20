@@ -11,7 +11,6 @@ import * as os from "node:os";
 import type {
   McpConfig,
   McpMetadata,
-  McpAuth,
   ResolvedServer,
   ServerSource,
 } from "../types.js";
@@ -123,15 +122,6 @@ export function loadMetadata(dir: string): McpMetadata {
   };
 }
 
-/**
- * Load auth data (auth.json) from a directory.
- * Returns empty object if file doesn't exist.
- */
-export function loadAuth(dir: string): McpAuth {
-  const filePath = path.join(dir, "auth.json");
-  return readJsonFile<McpAuth>(filePath) ?? {};
-}
-
 // ── Config saving ─────────────────────────────────────────────────
 
 /**
@@ -148,14 +138,6 @@ export function saveMcpConfig(dir: string, config: McpConfig): void {
 export function saveMetadata(dir: string, meta: McpMetadata): void {
   const filePath = path.join(dir, "config.json");
   writeJsonFile(filePath, meta);
-}
-
-/**
- * Save auth data (auth.json) with chmod 600.
- */
-export function saveAuth(dir: string, auth: McpAuth): void {
-  const filePath = path.join(dir, "auth.json");
-  writeJsonFile(filePath, auth, 0o600);
 }
 
 // ── Config merging ────────────────────────────────────────────────
@@ -218,26 +200,6 @@ export function resolveServers(
     source: entry.source,
     enabled: entry.enabled,
   }));
-}
-
-/**
- * Merge auth.json env vars into a server definition at spawn time.
- * Auth env vars are added to the server's env, but don't override
- * explicitly set values in mcp-config.json.
- */
-export function mergeEnvWithAuth(
-  serverDef: McpConfig["mcpServers"][string],
-  auth: Record<string, string>,
-): McpConfig["mcpServers"][string] {
-  if (Object.keys(auth).length === 0) return serverDef;
-
-  return {
-    ...serverDef,
-    env: {
-      ...auth,
-      ...(serverDef.env ?? {}),
-    },
-  };
 }
 
 /**

@@ -56,21 +56,6 @@ export function saveConfig(config: UpdaterConfig): void {
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
-/** Validate config, returning list of error messages */
-export function validateConfig(config: UpdaterConfig): string[] {
-  const errors: string[] = [];
-
-  if (!VALID_MODES.includes(config.autoUpdate)) {
-    errors.push(`autoUpdate must be one of: ${VALID_MODES.join(", ")}`);
-  }
-
-  if (config.checkIntervalMs < 60000) {
-    errors.push("checkIntervalMs must be at least 60000 (1 minute)");
-  }
-
-  return errors;
-}
-
 /** Get human-readable label for an interval */
 export function getIntervalLabel(ms: number): string {
   for (const [label, value] of Object.entries(VALID_INTERVALS)) {

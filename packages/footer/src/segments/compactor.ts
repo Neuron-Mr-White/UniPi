@@ -171,11 +171,11 @@ function renderSearchQueriesSegment(ctx: FooterSegmentContext): RenderedSegment 
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [
-  { id: "session_events", label: "Session Events", shortLabel: "EVT", description: "Number of session events", zone: "center", icon: "", render: renderSessionEventsSegment, defaultShow: true },
-  { id: "compactions", label: "Compactions", shortLabel: "CMP", description: "Number of context compactions", zone: "center", icon: "", render: renderCompactionsSegment, defaultShow: true },
-  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "SVD", description: "Tokens saved by compaction", zone: "center", icon: "", render: renderTokensSavedSegment, defaultShow: true },
-  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "RAT", description: "Last compaction compression ratio", zone: "center", icon: "", render: renderCompressionRatioSegment, defaultShow: false },
-  { id: "cocoindex_status", label: "CocoIndex", shortLabel: "CIDX", description: "CocoIndex indexing status", zone: "center", icon: "", render: renderCocoindexStatusSegment, defaultShow: false },
-  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "SBX", description: "Number of sandbox code runs", zone: "center", icon: "", render: renderSandboxRunsSegment, defaultShow: false },
-  { id: "search_queries", label: "Search Queries", shortLabel: "QRY", description: "Number of search queries", zone: "center", icon: "", render: renderSearchQueriesSegment, defaultShow: false },
+  { id: "session_events", label: "Session Events", shortLabel: "EVT", description: "Number of session events", zone: "center", render: renderSessionEventsSegment, defaultShow: true },
+  { id: "compactions", label: "Compactions", shortLabel: "CMP", description: "Number of context compactions", zone: "center", render: renderCompactionsSegment, defaultShow: true },
+  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "SVD", description: "Tokens saved by compaction", zone: "center", render: renderTokensSavedSegment, defaultShow: true },
+  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "RAT", description: "Last compaction compression ratio", zone: "center", render: renderCompressionRatioSegment, defaultShow: false },
+  { id: "cocoindex_status", label: "CocoIndex", shortLabel: "CIDX", description: "CocoIndex indexing status", zone: "center", render: renderCocoindexStatusSegment, defaultShow: false },
+  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "SBX", description: "Number of sandbox code runs", zone: "center", render: renderSandboxRunsSegment, defaultShow: false },
+  { id: "search_queries", label: "Search Queries", shortLabel: "QRY", description: "Number of search queries", zone: "center", render: renderSearchQueriesSegment, defaultShow: false },
 ];

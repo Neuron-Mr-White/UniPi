@@ -83,8 +83,6 @@ export interface NotifyConfig {
   gotify: GotifyConfig;
   /** Telegram settings */
   telegram: TelegramConfig;
-  /** ntfy settings */
-  ntfy: NtfyConfig;
   /** Recap summarization settings */
   recap: RecapConfig;
 }

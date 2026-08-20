@@ -182,11 +182,6 @@ export class NotifySettingsOverlay implements Component {
     return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
   }
 
-  private getDialogHeight(): number {
-    const terminalRows = process.stdout.rows ?? 30;
-    return Math.max(14, Math.min(24, Math.floor(terminalRows * 0.65)));
-  }
-
   render(width: number): string[] {
     const innerWidth = boxInnerWidth(width);
     const lines: string[] = [];

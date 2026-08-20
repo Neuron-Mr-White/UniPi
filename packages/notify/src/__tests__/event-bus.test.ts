@@ -77,22 +77,6 @@ describe("notify — event bus registration", () => {
       "Lifecycle events should be routed through pi.on() in the registration loop",
     );
   });
-
-  it("MODULE_READY listener uses pi.events.on()", () => {
-    const src = readSource("packages/notify/events.ts");
-
-    assert.match(
-      src,
-      /pi\.events\s*\.\s*on\s*\(\s*UNIPI_EVENTS\.MODULE_READY/,
-      "MODULE_READY should use pi.events.on()",
-    );
-
-    assert.doesNotMatch(
-      src,
-      /(?:\(pi\s+as\s+any\)|pi)\.on\s*\(\s*UNIPI_EVENTS\.MODULE_READY/,
-      "MODULE_READY should NOT use pi.on()",
-    );
-  });
 });
 
 // ─── Test: index.ts only uses pi.on() for lifecycle events ──────────

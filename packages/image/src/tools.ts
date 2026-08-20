@@ -19,7 +19,6 @@ import {
   listAllImageGenModels,
   resolveImageGenModel,
   resolveVisionModel,
-  splitModelRef,
   type ChatModelRegistry,
   type VisionModel,
 } from "./models.js";
@@ -325,5 +324,3 @@ function currentSessionModel(ctx: ExtensionContext): string {
   }
   return "";
 }
-
-export { splitModelRef };

@@ -16,7 +16,7 @@ import {
 } from "@pi-unipi/core";
 import type { ResolvedServer } from "./types.js";
 import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
-import { syncCatalog, loadCatalog } from "./config/sync.js";
+import { syncCatalog } from "./config/sync.js";
 import { ServerRegistry } from "./bridge/registry.js";
 import { compareCodeUnits } from "./bridge/translator.js";
 import { renderMcpAddOverlay } from "./tui/add-overlay.js";

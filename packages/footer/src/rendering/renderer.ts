@@ -10,7 +10,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { PresetDef, FooterSegmentContext, FooterSegment, ColorScheme, RenderedSegment, SegmentZone } from "../types.js";
 import type { FooterRegistry } from "../registry/index.js";
 import { visibleWidth as piVisibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
-import { getSeparator, separatorVisibleWidth } from "./separators.js";
+import { getSeparator } from "./separators.js";
 import { getDefaultColors, setColorMode, refreshColorMode } from "./theme.js";
 import { setIconStyle } from "./icons.js";
 import { getPreset } from "../presets.js";
@@ -27,7 +27,6 @@ interface SegmentLookup {
 interface RenderedSegmentWithWidth {
   content: string;
   width: number;
-  visible: boolean;
 }
 
 // ─── ANSI helpers ───────────────────────────────────────────────────────────
@@ -330,7 +329,6 @@ export class FooterRenderer {
     return {
       content: rendered.content,
       width: visibleWidth(rendered.content),
-      visible: true,
     };
   }
 

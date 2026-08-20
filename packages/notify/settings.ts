@@ -41,11 +41,6 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   telegram: {
     enabled: false,
   },
-  ntfy: {
-    enabled: false,
-    serverUrl: "https://ntfy.sh",
-    priority: 3,
-  },
   recap: {
     enabled: false,
     model: "openrouter/openai/gpt-oss-20b",
@@ -110,19 +105,6 @@ export function validateConfig(config: NotifyConfig): string[] {
     errors.push("Gotify: priority must be between 1 and 10");
   }
 
-  if (config.ntfy.enabled) {
-    if (!config.ntfy.serverUrl) {
-      errors.push("ntfy: serverUrl is required");
-    }
-    if (!config.ntfy.topic) {
-      errors.push("ntfy: topic is required");
-    }
-  }
-
-  if (config.ntfy.priority < 1 || config.ntfy.priority > 5) {
-    errors.push("ntfy: priority must be between 1 and 5");
-  }
-
   return errors;
 }
 
@@ -134,7 +116,6 @@ function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
     native: { ...DEFAULT_CONFIG.native, ...loaded.native },
     gotify: { ...DEFAULT_CONFIG.gotify, ...loaded.gotify },
     telegram: { ...DEFAULT_CONFIG.telegram, ...loaded.telegram },
-    ntfy: { ...DEFAULT_CONFIG.ntfy, ...loaded.ntfy },
     recap: { ...DEFAULT_CONFIG.recap, ...loaded.recap },
   };
 }

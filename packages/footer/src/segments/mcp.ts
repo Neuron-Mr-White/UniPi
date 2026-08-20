@@ -37,7 +37,7 @@ function withIcon(segmentId: string, text: string): string {
  */
 function getMcpStats(ctx: FooterSegmentContext): McpStats {
   // Source 1: globalThis escape hatch (future: MCP registry may expose this)
-  const global = globalThis.__unipi_mcp_stats;
+  const global = (globalThis as Record<string, unknown>).__unipi_mcp_stats;
   if (global && typeof global === "object") {
     return global;
   }
@@ -102,8 +102,8 @@ function renderServersFailedSegment(ctx: FooterSegmentContext): RenderedSegment 
 }
 
 export const MCP_SEGMENTS: FooterSegment[] = [
-  { id: "servers_total", label: "Servers", shortLabel: "SRV", description: "Total MCP servers configured", zone: "center", icon: "", render: renderServersTotalSegment, defaultShow: true },
-  { id: "servers_active", label: "Active", shortLabel: "ACT", description: "Currently connected MCP servers", zone: "center", icon: "", render: renderServersActiveSegment, defaultShow: true },
-  { id: "tools_total", label: "Tools", shortLabel: "TLS", description: "Total MCP tools available", zone: "center", icon: "", render: renderToolsTotalSegment, defaultShow: true },
-  { id: "servers_failed", label: "Failed", shortLabel: "ERR", description: "Failed MCP server connections", zone: "center", icon: "", render: renderServersFailedSegment, defaultShow: true },
+  { id: "servers_total", label: "Servers", shortLabel: "SRV", description: "Total MCP servers configured", zone: "center", render: renderServersTotalSegment, defaultShow: true },
+  { id: "servers_active", label: "Active", shortLabel: "ACT", description: "Currently connected MCP servers", zone: "center", render: renderServersActiveSegment, defaultShow: true },
+  { id: "tools_total", label: "Tools", shortLabel: "TLS", description: "Total MCP tools available", zone: "center", render: renderToolsTotalSegment, defaultShow: true },
+  { id: "servers_failed", label: "Failed", shortLabel: "ERR", description: "Failed MCP server connections", zone: "center", render: renderServersFailedSegment, defaultShow: true },
 ];

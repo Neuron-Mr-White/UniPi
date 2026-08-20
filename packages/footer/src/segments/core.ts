@@ -61,45 +61,6 @@ function getUsageStats(piContext: unknown): UsageStats {
   return { input, output, cacheRead, cacheWrite, cost };
 }
 
-// ─── Rainbow helpers (kept for potential future use) ─────────────────────────
-
-/** ANSI 256-color rainbow palette */
-const RAINBOW_COLORS = [
-  "\x1b[38;5;196m", // red
-  "\x1b[38;5;202m", // orange
-  "\x1b[38;5;226m", // yellow
-  "\x1b[38;5;82m",  // green
-  "\x1b[38;5;45m",  // blue
-  "\x1b[38;5;129m", // indigo
-  "\x1b[38;5;171m", // violet
-];
-
-const ANSI_RESET = "\x1b[0m";
-
-/** Apply rainbow coloring to text, cycling through colors per character */
-export function rainbowText(text: string): string {
-  let result = "";
-  let colorIdx = 0;
-  for (const char of text) {
-    if (char === " ") {
-      result += char;
-    } else {
-      result += `${RAINBOW_COLORS[colorIdx % RAINBOW_COLORS.length]}${char}${ANSI_RESET}`;
-      colorIdx++;
-    }
-  }
-  return result;
-}
-
-/** Render a rainbow border line of the given width */
-export function rainbowBorder(width: number): string {
-  let result = "";
-  for (let i = 0; i < width; i++) {
-    result += `${RAINBOW_COLORS[i % RAINBOW_COLORS.length]}─${ANSI_RESET}`;
-  }
-  return result;
-}
-
 // ─── Segment Renderers ──────────────────────────────────────────────────────
 
 function renderModelSegment(ctx: FooterSegmentContext): RenderedSegment {
@@ -324,19 +285,19 @@ function renderThinkingLevelSegment(ctx: FooterSegmentContext): RenderedSegment 
 // ─── Core segments array ────────────────────────────────────────────────────
 
 export const CORE_SEGMENTS: FooterSegment[] = [
-  { id: "model", label: "Model", shortLabel: "MDL", description: "Current model name", zone: "left", icon: "", render: renderModelSegment, defaultShow: true },
-  { id: "api_state", label: "API", shortLabel: "API", description: "API connection state", zone: "left", icon: "", render: renderApiStateSegment, defaultShow: true },
-  { id: "tool_count", label: "Tool Count", shortLabel: "TLS", description: "Number of tools available", zone: "left", icon: "", render: renderToolCountSegment, defaultShow: true },
-  { id: "git", label: "Git", shortLabel: "GIT", description: "Current git branch + dirty/clean status", zone: "left", icon: "", render: renderGitSegment, defaultShow: true },
-  { id: "tps", label: "TPS", shortLabel: "TPS", description: "Tokens per second \u2014 live during generation", zone: "center", icon: "", render: renderTpsSegment, defaultShow: true },
-  { id: "context_pct", label: "Context %", shortLabel: "CTX", description: "Context window usage percentage", zone: "center", icon: "", render: renderContextPctSegment, defaultShow: true },
-  { id: "cost", label: "Cost", shortLabel: "CST", description: "Session cost in USD", zone: "center", icon: "", render: renderCostSegment, defaultShow: true },
-  { id: "tokens_total", label: "Tokens Total", shortLabel: "TOK", description: "Total tokens used this session", zone: "center", icon: "", render: renderTokensSegment("total"), defaultShow: false },
-  { id: "tokens_in", label: "Tokens In", shortLabel: "TIN", description: "Input tokens consumed", zone: "center", icon: "", render: renderTokensSegment("in"), defaultShow: false },
-  { id: "tokens_out", label: "Tokens Out", shortLabel: "TOUT", description: "Output tokens generated", zone: "center", icon: "", render: renderTokensSegment("out"), defaultShow: false },
-  { id: "session", label: "Session", shortLabel: "SES", description: "Session identifier", zone: "left", icon: "", render: renderSessionSegment, defaultShow: false },
-  { id: "hostname", label: "Hostname", shortLabel: "HST", description: "Machine hostname", zone: "left", icon: "", render: renderHostnameSegment, defaultShow: false },
-  { id: "clock", label: "Clock", shortLabel: "CLK", description: "Current wall time (HH:MM:SS)", zone: "right", icon: "", render: renderClockSegment, defaultShow: true },
-  { id: "duration", label: "Duration", shortLabel: "DUR", description: "Session duration", zone: "right", icon: "", render: renderDurationSegment, defaultShow: true },
-  { id: "thinking_level", label: "Thinking", shortLabel: "THK", description: "Current model thinking level", zone: "center", icon: "", render: renderThinkingLevelSegment, defaultShow: false },
+  { id: "model", label: "Model", shortLabel: "MDL", description: "Current model name", zone: "left", render: renderModelSegment, defaultShow: true },
+  { id: "api_state", label: "API", shortLabel: "API", description: "API connection state", zone: "left", render: renderApiStateSegment, defaultShow: true },
+  { id: "tool_count", label: "Tool Count", shortLabel: "TLS", description: "Number of tools available", zone: "left", render: renderToolCountSegment, defaultShow: true },
+  { id: "git", label: "Git", shortLabel: "GIT", description: "Current git branch + dirty/clean status", zone: "left", render: renderGitSegment, defaultShow: true },
+  { id: "tps", label: "TPS", shortLabel: "TPS", description: "Tokens per second \u2014 live during generation", zone: "center", render: renderTpsSegment, defaultShow: true },
+  { id: "context_pct", label: "Context %", shortLabel: "CTX", description: "Context window usage percentage", zone: "center", render: renderContextPctSegment, defaultShow: true },
+  { id: "cost", label: "Cost", shortLabel: "CST", description: "Session cost in USD", zone: "center", render: renderCostSegment, defaultShow: true },
+  { id: "tokens_total", label: "Tokens Total", shortLabel: "TOK", description: "Total tokens used this session", zone: "center", render: renderTokensSegment("total"), defaultShow: false },
+  { id: "tokens_in", label: "Tokens In", shortLabel: "TIN", description: "Input tokens consumed", zone: "center", render: renderTokensSegment("in"), defaultShow: false },
+  { id: "tokens_out", label: "Tokens Out", shortLabel: "TOUT", description: "Output tokens generated", zone: "center", render: renderTokensSegment("out"), defaultShow: false },
+  { id: "session", label: "Session", shortLabel: "SES", description: "Session identifier", zone: "left", render: renderSessionSegment, defaultShow: false },
+  { id: "hostname", label: "Hostname", shortLabel: "HST", description: "Machine hostname", zone: "left", render: renderHostnameSegment, defaultShow: false },
+  { id: "clock", label: "Clock", shortLabel: "CLK", description: "Current wall time (HH:MM:SS)", zone: "right", render: renderClockSegment, defaultShow: true },
+  { id: "duration", label: "Duration", shortLabel: "DUR", description: "Session duration", zone: "right", render: renderDurationSegment, defaultShow: true },
+  { id: "thinking_level", label: "Thinking", shortLabel: "THK", description: "Current model thinking level", zone: "center", render: renderThinkingLevelSegment, defaultShow: false },
 ];

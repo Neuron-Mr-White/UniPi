@@ -4,7 +4,6 @@ import * as path from "node:path";
 import * as os from "node:os";
 import {
   parseMilestones,
-  writeMilestones,
   updateItemStatus,
   getProgressSummary,
 } from "../milestone.js";
@@ -87,63 +86,6 @@ describe("parseMilestones", () => {
 
     const doc = parseMilestones(file);
     expect(doc.phases[0].description).toBe("Line one Line two");
-
-    fs.unlinkSync(file);
-  });
-});
-
-describe("writeMilestones", () => {
-  it("writes a valid MILESTONES.md file", () => {
-    const file = tmpFile("write");
-    const doc = {
-      title: "My Goals",
-      created: "2026-04-28",
-      updated: "2026-04-28",
-      filePath: file,
-      phases: [
-        {
-          name: "Phase 1",
-          description: "First phase",
-          items: [
-            { text: "Done item", checked: true, lineNumber: 1 },
-            { text: "Todo item", checked: false, lineNumber: 2 },
-          ],
-        },
-      ],
-    };
-
-    writeMilestones(file, doc);
-    const content = fs.readFileSync(file, "utf-8");
-
-    expect(content).toContain('title: "My Goals"');
-    expect(content).toContain("## Phase 1");
-    expect(content).toContain("> First phase");
-    expect(content).toContain("- [x] Done item");
-    expect(content).toContain("- [ ] Todo item");
-
-    // Verify roundtrip
-    const parsed = parseMilestones(file);
-    expect(parsed.title).toBe("My Goals");
-    expect(parsed.phases[0].items).toHaveLength(2);
-    expect(parsed.phases[0].items[0].checked).toBe(true);
-
-    fs.unlinkSync(file);
-  });
-
-  it("handles empty phases array", () => {
-    const file = tmpFile("empty");
-    const doc = {
-      title: "Empty",
-      created: "2026-01-01",
-      updated: "2026-01-01",
-      filePath: file,
-      phases: [],
-    };
-
-    writeMilestones(file, doc);
-    const content = fs.readFileSync(file, "utf-8");
-    expect(content).toContain("# Empty");
-    expect(content).not.toContain("## ");
 
     fs.unlinkSync(file);
   });

@@ -20,7 +20,6 @@ export class UndoRedoBuffer {
   private undoStack: TextSnapshot[] = [];
   private redoStack: TextSnapshot[] = [];
   private lastSnapshotAt = 0;
-  private lastUndoAt = 0;
 
   /**
    * Take a snapshot of current text BEFORE it changes.
@@ -66,21 +65,10 @@ export class UndoRedoBuffer {
     return { text: snapshot.text, ok: true };
   }
 
-  /** Check if undo stack has entries. */
-  hasUndo(): boolean {
-    return this.undoStack.length > 0;
-  }
-
-  /** Check if redo stack has entries. */
-  hasRedo(): boolean {
-    return this.redoStack.length > 0;
-  }
-
   /** Clear both stacks. Call on session shutdown. */
   clear(): void {
     this.undoStack = [];
     this.redoStack = [];
     this.lastSnapshotAt = 0;
-    this.lastUndoAt = 0;
   }
 }

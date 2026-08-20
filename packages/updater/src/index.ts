@@ -165,9 +165,4 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       // Update check failure — silent, non-critical
     }
   });
-
-  // Cleanup on session shutdown
-  pi.on("session_shutdown", async () => {
-    // No cleanup needed
-  });
 }

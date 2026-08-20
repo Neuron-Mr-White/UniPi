@@ -25,13 +25,10 @@ export interface UsageStats {
     today: number;
     week: number;
     month: number;
-    allTime: number;
   };
   /** Total cost by period (USD) */
   cost: {
     today: number;
-    week: number;
-    month: number;
     allTime: number;
   };
   /** Token counts by model (all time) */
@@ -44,8 +41,6 @@ export interface UsageStats {
   byModelMonth: Record<string, { tokens: number; cost: number; sessions: number }>;
   /** Total sessions */
   sessionCount: number;
-  /** Total messages */
-  messageCount: number;
 }
 
 /** Time period boundaries */
@@ -275,16 +270,8 @@ function collectSessionFiles(dir: string, files: string[]): void {
 }
 
 /**
- * Parse all session files and aggregate usage stats.
- * Matches tmustier's parsing logic.
- */
-export function parseUsageStats(): UsageStats {
-  const { stats } = collectStats(null);
-  return stats;
-}
-
-/**
- * Async variant that yields to the event loop while parsing.
+ * Parse all session files and aggregate usage stats, yielding to the event
+ * loop while parsing.
  *
  * A cold parse is several seconds of pure CPU. Running it synchronously starves
  * the event loop, so keystrokes queue up and the UI cannot repaint. Deferring
@@ -292,41 +279,34 @@ export function parseUsageStats(): UsageStats {
  * `yieldEvery` files, control returns to the loop.
  */
 export async function parseUsageStatsAsync(): Promise<UsageStats> {
-  const yielder = async (): Promise<void> => {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  };
-  const { stats, pending } = collectStats(yielder);
-  if (pending) await pending;
+  const { stats, pending } = collectStats();
+  await pending;
   return stats;
 }
 
 /** Empty stats accumulator. */
 function emptyStats(): UsageStats {
   return {
-    tokens: { today: 0, week: 0, month: 0, allTime: 0 },
-    cost: { today: 0, week: 0, month: 0, allTime: 0 },
+    tokens: { today: 0, week: 0, month: 0 },
+    cost: { today: 0, allTime: 0 },
     byModel: {},
     byModelToday: {},
     byModelWeek: {},
     byModelMonth: {},
     sessionCount: 0,
-    messageCount: 0,
   };
 }
 
 /**
- * Shared implementation for the sync and async entry points.
+ * Scan all session files and aggregate usage stats.
  *
- * When `yielder` is null the whole scan runs synchronously and `stats` is fully
- * populated on return. When provided, the returned `stats` object is filled in
- * as `pending` progresses, and the caller must await it.
+ * The returned `stats` object is filled in as `pending` progresses; the caller
+ * must await it.
  */
-function collectStats(
-  yielder: (() => Promise<void>) | null,
-): { stats: UsageStats; pending: Promise<void> | null } {
+function collectStats(): { stats: UsageStats; pending: Promise<void> } {
   const stats = emptyStats();
   const sessionsDir = getSessionsDir();
-  if (!existsSync(sessionsDir)) return { stats, pending: null };
+  if (!existsSync(sessionsDir)) return { stats, pending: Promise.resolve() };
 
   const sessionFiles: string[] = [];
   collectSessionFiles(sessionsDir, sessionFiles);
@@ -405,7 +385,6 @@ function collectStats(
       counted++;
       const model = models[modelIdx] ?? "unknown";
 
-      stats.tokens.allTime += countedTokens;
       stats.cost.allTime += cost;
       bump(stats.byModel, model, countedTokens, cost);
 
@@ -416,19 +395,16 @@ function collectStats(
       }
       if (timestamp >= weekStart) {
         stats.tokens.week += countedTokens;
-        stats.cost.week += cost;
         bump(stats.byModelWeek, model, countedTokens, cost);
       }
       if (timestamp >= monthStart) {
         stats.tokens.month += countedTokens;
-        stats.cost.month += cost;
         bump(stats.byModelMonth, model, countedTokens, cost);
       }
     }
 
     if (counted > 0) {
       stats.sessionCount++;
-      stats.messageCount += counted;
     }
   };
 
@@ -439,17 +415,6 @@ function collectStats(
   };
 
   const YIELD_EVERY = 25;
-
-  if (!yielder) {
-    for (const item of work) {
-      const records = item.cached
-        ? item.cached.records
-        : (nextFiles[item.path].records = extractRecords(item.path, modelIndex, models));
-      aggregate(records);
-    }
-    finish();
-    return { stats, pending: null };
-  }
 
   const pending = (async () => {
     let sinceYield = 0;
@@ -467,7 +432,7 @@ function collectStats(
       aggregate(records);
       if (sinceYield >= YIELD_EVERY) {
         sinceYield = 0;
-        await yielder();
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
     finish();

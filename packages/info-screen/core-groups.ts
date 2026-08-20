@@ -141,11 +141,6 @@ export function startLoadTracking(): void {
   }
 }
 
-/** Record when a module starts loading */
-export function recordModuleStart(name: string): void {
-  moduleStartTimes.set(name, Date.now());
-}
-
 /** Record a load time */
 export function recordLoadTime(name: string, type: string, ms?: number): void {
   // If no ms provided, calculate from start time
@@ -170,11 +165,6 @@ export function finishLoadTracking(): void {
   if (loadTrackingStarted) {
     totalLoadTimeMs = Date.now() - loadTrackingStartMs;
   }
-}
-
-/** Get load times */
-export function getLoadTimes(): Array<{ name: string; type: string; ms: number }> {
-  return [...loadTimes];
 }
 
 /** Get total load time */

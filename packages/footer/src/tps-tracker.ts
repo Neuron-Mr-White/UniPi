@@ -246,14 +246,6 @@ export class TpsTracker {
   }
 
   /**
-   * Whether the model was recently generating tokens.
-   * Kept for backward compatibility with renderer.
-   */
-  isGenerating(): boolean {
-    return this.isStreaming();
-  }
-
-  /**
    * Get total output tokens for the session (estimated).
    */
   getTotalOutput(): number {

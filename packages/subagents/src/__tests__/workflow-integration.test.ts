@@ -33,7 +33,6 @@ interface AgentConfig {
   maxTurns?: number;
   systemPrompt: string;
   promptMode: "replace" | "append";
-  inheritContext?: boolean;
   runInBackground?: boolean;
   isolated?: boolean;
   memory?: string;
@@ -313,7 +312,6 @@ describe("Workflow Integration", () => {
       assert.ok(managerSource.includes("options.thinkingLevel ?? agentConfig?.thinking"));
       assert.ok(managerSource.includes("options.maxTurns ?? agentConfig?.maxTurns"));
       assert.ok(managerSource.includes("options.isolated ?? agentConfig?.isolated"));
-      assert.ok(managerSource.includes("options.inheritContext ?? agentConfig?.inheritContext"));
     });
   });
 

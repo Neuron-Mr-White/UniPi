@@ -132,16 +132,6 @@ export function registerEventListeners(
 
   registerAgentNotification(pi, "agent_end", config, cwd);
   registerAgentNotification(pi, "agent_settled", config, cwd);
-
-  // Listen for dynamic module events
-  const moduleHandler = async (payload: unknown) => {
-    const modPayload = payload as { name?: string; tools?: string[] };
-    if (modPayload?.name && modPayload.name !== "@pi-unipi/notify") {
-      // Module announced — check if it has events we should subscribe to
-      // For now, modules register their own events through MODULE_READY
-    }
-  };
-  unsubs.push(pi.events.on(UNIPI_EVENTS.MODULE_READY, moduleHandler));
 }
 
 /** Get all platforms that are currently enabled in config */

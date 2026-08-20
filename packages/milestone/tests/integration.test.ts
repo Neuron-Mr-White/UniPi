@@ -4,7 +4,6 @@ import * as path from "node:path";
 import * as os from "node:os";
 import {
   parseMilestones,
-  writeMilestones,
   updateItemStatus,
   getProgressSummary,
 } from "../milestone.js";
@@ -52,6 +51,35 @@ function createSampleMilestones(dir: string): string {
   };
   writeMilestones(filePath, doc);
   return filePath;
+}
+
+/** Local test helper — writes a MilestoneDoc to disk (production writeMilestones was removed) */
+function writeMilestones(filePath: string, doc: MilestoneDoc): void {
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push(`title: "${doc.title}"`);
+  lines.push(`created: ${doc.created}`);
+  lines.push(`updated: ${doc.updated}`);
+  lines.push("---");
+  lines.push("");
+  lines.push(`# ${doc.title}`);
+  lines.push("");
+  for (const phase of doc.phases) {
+    lines.push(`## ${phase.name}`);
+    if (phase.description) {
+      lines.push(`> ${phase.description}`);
+    }
+    lines.push("");
+    for (const item of phase.items) {
+      const check = item.checked ? "[x]" : "[ ]";
+      lines.push(`- ${check} ${item.text}`);
+    }
+    lines.push("");
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = filePath + ".tmp";
+  fs.writeFileSync(tmpPath, lines.join("\n"), "utf-8");
+  fs.renameSync(tmpPath, filePath);
 }
 
 describe("Integration: Full milestone lifecycle", () => {

@@ -20,6 +20,7 @@ import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
 import { SettingsOverlay } from "./settings-overlay.ts";
 import { loadConfig } from "./settings-overlay.ts";
 import { copyToClipboard } from "./clipboard.ts";
+import { THINKING_CYCLE } from "./types.ts";
 
 // ─── Status feedback ────────────────────────────────────────────────────────
 
@@ -254,7 +255,6 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   function doToggleThinking(): void {
     const current = pi.getThinkingLevel();
-    const THINKING_CYCLE = ["off", "low", "medium", "high", "xhigh"] as const;
     const idx = THINKING_CYCLE.indexOf(current as any);
     const nextIdx = idx >= 0 ? (idx + 1) % THINKING_CYCLE.length : 0;
     const next = THINKING_CYCLE[nextIdx];

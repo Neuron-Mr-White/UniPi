@@ -51,7 +51,7 @@ interface InfoRegistryLike {
  */
 function getInfoRegistryMemoryData(): InfoMemoryData | null {
   try {
-    const registry = globalThis.__unipi_info_registry;
+    const registry = (globalThis as Record<string, unknown>).__unipi_info_registry;
     if (!registry || typeof registry !== "object") return null;
 
     // The info registry exposes getCachedData(groupId) synchronously
@@ -139,7 +139,7 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
 }
 
 export const MEMORY_SEGMENTS: FooterSegment[] = [
-  { id: "project_count", label: "Project Memory", shortLabel: "MEM", description: "Memory entries for this project", zone: "center", icon: "", render: renderProjectCountSegment, defaultShow: true },
-  { id: "total_count", label: "Total Memory", shortLabel: "TOT", description: "Total memory entries across projects", zone: "center", icon: "", render: renderTotalCountSegment, defaultShow: true },
-  { id: "consolidations", label: "Consolidations", shortLabel: "CNS", description: "Number of memory consolidations", zone: "center", icon: "", render: renderConsolidationsSegment, defaultShow: false },
+  { id: "project_count", label: "Project Memory", shortLabel: "MEM", description: "Memory entries for this project", zone: "center", render: renderProjectCountSegment, defaultShow: true },
+  { id: "total_count", label: "Total Memory", shortLabel: "TOT", description: "Total memory entries across projects", zone: "center", render: renderTotalCountSegment, defaultShow: true },
+  { id: "consolidations", label: "Consolidations", shortLabel: "CNS", description: "Number of memory consolidations", zone: "center", render: renderConsolidationsSegment, defaultShow: false },
 ];

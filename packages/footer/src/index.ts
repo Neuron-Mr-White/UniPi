@@ -27,20 +27,19 @@ import { NOTIFY_SEGMENTS } from "./segments/notify.js";
 import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 
 import type { FooterGroup, FooterSegment } from "./types.js";
-import { rainbowBorder } from "./segments/core.js";
 import { tpsTracker } from "./tps-tracker.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
-  { id: "core", name: "Core", icon: "", segments: CORE_SEGMENTS, defaultShow: true },
-  { id: "compactor", name: "Compactor", icon: "", segments: COMPACTOR_SEGMENTS, defaultShow: true },
-  { id: "memory", name: "Memory", icon: "", segments: MEMORY_SEGMENTS, defaultShow: true },
-  { id: "mcp", name: "MCP", icon: "", segments: MCP_SEGMENTS, defaultShow: true },
-  { id: "ralph", name: "Ralph", icon: "", segments: RALPH_SEGMENTS, defaultShow: true },
-  { id: "workflow", name: "Workflow", icon: "", segments: WORKFLOW_SEGMENTS, defaultShow: true },
-  { id: "kanboard", name: "Kanboard", icon: "", segments: KANBOARD_SEGMENTS, defaultShow: true },
-  { id: "notify", name: "Notify", icon: "", segments: NOTIFY_SEGMENTS, defaultShow: false },
-  { id: "status_ext", name: "Extensions", icon: "", segments: STATUS_EXT_SEGMENTS, defaultShow: true },
+  { id: "core", name: "Core", segments: CORE_SEGMENTS, defaultShow: true },
+  { id: "compactor", name: "Compactor", segments: COMPACTOR_SEGMENTS, defaultShow: true },
+  { id: "memory", name: "Memory", segments: MEMORY_SEGMENTS, defaultShow: true },
+  { id: "mcp", name: "MCP", segments: MCP_SEGMENTS, defaultShow: true },
+  { id: "ralph", name: "Ralph", segments: RALPH_SEGMENTS, defaultShow: true },
+  { id: "workflow", name: "Workflow", segments: WORKFLOW_SEGMENTS, defaultShow: true },
+  { id: "kanboard", name: "Kanboard", segments: KANBOARD_SEGMENTS, defaultShow: true },
+  { id: "notify", name: "Notify", segments: NOTIFY_SEGMENTS, defaultShow: false },
+  { id: "status_ext", name: "Extensions", segments: STATUS_EXT_SEGMENTS, defaultShow: true },
 ];
 
 /** Build a segment lookup from all groups */

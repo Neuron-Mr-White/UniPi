@@ -94,11 +94,6 @@ function getBridgePath(): string | null {
   return cachedBridgePath;
 }
 
-/** Clear bridge discovery cache (primarily for recovery/tests). */
-export function invalidateBridgePathCache(): void {
-  cachedBridgePath = undefined;
-}
-
 export interface BridgeResponse<T> {
   ok: boolean;
   result?: T;
@@ -232,12 +227,6 @@ export function ensureMempalace(): MempalaceInstall | null {
   return install;
 }
 
-/** Drop the cached install record (forces re-detection next session). */
-export function invalidateInstallCache(): void {
-  try { if (fs.existsSync(INSTALL_FLAG)) fs.unlinkSync(INSTALL_FLAG); } catch { /* ignore */ }
-  invalidatePingVerified();
-}
-
 /** Was the palace ping-verified recently enough to trust without re-pinging? */
 export function isPingVerified(): boolean {
   try {
@@ -349,11 +338,6 @@ export function markMigrated(
   } catch {
     return false;
   }
-}
-
-/** Force re-migration by clearing the flag. */
-export function clearMigratedFlag(flagPath = MIGRATED_FLAG): void {
-  try { if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath); } catch { /* ignore */ }
 }
 
 /**

@@ -4,7 +4,7 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { FooterRegistry, resetFooterRegistry } from "../src/registry/index.ts";
+import { FooterRegistry } from "../src/registry/index.ts";
 import type { FooterGroup } from "../src/types.ts";
 
 describe("FooterRegistry", () => {
@@ -19,7 +19,6 @@ describe("FooterRegistry", () => {
       const group: FooterGroup = {
         id: "test",
         name: "Test Group",
-        icon: "",
         segments: [],
         defaultShow: true,
       };
@@ -28,8 +27,8 @@ describe("FooterRegistry", () => {
     });
 
     it("getAllGroups returns all registered groups", () => {
-      registry.registerGroup({ id: "a", name: "A", icon: "", segments: [], defaultShow: true });
-      registry.registerGroup({ id: "b", name: "B", icon: "", segments: [], defaultShow: true });
+      registry.registerGroup({ id: "a", name: "A", segments: [], defaultShow: true });
+      registry.registerGroup({ id: "b", name: "B", segments: [], defaultShow: true });
       assert.equal(registry.getAllGroups().length, 2);
     });
   });

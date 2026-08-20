@@ -207,14 +207,3 @@ async function resolveProviderKey(
   const envName = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`;
   return process.env[envName] || undefined;
 }
-
-/** Provider ids pi-ai can currently generate with, after registration. */
-export function registeredProviderIds(images: {
-  getProviders?: () => ReadonlyArray<{ id: string }>;
-}): string[] {
-  try {
-    return (images.getProviders?.() ?? []).map((p) => p.id);
-  } catch {
-    return [];
-  }
-}

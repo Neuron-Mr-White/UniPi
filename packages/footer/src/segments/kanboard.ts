@@ -22,7 +22,7 @@ function withIcon(segmentId: string, text: string): string {
  */
 function getKanboardData(): Record<string, unknown> | null {
   try {
-    const registry = globalThis.__unipi_kanboard_registry;
+    const registry = (globalThis as Record<string, unknown>).__unipi_kanboard_registry;
     if (!registry || typeof registry !== "object") return null;
     return registry as Record<string, unknown>;
   } catch {
@@ -84,8 +84,8 @@ function renderTaskPctSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const KANBOARD_SEGMENTS: FooterSegment[] = [
-  { id: "docs_count", label: "Docs", shortLabel: "DOC", description: "Workflow documents count", zone: "center", icon: "", render: renderDocsCountSegment, defaultShow: true },
-  { id: "tasks_done", label: "Done", shortLabel: "DNE", description: "Completed tasks", zone: "center", icon: "", render: renderTasksDoneSegment, defaultShow: true },
-  { id: "tasks_total", label: "Total", shortLabel: "TSK", description: "Total tasks", zone: "center", icon: "", render: renderTasksTotalSegment, defaultShow: true },
-  { id: "task_pct", label: "Progress", shortLabel: "PCT", description: "Task completion percentage", zone: "center", icon: "", render: renderTaskPctSegment, defaultShow: true },
+  { id: "docs_count", label: "Docs", shortLabel: "DOC", description: "Workflow documents count", zone: "center", render: renderDocsCountSegment, defaultShow: true },
+  { id: "tasks_done", label: "Done", shortLabel: "DNE", description: "Completed tasks", zone: "center", render: renderTasksDoneSegment, defaultShow: true },
+  { id: "tasks_total", label: "Total", shortLabel: "TSK", description: "Total tasks", zone: "center", render: renderTasksTotalSegment, defaultShow: true },
+  { id: "task_pct", label: "Progress", shortLabel: "PCT", description: "Task completion percentage", zone: "center", render: renderTaskPctSegment, defaultShow: true },
 ];

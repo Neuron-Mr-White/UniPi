@@ -80,31 +80,6 @@ const FULL_PRESET: PresetDef = {
   colors: getDefaultColors(),
 };
 
-/** Nerd preset — maximum detail for Nerd Font users */
-const NERD_PRESET: PresetDef = {
-  leftSegments: [
-    "model", "api_state", "tool_count", "git", "current_command", "session",
-  ],
-  rightSegments: [
-    "tps", "context_pct", "cost", "tokens_total",
-    "session_events", "compactions", "tokens_saved",
-    "project_count", "total_count",
-    "servers_total", "servers_active", "tools_total",
-    "active_loops", "loop_status",
-    "docs_count", "tasks_done", "task_pct",
-    "extension_statuses",
-    "clock", "duration",
-  ],
-  secondarySegments: [
-    "hostname",
-    "tokens_in", "tokens_out",
-    "compression_ratio", "cocoindex_status",
-    "platforms_enabled", "last_sent",
-    "thinking_level",
-  ],
-  colors: getDefaultColors(),
-};
-
 /** ASCII preset — safe for any terminal */
 const ASCII_PRESET: PresetDef = {
   leftSegments: [
@@ -124,7 +99,6 @@ export const PRESETS: Record<string, PresetDef> = {
   minimal: MINIMAL_PRESET,
   compact: COMPACT_PRESET,
   full: FULL_PRESET,
-  nerd: NERD_PRESET,
   ascii: ASCII_PRESET,
 };
 

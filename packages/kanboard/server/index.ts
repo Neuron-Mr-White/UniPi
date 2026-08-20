@@ -78,12 +78,6 @@ export class KanboardServer {
 
   /** Start the server with port allocation */
   async start(): Promise<{ port: number; url: string }> {
-    // Check for existing instance
-    const existing = this.checkExistingInstance();
-    if (existing) {
-      // Removed console.log — existing instance detection is silent.
-    }
-
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
 
     const port = await this.allocatePort();
@@ -266,12 +260,6 @@ export async function startServer(
 
   registerMilestoneRoutes(server, docsRoot);
   registerWorkflowRoutes(server, docsRoot);
-
-  server.route("POST", "/api/docs/:type/:file/items/:line", async (req, res) => {
-    // Placeholder — will be implemented with actual file updating
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true }));
-  });
 
   const { port, url } = await server.start();
   return { server, port, url };

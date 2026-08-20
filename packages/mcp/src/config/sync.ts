@@ -320,15 +320,6 @@ function enrichWithInstallInfo(entries: CatalogEntry[]): CatalogEntry[] {
 }
 
 /**
- * Check if enough time has passed since last sync.
- */
-function shouldSync(lastSyncAt: string | null, intervalMs: number): boolean {
-  if (!lastSyncAt) return true;
-  const elapsed = Date.now() - new Date(lastSyncAt).getTime();
-  return elapsed >= intervalMs;
-}
-
-/**
  * Sync the MCP server catalog from GitHub.
  * Parses the awesome-mcp-servers README, enriches with install info,
  * and caches to servers.json.
@@ -392,25 +383,5 @@ export function loadCatalog(): CatalogData {
       totalServers: 0,
       servers: [],
     };
-  }
-}
-
-/**
- * Sync if enough time has passed since last sync.
- * Returns null if no sync was needed, or the catalog data if synced.
- */
-export async function syncIfNeeded(): Promise<CatalogData | null> {
-  const configDir = getGlobalConfigDir();
-  const meta = loadMetadata(configDir);
-
-  if (!shouldSync(meta.sync.lastSyncAt, meta.sync.syncIntervalMs)) {
-    return null;
-  }
-
-  try {
-    return await syncCatalog();
-  } catch {
-    // Sync failed — return null, will use cached/seed data
-    return null;
   }
 }

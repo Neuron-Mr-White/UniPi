@@ -31,12 +31,6 @@ function getConfig(): EmbeddingConfig {
   return cachedConfig;
 }
 
-/** Force refresh config cache */
-export function refreshConfig(): void {
-  cachedConfig = null;
-  lastConfigLoad = 0;
-}
-
 /**
  * Generate an embedding for the given text via OpenRouter API.
  * Returns null if not configured or on error.
@@ -216,28 +210,3 @@ export async function reembedAllMemories(ctx: ExtensionCommandContext): Promise<
   return count;
 }
 
-/**
- * Convert Float32Array to Buffer for SQLite storage.
- */
-export function vectorToBuffer(vec: Float32Array): Buffer {
-  return Buffer.from(vec.buffer);
-}
-
-/**
- * Convert Buffer from SQLite to Float32Array.
- */
-export function bufferToVector(buf: Buffer): Float32Array {
-  return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-}
-
-/**
- * Check if embeddings are available (sqlite-vec loaded).
- */
-export function hasEmbeddings(db: { prepare(sql: string): { get(...args: unknown[]): unknown } }): boolean {
-  try {
-    db.prepare("SELECT * FROM memories_vec LIMIT 1").get();
-    return true;
-  } catch {
-    return false;
-  }
-}

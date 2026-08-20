@@ -369,11 +369,6 @@ export class InfoOverlay implements Component {
     return this.fg("borderMuted", `${left}${"─".repeat(innerWidth)}${right}`);
   }
 
-  private getDialogHeight(): number {
-    const terminalRows = process.stdout.rows ?? 30;
-    return Math.max(18, Math.min(32, Math.floor(terminalRows * 0.78)));
-  }
-
   // ─── State views ─────────────────────────────────────────────────────
 
   private renderEmpty(width: number): string[] {

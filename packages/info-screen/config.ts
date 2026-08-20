@@ -165,15 +165,6 @@ export function setGroupSettings(groupId: string, groupSettings: GroupSettings):
 }
 
 /**
- * Check if a group is enabled.
- */
-export function isGroupEnabled(groupId: string): boolean {
-  const settings = getInfoSettings();
-  if (!(groupId in settings.groups)) return true; // Default to enabled
-  return settings.groups[groupId].show;
-}
-
-/**
  * Check if a stat within a group is enabled.
  */
 export function isStatEnabled(groupId: string, statId: string): boolean {
@@ -181,11 +172,4 @@ export function isStatEnabled(groupId: string, statId: string): boolean {
   if (!groupSettings.stats) return true; // Default to enabled
   if (!(statId in groupSettings.stats)) return true;
   return groupSettings.stats[statId];
-}
-
-/**
- * Clear cached settings (for testing or reload).
- */
-export function clearSettingsCache(): void {
-  cachedSettings = null;
 }

@@ -2,12 +2,11 @@
  * @pi-unipi/updater — Update installer
  *
  * Wraps child_process.exec for installing updates via pi CLI.
- * Emits UPDATE_APPLIED or UPDATE_ERROR events.
  */
 
 import { exec } from "child_process";
 import { promisify } from "util";
-import { getInstalledPackageVersion, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { getInstalledPackageVersion } from "@pi-unipi/core";
 import type { InstallResult } from "../types.js";
 
 const execAsync = promisify(exec);
@@ -20,14 +19,11 @@ const INSTALL_TIMEOUT_MS = 60000;
  * Uses pi CLI: `pi install npm:@pi-unipi/unipi`
  * Returns structured result with success/failure info.
  */
-export async function installUpdate(
-  pi?: { events: { emit: (name: string, payload: unknown) => void } },
-): Promise<InstallResult> {
+export async function installUpdate(): Promise<InstallResult> {
   const thisDir = new URL("..", import.meta.url).pathname;
-  const installedBefore = getInstalledPackageVersion(thisDir, "@pi-unipi/unipi");
 
   try {
-    const { stdout, stderr } = await execAsync(
+    await execAsync(
       "pi install npm:@pi-unipi/unipi",
       {
         timeout: INSTALL_TIMEOUT_MS,
@@ -38,33 +34,15 @@ export async function installUpdate(
     // Get new version after install
     const installedAfter = getInstalledPackageVersion(thisDir, "@pi-unipi/unipi");
 
-    const result: InstallResult = {
+    return {
       success: true,
       version: installedAfter,
     };
-
-    // Emit success event
-    if (pi) {
-      emitEvent(pi, UNIPI_EVENTS.UPDATE_APPLIED, {
-        previousVersion: installedBefore,
-        newVersion: installedAfter,
-      });
-    }
-
-    return result;
   } catch (err: unknown) {
     const errorMessage = (err instanceof Error && 'stderr' in err ? String((err as Error & { stderr?: string }).stderr) : undefined)
       || (err instanceof Error ? err.message : undefined)
       || String(err)
       || "Unknown install error";
-
-    // Emit error event
-    if (pi) {
-      emitEvent(pi, UNIPI_EVENTS.UPDATE_ERROR, {
-        error: errorMessage,
-        phase: "install",
-      });
-    }
 
     return {
       success: false,

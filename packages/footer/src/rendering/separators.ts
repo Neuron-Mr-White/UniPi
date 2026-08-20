@@ -100,13 +100,3 @@ export function getSeparator(style: SeparatorStyle): SeparatorDef {
       return getSeparator("powerline-thin");
   }
 }
-
-/**
- * Get the visible width of a separator (ANSI-stripped length).
- */
-export function separatorVisibleWidth(style: SeparatorStyle): number {
-  const sep = getSeparator(style);
-  // Strip ANSI codes and measure
-  const stripped = sep.left.replace(/\x1b\[[0-9;]*m/g, "");
-  return stripped.length;
-}

@@ -117,7 +117,7 @@ function renderLoopStatusSegment(ctx: FooterSegmentContext): RenderedSegment {
 }
 
 export const RALPH_SEGMENTS: FooterSegment[] = [
-  { id: "active_loops", label: "Loops", shortLabel: "RL", description: "Active Ralph loops", zone: "center", icon: "", render: renderActiveLoopsSegment, defaultShow: true },
-  { id: "total_iterations", label: "Iterations", shortLabel: "ITR", description: "Total Ralph loop iterations", zone: "center", icon: "", render: renderTotalIterationsSegment, defaultShow: true },
-  { id: "loop_status", label: "Status", shortLabel: "STS", description: "Current loop status", zone: "center", icon: "", render: renderLoopStatusSegment, defaultShow: true },
+  { id: "active_loops", label: "Loops", shortLabel: "RL", description: "Active Ralph loops", zone: "center", render: renderActiveLoopsSegment, defaultShow: true },
+  { id: "total_iterations", label: "Iterations", shortLabel: "ITR", description: "Total Ralph loop iterations", zone: "center", render: renderTotalIterationsSegment, defaultShow: true },
+  { id: "loop_status", label: "Status", shortLabel: "STS", description: "Current loop status", zone: "center", render: renderLoopStatusSegment, defaultShow: true },
 ];

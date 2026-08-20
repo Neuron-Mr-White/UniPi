@@ -57,23 +57,6 @@ Pause and reflect on your progress:
 
 Update the task file with your reflection, then continue working.`;
 
-/** Default task template */
-export const DEFAULT_TEMPLATE = `# Task
-
-Describe your task here.
-
-## Goals
-- Goal 1
-- Goal 2
-
-## Checklist
-- [ ] Item 1
-- [ ] Item 2
-
-## Notes
-(Update this as you work)
-`;
-
 /** Ralph loop manager */
 export class RalphLoopManager {
   private currentLoop: string | null = null;
@@ -144,7 +127,7 @@ export class RalphLoopManager {
     if (message && this.ctx.hasUI) this.ctx.ui.notify(message, "info");
   }
 
-  completeLoop(state: LoopState, banner: string): void {
+  completeLoop(state: LoopState): void {
     state.status = "completed";
     state.completedAt = now();
     state.active = false;
@@ -365,12 +348,7 @@ export class RalphLoopManager {
 
     // Check max iterations
     if (state.maxIterations > 0 && state.iteration > state.maxIterations) {
-      this.completeLoop(
-        state,
-        `───────────────────────────────────────────────────────────────────────
-⚠️ RALPH LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
-───────────────────────────────────────────────────────────────────────`,
-      );
+      this.completeLoop(state);
       return null;
     }
 

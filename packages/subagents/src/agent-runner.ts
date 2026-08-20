@@ -25,27 +25,8 @@ const EXCLUDED_TOOL_NAMES = ["spawn_helper", "get_helper_result", "Agent", "get_
 /** All known built-in tool names. */
 const BUILTIN_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
-/** Default max turns. undefined = unlimited. */
-let defaultMaxTurns: number | undefined;
-
-export function getDefaultMaxTurns(): number | undefined {
-  return defaultMaxTurns;
-}
-
-export function setDefaultMaxTurns(n: number | undefined): void {
-  defaultMaxTurns = n == null || n === 0 ? undefined : Math.max(1, n);
-}
-
-/** Grace turns after soft limit. */
-let graceTurns = 5;
-
-export function getGraceTurns(): number {
-  return graceTurns;
-}
-
-export function setGraceTurns(n: number): void {
-  graceTurns = Math.max(1, n);
-}
+/** Grace turns after the soft turn limit before aborting. */
+const GRACE_TURNS = 5;
 
 /** Tool activity info. */
 export interface ToolActivity {
@@ -61,7 +42,6 @@ export interface RunOptions {
   maxTurns?: number;
   signal?: AbortSignal;
   isolated?: boolean;
-  inheritContext?: boolean;
   thinkingLevel?: ThinkingLevel;
   cwd?: string;
   onToolActivity?: (activity: ToolActivity) => void;
@@ -123,22 +103,12 @@ function getToolNamesForType(type: AgentType, config?: AgentConfig): string[] {
   return [...BUILTIN_TOOL_NAMES];
 }
 
-/**
- * Resolve agent config for a type.
+/** Resolve agent config for a type.
  * Priority: explicit config > builtin config > default
  */
 function resolveAgentConfig(type: AgentType, explicitConfig?: AgentConfig): AgentConfig | undefined {
   if (explicitConfig) return explicitConfig;
   return BUILTIN_CONFIGS[type];
-}
-
-/** Resolve model from config. */
-function resolveDefaultModel(
-  parentModel: Model<any> | undefined,
-  configModel?: string,
-): Model<any> | undefined {
-  // For now, just use parent model. Full model resolution requires registry.
-  return parentModel;
 }
 
 /**
@@ -191,7 +161,7 @@ export async function runAgent(
   await loader.reload();
 
   // Resolve model
-  const model = options.model ?? resolveDefaultModel(ctx.model);
+  const model = options.model ?? ctx.model;
 
   // Create session
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
@@ -235,7 +205,7 @@ export async function runAgent(
 
   // Track turns
   let turnCount = 0;
-  const maxTurns = options.maxTurns ?? defaultMaxTurns;
+  const maxTurns = options.maxTurns;
   let softLimitReached = false;
   let aborted = false;
 
@@ -248,7 +218,7 @@ export async function runAgent(
         if (!softLimitReached && turnCount >= maxTurns) {
           softLimitReached = true;
           session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
-        } else if (softLimitReached && turnCount >= maxTurns + graceTurns) {
+        } else if (softLimitReached && turnCount >= maxTurns + GRACE_TURNS) {
           aborted = true;
           session.abort();
         }
@@ -282,48 +252,4 @@ export async function runAgent(
 
   const responseText = collector.getText().trim() || getLastAssistantText(session);
   return { responseText, session, aborted, steered: softLimitReached };
-}
-
-/**
- * Get conversation text from a session.
- */
-export function getAgentConversation(session: AgentSession): string {
-  const parts: string[] = [];
-
-  for (const msg of session.messages) {
-    if (msg.role === "user") {
-      const content = msg.content;
-      const text = typeof content === "string"
-        ? content
-        : content
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
-            .map((c) => c.text)
-            .join("");
-      if (text.trim()) parts.push(`[User]: ${text.trim()}`);
-    } else if (msg.role === "assistant") {
-      const textParts: string[] = [];
-      const toolCalls: string[] = [];
-      const content = msg.content;
-      if (typeof content !== "string") {
-        for (const c of content) {
-          if (c.type === "text" && c.text) textParts.push(c.text);
-          else if (c.type === "toolCall") toolCalls.push(`  Tool: ${(c as any).name ?? "unknown"}`);
-        }
-      }
-      if (textParts.length > 0) parts.push(`[Assistant]: ${textParts.join("\n")}`);
-      if (toolCalls.length > 0) parts.push(`[Tool Calls]:\n${toolCalls.join("\n")}`);
-    } else if (msg.role === "toolResult") {
-      const content = msg.content;
-      const text = typeof content === "string"
-        ? content
-        : content
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
-            .map((c) => c.text)
-            .join("");
-      const truncated = text.length > 200 ? text.slice(0, 200) + "..." : text;
-      parts.push(`[Tool Result (${msg.toolName})]: ${truncated}`);
-    }
-  }
-
-  return parts.join("\n\n");
 }

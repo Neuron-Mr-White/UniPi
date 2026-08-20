@@ -12,12 +12,12 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent, type UnipiInfoGroupEvent } from "@pi-unipi/core";
+import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart } from "./core-groups.js";
+import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking } from "./core-groups.js";
 
 /** Re-export for external use */
-export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking, recordModuleStart };
+export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking };
 import { getInfoSettings } from "./config.js";
 import { InfoOverlay } from "./tui/info-overlay.js";
 import { SettingsOverlay } from "./settings/settings-tui.js";
@@ -93,10 +93,6 @@ export default function (pi: ExtensionAPI) {
       if (moduleReadyTimer) clearTimeout(moduleReadyTimer);
       moduleReadyTimer = setTimeout(flushModuleReadyBatch, MODULE_READY_DEBOUNCE_MS);
     }
-  });
-
-  pi.events.on(UNIPI_EVENTS.INFO_GROUP_REGISTERED, (_data) => {
-    // Group already registered via globalThis in registerGroup()
   });
 
   // Track built-in tools

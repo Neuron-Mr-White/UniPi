@@ -74,7 +74,6 @@ export interface AgentConfig {
   maxTurns?: number;
   systemPrompt: string;
   promptMode: "replace" | "append";
-  inheritContext?: boolean;
   runInBackground?: boolean;
   isolated?: boolean;
   memory?: MemoryScope;
@@ -101,16 +100,6 @@ export interface AgentRecord {
   promise?: Promise<string>;
   /** Set when result consumed via get_result — suppresses notification. */
   resultConsumed?: boolean;
-  /** Files locked by this agent. */
-  lockedFiles: Set<string>;
-}
-
-/** File lock entry. */
-export interface FileLockEntry {
-  agentId: string;
-  filePath: string;
-  promise: Promise<void>;
-  release: () => void;
 }
 
 /** Extension config. */

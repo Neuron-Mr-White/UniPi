@@ -39,7 +39,6 @@ export interface StatusInfo {
 export interface SearchOptions {
   limit?: number;
   offset?: number;
-  minScore?: number;
 }
 
 export interface SearchResult {
@@ -51,21 +50,12 @@ export interface SearchResult {
   matchLayer: "vector" | "fulltext" | "hybrid";
 }
 
-export interface CocoindexDeps {
-  projectDir: string;
-  pipelineDir: string;
-  initialized: boolean;
-}
-
 // ─────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────
 
-const COCOINDEX_STATE_DIR = ".cocoindex";
 const DEFAULT_PIPELINE_DIR = ".unipi/cocoindex";
-const DEFAULT_LANCEDB_PATH = ".unipi/cocoindex/.lancedb";
 const DEFAULT_UPDATE_TIMEOUT_MS = 15 * 60 * 1000;
-const DEFAULT_LEXICAL_SCAN_LIMIT = 50_000;
 
 // ─────────────────────────────────────────────────────────
 // CLI Detection
@@ -463,7 +453,7 @@ export async function search(
 
     // Prefer semantic vector search when the pipeline/table provides a vector
     // column. Older generated pipelines only contain path/chunk_index/content;
-    // LanceDB throws for those tables, so continue to FTS/lexical fallback.
+    // LanceDB throws for those tables, so continue to FTS fallback.
     const queryVector = await generateQueryEmbedding(query);
     if (queryVector) {
       const vectorResults = await vectorSearch(table, queryVector, limit, offset);
@@ -471,14 +461,7 @@ export async function search(
     }
 
     // Prefer LanceDB's native FTS when an inverted index exists on content.
-    const ftsResults = await fullTextSearch(table, query, limit, offset);
-    if (ftsResults.length > 0) return ftsResults;
-
-    // Last-resort compatibility path for existing text-only LanceDB tables.
-    // This keeps indexed projects searchable immediately instead of returning
-    // a misleading "run cocoindex-update" message when no vector/FTS index is
-    // available yet.
-    return lexicalSearch(table, query, limit, offset);
+    return fullTextSearch(table, query, limit, offset);
   } catch (err: any) {
     if (err?.code === "MODULE_NOT_FOUND" || err?.message?.includes("Cannot find module")) {
       return [{
@@ -526,49 +509,6 @@ async function fullTextSearch(table: any, query: string, limit: number, offset: 
   }
 }
 
-/**
- * Compatibility fallback for existing LanceDB tables that contain text chunks
- * but no vector column or full-text inverted index.
- */
-async function lexicalSearch(table: any, query: string, limit: number, offset: number): Promise<SearchResult[]> {
-  try {
-    const terms = tokenize(query);
-    if (terms.length === 0) return [];
-
-    const rows = await table.query()
-      .limit(DEFAULT_LEXICAL_SCAN_LIMIT)
-      .toArray();
-
-    const phrase = query.trim().toLowerCase();
-    const scored = rows
-      .map((row: any) => {
-        const content = String(row.content ?? row.text ?? "");
-        const path = String(row.path ?? row.source ?? "");
-        const haystack = `${path}\n${content}`.toLowerCase();
-        let score = 0;
-
-        for (const term of terms) {
-          const contentMatches = countOccurrences(content.toLowerCase(), term);
-          const pathMatches = countOccurrences(path.toLowerCase(), term);
-          score += contentMatches + pathMatches * 3;
-        }
-
-        if (phrase && haystack.includes(phrase)) score += terms.length * 4;
-        return { row, score };
-      })
-      .filter((item: { score: number }) => item.score > 0)
-      .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
-      .slice(offset, offset + limit);
-
-    return scored.map((item: { row: any; score: number }, i: number) => ({
-      ...rowToSearchResult(item.row, i, "fulltext"),
-      rank: item.score,
-    }));
-  } catch {
-    return [];
-  }
-}
-
 function rowToSearchResult(r: any, i: number, matchLayer: SearchResult["matchLayer"]): SearchResult {
   const path = r.path ?? r.source ?? "";
   return {
@@ -579,33 +519,6 @@ function rowToSearchResult(r: any, i: number, matchLayer: SearchResult["matchLay
     contentType: (r.content_type === "code" || path?.match(/\.(ts|tsx|js|jsx|py|rs|go|sh|bash)$/)) ? "code" : "prose",
     matchLayer,
   };
-}
-
-function tokenize(query: string): string[] {
-  const seen = new Set<string>();
-  const stopwords = new Set(["a", "an", "and", "are", "as", "at", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with"]);
-  const terms = query
-    .toLowerCase()
-    .split(/[^a-z0-9_+#.-]+/i)
-    .map((term) => term.trim())
-    .filter((term) => term.length > 1 && !stopwords.has(term));
-
-  return terms.filter((term) => {
-    if (seen.has(term)) return false;
-    seen.add(term);
-    return true;
-  });
-}
-
-function countOccurrences(value: string, needle: string): number {
-  if (!needle) return 0;
-  let count = 0;
-  let index = value.indexOf(needle);
-  while (index !== -1) {
-    count += 1;
-    index = value.indexOf(needle, index + needle.length);
-  }
-  return count;
 }
 
 // ─────────────────────────────────────────────────────────

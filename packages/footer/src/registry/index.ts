@@ -87,15 +87,6 @@ export class FooterRegistry {
     this.notifySubscribers();
   }
 
-  /**
-   * Clear cached data for a specific group.
-   */
-  invalidateGroup(groupId: string): void {
-    this.dataCache.delete(groupId);
-    this.log("invalidateGroup", groupId);
-    this.notifySubscribers();
-  }
-
   // ─── Reactive Subscriptions ───────────────────────────────────────────────
 
   /**
@@ -143,18 +134,4 @@ export function getFooterRegistry(): FooterRegistry {
     registryInstance = new FooterRegistry();
   }
   return registryInstance;
-}
-
-/**
- * Reset the global registry (for testing).
- */
-export function resetFooterRegistry(): void {
-  registryInstance = null;
-}
-
-// ─── Global reference ───────────────────────────────────────────────────────
-
-// Expose on globalThis for cross-package access
-if (typeof globalThis !== "undefined") {
-  globalThis.__unipi_footer_registry = getFooterRegistry();
 }

@@ -47,8 +47,6 @@ interface PendingRequest {
 export interface McpClientOptions {
   /** Per-request timeout in ms (default: MCP_DEFAULTS.STARTUP_TIMEOUT_MS) */
   timeoutMs?: number;
-  /** Working directory for the spawned process */
-  cwd?: string;
 }
 
 /**
@@ -65,11 +63,9 @@ export class McpClient {
   private connected = false;
   private stderrBuffer = "";
   private readonly timeoutMs: number;
-  private readonly cwd?: string;
 
   constructor(options?: McpClientOptions) {
     this.timeoutMs = options?.timeoutMs ?? MCP_DEFAULTS.STARTUP_TIMEOUT_MS;
-    this.cwd = options?.cwd;
   }
 
   /**
@@ -91,7 +87,6 @@ export class McpClient {
         this.process = spawn(command, args, {
           stdio: ["pipe", "pipe", "pipe"],
           env: mergedEnv,
-          cwd: this.cwd,
         });
 
         this.process.on("error", (err) => {
@@ -230,19 +225,9 @@ export class McpClient {
     this.cleanup();
   }
 
-  /** Whether the client is currently connected */
-  get isConnected(): boolean {
-    return this.connected;
-  }
-
   /** Process ID of the spawned MCP server, or undefined if not connected */
   get pid(): number | undefined {
     return this.process?.pid;
-  }
-
-  /** Captured stderr output */
-  get stderr(): string {
-    return this.stderrBuffer;
   }
 
   // ── Internal methods ────────────────────────────────────────────

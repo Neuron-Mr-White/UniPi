@@ -7,27 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DocParser, ParsedDoc, DocType } from "../types.js";
-
-/** Path patterns for doc type detection */
-const PATH_PATTERNS: Array<{ pattern: RegExp; type: DocType }> = [
-  { pattern: /\/specs\//, type: "spec" },
-  { pattern: /\/plans\//, type: "plan" },
-  { pattern: /MILESTONES\.md$/i, type: "milestone" },
-  { pattern: /\/quick-work\//, type: "quick-work" },
-  { pattern: /\/debug\//, type: "debug" },
-  { pattern: /\/fix\//, type: "fix" },
-  { pattern: /\/chore\//, type: "chore" },
-  { pattern: /\/reviews\//, type: "review" },
-];
-
-/** Detect doc type from file path */
-export function detectDocType(filePath: string): DocType | null {
-  for (const { pattern, type } of PATH_PATTERNS) {
-    if (pattern.test(filePath)) return type;
-  }
-  return null;
-}
+import type { DocParser, ParsedDoc } from "../types.js";
 
 /** Parser registry — manages all document parsers */
 export class ParserRegistry {

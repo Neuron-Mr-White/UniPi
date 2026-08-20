@@ -28,7 +28,6 @@
   "files": [
     "index.ts",
     "storage.ts",
-    "search.ts",
     "embedding.ts",
     "settings.ts",
     "tools.ts",

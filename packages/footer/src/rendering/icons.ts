@@ -321,16 +321,3 @@ export function getIcon(segmentId: string, overrideStyle?: "nerd" | "emoji" | "t
   const key = segmentId as keyof IconSet;
   return icons[key] ?? "";
 }
-
-/**
- * Get the full icon set based on the configured style.
- */
-export function getIcons(iconStyle?: "nerd" | "emoji" | "text"): IconSet {
-  const style = iconStyle ?? currentIconStyle ?? resolveIconStyle();
-  const sets: Record<string, IconSet> = {
-    nerd: NERD_ICONS,
-    emoji: EMOJI_ICONS,
-    text: TEXT_ICONS,
-  };
-  return sets[style];
-}

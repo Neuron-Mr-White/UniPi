@@ -32,11 +32,9 @@ describe("RegisterStore", () => {
   it("loads existing data from file", () => {
     const store1 = new RegisterStore(tmpDir);
     store1.setStash("persisted");
-    store1.setRegister(3, "reg3");
 
     const store2 = new RegisterStore(tmpDir);
     assert.equal(store2.getStash(), "persisted");
-    assert.equal(store2.getRegister(3), "reg3");
   });
 
   it("read/write stash roundtrip", () => {
@@ -50,28 +48,18 @@ describe("RegisterStore", () => {
     assert.equal(store.getStash(), "");
   });
 
-  it("read/write registers roundtrip", () => {
+  it("registers are empty by default", () => {
     const store = new RegisterStore(tmpDir);
 
     for (let i = 0; i < 10; i++) {
       assert.equal(store.getRegister(i), "");
     }
-
-    store.setRegister(0, "zero");
-    store.setRegister(9, "nine");
-    assert.equal(store.getRegister(0), "zero");
-    assert.equal(store.getRegister(9), "nine");
-    assert.equal(store.getRegister(5), "");
   });
 
-  it("ignores out-of-range register indices", () => {
+  it("getRegister handles out-of-range indices", () => {
     const store = new RegisterStore(tmpDir);
     assert.equal(store.getRegister(-1), "");
     assert.equal(store.getRegister(10), "");
-
-    // Should not throw
-    store.setRegister(-1, "bad");
-    store.setRegister(10, "bad");
   });
 
   it("handles corrupt file gracefully", () => {
@@ -99,12 +87,11 @@ describe("RegisterStore", () => {
   it("atomic write produces valid JSON", () => {
     const store = new RegisterStore(tmpDir);
     store.setStash("test");
-    store.setRegister(1, "one");
 
     const filePath = join(tmpDir, ".unipi/config/input-shortcuts.json");
     const raw = readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     assert.equal(parsed.stash, "test");
-    assert.equal(parsed.registers[1], "one");
+    assert.equal(parsed.registers.length, 10);
   });
 });

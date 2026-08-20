@@ -44,14 +44,6 @@ export class RegisterStore {
     return this.data!.registers[index] ?? "";
   }
 
-  /** Set a numbered register (0-9) and persist. */
-  setRegister(index: number, text: string): void {
-    if (index < 0 || index > 9) return;
-    this.ensureLoaded();
-    this.data!.registers[index] = text;
-    this.save();
-  }
-
   /** Lazy load from disk on first access. */
   private ensureLoaded(): void {
     if (this.loaded) return;

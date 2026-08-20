@@ -17,7 +17,6 @@ import { loadCustomAgents } from "./custom-agents.js";
 function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-import { FileLock } from "./file-lock.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
 export type OnAgentStart = (record: AgentRecord) => void;
@@ -41,7 +40,6 @@ interface SpawnOptions {
   thinkingLevel?: ThinkingLevel;
   maxTurns?: number;
   isolated?: boolean;
-  inheritContext?: boolean;
   isBackground?: boolean;
   onToolActivity?: (activity: ToolActivity) => void;
   onTextDelta?: (delta: string, fullText: string) => void;
@@ -57,9 +55,6 @@ export class AgentManager {
   private maxConcurrent: number;
   private customAgents: Map<string, AgentConfig>;
   private typeSettings: SubagentsConfig["types"];
-
-  /** Per-file transparent locking for write agents. */
-  readonly fileLock = new FileLock();
 
   /** Queue of background agents waiting to start. */
   private queue: { id: string; args: SpawnArgs }[] = [];
@@ -107,11 +102,6 @@ export class AgentManager {
     }
   }
 
-  setMaxConcurrent(n: number) {
-    this.maxConcurrent = Math.max(1, n);
-    this.drainQueue();
-  }
-
   getMaxConcurrent(): number {
     return this.maxConcurrent;
   }
@@ -140,7 +130,6 @@ export class AgentManager {
       toolUses: 0,
       startedAt: Date.now(),
       abortController,
-      lockedFiles: new Set(),
     };
     this.agents.set(id, record);
 
@@ -189,7 +178,6 @@ export class AgentManager {
       agentConfig,
       maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
       isolated: options.isolated ?? agentConfig?.isolated,
-      inheritContext: options.inheritContext ?? agentConfig?.inheritContext,
       thinkingLevel: options.thinkingLevel ?? agentConfig?.thinking,
       signal: record.abortController!.signal,
       onToolActivity: (activity) => {
@@ -211,10 +199,6 @@ export class AgentManager {
         record.session = session;
         record.completedAt ??= Date.now();
 
-        // Release any held file locks
-        this.fileLock.releaseAll(id);
-        record.lockedFiles.clear();
-
         if (options.isBackground) {
           this.runningBackground--;
           this.onComplete?.(record);
@@ -228,10 +212,6 @@ export class AgentManager {
         }
         record.error = err instanceof Error ? err.message : String(err);
         record.completedAt ??= Date.now();
-
-        // Release any held file locks
-        this.fileLock.releaseAll(id);
-        record.lockedFiles.clear();
 
         if (options.isBackground) {
           this.runningBackground--;
@@ -293,8 +273,6 @@ export class AgentManager {
     record.abortController?.abort();
     record.status = "stopped";
     record.completedAt = Date.now();
-    this.fileLock.releaseAll(id);
-    record.lockedFiles.clear();
     return true;
   }
 
@@ -318,36 +296,7 @@ export class AgentManager {
         count++;
       }
     }
-    this.fileLock.clear();
     return count;
-  }
-
-  /** Wait for all agents. */
-  async waitForAll(): Promise<void> {
-    while (true) {
-      this.drainQueue();
-      const pending = [...this.agents.values()]
-        .filter((r) => r.status === "running" || r.status === "queued")
-        .map((r) => r.promise)
-        .filter(Boolean);
-      if (pending.length === 0) break;
-      await Promise.allSettled(pending);
-    }
-  }
-
-  /** Whether any agents running or queued. */
-  hasRunning(): boolean {
-    return [...this.agents.values()].some((r) => r.status === "running" || r.status === "queued");
-  }
-
-  /** Remove completed records. */
-  clearCompleted(): void {
-    for (const [id, record] of this.agents) {
-      if (record.status === "running" || record.status === "queued") continue;
-      record.session?.dispose?.();
-      record.session = undefined;
-      this.agents.delete(id);
-    }
   }
 
   private cleanup() {

@@ -46,12 +46,6 @@ export interface McpMetadata {
   sync: SyncConfig;
 }
 
-/** Per-server auth data (auth.json) */
-export interface McpAuth {
-  /** Map of server name → environment variable key-value pairs */
-  [serverName: string]: Record<string, string>;
-}
-
 /** Single entry from the MCP server catalog */
 export interface CatalogEntry {
   /** Unique identifier (e.g. "github/github-mcp-server") */

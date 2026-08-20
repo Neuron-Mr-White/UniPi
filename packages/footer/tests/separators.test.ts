@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getSeparator, separatorVisibleWidth } from "../src/rendering/separators.ts";
+import { getSeparator } from "../src/rendering/separators.ts";
 
 describe("getSeparator", () => {
   it("returns separator for all styles", () => {
@@ -44,15 +44,5 @@ describe("getSeparator", () => {
     const sep = getSeparator("ascii");
     assert.ok(typeof sep.left === "string");
     assert.ok(sep.left.length > 0);
-  });
-});
-
-describe("separatorVisibleWidth", () => {
-  it("returns positive width for all styles", () => {
-    const styles = ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"] as const;
-    for (const style of styles) {
-      const width = separatorVisibleWidth(style);
-      assert.ok(width > 0, `${style} should have positive width`);
-    }
   });
 });

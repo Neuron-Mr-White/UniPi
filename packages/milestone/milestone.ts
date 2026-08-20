@@ -3,9 +3,8 @@
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
-import { ensureDir, tryRead } from "@pi-unipi/core";
-import type { MilestoneDoc, MilestonePhase, MilestoneItem, ProgressSummary } from "./types.js";
+import { tryRead } from "@pi-unipi/core";
+import type { MilestoneDoc, MilestonePhase, ProgressSummary } from "./types.js";
 
 /** Default empty milestone doc */
 function emptyDoc(filePath: string): MilestoneDoc {
@@ -94,44 +93,6 @@ export function parseMilestones(filePath: string): MilestoneDoc {
   }
 
   return doc;
-}
-
-/**
- * Write a MilestoneDoc to a MILESTONES.md file.
- * Generates frontmatter, phase headers, descriptions, and checkbox items.
- */
-export function writeMilestones(filePath: string, doc: MilestoneDoc): void {
-  const lines: string[] = [];
-
-  // Frontmatter
-  lines.push("---");
-  lines.push(`title: "${doc.title}"`);
-  lines.push(`created: ${doc.created}`);
-  lines.push(`updated: ${doc.updated}`);
-  lines.push("---");
-  lines.push("");
-  lines.push(`# ${doc.title}`);
-  lines.push("");
-
-  // Phases
-  for (const phase of doc.phases) {
-    lines.push(`## ${phase.name}`);
-    if (phase.description) {
-      lines.push(`> ${phase.description}`);
-    }
-    lines.push("");
-    for (const item of phase.items) {
-      const check = item.checked ? "[x]" : "[ ]";
-      lines.push(`- ${check} ${item.text}`);
-    }
-    lines.push("");
-  }
-
-  ensureDir(filePath);
-  // Atomic write: write to temp, rename
-  const tmpPath = filePath + ".tmp";
-  fs.writeFileSync(tmpPath, lines.join("\n"), "utf-8");
-  fs.renameSync(tmpPath, filePath);
 }
 
 /**

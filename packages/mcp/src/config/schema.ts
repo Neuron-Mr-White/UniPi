@@ -85,30 +85,3 @@ export function validateMcpConfig(config: unknown): ValidationResult {
 
   return { valid: errors.length === 0, errors };
 }
-
-/**
- * Create a minimal server definition template for a new server.
- */
-export function createServerTemplate(
-  name: string,
-  command: string,
-  args: string[],
-  envVars?: string[],
-): McpConfig {
-  const env: Record<string, string> = {};
-  if (envVars) {
-    for (const v of envVars) {
-      env[v] = "";
-    }
-  }
-
-  return {
-    mcpServers: {
-      [name]: {
-        command,
-        args,
-        env: Object.keys(env).length > 0 ? env : undefined,
-      },
-    },
-  };
-}

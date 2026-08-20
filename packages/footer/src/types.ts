@@ -145,8 +145,6 @@ export interface FooterSegment {
   description: string;
   /** Layout zone assignment */
   zone: SegmentZone;
-  /** Icon glyph (Nerd Font or ASCII) */
-  icon: string;
   /** Render function */
   render: SegmentRenderFn;
   /** Whether this segment is shown by default */
@@ -161,8 +159,6 @@ export interface FooterGroup {
   id: string;
   /** Display name */
   name: string;
-  /** Group icon */
-  icon: string;
   /** Segments within this group */
   segments: FooterSegment[];
   /** Whether this group is shown by default */
@@ -199,13 +195,6 @@ export interface FooterSettings {
   groups: Record<string, FooterGroupSettings>;
 }
 
-/** Full footer config (settings + runtime state) */
-export interface FooterConfig {
-  settings: FooterSettings;
-  /** Runtime: whether footer is currently active */
-  active: boolean;
-}
-
 // ─── Presets ────────────────────────────────────────────────────────────────
 
 /** Preset definition */
@@ -218,10 +207,6 @@ export interface PresetDef {
   secondarySegments: string[];
   /** Color scheme for this preset */
   colors?: ColorScheme;
-  /** Per-segment options */
-  segmentOptions?: Record<string, Record<string, unknown>>;
-  /** Zone order (default: left, center, right) */
-  zoneOrder?: ("left" | "center" | "right")[];
   /** Zone separator string (between zones) */
   zoneSeparator?: string;
 }

@@ -6,7 +6,7 @@
  */
 
 import type { InfoGroup, GroupData } from "./types.js";
-import { getInfoSettings, isStatEnabled } from "./config.js";
+import { isStatEnabled } from "./config.js";
 
 /** Callback for reactive updates */
 type GroupUpdateCallback = (groupId: string, data: GroupData) => void;
@@ -24,9 +24,6 @@ class InfoRegistry {
   /** Cache TTL in ms */
   private cacheTtlMs = 5000;
 
-  /** Subscribers per group */
-  private subscribers = new Map<string, Set<GroupUpdateCallback>>();
-
   /** Global subscribers (any group update) */
   private globalSubscribers = new Set<GroupUpdateCallback>();
 
@@ -41,33 +38,6 @@ class InfoRegistry {
     this.groups.set(group.id, group);
     // Notify that a new group appeared (triggers overlay sync)
     this.notifyGroupRegistered(group.id);
-  }
-
-  /**
-   * Unregister an info group.
-   */
-  unregisterGroup(groupId: string): void {
-    this.groups.delete(groupId);
-    this.dataCache.delete(groupId);
-    this.lastUpdated.delete(groupId);
-    this.subscribers.delete(groupId);
-  }
-
-  /**
-   * Get all registered groups, sorted by priority.
-   */
-  getGroups(): InfoGroup[] {
-    const settings = getInfoSettings();
-    const allGroups = Array.from(this.groups.values());
-
-    return allGroups
-      .filter((group) => {
-        const groupSettings = settings.groups[group.id];
-        if (groupSettings && !groupSettings.show) return false;
-        if (!groupSettings && !group.config.showByDefault) return false;
-        return true;
-      })
-      .sort((a, b) => a.priority - b.priority);
   }
 
   /**
@@ -98,13 +68,6 @@ class InfoRegistry {
    */
   getLastUpdated(groupId: string): number {
     return this.lastUpdated.get(groupId) ?? 0;
-  }
-
-  /**
-   * Synchronous: check if a group is currently fetching.
-   */
-  isFetching(groupId: string): boolean {
-    return this.inflight.has(groupId);
   }
 
   /**
@@ -177,21 +140,6 @@ class InfoRegistry {
   }
 
   /**
-   * Subscribe to updates for a specific group.
-   * Returns unsubscribe function.
-   */
-  subscribe(groupId: string, callback: GroupUpdateCallback): () => void {
-    if (!this.subscribers.has(groupId)) {
-      this.subscribers.set(groupId, new Set());
-    }
-    this.subscribers.get(groupId)!.add(callback);
-
-    return () => {
-      this.subscribers.get(groupId)?.delete(callback);
-    };
-  }
-
-  /**
    * Subscribe to all group updates.
    * Returns unsubscribe function.
    */
@@ -203,14 +151,6 @@ class InfoRegistry {
   }
 
   private notifySubscribers(groupId: string, data: GroupData): void {
-    // Per-group subscribers
-    const groupSubs = this.subscribers.get(groupId);
-    if (groupSubs) {
-      for (const cb of groupSubs) {
-        try { cb(groupId, data); } catch { /* ignore */ }
-      }
-    }
-
     // Global subscribers
     for (const cb of this.globalSubscribers) {
       try { cb(groupId, data); } catch { /* ignore */ }
@@ -240,14 +180,6 @@ class InfoRegistry {
   }
 
   /**
-   * Invalidate all caches.
-   */
-  invalidateAllCaches(): void {
-    this.dataCache.clear();
-    this.lastUpdated.clear();
-  }
-
-  /**
    * Notify that a new group was registered.
    * Subscribers can use this to sync group lists.
    */
@@ -266,6 +198,3 @@ export const infoRegistry = new InfoRegistry();
 if (!globalThis.__unipi_info_registry) {
   globalThis.__unipi_info_registry = infoRegistry;
 }
-export const getGlobalRegistry = (): InfoRegistry => {
-  return (globalThis.__unipi_info_registry as InfoRegistry | undefined) ?? infoRegistry;
-};

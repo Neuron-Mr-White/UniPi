@@ -74,7 +74,6 @@ function loadAgentFromFile(filePath: string, source: "project" | "global"): Agen
       maxTurns: (frontmatter as any).max_turns as number | undefined,
       systemPrompt: body.trim(),
       promptMode: ((frontmatter as any).prompt_mode as "replace" | "append") ?? "replace",
-      inheritContext: (frontmatter as any).inherit_context as boolean | undefined,
       runInBackground: (frontmatter as any).run_in_background as boolean | undefined,
       isolated: (frontmatter as any).isolated as boolean | undefined,
       enabled: (frontmatter as any).enabled !== false,

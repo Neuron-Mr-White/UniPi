@@ -606,9 +606,8 @@ function applyAssistantMessageToTranscript(
   message: AssistantMessage,
   streaming: boolean,
 ): void {
-  const assistantMessage = message;
-  const thinking = extractThinking(assistantMessage);
-  const answer = extractMessageText(assistantMessage);
+  const thinking = extractThinking(message);
+  const answer = extractMessageText(message);
 
   if (thinking) {
     upsertTranscriptTextEntry(state, turnId, "thinking", thinking, streaming);
@@ -972,11 +971,6 @@ function getOverlayTitle(mode: BtwThreadMode): string {
 
 class BtwOverlayComponent extends Container implements Focusable {
   private readonly input: Input;
-  private readonly transcript: Container;
-  private readonly statusText: Text;
-  private readonly modeText: Text;
-  private readonly summaryText: Text;
-  private readonly hintsText: Text;
   private readonly readTranscriptEntries: () => BtwTranscript;
   private readonly getStatus: () => string | null;
   private readonly getMode: () => BtwThreadMode;
@@ -1025,11 +1019,6 @@ class BtwOverlayComponent extends Container implements Focusable {
     this.onDismissCallback = onDismiss;
     this.onUnfocusCallback = onUnfocus;
 
-    this.modeText = new Text("", 1, 0);
-    this.summaryText = new Text("", 1, 0);
-    this.transcript = new Container();
-    this.statusText = new Text("", 1, 0);
-
     this.input = new Input();
     this.input.onSubmit = (value) => {
       this.followTranscript = true;
@@ -1038,8 +1027,6 @@ class BtwOverlayComponent extends Container implements Focusable {
     this.input.onEscape = () => {
       this.onDismissCallback();
     };
-
-    this.hintsText = new Text("", 1, 0);
 
     const originalHandleInput = this.input.handleInput.bind(this.input);
     this.input.handleInput = (data: string) => {
@@ -1182,30 +1169,18 @@ class BtwOverlayComponent extends Container implements Focusable {
     return this.input.getValue();
   }
 
-  getTranscriptEntries(): BtwTranscript {
-    return this.readTranscriptEntries().map((entry) => ({ ...entry }));
-  }
-
   refresh(): void {
     this.modeTextValue = `${getOverlayTitle(this.getMode())} · hidden thread preserved`;
-    this.modeText.setText(this.modeTextValue);
     const entries = this.readTranscriptEntries();
     const exchanges = getCompletedExchangeCount(entries);
     const active = hasStreamingTranscriptEntry(entries) ? " · streaming" : " · idle";
     this.summaryTextValue = `${exchanges} exchange${exchanges === 1 ? "" : "s"}${active}`;
-    this.summaryText.setText(this.summaryTextValue);
 
     this.transcriptLines = buildOverlayTranscript(entries, this.theme);
-    this.transcript.clear();
-    for (const line of this.transcriptLines) {
-      this.transcript.addChild(new Text(line, 1, 0));
-    }
 
     const status = this.getStatus() ?? "Ready. Enter submits; Escape dismisses without clearing.";
     this.statusTextValue = status;
-    this.statusText.setText(this.statusTextValue);
     this.hintsTextValue = "Enter submit · Alt+/ toggle focus · Escape dismiss · PgUp/PgDn scroll";
-    this.hintsText.setText(this.hintsTextValue);
     this.tui.requestRender();
   }
 }
@@ -1498,7 +1473,7 @@ export default function (pi: ExtensionAPI) {
       });
   }
 
-  async function dispatchBtwCommand(name: string, args: string, ctx: ExtensionCommandContext): Promise<boolean> {
+  async function dispatchBtwCommand(name: string, args: string, ctx: ExtensionCommandContext): Promise<void> {
     const trimmedArgs = args.trim();
 
     if (name === "btw") {
@@ -1506,7 +1481,7 @@ export default function (pi: ExtensionAPI) {
       if (!question) {
         await ensureBtwSession(ctx, pendingMode);
         await ensureOverlay(ctx);
-        return true;
+        return;
       }
 
       if (pendingMode !== "contextual") {
@@ -1514,7 +1489,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       await runBtw(ctx, question, save, "contextual");
-      return true;
+      return;
     }
 
     if (name === "btw:tangent") {
@@ -1526,11 +1501,11 @@ export default function (pi: ExtensionAPI) {
       if (!question) {
         await ensureBtwSession(ctx, "tangent");
         await ensureOverlay(ctx);
-        return true;
+        return;
       }
 
       await runBtw(ctx, question, save, "tangent");
-      return true;
+      return;
     }
 
     if (name === "btw:new") {
@@ -1544,20 +1519,20 @@ export default function (pi: ExtensionAPI) {
         await ensureOverlay(ctx);
         notify(ctx, "Started a fresh BTW thread.", "info");
       }
-      return true;
+      return;
     }
 
     if (name === "btw:clear") {
       await resetThread(ctx);
       dismissOverlay();
       notify(ctx, "Cleared BTW thread.", "info");
-      return true;
+      return;
     }
 
     if (name === "btw:inject") {
       if (pendingThread.length === 0) {
         notify(ctx, "No BTW thread to inject.", "warning");
-        return true;
+        return;
       }
 
       setOverlayStatus("⏳ injecting into the main session...", ctx);
@@ -1579,13 +1554,13 @@ export default function (pi: ExtensionAPI) {
         setOverlayStatus("Inject failed. Thread preserved for retry or summarize.", ctx);
         notify(ctx, error instanceof Error ? error.message : String(error), "error");
       }
-      return true;
+      return;
     }
 
     if (name === "btw:summarize") {
       if (pendingThread.length === 0) {
         notify(ctx, "No BTW thread to summarize.", "warning");
-        return true;
+        return;
       }
 
       setOverlayStatus("⏳ summarizing...", ctx);
@@ -1608,10 +1583,8 @@ export default function (pi: ExtensionAPI) {
         setOverlayStatus("Summarize failed. Thread preserved for retry or injection.", ctx);
         notify(ctx, error instanceof Error ? error.message : String(error), "error");
       }
-      return true;
+      return;
     }
-
-    return false;
   }
 
   function parseOverlayBtwCommand(value: string): { name: string; args: string } | null {
@@ -1817,7 +1790,7 @@ export default function (pi: ExtensionAPI) {
 
   async function getBtwHandoffThread(
     ctx: ExtensionCommandContext,
-  ): Promise<{ sessionRuntime: BtwSessionRuntime | null; thread: BtwHandoffExchange[] }> {
+  ): Promise<{ thread: BtwHandoffExchange[] }> {
     const sessionRuntime = activeBtwSession ?? (await ensureBtwSession(ctx, pendingMode));
     const thread = sessionRuntime ? extractBtwHandoffThread(sessionRuntime) : [];
     const resolvedThread = thread.length > 0 ? thread : getPendingThreadForHandoff();
@@ -1826,7 +1799,7 @@ export default function (pi: ExtensionAPI) {
       throw new Error("No BTW thread available for handoff.");
     }
 
-    return { sessionRuntime, thread: resolvedThread };
+    return { thread: resolvedThread };
   }
 
   async function summarizeThread(ctx: ExtensionCommandContext, thread: BtwHandoffExchange[]): Promise<string> {

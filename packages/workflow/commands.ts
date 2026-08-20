@@ -482,10 +482,3 @@ export function registerWorkflowCommands(
     },
   });
 }
-
-/**
- * Get list of all registered workflow command names.
- */
-export function getWorkflowCommandNames(): string[] {
-  return COMMANDS.map((c) => `${UNIPI_PREFIX}${c.name}`);
-}

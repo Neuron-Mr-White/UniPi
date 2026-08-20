@@ -74,17 +74,9 @@ const THEME: SettingsListTheme = {
 export class SettingsOverlay implements Component {
   private list: SettingsList;
   private config: InputShortcutsConfig;
-  private baseDir?: string;
-  private onSaved?: (config: InputShortcutsConfig) => void;
 
-  constructor(
-    done: () => void,
-    baseDir?: string,
-    onSaved?: (config: InputShortcutsConfig) => void,
-  ) {
-    this.baseDir = baseDir;
-    this.onSaved = onSaved;
-    this.config = loadConfig(baseDir);
+  constructor(done: () => void) {
+    this.config = loadConfig();
 
     const items = this.buildItems();
     this.list = new SettingsList(
@@ -93,8 +85,7 @@ export class SettingsOverlay implements Component {
       THEME,
       (id, newValue) => this.handleChange(id, newValue),
       () => {
-        saveConfig(this.config, this.baseDir);
-        this.onSaved?.(this.config);
+        saveConfig(this.config);
         done();
       },
     );

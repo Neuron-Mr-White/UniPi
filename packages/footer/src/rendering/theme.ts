@@ -12,7 +12,7 @@
  */
 
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "../types.js";
+import type { ColorScheme, SemanticColor, ThemeLike } from "../types.js";
 
 // ─── Color mode detection ──────────────────────────────────────────────────
 
@@ -242,20 +242,6 @@ export function getDefaultColors(): ColorScheme {
     scheme[key as SemanticColor] = value;
   }
   return scheme;
-}
-
-/**
- * Resolve a ColorValue to an actual color string using the theme.
- * If the value is a theme color name, uses theme.fg().
- * If it's a hex string, returns it directly.
- */
-export function resolveColor(color: ColorValue, theme: ThemeLike): string {
-  // Check if it's a hex color (starts with #)
-  if (color.startsWith("#")) {
-    return color;
-  }
-  // It's a ThemeColor — use theme.fg
-  return theme.fg(color as ThemeColor, "").replace(/\x1b\[0m$/, "");
 }
 
 /**
