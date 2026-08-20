@@ -23,6 +23,7 @@ import {
   getBlockedToolsForLevel,
   getSandboxLevel,
   isToolAllowed,
+  isActiveSnapshot,
   type SandboxLevel,
 } from "@pi-unipi/core";
 import { registerWorkflowCommands } from "./commands.js";
@@ -128,11 +129,6 @@ function latestHistoricalSandboxSnapshot(
     }
   }
   return undefined;
-}
-
-function isActiveSnapshot(snapshot: EffectiveSandboxSnapshot): boolean {
-  if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
-  return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
 }
 
 export default function (pi: ExtensionAPI) {

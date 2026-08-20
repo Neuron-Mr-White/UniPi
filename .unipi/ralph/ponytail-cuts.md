@@ -84,8 +84,8 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [x] compactor escapeRegex/convertGlobPart → RegExp.escape
 - [x] utility removeRecursive → fs.rmSync(recursive,force)
 - [ ] footer detectColorMode/rgbTo256 → pi Theme.fg()
-- [ ] footer hand-rolled visibleWidth → pi-tui visibleWidth
-- [ ] autocomplete fuzzyMatch → pi-tui fuzzyMatch
+- [x] footer hand-rolled visibleWidth → pi-tui visibleWidth
+- [x] autocomplete fuzzyMatch → pi-tui fuzzyMatch
 - [ ] kanboard parseFrontmatter (4 copies) → pi-coding-agent parseFrontmatter
 - [x] workflow suggestWorktrees → execFileSync git worktree list
 - [x] updater trunc() → pi-tui truncateToWidth
@@ -102,9 +102,9 @@ Goal: Remove ~8,200 lines + 4 dead deps (shiki, diff, lodash, mime-types) identi
 - [x] compactor formatTokens (4 copies) → one util
 - [x] compactor /unipi:compact → 3-line alias wrapper
 - [ ] compactor two config merge → one
-- [ ] compactor duplicate type declarations → one per type
+- [x] compactor duplicate type declarations → one per type
 - [x] subagents dedup helpers (3 files) → import from widget
-- [ ] subagents core-compat.ts → declare @pi-unipi/core dep
+- [x] subagents core-compat.ts → declare @pi-unipi/core dep
 - [x] footer getGroupForSegment (2 copies) → one
 - [x] web-api duplicate fetchOptions → helper
 - [x] web-api DEFAULT_SMART_FETCH_SETTINGS vs constants → one

@@ -312,3 +312,9 @@ export function formatTokens(n: number): string {
   if (n < 10_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return `${Math.round(n / 1_000_000)}M`;
 }
+
+/** Check if a snapshot is active by checking its details.active field or content. */
+export function isActiveSnapshot(snapshot: { content: unknown; details?: { active?: boolean } }): boolean {
+  if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
+  return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
+}

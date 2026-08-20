@@ -12,7 +12,7 @@ import {
   type ExtensionAPI,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { MILESTONE_DIRS, UNIPI_EVENTS, safeMtimeMs, tryRead } from "@pi-unipi/core";
+import { MILESTONE_DIRS, UNIPI_EVENTS, safeMtimeMs, tryRead, isActiveSnapshot } from "@pi-unipi/core";
 import { getProgressSummary, updateItemStatus } from "./milestone.js";
 
 export const MILESTONE_SNAPSHOT_TYPE = "unipi-milestone-snapshot";
@@ -87,11 +87,6 @@ function latestHistoricalSnapshot(branch: SessionEntry[]): EffectiveSnapshot | u
     }
   }
   return undefined;
-}
-
-function isActiveSnapshot(snapshot: EffectiveSnapshot): boolean {
-  if (typeof snapshot.details?.active === "boolean") return snapshot.details.active;
-  return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
 }
 
 /**
