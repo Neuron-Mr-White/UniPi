@@ -169,7 +169,6 @@ export class NameBadgeState {
       const badgeEntry = entries.findLast(
         (e: any) => e.type === "custom" && e.customType === BADGE_ENTRY_TYPE,
       );
-
       if (badgeEntry?.data?.visible) {
         await this.show(pi, ctx);
       }

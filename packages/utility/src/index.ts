@@ -153,6 +153,17 @@ export default function (pi: ExtensionAPI) {
     // Restore name badge if it was visible in previous session
     await nameBadgeState.restore(pi, ctx);
 
+    // Auto-show badge on session start if enabled in settings and UI is available.
+    // The badge shows "Set a name" placeholder until a name is generated.
+    // Previously the badge only showed after the first agent_end, which meant it
+    // was absent on restart until the user sent a message.
+    if (ctx?.hasUI && !nameBadgeState.isVisible()) {
+      const badgeSettings = readBadgeSettings();
+      if (badgeSettings.badgeEnabled) {
+        await nameBadgeState.show(pi, ctx);
+      }
+    }
+
     // Write model cache for TUI components
     if ((ctx as any).modelRegistry) {
       const { writeModelCache } = await import("@pi-unipi/core");
