@@ -133,10 +133,6 @@ export function registerCompactionHooks(
     const summary = compile({
       messages,
       previousSummary: preparation.previousSummary,
-      fileOps: {
-        readFiles: [...preparation.fileOps.read],
-        modifiedFiles: [...preparation.fileOps.written, ...preparation.fileOps.edited],
-      },
     });
 
     const details = {

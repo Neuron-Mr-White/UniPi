@@ -34,8 +34,6 @@ const preset = (
   // Legacy compatibility data only; presets never advertise or alter it.
   fts5Index: { ...DEFAULT_COMPACTOR_CONFIG.fts5Index },
   sandboxExecution: { ...DEFAULT_COMPACTOR_CONFIG.sandboxExecution, ...(overrides.sandboxExecution ?? {}) },
-  // Legacy compatibility data only; presets never advertise or alter it.
-  toolDisplay: { ...DEFAULT_COMPACTOR_CONFIG.toolDisplay },
   pipeline: pipeline(overrides.pipeline),
   autoCompaction: { ...DEFAULT_COMPACTOR_CONFIG.autoCompaction, ...(overrides.autoCompaction ?? {}) },
 });

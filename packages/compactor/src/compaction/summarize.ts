@@ -3,7 +3,7 @@
  */
 
 import type { Message } from "@earendil-works/pi-ai";
-import type { CompileInput, FileOps } from "../types.js";
+import type { CompileInput } from "../types.js";
 import { normalizeMessages } from "./normalize.js";
 import { filterNoise } from "./filter-noise.js";
 import { buildSections } from "./build-sections.js";

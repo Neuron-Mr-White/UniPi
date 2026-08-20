@@ -8,7 +8,7 @@ import { extractGoals } from "./extract/goals.js";
 import { extractFiles } from "./extract/files.js";
 import { extractPreferences, dedupPreferencesAgainstGoals } from "./extract/preferences.js";
 import { extractCommits, formatCommits } from "./extract/commits.js";
-import { buildBriefSections, sectionsToTranscript, stringifyBrief } from "./brief.js";
+import { buildBriefSections, stringifyBrief } from "./brief.js";
 import type { SectionData } from "../types.js";
 export type { SectionData } from "../types.js";
 
@@ -72,6 +72,5 @@ export const buildSections = (input: { blocks: NormalizedBlock[] }): SectionData
     commits: formatCommits(extractCommits(blocks)),
     userPreferences,
     briefTranscript: stringifyBrief(briefSections),
-    transcriptEntries: sectionsToTranscript(briefSections),
   };
 };

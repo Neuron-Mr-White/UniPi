@@ -39,23 +39,8 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     allowedLanguages: ["javascript", "typescript", "python", "shell"],
     outputLimit: 100 * 1024 * 1024,
   },
-  toolDisplay: {
-    ...strategy(true, "opencode"),
-    mode: "opencode",
-    diffLayout: "auto",
-    diffIndicator: "bars",
-    showThinkingLabels: true,
-    showUserMessageBox: true,
-    showBashSpinner: true,
-    showPendingPreviews: true,
-  },
   pipeline: {
-    ttlCache: false,
     autoInjection: false,
-    proximityReranking: false,
-    timelineSort: false,
-    progressiveThrottling: false,
-    mmapPragma: false,
     customNoisePatterns: [],
   },
   autoCompaction: {

@@ -8,12 +8,6 @@ import type { Message } from "@earendil-works/pi-ai";
 // Normalized blocks (from pi-vcc)
 // ─────────────────────────────────────────────────────────
 
-export interface FileOps {
-  readFiles?: string[];
-  modifiedFiles?: string[];
-  createdFiles?: string[];
-}
-
 export type NormalizedBlock =
   | { kind: "user"; text: string; sourceIndex?: number }
   | { kind: "assistant"; text: string; sourceIndex?: number }
@@ -32,16 +26,6 @@ export interface SectionData {
   outstandingContext: string[];
   userPreferences: string[];
   briefTranscript: string;
-  transcriptEntries: TranscriptEntry[];
-}
-
-export interface TranscriptEntry {
-  role: "user" | "assistant" | "tool_error";
-  text?: string;
-  tool?: string;
-  cmd?: string;
-  ref?: string;
-  count?: number;
 }
 
 export interface BriefLine {
@@ -56,7 +40,6 @@ export interface BriefLine {
 export interface CompileInput {
   messages: Message[];
   previousSummary?: string;
-  fileOps?: FileOps;
 }
 
 export interface CompactionStats {
@@ -118,22 +101,10 @@ export interface CompactorConfig {
   /** @deprecated Project indexing moved to @pi-unipi/cocoindex; retained for config compatibility. */
   fts5Index: CompactorStrategyConfig & { mode: "auto" | "manual" | "off"; chunkSize: number; cacheTtlHours: number };
   sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: Language[]; outputLimit: number };
-  /** @deprecated Display profiles were never connected to runtime; retained for config compatibility. */
-  toolDisplay: CompactorStrategyConfig & { mode: "opencode" | "balanced" | "verbose" | "custom"; diffLayout: "auto" | "split" | "unified"; diffIndicator: "bars" | "classic" | "none"; showThinkingLabels: boolean; showUserMessageBox: boolean; showBashSpinner: boolean; showPendingPreviews: boolean };
 
   // Pipeline features
   pipeline: {
-    /** @deprecated Reserved compatibility field; ignored by runtime. */
-    ttlCache: boolean;
     autoInjection: boolean;
-    /** @deprecated Reserved compatibility field; ignored by runtime. */
-    proximityReranking: boolean;
-    /** @deprecated Reserved compatibility field; ignored by runtime. */
-    timelineSort: boolean;
-    /** @deprecated Reserved compatibility field; ignored by runtime. */
-    progressiveThrottling: boolean;
-    /** @deprecated Reserved compatibility field; ignored by runtime. */
-    mmapPragma: boolean;
     customNoisePatterns: string[];
   };
 
@@ -238,45 +209,6 @@ export interface SecurityPolicy {
   deny: string[];
   ask: string[];
 }
-
-// ─────────────────────────────────────────────────────────
-// Display (from pi-tool-display)
-// ─────────────────────────────────────────────────────────
-
-export type DiffLayout = "auto" | "split" | "unified";
-export type DiffIndicator = "bars" | "classic" | "none";
-export type OutputMode = "hidden" | "summary" | "preview" | "count";
-
-export interface ToolDisplayConfig {
-  registerToolOverrides: {
-    read: boolean;
-    grep: boolean;
-    find: boolean;
-    ls: boolean;
-    bash: boolean;
-    edit: boolean;
-    write: boolean;
-  };
-  enableNativeUserMessageBox: boolean;
-  readOutputMode: OutputMode;
-  searchOutputMode: OutputMode;
-  mcpOutputMode: OutputMode;
-  previewLines: number;
-  expandedPreviewMaxLines: number;
-  bashOutputMode: OutputMode;
-  bashCollapsedLines: number;
-  diffViewMode: DiffLayout;
-  diffIndicatorMode: DiffIndicator;
-  diffSplitMinWidth: number;
-  diffCollapsedLines: number;
-  diffWordWrap: boolean;
-  showTruncationHints: boolean;
-  showRtkCompactionHints: boolean;
-}
-
-// ─────────────────────────────────────────────────────────
-// Runtime counters (live session stats)
-// ─────────────────────────────────────────────────────────
 
 export interface RuntimeCounters {
   sandboxRuns: number;

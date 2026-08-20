@@ -114,7 +114,6 @@ export function migrateConfig(partial: Partial<CompactorConfig>): CompactorConfi
     sessionContinuity: mergeStrategy("sessionContinuity", defaults.sessionContinuity, partial.sessionContinuity),
     fts5Index: mergeStrategy("fts5Index", defaults.fts5Index, partial.fts5Index),
     sandboxExecution: mergeStrategy("sandboxExecution", defaults.sandboxExecution, partial.sandboxExecution),
-    toolDisplay: mergeStrategy("toolDisplay", defaults.toolDisplay, partial.toolDisplay),
     pipeline: mergeStrategy("pipeline", defaults.pipeline, (partial as any).pipeline) as any,
     autoCompaction: mergeStrategy("autoCompaction", defaults.autoCompaction, partial.autoCompaction),
     overrideDefaultCompaction: partial.overrideDefaultCompaction ?? defaults.overrideDefaultCompaction,
