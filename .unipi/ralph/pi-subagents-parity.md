@@ -39,15 +39,15 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Tests: agent-discovery.test.ts (8) + agent-overrides.test.ts (18) — 107/107 total
 
 ## Phase 2 — Foreground orchestration (in-process)
-- [ ] workflowScript runtime: runs.run(key,{agent|resume,task,...}), runs.all([...]), runs.steer(key,msg,opts) — validate script (their AST rules: no nested async helpers), sandboxed VM with runs/state globals
-- [ ] Sequential chaining via awaits; parallel via runs.all with concurrency
+- [x] workflowScript runtime — workflow-script.ts (host) + workflow-worker.ts (Worker+vm sandbox, acorn AST validation, no host globals, await-observation contract). runs.run/all/steer/status/ref/refs + state/emit/console globals
+- [x] Sequential chaining via top-level await; parallel via runs.all (atomic batch admission, failures returned in input order)
 - [ ] Budgets: turnBudget {maxTurns, graceTurns, termination-deferred}, toolBudget {soft,hard,block}, usageBudget {tokens,costUsd soft/hard}
 - [ ] Spawn budgets: maxSubagentSpawnsPerRun (default 64, atomic group admission, no refunds), maxSubagentSpawnsPerSession + grant-spawn-budget action, maxActiveAsyncRunsPerSession preflight
 - [ ] context: fresh | fork (in-process: fresh only; fork → error advising async path, or defer to Phase 3 fork runner) — ASK USER if ambiguous
 - [ ] maxSubagentDepth recursion guard + child-safety: children don't get spawn_helper unless agent tools include it; boundary instructions; fork-context filtering of parent artifacts
 - [ ] timeoutMs defaults (30min foreground), toolTimeoutMs per-tool hard deadlines w/ exemptions (our tool names), known-fast built-in 5-min defaults
 - [ ] maxOutput truncation {bytes, lines} + outputMode file-only
-- [ ] Tests: port pi-args.test.ts, subagent-prompt-runtime, scripted-workflow tests
+- [x] Tests: workflow-script.test.ts (20 cases ported from their scripted-workflow.test.ts spec) — key duplication/reuse, fail-fast vs collect-failure, steer validation + Promise.race pattern, nested-async AST rejection, timeout, state adapter, emit JSON enforcement
 
 ## Phase 3 — Async/background (process-based)
 - [ ] Async runner: child pi processes (PI_SUBAGENT_PI_BINARY-style override → our env var), task delivery file|auto (EDR workaround), zero-activity SIGKILL escalation
@@ -103,6 +103,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   `subagents` block (agent-overrides.ts), per-agent memory (agent-memory.ts, OUR roots), aliases +
   runtime registration in AgentManager, layering fix (overridden builtins no longer clobbered by
   discovery-layer file builtins). 107/107 tests.
+
+- Phase 2 partial (workflowScript runtime): acorn dep added. Worker+vm sandbox architecture
+  ported (battle-tested design). 127/127 tests. Remaining Phase 2: budgets, spawn budgets,
+  context fresh/fork, child-safety, timeoutMs/toolTimeoutMs defaults, maxOutput truncation,
+  + wiring into spawn_helper tool handler.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.
