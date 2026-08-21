@@ -1,7 +1,7 @@
 {
   "name": "pi-subagents-parity",
   "taskFile": ".unipi/ralph/pi-subagents-parity.md",
-  "iteration": 17,
+  "iteration": 18,
   "maxIterations": 80,
   "itemsPerIteration": 4,
   "reflectEvery": 5,
