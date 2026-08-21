@@ -35,6 +35,8 @@ import {
   isFanoutChild,
   withChildBoundaryInstructions,
 } from "./child-safety.js";
+import { listRetainedChildren, formatRetainedChildren, resolveResumeTarget } from "./retained-children.js";
+import { ASYNC_DIR } from "./parity-types.js";
 
 export interface HandlerDeps {
   pi: ExtensionAPI;
@@ -73,6 +75,8 @@ export interface HandlerDeps {
   };
   /** Depth env for the recursion guard. */
   env?: NodeJS.ProcessEnv;
+  /** Retained-children dir override (defaults to our async temp root). */
+  retainedDir?: string;
   /** Async process runner (Phase 3). When present, background launches and
    *  fork contexts run as child pi processes; when absent they error with
    *  guidance (test environments). */
@@ -85,6 +89,8 @@ export interface HandlerDeps {
     context: "fresh" | "fork";
     timeoutMs?: number;
     maxTurns?: number;
+    /** Resume: continue a retained child in its stored session. */
+    resumeSessionFile?: string;
   }) => Promise<{
     runId: string;
     status: string;
@@ -150,7 +156,7 @@ export async function handleSpawnHelper(
     // ---- Management actions ----
     const action = args.action as string | undefined;
     if (action !== undefined) {
-      return handleAction(deps, ctx, action, args);
+      return await handleAction(deps, ctx, action, args);
     }
 
     // ---- workflowScript execution ----
@@ -173,12 +179,12 @@ export async function handleSpawnHelper(
 // Management actions
 // ============================================================================
 
-function handleAction(
+async function handleAction(
   deps: HandlerDeps,
   _ctx: ExtensionContext,
   action: string,
   args: Record<string, unknown>,
-): { content: Array<{ type: "text"; text: string }>; details?: unknown } {
+): Promise<{ content: Array<{ type: "text"; text: string }>; details?: unknown }> {
   if (!(SUBAGENT_ACTIONS as readonly string[]).includes(action)) {
     return textResult(
       `Unknown action "${action}". Supported actions: ${SUBAGENT_ACTIONS.join(", ")}.`,
@@ -246,15 +252,41 @@ function handleAction(
     }
 
     case "children.list": {
-      const recent = deps.manager
-        .listAgents()
-        .filter((a) => a.status !== "running" && a.status !== "queued")
-        .slice(-10);
-      if (recent.length === 0) return textResult("No completed children in this session yet.");
+      const retained = listRetainedChildren(deps.retainedDir ?? ASYNC_DIR);
+      if (retained.length === 0) {
+        // Fall back to in-process completed agents from this session.
+        const recent = deps.manager
+          .listAgents()
+          .filter((a) => a.status !== "running" && a.status !== "queued")
+          .slice(-10);
+        if (recent.length === 0) return textResult("No completed children in this session yet.");
+        return textResult(
+          recent.map((r) => `- ${r.id} [${r.type}] ${r.status}: ${r.description}`).join("\n"),
+        );
+      }
+      return textResult(formatRetainedChildren(retained));
+    }
+
+    case "resume": {
+      const id = args.id as string | undefined;
+      const message = args.message as string | undefined;
+      if (!id) return textResult("action 'resume' requires an id (retained run id or prefix).");
+      if (!message || !message.trim()) return textResult("action 'resume' requires a non-empty follow-up message.");
+      if (!deps.runAsync) {
+        return textResult("action 'resume' requires the background process runner, which is unavailable in this host.", { status: "error" });
+      }
+      const target = resolveResumeTarget(deps.retainedDir ?? ASYNC_DIR, id);
+      if (!target.ok) return textResult(target.error, { status: "error" });
+      const result = await deps.runAsync({
+        agentName: target.agent,
+        task: message.trim(),
+        description: `resume ${target.runId.slice(-8)}`,
+        context: "fresh",
+        resumeSessionFile: target.sessionFile,
+      });
       return textResult(
-        recent
-          .map((r) => `- ${r.id} [${r.type}] ${r.status}: ${r.description}`)
-          .join("\n"),
+        `Resumed ${target.runId} as ${result.runId} (agent: ${target.agent}, stored session contract kept).\nUse get_helper_result to retrieve results.`,
+        { status: "background", runId: result.runId },
       );
     }
 

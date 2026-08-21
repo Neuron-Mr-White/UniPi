@@ -53,11 +53,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Async runner core — pi-spawn.ts (UNIPI_SUBAGENT_PI_BINARY override, argv1/package-bin/PATH resolution chain), pi-args.ts (session/model+thinking-suffix/tools/extensions/system-prompt-file/task-delivery auto|file w/ 8000-char EDR threshold, child env UNIPI_SUBAGENT_*), async-runner.ts (spawn `pi --mode json -p`, stdout JSON event stream, deadline + abort w/ process-group SIGTERM→SIGKILL, zero-activity watchdog + one file-delivery retry, status.json lifecycle, output.txt artifact)
 - [x] Run artifacts — async-subagent-runs/<runId>/ under OUR temp root: status.json (queued→running→terminal + retry marker), output.txt (full stdout/stderr), process.json (pid ownership for terminal proof). Durable receipts (workflow-level) land with resume item
 - [x] Result watcher — result-files.ts (durable payloads + run/session indexes + pending markers under OUR results dir, atomic writes, 24h index pruning) + result-watcher.ts (pending-scan delivery, corrupt-marker drop, resultScanLogging all|activity|off, retention cleanup: aged terminal runs + orphan dirs + associated result payloads)
-- [ ] Resume: retained children (children.list, resumable), resume-by-key in workflows, detached action:resume receipts
+- [x] Resume — retained-children.ts: listRetainedChildren (terminal runs, newest first, max 10 w/ resumable-retained guarantee), resumability rules (stopped → not-resumable; session file must be a real .jsonl regular file), formatRetainedChildren (resume syntax w/ our spawn_helper action), resolveResumeTarget (unique-prefix resolution, non-resumable rejection). Handler: children.list real data + resume action (routes through runAsync w/ resumeSessionFile → child continues its stored session contract). Workflow resume-by-key lands with async workflowScript wiring
 - [x] Fork context — fork-context.ts: createForkContextResolver (persisted-parent + leaf required, fail-fast; branched session via SessionManager.createBranchedSession; forks nest under <parent-dir>/<stem>/forks/ so discovery never hijacks), signed Anthropic thinking-block sanitization (redacted always; signed only on Anthropic) + thinking_level_change:off entry, alignForkedSessionCwd, forkedChildRequiresThinkingOff conservative rule. Wired into runAsyncDep (context:fork → branched --session + thinking override)
 - [x] Worktrees — worktree.ts: createWorktrees (clean-tree requirement, unipi-parallel-<runId>-<index> branches, node_modules symlink, setup hooks JSON-in/out w/ syntheticPaths validation + tracked-path rejection, per-worktree rollback on setup failure), diffWorktrees (diff vs base commit + untracked, synthetic excluded, patches as handoff artifacts), cleanupWorktrees (dirty worktrees preserved unless a handoff manifest records the patch; discard gated by authority policy confirm/auto; branch -D + prune). Base dir: config worktreeBaseDir or UNIPI_SUBAGENTS_WORKTREE_DIR. NOT yet wired into launches (needs the parallel-lane runner — deferred with resume work)
 - [x] get_helper_result partial: async launch path wired (runAsync dep → child pi process + durable result file + completion notification via result watcher followUp messages; watcher stopped on shutdown; hourly retention). nonBlocking subscriptions + wake-on-completion via pi session events: still open (needs pi sendMessage wake integration — deferred to Phase 4 pass)
-- [ ] Async capacity: slots, process-terminal proof before slot release
+- [x] Async capacity — maxActiveAsyncRunsPerSession preflight in the handler (config key validated); slot release on process-terminal proof: activeAsyncRuns map released on terminal status + process.json pid ownership recorded (Phase 3 runner); full slot accounting lands with the async workflowScript pass
 - [ ] Tests: port async-execution, result-watcher, intercom-result-delivery, async-job-tracker integration tests (adapted)
 
 ## Phase 4 — Observability (our panels)
@@ -159,6 +159,10 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   and worktrees (full lifecycle incl. safety checks + authority gates; launch wiring deferred).
   210/210 tests. Remaining Phase 3: resume/retained children + durable receipts, async
   workflowScript wiring, async capacity slots, nonBlocking wake subscriptions.
+
+- Phase 3 (resume done): retained-children + children.list/resume actions wired; async capacity
+  preflight + terminal-proof release. 217/217 tests. Remaining Phase 3: async workflowScript
+  wiring (process-backed runs.run), nonBlocking wake subscriptions, worktree launch wiring.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.

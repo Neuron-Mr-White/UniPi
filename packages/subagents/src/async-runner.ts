@@ -36,6 +36,9 @@ export interface AsyncRunSpec {
   agent: AgentConfig;
   task: string;
   cwd: string;
+  /** Child session file (resume support). When set, the child runs with
+   *  --session <file> and the run records it for later resume. */
+  sessionFile?: string;
   /** Extra pi CLI args (e.g. model/tool flags handled by the caller). */
   baseArgs?: string[];
   model?: string;
@@ -110,8 +113,8 @@ async function runChildProcess(
   const { args, env: childEnv, tempDir } = buildPiArgs({
     baseArgs: spec.baseArgs ?? ["--mode", "json", "-p"],
     task: spec.task,
-    sessionFile: spec.forkSessionFile,
-    sessionDir: spec.sessionDir,
+    sessionFile: spec.forkSessionFile ?? spec.sessionFile,
+    sessionDir: spec.forkSessionFile ? undefined : spec.sessionDir,
     model: spec.model,
     thinking: spec.forceThinkingOff ? "off" : spec.thinking,
     tools: spec.tools,
@@ -364,7 +367,13 @@ export async function runAsyncSubagent(
   runDir: string,
   signal: AbortSignal,
 ): Promise<AsyncRunResult> {
-  writeStatus(runDir, { status: "running", pid: "pending" });
+  writeStatus(runDir, {
+    status: "running",
+    pid: "pending",
+    agent: spec.agent.name,
+    ...(spec.sessionFile ? { sessionFile: spec.sessionFile } : {}),
+    ...(spec.forkSessionFile ? { sessionFile: spec.forkSessionFile } : {}),
+  });
 
   let result = await runChildProcess(spec, runDir, signal, false);
 

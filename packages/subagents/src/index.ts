@@ -226,6 +226,9 @@ export default function (pi: ExtensionAPI) {
   const runAsyncDep: NonNullable<HandlerDeps["runAsync"]> = async (launch) => {
     const agent = manager.getAgentConfig(manager.resolveAlias(launch.agentName));
     if (!agent) throw new Error(`Unknown agent "${launch.agentName}".`);
+    if (launch.resumeSessionFile && !existsSync(launch.resumeSessionFile)) {
+      throw new Error(`Resume session file is missing: ${launch.resumeSessionFile}`);
+    }
     const runDir = createAsyncRunDir(launch.agentName);
     const runId = runDir.split("/").pop()!;
     const controller = new AbortController();
@@ -276,6 +279,7 @@ export default function (pi: ExtensionAPI) {
             timeoutMs: launch.timeoutMs,
             parentSessionId: asyncSessionId,
             config,
+            ...(launch.resumeSessionFile ? { sessionFile: launch.resumeSessionFile } : {}),
             ...(forkSessionFile ? { forkSessionFile } : {}),
             ...(forceThinkingOff ? { forceThinkingOff } : {}),
           },
