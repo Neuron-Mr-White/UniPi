@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -83,7 +83,7 @@
   },
   "dependencies": {
     "@pi-unipi/ask-user": "2.6.1",
-    "@pi-unipi/background-tasks": "2.6.2",
+    "@pi-unipi/background-tasks": "2.6.3",
     "@pi-unipi/btw": "2.6.1",
     "@pi-unipi/command-enchantment": "2.6.1",
     "@pi-unipi/compactor": "2.6.1",
