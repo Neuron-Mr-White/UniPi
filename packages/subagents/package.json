@@ -24,13 +24,18 @@
   "files": [
     "src/**/*.ts",
     "src/global.d.ts",
+    "agents/*.md",
+    "prompts/*.md",
+    "skills/**/*",
     "README.md"
   ],
   "pi": {
     "extensions": [
       "./src/index.ts"
     ],
-    "skills": [],
+    "skills": [
+      "./skills"
+    ],
     "prompts": [],
     "themes": []
   }

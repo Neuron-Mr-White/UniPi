@@ -129,6 +129,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
 
+  // subagents (3 commands)
+  "unipi:subagents-fleet":  "subagents",
+  "unipi:subagents-doctor": "subagents",
+  "unipi:subagents-guide":  "subagents",
+
   // info (2 commands)
   "unipi:info":          "info",
   "unipi:info-settings": "info",

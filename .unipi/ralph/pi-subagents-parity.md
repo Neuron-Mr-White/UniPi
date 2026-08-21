@@ -182,5 +182,16 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
    worktree isolation into async launches, (c) close Phase 3 with integration-style tests,
    then Phase 4 observability on OUR panels.
 
+## Reflection (iteration 16)
+1. Accomplished: Phases 0-6 COMPLETE. 273/273 tests across 16 test files, 16 commits,
+   tsc clean throughout. Full parity surface: agents, orchestration, async processes,
+   observability on our panels, missions/schedules, intercom/acceptance/authority.
+2. Working well: everything. Library-first-then-wire, tests-as-spec, handler extraction,
+   convention discipline (zero .pi/ paths, our env prefixes, our panel system).
+3. Remaining: Phase 7 only — slash commands (/unipi:*), council + prompt shortcuts,
+   workflow-module integration notes, docs/README, then bundle+publish+reinstall.
+4. Approach: unchanged; final phase is integration + polish.
+5. Next: slash commands + skills/prompts, docs, publish.
+
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.

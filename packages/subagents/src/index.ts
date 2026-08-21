@@ -30,6 +30,7 @@ import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
 import { createForkContextResolver } from "./fork-context.js";
 import { createWorktrees, cleanupWorktrees, diffWorktrees, type WorktreeSetup } from "./worktree.js";
 import { FleetView } from "./fleet-view.js";
+import { registerSlashCommands } from "./slash-commands.js";
 import {
   parseDetachShortcut,
   formatDetachHint,
@@ -632,6 +633,13 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+
+  // ---- Slash commands (/unipi:subagents-*) ----
+  registerSlashCommands(pi, () => sessionCtx ?? undefined, {
+    manager,
+    config,
+    asyncDirRoot: ASYNC_DIR,
+  });
 
   // Register info group at factory time (not session_start)
   const registry = getInfoRegistry();

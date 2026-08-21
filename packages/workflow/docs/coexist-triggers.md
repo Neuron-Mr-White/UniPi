@@ -72,6 +72,12 @@ If subagents available:
 
 Use spawn_helper({ type: "explore", prompt: "...", description: "..." })
 Use spawn_helper({ type: "work", prompt: "...", description: "..." })
+
+The subagents module now also ships the pi-subagents parity surface:
+scout/researcher/worker/reviewer/oracle/delegate builtins, workflowScript
+orchestration, background process runs, and management actions
+(spawn_helper({ action: "list" | "status" | "doctor" | ... })).
+Legacy type/prompt params remain supported aliases.
 ```
 
 **Quality prompt guidelines:**
