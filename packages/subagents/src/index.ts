@@ -20,6 +20,9 @@ import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./t
 import { loadBuiltinFileAgents } from "./custom-agents.js";
 import { ConversationViewer } from "./conversation-viewer.js";
 import { AgentWidget, SPINNER, TOOL_DISPLAY, formatMs, formatTurns, describeActivity } from "./widget.js";
+import { handleSpawnHelper, type HandlerDeps } from "./tool-handler.js";
+import { SpawnHelperParams } from "./schemas.js";
+import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
 function getInfoRegistry() {
@@ -209,6 +212,107 @@ export default function (pi: ExtensionAPI) {
       project: loadRawWorkspaceConfig(process.cwd())?.subagents,
     },
   );
+
+  // ---- Parity handler wiring (spawn_helper surface) ----
+  // Session-wide cumulative spawn accounting (maxSubagentSpawnsPerSession)
+  let sessionSpawnsUsed = 0;
+  const sessionSpawnCap = config.maxSubagentSpawnsPerSession && config.maxSubagentSpawnsPerSession > 0
+    ? config.maxSubagentSpawnsPerSession
+    : undefined;
+
+  const handlerDeps: HandlerDeps = {
+    pi,
+    manager,
+    config,
+    spawnAccounting: {
+      used: () => sessionSpawnsUsed,
+      cap: () => sessionSpawnCap,
+      consume: (count) => { sessionSpawnsUsed += count; },
+    },
+    spawnBackground: (spawnCtx, agentName, childPrompt, options) => {
+      const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(options.maxTurns);
+      const origOnSession = bgCallbacks.onSessionCreated;
+      bgCallbacks.onSessionCreated = (session: any) => {
+        origOnSession(session);
+        bgState.tokens = safeFormatTokens(session);
+        widget.update();
+      };
+      const id = manager.spawn(pi, spawnCtx, agentName, childPrompt, {
+        description: options.description ?? `${agentName} task`,
+        maxTurns: options.maxTurns,
+        modelInput: options.modelInput,
+        modelRegistry: spawnCtx.modelRegistry,
+        thinkingLevel: coerceThinkingLevel(options.thinkingLevel as never),
+        isBackground: true,
+        ...bgCallbacks,
+      });
+      agentActivity.set(id, bgState);
+      widget.ensureTimer();
+      widget.update();
+      return id;
+    },
+    spawnForeground: async (spawnCtx, agentName, childPrompt, options) => {
+      // Stream progress via the widget — reuse the activity tracker.
+      let spinnerFrame = 0;
+      const startedAt = Date.now();
+      let fgId: string | undefined;
+      const { state: fgState, callbacks: fgCallbacks } = createActivityTracker(options.maxTurns);
+
+      const streamUpdate = () => {
+        onUpdateForForeground({
+          status: "running",
+          toolUses: fgState.toolUses,
+          tokens: fgState.tokens,
+          turnCount: fgState.turnCount,
+          maxTurns: fgState.maxTurns,
+          durationMs: Date.now() - startedAt,
+          activity: describeActivity(fgState.activeTools, fgState.responseText),
+          spinnerFrame: spinnerFrame % SPINNER.length,
+        });
+      };
+      const origOnSession = fgCallbacks.onSessionCreated;
+      fgCallbacks.onSessionCreated = (session: any) => {
+        origOnSession(session);
+        fgState.tokens = safeFormatTokens(session);
+        for (const a of manager.listAgents()) {
+          if (a.session === session) {
+            fgId = a.id;
+            agentActivity.set(a.id, fgState);
+            widget.ensureTimer();
+            break;
+          }
+        }
+      };
+      const spinnerInterval = setInterval(() => { spinnerFrame++; streamUpdate(); }, 80);
+      try {
+        const record = await manager.spawnAndWait(pi, spawnCtx, agentName, childPrompt, {
+          description: options.description ?? `${agentName} task`,
+          maxTurns: options.maxTurns,
+          modelInput: options.modelInput,
+          modelRegistry: spawnCtx.modelRegistry,
+          thinkingLevel: coerceThinkingLevel(options.thinkingLevel as never),
+          ...fgCallbacks,
+        });
+        const durationMs = (record.completedAt ?? Date.now()) - record.startedAt;
+        const tokenText = safeFormatTokens(fgState.session);
+        if (record.status === "error") {
+          return { ok: false, output: record.error ?? "failed", error: record.error, toolUses: record.toolUses, durationMs };
+        }
+        const output = boundHelperOutput(record.result?.trim() || "No output.");
+        record.resultArtifactPath = output.artifactPath;
+        return { ok: true, output: output.text, toolUses: record.toolUses, durationMs };
+      } finally {
+        clearInterval(spinnerInterval);
+        if (fgId) {
+          agentActivity.delete(fgId);
+          widget.markFinished(fgId);
+          widget.update();
+        }
+      }
+    },
+  };
+  // onUpdate stream for the current foreground execution (set per execute() call)
+  let onUpdateForForeground: (details: Record<string, unknown>) => void = () => {};
 
   // Build notification details for the message renderer
   function buildNotificationDetails(record: any, activity?: AgentActivity): NotificationDetails {
@@ -484,38 +588,7 @@ Guidelines:
 - Use run_in_background for work you don't need immediately
 - ESC kills all running agents immediately
 - Agents inherit the parent model by default`,
-      parameters: Type.Object({
-        type: Type.String({
-          description: `Enabled agent type: ${availableTypes}`,
-        }),
-        prompt: Type.String({
-          description: "The task for the agent to perform.",
-        }),
-        description: Type.String({
-          description: "A short (3-5 word) description of the task.",
-        }),
-        run_in_background: Type.Optional(
-          Type.Boolean({
-            description: "Run in background. Returns helper ID immediately.",
-          }),
-        ),
-        max_turns: Type.Optional(
-          Type.Number({
-            description: "Max agentic turns before stopping.",
-            minimum: 1,
-          }),
-        ),
-        model: Type.Optional(
-          Type.String({
-            description: 'Model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to inherit parent model.',
-          }),
-        ),
-        thinking: Type.Optional(
-          Type.String({
-            description: "Thinking level: off, minimal, low, medium, high, xhigh. Omit to inherit parent.",
-          }),
-        ),
-      }),
+      parameters: SpawnHelperParams,
 
       // ---- Rich inline rendering ----
 
@@ -601,147 +674,19 @@ Guidelines:
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         widget.setUICtx(ctx.ui);
 
-        const type = params.type as string;
-        const prompt = params.prompt as string;
-        const description = params.description as string;
-        const runInBackground = params.run_in_background as boolean | undefined;
-        const maxTurns = params.max_turns as number | undefined;
-        const modelInput = params.model as string | undefined;
-        const thinkingLevel = params.thinking as any | undefined;
-
-        if (runInBackground) {
-          const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(maxTurns);
-
-          // Wrap onSessionCreated to sync tokens
-          const origOnSession = bgCallbacks.onSessionCreated;
-          bgCallbacks.onSessionCreated = (session: any) => {
-            origOnSession(session);
-            bgState.tokens = safeFormatTokens(session);
-            widget.update();
-          };
-
-          const id = manager.spawn(pi, ctx, type, prompt, {
-            description,
-            maxTurns,
-            modelInput,
-            modelRegistry: ctx.modelRegistry,
-            thinkingLevel,
-            isBackground: true,
-            ...bgCallbacks,
-          });
-
-          agentActivity.set(id, bgState);
-          widget.ensureTimer();
-          widget.update();
-
-          const record = manager.getRecord(id);
-          const isQueued = record?.status === "queued";
-
-          return textResult(
-            `Agent ${isQueued ? "queued" : "started"} in background.\n` +
-              `ID: ${id}\n` +
-              `Type: ${type}\n` +
-              `Description: ${description}\n` +
-              (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
-              `\nYou will be notified when this agent completes.\n` +
-              `Use get_result to retrieve full results.`,
-            { status: "background", agentId: id },
-          );
-        }
-
-        // Foreground execution — stream progress via onUpdate
-        let spinnerFrame = 0;
-        const startedAt = Date.now();
-        let fgId: string | undefined;
-
-        const { state: fgState, callbacks: fgCallbacks } = createActivityTracker(maxTurns);
-
-        const streamUpdate = () => {
+        // Route through the parity handler (actions, workflowScript, legacy
+        // single-child) — widget/notify plumbing lives in the deps adapters.
+        onUpdateForForeground = (details) => {
           onUpdate?.({
-            content: [{ type: "text", text: `${fgState.toolUses} tool uses...` }],
-            details: {
-              status: "running",
-              toolUses: fgState.toolUses,
-              tokens: fgState.tokens,
-              turnCount: fgState.turnCount,
-              maxTurns: fgState.maxTurns,
-              durationMs: Date.now() - startedAt,
-              activity: describeActivity(fgState.activeTools, fgState.responseText),
-              spinnerFrame: spinnerFrame % SPINNER.length,
-            },
+            content: [{ type: "text", text: `${details.toolUses ?? 0} tool uses...` }],
+            details,
           });
         };
-
-        // Wire session to register in widget
-        const origOnSession = fgCallbacks.onSessionCreated;
-        fgCallbacks.onSessionCreated = (session: any) => {
-          origOnSession(session);
-          fgState.tokens = safeFormatTokens(session);
-          for (const a of manager.listAgents()) {
-            if (a.session === session) {
-              fgId = a.id;
-              agentActivity.set(a.id, fgState);
-              widget.ensureTimer();
-              break;
-            }
-          }
-        };
-
-        const spinnerInterval = setInterval(() => {
-          spinnerFrame++;
-          streamUpdate();
-        }, 80);
-
-        streamUpdate();
-
-        const record = await manager.spawnAndWait(pi, ctx, type, prompt, {
-          description,
-          maxTurns,
-          modelInput,
-          modelRegistry: ctx.modelRegistry,
-          thinkingLevel,
-          ...fgCallbacks,
-        });
-
-        clearInterval(spinnerInterval);
-
-        // Clean up foreground agent from widget
-        if (fgId) {
-          agentActivity.delete(fgId);
-          widget.markFinished(fgId);
-          widget.update();
+        try {
+          return (await handleSpawnHelper(handlerDeps, ctx, params as Record<string, unknown>, signal)) as never;
+        } finally {
+          onUpdateForForeground = () => {};
         }
-
-        const tokenText = safeFormatTokens(fgState.session);
-        const durationMs = (record.completedAt ?? Date.now()) - record.startedAt;
-
-        if (record.status === "error") {
-          return textResult(`Agent failed: ${record.error}`, {
-            status: "error",
-            toolUses: record.toolUses,
-            tokens: tokenText,
-            durationMs,
-            error: record.error,
-          });
-        }
-
-        const output = boundHelperOutput(record.result?.trim() || "No output.");
-        record.resultArtifactPath = output.artifactPath;
-        return textResult(
-          `Agent completed in ${(durationMs / 1000).toFixed(1)}s (${record.toolUses} tool uses${tokenText ? `, ${tokenText} tokens` : ""}).\n\n` +
-            output.text,
-          {
-            status: "completed",
-            toolUses: record.toolUses,
-            tokens: tokenText,
-            durationMs,
-            turnCount: fgState.turnCount,
-            maxTurns: fgState.maxTurns,
-            truncated: output.truncated,
-            originalBytes: output.originalBytes,
-            artifactPath: output.artifactPath,
-          },
-        );
       },
     }),
   );

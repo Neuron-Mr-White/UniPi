@@ -126,6 +126,14 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   Fixed in workflow-script.ts: admission rejections map to per-child failures
   (runs.all collects; no partial starts). 168/168 tests.
 
+- Phase 2 wiring COMPLETE: index.ts execute() delegates to handleSpawnHelper;
+  registration swapped to SpawnHelperParams (parity schema w/ legacy aliases);
+  deps adapters preserve widget streaming (onUpdate spinner), background
+  activity tracking, notification plumbing, result artifacts. NOTE: packages/
+  utility tests fail 58/… PRE-EXISTING from ponytail-cuts commit 654d5e7
+  (deleted diff/ sources, left orphan tests) — not parity-caused; flagged for
+  the ponytail loop. Subagents 168/168 + root 30/30 pass.
+
 ## Reflection (iteration 6)
 - Phases 0-1 complete; Phase 2 ~90% (runtime + budget/safety libraries all ported and tested).
 - Test-as-spec porting caught 4 real bugs before commit — keep that bar.
