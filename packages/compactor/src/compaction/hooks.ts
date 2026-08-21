@@ -34,11 +34,53 @@ import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
 let lastStats: CompactionStats | null = null;
 let lastCompactWasCompactor = false;
 let pendingFollowUpPrompt: string | null = null;
+let pendingAutoContinueTimer: ReturnType<typeof setTimeout> | null = null;
 export const getLastCompactionStats = () => lastStats;
 export const consumePendingFollowUpPrompt = (): string | null => {
   const p = pendingFollowUpPrompt;
   pendingFollowUpPrompt = null;
   return p;
+};
+
+// ── Invisible auto-continue (pi-vcc parity) ──────────────────────────────
+// Resume the agent after threshold/overflow compaction without polluting the
+// LLM context: send a custom message marked with a dedicated customType
+// (content:[], display:false, triggerTurn:true, deliverAs:'followUp') so Pi's
+// queue/busy-state stays coherent; the on('context') filter registered below
+// removes that message (by customType ONLY) from the LLM payload — the model
+// simply continues from the compaction summary.
+export const AUTO_CONTINUE_CUSTOM_TYPE = "compactor-auto-continue";
+
+const clearPendingAutoContinue = () => {
+  if (pendingAutoContinueTimer) {
+    clearTimeout(pendingAutoContinueTimer);
+    pendingAutoContinueTimer = null;
+  }
+};
+
+export const triggerInvisibleContinue = (pi: ExtensionAPI): void => {
+  pi.sendMessage(
+    {
+      customType: AUTO_CONTINUE_CUSTOM_TYPE,
+      content: [],
+      display: false,
+      details: undefined,
+    },
+    {
+      triggerTurn: true,
+      deliverAs: "followUp",
+    },
+  );
+};
+
+const scheduleAutoContinue = (pi: ExtensionAPI) => {
+  clearPendingAutoContinue();
+  pendingAutoContinueTimer = setTimeout(() => {
+    pendingAutoContinueTimer = null;
+    try {
+      triggerInvisibleContinue(pi);
+    } catch {}
+  }, 0);
 };
 
 const REASON_MESSAGES: Record<string, string> = {
@@ -127,6 +169,24 @@ export function registerCompactionHooks(
   pi: ExtensionAPI,
   deps?: { getSessionDB?: () => SessionDB | null; getSessionId?: () => string },
 ): void {
+  // Filter our invisible-continue marker out of the LLM context payload so the
+  // model just continues from the compaction summary (matched by customType ONLY).
+  // This replaces the old dead sanitizer branch that read a nonexistent
+  // event.context string (prefix-cache audit finding).
+  pi.on("context", (event) => {
+    const messages = (event as { messages: Array<{ role?: string; customType?: string }> }).messages.filter((message) => {
+      if (message.role !== "custom") return true;
+      return message.customType !== AUTO_CONTINUE_CUSTOM_TYPE;
+    });
+    if (messages.length !== (event as { messages: unknown[] }).messages.length) {
+      return { messages } as any;
+    }
+  });
+
+  pi.on("before_agent_start", () => {
+    clearPendingAutoContinue();
+  });
+
   pi.on("session_before_compact", (event: SessionBeforeCompactEvent, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const config = loadConfig();
@@ -294,7 +354,9 @@ export function registerCompactionHooks(
     if (lastCompactWasCompactor) return; // /unipi:compact handles its own toast
     const stats = lastStats;
     if (!stats) return;
-    const { reason } = readCompactionEventContext(event);
+    const { reason, willRetry } = readCompactionEventContext(event);
+    if (willRetry) return;
+    const followUpPrompt = consumePendingFollowUpPrompt();
     const shouldContinueAfterAutoCompact =
       (reason === "threshold" || reason === "overflow") && loadConfig().continueAfterThresholdCompact;
     setTimeout(() => {
@@ -302,9 +364,14 @@ export function registerCompactionHooks(
         ctx?.ui?.notify?.(formatCompactionStats(stats), "info");
       } catch {}
     }, 500);
-    if (shouldContinueAfterAutoCompact) {
-      // Invisible auto-continue is scheduled by the entry point (index.ts),
-      // which owns the pi.sendMessage handle.
+    if (followUpPrompt) {
+      setTimeout(() => {
+        try {
+          void pi.sendUserMessage(followUpPrompt);
+        } catch {}
+      }, 0);
+    } else if (shouldContinueAfterAutoCompact) {
+      scheduleAutoContinue(pi);
     }
   });
 }

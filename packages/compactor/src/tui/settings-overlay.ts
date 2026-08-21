@@ -134,6 +134,9 @@ const PIPELINE_ITEMS: PipelineDef[] = [
   // Only expose implemented behavior. Reserved compatibility fields remain in
   // the persisted schema so existing config files continue to load.
   { key: "autoInjection", label: "Auto Injection", description: "Inject behavioral state after compaction", group: "On Compaction", getValue: (c) => c.pipeline.autoInjection, setValue: (c, v) => (c.pipeline.autoInjection = v) },
+  { key: "smartKeepTail", label: "Smart Keep Tail", description: "Grow keep:N tail to ≥5k tokens when it would be tiny", group: "Cut Behavior", getValue: (c) => c.smartKeepTail, setValue: (c, v) => (c.smartKeepTail = v) },
+  { key: "continueAfterThresholdCompact", label: "Auto-continue", description: "Resume agent after threshold/overflow compaction", group: "On Compaction", getValue: (c) => c.continueAfterThresholdCompact, setValue: (c, v) => (c.continueAfterThresholdCompact = v) },
+  { key: "debug", label: "Debug Output", description: "Write compaction diagnostics to /tmp/compactor-debug.json", group: "Diagnostics", getValue: (c) => c.debug, setValue: (c, v) => (c.debug = v) },
 ];
 
 const PRESETS: CompactorPreset[] = ["precise", "balanced", "thorough", "lean"];

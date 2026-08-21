@@ -473,14 +473,4 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("context", async (event, _ctx) => {
-    const { sanitizeThinkingArtifacts } = await import("./display/thinking-label.js");
-    const ctxStr = (event as any).context;
-    if (typeof ctxStr === "string") {
-      const sanitized = sanitizeThinkingArtifacts(ctxStr);
-      if (sanitized !== ctxStr) {
-      }
-      (event as any).context = sanitized;
-    }
-  });
 }
