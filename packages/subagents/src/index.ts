@@ -21,14 +21,20 @@ import { loadBuiltinFileAgents } from "./custom-agents.js";
 import { ConversationViewer } from "./conversation-viewer.js";
 import { AgentWidget, SPINNER, TOOL_DISPLAY, formatMs, formatTurns, describeActivity } from "./widget.js";
 import { handleSpawnHelper, type HandlerDeps } from "./tool-handler.js";
-import { SpawnHelperParams } from "./schemas.js";
+import { SpawnHelperParams, GetHelperResultParams } from "./schemas.js";
 import { runAsyncSubagent, createAsyncRunDir, writeStatus, readStatus } from "./async-runner.js";
 import { createResultWatcher, cleanupAsyncRetention } from "./result-watcher.js";
 import { writeAsyncResultFile, readAsyncResultFile } from "./result-files.js";
+import { writePendingSubscription } from "./result-watcher.js";
 import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
 import { createForkContextResolver } from "./fork-context.js";
 import { createWorktrees, cleanupWorktrees, diffWorktrees, type WorktreeSetup } from "./worktree.js";
 import { FleetView } from "./fleet-view.js";
+import {
+  parseDetachShortcut,
+  formatDetachHint,
+  matchesDetachInput,
+} from "./foreground-detach.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
@@ -458,6 +464,15 @@ export default function (pi: ExtensionAPI) {
         }
       };
       const spinnerInterval = setInterval(() => { spinnerFrame++; streamUpdate(); }, 80);
+      // Detach: stop waiting without killing the child. The completion
+      // notification arrives later via the normal onComplete path.
+      activeForegroundDetach = () => {
+        if (!fgId) return false;
+        const record = manager.getRecord(fgId);
+        if (!record || record.status !== "running") return false;
+        record.resultConsumed = true; // suppress the duplicate notification
+        return true;
+      };
       try {
         const record = await manager.spawnAndWait(pi, spawnCtx, agentName, childPrompt, {
           description: options.description ?? `${agentName} task`,
@@ -477,6 +492,7 @@ export default function (pi: ExtensionAPI) {
         return { ok: true, output: output.text, toolUses: record.toolUses, durationMs };
       } finally {
         clearInterval(spinnerInterval);
+        activeForegroundDetach = undefined;
         if (fgId) {
           agentActivity.delete(fgId);
           widget.markFinished(fgId);
@@ -487,6 +503,10 @@ export default function (pi: ExtensionAPI) {
   };
   // onUpdate stream for the current foreground execution (set per execute() call)
   let onUpdateForForeground: (details: Record<string, unknown>) => void = () => {};
+
+  // ---- Foreground detach (foregroundDetachShortcut) ----
+  const detachParts = parseDetachShortcut(config.foregroundDetachShortcut);
+  let activeForegroundDetach: (() => boolean) | undefined;
 
 
   // Build notification details for the message renderer
@@ -685,15 +705,24 @@ export default function (pi: ExtensionAPI) {
       if (typeof (ctx.ui as unknown as { onTerminalInput?: unknown }).onTerminalInput === "function") {
         (ctx.ui as unknown as {
           onTerminalInput(handler: (data: string) => { consume?: boolean } | undefined): () => void;
-        }).onTerminalInput((data) =>
-          fleetView.handleKey(data, () => {
+        }).onTerminalInput((data) => {
+          // Detach shortcut: detach the active foreground run.
+          if (detachParts && matchesDetachInput(data, detachParts) && activeForegroundDetach) {
+            if (activeForegroundDetach()) {
+              try {
+                ctx.ui.notify("Foreground run detached — it continues in the background.", "info");
+              } catch { /* best effort */ }
+              return { consume: true };
+            }
+          }
+          return fleetView.handleKey(data, () => {
             try {
               return ctx.ui.getEditorText() !== "";
             } catch {
               return false;
             }
-          }),
-        );
+          });
+        });
       }
     } catch {
       // Terminal input hooking is optional.
@@ -859,6 +888,25 @@ Guidelines:
           return new Text(text, 0, 0);
         }
 
+        // inlineToolDisplay: "summary" keeps one stable row per state.
+        if (config.inlineToolDisplay === "summary") {
+          const glyph = isPartial || details.status === "running"
+            ? theme.fg("accent", SPINNER[details.spinnerFrame ?? 0])
+            : details.status === "completed"
+              ? theme.fg("success", "✓")
+              : details.status === "background"
+                ? theme.fg("dim", "■")
+                : theme.fg("error", "✗");
+          const label = details.status === "completed"
+            ? "completed"
+            : details.status === "background"
+              ? "background"
+              : details.status === "running"
+                ? "running"
+                : details.status;
+          return new Text(theme.fg("muted", `${glyph} ${label}`), 0, 0);
+        }
+
         // Stats helper
         const stats = (d: any) => {
           const parts: string[] = [];
@@ -948,26 +996,51 @@ Guidelines:
     defineTool({
       name: "get_helper_result",
       label: "Get Helper Result",
-      description: "Check status and retrieve results from a background agent. Use view: true to open a live conversation overlay.",
-      parameters: Type.Object({
-        agent_id: Type.String({
-          description: "The helper ID to check.",
-        }),
-        wait: Type.Optional(
-          Type.Boolean({
-            description: "Wait for completion. Default: false.",
-          }),
-        ),
-        view: Type.Optional(
-          Type.Boolean({
-            description: "Open a live conversation viewer overlay. Default: false.",
-          }),
-        ),
-      }),
-      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-        const record = manager.getRecord(params.agent_id as string);
+      description: "Check status and retrieve results from a background agent or async run. Use view: true to open a live conversation overlay; nonBlocking: true to subscribe and be woken on completion.",
+      parameters: GetHelperResultParams,
+      execute: async (_toolCallId, rawParams, _signal, _onUpdate, ctx) => {
+        const params = rawParams as Record<string, unknown>;
+        const id = (params.id ?? params.agent_id) as string | undefined;
+        const nonBlocking = params.nonBlocking === true;
+        const waitAll = params.all === true;
+        const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : undefined;
+
+        // ---- Async process runs ----
+        const asyncPayload = id ? readAsyncResultFile(RESULTS_DIR, id) : undefined;
+        if (asyncPayload && !nonBlocking) {
+          const duration = asyncPayload.durationMs ? `${(asyncPayload.durationMs / 1000).toFixed(1)}s` : "";
+          return textResult(
+            `Run: ${asyncPayload.runId}\nAgent: ${asyncPayload.agent ?? "unknown"} | Status: ${asyncPayload.state ?? (asyncPayload.success ? "completed" : "failed")}\n\n${asyncPayload.output ?? asyncPayload.error ?? "(no output)"}`,
+            { status: asyncPayload.success ? "completed" : "error", runId: asyncPayload.runId },
+          );
+        }
+        if (nonBlocking && id) {
+          // Persist a wake subscription: when the result file appears, the
+          // watcher delivers a followUp notification that wakes this session.
+          if (readAsyncResultFile(RESULTS_DIR, id)) {
+            return textResult(`Run ${id} already completed.`, { status: "completed", runId: id });
+          }
+          writePendingSubscription(RESULTS_DIR, asyncSessionId, id);
+          return textResult(
+            `Subscribed to run ${id}. This session will be woken on completion or failure.`,
+            { status: "subscribed", runId: id },
+          );
+        }
+
+        // ---- In-process records ----
+        const record = manager.getRecord(id as string);
         if (!record) {
-          return textResult(`Helper not found: "${params.agent_id}". It may have been cleaned up.`);
+          if (waitAll) {
+            // Wait for ALL active in-process agents.
+            const active = manager.listAgents().filter((a) => a.status === "running" || a.status === "queued");
+            if (active.length === 0) return textResult("No active agents.");
+            await Promise.race([
+              Promise.allSettled(active.map((a) => a.promise).filter(Boolean)),
+              new Promise((resolve) => setTimeout(resolve, timeoutMs ?? 1_800_000)),
+            ]);
+            return textResult(`All ${active.length} agent(s) settled (or wait timed out).`);
+          }
+          return textResult(`Helper not found: "${id}". It may have been cleaned up.`);
         }
 
         // Open conversation viewer overlay if requested

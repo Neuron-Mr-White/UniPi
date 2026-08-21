@@ -150,6 +150,17 @@ export function createResultWatcher(deps: ResultWatcherDeps): ResultWatcher {
   };
 }
 
+/** Persist a nonBlocking wake subscription: a pending marker for a run that
+ *  has not completed yet. The watcher delivers when the result lands. */
+export function writePendingSubscription(resultsDir: string, sessionId: string, runId: string): void {
+  const dir = path.join(resultsDir, "result-pending", sessionId);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = path.join(dir, `${runId}.json`);
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, JSON.stringify({ runId, sessionId, subscribedAt: Date.now() }) + "\n", { mode: 0o600 });
+  }
+}
+
 /**
  * Retention cleanup (ported essence of async-retention.ts): remove terminal
  * async run dirs + result payloads older than maxAgeMs. Only terminal runs
