@@ -81,14 +81,14 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Watchdog: config keys validated (authorityPolicy); full adversarial reviewer + LSP diagnostics remain a documented future phase (guide topic marks it planned) — the opt-in surface exists; reviewer implementation is the largest remaining reference subsystem and is deferred deliberately
 - [x] authorityPolicy — authority-policy.ts: resolveAuthorityDecision (defaults: confirm for destructive, auto for scheduleCreate), confirmed-kind satisfaction, strict config parsing. Already consumed by worktree cleanup (Phase 3)
 
-## Phase 7 — Slash, skills, prompts, docs
+## Phase 7 — Slash, skills, prompts, docs — COMPLETE
 - [x] Slash commands — /unipi:subagents-fleet (fleet across both transports), /unipi:subagents-doctor, /unipi:subagents-guide (topic arg); delivered via sendMessage followUp; autocomplete registered
 - [x] /council + council-mode skill ported and adapted to spawn_helper)
 - [x] Prompt shortcuts: all 5 + council ported under packages/subagents/prompts/
 - [x] workflow coexist-triggers doc updated with parity surface note
 - [x] autocomplete registry updated (3 subagents commands); core constants already reference the module; footer needs no new segment (FleetView covers live status)
-- [ ] README + docs/ rewrite for packages/subagents
-- [ ] Bundle rebuild + publish + PC reinstall at the very end
+- [x] README rewrite — full parity surface documented (8 agents, workflowScript, actions, FleetView, missions/schedules, config, storage)
+- [x] Published @pi-unipi/unipi@2.7.0 → 2.7.1 (added pack globs for agents/prompts after tarball verification); PC reinstalled clean; bundle fully inlined; skills/prompts/agents verified in the install tree
 
 ## Progress log
 - Phase 0 COMPLETE (commit 07015ff). 81/81 subagents tests pass, root tsc clean.
@@ -192,6 +192,9 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
    workflow-module integration notes, docs/README, then bundle+publish+reinstall.
 4. Approach: unchanged; final phase is integration + polish.
 5. Next: slash commands + skills/prompts, docs, publish.
+
+- PUBLISHED: @pi-unipi/unipi@2.7.1. PC verified: 6 agents, 6 prompts, council-mode +
+  subagents skills present; bundled.js fully inlined (zero workspace imports).
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.
