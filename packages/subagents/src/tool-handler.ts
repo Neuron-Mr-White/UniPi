@@ -41,6 +41,14 @@ import { ASYNC_DIR, TEMP_ROOT_DIR, RESULTS_DIR } from "./parity-types.js";
 import { buildGuideText } from "./guide.js";
 import { ScheduledRunManager } from "./scheduled-runs.js";
 import {
+  validateAcceptanceInput,
+  normalizeAcceptanceInput,
+  normalizeGateAcceptance,
+  evaluateAcceptance,
+  stripAcceptanceReport,
+} from "./acceptance.js";
+import type { AcceptanceConfig } from "./acceptance.js";
+import {
   resolveMissionStoreLocation,
   createMission,
   readMission,
@@ -120,6 +128,43 @@ export interface HandlerDeps {
 
 function textResult(msg: string, details?: unknown) {
   return { content: [{ type: "text" as const, text: msg }], details };
+}
+
+/**
+ * Resolve the effective acceptance config: explicit gate shorthand wins over
+ * acceptance; agent-level defaultAcceptance fills gaps. Returns undefined for
+ * no gate. Errors are visible strings.
+ */
+function resolveEffectiveAcceptance(
+  args: Record<string, unknown>,
+): { ok: true; acceptance?: AcceptanceConfig } | { ok: false; error: string } {
+  if (args.gate !== undefined && args.acceptance !== undefined) {
+    return { ok: false, error: "gate cannot be combined with acceptance; use one gate command or acceptance.verify." };
+  }
+  if (args.gate !== undefined) {
+    const normalized = normalizeGateAcceptance(args.gate);
+    if (!normalized) return { ok: false, error: "gate must be a non-empty command string." };
+    return { ok: true, acceptance: normalized };
+  }
+  if (args.acceptance === undefined) return { ok: true, acceptance: undefined };
+  const errors = validateAcceptanceInput(args.acceptance);
+  if (errors.length > 0) return { ok: false, error: errors.join(" ") };
+  return { ok: true, acceptance: normalizeAcceptanceInput(args.acceptance) };
+}
+
+/** Post-run acceptance evaluation wrapper. */
+async function evaluateRunAcceptance(
+  acceptance: AcceptanceConfig | undefined,
+  output: string,
+  cwd: string,
+): Promise<{ output: string; ledger?: Awaited<ReturnType<typeof evaluateAcceptance>> }> {
+  if (!acceptance || acceptance.level === "auto") return { output };
+  const ledger = await evaluateAcceptance({ acceptance, output, cwd });
+  const cleanOutput = stripAcceptanceReport(output);
+  if (ledger.status === "rejected") {
+    return { output: cleanOutput, ledger };
+  }
+  return { output: cleanOutput, ledger };
 }
 
 /** Parse + validate everything, resolve the agent, or return an error result. */
@@ -822,6 +867,10 @@ async function handleSingleChild(
   const usageBudgetResult = validateUsageBudgetConfig(args.usageBudget);
   if (usageBudgetResult.error) return textResult(usageBudgetResult.error, { status: "error" });
 
+  // Acceptance gates (gate shorthand + acceptance object).
+  const acceptanceResolved = resolveEffectiveAcceptance(args);
+  if (!acceptanceResolved.ok) return textResult(acceptanceResolved.error, { status: "error" });
+
   // Boundary instructions (unless the agent is a fanout child).
   if (!isFanoutChild(agent)) {
     childPrompt = withChildBoundaryInstructions(childPrompt, agent);
@@ -892,9 +941,24 @@ async function handleSingleChild(
     });
   }
 
+  // Acceptance gate evaluation (host-side verify commands + report checks).
+  let finalOutput = result.output;
+  let ledgerDetails: unknown;
+  if (acceptanceResolved.acceptance) {
+    const evaluated = await evaluateRunAcceptance(acceptanceResolved.acceptance, result.output, process.cwd());
+    finalOutput = evaluated.output;
+    ledgerDetails = evaluated.ledger;
+    if (evaluated.ledger?.status === "rejected") {
+      return textResult(
+        `Agent completed but acceptance rejected:\n${evaluated.ledger.failureMessage}\n\nOutput:\n${finalOutput.slice(0, 2000)}`,
+        { status: "error", acceptance: evaluated.ledger.status, failureMessage: evaluated.ledger.failureMessage },
+      );
+    }
+  }
+
   // Output truncation with maxOutput config (reference default 200KB/5000 lines).
   const maxOutput = resolveMaxOutput(args.maxOutput as never, deps.config);
-  const truncated = truncateOutput(result.output, maxOutput);
+  const truncated = truncateOutput(finalOutput, maxOutput);
 
   return textResult(
     `Agent completed in ${(result.durationMs / 1000).toFixed(1)}s (${result.toolUses} tool uses).\n\n${truncated.text}`,
@@ -902,6 +966,7 @@ async function handleSingleChild(
       status: "completed",
       toolUses: result.toolUses,
       durationMs: result.durationMs,
+      ...(ledgerDetails ? { acceptance: (ledgerDetails as { status: string }).status } : {}),
       truncated: truncated.truncated,
       originalBytes: truncated.originalBytes,
     },

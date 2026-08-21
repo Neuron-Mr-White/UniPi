@@ -18,8 +18,14 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getPiSpawnCommand } from "./pi-spawn.js";
 import { buildPiArgs, cleanupTempDir, type SubagentTaskDelivery } from "./pi-args.js";
-import { ASYNC_DIR, ensureDirs } from "./parity-types.js";
+import { ASYNC_DIR, ensureDirs, TEMP_ROOT_DIR } from "./parity-types.js";
 import { childDepthEnv, resolveMaxSubagentDepth } from "./child-safety.js";
+import {
+  ensureSupervisorChannelDir,
+  resolveSupervisorChannelDir,
+  SUPERVISOR_CHANNEL_DIR_ENV,
+  SUPERVISOR_PARENT_SESSION_ENV,
+} from "./supervisor-channel.js";
 import type { AgentConfig, SubagentsConfig } from "./types.js";
 
 // ============================================================================
@@ -132,7 +138,24 @@ async function runChildProcess(
 
   const maxDepth = resolveMaxSubagentDepth(spec.agent, spec.config);
   const depthEnv = childDepthEnv(process.env, maxDepth);
-  const spawnEnv = { ...process.env, ...childEnv, ...depthEnv };
+
+  // Supervisor channel: children with a parent session can contact_supervisor.
+  const channelRoot = path.join(TEMP_ROOT_DIR, "supervisor-channels");
+  let supervisorEnv: Record<string, string> = {};
+  if (spec.parentSessionId) {
+    const channelDir = resolveSupervisorChannelDir(channelRoot, runId, spec.agent.name);
+    ensureSupervisorChannelDir(channelDir);
+    supervisorEnv = {
+      [SUPERVISOR_CHANNEL_DIR_ENV]: channelDir,
+      [SUPERVISOR_PARENT_SESSION_ENV]: spec.parentSessionId,
+    };
+    // Record for the parent-side poller.
+    try {
+      fs.writeFileSync(path.join(runDir, "supervisor-channel.json"), JSON.stringify({ channelDir }), { mode: 0o600 });
+    } catch { /* best effort */ }
+  }
+
+  const spawnEnv = { ...process.env, ...childEnv, ...depthEnv, ...supervisorEnv };
 
   const spawnSpec = getPiSpawnCommand(args, { env: spawnEnv });
 

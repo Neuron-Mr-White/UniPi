@@ -336,6 +336,27 @@ describe("workflowScript execution", () => {
     assert.equal(calls.length, 0); // nothing started
   });
 
+  it("gate + acceptance are mutually exclusive; gate runs host commands", async () => {
+    const deps = makeDeps();
+    const both = await handleSpawnHelper(deps, ctx, {
+      agent: "scout", task: "x",
+      gate: "echo ok", acceptance: { level: "checked" },
+    });
+    assert.match(both.content[0]!.text, /cannot be combined with acceptance/);
+
+    const gatePass = await handleSpawnHelper(deps, ctx, {
+      agent: "scout", task: "x", gate: "echo ok",
+    });
+    assert.match(gatePass.content[0]!.text, /Agent completed/);
+    assert.equal((gatePass.details as { acceptance?: string }).acceptance, "verified");
+
+    const gateFail = await handleSpawnHelper(deps, ctx, {
+      agent: "scout", task: "x", gate: "exit 5",
+    });
+    assert.match(gateFail.content[0]!.text, /acceptance rejected/);
+    assert.match(gateFail.content[0]!.text, /verification 'gate' failed/);
+  });
+
   it("workflow script errors return with partial children info", async () => {
     const deps = makeDeps();
     const result = await handleSpawnHelper(deps, ctx, {

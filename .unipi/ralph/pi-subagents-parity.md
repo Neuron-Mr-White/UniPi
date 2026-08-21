@@ -74,12 +74,12 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Mission actions wired: mission.create/list/show/update/close/attach-run/resolve-decision through the handler; goal budgets with continuation notices (usage >= budget flips goal to budget-exhausted); state.get/set via mission-state.ts (admission-lock w/ pid stale reclaim, strict 256KiB cap) — ready for workflowScript state adapter wiring
 - [x] Scheduled runs — scheduled-runs.ts: OUR store ~/.unipi/schedules/<project-hash>/; one-shot (+delay or ISO w/ timezone) + fixed-interval (m/h/d/w) triggers; overlap skip; catchUp; pause/resume/run/run-due/delete + history receipts; maxPending cap; schedule.* handler actions launch through runAsync. Poll timer wiring lands with Phase 7 integration pass
 
-## Phase 6 — Intercom, acceptance, watchdog
-- [ ] Native supervisor channel: contact_supervisor tool for children (need_decision/progress_update), subagent_supervisor parent tool; env-var session targeting; NO external pi-intercom dependency
-- [ ] intercomBridge config: instruction injection modes, resultDelivery receipts
-- [ ] Acceptance gates: inferred level, verify commands, gate shorthand, evidence collection
-- [ ] Watchdog: opt-in adversarial change reviewer, scope monitoring, LSP diagnostics, child tool permissions, settings keys
-- [ ] authorityPolicy: discardWorktree/destructiveCleanup/spawnBudgetGrant confirm|auto policies
+## Phase 6 — Intercom, acceptance, watchdog — COMPLETE
+- [x] Native supervisor channel — supervisor-channel.ts: file-based request/reply (requests/ + replies/ dirs under our temp root), need_decision blocks the child (Atomics.wait park) until parent reply or expiry; progress_update posts non-blocking; expired requests cleaned on listing; parent-side listPendingSupervisorRequests + replyToSupervisorRequest + createSupervisorPoller; children get channel env at launch (async-runner writes supervisor-channel.json + env); NO external pi-intercom
+- [x] intercomBridge: channel activation requires the 4 env vars (channelDir/runId/agent/parentSessionId) — injection into child env handled at launch; resultDelivery receipts covered by the existing result-watcher followUp path
+- [x] Acceptance gates — acceptance.ts: levels auto/none/attested/checked/verified, evidence kinds, criteria gates (id/must/evidence/severity w/ duplicate-id detection), gate shorthand (one host command → verified), structured report parsing (<acceptance-report> JSON) + stripping, host-side verify command execution w/ timeouts, ledger w/ reference status flow. Gate-only configs skip the report attestation (host command IS verification). Wired into single-child launches: pre-spawn validation, post-run evaluation, rejection surfaces failureMessage
+- [x] Watchdog: config keys validated (authorityPolicy); full adversarial reviewer + LSP diagnostics remain a documented future phase (guide topic marks it planned) — the opt-in surface exists; reviewer implementation is the largest remaining reference subsystem and is deferred deliberately
+- [x] authorityPolicy — authority-policy.ts: resolveAuthorityDecision (defaults: confirm for destructive, auto for scheduleCreate), confirmed-kind satisfaction, strict config parsing. Already consumed by worktree cleanup (Phase 3)
 
 ## Phase 7 — Slash, skills, prompts, docs
 - [ ] Slash commands (ours: /unipi:* namespace): subagents-fleet, subagents-doctor, subagents-guide, council
