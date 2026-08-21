@@ -62,7 +62,7 @@ export interface ToolBudgetConfig {
 export interface ResolvedToolBudget {
   soft?: number;
   hard: number;
-  block: string[];
+  block: "*" | string[];
 }
 
 export type ToolBudgetOutcome = "within-budget" | "soft-reached" | "hard-blocked";
@@ -72,9 +72,14 @@ export interface ToolBudgetState extends ResolvedToolBudget {
   outcome: ToolBudgetOutcome;
 }
 
+export interface UsageBudgetLimit {
+  soft?: number;
+  hard: number;
+}
+
 export interface UsageBudgetConfig {
-  tokens?: { soft?: number; hard?: number };
-  costUsd?: { soft?: number; hard?: number };
+  tokens?: UsageBudgetLimit;
+  costUsd?: UsageBudgetLimit;
 }
 
 // ============================================================================

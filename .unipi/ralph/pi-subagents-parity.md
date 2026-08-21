@@ -41,12 +41,12 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 ## Phase 2 — Foreground orchestration (in-process)
 - [x] workflowScript runtime — workflow-script.ts (host) + workflow-worker.ts (Worker+vm sandbox, acorn AST validation, no host globals, await-observation contract). runs.run/all/steer/status/ref/refs + state/emit/console globals
 - [x] Sequential chaining via top-level await; parallel via runs.all (atomic batch admission, failures returned in input order)
-- [ ] Budgets: turnBudget {maxTurns, graceTurns, termination-deferred}, toolBudget {soft,hard,block}, usageBudget {tokens,costUsd soft/hard}
-- [ ] Spawn budgets: maxSubagentSpawnsPerRun (default 64, atomic group admission, no refunds), maxSubagentSpawnsPerSession + grant-spawn-budget action, maxActiveAsyncRunsPerSession preflight
-- [ ] context: fresh | fork (in-process: fresh only; fork → error advising async path, or defer to Phase 3 fork runner) — ASK USER if ambiguous
-- [ ] maxSubagentDepth recursion guard + child-safety: children don't get spawn_helper unless agent tools include it; boundary instructions; fork-context filtering of parent artifacts
-- [ ] timeoutMs defaults (30min foreground), toolTimeoutMs per-tool hard deadlines w/ exemptions (our tool names), known-fast built-in 5-min defaults
-- [ ] maxOutput truncation {bytes, lines} + outputMode file-only
+- [x] Budgets — src/budgets.ts: turnBudget (validate/resolve/decision incl. termination-deferred + system-prompt wrap-up block), toolBudget (soft/hard/block '*' or list, final text never blocked), usageBudget (tokens/costUsd soft/hard states + exhaustion messages)
+- [x] Spawn budgets — src/run-fanout-budget.ts: durable file-backed claims, atomic batch admission w/ admission lock + stale reclaim (pid check), no refunds, descriptor validation/round-trip. Session cap + grant action + async preflight land with the spawn_helper handler wiring (next iter)
+- [x] context: fresh | fork — src/child-safety.ts resolveContext (explicit > config > agent > fresh); foreground fork rejects with guidance to run_in_background (no silent downgrade); async fork wired in Phase 3
+- [x] maxSubagentDepth recursion guard (inherited caps irrelaxable, agent tightens; depth env counters) + child-safety boundary instructions (plain + fanout variants, adapted to spawn_helper) — src/child-safety.ts. Fork-context artifact filtering lands with Phase 3 fork runner
+- [x] timeoutMs defaults — src/output-limits.ts: resolveRunTimeoutMs (call > agent > config > 30min), resolveToolTimeoutMs (call > agent > config > UNIPI_SUBAGENT_TOOL_TIMEOUT_MS env > fast-tool 5min default), exemptions (contact_supervisor/intercom/get_helper_result/ask_user)
+- [x] maxOutput truncation — truncateOutput (lines cap, binary-search byte cap, TRUNCATED marker w/ artifact pointer), resolveMaxOutput (call > config > 200KB/5000 lines). outputMode file-only wired with handler
 - [x] Tests: workflow-script.test.ts (20 cases ported from their scripted-workflow.test.ts spec) — key duplication/reuse, fail-fast vs collect-failure, steer validation + Promise.race pattern, nested-async AST rejection, timeout, state adapter, emit JSON enforcement
 
 ## Phase 3 — Async/background (process-based)
@@ -108,6 +108,12 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   ported (battle-tested design). 127/127 tests. Remaining Phase 2: budgets, spawn budgets,
   context fresh/fork, child-safety, timeoutMs/toolTimeoutMs defaults, maxOutput truncation,
   + wiring into spawn_helper tool handler.
+
+- Phase 2 partial (budgets + safety): budgets.ts (turn/tool/usage), run-fanout-budget.ts
+  (file-backed spawn caps, atomic admission), output-limits.ts (truncation + timeout
+  precedence), child-safety.ts (boundary instructions, depth guard, context resolution),
+  file-system-retry.ts (retry ladder). 146/146 tests. Remaining: wire all of this into the
+  spawn_helper tool handler + workflowScript launch path.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.
