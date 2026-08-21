@@ -46,13 +46,13 @@ changing them is not necessary.
 - [x] summarize.ts: compileRanked path (capFreshBrief=false, preserveFreshBriefOnMerge=true) + mergeBriefTranscriptWithFreshBudget (fresh gets budget, prev fills remainder)
 - [x] Wire compileRanked into hooks.ts with fileOps from preparation
 
-## Phase 3 — Recall parity
-- [ ] scope:"all" | "lineage" (default lineage) — port recall-scope.ts; lineage = entries after last compaction's firstKeptEntryId (with orphan recovery)
-- [ ] Pagination (page param, 5 results/page) + regex mode with keyword fallback
-- [ ] mode:"touched" (files worked on + entry indices) + #N:path drill-down (expandEntryFile, anchored parse) — port drill-down.ts
-- [ ] expand param: expand entry indices to full untruncated content
-- [ ] Update tool descriptions to match pi-vcc's wording (adapted to session_recall/vcc_recall names)
-- [ ] unipi:compact-recall: results as collapsible message + auto-fed to agent as context (port /pi-vcc-recall behavior)
+## Phase 3 — Recall parity ✅ COMMITTED
+- [x] scope:"all" | "lineage" (default lineage) — port recall-scope.ts; lineage = entries after last compaction's firstKeptEntryId (with orphan recovery)
+- [x] Pagination (page param, 5 results/page) + regex mode with keyword fallback
+- [x] mode:"touched" (files worked on + entry indices) + #N:path drill-down (expandEntryFile, anchored parse) — port drill-down.ts
+- [x] expand param: expand entry indices to full untruncated content
+- [x] Update tool descriptions to match pi-vcc's wording (adapted to session_recall/vcc_recall names)
+- [x] unipi:compact-recall: results as collapsible message + auto-fed to agent as context (port /pi-vcc-recall behavior)
 
 ## Phase 4 — Auto-continue & polish
 - [ ] Invisible auto-continue: AUTO_CONTINUE customType message (content:[], display:false, triggerTurn:true, deliverAs:"followUp") after threshold/overflow compaction; config key `continueAfterThresholdCompact` (default true)
