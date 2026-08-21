@@ -44,6 +44,8 @@
     "packages/*/skills/**/*",
     "packages/*/README.md",
     "packages/unipi/bundled.js",
+    "packages/*/agents/*.md",
+    "packages/*/prompts/*.md",
     "!packages/**/__tests__/**",
     "!packages/**/tests/**",
     "!packages/**/*.test.ts",
