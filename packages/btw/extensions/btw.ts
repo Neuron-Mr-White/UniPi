@@ -1079,14 +1079,14 @@ class BtwOverlayComponent extends Container implements Focusable {
       return;
     }
 
-    if (matchesKey(data, Key.pageUp)) {
+    if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("pageUp")) || matchesKey(data, Key.alt("pageUp"))) {
       this.followTranscript = false;
       this.transcriptScrollOffset = Math.max(0, this.transcriptScrollOffset - Math.max(1, this.transcriptViewportHeight - 1));
       this.tui.requestRender();
       return;
     }
 
-    if (matchesKey(data, Key.pageDown)) {
+    if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("pageDown")) || matchesKey(data, Key.alt("pageDown"))) {
       this.transcriptScrollOffset += Math.max(1, this.transcriptViewportHeight - 1);
       this.tui.requestRender();
       return;
@@ -1180,7 +1180,7 @@ class BtwOverlayComponent extends Container implements Focusable {
 
     const status = this.getStatus() ?? "Ready. Enter submits; Escape dismisses without clearing.";
     this.statusTextValue = status;
-    this.hintsTextValue = "Enter submit · Alt+/ toggle focus · Escape dismiss · PgUp/PgDn scroll";
+    this.hintsTextValue = "Enter submit · Alt+/ toggle focus · Escape dismiss · PgUp/Ctrl+PgUp scroll up · PgDn/Ctrl+PgDn scroll down";
     this.tui.requestRender();
   }
 }
