@@ -19,6 +19,7 @@ import {
 import type { Api, Model } from '@earendil-works/pi-ai';
 import type { BgTask, BgTaskSnapshot } from '../types.js';
 import type { TaskkillOutcome, WindowsKillPhase } from '../windows-taskkill.js';
+import type { BackgroundTaskChildProcess, BackgroundTaskSpawnOptions } from '../child-process.js';
 
 type JsonObject = Record<PropertyKey, unknown>;
 
@@ -76,7 +77,7 @@ interface SpawnRecord {
   child: FakeChild;
   shell: string;
   args: string[];
-  options: Parameters<BackgroundTaskSpawn>[2];
+  options: BackgroundTaskSpawnOptions;
 }
 
 interface HarnessOptions {
@@ -134,8 +135,8 @@ async function createHarness(options: HarnessOptions = {}) {
     },
     spawn: (shell, args, spawnOptions) => {
       const child = options.childFactory?.(++pid) ?? new FakeChild(++pid);
-      children.push({ child, shell, args: [...args], options: spawnOptions });
-      return child;
+      children.push({ child, shell, args: [...args], options: spawnOptions ?? {} });
+      return child as unknown as BackgroundTaskChildProcess;
     },
   };
   if (options.publishTerminal !== undefined)

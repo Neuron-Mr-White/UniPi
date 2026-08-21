@@ -51,15 +51,15 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: completion, dock, attested, pi-launch, extension-api tests (adapt)
 
 ## Phase 3 — Delegate
-- [ ] Context projection: visible-conversation-v2 ledger (frozen projection w/ omission receipts) — src/context/
-- [ ] Token budget (903 lines) — src/context/token-budget.ts
-- [ ] Seed schema v2 + delegate policy — src/delegate/seed.ts
-- [ ] Launch isolation (env stripping, stdin prompt, isolated sessions, guard extension) — src/delegate/launch.ts, runner.ts
-- [ ] Result package (hash-verified commit/adjudicate/retrieve) — src/delegate/result-package.ts, artifacts.ts
-- [ ] Budget + hook contract — src/delegate/budget.ts, hook-contract.ts
-- [ ] Child extension (delegate-child-extension.ts) + extensions/delegate-child.ts entry
-- [ ] Tools bg_delegate/bg_result wired; parent snapshot module
-- [ ] Tests: delegate-seed, delegate-budget, delegate-artifacts, delegate-launch, delegate-result-package, delegate-child-guard, visible-conversation, token-budget (adapt)
+- [x] Context projection: visible-conversation-v2 ledger (frozen projection w/ omission receipts) — src/context/
+- [x] Token budget (903 lines) — src/context/token-budget.ts
+- [x] Seed schema v2 + delegate policy — src/delegate/seed.ts
+- [x] Launch isolation (env stripping, stdin prompt, isolated sessions, guard extension) — src/delegate/launch.ts, runner.ts
+- [x] Result package (hash-verified commit/adjudicate/retrieve) — src/delegate/result-package.ts, artifacts.ts
+- [x] Budget + hook contract — src/delegate/budget.ts, hook-contract.ts
+- [x] Child extension (delegate-child-extension.ts) + extensions/delegate-child.ts entry
+- [x] Tools bg_delegate/bg_result wired; parent snapshot module
+- [x] Tests: delegate-seed, delegate-budget, delegate-artifacts, delegate-launch, delegate-result-package, delegate-child-guard, visible-conversation, token-budget (adapt)
 
 ## Phase 4 — Fusion core
 - [ ] Types (1139) + workflows table (4 fixed workflows) — src/fusion/types.ts, workflows.ts
@@ -94,6 +94,19 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 3 COMPLETE: full delegate subsystem ported — context projection
+  (visible-conversation-v2 ledger w/ hash omission receipts), token-budget estimator,
+  parent-snapshot, seed v2 construction+verification, launch preflight (hook-contract gate,
+  route pinning, env stripping, stdin seed delivery), artifact store, result-package
+  commit/adjudicate/retrieve, runner terminal evaluation + delivery decision. Delegate
+  extension ported (delegate-extension.ts): bg_delegate + bg_result tools w/ renderers;
+  Fusion result retrieval path included (fusion core files pulled forward as deps:
+  types/workflows/config/context/clean-context/prompts/source-policy/web-fetch/budget/
+  evaluation/orchestrator/artifacts/result-package/output-contract/child-protocol/
+  pi-child/claude-cache). anthropic-attribution.ts copied (Phase 6 wires it).
+  New dep: turndown 7.2.4 (+@types) for fusion web-fetch. hook-contract-evidence.json
+  shipped. Tests: seed 21 + budget 18 + artifacts 24 + launch 32 + result-package 18 =
+  113 new; 209/209 total.
 - Phase 2 COMPLETE: full extension wiring in index.ts (master toggle gates everything;
   session_start/shutdown lifecycle; status-interval footer updates via ctx.ui.setStatus;
   shutdown kills running tasks). Tools ported verbatim w/ reference names (bg_run,

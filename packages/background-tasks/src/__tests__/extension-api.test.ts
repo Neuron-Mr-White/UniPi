@@ -23,6 +23,7 @@ import {
   type BackgroundTaskContext,
   type BackgroundTaskSpawn,
 } from '../registry.js';
+import type { BackgroundTaskChildProcess } from '../child-process.js';
 import type { TaskkillOutcome, WindowsKillPhase } from '../windows-taskkill.js';
 import type { BgTaskSnapshot } from '../types.js';
 
@@ -153,7 +154,7 @@ async function createProtocolHarness(
     const child = new FakeChild(++pid);
     children.push(child);
     options.onSpawn?.(child);
-    return child;
+    return child as unknown as BackgroundTaskChildProcess;
   };
   // This harness spawns a FakeChild rather than a real process, so its pid is
   // fabricated. Both termination seams are therefore injected and routed back

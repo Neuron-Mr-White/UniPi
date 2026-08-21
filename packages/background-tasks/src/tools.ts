@@ -6,6 +6,9 @@
  */
 
 import { Text } from "@earendil-works/pi-tui";
+import { getInstalledPackageVersion } from "@pi-unipi/core";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Type, type Static } from "typebox";
 import {
   COMMAND_PREVIEW_CHARS,
@@ -112,6 +115,7 @@ export interface RegisterSurfaceOptions {
   ) => Promise<any>;
   openTaskManager: (ctx: any, initialTaskId?: string) => Promise<void>;
   clearFinishedNotices: (ctx: any) => number;
+  openSettings: (ctx: any) => Promise<void>;
 }
 
 function renderPlainResult(
@@ -130,6 +134,25 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
   const { pi, registry } = options;
 
   // ── Commands (/unipi:* namespace — ours) ──────────────────────────────────
+
+  // Update info lives with OUR updater module; this only reports versions.
+  pi.registerCommand("unipi:bg-update", {
+    description: "Show the installed background-tasks version and how to update",
+    handler: (_args, ctx) => {
+      const here = dirname(fileURLToPath(import.meta.url));
+      const current = getInstalledPackageVersion(here, "@pi-unipi/background-tasks");
+      const lines = [
+        `@pi-unipi/background-tasks ${current} is installed.`,
+        "Background tasks ship inside the @pi-unipi/unipi umbrella package.",
+        "Update from npm:",
+        "  pi install npm:@pi-unipi/unipi@latest",
+        "Or use /unipi:updater-settings to check for updates.",
+        "This command only prints update instructions; it does not install or self-update.",
+      ];
+      ctx.ui.notify(lines.join("\n"), "info");
+      return Promise.resolve();
+    },
+  });
 
   pi.registerCommand("unipi:bg", {
     description:
@@ -246,6 +269,13 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
   });
 
   // Shortcuts (same keys as reference; documented in our README)
+  pi.registerCommand("unipi:bg-settings", {
+    description: "Open background-tasks settings (master toggle, defaults)",
+    handler: async (_args, ctx) => {
+      await options.openSettings(ctx);
+    },
+  });
+
   pi.registerShortcut("shift+down" as never, {
     description: "Open focused background task footer dock",
     handler: async (ctx) => {
