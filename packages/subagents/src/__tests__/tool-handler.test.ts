@@ -146,12 +146,27 @@ describe("context policy", () => {
     assert.match(result.content[0]!.text, /run_in_background: true/);
   });
 
-  it("background fork (async process runner not yet built) errors clearly", async () => {
+  it("background fork without the process runner errors clearly", async () => {
     const deps = makeDeps();
     const result = await handleSpawnHelper(deps, ctx, {
       agent: "scout", task: "x", context: "fork", run_in_background: true,
     });
-    assert.match(result.content[0]!.text, /background runner \(planned phase\)/);
+    assert.match(result.content[0]!.text, /background process runner, which is unavailable/);
+  });
+
+  it("background fork with the process runner routes to runAsync", async () => {
+    const asyncLaunches: Array<{ agentName: string; context: string }> = [];
+    const deps = makeDeps();
+    deps.runAsync = async (launch) => {
+      asyncLaunches.push({ agentName: launch.agentName, context: launch.context });
+      return { runId: "run-abc", status: "running" };
+    };
+    const result = await handleSpawnHelper(deps, ctx, {
+      agent: "scout", task: "x", context: "fork", run_in_background: true,
+    });
+    assert.match(result.content[0]!.text, /run-abc/);
+    assert.match(result.content[0]!.text, /process mode/);
+    assert.deepEqual(asyncLaunches, [{ agentName: "scout", context: "fork" }]);
   });
 
   it("fresh context passes", async () => {
@@ -235,7 +250,7 @@ describe("workflowScript execution", () => {
     const result = await handleSpawnHelper(deps, ctx, {
       workflowScript: `return 1;`,
     });
-    assert.match(result.content[0]!.text, /background runner \(planned phase\)/);
+    assert.match(result.content[0]!.text, /not yet wired for workflows/);
   });
 
   it("fanout budget caps workflow children atomically (failures collected, nothing started)", async () => {

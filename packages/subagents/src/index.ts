@@ -22,6 +22,10 @@ import { ConversationViewer } from "./conversation-viewer.js";
 import { AgentWidget, SPINNER, TOOL_DISPLAY, formatMs, formatTurns, describeActivity } from "./widget.js";
 import { handleSpawnHelper, type HandlerDeps } from "./tool-handler.js";
 import { SpawnHelperParams } from "./schemas.js";
+import { runAsyncSubagent, createAsyncRunDir, writeStatus, readStatus } from "./async-runner.js";
+import { createResultWatcher, cleanupAsyncRetention } from "./result-watcher.js";
+import { writeAsyncResultFile, readAsyncResultFile } from "./result-files.js";
+import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
@@ -213,6 +217,104 @@ export default function (pi: ExtensionAPI) {
     },
   );
 
+  // ---- Async process runner (Phase 3) ----
+  ensureDirs();
+  const activeAsyncRuns = new Map<string, AbortController>();
+  const asyncSessionId = `unipi-${process.pid}`;
+
+  const runAsyncDep: NonNullable<HandlerDeps["runAsync"]> = async (launch) => {
+    const agent = manager.getAgentConfig(manager.resolveAlias(launch.agentName));
+    if (!agent) throw new Error(`Unknown agent "${launch.agentName}".`);
+    const runDir = createAsyncRunDir(launch.agentName);
+    const runId = runDir.split("/").pop()!;
+    const controller = new AbortController();
+    activeAsyncRuns.set(runId, controller);
+
+    // Fire-and-track: the promise writes the durable result file + notifies on
+    // completion; the tool call returns immediately with the run id.
+    void (async () => {
+      try {
+        const result = await runAsyncSubagent(
+          {
+            agent,
+            task: launch.task,
+            cwd: process.cwd(),
+            model: launch.model,
+            thinking: launch.thinking,
+            tools: agent.builtinToolNames,
+            timeoutMs: launch.timeoutMs,
+            parentSessionId: asyncSessionId,
+            config,
+          },
+          runDir,
+          controller.signal,
+        );
+        writeAsyncResultFile(RESULTS_DIR, {
+          runId,
+          sessionId: asyncSessionId,
+          ...(result.output !== undefined ? { output: result.output } : {}),
+          ...(result.error ? { error: result.error } : {}),
+          success: result.status === "completed",
+          state: result.status,
+          timedOut: result.status === "timedOut",
+          durationMs: result.durationMs,
+        }, { asyncDir: runDir });
+      } catch (error) {
+        writeStatus(runDir, {
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        writeAsyncResultFile(RESULTS_DIR, {
+          runId,
+          sessionId: asyncSessionId,
+          error: error instanceof Error ? error.message : String(error),
+          success: false,
+          state: "failed",
+        }, { asyncDir: runDir });
+      } finally {
+        activeAsyncRuns.delete(runId);
+      }
+    })();
+
+    return { runId, status: "running" };
+  };
+
+  // Result watcher: deliver async completions as follow-up notifications.
+  const watcher = createResultWatcher({
+    resultsDir: RESULTS_DIR,
+    sessionId: asyncSessionId,
+    resultScanLogging: config.resultScanLogging ?? "activity",
+    notifier: (notification) => {
+      if (sessionEnded) return;
+      try {
+        pi.sendMessage(
+          {
+            customType: "unipi-response",
+            content:
+              `<task-notification>\n` +
+              `<task-id>${notification.runId}</task-id>\n` +
+              `<status>${notification.success ? "completed" : notification.state ?? "failed"}</status>\n` +
+              `<summary>Background agent "${notification.agent ?? "agent"}" ${notification.state ?? (notification.success ? "completed" : "failed")}</summary>\n` +
+              (notification.error
+                ? `<error>${notification.error}</error>\n`
+                : `<result>${(notification.output ?? "").slice(0, 2000)}</result>\n`) +
+              `</task-notification>`,
+            display: false,
+          },
+          { deliverAs: "followUp", triggerTurn: true },
+        );
+      } catch {
+        // Runtime went stale — nothing to notify.
+      }
+    },
+  });
+
+  // Periodic retention cleanup (hourly, unref'd).
+  const retentionTimer = setInterval(() => {
+    cleanupAsyncRetention(ASYNC_DIR, RESULTS_DIR);
+  }, 60 * 60 * 1000);
+  retentionTimer.unref?.();
+
   // ---- Parity handler wiring (spawn_helper surface) ----
   // Session-wide cumulative spawn accounting (maxSubagentSpawnsPerSession)
   let sessionSpawnsUsed = 0;
@@ -229,6 +331,7 @@ export default function (pi: ExtensionAPI) {
       cap: () => sessionSpawnCap,
       consume: (count) => { sessionSpawnsUsed += count; },
     },
+    runAsync: runAsyncDep,
     spawnBackground: (spawnCtx, agentName, childPrompt, options) => {
       const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(options.maxTurns);
       const origOnSession = bgCallbacks.onSessionCreated;
@@ -313,6 +416,7 @@ export default function (pi: ExtensionAPI) {
   };
   // onUpdate stream for the current foreground execution (set per execute() call)
   let onUpdateForForeground: (details: Record<string, unknown>) => void = () => {};
+
 
   // Build notification details for the message renderer
   function buildNotificationDetails(record: any, activity?: AgentActivity): NotificationDetails {
@@ -507,6 +611,7 @@ export default function (pi: ExtensionAPI) {
   // completion callbacks would otherwise reach a runtime that pi is about to
   // invalidate.
   pi.on("session_shutdown", async () => {
+    watcher.stop();
     sessionEnded = true;
     manager.abortAll();
     manager.dispose();

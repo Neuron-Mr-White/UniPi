@@ -52,11 +52,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 ## Phase 3 — Async/background (process-based) — IN PROGRESS
 - [x] Async runner core — pi-spawn.ts (UNIPI_SUBAGENT_PI_BINARY override, argv1/package-bin/PATH resolution chain), pi-args.ts (session/model+thinking-suffix/tools/extensions/system-prompt-file/task-delivery auto|file w/ 8000-char EDR threshold, child env UNIPI_SUBAGENT_*), async-runner.ts (spawn `pi --mode json -p`, stdout JSON event stream, deadline + abort w/ process-group SIGTERM→SIGKILL, zero-activity watchdog + one file-delivery retry, status.json lifecycle, output.txt artifact)
 - [x] Run artifacts — async-subagent-runs/<runId>/ under OUR temp root: status.json (queued→running→terminal + retry marker), output.txt (full stdout/stderr), process.json (pid ownership for terminal proof). Durable receipts (workflow-level) land with resume item
-- [ ] Result watcher: result-index scanning, slow-scan logging (resultScanLogging), async-retention cleanup
+- [x] Result watcher — result-files.ts (durable payloads + run/session indexes + pending markers under OUR results dir, atomic writes, 24h index pruning) + result-watcher.ts (pending-scan delivery, corrupt-marker drop, resultScanLogging all|activity|off, retention cleanup: aged terminal runs + orphan dirs + associated result payloads)
 - [ ] Resume: retained children (children.list, resumable), resume-by-key in workflows, detached action:resume receipts
 - [ ] Fork context: real branched child sessions (strip parent-only artifacts incl. subagent tool history), Anthropic thinking-block stripping
 - [ ] Worktrees: worktree:true isolation, worktreeBaseDir, setup hooks, syntheticPaths, handoff manifests, worktree.discard with authority policy
-- [ ] get_helper_result integration: waiting on async runs, nonBlocking subscriptions + wake-on-completion
+- [x] get_helper_result partial: async launch path wired (runAsync dep → child pi process + durable result file + completion notification via result watcher followUp messages; watcher stopped on shutdown; hourly retention). nonBlocking subscriptions + wake-on-completion via pi session events: still open (needs pi sendMessage wake integration — deferred to Phase 4 pass)
 - [ ] Async capacity: slots, process-terminal proof before slot release
 - [ ] Tests: port async-execution, result-watcher, intercom-result-delivery, async-job-tracker integration tests (adapted)
 
@@ -148,6 +148,12 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - Phase 3 started: pi-spawn + pi-args + async-runner core (spawn/stream/deadline/abort/EDR retry/
   status artifacts). pi-args tests (12) ported. 180/180. Next: wire async path into the handler
   (spawnBackground adapter swap), result watcher, retained children/resume, fork context.
+
+- Phase 3 partial: result-files + result-watcher + retention; runAsync wired into the
+  handler (fork background launches route to child pi processes; fresh background prefers
+  process mode when asyncByDefault). 189/189 tests. Remaining Phase 3: async workflowScript
+  wiring, resume/retained children, fork-context session branching + artifact filtering,
+  worktrees, async capacity slots, nonBlocking wake subscriptions.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.

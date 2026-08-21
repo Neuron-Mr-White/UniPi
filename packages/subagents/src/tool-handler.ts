@@ -73,6 +73,24 @@ export interface HandlerDeps {
   };
   /** Depth env for the recursion guard. */
   env?: NodeJS.ProcessEnv;
+  /** Async process runner (Phase 3). When present, background launches and
+   *  fork contexts run as child pi processes; when absent they error with
+   *  guidance (test environments). */
+  runAsync?: (launch: {
+    agentName: string;
+    task: string;
+    description?: string;
+    model?: string;
+    thinking?: string | false;
+    context: "fresh" | "fork";
+    timeoutMs?: number;
+    maxTurns?: number;
+  }) => Promise<{
+    runId: string;
+    status: string;
+    output?: string;
+    error?: string;
+  }>;
 }
 
 function textResult(msg: string, details?: unknown) {
@@ -308,11 +326,11 @@ async function handleWorkflowScript(
   args: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details?: unknown }> {
-  // Async workflows need the Phase 3 process runner.
+  // Async workflows need the process runner.
   const asyncRequested = (args.async as boolean | undefined) ?? deps.config.asyncByDefault ?? true;
   if (asyncRequested) {
     return textResult(
-      "Async workflowScript requires the background runner (planned phase). " +
+      "Async workflowScript requires the background runner, which is not yet wired for workflows. " +
         "Re-run with async: false to execute the workflow in-process in the foreground.",
       { status: "error" },
     );
@@ -496,10 +514,12 @@ async function handleSingleChild(
         { status: "error" },
       );
     }
-    return textResult(
-      'context: "fork" requires the background runner (planned phase); background children are currently fresh-context. Re-run without context, or use context: "fresh".',
-      { status: "error" },
-    );
+    if (!deps.runAsync) {
+      return textResult(
+        'context: "fork" requires the background process runner, which is unavailable in this host. Re-run without context, or use context: "fresh".',
+        { status: "error" },
+      );
+    }
   }
 
   // Budgets: validate + decorate.
@@ -536,6 +556,25 @@ async function handleSingleChild(
   const description = (args.description as string | undefined) ?? `${agentName} task`;
 
   if (asyncRequested) {
+    // Fork context requires the process runner; fresh background runs prefer
+    // it too when available (survives parent exit), else fall back in-process.
+    const wantsProcessRunner = contextMode === "fork" || deps.config.asyncByDefault === true;
+    if (deps.runAsync && (contextMode === "fork" || wantsProcessRunner)) {
+      const result = await deps.runAsync({
+        agentName,
+        task: childPrompt,
+        description,
+        model: (args.model as string | undefined) ?? agent.model,
+        thinking: (args.thinking as string | undefined) ?? (typeof agent.thinking === "string" ? agent.thinking : undefined),
+        context: contextMode,
+        timeoutMs: (args.timeoutMs as number | undefined) ?? agent.timeoutMs,
+        maxTurns: (args.max_turns as number | undefined) ?? (args.maxTurns as number | undefined) ?? turnBudgetResult.turnBudget?.maxTurns,
+      });
+      return textResult(
+        `Agent started in background (process mode).\nRun ID: ${result.runId}\nType: ${agentName}\nDescription: ${description}\n\nYou will be notified when this agent completes.\nUse get_helper_result with the run ID to retrieve results.`,
+        { status: "background", runId: result.runId, agentId: result.runId },
+      );
+    }
     const id = deps.spawnBackground(ctx, agentName, childPrompt, {
       description,
       maxTurns: (args.max_turns as number | undefined) ?? (args.maxTurns as number | undefined) ?? turnBudgetResult.turnBudget?.maxTurns,
