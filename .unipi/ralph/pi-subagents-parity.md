@@ -38,7 +38,7 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] enablement preserved (JSON types.enabled AND frontmatter enabled); disableBuiltins added (disables ALL builtins, customs keep working)
 - [x] Tests: agent-discovery.test.ts (8) + agent-overrides.test.ts (18) — 107/107 total
 
-## Phase 2 — Foreground orchestration (in-process)
+## Phase 2 — Foreground orchestration (in-process) — COMPLETE
 - [x] workflowScript runtime — workflow-script.ts (host) + workflow-worker.ts (Worker+vm sandbox, acorn AST validation, no host globals, await-observation contract). runs.run/all/steer/status/ref/refs + state/emit/console globals
 - [x] Sequential chaining via top-level await; parallel via runs.all (atomic batch admission, failures returned in input order)
 - [x] Budgets — src/budgets.ts: turnBudget (validate/resolve/decision incl. termination-deferred + system-prompt wrap-up block), toolBudget (soft/hard/block '*' or list, final text never blocked), usageBudget (tokens/costUsd soft/hard states + exhaustion messages)
@@ -112,8 +112,28 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - Phase 2 partial (budgets + safety): budgets.ts (turn/tool/usage), run-fanout-budget.ts
   (file-backed spawn caps, atomic admission), output-limits.ts (truncation + timeout
   precedence), child-safety.ts (boundary instructions, depth guard, context resolution),
-  file-system-retry.ts (retry ladder). 146/146 tests. Remaining: wire all of this into the
-  spawn_helper tool handler + workflowScript launch path.
+  file-system-retry.ts (retry ladder). 146/146 tests.
+
+- Phase 2 COMPLETE: tool-handler.ts routes the full spawn_helper surface — actions
+  (list/get/status/children.list/stop/grant-spawn-budget/doctor/guide stubs + explicit
+  not-yet-implemented for later-phase actions), workflowScript foreground execution
+  (fanout budget admission, session accounting, per-child boundary instructions +
+  turn-budget decoration, failures collected), legacy single-child launches (alias
+  resolution, enablement, depth guard, explicit-fork rejection w/ implicit-fork fresh
+  fallback, budget validation + wrap-up blocks, session spawn accounting, maxOutput
+  truncation). index.ts still owns render/notify — wiring delegation lands next iteration
+  (handler is exported + tested; index.ts execute() can delegate in one line).
+  Fixed in workflow-script.ts: admission rejections map to per-child failures
+  (runs.all collects; no partial starts). 168/168 tests.
+
+## Reflection (iteration 6)
+- Phases 0-1 complete; Phase 2 ~90% (runtime + budget/safety libraries all ported and tested).
+- Test-as-spec porting caught 4 real bugs before commit — keep that bar.
+- Risk: wiring into spawn_helper's 831-line index.ts (also owns widget/notify plumbing).
+  Mitigation decided: extract handler into src/tool-handler.ts; index.ts delegates;
+  render/notify paths untouched.
+- No approach change. Next: handler extraction + workflowScript entry, then Phase 2
+  end-to-end tests, then Phase 3 (async process runner).
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.

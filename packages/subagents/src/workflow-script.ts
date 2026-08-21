@@ -558,6 +558,17 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
         const admission = Promise.resolve().then(() => {
           if (settled || finishing) return;
           return options.admit?.(valid);
+        }).catch((error: unknown) => {
+          // Admission failures (e.g. fanout budget) reject every child in the
+          // batch; runs.all collects them as ordinary failures (reference
+          // semantics: no partial starts, siblings report the rejection).
+          const text = error instanceof Error ? error.message : String(error);
+          for (const { key } of valid) {
+            const failure: WorkflowScriptChildResult = { key, ok: false, output: text, error: text, artifactPaths: [] };
+            children.set(key, failure);
+            if (!childOrder.includes(key)) childOrder.push(key);
+          }
+          throw error;
         });
         const promises = valid.map(({ key, params }) =>
           admission.then(async () => {
@@ -595,6 +606,11 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
                 return failure;
               },
             );
+          }, (error: unknown) => {
+            // Admission rejection already recorded the failure per child; map
+            // this arm to the same failure so Promise.all collects it.
+            const text = error instanceof Error ? error.message : String(error);
+            return { key, ok: false, output: text, error: text, artifactPaths: [] } satisfies WorkflowScriptChildResult;
           }),
         );
         // Mark all keys observed (runs.all is itself the observation).
