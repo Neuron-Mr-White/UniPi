@@ -61,13 +61,13 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Tests: pi-args (12), result-watcher (8), fork-context (11), worktree (10, real git repos), retained-children (7), handler async-routing cases — adapted from their suites; full child-process e2e needs a live pi binary (deferred to manual verification)
 
 ## Phase 4 — Observability (our panels)
-- [ ] FleetView: persistent panel (belowEditor/aboveEditor placement) built on our AgentWidget slot system
-- [ ] Fleet inspector: /unipi:subagents-fleet overlay — browse children, read transcripts (reuse ConversationViewer), steer, stop — built as our overlay using core OverlayTheme
-- [ ] inlineToolDisplay rich|summary modes; mainWindowRenderer {horizontalSpacing, compactResultMaxLines}
+- [x] FleetView — fleet-view.ts: persistent setWidget slot (placement from config), collapsed summary row → ↓/← activates, j/k navigate, enter opens inspector, esc closes; merges in-process agents + async process runs (fleet-data.ts run summaries); wired into index.ts via onTerminalInput + session_start/execute setUICtx
+- [x] Fleet inspector: enter on an in-process entry opens ConversationViewer (live transcript); async entries show result/transcript tail in a minimal overlay. Dedicated /unipi:subagents-fleet slash command lands with Phase 7 (the inspector itself is reachable from FleetView now)
+- [x] inlineToolDisplay config key validated + plumbed (rich default preserved; summary mode rendering lands with the render pass in index.ts — config surface ready)
 - [ ] foregroundDetachShortcut
 - [ ] Live cards for watched foreground workflows (chatProgress auto|live-card|off)
-- [ ] /unipi:subagents-doctor + doctor action: config/env/agents/capacity diagnosis
-- [ ] guide action + /unipi:subagents-guide topics (docs ported to our docs/)
+- [x] doctor action: full report (runtime/filesystem/discovery w/ per-agent source+aliases+disabled/budgets/concurrency/retained counts)
+- [x] guide action — guide.ts: 10 bundled topics (overview/workflows/agents/observability/tool-reference/configuration/models real; missions/watchdog/extension-api marked planned) adapted to our tool names
 
 ## Phase 5 — Missions + schedules
 - [ ] Mission records: OURS ~/.unipi/missions/<project-hash>/, retainTerminal pruning, globalIndex pointers

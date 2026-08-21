@@ -28,6 +28,7 @@ import { writeAsyncResultFile, readAsyncResultFile } from "./result-files.js";
 import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
 import { createForkContextResolver } from "./fork-context.js";
 import { createWorktrees, cleanupWorktrees, diffWorktrees, type WorktreeSetup } from "./worktree.js";
+import { FleetView } from "./fleet-view.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
@@ -557,6 +558,61 @@ export default function (pi: ExtensionAPI) {
   // Create widget
   const widget = new AgentWidget(manager, agentActivity);
 
+  // ---- FleetView (persistent fleet panel; our AgentWidget slot system) ----
+  const fleetView = new FleetView(manager, agentActivity, ASYNC_DIR, {
+    placement: config.fleetView === false ? undefined : (config.fleetViewPlacement ?? "belowEditor"),
+    openInspector: async (entry) => {
+      if (!sessionCtx?.ui) return;
+      if (entry.source === "inprocess") {
+        const record = manager.getRecord(entry.key.replace("inprocess:", ""));
+        if (record?.session) {
+          await withHerdrBlocked(
+            pi,
+            "fleet inspector",
+            () => sessionCtx!.ui.custom<undefined>(
+              (tui, theme, _keybindings, done) =>
+                new ConversationViewer(tui, record.session!, {
+                  type: record.type,
+                  description: record.description,
+                  status: record.status,
+                  toolUses: record.toolUses,
+                  startedAt: record.startedAt,
+                  completedAt: record.completedAt,
+                }, agentActivity.get(record.id), theme, done),
+              { overlay: true, overlayOptions: { anchor: "center", width: "90%" } },
+            ),
+          );
+        }
+        return;
+      }
+      // Async run: show the transcript tail from the result payload / output.txt.
+      const runId = entry.key.replace("async:", "");
+      const payload = readAsyncResultFile(RESULTS_DIR, runId);
+      const text = payload
+        ? `${payload.success ? "completed" : payload.state ?? "failed"}\n\n${payload.output ?? payload.error ?? "(no output)"}`
+        : "(run still active — transcript available after completion)";
+      await withHerdrBlocked(
+        pi,
+        "fleet inspector",
+        () => sessionCtx!.ui.custom<undefined>(
+          (_tui, theme, _keybindings, done) => ({
+            render: (width: number): string[] => [
+              ...text.split("\n").slice(-30).map((line) => `  ${line}`),
+              "",
+              `  ${theme.fg("dim", "esc/q close")}`,
+            ],
+            handleInput: (data: string): void => {
+              if (data === "\x1b" || data === "q") done(undefined);
+            },
+            invalidate: (): void => {},
+          }),
+          { overlay: true, overlayOptions: { anchor: "center", width: "90%" } },
+        ),
+      );
+    },
+  });
+
+
   // Register info group at factory time (not session_start)
   const registry = getInfoRegistry();
   if (registry) {
@@ -624,6 +680,25 @@ export default function (pi: ExtensionAPI) {
   // Session start: emit MODULE_READY + capture context
   pi.on("session_start", async (_event, ctx) => {
     sessionCtx = ctx;
+    // FleetView keyboard activation (↓/← to inspect active work).
+    try {
+      if (typeof (ctx.ui as unknown as { onTerminalInput?: unknown }).onTerminalInput === "function") {
+        (ctx.ui as unknown as {
+          onTerminalInput(handler: (data: string) => { consume?: boolean } | undefined): () => void;
+        }).onTerminalInput((data) =>
+          fleetView.handleKey(data, () => {
+            try {
+              return ctx.ui.getEditorText() !== "";
+            } catch {
+              return false;
+            }
+          }),
+        );
+      }
+    } catch {
+      // Terminal input hooking is optional.
+    }
+    fleetView.setUICtx(ctx.ui);
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.SUBAGENTS || "subagents",
       version: "0.2.0",
@@ -848,6 +923,7 @@ Guidelines:
 
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         widget.setUICtx(ctx.ui);
+        fleetView.setUICtx(ctx.ui);
 
         // Route through the parity handler (actions, workflowScript, legacy
         // single-child) — widget/notify plumbing lives in the deps adapters.

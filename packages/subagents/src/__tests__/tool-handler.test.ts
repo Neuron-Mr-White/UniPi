@@ -80,11 +80,25 @@ describe("action routing", () => {
     assert.match(result.content[0]!.text, /grant-spawn-budget/);
   });
 
+  it("guide returns real topic docs; unknown topics list available", async () => {
+    const deps = makeDeps();
+    const overview = await handleSpawnHelper(deps, ctx, { action: "guide", topic: "overview" });
+    assert.match(overview.content[0]!.text, /# Subagents overview/);
+    assert.match(overview.content[0]!.text, /workflowScript/);
+
+    const workflows = await handleSpawnHelper(deps, ctx, { action: "guide", topic: "workflows" });
+    assert.match(workflows.content[0]!.text, /runs\.all/);
+
+    const unknown = await handleSpawnHelper(deps, ctx, { action: "guide", topic: "bogus" });
+    assert.match(unknown.content[0]!.text, /Unknown guide topic "bogus"/);
+    assert.match(unknown.content[0]!.text, /workflows, agents/);
+  });
+
   it("doctor reports config + capacity", async () => {
     const deps = makeDeps();
     const result = await handleSpawnHelper(deps, ctx, { action: "doctor" });
-    assert.match(result.content[0]!.text, /maxConcurrent=4/);
-    assert.match(result.content[0]!.text, /run=64/);
+    assert.match(result.content[0]!.text, /maxConcurrent: 4/);
+    assert.match(result.content[0]!.text, /run=64|run\=64/);
   });
 
   it("status reports the session spawn budget", async () => {

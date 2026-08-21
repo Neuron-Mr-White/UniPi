@@ -9,6 +9,7 @@
  * decides and executes.
  */
 
+import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "./agent-manager.js";
 import type { SubagentsConfig, AgentConfig } from "./types.js";
@@ -36,7 +37,8 @@ import {
   withChildBoundaryInstructions,
 } from "./child-safety.js";
 import { listRetainedChildren, formatRetainedChildren, resolveResumeTarget } from "./retained-children.js";
-import { ASYNC_DIR } from "./parity-types.js";
+import { ASYNC_DIR, TEMP_ROOT_DIR, RESULTS_DIR } from "./parity-types.js";
+import { buildGuideText } from "./guide.js";
 
 export interface HandlerDeps {
   pi: ExtensionAPI;
@@ -318,26 +320,43 @@ async function handleAction(
     }
 
     case "doctor": {
-      return textResult(
-        [
-          `Subagents doctor (${new Date().toISOString()})`,
-          `Config: ${deps.config.enabled ? "enabled" : "DISABLED"} | maxConcurrent=${deps.config.maxConcurrent}`,
-          `Known agent types: ${deps.manager.getKnownTypes().length}`,
-          `Disabled types: ${deps.manager.getKnownTypes().filter((t) => !deps.manager.isTypeEnabled(t)).join(", ") || "none"}`,
-          `Run timeout default: ${deps.config.timeoutMs ?? "30min (default)"}`,
-          `Tool timeout: ${deps.config.toolTimeoutMs ?? "env/known-fast defaults"}`,
-          `Spawn caps: run=${deps.config.maxSubagentSpawnsPerRun ?? 64}, session=${deps.config.maxSubagentSpawnsPerSession ?? "unlimited"}, active-async=${deps.config.maxActiveAsyncRunsPerSession ?? "unlimited"}`,
-          `Depth cap: ${resolveMaxSubagentDepth(undefined, deps.config, deps.env ?? process.env)}`,
-        ].join("\n"),
-      );
+      const lines: string[] = [
+        "Subagents doctor report",
+        "",
+        "Runtime",
+        `- cwd: ${process.cwd()}`,
+        `- async runner: ${deps.runAsync ? "available (child pi processes)" : "unavailable"}`,
+        "",
+        "Filesystem",
+        `- temp root: ${TEMP_ROOT_DIR}${existsSync(TEMP_ROOT_DIR) ? "" : " (created on first run)"}`,
+        `- async runs: ${ASYNC_DIR}`,
+        `- results: ${RESULTS_DIR}`,
+        "",
+        "Discovery",
+        `- known agent types: ${deps.manager.getKnownTypes().length}`,
+        ...deps.manager.getKnownTypes().map((type) => {
+          const agent = deps.manager.getAgentConfig(type);
+          const enabled = deps.manager.isTypeEnabled(type);
+          return `  - ${type} [${agent?.source ?? "config"}]${enabled ? "" : " [disabled]"}${agent?.aliases?.length ? ` (aliases: ${agent.aliases.join(", ")})` : ""}`;
+        }),
+        "",
+        "Budgets",
+        `- run timeout default: ${deps.config.timeoutMs ?? "30min (default)"}`,
+        `- tool timeout: ${deps.config.toolTimeoutMs ?? "env/known-fast defaults"}`,
+        `- spawn caps: run=${deps.config.maxSubagentSpawnsPerRun ?? 64}, session=${deps.config.maxSubagentSpawnsPerSession ?? "unlimited"}, active-async=${deps.config.maxActiveAsyncRunsPerSession ?? "unlimited"}`,
+        `- depth cap: ${resolveMaxSubagentDepth(undefined, deps.config, deps.env ?? process.env)}`,
+        "",
+        "Concurrency",
+        `- maxConcurrent: ${deps.config.maxConcurrent}`,
+        `- active in-process: ${deps.manager.listAgents().filter((a) => a.status === "running" || a.status === "queued").length}`,
+        `- retained children: ${listRetainedChildren(deps.retainedDir ?? ASYNC_DIR).length}`,
+      ];
+      return textResult(lines.join("\n"));
     }
 
     case "guide": {
       const topic = (args.topic as string | undefined) ?? "overview";
-      return textResult(
-        `Guide topic "${topic}" is not bundled yet — see the subagents README. ` +
-          `Available topics: overview, workflows, agents, missions, observability, tool-reference, configuration, models, watchdog, extension-api.`,
-      );
+      return textResult(buildGuideText(topic));
     }
 
     default:
