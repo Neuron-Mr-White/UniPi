@@ -62,16 +62,16 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: delegate-seed, delegate-budget, delegate-artifacts, delegate-launch, delegate-result-package, delegate-child-guard, visible-conversation, token-budget (adapt)
 
 ## Phase 4 — Fusion core
-- [ ] Types (1139) + workflows table (4 fixed workflows) — src/fusion/types.ts, workflows.ts
-- [ ] Config (449): five-slot models, persistence w/ revision-safe lock — src/fusion/config.ts
-- [ ] Context: session-projection v5 canonical input + clean-task input + omission ledger — src/fusion/context.ts, clean-context.ts
-- [ ] Prompts (345) + source-policy (257) + web-fetch (1060, caller-URL-only) — src/fusion/
-- [ ] Budget (1162) + evaluation (800, blind eval + repair) — src/fusion/
-- [ ] Orchestrator (1288): plan→barrier→3 candidates→anonymize→eval→repair→merge→commit — src/fusion/orchestrator.ts
-- [ ] Artifacts (965) + result-package (959) + output-contract + child-protocol — src/fusion/
-- [ ] pi-child (2373): fusion child runner — src/fusion/pi-child.ts
-- [ ] claude-cache (207) — src/fusion/claude-cache.ts
-- [ ] Tests: fusion-core, budget, evaluation, orchestrator, artifacts, context-prompts, web-fetch, golden-bytes/extraction-equivalence/high-cardinality (adapt)
+- [x] Types (1139) + workflows table (4 fixed workflows) — src/fusion/types.ts, workflows.ts
+- [x] Config (449): five-slot models, persistence w/ revision-safe lock — src/fusion/config.ts
+- [x] Context: session-projection v5 canonical input + clean-task input + omission ledger — src/fusion/context.ts, clean-context.ts
+- [x] Prompts (345) + source-policy (257) + web-fetch (1060, caller-URL-only) — src/fusion/
+- [x] Budget (1162) + evaluation (800, blind eval + repair) — src/fusion/
+- [x] Orchestrator (1288): plan→barrier→3 candidates→anonymize→eval→repair→merge→commit — src/fusion/orchestrator.ts
+- [x] Artifacts (965) + result-package (959) + output-contract + child-protocol — src/fusion/
+- [x] pi-child (2373): fusion child runner — src/fusion/pi-child.ts
+- [x] claude-cache (207) — src/fusion/claude-cache.ts
+- [x] Tests: fusion-core, budget, evaluation, orchestrator, artifacts, context-prompts, web-fetch, golden-bytes/extraction-equivalence/high-cardinality (adapt) — 158/158 fusion tests
 
 ## Phase 5 — Fusion integration
 - [ ] fusion-extension.ts (1294): tools fusion_reason/investigate/research/validate + /unipi:fusion + /unipi:fusion-models
