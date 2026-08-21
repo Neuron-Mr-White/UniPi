@@ -1,6 +1,6 @@
 # Pi Subagents: Execution Controls
 
-This file is a detailed reference loaded from `skills/unipi subagents/SKILL.md`.
+This file is a detailed reference loaded from `skills/subagents/SKILL.md`.
 
 ## Discovery and Scope Rules
 

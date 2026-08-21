@@ -1,6 +1,6 @@
 # Pi Subagents: Constraints And Recipes
 
-This file is a detailed reference loaded from `skills/unipi subagents/SKILL.md`.
+This file is a detailed reference loaded from `skills/subagents/SKILL.md`.
 
 ## Important Constraints
 

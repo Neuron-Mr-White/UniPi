@@ -1,5 +1,5 @@
 ---
-name: unipi subagents
+name: unipi-subagents
 description: |
   Delegate work to builtin or custom subagents with single-agent, parallel,
   scripted-chaining, async, forked-context, and coordinated workflows. Use
@@ -18,7 +18,7 @@ Package-installed agents appear in `spawn_helper({ action: "list" })` with built
 
 ## How to use this router
 
-Read the matching reference file before acting. Paths are relative to this `SKILL.md`; resolve them against `skills/unipi subagents/` and load them with the read tool.
+Read the matching reference file before acting. Paths are relative to this `SKILL.md`; resolve them against `skills/subagents/` and load them with the read tool.
 
 | Task | Read |
 | --- | --- |
