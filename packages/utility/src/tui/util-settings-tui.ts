@@ -72,6 +72,13 @@ const SETTINGS: SettingItem[] = [
     getValue: (s) => s.badge.agentTool,
   },
   {
+    type: "boolean",
+    key: "herdrSync",
+    label: "Herdr sync",
+    description: "Sync session name to herdr tab/pane title",
+    getValue: (s) => s.badge.herdrSync,
+  },
+  {
     type: "picker",
     key: "generationModel",
     label: "Generation model",

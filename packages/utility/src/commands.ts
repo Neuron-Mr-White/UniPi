@@ -76,14 +76,14 @@ export function registerNameBadgeCommands(
 
   // ─── /unipi:badge-toggle — configure badge settings ─────────────────────
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_TOGGLE}`, {
-    description: "Configure badge settings (autoGen, badgeEnabled, agentTool)",
+    description: "Configure badge settings (autoGen, badgeEnabled, agentTool, herdrSync)",
     handler: async (args: string, ctx: ExtensionContext) => {
       // Parse args: /unipi:badge-settings [key] [on|off]
       const parts = args.trim().split(/\s+/);
       if (parts.length >= 2 && parts[0]) {
-        const key = parts[0] as "autoGen" | "badgeEnabled" | "agentTool";
+        const key = parts[0] as "autoGen" | "badgeEnabled" | "agentTool" | "herdrSync";
         const value = parts[1]?.toLowerCase();
-        if ("autoGen|badgeEnabled|agentTool".includes(key)) {
+        if ("autoGen|badgeEnabled|agentTool|herdrSync".includes(key)) {
           const boolValue = value === "on" || value === "true" || value === "1";
           updateBadgeSetting(key, boolValue);
           ctx.ui.notify(`Badge ${key} set to ${boolValue}`, "info");

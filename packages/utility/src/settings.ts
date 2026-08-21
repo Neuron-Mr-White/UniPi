@@ -14,6 +14,8 @@ export interface BadgeSettingsSection {
   badgeEnabled: boolean;
   agentTool: boolean;
   generationModel: string;
+  /** Sync session name to herdr pane title + tab label (when running inside herdr). */
+  herdrSync: boolean;
 }
 
 /** Unified utility settings */
@@ -27,6 +29,7 @@ const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
   badgeEnabled: true,
   agentTool: true,
   generationModel: "inherit",
+  herdrSync: true,
 };
 
 /** Default unified settings */
@@ -56,6 +59,7 @@ function readLegacyBadgeSettings(): BadgeSettingsSection | null {
       badgeEnabled: typeof parsed.badgeEnabled === "boolean" ? parsed.badgeEnabled : DEFAULT_BADGE_SETTINGS.badgeEnabled,
       agentTool: typeof parsed.agentTool === "boolean" ? parsed.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
       generationModel: typeof parsed.generationModel === "string" ? parsed.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
+      herdrSync: typeof parsed.herdrSync === "boolean" ? parsed.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
     };
   } catch {
     return null;
@@ -110,6 +114,7 @@ function normalizeSettings(parsed: any): UtilSettings {
       badgeEnabled: typeof parsed?.badge?.badgeEnabled === "boolean" ? parsed.badge.badgeEnabled : DEFAULT_BADGE_SETTINGS.badgeEnabled,
       agentTool: typeof parsed?.badge?.agentTool === "boolean" ? parsed.badge.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
       generationModel: typeof parsed?.badge?.generationModel === "string" ? parsed.badge.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
+      herdrSync: typeof parsed?.badge?.herdrSync === "boolean" ? parsed.badge.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
     },
   };
 }
@@ -148,6 +153,7 @@ export function formatBadgeSettings(settings: BadgeSettingsSection): string {
     `| Auto Generate | ${toggle(settings.autoGen)} | Generate name on first message |`,
     `| Badge Enabled | ${toggle(settings.badgeEnabled)} | Show badge overlay |`,
     `| Agent Tool | ${toggle(settings.agentTool)} | Allow agents to call set_session_name |`,
+    `| Herdr Sync | ${toggle(settings.herdrSync)} | Sync session name to herdr tab/pane title |`,
     `| Generation Model | ${settings.generationModel} | Model for badge name generation |`,
     "",
     `Config: .unipi/config/util-settings.json`,

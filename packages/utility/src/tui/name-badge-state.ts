@@ -93,7 +93,7 @@ export class NameBadgeState {
 
     // Detect Herdr once per session; sync the current name to its pane title.
     this.herdr = detectHerdr();
-    if (this.herdr.enabled) {
+    if (this.herdr.enabled && readBadgeSettings().herdrSync) {
       const name = this.safeGetName(pi);
       void syncPaneTitle(this.herdr, name);
     }
@@ -233,7 +233,9 @@ export class NameBadgeState {
       this.component?.setName(name);
       this.overlayHandle?.requestRender?.();
       // Sync to Herdr pane title (scroll-proof display)
-      void syncPaneTitle(this.herdr, name);
+      if (readBadgeSettings().herdrSync) {
+        void syncPaneTitle(this.herdr, name);
+      }
       // Clear generation timeout if active
       this.clearGenTimeout();
     } catch {
@@ -262,7 +264,9 @@ export class NameBadgeState {
         this.component?.setName(name);
         this.overlayHandle?.requestRender?.();
         // Sync to Herdr pane title (scroll-proof display)
-        void syncPaneTitle(this.herdr, name);
+        if (readBadgeSettings().herdrSync) {
+          void syncPaneTitle(this.herdr, name);
+        }
       }
     }, POLL_INTERVAL_MS);
   }
