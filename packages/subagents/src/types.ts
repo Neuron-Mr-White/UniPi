@@ -107,6 +107,71 @@ export interface SubagentsConfig {
   maxConcurrent: number;
   enabled: boolean;
   types: Record<string, { enabled?: boolean }>;
+
+  // ---- pi-subagents parity keys (optional; defaults follow the reference) ----
+  /** Background execution for launches that omit run_in_background. Default: true (their asyncByDefault). */
+  asyncByDefault?: boolean;
+  /** Context for launches that omit context. "fresh" | "fork". */
+  defaultSubagentContext?: "fresh" | "fork";
+  /** Force depth-0 runs into background mode and bypass launch UI. Default: false. */
+  forceTopLevelAsync?: boolean;
+  /** Global default runtime deadline (ms). Replaces the 30-minute foreground backstop. */
+  timeoutMs?: number;
+  /** Optional hard per-tool-call deadline (ms). Precedence: call > agent frontmatter > this > env. */
+  toolTimeoutMs?: number;
+  /** Cap on simultaneously running children within durable multi-child runs. Default: 20. */
+  globalConcurrencyLimit?: number;
+  /** Cumulative child launches per parent session. Unset/0 = unlimited. */
+  maxSubagentSpawnsPerSession?: number;
+  /** Cumulative logical-child cap for one top-level run tree. Default: 64. */
+  maxSubagentSpawnsPerRun?: number;
+  /** Concurrently active top-level async runs per parent session. Unset/0 = unlimited. */
+  maxActiveAsyncRunsPerSession?: number;
+  /** Nested delegation depth cap. Default: 2. */
+  maxSubagentDepth?: number;
+  /** Parallel fanout caps. maxTasks default 8; concurrency default 4. */
+  parallel?: { maxTasks?: number; concurrency?: number };
+  /** Default output limits for child results. Default: 200KB / 5000 lines. */
+  maxOutput?: { bytes?: number; lines?: number };
+  /** Session directory for child sessions. `~/` expanded. */
+  defaultSessionDir?: string;
+  /** Show the persistent fleet panel. Default: true. */
+  fleetView?: boolean;
+  /** Fleet panel placement. Default: "belowEditor". */
+  fleetViewPlacement?: "belowEditor" | "aboveEditor";
+  /** Inline chat rendering for spawn_helper results. "rich" | "summary". Default: rich. */
+  inlineToolDisplay?: "rich" | "summary";
+  /** Main chat renderer density controls. */
+  mainWindowRenderer?: { horizontalSpacing?: number; compactResultMaxLines?: number };
+  /** How slow async result scans are logged. "all" | "activity" | "off". Default: all. */
+  resultScanLogging?: "all" | "activity" | "off";
+  /** Shortcut detaching the active foreground single run without terminating it. */
+  foregroundDetachShortcut?: string;
+  /** Keep get_helper_result registered but make direct calls non-blocking. Default: true. */
+  waitTool?: boolean | { enabled?: boolean };
+  /** Base directory for worktree-isolated runs. Default: OS temp. */
+  worktreeBaseDir?: string;
+  /** Hook run once per created worktree. */
+  worktreeSetupHook?: string;
+  /** Timeout for the worktree setup hook in ms. Default: 30000. */
+  worktreeSetupHookTimeoutMs?: number;
+  /** Missions store config. */
+  missions?: {
+    enabled?: boolean;
+    directory?: string;
+    globalIndex?: boolean;
+    globalIndexDir?: string;
+    retainTerminal?: number;
+  };
+  /** Scheduled runs config. */
+  scheduledRuns?: { enabled?: boolean; maxPending?: number; storeRoot?: string };
+  /** Authority policy for operational actions. */
+  authorityPolicy?: {
+    discardWorktree?: "confirm" | "auto";
+    destructiveCleanup?: "confirm" | "auto";
+    spawnBudgetGrant?: "confirm" | "auto";
+    scheduleCreate?: "confirm" | "auto";
+  };
 }
 
 /** Agent activity for widget display. */

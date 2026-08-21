@@ -67,6 +67,64 @@ function loadConfigFromPath(filePath: string): SubagentsConfig | null {
   }
 }
 
+/**
+ * Validate parity keys. Follows the reference behavior: invalid values for
+ * strict keys (toolTimeoutMs, budgets, concurrency caps) are rejected with a
+ * visible error rather than silently ignored. Best-effort keys (placement,
+ * logging mode) fall back to defaults like the reference does.
+ *
+ * Returns a list of validation problems; empty means valid.
+ */
+export function validateParityConfig(config: SubagentsConfig): string[] {
+  const problems: string[] = [];
+  const positiveInt = (label: string, value: unknown): void => {
+    if (value === undefined) return;
+    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0 || value > 2147483647) {
+      problems.push(`${label} must be a positive integer no greater than 2147483647 (got ${JSON.stringify(value)})`);
+    }
+  };
+
+  positiveInt("timeoutMs", config.timeoutMs);
+  positiveInt("toolTimeoutMs", config.toolTimeoutMs);
+  positiveInt("globalConcurrencyLimit", config.globalConcurrencyLimit);
+  if (config.maxSubagentSpawnsPerSession !== undefined && config.maxSubagentSpawnsPerSession !== 0) {
+    positiveInt("maxSubagentSpawnsPerSession", config.maxSubagentSpawnsPerSession);
+  }
+  if (config.maxSubagentSpawnsPerRun !== undefined && config.maxSubagentSpawnsPerRun !== 0) {
+    positiveInt("maxSubagentSpawnsPerRun", config.maxSubagentSpawnsPerRun);
+  }
+  if (config.maxActiveAsyncRunsPerSession !== undefined && config.maxActiveAsyncRunsPerSession !== 0) {
+    positiveInt("maxActiveAsyncRunsPerSession", config.maxActiveAsyncRunsPerSession);
+  }
+  if (config.maxSubagentDepth !== undefined) positiveInt("maxSubagentDepth", config.maxSubagentDepth);
+
+  if (config.defaultSubagentContext !== undefined && !['"fresh"', '"fork"'].includes(JSON.stringify(config.defaultSubagentContext))) {
+    problems.push(`defaultSubagentContext must be "fresh" or "fork" (got ${JSON.stringify(config.defaultSubagentContext)})`);
+  }
+  if (config.fleetViewPlacement !== undefined && !['"belowEditor"', '"aboveEditor"'].includes(JSON.stringify(config.fleetViewPlacement))) {
+    problems.push(`fleetViewPlacement must be "belowEditor" or "aboveEditor" (got ${JSON.stringify(config.fleetViewPlacement)}); falling back to "belowEditor"`);
+  }
+  if (
+    config.resultScanLogging !== undefined &&
+    !["all", "activity", "off"].includes(config.resultScanLogging)
+  ) {
+    problems.push(`resultScanLogging must be "all", "activity", or "off" (got ${JSON.stringify(config.resultScanLogging)})`);
+  }
+  if (config.inlineToolDisplay !== undefined && !["rich", "summary"].includes(config.inlineToolDisplay)) {
+    problems.push(`inlineToolDisplay must be "rich" or "summary" (got ${JSON.stringify(config.inlineToolDisplay)})`);
+  }
+  if (config.parallel) {
+    positiveInt("parallel.maxTasks", config.parallel.maxTasks);
+    positiveInt("parallel.concurrency", config.parallel.concurrency);
+  }
+  if (config.maxOutput) {
+    positiveInt("maxOutput.bytes", config.maxOutput.bytes);
+    positiveInt("maxOutput.lines", config.maxOutput.lines);
+  }
+
+  return problems;
+}
+
 /** Repair corrupted config: rename to .bak and generate fresh. */
 function repairCorrupted(filePath: string): SubagentsConfig {
   const backupPath = filePath + ".bak";
@@ -115,7 +173,7 @@ export function initConfig(cwd: string): SubagentsConfig {
 
   if (workspaceConfig) {
     // Merge: workspace overrides global on any field present
-    return {
+    const merged: SubagentsConfig = {
       ...globalConfig,
       ...workspaceConfig,
       types: {
@@ -123,9 +181,20 @@ export function initConfig(cwd: string): SubagentsConfig {
         ...workspaceConfig.types,
       },
     };
+    reportConfigProblems(merged);
+    return merged;
   }
 
+  reportConfigProblems(globalConfig);
   return globalConfig;
+}
+
+/** Surface config validation problems visibly (non-fatal, reference behavior). */
+function reportConfigProblems(config: SubagentsConfig): void {
+  const problems = validateParityConfig(config);
+  for (const problem of problems) {
+    console.error(`[unipi/subagents] config: ${problem}`);
+  }
 }
 
 /**
