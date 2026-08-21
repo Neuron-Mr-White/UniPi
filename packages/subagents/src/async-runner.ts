@@ -51,6 +51,11 @@ export interface AsyncRunSpec {
   taskDelivery?: SubagentTaskDelivery;
   parentSessionId?: string;
   config?: SubagentsConfig;
+  /** Pre-resolved fork session file (context: "fork"). When present the child
+   *  launches with --session <file>, branching from the parent conversation. */
+  forkSessionFile?: string;
+  /** Force thinking off for this child (sanitized Anthropic fork). */
+  forceThinkingOff?: boolean;
   /** Observation callbacks */
   onEvent?: (event: ChildEvent) => void;
   onOutputLine?: (line: string) => void;
@@ -105,9 +110,10 @@ async function runChildProcess(
   const { args, env: childEnv, tempDir } = buildPiArgs({
     baseArgs: spec.baseArgs ?? ["--mode", "json", "-p"],
     task: spec.task,
+    sessionFile: spec.forkSessionFile,
     sessionDir: spec.sessionDir,
     model: spec.model,
-    thinking: spec.thinking,
+    thinking: spec.forceThinkingOff ? "off" : spec.thinking,
     tools: spec.tools,
     extensions: spec.extensions,
     systemPrompt: effectiveChildPrompt(spec),

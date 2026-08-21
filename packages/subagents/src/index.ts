@@ -26,6 +26,7 @@ import { runAsyncSubagent, createAsyncRunDir, writeStatus, readStatus } from "./
 import { createResultWatcher, cleanupAsyncRetention } from "./result-watcher.js";
 import { writeAsyncResultFile, readAsyncResultFile } from "./result-files.js";
 import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
+import { createForkContextResolver } from "./fork-context.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
@@ -230,6 +231,36 @@ export default function (pi: ExtensionAPI) {
     const controller = new AbortController();
     activeAsyncRuns.set(runId, controller);
 
+    // Fork context: branch a child session from the parent conversation
+    // (sanitized thinking blocks, thinking forced off when sanitized).
+    let forkSessionFile: string | undefined;
+    let forceThinkingOff: boolean | undefined;
+    if (launch.context === "fork") {
+      try {
+        const sessionManager = (sessionCtx as unknown as {
+          sessionManager?: {
+            getSessionFile(): string | undefined;
+            getLeafId(): string | null;
+            openSession?: Parameters<typeof createForkContextResolver>[0]["openSession"];
+          };
+        })?.sessionManager;
+        if (!sessionManager) {
+          throw new Error("Forked context requires a persisted parent session (session manager unavailable).");
+        }
+        const resolver = createForkContextResolver(sessionManager, "fork");
+        forkSessionFile = resolver.sessionFileForIndex(0);
+        forceThinkingOff = resolver.thinkingOverrideForIndex(0) === "off";
+        if (!forkSessionFile) {
+          throw new Error("Forked context failed to produce a branched session file.");
+        }
+        writeStatus(runDir, { context: "fork", forkSessionFile });
+      } catch (forkError) {
+        // Reference rule: explicit fork never silently downgrades.
+        activeAsyncRuns.delete(runId);
+        throw forkError;
+      }
+    }
+
     // Fire-and-track: the promise writes the durable result file + notifies on
     // completion; the tool call returns immediately with the run id.
     void (async () => {
@@ -245,6 +276,8 @@ export default function (pi: ExtensionAPI) {
             timeoutMs: launch.timeoutMs,
             parentSessionId: asyncSessionId,
             config,
+            ...(forkSessionFile ? { forkSessionFile } : {}),
+            ...(forceThinkingOff ? { forceThinkingOff } : {}),
           },
           runDir,
           controller.signal,
