@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./types.js";
+import { parseMemoryFrontmatter } from "./agent-memory.js";
 
 function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -258,9 +259,7 @@ function loadAgentFromFile(filePath: string, source: "project" | "global" | "bui
       ...(typeof fm.output === "string" && fm.output ? { output: fm.output } : {}),
       ...(parseList(fm.defaultReads)?.length ? { defaultReads: parseList(fm.defaultReads) } : {}),
       ...(parseBool(fm.defaultProgress) !== undefined ? { defaultProgress: parseBool(fm.defaultProgress) } : {}),
-      ...(typeof fm.memory === "string" && fm.memory.trim()
-        ? { memory: fm.memory.trim() as AgentConfig["memory"] }
-        : undefined),
+      ...(parseMemoryFrontmatter(fm.memory) ? { memory: parseMemoryFrontmatter(fm.memory)! } : undefined),
       enabled: fm.enabled !== false,
       source,
       ...(collectExtraFields(fm) ? { extraFields: collectExtraFields(fm) } : {}),

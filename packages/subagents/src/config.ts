@@ -197,6 +197,16 @@ function reportConfigProblems(config: SubagentsConfig): void {
   }
 }
 
+/** Load the RAW parsed global config (for parity settings extraction). */
+export function loadRawGlobalConfig(): Record<string, unknown> | null {
+  return loadConfigFromPath(getGlobalConfigPath()) as Record<string, unknown> | null;
+}
+
+/** Load the RAW parsed workspace config (for parity settings extraction). */
+export function loadRawWorkspaceConfig(cwd: string): Record<string, unknown> | null {
+  return loadConfigFromPath(getWorkspaceConfigPath(cwd)) as Record<string, unknown> | null;
+}
+
 /**
  * Save global config.
  */

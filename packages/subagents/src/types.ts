@@ -60,6 +60,12 @@ export const BUILTIN_CONFIGS: Record<string, AgentConfig> = {
 /** Memory scope for persistent agent memory. */
 export type MemoryScope = "user" | "project" | "local";
 
+/** Structured per-agent memory config (reference parity). */
+export interface AgentMemoryConfig {
+  scope: "user" | "project";
+  path: string;
+}
+
 /** Unified agent configuration. */
 export interface AgentConfig {
   name: string;
@@ -104,7 +110,7 @@ export interface AgentConfig {
   defaultReads?: string[];
   /** Maintain progress.md during runs. */
   defaultProgress?: boolean;
-  memory?: MemoryScope;
+  memory?: MemoryScope | AgentMemoryConfig;
   isDefault?: boolean;
   enabled?: boolean;
   source?: "builtin" | "project" | "global";

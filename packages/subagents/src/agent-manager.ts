@@ -13,7 +13,13 @@ import { resolveModel, type ModelRegistry } from "./model-resolver.js";
 import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel, SubagentsConfig } from "./types.js";
 import { BUILTIN_CONFIGS } from "./types.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
-import { loadCustomAgents } from "./custom-agents.js";
+import { loadCustomAgents, loadBuiltinFileAgents } from "./custom-agents.js";
+import {
+  applyBuiltinOverrides,
+  applySubagentDefaults,
+  parseSubagentSettings,
+  type SubagentSettings,
+} from "./agent-overrides.js";
 
 function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -56,6 +62,10 @@ export class AgentManager {
   private maxConcurrent: number;
   private customAgents: Map<string, AgentConfig>;
   private typeSettings: SubagentsConfig["types"];
+  /** alias → canonical name (reference parity). */
+  private aliasIndex: Map<string, string>;
+  /** Runtime-registered agents (extensions can register; highest priority). */
+  private runtimeAgents: Map<string, AgentConfig> = new Map();
 
   /** Queue of background agents waiting to start. */
   private queue: { id: string; args: SpawnArgs }[] = [];
@@ -68,25 +78,97 @@ export class AgentManager {
     onStart?: OnAgentStart,
     typeSettings: SubagentsConfig["types"] = {},
     agentsCwd = process.cwd(),
+    paritySettings?: {
+      user?: unknown;
+      project?: unknown;
+    },
   ) {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.maxConcurrent = maxConcurrent;
     this.typeSettings = typeSettings;
-    this.customAgents = loadCustomAgents(agentsCwd);
+
+    // Settings blocks come from OUR subagents.json `subagents` object
+    // (global + workspace merge), parsed defensively.
+    const userSettings: SubagentSettings = parseSubagentSettings(paritySettings?.user);
+    const projectSettings: SubagentSettings = parseSubagentSettings(paritySettings?.project);
+
+    // Load the three discovery layers, applying defaults + builtin overrides.
+    // loadCustomAgents already merges: builtin-file < global < project.
+    // Split: only global/project entries count as "custom"; the builtin file
+    // agents inside it are the un-overridden baseline that applyBuiltinOverrides
+    // must replace.
+    const discovered = loadCustomAgents(agentsCwd);
+    const builtinFileNames = new Set(loadBuiltinFileAgents().keys());
+    const customOnly = [...discovered.values()].filter(
+      (a) => !builtinFileNames.has(a.name) || a.source === "global" || a.source === "project",
+    );
+
+    const codeBuiltins = Object.values(BUILTIN_CONFIGS).filter((a) => a.name !== "name-gen");
+    const fileBuiltins = [...loadBuiltinFileAgents().values()];
+
+    const overriddenBuiltins = applyBuiltinOverrides(
+      [...codeBuiltins, ...fileBuiltins],
+      userSettings,
+      projectSettings,
+    );
+    const defaultedCustom = applySubagentDefaults(
+      customOnly,
+      projectSettings.overrides && Object.keys(projectSettings.overrides).length > 0 ? projectSettings : userSettings,
+    );
+
+    // Combined map: overridden builtins first, then custom (project > global) wins.
+    const combined = new Map<string, AgentConfig>();
+    for (const agent of overriddenBuiltins) combined.set(agent.name, agent);
+    for (const agent of defaultedCustom) combined.set(agent.name, agent);
+    this.customAgents = combined;
+
+    // Alias index across every layer (later entries win = custom overrides builtin aliases).
+    this.aliasIndex = new Map();
+    for (const agent of combined.values()) {
+      for (const alias of agent.aliases ?? []) {
+        this.aliasIndex.set(alias, agent.name);
+      }
+    }
+
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
   }
 
-  /** Get resolved agent config for a type. */
-  getAgentConfig(type: AgentType): AgentConfig | undefined {
-    return this.customAgents.get(type) ?? BUILTIN_CONFIGS[type];
+  /** Resolve an alias to its canonical agent name (identity when not an alias). */
+  resolveAlias(type: AgentType): AgentType {
+    return this.aliasIndex.get(type) ?? type;
   }
 
-  /** Public agent types known from built-ins, custom files, or JSON config. */
+  /** Register a runtime agent (extensions can register agents; highest priority). */
+  registerRuntimeAgent(config: AgentConfig): void {
+    this.runtimeAgents.set(config.name, config);
+    for (const alias of config.aliases ?? []) {
+      this.aliasIndex.set(alias, config.name);
+    }
+  }
+
+  /** Clear runtime-registered agents for a given extension owner. */
+  clearRuntimeAgents(): void {
+    for (const [name, config] of this.runtimeAgents) {
+      for (const alias of config.aliases ?? []) {
+        if (this.aliasIndex.get(alias) === name) this.aliasIndex.delete(alias);
+      }
+    }
+    this.runtimeAgents.clear();
+  }
+
+  /** Get resolved agent config for a type (runtime > custom > code builtin). */
+  getAgentConfig(type: AgentType): AgentConfig | undefined {
+    const canonical = this.resolveAlias(type);
+    return this.runtimeAgents.get(canonical) ?? this.customAgents.get(canonical) ?? BUILTIN_CONFIGS[canonical];
+  }
+
+  /** Public agent types known from built-ins, custom files, runtime, or JSON config. */
   getKnownTypes(): string[] {
     return [...new Set([
       ...Object.keys(BUILTIN_CONFIGS).filter((type) => type !== "name-gen"),
       ...this.customAgents.keys(),
+      ...this.runtimeAgents.keys(),
       ...Object.keys(this.typeSettings),
     ])].sort(compareCodeUnits);
   }

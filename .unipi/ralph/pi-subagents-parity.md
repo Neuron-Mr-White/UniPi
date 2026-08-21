@@ -32,11 +32,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Add their 6 builtin agents as definition files (agents/*.md, loaded lowest priority) alongside code builtins explore/work. researcher adapted to OUR web-api tool names (web_search, multi_web_content_read, web_llm_summarize)
 - [x] Discovery layers: builtin file agents < global ~/.unipi/config/agents < project .unipi/config/agents (recursive, node_modules pruned, .chain.md skipped; project wins collisions). Package layer deferred to runtime-registration item.
 - [x] Frontmatter parity: full reference field set + our legacy fields both accepted; invalid numeric fields throw visible errors; builtin files rethrow (ship with us), user files backup+skip
-- [ ] agentOverrides + settings keys (subagents.defaultModel, defaultThinking, agentOverrides.<name>.{model,thinking,disabled,tools,...}) — read from OUR subagents.json, not pi settings
-- [ ] Per-agent memory scopes (user/project/local)
-- [ ] Agent aliases + runtime agent registration (extensions can register agents)
-- [ ] enablement: preserve our rule; add their disableBuiltins
-- [ ] Tests: port their agent-frontmatter.test.ts + agent discovery tests (adapted)
+- [x] agentOverrides + settings keys — src/agent-overrides.ts; settings block `subagents` in OUR subagents.json (global + workspace): overrides, defaultModel, defaultThinking, defaultExtensions, disableBuiltins, disableThinking; project wins per-agent; wired through AgentManager (6th ctor param)
+- [x] Per-agent memory scopes — src/agent-memory.ts: parse + containment checks + O_NOFOLLOW reads + 200line/16KiB caps + read-write/read-only injection; roots OURS: ~/.unipi/agent-memory/ + <root>/.unipi/agent-memory/
+- [x] Agent aliases (resolveAlias in AgentManager; worker→developer, oracle→advisor) + runtime agent registration (registerRuntimeAgent/clearRuntimeAgents, highest priority)
+- [x] enablement preserved (JSON types.enabled AND frontmatter enabled); disableBuiltins added (disables ALL builtins, customs keep working)
+- [x] Tests: agent-discovery.test.ts (8) + agent-overrides.test.ts (18) — 107/107 total
 
 ## Phase 2 — Foreground orchestration (in-process)
 - [ ] workflowScript runtime: runs.run(key,{agent|resume,task,...}), runs.all([...]), runs.steer(key,msg,opts) — validate script (their AST rules: no nested async helpers), sandboxed VM with runs/state globals
@@ -98,6 +98,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   frontmatter parity. 89/89 tests pass. Task file was truncated on disk (gitignored, never
   committed with checklist) — reconstructed this iteration with progress preserved.
   NOTE: commit the task file with -f after each update (git add -f .unipi/ralph/pi-subagents-parity.md).
+
+- Phase 1 COMPLETE (commit pending): agentOverrides/defaults/disableBuiltins from OUR subagents.json
+  `subagents` block (agent-overrides.ts), per-agent memory (agent-memory.ts, OUR roots), aliases +
+  runtime registration in AgentManager, layering fix (overridden builtins no longer clobbered by
+  discovery-layer file builtins). 107/107 tests.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.

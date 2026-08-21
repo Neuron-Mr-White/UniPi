@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { MODULES, UNIPI_EVENTS, emitEvent, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
 import { boundHelperOutput, withHerdrBlocked } from "./core-compat.js";
 import { AgentManager } from "./agent-manager.js";
-import { initConfig } from "./config.js";
+import { initConfig, loadRawGlobalConfig, loadRawWorkspaceConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
 import { loadBuiltinFileAgents } from "./custom-agents.js";
 import { ConversationViewer } from "./conversation-viewer.js";
@@ -203,6 +203,11 @@ export default function (pi: ExtensionAPI) {
       });
     },
     config.types,
+    process.cwd(),
+    {
+      user: loadRawGlobalConfig()?.subagents,
+      project: loadRawWorkspaceConfig(process.cwd())?.subagents,
+    },
   );
 
   // Build notification details for the message renderer
