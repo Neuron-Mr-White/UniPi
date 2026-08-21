@@ -24,6 +24,8 @@
   },
   "files": [
     "src/**/*.ts",
+    "src/**/*.json",
+    "extensions/*.ts",
     "README.md"
   ],
   "pi": {

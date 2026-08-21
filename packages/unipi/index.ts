@@ -16,6 +16,7 @@ import ralph from "@pi-unipi/ralph";
 import memory from "@pi-unipi/memory";
 import infoScreen from "@pi-unipi/info-screen";
 import subagents from "@pi-unipi/subagents";
+import backgroundTasks from "@pi-unipi/background-tasks";
 import btw from "@pi-unipi/btw/extensions/btw.js";
 import webApi from "@pi-unipi/web-api";
 import utility from "@pi-unipi/utility";
@@ -43,6 +44,7 @@ export default function (pi: ExtensionAPI) {
   utility(pi);
   infoScreen(pi);
   subagents(pi);
+  backgroundTasks(pi);
   btw(pi);
   webApi(pi);
   askUser(pi);

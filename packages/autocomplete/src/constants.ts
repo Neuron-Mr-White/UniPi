@@ -141,6 +141,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // background-tasks (8 commands)
   "unipi:bg":          "background-tasks",
   "unipi:bg-clear":    "background-tasks",
+  "unipi:bg-tasks":    "background-tasks",
   "unipi:bg-settings": "background-tasks",
   "unipi:bg-update":   "background-tasks",
   "unipi:tasks":       "background-tasks",
@@ -148,6 +149,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:kill":        "background-tasks",
   "unipi:logs":        "background-tasks",
   "unipi:claude-cache": "background-tasks",
+  "unipi:fusion":        "background-tasks",
+  "unipi:fusion-models": "background-tasks",
 
   // info (2 commands)
   "unipi:info":          "info",
@@ -306,6 +309,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:bg":          "Start a shell command as a tracked background task",
   "unipi:bg-clear":    "Clear finished background task footer notices",
+  "unipi:bg-tasks":    "Open the background task manager UI",
   "unipi:bg-settings": "Open background-tasks settings (master toggle, defaults)",
   "unipi:bg-update":  "Show installed background-tasks version and update instructions",
   "unipi:tasks":       "Open the background task manager UI",
@@ -313,6 +317,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:kill":        "Stop a running background task: /unipi:kill <id>",
   "unipi:logs":        "Show bounded output from a background task",
   "unipi:claude-cache": "Show or set Claude cache retention for this session",
+  "unipi:fusion":        "Run the Fusion reason workflow with a prompt",
+  "unipi:fusion-models": "Open the Fusion five-slot model selector",
   "unipi:subagents-fleet":  "Open the subagents fleet view",
   "unipi:subagents-doctor": "Diagnose subagents configuration",
   "unipi:subagents-guide":  "Show the subagents usage guide",

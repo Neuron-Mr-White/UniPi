@@ -612,7 +612,7 @@ void describe('delegate child guard in a real agent loop', { concurrency: false 
         const tampered = original.replace('parent history line', 'tampered history!!');
         assert.notEqual(tampered, original, 'the tamper must actually change the bytes');
         await writeFile(seedPath, tampered, 'utf8');
-        const { verifyDelegateSeedBytes } = await import('../../src/core/delegate/seed.js');
+        const { verifyDelegateSeedBytes } = await import('../../delegate/seed.js');
         const onDisk = await readFile(seedPath, 'utf8');
         assert.throws(
           () =>

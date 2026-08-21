@@ -59,7 +59,6 @@ const FUSION_RESULT_MESSAGE_TYPE = 'fusion-result';
 const FUSION_PROGRESS_SCHEMA_VERSION = 'pi-background-tasks.fusion-progress.v1';
 const FUSION_COMMAND_USAGE =
   'Usage: /unipi:fusion <prompt> (or run /unipi:fusion with no arguments to open the multiline editor).';
-const FUSION_MODEL_COMMAND_NAME = 'unipi:fusion-models';
 export const FUSION_REASON_TOOL_NAME = 'fusion_reason';
 export const FUSION_INVESTIGATE_TOOL_NAME = 'fusion_investigate';
 export const FUSION_RESEARCH_TOOL_NAME = 'fusion_research';
@@ -1026,7 +1025,7 @@ export function registerFusionExtension(pi: ExtensionAPI, deps: FusionExtensionD
     },
   });
 
-  pi.registerCommand(FUSION_MODEL_COMMAND_NAME, {
+  pi.registerCommand('unipi:fusion-models', {
     description: 'Open the five-slot global fusion model selector.',
     handler: async (_args, ctx) => {
       const modeError =

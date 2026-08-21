@@ -115,18 +115,16 @@ void describe('Fusion final provider-request guard contract', { concurrency: fal
           noThemes: true,
         });
         await loader.reload();
-        const modelRuntime = await ModelRuntime.create({
-          authPath: join(agentDir, 'auth.json'),
-          modelsPath: null,
-        });
-        const registry = new ModelRegistry(modelRuntime);
+        const authStorage = AuthStorage.create(join(agentDir, 'auth.json'));
+        const registry = ModelRegistry.create(authStorage);
         ({ session } = await createAgentSession({
           cwd,
           agentDir,
           resourceLoader: loader,
           sessionManager: SessionManager.inMemory(cwd),
           settingsManager,
-          modelRuntime,
+          authStorage,
+          modelRegistry: registry,
           noTools: 'builtin',
         }));
         const model = registry.find(RUNTIME_GUARD_PROVIDER, RUNTIME_GUARD_MODEL);
