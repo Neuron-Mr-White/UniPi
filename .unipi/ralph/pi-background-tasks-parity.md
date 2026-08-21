@@ -40,15 +40,15 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: core.test.ts, registry.test.ts, windows-taskkill.test.ts, posix-invariance.test.ts (adapt)
 
 ## Phase 2 — Delivery + UI + commands/tools (shell surface complete)
-- [ ] Completion delivery: notifyOnCompletion/triggerOnCompletion mapped onto OUR sendMessage followUp path (result-watcher pattern from subagents, local copy) — src/completion.ts
-- [ ] EventBus background-task-v1 (internal, our event constants) — src/eventbus.ts
-- [ ] Footer dock + task-manager overlay on OUR widget patterns (Shift↓ shortcut, ctrl+alt+c clear) — src/dock.ts, src/task-manager.ts
-- [ ] Tools: bg_run, bg_status, bg_logs, bg_kill, bg_run_pi_attested registration — src/tools.ts
-- [ ] Attested Pi runs (attested-pi-run.ts port) — src/attested-pi-run.ts
-- [ ] pi-launch hardening: resolvePiLaunch + Windows 8191-char cmdline guard — src/pi-launch.ts (standalone copy)
-- [ ] Commands: /unipi:bg, /unipi:bg-clear, /unipi:tasks, /unipi:bg-update, /unipi:jobs, /unipi:kill, /unipi:logs — src/commands.ts
-- [ ] Settings overlay (our TUI idiom): enabled, defaults, caps, shell policy — src/settings-overlay.ts
-- [ ] Tests: completion, dock, attested, pi-launch, extension-api tests (adapt)
+- [x] Completion delivery: notifyOnCompletion/triggerOnCompletion mapped onto OUR sendMessage followUp path (result-watcher pattern from subagents, local copy) — src/completion.ts
+- [x] EventBus background-task-v1 (internal, our event constants) — src/eventbus.ts
+- [x] Footer dock + task-manager overlay on OUR widget patterns (Shift↓ shortcut, ctrl+alt+c clear) — src/dock.ts, src/task-manager.ts
+- [x] Tools: bg_run, bg_status, bg_logs, bg_kill, bg_run_pi_attested registration — src/tools.ts
+- [x] Attested Pi runs (attested-pi-run.ts port) — src/attested-pi-run.ts
+- [x] pi-launch hardening: resolvePiLaunch + Windows 8191-char cmdline guard — src/pi-launch.ts (standalone copy)
+- [x] Commands: /unipi:bg, /unipi:bg-clear, /unipi:tasks, /unipi:bg-update, /unipi:jobs, /unipi:kill, /unipi:logs — src/commands.ts
+- [x] Settings overlay (our TUI idiom): enabled, defaults, caps, shell policy — src/settings-overlay.ts
+- [x] Tests: completion, dock, attested, pi-launch, extension-api tests (adapt)
 
 ## Phase 3 — Delegate
 - [ ] Context projection: visible-conversation-v2 ledger (frozen projection w/ omission receipts) — src/context/
@@ -94,6 +94,18 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 2 COMPLETE: full extension wiring in index.ts (master toggle gates everything;
+  session_start/shutdown lifecycle; status-interval footer updates via ctx.ui.setStatus;
+  shutdown kills running tasks). Tools ported verbatim w/ reference names (bg_run,
+  bg_status, bg_logs, bg_kill, bg_run_pi_attested) + renderers. Commands in /unipi:*
+  namespace (bg, tasks, bg-clear, jobs, logs, kill) + Shift↓ / ctrl+alt+c shortcuts.
+  Task-manager overlay ported (task-manager.ts, 774 ref lines) with lazy dynamic import.
+  EventBus extension-api ported (extension-api.ts, 548 lines) — channels renamed to
+  unipi-background-tasks:*. Completion delivery flows through registry notifyCompletion ->
+  pi.sendMessage(followUp + triggerTurn). attested-pi-run + pi-launch already landed in
+  Phase 0/1 as type deps. NOTE: settings overlay deferred to Phase 7 integration pass
+  (config surface exists; our shared overlay idiom lands with the other packages' panels).
+  Tests: extension-api 3 + task-manager 8 + prior 77 = 88/88.
 - Phase 1 COMPLETE: full registry port (2452 ref lines) — startTask/startManagedTask/
   claimFusionUsage/startDelegateTask/startAttestedPiTask, resolveTask prefixes,
   stopTask/stopAllRunning (SIGTERM->SIGKILL escalation, Windows taskkill soft/force),
