@@ -34,10 +34,10 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Tests: config.test.ts, durable-fs.test.ts (adapt theirs)
 
 ## Phase 1 — Shell task runtime
-- [ ] Port windows-taskkill.ts verbatim (env-prefix rename) — src/windows-taskkill.ts
-- [ ] Port registry.ts core: startTask/startManagedTask/resolveTask/status/logs/kill/retention/output caps (20MiB kill+fail, 50KiB bounded reads), shell policy POSIX+Windows w/ UNIPI_BG_SHELL — src/registry.ts (+ split if >800 lines)
-- [ ] Telemetry wrapping (isAgent pi -p interception → task-owned metrics) — src/telemetry-wrap.ts
-- [ ] Tests: core.test.ts, registry.test.ts, windows-taskkill.test.ts, posix-invariance.test.ts (adapt)
+- [x] Port windows-taskkill.ts verbatim (env-prefix rename) — src/windows-taskkill.ts
+- [x] Port registry.ts core: startTask/startManagedTask/resolveTask/status/logs/kill/retention/output caps (20MiB kill+fail, 50KiB bounded reads), shell policy POSIX+Windows w/ UNIPI_BG_SHELL — src/registry.ts (+ split if >800 lines)
+- [x] Telemetry wrapping (isAgent pi -p interception → task-owned metrics) — src/telemetry-wrap.ts
+- [x] Tests: core.test.ts, registry.test.ts, windows-taskkill.test.ts, posix-invariance.test.ts (adapt)
 
 ## Phase 2 — Delivery + UI + commands/tools (shell surface complete)
 - [ ] Completion delivery: notifyOnCompletion/triggerOnCompletion mapped onto OUR sendMessage followUp path (result-watcher pattern from subagents, local copy) — src/completion.ts
@@ -94,6 +94,16 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 1 COMPLETE: full registry port (2452 ref lines) — startTask/startManagedTask/
+  claimFusionUsage/startDelegateTask/startAttestedPiTask, resolveTask prefixes,
+  stopTask/stopAllRunning (SIGTERM->SIGKILL escalation, Windows taskkill soft/force),
+  20MiB output cap kill+fail, bounded log reads, telemetry ingestion + wrapped-agent
+  activity transcripts, terminal publication gate/retry, notification w/ notified reset,
+  retention pruning. windows-taskkill verbatim. Runtime dir -> OUR temp root
+  ($TMPDIR/unipi-bg-tasks/<session>-<pid>-<nonce>, UNIPI_BG_TMP_DIR override) with a
+  per-instance nonce (reference relied on per-cwd .pi/tasks). Env prefix UNIPI_BG_*;
+  shell policy error unipi_bg_shell_invalid. Shared interfaces in child-process.ts.
+  Tests: registry 30 + core 9 + win-taskkill 5 + durable-fs 25 + config 8 = 77/77.
 - Phase 0 COMPLETE: package scaffolded (@pi-unipi/background-tasks), master `enabled` toggle
   gates the entry point, config layering (~/.unipi/config/background-tasks.json global +
   workspace override, workspace wins, corrupt layers warn not crash), types.ts ported from

@@ -11,7 +11,7 @@
 
 import { statSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
-import type { BackgroundTaskChildProcess } from "./registry.js";
+import type { BackgroundTaskChildProcess } from "./child-process.js";
 import type { FusionResultDetails, FusionUsage, FusionWorkflowId } from "./fusion/types.js";
 
 export const TASK_STATUS_VALUES = ["running", "completed", "failed", "killed"] as const;
@@ -636,4 +636,328 @@ export function fileSizeOrNull(path: string): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+// ── Registry-support helpers (ported from reference common.ts) ──────────────
+
+import { open } from "node:fs/promises";
+import { extname, isAbsolute, win32 } from "node:path";
+
+export function escapeXml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Render an activity event into a transcript line, or undefined when nothing worth showing. */
+export function formatAgentActivityLine(activity: AgentActivity): string | undefined {
+  if (activity.kind === "assistant_text") {
+    const text = activity.text.replace(/\s+$/u, "");
+    return text.trim().length > 0 ? text : undefined;
+  }
+  if (activity.kind === "reasoning") {
+    const text = activity.text.replace(/\s+$/u, "");
+    return text.trim().length > 0 ? `\u2026 ${text}` : undefined;
+  }
+  if (activity.kind === "tool_start") {
+    const summary = compactWhitespace(activity.argsSummary);
+    const suffix = summary.length > 0 ? ` ${truncateChars(summary, AGENT_ACTIVITY_DETAIL_MAX)}` : "";
+    return `\u2192 ${activity.tool}${suffix}`;
+  }
+  if (!activity.isError) return undefined;
+  const detail = activity.error
+    ? `: ${truncateChars(compactWhitespace(activity.error), AGENT_ACTIVITY_DETAIL_MAX)}`
+    : "";
+  return `\u2717 ${activity.tool} failed${detail}`;
+}
+
+export function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+export type ShellDialect = "cmd" | "posix";
+
+export interface ShellInvocation {
+  shell: string;
+  args: string[];
+  dialect: ShellDialect;
+  windowsVerbatimArguments: boolean;
+}
+
+export class ShellInvocationError extends Error {
+  readonly code = "unipi_bg_shell_invalid";
+
+  constructor(message: string) {
+    super(`unipi_bg_shell_invalid: ${message}`);
+    this.name = "ShellInvocationError";
+  }
+}
+
+function failShellInvocation(message: string): never {
+  throw new ShellInvocationError(message);
+}
+
+function shellErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isWindowsExecutablePath(path: string): boolean {
+  const extension = extname(path).toLowerCase();
+  return extension === ".exe" || extension === ".com";
+}
+
+function validateWindowsShellPath(path: string, label: string): string {
+  if (path.length === 0) failShellInvocation(`${label} is empty`);
+  if (!isAbsolute(path) && !win32.isAbsolute(path)) {
+    failShellInvocation(`${label} must be an absolute path`);
+  }
+  if (!isWindowsExecutablePath(path)) {
+    failShellInvocation(`${label} must point to a .exe or .com file`);
+  }
+  let stats: ReturnType<typeof statSync>;
+  try {
+    stats = statSync(path);
+  } catch (error) {
+    failShellInvocation(`${label} stat failed: ${shellErrorMessage(error)}`);
+  }
+  if (!stats.isFile()) failShellInvocation(`${label} must point to a regular file`);
+  return path;
+}
+
+function inspectWindowsShellCandidate(path: string): { found: true } | { found: false; diagnostic: string } {
+  if (!isWindowsExecutablePath(path)) {
+    return { found: false, diagnostic: `${path} is not a .exe or .com path` };
+  }
+  try {
+    const stats = statSync(path);
+    if (stats.isFile()) return { found: true };
+    return { found: false, diagnostic: `${path} is not a regular file` };
+  } catch (error) {
+    return { found: false, diagnostic: `${path}: ${shellErrorMessage(error)}` };
+  }
+}
+
+function windowsPathValue(env: NodeJS.ProcessEnv): string {
+  return env["PATH"] ?? env["Path"] ?? env["path"] ?? "";
+}
+
+function resolveWindowsBash(env: NodeJS.ProcessEnv): string {
+  const pathValue = windowsPathValue(env);
+  const diagnostics: string[] = [];
+  for (const dir of pathValue.split(";").filter((entry) => entry.length > 0)) {
+    for (const name of ["bash.exe", "bash.com"]) {
+      const candidate = join(dir, name);
+      const result = inspectWindowsShellCandidate(candidate);
+      if (result.found) return candidate;
+      diagnostics.push(result.diagnostic);
+    }
+  }
+  const suffix = diagnostics.length > 0 ? `: ${diagnostics.join("; ")}` : "";
+  failShellInvocation(`UNIPI_BG_SHELL=bash could not resolve bash.exe or bash.com on PATH${suffix}`);
+}
+
+function cmdShellInvocation(command: string, shell: string): ShellInvocation {
+  return {
+    shell,
+    args: ["/d", "/s", "/c", `"${command}"`],
+    dialect: "cmd",
+    windowsVerbatimArguments: true,
+  };
+}
+
+function posixShellInvocation(command: string, shell: string): ShellInvocation {
+  return { shell, args: ["-c", command], dialect: "posix", windowsVerbatimArguments: false };
+}
+
+export function shellInvocation(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): ShellInvocation {
+  if (platform !== "win32") {
+    const shell = env["SHELL"];
+    return posixShellInvocation(command, shell && shell.length > 0 ? shell : "/bin/sh");
+  }
+
+  const requestedShell = env["UNIPI_BG_SHELL"];
+  const requestedPath = env["UNIPI_BG_SHELL_PATH"];
+  if (requestedShell === undefined) {
+    if (requestedPath !== undefined) failShellInvocation("UNIPI_BG_SHELL_PATH requires UNIPI_BG_SHELL");
+    const comSpec = env["ComSpec"];
+    return cmdShellInvocation(command, comSpec && comSpec.length > 0 ? comSpec : "cmd.exe");
+  }
+  if (requestedShell !== "cmd" && requestedShell !== "bash") {
+    failShellInvocation("UNIPI_BG_SHELL must be exactly cmd or bash");
+  }
+  const explicitPath =
+    requestedPath !== undefined ? validateWindowsShellPath(requestedPath, "UNIPI_BG_SHELL_PATH") : undefined;
+  if (requestedShell === "cmd") {
+    const comSpec = env["ComSpec"];
+    return cmdShellInvocation(
+      command,
+      explicitPath ?? (comSpec && comSpec.length > 0 ? comSpec : "cmd.exe"),
+    );
+  }
+  return posixShellInvocation(command, explicitPath ?? resolveWindowsBash(env));
+}
+
+export function normalizeMaxBytes(value: unknown, fallback = DEFAULT_LOG_BYTES): number {
+  const raw = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : fallback;
+  return Math.max(1, Math.min(MAX_LOG_BYTES, raw));
+}
+
+export function snapshot(task: BgTask): BgTaskSnapshot {
+  return {
+    id: task.id,
+    name: taskDisplayName(task),
+    command: task.command,
+    description: task.description,
+    status: task.status,
+    outputPath: task.outputPath,
+    cwd: task.cwd,
+    startTime: task.startTime,
+    endTime: task.endTime,
+    exitCode: task.exitCode,
+    signal: task.signal,
+    pid: task.pid,
+    bytesWritten: task.bytesWritten,
+    isAgent: task.isAgent,
+    error: task.error,
+    notified: task.notified,
+    notifyOnCompletion: task.notifyOnCompletion,
+    triggerOnCompletion: task.triggerOnCompletion,
+    timeoutSeconds: task.timeoutSeconds,
+    contextUsage: task.contextUsage,
+    tokenUsage: task.tokenUsage,
+    toolUsage: task.toolUsage,
+    model: task.model,
+    telemetryUnavailableReason: task.telemetryUnavailableReason,
+    attestationPath: task.attestationPath,
+    delegate: task.delegate,
+    fusion: task.fusion,
+  };
+}
+
+export async function boundedRead(
+  filePath: string,
+  maxBytes: number,
+  tail: boolean,
+): Promise<{ content: string; truncated: boolean; bytesRead: number; totalBytes: number }> {
+  const stats = statSync(filePath);
+  const totalBytes = stats.size;
+  const bytesToRead = Math.min(totalBytes, maxBytes);
+  if (bytesToRead === 0) return { content: "", truncated: false, bytesRead: 0, totalBytes };
+
+  const file = await open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(bytesToRead);
+    const position = tail ? Math.max(0, totalBytes - bytesToRead) : 0;
+    const { bytesRead } = await file.read(buffer, 0, bytesToRead, position);
+    return {
+      content: buffer.subarray(0, bytesRead).toString("utf8"),
+      truncated: totalBytes > bytesRead,
+      bytesRead,
+      totalBytes,
+    };
+  } finally {
+    await file.close();
+  }
+}
+
+// ── Semver comparison (ported; used by tests + potential updater integration) ──
+
+interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
+
+const SEMVER_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+
+export function parseSemver(value: string): ParsedSemver | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = SEMVER_PATTERN.exec(value.trim());
+  if (!match) return undefined;
+  const majorRaw = match[1];
+  const minorRaw = match[2];
+  const patchRaw = match[3];
+  if (majorRaw === undefined || minorRaw === undefined || patchRaw === undefined) return undefined;
+  const major = Number(majorRaw);
+  const minor = Number(minorRaw);
+  const patch = Number(patchRaw);
+  if (!Number.isInteger(major) || !Number.isInteger(minor) || !Number.isInteger(patch)) return undefined;
+  const prerelease = match[4] !== undefined ? match[4].split(".") : [];
+  return { major, minor, patch, prerelease };
+}
+
+function comparePrerelease(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  if (a.length === 0) return 1;
+  if (b.length === 0) return -1;
+  const shared = Math.min(a.length, b.length);
+  for (let i = 0; i < shared; i++) {
+    const idA = a[i];
+    const idB = b[i];
+    if (idA === undefined || idB === undefined) break;
+    if (idA === idB) continue;
+    const numericA = /^\d+$/.test(idA);
+    const numericB = /^\d+$/.test(idB);
+    if (numericA && numericB) {
+      const diff = Number(idA) - Number(idB);
+      if (diff !== 0) return diff < 0 ? -1 : 1;
+      continue;
+    }
+    if (numericA) return -1;
+    if (numericB) return 1;
+    return idA < idB ? -1 : 1;
+  }
+  if (a.length === b.length) return 0;
+  return a.length < b.length ? -1 : 1;
+}
+
+/** Compare two semver strings. Returns -1/0/1, or undefined when either side is not valid semver. */
+export function compareSemver(a: string, b: string): number | undefined {
+  const left = parseSemver(a);
+  const right = parseSemver(b);
+  if (!left || !right) return undefined;
+  if (left.major !== right.major) return left.major < right.major ? -1 : 1;
+  if (left.minor !== right.minor) return left.minor < right.minor ? -1 : 1;
+  if (left.patch !== right.patch) return left.patch < right.patch ? -1 : 1;
+  return comparePrerelease(left.prerelease, right.prerelease);
+}
+
+export function isNewerVersion(latest: string, current: string): boolean {
+  return compareSemver(latest, current) === 1;
+}
+
+export function formatSnapshotList(tasks: BgTaskSnapshot[], now = Date.now()): string {
+  if (tasks.length === 0) return "No background tasks in this Pi extension runtime.";
+  return tasks
+    .map((task) => {
+      const statusIcon =
+        task.status === "running" ? "\u25b6" : task.status === "completed" ? "\u2713" : task.status === "killed" ? "\u25a0" : "\u2717";
+      const age = formatDuration((task.endTime ?? now) - task.startTime);
+      const code = task.exitCode !== undefined ? ` exit=${String(task.exitCode)}` : "";
+      const pid = task.pid !== undefined ? ` pid=${String(task.pid)}` : "";
+      const error = task.error ? ` error=${truncateChars(task.error, 80)}` : "";
+      const telemetry = [
+        formatContextUsageSummary(task.contextUsage),
+        formatModelSummary(task.model),
+        formatTokenUsageSummary(task.tokenUsage),
+        formatToolUsageSummary(task.toolUsage),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const telemetryText = telemetry ? ` ${telemetry}` : "";
+      return `${statusIcon} ${task.id} ${task.status} ${age}${code}${pid}${telemetryText} \u2014 ${truncateChars(taskDisplayName(task), COMMAND_PREVIEW_CHARS)}${error}\n    output: ${task.outputPath}`;
+    })
+    .join("\n");
+}
+
+export const UPDATE_COMMAND = "/unipi:bg-update";
+
+/** Footer segment shown only when a newer published version exists; undefined otherwise. */
+export function formatUpdateSegment(latest: string | undefined, current: string): string | undefined {
+  if (!latest) return undefined;
+  if (!isNewerVersion(latest, current)) return undefined;
+  return `\u2b06 v${latest} ${UPDATE_COMMAND}`;
 }
