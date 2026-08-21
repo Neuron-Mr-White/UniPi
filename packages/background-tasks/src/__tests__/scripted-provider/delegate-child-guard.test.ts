@@ -27,7 +27,7 @@ import { sessionWith, userMessage } from '../helpers/fusion-canonical.js';
  * rather than by calling handlers directly.
  */
 const guardExtensionPath = resolve('extensions/delegate-child.ts');
-const providerPath = resolve('tests/scripted-provider/delegate-guard-provider.ts');
+const providerPath = resolve('src/__tests__/scripted-provider/delegate-guard-provider.ts');
 
 const roots: string[] = [];
 

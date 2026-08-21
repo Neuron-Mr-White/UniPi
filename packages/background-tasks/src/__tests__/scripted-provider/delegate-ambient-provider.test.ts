@@ -21,7 +21,7 @@ import { isolatedTestEnv } from '../helpers/normalize.js';
  * production argv builder.
  */
 const roots: string[] = [];
-const providerExtension = resolve('tests/scripted-provider/delegate-guard-provider.ts');
+const providerExtension = resolve('src/__tests__/scripted-provider/delegate-guard-provider.ts');
 const piExecutable = resolve('node_modules/.bin/pi');
 
 async function runChild(

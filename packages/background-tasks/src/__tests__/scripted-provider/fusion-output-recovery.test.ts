@@ -59,7 +59,7 @@ void describe('Fusion same-session candidate output recovery', { concurrency: fa
       roots.push(root);
       const logPath = join(root, 'provider.jsonl');
       const recoveryPath = join(root, 'candidate.response.oversized.md');
-      const providerPath = resolve('tests/scripted-provider/output-recovery-provider.ts');
+      const providerPath = resolve('src/__tests__/scripted-provider/output-recovery-provider.ts');
       const result = await runPi(
         [
           '--mode',

@@ -17,8 +17,8 @@ import { parseJsonText } from '../../types.js';
 import { installFusionFakePi } from '../helpers/fusion-fake-pi.js';
 import { isolatedTestEnv } from '../helpers/normalize.js';
 
-const backgroundTasksExtensionPath = resolve('extensions/background-tasks.ts');
-const scriptedProviderPath = resolve('tests/scripted-provider/scripted-provider-extension.ts');
+const backgroundTasksExtensionPath = resolve('src/index.ts');
+const scriptedProviderPath = resolve('src/__tests__/scripted-provider/scripted-provider-extension.ts');
 const roots: string[] = [];
 const savedEnv = new Map<string, string | undefined>();
 const envKeys = [

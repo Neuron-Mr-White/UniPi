@@ -15,8 +15,8 @@ import {
 import { isolatedTestEnv } from '../helpers/normalize.js';
 import { RUNTIME_GUARD_MODEL, RUNTIME_GUARD_PROVIDER } from './runtime-guard-provider.js';
 
-const providerPath = resolve('tests/scripted-provider/runtime-guard-provider.ts');
-const governorPath = resolve('tests/scripted-provider/runtime-guard-probe.ts');
+const providerPath = resolve('src/__tests__/scripted-provider/runtime-guard-provider.ts');
+const governorPath = resolve('src/__tests__/scripted-provider/runtime-guard-probe.ts');
 const roots: string[] = [];
 const servers: Server[] = [];
 

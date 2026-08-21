@@ -16,8 +16,8 @@ import {
 import { parseJsonText } from '../../types.js';
 import { isolatedTestEnv } from '../helpers/normalize.js';
 
-const backgroundExtensionPath = resolve('extensions/background-tasks.ts');
-const scriptedProviderPath = resolve('tests/scripted-provider/scripted-provider-extension.ts');
+const backgroundExtensionPath = resolve('src/index.ts');
+const scriptedProviderPath = resolve('src/__tests__/scripted-provider/scripted-provider-extension.ts');
 const roots: string[] = [];
 
 type Scenario =
@@ -423,7 +423,7 @@ void describe('scripted-provider completion follow-up behavior', { concurrency: 
       const h = await harness('display-only-bg');
       try {
         await h.session.prompt(
-          '/bg --name "Display Only Scripted" node -e "setTimeout(() => { console.log(\'display done\'); }, 80);"',
+          '/unipi:bg --name "Display Only Scripted" node -e "setTimeout(() => { console.log(\'display done\'); }, 80);"',
         );
         await waitFor(
           () => customNotifications(h.session).length === 1,

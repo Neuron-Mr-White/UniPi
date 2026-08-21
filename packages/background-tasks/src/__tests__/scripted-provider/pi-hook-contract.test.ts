@@ -33,10 +33,10 @@ import {
  * a real Pi agent loop against a deterministic provider and records the observed
  * guarantees as durable evidence consumed by the delegate launch preflight.
  */
-const providerPath = resolve('tests/scripted-provider/hook-contract-provider.ts');
-const probeAPath = resolve('tests/scripted-provider/hook-probe-a.ts');
-const probeBPath = resolve('tests/scripted-provider/hook-probe-b.ts');
-const evidencePath = resolve('tests/scripted-provider/pi-hook-contract-evidence.json');
+const providerPath = resolve('src/__tests__/scripted-provider/hook-contract-provider.ts');
+const probeAPath = resolve('src/__tests__/scripted-provider/hook-probe-a.ts');
+const probeBPath = resolve('src/__tests__/scripted-provider/hook-probe-b.ts');
+const evidencePath = resolve('src/__tests__/scripted-provider/pi-hook-contract-evidence.json');
 
 const roots: string[] = [];
 
