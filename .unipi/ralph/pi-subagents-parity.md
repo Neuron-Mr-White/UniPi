@@ -49,9 +49,9 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] maxOutput truncation — truncateOutput (lines cap, binary-search byte cap, TRUNCATED marker w/ artifact pointer), resolveMaxOutput (call > config > 200KB/5000 lines). outputMode file-only wired with handler
 - [x] Tests: workflow-script.test.ts (20 cases ported from their scripted-workflow.test.ts spec) — key duplication/reuse, fail-fast vs collect-failure, steer validation + Promise.race pattern, nested-async AST rejection, timeout, state adapter, emit JSON enforcement
 
-## Phase 3 — Async/background (process-based)
-- [ ] Async runner: child pi processes (PI_SUBAGENT_PI_BINARY-style override → our env var), task delivery file|auto (EDR workaround), zero-activity SIGKILL escalation
-- [ ] Run artifacts: status.json lifecycle, result files, run ids, durable receipts under ~/.unipi layout
+## Phase 3 — Async/background (process-based) — IN PROGRESS
+- [x] Async runner core — pi-spawn.ts (UNIPI_SUBAGENT_PI_BINARY override, argv1/package-bin/PATH resolution chain), pi-args.ts (session/model+thinking-suffix/tools/extensions/system-prompt-file/task-delivery auto|file w/ 8000-char EDR threshold, child env UNIPI_SUBAGENT_*), async-runner.ts (spawn `pi --mode json -p`, stdout JSON event stream, deadline + abort w/ process-group SIGTERM→SIGKILL, zero-activity watchdog + one file-delivery retry, status.json lifecycle, output.txt artifact)
+- [x] Run artifacts — async-subagent-runs/<runId>/ under OUR temp root: status.json (queued→running→terminal + retry marker), output.txt (full stdout/stderr), process.json (pid ownership for terminal proof). Durable receipts (workflow-level) land with resume item
 - [ ] Result watcher: result-index scanning, slow-scan logging (resultScanLogging), async-retention cleanup
 - [ ] Resume: retained children (children.list, resumable), resume-by-key in workflows, detached action:resume receipts
 - [ ] Fork context: real branched child sessions (strip parent-only artifacts incl. subagent tool history), Anthropic thinking-block stripping
@@ -142,6 +142,12 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   render/notify paths untouched.
 - No approach change. Next: handler extraction + workflowScript entry, then Phase 2
   end-to-end tests, then Phase 3 (async process runner).
+
+- Phase 2 wiring done (index.ts delegates to handler; widget/notify preserved; parity schema
+  registered). PRE-EXISTING utility test failures flagged for ponytail loop (58, commit 654d5e7).
+- Phase 3 started: pi-spawn + pi-args + async-runner core (spawn/stream/deadline/abort/EDR retry/
+  status artifacts). pi-args tests (12) ported. 180/180. Next: wire async path into the handler
+  (spawnBackground adapter swap), result watcher, retained children/resume, fork context.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.
