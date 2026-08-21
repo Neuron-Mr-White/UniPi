@@ -15,6 +15,7 @@ import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
 import { recallBlocksFromContext } from "../session/recall-blocks.js";
 import { filterNoise } from "../compaction/filter-noise.js";
+import { parseRecallScope } from "../compaction/recall-scope.js";
 import type { SessionDB } from "../session/db.js";
 import type { NormalizedBlock, RuntimeCounters } from "../types.js";
 
@@ -57,10 +58,23 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
 
   // ── /unipi:session-recall (new) ─────────────────────
+  // pi-vcc parity: results are sent as a visible custom message AND fed to the
+  // agent as context (triggerTurn), so recall results drive the next turn.
   const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext, commandName = "/unipi:session-recall") => {
-    const query = args.trim();
+    const raw = args.trim();
+    const suffix = commandName === "/unipi:compact-recall" ? " (deprecated; use /unipi:session-recall <query>)" : "";
+    if (!raw) {
+      ctx.ui.notify(`Usage: ${commandName} <query>${suffix}`, "warning");
+      return;
+    }
+
+    // Parse scope:all and page:N inline (pi-vcc parity)
+    const parsed = parseRecallScope(raw);
+    const pageMatch = parsed.text.match(/\bpage:(\d+)\b/i);
+    const page = pageMatch ? Math.max(1, parseInt(pageMatch[1], 10)) : 1;
+    const query = parsed.text.replace(/\bpage:\d+\b/i, "").trim();
+
     if (!query) {
-      const suffix = commandName === "/unipi:compact-recall" ? " (deprecated; use /unipi:session-recall <query>)" : "";
       ctx.ui.notify(`Usage: ${commandName} <query>${suffix}`, "warning");
       return;
     }
@@ -74,18 +88,14 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
       ctx.ui.notify("No session history available for search.", "warning");
       return;
     }
-    const result = vccRecall(blocks, { query, limit: 10 });
-    if (result.hits.length === 0) {
-      ctx.ui.notify(`No results for "${query}".`, "info");
-      return;
-    }
-    const lines = result.hits.map(
-      (h, i) => `[${i + 1}] score=${h.score.toFixed(2)} kind=${h.kind}\n${h.text.slice(0, 200)}`,
+    const result = vccRecall(blocks, { query, scope: parsed.scope, page });
+    pi.sendMessage(
+      { customType: "compactor-recall", content: result.text, display: true },
+      { triggerTurn: true },
     );
-    ctx.ui.notify(`Found ${result.total} results:\n${lines.join("\n\n")}`, "info");
   };
   pi.registerCommand("unipi:session-recall", {
-    description: "Search session history (BM25 or regex)",
+    description: "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",
     handler: sessionRecallHandler,
   });
   // Deprecated alias
