@@ -116,9 +116,17 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
   EventBus extension-api ported (extension-api.ts, 548 lines) — channels renamed to
   unipi-background-tasks:*. Completion delivery flows through registry notifyCompletion ->
   pi.sendMessage(followUp + triggerTurn). attested-pi-run + pi-launch already landed in
-  Phase 0/1 as type deps. NOTE: settings overlay deferred to Phase 7 integration pass
-  (config surface exists; our shared overlay idiom lands with the other packages' panels).
-  Tests: extension-api 3 + task-manager 8 + prior 77 = 88/88.
+  Phase 0/1 as type deps. /unipi:bg-update added (version report via @pi-unipi/core
+  getInstalledPackageVersion; update instructions point at our umbrella package + updater).
+  Settings overlay ADDED (src/settings-overlay.ts, mcp overlay precedent): master enabled
+  toggle, delivery defaults, delegate mode/auto-deliver; mounted via /unipi:bg-settings.
+  Autocomplete constants updated: background-tasks package (bg, bg-clear, bg-settings,
+  bg-update, tasks, jobs, kill, logs, claude-cache) + missing subagents descriptions;
+  autocomplete audit test 38/38. anthropic-attribution claude-cache command renamed to
+  unipi:claude-cache (audit requires unipi: prefix). Fusion core files pulled forward as
+  deps (artifacts/workflows/output-contract + full set); turndown.d.ts shim added.
+  Subprocess-based tests (fusion-budget byte-identity, fusion-context-prompts subprocess,
+  golden fixtures) re-pathed for OUR layout. Tests: 367/367, tsc clean.
 - Phase 1 COMPLETE: full registry port (2452 ref lines) — startTask/startManagedTask/
   claimFusionUsage/startDelegateTask/startAttestedPiTask, resolveTask prefixes,
   stopTask/stopAllRunning (SIGTERM->SIGKILL escalation, Windows taskkill soft/force),

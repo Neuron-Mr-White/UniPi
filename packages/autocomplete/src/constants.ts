@@ -34,6 +34,8 @@ export const PACKAGE_ORDER: string[] = [
   "updater",
   "input-shortcuts",
   "image",
+  "subagents",
+  "background-tasks",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -56,6 +58,8 @@ export const PACKAGE_COLORS: Record<string, string> = {
   updater:   `${ESC}[93m`, // Bright Yellow
   "input-shortcuts": `${ESC}[95m`, // Bright Magenta
   image:     `${ESC}[35m`, // Magenta
+  subagents: `${ESC}[34m`, // Blue
+  "background-tasks": `${ESC}[91m`, // Bright Red
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -133,6 +137,17 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:subagents-fleet":  "subagents",
   "unipi:subagents-doctor": "subagents",
   "unipi:subagents-guide":  "subagents",
+
+  // background-tasks (8 commands)
+  "unipi:bg":          "background-tasks",
+  "unipi:bg-clear":    "background-tasks",
+  "unipi:bg-settings": "background-tasks",
+  "unipi:bg-update":   "background-tasks",
+  "unipi:tasks":       "background-tasks",
+  "unipi:jobs":        "background-tasks",
+  "unipi:kill":        "background-tasks",
+  "unipi:logs":        "background-tasks",
+  "unipi:claude-cache": "background-tasks",
 
   // info (2 commands)
   "unipi:info":          "info",
@@ -288,6 +303,19 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:updater-settings":  "Configure updater — check interval and auto-update",
 
   "unipi:stash-settings":   "Open input shortcuts settings — customize keybindings",
+
+  "unipi:bg":          "Start a shell command as a tracked background task",
+  "unipi:bg-clear":    "Clear finished background task footer notices",
+  "unipi:bg-settings": "Open background-tasks settings (master toggle, defaults)",
+  "unipi:bg-update":  "Show installed background-tasks version and update instructions",
+  "unipi:tasks":       "Open the background task manager UI",
+  "unipi:jobs":        "List running and recent background tasks",
+  "unipi:kill":        "Stop a running background task: /unipi:kill <id>",
+  "unipi:logs":        "Show bounded output from a background task",
+  "unipi:claude-cache": "Show or set Claude cache retention for this session",
+  "unipi:subagents-fleet":  "Open the subagents fleet view",
+  "unipi:subagents-doctor": "Diagnose subagents configuration",
+  "unipi:subagents-guide":  "Show the subagents usage guide",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────
@@ -310,4 +338,6 @@ export const PACKAGE_LABELS: Record<string, string> = {
   updater:   "updater",
   "input-shortcuts": "input-shortcuts",
   image:     "image",
+  subagents: "subagents",
+  "background-tasks": "background-tasks",
 };
