@@ -30,8 +30,8 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Port parity-types: statuses, DIRS (OUR paths), event constants, config schema (all their keys + `enabled`) — src/types.ts
 - [x] Config loader+validator: global+workspace layering, validateParityConfig w/ visible errors — src/config.ts
 - [x] Port durable-fs.ts (400 lines, near-verbatim; rename error class) — src/durable-fs.ts
-- [ ] Port common.ts helpers actually needed (json parse guards, id gen, name compaction) — src/common.ts; drop unused
-- [ ] Tests: config.test.ts, durable-fs.test.ts (adapt theirs)
+- [x] Port common.ts helpers actually needed (json parse guards, id gen, name compaction) — src/common.ts; drop unused
+- [x] Tests: config.test.ts, durable-fs.test.ts (adapt theirs)
 
 ## Phase 1 — Shell task runtime
 - [x] Port windows-taskkill.ts verbatim (env-prefix rename) — src/windows-taskkill.ts
