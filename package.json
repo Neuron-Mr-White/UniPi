@@ -83,7 +83,7 @@
   },
   "dependencies": {
     "@pi-unipi/ask-user": "2.6.1",
-    "@pi-unipi/background-tasks": "2.6.1",
+    "@pi-unipi/background-tasks": "2.6.2",
     "@pi-unipi/btw": "2.6.1",
     "@pi-unipi/command-enchantment": "2.6.1",
     "@pi-unipi/compactor": "2.6.1",

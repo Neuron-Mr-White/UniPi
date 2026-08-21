@@ -87,13 +87,21 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: anthropic-attribution.test.ts (adapt)
 
 ## Phase 7 — Integration + ship
-- [ ] Mount in packages/unipi/index.ts (after subagents); bundled build passes
-- [ ] Autocomplete constants: all /unipi:* commands
-- [ ] Root package.json deps if needed; pack globs (agents/prompts/skills if any)
-- [ ] README rewrite (our surface, our paths)
-- [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
+- [x] Mount in packages/unipi/index.ts (after subagents); bundled build passes
+- [x] Autocomplete constants: all /unipi:* commands
+- [x] Root package.json deps if needed; pack globs (agents/prompts/skills if any)
+- [x] README rewrite (our surface, our paths)
+- [x] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 7 COMPLETE: umbrella mount (packages/unipi/index.ts after subagents), root
+  deps, autocomplete constants for all 13 commands (incl. bg-tasks/fusion/fusion-models
+  + descriptions; fusion-extension uses literal command name for the audit scanner),
+  README rewrite (surfaces, our storage layout, env prefix, differences from reference),
+  version 2.8.0 published (background-tasks standalone 2.6.2 — first publish hit a
+  registry packument propagation delay; resolved). PC reinstalled clean on 2.8.0:
+  extensions/ entries present, bundled.js fully inlined (0 workspace imports).
+  Pre-existing utility test failures (ponytail-cuts orphans) unrelated — flagged.
 - Phase 6 COMPLETE: anthropic attribution wired. Source (1983 lines, provider-gated
   Claude Code OAuth subscription transport + exact-match prompt sanitization + cache
   retention) landed in Phase 3 as a dependency; this phase wired the extension entry

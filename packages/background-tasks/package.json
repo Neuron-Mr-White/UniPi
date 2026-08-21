@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/background-tasks",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Background tasks for UniPi \u2014 durable shell jobs, delegated agents, attested Pi runs, and fixed-purpose Fusion workflows",
   "type": "module",
   "main": "src/index.ts",

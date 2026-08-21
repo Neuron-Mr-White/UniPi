@@ -1,7 +1,7 @@
 {
   "name": "pi-bg-tasks-parity",
   "taskFile": ".unipi/ralph/pi-bg-tasks-parity.md",
-  "iteration": 6,
+  "iteration": 10,
   "maxIterations": 80,
   "itemsPerIteration": 0,
   "reflectEvery": 0,
