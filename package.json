@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/unipi",
-  "version": "2.6.1",
+  "version": "2.6.3",
   "description": "All-in-one extension suite for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -94,8 +94,7 @@
     "@pi-unipi/workflow": "2.6.1",
     "@pi-unipi/footer": "2.6.1",
     "@pi-unipi/updater": "2.6.1",
-    "@pi-unipi/input-shortcuts": "2.6.1",
-    "@pi-unipi/cocoindex": "2.6.1"
+    "@pi-unipi/input-shortcuts": "2.6.1"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.80.0",
