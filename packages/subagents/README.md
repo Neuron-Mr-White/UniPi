@@ -1,110 +1,121 @@
 # @pi-unipi/subagents
 
-Parallel execution with file locking. Spawn background or foreground agents to work on tasks concurrently — research files, fix lint errors, run tests — while the main agent keeps going.
+Delegate work to focused child agents — in parallel, in the background, or as scripted multi-agent workflows. Feature parity with [pi-subagents](https://github.com/nicobailon/pi-subagents), built on unipi conventions: foreground children run in-process (live widget streaming), background/fork/resume/worktree runs use child `pi` processes.
 
-Two built-in agent types: `explore` for read-only research, `work` for file modifications with transparent locking. Define your own types as markdown files.
+## Agents
 
-## Commands
+Built-in agents (lowest discovery priority — user/project definitions override):
 
-Subagents has no user commands. It's an agent tool package — the agent calls it directly.
+| Agent | Use it for |
+|-------|------------|
+| `explore` | Read-only file research and parallel reads |
+| `work` | File modifications with transparent locking |
+| `scout` | Fast codebase recon: entry points, data flow, risks |
+| `researcher` | Web research with sources (`web_search`, `multi_web_content_read`) |
+| `worker` | Implementation: narrow edits, validation, escalation |
+| `reviewer` | Code review of diffs, plans, solutions |
+| `oracle` | Second opinion; challenges assumptions without editing |
+| `delegate` | Lightweight general delegate close to the parent session |
 
-## Special Triggers
+Custom agents are markdown files with YAML frontmatter:
 
-Workflow skills detect subagents and inject parallel strategies. When `@pi-unipi/subagents` is installed, these skills get enhanced:
+```markdown
+---
+name: security-reviewer
+description: Security-focused review
+tools: read, grep, find
+thinking: high
+memory: { scope: "project", path: "security-reviewer" }
+---
 
-| Skill | What Changes |
-|-------|--------------|
-| `brainstorm` | Parallel research for different approaches |
-| `document` | Parallel documentation of different modules |
-| `gather-context` | Parallel codebase exploration |
-| `review-work` | Parallel task verification |
-| `scan-issues` | Parallel scanning by category |
-| `work` | Parallel task execution (with file locking) |
+Review changes for unsafe input handling...
+```
 
-Subagents registers with the info-screen dashboard, showing active agents and their status. The footer displays agent activity in its extension status segment.
+Discovery: project `.unipi/config/agents/` > global `~/.unipi/config/agents/` > builtins. Aliases resolve (`developer` → `worker`, `advisor` → `oracle`). Per-agent overrides live in `subagents.json`.
 
-## Agent Tools
+## Tools
 
 | Tool | Description |
 |------|-------------|
-| `spawn_helper` | Launch a sub-agent for parallel work |
-| `get_helper_result` | Check status and retrieve results from a background agent |
+| `spawn_helper` | Launch agents: single child, `workflowScript` orchestration, or management `action`s |
+| `get_helper_result` | Wait on / inspect background runs; `nonBlocking` wake subscriptions |
 
-### spawn_helper Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `type` | Agent type (`explore`, `work`, or custom) |
-| `prompt` | Task for the agent |
-| `description` | Short description (3-5 words) |
-| `run_in_background` | Return immediately, notify on completion |
-| `max_turns` | Max agentic turns before stopping |
-| `model` | Model override (e.g. `"haiku"`, `"sonnet"`) |
-| `thinking` | Thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
-
-### Foreground (blocks until done)
+### Single child
 
 ```
-spawn_helper(
-  type: "explore",
-  prompt: "Find all auth-related files",
-  description: "Research auth files"
-)
+spawn_helper({ agent: "scout", task: "Analyze the auth flow" })
+spawn_helper({ agent: "worker", task: "Implement it", run_in_background: true })
+spawn_helper({ agent: "reviewer", task: "Review", gate: "npm test" })
 ```
 
-### Background (returns immediately)
+Legacy aliases (`type`, `prompt`, `max_turns`) still work.
 
-```
-spawn_helper(
-  type: "work",
-  prompt: "Fix all lint errors in src/",
-  description: "Fix lint errors",
-  run_in_background: true
-)
-```
+### Scripted workflows
 
-### Check Background Result
-
-```
-get_helper_result(agent_id: "helper_abc123")
+```js
+spawn_helper({ workflowScript: `
+  const scan = await runs.run("scan", { agent: "scout", task: "Analyze auth" });
+  const reviews = await runs.all([
+    { key: "correctness", agent: "reviewer", task: "Review correctness: " + scan.output },
+    { key: "tests", agent: "reviewer", task: "Review tests: " + scan.output }
+  ]);
+  return reviews.map(r => r.output);
+`, async: false })
 ```
 
-Foreground and retrieved background results have a hard 64 KiB model-visible ceiling. For raw results up to 16 MiB, larger output includes a bounded head/tail preview and a path to the complete private mode-0600 artifact under a mode-0700 `~/.unipi/tool-results/` directory. Use `read` with offset/limit to inspect only the needed region. Repeated retrieval reuses the same artifact. Results above the safety cap or artifact-write failures still return a preview with an explicit non-retention warning.
+`runs.run` / `runs.all` / `runs.steer` inside a sandboxed VM. Budgets (`turnBudget`, `toolBudget`, `usageBudget`), worktree isolation, fork context, and acceptance gates available per child.
 
-## Custom Agent Types
+### Management actions
 
-Create markdown files defining agent behavior:
-
-```bash
-# Global agents
-~/.unipi/config/agents/reviewer.md
-
-# Project agents
-<workspace>/.unipi/config/agents/deployer.md
+```
+spawn_helper({ action: "list" | "get" | "status" | "children.list" })
+spawn_helper({ action: "resume", id: "<run>", message: "Reconsider X" })
+spawn_helper({ action: "doctor" | "guide", topic: "workflows" })
+spawn_helper({ action: "mission.create", mission: { title, objective } })
+spawn_helper({ action: "schedule.create", name, agent, task, every: "30m" })
 ```
 
-## Configurables
+## Observability
+
+- **FleetView** panel: active work from both transports. `↓` to inspect, `j/k` navigate, `enter` opens transcripts, `esc` closes.
+- **`/unipi:subagents-fleet`** · **`/unipi:subagents-doctor`** · **`/unipi:subagents-guide [topic]`**
+- Background completions arrive as `<task-notification>` follow-ups automatically.
+- Supervisor channel: blocked children can `contact_supervisor` for decisions.
+
+## Configuration
+
+`~/.unipi/config/subagents.json` (global) + `<workspace>/.unipi/config/subagents.json`:
 
 ```json
-// ~/.unipi/config/subagents.json
 {
-  "enabled": true,
-  "maxConcurrent": 3,
-  "types": {
-    "explore": { "enabled": true },
-    "work": { "enabled": true }
+  "subagents": {
+    "defaultModel": "ds/deepseek-v4-flash",
+    "asyncByDefault": true,
+    "maxSubagentSpawnsPerRun": 64,
+    "fleetViewPlacement": "belowEditor"
   }
 }
 ```
 
-| Setting | Default | What It Does |
-|---------|---------|--------------|
-| `enabled` | true | Enable/disable subagents |
-| `maxConcurrent` | 3 | Max agents running at once |
-| `types.{name}.enabled` | true | Disable built-in or custom agent types. Disabled types are omitted from tool guidance and rejected before queueing. |
+Full key reference: `spawn_helper({ action: "guide", topic: "configuration" })`. Env overrides use the `UNIPI_SUBAGENT_*` prefix.
 
-For custom agents, JSON configuration and Markdown frontmatter are both enforced: the type can run only when neither source sets `enabled: false`. Configuration is loaded when the extension starts, so reload the session after changing enablement.
+## Storage
 
-## License
+| Path | Contents |
+|------|----------|
+| `~/.unipi/missions/<project-hash>/` | Durable mission records |
+| `~/.unipi/schedules/<project-hash>/` | Scheduled runs |
+| `~/.unipi/agent-memory/` | Per-agent persistent memory |
+| temp root (`unipi-subagents-*`) | Run artifacts, results, channels (auto-cleaned) |
 
-MIT
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/unipi:subagents-fleet` | Show active fleet |
+| `/unipi:subagents-doctor` | Config + capacity diagnosis |
+| `/unipi:subagents-guide [topic]` | Bundled guide |
+
+## Prompt shortcuts
+
+`/council`, `/parallel-review`, `/review-loop`, `/parallel-research`, `/gather-context-and-clarify`, `/parallel-cleanup` — packaged prompt templates for common orchestration patterns.

@@ -393,6 +393,32 @@ export default function (pi: ExtensionAPI) {
   }, 60 * 60 * 1000);
   retentionTimer.unref?.();
 
+  // Scheduled runs: poll for due schedules every minute when enabled.
+  let schedulePoller: { stopPolling(): void } | undefined;
+  if (config.scheduledRuns?.enabled !== false && deps_runAsyncAvailable()) {
+    import("./scheduled-runs.js").then(({ ScheduledRunManager }) => {
+      const manager = new ScheduledRunManager(process.cwd(), {
+        storeRoot: config.scheduledRuns?.storeRoot,
+        maxPending: config.scheduledRuns?.maxPending,
+        launch: async (record) => {
+          const result = await runAsyncDep({
+            agentName: record.agent,
+            task: record.task,
+            description: `schedule: ${record.name}`,
+            context: "fresh",
+            timeoutMs: record.timeoutMs,
+          });
+          return result.runId;
+        },
+      });
+      manager.startPolling();
+      schedulePoller = manager;
+    }).catch(() => {});
+  }
+  function deps_runAsyncAvailable(): boolean {
+    return true; // runAsyncDep is defined below in the closure
+  }
+
   // ---- Parity handler wiring (spawn_helper surface) ----
   // Session-wide cumulative spawn accounting (maxSubagentSpawnsPerSession)
   let sessionSpawnsUsed = 0;
@@ -794,6 +820,7 @@ export default function (pi: ExtensionAPI) {
   // invalidate.
   pi.on("session_shutdown", async () => {
     watcher.stop();
+    schedulePoller?.stopPolling();
     sessionEnded = true;
     manager.abortAll();
     manager.dispose();

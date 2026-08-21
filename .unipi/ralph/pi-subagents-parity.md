@@ -82,11 +82,11 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] authorityPolicy — authority-policy.ts: resolveAuthorityDecision (defaults: confirm for destructive, auto for scheduleCreate), confirmed-kind satisfaction, strict config parsing. Already consumed by worktree cleanup (Phase 3)
 
 ## Phase 7 — Slash, skills, prompts, docs
-- [ ] Slash commands (ours: /unipi:* namespace): subagents-fleet, subagents-doctor, subagents-guide, council
-- [ ] /council + council-mode skill (port prompts/, skills/)
-- [ ] Prompt shortcuts: parallel-review, review-loop, parallel-research, gather-context-and-clarify, parallel-cleanup (autofix variant)
-- [ ] Update our workflow module's coexist-triggers + skills to new tool surface
-- [ ] Update core constants, autocomplete registry, footer segments for new commands
+- [x] Slash commands — /unipi:subagents-fleet (fleet across both transports), /unipi:subagents-doctor, /unipi:subagents-guide (topic arg); delivered via sendMessage followUp; autocomplete registered
+- [x] /council + council-mode skill ported and adapted to spawn_helper)
+- [x] Prompt shortcuts: all 5 + council ported under packages/subagents/prompts/
+- [x] workflow coexist-triggers doc updated with parity surface note
+- [x] autocomplete registry updated (3 subagents commands); core constants already reference the module; footer needs no new segment (FleetView covers live status)
 - [ ] README + docs/ rewrite for packages/subagents
 - [ ] Bundle rebuild + publish + PC reinstall at the very end
 
