@@ -15,9 +15,9 @@ import workflow from "@pi-unipi/workflow";
 import ralph from "@pi-unipi/ralph";
 import memory from "@pi-unipi/memory";
 import infoScreen from "@pi-unipi/info-screen";
-import subagents from "../subagents/src/index.js";
+import subagents from "@pi-unipi/subagents";
 import btw from "@pi-unipi/btw/extensions/btw.js";
-import webApi from "../web-api/src/index.js";
+import webApi from "@pi-unipi/web-api";
 import utility from "@pi-unipi/utility";
 import askUser from "@pi-unipi/ask-user";
 import mcp from "@pi-unipi/mcp";
@@ -29,7 +29,7 @@ import compactor from "@pi-unipi/compactor";
 import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
-import image from "../image/src/index.js";
+import image from "@pi-unipi/image";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);

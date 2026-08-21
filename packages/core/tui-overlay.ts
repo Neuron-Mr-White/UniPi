@@ -10,7 +10,7 @@
  */
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { safeRepeat } from "./tui-width.ts";
+import { safeRepeat } from "./tui-width.js";
 
 /** ANSI codes used when no Theme is available (terminal default). */
 const FALLBACK_COLORS: Record<string, string> = {

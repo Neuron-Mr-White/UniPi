@@ -94,7 +94,8 @@
     "@pi-unipi/workflow": "2.6.1",
     "@pi-unipi/footer": "2.6.1",
     "@pi-unipi/updater": "2.6.1",
-    "@pi-unipi/input-shortcuts": "2.6.1"
+    "@pi-unipi/input-shortcuts": "2.6.1",
+    "@pi-unipi/image": "2.6.1"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.80.0",

@@ -1,20 +1,11 @@
 {
   "name": "@pi-unipi/subagents",
   "version": "2.6.1",
-  "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
+  "description": "Subagents for UniPi \u2014 parallel execution, file locking, workflow integration",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/verify-build.mjs",
-    "prepack": "npm run build",
-    "dev": "tsc --watch",
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
@@ -30,12 +21,13 @@
     "typebox": "^1.1.38"
   },
   "files": [
-    "dist/**",
+    "src/**/*.ts",
+    "src/global.d.ts",
     "README.md"
   ],
   "pi": {
     "extensions": [
-      "./dist/index.js"
+      "./src/index.ts"
     ],
     "skills": [],
     "prompts": [],
