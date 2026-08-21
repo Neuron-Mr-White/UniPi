@@ -39,6 +39,17 @@ import {
 import { listRetainedChildren, formatRetainedChildren, resolveResumeTarget } from "./retained-children.js";
 import { ASYNC_DIR, TEMP_ROOT_DIR, RESULTS_DIR } from "./parity-types.js";
 import { buildGuideText } from "./guide.js";
+import { ScheduledRunManager } from "./scheduled-runs.js";
+import {
+  resolveMissionStoreLocation,
+  createMission,
+  readMission,
+  listMissions,
+  updateMission,
+  MissionNotFoundError,
+  type MissionStoreConfig,
+  type MissionStatus,
+} from "./mission-store.js";
 
 export interface HandlerDeps {
   pi: ExtensionAPI;
@@ -79,6 +90,10 @@ export interface HandlerDeps {
   env?: NodeJS.ProcessEnv;
   /** Retained-children dir override (defaults to our async temp root). */
   retainedDir?: string;
+  /** Mission store config (from OUR subagents.json). */
+  missionConfig?: MissionStoreConfig;
+  /** Project root for mission records. */
+  projectRoot?: string;
   /** Async process runner (Phase 3). When present, background launches and
    *  fork contexts run as child pi processes; when absent they error with
    *  guidance (test environments). */
@@ -357,6 +372,231 @@ async function handleAction(
     case "guide": {
       const topic = (args.topic as string | undefined) ?? "overview";
       return textResult(buildGuideText(topic));
+    }
+
+    case "mission.create": {
+      const location = resolveMissionStoreLocation({
+        projectRoot: deps.projectRoot ?? process.cwd(),
+        config: deps.missionConfig,
+      });
+      const missionInput = (args.mission ?? {}) as Record<string, unknown>;
+      const title = (missionInput.title ?? args.name) as string | undefined;
+      if (!title || typeof title !== "string" || !title.trim()) {
+        return textResult("action 'mission.create' requires mission.title (or name).", { status: "error" });
+      }
+      const objective = (missionInput.objective as string | undefined) ?? `${title}`;
+      try {
+        const record = createMission(location, {
+          title: title.trim(),
+          objective: objective.trim(),
+          ...(missionInput.goal === true ? { goal: true } : {}),
+          ...(missionInput.budget ? { budget: missionInput.budget as { tokens: number } } : {}),
+          ...(typeof missionInput.labels === "object" ? { labels: missionInput.labels as string[] } : {}),
+        });
+        return textResult(
+          `Mission created: ${record.id}\nTitle: ${record.title}\nStatus: ${record.status}\nAttach runs with missionId: ${record.id}`,
+          { status: "completed", missionId: record.id },
+        );
+      } catch (error) {
+        return textResult(`mission.create failed: ${error instanceof Error ? error.message : String(error)}`, { status: "error" });
+      }
+    }
+
+    case "mission.list": {
+      const location = resolveMissionStoreLocation({
+        projectRoot: deps.projectRoot ?? process.cwd(),
+        config: deps.missionConfig,
+      });
+      const { records, warnings } = listMissions(location);
+      if (records.length === 0) return textResult("No missions for this project.");
+      const lines = records.map((r) => `- ${r.id} [${r.status}] ${r.title}${r.summary ? ` — ${r.summary.slice(0, 80)}` : ""}`);
+      return textResult(
+        [`Missions (${records.length}):`, ...lines, ...(warnings.length ? ["", ...warnings] : [])].join("\n"),
+      );
+    }
+
+    case "mission.show":
+    case "mission.update":
+    case "mission.resolve-decision":
+    case "mission.attach-run":
+    case "mission.close": {
+      const missionId = args.missionId as string | undefined;
+      if (!missionId) return textResult(`action '${action}' requires missionId.`, { status: "error" });
+      const location = resolveMissionStoreLocation({
+        projectRoot: deps.projectRoot ?? process.cwd(),
+        config: deps.missionConfig,
+      });
+      try {
+        if (action === "mission.show") {
+          const record = readMission(location, missionId);
+          return textResult(
+            [
+              `Mission ${record.id} [${record.status}]`,
+              `Title: ${record.title}`,
+              `Objective: ${record.objective}`,
+              ...(record.goal ? [`Goal: ${record.goal.status}${record.budget ? ` (${record.usage?.tokens ?? 0}/${record.budget.tokens} tokens)` : ""}`] : []),
+              `Runs: ${record.runs.length} | Decisions: ${record.decisions.filter((d) => d.status === "open").length} open / ${record.decisions.length} total`,
+              ...(record.summary ? [`Summary: ${record.summary}`] : []),
+              ...(record.runs.length ? ["", "Runs:", ...record.runs.map((r) => `- ${r.runId}${r.agent ? ` (${r.agent})` : ""} ${r.status ?? ""}`)] : []),
+            ].join("\n"),
+          );
+        }
+        if (action === "mission.close") {
+          const summary = args.summary as string | undefined;
+          const status: MissionStatus = (args.missionStatus as MissionStatus | undefined) ?? (summary ? "completed" : "cancelled");
+          const record = updateMission(location, missionId, { status, ...(summary ? { summary } : {}) });
+          return textResult(`Mission ${record.id} closed as ${record.status}.`, { status: "completed", missionId: record.id });
+        }
+        if (action === "mission.attach-run") {
+          const runId = (args.runId ?? args.id) as string | undefined;
+          if (!runId) return textResult("mission.attach-run requires runId (or id).", { status: "error" });
+          const record = updateMission(location, missionId, {
+            addRun: { runId, ...(typeof args.missionStatus === "string" ? { status: args.missionStatus } : {}) },
+          });
+          return textResult(`Run ${runId} attached to mission ${record.id}.`, { status: "completed", missionId: record.id });
+        }
+        if (action === "mission.resolve-decision") {
+          const decisionId = args.id as string | undefined;
+          const resolution = args.message as string | undefined;
+          if (!decisionId || !resolution) {
+            return textResult("mission.resolve-decision requires id (decision id) and message (resolution).", { status: "error" });
+          }
+          const record = updateMission(location, missionId, { resolveDecision: { id: decisionId, resolution } });
+          return textResult(`Decision ${decisionId} resolved on mission ${record.id}.`, { status: "completed" });
+        }
+        // mission.update: generic field updates
+        const record = updateMission(location, missionId, {
+          ...(typeof args.summary === "string" ? { summary: args.summary } : {}),
+          ...(typeof args.missionStatus === "string" ? { status: args.missionStatus as MissionStatus } : {}),
+        });
+        return textResult(`Mission ${record.id} updated.`, { status: "completed", missionId: record.id });
+      } catch (error) {
+        if (error instanceof MissionNotFoundError) return textResult(error.message, { status: "error" });
+        return textResult(`${action} failed: ${error instanceof Error ? error.message : String(error)}`, { status: "error" });
+      }
+    }
+
+    case "schedule.create":
+    case "schedule.list":
+    case "schedule.show":
+    case "schedule.history":
+    case "schedule.pause":
+    case "schedule.resume":
+    case "schedule.run":
+    case "schedule.run-due":
+    case "schedule.delete": {
+      if (!deps.runAsync) {
+        return textResult("Schedule actions require the background process runner, which is unavailable in this host.", { status: "error" });
+      }
+      const manager = new ScheduledRunManager(deps.projectRoot ?? process.cwd(), {
+        storeRoot: deps.config.scheduledRuns?.storeRoot,
+        maxPending: deps.config.scheduledRuns?.maxPending,
+        launch: async (record) => {
+          const result = await deps.runAsync!({
+            agentName: record.agent,
+            task: record.task,
+            description: `schedule: ${record.name}`,
+            context: "fresh",
+            timeoutMs: record.timeoutMs,
+          });
+          return result.runId;
+        },
+      });
+
+      try {
+        switch (action) {
+          case "schedule.create": {
+            const record = manager.create({
+              name: (args.name as string | undefined) ?? `schedule-${Date.now().toString(36)}`,
+              agent: (args.agent ?? args.type) as string,
+              task: (args.task ?? args.prompt) as string,
+              at: args.at as string | undefined,
+              every: args.every as string | undefined,
+              catchUp: args.catchUp as "none" | "latest" | undefined,
+              timeoutMs: args.timeoutMs as number | undefined,
+            });
+            const next = record.trigger.kind === "once"
+              ? new Date(record.trigger.atMs).toISOString()
+              : record.trigger.nextRunAt;
+            return textResult(
+              `Schedule created: ${record.id}\nName: ${record.name}\nAgent: ${record.agent}\nTrigger: ${record.trigger.kind === "once" ? `once at ${next}` : `every ${record.trigger.every}`}\nNext run: ${next}`,
+              { status: "completed", scheduleId: record.id },
+            );
+          }
+          case "schedule.list": {
+            const all = manager.list();
+            if (all.length === 0) return textResult("No schedules for this project.");
+            return textResult(
+              [
+                `Schedules (${all.length}):`,
+                ...all.map((r) => {
+                  const next = r.trigger.kind === "once" ? r.trigger.atMs : r.trigger.nextRunAt;
+                  return `- ${r.id} "${r.name}" [${r.paused ? "paused" : "active"}] ${r.trigger.kind} → ${r.agent}: ${r.trigger.kind === "once" ? new Date(next).toISOString() : `every ${r.trigger.every}`}`;
+                }),
+              ].join("\n"),
+            );
+          }
+          case "schedule.show": {
+            const id = args.id as string | undefined;
+            if (!id) return textResult("schedule.show requires id.", { status: "error" });
+            const record = manager.show(id);
+            if (!record) return textResult(`No schedule matches "${id}".`, { status: "error" });
+            const history = manager.readHistory(id);
+            return textResult(
+              [
+                `Schedule ${record.id} "${record.name}" [${record.paused ? "paused" : "active"}]`,
+                `Agent: ${record.agent}`,
+                `Task: ${record.task.slice(0, 200)}`,
+                `Trigger: ${record.trigger.kind === "once" ? `once at ${record.trigger.at}` : `every ${record.trigger.every}`}`,
+                `Overlap: ${record.overlap} | catchUp: ${record.catchUp}`,
+                `Runs: ${history.length}`,
+                ...history.slice(-5).map((r) => `- ${r.id} ${r.state}${r.error ? ` (${r.error})` : ""}`),
+              ].join("\n"),
+            );
+          }
+          case "schedule.history": {
+            const id = args.id as string | undefined;
+            if (!id) return textResult("schedule.history requires id.", { status: "error" });
+            const history = manager.readHistory(id);
+            if (history.length === 0) return textResult("No runs recorded for this schedule.");
+            return textResult(
+              ["Schedule runs (newest last):", ...history.map((r) => `- ${r.id} ${r.state} ${r.plannedAt}${r.error ? ` (${r.error})` : ""}`)].join("\n"),
+            );
+          }
+          case "schedule.pause":
+          case "schedule.resume": {
+            const id = args.id as string | undefined;
+            if (!id) return textResult(`${action} requires id.`, { status: "error" });
+            const record = manager.setPaused(id, action === "schedule.pause");
+            return textResult(`Schedule ${record.id} "${record.name}" ${record.paused ? "paused" : "resumed"}.`);
+          }
+          case "schedule.run": {
+            const id = args.id as string | undefined;
+            if (!id) return textResult("schedule.run requires id.", { status: "error" });
+            const run = await manager.runNow(id);
+            return textResult(
+              run.state === "completed"
+                ? `Schedule ran: async run ${run.asyncRunId}`
+                : `Schedule run ${run.state}${run.error ? `: ${run.error}` : ""}`,
+              { status: run.state === "completed" ? "completed" : "error" },
+            );
+          }
+          case "schedule.run-due": {
+            const runs = await manager.runDue();
+            return textResult(`${runs.length} due schedule(s) executed.`);
+          }
+          case "schedule.delete": {
+            const id = args.id as string | undefined;
+            if (!id) return textResult("schedule.delete requires id.", { status: "error" });
+            const removed = manager.delete(id);
+            return textResult(removed ? `Schedule ${id} deleted.` : `No schedule matches "${id}".`, { status: removed ? "completed" : "error" });
+          }
+          default:
+            return textResult(`Unknown schedule action.`, { status: "error" });
+        }
+      } catch (error) {
+        return textResult(`${action} failed: ${error instanceof Error ? error.message : String(error)}`, { status: "error" });
+      }
     }
 
     default:

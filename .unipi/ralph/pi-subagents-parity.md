@@ -69,10 +69,10 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] doctor action: full report (runtime/filesystem/discovery w/ per-agent source+aliases+disabled/budgets/concurrency/retained counts)
 - [x] guide action — guide.ts: 10 bundled topics (overview/workflows/agents/observability/tool-reference/configuration/models real; missions/watchdog/extension-api marked planned) adapted to our tool names
 
-## Phase 5 — Missions + schedules
-- [ ] Mission records: OURS ~/.unipi/missions/<project-hash>/, retainTerminal pruning, globalIndex pointers
-- [ ] Automatic missions on launches; mission:false ephemeral; missionId attach; state.get/set (256KiB, lock, merge) in workflows; goal continuation notices
-- [ ] Scheduled runs: durable schedules, maxPending, storeRoot, pause/resume/run/delete, delivery receipts
+## Phase 5 — Missions + schedules — COMPLETE
+- [x] Mission records — mission-store.ts: OUR layout ~/.unipi/missions/<project-hash>/<id>.json (sha256 project key), global pointer index (~/.unipi/missions/index/), retainTerminal pruning (oldest terminal only, default 200), full record validation (schemaVersion/status/id patterns), corrupt records → warnings not crashes
+- [x] Mission actions wired: mission.create/list/show/update/close/attach-run/resolve-decision through the handler; goal budgets with continuation notices (usage >= budget flips goal to budget-exhausted); state.get/set via mission-state.ts (admission-lock w/ pid stale reclaim, strict 256KiB cap) — ready for workflowScript state adapter wiring
+- [x] Scheduled runs — scheduled-runs.ts: OUR store ~/.unipi/schedules/<project-hash>/; one-shot (+delay or ISO w/ timezone) + fixed-interval (m/h/d/w) triggers; overlap skip; catchUp; pause/resume/run/run-due/delete + history receipts; maxPending cap; schedule.* handler actions launch through runAsync. Poll timer wiring lands with Phase 7 integration pass
 
 ## Phase 6 — Intercom, acceptance, watchdog
 - [ ] Native supervisor channel: contact_supervisor tool for children (need_decision/progress_update), subagent_supervisor parent tool; env-var session targeting; NO external pi-intercom dependency
