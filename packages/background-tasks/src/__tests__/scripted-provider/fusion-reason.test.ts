@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  ModelRuntime,
+  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
   ModelRegistry,
@@ -182,18 +182,16 @@ async function harness(): Promise<Harness> {
     noThemes: true,
   });
   await loader.reload();
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(agentDir, 'auth.json'),
-    modelsPath: null,
-  });
-  const modelRegistry = new ModelRegistry(modelRuntime);
+  const authStorage = AuthStorage.create(join(agentDir, 'auth.json'));
+  const modelRegistry = ModelRegistry.create(authStorage);
   const { session } = await createAgentSession({
     cwd,
     agentDir,
     resourceLoader: loader,
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager,
-    modelRuntime,
+    authStorage,
+    modelRegistry,
     noTools: 'builtin',
   });
   const model = modelRegistry.find('pi-bg-scripted', 'scripted-model');

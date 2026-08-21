@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/background-tasks",
   "version": "2.6.1",
-  "description": "Background tasks for UniPi — durable shell jobs, delegated agents, attested Pi runs, and fixed-purpose Fusion workflows",
+  "description": "Background tasks for UniPi \u2014 durable shell jobs, delegated agents, attested Pi runs, and fixed-purpose Fusion workflows",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -28,6 +28,7 @@
   ],
   "pi": {
     "extensions": [
+      "./extensions/anthropic-attribution.ts",
       "./src/index.ts"
     ],
     "skills": [],

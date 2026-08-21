@@ -82,9 +82,9 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: fusion-sdk, fusion-rpc, fusion-workflows, fusion-config, model-selector (adapt)
 
 ## Phase 6 — Anthropic attribution
-- [ ] Port anthropic-attribution.ts (1983) + path helper + extensions entry; EventBus claim protocol kept internal
-- [ ] /unipi:claude-cache command
-- [ ] Tests: anthropic-attribution.test.ts (adapt)
+- [x] Port anthropic-attribution.ts (1983) + path helper + extensions entry; EventBus claim protocol kept internal
+- [x] /unipi:claude-cache command
+- [x] Tests: anthropic-attribution.test.ts (adapt)
 
 ## Phase 7 — Integration + ship
 - [ ] Mount in packages/unipi/index.ts (after subagents); bundled build passes
@@ -94,6 +94,13 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 6 COMPLETE: anthropic attribution wired. Source (1983 lines, provider-gated
+  Claude Code OAuth subscription transport + exact-match prompt sanitization + cache
+  retention) landed in Phase 3 as a dependency; this phase wired the extension entry
+  order (extensions/anthropic-attribution.ts FIRST in package.json pi.extensions,
+  matching reference), /unipi:claude-cache command (status/short/long/default w/
+  session persistence via session_tree/session_start restore), EventBus duplicate-owner
+  claim protocol preserved. Tests: anthropic-attribution 4. 388/388 total.
 - Phase 5 COMPLETE: fusion integration. fusion-extension.ts ported (1294 ref lines) with
   tools fusion_reason/investigate/research/validate + /unipi:fusion + /unipi:fusion-models;
   model selector TUI (src/ui/fusion-model-selector.ts, 3 tests); managed-task registration
