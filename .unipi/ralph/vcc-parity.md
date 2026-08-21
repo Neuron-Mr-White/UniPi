@@ -54,13 +54,13 @@ changing them is not necessary.
 - [x] Update tool descriptions to match pi-vcc's wording (adapted to session_recall/vcc_recall names)
 - [x] unipi:compact-recall: results as collapsible message + auto-fed to agent as context (port /pi-vcc-recall behavior)
 
-## Phase 4 — Auto-continue & polish
-- [ ] Invisible auto-continue: AUTO_CONTINUE customType message (content:[], display:false, triggerTurn:true, deliverAs:"followUp") after threshold/overflow compaction; config key `continueAfterThresholdCompact` (default true)
-- [ ] context hook filter: remove auto-continue customType messages from LLM payload (match by customType ONLY)
-- [ ] before_agent_start clears pending auto-continue timer
-- [ ] debug output: config key `debug` → /tmp/compactor-debug.json (message counts, cut boundary, token calibration, summary preview) — done in hooks.ts; verify + wire remaining dbg sites
-- [ ] Settings overlay: add smartKeepTail / continueAfterThresholdCompact / debug toggles
-- [ ] Full test pass + typecheck + final commit
+## Phase 4 — Auto-continue & polish ✅ COMMITTED
+- [x] Invisible auto-continue: AUTO_CONTINUE customType message (content:[], display:false, triggerTurn:true, deliverAs:"followUp") after threshold/overflow compaction; config key `continueAfterThresholdCompact` (default true)
+- [x] context hook filter: remove auto-continue customType messages from LLM payload (match by customType ONLY) — also removed dead event.context sanitizer branch + orphaned thinking-label.ts
+- [x] before_agent_start clears pending auto-continue timer
+- [x] debug output: config key `debug` → /tmp/compactor-debug.json (message counts, cut boundary, token calibration, summary preview) — verified wired in hooks.ts
+- [x] Settings overlay: add smartKeepTail / continueAfterThresholdCompact / debug toggles
+- [x] Full test pass + typecheck + final commit
 
 ## Completion marker
 Emit "VCC parity alignment complete." when all phases done.

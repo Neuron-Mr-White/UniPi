@@ -207,12 +207,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         "  /unipi:compact-preset <name> — apply preset\n" +
         "\n" +
         "Percentage trigger:\n" +
-        "  Disabled by default. Enable in /unipi:compact-settings to compact at a context % before Pi's reserve-token limit.\n" +
-        "\n" +
-        "Content indexing has moved to @pi-unipi/cocoindex:\n" +
-        "  /unipi:cocoindex-init — initialize pipeline\n" +
-        "  /unipi:cocoindex-update — index project files\n" +
-        "  cocoindex_search — search indexed content",
+        "  Disabled by default. Enable in /unipi:compact-settings to compact at a context % before Pi's reserve-token limit.",
         "info",
       );
     },

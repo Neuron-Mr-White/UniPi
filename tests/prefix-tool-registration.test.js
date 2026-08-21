@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import cocoindexExtension from "../packages/cocoindex/index.ts";
 import ralphExtension from "../packages/ralph/index.ts";
 
 function captureExtension(factory) {
@@ -52,23 +51,6 @@ describe("prefix-cache tool registration", () => {
       first.handlers.get("session_start")?.length,
       1,
       "session_start must initialize state, not register another tool set",
-    );
-  });
-
-  it("registers CocoIndex's static schemas before asynchronous startup work", () => {
-    const first = captureExtension(cocoindexExtension);
-    const second = captureExtension(cocoindexExtension);
-
-    assert.deepEqual(first.tools.map((tool) => tool.name), ["cocoindex_search", "cocoindex_status"]);
-    assert.deepEqual(
-      first.tools.map(providerDefinition),
-      second.tools.map(providerDefinition),
-      "equivalent extension loads must produce byte-stable provider definitions",
-    );
-    assert.equal(
-      first.handlers.get("session_start")?.length,
-      1,
-      "availability checks must not defer provider-visible tool registration",
     );
   });
 });

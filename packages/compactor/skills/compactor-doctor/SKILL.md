@@ -68,4 +68,4 @@ python3 --version
 bash --version
 ```
 
-Project content indexing diagnostics live in the CocoIndex package, not compactor.
+Project content indexing is not part of compactor.

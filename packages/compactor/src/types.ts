@@ -128,7 +128,7 @@ export interface CompactorConfig {
     /** @deprecated Category filtering was never implemented; ignored by runtime. */
     eventCategories: string[];
   };
-  /** @deprecated Project indexing moved to @pi-unipi/cocoindex; retained for config compatibility. */
+  /** @deprecated Retained for config compatibility. */
   fts5Index: CompactorStrategyConfig & { mode: "auto" | "manual" | "off"; chunkSize: number; cacheTtlHours: number };
   sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: Language[]; outputLimit: number };
 
@@ -230,7 +230,7 @@ export type Language =
   | "elixir";
 
 // ─────────────────────────────────────────────────────────
-// Content store — REMOVED (moved to @pi-unipi/cocoindex)
+// Content store — REMOVED
 // SearchResult, IndexResult, StoreStats types no longer needed.
 // ─────────────────────────────────────────────────────────
 

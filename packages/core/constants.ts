@@ -38,7 +38,6 @@ export const MODULES = {
   FOOTER: "@pi-unipi/footer",
   UPDATER: "@pi-unipi/updater",
   INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
-  COCOINDEX: "@pi-unipi/cocoindex",
   IMAGE: "@pi-unipi/image",
 } as const;
 
@@ -363,23 +362,3 @@ export const COMPACTOR_DEFAULTS = {
   CACHE_TTL_HOURS: 24,
 } as const;
 
-/** CocoIndex minimum supported CLI version. */
-export const COCOINDEX_MIN_VERSION = "1.0" as const;
-
-/** CocoIndex package spec installed by the interactive installer. */
-export const COCOINDEX_PACKAGE_SPEC = `cocoindex[lancedb]>=${COCOINDEX_MIN_VERSION}` as const;
-
-/** CocoIndex tool names */
-export const COCOINDEX_TOOLS = {
-  SEARCH: "cocoindex_search",
-  STATUS: "cocoindex_status",
-} as const;
-
-/** CocoIndex command names */
-export const COCOINDEX_COMMANDS = {
-  UPDATE: "cocoindex-update",
-  STATUS: "cocoindex-status",
-  INIT: "cocoindex-init",
-  SETTINGS: "cocoindex-settings",
-  SEARCH: "cocoindex-search",
-} as const;

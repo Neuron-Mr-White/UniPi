@@ -73,7 +73,7 @@ const FULL_PRESET: PresetDef = {
   secondarySegments: [
     "hostname",
     "tokens_in", "tokens_out",
-    "compression_ratio", "cocoindex_status",
+    "compression_ratio",
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],

@@ -33,7 +33,6 @@ export const PACKAGE_ORDER: string[] = [
   "footer",
   "updater",
   "input-shortcuts",
-  "cocoindex",
   "image",
 ];
 
@@ -56,7 +55,6 @@ export const PACKAGE_COLORS: Record<string, string> = {
   footer:    `${ESC}[34m`, // Blue
   updater:   `${ESC}[93m`, // Bright Yellow
   "input-shortcuts": `${ESC}[95m`, // Bright Magenta
-  cocoindex: `${ESC}[97m`, // Bright White
   image:     `${ESC}[35m`, // Magenta
 };
 
@@ -151,12 +149,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-preset":  "compact",
   "unipi:compact-help":    "compact",
 
-  // cocoindex (5 commands)
-  "unipi:cocoindex-update":  "cocoindex",
-  "unipi:cocoindex-status":  "cocoindex",
-  "unipi:cocoindex-init":    "cocoindex",
-  "unipi:cocoindex-search":  "cocoindex",
-  "unipi:cocoindex-settings": "cocoindex",
 
   // milestone (2 commands)
   "unipi:milestone-onboard": "milestone",
@@ -271,12 +263,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-settings": "Configure compaction settings",
   "unipi:compact-preset":   "Manage compaction presets",
   "unipi:compact-help":     "Show compactor command help",
-  "unipi:cocoindex-update":  "Run CocoIndex update to index project",
-  "unipi:cocoindex-status":  "Show CocoIndex indexing status",
-  "unipi:cocoindex-init":    "Initialize CocoIndex pipeline",
-  "unipi:cocoindex-search":  "Search indexed codebase semantically",
-  "unipi:cocoindex-settings": "Show CocoIndex configuration",
-
   "unipi:notify-settings":  "Configure notification platforms and events",
   "unipi:notify-set-gotify": "Set up Gotify push notifications",
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
@@ -318,6 +304,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   footer:    "footer",
   updater:   "updater",
   "input-shortcuts": "input-shortcuts",
-  cocoindex: "cocoindex",
   image:     "image",
 };

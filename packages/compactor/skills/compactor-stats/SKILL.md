@@ -48,4 +48,4 @@ This means:
 - 3 compactions saved roughly 15K tokens.
 - 7 sandbox executions and 15 recall/search queries were recorded.
 
-Project content indexing stats are not owned by compactor anymore; use the CocoIndex package for indexed file search/status.
+Project content indexing stats are not owned by compactor; use `read`/`bash` (rg) for file search.

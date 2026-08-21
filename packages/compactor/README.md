@@ -51,7 +51,7 @@ Per-project config is merged over global config when the current project directo
 | `/unipi:compact-preset <name>` | Applies a preset globally. | Names: `precise`, `balanced`, `thorough`, `lean`. Old names map to new ones: `opencode→precise`, `verbose→thorough`, `minimal→lean`. |
 | `/unipi:compact-help` | Shows compact help inside Pi. | Quick command reference. |
 
-Content/project indexing is handled by `@pi-unipi/cocoindex`, not this package. Use `/unipi:cocoindex-init`, `/unipi:cocoindex-update`, and `cocoindex_search` for indexed project search.
+Content/project indexing is not part of this package. Use `read`/`bash` (rg) for project search.
 
 ---
 
@@ -102,7 +102,7 @@ These settings control what is extracted into compaction summaries or how relate
 | `Session Continuity` | `full`, `off` | Controls XML-style resume snapshots. Off prevents snapshot creation and injection; Pi’s normal compaction summary still remains. |
 | `Sandbox Execution` | `all`, `off` | Controls sandbox tool registration. Changes require a session reload. Allowed languages and output limit are enforced from config. |
 
-Config-only legacy field: `fts5Index` remains in the schema for compatibility, but project indexing has moved to `@pi-unipi/cocoindex`. It is hidden from Compactor settings and presets. Legacy `sessionContinuity.mode: "essential-only"`, `eventCategories`, and `sandboxExecution.mode: "safe-only"` values remain loadable; essential-only behaves as full and safe-only behaves as enabled/all until explicit filtering/security policies are designed. Legacy `toolDisplay` and `showTruncationHints` fields also remain loadable but are deprecated and ignored; their profile names were never mapped to runtime renderer modes. Narrow-terminal diff clamping remains active as independent safety behavior.
+Config-only legacy field: `fts5Index` remains in the schema for compatibility. It is hidden from Compactor settings and presets. Legacy `sessionContinuity.mode: "essential-only"`, `eventCategories`, and `sandboxExecution.mode: "safe-only"` values remain loadable; essential-only behaves as full and safe-only behaves as enabled/all until explicit filtering/security policies are designed. Legacy `toolDisplay` and `showTruncationHints` fields also remain loadable but are deprecated and ignored; their profile names were never mapped to runtime renderer modes. Narrow-terminal diff clamping remains active as independent safety behavior.
 
 ### Auto tab
 

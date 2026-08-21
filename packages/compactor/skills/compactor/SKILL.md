@@ -12,7 +12,7 @@ description: Context management — compact session, recall history, run code, s
 
 ## Finding Past Work
 - `session_recall(query)` → search this session (BM25 or regex), including raw messages that may no longer be in live context after compaction.
-- For indexed project/file search, use the CocoIndex package (`cocoindex_search`) when installed; content indexing no longer lives in compactor.
+- For project/file search, use `read`/`bash` (rg) directly; content indexing is not part of compactor.
 
 ## Running Code
 - `sandbox(lang, code)` → single script. `sandbox_batch(items)` → atomic.

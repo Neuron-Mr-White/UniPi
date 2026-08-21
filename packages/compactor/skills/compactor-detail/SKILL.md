@@ -88,7 +88,7 @@ Estimate remaining context tokens and percent full. Uses Pi's live context usage
 ## Anti-Patterns
 
 1. **Don't compact in a tight loop.** Use `context_budget` first and compact at natural break points.
-2. **Don't use `session_recall` for project-wide code search.** It searches the conversation/session. Use CocoIndex (`cocoindex_search`) for indexed files when installed.
+2. **Don't use `session_recall` for project-wide code search.** It searches the conversation/session only — use `read`/`bash`(rg) for files.
 3. **Don't use `sandbox` for file operations.** Use normal file tools for reads/writes; sandbox is for computation or quick scripts.
 4. **Don't use empty or vague recall queries.** Search for specific filenames, issue numbers, commands, or decisions.
 5. **Don't compact mid-thought if avoidable.** Finish the current step, then compact.
@@ -112,7 +112,5 @@ Estimate remaining context tokens and percent full. Uses Pi's live context usage
 3. `compactor_stats` — confirm compactions/savings are recorded.
 
 ### Project Search
-Compactor no longer owns project content indexing. Use the CocoIndex package if installed:
-1. `/unipi:cocoindex-init`
-2. `/unipi:cocoindex-update`
-3. `cocoindex_search(query)`
+Compactor does not own project content indexing. For code search use `bash` with rg.
+1. `bash` with `rg` for code search
