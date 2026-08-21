@@ -9,7 +9,7 @@
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { MODULES, UNIPI_EVENTS, emitEvent, type UnipiBadgeGenerateRequestEvent } from "@pi-unipi/core";
@@ -27,6 +27,7 @@ import { createResultWatcher, cleanupAsyncRetention } from "./result-watcher.js"
 import { writeAsyncResultFile, readAsyncResultFile } from "./result-files.js";
 import { RESULTS_DIR, ASYNC_DIR, ensureDirs } from "./parity-types.js";
 import { createForkContextResolver } from "./fork-context.js";
+import { createWorktrees, cleanupWorktrees, diffWorktrees, type WorktreeSetup } from "./worktree.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
 
 /** Get info registry from global */
@@ -229,6 +230,21 @@ export default function (pi: ExtensionAPI) {
     if (launch.resumeSessionFile && !existsSync(launch.resumeSessionFile)) {
       throw new Error(`Resume session file is missing: ${launch.resumeSessionFile}`);
     }
+
+    // Worktree isolation: managed worktree per child; cleaned up after the run
+    // (diffs preserved to the run dir as handoff artifacts).
+    let worktreeSetup: WorktreeSetup | undefined;
+    let childCwd = process.cwd();
+    if (launch.worktree === true) {
+      try {
+        worktreeSetup = createWorktrees(process.cwd(), `async-${Date.now().toString(36)}`, 1);
+        childCwd = worktreeSetup.worktrees[0]!.agentCwd;
+      } catch (worktreeError) {
+        throw new Error(
+          `Worktree isolation failed: ${worktreeError instanceof Error ? worktreeError.message : String(worktreeError)}`,
+        );
+      }
+    }
     const runDir = createAsyncRunDir(launch.agentName);
     const runId = runDir.split("/").pop()!;
     const controller = new AbortController();
@@ -272,7 +288,7 @@ export default function (pi: ExtensionAPI) {
           {
             agent,
             task: launch.task,
-            cwd: process.cwd(),
+            cwd: childCwd,
             model: launch.model,
             thinking: launch.thinking,
             tools: agent.builtinToolNames,
@@ -310,6 +326,23 @@ export default function (pi: ExtensionAPI) {
         }, { asyncDir: runDir });
       } finally {
         activeAsyncRuns.delete(runId);
+        if (worktreeSetup) {
+          try {
+            const diffs = diffWorktrees(worktreeSetup, [launch.agentName], runDir);
+            writeFileSync(
+              join(runDir, "handoff.json"),
+              JSON.stringify({ patches: diffs.map((d) => d.patchPath) }),
+              { mode: 0o600 },
+            );
+            cleanupWorktrees(worktreeSetup, {
+              kind: "preserve",
+              capturedDiffs: diffs,
+              handoffManifestPath: join(runDir, "handoff.json"),
+            });
+          } catch {
+            // Worktree cleanup is best-effort; preserved trees surface in the report.
+          }
+        }
       }
     })();
 

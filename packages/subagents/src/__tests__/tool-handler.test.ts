@@ -245,12 +245,61 @@ describe("workflowScript execution", () => {
     assert.ok(calls[0]!.prompt.includes("not the parent orchestrator"));
   });
 
-  it("default async workflows report the pending background runner", async () => {
+  it("async workflow without the process runner errors clearly", async () => {
     const deps = makeDeps();
     const result = await handleSpawnHelper(deps, ctx, {
       workflowScript: `return 1;`,
     });
-    assert.match(result.content[0]!.text, /not yet wired for workflows/);
+    assert.match(result.content[0]!.text, /background process runner, which is unavailable/);
+  });
+
+  it("async workflow runs children through the process runner", async () => {
+    const deps = makeDeps();
+    const launches: Array<Record<string, unknown>> = [];
+    deps.runAsync = async (launch) => {
+      launches.push(launch as unknown);
+      return { runId: `proc-${launches.length}`, status: "completed", output: `ran ${launch.agentName}` };
+    };
+    const result = await handleSpawnHelper(deps, ctx, {
+      workflowScript: `
+        const scan = await runs.run("scan", { agent: "scout", task: "find" });
+        const reviews = await runs.all([
+          { key: "r1", agent: "reviewer", task: "review " + scan.output },
+          { key: "r2", agent: "reviewer", task: "review tests" }
+        ]);
+        return reviews.map((r) => r.output);
+      `,
+      // async default is true — no explicit flag needed
+    });
+    assert.equal(result.details && (result.details as { mode?: string }).mode, "async-workflow");
+    assert.deepEqual(
+      launches.map((l) => l.agentName),
+      ["scout", "reviewer", "reviewer"],
+    );
+  });
+
+  it("async workflow children carry boundary instructions and worktree flags", async () => {
+    const deps = makeDeps();
+    const launches: Array<Record<string, unknown>> = [];
+    deps.runAsync = async (launch) => {
+      launches.push(launch as unknown);
+      return { runId: `proc-${launches.length}`, status: "completed", output: "ok" };
+    };
+    await handleSpawnHelper(deps, ctx, {
+      workflowScript: `
+        await runs.all([
+          { key: "a", agent: "scout", task: "one", worktree: true },
+          { key: "b", agent: "worker", task: "two" }
+        ]);
+        return "done";
+      `,
+      async: true,
+    });
+    const a = launches[0] as { task: string; worktree?: boolean };
+    const b = launches[1] as { task: string; worktree?: boolean };
+    assert.ok(a.task.includes("not the parent orchestrator"));
+    assert.equal(a.worktree, true);
+    assert.equal(b.worktree, undefined);
   });
 
   it("fanout budget caps workflow children atomically (failures collected, nothing started)", async () => {

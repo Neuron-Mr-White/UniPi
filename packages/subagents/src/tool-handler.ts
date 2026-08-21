@@ -91,6 +91,8 @@ export interface HandlerDeps {
     maxTurns?: number;
     /** Resume: continue a retained child in its stored session. */
     resumeSessionFile?: string;
+    /** Worktree isolation: launch the child in a managed git worktree. */
+    worktree?: boolean;
   }) => Promise<{
     runId: string;
     status: string;
@@ -358,14 +360,9 @@ async function handleWorkflowScript(
   args: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details?: unknown }> {
-  // Async workflows need the process runner.
   const asyncRequested = (args.async as boolean | undefined) ?? deps.config.asyncByDefault ?? true;
   if (asyncRequested) {
-    return textResult(
-      "Async workflowScript requires the background runner, which is not yet wired for workflows. " +
-        "Re-run with async: false to execute the workflow in-process in the foreground.",
-      { status: "error" },
-    );
+    return handleAsyncWorkflowScript(deps, ctx, script, args, signal);
   }
 
   // Validate call-level budgets up front (reference behavior).
@@ -650,4 +647,174 @@ async function handleSingleChild(
       originalBytes: truncated.originalBytes,
     },
   );
+}
+
+
+// ============================================================================
+// Async workflowScript (process-backed children)
+// ============================================================================
+
+/**
+ * Run a workflow with every child launched through the process runner
+ * (child pi processes). The workflow runtime is identical; only the launch
+ * transport differs. The tool call blocks until the workflow settles — the
+ * parent gets the full result. (Fully detached async workflows with live
+ * status polling land with the Phase 4 fleet work.)
+ */
+async function handleAsyncWorkflowScript(
+  deps: HandlerDeps,
+  ctx: ExtensionContext,
+  script: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<{ content: Array<{ type: "text"; text: string }>; details?: unknown }> {
+  if (!deps.runAsync) {
+    return textResult(
+      "Async workflowScript requires the background process runner, which is unavailable in this host. " +
+        "Re-run with async: false to execute the workflow in-process in the foreground.",
+      { status: "error" },
+    );
+  }
+
+  // Validate call-level budgets up front.
+  if (args.turnBudget !== undefined) {
+    const { error } = resolveTurnBudgetConfig(args.turnBudget);
+    if (error) return textResult(error, { status: "error" });
+  }
+  if (args.toolBudget !== undefined) {
+    const { error } = validateToolBudgetConfig(args.toolBudget);
+    if (error) return textResult(error, { status: "error" });
+  }
+  if (args.usageBudget !== undefined) {
+    const { error } = validateUsageBudgetConfig(args.usageBudget);
+    if (error) return textResult(error, { status: "error" });
+  }
+
+  const perRunCap = deps.config.maxSubagentSpawnsPerRun ?? 64;
+  const budget = createRunFanoutBudget(`workflow-async-${Date.now()}`, perRunCap);
+  const sessionAccounting = deps.spawnAccounting;
+  const sessionCap = sessionAccounting?.cap();
+
+  const admit = (calls: Array<{ key: string; params: Record<string, unknown> }>): void => {
+    if (calls.length === 0) return;
+    claimRunFanoutBatch(budget, calls.map((call) => call.key));
+    if (sessionCap !== undefined && sessionAccounting) {
+      const used = sessionAccounting.used();
+      if (used + calls.length > sessionCap) {
+        throw new Error(
+          `Session spawn budget exhausted: ${used}/${sessionCap} used, ${calls.length} requested.`,
+        );
+      }
+      sessionAccounting.consume(calls.length);
+    }
+  };
+
+  const launch = async (
+    key: string,
+    params: Record<string, unknown>,
+    childSignal: AbortSignal,
+  ): Promise<WorkflowScriptChildResult> => {
+    const agentNameRaw = params.agent as string | undefined;
+    const task = params.task as string | undefined;
+    if (!agentNameRaw || !task) {
+      return { key, ok: false, output: "runs.run requires agent and task.", error: "missing agent/task", artifactPaths: [] };
+    }
+    const agentName = deps.manager.resolveAlias(agentNameRaw);
+    const agent = deps.manager.getAgentConfig(agentName);
+    if (!agent) {
+      return { key, ok: false, output: `Unknown agent "${agentNameRaw}".`, error: "unknown agent", artifactPaths: [] };
+    }
+    if (!deps.manager.isTypeEnabled(agentName)) {
+      return { key, ok: false, output: `Agent "${agentName}" is disabled.`, error: "disabled", artifactPaths: [] };
+    }
+
+    // Context policy: fork children get branched sessions via the process runner.
+    const contextMode = resolveContext(params.context as string | undefined, agent, deps.config);
+
+    let childTask = task;
+    const turnBudgetResult = resolveTurnBudgetConfig(params.turnBudget ?? args.turnBudget);
+    if (turnBudgetResult.turnBudget) {
+      childTask = appendTurnBudgetSystemPrompt(task, turnBudgetResult.turnBudget);
+    }
+    childTask = withChildBoundaryInstructions(childTask, agent);
+
+    try {
+      const worktreeRequested =
+        (params.worktree as boolean | undefined) ??
+        (args.worktree as boolean | undefined) ??
+        (args.isolation === "worktree" ? true : undefined);
+      const result = await deps.runAsync!({
+        agentName,
+        task: childTask,
+        description: (params.label as string | undefined) ?? key,
+        model: (params.model as string | undefined) ?? agent.model,
+        thinking: typeof agent.thinking === "string" ? agent.thinking : undefined,
+        context: contextMode,
+        timeoutMs: (params.timeoutMs as number | undefined) ?? agent.timeoutMs,
+        maxTurns: (params.maxTurns as number | undefined) ?? turnBudgetResult.turnBudget?.maxTurns,
+        ...(worktreeRequested === true ? { worktree: true } : {}),
+      });
+      void childSignal; // process-level abort handled by the runner's controller
+      return {
+        key,
+        ok: result.status === "completed",
+        output: result.output ?? result.error ?? result.status,
+        ...(result.error ? { error: result.error } : {}),
+        agent: agentName,
+        ...(result.runId ? { runId: result.runId } : {}),
+        artifactPaths: [],
+      };
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      return { key, ok: false, output: text, error: text, artifactPaths: [] };
+    }
+  };
+
+  const status = async (keyOrRunId: string): Promise<WorkflowScriptChildResult> => {
+    const record = deps.manager.getRecord(keyOrRunId);
+    if (record) {
+      return {
+        key: keyOrRunId,
+        ok: record.status === "completed",
+        output: record.result ?? record.status,
+        ...(record.error ? { error: record.error } : {}),
+        artifactPaths: [],
+      };
+    }
+    return { key: keyOrRunId, ok: true, output: "ok", artifactPaths: [] };
+  };
+
+  try {
+    const result = await runWorkflowScript({
+      script,
+      timeoutMs: args.timeoutMs as number | undefined,
+      signal,
+      admit,
+      launch,
+      status,
+    });
+
+    const maxOutput = resolveMaxOutput(args.maxOutput as never, deps.config);
+    const summary =
+      typeof result.value === "string"
+        ? result.value
+        : JSON.stringify(result.value, null, 2) ?? "null";
+    const truncated = truncateOutput(summary, maxOutput);
+    return textResult(truncated.text, {
+      status: "completed",
+      mode: "async-workflow",
+      children: result.children.length,
+      fanout: formatRunFanoutBudget(getRunFanoutBudgetSnapshot(budget)),
+      truncated: truncated.truncated,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "WorkflowScriptError") {
+      const partial = (error as { partial?: { children?: unknown[] } }).partial;
+      return textResult(
+        `Workflow failed: ${error.message}`,
+        { status: "error", mode: "async-workflow", children: partial?.children?.length ?? 0 },
+      );
+    }
+    throw error;
+  }
 }

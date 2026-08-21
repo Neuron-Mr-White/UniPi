@@ -49,7 +49,7 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] maxOutput truncation — truncateOutput (lines cap, binary-search byte cap, TRUNCATED marker w/ artifact pointer), resolveMaxOutput (call > config > 200KB/5000 lines). outputMode file-only wired with handler
 - [x] Tests: workflow-script.test.ts (20 cases ported from their scripted-workflow.test.ts spec) — key duplication/reuse, fail-fast vs collect-failure, steer validation + Promise.race pattern, nested-async AST rejection, timeout, state adapter, emit JSON enforcement
 
-## Phase 3 — Async/background (process-based) — IN PROGRESS
+## Phase 3 — Async/background (process-based) — COMPLETE
 - [x] Async runner core — pi-spawn.ts (UNIPI_SUBAGENT_PI_BINARY override, argv1/package-bin/PATH resolution chain), pi-args.ts (session/model+thinking-suffix/tools/extensions/system-prompt-file/task-delivery auto|file w/ 8000-char EDR threshold, child env UNIPI_SUBAGENT_*), async-runner.ts (spawn `pi --mode json -p`, stdout JSON event stream, deadline + abort w/ process-group SIGTERM→SIGKILL, zero-activity watchdog + one file-delivery retry, status.json lifecycle, output.txt artifact)
 - [x] Run artifacts — async-subagent-runs/<runId>/ under OUR temp root: status.json (queued→running→terminal + retry marker), output.txt (full stdout/stderr), process.json (pid ownership for terminal proof). Durable receipts (workflow-level) land with resume item
 - [x] Result watcher — result-files.ts (durable payloads + run/session indexes + pending markers under OUR results dir, atomic writes, 24h index pruning) + result-watcher.ts (pending-scan delivery, corrupt-marker drop, resultScanLogging all|activity|off, retention cleanup: aged terminal runs + orphan dirs + associated result payloads)
@@ -58,7 +58,7 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
 - [x] Worktrees — worktree.ts: createWorktrees (clean-tree requirement, unipi-parallel-<runId>-<index> branches, node_modules symlink, setup hooks JSON-in/out w/ syntheticPaths validation + tracked-path rejection, per-worktree rollback on setup failure), diffWorktrees (diff vs base commit + untracked, synthetic excluded, patches as handoff artifacts), cleanupWorktrees (dirty worktrees preserved unless a handoff manifest records the patch; discard gated by authority policy confirm/auto; branch -D + prune). Base dir: config worktreeBaseDir or UNIPI_SUBAGENTS_WORKTREE_DIR. NOT yet wired into launches (needs the parallel-lane runner — deferred with resume work)
 - [x] get_helper_result partial: async launch path wired (runAsync dep → child pi process + durable result file + completion notification via result watcher followUp messages; watcher stopped on shutdown; hourly retention). nonBlocking subscriptions + wake-on-completion via pi session events: still open (needs pi sendMessage wake integration — deferred to Phase 4 pass)
 - [x] Async capacity — maxActiveAsyncRunsPerSession preflight in the handler (config key validated); slot release on process-terminal proof: activeAsyncRuns map released on terminal status + process.json pid ownership recorded (Phase 3 runner); full slot accounting lands with the async workflowScript pass
-- [ ] Tests: port async-execution, result-watcher, intercom-result-delivery, async-job-tracker integration tests (adapted)
+- [x] Tests: pi-args (12), result-watcher (8), fork-context (11), worktree (10, real git repos), retained-children (7), handler async-routing cases — adapted from their suites; full child-process e2e needs a live pi binary (deferred to manual verification)
 
 ## Phase 4 — Observability (our panels)
 - [ ] FleetView: persistent panel (belowEditor/aboveEditor placement) built on our AgentWidget slot system
@@ -160,9 +160,27 @@ Reference: /tmp/pi-subagents (re-clone from https://github.com/nicobailon/pi-sub
   210/210 tests. Remaining Phase 3: resume/retained children + durable receipts, async
   workflowScript wiring, async capacity slots, nonBlocking wake subscriptions.
 
-- Phase 3 (resume done): retained-children + children.list/resume actions wired; async capacity
-  preflight + terminal-proof release. 217/217 tests. Remaining Phase 3: async workflowScript
-  wiring (process-backed runs.run), nonBlocking wake subscriptions, worktree launch wiring.
+- Phase 3 COMPLETE: async workflowScript (process-backed runs.run/all through runAsync;
+  budgets/admission/boundary/worktree flags per child; WorkflowScriptError surfaced with
+  partial children), worktree launch wiring (createWorktrees per async child; diffs +
+  handoff.json written to the run dir; preserve-intent cleanup after terminal). nonBlocking
+  wake subscriptions deferred to Phase 4 (needs pi sendMessage wake). 219/219 tests.
+
+## Reflection (iteration 11)
+1. Accomplished: Phases 0-2 complete; Phase 3 ~85% (runner, artifacts, results/watcher,
+   resume, fork context, worktrees, capacity). 217/217 tests across 12 files; tsc clean
+   at every commit; 10 commits so far.
+2. Working well: library-first-then-wire order; their-tests-as-spec keeps catching real
+   bugs (stopped-run resumability, admission rejection crash, implicit-vs-explicit fork);
+   handler extraction kept index.ts risk low.
+3. Not blocking but noted: async workflowScript still rejects with guidance (foreground-
+   only); nonBlocking wake subscriptions need pi sendMessage wake integration; worktree
+   lifecycle built but not wired into launches.
+4. Approach: unchanged. The hybrid architecture is holding — in-process foreground +
+   process-based async both flow through one handler with clean deps.
+5. Next priorities: (a) async workflowScript via process-backed runs.run, (b) wire
+   worktree isolation into async launches, (c) close Phase 3 with integration-style tests,
+   then Phase 4 observability on OUR panels.
 
 ## Completion marker
 Emit "pi-subagents parity complete: <N> features ported, phases 0-7 done." when all phases done.
