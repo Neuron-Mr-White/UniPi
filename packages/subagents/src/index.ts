@@ -17,6 +17,7 @@ import { boundHelperOutput, withHerdrBlocked } from "./core-compat.js";
 import { AgentManager } from "./agent-manager.js";
 import { initConfig } from "./config.js";
 import { type AgentActivity, type NotificationDetails, BUILTIN_TYPES } from "./types.js";
+import { loadBuiltinFileAgents } from "./custom-agents.js";
 import { ConversationViewer } from "./conversation-viewer.js";
 import { AgentWidget, SPINNER, TOOL_DISPLAY, formatMs, formatTurns, describeActivity } from "./widget.js";
 
@@ -292,7 +293,8 @@ export default function (pi: ExtensionAPI) {
       },
       dataProvider: async () => {
         const types = config.types || {};
-        const builtinTypes = ["explore", "work"];
+        const codeBuiltins: string[] = [...BUILTIN_TYPES];
+        const fileBuiltins = [...loadBuiltinFileAgents().keys()];
 
         const customTypes: string[] = [];
         for (const dir of [globalAgentsDir, workspaceAgentsDir]) {
@@ -307,11 +309,14 @@ export default function (pi: ExtensionAPI) {
           } catch { /* ignore */ }
         }
 
-        const allTypes = [...new Set([...builtinTypes, ...Object.keys(types), ...customTypes])];
+        const allTypes = manager.getKnownTypes();
         const typeList = allTypes.map((t) => {
-          const isEnabled = types[t]?.enabled !== false;
-          const isBuiltin = builtinTypes.includes(t);
-          const scope = customTypes.includes(t) ? "project" : "global";
+          const isEnabled = manager.isTypeEnabled(t);
+          const scope = codeBuiltins.includes(t) || fileBuiltins.includes(t)
+            ? "builtin"
+            : customTypes.includes(t)
+              ? "custom"
+              : "config";
           return `${t}(${scope})${isEnabled ? "" : " [disabled]"}`;
         }).join(", ");
 
@@ -465,8 +470,12 @@ Custom types can be defined in:
 - <workspace>/.unipi/config/agents/<name>.md (project)
 
 Guidelines:
-- Use "explore" for parallel file reads
-- Use "work" for parallel file writes (transparent locking)
+- Use "explore" or "scout" for parallel file reads / fast codebase recon
+- Use "work" or "worker" for parallel file writes (transparent locking)
+- Use "reviewer" for code review of diffs, plans, or solutions
+- Use "researcher" for web research (needs web-api tools)
+- Use "oracle" for a second opinion on decisions before acting
+- Use "delegate" for a lightweight general delegate
 - Use run_in_background for work you don't need immediately
 - ESC kills all running agents immediately
 - Agents inherit the parent model by default`,

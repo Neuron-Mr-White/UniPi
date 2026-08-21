@@ -98,7 +98,10 @@ describe("AgentManager type enablement", () => {
     try {
       const known = manager.getKnownTypes();
       assert.deepEqual(known, [...known].sort((a, b) => a < b ? -1 : a > b ? 1 : 0));
-      assert.deepEqual(known, ["Alpha", "beta", "explore", "omega", "reviewer", "work", "zeta"]);
+      assert.deepEqual(known, [
+      "Alpha", "beta", "delegate", "explore", "omega", "oracle",
+      "researcher", "reviewer", "scout", "work", "worker", "zeta",
+    ]);
       assert.equal(known.includes("name-gen"), false);
     } finally {
       manager.dispose();

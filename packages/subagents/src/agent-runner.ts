@@ -19,6 +19,16 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_CONFIGS, type AgentConfig, type AgentType, type ThinkingLevel } from "./types.js";
 
+/** Coerce frontmatter thinking (string | false | ThinkingLevel) to ThinkingLevel. */
+export function coerceThinkingLevel(raw: AgentConfig["thinking"]): ThinkingLevel | undefined {
+  if (raw === false || raw === undefined || raw === null) return undefined;
+  if (typeof raw === "string") {
+    const valid: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    return valid.includes(raw as ThinkingLevel) ? (raw as ThinkingLevel) : undefined;
+  }
+  return raw;
+}
+
 /** Tools excluded from subagents to prevent nesting. Legacy names remain for older hosts. */
 const EXCLUDED_TOOL_NAMES = ["spawn_helper", "get_helper_result", "Agent", "get_result"];
 

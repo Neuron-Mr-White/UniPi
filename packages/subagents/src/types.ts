@@ -65,21 +65,51 @@ export interface AgentConfig {
   name: string;
   displayName?: string;
   description: string;
+  /** Alias names resolving to this agent (reference parity). */
+  aliases?: string[];
   builtinToolNames?: string[];
   disallowedTools?: string[];
   extensions: true | string[] | false;
   skills: true | string[] | false;
+  /** Extra skill directories to load for this agent. */
+  skillPath?: string[];
   model?: string;
-  thinking?: ThinkingLevel;
+  /** Ordered fallback models (reference parity; resolved Phase 2). */
+  fallbackModels?: string[];
+  thinking?: ThinkingLevel | string | false;
   maxTurns?: number;
   systemPrompt: string;
   promptMode: "replace" | "append";
+  /** Reference alias for promptMode. */
+  systemPromptMode?: "replace" | "append";
+  /** Whether the child inherits project context (AGENTS.md etc.). Default: delegate only. */
+  inheritProjectContext?: boolean;
+  /** Whether the child inherits skills. Default: false. */
+  inheritSkills?: boolean;
+  /** Default context for launches that omit context. */
+  defaultContext?: "fresh" | "fork";
   runInBackground?: boolean;
   isolated?: boolean;
+  /** Agent-level default run deadline. */
+  timeoutMs?: number;
+  /** Agent-level default hard per-tool deadline. */
+  toolTimeoutMs?: number;
+  /** Nested-delegation cap for this agent's children. */
+  maxSubagentDepth?: number;
+  /** Output file for this agent's result. */
+  output?: string;
+  /** inline (default) or file-only result reference. */
+  outputMode?: "inline" | "file-only";
+  /** Files to read before running. */
+  defaultReads?: string[];
+  /** Maintain progress.md during runs. */
+  defaultProgress?: boolean;
   memory?: MemoryScope;
   isDefault?: boolean;
   enabled?: boolean;
   source?: "builtin" | "project" | "global";
+  /** Unknown frontmatter fields preserved for later phases. */
+  extraFields?: Record<string, string>;
 }
 
 /** Agent record — tracks a running agent. */

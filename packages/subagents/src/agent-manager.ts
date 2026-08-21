@@ -12,6 +12,7 @@ import { runAgent, type ToolActivity } from "./agent-runner.js";
 import { resolveModel, type ModelRegistry } from "./model-resolver.js";
 import type { AgentRecord, AgentConfig, AgentType, ThinkingLevel, SubagentsConfig } from "./types.js";
 import { BUILTIN_CONFIGS } from "./types.js";
+import { coerceThinkingLevel } from "./agent-runner.js";
 import { loadCustomAgents } from "./custom-agents.js";
 
 function compareCodeUnits(a: string, b: string): number {
@@ -178,7 +179,7 @@ export class AgentManager {
       agentConfig,
       maxTurns: options.maxTurns ?? agentConfig?.maxTurns,
       isolated: options.isolated ?? agentConfig?.isolated,
-      thinkingLevel: options.thinkingLevel ?? agentConfig?.thinking,
+      thinkingLevel: options.thinkingLevel ?? coerceThinkingLevel(agentConfig?.thinking),
       signal: record.abortController!.signal,
       onToolActivity: (activity) => {
         if (activity.type === "end") record.toolUses++;

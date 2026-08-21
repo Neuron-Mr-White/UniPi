@@ -309,7 +309,7 @@ describe("Workflow Integration", () => {
 
     it("should apply custom agent execution defaults", () => {
       const managerSource = readFileSync(join(subagentsDir, "src/agent-manager.ts"), "utf-8");
-      assert.ok(managerSource.includes("options.thinkingLevel ?? agentConfig?.thinking"));
+      assert.ok(managerSource.includes("options.thinkingLevel ?? coerceThinkingLevel(agentConfig?.thinking)"));
       assert.ok(managerSource.includes("options.maxTurns ?? agentConfig?.maxTurns"));
       assert.ok(managerSource.includes("options.isolated ?? agentConfig?.isolated"));
     });
