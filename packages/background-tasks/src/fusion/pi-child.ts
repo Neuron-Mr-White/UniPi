@@ -282,7 +282,7 @@ export function resolveFusionChildExtensionPath(
 ): string {
   const modulePath = fileURLToPath(moduleUrl);
   const extension = modulePath.endsWith('.ts') ? 'fusion-child.ts' : 'fusion-child.js';
-  const candidate = resolve(dirname(modulePath), '../../../extensions', extension);
+  const candidate = resolve(dirname(modulePath), '../../extensions', extension);
   if (!pathExists(candidate)) {
     throw new Error(`Fusion child metadata extension is missing: ${candidate}`);
   }

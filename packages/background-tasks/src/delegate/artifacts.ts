@@ -156,10 +156,12 @@ export class DelegateArtifactStore {
     const sessionSegment = sanitizePathSegment(
       options.sessionId ?? `session-${String(process.pid)}`,
     );
+    // USER DECISION (2026-08-21): durable delegate artifacts live under the
+    // workspace .unipi/ dir (our convention), not .pi/ and not tmp.
     const runDirName = `${sessionSegment}-${String(process.pid)}`;
-    const parentAbs = join(options.cwd, '.pi', 'delegate', runDirName);
+    const parentAbs = join(options.cwd, '.unipi', 'delegate', runDirName);
     const rootAbs = join(parentAbs, options.taskId);
-    const rootDisplay = join('.pi', 'delegate', runDirName, options.taskId);
+    const rootDisplay = join('.unipi', 'delegate', runDirName, options.taskId);
     try {
       await mkdir(parentAbs, { recursive: true, mode: 0o700 });
       await mkdir(rootAbs, { recursive: false, mode: 0o700 });

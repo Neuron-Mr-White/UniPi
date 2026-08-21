@@ -186,7 +186,7 @@ export function resolveDelegateChildExtensionPath(
 ): string {
   const modulePath = fileURLToPath(moduleUrl);
   const extension = modulePath.endsWith('.ts') ? 'delegate-child.ts' : 'delegate-child.js';
-  const candidate = resolve(dirname(modulePath), '../../../extensions', extension);
+  const candidate = resolve(dirname(modulePath), '../../extensions', extension);
   if (!pathExists(candidate)) {
     throw new DelegateError(`delegate child extension is missing: ${candidate}`, {
       code: 'delegate_isolation_unsupported',
@@ -350,11 +350,11 @@ export function delegateChildEnv(
   const out: NodeJS.ProcessEnv = { ...env };
   for (const key of DELEGATE_REMOVED_ENV_KEYS) Reflect.deleteProperty(out, key);
   out['PI_SKIP_VERSION_CHECK'] = '1';
-  out['PI_BG_DELEGATE_ARTIFACT_DIR'] = input.artifactDirAbs;
-  out['PI_BG_DELEGATE_SEED_PATH'] = input.seedPathAbs;
-  out['PI_BG_DELEGATE_SEED_SHA256'] = input.seedSha256;
-  out['PI_BG_DELEGATE_TASK_ID'] = input.taskId;
-  out['PI_BG_DELEGATE_LAUNCH_NONCE'] = input.launchNonce;
+  out['UNIPI_BG_DELEGATE_ARTIFACT_DIR'] = input.artifactDirAbs;
+  out['UNIPI_BG_DELEGATE_SEED_PATH'] = input.seedPathAbs;
+  out['UNIPI_BG_DELEGATE_SEED_SHA256'] = input.seedSha256;
+  out['UNIPI_BG_DELEGATE_TASK_ID'] = input.taskId;
+  out['UNIPI_BG_DELEGATE_LAUNCH_NONCE'] = input.launchNonce;
   return out;
 }
 

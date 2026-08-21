@@ -94,6 +94,22 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 4 COMPLETE: fusion core + child extensions + full test suite. Fusion source
+  files (types/workflows/config/context/clean-context/prompts/source-policy/web-fetch/
+  budget/evaluation/orchestrator/artifacts/result-package/output-contract/child-protocol/
+  pi-child/claude-cache) landed in Phase 3 as deps; this phase ported ALL fusion test
+  suites (budget 34, evaluation 10, orchestrator 13, artifacts 12, context-prompts 24,
+  web-fetch 21, claude-cache 9, config 9, workflows 4, v5-core 6, golden-bytes 2,
+  extraction-equivalence 3, high-cardinality 6, validate-orchestrator 5, sdk 11) +
+  fusion-child-extension.ts (1012) + delegate-child-extension.ts (978) + extensions/
+  entry shims (fusion-child, delegate-child, anthropic-attribution).
+  USER DECISION (2026-08-21): durable fusion + delegate artifacts live under the
+  WORKSPACE .unipi/ dir (<cwd>/.unipi/fusion, <cwd>/.unipi/delegate) — not .pi/ and
+  not the temp root (test roots set UNIPI_BG_TMP_DIR only for temp-root isolation).
+  SDK adaptations: before_provider_headers + agent_settled registered defensively
+  (our pi lacks them; agent_end fallback for settlement), tool_result usage defensive
+  read. Env prefix UNIPI_BG_DELEGATE_* (launch + child extension). Extension path
+  resolution ../../extensions. New dep: turndown@7.2.4. 381/381 tests.
 - Phase 3 COMPLETE: full delegate subsystem ported — context projection
   (visible-conversation-v2 ledger w/ hash omission receipts), token-budget estimator,
   parent-snapshot, seed v2 construction+verification, launch preflight (hook-contract gate,

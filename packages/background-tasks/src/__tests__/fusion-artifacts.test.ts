@@ -217,7 +217,7 @@ void describe('fusion artifacts', () => {
       });
       // Normalize separators: the artifact dir uses native path separators, so
       // it is backslash-delimited on Windows.
-      assert.match(store.artifactDir.replaceAll('\\', '/'), /^\.pi\/fusion\/session-id-/);
+      assert.match(store.artifactDir.replaceAll('\\', '/'), /^\.unipi\/fusion\/session-id-/);
       const dirMode = (await stat(store.artifactDirAbs)).mode & 0o777;
       // Windows has no POSIX permission bits; NTFS ACLs are not modelled here.
       if (process.platform !== 'win32') assert.equal(dirMode, 0o700);

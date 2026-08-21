@@ -559,9 +559,11 @@ export class FusionArtifactStore {
     const sessionSegment = sanitizePathSegment(
       options.sessionId ?? `session-${String(process.pid)}`,
     );
+    // USER DECISION (2026-08-21): durable fusion artifacts live under the
+    // workspace .unipi/ dir (our convention), not .pi/ and not tmp.
     const sessionDirName = `${sessionSegment}-${String(process.pid)}`;
-    const runDirAbs = join(options.cwd, '.pi', 'fusion', sessionDirName, runId);
-    const runDirDisplay = join('.pi', 'fusion', sessionDirName, runId);
+    const runDirAbs = join(options.cwd, '.unipi', 'fusion', sessionDirName, runId);
+    const runDirDisplay = join('.unipi', 'fusion', sessionDirName, runId);
     await mkdir(runDirAbs, { recursive: true, mode: 0o700 });
     await chmod(runDirAbs, 0o700);
     const timestamp = (options.now ?? (() => new Date()))().toISOString();

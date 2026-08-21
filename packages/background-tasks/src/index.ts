@@ -17,6 +17,8 @@ import {
   type BackgroundTaskExtensionService,
 } from "./extension-api.js";
 import { registerToolsAndCommands } from "./tools.js";
+import { registerFusionExtension } from "./fusion-extension.js";
+import { registerDelegateExtension } from "./delegate-extension.js";
 import { taskDisplayName, type BgTask, type StartAttestedPiTaskOptions, type StartTaskOptions } from "./types.js";
 
 const STATUS_INTERVAL_MS = 1000;
@@ -228,6 +230,25 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     openTaskManager,
     clearFinishedNotices,
     openSettings,
+  });
+
+  registerFusionExtension(pi, {
+    startManagedTask: async (ctx, options) => {
+      currentCtx = ctx;
+      return registry.startManagedTask(ctx, options);
+    },
+    snapshot: (task) => registry.snapshot(task),
+    updateManagedTask: (task, state, line) => registry.updateManagedTask(task, state, line),
+  });
+
+  registerDelegateExtension(pi, {
+    startDelegateTask: async (ctx, options) => {
+      currentCtx = ctx;
+      return registry.startDelegateTask(ctx, options);
+    },
+    snapshot: (task) => registry.snapshot(task),
+    resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),
+    claimFusionUsage: (task) => registry.claimFusionUsage(task),
   });
 
   pi.on("session_start", async (_event, ctx) => {

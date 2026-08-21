@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -340,7 +340,7 @@ void describe('delegate child isolation', () => {
       assert.equal(env[key], undefined, `${key} must not reach the child`);
     }
     assert.equal(env['UNRELATED'], 'kept');
-    assert.equal(env['PI_BG_DELEGATE_SEED_SHA256'], 'a'.repeat(64));
+    assert.equal(env['UNIPI_BG_DELEGATE_SEED_SHA256'], 'a'.repeat(64));
   });
 
   void it('tells the child the directive is authoritative and history is untrusted', () => {
@@ -519,6 +519,9 @@ void describe('delegate launch preparation creates nothing on refusal', () => {
   async function attempt(overrides: Record<string, unknown>) {
     const root = await mkdtemp(join(tmpdir(), 'pi-bg-delegate-launch-'));
     roots.push(root);
+    // OUR layout keeps artifacts under the OS temp root; isolate per test root.
+    process.env['UNIPI_BG_TMP_DIR'] = join(root, 'tmp');
+    await mkdir(join(root, 'tmp'), { recursive: true });
     const input = {
       ctx: {
         cwd: root,
@@ -549,7 +552,8 @@ void describe('delegate launch preparation creates nothing on refusal', () => {
   }
 
   async function delegateDirEntries(root: string): Promise<string[]> {
-    const base = join(root, '.pi', 'delegate');
+    // USER DECISION: delegate artifacts under <cwd>/.unipi/delegate.
+    const base = join(root, '.unipi', 'delegate');
     if (!existsSync(base)) return [];
     const sessions = await readdir(base);
     const entries: string[] = [];
@@ -637,8 +641,8 @@ void describe('delegate launch preparation creates nothing on refusal', () => {
       prepared.preflight.seed.serialized,
       'the persisted seed bytes are the bytes the child reads',
     );
-    assert.equal(prepared.env['PI_BG_DELEGATE_SEED_SHA256'], prepared.preflight.seed.sha256);
-    assert.equal(prepared.env['PI_BG_DELEGATE_TASK_ID'], prepared.preflight.taskId);
+    assert.equal(prepared.env['UNIPI_BG_DELEGATE_SEED_SHA256'], prepared.preflight.seed.sha256);
+    assert.equal(prepared.env['UNIPI_BG_DELEGATE_TASK_ID'], prepared.preflight.taskId);
     assert.ok(existsSync(join(prepared.store.artifactDirAbs, 'budget-plan.json')));
     assert.ok(existsSync(join(prepared.store.artifactDirAbs, 'context-omission-ledger.json')));
     const manifest = JSON.parse(
