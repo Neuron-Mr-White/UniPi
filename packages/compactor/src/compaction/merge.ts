@@ -2,7 +2,7 @@
  * Stage 6: Merge — Merge with previous summary, dedup, rolling window
  */
 
-import { capBrief } from "./format.js";
+import { capBrief, BRIEF_MAX_LINES } from "./format.js";
 
 const HEADER_NAMES = ["Session Goal", "Files And Changes", "Commits", "Outstanding Context", "User Preferences"];
 const SEPARATOR = "\n\n---\n\n";
@@ -88,7 +88,35 @@ const mergeBriefTranscript = (prev: string, fresh: string): string => {
   return prev + "\n\n" + fresh;
 };
 
-export const mergePrevious = (prev: string, fresh: string): string => {
+const briefLineCount = (text: string): number =>
+  text ? text.split("\n").length : 0;
+
+const capBriefToLineBudget = (text: string, maxLines: number): string => {
+  if (!text || maxLines <= 0) return "";
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return text;
+  const kept = lines.slice(-maxLines);
+  const firstHeader = kept.findIndex((l) => /^\[.+\]/.test(l));
+  const clean = firstHeader > 0 ? kept.slice(firstHeader) : kept;
+  const omitted = lines.length - clean.length;
+  return `...(${omitted} earlier lines omitted)\n\n${clean.join("\n")}`;
+};
+
+/** Fresh brief gets the line budget; previous brief fills the remainder (pi-vcc parity) */
+export const mergeBriefTranscriptWithFreshBudget = (prev: string, fresh: string): string => {
+  if (!prev) return fresh;
+  if (!fresh) return capBrief(prev);
+  const freshLines = briefLineCount(fresh);
+  const remainingPrevLines = Math.max(0, BRIEF_MAX_LINES - freshLines);
+  const prevTail = capBriefToLineBudget(prev, remainingPrevLines);
+  return prevTail ? `${prevTail}\n\n${fresh}` : fresh;
+};
+
+export const mergePrevious = (
+  prev: string,
+  fresh: string,
+  options: { preserveFreshBrief?: boolean } = {},
+): string => {
   const headers = HEADER_NAMES
     .map((header) => {
       const freshSec = sectionOf(fresh, header);
@@ -99,14 +127,16 @@ export const mergePrevious = (prev: string, fresh: string): string => {
 
   const prevBrief = briefOf(prev);
   const freshBrief = briefOf(fresh);
-  const mergedBrief = mergeBriefTranscript(prevBrief, freshBrief);
+  const mergedBrief = options.preserveFreshBrief
+    ? mergeBriefTranscriptWithFreshBudget(prevBrief, freshBrief)
+    : mergeBriefTranscript(prevBrief, freshBrief);
 
   const parts: string[] = [];
   if (headers.length > 0) {
     parts.push(headers.join("\n\n"));
   }
   if (mergedBrief) {
-    parts.push(capBrief(mergedBrief));
+    parts.push(options.preserveFreshBrief ? mergedBrief : capBrief(mergedBrief));
   }
 
   return parts.join(SEPARATOR);

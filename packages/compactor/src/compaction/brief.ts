@@ -399,3 +399,7 @@ export const stringifyBrief = (sections: BriefLine[]): string => {
   }
   return out.join("\n");
 };
+
+/** Render a set of blocks to a brief transcript string (used by ranked selection cost calc) */
+export const compileBrief = (blocks: NormalizedBlock[]): string =>
+  stringifyBrief(buildBriefSections(blocks));

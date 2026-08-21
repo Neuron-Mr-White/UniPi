@@ -57,9 +57,9 @@ const formatFileActivity = (blocks: NormalizedBlock[]): string[] => {
   return lines;
 };
 
-export const buildSections = (input: { blocks: NormalizedBlock[] }): SectionData => {
+export const buildSections = (input: { blocks: NormalizedBlock[]; briefBlocks?: NormalizedBlock[] }): SectionData => {
   const { blocks } = input;
-  const briefSections = buildBriefSections(blocks);
+  const briefSections = buildBriefSections(input.briefBlocks ?? blocks);
   const sessionGoal = extractGoals(blocks);
   const userPreferences = dedupPreferencesAgainstGoals(
     extractPreferences(blocks),

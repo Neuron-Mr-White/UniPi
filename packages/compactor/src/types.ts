@@ -15,6 +15,13 @@ export type NormalizedBlock =
   | { kind: "tool_result"; name: string; text: string; isError: boolean; sourceIndex?: number }
   | { kind: "thinking"; text: string; redacted: boolean; sourceIndex?: number };
 
+/** Hook-provided file activity (pi-vcc parity) — structural signal for ranking */
+export interface FileOps {
+  readFiles?: string[];
+  modifiedFiles?: string[];
+  createdFiles?: string[];
+}
+
 // ─────────────────────────────────────────────────────────
 // Section data (from pi-vcc)
 // ─────────────────────────────────────────────────────────

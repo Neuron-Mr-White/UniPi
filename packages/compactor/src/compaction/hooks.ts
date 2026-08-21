@@ -12,7 +12,7 @@ import type {
   SessionBeforeCompactEvent,
   SessionCompactEvent,
 } from "@earendil-works/pi-coding-agent";
-import { compile } from "./summarize.js";
+import { compileRanked } from "./summarize.js";
 import { loadConfig } from "../config/manager.js";
 import {
   buildOwnCut,
@@ -228,9 +228,30 @@ export function registerCompactionHooks(
       }
     }
 
-    const summary = compile({
+    // Ranked compaction: keep the highest-signal blocks under a token budget
+    // instead of the old unranked compile() (fixed 120-line cap). The token
+    // budget is converted to a char budget via the session's calibrated
+    // charsPerToken so the summary targets ~RANKED_BRIEF_BUDGET_TOKENS tokens
+    // regardless of content density. The budget is SIZE-RELATIVE: it scales
+    // with transcript length between a floor and a ceiling at
+    // RANKED_BRIEF_CHARS_PER_BLOCK per normalized block (pi-vcc parity).
+    const RANKED_BRIEF_BUDGET_TOKENS = 1100;
+    const RANKED_BRIEF_CEILING_TOKENS = 2000;
+    const RANKED_BRIEF_TOKENS_PER_BLOCK = 15;
+    const summary = compileRanked({
       messages: messages as any,
       previousSummary: preparation.previousSummary,
+      fileOps: preparation.fileOps
+        ? {
+            readFiles: [...preparation.fileOps.read],
+            modifiedFiles: [...preparation.fileOps.written, ...preparation.fileOps.edited],
+          }
+        : undefined,
+      ranking: {
+        maxBriefChars: Math.round(RANKED_BRIEF_BUDGET_TOKENS * tokenEstimate.charsPerToken),
+        maxBriefCharsCeiling: Math.round(RANKED_BRIEF_CEILING_TOKENS * tokenEstimate.charsPerToken),
+        briefCharsPerBlock: Math.round(RANKED_BRIEF_TOKENS_PER_BLOCK * tokenEstimate.charsPerToken),
+      },
     });
 
     const details = {
