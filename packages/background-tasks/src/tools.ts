@@ -188,6 +188,14 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
     },
   });
 
+  pi.registerCommand("unipi:bg-tasks", {
+    description: "Open the background task manager UI",
+    handler: async (args, ctx) => {
+      const taskId = typeof args === "string" ? args.trim() : "";
+      await options.openTaskManager(ctx, taskId || undefined);
+    },
+  });
+
   pi.registerCommand("unipi:bg-clear", {
     description: "Clear finished background task footer notices",
     handler: (_args, ctx) => {

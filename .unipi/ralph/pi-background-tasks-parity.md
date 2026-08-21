@@ -74,12 +74,12 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [x] Tests: fusion-core, budget, evaluation, orchestrator, artifacts, context-prompts, web-fetch, golden-bytes/extraction-equivalence/high-cardinality (adapt) — 158/158 fusion tests
 
 ## Phase 5 — Fusion integration
-- [ ] fusion-extension.ts (1294): tools fusion_reason/investigate/research/validate + /unipi:fusion + /unipi:fusion-models
-- [ ] Model selector TUI on OUR overlay patterns — src/ui/fusion-model-selector.ts
-- [ ] fusion-child-extension.ts (1012) + extensions/fusion-child.ts entry
-- [ ] Managed-task registration through Phase 1 registry (durable preflight barrier, usage claim)
-- [ ] Renderer for fusion results (our renderResult idiom)
-- [ ] Tests: fusion-sdk, fusion-rpc, fusion-workflows, fusion-config, model-selector (adapt)
+- [x] fusion-extension.ts (1294): tools fusion_reason/investigate/research/validate + /unipi:fusion + /unipi:fusion-models
+- [x] Model selector TUI on OUR overlay patterns — src/ui/fusion-model-selector.ts
+- [x] fusion-child-extension.ts (1012) + extensions/fusion-child.ts entry
+- [x] Managed-task registration through Phase 1 registry (durable preflight barrier, usage claim)
+- [x] Renderer for fusion results (our renderResult idiom)
+- [x] Tests: fusion-sdk, fusion-rpc, fusion-workflows, fusion-config, model-selector (adapt)
 
 ## Phase 6 — Anthropic attribution
 - [ ] Port anthropic-attribution.ts (1983) + path helper + extensions entry; EventBus claim protocol kept internal
@@ -94,6 +94,15 @@ New workspace package `packages/background-tasks` (`@pi-unipi/background-tasks`)
 - [ ] Full verification: tsc + root npm test + package tests; bump version; npm publish; reinstall on PC; verify install tree
 
 ## Progress log
+- Phase 5 COMPLETE: fusion integration. fusion-extension.ts ported (1294 ref lines) with
+  tools fusion_reason/investigate/research/validate + /unipi:fusion + /unipi:fusion-models;
+  model selector TUI (src/ui/fusion-model-selector.ts, 3 tests); managed-task registration
+  through the registry (durable preflight barrier + usage claim); fusion result renderer.
+  User reorganized RPC tests into src/__tests__/ layout (fusion-rpc 3 tests, all passing);
+  scripted-provider suite + helpers ported into src/__tests__/scripted-provider + helpers
+  (env UNIPI_BG_SCRIPTED_*, agent_settled->agent_end adaptation in output-recovery
+  provider). unipi:bg-tasks command alias added (reference registers both tasks names).
+  extensions/background-tasks.ts entry shim created for RPC tests. 384/384 tests.
 - Phase 4 COMPLETE: fusion core + child extensions + full test suite. Fusion source
   files (types/workflows/config/context/clean-context/prompts/source-policy/web-fetch/
   budget/evaluation/orchestrator/artifacts/result-package/output-contract/child-protocol/
