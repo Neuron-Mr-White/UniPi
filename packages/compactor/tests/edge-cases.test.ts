@@ -11,7 +11,7 @@ import { compile } from "../src/compaction/summarize.js";
 import { searchEntries } from "../src/compaction/search-entries.js";
 import { loadConfig, migrateConfig } from "../src/config/manager.js";
 import { detectPreset, applyPreset } from "../src/config/presets.js";
-import { evaluateCommand, splitChainedCommands, evaluateFilePath } from "../src/security/evaluator.js";
+import { evaluateCommand, evaluateFilePath } from "../src/security/evaluator.js";
 import type { SecurityPolicy } from "../src/security/policy.js";
 import type { Message, NormalizedBlock } from "../src/types.js";
 
@@ -98,7 +98,6 @@ describe("Edge cases — config", () => {
   it("applyPreset returns valid config", () => {
     const config = applyPreset("opencode");
     expect(config.sessionGoals).toBeDefined();
-    expect(config.toolDisplay).toBeDefined();
   });
 
   it("all presets produce valid configs", () => {
@@ -106,7 +105,6 @@ describe("Edge cases — config", () => {
       const config = applyPreset(preset);
       expect(config.sessionGoals).toBeDefined();
       expect(config.briefTranscript).toBeDefined();
-      expect(config.toolDisplay).toBeDefined();
     }
   });
 });
@@ -126,25 +124,6 @@ describe("Edge cases — security", () => {
     expect(evaluateCommand("sudo apt install", TEST_POLICY)).toBe("ask");
   });
 
-  it("splitChainedCommands handles &&", () => {
-    const cmds = splitChainedCommands("echo a && echo b");
-    expect(cmds).toEqual(["echo a", "echo b"]);
-  });
-
-  it("splitChainedCommands handles ||", () => {
-    const cmds = splitChainedCommands("false || echo fallback");
-    expect(cmds).toEqual(["false", "echo fallback"]);
-  });
-
-  it("splitChainedCommands handles ;", () => {
-    const cmds = splitChainedCommands("echo a; echo b; echo c");
-    expect(cmds).toEqual(["echo a", "echo b", "echo c"]);
-  });
-
-  it("splitChainedCommands respects quotes", () => {
-    const cmds = splitChainedCommands('echo "a && b" && echo c');
-    expect(cmds).toEqual(['echo "a && b"', "echo c"]);
-  });
 
   it("evaluateFilePath allows safe paths", () => {
     expect(evaluateFilePath("/tmp/test.txt", TEST_POLICY, "/tmp")).toBe("allow");

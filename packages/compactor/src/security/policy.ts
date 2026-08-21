@@ -24,7 +24,12 @@ export function parseToolPattern(pattern: string): { tool: string; glob: string 
 }
 
 function convertGlobPart(glob: string): string {
-  return RegExp.escape(glob).replace(/\*/g, ".*");
+  // Replace wildcards FIRST, then escape the literal remainder — escaping first
+  // would turn `*` into `\*` and the wildcard replace would never fire.
+  return glob
+    .split("*")
+    .map((part) => RegExp.escape(part))
+    .join(".*");
 }
 
 export function globToRegex(glob: string, caseInsensitive: boolean = false): RegExp {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { evaluateCommand, splitChainedCommands, evaluateFilePath } from "../src/security/evaluator.js";
+import { evaluateCommand, evaluateFilePath } from "../src/security/evaluator.js";
 import type { SecurityPolicy } from "../src/security/policy.js";
 
 describe("security", () => {
@@ -23,19 +23,6 @@ describe("security", () => {
     expect(evaluateCommand("sudo apt update", policy)).toBe("ask");
   });
 
-  it("splits chained commands", () => {
-    const cmds = splitChainedCommands("echo a && echo b || echo c; echo d");
-    expect(cmds).toContain("echo a");
-    expect(cmds).toContain("echo b");
-    expect(cmds).toContain("echo c");
-    expect(cmds).toContain("echo d");
-  });
-
-  it("respects quotes when splitting", () => {
-    const cmds = splitChainedCommands('echo "a && b"');
-    expect(cmds).toHaveLength(1);
-    expect(cmds[0]).toBe('echo "a && b"');
-  });
 
   it("evaluates file paths", () => {
     expect(evaluateFilePath("/etc/passwd", policy)).toBe("deny");

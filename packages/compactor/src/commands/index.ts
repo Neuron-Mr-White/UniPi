@@ -9,7 +9,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
 import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
-import { getLastCompactionStats } from "../compaction/hooks.js";
+import { getLastCompactionStats, formatCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
@@ -33,10 +33,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
       onComplete: () => {
         const stats = getLastCompactionStats();
         if (stats) {
-          ctx.ui.notify(
-            `Compacted ${stats.totalMessages} messages (~${formatTokens(stats.tokensBefore)} tokens) → ${stats.kept} messages (~${formatTokens(stats.tokensAfterEst)} tokens)`,
-            "info",
-          );
+          ctx.ui.notify(formatCompactionStats(stats), "info");
         } else {
           ctx.ui.notify("Compaction completed.", "info");
         }

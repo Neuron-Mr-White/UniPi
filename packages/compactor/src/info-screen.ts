@@ -12,7 +12,7 @@ import { formatTokens } from "@pi-unipi/core";
  */
 
 import type { SessionDB } from "./session/db.js";
-import { getLastCompactionStats } from "./compaction/hooks.js";
+import { getLastCompactionStats, formatCompactionStats } from "./compaction/hooks.js";
 import { parseUsageStatsAsync } from "@pi-unipi/info-screen/usage-parser.js";
 import type { RuntimeCounters } from "./types.js";
 
@@ -177,7 +177,7 @@ export async function getInfoScreenData(
       compactions: {
         value: String(compactionCount),
         detail: compactStats
-          ? `Last: ${compactStats.totalMessages} messages (~${formatTokens(compactStats.tokensBefore)} tokens) → ${compactStats.kept} messages (~${formatTokens(compactStats.tokensAfterEst)} tokens)`
+          ? `Last: ${formatCompactionStats(compactStats)}`
           : compactionCount > 0
             ? `${compactionCount} compaction(s) across all sessions`
             : "No compactions yet",

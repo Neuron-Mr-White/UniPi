@@ -45,20 +45,43 @@ export interface CompileInput {
 export interface CompactionStats {
   summarized: number;
   kept: number;
-  totalMessages: number;
+  totalMessages?: number;
   /** Actual token count from Pi's preparation */
-  tokensBefore: number;
+  tokensBefore?: number;
   /** Estimated tokens after compaction (proportional from kept/total chars) */
-  tokensAfterEst: number;
+  tokensAfterEst?: number;
+  keptUserTurns: number;
+  totalUserTurns: number;
+  requestedKeepUserTurns: number;
+  keepUserTurnsExplicit: boolean;
+  keepFallbackToCompactAll: boolean;
+  /** Set when the tail came from a token-budget cut instead of a user-turn cut. */
+  budgetCut?: BudgetCutKind;
+  keptTokensEst: number;
+  /** True when smart-keep boosted the default keep beyond 1. */
+  smartKeepAdjusted?: boolean;
+  /** Base keep before smart adjustment (for toast like "1→3"). */
+  smartFromKeep?: number;
 }
+
+export type BudgetCutKind = "no_anchor" | "oversized_tail";
 
 export type OwnCutCancelReason =
   | "no_live_messages"
-  | "too_few_live_messages"
-  | "no_user_message";
+  | "too_few_live_messages";
 
 export type OwnCutResult =
-  | { ok: true; messages: Message[]; firstKeptEntryId: string; compactAll: boolean }
+  | {
+      ok: true;
+      messages: Message[];
+      firstKeptEntryId: string;
+      compactAll: boolean;
+      keptUserTurns: number;
+      totalUserTurns: number;
+      requestedKeepUserTurns: number;
+      keepFallbackToCompactAll: boolean;
+      budgetCut?: BudgetCutKind;
+    }
   | { ok: false; reason: OwnCutCancelReason };
 
 // ─────────────────────────────────────────────────────────
@@ -113,6 +136,12 @@ export interface CompactorConfig {
 
   // Global settings
   overrideDefaultCompaction: boolean;
+  /** Boost default keep:1 to a larger tail when it is small (≤5k tok, capped 25k). Explicit keep:N always respected. */
+  smartKeepTail: boolean;
+  /** Ask the agent to continue after automatic (threshold/overflow) compaction. */
+  continueAfterThresholdCompact: boolean;
+  /** Write detailed compaction diagnostics to /tmp/compactor-debug.json. */
+  debug: boolean;
 }
 
 export type CompactorPreset = "precise" | "balanced" | "thorough" | "lean" | "opencode" | "verbose" | "minimal" | "custom";

@@ -47,26 +47,18 @@ describe("config", () => {
   });
 
   it("presets configure only the implemented pipeline feature", () => {
-    const reservedDefaults = {
-      ttlCache: false,
-      proximityReranking: false,
-      timelineSort: false,
-      progressiveThrottling: false,
-      mmapPragma: false,
-    };
-
     expect(applyPreset("precise").pipeline).toMatchObject({
-      ...reservedDefaults,
       autoInjection: false,
+      customNoisePatterns: [],
     });
     expect(applyPreset("balanced").pipeline).toMatchObject({
-      ...reservedDefaults,
       autoInjection: true,
+      customNoisePatterns: [],
     });
     expect(applyPreset("thorough").pipeline).toEqual(applyPreset("balanced").pipeline);
     expect(applyPreset("lean").pipeline).toMatchObject({
-      ...reservedDefaults,
       autoInjection: false,
+      customNoisePatterns: [],
     });
   });
 

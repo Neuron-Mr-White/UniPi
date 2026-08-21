@@ -51,4 +51,7 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     notify: true,
   },
   overrideDefaultCompaction: true,
+  smartKeepTail: true,
+  continueAfterThresholdCompact: true,
+  debug: false,
 };
