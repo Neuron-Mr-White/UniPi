@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
   "type": "module",
   "main": "src/index.ts",

@@ -112,7 +112,7 @@ These settings control UniPi-managed percentage auto-compaction. They are separa
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `Percentage Trigger` | `off` | When on, UniPi checks context usage at `turn_end` and can call compaction when the threshold is reached. Disabled by default for backward compatibility. |
+| `Percentage Trigger` | `off` | When on, UniPi checks context usage at `agent_end` (after the agent run settles) and can call compaction when the threshold is reached. Disabled by default for backward compatibility. |
 | `Threshold` | `80%` | Trigger point using Pi's live `ctx.getContextUsage().percent`. |
 | `Cooldown` | `60s` | Minimum time between UniPi-triggered compaction attempts. Prevents loops. |
 | `Repeat Growth` | `4k` | If usage is still above threshold after compaction, require this many new tokens before triggering again. |
@@ -217,10 +217,11 @@ Typical session order:
    - Updates runtime byte/tool counters.
    - Applies display overrides and width-safe diff clamping before output reaches the TUI.
 
-6. **`turn_end`**
+6. **`agent_end`**
    - If percentage auto-compaction is enabled, reads `ctx.getContextUsage()`.
    - Runs cooldown/repeat-growth safeguards.
    - Calls `ctx.compact({ customInstructions: COMPACTOR_INSTRUCTION })` when eligible.
+   - Fires only after the agent run settles: `ctx.compact()` aborts any active operation first, so triggering mid-run (e.g. at `turn_end`) would kill the next provider request.
 
 7. **Pi decides to compact**
    - This can be from `/unipi:lossless-compact`, UniPi percentage auto-compaction, or Pi core's reserve-token fallback.

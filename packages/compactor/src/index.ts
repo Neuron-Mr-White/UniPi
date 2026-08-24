@@ -229,7 +229,14 @@ export default function compactorExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("turn_end", async (_event, ctx) => {
+  // Trigger percentage auto-compaction at agent_end, NOT turn_end.
+  // Pi's ctx.compact() aborts the active agent operation first
+  // (AgentSession.compact() -> await this.abort()). turn_end fires between
+  // turns of a still-running agent loop, so compacting there kills the next
+  // in-flight provider request ("This operation was aborted" stopReason=error
+  // turns). agent_end fires only after the run has fully settled, matching
+  // Pi core's own native auto-compaction check point ("checked on agent_end").
+  pi.on("agent_end", async (_event, ctx) => {
     const cwd = (ctx as any).cwd ?? process.cwd();
     config = loadConfig(cwd);
 

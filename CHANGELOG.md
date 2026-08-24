@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `compactor`: percentage auto-compaction now triggers at `agent_end` instead of `turn_end`. Pi's `ctx.compact()` aborts the active agent operation first, and `turn_end` fires between turns of a still-running agent loop, so the trigger killed the next in-flight provider request with `stopReason=error "This operation was aborted"` and the turn was lost (issue #30). `agent_end` fires only after the run has fully settled — the same checkpoint Pi core uses for its own native auto-compaction.
+
 ## [2.6.2] — 2026-08-22
 
 This release fixes split-package installs: since 2.0.11, every per-package `pi` manifest shipped with empty `extensions`/`skills` arrays, so installing a split package like `@pi-unipi/ralph` on its own loaded nothing (issue #29). The regression came from `d914a25` ("fix: disable split package resource discovery", v2.0.11), which blanked the manifests of all nested packages to stop duplicate skill discovery inside the all-in-one umbrella install — without realizing pi reads a present manifest literally, so standalone installs also loaded nothing. Notify (#18) and compactor (#23) were fixed the same way earlier; this release fixes the remaining packages at once.
