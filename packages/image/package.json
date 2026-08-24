@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/image",
-  "version": "2.6.2",
+  "version": "2.9.0",
   "description": "Image generation and image recognition tools for the Pi coding agent",
   "type": "module",
   "main": "src/index.ts",
@@ -34,12 +34,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.6.1"
+    "@pi-unipi/core": "2.9.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.80.0",
-    "@earendil-works/pi-coding-agent": "^0.80.0",
-    "@earendil-works/pi-tui": "^0.80.0",
+    "@earendil-works/pi-ai": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@earendil-works/pi-tui": "^0.84.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

@@ -10,10 +10,12 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
   type AgentSessionEvent,
+  type CreateAgentSessionOptions,
   createAgentSession,
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  type ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -174,12 +176,16 @@ export async function runAgent(
   const model = options.model ?? ctx.model;
 
   // Create session
-  const sessionOpts: Parameters<typeof createAgentSession>[0] = {
+  // SDK >=0.84: CreateAgentSessionOptions takes `modelRuntime` (the canonical
+  // ModelRuntime) instead of the removed `modelRegistry` option. The extension
+  // context exposes only the ModelRegistry facade, whose `runtime` field is the
+  // same ModelRuntime the parent session runs on.
+  const sessionOpts: CreateAgentSessionOptions = {
     cwd: effectiveCwd,
     agentDir,
     sessionManager: SessionManager.inMemory(effectiveCwd),
     settingsManager: SettingsManager.create(effectiveCwd, agentDir),
-    modelRegistry: ctx.modelRegistry,
+    modelRuntime: (ctx.modelRegistry as unknown as { runtime: ModelRuntime }).runtime,
     model,
     tools: toolNames,
     resourceLoader: loader,

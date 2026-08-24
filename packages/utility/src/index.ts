@@ -3,13 +3,12 @@
  *
  * Comprehensive utilities suite for Pi coding agent:
  * - Commands: continue, reload, status, cleanup, env, doctor, badge
- * - Tools: ctx_batch, ctx_env, set_session_name
+ * - Tools: ctx_env, set_session_name
  * - Lifecycle: process management, stale cleanup
- * - Cache: TTL cache with optional persistence
  * - Analytics: lightweight event collection
  * - Diagnostics: cross-module health checks
- * - Display: terminal capabilities, width utilities
- * - TUI: settings inspector pattern, name badge
+ * - Prefix-cache observability: privacy-safe provider cache stats
+ * - TUI: util settings, name badge (incl. Herdr pane title sync)
  */
 
 import { dirname } from "node:path";

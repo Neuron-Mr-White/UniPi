@@ -44,13 +44,12 @@ describe("UtilSettingsTui", () => {
     assert.ok(lines[lines.length - 1].includes("╯")); // bottom border
   });
 
-  it("renders both badge and diff sections", async () => {
+  it("renders the badge section", async () => {
     const { UtilSettingsTui } = await import("../src/tui/util-settings-tui.js");
     const tui = new UtilSettingsTui();
     const lines = tui.render(80);
     const text = lines.join("\n");
     assert.ok(text.includes("Badge"));
-    assert.ok(text.includes("Diff Rendering"));
   });
 
   it("handles keyboard navigation", async () => {

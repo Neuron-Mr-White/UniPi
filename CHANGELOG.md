@@ -6,9 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-08-24
+
+This release upgrades the Pi SDK floor to `^0.84.0` (resolves to 0.84.2) across all packages and re-synchronizes every package onto a single shared version (2.9.0) after the 2.6/2.8 version drift caused npm to resolve registry copies of workspace packages — stale peers that broke clean installs (ERESOLVE) and shipped nested stale copies. It also ships the compactor auto-compaction abort fix (issue #30).
+
+### Changed
+
+- `@earendil-works/pi-coding-agent`, `pi-ai`, `pi-tui`, `pi-agent-core` peer dependencies bumped `^0.80.0` → `^0.84.0` in the root and all 21 workspace packages. Users on Pi 0.84.x can now co-install Unipi packages cleanly; users on older Pi releases should stay on `@pi-unipi/*@<2.9.0`.
+- All packages and the umbrella re-versioned to a single `2.9.0`; every `@pi-unipi/*` cross-dependency pin updated to match, so npm links workspace packages instead of pulling registry snapshots.
+
 ### Fixed
 
 - `compactor`: percentage auto-compaction now triggers at `agent_end` instead of `turn_end`. Pi's `ctx.compact()` aborts the active agent operation first, and `turn_end` fires between turns of a still-running agent loop, so the trigger killed the next in-flight provider request with `stopReason=error "This operation was aborted"` and the turn was lost (issue #30). `agent_end` fires only after the run has fully settled — the same checkpoint Pi core uses for its own native auto-compaction.
+
+### SDK migration (0.80 → 0.84)
+
+- `btw`: child sessions now pass `modelRuntime` (extracted from the extension-facing `ModelRegistry` facade) to `createAgentSession` — the SDK replaced the removed `modelRegistry` option in 0.81. The synthetic BTW resource loader implements the new `getSystemPromptSource`/`getAppendSystemPromptSources` members.
+- `subagents`: agent-runner sessions migrated the same way; `sessionOpts` now typed as `CreateAgentSessionOptions` (the SDK made `createAgentSession`'s options parameter optional).
+- `background-tasks`: fusion SDK integration test migrated off the removed `AuthStorage`/`ModelRegistry.create()` onto `ModelRuntime.create({ authPath })` with `registerProvider`/`getModel`.
+- Compatibility verified against 0.84.2: extension event map is additive only (`agent_settled`, `before_provider_headers`, `session_info_changed` added; nothing removed), all consumed event payloads byte-identical, and `ctx.compact()` retains its abort-first semantics that issue #30's fix targets.
+
+### Fixed (test suite / docs hygiene)
+
+- `utility`: removed 11 stale test files targeting modules deleted by the 2026-08 ponytail audits (`diff/*`, `display/*`, `cache/ttl-cache`, `tools/batch`, `tui/settings-inspector`) — the workspace suite had been failing 27 tests since those deletions; badge-settings TUI test updated to the badge-only settings surface; dropped the unused `@types/diff` devDependency.
+- `utility`: README rewritten to match shipped features (batch tool, Shiki diff rendering, TTL cache, and display-capability modules were previously deleted); root README tool table no longer lists the removed `ctx_batch` tool.
+- `web-api`: two stale tests updated to the post-ponytail API (`getRankedProviders` instead of the removed `getProviderByRank`; the removed `checkWigoloHealth` replaced by asserting the actionable install hint on `WigoloUnavailableError`).
+- Root-level `tests/info-screen-boot-timer.test.js`, `tests/prefix-provider-payload.test.js`, and `tests/prefix-tool-registration.test.js` remain broken from pre-existing toolchain drift (`.js`-specifier imports that Node 24 type-stripping cannot resolve); they are outside the workspace test step and documented here rather than silently ignored.
 
 ## [2.6.2] — 2026-08-22
 

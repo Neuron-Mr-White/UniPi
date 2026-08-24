@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/web-api",
-  "version": "2.6.2",
+  "version": "2.9.0",
   "description": "Web search, read, and summarize tools with provider-based backend selection for Pi coding agent",
   "type": "module",
   "main": "src/index.ts",
@@ -31,7 +31,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "2.6.1",
+    "@pi-unipi/core": "2.9.0",
     "defuddle": "^0.18.1",
     "linkedom": "^0.18.12",
     "wreq-js": "^2.3.0"
@@ -40,8 +40,8 @@
     "wigolo-sdk": "^0.2.1"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.0",
-    "@earendil-works/pi-tui": "^0.80.0",
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@earendil-works/pi-tui": "^0.84.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

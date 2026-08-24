@@ -6,10 +6,9 @@ import { join, resolve, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AssistantMessage, UserMessage } from '@earendil-works/pi-ai';
 import {
-  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
-  ModelRegistry,
+  ModelRuntime,
   SessionManager,
   SettingsManager,
   Theme,
@@ -325,9 +324,13 @@ async function harness(options: HarnessOptions = {}): Promise<Harness> {
     noThemes: true,
   });
   await loader.reload();
-  const authStorage = AuthStorage.create(join(agentDir, 'auth.json'));
-  const modelRegistry = ModelRegistry.create(authStorage, undefined);
-  modelRegistry.registerProvider('pi-bg-fusion', {
+  // SDK >=0.81: AuthStorage/ModelRegistry session options were replaced by
+  // the canonical ModelRuntime. Register the fake fusion provider on it.
+  const modelRuntime = await ModelRuntime.create({
+    authPath: join(agentDir, 'auth.json'),
+    modelsPath: null,
+  });
+  modelRuntime.registerProvider('pi-bg-fusion', {
     name: 'Fusion SDK Provider',
     baseUrl: 'https://example.invalid',
     apiKey: 'UNIPI_BG_FUSION_TEST_KEY',
@@ -359,11 +362,10 @@ async function harness(options: HarnessOptions = {}): Promise<Harness> {
     resourceLoader: loader,
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     noTools: 'builtin',
   });
-  const model = modelRegistry.find('pi-bg-fusion', 'current-model');
+  const model = modelRuntime.getModel('pi-bg-fusion', 'current-model');
   assert.ok(model, 'fusion model should exist');
   await session.setModel(model);
   assert.equal(session.model?.provider, 'pi-bg-fusion');

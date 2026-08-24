@@ -14,7 +14,6 @@ import {
   WigoloUnavailableError,
   __resetWigoloClientForTests,
   __setWigoloClientForTests,
-  checkWigoloHealth,
   closeWigoloClient,
   getWigoloClient,
   isWigoloInstalled,
@@ -170,10 +169,14 @@ describe("wigolo availability", () => {
       return;
     }
 
-    const health = await checkWigoloHealth();
-    assert.equal(health.available, false);
-    assert.equal(health.status, "not installed");
-    assert.match(health.detail ?? "", /npx wigolo init/);
+    await assert.rejects(
+      () => getWigoloClient(),
+      (error: Error) => {
+        assert.ok(error instanceof WigoloUnavailableError);
+        assert.match(error.message, /npm install -g wigolo && npx wigolo init/);
+        return true;
+      },
+    );
   });
 
   it("throws WigoloUnavailableError rather than a bare Error", async (t) => {

@@ -1,9 +1,9 @@
 /**
  * Provider registry and ranking tests.
  *
- * Ranking collisions are silent and dangerous: `selectProvider` matches on the
- * exact rank number and `getProviderByRank` uses `.find`, so a duplicate rank
- * shadows a provider with no error anywhere. These tests pin the rank map so
+ * Ranking collisions are silent and dangerous: ranked selection sorts on the
+ * exact rank number, so a duplicate rank shadows a provider with no error
+ * anywhere. These tests pin the rank map so
  * adding a provider cannot quietly break `source:` selection.
  */
 
@@ -126,9 +126,10 @@ describe("capability rank map", () => {
   });
 
   it("resolves a provider by rank", () => {
-    assert.equal(registry.getProviderByRank("search", 1)?.id, "wigolo");
-    assert.equal(registry.getProviderByRank("search", 2)?.id, "duckduckgo");
-    assert.equal(registry.getProviderByRank("read", 2)?.id, "jina-reader");
-    assert.equal(registry.getProviderByRank("search", 99), undefined);
+    const search = registry.getRankedProviders("search");
+    assert.equal(search[0]?.id, "wigolo");
+    assert.equal(search[1]?.id, "duckduckgo");
+    assert.equal(registry.getRankedProviders("read")[1]?.id, "jina-reader");
+    assert.equal(search[99], undefined);
   });
 });

@@ -26,6 +26,7 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
+  type ModelRuntime,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 import { type AssistantMessage, type Message, type ThinkingLevel as AiThinkingLevel, type UserMessage } from "@earendil-works/pi-ai";
@@ -161,6 +162,17 @@ function stripDynamicSystemPromptFooter(systemPrompt: string): string {
     .trim();
 }
 
+/**
+ * Extract the canonical ModelRuntime from the extension-facing ModelRegistry
+ * facade. The SDK (>=0.84) exposes `modelRuntime` on AgentSession and expects
+ * it in CreateAgentSessionOptions; the extension context only hands us the
+ * ModelRegistry wrapper, whose `runtime` field is the same instance the
+ * parent session uses (agent-session wires `new ModelRegistry(this._modelRuntime)`).
+ */
+function sessionModelRuntime(ctx: ExtensionCommandContext): ModelRuntime {
+  return (ctx.modelRegistry as unknown as { runtime: ModelRuntime }).runtime;
+}
+
 function createBtwResourceLoader(
   ctx: ExtensionCommandContext,
   appendSystemPrompt: string[] = [BTW_SYSTEM_PROMPT],
@@ -175,7 +187,9 @@ function createBtwResourceLoader(
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
     getSystemPrompt: () => systemPrompt,
+    getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => appendSystemPrompt,
+    getAppendSystemPromptSources: () => [],
     extendResources: () => {},
     reload: async () => {},
   };
@@ -1339,7 +1353,7 @@ export default function (pi: ExtensionAPI) {
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model: ctx.model,
-      modelRegistry: ctx.modelRegistry as AgentSession["modelRegistry"],
+      modelRuntime: sessionModelRuntime(ctx),
       thinkingLevel: pi.getThinkingLevel() as SessionThinkingLevel,
       tools: ["read", "bash", "edit", "write"],
       resourceLoader: createBtwResourceLoader(ctx),
@@ -1816,7 +1830,7 @@ export default function (pi: ExtensionAPI) {
     const { session } = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       model,
-      modelRegistry: ctx.modelRegistry as AgentSession["modelRegistry"],
+      modelRuntime: sessionModelRuntime(ctx),
       thinkingLevel: "off",
       tools: [],
       resourceLoader: createBtwResourceLoader(ctx, [BTW_SUMMARIZE_SYSTEM_PROMPT]),

@@ -1,11 +1,15 @@
 # Unipi
 
-20 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
+21 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
 
 One command installs everything:
 ```bash
 pi install npm:@pi-unipi/unipi
 ```
+
+## Requirements
+
+- **Pi (`@earendil-works/pi-coding-agent`) `^0.84.0`** — Unipi 2.9.0 tracks the Pi 0.84 SDK (extension event map incl. `agent_settled`, `ModelRuntime` session options, kitty-protocol keyboard handling). Older Pi releases (0.80–0.83) still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<2.9.0` if you must stay on an older Pi.
 
 ## What You Get
 
@@ -18,8 +22,6 @@ pi install npm:@pi-unipi/unipi
 **[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, percentage auto-compaction, session recall, and sandbox execution.
 
 **[Prefix-cache architecture](./docs/prefix-cache-architecture.md)** — Append-only request discipline, explicit cache epochs, deterministic tools, privacy-safe diagnostics, provider limitations, and bounded cold-epoch output.
-
-**[CocoIndex](./packages/cocoindex/README.md)** — Project indexing and semantic code search backed by CocoIndex and LanceDB. Agent tools and slash commands for status, init, update, and search.
 
 **[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
 
@@ -86,7 +88,6 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Ralph | `/unipi:ralph` | start, stop, resume, status |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
 | Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-settings, compact-preset, compact-help |
-| CocoIndex | `/unipi:cocoindex-` | init, update, status, search, settings |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |
@@ -110,7 +111,8 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `notify_user` | notify | Push notifications |
 | `ask_user` | ask-user | User input |
 | `compact` / `session_recall` / `sandbox` | compactor | Context management |
-| `ctx_batch` / `ctx_env` | utility | Batch execution, env info |
+| `ctx_env` | utility | Environment info |
+| `set_session_name` | utility | Session name for badge |
 
 ## Development
 
@@ -131,7 +133,6 @@ unipi/
 │   ├── ralph/          # Iterative loops
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine
-│   ├── cocoindex/      # Project indexing and semantic search
 │   ├── subagents/      # Parallel execution
 │   ├── web-api/        # Web research
 │   ├── image/          # Image generation and vision

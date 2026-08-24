@@ -37,7 +37,7 @@ At session startup, enabled servers connect and discover tools in parallel. Regi
 
 MCP input properties are cloned and recursively canonicalized before registration: schema object keys use locale-independent UTF-16 code-unit order, valid schema `required` string arrays are sorted and deduplicated, a missing top-level `required` becomes `[]`, and literal-value arrays keep their source order. Each tool also receives a stable label matching its final Pi name. These stable definitions and registration order prevent equivalent MCP configurations from changing the serialized tool list between runs, improving provider prompt-cache reuse. A server that fails discovery is excluded from the combined set; a registration error fails startup for that prepared set and is not reported as successful.
 
-Pi 0.80 cannot remove dynamically registered tools. Enabling, disabling, deleting, or changing MCP servers is therefore applied on the next Pi restart rather than mutating the tool list mid-session. This prevents stale schemas and makes the restart an explicit cache-epoch boundary.
+Pi 0.84 cannot remove dynamically registered tools. Enabling, disabling, deleting, or changing MCP servers is therefore applied on the next Pi restart rather than mutating the tool list mid-session. This prevents stale schemas and makes the restart an explicit cache-epoch boundary.
 
 ### Bounded Results
 
