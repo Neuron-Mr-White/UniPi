@@ -42,6 +42,21 @@ for (const dir of packageDirs) {
   if (pkg.main && !files.includes(pkg.main)) {
     throw new Error(`${pkg.name} tarball missing main ${pkg.main}`);
   }
+
+  // Regression guard for issue #29: a package with an extension entry point
+  // (`main`) must declare it in its pi manifest. Pi loads the manifest
+  // literally — an empty `extensions` array means nothing loads on a
+  // standalone install.
+  if (pkg.main && pkg.pi && Array.isArray(pkg.pi.extensions) && pkg.pi.extensions.length === 0) {
+    throw new Error(`${pkg.name} has main ${pkg.main} but pi.extensions is empty — standalone installs would load nothing`);
+  }
+  for (const mount of [...(pkg.pi?.extensions ?? []), ...(pkg.pi?.skills ?? []), ...(pkg.pi?.prompts ?? []), ...(pkg.pi?.themes ?? [])]) {
+    const rel = mount.replace(/^\.\//, "");
+    const hit = files.includes(rel) || files.some((f) => f.startsWith(rel + "/"));
+    if (!hit) {
+      throw new Error(`${pkg.name} pi manifest mounts ${mount} but it is not in the tarball`);
+    }
+  }
 }
 
 console.log(`Tarball manifests passed: root + ${packageDirs.length} package directories`);

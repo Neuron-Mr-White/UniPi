@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.2] — 2026-08-22
+
+This release fixes split-package installs: since 2.0.11, every per-package `pi` manifest shipped with empty `extensions`/`skills` arrays, so installing a split package like `@pi-unipi/ralph` on its own loaded nothing (issue #29). The regression came from `d914a25` ("fix: disable split package resource discovery", v2.0.11), which blanked the manifests of all nested packages to stop duplicate skill discovery inside the all-in-one umbrella install — without realizing pi reads a present manifest literally, so standalone installs also loaded nothing. Notify (#18) and compactor (#23) were fixed the same way earlier; this release fixes the remaining packages at once.
+
+### Fixed
+
+- All split packages now declare their real entry point and skills in their `pi` manifest: `ralph` (`./index.ts`, `./SKILL.md`), `workflow`, `memory`, `btw`, `ask-user`, `mcp`, `utility`, `milestone`, `kanboard`, `updater`, `image`, `info-screen`, `input-shortcuts`, `web-api`, `footer`, and `command-enchantment` (autocomplete) get `extensions`; `notify` additionally gets its `skills` mount; `subagents` additionally gets its `prompts` mount (issue #29).
+- `background-tasks`, `subagents`, and `ralph` tarballs no longer ship test files (pre-existing since 2.6.0).
+- Added a regression guard to `scripts/test-tarball-manifests.mjs`: any package with a `main` entry must declare non-empty `pi.extensions`, and every manifest mount must exist in the tarball.
+
+### Notes
+
+- `core` and `cocoindex` keep their intentionally empty manifests — they are libraries with no extension entry point, loaded transitively.
+
 ## [2.6.1] — 2026-08-20
 
 This release fixes the notify settings overlay and recap model selector in terminals using the kitty keyboard protocol (Ghostty under Herdr), and makes the model selector reflect Pi's live model registry.

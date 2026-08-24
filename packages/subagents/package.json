@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "2.6.1",
-  "description": "Subagents for UniPi \u2014 parallel execution, file locking, workflow integration",
+  "version": "2.6.2",
+  "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -23,6 +23,7 @@
   },
   "files": [
     "src/**/*.ts",
+    "!src/__tests__/**",
     "src/global.d.ts",
     "agents/*.md",
     "prompts/*.md",
@@ -36,7 +37,9 @@
     "skills": [
       "./skills"
     ],
-    "prompts": [],
+    "prompts": [
+      "./prompts"
+    ],
     "themes": []
   }
 }

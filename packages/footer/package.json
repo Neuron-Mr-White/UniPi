@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
   "main": "index.ts",
@@ -43,7 +43,9 @@
     "typescript": "^6.0.0"
   },
   "pi": {
-    "extensions": [],
+    "extensions": [
+      "./index.ts"
+    ],
     "skills": [],
     "prompts": [],
     "themes": []

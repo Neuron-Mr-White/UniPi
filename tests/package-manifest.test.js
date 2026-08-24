@@ -15,31 +15,34 @@ function manifestResources() {
 
 describe("umbrella package pi manifest", () => {
   it("split workspace packages do not auto-discover Pi resources", () => {
-    // Split packages may explicitly register package-internal extensions
-    // (e.g. notify's ./index.ts), but they must NOT auto-discover skills,
-    // prompts, or themes — those are owned by the umbrella manifest.
+    // Split packages declare their own package-internal extensions, skills,
+    // prompts, and themes so standalone installs work (issue #29); the
+    // umbrella manifest also declares them for umbrella installs. What stays
+    // forbidden is hoisting (node_modules paths) and dynamic auto-discovery.
     for (const dir of readdirSync("packages")) {
       const pkgPath = `packages/${dir}/package.json`;
       if (!existsSync(pkgPath)) continue;
       const workspacePkg = JSON.parse(readFileSync(pkgPath, "utf8"));
       const pi = workspacePkg.pi ?? {};
-      assert.deepEqual(
-        [pi.prompts, pi.themes],
-        [[], []],
-        `${workspacePkg.name} must not auto-discover prompts/themes (umbrella owns those)`,
-      );
-      // Explicitly-listed extensions and skills must be package-internal, not hoisted.
-      for (const skill of pi.skills ?? []) {
+      // Explicitly-listed resources must be package-internal, not hoisted.
+      for (const mount of [
+        ...(pi.extensions ?? []),
+        ...(pi.skills ?? []),
+        ...(pi.prompts ?? []),
+        ...(pi.themes ?? []),
+      ]) {
         assert.ok(
-          !skill.startsWith("node_modules/"),
-          `${workspacePkg.name} skill ${skill} must be package-internal`,
+          !mount.startsWith("node_modules/"),
+          `${workspacePkg.name} mount ${mount} must be package-internal`,
         );
       }
-      // Any explicitly-listed extension must be package-internal, not hoisted.
-      for (const ext of pi.extensions ?? []) {
+      // A package with an extension entry point must declare it — pi loads the
+      // manifest literally, so an empty extensions array loads nothing on a
+      // standalone install (issue #29).
+      if (workspacePkg.main && pi.extensions) {
         assert.ok(
-          !ext.startsWith("node_modules/"),
-          `${workspacePkg.name} extension ${ext} must be package-internal`,
+          pi.extensions.length > 0,
+          `${workspacePkg.name} has main ${workspacePkg.main} but declares no pi.extensions`,
         );
       }
     }

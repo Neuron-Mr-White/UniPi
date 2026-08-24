@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "Dashboard and module registry for Unipi — configurable info overlay with tabbed groups",
   "type": "module",
   "main": "index.ts",
@@ -44,7 +44,9 @@
     "@types/node": "^25.6.0"
   },
   "pi": {
-    "extensions": [],
+    "extensions": [
+      "./index.ts"
+    ],
     "skills": [],
     "prompts": [],
     "themes": []
