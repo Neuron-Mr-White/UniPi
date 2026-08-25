@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/ask-user",
-  "version": "2.10.0",
+  "version": "2.10.1",
   "description": "Structured user input tool for Pi coding agent — single-select, multi-select, freeform",
   "type": "module",
   "main": "index.ts",

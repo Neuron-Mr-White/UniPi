@@ -18,6 +18,28 @@ export default function trajectory(pi: ExtensionAPI): void {
 
   pi.registerCommand("unipi:trajectory", {
     description: "Open or manage UniPi's live trajectory for the current session",
+    getArgumentCompletions: (argumentPrefix: string) => {
+      const prefix = argumentPrefix.trim().toLowerCase();
+      const actions = [
+        { value: "stop", label: "stop", description: "Stop this session's trajectory server" },
+        { value: "off", label: "off", description: "Alias of stop" },
+        { value: "toggle", label: "toggle", description: "Open when stopped, stop when running" },
+      ];
+      const matches = prefix
+        ? actions.filter((a) => a.value.startsWith(prefix) || a.label.startsWith(prefix))
+        : actions;
+      // With no prefix (or a matching one) also surface a hint that running bare
+      // opens/reuses the server, so users learn the default behavior exists.
+      const items = matches.map((a) => ({ value: a.value, label: a.label, description: a.description }));
+      if (!prefix) {
+        items.unshift({
+          value: "",
+          label: "(no argument)",
+          description: "Open or reuse the trajectory server in the browser",
+        });
+      }
+      return items;
+    },
     handler: async (args, ctx) => {
       const action = String(args ?? "").trim().toLowerCase();
       const wantsStop = ["stop", "off", "--stop", "--off"].includes(action);

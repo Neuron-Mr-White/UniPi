@@ -11,6 +11,10 @@ Live, localhost-only UniPi trajectory inspector for the current Pi session.
 /unipi:trajectory toggle      # open when stopped, stop when running
 ```
 
+Typing `/unipi:trajectory` followed by a space auto-completes the available
+actions (`stop`, `off`, `toggle`), so the options are discoverable without
+reading the docs. Running it with no argument opens or reuses the server.
+
 The command starts or reuses an in-process server on `127.0.0.1:8176-8186` and opens it in the default browser. The page follows the active session every 500 ms. The server is owned by the current Pi process and is stopped on any Pi session shutdown/reload/resume/new/fork event.
 
 ## What it shows

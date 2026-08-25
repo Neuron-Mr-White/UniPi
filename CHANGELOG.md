@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.10.1] — 2026-08-25
+
+Patch release: `/unipi:trajectory` now registers argument auto-completion so users discover its `stop`, `off`, and `toggle` options inline instead of having to read the docs.
+
+### Fixed
+
+- `trajectory`: `/unipi:trajectory` registered its command with only a `description` and `handler`, so the TUI never offered argument completions and users had no way to learn that `stop`/`off`/`toggle` (or running it bare to open the server) existed. Added `getArgumentCompletions` to the registered command, returning `stop`, `off`, `toggle`, and a `(no argument)` hint that opens/reuses the server — matching the action set the handler already accepts.
+
+### Changed
+
+- All `@pi-unipi/*` packages and the umbrella re-versioned to `2.10.1` so npm installs keep a single synchronized workspace set and avoid nested stale package copies.
+
 ## [2.10.0] — 2026-08-25
 
 This release adds UniPi Trajectory, a localhost-only live inspector for the current Pi session, with durable redacted sidecar telemetry for exact request/tool timings and provider metadata.
