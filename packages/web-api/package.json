@@ -31,7 +31,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "2.10.0",
+    "@pi-unipi/core": "2.10.1",
     "defuddle": "^0.18.1",
     "linkedom": "^0.18.12",
     "wreq-js": "^2.3.0"

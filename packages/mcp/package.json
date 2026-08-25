@@ -30,7 +30,7 @@
     "test": "npx tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.10.0"
+    "@pi-unipi/core": "2.10.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",

@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.84.0",
-    "@pi-unipi/core": "2.10.0",
+    "@pi-unipi/core": "2.10.1",
     "turndown": "^7.2.4"
   },
   "devDependencies": {

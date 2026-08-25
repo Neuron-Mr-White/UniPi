@@ -36,7 +36,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.10.0"
+    "@pi-unipi/core": "2.10.1"
   },
   "devDependencies": {},
   "peerDependencies": {

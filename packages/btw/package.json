@@ -37,7 +37,7 @@
     "@earendil-works/pi-tui": "^0.84.0"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.10.0"
+    "@pi-unipi/core": "2.10.1"
   },
   "pi": {
     "extensions": [

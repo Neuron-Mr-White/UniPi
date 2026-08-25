@@ -9,7 +9,7 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.10.0",
+    "@pi-unipi/core": "2.10.1",
     "@earendil-works/pi-agent-core": "^0.84.0",
     "acorn": "8.18.0"
   },

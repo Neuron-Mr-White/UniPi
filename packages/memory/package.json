@@ -39,8 +39,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "2.10.0",
-    "@pi-unipi/info-screen": "2.10.0",
+    "@pi-unipi/core": "2.10.1",
+    "@pi-unipi/info-screen": "2.10.1",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
