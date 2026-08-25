@@ -1,43 +1,32 @@
 {
-  "name": "@pi-unipi/input-shortcuts",
+  "name": "@pi-unipi/trajectory",
   "version": "2.10.0",
-  "description": "Keyboard shortcuts for stash/restore, undo/redo, clipboard, and thinking toggle — chord-based overlay system",
+  "description": "Live UniPi trajectory inspector for Pi sessions",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
-    "directory": "packages/input-shortcuts"
+    "directory": "packages/trajectory"
   },
   "keywords": [
     "pi-package",
     "pi-extension",
-    "pi-coding-agent",
-    "unipi",
-    "input-shortcuts",
-    "stash",
-    "undo",
-    "clipboard"
+    "trajectory",
+    "observability"
   ],
   "files": [
     "index.ts",
     "src/**/*.ts",
     "README.md"
   ],
-  "scripts": {
-    "test": "npx tsx --test tests/**/*.test.ts"
-  },
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "@pi-unipi/core": "2.10.0"
-  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0"
+    "@earendil-works/pi-coding-agent": "^0.84.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
@@ -45,7 +34,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ],
     "skills": [],
     "prompts": [],

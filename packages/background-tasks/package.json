@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/background-tasks",
-  "version": "2.9.0",
-  "description": "Background tasks for UniPi \u2014 durable shell jobs, delegated agents, attested Pi runs, and fixed-purpose Fusion workflows",
+  "version": "2.10.0",
+  "description": "Background tasks for UniPi — durable shell jobs, delegated agents, attested Pi runs, and fixed-purpose Fusion workflows",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.84.0",
-    "@pi-unipi/core": "2.9.0",
+    "@pi-unipi/core": "2.10.0",
     "turndown": "^7.2.4"
   },
   "devDependencies": {

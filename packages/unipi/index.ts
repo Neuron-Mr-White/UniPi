@@ -31,6 +31,7 @@ import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import image from "@pi-unipi/image";
+import trajectory from "@pi-unipi/trajectory";
 
 export default function (pi: ExtensionAPI) {
   workflow(pi);
@@ -58,4 +59,5 @@ export default function (pi: ExtensionAPI) {
   updater(pi);
   inputShortcuts(pi);
   image(pi);
+  trajectory(pi);
 }

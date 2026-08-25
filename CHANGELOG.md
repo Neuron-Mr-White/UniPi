@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-08-25
+
+This release adds UniPi Trajectory, a localhost-only live inspector for the current Pi session, with durable redacted sidecar telemetry for exact request/tool timings and provider metadata.
+
+### Added
+
+- `@pi-unipi/trajectory`: new `/unipi:trajectory` command that opens or reuses a local session inspector on `127.0.0.1:8176-8186`.
+- Trajectory UI: turn-aware ledger, Input/Model/Tools overview timeline, search, turn/tool folding, drag-to-focus, detail tabs, light/dark theme toggle, and responsive inspector.
+- Trajectory projection: current `SessionManager.getBranch()` is projected into user, assistant, tool, compaction, and branch records without mutating Pi session history or provider context.
+- Trajectory telemetry: append-only `~/.unipi/trajectory/<session-id>.jsonl` sidecars capture redacted provider payload/options, tool schemas, response status/headers, TTFT, decoding/total request timing, token/cache usage, and tool execution duration when Pi hooks expose them.
+
+### Changed
+
+- Umbrella `@pi-unipi/unipi` now includes trajectory and the autocomplete registry lists `/unipi:trajectory`.
+- All `@pi-unipi/*` packages re-versioned to `2.10.0` so npm installs keep a single synchronized workspace set and avoid nested stale package copies.
+
 ## [2.9.0] — 2026-08-24
 
 This release upgrades the Pi SDK floor to `^0.84.0` (resolves to 0.84.2) across all packages and re-synchronizes every package onto a single shared version (2.9.0) after the 2.6/2.8 version drift caused npm to resolve registry copies of workspace packages — stale peers that broke clean installs (ERESOLVE) and shipped nested stale copies. It also ships the compactor auto-compaction abort fix (issue #30).

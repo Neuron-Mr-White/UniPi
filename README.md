@@ -1,6 +1,6 @@
 # Unipi
 
-21 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
+22 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
 
 One command installs everything:
 ```bash
@@ -42,6 +42,8 @@ pi install npm:@pi-unipi/unipi
 **[Milestone](./packages/milestone/README.md)** — Track project goals across workflow cycles. MILESTONES.md stays in sync with specs, plans, and completed work.
 
 **[Kanboard](./packages/kanboard/README.md)** — Web UI and TUI overlay for kanban boards. Parses all workflow documents into cards with progress indicators.
+
+**[Trajectory](./packages/trajectory/README.md)** — Live localhost session inspector. Explore turns, reasoning, tool payloads/results, timing, token/cache usage, and compactions for the current session.
 
 **[Info Screen](./packages/info-screen/README.md)** — Dashboard overlay showing module status, tools, and custom data groups.
 
@@ -95,6 +97,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Utility | `/unipi:` | env, doctor, status, cleanup, badge-name |
 | Milestone | `/unipi:milestone-` | onboard, update |
 | Kanboard | `/unipi:kanboard` | toggle, doctor |
+| Trajectory | `/unipi:trajectory` | open the live current-session inspector |
 | Footer | `/unipi:footer` | toggle, settings |
 | Updater | `/unipi:` | readme, changelog, updater-settings |
 | Info | `/unipi:info` | dashboard, settings |
@@ -143,6 +146,7 @@ unipi/
 │   ├── ask-user/       # Structured input
 │   ├── milestone/      # Goal tracking
 │   ├── kanboard/       # Kanban visualization
+│   ├── trajectory/     # Live session trajectory inspector
 │   ├── info-screen/    # Dashboard overlay
 │   ├── utility/        # Diagnostics, diff rendering
 │   ├── updater/        # Auto-update, browsers
