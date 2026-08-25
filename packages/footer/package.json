@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.10.1",
+  "version": "2.10.2",
   "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
   "main": "index.ts",
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.10.1"
+    "@pi-unipi/core": "2.10.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",

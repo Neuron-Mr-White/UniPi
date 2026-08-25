@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.10.2] — 2026-08-25
+
+Follow-up to 2.10.1: the 2.10.1 tarballs shipped with `@pi-unipi/*` cross-dependency pins still pointing at `2.10.0`, so installing `@pi-unipi/unipi@2.10.1` resolved the old `@pi-unipi/trajectory@2.10.0` (without the auto-completion fix) instead of `2.10.1`. This release re-synchronizes every cross-pin to `2.10.2` and republishes the full synchronized set.
+
+### Fixed
+
+- Resynced every `@pi-unipi/*` dependency pin (root umbrella + all workspace cross-deps) to the matching published version so npm links the workspace set instead of pulling nested stale registry copies. Without this, `@pi-unipi/unipi@2.10.1` pulled `@pi-unipi/trajectory@2.10.0` and the argument auto-completion fix never reached umbrella installers.
+
 ## [2.10.1] — 2026-08-25
 
 Patch release: `/unipi:trajectory` now registers argument auto-completion so users discover its `stop`, `off`, and `toggle` options inline instead of having to read the docs.
