@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type TelemetryEventType =
+  | "hook"
+  | "system-prompt"
   | "request"
   | "response"
   | "first-token"
@@ -15,6 +17,8 @@ export interface TelemetryEvent {
   type: TelemetryEventType;
   at: number;
   requestId?: number | string;
+  runId?: number | string;
+  turnIndex?: number;
   toolCallId?: string;
   data?: unknown;
 }

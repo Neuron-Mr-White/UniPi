@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { TelemetryEvent } from "./telemetry.js";
 
-export type TrajectoryKind = "system" | "user" | "assistant" | "tool" | "compaction" | "branch";
+export type TrajectoryKind = "system" | "hook" | "user" | "assistant" | "tool" | "compaction" | "branch";
 
 export interface TrajectoryUsage {
   input?: number;
@@ -38,6 +38,7 @@ export interface TrajectoryRecord {
   request?: unknown;
   response?: unknown;
   tools?: unknown;
+  data?: unknown;
 }
 
 export interface TrajectorySnapshot {
@@ -165,12 +166,40 @@ export function projectTrajectory(
     }
   }
 
+  const firstEntryAt = records[0]?.timestamp ?? Date.now();
+  let syntheticSeq = -telemetry.length;
+  for (const event of telemetry) {
+    if (event.type !== "system-prompt" && event.type !== "hook") continue;
+    const data = event.data as AnyRecord | undefined;
+    const hookName = typeof data?.name === "string" ? data.name : undefined;
+    const hookPayload = hookName ? data?.payload : undefined;
+    const title = event.type === "system-prompt" ? "SYSTEM PROMPT" : `HOOK · ${hookName ?? "unknown"}`;
+    const value = event.type === "system-prompt" ? data?.systemPrompt : hookPayload;
+    records.push({
+      id: `telemetry:${event.type}:${event.at}:${syntheticSeq}`,
+      seq: syntheticSeq++,
+      turn: event.turnIndex === undefined ? null : event.turnIndex + 1,
+      step: null,
+      kind: event.type === "system-prompt" ? "system" : "hook",
+      timestamp: event.at || firstEntryAt,
+      durationMs: null,
+      title,
+      preview: preview(event.type === "system-prompt" ? value : JSON.stringify(hookPayload ?? {})),
+      output: event.type === "system-prompt" ? value : undefined,
+      data,
+      request: event.requestId === undefined ? undefined : { requestId: event.requestId },
+    });
+  }
+  records.sort((a, b) => a.timestamp - b.timestamp || a.seq - b.seq);
+
   const assistantRecords = records.filter(record => record.kind === "assistant");
-  const requestIds = [...new Set(telemetry.flatMap(event => event.requestId === undefined ? [] : [event.requestId]))];
-  for (const [index, requestId] of requestIds.entries()) {
-    const record = assistantRecords[index];
-    if (!record) break;
+  const requestIds = [...new Set(telemetry.flatMap(event => event.type === "request" && event.requestId !== undefined ? [event.requestId] : []))];
+  for (const requestId of requestIds) {
     const events = telemetry.filter(event => event.requestId === requestId);
+    const requestAt = events.find(event => event.type === "request")?.at ?? 0;
+    const record = assistantRecords.find(candidate => candidate.request === undefined && candidate.timestamp >= requestAt)
+      ?? assistantRecords.find(candidate => candidate.request === undefined);
+    if (!record) break;
     const request = events.find(event => event.type === "request")?.data as AnyRecord | undefined;
     const response = events.find(event => event.type === "response")?.data;
     const end = events.find(event => event.type === "message-end")?.data as AnyRecord | undefined;
@@ -188,6 +217,7 @@ export function projectTrajectory(
     const end = telemetry.find(event => event.type === "tool-end" && event.toolCallId === record.toolCallId)?.data as AnyRecord | undefined;
     if (typeof end?.durationMs === "number") record.durationMs = end.durationMs;
   }
+  records.forEach((record, index) => { record.seq = index; });
 
   return { ...meta, generatedAt: Date.now(), records };
 }

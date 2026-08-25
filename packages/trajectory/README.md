@@ -19,11 +19,15 @@ The command starts or reuses an in-process server on `127.0.0.1:8176-8186` and o
 
 ## What it shows
 
+- The fully assembled effective system prompt for each agent run
+- System-prompt construction inputs: custom prompt, active tools, tool snippets, guidelines, appended prompt text, context files, and loaded skills
+- Observable Pi lifecycle hooks: session/resource, input, agent, turn, context, provider headers/request/response, message streaming, tool middleware/execution, model, thinking level, compaction, and tree events
 - Turn-aware User, Assistant, Tool, Compaction, and Branch ledger
-- Assistant reasoning and final output
-- Tool payloads, results, errors, and measured call duration
+- Effective context messages before each model request and the final provider payload after serialization/extension rewrites
+- Assistant reasoning and final output, including streamed assistant events
+- Tool payloads, middleware inputs/results, partial updates, final results, errors, and measured call duration
 - Provider, model, stop reason, token usage, cache reads/writes, and cost
-- Provider, model, thinking level, request payload/options, tool schemas, response status/headers
+- Provider, model, thinking level, request payload/options, tool schemas, request/response headers, and response status
 - Exact TTFT, decoding/total request timing, and tool execution timing
 - Input/Model/Tools overview timeline with drag-to-focus
 - Search, turn folding, call folding, and a local record inspector
@@ -34,7 +38,7 @@ The server binds only to `127.0.0.1`. It reads `SessionManager.getBranch()` and 
 
 Detailed telemetry is appended to `~/.unipi/trajectory/<session-id>.jsonl` with a private directory/file mode. Authorization, API-key, token, cookie, secret, password, and credential fields and credential-shaped values are recursively redacted before persistence.
 
-Detailed request fields appear when captured by the trajectory telemetry sidecar.
+Detailed prompt, context, hook, and request fields appear when captured by the trajectory telemetry sidecar. Secret-shaped headers and values are redacted before persistence, and pathological events/read volume are bounded so debug capture cannot exhaust the Pi process.
 
 ## Lifecycle
 

@@ -40,6 +40,33 @@ test("joins request and tool telemetry without changing session entries", () => 
   assert.equal(snapshot.records[2]!.durationMs, 75);
 });
 
+test("request matching ignores earlier hook-only request ids", () => {
+  const entries = [
+    entry("u", { role: "user", content: "go", timestamp: 1000 }),
+    entry("a", { role: "assistant", timestamp: 1200, provider: "p", model: "m", stopReason: "stop", usage: {}, content: [{ type: "text", text: "done" }] }),
+  ];
+  const snapshot = projectTrajectory(entries as never[], { sessionId: "s" }, [
+    { v: 1, type: "hook", at: 1050, requestId: 1, data: { name: "turn_start", payload: {} } },
+    { v: 1, type: "request", at: 1100, requestId: 1, data: { payload: { model: "m" } } },
+  ]);
+  assert.deepEqual(snapshot.records.find(record => record.kind === "assistant")?.request, { payload: { model: "m" } });
+});
+
+test("projects system prompts and hook events into the debug ledger", () => {
+  const snapshot = projectTrajectory([
+    entry("u", { role: "user", content: "go", timestamp: 1000 }),
+  ] as never[], { sessionId: "s" }, [
+    { v: 1, type: "hook", at: 900, data: { name: "before_agent_start", payload: { prompt: "go" } } },
+    { v: 1, type: "system-prompt", at: 950, runId: 1, data: { systemPrompt: "You are Pi", systemPromptOptions: { cwd: "/tmp" } } },
+    { v: 1, type: "hook", at: 1050, requestId: 1, turnIndex: 0, data: { name: "context", payload: { messages: [{ role: "user", content: "go" }] } } },
+  ]);
+  assert.deepEqual(snapshot.records.map(record => record.kind), ["hook", "system", "user", "hook"]);
+  assert.equal(snapshot.records[1]!.output, "You are Pi");
+  assert.equal(snapshot.records[1]!.data && (snapshot.records[1]!.data as { systemPromptOptions?: { cwd?: string } }).systemPromptOptions?.cwd, "/tmp");
+  assert.equal(snapshot.records[3]!.turn, 1);
+  assert.match(snapshot.records[3]!.title, /context/);
+});
+
 test("keeps compaction between turns without inventing timing", () => {
   const snapshot = projectTrajectory([{
     type: "compaction", id: "c", parentId: null, timestamp: "2025-01-01T00:00:00Z",
