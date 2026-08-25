@@ -15,7 +15,12 @@ test("serves only localhost page and live snapshot endpoint", async () => {
     assert.match(page, /Trajectory toolbar/);
     assert.match(page, /Trajectory timeline/);
     assert.match(page, /Event details/);
-    assert.match(await (await fetch(`${url}/app.js`)).text(), /setInterval\(update,500\)/);
+    assert.match(page, /Violations/);
+    const app = await (await fetch(`${url}/app.js`)).text();
+    assert.match(app, /setInterval\(update,500\)/);
+    assert.match(app, /unipiOnly/);
+    assert.match(app, /violationsOnly/);
+    assert.match(app, /attribution/);
     assert.match((await fetch(`${url}/style.css`)).headers.get("content-type") ?? "", /text\/css/);
     const first = await (await fetch(`${url}/api/snapshot`)).json() as { generatedAt: number };
     const second = await (await fetch(`${url}/api/snapshot`)).json() as { generatedAt: number };

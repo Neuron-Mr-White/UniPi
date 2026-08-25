@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 export type TelemetryEventType =
   | "hook"
+  | "unipi-trace"
+  | "prefix-integrity"
   | "system-prompt"
   | "request"
   | "response"

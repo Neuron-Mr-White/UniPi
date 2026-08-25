@@ -67,6 +67,19 @@ test("projects system prompts and hook events into the debug ledger", () => {
   assert.match(snapshot.records[3]!.title, /context/);
 });
 
+test("projects UniPi package traces and prefix verdicts", () => {
+  const snapshot = projectTrajectory([] as never[], { sessionId: "s" }, [
+    { v: 1, type: "unipi-trace", at: 100, data: { package: "memory", surface: "hook", phase: "exit", hook: "context", mutation: { changed: true }, durationMs: 2 } },
+    { v: 1, type: "prefix-integrity", at: 110, requestId: 1, data: { verdict: "violation", epoch: 2, differences: [{ surface: "messages", path: "$.messages[3]" }], attribution: [{ package: "memory" }] } },
+  ]);
+  assert.deepEqual(snapshot.records.map(record => record.kind), ["unipi", "prefix"]);
+  assert.equal(snapshot.records[0]?.package, "memory");
+  assert.equal(snapshot.records[0]?.durationMs, 2);
+  assert.equal(snapshot.records[1]?.verdict, "violation");
+  assert.equal(snapshot.records[1]?.isError, true);
+  assert.match(snapshot.records[1]?.preview ?? "", /messages\[3\]/);
+});
+
 test("keeps compaction between turns without inventing timing", () => {
   const snapshot = projectTrajectory([{
     type: "compaction", id: "c", parentId: null, timestamp: "2025-01-01T00:00:00Z",

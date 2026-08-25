@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `trajectory`: full UniPi-owned package attribution for lifecycle hooks, command handlers, tool execution, mutating `ExtensionAPI` calls, context/session actions, and custom EventBus delivery, including duration, result fingerprints, errors, and bounded mutation evidence.
+- `trajectory`: per-request prefix-integrity verdicts (`first_request`, `identical_retry`, `prefix_extended`, `boundary`, `violation`) over final serialized provider payloads. Violations identify the first changed message index/path and separately report system prompt, tool schema/order, provider route, thinking level, and envelope drift.
+- `trajectory`: explicit cache epochs for compaction, tree navigation, model changes, and thinking-level changes; append-only enforcement resumes immediately after each boundary.
+- `trajectory`: **UniPi** and **Violations** filters plus Trace, Integrity, and Attribution inspector tabs.
+
+### Changed
+
+- Umbrella `@pi-unipi/unipi` now loads every owned module through a package-scoped tracing API and keeps trajectory as the final unwrapped sink. Unrelated third-party extensions are intentionally excluded from attribution.
+- Trajectory now captures effective system prompts, prompt construction inputs, context messages, provider headers/payload/response, message stream deltas, tool middleware/execution, and observable Pi lifecycle hooks in addition to the session ledger.
+
 ## [2.10.2] — 2026-08-25
 
 Follow-up to 2.10.1: the 2.10.1 tarballs shipped with `@pi-unipi/*` cross-dependency pins still pointing at `2.10.0`, so installing `@pi-unipi/unipi@2.10.1` resolved the old `@pi-unipi/trajectory@2.10.0` (without the auto-completion fix) instead of `2.10.1`. This release re-synchronizes every cross-pin to `2.10.2` and republishes the full synchronized set.

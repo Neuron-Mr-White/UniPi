@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { TelemetryEvent } from "./telemetry.js";
 
-export type TrajectoryKind = "system" | "hook" | "user" | "assistant" | "tool" | "compaction" | "branch";
+export type TrajectoryKind = "system" | "hook" | "unipi" | "prefix" | "user" | "assistant" | "tool" | "compaction" | "branch";
 
 export interface TrajectoryUsage {
   input?: number;
@@ -39,6 +39,12 @@ export interface TrajectoryRecord {
   response?: unknown;
   tools?: unknown;
   data?: unknown;
+  package?: string;
+  surface?: string;
+  phase?: string;
+  verdict?: string;
+  epoch?: number;
+  attribution?: unknown;
 }
 
 export interface TrajectorySnapshot {
@@ -169,24 +175,41 @@ export function projectTrajectory(
   const firstEntryAt = records[0]?.timestamp ?? Date.now();
   let syntheticSeq = -telemetry.length;
   for (const event of telemetry) {
-    if (event.type !== "system-prompt" && event.type !== "hook") continue;
+    if (!["system-prompt", "hook", "unipi-trace", "prefix-integrity"].includes(event.type)) continue;
     const data = event.data as AnyRecord | undefined;
     const hookName = typeof data?.name === "string" ? data.name : undefined;
     const hookPayload = hookName ? data?.payload : undefined;
-    const title = event.type === "system-prompt" ? "SYSTEM PROMPT" : `HOOK · ${hookName ?? "unknown"}`;
-    const value = event.type === "system-prompt" ? data?.systemPrompt : hookPayload;
+    const traceAction = String(data?.hook ?? data?.action ?? data?.channel ?? data?.surface ?? "operation");
+    const kind: TrajectoryKind = event.type === "system-prompt" ? "system" : event.type === "hook" ? "hook" : event.type === "unipi-trace" ? "unipi" : "prefix";
+    const title = event.type === "system-prompt"
+      ? "SYSTEM PROMPT"
+      : event.type === "hook"
+        ? `HOOK · ${hookName ?? "unknown"}`
+        : event.type === "unipi-trace"
+          ? `${String(data?.package ?? "unipi")} · ${traceAction}`
+          : `PREFIX · ${String(data?.verdict ?? "unknown")}`;
+    const value = event.type === "system-prompt" ? data?.systemPrompt : event.type === "hook" ? hookPayload : data;
     records.push({
       id: `telemetry:${event.type}:${event.at}:${syntheticSeq}`,
       seq: syntheticSeq++,
       turn: event.turnIndex === undefined ? null : event.turnIndex + 1,
       step: null,
-      kind: event.type === "system-prompt" ? "system" : "hook",
+      kind,
       timestamp: event.at || firstEntryAt,
-      durationMs: null,
+      durationMs: typeof data?.durationMs === "number" ? data.durationMs : null,
       title,
-      preview: preview(event.type === "system-prompt" ? value : JSON.stringify(hookPayload ?? {})),
+      preview: event.type === "prefix-integrity"
+        ? `${String(data?.verdict ?? "unknown")} · epoch ${String(data?.epoch ?? "?")}${Array.isArray(data?.differences) && data.differences[0] ? ` · ${String(data.differences[0].path ?? data.differences[0].surface ?? "changed")}` : ""}`
+        : preview(event.type === "system-prompt" ? value : JSON.stringify(value ?? {})),
       output: event.type === "system-prompt" ? value : undefined,
       data,
+      package: typeof data?.package === "string" ? data.package : undefined,
+      surface: typeof data?.surface === "string" ? data.surface : undefined,
+      phase: typeof data?.phase === "string" ? data.phase : undefined,
+      verdict: typeof data?.verdict === "string" ? data.verdict : undefined,
+      epoch: typeof data?.epoch === "number" ? data.epoch : undefined,
+      attribution: data?.attribution,
+      isError: data?.phase === "error" || data?.verdict === "violation",
       request: event.requestId === undefined ? undefined : { requestId: event.requestId },
     });
   }

@@ -2,6 +2,9 @@ import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-wor
 import { registerTelemetryCapture } from "./src/capture.js";
 import { projectTrajectory } from "./src/project.js";
 import { openBrowser, TrajectoryServer } from "./src/server.js";
+import { createUnipiTracer, type UnipiTraceRecorder } from "./src/tracer.js";
+
+export { createUnipiTracer, type UnipiTraceRecorder, type UnipiTracer } from "./src/tracer.js";
 
 let server: TrajectoryServer | null = null;
 let currentContext: ExtensionContext | null = null;
@@ -13,8 +16,13 @@ function stopServer(): boolean {
   return true;
 }
 
-export default function trajectory(pi: ExtensionAPI): void {
-  const readTelemetry = registerTelemetryCapture(pi);
+export interface TrajectoryOptions {
+  traceRecorder?: UnipiTraceRecorder;
+}
+
+export default function trajectory(pi: ExtensionAPI, options: TrajectoryOptions = {}): void {
+  const recorder = options.traceRecorder ?? createUnipiTracer(pi).recorder;
+  const readTelemetry = registerTelemetryCapture(pi, undefined, recorder);
 
   pi.registerCommand("unipi:trajectory", {
     description: "Open or manage UniPi's live trajectory for the current session",

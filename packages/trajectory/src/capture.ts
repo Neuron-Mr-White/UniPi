@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { PrefixIntegrityTracker } from "./prefix-integrity.js";
 import { TelemetrySidecar } from "./telemetry.js";
+import type { UnipiTraceRecorder } from "./tracer.js";
 
 interface RequestState {
   id: number;
@@ -22,6 +24,7 @@ interface PendingAgent {
 export function registerTelemetryCapture(
   pi: ExtensionAPI,
   sidecarRoot?: string,
+  traceRecorder?: UnipiTraceRecorder,
 ): () => ReturnType<TelemetrySidecar["read"]> {
   let sidecar: TelemetrySidecar | null = null;
   let requestSeq = 0;
@@ -30,10 +33,14 @@ export function registerTelemetryCapture(
   let lastRequestId: number | null = null;
   let currentTurnIndex: number | undefined;
   let pendingAgent: PendingAgent | null = null;
+  let previousTraceCursor = 0;
+  const prefixIntegrity = new PrefixIntegrityTracker();
   const toolStarts = new Map<string, number>();
 
   const bind = (ctx: ExtensionContext) => {
-    sidecar = new TelemetrySidecar(ctx.sessionManager.getSessionId(), sidecarRoot);
+    const sessionId = ctx.sessionManager.getSessionId();
+    sidecar = new TelemetrySidecar(sessionId, sidecarRoot);
+    traceRecorder?.bind(sessionId);
     const existing = sidecar.read();
     requestSeq = Math.max(0, ...existing.flatMap(event => typeof event.requestId === "number" ? [event.requestId] : []));
     runSeq = Math.max(0, ...existing.flatMap(event => typeof event.runId === "number" ? [event.runId] : []));
@@ -41,6 +48,8 @@ export function registerTelemetryCapture(
     lastRequestId = null;
     currentTurnIndex = undefined;
     pendingAgent = null;
+    previousTraceCursor = traceRecorder?.cursor() ?? 0;
+    prefixIntegrity.reset();
     toolStarts.clear();
   };
   const append = (
@@ -102,7 +111,10 @@ export function registerTelemetryCapture(
       signal: { aborted: event.signal.aborted },
     });
   });
-  pi.on("session_compact", (event) => { hook(event.type, event); });
+  pi.on("session_compact", (event) => {
+    prefixIntegrity.markBoundary(`session_compact:${event.reason}`);
+    hook(event.type, event);
+  });
   pi.on("session_before_tree", (event) => {
     hook(event.type, {
       ...event,
@@ -117,7 +129,10 @@ export function registerTelemetryCapture(
       signal: { aborted: event.signal.aborted },
     });
   });
-  pi.on("session_tree", (event) => { hook(event.type, event); });
+  pi.on("session_tree", (event) => {
+    prefixIntegrity.markBoundary("session_tree");
+    hook(event.type, event);
+  });
   pi.on("session_shutdown", (event) => { hook(event.type, event); });
 
   pi.on("before_agent_start", (event) => {
@@ -200,6 +215,31 @@ export function registerTelemetryCapture(
   pi.on("before_provider_request", (event, ctx) => {
     const startedAt = Date.now();
     const request = ensureRequest(startedAt);
+    const integrity = prefixIntegrity.observe(event.payload, {
+      provider: ctx.model?.provider,
+      model: ctx.model?.id,
+      api: ctx.model?.api,
+      thinkingLevel: ctx.thinkingLevel,
+    });
+    const traceCursor = traceRecorder?.cursor() ?? 0;
+    const contributingTrace = traceRecorder?.since(previousTraceCursor) ?? [];
+    previousTraceCursor = traceCursor;
+    const attributed = integrity.verdict === "violation"
+      ? contributingTrace
+          .filter(item => item.type === "unipi-trace")
+          .map(item => item.data)
+          .filter((data): data is Record<string, unknown> => Boolean(data && typeof data === "object"))
+          .filter(data => data.phase === "exit" && (
+            data.surface === "hook" && data.mutation && (data.mutation as Record<string, unknown>).changed === true ||
+            data.surface === "api" && ["sendMessage", "sendUserMessage", "setActiveTools", "setModel", "setThinkingLevel", "registerProvider", "unregisterProvider"].includes(String(data.action)) ||
+            data.surface === "context-api" && ["compact", "navigateTree", "switchSession", "newSession", "fork", "reload"].includes(String(data.action))
+          ))
+          .slice(-20)
+      : [];
+    append("prefix-integrity", {
+      ...integrity,
+      attribution: attributed.length > 0 ? attributed : undefined,
+    }, requestExtra(request));
     append("request", {
       payload: event.payload,
       provider: ctx.model?.provider,
@@ -277,10 +317,20 @@ export function registerTelemetryCapture(
     toolStarts.delete(event.toolCallId);
   });
 
-  pi.on("model_select", (event) => { hook(event.type, event); });
-  pi.on("thinking_level_select", (event) => { hook(event.type, event); });
+  pi.on("model_select", (event) => {
+    if (event.previousModel && (
+      event.previousModel.provider !== event.model.provider ||
+      event.previousModel.id !== event.model.id ||
+      event.previousModel.api !== event.model.api
+    )) prefixIntegrity.markBoundary("model_select");
+    hook(event.type, event);
+  });
+  pi.on("thinking_level_select", (event) => {
+    if (event.previousLevel !== event.level) prefixIntegrity.markBoundary("thinking_level_select");
+    hook(event.type, event);
+  });
   pi.on("user_bash", (event) => { hook(event.type, event); });
   pi.on("input", (event) => { hook(event.type, event); });
 
-  return () => sidecar?.read() ?? [];
+  return () => sidecar?.read() ?? traceRecorder?.read() ?? [];
 }

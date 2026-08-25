@@ -19,6 +19,11 @@ The command starts or reuses an in-process server on `127.0.0.1:8176-8186` and o
 
 ## What it shows
 
+- Every UniPi-owned package hook, command, tool execution, mutating ExtensionAPI call, context/session action, and custom EventBus delivery with package attribution, duration, result fingerprint, and error
+- A per-request prefix-integrity verdict: first request, identical retry, append-only extension, explicit lifecycle boundary, or violation
+- Exact prefix-break evidence: first changed message index/path plus independent system-prompt, tool-schema/order, route, thinking-level, and provider-envelope drift
+- Contributing UniPi package operations between the previous request and a violation
+- One-click **UniPi** and **Violations** filters, plus Trace, Integrity, and Attribution detail tabs
 - The fully assembled effective system prompt for each agent run
 - System-prompt construction inputs: custom prompt, active tools, tool snippets, guidelines, appended prompt text, context files, and loaded skills
 - Observable Pi lifecycle hooks: session/resource, input, agent, turn, context, provider headers/request/response, message streaming, tool middleware/execution, model, thinking level, compaction, and tree events
@@ -38,7 +43,15 @@ The server binds only to `127.0.0.1`. It reads `SessionManager.getBranch()` and 
 
 Detailed telemetry is appended to `~/.unipi/trajectory/<session-id>.jsonl` with a private directory/file mode. Authorization, API-key, token, cookie, secret, password, and credential fields and credential-shaped values are recursively redacted before persistence.
 
-Detailed prompt, context, hook, and request fields appear when captured by the trajectory telemetry sidecar. Secret-shaped headers and values are redacted before persistence, and pathological events/read volume are bounded so debug capture cannot exhaust the Pi process.
+Detailed prompt, context, hook, package trace, prefix-integrity, and request fields appear when captured by the trajectory telemetry sidecar. Secret-shaped headers and values are redacted before persistence, and pathological events/read volume are bounded so debug capture cannot exhaust the Pi process.
+
+## Prefix integrity
+
+Inside one cache epoch, the previous serialized message sequence must be an exact prefix of the next request. An identical retry is also safe. Any earlier edit, removal, reorder, or middle insertion is a violation. System instructions, tool definitions/order, provider route, thinking level, and request envelope are checked independently because changes there also invalidate provider prefix caches.
+
+Compaction, tree navigation, model changes, and thinking-level changes create explicit epoch boundaries. The first request after a boundary is labeled as such; append-only enforcement resumes on the following request.
+
+Package attribution is intentionally limited to UniPi modules loaded through the all-in-one `@pi-unipi/unipi` umbrella. Standalone trajectory still captures Pi's observable hooks and requests, but cannot attribute calls made by independently loaded packages.
 
 ## Lifecycle
 
