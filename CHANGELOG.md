@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-08-26
+
 ### Added
 
 - `trajectory`: full UniPi-owned package attribution for lifecycle hooks, command handlers, tool execution, mutating `ExtensionAPI` calls, context/session actions, and custom EventBus delivery, including duration, result fingerprints, errors, and bounded mutation evidence.
