@@ -7,6 +7,7 @@ export interface UnipiTraceRecorder {
   bind(sessionId: string): void;
   record(data: unknown, extra?: Record<string, unknown>): void;
   read(): TelemetryEvent[];
+  revision(): number;
   cursor(): number;
   since(cursor: number): TelemetryEvent[];
 }
@@ -128,6 +129,23 @@ function resultEvidence(result: unknown): Record<string, unknown> | undefined {
   return { fingerprint: fingerprint(canonical), preview: sample(canonical) };
 }
 
+const CONTEXT_API_ACTIONS = new Set([
+  "sendMessage", "sendUserMessage", "setActiveTools", "setModel", "setThinkingLevel",
+  "registerProvider", "unregisterProvider",
+]);
+
+function affectsContext(data: Record<string, unknown>): boolean {
+  if (data.phase !== "exit") return false;
+  if (data.surface === "hook") {
+    return Boolean(data.mutation && (data.mutation as Record<string, unknown>).changed === true);
+  }
+  if (data.surface === "api") return CONTEXT_API_ACTIONS.has(String(data.action));
+  if (data.surface === "context-api") {
+    return ["compact", "navigateTree", "switchSession", "newSession", "fork", "reload"].includes(String(data.action));
+  }
+  return false;
+}
+
 function traceArgs(action: string, args: unknown[]): unknown {
   switch (action) {
     case "registerCommand": return { name: args[0] };
@@ -215,13 +233,17 @@ export function createUnipiTracer(pi: ExtensionAPI, sidecarRoot?: string): Unipi
       for (const event of pending.splice(0)) persist(event.data, event.extra, event.at);
     },
     record(data, extra = {}) {
+      const tagged = data && typeof data === "object"
+        ? { ...(data as Record<string, unknown>), affectsContext: affectsContext(data as Record<string, unknown>) }
+        : data;
       if (!sidecar) {
-        pending.push({ data, extra, at: Date.now() });
+        pending.push({ data: tagged, extra, at: Date.now() });
         return;
       }
-      persist(data, extra, Date.now());
+      persist(tagged, extra, Date.now());
     },
     read() { return sidecar?.read() ?? []; },
+    revision() { return sidecar?.revision() ?? traceSeq; },
     cursor() { return traceSeq; },
     since(cursor) { return recent.filter(item => item.seq >= cursor).map(item => item.event); },
   };

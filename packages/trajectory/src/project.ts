@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { TelemetryEvent } from "./telemetry.js";
 
-export type TrajectoryKind = "system" | "hook" | "unipi" | "prefix" | "user" | "assistant" | "tool" | "compaction" | "branch";
+export type TrajectoryKind = "system" | "unipi" | "prefix" | "user" | "assistant" | "tool" | "compaction" | "branch";
 
 export interface TrajectoryUsage {
   input?: number;
@@ -175,20 +175,19 @@ export function projectTrajectory(
   const firstEntryAt = records[0]?.timestamp ?? Date.now();
   let syntheticSeq = -telemetry.length;
   for (const event of telemetry) {
-    if (!["system-prompt", "hook", "unipi-trace", "prefix-integrity"].includes(event.type)) continue;
+    if (!["system-prompt", "unipi-trace", "prefix-integrity"].includes(event.type)) continue;
     const data = event.data as AnyRecord | undefined;
-    const hookName = typeof data?.name === "string" ? data.name : undefined;
-    const hookPayload = hookName ? data?.payload : undefined;
+    // Package traces are attribution evidence, not a second activity log. Only
+    // operations that changed a provider-visible surface belong in trajectory.
+    if (event.type === "unipi-trace" && data?.affectsContext !== true) continue;
     const traceAction = String(data?.hook ?? data?.action ?? data?.channel ?? data?.surface ?? "operation");
-    const kind: TrajectoryKind = event.type === "system-prompt" ? "system" : event.type === "hook" ? "hook" : event.type === "unipi-trace" ? "unipi" : "prefix";
+    const kind: TrajectoryKind = event.type === "system-prompt" ? "system" : event.type === "unipi-trace" ? "unipi" : "prefix";
     const title = event.type === "system-prompt"
       ? "SYSTEM PROMPT"
-      : event.type === "hook"
-        ? `HOOK · ${hookName ?? "unknown"}`
-        : event.type === "unipi-trace"
-          ? `${String(data?.package ?? "unipi")} · ${traceAction}`
-          : `PREFIX · ${String(data?.verdict ?? "unknown")}`;
-    const value = event.type === "system-prompt" ? data?.systemPrompt : event.type === "hook" ? hookPayload : data;
+      : event.type === "unipi-trace"
+        ? `${String(data?.package ?? "unipi")} · ${traceAction}`
+        : `PREFIX · ${String(data?.verdict ?? "unknown")}`;
+    const value = event.type === "system-prompt" ? data?.systemPrompt : data;
     records.push({
       id: `telemetry:${event.type}:${event.at}:${syntheticSeq}`,
       seq: syntheticSeq++,

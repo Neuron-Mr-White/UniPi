@@ -6,7 +6,7 @@ import test from "node:test";
 import { registerTelemetryCapture } from "../src/capture.js";
 import { createUnipiTracer } from "../src/tracer.js";
 
-test("captures the effective system prompt and observable hook lifecycle", () => {
+test("captures the effective system prompt without persisting inert hooks", () => {
   const handlers = new Map<string, (event: any, ctx: any) => unknown>();
   const pi = {
     on(name: string, handler: (event: any, ctx: any) => unknown) { handlers.set(name, handler); },
@@ -42,20 +42,13 @@ test("captures the effective system prompt and observable hook lifecycle", () =>
   const events = readTelemetry();
   const system = events.find(event => event.type === "system-prompt");
   assert.equal((system?.data as { systemPrompt?: string }).systemPrompt, "final system prompt");
-  assert.deepEqual(
-    events.filter(event => event.type === "hook").map(event => (event.data as { name?: string }).name),
-    ["session_start", "before_agent_start", "agent_start", "turn_start", "context", "before_provider_headers", "message_update", "message_end"],
-  );
-  const headerHook = events.find(event => event.type === "hook" && (event.data as { name?: string }).name === "before_provider_headers");
-  assert.equal(
-    (headerHook?.data as { payload?: { headers?: { Authorization?: string } } }).payload?.headers?.Authorization,
-    "[REDACTED]",
-  );
+  assert.equal(events.some(event => event.type === "hook"), false);
   assert.equal(events.find(event => event.type === "request")?.requestId, 1);
-  const stream = events.find(event => event.type === "hook" && (event.data as { name?: string }).name === "message_update");
-  const firstStreamEvent = (stream?.data as { payload?: { events?: Array<Record<string, unknown>> } }).payload?.events?.[0];
-  assert.equal(firstStreamEvent?.delta, "hi");
-  assert.equal("partial" in (firstStreamEvent ?? {}), false);
+  assert.equal(
+    events.some(event => event.type === "hook" && (event.data as { name?: string }).name === "message_update"),
+    false,
+  );
+  assert.equal(events.some(event => event.type === "first-token"), false);
 });
 
 test("attributes a provider prefix violation to contributing UniPi mutations", () => {

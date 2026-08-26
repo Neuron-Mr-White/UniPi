@@ -8,11 +8,17 @@ export { createUnipiTracer, type UnipiTraceRecorder, type UnipiTracer } from "./
 
 let server: TrajectoryServer | null = null;
 let currentContext: ExtensionContext | null = null;
+let cachedLeafId: string | null | undefined;
+let cachedTelemetryRevision = -1;
+let cachedSnapshot: ReturnType<typeof projectTrajectory> | null = null;
 
 function stopServer(): boolean {
   if (!server?.url) return false;
   server.stop();
   server = null;
+  cachedLeafId = undefined;
+  cachedTelemetryRevision = -1;
+  cachedSnapshot = null;
   return true;
 }
 
@@ -62,11 +68,17 @@ export default function trajectory(pi: ExtensionAPI, options: TrajectoryOptions 
         server = new TrajectoryServer({
           snapshot: () => {
             const active = currentContext ?? ctx;
-            return projectTrajectory(active.sessionManager.getBranch() as SessionEntry[], {
+            const leafId = active.sessionManager.getLeafId();
+            const telemetryRevision = recorder.revision();
+            if (cachedSnapshot && cachedLeafId === leafId && cachedTelemetryRevision === telemetryRevision) return cachedSnapshot;
+            cachedLeafId = leafId;
+            cachedTelemetryRevision = telemetryRevision;
+            cachedSnapshot = projectTrajectory(active.sessionManager.getBranch() as SessionEntry[], {
               sessionId: active.sessionManager.getSessionId(),
               name: active.sessionManager.getSessionName(),
               cwd: active.cwd,
             }, readTelemetry());
+            return cachedSnapshot;
           },
         });
       }

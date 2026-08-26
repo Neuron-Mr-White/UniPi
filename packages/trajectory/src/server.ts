@@ -11,10 +11,17 @@ export interface TrajectoryServerOptions {
 
 const HOST = "127.0.0.1";
 
-function json(res: ServerResponse, value: unknown): void {
+function json(res: ServerResponse, value: TrajectorySnapshot, requestEtag?: string): void {
+  const etag = `W/\"${value.sessionId}:${value.generatedAt}\"`;
+  if (requestEtag === etag) {
+    res.writeHead(304, { ETag: etag });
+    res.end();
+    return;
+  }
   res.writeHead(200, {
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-cache",
     "Content-Type": "application/json; charset=utf-8",
+    ETag: etag,
     "X-Content-Type-Options": "nosniff",
   });
   res.end(JSON.stringify(value));
@@ -35,7 +42,7 @@ export class TrajectoryServer {
       try {
         const url = new URL(req.url ?? "/", `http://${HOST}`);
         if (req.method !== "GET") { res.writeHead(405).end("Method Not Allowed"); return; }
-        if (url.pathname === "/api/snapshot") { json(res, this.options.snapshot()); return; }
+        if (url.pathname === "/api/snapshot") { json(res, this.options.snapshot(), req.headers["if-none-match"]); return; }
         if (url.pathname === "/favicon.ico") { res.writeHead(204).end(); return; }
         if (url.pathname === "/app.js") {
         res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/javascript; charset=utf-8", "X-Content-Type-Options": "nosniff" });

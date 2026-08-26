@@ -17,14 +17,16 @@ test("serves only localhost page and live snapshot endpoint", async () => {
     assert.match(page, /Event details/);
     assert.match(page, /Violations/);
     const app = await (await fetch(`${url}/app.js`)).text();
-    assert.match(app, /setInterval\(update,500\)/);
+    assert.match(app, /setInterval\(update,1500\)/);
     assert.match(app, /unipiOnly/);
     assert.match(app, /violationsOnly/);
     assert.match(app, /attribution/);
     assert.match((await fetch(`${url}/style.css`)).headers.get("content-type") ?? "", /text\/css/);
-    const first = await (await fetch(`${url}/api/snapshot`)).json() as { generatedAt: number };
-    const second = await (await fetch(`${url}/api/snapshot`)).json() as { generatedAt: number };
+    const firstResponse = await fetch(`${url}/api/snapshot`);
+    const first = await firstResponse.json() as { generatedAt: number };
     assert.equal(first.generatedAt, 1);
+    assert.match(firstResponse.headers.get("etag") ?? "", /s:1/);
+    const second = await (await fetch(`${url}/api/snapshot`)).json() as { generatedAt: number };
     assert.equal(second.generatedAt, 2);
     assert.equal((await fetch(`${url}/missing`)).status, 404);
   } finally {

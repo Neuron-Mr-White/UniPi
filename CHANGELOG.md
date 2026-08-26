@@ -16,7 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Umbrella `@pi-unipi/unipi` now loads every owned module through a package-scoped tracing API and keeps trajectory as the final unwrapped sink. Unrelated third-party extensions are intentionally excluded from attribution.
-- Trajectory now captures effective system prompts, prompt construction inputs, context messages, provider headers/payload/response, message stream deltas, tool middleware/execution, and observable Pi lifecycle hooks in addition to the session ledger.
+- Trajectory is now context-focused: the ledger includes provider-visible messages, system prompts, serialized requests, prefix verdicts, and only UniPi operations that mutate context or establish a cache epoch. Inert lifecycle hooks, registrations, notifications, response headers, and stream deltas are excluded.
+- Trajectory live updates now cache the telemetry tail and projected snapshot, read only the last 5 MB of existing sidecars, use conditional 1.5-second polling, and avoid rerendering unchanged pages.
 
 ## [2.10.2] — 2026-08-25
 

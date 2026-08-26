@@ -52,7 +52,7 @@ test("request matching ignores earlier hook-only request ids", () => {
   assert.deepEqual(snapshot.records.find(record => record.kind === "assistant")?.request, { payload: { model: "m" } });
 });
 
-test("projects system prompts and hook events into the debug ledger", () => {
+test("projects only provider-context telemetry into the ledger", () => {
   const snapshot = projectTrajectory([
     entry("u", { role: "user", content: "go", timestamp: 1000 }),
   ] as never[], { sessionId: "s" }, [
@@ -60,16 +60,15 @@ test("projects system prompts and hook events into the debug ledger", () => {
     { v: 1, type: "system-prompt", at: 950, runId: 1, data: { systemPrompt: "You are Pi", systemPromptOptions: { cwd: "/tmp" } } },
     { v: 1, type: "hook", at: 1050, requestId: 1, turnIndex: 0, data: { name: "context", payload: { messages: [{ role: "user", content: "go" }] } } },
   ]);
-  assert.deepEqual(snapshot.records.map(record => record.kind), ["hook", "system", "user", "hook"]);
-  assert.equal(snapshot.records[1]!.output, "You are Pi");
-  assert.equal(snapshot.records[1]!.data && (snapshot.records[1]!.data as { systemPromptOptions?: { cwd?: string } }).systemPromptOptions?.cwd, "/tmp");
-  assert.equal(snapshot.records[3]!.turn, 1);
-  assert.match(snapshot.records[3]!.title, /context/);
+  assert.deepEqual(snapshot.records.map(record => record.kind), ["system", "user"]);
+  assert.equal(snapshot.records[0]!.output, "You are Pi");
+  assert.equal(snapshot.records[1]!.turn, 1);
 });
 
 test("projects UniPi package traces and prefix verdicts", () => {
   const snapshot = projectTrajectory([] as never[], { sessionId: "s" }, [
-    { v: 1, type: "unipi-trace", at: 100, data: { package: "memory", surface: "hook", phase: "exit", hook: "context", mutation: { changed: true }, durationMs: 2 } },
+    { v: 1, type: "unipi-trace", at: 90, data: { package: "notify", surface: "hook", phase: "exit", hook: "agent_end", affectsContext: false, durationMs: 1 } },
+    { v: 1, type: "unipi-trace", at: 100, data: { package: "memory", surface: "hook", phase: "exit", hook: "context", mutation: { changed: true }, affectsContext: true, durationMs: 2 } },
     { v: 1, type: "prefix-integrity", at: 110, requestId: 1, data: { verdict: "violation", epoch: 2, differences: [{ surface: "messages", path: "$.messages[3]" }], attribution: [{ package: "memory" }] } },
   ]);
   assert.deepEqual(snapshot.records.map(record => record.kind), ["unipi", "prefix"]);
