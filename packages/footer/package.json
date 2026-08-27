@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/footer",
-  "version": "2.14.0",
-  "description": "Persistent status bar for Unipi — subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
+  "version": "2.14.1",
+  "description": "Persistent status bar for Unipi \u2014 subscribes to UNIPI_EVENTS and renders key stats from all unipi packages",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -32,8 +32,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.14.0",
-    "@pi-unipi/background-tasks": "2.14.0"
+    "@pi-unipi/core": "2.14.1",
+    "@pi-unipi/background-tasks": "2.14.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",

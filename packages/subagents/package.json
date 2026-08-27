@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "2.14.0",
-  "description": "Subagents for UniPi — parallel execution, file locking, workflow integration",
+  "version": "2.14.1",
+  "description": "Subagents for UniPi \u2014 parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -9,7 +9,7 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.14.0",
+    "@pi-unipi/core": "2.14.1",
     "@earendil-works/pi-agent-core": "^0.84.0",
     "acorn": "8.18.0"
   },
