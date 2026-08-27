@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-08-26 (v2.11.0)
+last-run: 2026-08-27 (v2.12.1)
 ---
 
 # Full Release Pipeline
@@ -200,21 +200,16 @@ Expected: All tests pass. If any fail, fix before continuing.
 Regenerate the single-file bundle so npm consumers (especially on slow filesystems) get fast startup:
 
 ```bash
-npx esbuild packages/unipi/index.ts \
-  --bundle \
-  --platform=node \
-  --format=esm \
-  --target=node24 \
-  --external:better-sqlite3 \
-  --external:@lancedb/* \
-  --outfile=packages/unipi/bundled.js
+npm run build
 ```
 
-Expected: `packages/unipi/bundled.js` regenerated (~1.1MB).
+Expected: `packages/unipi/bundled.js` regenerated (~2.3MB, secret scan clean).
+
+**IMPORTANT:** Always build via `npm run build` (scripts/build-bundle.mjs). Do NOT hand-run a bare `esbuild` command — without the externalize-third-party plugin it inlines node_modules and produces a ~19MB bundle that bloats the tarball and risks vendoring credentials. The script also refuses to emit on secret-pattern matches.
 If esbuild not installed: `npm install -D esbuild`.
 
 **Note:** This step is optional for local development on ext4 — `index.ts` loads in ~3s
-directly. It matters for npm users who may be on slower filesystems (WSL2 /mnt, Docker mounts, NFS).
+directly. It matters for npm users who may be on slower filesystems (WSL2 /mnt, Docker mounts, NFS). `pi.extensions` in the root manifest mounts `packages/unipi/bundled.js`, so **npm users execute this bundle, not index.ts** — always smoke-test it after building.
 
 ### Step 9: Update CHANGELOG.md
 
@@ -297,6 +292,26 @@ if((j.dependencies||{})['@pi-unipi/'+bumped])console.log(j.name,'depends on',bum
 " info-screen
 ```
 
+```bash
+node -e "
+const fs=require('fs');
+// Sync every @pi-unipi pin to the new version — INCLUDING THE ROOT UMBRELLA.
+const ver = process.argv[1];
+for (const f of ['package.json', ...fs.readdirSync('packages').map(d=>'packages/'+d+'/package.json')]) {
+  if (!fs.existsSync(f)) continue;
+  const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+  let changed = j.version !== ver && !f.includes('packages/');
+  for (const key of ['dependencies','peerDependencies']) {
+    for (const [dep, v] of Object.entries(j[key]||{})) {
+      if (dep.startsWith('@pi-unipi/') && !v.includes(ver)) { j[key][dep]=v.replace(/[0-9]+\\.[0-9]+\\.[0-9]+/, ver); changed=true; }
+    }
+  }
+  if (!f.includes('packages/') && j.version !== ver) { /* root version set by npm version */ }
+  if (changed) fs.writeFileSync(f, JSON.stringify(j,null,2)+'\n');
+}
+" 2.12.0
+```
+
 Verify after publishing with a clean install, never the workspace:
 
 ```bash
@@ -304,6 +319,8 @@ cd /tmp && rm -rf verify && mkdir verify && cd verify && npm init -y >/dev/null
 npm install @pi-unipi/unipi@<version> --prefer-online
 find node_modules -path "*/node_modules/@pi-unipi/*" -maxdepth 4   # must be empty
 ```
+
+**This verification is MANDATORY before pushing the release** — v2.10.x and v2.12.0 both shipped with the root umbrella's pins stale because only packages/*/ was synced.
 
 ### Step 11: Update Documentation
 
