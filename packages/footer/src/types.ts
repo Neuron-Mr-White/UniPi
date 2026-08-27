@@ -15,7 +15,9 @@ export type SegmentZone = "left" | "center" | "right";
 /** Semantic color names mapped to segment groups */
 export type SemanticColor =
   // ── Model & Identity (Left zone) ──
+  | "brand"
   | "model"
+  | "directory"
   | "path"
   | "git"
   | "gitClean"

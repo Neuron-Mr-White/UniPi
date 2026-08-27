@@ -31,6 +31,8 @@ export interface IconSet {
   clock: string;
   duration: string;
   thinkingLevel: string;
+  brand: string;
+  directory: string;
 
   // Compactor segments
   sessionEvents: string;
@@ -84,6 +86,8 @@ export interface IconSet {
 /** Nerd Font glyphs — requires a Nerd Font installed in the terminal */
 export const NERD_ICONS: IconSet = {
   // Core
+  brand:           "",
+  directory:       "\u{F1154}",
   model:           "\u{F06A9}", // 󰚩
   apiState:        "\u{F109B}", // 󱂛
   toolCount:       "\u{F1064}", // 󱁤
@@ -169,6 +173,8 @@ export const EMOJI_ICONS: IconSet = {
   clock:           "🕔",
   duration:        "⏱",
   thinkingLevel:   "💡",
+  brand:           "",
+  directory:       "📁",
 
   // Compactor
   sessionEvents:   "📈",
@@ -238,6 +244,8 @@ export const TEXT_ICONS: IconSet = {
   clock:           "CLK",
   duration:        "DUR",
   thinkingLevel:   "THK",
+  brand:           "",
+  directory:       "DIR",
 
   // Compactor
   sessionEvents:   "EVT",

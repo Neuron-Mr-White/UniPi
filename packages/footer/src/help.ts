@@ -73,7 +73,7 @@ function buildHelpLines(
 
 /** Simple group lookup for help */
 export function getGroupForSegment(segId: string): string {
-  const coreIds = ["model", "api_state", "tool_count", "git", "context_pct", "cost", "tokens_total", "tokens_in", "tokens_out", "session", "hostname", "time", "tps", "clock", "duration", "thinking_level"];
+  const coreIds = ["model", "api_state", "tool_count", "git", "context_pct", "cost", "tokens_total", "tokens_in", "tokens_out", "session", "hostname", "time", "tps", "clock", "duration", "thinking_level", "uni", "directory"];
   if (coreIds.includes(segId)) return "core";
   const compactorIds = ["session_events", "compactions", "tokens_saved", "compression_ratio", "sandbox_runs", "search_queries"];
   if (compactorIds.includes(segId)) return "compactor";

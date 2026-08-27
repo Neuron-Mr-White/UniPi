@@ -12,8 +12,22 @@
 import type { PresetDef, SeparatorStyle, ColorScheme } from "./types.js";
 import { getDefaultColors } from "./rendering/theme.js";
 
-/** Default preset — balanced view */
+/** Default preset — glance-style status line + branded head */
 const DEFAULT_PRESET: PresetDef = {
+  leftSegments: [
+    "uni", "model", "thinking_level", "directory", "git",
+  ],
+  rightSegments: [
+    "context_pct", "tokens_total",
+    "tps", "cost",
+    "clock", "duration",
+  ],
+  secondarySegments: [],
+  colors: getDefaultColors(),
+};
+
+/** Classic preset — the pre-v3 balanced view (kept for /unipi:footer) */
+const CLASSIC_PRESET: PresetDef = {
   leftSegments: [
     "model", "api_state", "tool_count", "git",
   ],
@@ -96,6 +110,7 @@ const ASCII_PRESET: PresetDef = {
 /** All preset definitions */
 export const PRESETS: Record<string, PresetDef> = {
   default: DEFAULT_PRESET,
+  classic: CLASSIC_PRESET,
   minimal: MINIMAL_PRESET,
   compact: COMPACT_PRESET,
   full: FULL_PRESET,
