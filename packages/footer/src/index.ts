@@ -29,6 +29,7 @@ import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 
 import type { FooterGroup, FooterSegment } from "./types.js";
 import { tpsTracker } from "./tps-tracker.js";
+import { renderProcessLine } from "./process-line.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
@@ -328,9 +329,10 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
     };
   });
 
-  // Top row widget — classic status line (suppressed in glance mode; the
-  // glance frame's top border already shows UNIPI │ branch and the bottom
-  // border shows context/model/thinking, so a segment row would duplicate it)
+  // Top row widget — dual role. Classic mode: status segment line. Glance
+  // mode: the bg-process one-liner, rendered directly above the glance frame
+  // (the frame replaces the editor, so this aboveEditor slot sits right above
+  // the footer); the frame's own borders show branch/context/model/thinking.
   ctx.ui.setWidget("footer-top", (_tui, theme) => {
     // Update the renderer's theme-like
     const themeLike = { fg: (color: string, text: string) => theme.fg(color as any, text) };
@@ -344,8 +346,8 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
       },
       render(width: number): string[] {
         if (!state.enabled || !state.piContext || width <= 0) return [];
-        // Glance mode replaces the classic segment line entirely.
-        if (state.glanceMode) return [];
+        // Glance mode: this slot becomes the bg-process one-liner.
+        if (state.glanceMode) return renderProcessLine(width);
         const layout = state.renderer.computeLayout(width);
         if (!layout.topContent) return [];
 

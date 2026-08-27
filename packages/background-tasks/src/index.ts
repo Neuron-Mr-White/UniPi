@@ -19,9 +19,13 @@ import {
 import { registerToolsAndCommands } from "./tools.js";
 import { registerFusionExtension } from "./fusion-extension.js";
 import { registerDelegateExtension } from "./delegate-extension.js";
+import { setSharedTaskRegistry, clearSharedTaskRegistry } from "./registry-shared.js";
 import { taskDisplayName, type BgTask, type StartAttestedPiTaskOptions, type StartTaskOptions } from "./types.js";
 
 const STATUS_INTERVAL_MS = 1000;
+
+// Direct synchronous access for sibling extensions (footer process one-liner).
+export { getSharedTaskRegistry } from "./registry-shared.js";
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const { config, warnings } = loadBackgroundTasksConfig(process.cwd());
@@ -53,6 +57,8 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       eventService.publishTerminal(task);
     },
   });
+  setSharedTaskRegistry(registry);
+
   const eventService: BackgroundTaskExtensionService = installBackgroundTaskExtensionApi({
     events: pi.events,
     registry,
@@ -253,6 +259,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     registry.setShuttingDown(false);
+    setSharedTaskRegistry(registry);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(ctx);
     updateUi(ctx);
@@ -264,6 +271,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     registry.setShuttingDown(true);
+    clearSharedTaskRegistry();
     currentCtx = undefined;
     if (statusInterval) {
       clearInterval(statusInterval);
