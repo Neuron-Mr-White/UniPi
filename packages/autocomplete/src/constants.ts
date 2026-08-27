@@ -131,6 +131,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:badge-toggle": "utility",
   "unipi:badge-settings": "utility",
   "unipi:util-settings": "utility",
+  "unipi:skills-settings": "utility",
 
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
@@ -270,6 +271,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:badge-toggle": "Configure badge settings (autoGen, badgeEnabled, agentTool)",
   "unipi:badge-settings": "Configure badge settings via TUI overlay",
   "unipi:util-settings": "Unified settings — badge + diff rendering config",
+  "unipi:skills-settings": "Toggle skill startup discovery (skills catalog in system prompt)",
   "unipi:kanboard":        "Start the kanboard visualization server",
   "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
   "unipi:trajectory":      "Open/reuse trajectory; add stop/off or toggle to close it",
