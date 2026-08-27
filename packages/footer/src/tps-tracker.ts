@@ -56,8 +56,16 @@ interface MessageTpsRecord {
 	requestAt: number;
 	/** When OUTPUT GENERATION started (ms). First non-empty delta. */
 	startedAt: number;
+	/** True once a live streaming delta was observed (window is hook-measured). */
+	sawFirstDelta: boolean;
 	/** When generation completed (ms), 0 if still generating. */
 	completedAt: number;
+	/**
+	 * MEASURED output-only decode window (first delta → stream end, ms).
+	 * 0 when never measured — such records are excluded from the session
+	 * average (deepseek-harness rule: unmeasurable steps drop out).
+	 */
+	decodeMs: number;
 	/** Final TPS for this message (once completed). */
 	tps: number;
 }
@@ -141,7 +149,10 @@ function estimateOutputTokens(message: unknown): number {
 			}
 		}
 	}
-	return estimateTokens(String(chars)); // ceil(chars/4) via single call
+	// FIXED: was estimateTokens(String(chars)) — that divided the DIGIT COUNT
+	// of the number (String(8000).length === 4) by 4, collapsing an 8000-char
+	// response into 1 "token". Divide the actual char count instead.
+	return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
 /**
@@ -202,7 +213,9 @@ export class TpsTracker {
 				anchored: false,
 				requestAt: this.lastTurnStart,
 				startedAt: 0,
+				sawFirstDelta: false,
 				completedAt: 0,
+			decodeMs: 0,
 				tps: 0,
 			});
 		}
@@ -215,7 +228,9 @@ export class TpsTracker {
 			// record inherits the current open-turn start as its TTFT bound.
 			requestAt: this.lastTurnStart,
 			startedAt: 0,
+			sawFirstDelta: false,
 			completedAt: 0,
+			decodeMs: 0,
 			tps: 0,
 		});
 	}
@@ -252,6 +267,7 @@ export class TpsTracker {
 				this.ttftHookSamples += 1;
 			}
 		}
+		record.sawFirstDelta = true; // window becomes hook-measured
 		record.estimatedTokens += deltaContribution(deltaText);
 		record.tokens = record.estimatedTokens;
 	}
@@ -279,10 +295,19 @@ export class TpsTracker {
 			// provider message timestamp so the window is still output-ish.
 			record.startedAt =
 				messageTimestamp(finalMessage) || record.completedAt - 500;
-		}		const durationSec = Math.max(
+		}
+		const durationSec = Math.max(
 			(record.completedAt - record.startedAt) / 1000,
 			0.05,
 		);
+		// decodeMs is the measured output-only window ONLY when live hooks saw
+		// both bounds; scan-reconstructed windows stay 0 → excluded from AVG.
+		if (record.sawFirstDelta && record.startedAt > 0) {
+			const ms = Math.max(1, record.completedAt - record.startedAt);
+			// Guard: a hook-measured window should never be absurdly long —
+			// keep an over-flow safety cap far above any real generation.
+			record.decodeMs = Math.min(ms, 3600_000);
+		}
 		record.tps = record.tokens > 0 ? record.tokens / durationSec : 0;
 		this.totalOutput += record.tokens;
 		this.pendingChars.delete(messageIndex);
@@ -392,7 +417,9 @@ export class TpsTracker {
 					anchored: false,
 					requestAt: this.lastTurnStart,
 					startedAt: 0,
+					sawFirstDelta: false,
 					completedAt: 0,
+			decodeMs: 0,
 					tps: 0,
 				});
 			}
@@ -436,49 +463,33 @@ export class TpsTracker {
 		return 0;
 	}
 
-	/** Session average TPS across completed + current generation windows. */
-	/**
-	 * Honest per-record duration override from branch order: a persisted
-	 * assistant message ended by the time the NEXT entry arrived. Feeding
-	 * these durations replaces first-scan-sighting reconstruction (which made
-	 * every historical message look 10 min long → tok/s ≈ 0).
-	 */
-	syncRecordDurations(durations: Map<number, number>): void {
-		for (const [idx, durMs] of durations) {
-			const r = this.records[idx];
-			if (!r || r.completedAt === 0 || !r.startedAt) continue;
-			const sec = Math.max(0.05, Math.min(durMs / 1000, TpsTracker.MAX_RECORD_DURATION_SEC));
-			// Recompute this record's tps contribution lazily via tokens/duration
-			r.tps = sec > 0 ? r.tokens / sec : r.tps;
-			(r as unknown as { forcedDurationSec?: number }).forcedDurationSec = sec;
-		}
-	}
-
 	/** Session average TPS across completed + current generation windows.
 	 *
-	 * Scan-reconciled OLD messages (after restart/reload) can yield absurd
-	 * durations: startedAt comes from the provider timestamp, completedAt
-	 * from 'first time our scanner saw it' = now — i.e. minutes/hours for a
-	 * message that generated in seconds. Each record's duration is therefore
-	 * clamped to MAX_RECORD_DURATION_SEC before averaging; syncRecordDurations
-	 * supersedes the clamp with real next-entry deltas when available.
+	 * Deepseek-harness contract (projection.ts): throughput =
+	 * Σ decodeTokens ÷ Σ decodeMs, sampled ONLY over steps whose decode
+	 * window was actually measured (first delta → stream end by live hooks).
+	 * Steps without a measured window drop out of the average entirely.
+	 *
+	 * Scan-reconciled OLD messages (after restart/reload) previously entered
+	 * this average with fabricated durations: startedAt from the provider
+	 * timestamp, completedAt from 'when our scanner first saw it' (minutes
+	 * late), or worse a 'next-entry-ts' window that silently includes tool
+	 * runs and user think-time. That made a 100 tok/s model read ~7 tok/s.
+	 * We now honor the same rule as the harness: unmeasurable steps are
+	 * EXCLUDED, never averaged in with invented durations.
 	 */
-	private static readonly MAX_RECORD_DURATION_SEC = 600;
-
 	getSessionAvgTps(): number {
-		const cap = TpsTracker.MAX_RECORD_DURATION_SEC;
 		let totalTokens = 0;
 		let totalDurationSec = 0;
 		for (const r of this.records) {
-			if (r.completedAt > 0 && r.startedAt > 0) {
+			if (r.completedAt > 0 && r.startedAt > 0 && r.decodeMs > 0) {
+				// Measured output-only window (live streaming hooks).
 				totalTokens += r.tokens;
-				// Branch-derived duration wins; fallback reconstructs from
-				// startedAt→completedAt clamped at the cap.
-				const forced = (r as unknown as { forcedDurationSec?: number }).forcedDurationSec;
-				totalDurationSec += forced ?? Math.min((r.completedAt - r.startedAt) / 1000, cap);
+				totalDurationSec += r.decodeMs / 1000;
 			} else if (r.completedAt === 0 && r.startedAt > 0) {
+				// Open generation window: contribute what's elapsed so far.
 				totalTokens += r.tokens;
-				totalDurationSec += Math.min((Date.now() - r.startedAt) / 1000, cap);
+				totalDurationSec += Math.max(0.05, (Date.now() - r.startedAt) / 1000);
 			}
 		}
 		if (totalDurationSec <= 0) return 0;

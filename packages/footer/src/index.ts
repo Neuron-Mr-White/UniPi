@@ -235,12 +235,6 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
             // Branch-derived tool time: pending callId → assistant msg ts.
             const pendingToolCalls = new Map<string, number>();
             let branchToolMs = 0;
-            // Per-assistant-message duration (this assistant ts → next entry
-            // ts): the honest generation+tool window, replaces first-scan
-            // reconstruction for restart tok/s.
-            const recordDurations = new Map<number, number>();
-            let prevEntryTs = 0;
-            let prevAssistantIdx = -1;
             for (const e of events) {
               if (!e || typeof e !== "object") continue;
               if (e.type !== "message") continue;
@@ -249,12 +243,6 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               // Branch-derived turn/wall accounting: user messages delimit
               // turns; assistant timestamps bound the session wall time.
               const ts = Date.parse((e as any).timestamp ?? "") || 0;
-              // Close the previous assistant's window with this entry's ts.
-              if (prevAssistantIdx >= 0 && ts > 0 && prevEntryTs > 0) {
-                recordDurations.set(prevAssistantIdx, Math.min(ts - prevEntryTs, 600_000));
-                prevAssistantIdx = -1;
-              }
-              if (ts > 0) prevEntryTs = ts;
               if (m.role === "user") {
                 userCount++;
                 continue;
@@ -274,7 +262,6 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               if (ts > 0) {
                 if (firstAssistantTs === 0 || ts < firstAssistantTs) firstAssistantTs = ts;
                 if (ts > lastAssistantTs) lastAssistantTs = ts;
-                prevAssistantIdx = msgIndex; // close on next entry
               }
               const hasStop = !!m.stopReason;
               // Pass the whole message: completed messages get anchored to
@@ -301,7 +288,11 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               msgIndex++;
             }
             tpsTracker.syncBranchStats(userCount, msgIndex);
-            if (recordDurations.size > 0) tpsTracker.syncRecordDurations(recordDurations);
+            // NOTE: no per-record duration seeding here on purpose. Timestamps
+            // alone cannot mark stream END — a 'next-entry' delta would include
+            // tool runs + user think-time inside the rate window (the bug that
+            // made 100-tok/s models read ~7 tok/s). AVG now uses only
+            // hook-measured decode windows; see getSessionAvgTps().
             if (lastAssistantTs > firstAssistantTs) {
               tpsTracker.syncWallMs(lastAssistantTs - firstAssistantTs);
             }

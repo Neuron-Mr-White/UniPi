@@ -104,7 +104,7 @@ describe("TpsTracker — output-only timing", () => {
     assert.ok(avg > 20 && avg < 160, `avg=${avg}`);
   });
 
-  it("scan-only fast message uses provider timestamp as start", () => {
+  it("scan-only messages are EXCLUDED from avg (no fabricated windows)", () => {
     const t = new TpsTracker();
     const ts = Date.now() - 2000; // provider says generation took 2s
     t.onMessageUpdate(0, {
@@ -114,18 +114,20 @@ describe("TpsTracker — output-only timing", () => {
       timestamp: ts,
       usage: { output: 60 },
     }, true);
-    // 60 tokens anchored over the ~2s window → ~30 t/s
-    const avg = t.getSessionAvgTps();
-    assert.ok(avg > 15 && avg < 45, `avg=${avg}`);
+    // The scan never saw the decode window; provider timestamps cannot mark
+    // stream end. Harness rule: unmeasurable steps drop out of throughput.
+    // The anchor still counts toward total output.
+    assert.equal(t.getSessionAvgTps(), 0);
     assert.equal(t.getTotalOutput(), 60);
   });
 
-  it("never-seen-start fallback window is conservative (0.5s floor)", () => {
+  it("never-measured message does not poison the average", () => {
     const t = new TpsTracker();
     t.onMessageEnd(0, { role: "assistant", content: [], stopReason: "stop", usage: { output: 100 } });
+    // No measured decode window → contributes tokens but no rate sample.
     const avg = t.getSessionAvgTps();
-    // No timestamp → 0.5s floor → 200 t/s max, never something absurd
-    assert.ok(avg > 0 && avg <= 220, `avg=${avg}`);
+    // No timestamp → no measured window → excluded from the average.
+    assert.equal(avg, 0);
   });
 });
 
@@ -223,5 +225,49 @@ describe("TpsTracker — TTFT (harness semantics)", () => {
     t.reset();
     assert.equal(t.getTtftSamples(), 0);
     assert.equal(t.getAvgTtftMs(), null);
+  });
+});
+
+describe("TpsTracker — regression: 100 tok/s model must read ~100, not 7", () => {
+  it("density estimate divides CHAR COUNT by 4, not the number's digit count", () => {
+    // The old bug: estimateTokens(String(8000)) → String("8000").length / 4 = 1.
+    // Scan fast-path sees an 8000-char finished message → must estimate 2000.
+    const t = new TpsTracker();
+    t.onMessageUpdate(0, {
+      role: "assistant",
+      content: [{ type: "text", text: "x".repeat(8000) }],
+      stopReason: "stop",
+      timestamp: Date.now(),
+      usage: { output: 0 },
+    }, true);
+    assert.equal(t.getTotalOutput(), 2000);
+  });
+
+  it("tool-time between entries is never inside a decode window (avg stays ≈ real rate)", () => {
+    const t = new TpsTracker();
+    // Message anchors at 200 tokens over exactly ~2s of real decoding:
+    t.onTurnStart();
+    t.onMessageStart(0);
+    t.onStreamingDelta(0, "x".repeat(40)); // opens the window
+    const rec = (t as unknown as { records: Array<{ startedAt: number }> }).records[0];
+    rec.startedAt -= 2000;
+    t.onMessageEnd(0, doneMsg("", 200));
+    // A 30s tool runs afterward; nothing may stretch record 0's decode window.
+    t.onToolCallStart("call-1");
+    t.onToolCallEnd("call-1");
+    const avg = t.getSessionAvgTps();
+    assert.ok(Math.abs(avg - 100) <= 5, `avg=${avg} — expected ≈100 tok/s`);
+  });
+
+  it("anchored + measured window yields true rate (usage/output ÷ first-delta→end)", () => {
+    const t = new TpsTracker();
+    t.onMessageStart(0);
+    t.onStreamingDelta(0, "hi");            // window opens
+    const rec = (t as unknown as { records: Array<{ startedAt: number }> }).records[0];
+    rec.startedAt -= 10_000;                // pretend we streamed for 10s
+    t.onMessageEnd(0, doneMsg("final text", 1000)); // 1000 tokens in 10s = 100 tok/s
+    const recEnd = (t as unknown as { records: Array<{ decodeMs: number }> }).records[0];
+    assert.equal(recEnd.decodeMs, 10_000);
+    assert.ok(Math.abs(t.getSessionAvgTps() - 100) < 1, `avg=${t.getSessionAvgTps()}`);
   });
 });
