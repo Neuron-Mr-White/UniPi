@@ -139,3 +139,14 @@ describe("scan-derived fallbacks (no-hook environments)", () => {
     assert.ok(t3.getAvgTtftMs()! <= 30_000, `clamped=${t3.getAvgTtftMs()}`);
   });
 });
+
+describe("branch tool pairing (persisted sessions)", () => {
+  it("syncToolMs is monotonic like other branch stats", () => {
+    const t = new TpsTracker();
+    t.syncToolMs(4000);
+    t.syncToolMs(2500);
+    assert.equal(t.getToolMs(), 4000);
+    t.syncToolMs(6000);
+    assert.equal(t.getToolMs(), 6000);
+  });
+});

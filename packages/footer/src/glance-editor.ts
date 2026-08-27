@@ -107,6 +107,42 @@ export class GlanceEditor extends CustomEditor {
 		this.glance = getStatus;
 	}
 
+	/**
+	 * Apply a flowing lolcat gradient to an already-composed frame line.
+	 * Printable characters get per-position truecolor from the sine palette;
+	 * existing SGR sequences pass through untouched (they mostly come from
+		 * the brand itself, which already carries its own colors).
+	 */
+	private paintLolcatLine(line: string, phaseBase: number): string {
+		let out = "";
+		let pos = 0;
+		let i = 0;
+		while (i < line.length) {
+			const ch = line[i];
+			if (ch === "\x1b") {
+				// Copy the whole escape sequence verbatim.
+				const m = /^\[[0-?]*[ -/]*[@-~]/.exec(line.slice(i));
+				if (m) {
+					out += m[0];
+					i += m[0].length;
+					continue;
+				}
+			}
+			const t = LOLCAT_FREQ * 0.35 * pos + phaseBase;
+			const r = Math.round(Math.sin(t) * 127 + 128);
+			const g = Math.round(Math.sin(t + (2 * Math.PI) / 3) * 127 + 128);
+			const b = Math.round(Math.sin(t + (4 * Math.PI) / 3) * 127 + 128);
+			out += `\u001b[38;2;${r};${g};${b}m${ch}`;
+			pos++;
+			i++;
+		}
+		return out + "\u001b[39m";
+	}
+
+	private static isThinkingHot(level: string | null | undefined): boolean {
+		return level === "max" || level === "xhigh";
+	}
+
 	override render(width: number): string[] {
 		const safe = Math.max(8, width);
 		const inner = Math.max(0, safe - 2);
@@ -213,6 +249,16 @@ export class GlanceEditor extends CustomEditor {
 			...bodyRows,
 			truncateToWidth(bottom, safe),
 		];
+
+		// Thinking max/xhigh: the whole frame flows with an animated lolcat
+		// gradient (phase from wall time; 1s refresh ticks drive the motion;
+		// row offset makes the rainbow flow diagonally like full-screen lolcat).
+		if (GlanceEditor.isThinkingHot(st.thinkingLevel)) {
+			const phase = Date.now() / 700;
+			for (let i = 0; i < lines.length; i++) {
+				lines[i] = truncateToWidth(this.paintLolcatLine(lines[i], phase + i * 0.5), safe);
+			}
+		}
 
 		// Autocomplete list indents by 1 col and sits below the frame (like base).
 		for (const line of autocomplete) {

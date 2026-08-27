@@ -235,6 +235,12 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
             // Branch-derived tool time: pending callId → assistant msg ts.
             const pendingToolCalls = new Map<string, number>();
             let branchToolMs = 0;
+            // Per-assistant-message duration (this assistant ts → next entry
+            // ts): the honest generation+tool window, replaces first-scan
+            // reconstruction for restart tok/s.
+            const recordDurations = new Map<number, number>();
+            let prevEntryTs = 0;
+            let prevAssistantIdx = -1;
             for (const e of events) {
               if (!e || typeof e !== "object") continue;
               if (e.type !== "message") continue;
@@ -243,6 +249,12 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               // Branch-derived turn/wall accounting: user messages delimit
               // turns; assistant timestamps bound the session wall time.
               const ts = Date.parse((e as any).timestamp ?? "") || 0;
+              // Close the previous assistant's window with this entry's ts.
+              if (prevAssistantIdx >= 0 && ts > 0 && prevEntryTs > 0) {
+                recordDurations.set(prevAssistantIdx, Math.min(ts - prevEntryTs, 600_000));
+                prevAssistantIdx = -1;
+              }
+              if (ts > 0) prevEntryTs = ts;
               if (m.role === "user") {
                 userCount++;
                 continue;
@@ -262,18 +274,21 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               if (ts > 0) {
                 if (firstAssistantTs === 0 || ts < firstAssistantTs) firstAssistantTs = ts;
                 if (ts > lastAssistantTs) lastAssistantTs = ts;
+                prevAssistantIdx = msgIndex; // close on next entry
               }
               const hasStop = !!m.stopReason;
               // Pass the whole message: completed messages get anchored to
               // exact provider usage.output; in-flight ones density-estimated.
               tpsTracker.onMessageUpdate(msgIndex, m, hasStop);
               // Register this message's tool calls for result pairing.
-              const content = m.content as Array<{ type?: string; id?: string; toolCallId?: string }> | undefined;
+              // Block type is "toolCall" (capital C) in persisted sessions.
+              const content = m.content as Array<{ type?: string; id?: string }> | undefined;
               if (Array.isArray(content)) {
                 for (const block of content) {
-                  const callId = (block as any)?.id ?? (block as any)?.toolCallId;
-                  if ((block as any)?.type === "tool_use" || (block as any)?.type === "toolcall") {
-                    if (typeof callId === "string" && ts > 0) pendingToolCalls.set(callId, ts);
+                  const btype = String((block as any)?.type ?? "").toLowerCase();
+                  const callId = (block as any)?.id;
+                  if ((btype === "toolcall" || btype === "tool_use") && typeof callId === "string" && ts > 0) {
+                    pendingToolCalls.set(callId, ts);
                   }
                 }
               }
@@ -286,6 +301,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               msgIndex++;
             }
             tpsTracker.syncBranchStats(userCount, msgIndex);
+            if (recordDurations.size > 0) tpsTracker.syncRecordDurations(recordDurations);
             if (lastAssistantTs > firstAssistantTs) {
               tpsTracker.syncWallMs(lastAssistantTs - firstAssistantTs);
             }
@@ -469,6 +485,21 @@ function cacheHitPct(piContext: unknown): number | null {
   }
 }
 
+/** Basic truecolor accents for strip numbers. */
+const STRIP_COLOR = {
+	count: "\x1b[96m", // cyan — turns/steps
+	time: "\x1b[93m", // amber — wall · tool
+	ttft: "\x1b[95m", // magenta — avg ttft
+	psGood: "\x1b[92m", // green — ≥ 30 tok/s
+	psSlow: "\x1b[91m", // red — < 10 tok/s
+	psMid: "\x1b[97m", // white — in between
+	cacheHit: "\x1b[92m", // green — high hit
+	cacheWarn: "\x1b[93m", // amber — lowish hit
+	reset: "\x1b[39m",
+} as const;
+
+const c = (code: string, text: string) => `${code}${text}${STRIP_COLOR.reset}`;
+
 /**
  * Glance-style centered stats strip under the input:
  *   n Turn · n Steps | wall · tool wall | avg TTFT · n tok/s | cache n%
@@ -478,18 +509,21 @@ function renderSessionStrip(piContext: unknown): string | null {
 
   const turns = tpsTracker.getTurnCount();
   const steps = tpsTracker.getStepCount();
-  if (turns > 0 || steps > 0) parts.push(`${turns} turn \u00b7 ${steps} step${steps === 1 ? "" : "s"}`);
+  if (turns > 0 || steps > 0) {
+    parts.push(`${c(STRIP_COLOR.count, String(turns))} turn \u00b7 ${c(STRIP_COLOR.count, String(steps))} step${steps === 1 ? "" : "s"}`);
+  }
 
   const llmMs = tpsTracker.getSessionLlmMs();
   const toolMs = tpsTracker.getToolMs();
   // Wall + tool time always rendered together once anything is known —
   // '00:00 · tool 00:00' beats a silently missing slot mid-strip.
   if (turns > 0 || steps > 0) {
-    parts.push(` ${fmtWall(llmMs)} \u00b7 tool ${fmtWall(toolMs)}`);
+    parts.push(`${c(STRIP_COLOR.time, fmtWall(llmMs))} \u00b7 tool ${c(STRIP_COLOR.time, fmtWall(toolMs))}`);
   }
 
   const ttft = tpsTracker.getAvgTtftMs();
   let avgTps = tpsTracker.getSessionAvgTps();
+  const tpsColor = avgTps >= 30 ? STRIP_COLOR.psGood : avgTps < 10 ? STRIP_COLOR.psSlow : STRIP_COLOR.psMid;
   const avgTpsLabel = avgTps >= 100
     ? String(Math.round(avgTps))
     : avgTps > 0
@@ -497,14 +531,17 @@ function renderSessionStrip(piContext: unknown): string | null {
       : "0";
   if (ttft !== null || steps > 0) {
     const seg = [
-      ttft !== null ? `${ttft >= 10000 ? `${Math.round(ttft / 1000)}s` : `${ttft}ms`} avg ttft` : null,
-      steps > 0 ? `${avgTpsLabel} tok/s` : null,
+      ttft !== null ? c(STRIP_COLOR.ttft, ttft >= 10000 ? `${Math.round(ttft / 1000)}s` : `${ttft}ms`) + " avg ttft" : null,
+      steps > 0 ? c(tpsColor, `${avgTpsLabel} tok/s`) : null,
     ].filter(Boolean).join(" \u00b7 ");
     if (seg) parts.push(seg);
   }
 
   const hit = cacheHitPct(piContext);
-  if (hit !== null) parts.push(`${hit}% cache hit`);
+  if (hit !== null) {
+    const hitColor = hit >= 70 ? STRIP_COLOR.cacheHit : STRIP_COLOR.cacheWarn;
+    parts.push(c(hitColor, `${hit}% cache hit`));
+  }
 
   if (parts.length === 0) return null;
   return parts.join(" | ");

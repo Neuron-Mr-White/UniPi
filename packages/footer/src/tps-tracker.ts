@@ -430,15 +430,31 @@ export class TpsTracker {
 	}
 
 	/** Session average TPS across completed + current generation windows. */
+	/**
+	 * Honest per-record duration override from branch order: a persisted
+	 * assistant message ended by the time the NEXT entry arrived. Feeding
+	 * these durations replaces first-scan-sighting reconstruction (which made
+	 * every historical message look 10 min long → tok/s ≈ 0).
+	 */
+	syncRecordDurations(durations: Map<number, number>): void {
+		for (const [idx, durMs] of durations) {
+			const r = this.records[idx];
+			if (!r || r.completedAt === 0 || !r.startedAt) continue;
+			const sec = Math.max(0.05, Math.min(durMs / 1000, TpsTracker.MAX_RECORD_DURATION_SEC));
+			// Recompute this record's tps contribution lazily via tokens/duration
+			r.tps = sec > 0 ? r.tokens / sec : r.tps;
+			(r as unknown as { forcedDurationSec?: number }).forcedDurationSec = sec;
+		}
+	}
+
 	/** Session average TPS across completed + current generation windows.
 	 *
 	 * Scan-reconciled OLD messages (after restart/reload) can yield absurd
 	 * durations: startedAt comes from the provider timestamp, completedAt
 	 * from 'first time our scanner saw it' = now — i.e. minutes/hours for a
 	 * message that generated in seconds. Each record's duration is therefore
-	 * clamped to MAX_RECORD_DURATION_SEC before averaging; per-message tps
-	 * keeps an honest value within that cap instead of dragging the average
-	 * toward 0.
+	 * clamped to MAX_RECORD_DURATION_SEC before averaging; syncRecordDurations
+	 * supersedes the clamp with real next-entry deltas when available.
 	 */
 	private static readonly MAX_RECORD_DURATION_SEC = 600;
 
