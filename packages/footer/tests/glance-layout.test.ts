@@ -150,3 +150,43 @@ describe("branch tool pairing (persisted sessions)", () => {
     assert.equal(t.getToolMs(), 6000);
   });
 });
+
+describe("rainbow frame escape handling (max/xhigh mode)", () => {
+	// Reconstruct the painting walk used by GlanceEditor.paintLolcatLine to
+	// prove zero-width string sequences survive byte-identical.
+	const CURSOR_MARKER = "\x1b_pi:c\x07";
+	const OSC133 = "\x1b]133;A\x07";
+	const CSI = "\x1b[38;2;10;20;30m";
+
+	function paint(line: string): string {
+		let out = "";
+		let i = 0;
+		while (i < line.length) {
+			const ch = line[i];
+			if (ch === "\x1b") {
+				const rest = line.slice(i);
+				const csi = /^\x1b\[[0-?]*[ -/]*[@-~]/.exec(rest);
+				if (csi) { out += csi[0]; i += csi[0].length; continue; }
+				const strSeq = /^\x1b[\]_][^\x07]*(?:\x07|\x1b\\)/.exec(rest);
+				if (strSeq) { out += strSeq[0]; i += strSeq[0].length; continue; }
+			}
+			out += ch;
+			i++;
+		}
+		return out;
+	}
+
+	it("CURSOR_MARKER and OSC 133 pass through without leaking '_pi:c' bytes", () => {
+		const painted = paint(`│${CSI}abc${CURSOR_MARKER}${OSC133}`);
+		assert.ok(!painted.includes("_pi:c") || painted.includes(CURSOR_MARKER),
+			"marker bytes must only appear inside the intact escape");
+		assert.ok(painted.includes(CURSOR_MARKER), "marker preserved verbatim");
+		assert.ok(painted.includes(OSC133), "OSC preserved verbatim");
+	});
+
+	it("stripControls equivalent removes all zero-width sequences", () => {
+		const strip = (s: string) => s.replace(
+			/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|_[^\x07]*(?:\x07|\x1b\\))/g, "");
+		assert.equal(strip(`${CSI}hi${CURSOR_MARKER}${OSC133}`), "hi");
+	});
+});

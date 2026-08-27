@@ -47,7 +47,13 @@ const BORDER = {
 
 const SEP = " \u2502 "; // │
 
-const ANSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+/**
+ * Every invisible sequence pi-tui embeds in editor lines: CSI SGR, OSC 133
+ * prompt-zone markers (`\x1b]133;A\x07`), and CURSOR_MARKER (`\x1b_pi:c\x07`,
+ * an APC sequence for IME cursor placement). All are zero-width — they must
+ * be skipped by BOTH painting and width math or the ledger drifts.
+ */
+const ANSI_RE = /\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|_[^\x07]*(?:\x07|\x1b\\))/g;
 
 function stripControls(text: string): string {
 	return text.replace(ANSI_RE, "").replace(/[\r\n\t]/g, " ");
@@ -113,18 +119,28 @@ export class GlanceEditor extends CustomEditor {
 	 * existing SGR sequences pass through untouched (they mostly come from
 		 * the brand itself, which already carries its own colors).
 	 */
-	private paintLolcatLine(line: string, phaseBase: number): string {
+	protected paintLolcatLine(line: string, phaseBase: number): string {
 		let out = "";
 		let pos = 0;
 		let i = 0;
 		while (i < line.length) {
 			const ch = line[i];
 			if (ch === "\x1b") {
+				const rest = line.slice(i);
 				// Copy the whole escape sequence verbatim.
-				const m = /^\[[0-?]*[ -/]*[@-~]/.exec(line.slice(i));
+				const m = /^\x1b\[[0-?]*[ -/]*[@-~]/.exec(line.slice(i));
 				if (m) {
 					out += m[0];
 					i += m[0].length;
+					continue;
+				}
+				// Zero-width string sequences: OSC 133 zone markers (\x1b]133;A
+				// BEL) and the APC CURSOR_MARKER (\x1b_pi:c BEL). Painting their
+				// bytes is what produced the "_pi:c" garbage in rainbow mode.
+				const strSeq = /^\x1b[\]_][^\x07]*(?:\x07|\x1b\\)/.exec(rest);
+				if (strSeq) {
+					out += strSeq[0];
+					i += strSeq[0].length;
 					continue;
 				}
 			}
