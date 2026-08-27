@@ -455,16 +455,23 @@ function renderSessionStrip(piContext: unknown): string | null {
 
   const llmMs = tpsTracker.getSessionLlmMs();
   const toolMs = tpsTracker.getToolMs();
-  if (llmMs > 0 || toolMs > 0) {
-    parts.push(toolMs > 0 ? `${fmtWall(llmMs)} \u00b7 tool ${fmtWall(toolMs)}` : fmtWall(llmMs));
+  // Wall + tool time always rendered together once anything is known —
+  // '00:00 · tool 00:00' beats a silently missing slot mid-strip.
+  if (turns > 0 || steps > 0) {
+    parts.push(` ${fmtWall(llmMs)} \u00b7 tool ${fmtWall(toolMs)}`);
   }
 
   const ttft = tpsTracker.getAvgTtftMs();
-  const avgTps = Math.round(tpsTracker.getSessionAvgTps());
-  if (ttft !== null || avgTps > 0) {
+  let avgTps = tpsTracker.getSessionAvgTps();
+  const avgTpsLabel = avgTps >= 100
+    ? String(Math.round(avgTps))
+    : avgTps > 0
+      ? avgTps.toFixed(1)
+      : "0";
+  if (ttft !== null || steps > 0) {
     const seg = [
       ttft !== null ? `${ttft >= 10000 ? `${Math.round(ttft / 1000)}s` : `${ttft}ms`} avg ttft` : null,
-      avgTps > 0 ? `${avgTps} tok/s` : null,
+      steps > 0 ? `${avgTpsLabel} tok/s` : null,
     ].filter(Boolean).join(" \u00b7 ");
     if (seg) parts.push(seg);
   }

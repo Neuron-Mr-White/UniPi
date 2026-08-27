@@ -18,6 +18,7 @@ import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import type { EditorOptions, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { getIcon } from "./rendering/icons.js";
 
 /** Live status injected by the footer extension. */
 export interface GlanceStatus {
@@ -112,14 +113,29 @@ export class GlanceEditor extends CustomEditor {
 		const st = this.glance();
 		const border = this.borderColor.bind(this);
 
-		// ── Top frame: ╭─ UNIPI │ branch │ ───────────────────────────╮ ──
-		const titleParts = ["UNIPI"];
-		if (st.branch) titleParts.push(st.branch);
+		// ── Top frame: ╭─ 󰚩 UNIPI │  feat/... │ ───────────────╮ ──
+		// Brand rendered rainbow: one bright ANSI color per letter.
+		const RAINBOW = ["\x1b[91m", "\x1b[93m", "\x1b[92m", "\x1b[96m", "\x1b[94m"];
+		const brand = "UNIPI"
+			.split("")
+			.map((ch, i) => `${RAINBOW[i % RAINBOW.length]}${ch}\x1b[39m`)
+			.join("");
+		const brandIcon = getIcon("model");
+		const titleParts = [
+			`${brandIcon ? brandIcon + " " : ""}${brand}`,
+		];
+		if (st.branch) {
+			const gitIcon = getIcon("git");
+			titleParts.push(`${gitIcon ? gitIcon + " " : ""}${st.branch}`);
+		}
 		const title = titleParts.join(SEP);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;
-		// corner(1) + leadRule + titleText + filler + corner(1) == safe
-		const topFiller = Math.max(2, safe - 2 - visibleWidth(leadRule + titleText));
+		// Width ledger counts PLAIN text — strip SGR (rainbow codes) first.
+		const topFiller = Math.max(
+			2,
+			safe - 2 - visibleWidth(stripControls(leadRule + titleText)),
+		);
 		const top =
 			border(BORDER.topLeft) +
 			border(leadRule + titleText) +
@@ -142,8 +158,9 @@ export class GlanceEditor extends CustomEditor {
 		if (st.thinkingLevel && st.thinkingLevel !== "off") {
 			rightParts.push(`thinking:${st.thinkingLevel}`);
 		}
-		// Workspace goes bottom-LEFT as its own element; cluster is right-aligned.
-		const leftTitle = ` ${st.workspace} `;
+		// Workspace gets the folder nerd icon.
+		const dirIcon = getIcon("directory");
+		const leftTitle = ` ${dirIcon ? dirIcon + " " : ""}${st.workspace} `;
 		let cluster = rightParts.join(SEP);
 
 		// Shrink policy for narrow terminals: thinking first, then model tail.
@@ -154,12 +171,12 @@ export class GlanceEditor extends CustomEditor {
 			parts.pop();
 			cluster = parts.join("\u2502").trimEnd();
 		}
-		// ╰─ unipi ────...──── cluster ─╯ : dashes absorb all remaining width so
-		// the right cluster hugs the bottom-right corner. Ledger:
-		// corner(1)+rule(1)+leftTitle+dashes+cluster+space(1)+rule(1)+corner(1)=safe
+		// ╰─ 󰉋 unipi ────...──── ─ cluster ─╯ : leading space separates the rule
+		// from the right cluster. Ledger (all plain-width):
+		// corner(1)+rule(1)+leftTitle+dashes+space(1)+cluster+space(1)+rule(1)+corner(1)=safe
 		const bottomDashes = Math.max(
 			2,
-			safe - 5 - visibleWidth(leftTitle) - visibleWidth(cluster),
+			safe - 6 - visibleWidth(stripControls(leftTitle)) - visibleWidth(stripControls(cluster)),
 		);
 
 		const bottom =
@@ -167,7 +184,7 @@ export class GlanceEditor extends CustomEditor {
 			border(BORDER.horizontal) +
 			border(leftTitle) +
 			border(repeat(BORDER.horizontal, bottomDashes)) +
-			cluster + " " +
+			" " + cluster + " " +
 			border(BORDER.horizontal) +
 			border(BORDER.bottomRight);
 
