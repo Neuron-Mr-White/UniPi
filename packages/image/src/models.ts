@@ -383,13 +383,36 @@ export function listVisionModels(registry: ChatModelRegistry): VisionModel[] {
   return models.filter(isVisionModel);
 }
 
-function isVisionModel(model: unknown): model is VisionModel {
+export function isVisionModel(model: unknown): model is VisionModel {
   if (model === null || typeof model !== "object") return false;
   const candidate = model as Partial<VisionModel>;
   if (typeof candidate.id !== "string" || typeof candidate.provider !== "string") {
     return false;
   }
   return Array.isArray(candidate.input) && candidate.input.includes("image");
+}
+
+/**
+ * Active tool names after hiding `recognizeTool` for a vision-capable model.
+ *
+ * A model that accepts image input can read images natively (pi's own read
+ * tool hands it the pixels), so a separate image_recognize round-trip through
+ * another model only duplicates the ability and burns system-prompt context.
+ * Text-only models get the tool back. Models that do not declare their input
+ * modalities are treated as non-vision, matching `isVisionModel`.
+ */
+export function applyRecognizeGating(
+  active: string[],
+  model: unknown,
+  recognizeTool: string,
+): string[] {
+  const vision = isVisionModel(model);
+  const present = active.includes(recognizeTool);
+  // Already correct: hidden for a vision model, or provided for a text-only one.
+  if (vision !== present) return active;
+  return vision
+    ? active.filter((name) => name !== recognizeTool)
+    : [...active, recognizeTool];
 }
 
 /**

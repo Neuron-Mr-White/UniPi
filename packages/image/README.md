@@ -7,7 +7,7 @@ Image generation and image recognition tools for the agent.
 | Tool | Description |
 |------|-------------|
 | `image_generate` | Generate an image from a text prompt. Returned inline and saved to disk. |
-| `image_recognize` | Analyze an image with a vision model. Accepts a file path, `data:` URL, or base64. |
+| `image_recognize` | Analyze an image with a vision model. Accepts a file path, `data:` URL, or base64. Automatically hidden while the session model itself has vision. |
 
 ## Commands
 
@@ -62,6 +62,13 @@ works. Supported: PNG, JPEG, GIF, WebP. Remote URLs are not fetched.
 
 Prefer file paths — inlining base64 into the conversation is far more
 expensive in tokens.
+
+**Vision models don't get this tool.** When the session's current model already
+accepts image input, `image_recognize` is dropped from the active tool set —
+the model reads images natively through pi's own tools, so a separate
+recognition round-trip through another model would only duplicate that ability
+and burn context. Switch to a text-only model (via `/model`) and the tool comes
+back automatically.
 
 ## Configuration
 

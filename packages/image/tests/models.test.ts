@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 import {
   __resetModelCacheForTests,
   __setImagesModelsForTests,
+  applyRecognizeGating,
   formatModelRef,
+  isVisionModel,
   listImageGenModels,
   listVisionModels,
   resolveImageGenModel,
@@ -202,6 +204,56 @@ describe("listVisionModels", () => {
       find: () => undefined,
     };
     assert.equal(listVisionModels(registry).length, 1);
+  });
+});
+
+describe("applyRecognizeGating", () => {
+  const RECOGNIZE = "image_recognize";
+  const visionModel = { id: "claude", provider: "anthropic", input: ["text", "image"] };
+  const textModel = { id: "deepseek", provider: "openrouter", input: ["text"] };
+  const blindModel = { id: "mystery", provider: "p" }; // declares no input modalities
+
+  it("hides the tool for a vision-capable session model", () => {
+    const next = applyRecognizeGating(["read", RECOGNIZE], visionModel, RECOGNIZE);
+    assert.deepEqual(next, ["read"]);
+  });
+
+  it("keeps the tool for a text-only model", () => {
+    const active = ["read", RECOGNIZE];
+    assert.deepEqual(applyRecognizeGating(active, textModel, RECOGNIZE), active);
+  });
+
+  it("treats models that declare no input modalities as non-vision", () => {
+    const active = ["read", RECOGNIZE];
+    assert.deepEqual(applyRecognizeGating(active, blindModel, RECOGNIZE), active);
+    assert.deepEqual(applyRecognizeGating(active, undefined, RECOGNIZE), active);
+  });
+
+  it("restores the tool when switching back to a text-only model", () => {
+    const next = applyRecognizeGating(["read"], textModel, RECOGNIZE);
+    assert.deepEqual(next, ["read", RECOGNIZE]);
+  });
+
+  it("leaves unrelated tools untouched", () => {
+    const next = applyRecognizeGating(
+      ["read", "bash", "image_generate", RECOGNIZE],
+      visionModel,
+      RECOGNIZE,
+    );
+    assert.deepEqual(next, ["read", "bash", "image_generate"]);
+  });
+
+  it("stays absent when already hidden", () => {
+    const active = ["read"];
+    assert.deepEqual(applyRecognizeGating(active, visionModel, RECOGNIZE), ["read"]);
+  });
+});
+
+describe("isVisionModel", () => {
+  it("accepts the session model shape", () => {
+    assert.ok(isVisionModel({ id: "m", provider: "p", input: ["text", "image"] }));
+    assert.ok(!isVisionModel({ id: "m", provider: "p", input: ["text"] }));
+    assert.ok(!isVisionModel(undefined));
   });
 });
 

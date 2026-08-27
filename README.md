@@ -110,7 +110,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
 | `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
 | `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
-| `image_generate` / `image_recognize` | image | Image generation and vision |
+| `image_generate` / `image_recognize` | image | Image generation and vision (recognize auto-hides while the session model has vision) |
 | `notify_user` | notify | Push notifications |
 | `ask_user` | ask-user | User input |
 | `compact` / `session_recall` / `sandbox` | compactor | Context management |

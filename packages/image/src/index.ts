@@ -20,7 +20,13 @@ import {
 
 import { registerImageCommands } from "./commands.js";
 import { registerImageTools } from "./tools.js";
-import { listImageGenModels, listVisionModels, type ChatModelRegistry } from "./models.js";
+import {
+  applyRecognizeGating,
+  isVisionModel,
+  listImageGenModels,
+  listVisionModels,
+  type ChatModelRegistry,
+} from "./models.js";
 import { registerRegistryImageProviders } from "./register-providers.js";
 import { loadConfig } from "./settings.js";
 
@@ -37,9 +43,26 @@ function getInfoRegistry() {
   ).__unipi_info_registry;
 }
 
+/**
+ * Hide image_recognize when the session model can natively see images, and
+ * restore it when a text-only model takes over. Returns whether the tool is
+ * provided after gating.
+ */
+function applyVisionGating(pi: ExtensionAPI, model: unknown): boolean {
+  const active = pi.getActiveTools();
+  const next = applyRecognizeGating(active, model, IMAGE_TOOLS.RECOGNIZE);
+  if (next !== active) pi.setActiveTools(next);
+  return next.includes(IMAGE_TOOLS.RECOGNIZE);
+}
+
 export default function (pi: ExtensionAPI) {
   registerImageTools(pi);
   registerImageCommands(pi);
+
+  pi.on("model_select", (event) => {
+    if (!loadConfig().recognize.enabled) return;
+    applyVisionGating(pi, event.model);
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     const config = loadConfig();
@@ -51,9 +74,16 @@ export default function (pi: ExtensionAPI) {
       (ctx as unknown as { modelRegistry?: ChatModelRegistry }).modelRegistry,
     ).catch(() => undefined);
 
+    // A vision-capable session model reads images itself, so image_recognize
+    // would only duplicate that ability. Drop it from the active tool set;
+    // the model_select handler above restores it when a text-only model is
+    // chosen later in the same session.
+    const recognizeProvided =
+      config.recognize.enabled && applyVisionGating(pi, ctx.model);
+
     const tools: string[] = [];
     if (config.generate.enabled) tools.push(IMAGE_TOOLS.GENERATE);
-    if (config.recognize.enabled) tools.push(IMAGE_TOOLS.RECOGNIZE);
+    if (recognizeProvided) tools.push(IMAGE_TOOLS.RECOGNIZE);
 
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.IMAGE,
@@ -92,9 +122,11 @@ export default function (pi: ExtensionAPI) {
           .modelRegistry;
         const vision = chatRegistry ? listVisionModels(chatRegistry) : [];
 
-        const recognize = current.recognize.enabled
-          ? current.recognize.model || "Session model"
-          : "Disabled";
+        const recognize = !current.recognize.enabled
+          ? "Disabled"
+          : isVisionModel(ctx.model)
+            ? "Hidden (model has vision)"
+            : current.recognize.model || "Session model";
 
         return {
           generate: { value: generate },
