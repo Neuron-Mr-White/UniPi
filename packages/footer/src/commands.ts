@@ -78,12 +78,17 @@ export function registerCommands(
 
       if (groups && groups.length > 0) {
         showFooterSettings(ctx, groups, () => {
-          // Re-read settings and update renderer + glance mode live
+          // Instant, focus-safe updates: mode flag + renderer reset. Widget
+          // renders read state.glanceMode every frame, so the strip/classic
+          // row swap is live immediately. The EDITOR component swap is
+          // deferred to overlay close — see .finally below.
           const updated = loadFooterSettings();
           state.renderer.setPreset(updated.preset);
           state.glanceMode = updated.glanceMode !== false;
-          applyGlanceMode(state, ctx as unknown as Parameters<typeof applyGlanceMode>[1]);
           state.renderer.resetLayoutCache();
+        }).finally(() => {
+          // Overlay closed → focus back on the editor; safe to swap it now.
+          applyGlanceMode(state, ctx as unknown as Parameters<typeof applyGlanceMode>[1]);
         });
       } else {
         // Fallback: show text summary
