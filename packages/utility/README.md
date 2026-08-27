@@ -68,6 +68,26 @@ Or edit `.unipi/config/util-settings.json` directly (migrated automatically from
 
 The badge is a persistent HUD overlay in the top-right corner showing the current session name. It auto-restores visibility on session restart.
 
+### Skill Startup Discovery
+
+Controls whether discovered skills are cataloged in the agent's system prompt at startup (default: on).
+
+```
+/unipi:skills-settings        # Interactive toggle (or /unipi:skills-settings on|off)
+```
+
+Or edit `~/.pi/agent/settings.json` directly:
+
+```json
+{
+  "unipi": {
+    "skills": { "discovery": false }
+  }
+}
+```
+
+When off, the `<available_skills>` catalog never populates agent context. Skills remain invocable via `/skill:name` — pi expands those commands by reading the skill file directly, independent of the prompt catalog. The strip is applied consistently every turn, so provider prefix caching is unaffected.
+
 ## Programmatic API
 
 | Module | Path | Description |

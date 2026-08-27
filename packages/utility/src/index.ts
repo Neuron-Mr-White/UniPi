@@ -24,6 +24,7 @@ import {
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
+import { isSkillDiscoveryEnabled, stripSkillsSection } from "./skill-discovery.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings } from "./settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
@@ -60,6 +61,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.BADGE_SETTINGS,
   UTILITY_COMMANDS.UTIL_SETTINGS,
   UTILITY_COMMANDS.PREFIX_CACHE,
+  UTILITY_COMMANDS.SKILLS_SETTINGS,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -127,6 +129,17 @@ export default function (pi: ExtensionAPI) {
   const nameBadgeState = new NameBadgeState();
 
   // Capture session context for cross-event use (not needed if BADGE_GENERATE_REQUEST removed)
+
+  // Skill startup discovery gate — when disabled (unipi.skills.discovery: false),
+  // strip the <available_skills> catalog from the system prompt every turn so
+  // skill metadata never populates agent context. /skill:name invocation is
+  // unaffected: pi expands those commands by reading SKILL.md directly.
+  // Applied consistently per turn, so provider prefix cache stays intact.
+  pi.on("before_agent_start", (event) => {
+    if (isSkillDiscoveryEnabled()) return undefined;
+    const stripped = stripSkillsSection(event.systemPrompt);
+    return stripped ? { systemPrompt: stripped } : undefined;
+  });
 
   // Register commands
   registerUtilityCommands(pi);

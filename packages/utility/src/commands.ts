@@ -22,6 +22,7 @@ import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
 import type { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./settings.js";
+import { isSkillDiscoveryEnabled, saveSkillDiscoverySettings } from "./skill-discovery.js";
 import { UtilSettingsTui } from "./tui/util-settings-tui.js";
 
 /** Send a markdown response via pi.sendMessage */
@@ -131,6 +132,59 @@ export function registerNameBadgeCommands(
           },
         },
       );
+    },
+  });
+
+  // ─── /unipi:skills-settings — skill startup discovery toggle ────────────
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.SKILLS_SETTINGS}`, {
+    description: "Toggle skill startup discovery (skills catalog in system prompt; default on)",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      const describe = (enabled: boolean) =>
+        enabled
+          ? "Skill discovery: ON — skills are cataloged in the system prompt at startup"
+          : "Skill discovery: OFF — skills are invoke-only via /skill:name (no startup catalog)";
+
+      const arg = args.trim().toLowerCase();
+      const current = isSkillDiscoveryEnabled();
+
+      let next: boolean | undefined;
+      if (arg === "on" || arg === "true" || arg === "1") {
+        next = true;
+      } else if (arg === "off" || arg === "false" || arg === "0") {
+        next = false;
+      } else if (arg === "" || arg === "toggle") {
+        if (arg === "" && ctx.hasUI) {
+          const choice = await ctx.ui.select(
+            "Skill startup discovery",
+            [
+              `On — catalog skills in the system prompt${current ? "  (current)" : ""}`,
+              `Off — invoke-only via /skill:name${current ? "" : "  (current)"}`,
+            ],
+          );
+          next = choice ? choice.startsWith("On") : undefined;
+        } else {
+          next = !current;
+        }
+      }
+
+      if (next === undefined) {
+        // Cancelled or invalid arg — show current state.
+        const status = describe(current);
+        if (ctx.hasUI) {
+          ctx.ui.notify(status, "info");
+        } else {
+          sendResponse(pi, status);
+        }
+        return;
+      }
+
+      const ok = saveSkillDiscoverySettings({ discovery: next });
+      const message = ok ? describe(next) : "Failed to save skill discovery setting.";
+      if (ctx.hasUI) {
+        ctx.ui.notify(message, ok ? "info" : "warning");
+      } else {
+        sendResponse(pi, message);
+      }
     },
   });
 

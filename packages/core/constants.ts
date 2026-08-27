@@ -161,6 +161,7 @@ export const UTILITY_COMMANDS = {
   BADGE_SETTINGS: "badge-settings",
   UTIL_SETTINGS: "util-settings",
   PREFIX_CACHE: "prefix-cache",
+  SKILLS_SETTINGS: "skills-settings",
 } as const;
 
 /** Utility tool names */
