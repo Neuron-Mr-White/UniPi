@@ -70,6 +70,29 @@ function fmtTokens(n: number): string {
 	return String(n);
 }
 
+// ─── Lolcat rainbow gradient (classic sine algorithm, animated) ─────────
+//
+// red   = sin(freq·i + phase)       · 127 + 128
+// green = sin(freq·i + 2π/3 + phase) · 127 + 128
+// blue  = sin(freq·i + 4π/3 + phase) · 127 + 128
+// i = character position; phase advances with wall time so the gradient
+// drifts across the word (lolcat -a behavior). Rendered as truecolor SGR.
+
+const LOLCAT_FREQ = 0.9; // radians per char — short word → tight sweep
+
+function lolcatRainbow(text: string, phase: number): string {
+	return text
+		.split("")
+		.map((ch, i) => {
+			const t = LOLCAT_FREQ * i + phase;
+			const r = Math.round(Math.sin(t) * 127 + 128);
+			const g = Math.round(Math.sin(t + (2 * Math.PI) / 3) * 127 + 128);
+			const b = Math.round(Math.sin(t + (4 * Math.PI) / 3) * 127 + 128);
+			return `\x1b[38;2;${r};${g};${b}m${ch}`;
+		})
+		.join("") + "\x1b[39m";
+}
+
 export class GlanceEditor extends CustomEditor {
 	private glance: () => GlanceStatus;
 
@@ -114,12 +137,9 @@ export class GlanceEditor extends CustomEditor {
 		const border = this.borderColor.bind(this);
 
 		// ── Top frame: ╭─ 󰚩 UNIPI │  feat/... │ ───────────────╮ ──
-		// Brand rendered rainbow: one bright ANSI color per letter.
-		const RAINBOW = ["\x1b[91m", "\x1b[93m", "\x1b[92m", "\x1b[96m", "\x1b[94m"];
-		const brand = "UNIPI"
-			.split("")
-			.map((ch, i) => `${RAINBOW[i % RAINBOW.length]}${ch}\x1b[39m`)
-			.join("");
+		// Brand rendered as an animated lolcat gradient (phase from wall time;
+		// the footer's 1s refresh timer re-renders, so it shimmers each tick).
+		const brand = lolcatRainbow("UNIPI", Date.now() / 1000);
 		const brandIcon = getIcon("model");
 		const titleParts = [
 			`${brandIcon ? brandIcon + " " : ""}${brand}`,

@@ -299,6 +299,17 @@ export class TpsTracker {
 		this.toolMs += Math.max(0, Date.now() - started);
 	}
 
+	/**
+	 * Branch-derived tool-time fallback for restart-proof stats: pairs each
+	 * assistant tool_use call with its toolResult timestamp (matched by
+	 * callId) from the session branch. Monotonic — the live-hook sum always
+	 * wins because it measures wall clock, while timestamps under-measure by
+	 * excluding queueing… but after a restart hooks have nothing, so seeds.
+	 */
+	syncToolMs(toolMs: number): void {
+		if (toolMs > this.toolMs) this.toolMs = toolMs;
+	}
+
 	/** Close the currently open turn, accumulating its wall time. */
 	onTurnEnd(): void {
 		if (this.turnStartAt > 0) {
@@ -419,16 +430,29 @@ export class TpsTracker {
 	}
 
 	/** Session average TPS across completed + current generation windows. */
+	/** Session average TPS across completed + current generation windows.
+	 *
+	 * Scan-reconciled OLD messages (after restart/reload) can yield absurd
+	 * durations: startedAt comes from the provider timestamp, completedAt
+	 * from 'first time our scanner saw it' = now — i.e. minutes/hours for a
+	 * message that generated in seconds. Each record's duration is therefore
+	 * clamped to MAX_RECORD_DURATION_SEC before averaging; per-message tps
+	 * keeps an honest value within that cap instead of dragging the average
+	 * toward 0.
+	 */
+	private static readonly MAX_RECORD_DURATION_SEC = 600;
+
 	getSessionAvgTps(): number {
+		const cap = TpsTracker.MAX_RECORD_DURATION_SEC;
 		let totalTokens = 0;
 		let totalDurationSec = 0;
 		for (const r of this.records) {
 			if (r.completedAt > 0 && r.startedAt > 0) {
 				totalTokens += r.tokens;
-				totalDurationSec += (r.completedAt - r.startedAt) / 1000;
+				totalDurationSec += Math.min((r.completedAt - r.startedAt) / 1000, cap);
 			} else if (r.completedAt === 0 && r.startedAt > 0) {
 				totalTokens += r.tokens;
-				totalDurationSec += (Date.now() - r.startedAt) / 1000;
+				totalDurationSec += Math.min((Date.now() - r.startedAt) / 1000, cap);
 			}
 		}
 		if (totalDurationSec <= 0) return 0;

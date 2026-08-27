@@ -232,6 +232,9 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
             let firstAssistantTs = 0;
             let lastAssistantTs = 0;
             let prevAssistantTs = 0;
+            // Branch-derived tool time: pending callId → assistant msg ts.
+            const pendingToolCalls = new Map<string, number>();
+            let branchToolMs = 0;
             for (const e of events) {
               if (!e || typeof e !== "object") continue;
               if (e.type !== "message") continue;
@@ -244,6 +247,16 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
                 userCount++;
                 continue;
               }
+              if (m.role === "toolResult") {
+                // Pair back to the assistant that issued this call.
+                const callId = (m as any).toolCallId as string | undefined;
+                if (callId && pendingToolCalls.has(callId)) {
+                  const issuedAt = pendingToolCalls.get(callId)!;
+                  pendingToolCalls.delete(callId);
+                  if (ts > issuedAt) branchToolMs += Math.min(ts - issuedAt, 600_000);
+                }
+                continue;
+              }
               if (m.role !== "assistant") continue;
               if (m.stopReason === "error" || m.stopReason === "aborted") continue;
               if (ts > 0) {
@@ -254,6 +267,16 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
               // Pass the whole message: completed messages get anchored to
               // exact provider usage.output; in-flight ones density-estimated.
               tpsTracker.onMessageUpdate(msgIndex, m, hasStop);
+              // Register this message's tool calls for result pairing.
+              const content = m.content as Array<{ type?: string; id?: string; toolCallId?: string }> | undefined;
+              if (Array.isArray(content)) {
+                for (const block of content) {
+                  const callId = (block as any)?.id ?? (block as any)?.toolCallId;
+                  if ((block as any)?.type === "tool_use" || (block as any)?.type === "toolcall") {
+                    if (typeof callId === "string" && ts > 0) pendingToolCalls.set(callId, ts);
+                  }
+                }
+              }
               // TTFT seed AFTER record creation: prev assistant ts ≈ request
               // bound, own ts ≈ first output. No-ops once hooks give samples.
               if (ts > 0) {
@@ -266,6 +289,7 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
             if (lastAssistantTs > firstAssistantTs) {
               tpsTracker.syncWallMs(lastAssistantTs - firstAssistantTs);
             }
+            tpsTracker.syncToolMs(branchToolMs);
           }
         } catch {
           // Silently ignore — TPS is best-effort
@@ -335,11 +359,14 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         state.renderer.resetLayoutCache();
       },
       render(width: number): string[] {
-        if (!state.enabled || !state.piContext || width <= 0) return [];
+        if (!state.enabled || !state.glanceMode || !state.piContext || width <= 0) return [];
         const strip = renderSessionStrip(state.piContext);
         if (!strip) return [];
-        const line = truncateToWidth(strip, width);
-        return visibleWidth(strip) > width ? [line] : [strip];
+        // Centered under the input box.
+        const w = visibleWidth(strip);
+        if (w >= width) return [truncateToWidth(strip, width)];
+        const leftPad = Math.floor((width - w) / 2);
+        return [" ".repeat(leftPad) + strip];
       },
     };
   }, { placement: "belowEditor" });
