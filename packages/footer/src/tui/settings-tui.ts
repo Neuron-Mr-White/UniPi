@@ -50,8 +50,14 @@ const overlay = new OverlayTheme();
 
 // ─── Show the footer settings overlay ──────────────────────────────────
 
-export function showFooterSettings(ctx: ExtensionCommandContext, groups: FooterGroup[], onSettingsChanged?: () => void): void {
-  ctx.ui.custom<void>(
+/**
+ * Returns the overlay's promise so callers can run post-close actions
+ * (e.g. the glance editor swap) AFTER focus has returned to the editor —
+ * setEditorComponent() steals keyboard focus and would strand this very
+ * overlay unclosable if invoked from onSettingsChanged while it is open.
+ */
+export function showFooterSettings(ctx: ExtensionCommandContext, groups: FooterGroup[], onSettingsChanged?: () => void): Promise<void> {
+  return ctx.ui.custom<void>(
     (tui, _theme, _keybindings, done) => {
       const overlay = new FooterSettingsOverlay(groups, onSettingsChanged);
       overlay.onClose = () => done();
@@ -215,6 +221,13 @@ class FooterSettingsOverlay {
   private buildAppearanceList(): void {
     const items: SettingItem[] = [
       {
+        id: "glanceMode",
+        label: "Glance Footer",
+        description: "Experimental: framed input box + session strip (replaces classic row)",
+        currentValue: this.settings.glanceMode !== false ? "on" : "off",
+        values: ["on", "off"],
+      },
+      {
         id: "preset",
         label: "Preset",
         description: "Footer layout preset",
@@ -352,6 +365,9 @@ class FooterSettingsOverlay {
 
   private onAppearanceChange(id: string, newValue: string): void {
     switch (id) {
+      case "glanceMode":
+        this.settings.glanceMode = newValue === "on";
+        break;
       case "preset":
         this.settings.preset = newValue;
         break;

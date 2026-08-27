@@ -87,14 +87,91 @@ function renderToolCountSegment(ctx: FooterSegmentContext): RenderedSegment {
   return { content: color(ctx, "model", content), visible: true };
 }
 
+// ─── Git metadata (dirty / ahead / behind) ──────────────────────────────
+//
+// pi's ReadonlyFooterDataProvider only exposes getGitBranch(). For glance-style
+// adornments we probe git ourselves: fire-and-forget async refresh, cached,
+// at most one probe every GIT_PROBE_MS. Renders read the last known values.
+
+const GIT_PROBE_MS = 2000;
+
+interface GitMeta {
+	cwd: string;
+	at: number;
+	inFlight: boolean;
+	dirty: boolean | null;
+	ahead: number | null;
+	behind: number | null;
+}
+
+const gitMetaCache: GitMeta = {
+	cwd: "", at: 0, inFlight: false, dirty: null, ahead: null, behind: null,
+};
+
+function probeGitMeta(cwd: string): void {
+	if (gitMetaCache.inFlight) return;
+	gitMetaCache.inFlight = true;
+	void import("node:child_process").then(({ execFile }) => {
+		execFile(
+			"git",
+			["--no-optional-locks", "status", "--porcelain=v1", "--branch"],
+			{ cwd, timeout: 1500 },
+			(err, stdout) => {
+				gitMetaCache.inFlight = false;
+				gitMetaCache.at = Date.now();
+				if (err || !stdout) {
+					gitMetaCache.dirty = null;
+					return;
+				}
+				let dirty = false;
+				let ahead = 0;
+				let behind = 0;
+				for (const line of stdout.split("\n")) {
+					if (line.startsWith("##")) {
+						const ab = line.match(/\[ahead (\d+)(?:,\s*behind (\d+))?\]|\[behind (\d+)\]/);
+						if (ab) {
+							ahead = Number(ab[1] ?? 0);
+							behind = Number(ab[2] ?? ab[3] ?? 0);
+						}
+					} else if (line.trim()) {
+						dirty = true;
+					}
+				}
+				gitMetaCache.dirty = dirty;
+				gitMetaCache.ahead = ahead;
+				gitMetaCache.behind = behind;
+			},
+		);
+	});
+}
+
+function getGitMeta(cwd: string): { dirty: boolean | null; ahead: number | null; behind: number | null } {
+	const now = Date.now();
+	if (gitMetaCache.cwd !== cwd || now - gitMetaCache.at > GIT_PROBE_MS) {
+		gitMetaCache.cwd = cwd;
+		probeGitMeta(cwd);
+	}
+	return { dirty: gitMetaCache.dirty, ahead: gitMetaCache.ahead, behind: gitMetaCache.behind };
+}
+
 function renderGitSegment(ctx: FooterSegmentContext): RenderedSegment {
   const footerData = ctx.footerData as any;
   const branch = footerData?.getGitBranch?.() ?? null;
   if (!branch) return { content: "", visible: false };
 
-  const isDirty = footerData?.getGitDirty?.() ?? false;
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
+  const meta = getGitMeta(String(cwd));
+  const isDirty = meta.dirty === true || (meta.dirty === null && (footerData?.getGitDirty?.() ?? false));
   const semanticColor: SemanticColor = isDirty ? "gitDirty" : "gitClean";
-  const content = withIcon("git", branch);
+
+  // Glance-style adornments: * dirty, ↑N ahead, ↓N behind
+  let marks = "";
+  if (isDirty) marks += "*";
+  if ((meta.ahead ?? 0) > 0) marks += `↑${meta.ahead}`;
+  if ((meta.behind ?? 0) > 0) marks += `↓${meta.behind}`;
+
+  const content = withIcon("git", `${branch}${marks}`);
   return { content: color(ctx, semanticColor, content), visible: true };
 }
 
@@ -180,6 +257,18 @@ function renderHostnameSegment(_ctx: FooterSegmentContext): RenderedSegment {
   return { content, visible: true };
 }
 
+function renderUniBrandSegment(ctx: FooterSegmentContext): RenderedSegment {
+  return { content: color(ctx, "brand", "UNI"), visible: true };
+}
+
+function renderDirectorySegment(ctx: FooterSegmentContext): RenderedSegment {
+  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
+  const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
+  const dir = String(cwd).split("/").filter(Boolean).pop() ?? "~";
+  const content = withIcon("directory", dir);
+  return { content: color(ctx, "directory", content), visible: true };
+}
+
 // ─── TPS tier color function ────────────────────────────────────────────────
 
 function getTpsSemanticColor(tps: number): SemanticColor {
@@ -190,32 +279,48 @@ function getTpsSemanticColor(tps: number): SemanticColor {
   return "tpsSlow";
 }
 
+/** Format a TTFT duration for display: "1.2s" or "350ms". */
+function formatTtft(ms: number): string {
+  if (ms >= 10000) return `${Math.round(ms / 1000)}s`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${ms}ms`;
+}
+
 function renderTpsSegment(ctx: FooterSegmentContext): RenderedSegment {
   const streaming = tpsTracker.isStreaming();
   const liveTps = tpsTracker.getLiveTps();
   const avgTps = tpsTracker.getSessionAvgTps();
+  // Harness-style TTFT average; null until a full turn→first-word sample exists.
+  const avgTtft = tpsTracker.getAvgTtftMs();
 
   // No data yet — hide
-  if (!tpsTracker.getTotalOutput()) return { content: "", visible: false };
+  if (!tpsTracker.getTotalOutput() && avgTtft === null) return { content: "", visible: false };
 
   const icon = getIcon("tps");
 
+  const ttftPart = avgTtft !== null ? ` TTFT ${formatTtft(avgTtft)} \u00b7` : "";
+
   if (streaming && liveTps > 0) {
-    // Active generation: show live rate + avg
+    // Active generation: show live rate + avg + ttft
     const liveDisplay = Math.round(liveTps);
     const avgDisplay = Math.round(avgTps);
     const liveText = `\u2191 ${liveDisplay} T/S`;
     const avgText = `AVG ${avgDisplay}`;
     const liveColored = applyColor(getTpsSemanticColor(liveTps), liveText, ctx.theme, ctx.colors);
-    const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
+    const avgColored = applyColor("tpsIdle", `${ttftPart} ${avgText}`.trimStart(), ctx.theme, ctx.colors);
     const content = icon ? `${icon} ${liveColored} \u00b7 ${avgColored}` : `${liveColored} \u00b7 ${avgColored}`;
     return { content, visible: true };
   }
 
-  // Idle: show session average
+  // Idle: show session average (or just TTFT when nothing else yet)
+  if (!tpsTracker.getTotalOutput()) {
+    const text = `TTFT ${formatTtft(avgTtft ?? 0)}`;
+    const colored = applyColor("tpsIdle", text, ctx.theme, ctx.colors);
+    return { content: icon ? `${icon} ${colored}` : colored, visible: true };
+  }
   const avgDisplay = Math.round(avgTps);
   const avgText = `AVG ${avgDisplay} T/S`;
-  const avgColored = applyColor("tpsIdle", avgText, ctx.theme, ctx.colors);
+  const avgColored = applyColor("tpsIdle", `${ttftPart} ${avgText}`.trimStart(), ctx.theme, ctx.colors);
   const content = icon ? `${icon} ${avgColored}` : avgColored;
   return { content, visible: true };
 }
@@ -297,6 +402,8 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "tokens_out", label: "Tokens Out", shortLabel: "TOUT", description: "Output tokens generated", zone: "center", render: renderTokensSegment("out"), defaultShow: false },
   { id: "session", label: "Session", shortLabel: "SES", description: "Session identifier", zone: "left", render: renderSessionSegment, defaultShow: false },
   { id: "hostname", label: "Hostname", shortLabel: "HST", description: "Machine hostname", zone: "left", render: renderHostnameSegment, defaultShow: false },
+  { id: "uni", label: "Unipi", shortLabel: "UNI", description: "Unipi brand mark", zone: "left", render: renderUniBrandSegment, defaultShow: true },
+  { id: "directory", label: "Directory", shortLabel: "DIR", description: "Current directory name", zone: "left", render: renderDirectorySegment, defaultShow: true },
   { id: "clock", label: "Clock", shortLabel: "CLK", description: "Current wall time (HH:MM:SS)", zone: "right", render: renderClockSegment, defaultShow: true },
   { id: "duration", label: "Duration", shortLabel: "DUR", description: "Session duration", zone: "right", render: renderDurationSegment, defaultShow: true },
   { id: "thinking_level", label: "Thinking", shortLabel: "THK", description: "Current model thinking level", zone: "center", render: renderThinkingLevelSegment, defaultShow: false },

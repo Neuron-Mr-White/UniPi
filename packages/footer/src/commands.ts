@@ -11,20 +11,7 @@ import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { showFooterSettings } from "./tui/settings-tui.js";
 import { showFooterHelp } from "./help.js";
 import type { FooterGroup, FooterSegment } from "./types.js";
-
-/** Extension state interface */
-interface FooterState {
-  enabled: boolean;
-  renderer: {
-    setPreset(name: string): void;
-    setActive(active: boolean): void;
-    getPresetName(): string;
-    resetLayoutCache(): void;
-  };
-  segmentLookup: Map<string, FooterSegment>;
-  piContext: unknown;
-  setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
-}
+import { applyGlanceMode, type FooterState } from "./index.js";
 
 /**
  * Register footer commands.
@@ -91,10 +78,17 @@ export function registerCommands(
 
       if (groups && groups.length > 0) {
         showFooterSettings(ctx, groups, () => {
-          // Re-read settings and update renderer
+          // Instant, focus-safe updates: mode flag + renderer reset. Widget
+          // renders read state.glanceMode every frame, so the strip/classic
+          // row swap is live immediately. The EDITOR component swap is
+          // deferred to overlay close — see .finally below.
           const updated = loadFooterSettings();
           state.renderer.setPreset(updated.preset);
+          state.glanceMode = updated.glanceMode !== false;
           state.renderer.resetLayoutCache();
+        }).finally(() => {
+          // Overlay closed → focus back on the editor; safe to swap it now.
+          applyGlanceMode(state, ctx as unknown as Parameters<typeof applyGlanceMode>[1]);
         });
       } else {
         // Fallback: show text summary

@@ -15,6 +15,7 @@ import { UNIPI_SETTINGS_KEY } from "@pi-unipi/core";
 export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   enabled: true,
   preset: "default",
+  glanceMode: true,
   separator: "powerline-thin",
   iconStyle: "nerd",
   zoneSeparator: "\u2502", // │
@@ -93,6 +94,7 @@ export function loadFooterSettings(): FooterSettings {
     return {
       enabled: typeof footer.enabled === "boolean" ? footer.enabled : DEFAULT_FOOTER_SETTINGS.enabled,
       preset: typeof footer.preset === "string" ? footer.preset : DEFAULT_FOOTER_SETTINGS.preset,
+      glanceMode: typeof footer.glanceMode === "boolean" ? footer.glanceMode : DEFAULT_FOOTER_SETTINGS.glanceMode,
       separator: isValidSeparator(footer.separator) ? footer.separator as SeparatorStyle : DEFAULT_FOOTER_SETTINGS.separator,
       iconStyle: isValidIconStyle(footer.iconStyle) ? footer.iconStyle as IconStyle : DEFAULT_FOOTER_SETTINGS.iconStyle,
       zoneSeparator: typeof footer.zoneSeparator === "string" ? footer.zoneSeparator : DEFAULT_FOOTER_SETTINGS.zoneSeparator,

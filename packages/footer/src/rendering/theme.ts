@@ -179,7 +179,9 @@ export function mutedPlaceholder(text: string): string {
 /** Default semantic-to-theme-color mapping */
 const DEFAULT_COLOR_MAP: Record<SemanticColor, ThemeColor | `#${string}`> = {
   // ── Model & Identity (Left zone) ──
+  brand: "accent",
   model: "#c792ea",           // Soft purple — model name
+  directory: "#61afef",      // Blue — current directory
   path: "text",
   git: "#82cc6f",            // Green (clean default)
   gitClean: "#82cc6f",       // Green — clean branch

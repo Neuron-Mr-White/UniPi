@@ -15,7 +15,9 @@ export type SegmentZone = "left" | "center" | "right";
 /** Semantic color names mapped to segment groups */
 export type SemanticColor =
   // ── Model & Identity (Left zone) ──
+  | "brand"
   | "model"
+  | "directory"
   | "path"
   | "git"
   | "gitClean"
@@ -181,6 +183,8 @@ export interface FooterSettings {
   enabled: boolean;
   /** Active preset name */
   preset: string;
+  /** Glance-style experiment: frame input box + session strip, suppress classic row */
+  glanceMode?: boolean;
   /** Separator style */
   separator: SeparatorStyle;
   /** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */
