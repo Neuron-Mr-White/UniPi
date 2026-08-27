@@ -18,3 +18,5 @@ packages/unipi/bundled.js
 __pycache__/
 .pi/
 .unipi/config/
+.unipi/delegate/
+.unipi/fusion/
