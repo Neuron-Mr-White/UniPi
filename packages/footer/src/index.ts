@@ -67,6 +67,8 @@ export interface FooterState {
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Glance-style editor component installed */
   glanceInstalled: boolean;
+  /** Glance experiment active (frame input + strip, classic row suppressed) */
+  glanceMode: boolean;
   /** Deferred install timer (focus-safety deferral past the boot overlay) */
   glanceInstallTimer: ReturnType<typeof setTimeout> | null;
   /** Re-register footer + widgets with pi UI (for live enable) */
@@ -93,6 +95,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     tuiRef: null,
     refreshTimer: null,
     glanceInstalled: false,
+    glanceMode: true,
     glanceInstallTimer: null,
     setupUI: null,
   };
@@ -136,6 +139,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     const settings = loadFooterSettings();
     state.enabled = settings.enabled;
+    state.glanceMode = settings.glanceMode !== false; // default ON
     state.piContext = ctx;
     state.renderer.setPreset(settings.preset);
     state.renderer.setActive(settings.enabled);
@@ -155,39 +159,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     // and strand the dashboard unclosable (q/Esc would type into the editor).
     // The boot overlay auto-closes after ~2s; we install after a grace period
     // longer than any sane bootTimeoutMs.
-    const installGlanceEditor = (): void => {
-      if (state.glanceInstalled || !state.piContext) return;
-      try {
-        const piCtx = state.piContext as Record<string, unknown> | undefined;
-        const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
-        const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
-        ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-          new GlanceEditor(tui, theme, keybindings, () => {
-            const piCtx = state.piContext as Record<string, unknown> | undefined;
-            const usage = typeof (piCtx as any)?.getContextUsage === "function"
-              ? (piCtx as any).getContextUsage()
-              : undefined;
-            const model = piCtx?.model as Record<string, unknown> | undefined;
-            let modelName = (model?.name || model?.id || "") as string;
-            if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
-            const branch = (state.footerData as any)?.getGitBranch?.() ?? null;
-            return {
-              workspace,
-              branch: typeof branch === "string" ? branch : null,
-              contextPct: typeof usage?.percent === "number" ? usage.percent : null,
-              contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,
-              modelName,
-              thinkingLevel: typeof piCtx?.thinkingLevel === "string" ? piCtx.thinkingLevel : null,
-            };
-          }),
-        );
-        state.glanceInstalled = true;
-      } catch {
-        // Editor component is optional UI; fall back to the default input box.
-        state.glanceInstalled = false;
-      }
-    };
-    state.glanceInstallTimer = setTimeout(installGlanceEditor, 3500);
+    state.glanceInstallTimer = setTimeout(() => installGlanceEditor(state, ctx), 3500);
 
     // Sync TPS cursor with persisted assistant messages so streaming-hook
     // indexes match the reconciliation scan's branch-local indexes.
@@ -256,17 +228,43 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
             const sm = (piCtx as any).sessionManager;
             const events = sm?.getBranch?.() ?? [];
             let msgIndex = 0;
+            let userCount = 0;
+            let firstAssistantTs = 0;
+            let lastAssistantTs = 0;
+            let prevAssistantTs = 0;
             for (const e of events) {
               if (!e || typeof e !== "object") continue;
               if (e.type !== "message") continue;
               const m = e.message;
-              if (!m || m.role !== "assistant") continue;
+              if (!m) continue;
+              // Branch-derived turn/wall accounting: user messages delimit
+              // turns; assistant timestamps bound the session wall time.
+              const ts = Date.parse((e as any).timestamp ?? "") || 0;
+              if (m.role === "user") {
+                userCount++;
+                continue;
+              }
+              if (m.role !== "assistant") continue;
               if (m.stopReason === "error" || m.stopReason === "aborted") continue;
+              if (ts > 0) {
+                if (firstAssistantTs === 0 || ts < firstAssistantTs) firstAssistantTs = ts;
+                if (ts > lastAssistantTs) lastAssistantTs = ts;
+              }
               const hasStop = !!m.stopReason;
               // Pass the whole message: completed messages get anchored to
               // exact provider usage.output; in-flight ones density-estimated.
               tpsTracker.onMessageUpdate(msgIndex, m, hasStop);
+              // TTFT seed AFTER record creation: prev assistant ts ≈ request
+              // bound, own ts ≈ first output. No-ops once hooks give samples.
+              if (ts > 0) {
+                tpsTracker.seedTtftFallback(prevAssistantTs, ts, msgIndex);
+                prevAssistantTs = ts;
+              }
               msgIndex++;
+            }
+            tpsTracker.syncBranchStats(userCount, msgIndex);
+            if (lastAssistantTs > firstAssistantTs) {
+              tpsTracker.syncWallMs(lastAssistantTs - firstAssistantTs);
             }
           }
         } catch {
@@ -299,7 +297,9 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
     };
   });
 
-  // Top row widget
+  // Top row widget — classic status line (suppressed in glance mode; the
+  // glance frame's top border already shows UNIPI │ branch and the bottom
+  // border shows context/model/thinking, so a segment row would duplicate it)
   ctx.ui.setWidget("footer-top", (_tui, theme) => {
     // Update the renderer's theme-like
     const themeLike = { fg: (color: string, text: string) => theme.fg(color as any, text) };
@@ -313,8 +313,8 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
       },
       render(width: number): string[] {
         if (!state.enabled || !state.piContext || width <= 0) return [];
-
-        // Build layout with proper theme by creating segment contexts
+        // Glance mode replaces the classic segment line entirely.
+        if (state.glanceMode) return [];
         const layout = state.renderer.computeLayout(width);
         if (!layout.topContent) return [];
 
@@ -343,6 +343,69 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
       },
     };
   }, { placement: "belowEditor" });
+}
+
+/**
+ * Install the GlanceEditor via ctx.ui.setEditorComponent. Safe to call
+ * repeatedly; no-ops when already installed, when glance mode is off, or
+ * without a UI. Failures fall back to pi's default input box.
+ */
+/**
+ * Apply glanceMode live: install or remove the GlanceEditor and re-render.
+ * Called from the settings overlay's onSettingsChanged callback. Removing
+ * (setEditorComponent(undefined)) restores pi's default editor.
+ */
+export function applyGlanceMode(
+  st: FooterState,
+  cmdCtx: { ui: { setEditorComponent(f: never): void }; hasUI: boolean },
+): void {
+  if (!cmdCtx.hasUI) return;
+  if (st.glanceInstallTimer) {
+    clearTimeout(st.glanceInstallTimer);
+    st.glanceInstallTimer = null;
+  }
+  if (st.glanceMode) {
+    installGlanceEditor(st, cmdCtx);
+  } else {
+    try { cmdCtx.ui.setEditorComponent(undefined as never); } catch { /* already gone */ }
+    st.glanceInstalled = false;
+  }
+  st.tuiRef?.requestRender();
+}
+
+function installGlanceEditor(
+  st: FooterState,
+  uiHost: { ui: { setEditorComponent(f: unknown): void } },
+): void {
+  if (st.glanceInstalled || !st.piContext || !st.glanceMode) return;
+  try {
+    const piCtx = st.piContext as Record<string, unknown> | undefined;
+    const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
+    const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
+    uiHost.ui.setEditorComponent((tui: unknown, theme: unknown, keybindings: unknown) =>
+      new GlanceEditor(tui as never, theme as never, keybindings as never, () => {
+        const p = st.piContext as Record<string, unknown> | undefined;
+        const usage = typeof (p as any)?.getContextUsage === "function"
+          ? (p as any).getContextUsage()
+          : undefined;
+        const model = p?.model as Record<string, unknown> | undefined;
+        let modelName = (model?.name || model?.id || "") as string;
+        if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
+        const branch = (st.footerData as any)?.getGitBranch?.() ?? null;
+        return {
+          workspace,
+          branch: typeof branch === "string" ? branch : null,
+          contextPct: typeof usage?.percent === "number" ? usage.percent : null,
+          contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,
+          modelName,
+          thinkingLevel: typeof p?.thinkingLevel === "string" ? p.thinkingLevel : null,
+        };
+      }),
+    );
+    st.glanceInstalled = true;
+  } catch {
+    st.glanceInstalled = false;
+  }
 }
 
 // ─── Glance session strip ──────────────────────────────────────────────────

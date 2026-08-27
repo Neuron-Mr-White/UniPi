@@ -183,6 +183,8 @@ export interface FooterSettings {
   enabled: boolean;
   /** Active preset name */
   preset: string;
+  /** Glance-style experiment: frame input box + session strip, suppress classic row */
+  glanceMode?: boolean;
   /** Separator style */
   separator: SeparatorStyle;
   /** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */

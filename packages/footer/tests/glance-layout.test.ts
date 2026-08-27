@@ -97,3 +97,45 @@ describe("session strip stats (tracker)", () => {
     assert.equal(t.getTurnCount(), 1);
   });
 });
+
+describe("scan-derived fallbacks (no-hook environments)", () => {
+  it("syncBranchStats is monotonic and seeds turns/steps", () => {
+    const t = new TpsTracker();
+    t.syncBranchStats(0, 275);
+    t.syncBranchStats(3, 280);
+    assert.equal(t.getTurnCount(), 3);
+    assert.equal(t.getStepCount(), 280);
+    t.syncBranchStats(1, 5); // branch shrank — never regress
+    assert.equal(t.getTurnCount(), 3);
+  });
+
+  it("syncWallMs only grows", () => {
+    const t = new TpsTracker();
+    t.syncWallMs(5000);
+    t.syncWallMs(3000);
+    assert.equal(t.getSessionLlmMs(), 5000);
+    t.syncWallMs(8000);
+    assert.equal(t.getSessionLlmMs(), 8000);
+  });
+
+  it("seedTtftFallback samples when hooks silent; hook wins later", async () => {
+    const t = new TpsTracker();
+    const now = Date.now();
+    // Record must exist first (scan creates it), then seed
+    t.onMessageUpdate(0, {
+      role: "assistant", content: [{ type: "text", text: "x" }],
+      stopReason: "stop", timestamp: now - 1000, usage: { output: 10 },
+    }, true);
+    t.seedTtftFallback(now - 4000, now - 1000, 0);
+    const seeded = t.getAvgTtftMs();
+    assert.ok(seeded !== null && seeded >= 2500, `seeded=${seeded}`);
+    // Window clamped at 30s so a long idle gap doesn't poison the average
+    const t3 = new TpsTracker();
+    t3.onMessageUpdate(0, {
+      role: "assistant", content: [], stopReason: "stop",
+      timestamp: Date.now(), usage: { output: 1 },
+    }, true);
+    t3.seedTtftFallback(Date.now() - 600_000, Date.now(), 0); // 10-minute gap
+    assert.ok(t3.getAvgTtftMs()! <= 30_000, `clamped=${t3.getAvgTtftMs()}`);
+  });
+});

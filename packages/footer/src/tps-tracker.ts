@@ -307,6 +307,48 @@ export class TpsTracker {
 		}
 	}
 
+	// ── Branch-derived session stats (scan fallback) ─────────────────────
+
+	/**
+	 * Derive turns / steps from the session branch. Used by the 1s scan so
+	 * the strip works even when turn hooks are unavailable (extensions loaded
+	 * late, steering/queued flows bypassing them, or providers whose streams
+	 * never surface them to us).
+	 *
+	 * A turn = one user message; a step = one completed assistant message.
+	 * Monotonic: values never decrease across scans (branch grows).
+	 */
+	syncBranchStats(userCount: number, assistantCount: number): void {
+		if (userCount > this.turns) this.turns = userCount;
+		if (assistantCount > this.steps) this.steps = assistantCount;
+	}
+
+	/**
+	 * Wall-time fallback from persisted timestamps when hook-based llmMs is
+	 * empty: first assistant timestamp → last assistant timestamp on branch.
+	 */
+	syncWallMs(wallMs: number): void {
+		if (wallMs > this.llmMs) this.llmMs = wallMs;
+	}
+
+	/**
+	 * TTFT fallback for environments where turn hooks never fire (streaming
+	 * deltas absent too — e.g. scan-only reconciliation): use the PREVIOUS
+	 * assistant message's timestamp as the request bound and the message's own
+	 * timestamp as first-output. Approximation; only sampled when no hook
+	 * samples exist yet (hook data always wins).
+	 */
+	seedTtftFallback(previousAssistantTs: number, assistantTs: number, index: number): void {
+		if (this.ttftSteps > 0) return; // hooks produced real samples
+		const record = this.records[index];
+		if (!record || record.completedAt === 0 || record.requestAt > 0) return;
+		if (previousAssistantTs <= 0 || assistantTs <= previousAssistantTs) return;
+		// Approximate window: prev assistant ts → this assistant ts. Flag as
+		// seeded so hooks can still supersede on their first real sample.
+		this.ttftMs += Math.min(assistantTs - previousAssistantTs, 30_000);
+		this.ttftSteps += 1;
+	}
+
 	// ── Reconciliation-scan API ───────────────────────────────────────────
 
 	/**

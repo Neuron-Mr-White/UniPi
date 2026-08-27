@@ -215,6 +215,13 @@ class FooterSettingsOverlay {
   private buildAppearanceList(): void {
     const items: SettingItem[] = [
       {
+        id: "glanceMode",
+        label: "Glance Footer",
+        description: "Experimental: framed input box + session strip (replaces classic row)",
+        currentValue: this.settings.glanceMode !== false ? "on" : "off",
+        values: ["on", "off"],
+      },
+      {
         id: "preset",
         label: "Preset",
         description: "Footer layout preset",
@@ -352,6 +359,9 @@ class FooterSettingsOverlay {
 
   private onAppearanceChange(id: string, newValue: string): void {
     switch (id) {
+      case "glanceMode":
+        this.settings.glanceMode = newValue === "on";
+        break;
       case "preset":
         this.settings.preset = newValue;
         break;
