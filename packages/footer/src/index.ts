@@ -170,10 +170,14 @@ export default function footerExtension(pi: ExtensionAPI): void {
             const model = piCtx?.model as Record<string, unknown> | undefined;
             let modelName = (model?.name || model?.id || "") as string;
             if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
+            const branch = (state.footerData as any)?.getGitBranch?.() ?? null;
             return {
               workspace,
+              branch: typeof branch === "string" ? branch : null,
               contextPct: typeof usage?.percent === "number" ? usage.percent : null,
+              contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,
               modelName,
+              thinkingLevel: typeof piCtx?.thinkingLevel === "string" ? piCtx.thinkingLevel : null,
             };
           }),
         );
@@ -343,15 +347,16 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
 
 // ─── Glance session strip ──────────────────────────────────────────────────
 
-/** Format ms as human duration: 47s / 3m 08s / 1h 07m. */
+/** Format ms as stopwatch duration: 00:12 / 00:12:14 (mm:ss past 1h → h:mm:ss). */
 function fmtWall(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+	if (ms < 1000) return "00:00";
+	const totalSec = Math.floor(ms / 1000);
+	const h = Math.floor(totalSec / 3600);
+	const m = Math.floor((totalSec % 3600) / 60);
+	const s = totalSec % 60;
+	const mm = String(m).padStart(2, "0");
+	const ss = String(s).padStart(2, "0");
+	return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 /** Cache hit % from the session branch usage; null when no data. */
@@ -383,26 +388,26 @@ function renderSessionStrip(piContext: unknown): string | null {
 
   const turns = tpsTracker.getTurnCount();
   const steps = tpsTracker.getStepCount();
-  if (turns > 0 || steps > 0) parts.push(`${turns} Turn \u00b7 ${steps} Steps`);
+  if (turns > 0 || steps > 0) parts.push(`${turns} turn \u00b7 ${steps} step${steps === 1 ? "" : "s"}`);
 
   const llmMs = tpsTracker.getSessionLlmMs();
   const toolMs = tpsTracker.getToolMs();
   if (llmMs > 0 || toolMs > 0) {
-    parts.push(toolMs > 0 ? `${fmtWall(llmMs)} \u00b7 ${fmtWall(toolMs)} tool` : fmtWall(llmMs));
+    parts.push(toolMs > 0 ? `${fmtWall(llmMs)} \u00b7 tool ${fmtWall(toolMs)}` : fmtWall(llmMs));
   }
 
   const ttft = tpsTracker.getAvgTtftMs();
   const avgTps = Math.round(tpsTracker.getSessionAvgTps());
   if (ttft !== null || avgTps > 0) {
     const seg = [
-      ttft !== null ? `TTFT ${ttft >= 1000 ? `${(ttft / 1000).toFixed(1)}s` : `${ttft}ms`}` : null,
+      ttft !== null ? `${ttft >= 10000 ? `${Math.round(ttft / 1000)}s` : `${ttft}ms`} avg ttft` : null,
       avgTps > 0 ? `${avgTps} tok/s` : null,
     ].filter(Boolean).join(" \u00b7 ");
     if (seg) parts.push(seg);
   }
 
   const hit = cacheHitPct(piContext);
-  if (hit !== null) parts.push(`cache ${hit}%`);
+  if (hit !== null) parts.push(`${hit}% cache hit`);
 
   if (parts.length === 0) return null;
   return parts.join(" | ");
