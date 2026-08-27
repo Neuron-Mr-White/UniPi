@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-08-27
+
+### Added
+
+- `footer`: **Glance footer mode** (default on, toggle in `/unipi:footer-settings` → Appearance → "Glance Footer") — a framed input surface inspired by pi-glance. Top border shows a lolcat-animated UNIPI brand plus the git branch; bottom border carries workspace directory, context %/window, model, and thinking level; the whole frame flows with an animated rainbow gradient while thinking is max/xhigh.
+- `footer`: **session strip** centered under the input — turns · steps | wall time · tool time | avg TTFT · tok/s | cache hit %, with per-stat coloring (tok/s tiered by speed, cache hit by hit rate).
+- `footer`: restart-honest session statistics derived from persisted session entries (turns = user messages, steps = assistant messages, wall/tool/TTFT windows from entry timestamps), so numbers survive `pi -r` without live hook support. Live hooks still refine precision when available.
+- `footer`: git branch adornments from a cached 2s porcelain probe — dirty `*`, ahead `↑N`, behind `↓N` on any preset showing the branch segment.
+- `footer`: new default preset (UNIPI brand · model · thinking · directory · branch | context/tokens · tps · cost · clock) with the previous balanced layout preserved as the `classic` preset.
+- `footer`: `uni` (brand mark) and `directory` segments, nerd/emoji/text icon entries for both.
+
+### Changed
+
+- `footer`: TPS token accounting anchored to provider-reported `usage.output` at stream end; density chars/4 estimate only fills streaming gaps. Timing windows measure output-only spans (first delta → stream end) so tool execution, queueing, and time-to-first-token no longer dilute rates. Session average clamps pathological reconstructed durations (600s) and prefers real next-entry deltas after restarts — tok/s stays truthful across sessions for any provider that reports usage.
+- `footer`: TTFT measured per deepseek-harness semantics — agent turn start → first non-empty delta, averaged only over samples where both bounds exist; scan-derived seeds (clamped 30s) fill in when turn hooks are unavailable.
+
+### Fixed
+
+- `footer`: frozen/stale TPS after session resume or branch switch — streaming hooks and the reconciliation scan keyed tracker records with different index schemes; both now share a synchronized cursor (`cursorSyncCount`).
+- `footer`: info dashboard unclosable when extensions replaced the editor during startup focus handoff — glance editor install is deferred past boot overlay auto-close, and settings-driven swaps wait until the settings overlay closes (`setEditorComponent` steals keyboard focus by design).
+- `footer`: rainbow frame garbled zero-width IME cursor markers and OSC-133 zone sequences in max/xhigh thinking mode; the painter now passes all escape forms through byte-identical.
+
 ## [2.11.0] — 2026-08-26
 
 ### Added

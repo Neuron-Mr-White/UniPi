@@ -4,6 +4,22 @@ Persistent status bar at the bottom of the terminal. Shows live stats from all U
 
 Subscribes to events from every package and renders segments using Pi's `setFooter` + `setWidget` APIs. Responsive layout adjusts to terminal width, with a secondary row for narrow terminals.
 
+## Glance Footer (new in 2.12)
+
+An experimental input surface, on by default and toggleable in `/unipi:footer-settings` → Appearance → **Glance Footer**:
+
+```
+╭─ 󰚩 UNIPI │  feat/footer-default-v2 │ ───────────────────────────╮
+│ Type your prompt here...                                        │
+╰─ 󰉋 unipi ────────────────────── 42%/1.0M │ GLM-5.3 │ thinking:high ─╯
+              2 turn · 20 steps | 00:12:14 · tool 00:02 | 20ms avg ttft · 120 tok/s | 90% cache hit
+```
+
+- **Top border:** animated lolcat-gradient UNIPI brand + git branch (turns rainbow-frame animated while thinking is max/xhigh)
+- **Bottom border:** workspace · context %/window · model · thinking level
+- **Session strip:** turns/steps, wall + tool wall time, average TTFT, tok/s, cache hit % — colored per stat, honest across restarts (derived from persisted session timestamps when live hooks are unavailable; provider-reported `usage.output` anchors token counts whenever present)
+- The classic segment status line is suppressed while glance mode is on; toggle it back for the classic footer
+
 ## Commands
 
 | Command | Description |
@@ -36,11 +52,11 @@ Footer works even if packages load after it — late-arriving events update the 
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Balanced: model, thinking, path, git, context, cost + compactor + memory + ralph |
+| `default` | Glance-era: UNIPI brand, model, thinking, directory, git \| context/tokens, tps, cost, clock |
+| `classic` | The pre-2.12 balanced layout: model, api, tools, git \| tps, context, cost + compactor + memory + ralph |
 | `minimal` | Essentials only: path, git, context |
-| `compact` | Core + key stats: model, git, cost, context + compactor + memory |
+| `compact` | Core + key stats: model, git, cost, context |
 | `full` | Everything from all groups |
-| `nerd` | Full + hostname + time + session + extensions |
 | `ascii` | Core segments with ASCII icons |
 
 ## Segment Groups
@@ -67,6 +83,7 @@ Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
     "footer": {
       "enabled": true,
       "preset": "default",
+      "glanceMode": true,
       "separator": "powerline-thin",
       "iconStyle": "nerd",
       "colorMode": "auto",

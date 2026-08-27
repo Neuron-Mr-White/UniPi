@@ -33,7 +33,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing plus native focus suppression so alerts can stay quiet while Pi is already focused.
 
-**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Responsive layout, presets, per-segment toggling, and terminal-aware color fallback.
+**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Now with the Glance footer: a framed input box with an animated rainbow brand, git branch title, and a live session strip (turns, wall/tool time, TTFT, tok/s, cache hit). Responsive layout, presets, per-segment toggling.
 
 **[BTW](./packages/btw/README.md)** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
 

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/mcp",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "MCP server management extension for Pi coding agent — browse, add, configure, and use MCP servers",
   "type": "module",
   "main": "src/index.ts",
@@ -30,7 +30,7 @@
     "test": "npx tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.11.0"
+    "@pi-unipi/core": "2.12.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",
