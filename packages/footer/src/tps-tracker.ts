@@ -165,6 +165,8 @@ export class TpsTracker {
 	private ttftMs = 0;
 	/** Messages that contributed a measurable TTFT sample. */
 	private ttftSteps = 0;
+	/** TTFT samples recorded by live hooks (as opposed to branch seeds). */
+	private ttftHookSamples = 0;
 
 	// ── Session strip stats (harness session-stats: turns/steps/wall/tool) ──
 	private turns = 0;
@@ -247,6 +249,7 @@ export class TpsTracker {
 			if (record.requestAt > 0 && record.requestAt <= record.startedAt) {
 				this.ttftMs += Math.max(0, record.startedAt - record.requestAt);
 				this.ttftSteps += 1;
+				this.ttftHookSamples += 1;
 			}
 		}
 		record.estimatedTokens += deltaContribution(deltaText);
@@ -350,12 +353,16 @@ export class TpsTracker {
 	 * samples exist yet (hook data always wins).
 	 */
 	seedTtftFallback(previousAssistantTs: number, assistantTs: number, index: number): void {
-		if (this.ttftSteps > 0) return; // hooks produced real samples
+		if (this.ttftHookSamples > 0) return; // hooks produced real samples
 		const record = this.records[index];
 		if (!record || record.completedAt === 0 || record.requestAt > 0) return;
+		// One seed per record — the scan repeats every second.
+		const flagged = record as unknown as { ttftSeeded?: boolean };
+		if (flagged.ttftSeeded) return;
 		if (previousAssistantTs <= 0 || assistantTs <= previousAssistantTs) return;
-		// Approximate window: prev assistant ts → this assistant ts. Flag as
-		// seeded so hooks can still supersede on their first real sample.
+		flagged.ttftSeeded = true;
+		// Approximate window: prev assistant ts → this assistant ts, clamped so
+		// idle gaps can't poison the average.
 		this.ttftMs += Math.min(assistantTs - previousAssistantTs, 30_000);
 		this.ttftSteps += 1;
 	}
@@ -465,7 +472,10 @@ export class TpsTracker {
 		for (const r of this.records) {
 			if (r.completedAt > 0 && r.startedAt > 0) {
 				totalTokens += r.tokens;
-				totalDurationSec += Math.min((r.completedAt - r.startedAt) / 1000, cap);
+				// Branch-derived duration wins; fallback reconstructs from
+				// startedAt→completedAt clamped at the cap.
+				const forced = (r as unknown as { forcedDurationSec?: number }).forcedDurationSec;
+				totalDurationSec += forced ?? Math.min((r.completedAt - r.startedAt) / 1000, cap);
 			} else if (r.completedAt === 0 && r.startedAt > 0) {
 				totalTokens += r.tokens;
 				totalDurationSec += Math.min((Date.now() - r.startedAt) / 1000, cap);
@@ -536,6 +546,7 @@ export class TpsTracker {
 		this.pendingChars.clear();
 		this.ttftMs = 0;
 		this.ttftSteps = 0;
+		this.ttftHookSamples = 0;
 		this.turns = 0;
 		this.steps = 0;
 		this.turnStartAt = 0;
