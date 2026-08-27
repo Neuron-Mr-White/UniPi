@@ -113,10 +113,19 @@ export default function (pi: ExtensionAPI) {
    */
   function showOverlay(ctx: ExtensionContext, autoCloseMs?: number): void {
     let overlay: InfoOverlay;
+    // Splash mode (auto-close): the overlay must NEVER take keyboard focus —
+    // it lives exactly during the window where the user starts typing their
+    // first prompt. A capturing overlay here eats those keystrokes (worse: its
+    // vim-style keys "work", so command text vanishes into tab switches), and
+    // its first-keypress-cancels-auto-close rule strands it on screen forever
+    // as an unclosable, input-eating zombie. Non-capturing + stack-safe
+    // self-dismiss (see startBootTimer) makes it pure eye-candy.
+    const splashMode = autoCloseMs !== undefined && autoCloseMs > 0;
     ctx.ui.custom<void>(
       (tui, theme, _keybindings, done) => {
         overlay = new InfoOverlay();
         overlay.setTheme(theme);
+        overlay.interactive = !splashMode;
         overlayVisible = true;
         overlay.onClose = () => {
           overlayVisible = false;
@@ -127,14 +136,37 @@ export default function (pi: ExtensionAPI) {
         const component = {
           render: (w: number) => overlay.render(w),
           invalidate: () => overlay.invalidate(),
+          // In splash mode the overlay is non-capturing and never receives
+          // input; keep handleInput wired for interactive ("on") mode.
           handleInput: (data: string) => {
             overlay.handleInput(data);
             tui.requestRender();
           },
         };
-        // Boot dashboard dismisses itself; any keypress cancels the timer.
+        // Splash self-dismiss may only run while this overlay is the topmost
+        // VISIBLE entry of the TUI overlay stack. If the user opens anything
+        // during the splash window (a /unipi:… settings dialog, the updater's
+        // update prompt, …), dismissal must wait — removing a covered entry
+        // breaks the covering overlay (pi retargets focus and orphans its
+        // pending interaction, e.g. a hung ctx.ui.select promise). Re-check
+        // on every timer tick; once the stack clears we dismiss as usual.
+        const isTopmostVisible = (): boolean => {
+          try {
+            const stack = (tui as unknown as { overlayStack?: Array<{ component?: unknown; hidden?: boolean }> }).overlayStack;
+            if (!stack || stack.length === 0) return true;
+            for (let i = stack.length - 1; i >= 0; i--) {
+              const entry = stack[i];
+              if (entry?.hidden) continue;
+              return entry?.component === component;
+            }
+            return true;
+          } catch {
+            return true; // Stack unreadable — assume topmost (legacy behavior).
+          }
+        };
+        // Boot dashboard dismisses itself (splash mode).
         if (autoCloseMs && autoCloseMs > 0) {
-          overlay.startBootTimer(autoCloseMs);
+          overlay.startBootTimer(autoCloseMs, isTopmostVisible);
         }
         return component;
       },
@@ -145,17 +177,24 @@ export default function (pi: ExtensionAPI) {
           minWidth: 60,
           anchor: "center" as const,
           margin: 2,
+          nonCapturing: splashMode,
         },
-        // `done()` (the extension UI's close callback) pops the *topmost* overlay
-        // in the TUI stack, not this one specifically. When another overlay (e.g.
-        // the updater's "Update Available" prompt) is stacked on top, the boot
-        // auto-close timer must not fire `done()` — that would pop the covering
-        // overlay and strand this dashboard with a spent one-shot close the user
-        // can no longer dismiss. `isTopmostOverlay` lets the boot timer defer
-        // until we are the focused (topmost) entry; the user can still press
-        // q/Esc to close once the covering overlay is gone.
+        // In splash mode the timer uses `selfHide` (handle.hide() splices this
+        // entry out by identity) guarded by the topmost-visible check above —
+        // never `done()`, which pops whatever is TOPMOST. `isTopmostOverlay`
+        // remains as the focused-done() fallback for interactive ("on") mode,
+        // where the user drives the dashboard directly: it is topmost while
+        // being driven, so the q/Esc → done() path is correct there.
         onHandle: (handle) => {
           overlay.isTopmostOverlay = () => handle.isFocused();
+          overlay.selfHide = () => {
+            overlayVisible = false;
+            if (typeof handle.hide === "function") {
+              handle.hide();
+            } else if (typeof (handle as { setHidden?: (v: boolean) => void }).setHidden === "function") {
+              (handle as { setHidden: (v: boolean) => void }).setHidden(true);
+            }
+          };
         },
       }
     );

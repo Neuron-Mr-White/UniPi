@@ -69,6 +69,21 @@ export class InfoOverlay implements Component {
    * `startBootTimer` for why.
    */
   isTopmostOverlay?: () => boolean;
+  /**
+   * Stack-safe self-removal via the overlay handle (`handle.hide()` splices
+   * this entry out of the TUI stack by identity, unlike `done()` which pops
+   * whatever is TOPMOST). Set from `onHandle` in index.ts. When available,
+   * the boot auto-close timer prefers this over `done()` so a splash that
+   * lingers while another overlay opens can never dismiss that overlay
+   * instead of itself.
+   */
+  selfHide?: () => void;
+  /**
+   * False when running as a non-capturing boot splash (auto-close): the
+   * overlay never receives keyboard input, so interactive hints like
+   * "q/Esc close" would be misleading and are replaced accordingly.
+   */
+  interactive = true;
 
   private overlay = new OverlayTheme();
 
@@ -232,31 +247,46 @@ export class InfoOverlay implements Component {
   }
 
   /**
-   * Auto-close the overlay after `ms`, unless the user interacts first.
+   * Auto-close the overlay after `ms`.
    *
-   * Used when the overlay is shown on boot: the dashboard is informational, so
-   * it should get out of the way on its own rather than requiring a keypress.
+   * Used when the overlay is shown as a boot splash: the dashboard is
+   * informational, so it should get out of the way on its own rather than
+   * requiring a keypress.
    *
-   * The close callback (`onClose` → `done`) pops the *topmost* overlay in the
-   * TUI stack, not this one specifically. When another overlay (e.g. the
-   * updater's "Update Available" prompt) is stacked on top, firing `done()`
-   * here would remove the covering overlay and strand this dashboard with a
-   * spent one-shot close the user can no longer trigger — leaving the starting
-   * screen stuck. So we defer the auto-close until we are actually the
-   * focused/topmost overlay; the user can still press q/Esc to dismiss it once
-   * the covering overlay is gone.
+   * Dismissal uses `selfHide` (handle.hide() — removes THIS entry from the
+   * TUI overlay stack by identity) and only fires while `isTopmostVisible`
+   * confirms nothing is stacked above: dismissing a covered overlay breaks
+   * the covering one (pi retargets focus and orphans its pending
+   * interaction, e.g. a ctx.ui.select promise that never resolves while its
+   * overlay vanishes). If covered, the timer re-arms and retries.
+   *
+   * If `selfHide` is unavailable (older host), falls back to the guarded
+   * `onClose` (`done()`) path, which requires focus (topmost) for the same
+   * reason.
    */
-  startBootTimer(ms: number): void {
+  startBootTimer(ms: number, isTopmostVisible?: () => boolean): void {
     this.cancelBootTimer();
     if (!Number.isFinite(ms) || ms <= 0) return;
     const arm = (): void => {
       this.bootTimer = setTimeout(() => {
         this.bootTimer = null;
         if (this._destroyed) return;
+        if (this.selfHide) {
+          if (isTopmostVisible && !isTopmostVisible()) {
+            // Something is stacked on top of us — dismissing now would break
+            // it (orphaned select promise, focus retarget). Retry shortly;
+            // once the stack clears we dismiss as usual.
+            arm();
+            return;
+          }
+          this.selfHide();
+          this.destroy();
+          return;
+        }
         if (this.isTopmostOverlay && !this.isTopmostOverlay()) {
-          // Something is stacked on top of us — closing now would pop it
-          // instead of this dashboard. Retry shortly; once the covering
-          // overlay closes we'll be topmost and can auto-close safely.
+          // Fallback (no selfHide available): closing now would pop the
+          // covering overlay instead of this dashboard. Retry shortly; once
+          // we are topmost the close is safe.
           arm();
           return;
         }
@@ -346,7 +376,7 @@ export class InfoOverlay implements Component {
     lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Modules will register groups on startup."), innerWidth));
     for (let i = 0; i < 4; i++) lines.push(this.overlay.frameLine("", innerWidth));
     lines.push(this.overlay.ruleLine(innerWidth));
-    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "q/Esc close · r refresh"), innerWidth));
+    lines.push(this.overlay.frameLine(this.overlay.fg("dim", this.interactive ? "q/Esc close · r refresh" : "auto-dismissing…"), innerWidth));
     lines.push(this.overlay.borderLine(innerWidth, "bottom"));
     return lines;
   }
@@ -529,12 +559,14 @@ export class InfoOverlay implements Component {
     const lastUp = infoRegistry.getLastUpdated(group?.id ?? "");
     const age = lastUp > 0 ? humanizeAge(Date.now() - lastUp) : "loading…";
 
-    const hints = [
-      `${this.overlay.fg("accent", "←/→")} tabs`,
-      `${this.overlay.fg("success", "↑/↓")} scroll`,
-      `${this.overlay.fg("warning", "r")} refresh`,
-      `${this.overlay.fg("error", "q/Esc")} close`,
-    ];
+    const hints = this.interactive
+      ? [
+          `${this.overlay.fg("accent", "←/→")} tabs`,
+          `${this.overlay.fg("success", "↑/↓")} scroll`,
+          `${this.overlay.fg("warning", "r")} refresh`,
+          `${this.overlay.fg("error", "q/Esc")} close`,
+        ]
+      : [`${this.overlay.fg("dim", "auto-dismissing…")}`];
 
     const hintStr = hints.join(`  ${this.overlay.fg("borderMuted", "•")}  `);
 

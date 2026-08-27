@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `utility`: **skill startup discovery toggle** (`/unipi:skills-settings`, default on) — controls whether discovered skills are cataloged in the agent's system prompt at startup. When off (`unipi.skills.discovery: false` in pi settings.json), the `<available_skills>` section is stripped from the system prompt every turn, so skill metadata never populates agent context; `/skill:name` invocation keeps working since pi expands those commands by reading SKILL.md directly from disk. Strip is anchor-based (agentskills.io tags) and applied consistently per turn, preserving provider prefix cache.
+- `autocomplete`: registered `/unipi:skills-settings` in COMMAND_REGISTRY + COMMAND_DESCRIPTIONS so the command autosuggests.
+
+### Fixed
+
+- `info-screen`: **boot splash no longer eats keystrokes or strands the session** — the auto-close boot dashboard was a capturing overlay during its 2s window: typing during boot was swallowed (worse, its vim-style keys interpreted command text as tab switches), the first-keypress-cancels-auto-close rule left it on screen forever as an unclosable input-eating zombie, and prompts appeared to never send (the agent actually responded behind the overlay). The splash is now non-capturing (typing always reaches the editor) and dismisses itself via a stack-safe `handle.hide()` that only fires while it is the topmost visible overlay entry — if the user opens any dialog during the splash window (e.g. `/unipi:skills-settings`), dismissal defers until it closes, so the overlay can no longer be orphaned with a pending interaction (previously the covered overlay vanished while its `ctx.ui.select` promise hung forever). Interactive (`bootMode: "on"`) dashboards are unchanged; splash footer now reads "auto-dismissing…" instead of keyboard hints that could never reach it.
 
 ## [2.14.0] — 2026-08-29
 
