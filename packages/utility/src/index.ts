@@ -24,7 +24,7 @@ import {
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
-import { isSkillDiscoveryEnabled, stripSkillsSection } from "./skill-discovery.js";
+import { isSkillDiscoveryEnabled, stripBundledSkills } from "./skill-discovery.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings } from "./settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
@@ -131,14 +131,16 @@ export default function (pi: ExtensionAPI) {
   // Capture session context for cross-event use (not needed if BADGE_GENERATE_REQUEST removed)
 
   // Skill startup discovery gate — when disabled (unipi.skills.discovery: false),
-  // strip the <available_skills> catalog from the system prompt every turn so
-  // skill metadata never populates agent context. /skill:name invocation is
-  // unaffected: pi expands those commands by reading SKILL.md directly.
-  // Applied consistently per turn, so provider prefix cache stays intact.
+  // Unipi's bundled skills are removed from the <available_skills> catalog so
+  // they never populate agent context; the user's own skills (global, project,
+  // settings-mounted, third-party packages) stay cataloged. /skill:name
+  // invocation is unaffected either way: pi expands those commands by reading
+  // SKILL.md directly. Applied consistently per turn, so the provider prefix
+  // cache stays intact.
   pi.on("before_agent_start", (event) => {
     if (isSkillDiscoveryEnabled()) return undefined;
-    const stripped = stripSkillsSection(event.systemPrompt);
-    return stripped ? { systemPrompt: stripped } : undefined;
+    const filtered = stripBundledSkills(event.systemPrompt);
+    return filtered ? { systemPrompt: filtered } : undefined;
   });
 
   // Register commands

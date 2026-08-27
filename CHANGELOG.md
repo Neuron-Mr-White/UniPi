@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `utility`: **skill startup discovery toggle** (`/unipi:skills-settings`, default on) — controls whether discovered skills are cataloged in the agent's system prompt at startup. When off (`unipi.skills.discovery: false` in pi settings.json), the `<available_skills>` section is stripped from the system prompt every turn, so skill metadata never populates agent context; `/skill:name` invocation keeps working since pi expands those commands by reading SKILL.md directly from disk. Strip is anchor-based (agentskills.io tags) and applied consistently per turn, preserving provider prefix cache.
+- `utility`: **skill startup discovery toggle** (`/unipi:skills-settings`, default on) — controls whether Unipi's built-in skills are cataloged in the agent's system prompt at startup. When off (`unipi.skills.discovery: false` in pi settings.json), Unipi's bundled skills are removed from the `<available_skills>` section every turn while user-owned skills (global, project, settings-mounted, third-party packages) stay cataloged; `/skill:name` invocation keeps working since pi expands those commands by reading SKILL.md directly from disk. Filtering is anchor-based (agentskills.io tags) and applied consistently per turn, preserving provider prefix cache.
 - `autocomplete`: registered `/unipi:skills-settings` in COMMAND_REGISTRY + COMMAND_DESCRIPTIONS so the command autosuggests.
 
 ### Fixed

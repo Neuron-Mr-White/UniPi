@@ -116,26 +116,63 @@ export function isSkillDiscoveryEnabled(): boolean {
 }
 
 /**
- * Strip the `<available_skills>` catalog (with its intro paragraph) from a
- * system prompt. Anchor-based: locates the closing/opening tags (stable per
- * the agentskills.io spec), then extends backwards over the intro paragraph
- * so intro wording changes across pi versions don't break the strip.
+ * Match a skill location that belongs to Unipi's own bundled skills.
  *
- * Returns undefined when the prompt has no skills section (no-op).
+ * - Installed via npm: `…/node_modules/@pi-unipi/<pkg>/skills/…`
+ * - Dev checkout (workspace/mise run): `…/unipi/packages/<pkg>/skills/…`
+ *
+ * Everything else (user global, project, settings-mounted, third-party
+ * packages) is NOT considered bundled and stays discoverable.
  */
-export function stripSkillsSection(systemPrompt: string): string | undefined {
+export function isBundledSkillLocation(location: string): boolean {
+  return location.includes("/@pi-unipi/") || /\/unipi\/packages\//.test(location);
+}
+
+/**
+ * Remove Unipi's bundled skills from the `<available_skills>` catalog in a
+ * system prompt, keeping every other skill discoverable. When no non-bundled
+ * skills remain, the whole section (with its intro paragraph) is removed.
+ *
+ * Anchor-based: section tags are agentskills.io spec (stable), entry
+ * splitting follows pi's `formatSkillsForPrompt` layout (`  <skill>` entries
+ * with `<name>`/`<description>`/`<location>` children).
+ *
+ * Returns undefined when there is nothing to change (no section, or no
+ * bundled skills in it).
+ */
+export function stripBundledSkills(systemPrompt: string): string | undefined {
   const open = systemPrompt.indexOf(SKILLS_OPEN_TAG);
   if (open === -1) return undefined;
   const close = systemPrompt.indexOf(SKILLS_CLOSE_TAG, open);
   if (close === -1) return undefined;
-  const end = close + SKILLS_CLOSE_TAG.length;
+  const sectionStart = open + SKILLS_OPEN_TAG.length;
 
-  // The section layout is: "<prev content>\n\n<intro paragraph>\n\n<available_skills>…</available_skills>".
-  // p1 = blank line between the intro paragraph and the open tag;
-  // prev = blank line before the intro paragraph (the section's leading "\n\n").
-  const p1 = systemPrompt.lastIndexOf("\n\n", open);
-  const prev = p1 === -1 ? -1 : systemPrompt.lastIndexOf("\n\n", p1 - 1);
-  const start = prev === -1 ? 0 : prev;
+  const inner = systemPrompt.slice(sectionStart, close);
+  const entries = inner.split(/(?=  <skill>)/g);
+  const kept: string[] = [];
+  let bundledCount = 0;
+  for (const entry of entries) {
+    if (!entry.includes("<skill>")) continue; // Whitespace between tags.
+    const locationMatch = entry.match(/<location>([^<]*)<\/location>/);
+    if (locationMatch && isBundledSkillLocation(locationMatch[1])) {
+      bundledCount++;
+      continue;
+    }
+    kept.push(entry);
+  }
 
-  return systemPrompt.slice(0, start) + systemPrompt.slice(end);
+  if (bundledCount === 0) return undefined; // No bundled skills — no-op.
+
+  if (kept.length === 0) {
+    // Nothing left to catalog — remove the entire section (intro included).
+    // Layout: "<prev>\n\n<intro paragraph>\n\n<available_skills>…</available_skills>".
+    const p1 = systemPrompt.lastIndexOf("\n\n", open);
+    const prev = p1 === -1 ? -1 : systemPrompt.lastIndexOf("\n\n", p1 - 1);
+    const start = prev === -1 ? 0 : prev;
+    return systemPrompt.slice(0, start) + systemPrompt.slice(close + SKILLS_CLOSE_TAG.length);
+  }
+
+  // Rebuild the catalog with only the non-bundled entries.
+  const rebuiltInner = "\n" + kept.join("").replace(/\n+$/, "") + "\n";
+  return systemPrompt.slice(0, sectionStart) + rebuiltInner + systemPrompt.slice(close);
 }

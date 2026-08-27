@@ -70,7 +70,7 @@ The badge is a persistent HUD overlay in the top-right corner showing the curren
 
 ### Skill Startup Discovery
 
-Controls whether discovered skills are cataloged in the agent's system prompt at startup (default: on).
+Controls whether Unipi's built-in skills are cataloged in the agent's system prompt at startup (default: on). Your own skills — global, project, settings-mounted, and third-party packages — always stay cataloged.
 
 ```
 /unipi:skills-settings        # Interactive toggle (or /unipi:skills-settings on|off)
@@ -86,7 +86,7 @@ Or edit `~/.pi/agent/settings.json` directly:
 }
 ```
 
-When off, the `<available_skills>` catalog never populates agent context. Skills remain invocable via `/skill:name` — pi expands those commands by reading the skill file directly, independent of the prompt catalog. The strip is applied consistently every turn, so provider prefix caching is unaffected.
+When off, Unipi's bundled skills are removed from the `<available_skills>` catalog, so their metadata never populates agent context. They remain invocable via `/skill:name` — pi expands those commands by reading the skill file directly, independent of the prompt catalog. The filter is applied consistently every turn, so provider prefix caching is unaffected.
 
 ## Programmatic API
 
