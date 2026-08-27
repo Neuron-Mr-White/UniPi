@@ -18,6 +18,7 @@ An experimental input surface, on by default and toggleable in `/unipi:footer-se
 - **Top border:** animated lolcat-gradient UNIPI brand + git branch (turns rainbow-frame animated while thinking is max/xhigh)
 - **Bottom border:** workspace · context %/window · model · thinking level
 - **Session strip:** turns/steps, wall + tool wall time, average TTFT, tok/s, cache hit % — colored per stat, honest across restarts (derived from persisted session timestamps when live hooks are unavailable; provider-reported `usage.output` anchors token counts whenever present)
+- **Process line (new in 2.13):** centered one-liner directly above the frame while background work is in flight — `● 3 running  ● 1 stopped  ● 1 failed  ● 2 done` — green ● running, yellow ● stopped (killed), red ● failed, gray ● done. Covers every task type (shell jobs, delegates, fusion workflows) via direct registry reads; zero-count buckets are omitted and the line hides when idle. Counts reset per session.
 - The classic segment status line is suppressed while glance mode is on; toggle it back for the classic footer
 
 ## Commands

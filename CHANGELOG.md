@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-08-28
+
+### Added
+
+- `footer`: **bg-process one-liner above the glance footer** — a centered strip directly above the frame showing live background-task counts with status dots: green ● running, yellow ● stopped (killed), red ● failed, gray ● done. Zero-count buckets are omitted and the line hides entirely when idle. Reads `BackgroundTaskRegistry.allTasks()` directly (no events, no polling channels) and re-renders on the footer's 1s refresh timer; counts reset per session.
+- `background-tasks`: **shared registry accessor** (`getSharedTaskRegistry` / `setSharedTaskRegistry` / `clearSharedTaskRegistry` in `src/registry-shared.ts`) — lets sibling extensions read the live task registry synchronously. Stored on `globalThis` under a `Symbol.for` key so the singleton survives duplicate module instances; published at extension init and `session_start`, cleared on `session_shutdown`.
+
+### Changed
+
+- `footer`: new dependency on `@pi-unipi/background-tasks` for the process one-liner's direct registry reads.
+
 ## [2.12.0] — 2026-08-27
 
 ### Added

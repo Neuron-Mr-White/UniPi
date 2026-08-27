@@ -74,6 +74,22 @@ subscription OAuth attribution, exact-match system-prompt sanitization, and
 cache-retention policy for Anthropic routes. Duplicate installed copies resolve
 ownership through an EventBus claim; later copies go inert.
 
+## Shared registry (for sibling extensions)
+
+Other packages can read the live task registry synchronously — no events, no polling:
+
+```ts
+import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
+
+const tasks = getSharedTaskRegistry()?.allTasks() ?? [];
+const running = tasks.filter((t) => t.status === "running").length;
+```
+
+The registry is published on `globalThis` under a `Symbol.for` key at extension
+init and `session_start`, and cleared on `session_shutdown` (counts are
+per-session). Returns `undefined` when the module is disabled — callers must
+treat that as "no data", e.g. the footer's glance process line does.
+
 ## Differences from the reference
 
 - Commands live in the `/unipi:*` namespace; env prefix is `UNIPI_BG_*`.
