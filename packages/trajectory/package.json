@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/trajectory",
-  "version": "2.12.0",
+  "version": "2.14.0",
   "description": "Live UniPi trajectory inspector for Pi sessions",
   "type": "module",
   "main": "index.ts",

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.14.0] — 2026-08-29
+
+### Changed
+
+- `image`: **`image_recognize` is now hidden while the session model has vision** — a model that accepts image input reads images natively through pi's own read tool, so the separate recognition round-trip only duplicated the ability and burned system-prompt context. The extension drops the tool from the active set on `session_start` and `model_select` when the session model declares image input (`input` includes `"image"`), and restores it automatically when a text-only model takes over mid-session. Models that do not declare input modalities are treated as non-vision and keep the tool, matching the package's existing convention. The info screen shows "Hidden (model has vision)" for the Recognize stat while suppressed.
+
 ## [2.13.0] — 2026-08-28
 
 ### Added
