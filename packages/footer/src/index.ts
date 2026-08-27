@@ -67,6 +67,8 @@ export interface FooterState {
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Glance-style editor component installed */
   glanceInstalled: boolean;
+  /** Deferred install timer (focus-safety deferral past the boot overlay) */
+  glanceInstallTimer: ReturnType<typeof setTimeout> | null;
   /** Re-register footer + widgets with pi UI (for live enable) */
   setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
 }
@@ -91,6 +93,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     tuiRef: null,
     refreshTimer: null,
     glanceInstalled: false,
+    glanceInstallTimer: null,
     setupUI: null,
   };
 
@@ -143,32 +146,44 @@ export default function footerExtension(pi: ExtensionAPI): void {
     state.unsubscribeEvents = subscribeToEvents(pi, state.registry);
 
     // Glance-style input surface (pi-glance-inspired). Preserves all default
-    // editor behavior via CustomEditor subclassing; only redraws the bottom
-    // border row with workspace / context% · model.
-    try {
-      ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-        new GlanceEditor(tui, theme, keybindings, () => {
-          const piCtx = state.piContext as Record<string, unknown> | undefined;
-          const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
-          const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
-          const usage = typeof (piCtx as any)?.getContextUsage === "function"
-            ? (piCtx as any).getContextUsage()
-            : undefined;
-          const model = piCtx?.model as Record<string, unknown> | undefined;
-          let modelName = (model?.name || model?.id || "") as string;
-          if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
-          return {
-            workspace,
-            contextPct: typeof usage?.percent === "number" ? usage.percent : null,
-            modelName,
-          };
-        }),
-      );
-      state.glanceInstalled = true;
-    } catch {
-      // Editor component is optional UI; fall back to the default input box.
-      state.glanceInstalled = false;
-    }
+    // editor behavior via CustomEditor subclassing; only paint differs.
+    //
+    // FOCUS-SAFETY DEFERRAL: setEditorComponent() internally calls
+    // ui.setFocus(newEditor). info-screen (loaded before us) opens its boot
+    // dashboard during ITS session_start handler, so our session_start runs
+    // while that overlay owns keyboard focus. Swapping now would steal focus
+    // and strand the dashboard unclosable (q/Esc would type into the editor).
+    // The boot overlay auto-closes after ~2s; we install after a grace period
+    // longer than any sane bootTimeoutMs.
+    const installGlanceEditor = (): void => {
+      if (state.glanceInstalled || !state.piContext) return;
+      try {
+        const piCtx = state.piContext as Record<string, unknown> | undefined;
+        const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
+        const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
+        ctx.ui.setEditorComponent((tui, theme, keybindings) =>
+          new GlanceEditor(tui, theme, keybindings, () => {
+            const piCtx = state.piContext as Record<string, unknown> | undefined;
+            const usage = typeof (piCtx as any)?.getContextUsage === "function"
+              ? (piCtx as any).getContextUsage()
+              : undefined;
+            const model = piCtx?.model as Record<string, unknown> | undefined;
+            let modelName = (model?.name || model?.id || "") as string;
+            if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
+            return {
+              workspace,
+              contextPct: typeof usage?.percent === "number" ? usage.percent : null,
+              modelName,
+            };
+          }),
+        );
+        state.glanceInstalled = true;
+      } catch {
+        // Editor component is optional UI; fall back to the default input box.
+        state.glanceInstalled = false;
+      }
+    };
+    state.glanceInstallTimer = setTimeout(installGlanceEditor, 3500);
 
     // Sync TPS cursor with persisted assistant messages so streaming-hook
     // indexes match the reconciliation scan's branch-local indexes.
@@ -183,6 +198,10 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     state.renderer.setActive(false);
+    if (state.glanceInstallTimer) {
+      clearTimeout(state.glanceInstallTimer);
+      state.glanceInstallTimer = null;
+    }
     state.unsubscribeEvents?.();
     state.unsubscribeEvents = null;
     state.piContext = null;
