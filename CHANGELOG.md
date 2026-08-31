@@ -6,9 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.14.2] — 2026-08-31
+
 ### Fixed
 
 - `footer`: **glance frame no longer writes the terminal's last column** (GitHub [#31](https://github.com/Neuron-Mr-White/UniPi/issues/31)) — the glance frame, session strip, process one-liner, and classic status line now cap emitted lines at `width - 1` instead of exactly `width`. pi-tui joins per-tick rewrites with `\r\n`; a line at EXACTLY the terminal width trips auto-wrap on terminals that wrap immediately (or whose glyph widths disagree with `visibleWidth()`, e.g. missing Nerd Fonts / ambiguous-width settings), silently desyncing the differential renderer so every 1s footer refresh painted a fresh input-box copy one block lower until the screen filled. Verified by PTY capture + VT replay: identical byte stream renders 1 stable frame on deferred-wrap terminals vs 12 stacked frames on immediate-wrap ones; the cap removes the footer's contribution entirely. Full resolution of terminal-side drift from pi's own boot/info lines is upstream (pi-tui main-screen wrap-safe bookkeeping).
+- `web-api`: **fetch errors surface their real cause instead of "[object Object]"** — engine errors were plain objects (`{ error, code, phase, retryable }`), so every tool-level catch serialized them via `String()` and both the agent and the user saw only "Read failed: [object Object]" with no diagnosis. `createError()` now returns a real `Error` instance carrying the FetchError fields (interface-compatible: `.error`/`.code`/`.phase`/`.retryable` preserved, classification untouched), and a new `describeError()` normalizes Error instances, FetchError-shaped objects, `{message}`/`{reason}`/`{detail}` shapes, strings, and unserializable values at every tool boundary and in the provider fallthrough. Regression tests cover all shapes; a provider throwing `{ error: "HTTP 429" }` now reports the 429 instead of nothing.
 
 ## [2.14.1] — 2026-08-28
 

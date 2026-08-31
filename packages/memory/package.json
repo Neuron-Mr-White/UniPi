@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "2.14.1",
+  "version": "2.14.2",
   "description": "Persistent cross-session memory with MemPalace backend (auto-installed) and SQLite fallback for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -39,8 +39,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "2.14.1",
-    "@pi-unipi/info-screen": "2.14.1",
+    "@pi-unipi/core": "2.14.2",
+    "@pi-unipi/info-screen": "2.14.2",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
