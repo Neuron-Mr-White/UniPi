@@ -25,6 +25,7 @@ import {
 } from "./constants.js";
 import { resolveBrowserProfile, resolveOSProfile } from "./profiles.js";
 import { getWreq, getDefuddle } from "./dependencies.js";
+import { describeError } from "./errors.js";
 import { parseHTML, extractTextContent, elementToMarkdown } from "./dom.js";
 import { truncateContent, formatContent } from "./format.js";
 
@@ -68,21 +69,22 @@ function validateUrl(url: string): URL {
 
 /**
  * Create a FetchError object.
+ *
+ * Returns a REAL Error instance carrying the FetchError fields (.error,
+ * .code, .phase, .retryable) so boundary catches surface `message` instead
+ * of serializing a plain object to "[object Object]".
  */
-function createError(
+export function createError(
   code: FetchError["code"],
   phase: FetchError["phase"],
   message: string,
   retryable: boolean,
   extra: Partial<FetchError> = {}
 ): FetchError {
-  return {
-    error: message,
-    code,
-    phase,
-    retryable,
-    ...extra,
-  };
+  const err = new Error(message) as Error & FetchError;
+  err.name = "FetchError";
+  Object.assign(err, { error: message, code, phase, retryable, ...extra });
+  return err;
 }
 
 /**
@@ -401,25 +403,26 @@ export async function defuddleFetch(
         throw error;
       }
 
-      const err = error as Error;
+      // Classify error — describeError() is safe on plain objects from the
+      // native wreq binding that carry no .message of their own.
+      const message = describeError(error);
 
-      // Classify error
-      if (err.message.includes("timeout")) {
-        throw createError("timeout", "waiting", err.message, true, {
+      if (message.includes("timeout")) {
+        throw createError("timeout", "waiting", message, true, {
           url,
           finalUrl,
           timeoutMs,
         });
       }
 
-      if (err.message.includes("network") || err.message.includes("ECONNREFUSED")) {
-        throw createError("network_error", "connecting", err.message, true, {
+      if (message.includes("network") || message.includes("ECONNREFUSED")) {
+        throw createError("network_error", "connecting", message, true, {
           url,
           finalUrl,
         });
       }
 
-      throw createError("unexpected_response", "loading", err.message, false, {
+      throw createError("unexpected_response", "loading", message, false, {
         url,
         finalUrl,
       });

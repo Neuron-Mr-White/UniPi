@@ -28,6 +28,7 @@ import {
 } from "./engine/extract.js";
 import type { FetchOptions, FetchResult, BatchFetchResult } from "./engine/types.js";
 import { formatSingleResult, formatBatchResult } from "./engine/format.js";
+import { describeError } from "./engine/errors.js";
 
 /** Tool names */
 export const WEB_TOOLS = {
@@ -124,7 +125,7 @@ export async function withProviderFallthrough<T>(
     try {
       return await attempt(provider);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = describeError(error);
       failures.push(`${provider.name}: ${message}`);
     }
   }
@@ -339,7 +340,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         };
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : String(error);
+          describeError(error);
         return {
           content: [{ type: "text", text: `Search failed: ${message}` }],
           isError: true,
@@ -503,7 +504,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
                   return {
                     url,
                     status: "error",
-                    error: error instanceof Error ? error.message : String(error),
+                    error: describeError(error),
                   };
                 }
               })
@@ -560,7 +561,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         };
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : String(error);
+          describeError(error);
         return {
           content: [{ type: "text", text: `Read failed: ${message}` }],
           isError: true,
@@ -623,7 +624,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
         };
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : String(error);
+          describeError(error);
         return {
           content: [{ type: "text", text: `Summarize failed: ${message}` }],
           isError: true,

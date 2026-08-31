@@ -15,6 +15,8 @@
  * module-level singleton, closed on session shutdown.
  */
 
+import { describeError } from "../engine/errors.js";
+
 /** Minimal structural types — avoids a type-level dependency on the AGPL SDK. */
 interface WigoloSearchResponse {
   results?: unknown[];
@@ -112,7 +114,7 @@ export async function getWigoloClient(): Promise<WigoloClientLike> {
       try {
         return await sdk.createLocalClient();
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
+        const detail = describeError(error);
         throw new WigoloUnavailableError(`${NOT_RUNNING_MESSAGE}\n→ Cause: ${detail}`);
       }
     })();
