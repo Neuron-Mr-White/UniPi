@@ -63,6 +63,24 @@ function repeat(s: string, n: number): string {
 	return s.repeat(Math.max(0, n));
 }
 
+/**
+ * Frame width for a terminal of `terminalWidth` columns: one column SHORT of
+ * the terminal (legacy 8-column floor preserved below 9 columns).
+ *
+ * Issue #31 invariant — the frame is repainted every second and pi-tui joins
+ * the rewritten lines with "\r\n". A line at EXACTLY the terminal width hits
+ * the auto-wrap threshold: on terminals that wrap immediately (and whenever
+ * a glyph renders wider than visibleWidth() assumed) the cursor silently
+ * advances one extra row per line, desyncing the differential renderer —
+ * every refresh then paints a fresh frame copy one block lower until the
+ * screen fills. Never writing the last column keeps every frame line below
+ * the wrap threshold on every terminal.
+ */
+export function glanceFrameWidth(terminalWidth: number): number {
+	if (!Number.isFinite(terminalWidth)) return 8;
+	return Math.max(8, terminalWidth - 1);
+}
+
 function padLine(line: string, width: number): string {
 	const w = visibleWidth(line);
 	if (w === width) return line;
@@ -160,7 +178,8 @@ export class GlanceEditor extends CustomEditor {
 	}
 
 	override render(width: number): string[] {
-		const safe = Math.max(8, width);
+		// One column short of the terminal — see glanceFrameWidth() / issue #31.
+		const safe = glanceFrameWidth(width);
 		const inner = Math.max(0, safe - 2);
 
 		// Base render at inner width: harvest content rows only (rules dropped).

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `footer`: **glance frame no longer writes the terminal's last column** (GitHub [#31](https://github.com/Neuron-Mr-White/UniPi/issues/31)) — the glance frame, session strip, process one-liner, and classic status line now cap emitted lines at `width - 1` instead of exactly `width`. pi-tui joins per-tick rewrites with `\r\n`; a line at EXACTLY the terminal width trips auto-wrap on terminals that wrap immediately (or whose glyph widths disagree with `visibleWidth()`, e.g. missing Nerd Fonts / ambiguous-width settings), silently desyncing the differential renderer so every 1s footer refresh painted a fresh input-box copy one block lower until the screen filled. Verified by PTY capture + VT replay: identical byte stream renders 1 stable frame on deferred-wrap terminals vs 12 stacked frames on immediate-wrap ones; the cap removes the footer's contribution entirely. Full resolution of terminal-side drift from pi's own boot/info lines is upstream (pi-tui main-screen wrap-safe bookkeeping).
+
 ## [2.14.1] — 2026-08-28
 
 ### Added

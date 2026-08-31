@@ -354,8 +354,11 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         // Hard safety net: never return a line wider than the terminal.
         // This catches any edge cases in layout math or visibleWidth()
         // inconsistencies with PUA characters + ANSI codes.
+        // Cap at width - 1 (issue #31): a line at EXACTLY the terminal width
+        // trips immediate-wrap terminals and desyncs the diff renderer.
         const line = layout.topContent;
-        return [visibleWidth(line) > width ? truncateToWidth(line, width) : line];
+        const cap = Math.max(1, width - 1);
+        return [visibleWidth(line) > cap ? truncateToWidth(line, cap) : line];
       },
     };
   }, { placement: "aboveEditor" });
@@ -373,7 +376,9 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         if (!strip) return [];
         // Centered under the input box.
         const w = visibleWidth(strip);
-        if (w >= width) return [truncateToWidth(strip, width)];
+        // Truncate one column short of the terminal (issue #31 — same wrap
+        // desync as the glance frame; see glanceFrameWidth()).
+        if (w >= width) return [truncateToWidth(strip, Math.max(1, width - 1))];
         const leftPad = Math.floor((width - w) / 2);
         return [" ".repeat(leftPad) + strip];
       },

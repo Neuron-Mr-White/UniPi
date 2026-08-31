@@ -55,7 +55,9 @@ export function countBgProcesses(): BgProcessCounts | null {
  * Returns [] when there is nothing to show.
  */
 export function renderProcessLine(width: number): string[] {
-  if (width <= 0) return [];
+  // One column can never host a meaningful one-liner, and any content would
+  // be exactly-full-width (issue #31 wrap desync) — render nothing.
+  if (width <= 1) return [];
   const counts = countBgProcesses();
   if (!counts) return [];
 
@@ -68,7 +70,9 @@ export function renderProcessLine(width: number): string[] {
 
   const line = parts.join("  ");
   const w = visibleWidth(line);
-  if (w >= width) return [truncateToWidth(line, width)];
+  // One column short of the terminal (issue #31 — same wrap desync as the
+  // glance frame; see glanceFrameWidth() in glance-editor.ts).
+  if (w >= width) return [truncateToWidth(line, Math.max(1, width - 1))];
   const leftPad = Math.floor((width - w) / 2);
   return [" ".repeat(leftPad) + line];
 }
