@@ -235,6 +235,107 @@ describe("settings overlay: toggle, tab, model-selector key, save", () => {
   });
 });
 
+function goToSilenceMaster(overlay: NotifySettingsOverlay): void {
+  for (let i = 0; i < 5; i++) overlay.handleInput("j");
+}
+
+function goToSilenceChips(overlay: NotifySettingsOverlay): void {
+  for (let i = 0; i < 6; i++) overlay.handleInput("j");
+}
+
+describe("settings overlay: silence after input", () => {
+  it("reaches the master row and chip row with j", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceMaster(overlay);
+    assert.ok(
+      selectedLine(overlay).includes("在操作后短暂静默"),
+      "5 downs land on the silence master row",
+    );
+    overlay.handleInput("j");
+    const chips = stripAnsi(selectedLine(overlay));
+    assert.ok(chips.includes("Native"), "6th down lands on the chip row");
+    assert.ok(chips.includes("Gotify") && chips.includes("Telegram") && chips.includes("ntfy"));
+  });
+
+  it("Space on the master row toggles enabled", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceMaster(overlay);
+    assert.ok(selectedLine(overlay).includes("○"), "disabled by default");
+    overlay.handleInput(" ");
+    assert.ok(selectedLine(overlay).includes("●"), "Space enables");
+    overlay.handleInput(" ");
+    assert.ok(selectedLine(overlay).includes("○"), "Space disables again");
+  });
+
+  it("+ / - on the master row nudge the window", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceMaster(overlay);
+    assert.ok(stripAnsi(selectedLine(overlay)).includes("10s"), "default 10s");
+    overlay.handleInput("+");
+    assert.ok(stripAnsi(selectedLine(overlay)).includes("11s"), "+ steps 1s");
+    overlay.handleInput("-");
+    overlay.handleInput("-");
+    assert.ok(stripAnsi(selectedLine(overlay)).includes("9s"), "- steps down");
+  });
+
+  it("h / l move the focused chip and Space toggles membership", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceChips(overlay);
+    const start = stripAnsi(selectedLine(overlay));
+    assert.ok(start.includes("[● Native]"), "focus starts on Native");
+    overlay.handleInput("l");
+    assert.ok(
+      stripAnsi(selectedLine(overlay)).includes("[○ Gotify]"),
+      "l moves focus to Gotify",
+    );
+    overlay.handleInput(" ");
+    assert.ok(
+      stripAnsi(selectedLine(overlay)).includes("[● Gotify]"),
+      "Space adds Gotify to the list",
+    );
+    overlay.handleInput("h");
+    overlay.handleInput(" ");
+    // Native was the default sole member; unchecking it while Gotify is on is allowed
+    assert.ok(
+      stripAnsi(selectedLine(overlay)).includes("[○ Native]"),
+      "Space removes Native when another chip is on",
+    );
+  });
+
+  it("blocks unchecking the last remaining chip", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceChips(overlay);
+    overlay.handleInput(" "); // try to turn Native off while it is the only member
+    assert.ok(
+      stripAnsi(selectedLine(overlay)).includes("[● Native]"),
+      "last chip stays on",
+    );
+  });
+
+  it("saves all four chips as an empty platforms array", () => {
+    freshHome();
+    const overlay = new NotifySettingsOverlay();
+    goToSilenceChips(overlay);
+    overlay.handleInput("l");
+    overlay.handleInput(" "); // gotify
+    overlay.handleInput("l");
+    overlay.handleInput(" "); // telegram
+    overlay.handleInput("l");
+    overlay.handleInput(" "); // ntfy
+    overlay.handleInput(ENTER_ENCODINGS[0]);
+    const cfg = readNotifyConfig() as {
+      silenceAfterInput: { enabled: boolean; platforms: string[] };
+    };
+    assert.equal(cfg.silenceAfterInput.enabled, false);
+    assert.deepEqual(cfg.silenceAfterInput.platforms, []);
+  });
+});
+
 // ─── Recap model selector: navigation, close, filter ───────────────────────
 
 describe("model selector: navigation & close (issue #27 bug 1)", () => {

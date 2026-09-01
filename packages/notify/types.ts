@@ -71,6 +71,16 @@ export interface RecapConfig {
   model: string;
 }
 
+/** Quiet listed platforms after recent terminal input */
+export interface SilenceAfterInputConfig {
+  /** Master switch */
+  enabled: boolean;
+  /** Quiet window after the last keypress, in milliseconds */
+  windowMs: number;
+  /** Platforms to suppress (empty = all enabled platforms) */
+  platforms: NotifyPlatform[];
+}
+
 /** Full notification configuration */
 export interface NotifyConfig {
   /** Global default platforms for all events */
@@ -85,6 +95,8 @@ export interface NotifyConfig {
   telegram: TelegramConfig;
   /** Recap summarization settings */
   recap: RecapConfig;
+  /** Suppress listed platforms after recent terminal input */
+  silenceAfterInput: SilenceAfterInputConfig;
 }
 
 /** Parameters for the notify_user agent tool */

@@ -62,6 +62,11 @@ Help users configure the `@pi-unipi/notify` notification system.
     "token": null,
     "priority": 3
   },
+  "silenceAfterInput": {
+    "enabled": false,
+    "windowMs": 10000,
+    "platforms": ["native"]
+  },
   "NOTE": "ntfy section is legacy — migrated to ntfy.json on first run"
 }
 ```
@@ -71,6 +76,24 @@ Help users configure the `@pi-unipi/notify` notification system.
 ### Native OS (default: enabled)
 
 Desktop notifications via node-notifier. Works out of the box on Windows, macOS, Linux.
+
+### Silence after input
+
+Quiet listed platforms for `windowMs` after any terminal keypress. **Default: off.** Same `config.json` as other notify settings.
+
+```json
+"silenceAfterInput": {
+  "enabled": true,
+  "windowMs": 10000,
+  "platforms": ["native"]
+}
+```
+
+- `enabled` — master switch
+- `windowMs` — quiet window in milliseconds (default: 10000)
+- `platforms` — channels to silence (`native`, `gotify`, `telegram`, `ntfy`). Empty list silences all enabled platforms (same as `events.*.platforms`).
+
+TUI: `/unipi:notify-settings` → Platforms → 在操作后短暂静默 (Space), ←→ then Space for channels, +/− for the window (1s steps).
 
 ### Gotify (default: disabled)
 

@@ -24,9 +24,13 @@ import {
   setSessionContext,
   clearSessionContext,
 } from "./events.js";
+import { noteInput, resetInputActivity } from "./activity.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
+
+/** Unsubscribe for the interactive-mode keypress listener. */
+let unsubTerminalInput: (() => void) | undefined;
 
 export default function (pi: ExtensionAPI) {
 
@@ -37,6 +41,19 @@ export default function (pi: ExtensionAPI) {
   // Session lifecycle — register events and announce module
   pi.on("session_start", async (_event, ctx) => {
     setSessionContext(ctx);
+    resetInputActivity();
+    unsubTerminalInput?.();
+    unsubTerminalInput = undefined;
+    const onTerminalInput = ctx.ui?.onTerminalInput;
+    if (typeof onTerminalInput === "function") {
+      try {
+        unsubTerminalInput = onTerminalInput(() => {
+          noteInput();
+        });
+      } catch {
+        unsubTerminalInput = undefined;
+      }
+    }
     const cwd = process.cwd();
     const config = loadConfig();
     registerEventListeners(pi, config, cwd);
@@ -51,6 +68,9 @@ export default function (pi: ExtensionAPI) {
 
   // Cleanup on session shutdown
   pi.on("session_shutdown", async () => {
+    unsubTerminalInput?.();
+    unsubTerminalInput = undefined;
+    resetInputActivity();
     clearSessionContext();
     unregisterEventListeners();
   });
