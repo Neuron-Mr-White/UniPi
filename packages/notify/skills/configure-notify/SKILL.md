@@ -93,7 +93,7 @@ Quiet listed platforms for `windowMs` after any terminal keypress. **Default: of
 - `windowMs` — quiet window in milliseconds (default: 10000)
 - `platforms` — channels to silence (`native`, `gotify`, `telegram`, `ntfy`). Empty list silences all enabled platforms (same as `events.*.platforms`).
 
-TUI: `/unipi:notify-settings` → Platforms → 在操作后短暂静默 (Space), ←→ then Space for channels, +/− for the window (1s steps).
+TUI: `/unipi:notify-settings` → Platforms → Quiet after activity (Space), ←→ then Space for channels, +/− for the window (1s steps).
 
 ### Gotify (default: disabled)
 

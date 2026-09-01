@@ -369,8 +369,8 @@ export class NotifySettingsOverlay implements Component {
       ? this.overlay.fg("success", "●")
       : this.overlay.fg("dim", "○");
     const label = masterSelected
-      ? this.overlay.bold("在操作后短暂静默")
-      : this.overlay.fg("dim", "在操作后短暂静默");
+      ? this.overlay.bold("Quiet after activity")
+      : this.overlay.fg("dim", "Quiet after activity");
     const detail = this.overlay.fg("dim", this.silenceSummary());
     lines.push(
       this.overlay.frameLine(

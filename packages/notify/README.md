@@ -63,7 +63,7 @@ Zero configuration — works out of the box. Set `native.suppressWhenFocused` to
 
 ### Silence after input
 
-After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:notify-settings` → Platforms (在操作后短暂静默 + channel chips), or in `~/.unipi/config/notify/config.json`:
+After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:notify-settings` → Platforms (Quiet after activity + channel chips), or in `~/.unipi/config/notify/config.json`:
 
 ```json
 {

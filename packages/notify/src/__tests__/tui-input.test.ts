@@ -249,7 +249,7 @@ describe("settings overlay: silence after input", () => {
     const overlay = new NotifySettingsOverlay();
     goToSilenceMaster(overlay);
     assert.ok(
-      selectedLine(overlay).includes("在操作后短暂静默"),
+      selectedLine(overlay).includes("Quiet after activity"),
       "5 downs land on the silence master row",
     );
     overlay.handleInput("j");
