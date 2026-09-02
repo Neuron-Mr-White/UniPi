@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath } from "node:url";
+import { loadEmbeddingConfig } from "./settings.js";
 
 /** Default MemPalace palace path. */
 export const DEFAULT_PALACE = path.join(os.homedir(), ".mempalace", "palace");
@@ -457,4 +458,188 @@ export function runBridgeAsync<T = unknown>(
 /** Ping the bridge — returns true if the backend is alive. */
 export function ping(install: MempalaceInstall, palace: string): boolean {
   return runBridge<string>(install, palace, "ping") === "pong";
+}
+
+// ── Auto-update (TTL-gated PyPI check + `uv tool upgrade`) ────────────────
+
+/** Update check state file — records the last check so we hit PyPI ~daily. */
+const UPDATE_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-update");
+export const UPDATE_CHECK_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PYPI_URL = "https://pypi.org/pypi/mempalace/json";
+
+export interface MempalaceUpdateState {
+  checkedAt: number;
+  latestVersion: string;
+}
+
+export interface MempalaceUpdateOutcome {
+  checked: boolean;
+  updated: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+  reason?: "disabled" | "not-installed" | "recent" | "lookup-failed" | "up-to-date" | "uv-missing" | "upgrade-failed";
+}
+
+/** Read the cached update-check state (null when missing/corrupt). */
+export function readUpdateState(flagPath = UPDATE_FLAG): MempalaceUpdateState | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(flagPath, "utf-8")) as MempalaceUpdateState;
+    if (typeof parsed?.checkedAt !== "number" || typeof parsed?.latestVersion !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the update-check state atomically. */
+export function writeUpdateState(state: MempalaceUpdateState, flagPath = UPDATE_FLAG): void {
+  try {
+    fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+    const temp = `${flagPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(temp, flagPath);
+  } catch { /* ignore */ }
+}
+
+/** Is a PyPI lookup due? (no state yet, or the TTL has elapsed) */
+export function isUpdateCheckDue(
+  flagPath = UPDATE_FLAG,
+  now = Date.now(),
+  ttlMs = UPDATE_CHECK_TTL_MS,
+): boolean {
+  const state = readUpdateState(flagPath);
+  if (!state) return true;
+  return now - state.checkedAt >= ttlMs;
+}
+
+/** Numeric dotted-version compare: >0 if a is newer, <0 if older, 0 if equal. */
+export function compareVersions(a: string, b: string): number {
+  const pa = String(a ?? "").trim().split(".");
+  const pb = String(b ?? "").trim().split(".");
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = Number.parseInt(pa[i] ?? "0", 10) || 0;
+    const nb = Number.parseInt(pb[i] ?? "0") || 0;
+    if (na !== nb) return na - nb;
+  }
+  return 0;
+}
+
+/** Latest MemPalace version on PyPI, or null on any failure. */
+export async function fetchLatestMempalaceVersion(
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  try {
+    const res = await fetchImpl(PYPI_URL, { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { info?: { version?: string } };
+    return typeof body?.info?.version === "string" ? body.info.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Is the opt-in MemPalace daemon currently running? */
+function daemonRunning(): boolean {
+  try {
+    const res = spawnSync("mempalace", ["daemon", "status"], { encoding: "utf-8", timeout: 10_000 });
+    return /is running/i.test(res.stdout || "");
+  } catch {
+    return false;
+  }
+}
+
+/** Fire-and-forget process run; resolves null on spawn failure or non-zero exit. */
+function runProcess(bin: string, args: string[], timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
+    } catch {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* already gone */ }
+      finish(false);
+    }, timeoutMs);
+    timer.unref?.();
+    child.on("error", () => finish(false));
+    child.on("close", (code) => finish(code === 0));
+  });
+}
+
+/**
+ * Upgrade MemPalace via `uv tool install --upgrade`. The daemon (if running)
+ * is stopped first and restarted after, so the long-lived process picks up
+ * the new venv instead of straddling versions.
+ */
+async function upgradeMempalace(): Promise<boolean> {
+  if (!which("uv")) return false;
+  const wasRunning = daemonRunning();
+  if (wasRunning) await runProcess("mempalace", ["daemon", "stop"], 30_000);
+  const upgraded = await runProcess("uv", ["tool", "upgrade", "mempalace"], 300_000);
+  if (wasRunning) await runProcess("mempalace", ["daemon", "start"], 30_000);
+  return upgraded;
+}
+
+export interface MempalaceUpdateOptions {
+  /** Skip the TTL gate and force a PyPI lookup. */
+  force?: boolean;
+  /** Injectable fetch for tests. */
+  fetchImpl?: typeof fetch;
+  /** Override "now" for TTL math (tests). */
+  now?: number;
+}
+
+/**
+ * Keep the user's MemPalace install current.
+ *
+ * TTL-gated (~daily) PyPI lookup; when a newer release exists and the install
+ * came from uv, runs `uv tool upgrade mempalace` in the background. Never
+ * throws — callers fire-and-forget this from session_start.
+ */
+export async function maybeAutoUpdateMempalace(
+  options: MempalaceUpdateOptions = {},
+): Promise<MempalaceUpdateOutcome> {
+  const now = options.now ?? Date.now();
+  if (loadEmbeddingConfig().mempalaceAutoUpdate === false) {
+    return { checked: false, updated: false, reason: "disabled" };
+  }
+  const install = readCachedInstall();
+  if (!install) return { checked: false, updated: false, reason: "not-installed" };
+
+  if (!options.force && !isUpdateCheckDue(UPDATE_FLAG, now, UPDATE_CHECK_TTL_MS)) {
+    return { checked: false, updated: false, reason: "recent" };
+  }
+
+  const latest = await fetchLatestMempalaceVersion(options.fetchImpl).catch(() => null);
+  const previous = readUpdateState()?.latestVersion ?? "";
+  writeUpdateState({ checkedAt: now, latestVersion: latest ?? previous });
+  if (!latest) {
+    return { checked: true, updated: false, currentVersion: install.version, reason: "lookup-failed" };
+  }
+
+  const current = detectVersion(install.python);
+  if (compareVersions(latest, current) <= 0) {
+    return { checked: true, updated: false, currentVersion: current, latestVersion: latest, reason: "up-to-date" };
+  }
+
+  const upgraded = await upgradeMempalace();
+  if (!upgraded) {
+    return { checked: true, updated: false, currentVersion: current, latestVersion: latest, reason: "upgrade-failed" };
+  }
+
+  // Refresh the cached install record so the new version is used next bridge call.
+  const python = findVenvPython();
+  if (python) writeCachedInstall({ python, version: detectVersion(python) });
+  invalidatePingVerified();
+  return { checked: true, updated: true, currentVersion: current, latestVersion: latest };
 }

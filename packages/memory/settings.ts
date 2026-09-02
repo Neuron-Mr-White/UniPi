@@ -26,6 +26,8 @@ export interface EmbeddingConfig {
   lastModel?: string;
   /** Whether to show migration warning on startup */
   suppressMigrationWarning?: boolean;
+  /** Keep the MemPalace backend current via a daily PyPI check + uv upgrade */
+  mempalaceAutoUpdate?: boolean;
 }
 
 /** Default configuration */
@@ -34,6 +36,7 @@ const DEFAULT_CONFIG: EmbeddingConfig = {
   model: "openai/text-embedding-3-small",
   dimensions: 384,
   suppressMigrationWarning: false,
+  mempalaceAutoUpdate: true,
 };
 
 /** Known embedding models on OpenRouter */

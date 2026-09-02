@@ -6,11 +6,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   MIGRATION_STATE_VERSION,
+  compareVersions,
   getMemorySourceFingerprint,
   isMigrated,
+  isUpdateCheckDue,
   markMigrated,
   readMigrationState,
+  readUpdateState,
   resolveMempalaceBridgePath,
+  writeUpdateState,
   type MigrationResult,
 } from "../mempalace.js";
 import { parseMemoryFile, writeMemoryFile, type MemoryRecord } from "../storage.js";
@@ -126,5 +130,41 @@ describe("MemPalace migration state", () => {
     writeFileSync(join(source, "two.md"), "second");
     assert.notEqual(getMemorySourceFingerprint(source), fingerprint);
     assert.equal(isMigrated(getMemorySourceFingerprint(source), flag), false);
+  });
+});
+
+describe("MemPalace auto-update", () => {
+  it("compares dotted versions numerically, not lexically", () => {
+    assert.equal(compareVersions("3.5.0", "3.5.0"), 0);
+    assert.ok(compareVersions("3.10.0", "3.9.9") > 0);
+    assert.ok(compareVersions("3.5", "3.5.1") < 0);
+    assert.ok(compareVersions("4.0.0rc1", "4.0.0") === 0);
+  });
+
+  it("is due with no state, not due within the TTL, due again after it", () => {
+    const flag = join(tempDir(), ".mempalace-update");
+    assert.equal(isUpdateCheckDue(flag, 1_000, 10_000), true);
+    writeUpdateState({ checkedAt: 1_000, latestVersion: "3.5.0" }, flag);
+    assert.equal(isUpdateCheckDue(flag, 10_999, 10_000), false);
+    assert.equal(isUpdateCheckDue(flag, 11_000, 10_000), true);
+  });
+
+  it("rejects a corrupt update state file", () => {
+    const flag = join(tempDir(), ".mempalace-update");
+    writeFileSync(flag, "not json");
+    assert.equal(readUpdateState(flag), null);
+  });
+
+  it("is disabled when the setting is off", async () => {
+    const { maybeAutoUpdateMempalace } = await import("../mempalace.js");
+    const { updateEmbeddingConfig } = await import("../settings.js");
+    updateEmbeddingConfig({ mempalaceAutoUpdate: false });
+    try {
+      const outcome = await maybeAutoUpdateMempalace({ force: true });
+      assert.equal(outcome.checked, false);
+      assert.equal(outcome.reason, "disabled");
+    } finally {
+      updateEmbeddingConfig({ mempalaceAutoUpdate: true });
+    }
   });
 });

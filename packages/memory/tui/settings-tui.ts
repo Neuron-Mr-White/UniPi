@@ -83,6 +83,13 @@ export async function showMemorySettings(ctx: ExtensionCommandContext): Promise<
       description: "Embedding dimensions (lower = faster, less storage)",
     });
 
+    // MemPalace auto-update
+    options.push({
+      label: `⬆️ MemPalace Auto-Update: ${config.mempalaceAutoUpdate === false ? "Off" : "On"}`,
+      value: "__toggle_autoupdate__",
+      description: "Daily PyPI check; upgrades the backend via uv when a newer MemPalace ships",
+    });
+
     // Re-embed
     if (ready && hasModelChanged()) {
       options.push({
@@ -145,6 +152,13 @@ export async function showMemorySettings(ctx: ExtensionCommandContext): Promise<
         saveEmbeddingConfig(cfg);
         ui.notify("Migration warning suppressed.", "info");
         break;
+      case "__toggle_autoupdate__": {
+        const autoCfg = loadEmbeddingConfig();
+        autoCfg.mempalaceAutoUpdate = autoCfg.mempalaceAutoUpdate === false;
+        saveEmbeddingConfig(autoCfg);
+        ui.notify(`MemPalace auto-update ${autoCfg.mempalaceAutoUpdate ? "enabled" : "disabled"}.`, "info");
+        break;
+      }
     }
   }
 }

@@ -31,6 +31,7 @@ import {
 import { registerMemoryTools, MEMORY_TOOLS, GLOBAL_SEARCH_ALIAS } from "./tools.js";
 import { registerMemoryCommands } from "./commands.js";
 import { isEmbeddingReady, hasModelChanged } from "./settings.js";
+import { maybeAutoUpdateMempalace } from "./mempalace.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -155,6 +156,22 @@ export default function (pi: ExtensionAPI) {
     } catch (_err) {
       // Memory init failure — running without memory. Silent startup.
       projectStorage = null;
+    }
+
+    // Keep the MemPalace backend current — TTL-gated (~daily) background
+    // check; upgrades via uv only when a newer release exists. Never blocks
+    // startup and never throws into the session path.
+    if (projectStorage?.isMempalace()) {
+      void maybeAutoUpdateMempalace()
+        .then((outcome) => {
+          if (outcome.updated) {
+            emitEvent(pi, UNIPI_EVENTS.UPDATE_APPLIED, {
+              previousVersion: outcome.currentVersion ?? "",
+              newVersion: outcome.latestVersion ?? "",
+            });
+          }
+        })
+        .catch(() => {});
     }
 
 
