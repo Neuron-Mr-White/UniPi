@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.15.0] — 2026-08-31
+
+### Added
+
+- `ralph`: **argument completions for `/unipi:ralph`** — the command now autosuggests subcommands with one-line descriptions, live loop names from `.unipi/ralph/*.state.json` (status-annotated, filtered per subcommand: `resume` hides completed loops, `archive` hides active ones, `cancel` shows all), `start` flags (`--max-iterations`, `--items-per-iteration`, `--reflect-every`, already-used ones excluded), and `--archived` / `--all` / `--yes` for `list` / `clean` / `nuke`. Implemented as a pure builder (`packages/ralph/completions.ts`, 12 tests) wired via `registerCommand`'s `getArgumentCompletions`; pi replaces the entire argument text with the selected item's value, so nested suggestions carry full replacement strings (`resume myloop`) to preserve already-typed flags. Exact-match tokens suppress the popup.
+- `memory`: **MemPalace auto-update** — when MemPalace is the active backend, a TTL-gated (24h, state file `~/.unipi/memory/.mempalace-update`) PyPI release check runs in the background at session start; on a newer `mempalace` release it upgrades via `uv` fire-and-forget (paused while the daemon is running) and emits `unipi:update:applied`. Never blocks startup, all failures swallowed; toggle in `/unipi:memory-settings` (`mempalaceAutoUpdate`, default on).
+
 ## [2.14.2] — 2026-08-31
 
 ### Fixed

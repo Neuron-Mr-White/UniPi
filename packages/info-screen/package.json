@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "2.14.2",
+  "version": "2.15.0",
   "description": "Dashboard and module registry for Unipi — configurable info overlay with tabbed groups",
   "type": "module",
   "main": "index.ts",
@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.14.2"
+    "@pi-unipi/core": "2.15.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",
