@@ -24,6 +24,8 @@ Long-running iterative development loops. Run complex tasks across multiple iter
 | `/unipi:ralph list --archived` | Show archived loops |
 | `/unipi:ralph nuke [--yes]` | Delete all ralph data |
 
+Arguments autocomplete: typing `/unipi:ralph ` suggests subcommands with descriptions; `resume`/`cancel`/`archive` suggest loop names with live status; `start` suggests its flags.
+
 ## Tools
 
 | Tool | Description |

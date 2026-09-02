@@ -24,6 +24,7 @@ function getInfoRegistry() {
 }
 import { RalphLoopManager } from "./ralph-loop.js";
 import { registerRalphTools } from "./tools.js";
+import { buildRalphArgumentCompletions } from "./completions.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -200,6 +201,8 @@ To stop: press ESC to interrupt, then run /unipi:ralph-stop when idle`;
 
   pi.registerCommand("unipi:ralph", {
     description: "Ralph loop commands (start, stop, resume, status, etc.)",
+    getArgumentCompletions: (argumentText: string) =>
+      buildRalphArgumentCompletions(argumentText, () => manager?.listLoops(false) ?? []),
     handler: async (args, ctx) => {
       const parts = parseArgs(args);
       const cmd = parts[0];

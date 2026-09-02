@@ -18,6 +18,8 @@ Ralph is for work that takes more than one pass — migrating a codebase, implem
 | `/unipi:ralph list --archived` | Show archived loops |
 | `/unipi:ralph nuke [--yes]` | Delete all ralph data |
 
+Command arguments autocomplete: subcommands with descriptions, live loop names with status, and `start` flags are suggested as you type.
+
 ### Options
 
 | Flag | Description |
