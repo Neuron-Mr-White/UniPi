@@ -66,7 +66,10 @@ export function loadConfig(): NotifyConfig {
   } catch (_err) {
     // Config load failure — using defaults silently.
   }
-  return { ...DEFAULT_CONFIG };
+  // Deep copy: callers (e.g. the settings overlay) mutate the returned config.
+  // A shallow copy would share nested objects with DEFAULT_CONFIG and leak
+  // mutations into later loadConfig() calls (even after Esc/cancel).
+  return structuredClone(DEFAULT_CONFIG);
 }
 
 /** Save config to disk, creating directory if needed */
@@ -116,16 +119,17 @@ export function validateConfig(config: NotifyConfig): string[] {
 
 /** Merge loaded config with defaults to ensure all fields exist */
 function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
+  const base = structuredClone(DEFAULT_CONFIG);
   return {
-    defaultPlatforms: loaded.defaultPlatforms ?? DEFAULT_CONFIG.defaultPlatforms,
-    events: { ...DEFAULT_CONFIG.events, ...loaded.events },
-    native: { ...DEFAULT_CONFIG.native, ...loaded.native },
-    gotify: { ...DEFAULT_CONFIG.gotify, ...loaded.gotify },
-    telegram: { ...DEFAULT_CONFIG.telegram, ...loaded.telegram },
-    recap: { ...DEFAULT_CONFIG.recap, ...loaded.recap },
+    defaultPlatforms: loaded.defaultPlatforms ?? base.defaultPlatforms,
+    events: { ...base.events, ...loaded.events },
+    native: { ...base.native, ...loaded.native },
+    gotify: { ...base.gotify, ...loaded.gotify },
+    telegram: { ...base.telegram, ...loaded.telegram },
+    recap: { ...base.recap, ...loaded.recap },
     silenceAfterInput: mergeSilenceAfterInput(
       loaded.silenceAfterInput,
-      DEFAULT_CONFIG.silenceAfterInput,
+      base.silenceAfterInput,
     ),
   };
 }
