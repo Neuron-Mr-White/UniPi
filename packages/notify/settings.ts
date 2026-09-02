@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import { NOTIFY_DIRS } from "@pi-unipi/core";
+import { mergeSilenceAfterInput } from "./activity.js";
 import type { NotifyConfig } from "./types.js";
 
 /** Resolve config path (expands ~ to homedir) */
@@ -44,6 +45,11 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   recap: {
     enabled: false,
     model: "openrouter/openai/gpt-oss-20b",
+  },
+  silenceAfterInput: {
+    enabled: false,
+    windowMs: 10000,
+    platforms: ["native"],
   },
 };
 
@@ -117,5 +123,9 @@ function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
     gotify: { ...DEFAULT_CONFIG.gotify, ...loaded.gotify },
     telegram: { ...DEFAULT_CONFIG.telegram, ...loaded.telegram },
     recap: { ...DEFAULT_CONFIG.recap, ...loaded.recap },
+    silenceAfterInput: mergeSilenceAfterInput(
+      loaded.silenceAfterInput,
+      DEFAULT_CONFIG.silenceAfterInput,
+    ),
   };
 }

@@ -61,6 +61,22 @@ Desktop notifications via [node-notifier](https://github.com/mikaelbr/node-notif
 
 Zero configuration — works out of the box. Set `native.suppressWhenFocused` to `true` to skip native notifications when the active/focused window is already Pi.
 
+### Silence after input
+
+After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:notify-settings` → Platforms (Quiet after activity + channel chips), or in `~/.unipi/config/notify/config.json`:
+
+```json
+{
+  "silenceAfterInput": {
+    "enabled": true,
+    "windowMs": 10000,
+    "platforms": ["native"]
+  }
+}
+```
+
+Add `gotify`, `telegram`, or `ntfy` to `platforms` to silence those channels too. Empty `platforms` silences all enabled platforms (same as `events.*.platforms`).
+
 ### Gotify
 
 Self-hosted push notification server:

@@ -16,6 +16,7 @@ import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
+import { filterPlatformsAfterInput } from "./activity.js";
 
 // Event emitted by @juicesharp/rpiv-ask-user-question before showing its UI.
 // Keep this as a local string until that package publishes an importable
@@ -182,8 +183,11 @@ export async function dispatchNotification(
     return false;
   });
 
+  const { send: platformsToSend, silenced: inputSilenced } =
+    filterPlatformsAfterInput(enabledPlatforms, config);
+
   const results = await Promise.all(
-    enabledPlatforms.map(async (platform) => {
+    platformsToSend.map(async (platform) => {
       try {
         const effectivePriority = await sendToPlatform(platform, title, message, config, cwd, priority);
         return { platform, success: true, ...(effectivePriority === undefined ? {} : { priority: effectivePriority }) };
@@ -201,6 +205,10 @@ export async function dispatchNotification(
       }
     })
   );
+
+  for (const platform of inputSilenced) {
+    results.push({ platform, success: true, suppressed: true });
+  }
 
   const unsuppressed = results.filter((r) => !r.suppressed);
   const allSuccess = results.length > 0 && unsuppressed.every((r) => r.success);
