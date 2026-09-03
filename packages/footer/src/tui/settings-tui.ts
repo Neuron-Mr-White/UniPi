@@ -244,7 +244,7 @@ class FooterSettingsOverlay {
       {
         id: "iconStyle",
         label: "Icon Style",
-        description: "Icon glyph set (nerd requires Nerd Font)",
+        description: "emoji · nerd (Nerd Font) · text (glance: branch:x, workspace:y)",
         currentValue: this.settings.iconStyle,
         values: ICON_STYLES,
       },

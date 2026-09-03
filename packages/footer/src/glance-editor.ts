@@ -18,7 +18,8 @@ import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import type { EditorOptions, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { getIcon } from "./rendering/icons.js";
+import { getIcon, getResolvedIconStyle } from "./rendering/icons.js";
+import { lolcatRainbow, paintLolcatGradient } from "./rendering/lolcat.js";
 
 /** Live status injected by the footer extension. */
 export interface GlanceStatus {
@@ -96,25 +97,35 @@ function fmtTokens(n: number): string {
 
 // ─── Lolcat rainbow gradient (classic sine algorithm, animated) ─────────
 //
-// red   = sin(freq·i + phase)       · 127 + 128
-// green = sin(freq·i + 2π/3 + phase) · 127 + 128
-// blue  = sin(freq·i + 4π/3 + phase) · 127 + 128
-// i = character position; phase advances with wall time so the gradient
-// drifts across the word (lolcat -a behavior). Rendered as truecolor SGR.
+// Rendered per glyph as truecolor SGR — see rendering/lolcat.ts (issue #34:
+// painting iterates code points so emoji surrogate pairs survive).
 
-const LOLCAT_FREQ = 0.9; // radians per char — short word → tight sweep
-
-function lolcatRainbow(text: string, phase: number): string {
-	return text
-		.split("")
-		.map((ch, i) => {
-			const t = LOLCAT_FREQ * i + phase;
-			const r = Math.round(Math.sin(t) * 127 + 128);
-			const g = Math.round(Math.sin(t + (2 * Math.PI) / 3) * 127 + 128);
-			const b = Math.round(Math.sin(t + (4 * Math.PI) / 3) * 127 + 128);
-			return `\x1b[38;2;${r};${g};${b}m${ch}`;
-		})
-		.join("") + "\x1b[39m";
+/**
+ * Compose the glance frame titles for the active icon style.
+ *
+ * - emoji/nerd: glyph prefix before brand, branch and workspace.
+ * - text: no robot glyph (brand word only); literal labels —
+ *   `branch:main` on the top title, `workspace:unipi` bottom-left.
+ */
+export function composeGlanceTitles(
+	brand: string,
+	branch: string | null,
+	workspace: string,
+): { titleParts: string[]; leftTitle: string } {
+	const titleParts: string[] = [];
+	if (getResolvedIconStyle() === "text") {
+		titleParts.push(brand);
+		if (branch) titleParts.push(`branch:${branch}`);
+		return { titleParts, leftTitle: ` workspace:${workspace} ` };
+	}
+	const brandIcon = getIcon("model");
+	titleParts.push(`${brandIcon ? brandIcon + " " : ""}${brand}`);
+	if (branch) {
+		const gitIcon = getIcon("git");
+		titleParts.push(`${gitIcon ? gitIcon + " " : ""}${branch}`);
+	}
+	const dirIcon = getIcon("directory");
+	return { titleParts, leftTitle: ` ${dirIcon ? dirIcon + " " : ""}${workspace} ` };
 }
 
 export class GlanceEditor extends CustomEditor {
@@ -133,44 +144,11 @@ export class GlanceEditor extends CustomEditor {
 
 	/**
 	 * Apply a flowing lolcat gradient to an already-composed frame line.
-	 * Printable characters get per-position truecolor from the sine palette;
-	 * existing SGR sequences pass through untouched (they mostly come from
-		 * the brand itself, which already carries its own colors).
+	 * Kept as a protected hook for subclasses; painting itself lives in
+	 * rendering/lolcat.ts (code-point-safe — issue #34).
 	 */
 	protected paintLolcatLine(line: string, phaseBase: number): string {
-		let out = "";
-		let pos = 0;
-		let i = 0;
-		while (i < line.length) {
-			const ch = line[i];
-			if (ch === "\x1b") {
-				const rest = line.slice(i);
-				// Copy the whole escape sequence verbatim.
-				const m = /^\x1b\[[0-?]*[ -/]*[@-~]/.exec(line.slice(i));
-				if (m) {
-					out += m[0];
-					i += m[0].length;
-					continue;
-				}
-				// Zero-width string sequences: OSC 133 zone markers (\x1b]133;A
-				// BEL) and the APC CURSOR_MARKER (\x1b_pi:c BEL). Painting their
-				// bytes is what produced the "_pi:c" garbage in rainbow mode.
-				const strSeq = /^\x1b[\]_][^\x07]*(?:\x07|\x1b\\)/.exec(rest);
-				if (strSeq) {
-					out += strSeq[0];
-					i += strSeq[0].length;
-					continue;
-				}
-			}
-			const t = LOLCAT_FREQ * 0.35 * pos + phaseBase;
-			const r = Math.round(Math.sin(t) * 127 + 128);
-			const g = Math.round(Math.sin(t + (2 * Math.PI) / 3) * 127 + 128);
-			const b = Math.round(Math.sin(t + (4 * Math.PI) / 3) * 127 + 128);
-			out += `\u001b[38;2;${r};${g};${b}m${ch}`;
-			pos++;
-			i++;
-		}
-		return out + "\u001b[39m";
+		return paintLolcatGradient(line, phaseBase);
 	}
 
 	private static isThinkingHot(level: string | null | undefined): boolean {
@@ -211,14 +189,7 @@ export class GlanceEditor extends CustomEditor {
 		// Brand rendered as an animated lolcat gradient (phase from wall time;
 		// the footer's 1s refresh timer re-renders, so it shimmers each tick).
 		const brand = lolcatRainbow("UNIPI", Date.now() / 1000);
-		const brandIcon = getIcon("model");
-		const titleParts = [
-			`${brandIcon ? brandIcon + " " : ""}${brand}`,
-		];
-		if (st.branch) {
-			const gitIcon = getIcon("git");
-			titleParts.push(`${gitIcon ? gitIcon + " " : ""}${st.branch}`);
-		}
+		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace);
 		const title = titleParts.join(SEP);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;
@@ -249,9 +220,7 @@ export class GlanceEditor extends CustomEditor {
 		if (st.thinkingLevel && st.thinkingLevel !== "off") {
 			rightParts.push(`thinking:${st.thinkingLevel}`);
 		}
-		// Workspace gets the folder nerd icon.
-		const dirIcon = getIcon("directory");
-		const leftTitle = ` ${dirIcon ? dirIcon + " " : ""}${st.workspace} `;
+		// Workspace label per icon style (glyph prefix, or workspace: in text mode).
 		let cluster = rightParts.join(SEP);
 
 		// Shrink policy for narrow terminals: thinking first, then model tail.

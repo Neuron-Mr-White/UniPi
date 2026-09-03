@@ -26,11 +26,9 @@ An experimental input surface, on by default and toggleable in `/unipi:footer-se
 | Command | Description |
 |---------|-------------|
 | `/unipi:footer` | Toggle footer on/off |
-| `/unipi:footer <preset>` | Switch preset (default, minimal, compact, full, nerd, ascii) |
-| `/unipi:footer sep:<style>` | Change separator style |
-| `/unipi:footer icon:<style>` | Change icon style (nerd, emoji, text) |
 | `/unipi:footer on` / `/unipi:footer off` | Enable/disable explicitly |
-| `/unipi:footer-settings` | Open settings TUI for per-group/per-segment toggles |
+| `/unipi:footer-settings` | Open settings TUI — preset, separator, icon style, glance mode, per-segment toggles |
+| `/unipi:footer-help` | Show footer segment guide |
 
 ## Special Triggers
 
@@ -120,7 +118,7 @@ Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
 |-------|-------------|
 | `nerd` | Nerd Font glyphs (auto-detected) |
 | `emoji` | Unicode symbols (works on most terminals) |
-| `text` | Plain text abbreviations (works everywhere) |
+| `text` | Plain text labels (works everywhere). Glance frame drops the robot glyph: `UNIPI │ branch:main`, `workspace:unipi` |
 
 When `iconStyle` is not set, footer auto-detects Nerd Font support and defaults to `nerd` if available, `emoji` otherwise.
 

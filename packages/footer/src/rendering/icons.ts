@@ -314,6 +314,11 @@ export function resolveIconStyle(configured?: string): "nerd" | "emoji" | "text"
   return detectNerdFontSupport() ? "nerd" : "emoji";
 }
 
+/** Effective icon style in use — the current setting, or auto-detection. */
+export function getResolvedIconStyle(): "nerd" | "emoji" | "text" {
+  return currentIconStyle ?? resolveIconStyle();
+}
+
 /**
  * Get the icon for a segment by ID.
  * Uses the configured icon style, falling back to auto-detection.
