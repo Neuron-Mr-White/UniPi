@@ -151,8 +151,28 @@ function listAgentFilesRecursive(dir: string): string[] {
   return files;
 }
 
-/** Builtin agent definition files shipped in packages/subagents/agents/. */
-const BUILTIN_AGENTS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "agents");
+/**
+ * Builtin agent definition files shipped in packages/subagents/agents/.
+ *
+ * Layout-aware (issue #35): when loaded from source (packages/subagents/src/)
+ * the agents dir is one level up; when loaded from the umbrella bundle
+ * (packages/unipi/bundled.js — the file npm ships and pi actually executes)
+ * `import.meta.url` points at packages/unipi/, so the files are two levels up
+ * under ../subagents/agents. The first candidate that exists wins, so both
+ * layouts resolve without build-time path injection.
+ */
+export function resolveBuiltinAgentsDir(fromUrl: string = import.meta.url): string {
+  const here = dirname(fileURLToPath(fromUrl));
+  for (const candidate of [
+    join(here, "..", "agents"), // source layout: src/ → agents/
+    join(here, "..", "subagents", "agents"), // bundle layout: packages/unipi/bundled.js → packages/subagents/agents
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(here, "..", "agents");
+}
+
+const BUILTIN_AGENTS_DIR = resolveBuiltinAgentsDir();
 
 /** Frontmatter fields stored as-is on the config for later phases. */
 function collectExtraFields(frontmatter: Record<string, unknown>): Record<string, string> | undefined {

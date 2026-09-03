@@ -7,11 +7,12 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { loadBuiltinFileAgents } from "../custom-agents.js";
+import { loadBuiltinFileAgents, resolveBuiltinAgentsDir } from "../custom-agents.js";
 
 const TMP = join(tmpdir(), `unipi-subagents-discovery-test-${process.pid}`);
 
@@ -99,6 +100,43 @@ describe("discovery priority (ours: project > global > builtin)", () => {
     // The custom loader reads fixed dirs; assert the pruned-file case indirectly:
     assert.ok(existsSync(join(dir, "sub", "deep", "deep-agent.md")));
     assert.ok(existsSync(join(dir, "node_modules", "evil", "evil-agent.md")));
+  });
+});
+
+describe("packaged bundle layout (issue #35)", () => {
+  it("resolves ../subagents/agents from a bundled.js location", () => {
+    // Simulate the npm tarball layout: bundled.js at packages/unipi/ with no
+    // packages/agents/ dir — resolution must fall through to ../subagents/agents.
+    const root = join(TMP, "pkg");
+    mkdirSync(join(root, "packages", "unipi"), { recursive: true });
+    mkdirSync(join(root, "packages", "subagents", "agents"), { recursive: true });
+    writeFileSync(join(root, "packages", "unipi", "bundled.js"), "// bundle\n");
+    writeFileSync(join(root, "packages", "subagents", "agents", "scout.md"), "---\nname: scout\n---\n");
+    const dir = resolveBuiltinAgentsDir(pathToFileURL(join(root, "packages", "unipi", "bundled.js")).href);
+    assert.equal(dir, join(root, "packages", "subagents", "agents"));
+  });
+
+  it("resolves ../agents from the source layout", () => {
+    const root = join(TMP, "src-layout");
+    mkdirSync(join(root, "src"), { recursive: true });
+    mkdirSync(join(root, "agents"), { recursive: true });
+    const dir = resolveBuiltinAgentsDir(pathToFileURL(join(root, "src", "custom-agents.ts")).href);
+    assert.equal(dir, join(root, "agents"));
+  });
+
+  it("smoke: every agents/*.md is discoverable from packages/unipi/bundled.js", () => {
+    // Issue #35 acceptance: all files under packages/subagents/agents/*.md must
+    // resolve from the bundle npm actually executes. Skip in fresh clones where
+    // the gitignored bundle has not been built yet (CI/release always builds).
+    const repoRoot = join(import.meta.dirname, "..", "..", "..", "..");
+    const bundle = join(repoRoot, "packages", "unipi", "bundled.js");
+    if (!existsSync(bundle)) return;
+    const resolvedDir = resolveBuiltinAgentsDir(pathToFileURL(bundle).href);
+    const md = (dir: string) =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith(".md"))
+        .sort();
+    assert.deepEqual(md(resolvedDir), md(join(repoRoot, "packages", "subagents", "agents")));
   });
 });
 
