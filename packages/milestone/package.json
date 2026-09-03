@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/milestone",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "description": "Lifecycle layer for project-level goals — MILESTONES.md tracking, session hooks, auto-sync",
   "type": "module",
   "main": "index.ts",
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.15.0"
+    "@pi-unipi/core": "2.16.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",

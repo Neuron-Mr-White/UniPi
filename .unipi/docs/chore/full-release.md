@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-08-31 (v2.15.0, ralph argument completions + memory mempalace auto-update)
+last-run: 2026-09-03 (v2.16.0, footer glance icon modes + rainbow emoji surrogate fix #34)
 ---
 
 # Full Release Pipeline

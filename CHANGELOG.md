@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.16.0] — 2026-09-03
+
+### Added
+
+- `footer`: **glance frame icon modes** — the glance frame now composes its titles per icon style. `emoji` and `nerd` keep their glyph prefixes (unchanged); the `text` style drops the robot glyph entirely and uses literal labels — `UNIPI │ branch:main` on the top border, `workspace:unipi` bottom-left — so the frame stays readable in any terminal. Toggle via Footer Settings → Appearance → Icon Style (`composeGlanceTitles()` in `glance-editor.ts`); the settings description now says what each style does.
+
+### Fixed
+
+- `footer`: **emoji icons no longer garble in rainbow mode** (GitHub [#34](https://github.com/Neuron-Mr-White/UniPi/issues/34)) — the lolcat painter indexed frame lines per UTF-16 code unit, inserting SGR sequences between the surrogate halves of 🤖/🔀 and rendering replacement characters whenever the thinking level was `max`/`xhigh`. Painting now advances per code point (new `rendering/lolcat.ts` `paintLolcatGradient()`), keeps emoji variation selectors (⬇️ = U+2B07 U+FE0F) attached to their base glyph, and copies ANSI/OSC/APC sequences verbatim; `GlanceEditor.paintLolcatLine()` remains as a protected hook delegating to it. 13 new tests in `tests/glance-icons.test.ts`.
+- `footer`: README command table listed `/unipi:footer <preset>`, `sep:<style>`, and `icon:<style>` variants the command never supported — it only accepts `on`/`off`/toggle. Table now matches `commands.ts`; icon style is changed via `/unipi:footer-settings`.
+
 ## [2.15.0] — 2026-08-31
 
 ### Added
