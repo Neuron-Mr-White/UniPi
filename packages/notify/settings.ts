@@ -45,6 +45,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   recap: {
     enabled: false,
     model: "openrouter/openai/gpt-oss-20b",
+    disableThinking: false,
   },
   silenceAfterInput: {
     enabled: false,

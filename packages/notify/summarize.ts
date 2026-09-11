@@ -12,6 +12,17 @@ const MAX_TOKENS = 100;
 const TIMEOUT_MS = 10_000;
 const FALLBACK_TRUNCATE_CHARS = 100;
 
+/** Options for summarizeLastMessage */
+export interface SummarizeOptions {
+  /**
+   * Send `chat_template_kwargs: { enable_thinking: false, preserve_thinking: false }`
+   * on OpenAI-compatible requests (llama.cpp / vLLM chat templates) so thinking
+   * models don't burn the token budget on reasoning (issue #36). Anthropic
+   * ignores this — thinking is opt-in there already.
+   */
+  disableThinking?: boolean;
+}
+
 /**
  * Summarize a message using an LLM.
  *
@@ -20,6 +31,7 @@ const FALLBACK_TRUNCATE_CHARS = 100;
  * @param baseUrl - Provider base URL (from Model.baseUrl)
  * @param api - API type (from Model.api, e.g. "openai-completions")
  * @param modelId - Model ID to use
+ * @param opts - Optional summarization options
  * @returns Summarized text, or truncated original on failure
  */
 export async function summarizeLastMessage(
@@ -28,6 +40,7 @@ export async function summarizeLastMessage(
   baseUrl: string,
   api: string,
   modelId: string,
+  opts?: SummarizeOptions,
 ): Promise<string> {
   // Truncate input if too long
   const input =
@@ -41,7 +54,7 @@ export async function summarizeLastMessage(
       return await callAnthropic(baseUrl, apiKey, modelId, input);
     }
     // Default: OpenAI-compatible (covers openai-completions, openai-responses, etc.)
-    return await callOpenAICompatible(baseUrl, apiKey, modelId, input);
+    return await callOpenAICompatible(baseUrl, apiKey, modelId, input, opts);
   } catch {
     return fallbackSummary(messageText);
   }
@@ -53,6 +66,7 @@ async function callOpenAICompatible(
   apiKey: string,
   modelId: string,
   input: string,
+  opts?: SummarizeOptions,
 ): Promise<string> {
   const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
   const controller = new AbortController();
@@ -68,6 +82,14 @@ async function callOpenAICompatible(
       body: JSON.stringify({
         model: modelId,
         max_tokens: MAX_TOKENS,
+        ...(opts?.disableThinking
+          ? {
+              chat_template_kwargs: {
+                enable_thinking: false,
+                preserve_thinking: false,
+              },
+            }
+          : {}),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: input },

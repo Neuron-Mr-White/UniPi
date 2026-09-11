@@ -120,6 +120,22 @@ Settings stored at `~/.unipi/config/notify/config.json`. Edit via `/unipi:notify
 
 Per-event platform routing lets you control where each event type goes. The settings overlay shows all events with platform toggles.
 
+### Recap (thinking models)
+
+Recap summarizes the last assistant message into a one-line push notification (100-token budget). Thinking models served by llama.cpp or vLLM can spend that entire budget on reasoning and return nothing, falling back to a plain 100-character truncation. If your recap endpoint supports chat-template kwargs, set `recap.disableThinking` to skip reasoning tokens:
+
+```json
+{
+  "recap": {
+    "enabled": true,
+    "model": "localhost/gemma-4-e4b",
+    "disableThinking": true
+  }
+}
+```
+
+This sends `chat_template_kwargs: { enable_thinking: false, preserve_thinking: false }` with the request. Keep it `false` (the default) for strict OpenAI-compatible endpoints — they reject unknown params. Anthropic models are unaffected (thinking is opt-in there).
+
 ## License
 
 MIT

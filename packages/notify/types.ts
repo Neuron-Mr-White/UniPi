@@ -69,6 +69,15 @@ export interface RecapConfig {
   enabled: boolean;
   /** Model to use for recap (e.g. "openrouter/openai/gpt-oss-20b") */
   model: string;
+  /**
+   * Send `chat_template_kwargs: { enable_thinking: false, preserve_thinking: false }`
+   * with recap requests so llama.cpp/vLLM-style servers skip reasoning tokens.
+   * Without this, a thinking model can burn the entire 100-token budget on
+   * reasoning and return no summary (issue #36). Only enable for endpoints
+   * that accept these params — strict OpenAI-compatible servers reject them.
+   * The Anthropic path ignores this (thinking is opt-in there already).
+   */
+  disableThinking?: boolean;
 }
 
 /** Quiet listed platforms after recent terminal input */

@@ -352,7 +352,9 @@ function registerAgentNotification(
             .then((apiKeyResult) => {
               const apiKey = apiKeyResult.ok ? (apiKeyResult as { apiKey?: string }).apiKey : undefined;
               if (apiKey) {
-                return summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId)
+                return summarizeLastMessage(lastText, apiKey, model.baseUrl, model.api, modelId, {
+                  disableThinking: config.recap.disableThinking,
+                })
                   .then((recap) => sessionName ? `${sessionName}: ${recap}` : recap);
               }
               return buildAgentLifecycleMessage(eventKey, sessionName);
