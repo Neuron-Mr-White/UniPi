@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.16.0] — 2026-09-03
+## [2.16.1] — 2026-09-11
+
+### Fixed
+
+- `notify`: **recap no longer silently degrades on thinking models** (GitHub [#36](https://github.com/Neuron-Mr-White/UniPi/issues/36)) — recap summarizes with a 100-token budget, and a thinking model served by llama.cpp/vLLM could burn the entire budget on reasoning tokens and return no visible content, falling back to the raw 100-character truncation. New `recap.disableThinking` config flag (default `false`) sends `chat_template_kwargs: { enable_thinking: false, preserve_thinking: false }` with recap requests so chat-template servers skip reasoning entirely. Opt-in because strict OpenAI-compatible endpoints reject unknown body params; the Anthropic path is unaffected. 5 new tests in `src/__tests__/summarize.test.ts`.
 
 ### Added
 
