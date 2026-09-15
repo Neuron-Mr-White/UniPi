@@ -27,6 +27,7 @@ function setup(runtime: any, pending = false) {
 
 test("blocking sidekick returns a formatted report", async () => {
   const runtime = {
+    isBusy: () => false,
     handoff: () => ({ id: "h1", done: Promise.resolve(report) }),
     progress: () => undefined,
     reports: new Map([["h1", report]]),
@@ -40,6 +41,7 @@ test("blocking sidekick returns a formatted report", async () => {
 
 test("pending user message interrupts a blocking handoff", async () => {
   const runtime = {
+    isBusy: () => false,
     handoff: () => ({ id: "h2", done: new Promise(() => undefined) }),
     progress: (): HandoffProgress => ({ toolCalls: 1, recentTools: ["edit()"], textTail: "working", startedAt: Date.now() }),
     reports: new Map(),
@@ -72,6 +74,7 @@ test("read_subagent defaults to the latest handoff", async () => {
 test("non-blocking sidekick sends a follow-up completion message", async () => {
   let resolve!: (value: HandoffReport) => void;
   const runtime = {
+    isBusy: () => false,
     handoff: () => ({ id: "h3", done: new Promise<HandoffReport>((r) => { resolve = r; }) }),
     progress: () => undefined,
     reports: new Map(),

@@ -68,6 +68,7 @@ test("runtime completes a handoff and sums usage", async () => {
   assert.equal(report.status, "completed");
   assert.equal(report.text, "finished");
   assert.equal(report.toolCalls, 2);
+  assert.equal(runtime.totalToolCalls(), 2);
   assert.deepEqual(report.usage, { input: 10, output: 4, cacheRead: 2, cacheWrite: 1, cost: 0.5 });
   assert.equal(sent[0]?.type, "prompt");
   assert.equal(sent.at(-1)?.type, "get_last_assistant_text");

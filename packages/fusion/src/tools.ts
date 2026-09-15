@@ -16,6 +16,7 @@ const ReadSubagentParams = Type.Object({
 export interface FusionToolDeps {
   getRuntime: (ctx: ExtensionContext) => SidekickRuntime | undefined;
   onReport?: (ctx: ExtensionContext, report: HandoffReport) => void;
+  onHandoffStart?: (ctx: ExtensionContext) => void;
 }
 
 function duration(ms: number): string {
@@ -112,7 +113,9 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = deps.getRuntime(ctx);
       if (!runtime) return result("Fusion is not active — pick a Fusion pair with /unipi:model.", undefined, true);
+      const wasBusy = runtime.isBusy();
       const handoff = runtime.handoff(params.message);
+      if (!wasBusy) deps.onHandoffStart?.(ctx);
       if (params.block === false) {
         void handoff.done.then((report) => {
           deps.onReport?.(ctx, report);

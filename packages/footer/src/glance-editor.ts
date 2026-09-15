@@ -40,7 +40,7 @@ export interface GlanceStatus {
 	 * `Fusion · <lead> <effort> ◆ <sidekick>` — lead lit, sidekick muted —
 	 * and the plain thinking slot is suppressed (efforts are inline).
 	 */
-	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number } | null;
+	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number; busy?: boolean; leadToolCalls?: number; sidekickToolCalls?: number } | null;
 }
 
 const BORDER = {
@@ -56,6 +56,26 @@ const SEP = " \u2502 "; // │
 const RESET = "\x1b[0m";
 const LEAD_FG = "\x1b[1m\x1b[38;2;181;189;104m"; // bold accent (matches success tint)
 const DIM_FG = "\x1b[38;2;120;124;134m"; // muted grey
+
+type FusionDisplay = NonNullable<GlanceStatus["fusion"]>;
+
+export function renderFusionStatus(fusion: FusionDisplay): string {
+	const lead = `${fusion.leadName}${fusion.leadEffort ? ` ${fusion.leadEffort}` : ""}`;
+	const side = `${fusion.sidekickName}${fusion.sidekickEffort ? ` ${fusion.sidekickEffort}` : ""}`;
+	const busy = fusion.busy === true;
+	const leadCalls = fusion.leadToolCalls ?? 0;
+	const sidekickCalls = fusion.sidekickToolCalls ?? 0;
+	const totalCalls = leadCalls + sidekickCalls;
+	const saved = fusion.savedUsd !== undefined && fusion.savedUsd > 0.005
+		? ` · saved $${fusion.savedUsd.toFixed(2)}`
+		: "";
+	const split = totalCalls > 0 ? ` · ${String(sidekickCalls)}/${String(totalCalls)} calls` : "";
+	const core = busy
+		? `${DIM_FG}Fusion · ${lead}${RESET} ${LEAD_FG}◆ ${side} · working${RESET}`
+		: `${LEAD_FG}Fusion · ${lead}${RESET} ${DIM_FG}◆ ${side}${RESET}`;
+	const tail = `${split}${saved}`;
+	return tail ? `${core}${DIM_FG}${tail}${RESET}` : core;
+}
 
 /**
  * Every invisible sequence pi-tui embeds in editor lines: CSI SGR, OSC 133
@@ -226,13 +246,7 @@ export class GlanceEditor extends CustomEditor {
 		const winLabel = st.contextWindow > 0 ? `/${fmtTokens(st.contextWindow)}` : "";
 		rightParts.push(`${pctLabel}${winLabel}`);
 		if (st.fusion) {
-			// The working lead is lit; the sidekick stays muted. Efforts are
-			// inline so the separate thinking slot is dropped.
-			const lead = `${st.fusion.leadName}${st.fusion.leadEffort ? ` ${st.fusion.leadEffort}` : ""}`;
-			const side = `${st.fusion.sidekickName}${st.fusion.sidekickEffort ? ` ${st.fusion.sidekickEffort}` : ""}`;
-			rightParts.push(
-				`${LEAD_FG}Fusion · ${lead}${RESET} ${DIM_FG}◆ ${side}${st.fusion.savedUsd !== undefined && st.fusion.savedUsd > 0.005 ? ` · saved $${st.fusion.savedUsd.toFixed(2)}` : ""}${RESET}`,
-			);
+			rightParts.push(renderFusionStatus(st.fusion));
 		} else {
 			if (st.modelName) rightParts.push(st.modelName);
 			if (st.thinkingLevel && st.thinkingLevel !== "off") {

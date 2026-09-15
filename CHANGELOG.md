@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `fusion`/`footer`: **the footer now shows which half of the Fusion pair is working.** While a handoff runs the sidekick is lit with ` · working` and the lead dims; the slot also shows the lead/sidekick tool-call split (`◆ DeepSeek Flash high · 61/185 calls`). `SharedFusionStatus` gains `busy`, `leadToolCalls`, `sidekickToolCalls`; the runtime republishes on every sidekick tool call (`onProgress`) and on handoff start/end (`SidekickRuntime.totalToolCalls()`, `renderFusionStatus()` in `glance-editor.ts`). Motivated by a real session where the lead ran 124 shell commands itself and delegated once — the static `Fusion · Lead ◆ Sidekick` label made that invisible.
+- `fusion`: **delegation nudges are now recurring, matching Devin's harness.** The one-time first-edit reminder is replaced by `EDIT_NUDGE` on every direct `edit`/`write` (at most once per agent turn) plus `bashNudge(n)` after every 4 consecutive non-trivial lead `bash` calls without a handoff (`isTrivialShell()` in `src/nudge.ts` exempts read-only commands such as `git status`, `ls`, `rg`); a `sidekick`/`read_subagent` call resets the streak.
+
 ## [2.17.2] — 2026-09-15
 
 ### Fixed

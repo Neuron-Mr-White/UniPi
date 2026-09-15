@@ -14,6 +14,7 @@ export interface SidekickSpawnConfig {
   systemPrompt: string;
   spawn?: typeof defaultSpawn;
   command?: { command: string; args: string[] };
+  onProgress?: () => void;
 }
 
 export interface SidekickUsage {
@@ -77,6 +78,20 @@ export class SidekickRuntime {
 
   isBusy(): boolean {
     return this.pending !== undefined;
+  }
+
+  totalToolCalls(): number {
+    let total = this.pending?.progress.toolCalls ?? 0;
+    for (const report of this.reports.values()) total += report.toolCalls;
+    return total;
+  }
+
+  private notifyProgress(): void {
+    try {
+      this.cfg.onProgress?.();
+    } catch {
+      // Progress updates must not affect the handoff.
+    }
   }
 
   private send(value: Record<string, unknown>): void {
@@ -170,6 +185,7 @@ export class SidekickRuntime {
     if (this.pending === undefined) return;
     if (message.type === "tool_execution_start") {
       this.pending.progress.toolCalls += 1;
+      this.notifyProgress();
       const args = message.args === undefined ? "" : JSON.stringify(message.args).replace(/\s+/gu, " ");
       const summary = `${String(message.toolName ?? "tool")}(${args})`.slice(0, 40);
       this.pending.progress.recentTools = [...this.pending.progress.recentTools, summary].slice(-6);
@@ -236,6 +252,7 @@ export class SidekickRuntime {
     this.reports.set(report.id, report);
     if (this.latestHandoff?.id === report.id) this.latestHandoff.report = report;
     current.resolve(report);
+    this.notifyProgress();
     this.abortRequested = false;
     this.pendingError = undefined;
   }

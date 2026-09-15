@@ -68,9 +68,25 @@ You have a \`sidekick\` tool: a persistent subagent that works alongside you on 
 - **Promoting a delegated hypothesis to a confirmed conclusion.** When a report ranks candidate causes, the ranking is not a verdict. Present a cause as the root cause only if evidence shows its code path actually executes in the reported scenario; otherwise present it as the leading hypothesis and name the check that would settle it.`;
 }
 
-/** One-time reminder appended to the lead's first direct edit/write while Fusion is active. */
-export const FIRST_EDIT_NUDGE =
-  "<system_guidance>You made a direct edit yourself instead of delegating to the sidekick. That is fine for a trivially small change (one you can make and confirm in 1-2 turns with nothing left to test). For anything larger — multiple files, anything that needs a test run, anything you would want to look over again — write a brief and hand it to `sidekick` instead: you design and review, it implements and verifies. This reminder is shown once.</system_guidance>";
+/**
+ * Recurring reminder appended to a direct edit/write by the lead while Fusion
+ * is active (at most once per agent turn). Mirrors Devin's harness, which
+ * re-issues this guidance on every direct implementation action rather than once.
+ */
+export const EDIT_NUDGE =
+  "<system_guidance>You made a direct edit yourself instead of delegating to the sidekick. This is a reminder that implementation and verification are to be delegated by default. ONLY implement a step yourself if it is trivially small (you can make the edit AND confirm it in 1-2 of your own turns, with nothing left to test afterwards) or correctness-critical (queries against shared data systems, eval/grading text, pipeline or threshold configuration — you author and check those regardless of size). For anything else, write a brief and hand it to `sidekick`: you design and review, it implements and verifies.</system_guidance>";
+
+/** Kept for compatibility with earlier imports; the nudge is no longer one-time. */
+export const FIRST_EDIT_NUDGE = EDIT_NUDGE;
+
+/**
+ * Appended after the lead has run several consecutive non-trivial shell
+ * commands itself without a handoff. Builds, tests, installs, environment
+ * repair and multi-step shell work are the sidekick's job by default.
+ */
+export function bashNudge(count: number): string {
+  return `<system_guidance>You have run ${String(count)} non-trivial shell commands yourself since the last handoff. Builds, test runs, installs, environment setup or repair, and any multi-step shell work are to be delegated to the \`sidekick\` by default; it runs on the same machine and remembers earlier handoffs, so a short brief with the goal, the exact commands or checks you want, and the done-criteria is enough. Keep running commands yourself only when a single read-only command answers a question you need right now, or when the user is waiting on an urgent deliverable.</system_guidance>`;
+}
 
 export function sidekickSystemPrompt(id: FusionIdentity): string {
   return `## Role: Fusion sidekick

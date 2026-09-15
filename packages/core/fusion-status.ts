@@ -18,6 +18,12 @@ export interface SharedFusionStatus {
   sidekickEffort: string;
   /** Estimated savings compared with pricing all sidekick usage at lead rates. */
   savedUsd?: number;
+  /** A handoff is running on the sidekick right now. */
+  busy?: boolean;
+  /** Tool calls made directly by the lead in this session while Fusion was active. */
+  leadToolCalls?: number;
+  /** Tool calls made by the sidekick across all handoffs (completed + in flight). */
+  sidekickToolCalls?: number;
 }
 
 const KEY = Symbol.for("unipi.fusion.status");

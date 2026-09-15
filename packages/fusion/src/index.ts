@@ -37,7 +37,8 @@ import { ModelPicker, type PickerModel, type PickerResult } from "./picker.js";
 import { PresetEditor, type PresetEditorResult } from "./preset-editor.js";
 import { SidekickRuntime } from "./sidekick-runtime.js";
 import { estimateSavings } from "./savings.js";
-import { FIRST_EDIT_NUDGE, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
+import { EDIT_NUDGE, bashNudge, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
+import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
@@ -113,7 +114,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   let active: ActiveSelection | undefined;
   let runtime: SidekickRuntime | undefined;
-  let nudged = false;
+  let lastCtx: ExtensionContext | undefined;
+  let leadToolCalls = 0;
+  let editNudgedThisTurn = false;
+  let bashStreak = 0;
 
   function identity(ctx: ExtensionContext): FusionIdentity {
     const reg = registryOf(ctx);
@@ -136,6 +140,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   }
 
   function publishStatus(ctx: ExtensionContext): void {
+    lastCtx = ctx;
     const reg = registryOf(ctx);
     const names = (k: string) => findModel(reg, k)?.name || splitModelKey(k)?.id || k;
     if (active?.kind === "fusion") {
@@ -147,10 +152,17 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         sidekickName: names(active.sidekick),
         sidekickEffort: active.sidekickEffort ?? "",
         savedUsd: statusSavings(ctx),
+        busy: runtime?.isBusy() ?? false,
+        leadToolCalls,
+        sidekickToolCalls: runtime?.totalToolCalls() ?? 0,
       });
     } else {
       setSharedFusionStatus(undefined);
     }
+  }
+
+  function publishStatusLater(): void {
+    if (lastCtx) publishStatus(lastCtx);
   }
 
   function leadSessionId(ctx: ExtensionContext): string {
@@ -167,6 +179,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         thinking: active.sidekickEffort ?? "medium",
         sessionFile: sidekickSessionPath(leadSessionId(ctx)),
         systemPrompt: sidekickSystemPrompt(identity(ctx)),
+        onProgress: () => publishStatusLater(),
       });
     }
     return runtime;
@@ -175,6 +188,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   function stopRuntime(): void {
     runtime?.kill();
     runtime = undefined;
+    leadToolCalls = 0;
   }
 
   function savingsStats(ctx: ExtensionContext): string {
@@ -193,16 +207,38 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   registerFusionTools(pi, {
     getRuntime,
     onReport: (ctx) => publishStatus(ctx),
+    onHandoffStart: (ctx) => publishStatus(ctx),
   });
   pi.registerCommand("unipi:fusion-stats", {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
     handler: async (_args, ctx) => ctx.ui.notify(savingsStats(ctx), "info"),
   });
   pi.on("before_agent_start", (event, ctx) => active?.kind === "fusion" ? { systemPrompt: `${event.systemPrompt}\n\n${leadPolicy(identity(ctx))}` } : undefined);
+  pi.on("turn_start", () => {
+    editNudgedThisTurn = false;
+  });
   pi.on("tool_result", (event) => {
-    if (active?.kind !== "fusion" || nudged || (event.toolName !== "edit" && event.toolName !== "write")) return;
-    nudged = true;
-    return { content: [...event.content, { type: "text", text: FIRST_EDIT_NUDGE }] };
+    if (active?.kind !== "fusion") return;
+    const toolName: string = event.toolName;
+    if (toolName === "sidekick" || toolName === "read_subagent") {
+      bashStreak = 0;
+      return;
+    }
+    leadToolCalls += 1;
+    publishStatusLater();
+    if (toolName === "edit" || toolName === "write") {
+      if (editNudgedThisTurn) return;
+      editNudgedThisTurn = true;
+      return { content: [...event.content, { type: "text" as const, text: EDIT_NUDGE }] };
+    }
+    if (toolName !== "bash") return;
+    const command = typeof event.input.command === "string" ? event.input.command : "";
+    if (isTrivialShell(command)) return;
+    bashStreak += 1;
+    if (bashStreak < BASH_NUDGE_EVERY) return;
+    const content = [...event.content, { type: "text" as const, text: bashNudge(bashStreak) }];
+    bashStreak = 0;
+    return { content };
   });
 
   async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean }): Promise<void> {
@@ -355,7 +391,8 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_e, ctx) => {
     stopRuntime();
-    nudged = false;
+    editNudgedThisTurn = false;
+    bashStreak = 0;
     modelBykey.clear();
     active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
     if (active?.kind === "fusion" && (!ctx.model || modelKey(ctx.model) !== active.lead)) {
