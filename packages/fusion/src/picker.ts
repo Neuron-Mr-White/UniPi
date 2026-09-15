@@ -5,20 +5,31 @@
  *
  *   / type to search
  *   ──────────────────────────────────────────────────────────────
- *   ❭ Fusion              ← ◼◼◼◼   → High     Lead Opus… ▾  Sidekick GLM… ▾
- *   · GLM-5.3 Flash         ◼◼◼◼◼     Max
+ *   ❭ Fusion              ← ◼◼◼◼◻ → High     Lead Opus… ▾  Sidekick GLM… ▾
+ *   · GLM-5.3 Flash ✓       ◼◼◼◼◼     Max
  *   · Claude Opus 5         ◼◼◼       Medium
  *     ↓ more below
  *
- *   Input      Cached input   Output     Sidekick input  Sidekick cached  Sidekick output
- *   $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M       $0.02 / 1M       $1.2 / 1M
- *   ↑↓ select · tab lead · ←→ effort · ↵ confirm · esc cancel
+ *   Input      Cached input   Output     Sidekick input  Sidekick output
+ *   $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M       $1.2 / 1M
+ *   ↑/↓ select · ←/→ effort · tab lead · Enter confirm · esc cancel
  *
- * Row order: the active selection pinned first, then the Fusion row, then
- * recent (≤5, MRU), then the rest of the preset. Typing filters everything
- * except the pinned row. ←/→ steps the highlighted row's effort (remembered
- * per model). On the Fusion row, Tab cycles effort → lead → sidekick; the
- * lead/sidekick focus opens an inline dropdown fed by the preset lists.
+ * Row order: the active selection pinned first, then the Fusion row (when a
+ * pair is configured), then recent (≤5, MRU), then the preset models, then
+ * EVERY other available model — the catalogue is never hidden, the preset
+ * only controls ordering. Typing filters all rows except the pinned one.
+ *
+ * ←/→ steps the highlighted row's effort. Per-model effort is remembered for
+ * plain model rows; the Fusion row keeps its own lead/sidekick efforts so
+ * adjusting one never rewrites a model's standalone level.
+ *
+ * When a single model is selected, its row lights up with ✓ (plus accent
+ * styling). When Fusion is selected, the selection lives on the Fusion row
+ * only — plain model rows stay unmarked.
+ *
+ * On the Fusion row, Tab cycles effort → lead → sidekick (Shift+Tab
+ * reverses); the lead/sidekick focus opens an inline dropdown fed by the
+ * preset lists.
  */
 
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -29,8 +40,10 @@ import {
   stepEffort,
   type ActiveSelection,
   type EffortLevel,
+  type FusionBadge,
   type ModelKey,
 } from "./preset.js";
+import { blendedPrice, renderSlider, sliderPosition } from "./slider.js";
 
 // ── Data contracts ─────────────────────────────────────────────────────────
 
@@ -38,6 +51,7 @@ export interface PickerModel {
   key: ModelKey;
   name: string;
   provider: string;
+  badge?: FusionBadge | undefined;
   /** $/1M tokens; undefined when the catalogue has no price. */
   cost?: { input: number; cachedInput: number; output: number } | undefined;
   reasoning: boolean;
@@ -50,6 +64,8 @@ export interface PickerState {
   fusionDefault: { lead?: ModelKey | undefined; sidekick?: ModelKey | undefined };
   recent: readonly ModelKey[];
   active: ActiveSelection | undefined;
+  /** The session's current model — its row lights up with ✓. */
+  currentModelKey: ModelKey | undefined;
   effort: Readonly<Record<ModelKey, EffortLevel>>;
   /** Effort used for a model with no remembered level. */
   fallbackEffort: EffortLevel;
@@ -93,7 +109,8 @@ type FusionFocus = "effort" | "lead" | "sidekick";
 
 const DEFAULT_VISIBLE_ROWS = 10;
 const NAME_COL = 24;
-const BAR_SEGMENTS = EFFORT_LEVELS.length - 1; // "off" renders as an empty bar
+const MARKER_COL = 2;
+const BAR_SEGMENTS = 5;
 
 function printable(data: string): string | undefined {
   if (data.length !== 1) return undefined;
@@ -123,8 +140,12 @@ export class ModelPicker {
   private readonly visibleRows: number;
   private readonly modelsByKey: Map<ModelKey, PickerModel>;
   private readonly state: PickerState;
+  private readonly priceRange: { min: number; max: number };
 
   private effort: Record<ModelKey, EffortLevel>;
+  /** Fusion-row efforts — deliberately NOT stored in the per-model map. */
+  private fusionLeadEffort: EffortLevel;
+  private fusionSidekickEffort: EffortLevel;
   private lead: ModelKey | undefined;
   private sidekick: ModelKey | undefined;
   private search = "";
@@ -140,6 +161,8 @@ export class ModelPicker {
     this.onRenderRequest = options.onRenderRequest;
     this.visibleRows = options.visibleRows ?? DEFAULT_VISIBLE_ROWS;
     this.modelsByKey = new Map(options.state.models.map((m) => [m.key, m]));
+    const prices = options.state.models.map((m) => (m.cost ? blendedPrice(m.cost) : undefined)).filter((p): p is number => p !== undefined);
+    this.priceRange = { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 };
     this.effort = { ...options.state.effort };
     const active = options.state.active;
     this.lead =
@@ -150,6 +173,14 @@ export class ModelPicker {
       (active?.kind === "fusion" ? active.sidekick : undefined) ??
       options.state.fusionDefault.sidekick ??
       options.state.fusionSidekicks[0];
+    this.fusionLeadEffort =
+      (active?.kind === "fusion" ? active.leadEffort : undefined) ??
+      (this.lead !== undefined ? this.effort[this.lead] : undefined) ??
+      options.state.fallbackEffort;
+    this.fusionSidekickEffort =
+      (active?.kind === "fusion" ? active.sidekickEffort : undefined) ??
+      (this.sidekick !== undefined ? this.effort[this.sidekick] : undefined) ??
+      options.state.fallbackEffort;
     this.selected = 0; // pinned active row
   }
 
@@ -191,10 +222,8 @@ export class ModelPicker {
       ...this.state.fusionLeads,
       ...this.state.fusionSidekicks,
     ];
-    // Empty preset → whole catalogue so the picker is still usable.
-    if (this.state.fusionLeads.length === 0 && this.state.fusionSidekicks.length === 0) {
-      ordered.push(...this.state.models.map((m) => m.key));
-    }
+    // The whole catalogue always follows; the preset only controls ordering.
+    ordered.push(...this.state.models.map((m) => m.key));
     for (const key of ordered) {
       if (seen.has(key) || !this.modelsByKey.has(key)) continue;
       if (!this.matchesSearch(key)) continue;
@@ -243,7 +272,7 @@ export class ModelPicker {
         this.dropdownIndex = Math.min(Math.max(0, items.length - 1), this.dropdownIndex + 1);
       } else if (matchesKey(data, Key.tab)) {
         this.applyDropdown(items);
-        this.cycleFocus();
+        this.cycleFocus(matchesKey(data, "shift+tab"));
       } else if (matchesKey(data, Key.enter) || data === "\r") {
         this.applyDropdown(items);
         this.focus = "effort";
@@ -264,10 +293,14 @@ export class ModelPicker {
       this.focus = "effort";
     } else if (matchesKey(data, Key.left) || matchesKey(data, Key.right)) {
       const delta: -1 | 1 = matchesKey(data, Key.left) ? -1 : 1;
-      const target = row?.kind === "fusion" ? this.lead : row?.key;
-      if (target !== undefined) this.effort[target] = stepEffort(this.effortFor(target), delta);
+      if (row?.kind === "fusion") {
+        // Fusion-row effort is its own state: never touches per-model memory.
+        if (this.focus === "effort") this.fusionLeadEffort = stepEffort(this.fusionLeadEffort, delta);
+      } else if (row?.key !== undefined) {
+        this.effort[row.key] = stepEffort(this.effortFor(row.key), delta);
+      }
     } else if (matchesKey(data, Key.tab)) {
-      if (row?.kind === "fusion") this.cycleFocus();
+      if (row?.kind === "fusion") this.cycleFocus(matchesKey(data, "shift+tab"));
     } else if (matchesKey(data, Key.enter) || data === "\r") {
       this.confirm(row);
       return;
@@ -283,8 +316,11 @@ export class ModelPicker {
     this.changed();
   }
 
-  private cycleFocus(): void {
-    this.focus = this.focus === "effort" ? "lead" : this.focus === "lead" ? "sidekick" : "effort";
+  private cycleFocus(reverse = false): void {
+    const order: FusionFocus[] = ["effort", "lead", "sidekick"];
+    const dir = reverse ? -1 : 1;
+    const next = order[(order.indexOf(this.focus) + dir + order.length) % order.length] ?? "effort";
+    this.focus = next;
     if (this.focus !== "effort") {
       const items = this.dropdownItems();
       const current = this.focus === "lead" ? this.lead : this.sidekick;
@@ -308,8 +344,8 @@ export class ModelPicker {
         type: "fusion",
         lead: this.lead,
         sidekick: this.sidekick,
-        leadEffort: this.effortFor(this.lead),
-        sidekickEffort: this.effortFor(this.sidekick),
+        leadEffort: this.fusionLeadEffort,
+        sidekickEffort: this.fusionSidekickEffort,
         effortMap: { ...this.effort },
       });
       return;
@@ -337,10 +373,23 @@ export class ModelPicker {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
+  /**
+   * Marker for the working model. Only a SINGLE active selection gets a ✓ —
+   * when Fusion is selected, the selection lives on the Fusion row itself and
+   * plain model rows stay unmarked.
+   */
+  private markerFor(key: ModelKey | undefined): string {
+    if (key === undefined) return " ";
+    const active = this.state.active;
+    if (active?.kind === "single" && key === active.model) return this.theme.fg("success", "✓");
+    return " ";
+  }
+
   private bar(level: EffortLevel, highlighted: boolean): string {
-    const filled = Math.max(0, EFFORT_LEVELS.indexOf(level));
-    const on = this.theme.fg(highlighted ? "accent" : "muted", "◼".repeat(filled));
-    const off = this.theme.fg("dim", "◻".repeat(BAR_SEGMENTS - filled));
+    const index = Math.max(0, EFFORT_LEVELS.indexOf(level));
+    const filled = Math.ceil((index / (EFFORT_LEVELS.length - 1)) * BAR_SEGMENTS);
+    const on = this.theme.fg(highlighted ? "text" : "muted", "▰".repeat(filled));
+    const off = this.theme.fg("dim", "▱".repeat(BAR_SEGMENTS - filled));
     return `${on}${off}`;
   }
 
@@ -353,16 +402,37 @@ export class ModelPicker {
   private renderRow(row: Row, highlighted: boolean, width: number): string {
     const t = this.theme;
     const pointer = highlighted ? t.fg("accent", "❭") : t.fg("dim", "·");
+    // The Fusion composite gets the check when it is the active selection —
+    // same affordance a single active model gets on its own row.
+    const marker =
+      row.kind === "fusion"
+        ? this.state.active?.kind === "fusion"
+          ? t.fg("success", "✓")
+          : " "
+        : this.markerFor(row.key);
+    const working = row.kind === "model" && row.key === this.state.currentModelKey;
     const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, NAME_COL - 1);
-    const name = highlighted ? t.fg("accent", t.bold(nameRaw)) : t.fg("text", nameRaw);
-    const effortKey = row.kind === "fusion" ? this.lead : row.key;
-    const level = this.effortFor(effortKey);
+    const name =
+      row.kind === "fusion"
+        ? highlighted
+          ? t.fg("accent", t.bold(nameRaw))
+          : t.fg("text", nameRaw)
+        : working
+          ? t.fg("accent", t.bold(nameRaw))
+          : highlighted
+            ? t.fg("accent", nameRaw)
+            : t.fg("text", nameRaw);
+    const model = row.kind === "model" ? this.modelsByKey.get(row.key) : undefined;
+    const badge = model?.badge;
+    const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
+
+    const level = row.kind === "fusion" ? this.fusionLeadEffort : this.effortFor(row.key);
     const arrowsOn = highlighted && this.focus === "effort";
     const left = arrowsOn ? t.fg("accent", "←") : " ";
     const right = arrowsOn ? t.fg("accent", "→") : " ";
     const label = highlighted ? t.fg("accent", effortLabel(level)) : t.fg("muted", effortLabel(level));
 
-    let line = `${pointer} ${pad(name, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
+    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
       const leadName = this.nameOf(this.lead, 14);
@@ -376,9 +446,6 @@ export class ModelPicker {
         ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}`
         : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}`;
       line += `   ${leadText}   ${sideText}`;
-    } else {
-      const m = this.modelsByKey.get(row.key);
-      if (m !== undefined) line += `   ${t.fg("dim", `[${m.provider}]`)}`;
     }
     return truncateToWidth(line, Math.max(1, width - 1));
   }
@@ -386,7 +453,7 @@ export class ModelPicker {
   private renderDropdown(width: number): string[] {
     const t = this.theme;
     const items = this.dropdownItems();
-    const indent = " ".repeat(NAME_COL + 4);
+    const indent = " ".repeat(MARKER_COL + NAME_COL + 5);
     if (items.length === 0) {
       return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — run /unipi:fusion-preset`)}`];
     }
@@ -397,10 +464,10 @@ export class ModelPicker {
       const idx = start + i;
       const isCur = idx === this.dropdownIndex;
       const isSet = key === (this.focus === "lead" ? this.lead : this.sidekick);
-      const marker = isCur ? t.fg("accent", "▸") : " ";
+      const glyph = isCur ? t.fg("accent", "▸") : " ";
       const label = isCur ? t.fg("accent", t.bold(this.nameOf(key, 28))) : t.fg("text", this.nameOf(key, 28));
       const star = isSet ? t.fg("dim", " *") : "";
-      return truncateToWidth(`${indent}${marker} ${label}${star}`, Math.max(1, width - 1));
+      return truncateToWidth(`${indent}${glyph} ${label}${star}`, Math.max(1, width - 1));
     });
   }
 
@@ -421,10 +488,10 @@ export class ModelPicker {
     if (row.kind === "fusion") {
       if (side?.cost) {
         cols.push(["Sidekick input", money(side.cost.input)]);
-        cols.push(["Sidekick cached", money(side.cost.cachedInput)]);
+        cols.push(["Sidekick cached input", money(side.cost.cachedInput)]);
         cols.push(["Sidekick output", money(side.cost.output)]);
       } else {
-        cols.push(["Sidekick input", "—"], ["Sidekick cached", "—"], ["Sidekick output", "—"]);
+        cols.push(["Sidekick input", "—"], ["Sidekick cached input", "—"], ["Sidekick output", "—"]);
       }
     }
     const colWidth = Math.max(10, Math.min(18, Math.floor((width - 4) / cols.length)));
@@ -434,9 +501,13 @@ export class ModelPicker {
       row.kind === "fusion"
         ? t.fg("dim", "Pairs frontier intelligence with cost-efficient execution")
         : primary?.reasoning
-          ? t.fg("dim", "Reasoning model · ←→ adjusts thinking effort")
+          ? t.fg("dim", "Reasoning model · ←/→ adjusts thinking effort")
           : t.fg("dim", "Non-reasoning model · effort is ignored by the provider");
-    return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${desc}`, width - 1)];
+    const badges = this.state.models.some((m) => m.badge !== undefined)
+      ? `${t.fg("success", "✱")} ${t.fg("dim", "New")}  ${t.fg("accent", "✱")} ${t.fg("dim", "Promotion")}  ${t.fg("warning", "✱")} ${t.fg("dim", "Beta")} ${t.fg("dim", "·")}`
+      : "";
+    const description = `${badges}${badges.length > 0 ? " " : ""}${desc}`;
+    return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${description}`, width - 1)];
   }
 
   private hintLine(row: Row | undefined): string {
@@ -483,10 +554,16 @@ export class ModelPicker {
           lines.push(...this.renderDropdown(width));
         }
       }
-      if (end < rows.length) lines.push(t.fg("dim", "  ↓ more below"));
+      if (end < rows.length) lines.push(t.fg("dim", `  ↓ more below (${String(rows.length - end)})`));
     }
 
     lines.push("");
+    const sliderCells = Math.min(48, Math.max(1, width - 6));
+    const sliderKey = row?.kind === "fusion" ? this.lead : row?.key;
+    const sliderModel = sliderKey === undefined ? undefined : this.modelsByKey.get(sliderKey);
+    const sliderPrice = sliderModel?.cost === undefined ? undefined : blendedPrice(sliderModel.cost);
+    const marker = sliderPrice === undefined ? undefined : sliderPosition(sliderPrice, this.priceRange.min, this.priceRange.max, sliderCells);
+    lines.push(truncateToWidth(`  ${renderSlider(sliderCells, marker)}`, width - 1));
     lines.push(...this.renderPricePanel(row, width));
     lines.push("");
     lines.push(this.hintLine(row));

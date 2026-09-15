@@ -22,6 +22,7 @@ test("parsePreset drops junk and keeps qualified keys", () => {
     default: { lead: "a/b", sidekick: 7 },
     effort: { "a/b": "high", "c/d": "bogus" },
     recent: ["x/1", "x/2", "x/3", "x/4", "x/5", "x/6"],
+    badges: { "a/b": "new", "c/d": "invalid", "e/f": "beta" },
     active: { kind: "fusion", lead: "a/b", sidekick: "c/d" },
   });
   assert.deepEqual(p.lead, ["a/b"]);
@@ -29,6 +30,7 @@ test("parsePreset drops junk and keeps qualified keys", () => {
   assert.deepEqual(p.default, { lead: "a/b" });
   assert.deepEqual(p.effort, { "a/b": "high" });
   assert.equal(p.recent?.length, 5);
+  assert.deepEqual(p.badges, { "a/b": "new", "e/f": "beta" });
   assert.deepEqual(p.active, { kind: "fusion", lead: "a/b", sidekick: "c/d" });
 });
 
@@ -69,7 +71,8 @@ test("saveCuration + saveRuntimeState round-trip without clobbering each other",
 test("effort helpers", () => {
   assert.equal(stepEffort("off", -1), "off");
   assert.equal(stepEffort("off", 1), "minimal");
-  assert.equal(stepEffort("xhigh", 1), "xhigh");
+  assert.equal(stepEffort("xhigh", 1), "max");
+  assert.equal(effortLabel("max"), "Max");
   assert.equal(stepEffort("medium", 1), "high");
   assert.equal(effortLabel("off"), "None");
   assert.equal(effortLabel("xhigh"), "XHigh");

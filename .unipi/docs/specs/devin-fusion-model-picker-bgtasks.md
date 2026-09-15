@@ -1,6 +1,12 @@
 # Spec: Devin-style model picker, Local Fusion (lead + sidekick), bg-tasks enchant
 
-Status: APPROVED by user (2026-09-15 grilling session). Source material:
+Status: APPROVED by user (2026-09-15 grilling session). §1–3 IMPLEMENTED 2026-09-15 on
+`fix/model-picker-v2` (packages/fusion: picker restyle + slider, sidekick runtime, `sidekick` /
+`read_subagent` tools, lead policy, nudge, savings). Deviations from §3: tool is named
+`read_subagent({agent_id?, block?, timeout?})` (Devin's name/shape) not `sidekick_read`; blocking
+`sidekick` returns early with status `interrupted` when `ctx.hasPendingMessages()` so the lead can act
+on a user message mid-handoff (pi delivers steer messages only after the tool returns).
+Source material:
 - Screenshots: /home/oi/Pictures/unipi-vs-devin/*.png
 - Blog: https://cognition.com/blog/devin-fusion
 - Devin CLI binary strings (chisel-agent/src/local_fusion/sidekick_tool.rs) — extracted to /tmp/devin-strings.txt

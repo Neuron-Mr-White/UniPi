@@ -35,6 +35,12 @@ export interface GlanceStatus {
 	modelName: string;
 	/** Current thinking level (already "off"-filtered by the provider). */
 	thinkingLevel: string | null;
+	/**
+	 * Active Fusion pair, when selected. When set, the model slot renders
+	 * `Fusion · <lead> <effort> ◆ <sidekick>` — lead lit, sidekick muted —
+	 * and the plain thinking slot is suppressed (efforts are inline).
+	 */
+	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number } | null;
 }
 
 const BORDER = {
@@ -47,6 +53,9 @@ const BORDER = {
 } as const;
 
 const SEP = " \u2502 "; // │
+const RESET = "\x1b[0m";
+const LEAD_FG = "\x1b[1m\x1b[38;2;181;189;104m"; // bold accent (matches success tint)
+const DIM_FG = "\x1b[38;2;120;124;134m"; // muted grey
 
 /**
  * Every invisible sequence pi-tui embeds in editor lines: CSI SGR, OSC 133
@@ -216,9 +225,19 @@ export class GlanceEditor extends CustomEditor {
 		const pctLabel = ctxPct !== null ? `${Math.round(ctxPct)}%` : "?%";
 		const winLabel = st.contextWindow > 0 ? `/${fmtTokens(st.contextWindow)}` : "";
 		rightParts.push(`${pctLabel}${winLabel}`);
-		if (st.modelName) rightParts.push(st.modelName);
-		if (st.thinkingLevel && st.thinkingLevel !== "off") {
-			rightParts.push(`thinking:${st.thinkingLevel}`);
+		if (st.fusion) {
+			// The working lead is lit; the sidekick stays muted. Efforts are
+			// inline so the separate thinking slot is dropped.
+			const lead = `${st.fusion.leadName}${st.fusion.leadEffort ? ` ${st.fusion.leadEffort}` : ""}`;
+			const side = `${st.fusion.sidekickName}${st.fusion.sidekickEffort ? ` ${st.fusion.sidekickEffort}` : ""}`;
+			rightParts.push(
+				`${LEAD_FG}Fusion · ${lead}${RESET} ${DIM_FG}◆ ${side}${st.fusion.savedUsd !== undefined && st.fusion.savedUsd > 0.005 ? ` · saved $${st.fusion.savedUsd.toFixed(2)}` : ""}${RESET}`,
+			);
+		} else {
+			if (st.modelName) rightParts.push(st.modelName);
+			if (st.thinkingLevel && st.thinkingLevel !== "off") {
+				rightParts.push(`thinking:${st.thinkingLevel}`);
+			}
 		}
 		// Workspace label per icon style (glyph prefix, or workspace: in text mode).
 		let cluster = rightParts.join(SEP);

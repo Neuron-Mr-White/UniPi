@@ -148,9 +148,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:bg-tasks":    "background-tasks",
   "unipi:bg-settings": "background-tasks",
 
-  // fusion (2 commands)
+  // fusion (3 commands)
   "unipi:model":         "fusion",
   "unipi:fusion-preset": "fusion",
+  "unipi:fusion-stats":  "fusion",
 
   // info (2 commands)
   "unipi:info":          "info",
@@ -317,6 +318,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:bg-settings": "Open background-tasks settings (master toggle, defaults)",
   "unipi:model":         "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
   "unipi:fusion-preset": "Curate the model preset used by /unipi:model",
+  "unipi:fusion-stats":  "Estimated Fusion savings (sidekick tokens priced at lead rates)",
   "unipi:subagents-fleet":  "Open the subagents fleet view",
   "unipi:subagents-doctor": "Diagnose subagents configuration",
   "unipi:subagents-guide":  "Show the subagents usage guide",
