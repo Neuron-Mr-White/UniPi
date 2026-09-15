@@ -12,7 +12,6 @@
 import { statSync, type WriteStream } from "node:fs";
 import { join } from "node:path";
 import type { BackgroundTaskChildProcess } from "./child-process.js";
-import type { FusionResultDetails, FusionUsage, FusionWorkflowId } from "./fusion/types.js";
 
 export const TASK_STATUS_VALUES = ["running", "completed", "failed", "killed"] as const;
 export const TERMINAL_TASK_STATUS_VALUES = ["completed", "failed", "killed"] as const;
@@ -69,20 +68,9 @@ export interface BgTaskSnapshot {
   toolUsage?: TaskToolUsage | undefined;
   model?: string | undefined;
   telemetryUnavailableReason?: string | undefined;
-  attestationPath?: string | undefined;
   delegate?: DelegateTaskFacts | undefined;
-  fusion?: FusionTaskFacts | undefined;
-}
-
-export interface AttestedPiTaskFiles {
-  eventsPath: string;
-  stderrPath: string;
-  wrapperPath: string;
-  attestationPath: string;
-}
-
-export interface AttestedPiTaskSnapshot extends BgTaskSnapshot {
-  attestedPi?: AttestedPiTaskFiles | undefined;
+  /** Last few non-empty output lines (bounded), for compact chat cards. */
+  outputTail?: string[] | undefined;
 }
 
 /** Delegate-specific task facts surfaced through snapshots and `bg_result`. */
@@ -114,25 +102,6 @@ export interface DelegateTaskOutcome {
 export type DelegateBudgetRouteSource = import("./delegate/types.js").DelegateBudgetRouteSource;
 export type DelegateExtensionMode = import("./delegate/types.js").DelegateExtensionMode;
 
-/** Fusion-specific task facts surfaced through snapshots and `bg_result`. */
-export interface FusionTaskFacts {
-  runId: string;
-  workflow: FusionWorkflowId;
-  artifactDir: string;
-  artifactDirAbs: string;
-  state: string;
-  outcome?: FusionTaskOutcome | undefined;
-  /** Durable once-only accounting claim made by the first successful bg_result retrieval. */
-  usageDelivered: boolean;
-}
-
-export interface FusionTaskOutcome {
-  status: "committed" | "failed" | "cancelled";
-  resultDetails?: FusionResultDetails | undefined;
-  usage?: FusionUsage | undefined;
-  error?: string | undefined;
-}
-
 export interface BgTask extends Omit<BgTaskSnapshot, "name"> {
   name: string;
   outputAbsPath: string;
@@ -160,14 +129,8 @@ export interface BgTask extends Omit<BgTaskSnapshot, "name"> {
   /** Partial trailing stdout line held between chunks while reconstructing wrapped-agent control lines. */
   agentStdoutBuffer?: string | undefined;
   telemetryUnavailableReason?: string | undefined;
-  attestationPath?: string | undefined;
-  attestedPi?: AttestedPiTaskFiles | undefined;
   delegate?: DelegateTaskFacts | undefined;
-  fusion?: FusionTaskFacts | undefined;
-  /** Cancellation hook for an in-process managed task such as Fusion. */
-  managedCancel?: (() => void) | undefined;
-  managedCancelRequested?: boolean | undefined;
-  managedStopWaitMs?: number | undefined;
+  outputTail?: string[] | undefined;
   metadataWriteChain?: Promise<void> | undefined;
   waiters: Array<() => void>;
 }
@@ -264,23 +227,6 @@ export interface StartTaskOptions {
   terminalPublicationGate?: Promise<void> | undefined;
 }
 
-/** Prepared managed launch handed to the registry after preflight has succeeded. */
-export interface StartManagedTaskOptions {
-  id: string;
-  name: string;
-  command: string;
-  description?: string | undefined;
-  isAgent: boolean;
-  completion: Promise<void>;
-  cancel: () => void;
-  notifyOnCompletion: boolean;
-  triggerOnCompletion: boolean;
-  fusion: FusionTaskFacts;
-  stopWaitMs?: number | undefined;
-  /** Prevent terminal publication until the launch receipt handoff is observable. */
-  terminalPublicationGate?: Promise<void> | undefined;
-}
-
 export interface StartDelegateTaskOptions {
   name: string;
   argv: readonly string[];
@@ -290,17 +236,6 @@ export interface StartDelegateTaskOptions {
   facts: DelegateTaskFacts;
   notifyOnCompletion: boolean;
   triggerOnCompletion: boolean;
-  timeoutSeconds?: number | undefined;
-}
-
-export interface StartAttestedPiTaskOptions {
-  name: string;
-  provider: string;
-  model: string;
-  prompt: string;
-  reportPath: string;
-  extraPiArgs?: string[] | undefined;
-  thinking?: string | undefined;
   timeoutSeconds?: number | undefined;
 }
 
@@ -830,10 +765,22 @@ export function snapshot(task: BgTask): BgTaskSnapshot {
     toolUsage: task.toolUsage,
     model: task.model,
     telemetryUnavailableReason: task.telemetryUnavailableReason,
-    attestationPath: task.attestationPath,
     delegate: task.delegate,
-    fusion: task.fusion,
+    outputTail: task.outputTail === undefined ? undefined : [...task.outputTail],
   };
+}
+
+export const OUTPUT_TAIL_LINES = 3;
+const OUTPUT_TAIL_LINE_CHARS = 200;
+
+/** Fold a raw output chunk into the task's bounded tail ring (non-empty lines only). */
+export function appendOutputTail(task: { outputTail?: string[] | undefined }, chunk: string): void {
+  if (chunk.length === 0) return;
+  const lines = chunk.split(/\r?\n/u).map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/gu, "").trimEnd()).filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return;
+  const tail = task.outputTail ?? [];
+  for (const line of lines) tail.push(line.length > OUTPUT_TAIL_LINE_CHARS ? `${line.slice(0, OUTPUT_TAIL_LINE_CHARS)}…` : line);
+  task.outputTail = tail.slice(-OUTPUT_TAIL_LINES);
 }
 
 export async function boundedRead(

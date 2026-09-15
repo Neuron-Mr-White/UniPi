@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { packageAssetSearchHint, resolvePackageAsset } from '../package-assets.js';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -184,15 +185,20 @@ export function resolveDelegateChildExtensionPath(
   moduleUrl = import.meta.url,
   pathExists: (path: string) => boolean = existsSync,
 ): string {
-  const modulePath = fileURLToPath(moduleUrl);
-  const extension = modulePath.endsWith('.ts') ? 'delegate-child.ts' : 'delegate-child.js';
-  const candidate = resolve(dirname(modulePath), '../../extensions', extension);
-  if (!pathExists(candidate)) {
-    throw new DelegateError(`delegate child extension is missing: ${candidate}`, {
-      code: 'delegate_isolation_unsupported',
-      childCreated: false,
-      remediation: ['Reinstall the package; the child guard extension is required to spawn.'],
-    });
+  // Prefer the TypeScript guard (pi loads extensions through jiti); fall back
+  // to a compiled copy when one exists.
+  const candidate =
+    resolvePackageAsset('extensions/delegate-child.ts', { moduleUrl, pathExists }) ??
+    resolvePackageAsset('extensions/delegate-child.js', { moduleUrl, pathExists });
+  if (candidate === undefined) {
+    throw new DelegateError(
+      `delegate child extension is missing: ${packageAssetSearchHint('extensions/delegate-child.ts')}`,
+      {
+        code: 'delegate_isolation_unsupported',
+        childCreated: false,
+        remediation: ['Reinstall the package; the child guard extension is required to spawn.'],
+      },
+    );
   }
   return candidate;
 }
@@ -201,7 +207,7 @@ export function resolveDelegateChildExtensionPath(
  * Tools the inspect capability permits.
  *
  * v1 is read-only by construction: no shell, no network, no edit/write, no
- * recursive delegation, no Fusion. The list is passed to `--tools`, so it is
+ * recursive delegation. The list is passed to `--tools`, so it is
  * enforced by the child's tool registry rather than by prompt text.
  */
 export const DELEGATE_INSPECT_TOOLS: readonly string[] = [
@@ -223,12 +229,6 @@ export const DELEGATE_FORBIDDEN_TOOLS: readonly string[] = [
   'bg_kill',
   'bg_status',
   'bg_logs',
-  'bg_run_pi_attested',
-  'fusion_brainstorm',
-  'fusion_reason',
-  'fusion_investigate',
-  'fusion_research',
-  'fusion_validate',
 ];
 
 export function delegateToolsFor(capability: DelegateCapability): readonly string[] {
@@ -256,7 +256,6 @@ export interface DelegateChildArgvInput {
   childSessionId: string;
   childSessionDir: string;
   childExtensionPath: string;
-  attributionExtensionPath?: string | undefined;
   systemPrompt: string;
 }
 
@@ -282,19 +281,7 @@ export function buildDelegateChildArgv(input: DelegateChildArgvInput): string[] 
       );
     }
   }
-  const extensionPaths =
-    input.route.provider === 'anthropic'
-      ? [
-          input.attributionExtensionPath ??
-            (() => {
-              throw new DelegateError(
-                'Anthropic delegate launch requires the package attribution extension',
-                { code: 'delegate_isolation_unsupported', childCreated: false },
-              );
-            })(),
-          input.childExtensionPath,
-        ]
-      : [input.childExtensionPath];
+  const extensionPaths = [input.childExtensionPath];
 
   return [
     '--mode',

@@ -6,9 +6,7 @@
  */
 
 import { Text } from "@earendil-works/pi-tui";
-import { getInstalledPackageVersion } from "@pi-unipi/core";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { renderCompletionCard, renderLaunchCard } from "./cards.js";
 import { Type, type Static } from "typebox";
 import {
   COMMAND_PREVIEW_CHARS,
@@ -27,7 +25,6 @@ import {
   type BgRunDetails,
   type BgStatusDetails,
   type BgTaskSnapshot,
-  type StartAttestedPiTaskOptions,
   type StartTaskOptions,
 } from "./types.js";
 import type { BackgroundTaskRegistry } from "./registry.js";
@@ -88,31 +85,12 @@ export const BgKillParams = Type.Object({
   taskId: Type.String({ description: "Task ID or unambiguous prefix of a running task" }),
 });
 
-export const BgPiAttestedParams = Type.Object({
-  name: Type.String({ description: "Short human-readable task name" }),
-  provider: Type.String({ description: "Pi provider id (e.g. anthropic)" }),
-  model: Type.String({ description: "Model id under the provider" }),
-  prompt: Type.String({ description: "Final user prompt for the child Pi run" }),
-  reportPath: Type.String({
-    description: "Relative path (inside cwd) where the child must write its report before exit",
-  }),
-  extraPiArgs: Type.Optional(
-    Type.Array(Type.String(), { description: "Extra literal pi CLI args (restricted)" }),
-  ),
-  thinking: Type.Optional(Type.String({ description: "Thinking level passed as --thinking" })),
-  timeoutSeconds: Type.Optional(Type.Number({ description: "Kill after this many seconds" })),
-});
-
 // ── Registration ────────────────────────────────────────────────────────────
 
 export interface RegisterSurfaceOptions {
   pi: import("@earendil-works/pi-coding-agent").ExtensionAPI;
   registry: BackgroundTaskRegistry;
   startTask: (ctx: any, command: string, options?: StartTaskOptions) => Promise<any>;
-  startAttestedPiTask: (
-    ctx: any,
-    options: StartAttestedPiTaskOptions,
-  ) => Promise<any>;
   openTaskManager: (ctx: any, initialTaskId?: string) => Promise<void>;
   clearFinishedNotices: (ctx: any) => number;
   openSettings: (ctx: any) => Promise<void>;
@@ -134,25 +112,6 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
   const { pi, registry } = options;
 
   // ── Commands (/unipi:* namespace — ours) ──────────────────────────────────
-
-  // Update info lives with OUR updater module; this only reports versions.
-  pi.registerCommand("unipi:bg-update", {
-    description: "Show the installed background-tasks version and how to update",
-    handler: (_args, ctx) => {
-      const here = dirname(fileURLToPath(import.meta.url));
-      const current = getInstalledPackageVersion(here, "@pi-unipi/background-tasks");
-      const lines = [
-        `@pi-unipi/background-tasks ${current} is installed.`,
-        "Background tasks ship inside the @pi-unipi/unipi umbrella package.",
-        "Update from npm:",
-        "  pi install npm:@pi-unipi/unipi@latest",
-        "Or use /unipi:updater-settings to check for updates.",
-        "This command only prints update instructions; it does not install or self-update.",
-      ];
-      ctx.ui.notify(lines.join("\n"), "info");
-      return Promise.resolve();
-    },
-  });
 
   pi.registerCommand("unipi:bg", {
     description:
@@ -180,99 +139,11 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
     },
   });
 
-  pi.registerCommand("unipi:tasks", {
-    description: "Open the background task manager UI",
-    handler: async (args, ctx) => {
-      const taskId = typeof args === "string" ? args.trim() : "";
-      await options.openTaskManager(ctx, taskId || undefined);
-    },
-  });
-
   pi.registerCommand("unipi:bg-tasks", {
     description: "Open the background task manager UI",
     handler: async (args, ctx) => {
       const taskId = typeof args === "string" ? args.trim() : "";
       await options.openTaskManager(ctx, taskId || undefined);
-    },
-  });
-
-  pi.registerCommand("unipi:bg-clear", {
-    description: "Clear finished background task footer notices",
-    handler: (_args, ctx) => {
-      options.clearFinishedNotices(ctx);
-      return Promise.resolve();
-    },
-  });
-
-  pi.registerCommand("unipi:jobs", {
-    description: "List running and recent background tasks",
-    handler: (_args, ctx) => {
-      ctx.ui.notify(
-        formatSnapshotList(registry.allTasks().map((task) => registry.snapshot(task))),
-        "info",
-      );
-      return Promise.resolve();
-    },
-  });
-
-  pi.registerCommand("unipi:logs", {
-    description: "Show bounded output from a background task: /unipi:logs <id> [maxBytes]",
-    getArgumentCompletions: (prefix: string) => {
-      const matches = registry
-        .allTasks()
-        .filter((task) => task.id.startsWith(prefix.trim()))
-        .slice(0, 20)
-        .map((task) => ({
-          value: task.id,
-          label: `${task.id} ${taskDisplayName(task)}`,
-          description: `${task.status} — ${truncateChars(task.command, 60)}`,
-        }));
-      return matches.length > 0 ? matches : null;
-    },
-    handler: async (args, ctx) => {
-      try {
-        const [id, bytes] = args.trim().split(/\s+/, 2);
-        const task = registry.resolveTask(id ?? "");
-        const maxBytes = normalizeMaxBytes(Number(bytes), DEFAULT_LOG_BYTES);
-        const logs = await registry.getTaskLogs(task, maxBytes, true);
-        ctx.ui.notify(logs.text, "info");
-      } catch (error) {
-        ctx.ui.notify(
-          `Background logs error: ${error instanceof Error ? error.message : String(error)}`,
-          "error",
-        );
-      }
-    },
-  });
-
-  pi.registerCommand("unipi:kill", {
-    description: "Stop a running background task: /unipi:kill <id>",
-    getArgumentCompletions: (prefix: string) => {
-      const matches = registry
-        .allTasks()
-        .filter((task) => task.status === "running" && task.id.startsWith(prefix.trim()))
-        .slice(0, 20)
-        .map((task) => ({
-          value: task.id,
-          label: `${task.id} ${taskDisplayName(task)}`,
-          description: truncateChars(task.command, 70),
-        }));
-      return matches.length > 0 ? matches : null;
-    },
-    handler: async (args, ctx) => {
-      try {
-        const task = registry.resolveTask(args.trim());
-        await registry.stopTask(task, "user");
-        ctx.ui.notify(
-          `Killed ${taskDisplayName(task)} (${task.id}). Output: ${task.outputPath}`,
-          "info",
-        );
-      } catch (error) {
-        ctx.ui.notify(
-          `Background kill error: ${error instanceof Error ? error.message : String(error)}`,
-          "error",
-        );
-      }
     },
   });
 
@@ -301,21 +172,8 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
 
   pi.registerMessageRenderer<BgTaskSnapshot>(
     "background-task-notification",
-    (message: { details?: BgTaskSnapshot }, _options: unknown, theme: any) => {
-      const task = message.details;
-      const status = task?.status ?? "completed";
-      const color: string =
-        status === "completed" ? "success" : status === "failed" ? "error" : status === "killed" ? "warning" : "accent";
-      const id = task?.id ?? "background task";
-      const name = task ? taskDisplayName(task) : "Background task";
-      const output = task?.outputPath ? `\n${theme.fg("dim", `Output: ${task.outputPath}`)}` : "";
-      const error = task?.error ? `\n${theme.fg("error", task.error)}` : "";
-      return new Text(
-        `${theme.fg(color, `[bg ${status}]`)} ${theme.fg("accent", name)} ${theme.fg("dim", `(${id})`)}${output}${error}`,
-        0,
-        0,
-      );
-    },
+    (message: { details?: BgTaskSnapshot }, _options: unknown, theme: any) =>
+      renderCompletionCard(theme, message.details),
   );
 
   // ── Tools (reference names kept) ─────────────────────────────────────────
@@ -371,12 +229,7 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
       );
     },
     renderResult(result: { details: BgRunDetails }, _options: unknown, theme: any) {
-      const { task } = result.details;
-      return new Text(
-        `${theme.fg("success", "✓ started")} ${theme.fg("accent", taskDisplayName(task))} ${theme.fg("dim", `(${task.id})`)}\n${theme.fg("dim", `Output: ${task.outputPath}`)}`,
-        0,
-        0,
-      );
+      return renderLaunchCard(theme, result.details.task);
     },
   });
 
@@ -486,44 +339,6 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
       const { task } = result.details;
       return new Text(
         `${theme.fg("warning", "■ killed")} ${theme.fg("accent", taskDisplayName(task))} ${theme.fg("dim", `(${task.id})`)}\n${theme.fg("dim", `Output: ${task.outputPath}`)}`,
-        0,
-        0,
-      );
-    },
-  });
-
-  pi.registerTool<typeof BgPiAttestedParams, BgRunDetails>({
-    name: "bg_run_pi_attested",
-    label: "Attested Pi Run",
-    description:
-      "Opt-in evidence-oriented direct Pi spawn. Launches exactly one `pi --mode json` child, records raw events/stderr, hashes prompt/report/output, observes OAuth through ModelRegistry, and emits a strict attestation sidecar only after successful completion.",
-    promptSnippet: "Start an attested direct Pi agent task and return its task ID plus output path",
-    promptGuidelines: [
-      "Use only when the user explicitly asks for an attested Pi evidence-producing task; ordinary background work should use bg_run unchanged.",
-      "Provide provider/model as structured fields and a relative reportPath that the child Pi prompt will write before exit.",
-      "Do not provide channel, auth, route, or hash claims; the producer observes those facts itself and fails loudly if it cannot attest them.",
-    ],
-    parameters: BgPiAttestedParams,
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const task = await options.startAttestedPiTask(ctx, params);
-      return {
-        content: textContent(
-          `Started attested Pi task ${taskDisplayName(task)} (${task.id})\nStatus: ${task.status}\nPID: ${String(task.pid ?? "unknown")}\nOutput: ${task.outputPath}\nAttestation: ${task.attestationPath ?? "pending until completion"}`,
-        ),
-        details: { task: registry.snapshot(task) },
-      };
-    },
-    renderCall(args: Static<typeof BgPiAttestedParams>, theme: any) {
-      return new Text(
-        `${theme.fg("toolTitle", theme.bold("bg_run_pi_attested "))}${theme.fg("muted", truncateChars(args.name, COMMAND_PREVIEW_CHARS))}`,
-        0,
-        0,
-      );
-    },
-    renderResult(result: { details: BgRunDetails }, _options: unknown, theme: any) {
-      const { task } = result.details;
-      return new Text(
-        `${theme.fg("success", "✓ started")} ${theme.fg("accent", taskDisplayName(task))} ${theme.fg("dim", `(${task.id})`)}\n${theme.fg("dim", `Output: ${task.outputPath}`)}\n${theme.fg("dim", `Attestation: ${task.attestationPath ?? "pending"}`)}`,
         0,
         0,
       );

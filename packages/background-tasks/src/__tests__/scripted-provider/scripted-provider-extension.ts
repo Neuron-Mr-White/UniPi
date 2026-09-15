@@ -30,8 +30,7 @@ type Scenario =
   | 'wake-false'
   | 'failed-follow-up'
   | 'display-only-bg'
-  | 'json-tool-telemetry'
-  | 'fusion-reason';
+  | 'json-tool-telemetry';
 type ScriptedStopReason = 'stop' | 'length' | 'toolUse';
 
 type JsonObject = Record<PropertyKey, unknown>;
@@ -54,8 +53,7 @@ function parseScenario(value: string | undefined): Scenario {
     value === 'wake-false' ||
     value === 'failed-follow-up' ||
     value === 'display-only-bg' ||
-    value === 'json-tool-telemetry' ||
-    value === 'fusion-reason'
+    value === 'json-tool-telemetry'
   )
     return value;
   return 'bg-run-follow-up';
@@ -156,36 +154,6 @@ function responseFor(
   contract: EventDrivenContractCheck,
   context: Context,
 ): ScriptedAssistantMessage {
-  if (scenario === 'fusion-reason') {
-    if (callCount === 1) {
-      return assistant(
-        [toolCall('fusion_reason', { prompt: 'scripted fusion prompt' }, 'call-fusion-reason')],
-        'toolUse',
-      );
-    }
-    if (callCount === 2) {
-      return assistant(
-        [text('Fusion launched; waiting for its terminal notification without polling.')],
-        'stop',
-      );
-    }
-    if (callCount === 3) {
-      const transcript = context.messages.map(messageText).join('\n');
-      const match =
-        /<task-id>((?:reason|investigate|research|validate)-[0-9a-f]{32})<\/task-id>/u.exec(
-          transcript,
-        );
-      if (match?.[1] === undefined) {
-        return assistant([text('Fusion terminal notification did not contain a task id.')], 'stop');
-      }
-      return assistant(
-        [toolCall('bg_result', { taskId: match[1], delivery: 'inline' }, 'call-fusion-result')],
-        'toolUse',
-      );
-    }
-    return assistant([text('Parent observed verified Fusion result from bg_result.')], 'stop');
-  }
-
   if (scenario === 'json-tool-telemetry') {
     if (callCount === 1) {
       return assistant(

@@ -130,8 +130,18 @@ export class AgentWidget {
     if (this.timer) return;
     this.timer = setInterval(() => {
       this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER.length;
-      if (this.lastContentKey) this.triggerRender();
+      if (!this.lastContentKey) return;
+      // triggerRender() deliberately skips requestRender when only the
+      // spinner changed (content key excludes it), which froze the spinner
+      // between real updates. Content diffing still happens there; here we
+      // just keep the animation alive while anything is running.
+      this.triggerRender();
+      if (this.hasRunningAgents()) this.tui?.requestRender?.();
     }, 80);
+  }
+
+  private hasRunningAgents(): boolean {
+    return this.manager.listAgents().some((a) => a.status === "running" || a.status === "queued");
   }
 
   /** Record an agent as finished (call when agent completes). */

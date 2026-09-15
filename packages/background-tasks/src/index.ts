@@ -10,6 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createSpinnerLine } from "@pi-unipi/core";
 import { loadBackgroundTasksConfig } from "./config.js";
 import { BackgroundTaskRegistry } from "./registry.js";
 import {
@@ -17,15 +18,31 @@ import {
   type BackgroundTaskExtensionService,
 } from "./extension-api.js";
 import { registerToolsAndCommands } from "./tools.js";
-import { registerFusionExtension } from "./fusion-extension.js";
 import { registerDelegateExtension } from "./delegate-extension.js";
 import { setSharedTaskRegistry, clearSharedTaskRegistry } from "./registry-shared.js";
-import { taskDisplayName, type BgTask, type StartAttestedPiTaskOptions, type StartTaskOptions } from "./types.js";
+import { formatDuration, taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
 
 const STATUS_INTERVAL_MS = 1000;
 
 // Direct synchronous access for sibling extensions (footer process one-liner).
 export { getSharedTaskRegistry } from "./registry-shared.js";
+
+/** Live line above the editor: the agent is idle but a task will wake it. */
+function pendingWakeText(registry: BackgroundTaskRegistry, isIdle: () => boolean): string | undefined {
+  if (!isIdle()) return undefined;
+  const pendingWake = registry
+    .allTasks()
+    .filter((task) => task.status === "running" && task.triggerOnCompletion);
+  if (pendingWake.length === 0) return undefined;
+  const now = Date.now();
+  const first = pendingWake[0];
+  const detail =
+    first === undefined
+      ? ""
+      : ` · ${taskDisplayName(first)} ${formatDuration(now - first.startTime)}${pendingWake.length > 1 ? ` +${String(pendingWake.length - 1)} more` : ""}`;
+  const count = pendingWake.length === 1 ? "1 bg task" : `${String(pendingWake.length)} bg tasks`;
+  return `waiting on ${count}${detail} — agent resumes automatically when done`;
+}
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const { config, warnings } = loadBackgroundTasksConfig(process.cwd());
@@ -41,6 +58,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const seenTaskIds = new Set<string>();
   let currentCtx: ExtensionContext | undefined;
   let dockOpen = false;
+  let wakeLineInstalled = false;
   let statusInterval: NodeJS.Timeout | undefined;
 
   const registry = new BackgroundTaskRegistry({
@@ -92,7 +110,34 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       const unseenDone = allTasks.filter((task) => task.status === "completed" && !seenTaskIds.has(task.id));
       const unseenFinishedCount = unseenFailed.length + unseenStopped.length + unseenDone.length;
 
-      target.ui.setWidget("background-tasks", undefined);
+      // Pending-wake indicator. When the agent is idle but a bg task that will
+      // wake it is still running, the UI otherwise looks finished and users
+      // assume the turn is over. Install a self-animating spinner line above
+      // the editor ONCE while any such task exists (the widget owns its 80 ms
+      // frame timer and re-reads the registry on every frame, so this 1 s
+      // poll only decides whether the widget exists — never its animation).
+      const isIdle = () => {
+        try {
+          return target.isIdle();
+        } catch {
+          return true;
+        }
+      };
+      const wantWakeLine = pendingWakeText(registry, isIdle) !== undefined;
+      if (wantWakeLine && !wakeLineInstalled) {
+        target.ui.setWidget(
+          "background-tasks",
+          createSpinnerLine({
+            text: () => pendingWakeText(registry, isIdle),
+            colorSpinner: (g: string) => `\x1b[38;5;82m${g}\x1b[0m`,
+          }),
+          { placement: "aboveEditor" },
+        );
+        wakeLineInstalled = true;
+      } else if (!wantWakeLine && wakeLineInstalled) {
+        target.ui.setWidget("background-tasks", undefined);
+        wakeLineInstalled = false;
+      }
       if (running.length === 0 && unseenFinishedCount === 0) {
         target.ui.setStatus("background-tasks", undefined);
         return;
@@ -103,7 +148,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       if (unseenFailed.length > 0) parts.push(`${String(unseenFailed.length)} failed`);
       if (unseenStopped.length > 0) parts.push(`${String(unseenStopped.length)} stopped`);
       if (unseenDone.length > 0) parts.push(`${String(unseenDone.length)} done`);
-      const entryHint = dockOpen ? "focused" : `Shift↓${unseenFinishedCount > 0 ? " · /unipi:bg-clear" : ""}`;
+      const entryHint = dockOpen ? "focused" : `Shift↓${unseenFinishedCount > 0 ? " · Ctrl+Alt+C clear" : ""}`;
       const label = ` bg ${[...parts, entryHint].join(" · ")} `;
       target.ui.setStatus("background-tasks", label);
     } catch (error) {
@@ -119,19 +164,11 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     return registry.startTask(ctx, command, opts);
   }
 
-  async function startAttestedPiTask(
-    ctx: ExtensionContext,
-    opts: StartAttestedPiTaskOptions,
-  ): Promise<BgTask> {
-    currentCtx = ctx;
-    return registry.startAttestedPiTask(ctx, opts);
-  }
-
   async function openTaskManager(ctx: ExtensionContext, initialTaskId?: string): Promise<void> {
     currentCtx = ctx;
     if (!ctx.hasUI) {
       ctx.ui.notify(
-        "Background task manager requires an interactive UI. Use /unipi:jobs, /unipi:logs, or the bg_status/bg_logs tools in non-interactive mode.",
+        "Background task manager requires an interactive UI. Use the bg_status/bg_logs tools in non-interactive mode.",
         "error",
       );
       return;
@@ -156,7 +193,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
               return result;
             },
             rerunTask: async (task) => {
-              if (task.fusion !== undefined || task.delegate !== undefined) {
+              if (task.delegate !== undefined) {
                 throw new Error(
                   "Only shell-command tasks can be rerun from the dock; relaunch this typed workflow through its owning tool.",
                 );
@@ -232,19 +269,9 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     pi,
     registry,
     startTask,
-    startAttestedPiTask,
     openTaskManager,
     clearFinishedNotices,
     openSettings,
-  });
-
-  registerFusionExtension(pi, {
-    startManagedTask: async (ctx, options) => {
-      currentCtx = ctx;
-      return registry.startManagedTask(ctx, options);
-    },
-    snapshot: (task) => registry.snapshot(task),
-    updateManagedTask: (task, state, line) => registry.updateManagedTask(task, state, line),
   });
 
   registerDelegateExtension(pi, {
@@ -254,11 +281,11 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     },
     snapshot: (task) => registry.snapshot(task),
     resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),
-    claimFusionUsage: (task) => registry.claimFusionUsage(task),
   });
 
   pi.on("session_start", async (_event, ctx) => {
     registry.setShuttingDown(false);
+    wakeLineInstalled = false; // pi clears extension widgets on reload/new session
     setSharedTaskRegistry(registry);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(ctx);
@@ -271,6 +298,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     registry.setShuttingDown(true);
+    wakeLineInstalled = false;
     clearSharedTaskRegistry();
     currentCtx = undefined;
     if (statusInterval) {

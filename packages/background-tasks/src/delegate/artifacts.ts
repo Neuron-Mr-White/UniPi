@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../json-utils.js';
 import { sanitizePathSegment } from '../types.js';
 import { replaceFileDurable, writeFileDurable } from '../durable-fs.js';
 import {

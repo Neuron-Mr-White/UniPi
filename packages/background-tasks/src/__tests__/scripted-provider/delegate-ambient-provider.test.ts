@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { prepareDelegateLaunch } from '../../delegate/runner.js';
 import { loadDelegateHookContractEvidence } from '../../delegate/launch.js';
 import type { DelegateExtensionMode } from '../../delegate/types.js';
-import { sessionWith, userMessage } from '../helpers/fusion-canonical.js';
+import { sessionWith, userMessage } from '../helpers/session-canonical.js';
 import { isolatedTestEnv } from '../helpers/normalize.js';
 
 /**

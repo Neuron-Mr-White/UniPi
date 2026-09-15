@@ -34,13 +34,6 @@ export interface BackgroundTasksConfig {
     maxToolCalls: number;
     timeoutSeconds: number;
   };
-  /** Fusion defaults. */
-  fusion: {
-    /** Five-slot model selections ('' = $current). */
-    candidates: [string, string, string];
-    evaluator: string;
-    merger: string;
-  };
 }
 
 export const DEFAULT_CONFIG: BackgroundTasksConfig = {
@@ -56,11 +49,6 @@ export const DEFAULT_CONFIG: BackgroundTasksConfig = {
     maxTurns: 40,
     maxToolCalls: 120,
     timeoutSeconds: 900,
-  },
-  fusion: {
-    candidates: ["", "", ""],
-    evaluator: "",
-    merger: "",
   },
 };
 
@@ -181,28 +169,6 @@ export function validateBackgroundTasksConfig(config: unknown): string[] {
       }
     }
   }
-  if (c.fusion !== undefined) {
-    if (typeof c.fusion !== "object" || c.fusion === null) {
-      problems.push("fusion must be an object");
-    } else {
-      const f = c.fusion as Record<string, unknown>;
-      for (const key of ["candidates", "evaluator", "merger"] as const) {
-        const value = f[key];
-        if (value === undefined) continue;
-        if (key === "candidates") {
-          if (
-            !Array.isArray(value) ||
-            value.length !== 3 ||
-            value.some((v) => typeof v !== "string")
-          ) {
-            problems.push("fusion.candidates must be an array of exactly 3 strings");
-          }
-        } else if (typeof value !== "string") {
-          problems.push(`fusion.${key} must be a string`);
-        }
-      }
-    }
-  }
   return problems;
 }
 
@@ -271,14 +237,6 @@ export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksCon
         merged.delegate?.autoDeliver === "never" || merged.delegate?.autoDeliver === "always"
           ? merged.delegate.autoDeliver
           : "when_small",
-    },
-    fusion: {
-      candidates:
-        Array.isArray(merged.fusion?.candidates) && merged.fusion.candidates.length === 3
-          ? ([...merged.fusion.candidates] as [string, string, string])
-          : DEFAULT_CONFIG.fusion.candidates,
-      evaluator: typeof merged.fusion?.evaluator === "string" ? merged.fusion.evaluator : "",
-      merger: typeof merged.fusion?.merger === "string" ? merged.fusion.merger : "",
     },
   };
   return { config, warnings };

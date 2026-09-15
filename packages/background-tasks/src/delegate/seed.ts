@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../json-utils.js';
 import {
   UnsupportedConversationBlockError,
   projectVisibleConversationV2,

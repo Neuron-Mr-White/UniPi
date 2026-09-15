@@ -16,7 +16,7 @@ import {
   sessionWith,
   toolResultMessage,
   userMessage,
-} from './helpers/fusion-canonical.js';
+} from './helpers/session-canonical.js';
 import { buildDeterministicFixtureSeed } from './helpers/delegate-deterministic-seed.js';
 
 const ROUTE: DelegatePinnedRoute = {
