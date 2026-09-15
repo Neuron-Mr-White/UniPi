@@ -37,6 +37,7 @@ export const PACKAGE_ORDER: string[] = [
   "image",
   "subagents",
   "background-tasks",
+  "fusion",
 ];
 
 // ─── Package Colors ──────────────────────────────────────────────────
@@ -62,6 +63,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   image:     `${ESC}[35m`, // Magenta
   subagents: `${ESC}[34m`, // Blue
   "background-tasks": `${ESC}[91m`, // Bright Red
+  fusion:    `${ESC}[96m`, // Bright Cyan
 };
 
 // ─── Command Registry ────────────────────────────────────────────────
@@ -145,6 +147,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:bg":          "background-tasks",
   "unipi:bg-tasks":    "background-tasks",
   "unipi:bg-settings": "background-tasks",
+
+  // fusion (2 commands)
+  "unipi:model":         "fusion",
+  "unipi:fusion-preset": "fusion",
 
   // info (2 commands)
   "unipi:info":          "info",
@@ -309,6 +315,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:bg":          "Start a shell command as a tracked background task",
   "unipi:bg-tasks":    "Open the background task manager UI",
   "unipi:bg-settings": "Open background-tasks settings (master toggle, defaults)",
+  "unipi:model":         "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
+  "unipi:fusion-preset": "Curate the model preset used by /unipi:model",
   "unipi:subagents-fleet":  "Open the subagents fleet view",
   "unipi:subagents-doctor": "Diagnose subagents configuration",
   "unipi:subagents-guide":  "Show the subagents usage guide",
@@ -337,4 +345,5 @@ export const PACKAGE_LABELS: Record<string, string> = {
   image:     "image",
   subagents: "subagents",
   "background-tasks": "background-tasks",
+  fusion:    "fusion",
 };

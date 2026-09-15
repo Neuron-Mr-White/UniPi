@@ -31,6 +31,7 @@ import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import image from "@pi-unipi/image";
+import fusion from "@pi-unipi/fusion";
 import trajectory, { createUnipiTracer } from "@pi-unipi/trajectory";
 
 export default function (pi: ExtensionAPI) {
@@ -62,5 +63,6 @@ export default function (pi: ExtensionAPI) {
   load("updater", updater);
   load("input-shortcuts", inputShortcuts);
   load("image", image);
+  load("fusion", fusion);
   trajectory(pi, { traceRecorder: tracer.recorder });
 }

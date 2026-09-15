@@ -1,0 +1,53 @@
+{
+  "name": "@pi-unipi/fusion",
+  "version": "2.16.1",
+  "description": "Devin-style model picker, fusion presets (lead + sidekick), and Local Fusion runtime for UniPi",
+  "type": "module",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/fusion"
+  },
+  "homepage": "https://github.com/Neuron-Mr-White/unipi#readme",
+  "bugs": {
+    "url": "https://github.com/Neuron-Mr-White/unipi/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "fusion",
+    "model-picker",
+    "sidekick"
+  ],
+  "files": [
+    "src/**/*.ts",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "2.16.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@earendil-works/pi-tui": "^0.84.0"
+  },
+  "scripts": {
+    "test": "npx tsx --test tests/**/*.test.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
+}
