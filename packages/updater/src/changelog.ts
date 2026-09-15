@@ -47,11 +47,14 @@ const SECTION_HEADER_RE = /^### (.+)$/;
  */
 export function parseChangelog(filePath: string): ChangelogEntry[] {
   if (!existsSync(filePath)) return [];
+  return parseChangelogContent(readFileSync(filePath, "utf-8"));
+}
 
-  const content = readFileSync(filePath, "utf-8").trim();
-  if (!content) return [];
+export function parseChangelogContent(content: string): ChangelogEntry[] {
+  const trimmed = content.trim();
+  if (!trimmed) return [];
 
-  const lines = content.split("\n");
+  const lines = trimmed.split("\n");
   const entries: ChangelogEntry[] = [];
 
   let currentEntry: ChangelogEntry | null = null;
@@ -143,7 +146,7 @@ export function getNewerVersions(
   const result: ChangelogEntry[] = [];
   for (const entry of entries) {
     if (entry.version === "Unreleased") {
-      result.push(entry);
+      if (Object.keys(entry.sections).length > 0) result.push(entry);
       continue;
     }
     // Compare rather than test for equality. Stopping only on an exact match

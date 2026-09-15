@@ -153,13 +153,10 @@ export default function footerExtension(pi: ExtensionAPI): void {
     // Glance-style input surface (pi-glance-inspired). Preserves all default
     // editor behavior via CustomEditor subclassing; only paint differs.
     //
-    // FOCUS-SAFETY DEFERRAL: setEditorComponent() internally calls
-    // ui.setFocus(newEditor). info-screen (loaded before us) opens its boot
-    // dashboard during ITS session_start handler, so our session_start runs
-    // while that overlay owns keyboard focus. Swapping now would steal focus
-    // and strand the dashboard unclosable (q/Esc would type into the editor).
-    // The boot overlay auto-closes after ~2s; we install after a grace period
-    // longer than any sane bootTimeoutMs.
+    // FOCUS-SAFETY DEFERRAL: the timer remains a grace period for the boot
+    // dashboard, but installGlanceEditor also restores any overlay focus after
+    // setEditorComponent() calls ui.setFocus(newEditor). This covers the
+    // updater prompt too, so q/Esc cannot be stranded in the editor.
     state.glanceInstallTimer = setTimeout(() => installGlanceEditor(state, ctx), 3500);
 
     // Sync TPS cursor with persisted assistant messages so streaming-hook
@@ -420,6 +417,15 @@ function installGlanceEditor(
 ): void {
   if (st.glanceInstalled || !st.piContext || !st.glanceMode) return;
   try {
+    const tui = st.tuiRef as (import("@earendil-works/pi-tui").TUI & {
+      isOverlayFocused?: () => boolean;
+      getFocusedComponent?: () => import("@earendil-works/pi-tui").Component | null;
+    }) | null | undefined;
+    const overlayFocused = tui !== undefined && tui !== null
+      && (typeof tui.isOverlayFocused === "function" ? tui.isOverlayFocused() : tui.hasOverlay());
+    const overlayOwner = overlayFocused && typeof tui?.getFocusedComponent === "function"
+      ? tui.getFocusedComponent() ?? null
+      : null;
     const piCtx = st.piContext as Record<string, unknown> | undefined;
     const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
     const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
@@ -445,6 +451,7 @@ function installGlanceEditor(
         };
       }),
     );
+    if (overlayOwner && tui) tui.setFocus(overlayOwner);
     st.glanceInstalled = true;
   } catch {
     st.glanceInstalled = false;

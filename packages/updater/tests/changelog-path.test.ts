@@ -53,8 +53,7 @@ test("reports versions newer than the installed one", () => {
   const newer = getNewerVersions(entries, "0.0.1");
   assert.ok(newer.length > 0, "everything is newer than 0.0.1");
 
-  // `Unreleased` is deliberately always carried through; only *versioned*
-  // entries are filtered against the installed version.
+  // Empty `Unreleased` entries are omitted; only non-empty notes are carried through.
   const none = getNewerVersions(entries, "999.0.0").filter(
     (e) => e.version !== "Unreleased",
   );

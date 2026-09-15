@@ -40,7 +40,7 @@ interface UpdateState {
 /**
  * Render the update available overlay.
  */
-export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
+export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewerVersions?: ChangelogEntry[]) {
   return (
     tui: import("@earendil-works/pi-tui").TUI,
     theme: Theme,
@@ -49,14 +49,16 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
   ) => {
     const config = loadConfig();
 
-    // Load changelog for newer versions
-    let newerVersions: ChangelogEntry[] = [];
-    const changelogPath = resolveChangelogPath();
-    try {
-      const entries = parseChangelog(changelogPath);
-      newerVersions = getNewerVersions(entries, checkResult.currentVersion);
-    } catch (_err) {
-      // No changelog
+    // Load changelog for newer versions unless the caller already fetched it.
+    let newerVersions: ChangelogEntry[] = providedNewerVersions ?? [];
+    if (providedNewerVersions === undefined) {
+      const changelogPath = resolveChangelogPath();
+      try {
+        const entries = parseChangelog(changelogPath);
+        newerVersions = getNewerVersions(entries, checkResult.currentVersion);
+      } catch (_err) {
+        // No changelog
+      }
     }
 
     // Build content lines from changelog using markdown renderer
@@ -74,7 +76,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult) {
       contentLines.push("");
     }
     if (contentLines.length === 0) {
-      contentLines.push(`  ${theme.fg("muted", "No changelog available for this update.")}`);
+      contentLines.push(`  ${theme.fg("muted", `No changelog available for ${checkResult.latestVersion} (offline?).`)}`);
     }
 
     const state: UpdateState = {

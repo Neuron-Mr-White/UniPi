@@ -23,6 +23,7 @@ import { loadConfig } from "./settings.js";
 import { checkForUpdates } from "./checker.js";
 import { isVersionSkipped } from "./cache.js";
 import { renderUpdateOverlay } from "./tui/update-overlay.js";
+import { loadUpdateChangelog } from "./remote-changelog.js";
 
 /** Package version */
 const VERSION = getPackageVersion(new URL("..", import.meta.url).pathname);
@@ -142,8 +143,9 @@ export default function updaterExtension(pi: ExtensionAPI): void {
 
       // Show update overlay if UI is available
       if (ctx.hasUI) {
+        const entries = await loadUpdateChangelog(result.currentVersion, result.latestVersion);
         const updateResult = await ctx.ui.custom(
-          renderUpdateOverlay(result),
+          renderUpdateOverlay(result, entries),
           {
             overlay: true,
             overlayOptions: {
