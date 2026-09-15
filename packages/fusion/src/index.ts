@@ -41,7 +41,6 @@ import { registerFusionTools } from "./tools.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
-export const STATS_COMMAND = `${UNIPI_PREFIX}fusion-stats`;
 
 export function sidekickSessionPath(leadSessionId?: string): string {
   return join(homedir(), ".unipi", "state", "fusion", "sidekick", `${leadSessionId ?? "default"}.jsonl`);
@@ -189,7 +188,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     getRuntime,
     onReport: (ctx) => publishStatus(ctx),
   });
-  pi.registerCommand(STATS_COMMAND, {
+  pi.registerCommand("unipi:fusion-stats", {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
     handler: async (_args, ctx) => ctx.ui.notify(savingsStats(ctx), "info"),
   });
