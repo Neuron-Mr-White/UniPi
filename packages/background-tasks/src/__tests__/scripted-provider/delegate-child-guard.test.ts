@@ -16,7 +16,7 @@ import { isolatedTestEnv } from '../helpers/normalize.js';
 import { buildDelegateSeed } from '../../delegate/seed.js';
 import { verifyDelegateResultPackage } from '../../delegate/result-package.js';
 import { DelegateError, type DelegateLimits, type DelegatePinnedRoute } from '../../delegate/types.js';
-import { sessionWith, userMessage } from '../helpers/fusion-canonical.js';
+import { sessionWith, userMessage } from '../helpers/session-canonical.js';
 
 /**
  * Delegate child-guard behaviour proven inside a real Pi agent loop.

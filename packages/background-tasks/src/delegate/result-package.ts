@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../json-utils.js';
 import {
   DELEGATE_RECEIPT_SCHEMA_VERSION,
   DELEGATE_RESULT_PACKAGE_SCHEMA_VERSION,

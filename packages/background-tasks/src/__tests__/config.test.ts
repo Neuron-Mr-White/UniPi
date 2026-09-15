@@ -88,12 +88,10 @@ test("validation rejects bad values with visible messages", () => {
     enabled: "yes",
     maxOutputBytes: 10,
     delegate: { extensionMode: "wild" },
-    fusion: { candidates: ["a"] },
   });
   assert.ok(problems.some((p) => p.includes("enabled")));
   assert.ok(problems.some((p) => p.includes("maxOutputBytes")));
   assert.ok(problems.some((p) => p.includes("extensionMode")));
-  assert.ok(problems.some((p) => p.includes("candidates")));
 });
 
 test("validation accepts a full valid config", () => {
@@ -105,7 +103,6 @@ test("validation accepts a full valid config", () => {
     maxFinishedTasks: 5,
     maxOutputBytes: 1024 * 1024,
     delegate: { extensionMode: "ambient", autoDeliver: "always", maxTurns: 10, maxToolCalls: 20, timeoutSeconds: 60 },
-    fusion: { candidates: ["m1", "m2", "m3"], evaluator: "e", merger: "g" },
   });
   assert.deepEqual(problems, []);
 });

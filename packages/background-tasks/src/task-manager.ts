@@ -653,7 +653,10 @@ export class BackgroundTasksManager implements Component {
         const runtime = taskAge(task);
         const size = formatSize(task.bytesWritten);
         const context = formatContextUsage(task);
-        const contextText = ` ${contextColor(this.theme, task, `ctx ${context}`)}`;
+        const contextText =
+          task.isAgent || task.contextUsage !== undefined
+            ? ` ${contextColor(this.theme, task, `ctx ${context}`)}`
+            : '';
         const model = formatModel(task);
         const modelText = model ? ` ${this.theme.fg('dim', model)}` : '';
         const tokenUsage = formatTokenUsage(task);
@@ -664,7 +667,15 @@ export class BackgroundTasksManager implements Component {
         const activityText = activity ? ` ${this.theme.fg('warning', activity)}` : '';
         const exit =
           task.status !== 'running' ? this.theme.fg('dim', formatExitCodeText(task.exitCode)) : '';
-        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size}`)}${contextText}${modelText}${tokenText}${toolText}${activityText}`;
+        const wake =
+          task.status === 'running' && task.triggerOnCompletion
+            ? ` ${this.theme.fg('accent', '⏰ wakes agent')}`
+            : '';
+        const lastLine =
+          task.status === 'running' && !task.isAgent && task.outputTail && task.outputTail.length > 0
+            ? ` ${this.theme.fg('dim', `› ${truncateChars(task.outputTail[task.outputTail.length - 1] ?? '', 40)}`)}`
+            : '';
+        let row = ` ${pointer} ${unreadMark} ${name} ${this.theme.fg('dim', task.id)} ${this.theme.fg('dim', '·')} ${status}${exit} ${this.theme.fg('dim', `${runtime} ${size}`)}${wake}${contextText}${modelText}${tokenText}${toolText}${activityText}${lastLine}`;
         if (selected) row = lightBlue(padAnsi(truncateToWidth(row, width - 4), width - 4));
         body.push(row);
       }

@@ -26,7 +26,7 @@ import {
   DELEGATE_REQUIRED_HOOK_GUARANTEES,
   type DelegateHookContractEvidence,
 } from '../delegate/hook-contract.js';
-import { sessionWith, userMessage } from './helpers/fusion-canonical.js';
+import { sessionWith, userMessage } from './helpers/session-canonical.js';
 
 const roots: string[] = [];
 
@@ -137,7 +137,6 @@ void describe('delegate child isolation', () => {
     childSessionId: 'delegate-child-1',
     childSessionDir: '/tmp/task/child-session',
     childExtensionPath: '/pkg/extensions/delegate-child.ts',
-    attributionExtensionPath: '/pkg/extensions/anthropic-attribution.ts',
     systemPrompt: 'child system prompt',
   });
 
@@ -163,12 +162,12 @@ void describe('delegate child isolation', () => {
     for (const forbidden of DELEGATE_FORBIDDEN_TOOLS) {
       assert.ok(excluded.includes(forbidden), `${forbidden} must be denied`);
     }
-    for (const forbidden of ['bash', 'edit', 'write', 'bg_delegate', 'fusion_brainstorm']) {
+    for (const forbidden of ['bash', 'edit', 'write', 'bg_delegate']) {
       assert.ok(!DELEGATE_INSPECT_TOOLS.includes(forbidden));
     }
   });
 
-  void it('disables ambient discovery and loads attribution before the package guard', () => {
+  void it('disables ambient discovery and loads the package guard', () => {
     for (const flag of [
       '--no-extensions',
       '--no-skills',
@@ -181,13 +180,10 @@ void describe('delegate child isolation', () => {
     const extensionPaths = argv.flatMap((entry, index) =>
       entry === '--extension' ? [argv[index + 1] ?? ''] : [],
     );
-    assert.deepEqual(extensionPaths, [
-      '/pkg/extensions/anthropic-attribution.ts',
-      '/pkg/extensions/delegate-child.ts',
-    ]);
+    assert.deepEqual(extensionPaths, ['/pkg/extensions/delegate-child.ts']);
   });
 
-  void it('keeps non-Anthropic argv at one explicit guard and requires attribution for Anthropic', () => {
+  void it('keeps argv at one explicit guard for every provider', () => {
     const common = {
       capability: 'inspect' as const,
       extensionMode: 'isolated' as const,
@@ -213,21 +209,22 @@ void describe('delegate child isolation', () => {
       ),
       ['/pkg/extensions/delegate-child.ts'],
     );
-    assert.throws(
-      () =>
-        buildDelegateChildArgv({
-          ...common,
-          route: {
-            provider: 'anthropic',
-            model: 'claude-test',
-            qualified_id: 'anthropic/claude-test',
-            context_window_tokens: 200_000,
-            thinking_level: 'medium',
-            origin: 'explicit',
-          },
-        }),
-      (error: unknown) =>
-        error instanceof DelegateError && error.code === 'delegate_isolation_unsupported',
+    const anthropicArgv = buildDelegateChildArgv({
+      ...common,
+      route: {
+        provider: 'anthropic',
+        model: 'claude-test',
+        qualified_id: 'anthropic/claude-test',
+        context_window_tokens: 200_000,
+        thinking_level: 'medium',
+        origin: 'explicit',
+      },
+    });
+    assert.deepEqual(
+      anthropicArgv.flatMap((entry, index) =>
+        entry === '--extension' ? [anthropicArgv[index + 1] ?? ''] : [],
+      ),
+      ['/pkg/extensions/delegate-child.ts'],
     );
   });
 
@@ -246,8 +243,7 @@ void describe('delegate child isolation', () => {
       childSessionId: 'delegate-ambient',
       childSessionDir: '/tmp/task/ambient-session',
       childExtensionPath: '/pkg/extensions/delegate-child.ts',
-      attributionExtensionPath: '/pkg/extensions/anthropic-attribution.ts',
-      systemPrompt: 'child system prompt',
+        systemPrompt: 'child system prompt',
     });
     assert.ok(!ambient.includes('--no-extensions'));
     for (const flag of [
@@ -265,7 +261,7 @@ void describe('delegate child isolation', () => {
       ambient.flatMap((entry, index) =>
         entry === '--extension' ? [ambient[index + 1] ?? ''] : [],
       ),
-      ['/pkg/extensions/anthropic-attribution.ts', '/pkg/extensions/delegate-child.ts'],
+      ['/pkg/extensions/delegate-child.ts'],
     );
     assert.equal(ambient[ambient.indexOf('--provider') + 1], 'anthropic');
     assert.equal(ambient[ambient.indexOf('--model') + 1], 'claude-test');

@@ -36,6 +36,7 @@
     "packages/*/package.json",
     "packages/*/*.ts",
     "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.json",
     "packages/*/extensions/**/*.ts",
     "packages/*/bridge/**/*.py",
     "packages/*/platforms/*",

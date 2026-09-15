@@ -1,10 +1,11 @@
 # @pi-unipi/background-tasks
 
-Background tasks for UniPi — a full adoption of
-[pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks) into the
-unipi conventions: durable background shell jobs, read-only delegated agents,
-attested Pi runs, fixed-purpose multi-model Fusion workflows, and package-owned
-Anthropic subscription attribution.
+Background tasks for UniPi — durable background shell jobs plus one read-only
+delegated background agent, with a footer dock the user can manage while the
+agent keeps working. Originally adopted from
+[pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks);
+the Fusion council, attested Pi runs, and Anthropic attribution surfaces were
+removed in 2.17.0 so the module does exactly one thing.
 
 ## Master toggle
 
@@ -19,37 +20,37 @@ One config key disables the entire module — no tools, no commands, no hooks, n
 ```
 
 Open `/unipi:bg-settings` for the interactive settings overlay (master toggle,
-defaults, output caps, delegate/fusion defaults).
+defaults, output caps, delegate defaults).
 
 ## Surfaces
 
-### Tools (reference names kept)
+### Tools
 
 | Tool | Purpose |
 | --- | --- |
 | `bg_run` | Start a named long-running shell command; terminal notification wakes a follow-up turn by default |
 | `bg_status` / `bg_logs` / `bg_kill` | Point-in-time inspection, bounded log reads, stop — never polling primitives |
 | `bg_delegate` + `bg_result` | One read-only child Pi agent seeded with a frozen projection of this conversation; hash-verified answer retrieval |
-| `bg_run_pi_attested` | Evidence-oriented direct Pi spawn with local hashes and route attestation |
-| `fusion_reason` | 3 candidates → blind evaluator → merger on the session projection |
-| `fusion_investigate` / `fusion_research` / `fusion_validate` | Fixed-purpose multi-model workflows on clean-task input (inspect tools / caller-URL research / advisory review) |
 
-### Commands (our namespace)
+### Commands
 
-`/unipi:bg`, `/unipi:bg-clear`, `/unipi:bg-tasks`, `/unipi:bg-update`,
-`/unipi:tasks`, `/unipi:jobs`, `/unipi:kill`, `/unipi:logs`,
-`/unipi:bg-settings`, `/unipi:fusion`, `/unipi:fusion-models`,
-`/unipi:claude-cache`.
+`/unipi:bg` (start a shell task), `/unipi:bg-tasks` (open the dock),
+`/unipi:bg-settings`.
 
 Shortcuts: `Shift↓` opens the task manager dock; `Ctrl+Alt+C` clears finished notices.
+
+## What the user sees
+
+- **Launch card** — `bg_run` results render as a tinted card (`● bg started <name> · wakes agent on completion`) so the start of a task is visible in the transcript.
+- **Pending-wake line** — while the agent is idle but a task that will wake it is still running, a spinner line sits above the editor: `⠋ waiting on 1 bg task · <name> 12s — agent resumes automatically when done`. Without this the UI looks finished and users assume the turn is over.
+- **Completion card** — the terminal notification renders as a tinted card (`✓ bg done <name> · exit 0 · 25s · agent woken`) with the last three output lines. Failed / stopped tasks use the error tint.
+- **Dock** (`Shift↓`) — rows show `⏰ wakes agent` for tasks that will resume the agent, and the last output line for running shell tasks.
 
 ## Storage layout (ours — never `.pi/`)
 
 - Runtime artifacts (task output/metadata): `$TMPDIR/unipi-bg-tasks/<session>-<pid>-<nonce>/`
 - Durable delegate artifacts: `<workspace>/.unipi/delegate/<session>-<pid>/<task-id>/`
-- Durable fusion artifacts: `<workspace>/.unipi/fusion/<session>-<pid>/<run-id>/`
 - Config: `~/.unipi/config/background-tasks.json` + workspace override
-- Fusion model config: five-slot selector persisted through `/unipi:fusion-models`
 
 ## Environment
 
@@ -66,13 +67,6 @@ Shortcuts: `Shift↓` opens the task manager dock; `Ctrl+Alt+C` clears finished 
 | false | — | Manual monitoring |
 
 Treat `<background-task-notification>` as durable terminal truth — do not poll.
-
-## Attribution
-
-`extensions/anthropic-attribution.ts` loads first (provider-gated): Claude Code
-subscription OAuth attribution, exact-match system-prompt sanitization, and
-cache-retention policy for Anthropic routes. Duplicate installed copies resolve
-ownership through an EventBus claim; later copies go inert.
 
 ## Shared registry (for sibling extensions)
 
@@ -94,10 +88,10 @@ treat that as "no data", e.g. the footer's glance process line does.
 
 - Commands live in the `/unipi:*` namespace; env prefix is `UNIPI_BG_*`.
 - Runtime artifacts under the OS temp root (per-registry nonce) and durable
-  delegate/fusion artifacts under workspace `.unipi/` — never `.pi/`.
+  delegate artifacts under workspace `.unipi/` — never `.pi/`.
 - The reference's `update-check` footer surface is dropped (unipi's updater
   module owns updates).
-- `agent_settled` / `before_provider_headers` hooks register defensively on our
-  pi SDK with an `agent_end` settlement fallback.
+- Removed: attested Pi runs, the five-slot Fusion council tools, and the
+  Anthropic attribution provider override.
 
 ISC-licensed reference: Copyright Ismail <ismailsalikhodjaev@gmail.com>.

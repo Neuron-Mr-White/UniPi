@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Message } from '@earendil-works/pi-ai';
-import { canonicalJson } from './attested-pi-run.js';
+import { canonicalJson } from './json-utils.js';
 
 /**
  * Frozen `visible-conversation-ledger-v2` transform.

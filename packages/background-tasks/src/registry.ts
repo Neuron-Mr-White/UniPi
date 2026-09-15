@@ -7,6 +7,7 @@ import type { Api, Model } from '@earendil-works/pi-ai';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { formatSize } from '@earendil-works/pi-coding-agent';
 import {
+  appendOutputTail,
   boundedRead,
   deriveTaskNameFromCommand,
   escapeXml,
@@ -26,9 +27,7 @@ import {
   type BgTaskSnapshot,
   type JsonObject,
   type KillKind,
-  type StartAttestedPiTaskOptions,
   type StartDelegateTaskOptions,
-  type StartManagedTaskOptions,
   type StartTaskOptions,
   type TaskContextUsage,
   type TaskStatus,
@@ -41,30 +40,13 @@ import type {
   BackgroundTaskSpawn,
 } from './child-process.js';
 export type { BackgroundTaskChildProcess, BackgroundTaskContext, BackgroundTaskSpawn };
-import {
-  ATTESTED_TASK_ID_PATTERN,
-  attestedPiChildEnv,
-  buildAttestedPiArgv,
-  buildPiTaskAttestation,
-  closeAndFsyncOutputStream,
-  gitAuthoritySnapshot,
-  gitRepoRoot,
-  makeAttestedTaskId,
-  makeAttestedTaskPaths,
-  observePiOAuth,
-  parsePiJsonEvents,
-  resolveReportPath,
-  spawnAndCapturePi,
-  writeFileFsynced,
-  writeJsonAtomic,
-} from './attested-pi-run.js';
+import { closeAndFsyncOutputStream, writeJsonAtomic } from './json-utils.js';
 import {
   assertWindowsCommandLineWithinLimit,
   piLaunchArgv,
   resolvePiLaunch,
   type PiLaunchSpec,
 } from './pi-launch.js';
-import { resolveAnthropicAttributionExtensionPath } from './anthropic-attribution-path.js';
 import {
   runWindowsTaskkill,
   type TaskkillOutcome,
@@ -940,128 +922,6 @@ export class BackgroundTaskRegistry {
   }
 
   /**
-   * Track an in-process asynchronous workflow through the same durable task,
-   * notification, status, log, and cancellation surfaces as child processes.
-   * The supplied completion promise must own all workflow cleanup before it
-   * settles; terminal publication happens only after that settlement.
-   */
-  async startManagedTask(
-    ctx: BackgroundTaskContext,
-    request: StartManagedTaskOptions,
-  ): Promise<BgTask> {
-    if (this.shuttingDown)
-      throw new Error('Cannot start a managed background task while Pi is shutting down');
-    if (!/^[a-zA-Z0-9_.-]+$/u.test(request.id))
-      throw new Error(`Managed background task id is invalid: ${request.id}`);
-    if (this.tasks.has(request.id))
-      throw new Error(`Background task id already exists: ${request.id}`);
-
-    const dir = await this.ensureRuntimeDir(ctx);
-    const outputAbsPath = join(dir.abs, `${request.id}.output`);
-    const metadataAbsPath = join(dir.abs, `${request.id}.json`);
-    const outputPath = join(dir.display, `${request.id}.output`);
-    const task: BgTask = {
-      id: request.id,
-      name: normalizeTaskName(request.name) ?? 'Managed background task',
-      command: request.command,
-      description: request.description,
-      status: 'running',
-      outputPath,
-      outputAbsPath,
-      metadataAbsPath,
-      cwd: ctx.cwd,
-      startTime: this.now(),
-      exitCode: undefined,
-      pid: undefined,
-      bytesWritten: 0,
-      isAgent: request.isAgent,
-      notified: false,
-      notifyOnCompletion: request.notifyOnCompletion,
-      triggerOnCompletion: request.triggerOnCompletion,
-      fusion: request.fusion,
-      managedCancel: request.cancel,
-      managedStopWaitMs: request.stopWaitMs,
-      terminalPublicationGate: request.terminalPublicationGate,
-      waiters: [],
-    };
-    this.tasks.set(task.id, task);
-    const stream = createWriteStream(outputAbsPath, { flags: 'a', encoding: 'utf8' });
-    task.stream = stream;
-    stream.on('error', (error) => {
-      task.error = `Output file write failed: ${error.message}`;
-      if (task.status === 'running' && !task.managedCancelRequested) {
-        task.managedCancelRequested = true;
-        try {
-          request.cancel();
-        } catch (cancelError) {
-          task.error = `${task.error}; cancellation failed: ${BackgroundTaskRegistry.errorMessage(cancelError)}`;
-        }
-      }
-    });
-
-    try {
-      await this.writeMetadata(task);
-      this.onChange();
-    } catch (error) {
-      this.tasks.delete(task.id);
-      if (!stream.destroyed) stream.destroy();
-      try {
-        request.cancel();
-      } catch (cancelError) {
-        this.logger.error(
-          `[background-tasks] managed task cancellation after metadata failure also failed for ${task.id}:`,
-          cancelError,
-        );
-      }
-      throw new Error(
-        `Failed to register managed background task: ${BackgroundTaskRegistry.errorMessage(error)}`,
-      );
-    }
-
-    void request.completion
-      .then(
-        () => this.finalizeTask(task, 'completed', 0),
-        (error: unknown) => {
-          const message = BackgroundTaskRegistry.errorMessage(error);
-          const killed = task.killKind === 'user' || task.killKind === 'shutdown';
-          return this.finalizeTask(task, killed ? 'killed' : 'failed', null, undefined, message);
-        },
-      )
-      .catch((error: unknown) => {
-        this.logger.error(
-          `[background-tasks] managed task finalization failed for ${task.id}:`,
-          error,
-        );
-      });
-    return task;
-  }
-
-  async updateManagedTask(task: BgTask, state: string, line?: string): Promise<void> {
-    if (task.status !== 'running' || task.fusion === undefined) return;
-    task.fusion.state = state;
-    if (line !== undefined && line.length > 0) this.writeNotice(task, `${line}\n`);
-    await this.writeMetadata(task);
-    this.onChange();
-  }
-
-  /** Claim deferred Fusion usage exactly once before returning it from bg_result. */
-  async claimFusionUsage(task: BgTask): Promise<boolean> {
-    if (task.fusion === undefined) throw new Error(`Task ${task.id} is not a Fusion task`);
-    let claimed = false;
-    const write = async () => {
-      if (!task.fusion || task.fusion.usageDelivered) return;
-      task.fusion.usageDelivered = true;
-      await writeJsonAtomic(task.metadataAbsPath, snapshot(task));
-      claimed = true;
-    };
-    const previous = task.metadataWriteChain ?? Promise.resolve();
-    const next = previous.then(write, write);
-    task.metadataWriteChain = next.catch(() => undefined);
-    await next;
-    return claimed;
-  }
-
-  /**
    * Start a prepared delegate child.
    *
    * The caller has already completed preflight, so by the time this runs the
@@ -1200,305 +1060,6 @@ export class BackgroundTaskRegistry {
     }
   }
 
-  async startAttestedPiTask(
-    ctx: BackgroundTaskContext,
-    request: StartAttestedPiTaskOptions,
-  ): Promise<BgTask> {
-    if (this.shuttingDown)
-      throw new Error('Cannot start an attested Pi task while Pi is shutting down');
-
-    const attributionExtensionPath =
-      request.provider === 'anthropic' ? resolveAnthropicAttributionExtensionPath() : undefined;
-    const argv = buildAttestedPiArgv(request, attributionExtensionPath);
-    const attestedPiLaunch = resolvePiLaunch({ platform: this.platform });
-    assertWindowsCommandLineWithinLimit(
-      attestedPiLaunch,
-      argv.slice(1),
-      this.platform,
-      'attested-pi-run',
-    );
-
-    const dir = await this.ensureRuntimeDir(ctx);
-    const id = makeAttestedTaskId();
-    if (!ATTESTED_TASK_ID_PATTERN.test(id))
-      throw new Error('Generated attested task id is invalid');
-    const paths = makeAttestedTaskPaths(dir.abs, dir.display, id);
-    const promptBytes = Buffer.from(request.prompt, 'utf8');
-    const reportAbsPath = await resolveReportPath(ctx.cwd, request.reportPath);
-    const auth = observePiOAuth(ctx, request.provider, request.model);
-    const repoRootRealpath = await gitRepoRoot(ctx.cwd);
-    const cwdRealpath = await realpath(ctx.cwd);
-    const startAuthority = await gitAuthoritySnapshot(ctx.cwd);
-    if (!startAuthority.clean)
-      throw new Error('Attested Pi task requires a clean worktree at start');
-    const timeoutSeconds =
-      typeof request.timeoutSeconds === 'number' &&
-      Number.isFinite(request.timeoutSeconds) &&
-      request.timeoutSeconds > 0
-        ? Math.floor(request.timeoutSeconds)
-        : undefined;
-
-    const task: BgTask = {
-      id,
-      name: normalizeTaskName(request.name) ?? 'Attested Pi task',
-      command: argv.map(shellQuote).join(' '),
-      status: 'running',
-      outputPath: paths.outputPath,
-      outputAbsPath: paths.outputAbsPath,
-      metadataAbsPath: paths.metadataAbsPath,
-      eventsAbsPath: paths.eventsAbsPath,
-      stderrAbsPath: paths.stderrAbsPath,
-      wrapperAbsPath: paths.wrapperAbsPath,
-      attestationAbsPath: paths.attestationAbsPath,
-      cwd: ctx.cwd,
-      startTime: this.now(),
-      exitCode: undefined,
-      pid: undefined,
-      bytesWritten: 0,
-      isAgent: true,
-      notified: false,
-      notifyOnCompletion: false,
-      triggerOnCompletion: false,
-      timeoutSeconds,
-      attestationPath: paths.attestationPath,
-      attestedPi: {
-        eventsPath: paths.eventsPath,
-        stderrPath: paths.stderrPath,
-        wrapperPath: paths.wrapperPath,
-        attestationPath: paths.attestationPath,
-      },
-      waiters: [],
-    };
-    this.tasks.set(id, task);
-
-    await writeFileFsynced(paths.outputAbsPath, '');
-    await writeFileFsynced(paths.eventsAbsPath, '');
-    await writeFileFsynced(paths.stderrAbsPath, '');
-    await writeFileFsynced(
-      paths.wrapperAbsPath,
-      'direct-spawn attested Pi task; no shell telemetry wrapper is used\n',
-    );
-    await this.writeMetadata(task);
-
-    const captured = spawnAndCapturePi(
-      this.spawn,
-      argv,
-      {
-        cwd: ctx.cwd,
-        detached: this.platform !== 'win32',
-        shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: attestedPiChildEnv(this.env),
-        windowsHide: true,
-      },
-      this.platform,
-      attestedPiLaunch,
-    );
-    task.child = captured.child;
-    task.pid = captured.child.pid;
-    await this.writeMetadata(task);
-    this.onChange();
-
-    captured.child.on('error', (error) => {
-      void this.finalizeAttestedPiTask(
-        task,
-        paths,
-        argv,
-        cwdRealpath,
-        repoRootRealpath,
-        startAuthority,
-        auth,
-        promptBytes,
-        reportAbsPath,
-        captured.stdoutChunks,
-        captured.stderrChunks,
-        'failed',
-        null,
-        null,
-        error.message,
-      );
-    });
-
-    captured.child.on('close', (code, signalName) => {
-      let status: TaskStatus = (code ?? 0) === 0 && signalName === null ? 'completed' : 'failed';
-      let error: string | undefined;
-      if (task.killKind === 'timeout') {
-        status = 'failed';
-        error = task.error ?? `Timed out after ${String(timeoutSeconds)}s`;
-      } else if (task.killKind === 'user' || task.killKind === 'shutdown') {
-        status = 'killed';
-        error = task.error;
-      } else if (status === 'failed') {
-        const exitCode = code === null ? 'null' : String(code);
-        error = `Exited with code ${exitCode}${signalName ? ` (${signalName})` : ''}`;
-      }
-      void this.finalizeAttestedPiTask(
-        task,
-        paths,
-        argv,
-        cwdRealpath,
-        repoRootRealpath,
-        startAuthority,
-        auth,
-        promptBytes,
-        reportAbsPath,
-        captured.stdoutChunks,
-        captured.stderrChunks,
-        status,
-        code,
-        signalName,
-        error,
-      );
-    });
-
-    if (timeoutSeconds !== undefined) {
-      task.timeoutHandle = setTimeout(() => {
-        if (task.status !== 'running') return;
-        task.killKind = 'timeout';
-        task.error = `Timed out after ${String(timeoutSeconds)}s`;
-        try {
-          this.requestKill(task, 'SIGTERM');
-        } catch (error) {
-          void this.finalizeAttestedPiTask(
-            task,
-            paths,
-            argv,
-            cwdRealpath,
-            repoRootRealpath,
-            startAuthority,
-            auth,
-            promptBytes,
-            reportAbsPath,
-            captured.stdoutChunks,
-            captured.stderrChunks,
-            'failed',
-            null,
-            null,
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      }, timeoutSeconds * 1000);
-    }
-
-    return task;
-  }
-
-  private async finalizeAttestedPiTask(
-    task: BgTask,
-    paths: ReturnType<typeof makeAttestedTaskPaths>,
-    argv: string[],
-    cwdRealpath: string,
-    repoRootRealpath: string,
-    startAuthority: Awaited<ReturnType<typeof gitAuthoritySnapshot>>,
-    auth: ReturnType<typeof observePiOAuth>,
-    promptBytes: Buffer,
-    reportAbsPath: string,
-    stdoutChunks: Buffer[],
-    stderrChunks: Buffer[],
-    status: TaskStatus,
-    exitCode: number | null,
-    signal: NodeJS.Signals | null,
-    error?: string,
-  ): Promise<void> {
-    if (task.finalized) return;
-    task.finalized = true;
-    if (task.timeoutHandle) clearTimeout(task.timeoutHandle);
-    if (task.killEscalationTimer !== undefined) {
-      clearTimeout(task.killEscalationTimer);
-      task.killEscalationTimer = undefined;
-    }
-    let finalStatus = status;
-    let finalError = error;
-    const forceFailure = await this.awaitWindowsForceBeforeTerminal(task);
-    if (forceFailure !== undefined) {
-      finalStatus = 'failed';
-      finalError = BackgroundTaskRegistry.appendTaskError(finalError, forceFailure.message);
-    }
-    task.exitCode = exitCode;
-    task.signal = signal;
-    task.endTime = this.now();
-    if (finalError) task.error = finalError;
-
-    const rawEvents = Buffer.concat(stdoutChunks);
-    const rawStderr = Buffer.concat(stderrChunks);
-    await writeFileFsynced(paths.eventsAbsPath, rawEvents);
-    await writeFileFsynced(paths.stderrAbsPath, rawStderr);
-
-    let parsed: ReturnType<typeof parsePiJsonEvents> | undefined;
-    if (finalStatus === 'completed') {
-      try {
-        parsed = parsePiJsonEvents(rawEvents);
-        task.model = parsed.providerScopedModelId;
-        task.tokenUsage = {
-          input: parsed.tokenUsage.input,
-          output: parsed.tokenUsage.output,
-          cacheRead: parsed.tokenUsage.cacheRead,
-          cacheWrite: parsed.tokenUsage.cacheWrite,
-          totalTokens: parsed.tokenUsage.totalTokens,
-        };
-        if (parsed.tokenUsage.costTotal !== undefined)
-          task.tokenUsage.costTotal = parsed.tokenUsage.costTotal;
-        task.toolUsage = parsed.toolUsage;
-        const outputBytes = Buffer.from(parsed.humanTranscript, 'utf8');
-        task.bytesWritten = outputBytes.length;
-        await writeFileFsynced(paths.outputAbsPath, outputBytes);
-      } catch (parseError) {
-        finalStatus = 'failed';
-        task.error = parseError instanceof Error ? parseError.message : String(parseError);
-        const outputBytes = Buffer.from(`[attested Pi task error: ${task.error}]\n`, 'utf8');
-        task.bytesWritten = outputBytes.length;
-        await writeFileFsynced(paths.outputAbsPath, outputBytes);
-      }
-    } else {
-      const outputBytes = Buffer.from(rawStderr.toString('utf8'), 'utf8');
-      task.bytesWritten = outputBytes.length;
-      await writeFileFsynced(paths.outputAbsPath, outputBytes);
-    }
-
-    try {
-      if (finalStatus === 'completed' && parsed) {
-        const finishAuthority = await gitAuthoritySnapshot(task.cwd);
-        const completedSnapshot: BgTaskSnapshot = { ...snapshot(task), status: 'completed' };
-        await this.writeMetadataSnapshot(task, completedSnapshot);
-        const attestation = await buildPiTaskAttestation({
-          task: completedSnapshot,
-          paths,
-          sessionDir: dirNameFromDisplay(paths.outputPath),
-          argv,
-          cwdRealpath,
-          repoRootRealpath,
-          startAuthority,
-          finishAuthority,
-          parsedEvents: parsed,
-          auth,
-          prompt: promptBytes,
-          reportAbsPath,
-        });
-        await writeJsonAtomic(paths.attestationAbsPath, attestation);
-      } else {
-        await this.writeMetadataSnapshot(task, { ...snapshot(task), status: finalStatus });
-      }
-    } catch (attestationError) {
-      finalStatus = 'failed';
-      task.error =
-        attestationError instanceof Error ? attestationError.message : String(attestationError);
-      await this.writeMetadataSnapshot(task, { ...snapshot(task), status: 'failed' }).catch(
-        (metadataError: unknown) => {
-          this.logger.error(
-            `[background-tasks] failed to write failed attested metadata for ${task.id}:`,
-            metadataError,
-          );
-        },
-      );
-    }
-
-    task.status = finalStatus;
-    for (const waiter of task.waiters.splice(0)) waiter();
-    this.onChange();
-    this.publishTerminal(task);
-    this.pruneOldTasks();
-  }
-
   resolveTask(idOrPrefix: string): BgTask {
     const id = idOrPrefix.trim();
     if (!id) throw new Error('Task ID is required');
@@ -1521,9 +1082,9 @@ export class BackgroundTaskRegistry {
     task.killKind = kind;
     if (reason) task.error = reason;
     this.requestKill(task, 'SIGTERM');
-    const stopWaitMs = task.managedStopWaitMs ?? this.stopWaitMs;
+    const stopWaitMs = this.stopWaitMs;
     const stopped =
-      this.platform === 'win32' && task.managedCancel === undefined
+      this.platform === 'win32'
         ? await this.waitForEndOrWindowsForceFailure(task, stopWaitMs)
         : await this.waitForEnd(task, stopWaitMs);
     const forceFailure = this.windowsKillStates.get(task)?.forceFailure;
@@ -1687,6 +1248,7 @@ export class BackgroundTaskRegistry {
     if (buffer.length === 0) return;
 
     const nextBytes = task.bytesWritten + buffer.length;
+    appendOutputTail(task, buffer.toString('utf8'));
     if (nextBytes <= this.maxOutputBytes) {
       task.stream.write(buffer);
       task.bytesWritten = nextBytes;
@@ -2074,19 +1636,6 @@ export class BackgroundTaskRegistry {
     if (task.status !== 'running') {
       throw new Error(`Task ${task.id} is ${task.status}, not running`);
     }
-    if (task.managedCancel !== undefined) {
-      if (task.managedCancelRequested) return;
-      task.managedCancelRequested = true;
-      try {
-        task.managedCancel();
-      } catch (error) {
-        throw new Error(
-          `Could not cancel managed task ${task.id}: ${BackgroundTaskRegistry.errorMessage(error)}`,
-        );
-      }
-      task.killSignalSent = true;
-      return;
-    }
     if (!task.child) {
       throw new Error(`Task ${task.id} has no child process handle`);
     }
@@ -2268,11 +1817,11 @@ export class BackgroundTaskRegistry {
     const error = task.error ? `\n  <error>${escapeXml(task.error)}</error>` : '';
     const taskName = taskDisplayName(task);
     const guidance =
-      task.fusion === undefined
+      task.delegate === undefined
         ? 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.'
         : task.status === 'completed'
-          ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
-          : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
+          ? `Delegate result is durably committed. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
+          : `Delegate ended ${task.status}. Inspect the preserved artifacts at ${task.delegate.artifactDir}; do not poll.`;
     const content = [
       '<background-task-notification>',
       `  <task-id>${task.id}</task-id>`,

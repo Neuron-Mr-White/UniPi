@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/background-tasks — Shared child-process & context interfaces
  *
- * Consumed by types.ts, registry.ts, attested-pi-run.ts, and tests.
+ * Consumed by types.ts, registry.ts, and tests.
  */
 
 import type { SpawnOptions } from "node:child_process";

@@ -244,7 +244,7 @@ void describe('BackgroundTasksManager component', () => {
         assert.match(text, /model gpt-5\.5/);
         assert.match(text, /tok 1\.3k/);
         assert.match(text, /tools 3\/1 failed/);
-        assert.match(text, /ctx —/);
+        assert.doesNotMatch(text, /ctx —/); // shell tasks without telemetry omit the ctx column
         h.instance.handleInput('\r');
         await new Promise((resolve) => setTimeout(resolve, 20));
         text = stripAnsi(h.instance.render(120).join('\n'));
