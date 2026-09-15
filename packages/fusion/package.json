@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/fusion",
-  "version": "2.17.0",
+  "version": "2.17.1",
   "description": "Devin-style model picker, fusion presets (lead + sidekick), and Local Fusion runtime for UniPi",
   "type": "module",
   "main": "src/index.ts",

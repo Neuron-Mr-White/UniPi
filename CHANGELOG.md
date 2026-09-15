@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.17.0] — 2026-09-15
+## [2.17.1] — 2026-09-15
+
+### Fixed
+
+- `fusion`: **the persisted Fusion pair is restored at startup.** `session_start` now re-applies the saved lead via `pi.setModel()` and restores its thinking level when pi boots on the sidekick model (previously the pair silently dropped to a single-model status); if the lead is unavailable it disables Fusion and warns instead of leaving a half-active pair.
+- `fusion`: **leaving Fusion via `/model` persists.** Selecting a non-lead model now writes the single-model selection to the preset's `active`, so the session stays un-Fused across restarts instead of snapping back to the pair.
+- `fusion`: **manual pricing overrides for un-priced models.** A new `prices` preset key (`{ "provider/id": { "input", "cachedInput", "output" } }`) lets you supply per-million prices for providers that report no pricing; savings estimation and the picker both consume the override. Zero/unavailable pricing now renders no slider marker and shows inline `no pricing data from provider` guidance instead of a misleading $0.
+- `fusion`: **price-panel columns no longer run together.** Column width now reserves space for the longest header/value (e.g. `Sidekick cached input`) instead of a fixed cap, fixing truncated sidekick price headers.
 
 ### Added
 
