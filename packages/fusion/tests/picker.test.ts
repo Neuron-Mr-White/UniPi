@@ -128,10 +128,12 @@ test("a single active model lights up with ✓", () => {
   assert.match(text, /✓ GLM Flash/);
 });
 
-test("when fusion is selected, plain rows carry no markers", () => {
+test("when fusion is selected, the Fusion row carries the check and plain rows carry none", () => {
   const { picker } = run(state({ active: { kind: "fusion", lead: "a/opus", sidekick: "c/mini" }, currentModelKey: "a/opus" }), []);
   const text = picker.render(140).join("\n");
-  assert.doesNotMatch(text, /✓/);
+  assert.match(text, /✓ Fusion/);
+  // exactly one check in the whole overlay
+  assert.equal((text.match(/✓/gu) ?? []).length, 1);
   assert.doesNotMatch(text, /◆/);
 });
 

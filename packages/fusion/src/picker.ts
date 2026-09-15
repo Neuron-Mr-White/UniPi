@@ -395,7 +395,14 @@ export class ModelPicker {
   private renderRow(row: Row, highlighted: boolean, width: number): string {
     const t = this.theme;
     const pointer = highlighted ? t.fg("accent", "❭") : t.fg("dim", "·");
-    const marker = row.kind === "fusion" ? " " : this.markerFor(row.key);
+    // The Fusion composite gets the check when it is the active selection —
+    // same affordance a single active model gets on its own row.
+    const marker =
+      row.kind === "fusion"
+        ? this.state.active?.kind === "fusion"
+          ? t.fg("success", "✓")
+          : " "
+        : this.markerFor(row.key);
     const working = row.kind === "model" && row.key === this.state.currentModelKey;
     const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, NAME_COL - 1);
     const name =
