@@ -29,8 +29,9 @@ and the Devin CLI; implemented natively on pi's extension APIs.
 - **Row order**: the active selection pinned first, then the Fusion row (when a
   pair is configured), then recent (≤5, MRU), then the preset models, then
   **every other available model** — the catalogue is never hidden; the preset
-  only controls ordering. The model currently working lights up: `✓` on the
-  session model, `◆` on the active sidekick.
+  only controls ordering. When a single model is selected its row lights up
+  with `✓`; when Fusion is selected the selection lives on the Fusion row and
+  plain rows stay unmarked.
 - **`←`/`→`** steps the highlighted row's effort (pi thinking level:
   off → minimal → low → medium → high → xhigh) and it's **remembered per model**.
   The Fusion row keeps its own lead/sidekick efforts, so adjusting Fusion never

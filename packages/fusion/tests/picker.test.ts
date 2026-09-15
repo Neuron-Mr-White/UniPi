@@ -122,17 +122,17 @@ test("fusion-row effort is independent of per-model effort", () => {
   assert.match(text, /Opus\s+◼◼◼◻◻\s+Medium/);
 });
 
-test("current model lights up with a marker", () => {
+test("a single active model lights up with ✓", () => {
   const { picker } = run(state(), []);
   const text = picker.render(140).join("\n");
-  assert.match(text, /✓/);
+  assert.match(text, /✓ GLM Flash/);
 });
 
-test("active sidekick row lights up with ◆ when fusion is active", () => {
+test("when fusion is selected, plain rows carry no markers", () => {
   const { picker } = run(state({ active: { kind: "fusion", lead: "a/opus", sidekick: "c/mini" }, currentModelKey: "a/opus" }), []);
   const text = picker.render(140).join("\n");
-  assert.match(text, /◆/);
-  assert.match(text, /✓/);
+  assert.doesNotMatch(text, /✓/);
+  assert.doesNotMatch(text, /◆/);
 });
 
 test("wraps selection with ↑ from the top", () => {

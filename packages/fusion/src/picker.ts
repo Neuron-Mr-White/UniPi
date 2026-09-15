@@ -23,8 +23,9 @@
  * plain model rows; the Fusion row keeps its own lead/sidekick efforts so
  * adjusting one never rewrites a model's standalone level.
  *
- * The model currently working (the session model, and the sidekick when
- * Fusion is active) lights up: ✓ / ◆ marker plus accent styling.
+ * When a single model is selected, its row lights up with ✓ (plus accent
+ * styling). When Fusion is selected, the selection lives on the Fusion row
+ * only — plain model rows stay unmarked.
  *
  * On the Fusion row, Tab cycles effort → lead → sidekick (Shift+Tab
  * reverses); the lead/sidekick focus opens an inline dropdown fed by the
@@ -366,13 +367,15 @@ export class ModelPicker {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
-  /** Marker for the model that is working right now. */
+  /**
+   * Marker for the working model. Only a SINGLE active selection gets a ✓ —
+   * when Fusion is selected, the selection lives on the Fusion row itself and
+   * plain model rows stay unmarked.
+   */
   private markerFor(key: ModelKey | undefined): string {
     if (key === undefined) return " ";
-    const t = this.theme;
-    if (key === this.state.currentModelKey) return t.fg("success", "✓");
     const active = this.state.active;
-    if (active?.kind === "fusion" && key === active.sidekick) return t.fg("accent", "◆");
+    if (active?.kind === "single" && key === active.model) return this.theme.fg("success", "✓");
     return " ";
   }
 
@@ -447,11 +450,10 @@ export class ModelPicker {
       const idx = start + i;
       const isCur = idx === this.dropdownIndex;
       const isSet = key === (this.focus === "lead" ? this.lead : this.sidekick);
-      const marker = this.markerFor(key);
       const glyph = isCur ? t.fg("accent", "▸") : " ";
       const label = isCur ? t.fg("accent", t.bold(this.nameOf(key, 28))) : t.fg("text", this.nameOf(key, 28));
       const star = isSet ? t.fg("dim", " *") : "";
-      return truncateToWidth(`${indent}${glyph} ${marker} ${label}${star}`, Math.max(1, width - 1));
+      return truncateToWidth(`${indent}${glyph} ${label}${star}`, Math.max(1, width - 1));
     });
   }
 

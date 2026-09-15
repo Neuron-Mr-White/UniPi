@@ -13,3 +13,4 @@ export * from "./tui-width.js";
 export * from "./tui-overlay.js";
 export * from "./bounded-output.js";
 export * from "./spinner-line.js";
+export * from "./fusion-status.js";

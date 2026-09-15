@@ -180,8 +180,8 @@ export class PresetEditor {
       if (m.key === this.opts.initial.default.lead) tags.push("default lead");
       if (m.key === this.opts.initial.default.sidekick) tags.push("default sidekick");
       if (active?.kind === "fusion") {
-        if (m.key === active.lead) tags.push("✓ active lead");
-        if (m.key === active.sidekick) tags.push("◆ active sidekick");
+        if (m.key === active.lead) tags.push("active lead");
+        if (m.key === active.sidekick) tags.push("active sidekick");
       }
       const tag = tags.length > 0 ? ` ${t.fg("dim", `(${tags.join(", ")})`)}` : "";
       lines.push(truncateToWidth(` ${ptr} ${l} ${s}  ${name}${tag}`, Math.max(1, width - 1)));

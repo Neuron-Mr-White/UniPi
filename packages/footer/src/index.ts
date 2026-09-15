@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
 import { subscribeToEvents } from "./events.js";
@@ -433,6 +433,7 @@ function installGlanceEditor(
         let modelName = (model?.name || model?.id || "") as string;
         if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
         const branch = (st.footerData as any)?.getGitBranch?.() ?? null;
+        const fusion = getSharedFusionStatus() ?? null;
         return {
           workspace,
           branch: typeof branch === "string" ? branch : null,
@@ -440,6 +441,7 @@ function installGlanceEditor(
           contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,
           modelName,
           thinkingLevel: typeof p?.thinkingLevel === "string" ? p.thinkingLevel : null,
+          fusion,
         };
       }),
     );

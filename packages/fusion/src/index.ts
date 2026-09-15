@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { UNIPI_PREFIX } from "@pi-unipi/core";
+import { setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
 import {
   effortLabel,
   isEffortLevel,
@@ -35,7 +35,6 @@ import { PresetEditor, type PresetEditorResult } from "./preset-editor.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
-const STATUS_KEY = "unipi-fusion";
 
 type Registry = { getAvailable(): Model<Api>[]; find(provider: string, id: string): Model<Api> | undefined };
 
@@ -99,17 +98,21 @@ export function createModelBoostProvider(current: AutocompleteProvider): Autocom
 export default function fusionExtension(pi: ExtensionAPI): void {
   let active: ActiveSelection | undefined;
 
-  function statusText(names: (k: string) => string): string | undefined {
-    if (!active || active.kind !== "fusion") return undefined;
-    const le = active.leadEffort;
-    return ` Fusion · ${names(active.lead)}${le ? ` ${effortLabel(le)}` : ""} ◆ ${names(active.sidekick)} `;
-  }
-
-  function refreshStatus(ctx: ExtensionContext): void {
-    if (!ctx.hasUI) return;
+  function publishStatus(ctx: ExtensionContext): void {
     const reg = registryOf(ctx);
     const names = (k: string) => findModel(reg, k)?.name || splitModelKey(k)?.id || k;
-    ctx.ui.setStatus(STATUS_KEY, statusText(names));
+    if (active?.kind === "fusion") {
+      // Displayed in the input-box model slot (footer glance frame):
+      // the working lead lit, the sidekick muted.
+      setSharedFusionStatus({
+        leadName: names(active.lead),
+        leadEffort: active.leadEffort ?? "",
+        sidekickName: names(active.sidekick),
+        sidekickEffort: active.sidekickEffort ?? "",
+      });
+    } else {
+      setSharedFusionStatus(undefined);
+    }
   }
 
   async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean }): Promise<void> {
@@ -156,7 +159,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       });
     }
     saveRuntimeState(loaded.globalPath, { effort: result.effortMap, recent, active });
-    refreshStatus(ctx);
+    publishStatus(ctx);
     const label =
       result.type === "single"
         ? `${model.name || model.id} · ${effortLabel(effort)}`
@@ -263,8 +266,12 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
     // Only keep a Fusion status if the session actually runs on that lead.
     if (active?.kind === "fusion" && ctx.model && modelKey(ctx.model) !== active.lead) active = undefined;
-    refreshStatus(ctx);
+    publishStatus(ctx);
     if (ctx.hasUI) ctx.ui.addAutocompleteProvider(createModelBoostProvider);
+  });
+
+  pi.on("session_shutdown", () => {
+    setSharedFusionStatus(undefined);
   });
 
   pi.on("model_select", (event, ctx) => {
@@ -272,7 +279,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     // unless the new model is still the lead.
     if (active?.kind === "fusion" && modelKey(event.model) !== active.lead) {
       active = { kind: "single", model: modelKey(event.model) };
-      refreshStatus(ctx);
+      publishStatus(ctx);
     }
   });
 }
