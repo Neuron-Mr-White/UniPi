@@ -25,11 +25,20 @@ export interface SidekickUsage {
   cost: number;
 }
 
+export type SidekickEvent =
+  | { kind: "text"; text: string; open: boolean }
+  | { kind: "tool"; toolCallId: string; name: string; args: Record<string, unknown> | undefined; output: string; isError: boolean; done: boolean; startedAt: number; endedAt?: number };
+
+export const MAX_EVENTS = 300;
+export const MAX_TOOL_OUTPUT = 4000;
+
 export interface HandoffProgress {
   toolCalls: number;
   recentTools: string[];
   textTail: string;
   startedAt: number;
+  events: SidekickEvent[];
+  droppedEvents: number;
 }
 
 export interface HandoffReport {
@@ -39,6 +48,7 @@ export interface HandoffReport {
   usage: SidekickUsage;
   toolCalls: number;
   durationMs: number;
+  events: SidekickEvent[];
   error?: string;
 }
 
@@ -92,6 +102,33 @@ export class SidekickRuntime {
     } catch {
       // Progress updates must not affect the handoff.
     }
+  }
+
+  private appendEvent(event: SidekickEvent): void {
+    const progress = this.pending?.progress;
+    if (!progress) return;
+    progress.events.push(event);
+    if (progress.events.length > MAX_EVENTS) {
+      progress.events.shift();
+      progress.droppedEvents += 1;
+    }
+  }
+
+  private closeOpenText(): void {
+    const events = this.pending?.progress.events;
+    const last = events?.at(-1);
+    if (last?.kind === "text" && last.open) last.open = false;
+  }
+
+  private toolOutput(result: unknown): string {
+    if (typeof result === "object" && result !== null && Array.isArray((result as { content?: unknown }).content)) {
+      return ((result as { content: unknown[] }).content)
+        .map((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : typeof part === "string" ? part : "")
+        .filter(Boolean)
+        .join("\n")
+        .slice(-MAX_TOOL_OUTPUT);
+    }
+    return String(result ?? "").slice(-MAX_TOOL_OUTPUT);
   }
 
   private send(value: Record<string, unknown>): void {
@@ -184,20 +221,39 @@ export class SidekickRuntime {
     }
     if (this.pending === undefined) return;
     if (message.type === "tool_execution_start") {
+      this.closeOpenText();
       this.pending.progress.toolCalls += 1;
-      this.notifyProgress();
-      const args = message.args === undefined ? "" : JSON.stringify(message.args).replace(/\s+/gu, " ");
-      const summary = `${String(message.toolName ?? "tool")}(${args})`.slice(0, 40);
+      const args = message.args !== undefined && typeof message.args === "object" && message.args !== null ? message.args as Record<string, unknown> : undefined;
+      const argsText = args === undefined ? "" : JSON.stringify(args).replace(/\s+/gu, " ");
+      const summary = `${String(message.toolName ?? "tool")}(${argsText})`.slice(0, 40);
       this.pending.progress.recentTools = [...this.pending.progress.recentTools, summary].slice(-6);
+      this.appendEvent({ kind: "tool", toolCallId: String(message.toolCallId ?? ""), name: String(message.toolName ?? "tool"), args, output: "", isError: false, done: false, startedAt: Date.now() });
+      this.notifyProgress();
+    } else if (message.type === "tool_execution_end") {
+      const toolCallId = String(message.toolCallId ?? "");
+      const event = [...this.pending.progress.events].reverse().find((entry): entry is Extract<SidekickEvent, { kind: "tool" }> => entry.kind === "tool" && entry.toolCallId === toolCallId);
+      if (event) {
+        event.done = true;
+        event.endedAt = Date.now();
+        event.isError = message.isError === true;
+        event.output = this.toolOutput(message.result);
+      }
+      this.notifyProgress();
     } else if (message.type === "message_update") {
-      const event = (message.assistantMessageEvent ?? message) as Record<string, unknown>;
-      if (event.type === "text_delta") {
-        const delta = typeof event.delta === "string" ? event.delta : typeof event.text === "string" ? event.text : "";
+      const streamEvent = (message.assistantMessageEvent ?? message) as Record<string, unknown>;
+      if (streamEvent.type === "text_delta") {
+        const delta = typeof streamEvent.delta === "string" ? streamEvent.delta : typeof streamEvent.text === "string" ? streamEvent.text : "";
         this.pending.progress.textTail = `${this.pending.progress.textTail}${delta}`.slice(-400);
+        const last = this.pending.progress.events.at(-1);
+        if (last?.kind === "text" && last.open) last.text += delta;
+        else this.appendEvent({ kind: "text", text: delta, open: true });
+        this.notifyProgress();
       }
     } else if (message.type === "message_end") {
       const msg = message.message as Record<string, unknown> | undefined;
       if (msg?.role === "assistant") {
+        this.closeOpenText();
+        this.notifyProgress();
         if (msg.stopReason === "error" && typeof msg.errorMessage === "string") this.pendingError = msg.errorMessage;
         const usage = msg.usage as Record<string, unknown> | undefined;
         if (usage) {
@@ -247,6 +303,7 @@ export class SidekickRuntime {
       usage: { ...current.usage },
       toolCalls: current.progress.toolCalls,
       durationMs: Date.now() - current.startedAt,
+      events: current.progress.events.map((event) => ({ ...event })),
       ...(error === undefined ? {} : { error }),
     };
     this.reports.set(report.id, report);
@@ -276,7 +333,7 @@ export class SidekickRuntime {
       id,
       startedAt,
       usage: emptyUsage(),
-      progress: { toolCalls: 0, recentTools: [], textTail: "", startedAt },
+      progress: { toolCalls: 0, recentTools: [], textTail: "", startedAt, events: [], droppedEvents: 0 },
       resolve,
       reject,
     };
@@ -290,7 +347,9 @@ export class SidekickRuntime {
   }
 
   progress(id?: string): HandoffProgress | undefined {
-    if (this.pending !== undefined && (id === undefined || id === this.pending.id)) return { ...this.pending.progress, recentTools: [...this.pending.progress.recentTools] };
+    if (this.pending !== undefined && (id === undefined || id === this.pending.id)) {
+      return { ...this.pending.progress, recentTools: [...this.pending.progress.recentTools], events: this.pending.progress.events.map((event) => ({ ...event })) };
+    }
     return undefined;
   }
 

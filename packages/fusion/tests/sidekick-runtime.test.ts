@@ -110,6 +110,41 @@ test("child close while busy reports an error", async () => {
   runtime.kill();
 });
 
+test("runtime records structured text and tool events", async () => {
+  const child = fakeChild();
+  const runtime = runtimeWith(child);
+  const handoff = runtime.handoff("events");
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Plan." } });
+  emit(child, { type: "tool_execution_start", toolCallId: "tool-1", toolName: "bash", args: { command: "ls" } });
+  emit(child, { type: "tool_execution_end", toolCallId: "tool-1", result: { content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }, isError: false });
+  emit(child, { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Done." } });
+  emit(child, { type: "message_end", message: { role: "assistant", usage: {} } });
+  const progress = runtime.progress();
+  assert.deepEqual(progress?.events, [
+    { kind: "text", text: "Plan.", open: false },
+    { kind: "tool", toolCallId: "tool-1", name: "bash", args: { command: "ls" }, output: "a\nb", isError: false, done: true, startedAt: progress?.events[1]?.kind === "tool" ? progress.events[1].startedAt : 0, endedAt: progress?.events[1]?.kind === "tool" ? progress.events[1].endedAt : undefined },
+    { kind: "text", text: "Done.", open: false },
+  ]);
+  emit(child, { type: "agent_settled" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "Done." } });
+  const report = await handoff.done;
+  assert.equal(report.events.length, 3);
+  runtime.kill();
+});
+
+test("runtime caps structured events and counts dropped events", () => {
+  const child = fakeChild();
+  const runtime = runtimeWith(child);
+  runtime.handoff("cap");
+  for (let i = 0; i < 305; i++) emit(child, { type: "tool_execution_start", toolCallId: `tool-${i}`, toolName: "bash", args: { command: "ls" } });
+  const progress = runtime.progress();
+  assert.equal(progress?.events.length, 300);
+  assert.equal(progress?.droppedEvents, 5);
+  runtime.kill();
+});
+
 test("CRLF records are accepted", async () => {
   const child = fakeChild();
   const runtime = runtimeWith(child);

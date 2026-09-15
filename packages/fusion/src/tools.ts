@@ -1,7 +1,8 @@
-import { Box, Text } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Box, Markdown, Text } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { SidekickRuntime, HandoffReport } from "./sidekick-runtime.js";
+import type { SidekickRuntime, HandoffProgress, HandoffReport } from "./sidekick-runtime.js";
+import { renderSidekickTranscript, type ThemeLike as TranscriptTheme } from "./transcript.js";
 
 const SidekickParams = Type.Object({
   message: Type.String({ description: "A concrete implementation or verification brief for the sidekick" }),
@@ -34,7 +35,9 @@ function progressText(runtime: SidekickRuntime, id: string): string {
 
 function progressKey(runtime: SidekickRuntime, id: string): string {
   const progress = runtime.progress(id);
-  return progress === undefined ? "" : `${String(progress.toolCalls)}|${progress.recentTools.join("|")}|${progress.textTail}`;
+  if (!progress) return "";
+  const last = progress.events.at(-1);
+  return `${String(progress.toolCalls)}|${progress.recentTools.join("|")}|${progress.textTail}|${String(progress.events.length)}|${last?.kind === "tool" ? `${String(last.output.length)}|${String(last.done)}` : last?.kind === "text" ? `${String(last.text.length)}|${String(last.open)}` : ""}`;
 }
 
 function reportText(report: HandoffReport): string {
@@ -71,7 +74,7 @@ async function waitForReport(
     const key = progressKey(runtime, id);
     if (key !== lastProgressKey) {
       lastProgressKey = key;
-      onUpdate?.({ content: [{ type: "text", text: progress }] });
+      onUpdate?.({ content: [{ type: "text", text: progress }], details: { progress: runtime.progress(id) } });
     }
   }
 }
@@ -91,14 +94,55 @@ type ThemeLike = {
   bold: (text: string) => string;
 };
 
+function transcriptTheme(theme: ThemeLike): TranscriptTheme {
+  return { fg: (color, text) => theme.fg(color, text), bold: (text) => theme.bold(text) };
+}
+
+function markdownText(markdown: string): Markdown {
+  return new Markdown(markdown, 0, 0, getMarkdownTheme());
+}
+
+function contentText(content: unknown): string {
+  if (!Array.isArray(content)) return String(content ?? "");
+  return content.map((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "").filter(Boolean).join("\n");
+}
+
+function renderToolTranscript(result: { content?: unknown; details?: unknown }, options: { expanded?: boolean }, theme: ThemeLike, label: "sidekick" | "read_subagent"): import("@earendil-works/pi-tui").Component {
+  const details = result.details as (HandoffReport & { progress?: HandoffProgress }) | { progress?: HandoffProgress } | undefined;
+  const progress = details?.progress;
+  const report = progress ? undefined : details as HandoffReport | undefined;
+  const events = progress?.events ?? report?.events;
+  if (!events) return new Text(contentText(result.content), 0, 0);
+  const partial = progress !== undefined;
+  const header = partial
+    ? `${theme.fg("accent", theme.bold(`◆ ${label} working`))} ${theme.fg("dim", `· ${String(progress.toolCalls)} tool calls · ${duration(Date.now() - progress.startedAt)}`)}`
+    : `${theme.fg(report?.status === "completed" ? "success" : "error", "◆")} ${theme.fg("accent", theme.bold(`${label} ${report?.status ?? "done"}`))} ${theme.fg("dim", report ? `· ${report.id} · ${String(report.toolCalls)} tool calls · ${duration(report.durationMs)} · in ${String(report.usage.input)} / out ${String(report.usage.output)} tokens` : "")}`;
+  return renderSidekickTranscript(transcriptTheme(theme), {
+    events,
+    droppedEvents: progress?.droppedEvents,
+    header,
+    expanded: options.expanded === true,
+    isPartial: partial,
+    report,
+    renderText: markdownText,
+  });
+}
+
 function renderCompletionCard(theme: ThemeLike, report: HandoffReport | undefined): Box {
   const tone = report?.status === "completed" ? "toolSuccessBg" : "toolErrorBg";
-  const head = report
-    ? `${theme.fg(report.status === "completed" ? "success" : "error", "◆")} ${theme.fg("accent", theme.bold(`sidekick done · ${report.id}`))} ${theme.fg("dim", `· ${String(report.toolCalls)} tool calls · ${duration(report.durationMs)}`)}`
-    : `${theme.fg("accent", "◆")} ${theme.fg("accent", theme.bold("sidekick done"))}`;
-  const lines = [head, ...(report?.text.split("\n").slice(0, 6).map((line) => theme.fg("dim", line)) ?? [])];
   const box = new Box(1, 0, (text) => theme.bg(tone, text));
-  box.addChild(new Text(lines.join("\n"), 0, 0));
+  if (!report) {
+    box.addChild(new Text(`${theme.fg("accent", "◆")} ${theme.fg("accent", theme.bold("sidekick done"))}`, 0, 0));
+    return box;
+  }
+  box.addChild(renderSidekickTranscript(transcriptTheme(theme), {
+    events: report.events ?? [],
+    header: `${theme.fg(report.status === "completed" ? "success" : "error", "◆")} ${theme.fg("accent", theme.bold(`sidekick ${report.status}`))} ${theme.fg("dim", `· ${report.id} · ${String(report.toolCalls)} tool calls · ${duration(report.durationMs)}`)}`,
+    expanded: false,
+    isPartial: false,
+    report,
+    renderText: markdownText,
+  }));
   return box;
 }
 
@@ -110,6 +154,8 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Sidekick",
     description: "Hand off work to your persistent sidekick subagent (one per session; context and shells persist across handoffs; runs on the same machine). block:true (default) waits and returns the report. block:false returns immediately and the report arrives later as a <subagent_completion_notification>. Calling again while a handoff is running injects the message as an interrupt rather than starting a second sidekick.",
     parameters: SidekickParams,
+    renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ sidekick"))} ${theme.fg("dim", String(args.message).split("\n", 1)[0].slice(0, 100))}`, 0, 0),
+    renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "sidekick"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = deps.getRuntime(ctx);
       if (!runtime) return result("Fusion is not active — pick a Fusion pair with /unipi:model.", undefined, true);
@@ -139,6 +185,8 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Read Sidekick",
     description: "Read a sidekick handoff report by agent_id (omit for the latest). block:true waits for completion (default timeout 2700s when omitted); block:false returns the current progress snapshot immediately.",
     parameters: ReadSubagentParams,
+    renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ read_subagent"))} ${theme.fg("dim", args.agent_id ?? "latest")}`, 0, 0),
+    renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "read_subagent"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = deps.getRuntime(ctx);
       if (!runtime) return result("Fusion is not active — pick a Fusion pair with /unipi:model.", undefined, true);
