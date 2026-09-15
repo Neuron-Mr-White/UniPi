@@ -10,6 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createSpinnerLine } from "@pi-unipi/core";
 import { loadBackgroundTasksConfig } from "./config.js";
 import { BackgroundTaskRegistry } from "./registry.js";
 import {
@@ -22,12 +23,17 @@ import { setSharedTaskRegistry, clearSharedTaskRegistry } from "./registry-share
 import { formatDuration, taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
 
 const STATUS_INTERVAL_MS = 1000;
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-let spinnerTick = 0;
 
-function renderPendingWakeLine(pendingWake: BgTask[]): string[] {
-  spinnerTick = (spinnerTick + 1) % SPINNER_FRAMES.length;
-  const spinner = SPINNER_FRAMES[spinnerTick] ?? "●";
+// Direct synchronous access for sibling extensions (footer process one-liner).
+export { getSharedTaskRegistry } from "./registry-shared.js";
+
+/** Live line above the editor: the agent is idle but a task will wake it. */
+function pendingWakeText(registry: BackgroundTaskRegistry, isIdle: () => boolean): string | undefined {
+  if (!isIdle()) return undefined;
+  const pendingWake = registry
+    .allTasks()
+    .filter((task) => task.status === "running" && task.triggerOnCompletion);
+  if (pendingWake.length === 0) return undefined;
   const now = Date.now();
   const first = pendingWake[0];
   const detail =
@@ -35,11 +41,8 @@ function renderPendingWakeLine(pendingWake: BgTask[]): string[] {
       ? ""
       : ` · ${taskDisplayName(first)} ${formatDuration(now - first.startTime)}${pendingWake.length > 1 ? ` +${String(pendingWake.length - 1)} more` : ""}`;
   const count = pendingWake.length === 1 ? "1 bg task" : `${String(pendingWake.length)} bg tasks`;
-  return [` ${spinner} waiting on ${count}${detail} — agent resumes automatically when done`];
+  return `waiting on ${count}${detail} — agent resumes automatically when done`;
 }
-
-// Direct synchronous access for sibling extensions (footer process one-liner).
-export { getSharedTaskRegistry } from "./registry-shared.js";
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const { config, warnings } = loadBackgroundTasksConfig(process.cwd());
@@ -55,6 +58,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
   const seenTaskIds = new Set<string>();
   let currentCtx: ExtensionContext | undefined;
   let dockOpen = false;
+  let wakeLineInstalled = false;
   let statusInterval: NodeJS.Timeout | undefined;
 
   const registry = new BackgroundTaskRegistry({
@@ -108,22 +112,31 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
       // Pending-wake indicator. When the agent is idle but a bg task that will
       // wake it is still running, the UI otherwise looks finished and users
-      // assume the turn is over. Show a pulsing line above the editor until
-      // the terminal notification fires (or the task stops wanting a wake).
-      const pendingWake = running.filter((task) => task.triggerOnCompletion);
-      const agentIdle = (() => {
+      // assume the turn is over. Install a self-animating spinner line above
+      // the editor ONCE while any such task exists (the widget owns its 80 ms
+      // frame timer and re-reads the registry on every frame, so this 1 s
+      // poll only decides whether the widget exists — never its animation).
+      const isIdle = () => {
         try {
           return target.isIdle();
         } catch {
           return true;
         }
-      })();
-      if (pendingWake.length > 0 && agentIdle) {
-        target.ui.setWidget("background-tasks", renderPendingWakeLine(pendingWake), {
-          placement: "aboveEditor",
-        });
-      } else {
+      };
+      const wantWakeLine = pendingWakeText(registry, isIdle) !== undefined;
+      if (wantWakeLine && !wakeLineInstalled) {
+        target.ui.setWidget(
+          "background-tasks",
+          createSpinnerLine({
+            text: () => pendingWakeText(registry, isIdle),
+            colorSpinner: (g: string) => `\x1b[38;5;82m${g}\x1b[0m`,
+          }),
+          { placement: "aboveEditor" },
+        );
+        wakeLineInstalled = true;
+      } else if (!wantWakeLine && wakeLineInstalled) {
         target.ui.setWidget("background-tasks", undefined);
+        wakeLineInstalled = false;
       }
       if (running.length === 0 && unseenFinishedCount === 0) {
         target.ui.setStatus("background-tasks", undefined);
@@ -272,6 +285,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     registry.setShuttingDown(false);
+    wakeLineInstalled = false; // pi clears extension widgets on reload/new session
     setSharedTaskRegistry(registry);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(ctx);
@@ -284,6 +298,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     registry.setShuttingDown(true);
+    wakeLineInstalled = false;
     clearSharedTaskRegistry();
     currentCtx = undefined;
     if (statusInterval) {
