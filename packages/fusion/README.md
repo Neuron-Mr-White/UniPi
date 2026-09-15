@@ -26,13 +26,18 @@ and the Devin CLI; implemented natively on pi's extension APIs.
 ╰───────────────────────────────────────────────────────────────────────╯
 ```
 
-- **Row order**: the active selection pinned first, then the Fusion row, then
-  recent (≤5, MRU), then the rest of the preset. Empty preset → whole catalogue.
+- **Row order**: the active selection pinned first, then the Fusion row (when a
+  pair is configured), then recent (≤5, MRU), then the preset models, then
+  **every other available model** — the catalogue is never hidden; the preset
+  only controls ordering. The model currently working lights up: `✓` on the
+  session model, `◆` on the active sidekick.
 - **`←`/`→`** steps the highlighted row's effort (pi thinking level:
   off → minimal → low → medium → high → xhigh) and it's **remembered per model**.
-- **`tab`** on the Fusion row cycles focus: effort → lead → sidekick. Focused
-  columns open an inline dropdown over the preset lists; `↵` applies, `esc`
-  collapses.
+  The Fusion row keeps its own lead/sidekick efforts, so adjusting Fusion never
+  rewrites a model's standalone level.
+- **`tab`** on the Fusion row cycles focus: effort → lead → sidekick
+  (`shift+tab` reverses). Focused columns open an inline dropdown over the
+  preset lists; `Enter` applies, `esc` collapses.
 - **Confirm** applies: `pi.setModel`, `pi.setThinkingLevel(effort)`, updates
   MRU + persisted active selection, and shows `Fusion · Lead ◆ Sidekick` in
   the footer. Switching the model through pi's own `/model`/Ctrl+P drops
@@ -56,10 +61,11 @@ Two-column checklist over every available model:
 ╰──────────────────────────────────────────────────────────────────────╯
 ```
 
-- `←`/`→` or `tab` switches the L/S column, `space` toggles membership,
-  `↵` makes the highlighted model the default for the focused column,
-  `ctrl+y` saves, `ctrl+w` switches the write target, typing filters.
-- Selected models float to the top so the curated set is always visible.
+- `←`/`→` (or `tab`) switches the L/S column, `space` toggles membership,
+  `Enter` saves & closes, `esc` cancels, typing filters. Selected models float
+  to the top so the curated set is always visible.
+- Defaults are not edited here: confirming a Fusion pair in `/unipi:model`
+  records it as the preset default.
 
 ## Storage
 

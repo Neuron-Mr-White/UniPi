@@ -99,21 +99,20 @@ export function createModelBoostProvider(current: AutocompleteProvider): Autocom
 export default function fusionExtension(pi: ExtensionAPI): void {
   let active: ActiveSelection | undefined;
 
-  function statusText(preset: FusionPreset, names: (k: string) => string): string | undefined {
+  function statusText(names: (k: string) => string): string | undefined {
     if (!active || active.kind !== "fusion") return undefined;
-    const le = preset.effort[active.lead];
+    const le = active.leadEffort;
     return ` Fusion · ${names(active.lead)}${le ? ` ${effortLabel(le)}` : ""} ◆ ${names(active.sidekick)} `;
   }
 
   function refreshStatus(ctx: ExtensionContext): void {
     if (!ctx.hasUI) return;
-    const { preset } = loadPreset(ctx.cwd ?? process.cwd());
     const reg = registryOf(ctx);
     const names = (k: string) => findModel(reg, k)?.name || splitModelKey(k)?.id || k;
-    ctx.ui.setStatus(STATUS_KEY, statusText(preset, names));
+    ctx.ui.setStatus(STATUS_KEY, statusText(names));
   }
 
-  async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, globalPath: string): Promise<void> {
+  async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean }): Promise<void> {
     if (result.type === "cancelled") return;
     const reg = registryOf(ctx);
     const targetKey = result.type === "single" ? result.model : result.lead;
@@ -136,9 +135,27 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     active =
       result.type === "single"
         ? { kind: "single", model: result.model }
-        : { kind: "fusion", lead: result.lead, sidekick: result.sidekick };
+        : {
+            kind: "fusion",
+            lead: result.lead,
+            sidekick: result.sidekick,
+            leadEffort: result.leadEffort,
+            sidekickEffort: result.sidekickEffort,
+          };
     const recent = pushRecent(preset.recent, targetKey);
-    saveRuntimeState(globalPath, { effort: result.effortMap, recent, active });
+    if (result.type === "fusion") {
+      // Remember the confirmed pair as the preset default (the preset editor
+      // never edits defaults; confirming here is the natural place).
+      const layerPath = loaded.hasProjectLayer ? loaded.projectPath : loaded.globalPath;
+      saveCuration(layerPath, {
+        lead: preset.lead.includes(result.lead) ? preset.lead : [result.lead, ...preset.lead],
+        sidekick: preset.sidekick.includes(result.sidekick)
+          ? preset.sidekick
+          : [result.sidekick, ...preset.sidekick],
+        default: { lead: result.lead, sidekick: result.sidekick },
+      });
+    }
+    saveRuntimeState(loaded.globalPath, { effort: result.effortMap, recent, active });
     refreshStatus(ctx);
     const label =
       result.type === "single"
@@ -186,6 +203,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
               fusionDefault: preset.default,
               recent: preset.recent,
               active,
+              currentModelKey: currentKey,
               effort: preset.effort,
               fallbackEffort,
             },
@@ -198,7 +216,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
           overlayOptions: { anchor: "center", width: "88%", minWidth: 72, maxHeight: "80%" },
         },
       );
-      await applyResult(ctx, result, preset, loaded.globalPath);
+      await applyResult(ctx, result, preset, loaded);
     },
   });
 
@@ -219,6 +237,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
           new PresetEditor({
             models,
             initial: { lead: loaded.preset.lead, sidekick: loaded.preset.sidekick, default: loaded.preset.default },
+            active,
             initialTarget: loaded.hasProjectLayer ? "project" : "global",
             theme: { fg: (c, s) => theme.fg(c as never, s), bold: (s) => theme.bold(s) },
             onDone: done,
@@ -241,8 +260,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_e, ctx) => {
     modelBykey.clear();
-    const { preset } = loadPreset(ctx.cwd ?? process.cwd());
-    active = preset.active;
+    active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
     // Only keep a Fusion status if the session actually runs on that lead.
     if (active?.kind === "fusion" && ctx.model && modelKey(ctx.model) !== active.lead) active = undefined;
     refreshStatus(ctx);

@@ -36,7 +36,14 @@ export interface FusionPair {
 
 export type ActiveSelection =
   | { kind: "single"; model: ModelKey }
-  | { kind: "fusion"; lead: ModelKey; sidekick: ModelKey };
+  | {
+      kind: "fusion";
+      lead: ModelKey;
+      sidekick: ModelKey;
+      /** Fusion-row efforts are independent of per-model memory. */
+      leadEffort?: EffortLevel | undefined;
+      sidekickEffort?: EffortLevel | undefined;
+    };
 
 export interface FusionPreset {
   schema_version: number;
@@ -127,7 +134,13 @@ export function parsePreset(raw: unknown): Partial<FusionPreset> {
       typeof a["lead"] === "string" &&
       typeof a["sidekick"] === "string"
     ) {
-      out.active = { kind: "fusion", lead: a["lead"], sidekick: a["sidekick"] };
+      out.active = {
+        kind: "fusion",
+        lead: a["lead"],
+        sidekick: a["sidekick"],
+        ...(isEffortLevel(a["leadEffort"]) ? { leadEffort: a["leadEffort"] } : {}),
+        ...(isEffortLevel(a["sidekickEffort"]) ? { sidekickEffort: a["sidekickEffort"] } : {}),
+      };
     }
   }
   return out;

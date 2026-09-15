@@ -5,20 +5,30 @@
  *
  *   / type to search
  *   ──────────────────────────────────────────────────────────────
- *   ❭ Fusion              ← ◼◼◼◼   → High     Lead Opus… ▾  Sidekick GLM… ▾
- *   · GLM-5.3 Flash         ◼◼◼◼◼     Max
+ *   ❭ Fusion              ← ◼◼◼◼◻ → High     Lead Opus… ▾  Sidekick GLM… ▾
+ *   · GLM-5.3 Flash ✓       ◼◼◼◼◼     Max
  *   · Claude Opus 5         ◼◼◼       Medium
  *     ↓ more below
  *
- *   Input      Cached input   Output     Sidekick input  Sidekick cached  Sidekick output
- *   $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M       $0.02 / 1M       $1.2 / 1M
- *   ↑↓ select · tab lead · ←→ effort · ↵ confirm · esc cancel
+ *   Input      Cached input   Output     Sidekick input  Sidekick output
+ *   $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M       $1.2 / 1M
+ *   ↑/↓ select · ←/→ effort · tab lead · Enter confirm · esc cancel
  *
- * Row order: the active selection pinned first, then the Fusion row, then
- * recent (≤5, MRU), then the rest of the preset. Typing filters everything
- * except the pinned row. ←/→ steps the highlighted row's effort (remembered
- * per model). On the Fusion row, Tab cycles effort → lead → sidekick; the
- * lead/sidekick focus opens an inline dropdown fed by the preset lists.
+ * Row order: the active selection pinned first, then the Fusion row (when a
+ * pair is configured), then recent (≤5, MRU), then the preset models, then
+ * EVERY other available model — the catalogue is never hidden, the preset
+ * only controls ordering. Typing filters all rows except the pinned one.
+ *
+ * ←/→ steps the highlighted row's effort. Per-model effort is remembered for
+ * plain model rows; the Fusion row keeps its own lead/sidekick efforts so
+ * adjusting one never rewrites a model's standalone level.
+ *
+ * The model currently working (the session model, and the sidekick when
+ * Fusion is active) lights up: ✓ / ◆ marker plus accent styling.
+ *
+ * On the Fusion row, Tab cycles effort → lead → sidekick (Shift+Tab
+ * reverses); the lead/sidekick focus opens an inline dropdown fed by the
+ * preset lists.
  */
 
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -50,6 +60,8 @@ export interface PickerState {
   fusionDefault: { lead?: ModelKey | undefined; sidekick?: ModelKey | undefined };
   recent: readonly ModelKey[];
   active: ActiveSelection | undefined;
+  /** The session's current model — its row lights up with ✓. */
+  currentModelKey: ModelKey | undefined;
   effort: Readonly<Record<ModelKey, EffortLevel>>;
   /** Effort used for a model with no remembered level. */
   fallbackEffort: EffortLevel;
@@ -92,7 +104,8 @@ type Row = { kind: "fusion" } | { kind: "model"; key: ModelKey };
 type FusionFocus = "effort" | "lead" | "sidekick";
 
 const DEFAULT_VISIBLE_ROWS = 10;
-const NAME_COL = 24;
+const NAME_COL = 26;
+const MARKER_COL = 2;
 const BAR_SEGMENTS = EFFORT_LEVELS.length - 1; // "off" renders as an empty bar
 
 function printable(data: string): string | undefined {
@@ -125,6 +138,9 @@ export class ModelPicker {
   private readonly state: PickerState;
 
   private effort: Record<ModelKey, EffortLevel>;
+  /** Fusion-row efforts — deliberately NOT stored in the per-model map. */
+  private fusionLeadEffort: EffortLevel;
+  private fusionSidekickEffort: EffortLevel;
   private lead: ModelKey | undefined;
   private sidekick: ModelKey | undefined;
   private search = "";
@@ -150,6 +166,14 @@ export class ModelPicker {
       (active?.kind === "fusion" ? active.sidekick : undefined) ??
       options.state.fusionDefault.sidekick ??
       options.state.fusionSidekicks[0];
+    this.fusionLeadEffort =
+      (active?.kind === "fusion" ? active.leadEffort : undefined) ??
+      (this.lead !== undefined ? this.effort[this.lead] : undefined) ??
+      options.state.fallbackEffort;
+    this.fusionSidekickEffort =
+      (active?.kind === "fusion" ? active.sidekickEffort : undefined) ??
+      (this.sidekick !== undefined ? this.effort[this.sidekick] : undefined) ??
+      options.state.fallbackEffort;
     this.selected = 0; // pinned active row
   }
 
@@ -191,10 +215,8 @@ export class ModelPicker {
       ...this.state.fusionLeads,
       ...this.state.fusionSidekicks,
     ];
-    // Empty preset → whole catalogue so the picker is still usable.
-    if (this.state.fusionLeads.length === 0 && this.state.fusionSidekicks.length === 0) {
-      ordered.push(...this.state.models.map((m) => m.key));
-    }
+    // The whole catalogue always follows; the preset only controls ordering.
+    ordered.push(...this.state.models.map((m) => m.key));
     for (const key of ordered) {
       if (seen.has(key) || !this.modelsByKey.has(key)) continue;
       if (!this.matchesSearch(key)) continue;
@@ -243,7 +265,7 @@ export class ModelPicker {
         this.dropdownIndex = Math.min(Math.max(0, items.length - 1), this.dropdownIndex + 1);
       } else if (matchesKey(data, Key.tab)) {
         this.applyDropdown(items);
-        this.cycleFocus();
+        this.cycleFocus(matchesKey(data, "shift+tab"));
       } else if (matchesKey(data, Key.enter) || data === "\r") {
         this.applyDropdown(items);
         this.focus = "effort";
@@ -264,10 +286,14 @@ export class ModelPicker {
       this.focus = "effort";
     } else if (matchesKey(data, Key.left) || matchesKey(data, Key.right)) {
       const delta: -1 | 1 = matchesKey(data, Key.left) ? -1 : 1;
-      const target = row?.kind === "fusion" ? this.lead : row?.key;
-      if (target !== undefined) this.effort[target] = stepEffort(this.effortFor(target), delta);
+      if (row?.kind === "fusion") {
+        // Fusion-row effort is its own state: never touches per-model memory.
+        if (this.focus === "effort") this.fusionLeadEffort = stepEffort(this.fusionLeadEffort, delta);
+      } else if (row?.key !== undefined) {
+        this.effort[row.key] = stepEffort(this.effortFor(row.key), delta);
+      }
     } else if (matchesKey(data, Key.tab)) {
-      if (row?.kind === "fusion") this.cycleFocus();
+      if (row?.kind === "fusion") this.cycleFocus(matchesKey(data, "shift+tab"));
     } else if (matchesKey(data, Key.enter) || data === "\r") {
       this.confirm(row);
       return;
@@ -283,8 +309,11 @@ export class ModelPicker {
     this.changed();
   }
 
-  private cycleFocus(): void {
-    this.focus = this.focus === "effort" ? "lead" : this.focus === "lead" ? "sidekick" : "effort";
+  private cycleFocus(reverse = false): void {
+    const order: FusionFocus[] = ["effort", "lead", "sidekick"];
+    const dir = reverse ? -1 : 1;
+    const next = order[(order.indexOf(this.focus) + dir + order.length) % order.length] ?? "effort";
+    this.focus = next;
     if (this.focus !== "effort") {
       const items = this.dropdownItems();
       const current = this.focus === "lead" ? this.lead : this.sidekick;
@@ -308,8 +337,8 @@ export class ModelPicker {
         type: "fusion",
         lead: this.lead,
         sidekick: this.sidekick,
-        leadEffort: this.effortFor(this.lead),
-        sidekickEffort: this.effortFor(this.sidekick),
+        leadEffort: this.fusionLeadEffort,
+        sidekickEffort: this.fusionSidekickEffort,
         effortMap: { ...this.effort },
       });
       return;
@@ -337,6 +366,16 @@ export class ModelPicker {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
+  /** Marker for the model that is working right now. */
+  private markerFor(key: ModelKey | undefined): string {
+    if (key === undefined) return " ";
+    const t = this.theme;
+    if (key === this.state.currentModelKey) return t.fg("success", "✓");
+    const active = this.state.active;
+    if (active?.kind === "fusion" && key === active.sidekick) return t.fg("accent", "◆");
+    return " ";
+  }
+
   private bar(level: EffortLevel, highlighted: boolean): string {
     const filled = Math.max(0, EFFORT_LEVELS.indexOf(level));
     const on = this.theme.fg(highlighted ? "accent" : "muted", "◼".repeat(filled));
@@ -353,16 +392,27 @@ export class ModelPicker {
   private renderRow(row: Row, highlighted: boolean, width: number): string {
     const t = this.theme;
     const pointer = highlighted ? t.fg("accent", "❭") : t.fg("dim", "·");
+    const marker = row.kind === "fusion" ? " " : this.markerFor(row.key);
+    const working = row.kind === "model" && row.key === this.state.currentModelKey;
     const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, NAME_COL - 1);
-    const name = highlighted ? t.fg("accent", t.bold(nameRaw)) : t.fg("text", nameRaw);
-    const effortKey = row.kind === "fusion" ? this.lead : row.key;
-    const level = this.effortFor(effortKey);
+    const name =
+      row.kind === "fusion"
+        ? highlighted
+          ? t.fg("accent", t.bold(nameRaw))
+          : t.fg("text", nameRaw)
+        : working
+          ? t.fg("accent", t.bold(nameRaw))
+          : highlighted
+            ? t.fg("accent", nameRaw)
+            : t.fg("text", nameRaw);
+
+    const level = row.kind === "fusion" ? this.fusionLeadEffort : this.effortFor(row.key);
     const arrowsOn = highlighted && this.focus === "effort";
     const left = arrowsOn ? t.fg("accent", "←") : " ";
     const right = arrowsOn ? t.fg("accent", "→") : " ";
     const label = highlighted ? t.fg("accent", effortLabel(level)) : t.fg("muted", effortLabel(level));
 
-    let line = `${pointer} ${pad(name, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
+    let line = `${pointer} ${marker} ${pad(name, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
       const leadName = this.nameOf(this.lead, 14);
@@ -386,7 +436,7 @@ export class ModelPicker {
   private renderDropdown(width: number): string[] {
     const t = this.theme;
     const items = this.dropdownItems();
-    const indent = " ".repeat(NAME_COL + 4);
+    const indent = " ".repeat(MARKER_COL + NAME_COL + 5);
     if (items.length === 0) {
       return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — run /unipi:fusion-preset`)}`];
     }
@@ -397,10 +447,11 @@ export class ModelPicker {
       const idx = start + i;
       const isCur = idx === this.dropdownIndex;
       const isSet = key === (this.focus === "lead" ? this.lead : this.sidekick);
-      const marker = isCur ? t.fg("accent", "▸") : " ";
+      const marker = this.markerFor(key);
+      const glyph = isCur ? t.fg("accent", "▸") : " ";
       const label = isCur ? t.fg("accent", t.bold(this.nameOf(key, 28))) : t.fg("text", this.nameOf(key, 28));
       const star = isSet ? t.fg("dim", " *") : "";
-      return truncateToWidth(`${indent}${marker} ${label}${star}`, Math.max(1, width - 1));
+      return truncateToWidth(`${indent}${glyph} ${marker} ${label}${star}`, Math.max(1, width - 1));
     });
   }
 
@@ -434,7 +485,7 @@ export class ModelPicker {
       row.kind === "fusion"
         ? t.fg("dim", "Pairs frontier intelligence with cost-efficient execution")
         : primary?.reasoning
-          ? t.fg("dim", "Reasoning model · ←→ adjusts thinking effort")
+          ? t.fg("dim", "Reasoning model · ←/→ adjusts thinking effort")
           : t.fg("dim", "Non-reasoning model · effort is ignored by the provider");
     return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${desc}`, width - 1)];
   }
@@ -443,11 +494,11 @@ export class ModelPicker {
     const t = this.theme;
     const parts: string[] = [];
     if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "↵ apply", "esc collapse");
+      parts.push("↑/↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "Enter apply", "esc collapse");
     } else {
-      parts.push("↑↓ select");
+      parts.push("↑/↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←→ effort", "↵ confirm", "esc cancel");
+      parts.push("←/→ effort", "Enter confirm", "esc cancel");
     }
     return t.fg("dim", parts.join(" · "));
   }
@@ -483,7 +534,7 @@ export class ModelPicker {
           lines.push(...this.renderDropdown(width));
         }
       }
-      if (end < rows.length) lines.push(t.fg("dim", "  ↓ more below"));
+      if (end < rows.length) lines.push(t.fg("dim", `  ↓ more below (${String(rows.length - end)})`));
     }
 
     lines.push("");
