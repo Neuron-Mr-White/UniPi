@@ -117,10 +117,13 @@ savings above `$0.005`.
   "default": {"lead": "provider/lead", "sidekick": "provider/sidekick"},
   "effort": {"provider/sidekick": "high"},
   "badges": {"provider/sidekick": "new"},
+  "prices": {"provider/sidekick": {"input": 0.2, "cachedInput": 0.02, "output": 1.2}},
   "recent": ["provider/lead"],
   "active": {"kind": "fusion", "lead": "provider/lead", "sidekick": "provider/sidekick"}
 }
 ```
+
+`prices` is an optional manual override for models whose provider reports no pricing.
 
 ## Status
 

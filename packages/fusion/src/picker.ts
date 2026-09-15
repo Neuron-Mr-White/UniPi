@@ -128,6 +128,10 @@ function money(perMillion: number): string {
   return `$${rounded.replace(/\.0+$/u, "").replace(/(\.\d)0$/u, "$1")} / 1M`;
 }
 
+function hasPricing(cost: PickerModel["cost"]): cost is NonNullable<PickerModel["cost"]> {
+  return cost !== undefined && (cost.input > 0 || cost.cachedInput > 0 || cost.output > 0);
+}
+
 function pad(text: string, width: number): string {
   const w = visibleWidth(text);
   return w >= width ? text : text + " ".repeat(width - w);
@@ -161,7 +165,7 @@ export class ModelPicker {
     this.onRenderRequest = options.onRenderRequest;
     this.visibleRows = options.visibleRows ?? DEFAULT_VISIBLE_ROWS;
     this.modelsByKey = new Map(options.state.models.map((m) => [m.key, m]));
-    const prices = options.state.models.map((m) => (m.cost ? blendedPrice(m.cost) : undefined)).filter((p): p is number => p !== undefined);
+    const prices = options.state.models.map((m) => (hasPricing(m.cost) ? blendedPrice(m.cost) : undefined)).filter((p): p is number => p !== undefined && p > 0);
     this.priceRange = { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 };
     this.effort = { ...options.state.effort };
     const active = options.state.active;
@@ -477,24 +481,27 @@ export class ModelPicker {
     const primaryKey = row.kind === "fusion" ? this.lead : row.key;
     const primary = primaryKey === undefined ? undefined : this.modelsByKey.get(primaryKey);
     const side = row.kind === "fusion" && this.sidekick !== undefined ? this.modelsByKey.get(this.sidekick) : undefined;
+    const primaryCost = primary?.cost;
+    const sideCost = side?.cost;
     const cols: Array<[string, string]> = [];
-    if (primary?.cost) {
-      cols.push(["Input", money(primary.cost.input)]);
-      cols.push(["Cached input", money(primary.cost.cachedInput)]);
-      cols.push(["Output", money(primary.cost.output)]);
+    if (hasPricing(primaryCost)) {
+      cols.push(["Input", money(primaryCost.input)]);
+      cols.push(["Cached input", money(primaryCost.cachedInput)]);
+      cols.push(["Output", money(primaryCost.output)]);
     } else {
       cols.push(["Input", "—"], ["Cached input", "—"], ["Output", "—"]);
     }
     if (row.kind === "fusion") {
-      if (side?.cost) {
-        cols.push(["Sidekick input", money(side.cost.input)]);
-        cols.push(["Sidekick cached input", money(side.cost.cachedInput)]);
-        cols.push(["Sidekick output", money(side.cost.output)]);
+      if (hasPricing(sideCost)) {
+        cols.push(["Sidekick input", money(sideCost.input)]);
+        cols.push(["Sidekick cached input", money(sideCost.cachedInput)]);
+        cols.push(["Sidekick output", money(sideCost.output)]);
       } else {
         cols.push(["Sidekick input", "—"], ["Sidekick cached input", "—"], ["Sidekick output", "—"]);
       }
     }
-    const colWidth = Math.max(10, Math.min(18, Math.floor((width - 4) / cols.length)));
+    const need = Math.max(...cols.map(([h, v]) => Math.max(visibleWidth(h), visibleWidth(v)))) + 3;
+    const colWidth = Math.max(10, Math.min(need, Math.floor((width - 4) / cols.length)));
     const head = cols.map(([h]) => pad(t.fg("dim", h), colWidth)).join("");
     const vals = cols.map(([, v]) => pad(t.fg("text", v), colWidth)).join("");
     const desc =
@@ -506,7 +513,11 @@ export class ModelPicker {
     const badges = this.state.models.some((m) => m.badge !== undefined)
       ? `${t.fg("success", "✱")} ${t.fg("dim", "New")}  ${t.fg("accent", "✱")} ${t.fg("dim", "Promotion")}  ${t.fg("warning", "✱")} ${t.fg("dim", "Beta")} ${t.fg("dim", "·")}`
       : "";
-    const description = `${badges}${badges.length > 0 ? " " : ""}${desc}`;
+    const noPricing = row.kind === "fusion"
+      ? !hasPricing(primaryCost) || !hasPricing(sideCost)
+      : !hasPricing(primaryCost);
+    const pricing = noPricing ? t.fg("dim", " · no pricing data from provider") : "";
+    const description = `${badges}${badges.length > 0 ? " " : ""}${desc}${pricing}`;
     return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${description}`, width - 1)];
   }
 
@@ -561,8 +572,9 @@ export class ModelPicker {
     const sliderCells = Math.min(48, Math.max(1, width - 6));
     const sliderKey = row?.kind === "fusion" ? this.lead : row?.key;
     const sliderModel = sliderKey === undefined ? undefined : this.modelsByKey.get(sliderKey);
-    const sliderPrice = sliderModel?.cost === undefined ? undefined : blendedPrice(sliderModel.cost);
-    const marker = sliderPrice === undefined ? undefined : sliderPosition(sliderPrice, this.priceRange.min, this.priceRange.max, sliderCells);
+    const sliderCost = sliderModel?.cost;
+    const sliderPrice = hasPricing(sliderCost) ? blendedPrice(sliderCost) : undefined;
+    const marker = this.priceRange.max <= 0 || sliderPrice === undefined ? undefined : sliderPosition(sliderPrice, this.priceRange.min, this.priceRange.max, sliderCells);
     lines.push(truncateToWidth(`  ${renderSlider(sliderCells, marker)}`, width - 1));
     lines.push(...this.renderPricePanel(row, width));
     lines.push("");

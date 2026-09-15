@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   effortLabel,
+  globalPresetPath,
   isEffortLevel,
   loadPreset,
   modelKey,
@@ -60,20 +61,18 @@ function findModel(reg: Registry | undefined, key: string): Model<Api> | undefin
   return modelBykey.get(key);
 }
 
-function costOf(m: Model<Api> | undefined): PickerModel["cost"] {
-  const cost = m?.cost;
-  return cost && typeof cost.input === "number"
-    ? { input: cost.input, cachedInput: cost.cacheRead ?? 0, output: cost.output }
-    : undefined;
+function costOf(m: Model<Api> | undefined, override?: PickerModel["cost"]): PickerModel["cost"] {
+  const cost = override ?? (m?.cost && typeof m.cost.input === "number" ? { input: m.cost.input, cachedInput: m.cost.cacheRead ?? 0, output: m.cost.output } : undefined);
+  return cost && (cost.input > 0 || cost.cachedInput > 0 || cost.output > 0) ? cost : undefined;
 }
 
-function toPickerModel(m: Model<Api>, badge?: FusionPreset["badges"][string]): PickerModel {
+function toPickerModel(m: Model<Api>, badge?: FusionPreset["badges"][string], override?: PickerModel["cost"]): PickerModel {
   return {
     key: modelKey(m),
     name: m.name || m.id,
     provider: m.provider,
     badge,
-    cost: costOf(m),
+    cost: costOf(m, override),
     reasoning: Boolean(m.reasoning),
   };
 }
@@ -130,9 +129,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   function statusSavings(ctx: ExtensionContext): number | undefined {
     if (active?.kind !== "fusion" || runtime === undefined) return undefined;
     const reg = registryOf(ctx);
+    const preset = loadPreset(ctx.cwd ?? process.cwd()).preset;
     const lead = findModel(reg, active.lead);
     const side = findModel(reg, active.sidekick);
-    return estimateSavings(runtime.usage, costOf(lead), costOf(side)).savedUsd;
+    return estimateSavings(runtime.usage, costOf(lead, preset.prices[active.lead]), costOf(side, preset.prices[active.sidekick])).savedUsd;
   }
 
   function publishStatus(ctx: ExtensionContext): void {
@@ -180,8 +180,14 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   function savingsStats(ctx: ExtensionContext): string {
     if (active?.kind !== "fusion" || runtime === undefined) return "Fusion is not active — pick a Fusion pair with /unipi:model.";
     const reg = registryOf(ctx);
-    const savings = estimateSavings(runtime.usage, costOf(findModel(reg, active.lead)), costOf(findModel(reg, active.sidekick)));
-    return `Sidekick tokens: in ${String(runtime.usage.input)} · out ${String(runtime.usage.output)} · cached ${String(runtime.usage.cacheRead)} · cache write ${String(runtime.usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\nHandoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}`;
+    const preset = loadPreset(ctx.cwd ?? process.cwd()).preset;
+    const leadCost = costOf(findModel(reg, active.lead), preset.prices[active.lead]);
+    const sidekickCost = costOf(findModel(reg, active.sidekick), preset.prices[active.sidekick]);
+    const savings = estimateSavings(runtime.usage, leadCost, sidekickCost);
+    const pricing = leadCost === undefined && sidekickCost === undefined
+      ? '\nPricing unavailable from provider — set "prices" in ~/.unipi/config/fusion/preset.json to estimate savings.'
+      : "";
+    return `Sidekick tokens: in ${String(runtime.usage.input)} · out ${String(runtime.usage.output)} · cached ${String(runtime.usage.cacheRead)} · cache write ${String(runtime.usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\nHandoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}${pricing}`;
   }
 
   registerFusionTools(pi, {
@@ -267,7 +273,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       const cwd = ctx.cwd ?? process.cwd();
       const loaded = loadPreset(cwd);
       const preset = loaded.preset;
-      const models = reg.getAvailable().map((m) => toPickerModel(m, preset.badges[modelKey(m)]));
+      const models = reg.getAvailable().map((m) => toPickerModel(m, preset.badges[modelKey(m)], preset.prices[modelKey(m)]));
       if (models.length === 0) {
         ctx.ui.notify("No models available. Use /login to add a provider.", "warning");
         return;
@@ -347,13 +353,26 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     },
   });
 
-  pi.on("session_start", (_e, ctx) => {
+  pi.on("session_start", async (_e, ctx) => {
     stopRuntime();
     nudged = false;
     modelBykey.clear();
     active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
-    // Only keep a Fusion status if the session actually runs on that lead.
-    if (active?.kind === "fusion" && ctx.model && modelKey(ctx.model) !== active.lead) active = undefined;
+    if (active?.kind === "fusion" && (!ctx.model || modelKey(ctx.model) !== active.lead)) {
+      const leadKey = active.lead;
+      const lead = findModel(registryOf(ctx), leadKey);
+      const restored = lead !== undefined && await pi.setModel(lead);
+      if (restored) {
+        try {
+          pi.setThinkingLevel(active.leadEffort ?? "medium");
+        } catch {
+          /* provider may not support thinking */
+        }
+      } else {
+        active = undefined;
+        if (ctx.hasUI) ctx.ui.notify(`Fusion lead ${leadKey} unavailable — Fusion off`, "warning");
+      }
+    }
     publishStatus(ctx);
     if (ctx.hasUI) ctx.ui.addAutocompleteProvider(createModelBoostProvider);
   });
@@ -369,6 +388,8 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     if (active?.kind === "fusion" && modelKey(event.model) !== active.lead) {
       stopRuntime();
       active = { kind: "single", model: modelKey(event.model) };
+      const loaded = loadPreset(ctx.cwd ?? process.cwd());
+      saveRuntimeState(globalPresetPath(), { effort: loaded.preset.effort, recent: loaded.preset.recent, active });
       publishStatus(ctx);
     }
   });

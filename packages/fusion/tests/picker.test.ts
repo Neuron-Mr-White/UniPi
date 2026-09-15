@@ -107,6 +107,24 @@ test("render includes price columns for fusion incl. sidekick", () => {
   assert.match(text, /tab lead/);
 });
 
+test("price headers reserve space for cached input", () => {
+  const text = run(state(), [DOWN]).picker.render(160).join("\n");
+  assert.match(text, /Sidekick cached input {2,}Sidekick output/);
+  assert.doesNotMatch(text, /inputSidekick output/);
+});
+
+test("zero pricing renders no marker and provider pricing guidance", () => {
+  const models = state().models.map((model) => ({ ...model, cost: { input: 0, cachedInput: 0, output: 0 } }));
+  const text = run(state({ models }), [DOWN]).picker.render(120).join("\n");
+  assert.match(text, /no pricing data from provider/);
+  assert.doesNotMatch(text, /●/);
+});
+
+test("an unpriced highlighted row shows provider pricing guidance", () => {
+  const text = run(state(), [DOWN, DOWN]).picker.render(120).join("\n");
+  assert.match(text, /no pricing data from provider/);
+});
+
 test("empty preset hides the fusion row but still lists the catalogue", () => {
   const { picker } = run(state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined }), []);
   // No active selection → no pinned row; plain catalogue order.

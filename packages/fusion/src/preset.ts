@@ -61,6 +61,8 @@ export interface FusionPreset {
   recent: ModelKey[];
   /** Optional hand-curated model badge metadata. */
   badges: Record<ModelKey, FusionBadge>;
+  /** Manual pricing overrides for providers that report no pricing. */
+  prices: Record<ModelKey, { input: number; cachedInput: number; output: number }>;
   /** What the user last confirmed in the picker. */
   active?: ActiveSelection | undefined;
 }
@@ -74,6 +76,7 @@ export function emptyPreset(): FusionPreset {
     effort: {},
     recent: [],
     badges: {},
+    prices: {},
   };
 }
 
@@ -136,6 +139,20 @@ export function parsePreset(raw: unknown): Partial<FusionPreset> {
     }
     out.badges = badges;
   }
+  if (typeof r["prices"] === "object" && r["prices"] !== null) {
+    const prices: FusionPreset["prices"] = {};
+    for (const [k, v] of Object.entries(r["prices"] as Record<string, unknown>)) {
+      if (typeof v !== "object" || v === null) continue;
+      const price = v as Record<string, unknown>;
+      const input = price["input"];
+      const cachedInput = price["cachedInput"];
+      const output = price["output"];
+      if ([input, cachedInput, output].every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) {
+        prices[k] = { input: input as number, cachedInput: cachedInput as number, output: output as number };
+      }
+    }
+    out.prices = prices;
+  }
   const active = r["active"];
   if (typeof active === "object" && active !== null) {
     const a = active as Record<string, unknown>;
@@ -167,6 +184,7 @@ export function mergePresets(base: FusionPreset, over: Partial<FusionPreset>): F
     effort: { ...base.effort, ...(over.effort ?? {}) },
     recent: over.recent ?? base.recent,
     badges: { ...base.badges, ...(over.badges ?? {}) },
+    prices: { ...base.prices, ...(over.prices ?? {}) },
     active: over.active ?? base.active,
   };
 }
