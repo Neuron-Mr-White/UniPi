@@ -87,3 +87,35 @@ export class OverlayTheme {
     return this.fg("borderMuted", `${left}${safeRepeat("─", innerWidth)}${right}`);
   }
 }
+
+/**
+ * Wrap already-rendered body lines in a solid, opaque frame so an overlay
+ * never lets the transcript bleed through. Every row is padded to the full
+ * inner width and tinted with `bgFn` (defaults to a dark neutral), which is
+ * what makes it opaque — pi's overlay compositor only paints the cells a
+ * component returns.
+ */
+export function frameOverlay(
+  body: readonly string[],
+  width: number,
+  options: {
+    title?: string | undefined;
+    borderFg?: ((text: string) => string) | undefined;
+    bgFn?: ((text: string) => string) | undefined;
+  } = {},
+): string[] {
+  const inner = Math.max(1, width - 2);
+  const border = options.borderFg ?? ((t: string) => `\x1b[38;2;83;160;215m${t}\x1b[0m`);
+  const bg = options.bgFn ?? ((t: string) => `\x1b[48;2;24;26;32m${t}\x1b[49m`);
+  const row = (content: string): string => {
+    const cut = truncateToWidth(content, inner, "");
+    const padded = cut + safeRepeat(" ", Math.max(0, inner - visibleWidth(cut)));
+    return `${border("│")}${bg(padded)}${border("│")}`;
+  };
+  const titleText = options.title ? ` ${options.title} ` : "";
+  const topFill = Math.max(0, inner - visibleWidth(titleText));
+  const lines = [border(`╭${titleText}${safeRepeat("─", topFill)}╮`)];
+  for (const line of body) lines.push(row(line));
+  lines.push(border(`╰${safeRepeat("─", inner)}╯`));
+  return lines;
+}
