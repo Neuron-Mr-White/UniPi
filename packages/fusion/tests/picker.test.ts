@@ -78,7 +78,7 @@ test("effort clamps at both ends", () => {
   const { result } = run(state(), [LEFT, LEFT, LEFT, LEFT, LEFT, ENTER]);
   assert.equal(result?.type === "single" && result.effort, "off");
   const { result: r2 } = run(state(), Array<string>(10).fill(RIGHT).concat(ENTER));
-  assert.equal(r2?.type === "single" && r2.effort, "xhigh");
+  assert.equal(r2?.type === "single" && r2.effort, "max");
 });
 
 test("Fusion row: tab → lead dropdown → tab → sidekick dropdown → pick → confirm", () => {
@@ -117,9 +117,17 @@ test("fusion-row effort is independent of per-model effort", () => {
   // Select the Fusion row and bump its effort twice (medium → xhigh).
   const { picker } = run(state(), [DOWN, RIGHT, RIGHT]);
   const text = picker.render(140).join("\n");
-  assert.match(text, /Fusion\s+← ◼◼◼◼◼ → XHigh/);
+  assert.match(text, /Fusion\s+← ▰▰▰▰▰ → XHigh/);
   // The lead model's own row keeps its remembered level (medium = 3 filled).
-  assert.match(text, /Opus\s+◼◼◼◻◻\s+Medium/);
+  assert.match(text, /Opus\s+▰▰▰▱▱\s+Medium/);
+});
+
+test("badges render with a colored legend only when present", () => {
+  const plain = run(state(), []).picker.render(100).join("\n");
+  assert.doesNotMatch(plain, /✱ New/);
+  const withBadge = run(state({ models: state().models.map((m) => m.key === "b/glm" ? { ...m, badge: "new" } : m) }), []).picker.render(100).join("\n");
+  assert.match(withBadge, /✱/);
+  assert.match(withBadge, /✱ New/);
 });
 
 test("a single active model lights up with ✓", () => {

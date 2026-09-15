@@ -16,6 +16,8 @@ export interface SharedFusionStatus {
   sidekickName: string;
   /** Sidekick thinking level. */
   sidekickEffort: string;
+  /** Estimated savings compared with pricing all sidekick usage at lead rates. */
+  savedUsd?: number;
 }
 
 const KEY = Symbol.for("unipi.fusion.status");

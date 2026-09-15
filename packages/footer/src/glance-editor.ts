@@ -40,7 +40,7 @@ export interface GlanceStatus {
 	 * `Fusion · <lead> <effort> ◆ <sidekick>` — lead lit, sidekick muted —
 	 * and the plain thinking slot is suppressed (efforts are inline).
 	 */
-	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string } | null;
+	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number } | null;
 }
 
 const BORDER = {
@@ -231,7 +231,7 @@ export class GlanceEditor extends CustomEditor {
 			const lead = `${st.fusion.leadName}${st.fusion.leadEffort ? ` ${st.fusion.leadEffort}` : ""}`;
 			const side = `${st.fusion.sidekickName}${st.fusion.sidekickEffort ? ` ${st.fusion.sidekickEffort}` : ""}`;
 			rightParts.push(
-				`${LEAD_FG}Fusion · ${lead}${RESET} ${DIM_FG}◆ ${side}${RESET}`,
+				`${LEAD_FG}Fusion · ${lead}${RESET} ${DIM_FG}◆ ${side}${st.fusion.savedUsd !== undefined && st.fusion.savedUsd > 0.005 ? ` · saved $${st.fusion.savedUsd.toFixed(2)}` : ""}${RESET}`,
 			);
 		} else {
 			if (st.modelName) rightParts.push(st.modelName);

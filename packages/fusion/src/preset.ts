@@ -21,8 +21,10 @@ import { dirname, join } from "node:path";
 export const PRESET_SCHEMA_VERSION = 1;
 
 /** pi thinking levels in ascending effort order (used by ←/→ in the picker). */
-export const EFFORT_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const EFFORT_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+export type FusionBadge = "new" | "promotion" | "beta";
 
 export const RECENT_LIMIT = 5;
 
@@ -57,6 +59,8 @@ export interface FusionPreset {
   effort: Record<ModelKey, EffortLevel>;
   /** MRU single models / leads, newest first, max RECENT_LIMIT. */
   recent: ModelKey[];
+  /** Optional hand-curated model badge metadata. */
+  badges: Record<ModelKey, FusionBadge>;
   /** What the user last confirmed in the picker. */
   active?: ActiveSelection | undefined;
 }
@@ -69,6 +73,7 @@ export function emptyPreset(): FusionPreset {
     default: {},
     effort: {},
     recent: [],
+    badges: {},
   };
 }
 
@@ -124,6 +129,13 @@ export function parsePreset(raw: unknown): Partial<FusionPreset> {
     out.effort = effort;
   }
   if ("recent" in r) out.recent = stringArray(r["recent"]).slice(0, RECENT_LIMIT);
+  if (typeof r["badges"] === "object" && r["badges"] !== null) {
+    const badges: Record<ModelKey, FusionBadge> = {};
+    for (const [k, v] of Object.entries(r["badges"] as Record<string, unknown>)) {
+      if (v === "new" || v === "promotion" || v === "beta") badges[k] = v;
+    }
+    out.badges = badges;
+  }
   const active = r["active"];
   if (typeof active === "object" && active !== null) {
     const a = active as Record<string, unknown>;
@@ -154,6 +166,7 @@ export function mergePresets(base: FusionPreset, over: Partial<FusionPreset>): F
     default: { ...base.default, ...(over.default ?? {}) },
     effort: { ...base.effort, ...(over.effort ?? {}) },
     recent: over.recent ?? base.recent,
+    badges: { ...base.badges, ...(over.badges ?? {}) },
     active: over.active ?? base.active,
   };
 }
@@ -237,9 +250,10 @@ export function stepEffort(current: EffortLevel, delta: -1 | 1): EffortLevel {
   return EFFORT_LEVELS[next] ?? current;
 }
 
-/** Devin-style label: off→None, xhigh→XHigh, others capitalised. */
+/** Devin-style label: off→None, xhigh→XHigh, max→Max, others capitalised. */
 export function effortLabel(level: EffortLevel): string {
   if (level === "off") return "None";
   if (level === "xhigh") return "XHigh";
+  if (level === "max") return "Max";
   return level.charAt(0).toUpperCase() + level.slice(1);
 }

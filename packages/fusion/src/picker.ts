@@ -40,8 +40,10 @@ import {
   stepEffort,
   type ActiveSelection,
   type EffortLevel,
+  type FusionBadge,
   type ModelKey,
 } from "./preset.js";
+import { blendedPrice, renderSlider, sliderPosition } from "./slider.js";
 
 // ── Data contracts ─────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ export interface PickerModel {
   key: ModelKey;
   name: string;
   provider: string;
+  badge?: FusionBadge | undefined;
   /** $/1M tokens; undefined when the catalogue has no price. */
   cost?: { input: number; cachedInput: number; output: number } | undefined;
   reasoning: boolean;
@@ -105,9 +108,9 @@ type Row = { kind: "fusion" } | { kind: "model"; key: ModelKey };
 type FusionFocus = "effort" | "lead" | "sidekick";
 
 const DEFAULT_VISIBLE_ROWS = 10;
-const NAME_COL = 26;
+const NAME_COL = 24;
 const MARKER_COL = 2;
-const BAR_SEGMENTS = EFFORT_LEVELS.length - 1; // "off" renders as an empty bar
+const BAR_SEGMENTS = 5;
 
 function printable(data: string): string | undefined {
   if (data.length !== 1) return undefined;
@@ -137,6 +140,7 @@ export class ModelPicker {
   private readonly visibleRows: number;
   private readonly modelsByKey: Map<ModelKey, PickerModel>;
   private readonly state: PickerState;
+  private readonly priceRange: { min: number; max: number };
 
   private effort: Record<ModelKey, EffortLevel>;
   /** Fusion-row efforts — deliberately NOT stored in the per-model map. */
@@ -157,6 +161,8 @@ export class ModelPicker {
     this.onRenderRequest = options.onRenderRequest;
     this.visibleRows = options.visibleRows ?? DEFAULT_VISIBLE_ROWS;
     this.modelsByKey = new Map(options.state.models.map((m) => [m.key, m]));
+    const prices = options.state.models.map((m) => (m.cost ? blendedPrice(m.cost) : undefined)).filter((p): p is number => p !== undefined);
+    this.priceRange = { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 };
     this.effort = { ...options.state.effort };
     const active = options.state.active;
     this.lead =
@@ -380,9 +386,10 @@ export class ModelPicker {
   }
 
   private bar(level: EffortLevel, highlighted: boolean): string {
-    const filled = Math.max(0, EFFORT_LEVELS.indexOf(level));
-    const on = this.theme.fg(highlighted ? "accent" : "muted", "◼".repeat(filled));
-    const off = this.theme.fg("dim", "◻".repeat(BAR_SEGMENTS - filled));
+    const index = Math.max(0, EFFORT_LEVELS.indexOf(level));
+    const filled = Math.ceil((index / (EFFORT_LEVELS.length - 1)) * BAR_SEGMENTS);
+    const on = this.theme.fg(highlighted ? "text" : "muted", "▰".repeat(filled));
+    const off = this.theme.fg("dim", "▱".repeat(BAR_SEGMENTS - filled));
     return `${on}${off}`;
   }
 
@@ -415,6 +422,9 @@ export class ModelPicker {
           : highlighted
             ? t.fg("accent", nameRaw)
             : t.fg("text", nameRaw);
+    const model = row.kind === "model" ? this.modelsByKey.get(row.key) : undefined;
+    const badge = model?.badge;
+    const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
 
     const level = row.kind === "fusion" ? this.fusionLeadEffort : this.effortFor(row.key);
     const arrowsOn = highlighted && this.focus === "effort";
@@ -422,7 +432,7 @@ export class ModelPicker {
     const right = arrowsOn ? t.fg("accent", "→") : " ";
     const label = highlighted ? t.fg("accent", effortLabel(level)) : t.fg("muted", effortLabel(level));
 
-    let line = `${pointer} ${marker} ${pad(name, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
+    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
       const leadName = this.nameOf(this.lead, 14);
@@ -436,9 +446,6 @@ export class ModelPicker {
         ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}`
         : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}`;
       line += `   ${leadText}   ${sideText}`;
-    } else {
-      const m = this.modelsByKey.get(row.key);
-      if (m !== undefined) line += `   ${t.fg("dim", `[${m.provider}]`)}`;
     }
     return truncateToWidth(line, Math.max(1, width - 1));
   }
@@ -481,10 +488,10 @@ export class ModelPicker {
     if (row.kind === "fusion") {
       if (side?.cost) {
         cols.push(["Sidekick input", money(side.cost.input)]);
-        cols.push(["Sidekick cached", money(side.cost.cachedInput)]);
+        cols.push(["Sidekick cached input", money(side.cost.cachedInput)]);
         cols.push(["Sidekick output", money(side.cost.output)]);
       } else {
-        cols.push(["Sidekick input", "—"], ["Sidekick cached", "—"], ["Sidekick output", "—"]);
+        cols.push(["Sidekick input", "—"], ["Sidekick cached input", "—"], ["Sidekick output", "—"]);
       }
     }
     const colWidth = Math.max(10, Math.min(18, Math.floor((width - 4) / cols.length)));
@@ -496,18 +503,22 @@ export class ModelPicker {
         : primary?.reasoning
           ? t.fg("dim", "Reasoning model · ←/→ adjusts thinking effort")
           : t.fg("dim", "Non-reasoning model · effort is ignored by the provider");
-    return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${desc}`, width - 1)];
+    const badges = this.state.models.some((m) => m.badge !== undefined)
+      ? `${t.fg("success", "✱")} ${t.fg("dim", "New")}  ${t.fg("accent", "✱")} ${t.fg("dim", "Promotion")}  ${t.fg("warning", "✱")} ${t.fg("dim", "Beta")} ${t.fg("dim", "·")}`
+      : "";
+    const description = `${badges}${badges.length > 0 ? " " : ""}${desc}`;
+    return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${description}`, width - 1)];
   }
 
   private hintLine(row: Row | undefined): string {
     const t = this.theme;
     const parts: string[] = [];
     if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑/↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "Enter apply", "esc collapse");
+      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "↵ apply", "esc collapse");
     } else {
-      parts.push("↑/↓ select");
+      parts.push("↑↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←/→ effort", "Enter confirm", "esc cancel");
+      parts.push("←→ effort", "↵ confirm", "esc cancel");
     }
     return t.fg("dim", parts.join(" · "));
   }
@@ -547,6 +558,12 @@ export class ModelPicker {
     }
 
     lines.push("");
+    const sliderCells = Math.min(48, Math.max(1, width - 6));
+    const sliderKey = row?.kind === "fusion" ? this.lead : row?.key;
+    const sliderModel = sliderKey === undefined ? undefined : this.modelsByKey.get(sliderKey);
+    const sliderPrice = sliderModel?.cost === undefined ? undefined : blendedPrice(sliderModel.cost);
+    const marker = sliderPrice === undefined ? undefined : sliderPosition(sliderPrice, this.priceRange.min, this.priceRange.max, sliderCells);
+    lines.push(truncateToWidth(`  ${renderSlider(sliderCells, marker)}`, width - 1));
     lines.push(...this.renderPricePanel(row, width));
     lines.push("");
     lines.push(this.hintLine(row));
