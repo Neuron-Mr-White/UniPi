@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.17.0] — 2026-09-15
+
+### Added
+
+- `fusion`: **Local Fusion runtime — a real lead + sidekick pair.** Picking a Fusion preset now wires up a persistent sidekick subagent, not just a status label, via two new agent tools:
+  - `sidekick` — hand off implementation/verification work to a persistent sidekick child process, spawned in pi's RPC mode (`--mode rpc`) with the active pair's sidekick model + effort and its own session file under `~/.unipi/state/fusion/sidekick/<session>.jsonl`. Blocking dispatch is the default (`block:true` waits and returns the report); `block:false` returns immediately and later delivers a `<subagent_completion_notification>` with the report. Calling `sidekick` again while a handoff is running injects the message as an interrupt instead of spawning a second process.
+  - `read_subagent` — read a handoff report by `agent_id` (or the latest); `block:true` waits (default 2700s), `block:false` returns a live progress snapshot (tool-call count, recent tools, text tail).
+  - The runtime (`sidekick-runtime.ts`) keeps one persistent child per session, streams progress (`◆ sidekick working · N tool calls · 12.3s`), accumulates usage (input/output/cache-read/cache-write tokens + cost), and returns a structured `HandoffReport` (`status`, `text`, `usage`, `toolCalls`, `durationMs`).
+  - A delegate-by-default policy (`leadPolicy()` in `prompts.ts`) is appended to the lead's system prompt on every turn while Fusion is active, the sidekick child gets a dedicated role prompt (`sidekickSystemPrompt()`), and a one-time `FIRST_EDIT_NUDGE` reminds the lead to brief the sidekick instead of editing when a change is larger than trivial.
+- `fusion`: **`/unipi:fusion-stats`** command — reports sidekick token usage, estimated savings, handoff count, and runtime liveness.
+- `fusion`: **savings estimation** (`estimateSavings()` in `savings.ts`) — prices sidekick usage at both the sidekick and lead model rates and reports the difference; surfaced in the stats command and the footer.
+- `footer`: **the glance frame now renders the active Fusion pair** in the model slot — `Fusion · <lead> <effort> ◆ <sidekick>` with the lead lit and the sidekick muted, plus `· saved $X.XX` once savings pass half a cent; the separate thinking slot is suppressed while a pair is active.
+- `core`: new `fusion-status` module (`setSharedFusionStatus`/`getSharedFusionStatus`) — a `Symbol.for` shared registry (same pattern as background-tasks) that lets `fusion` publish the active pair and `footer` render it without a hard dependency.
+
+### Changed
+
+- `fusion`: **now depends on `@pi-unipi/subagents`** — the sidekick child is spawned via `getPiSpawnCommand` from `@pi-unipi/subagents/src/pi-spawn.js`, reusing the subagents package's spawn logic instead of re-implementing it.
+- `fusion`: the picker shows **model badges** (from the preset), decouples effort selection, and renders a **rainbow price slider** (`slider.ts`) placing each model on a log-scaled cost gradient; confirming a Fusion pair now records it as the preset default.
+
 ## [2.16.1] — 2026-09-11
 
 ### Fixed
