@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.17.2] — 2026-09-15
+
+### Fixed
+
+- `footer`: **the startup update prompt no longer becomes unclosable after ~3.5s.** The deferred Glance editor install (`installGlanceEditor` in `src/index.ts`) calls `setEditorComponent()`, which internally re-focuses the editor and silently stole keyboard focus from whatever overlay was open — the updater prompt kept rendering while `q`/`n`/Esc typed into the input box. The install now snapshots the focused overlay (`tui.isOverlayFocused()` / `getFocusedComponent()`) and restores it after the swap, protecting the updater prompt, the boot dashboard, and any other overlay. New `tests/glance-focus.test.ts`.
+- `updater`: **the update prompt now shows the release notes for the version being offered.** It previously parsed the `CHANGELOG.md` shipped with the *installed* package, which by definition never contains the newer version's entry, so it only ever showed an empty `Unreleased` header. New `src/remote-changelog.ts` fetches `raw.githubusercontent.com/Neuron-Mr-White/unipi/v<latest>/CHANGELOG.md` (5s timeout, falls back to `main` when the tag is not pushed yet, then to the local file when offline) and caches tag-served content under `~/.unipi/cache/updater/changelog-<version>.md`. `parseChangelog()` is split into `parseChangelogContent()` + a file wrapper; `getNewerVersions()` drops an empty `Unreleased` entry; the empty state reads `No changelog available for <version> (offline?)`.
+
 ## [2.17.1] — 2026-09-15
 
 ### Fixed
