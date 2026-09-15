@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-15 (v2.17.2, update-prompt focus fix + remote changelog)
+last-run: 2026-09-16 (v2.18.0, sidekick transcript + tint, fusion working indicator, recurring nudges — lockstep bump)
 ---
 
 # Full Release Pipeline
@@ -511,3 +511,4 @@ After successful completion:
 - **Version strategy**: Bump patch by default. Use minor for new features. For breaking changes, choose the appropriate pre-1.0 compatibility bump and document `BREAKING:` migration notes in `CHANGELOG.md`.
 - **Documentation tone**: Be proud of what Unipi does. It's not just another tool — it's a structured development system with memory, parallelism, and iterative loops
 - **Command registry**: All commands use `unipi:` prefix via `UNIPI_PREFIX` from `@pi-unipi/core`. Constants are the source of truth — if a constant exists, a registration must exist
+- **Lockstep rule**: if `@pi-unipi/core` (or any package that others pin) changes, bump and republish ALL packages; partial bumps (as in 2.17.1/2.17.2) are only for leaf packages nobody else depends on.

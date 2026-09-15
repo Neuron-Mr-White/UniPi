@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.18.0] — 2026-09-16
+
 ### Changed
 
 - `fusion`: **sidekick blocks have their own tint.** `sidekick`/`read_subagent` use pi's `renderShell: "self"` and paint the theme's `customMessageBg` (violet in the dark theme) instead of the grey/green/red ordinary tool backgrounds, with a `▍` left rail coloured by state (accent working · success completed · error failed) — `frameSidekick()`/`RailComponent` in `src/transcript.ts`; the completion card uses the same frame.
