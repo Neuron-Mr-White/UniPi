@@ -1,8 +1,8 @@
-import { Box, Markdown, Text } from "@earendil-works/pi-tui";
+import { Markdown, Text, type Component } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SidekickRuntime, HandoffProgress, HandoffReport } from "./sidekick-runtime.js";
-import { renderSidekickTranscript, type ThemeLike as TranscriptTheme } from "./transcript.js";
+import { frameSidekick, renderSidekickTranscript, type ThemeLike as TranscriptTheme } from "./transcript.js";
 
 const SidekickParams = Type.Object({
   message: Type.String({ description: "A concrete implementation or verification brief for the sidekick" }),
@@ -22,6 +22,10 @@ export interface FusionToolDeps {
 
 function duration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function firstLine(value: string): string {
+  return value.split("\n", 1)[0] ?? "";
 }
 
 function progressText(runtime: SidekickRuntime, id: string): string {
@@ -107,17 +111,18 @@ function contentText(content: unknown): string {
   return content.map((part) => typeof part === "object" && part !== null && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "").filter(Boolean).join("\n");
 }
 
-function renderToolTranscript(result: { content?: unknown; details?: unknown }, options: { expanded?: boolean }, theme: ThemeLike, label: "sidekick" | "read_subagent"): import("@earendil-works/pi-tui").Component {
+function renderToolTranscript(result: { content?: unknown; details?: unknown; isError?: boolean }, options: { expanded?: boolean }, theme: ThemeLike, label: "sidekick" | "read_subagent"): Component {
   const details = result.details as (HandoffReport & { progress?: HandoffProgress }) | { progress?: HandoffProgress } | undefined;
   const progress = details?.progress;
   const report = progress ? undefined : details as HandoffReport | undefined;
   const events = progress?.events ?? report?.events;
-  if (!events) return new Text(contentText(result.content), 0, 0);
   const partial = progress !== undefined;
+  const status = partial ? "working" : report?.status === "completed" && !result.isError ? "completed" : "error";
+  if (!events) return frameSidekick(theme, status, new Text(contentText(result.content), 0, 0));
   const header = partial
     ? `${theme.fg("accent", theme.bold(`◆ ${label} working`))} ${theme.fg("dim", `· ${String(progress.toolCalls)} tool calls · ${duration(Date.now() - progress.startedAt)}`)}`
     : `${theme.fg(report?.status === "completed" ? "success" : "error", "◆")} ${theme.fg("accent", theme.bold(`${label} ${report?.status ?? "done"}`))} ${theme.fg("dim", report ? `· ${report.id} · ${String(report.toolCalls)} tool calls · ${duration(report.durationMs)} · in ${String(report.usage.input)} / out ${String(report.usage.output)} tokens` : "")}`;
-  return renderSidekickTranscript(transcriptTheme(theme), {
+  return frameSidekick(theme, status, renderSidekickTranscript(transcriptTheme(theme), {
     events,
     droppedEvents: progress?.droppedEvents,
     header,
@@ -125,17 +130,13 @@ function renderToolTranscript(result: { content?: unknown; details?: unknown }, 
     isPartial: partial,
     report,
     renderText: markdownText,
-  });
+  }));
 }
 
-function renderCompletionCard(theme: ThemeLike, report: HandoffReport | undefined): Box {
-  const tone = report?.status === "completed" ? "toolSuccessBg" : "toolErrorBg";
-  const box = new Box(1, 0, (text) => theme.bg(tone, text));
-  if (!report) {
-    box.addChild(new Text(`${theme.fg("accent", "◆")} ${theme.fg("accent", theme.bold("sidekick done"))}`, 0, 0));
-    return box;
-  }
-  box.addChild(renderSidekickTranscript(transcriptTheme(theme), {
+function renderCompletionCard(theme: ThemeLike, report: HandoffReport | undefined): Component {
+  const status = report?.status === "completed" ? "completed" : "error";
+  if (!report) return frameSidekick(theme, "error", new Text(`${theme.fg("accent", "◆")} ${theme.fg("accent", theme.bold("sidekick done"))}`, 0, 0));
+  return frameSidekick(theme, status, renderSidekickTranscript(transcriptTheme(theme), {
     events: report.events ?? [],
     header: `${theme.fg(report.status === "completed" ? "success" : "error", "◆")} ${theme.fg("accent", theme.bold(`sidekick ${report.status}`))} ${theme.fg("dim", `· ${report.id} · ${String(report.toolCalls)} tool calls · ${duration(report.durationMs)}`)}`,
     expanded: false,
@@ -143,7 +144,6 @@ function renderCompletionCard(theme: ThemeLike, report: HandoffReport | undefine
     report,
     renderText: markdownText,
   }));
-  return box;
 }
 
 export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): void {
@@ -154,7 +154,8 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Sidekick",
     description: "Hand off work to your persistent sidekick subagent (one per session; context and shells persist across handoffs; runs on the same machine). block:true (default) waits and returns the report. block:false returns immediately and the report arrives later as a <subagent_completion_notification>. Calling again while a handoff is running injects the message as an interrupt rather than starting a second sidekick.",
     parameters: SidekickParams,
-    renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ sidekick"))} ${theme.fg("dim", String(args.message).split("\n", 1)[0].slice(0, 100))}`, 0, 0),
+    renderShell: "self",
+    renderCall: (args, theme) => frameSidekick(theme as unknown as ThemeLike, "working", new Text(`${theme.fg("toolTitle", theme.bold("◆ sidekick"))} ${theme.fg("dim", firstLine(String(args.message)).slice(0, 100))}`, 0, 0)),
     renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "sidekick"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = deps.getRuntime(ctx);
@@ -185,7 +186,8 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Read Sidekick",
     description: "Read a sidekick handoff report by agent_id (omit for the latest). block:true waits for completion (default timeout 2700s when omitted); block:false returns the current progress snapshot immediately.",
     parameters: ReadSubagentParams,
-    renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ read_subagent"))} ${theme.fg("dim", args.agent_id ?? "latest")}`, 0, 0),
+    renderShell: "self",
+    renderCall: (args, theme) => frameSidekick(theme as unknown as ThemeLike, "working", new Text(`${theme.fg("toolTitle", theme.bold("◆ read_subagent"))} ${theme.fg("dim", args.agent_id ?? "latest")}`, 0, 0)),
     renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "read_subagent"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = deps.getRuntime(ctx);

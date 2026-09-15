@@ -1,9 +1,33 @@
-import { Container, Text, type Component } from "@earendil-works/pi-tui";
+import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
 import type { SidekickEvent } from "./sidekick-runtime.js";
 
 export interface ThemeLike {
   fg: (color: string, text: string) => string;
   bold: (text: string) => string;
+}
+
+export class RailComponent implements Component {
+  constructor(private readonly inner: Component, private readonly rail: string) {}
+
+  render(width: number): string[] {
+    return this.inner.render(Math.max(1, width - 2)).map((line) => `${this.rail} ${line}`);
+  }
+
+  invalidate(): void {
+    this.inner.invalidate?.();
+  }
+
+  handleInput(data: string): void {
+    this.inner.handleInput?.(data);
+  }
+}
+
+export function frameSidekick(theme: ThemeLike & { bg: (color: string, text: string) => string }, status: "working" | "completed" | "error", content: Component): Component {
+  const railColor = status === "working" ? "accent" : status === "completed" ? "success" : "error";
+  const rail = theme.fg(railColor, "▍");
+  const boxed = new Box(1, 0, (text) => theme.bg("customMessageBg", text));
+  boxed.addChild(new RailComponent(content, rail));
+  return boxed;
 }
 
 export interface TranscriptOptions {

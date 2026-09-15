@@ -1,11 +1,31 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Text } from "@earendil-works/pi-tui";
-import { renderSidekickTranscript, primaryArg } from "../src/transcript.js";
+import { frameSidekick, RailComponent, renderSidekickTranscript, primaryArg } from "../src/transcript.js";
 import type { SidekickEvent } from "../src/sidekick-runtime.js";
 
 const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const renderText = (text: string) => new Text(text, 0, 0);
+
+test("RailComponent prefixes every line and narrows the inner width", () => {
+  let width = 0;
+  const inner = { render: (value: number) => { width = value; return ["one", "two"]; }, invalidate: () => undefined };
+  const rail = new RailComponent(inner, "▍");
+  assert.deepEqual(rail.render(20), ["▍ one", "▍ two"]);
+  assert.equal(width, 18);
+});
+
+test("frameSidekick paints the custom message background and rail", () => {
+  const framed = frameSidekick({
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+    bg: (color: string, text: string) => `<bg:${color}>${text}</bg>`,
+  }, "completed", new Text("content", 0, 0));
+  const text = framed.render(40).join("\n");
+  assert.match(text, /<bg:customMessageBg>/);
+  assert.match(text, /▍/);
+});
+
 const output = (events: SidekickEvent[], expanded: boolean, partial = true, report?: { text: string }) => renderSidekickTranscript(theme, {
   events,
   header: "HEADER",
