@@ -120,4 +120,30 @@ describe("silence after input", () => {
     );
     assert.deepEqual(merged.platforms, ["native", "ntfy"]);
   });
+
+  it("lets blocking events through inside the window", () => {
+    noteInput(1_000);
+    for (const eventType of ["ask_user_prompt", "permission_request"]) {
+      const { send, silenced } = filterPlatformsAfterInput(
+        ALL,
+        config({ platforms: [] }),
+        1_000 + 100,
+        eventType,
+      );
+      assert.deepEqual(send, ALL, `${eventType} should not be silenced`);
+      assert.deepEqual(silenced, []);
+    }
+  });
+
+  it("still silences agent_end inside the window", () => {
+    noteInput(1_000);
+    const { send, silenced } = filterPlatformsAfterInput(
+      ALL,
+      config(),
+      1_000 + 100,
+      "agent_end",
+    );
+    assert.deepEqual(send, ["gotify", "telegram", "ntfy"]);
+    assert.deepEqual(silenced, ["native"]);
+  });
 });

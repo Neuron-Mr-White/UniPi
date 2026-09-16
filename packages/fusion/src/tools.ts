@@ -60,7 +60,7 @@ async function waitForReport(
   ctx: ExtensionContext,
   onUpdate?: (update: unknown) => void,
   timeoutMs = 2700000,
-): Promise<{ report?: HandoffReport; interrupted?: string; aborted?: boolean }> {
+): Promise<{ report?: HandoffReport; interrupted?: string; aborted?: boolean; error?: string }> {
   const started = Date.now();
   let lastProgressKey = "";
   while (true) {
@@ -72,8 +72,14 @@ async function waitForReport(
     const remaining = timeoutMs - (Date.now() - started);
     if (remaining <= 0) return {};
     const timer = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), Math.min(500, remaining)));
-    const report = await Promise.race([done, timer]);
-    if (report !== undefined) return { report };
+    const outcome = await Promise.race([
+      done.then((report) => ({ report }), (error) => ({ error: error instanceof Error ? error.message : String(error) })),
+      timer,
+    ]);
+    if (outcome !== undefined) {
+      if ("error" in outcome) return { error: outcome.error };
+      return { report: outcome.report };
+    }
     const progress = progressText(runtime, id);
     const key = progressKey(runtime, id);
     if (key !== lastProgressKey) {
@@ -175,6 +181,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
         deps.onReport?.(ctx, waited.report);
         return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
       }
+      if (waited.error) return result(`Handoff ${handoff.id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`${progressText(runtime, handoff.id)}\nHandoff ${handoff.id} aborted.`, undefined, true);
       if (waited.interrupted) return result(`A user message arrived while the sidekick (agent_id ${handoff.id}) was working. The handoff continues in the background. Act on the user's message first, then call read_subagent({agent_id:"${handoff.id}", block:true}) to collect the report or sidekick({message}) to redirect it.\n${waited.interrupted}`);
       return result(`Handoff ${handoff.id} is still running.\n${progressText(runtime, handoff.id)}`);
@@ -205,6 +212,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
         deps.onReport?.(ctx, waited.report);
         return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
       }
+      if (waited.error) return result(`Handoff ${id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`Handoff ${id} aborted.`, undefined, true);
       if (waited.interrupted) return result(`A user message arrived while the sidekick (agent_id ${id}) was working.\n${waited.interrupted}`);
       return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`);

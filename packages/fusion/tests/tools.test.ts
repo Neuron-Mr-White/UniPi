@@ -71,6 +71,19 @@ test("read_subagent defaults to the latest handoff", async () => {
   assert.match(result.content[0].text, /implemented/);
 });
 
+test("read_subagent turns a rejected handoff into an error result", async () => {
+  const done = Promise.reject(new Error("boom"));
+  const runtime = {
+    reports: new Map(),
+    latest: () => ({ id: "h-error", done }),
+    progress: () => undefined,
+  };
+  const { tools, ctx } = setup(runtime);
+  const result = await tools.get("read_subagent").execute("call", { block: true }, undefined, undefined, ctx);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /boom/);
+});
+
 test("non-blocking sidekick sends a follow-up completion message", async () => {
   let resolve!: (value: HandoffReport) => void;
   const runtime = {

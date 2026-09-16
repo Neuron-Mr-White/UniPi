@@ -19,6 +19,20 @@ const VALID_PLATFORMS: ReadonlySet<NotifyPlatform> = new Set([
   "ntfy",
 ]);
 
+/**
+ * Events where a human is blocking the session. They arrive seconds after the
+ * keypress that caused them, so recent input must never mute them.
+ */
+const BLOCKING_EVENTS: ReadonlySet<string> = new Set([
+  "ask_user_prompt",
+  "permission_request",
+]);
+
+/** Whether an event type is a human-blocking prompt. */
+export function isBlockingEvent(eventType: string | undefined): boolean {
+  return eventType !== undefined && BLOCKING_EVENTS.has(eventType);
+}
+
 let lastInputAt = 0;
 
 /** Record a terminal keypress. `at` is injectable for tests. */
@@ -36,12 +50,19 @@ export function resetInputActivity(): void {
  * Does not look at platform `enabled` flags — caller filters those first.
  * Empty `platforms` (while enabled) silences all incoming channels, matching
  * `events.*.platforms: []` → all enabled.
+ *
+ * Human-blocking events (`ask_user_prompt`, `permission_request`) bypass the
+ * filter entirely — the keypress that triggered them must not mute them.
  */
 export function filterPlatformsAfterInput(
   platforms: NotifyPlatform[],
   config: Pick<NotifyConfig, "silenceAfterInput">,
   now: number = Date.now(),
+  eventType?: string,
 ): { send: NotifyPlatform[]; silenced: NotifyPlatform[] } {
+  if (isBlockingEvent(eventType)) {
+    return { send: platforms.slice(), silenced: [] };
+  }
   const cfg = config.silenceAfterInput;
   if (!shouldSilence(cfg, now)) {
     return { send: platforms.slice(), silenced: [] };

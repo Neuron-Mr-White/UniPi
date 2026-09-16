@@ -18,7 +18,7 @@ import type { NotifyConfig, NotifyPlatform, NtfyConfig } from "../types.js";
 import { OverlayTheme, boxInnerWidth } from "@pi-unipi/core";
 
 /** Section types */
-type Section = "platforms" | "events" | "recap";
+type Section = "platforms" | "events" | "recap" | "renotify";
 
 const PLATFORM_KEYS: NotifyPlatform[] = ["native", "gotify", "telegram", "ntfy"];
 const CHIP_LABELS: Record<NotifyPlatform, string> = {
@@ -35,6 +35,22 @@ const SILENCE_CHIPS_INDEX = 6;
 const WINDOW_STEP_MS = 1_000;
 const WINDOW_MIN_MS = 1_000;
 const WINDOW_MAX_MS = 120_000;
+
+const RENOTIFY_INTERVAL_INDEX = 1;
+const RENOTIFY_MAX_REPEATS_INDEX = 2;
+const RENOTIFY_INTERVAL_STEP_MS = 30_000;
+const RENOTIFY_INTERVAL_MIN_MS = 10_000;
+const RENOTIFY_INTERVAL_MAX_MS = 600_000;
+const RENOTIFY_MAX_REPEATS_MAX = 10;
+
+/** Format a re-notify interval as a compact duration label. */
+function formatRenotifyInterval(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest === 0 ? `${minutes}m` : `${minutes}m${rest}s`;
+}
 
 /**
  * Settings overlay component.
@@ -108,12 +124,22 @@ export class NotifySettingsOverlay implements Component {
         return;
       }
     }
+    if (this.section === "renotify") {
+      if (data === "+" || data === "=") {
+        this.nudgeRenotify(1);
+        return;
+      }
+      if (data === "-" || data === "_") {
+        this.nudgeRenotify(-1);
+        return;
+      }
+    }
     if (matchesKey(data, "space")) {
       this.toggleCurrent();
       return;
     }
     if (matchesKey(data, "tab")) {
-      const sections: Section[] = ["platforms", "events", "recap"];
+      const sections: Section[] = ["platforms", "events", "recap", "renotify"];
       const idx = sections.indexOf(this.section);
       this.section = sections[(idx + 1) % sections.length];
       this.selectedIndex = 0;
@@ -139,6 +165,7 @@ export class NotifySettingsOverlay implements Component {
   private get maxItems(): number {
     if (this.section === "platforms") return 7; // 4 platforms + focused + silence master + chips
     if (this.section === "recap") return 1; // toggle
+    if (this.section === "renotify") return 3; // enable + interval + max repeats
     return Object.keys(this.config.events).length;
   }
 
@@ -148,6 +175,21 @@ export class NotifySettingsOverlay implements Component {
       WINDOW_MAX_MS,
       Math.max(WINDOW_MIN_MS, current + delta),
     );
+  }
+
+  private nudgeRenotify(direction: number): void {
+    const { renotify } = this.config;
+    if (this.selectedIndex === RENOTIFY_INTERVAL_INDEX) {
+      renotify.intervalMs = Math.min(
+        RENOTIFY_INTERVAL_MAX_MS,
+        Math.max(RENOTIFY_INTERVAL_MIN_MS, renotify.intervalMs + direction * RENOTIFY_INTERVAL_STEP_MS),
+      );
+    } else if (this.selectedIndex === RENOTIFY_MAX_REPEATS_INDEX) {
+      renotify.maxRepeats = Math.min(
+        RENOTIFY_MAX_REPEATS_MAX,
+        Math.max(0, renotify.maxRepeats + direction),
+      );
+    }
   }
 
   private chipOn(key: NotifyPlatform): boolean {
@@ -191,6 +233,10 @@ export class NotifySettingsOverlay implements Component {
       }
     } else if (this.section === "recap") {
       this.config.recap.enabled = !this.config.recap.enabled;
+    } else if (this.section === "renotify") {
+      if (this.selectedIndex === 0) {
+        this.config.renotify.enabled = !this.config.renotify.enabled;
+      }
     } else {
       const eventKeys = Object.keys(this.config.events);
       const key = eventKeys[this.selectedIndex];
@@ -238,13 +284,19 @@ export class NotifySettingsOverlay implements Component {
       this.section === "recap"
         ? this.overlay.fg("accent", this.overlay.bold("[Recap]"))
         : this.overlay.fg("dim", "Recap");
-    lines.push(this.overlay.frameLine(`  ${platformTab}  ${eventsTab}  ${recapTab}`, innerWidth));
+    const renotifyTab =
+      this.section === "renotify"
+        ? this.overlay.fg("accent", this.overlay.bold("[Re-notify]"))
+        : this.overlay.fg("dim", "Re-notify");
+    lines.push(this.overlay.frameLine(`  ${platformTab}  ${eventsTab}  ${recapTab}  ${renotifyTab}`, innerWidth));
     lines.push(this.overlay.ruleLine(innerWidth));
 
     if (this.section === "platforms") {
       this.renderPlatforms(lines, innerWidth);
     } else if (this.section === "recap") {
       this.renderRecap(lines, innerWidth);
+    } else if (this.section === "renotify") {
+      this.renderRenotify(lines, innerWidth);
     } else {
       this.renderEvents(lines, innerWidth);
     }
@@ -270,6 +322,9 @@ export class NotifySettingsOverlay implements Component {
   private footerHint(): string {
     if (this.section === "recap") {
       return "↑↓ navigate · Space toggle · M change model · Tab switch · Enter save · Esc cancel";
+    }
+    if (this.section === "renotify") {
+      return "↑↓ navigate · Space toggle · +/− adjust · Tab switch · Enter save · Esc cancel";
     }
     if (this.section === "platforms" && this.selectedIndex === SILENCE_MASTER_INDEX) {
       return "↑↓ navigate · Space toggle · +/− window · Tab switch · Enter save · Esc cancel";
@@ -447,6 +502,52 @@ export class NotifySettingsOverlay implements Component {
         this.overlay.fg("dim", "  Press M to change model"),
         innerWidth
       )
+    );
+  }
+
+  private renderRenotify(lines: string[], innerWidth: number): void {
+    const toggleOn = this.overlay.fg("success", "●");
+    const toggleOff = this.overlay.fg("dim", "○");
+    const rows: Array<{ label: string; detail: string; toggle?: boolean }> = [
+      {
+        label: "Enable Re-notify",
+        detail: "Remind while a question or permission prompt is unanswered",
+        toggle: this.config.renotify.enabled,
+      },
+      {
+        label: "Interval",
+        detail: formatRenotifyInterval(this.config.renotify.intervalMs),
+      },
+      {
+        label: "Max repeats",
+        detail: `${this.config.renotify.maxRepeats}`,
+      },
+    ];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      const isSelected = i === this.selectedIndex;
+      const toggle = row.toggle === undefined ? " " : row.toggle ? toggleOn : toggleOff;
+      const label = isSelected
+        ? this.overlay.bold(row.label)
+        : this.overlay.fg("dim", row.label);
+      const detail =
+        this.config.renotify.enabled || i === 0
+          ? this.overlay.fg("dim", row.detail)
+          : this.overlay.fg("dim", "—");
+      lines.push(
+        this.overlay.frameLine(
+          `${isSelected ? this.overlay.fg("accent", "▸") : " "} ${toggle} ${label}  ${detail}`,
+          innerWidth,
+        ),
+      );
+    }
+    lines.push(
+      this.overlay.frameLine(
+        this.overlay.fg("dim", "  Blocking prompts only (ask_user, permission_request)"),
+        innerWidth,
+      ),
     );
   }
 }

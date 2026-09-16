@@ -27,7 +27,7 @@ function fakeChild() {
   return child;
 }
 
-function runtimeWith(child: ReturnType<typeof fakeChild>) {
+function runtimeWith(child: ReturnType<typeof fakeChild>, settleGraceMs?: number) {
   return new SidekickRuntime({
     cwd: "/tmp",
     model: "b/glm",
@@ -36,6 +36,7 @@ function runtimeWith(child: ReturnType<typeof fakeChild>) {
     systemPrompt: "sidekick",
     command: { command: "fake-pi", args: [] },
     spawn: (() => child) as never,
+    settleGraceMs,
   });
 }
 
@@ -72,6 +73,93 @@ test("runtime completes a handoff and sums usage", async () => {
   assert.deepEqual(report.usage, { input: 10, output: 4, cacheRead: 2, cacheWrite: 1, cost: 0.5 });
   assert.equal(sent[0]?.type, "prompt");
   assert.equal(sent.at(-1)?.type, "get_last_assistant_text");
+  runtime.kill();
+});
+
+test("bg_run keeps the handoff open across agent_settled", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  const handoff = runtime.handoff("background work");
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "tool_execution_start", toolCallId: "bg-1", toolName: "bg_run", args: { command: "x" } });
+  emit(child, { type: "tool_execution_end", toolCallId: "bg-1", isError: false });
+  emit(child, { type: "agent_settled" });
+  assert.equal(runtime.isBusy(), true);
+  assert.equal(sent.some((command) => command.type === "get_last_assistant_text"), false);
+  emit(child, { type: "message_end", message: { role: "custom", customType: "background-task-notification", content: "done" } });
+  emit(child, { type: "agent_start" });
+  emit(child, { type: "tool_execution_start", toolCallId: "bash-1", toolName: "bash", args: { command: "echo final" } });
+  emit(child, { type: "agent_settled" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "final" } });
+  const report = await handoff.done;
+  assert.equal(report.status, "completed");
+  assert.equal(report.text, "final");
+  assert.equal(report.toolCalls, 2);
+  runtime.kill();
+});
+
+test("bg notification without a follow-up turn finishes after grace", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child, 25);
+  const handoff = runtime.handoff("background work");
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "tool_execution_start", toolCallId: "bg-1", toolName: "bg_run", args: { command: "x" } });
+  emit(child, { type: "tool_execution_end", toolCallId: "bg-1", isError: false });
+  emit(child, { type: "agent_settled" });
+  emit(child, { type: "message_end", message: { role: "custom", customType: "background-task-notification", content: "done" } });
+  await new Promise<void>((resolve) => setTimeout(resolve, 40));
+  assert.equal(sent.at(-1)?.type, "get_last_assistant_text");
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "final" } });
+  assert.equal((await handoff.done).text, "final");
+  runtime.kill();
+});
+
+test("bg_run with triggerOnCompletion:false does not hold the handoff", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  const handoff = runtime.handoff("background work");
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "tool_execution_start", toolCallId: "bg-1", toolName: "bg_run", args: { command: "x", triggerOnCompletion: false } });
+  emit(child, { type: "tool_execution_end", toolCallId: "bg-1", isError: false });
+  emit(child, { type: "agent_settled" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(sent.at(-1)?.type, "get_last_assistant_text");
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "final" } });
+  assert.equal((await handoff.done).status, "completed");
+  runtime.kill();
+});
+
+test("prompt rejected as already processing is retried as followUp", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  const handoff = runtime.handoff("continue work");
+  emit(child, { type: "response", command: "prompt", success: false, error: "Agent is already processing…" });
+  assert.deepEqual(sent[1], { id: sent[0]?.id, type: "prompt", message: "continue work", streamingBehavior: "followUp" });
+  emit(child, { type: "response", command: "prompt", success: true });
+  emit(child, { type: "agent_settled" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  emit(child, { type: "response", command: "get_last_assistant_text", success: true, data: { text: "final" } });
+  assert.equal((await handoff.done).status, "completed");
+  runtime.kill();
+});
+
+test("prompt followUp rejection resolves an error report", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  const handoff = runtime.handoff("continue work");
+  emit(child, { type: "response", command: "prompt", success: false, error: "Agent is already processing" });
+  emit(child, { type: "response", command: "prompt", success: false, error: "Agent is already processing again" });
+  const report = await handoff.done;
+  assert.equal(report.status, "error");
+  assert.equal(runtime.reports.get(handoff.id), report);
+  assert.match(report.error ?? "", /already processing again/);
+  assert.equal(sent.length, 2);
   runtime.kill();
 });
 

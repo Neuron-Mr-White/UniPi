@@ -9,7 +9,7 @@ import { dirname, join } from "path";
 import { homedir } from "os";
 import { NOTIFY_DIRS } from "@pi-unipi/core";
 import { mergeSilenceAfterInput } from "./activity.js";
-import type { NotifyConfig } from "./types.js";
+import type { NotifyConfig, RenotifyConfig } from "./types.js";
 
 /** Resolve config path (expands ~ to homedir) */
 function resolveConfigPath(): string {
@@ -51,6 +51,11 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     enabled: false,
     windowMs: 10000,
     platforms: ["native"],
+  },
+  renotify: {
+    enabled: true,
+    intervalMs: 120000,
+    maxRepeats: 3,
   },
 };
 
@@ -132,5 +137,30 @@ function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
       loaded.silenceAfterInput,
       base.silenceAfterInput,
     ),
+    renotify: mergeRenotify(loaded.renotify, base.renotify),
+  };
+}
+
+/** Merge the renotify block, falling back per-field on invalid scalars. */
+function mergeRenotify(
+  loaded: Partial<RenotifyConfig> | undefined,
+  defaults: RenotifyConfig,
+): RenotifyConfig {
+  const intervalMs =
+    typeof loaded?.intervalMs === "number" &&
+    Number.isFinite(loaded.intervalMs) &&
+    loaded.intervalMs >= 10000
+      ? loaded.intervalMs
+      : defaults.intervalMs;
+  const maxRepeats =
+    typeof loaded?.maxRepeats === "number" &&
+    Number.isInteger(loaded.maxRepeats) &&
+    loaded.maxRepeats >= 0
+      ? loaded.maxRepeats
+      : defaults.maxRepeats;
+  return {
+    enabled: loaded?.enabled ?? defaults.enabled,
+    intervalMs,
+    maxRepeats,
   };
 }

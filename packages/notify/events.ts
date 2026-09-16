@@ -16,7 +16,7 @@ import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
-import { filterPlatformsAfterInput } from "./activity.js";
+import { filterPlatformsAfterInput, isBlockingEvent } from "./activity.js";
 
 // Event emitted by @juicesharp/rpiv-ask-user-question before showing its UI.
 // Keep this as a local string until that package publishes an importable
@@ -30,14 +30,107 @@ const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
 // third-party package rather than the unipi event contract.
 const PERMISSION_UI_PROMPT_EVENT = "permissions:ui_prompt" as const;
 
+/** Minimal shape of the background-tasks shared registry (optional sibling package). */
+type SharedTaskRegistryLike = {
+  allTasks(): ReadonlyArray<{ status?: string; triggerOnCompletion?: boolean }>;
+};
+
+/** Symbol @pi-unipi/background-tasks publishes its live registry under. */
+const SHARED_REGISTRY_KEY = Symbol.for("unipi.background-tasks.shared-registry");
+
+/**
+ * True when a background task will wake the agent with its own follow-up turn.
+ * Reads the shared globalThis symbol directly rather than importing
+ * @pi-unipi/background-tasks, so notify has zero load-order or dependency
+ * coupling to that optional sibling. Any read failure means "no pending wake".
+ */
+export function hasPendingWakeTask(): boolean {
+  try {
+    const registry = (globalThis as Record<symbol, unknown>)[SHARED_REGISTRY_KEY] as
+      | SharedTaskRegistryLike
+      | undefined;
+    if (typeof registry?.allTasks !== "function") return false;
+    const tasks = registry.allTasks();
+    return Array.isArray(tasks)
+      ? tasks.some((task) => task.status === "running" && task.triggerOnCompletion === true)
+      : false;
+  } catch {
+    return false;
+  }
+}
+
+/** Default dispatch priority for an event type, when the event path sets one. */
+function defaultEventPriority(eventKey: string): NotifyPriority | undefined {
+  if (isBlockingEvent(eventKey)) return "high";
+  if (isAgentNotificationEvent(eventKey)) return "low";
+  return undefined;
+}
+
 /** Stored session context for modelRegistry access */
 let sessionCtx: ExtensionContext | null = null;
 
 /** Unsubscribe functions for pi.events.on() listeners. Cleared before each registration to avoid accumulation across reloads. */
 const unsubs: Array<() => void> = [];
 
+/** Pending re-notify interval for an unanswered blocking prompt. */
+let renotifyTimer: ReturnType<typeof setInterval> | undefined;
+
+/** Cancel any pending re-notify timer. Safe to call at any time. */
+export function disarmRenotify(): void {
+  const timer = renotifyTimer;
+  renotifyTimer = undefined;
+  if (timer === undefined) return;
+  try {
+    clearInterval(timer);
+  } catch {
+    // Timer already gone (e.g. after a reload) — nothing to clear.
+  }
+}
+
+/**
+ * (Re)arm the reminder loop for a blocking prompt. Only one prompt can be
+ * outstanding at a time, so arming replaces any existing timer rather than
+ * stacking a second one.
+ */
+function armRenotify(
+  pi: ExtensionAPI,
+  title: string,
+  message: string,
+  platforms: NotifyPlatform[],
+  eventType: string,
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  disarmRenotify();
+  const { enabled, intervalMs, maxRepeats } = config.renotify;
+  if (!enabled || maxRepeats <= 0) return;
+
+  let fired = 0;
+  const timer = setInterval(() => {
+    fired += 1;
+    dispatch(
+      pi,
+      `${title} (still waiting)`,
+      message,
+      platforms,
+      eventType,
+      config,
+      cwd,
+      "high"
+    ).catch(() => {
+      // Silently ignore — background notification failure is non-blocking.
+    });
+    if (fired >= maxRepeats) disarmRenotify();
+  }, intervalMs);
+  // Never hold the process open for a reminder. (undefined-safe for mocked timers.)
+  timer.unref?.();
+  renotifyTimer = timer;
+}
+
 /** Unregister all previously registered pi.events.on() listeners. */
 function unregisterAll(): void {
+  disarmRenotify();
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -83,7 +176,8 @@ const LIFECYCLE_EVENTS = new Set(["agent_end", "agent_settled", "session_shutdow
 export function registerEventListeners(
   pi: ExtensionAPI,
   config: NotifyConfig,
-  cwd: string
+  cwd: string,
+  dispatch: DispatchNotification = dispatchNotification
 ): void {
   // Remove all previously registered EventBus listeners to prevent accumulation
   // across reloads (EventBus persists but module instances are replaced).
@@ -99,11 +193,21 @@ export function registerEventListeners(
       const title = `Pi — ${def.label}`;
       const message = buildEventMessage(eventKey, payload);
       // Fire-and-forget: don't block the event emitter
-      dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd).catch(
-        () => {
-          // Silently ignore — background notification failure is non-blocking.
-        }
-      );
+      dispatch(
+        pi,
+        title,
+        message,
+        eventConfig.platforms,
+        eventKey,
+        config,
+        cwd,
+        defaultEventPriority(eventKey)
+      ).catch(() => {
+        // Silently ignore — background notification failure is non-blocking.
+      });
+      if (isBlockingEvent(eventKey)) {
+        armRenotify(pi, title, message, eventConfig.platforms, eventKey, config, cwd, dispatch);
+      }
     };
 
     // Pi lifecycle events are dispatched via ExtensionRunner — must use
@@ -123,16 +227,26 @@ export function registerEventListeners(
     unsubs.push(pi.events.on(ASK_USER_PROMPT_EVENT, (payload: unknown) => {
       const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
       const message = buildAskUserPromptMessage(payload);
-      dispatchNotification(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd).catch(
+      dispatch(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, "high").catch(
         () => {
           // Silently ignore — background notification failure is non-blocking.
         }
       );
+      armRenotify(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, dispatch);
     }));
   }
 
-  registerAgentNotification(pi, "agent_end", config, cwd);
-  registerAgentNotification(pi, "agent_settled", config, cwd);
+  // A reminder loop must never outlive the prompt it is nagging about: any of
+  // these signals means the human acted or the agent moved on.
+  unsubs.push(pi.events.on("herdr:blocked", (payload: unknown) => {
+    if ((payload as { active?: unknown } | null)?.active === false) disarmRenotify();
+  }));
+  (pi as any).on("agent_start", () => {
+    disarmRenotify();
+  });
+
+  registerAgentNotification(pi, "agent_end", config, cwd, dispatch);
+  registerAgentNotification(pi, "agent_settled", config, cwd, dispatch);
 }
 
 /** Get all platforms that are currently enabled in config */
@@ -149,6 +263,9 @@ function getEnabledPlatforms(config: NotifyConfig, ntfyEnabled: boolean): Notify
 export function unregisterEventListeners(): void {
   unregisterAll();
 }
+
+/** Dispatcher signature — injectable so tests can observe calls without sending. */
+export type DispatchNotification = typeof dispatchNotification;
 
 /**
  * Dispatch a notification to the configured platforms.
@@ -184,7 +301,7 @@ export async function dispatchNotification(
   });
 
   const { send: platformsToSend, silenced: inputSilenced } =
-    filterPlatformsAfterInput(enabledPlatforms, config);
+    filterPlatformsAfterInput(enabledPlatforms, config, Date.now(), eventType);
 
   const results = await Promise.all(
     platformsToSend.map(async (platform) => {
@@ -327,12 +444,18 @@ function registerAgentNotification(
   pi: ExtensionAPI,
   eventKey: "agent_end" | "agent_settled",
   config: NotifyConfig,
-  cwd: string
+  cwd: string,
+  dispatch: DispatchNotification = dispatchNotification
 ): void {
   const eventConfig = config.events[eventKey];
   if (!eventConfig?.enabled) return;
 
   const handler = (payload: unknown) => {
+    // A running background task with triggerOnCompletion wakes the agent in a
+    // fresh turn that produces its own agent_end/agent_settled. Notifying for
+    // this intermediate turn as well would duplicate the wake message.
+    if (hasPendingWakeTask()) return;
+
     // Fire-and-forget: build message and dispatch in background,
     // don't block agent lifecycle hooks from completing.
     const sessionName = pi.getSessionName?.();
@@ -361,7 +484,7 @@ function registerAgentNotification(
             })
             .catch(() => buildAgentLifecycleMessage(eventKey, sessionName))
             .then((message) =>
-              dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd)
+              dispatch(pi, title, message, eventConfig.platforms, eventKey, config, cwd, "low")
             )
             .catch(() => {
               // Silently ignore — background agent notification failure is non-blocking.
@@ -373,7 +496,7 @@ function registerAgentNotification(
 
     // No recap or recap unavailable: dispatch immediately in background.
     const message = buildAgentLifecycleMessage(eventKey, sessionName);
-    dispatchNotification(pi, title, message, eventConfig.platforms, eventKey, config, cwd).catch(
+    dispatch(pi, title, message, eventConfig.platforms, eventKey, config, cwd, "low").catch(
       () => {
         // Silently ignore — background agent notification failure is non-blocking.
       }

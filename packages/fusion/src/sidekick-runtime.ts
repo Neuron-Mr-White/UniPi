@@ -15,6 +15,7 @@ export interface SidekickSpawnConfig {
   spawn?: typeof defaultSpawn;
   command?: { command: string; args: string[] };
   onProgress?: () => void;
+  settleGraceMs?: number;
 }
 
 export interface SidekickUsage {
@@ -54,11 +55,15 @@ export interface HandoffReport {
 
 interface PendingHandoff {
   id: string;
+  message: string;
   startedAt: number;
   usage: SidekickUsage;
   progress: HandoffProgress;
+  retriedPrompt: boolean;
+  openBgTasks: number;
+  settled: boolean;
+  settleTimer?: NodeJS.Timeout;
   resolve: (report: HandoffReport) => void;
-  reject: (error: Error) => void;
 }
 
 const emptyUsage = (): SidekickUsage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 });
@@ -193,16 +198,35 @@ export class SidekickRuntime {
     }
   }
 
+  private requestLastAssistantText(): void {
+    const current = this.pending;
+    if (current === undefined) return;
+    this.responseText = (text) => this.finish(this.abortRequested ? "aborted" : this.pendingError === undefined ? "completed" : "error", text, this.pendingError);
+    this.responseError = (error) => this.finish("error", undefined, error.message);
+    try {
+      this.send({ type: "get_last_assistant_text" });
+    } catch (error) {
+      this.finish("error", undefined, error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private handleMessage(message: Record<string, unknown>): void {
     if (message.type === "response") {
       const command = message.command;
       if (command === "prompt" && message.success === false) {
-        const error = new Error(String(message.error ?? "Sidekick prompt rejected"));
+        const errorText = String(message.error ?? "Sidekick prompt rejected");
         const current = this.pending;
-        this.pending = undefined;
-        this.responseError = undefined;
-        this.responseText = undefined;
-        current?.reject(error);
+        if (current === undefined) return;
+        if (/already processing/i.test(errorText) && !current.retriedPrompt) {
+          current.retriedPrompt = true;
+          try {
+            this.send({ id: current.id, type: "prompt", message: current.message, streamingBehavior: "followUp" });
+          } catch (error) {
+            this.finish("error", undefined, error instanceof Error ? error.message : String(error));
+          }
+        } else {
+          this.finish("error", undefined, errorText);
+        }
       } else if (command === "get_last_assistant_text") {
         const data = message.data as Record<string, unknown> | undefined;
         const text = typeof data?.text === "string" ? data.text : this.pending?.progress.textTail ?? "";
@@ -224,6 +248,7 @@ export class SidekickRuntime {
       this.closeOpenText();
       this.pending.progress.toolCalls += 1;
       const args = message.args !== undefined && typeof message.args === "object" && message.args !== null ? message.args as Record<string, unknown> : undefined;
+      if (message.toolName === "bg_run" && args?.notifyOnCompletion !== false && args?.triggerOnCompletion !== false) this.pending.openBgTasks += 1;
       const argsText = args === undefined ? "" : JSON.stringify(args).replace(/\s+/gu, " ");
       const summary = `${String(message.toolName ?? "tool")}(${argsText})`.slice(0, 40);
       this.pending.progress.recentTools = [...this.pending.progress.recentTools, summary].slice(-6);
@@ -237,6 +262,7 @@ export class SidekickRuntime {
         event.endedAt = Date.now();
         event.isError = message.isError === true;
         event.output = this.toolOutput(message.result);
+        if (event.name === "bg_run" && event.isError) this.pending.openBgTasks = Math.max(0, this.pending.openBgTasks - 1);
       }
       this.notifyProgress();
     } else if (message.type === "message_update") {
@@ -251,7 +277,19 @@ export class SidekickRuntime {
       }
     } else if (message.type === "message_end") {
       const msg = message.message as Record<string, unknown> | undefined;
-      if (msg?.role === "assistant") {
+      if (msg?.role === "custom" && msg.customType === "background-task-notification") {
+        this.pending.openBgTasks = Math.max(0, this.pending.openBgTasks - 1);
+        if (this.pending.openBgTasks === 0 && this.pending.settled) {
+          clearTimeout(this.pending.settleTimer);
+          this.pending.settleTimer = setTimeout(() => {
+            const current = this.pending;
+            if (current === undefined || !current.settled || current.openBgTasks > 0) return;
+            this.requestLastAssistantText();
+          }, this.cfg.settleGraceMs ?? 3000);
+          this.pending.settleTimer.unref();
+        }
+        this.notifyProgress();
+      } else if (msg?.role === "assistant") {
         this.closeOpenText();
         this.notifyProgress();
         if (msg.stopReason === "error" && typeof msg.errorMessage === "string") this.pendingError = msg.errorMessage;
@@ -267,16 +305,18 @@ export class SidekickRuntime {
           });
         }
       }
+    } else if (message.type === "agent_start") {
+      clearTimeout(this.pending.settleTimer);
+      this.pending.settleTimer = undefined;
+      this.pending.settled = false;
+      this.notifyProgress();
     } else if (message.type === "agent_settled") {
-      this.responseText = undefined;
-      this.responseError = undefined;
-      this.responseText = (text) => this.finish(this.abortRequested ? "aborted" : this.pendingError === undefined ? "completed" : "error", text, this.pendingError);
-      this.responseError = (error) => this.finish("error", undefined, error.message);
-      try {
-        this.send({ type: "get_last_assistant_text" });
-      } catch (error) {
-        this.finish("error", undefined, error instanceof Error ? error.message : String(error));
+      this.pending.settled = true;
+      if (this.pending.openBgTasks > 0) {
+        this.notifyProgress();
+        return;
       }
+      this.requestLastAssistantText();
     }
   }
 
@@ -293,6 +333,8 @@ export class SidekickRuntime {
   private finish(status: HandoffReport["status"], text?: string, error?: string): void {
     const current = this.pending;
     if (current === undefined) return;
+    clearTimeout(current.settleTimer);
+    current.settleTimer = undefined;
     this.pending = undefined;
     this.responseText = undefined;
     this.responseError = undefined;
@@ -323,19 +365,20 @@ export class SidekickRuntime {
     const id = randomUUID();
     const startedAt = Date.now();
     let resolve!: (report: HandoffReport) => void;
-    let reject!: (error: Error) => void;
-    const done = new Promise<HandoffReport>((res, rej) => {
+    const done = new Promise<HandoffReport>((res) => {
       resolve = res;
-      reject = rej;
     });
     this.pendingError = undefined;
     this.pending = {
       id,
+      message,
       startedAt,
       usage: emptyUsage(),
       progress: { toolCalls: 0, recentTools: [], textTail: "", startedAt, events: [], droppedEvents: 0 },
+      retriedPrompt: false,
+      openBgTasks: 0,
+      settled: false,
       resolve,
-      reject,
     };
     this.latestHandoff = { id, done };
     try {

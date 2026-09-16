@@ -32,6 +32,8 @@ Notify subscribes to Pi lifecycle events and routes notifications based on your 
 | `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
 | `permission_request` | Off | A permission prompt is about to be shown (requires [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system)) |
 
+`ask_user_prompt` and `permission_request` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see [Re-notify unanswered prompts](#re-notify-unanswered-prompts)).
+
 Notify registers with the info-screen dashboard, showing enabled platforms and last notification time. The footer subscribes to `NOTIFICATION_SENT` events to display notification stats.
 
 ## Agent Tool
@@ -75,7 +77,25 @@ After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: 
 }
 ```
 
-Add `gotify`, `telegram`, or `ntfy` to `platforms` to silence those channels too. Empty `platforms` silences all enabled platforms (same as `events.*.platforms`).
+Add `gotify`, `telegram`, or `ntfy` to `platforms` to silence those channels too. Empty `platforms` silences all enabled platforms (same as `events.*.platforms`). Blocking events (`ask_user_prompt`, `permission_request`) are never silenced — see below.
+
+### Re-notify unanswered prompts
+
+When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered, notify re-sends the same notification every `intervalMs`, with the title suffixed `(still waiting)` and priority `high`, up to `maxRepeats` times. Default: **on**, every 2 minutes, 3 repeats. This is the one notify case where missing the push leaves the agent parked indefinitely.
+
+```json
+{
+  "renotify": {
+    "enabled": true,
+    "intervalMs": 120000,
+    "maxRepeats": 3
+  }
+}
+```
+
+`maxRepeats: 0` sends the initial notification only. Reminders stop as soon as any of these fires: the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn (`agent_start`), or the session ends. Only one prompt can be outstanding at a time — arming a new one replaces the previous reminder. Reminders bypass `silenceAfterInput` because blocking events are exempt from it.
+
+Edit in `/unipi:notify-settings` → Re-notify, or in `~/.unipi/config/notify/config.json`.
 
 ### Gotify
 

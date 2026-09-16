@@ -23,6 +23,7 @@ import {
   unregisterEventListeners,
   setSessionContext,
   clearSessionContext,
+  disarmRenotify,
 } from "./events.js";
 import { noteInput, resetInputActivity } from "./activity.js";
 
@@ -49,6 +50,8 @@ export default function (pi: ExtensionAPI) {
       try {
         unsubTerminalInput = onTerminalInput(() => {
           noteInput();
+          // The user is at the keyboard — any outstanding prompt reminder is stale.
+          disarmRenotify();
         });
       } catch {
         unsubTerminalInput = undefined;
@@ -70,6 +73,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     unsubTerminalInput?.();
     unsubTerminalInput = undefined;
+    disarmRenotify();
     resetInputActivity();
     clearSessionContext();
     unregisterEventListeners();

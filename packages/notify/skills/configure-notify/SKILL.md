@@ -67,6 +67,11 @@ Help users configure the `@pi-unipi/notify` notification system.
     "windowMs": 10000,
     "platforms": ["native"]
   },
+  "renotify": {
+    "enabled": true,
+    "intervalMs": 120000,
+    "maxRepeats": 3
+  },
   "NOTE": "ntfy section is legacy — migrated to ntfy.json on first run"
 }
 ```
@@ -94,6 +99,26 @@ Quiet listed platforms for `windowMs` after any terminal keypress. **Default: of
 - `platforms` — channels to silence (`native`, `gotify`, `telegram`, `ntfy`). Empty list silences all enabled platforms (same as `events.*.platforms`).
 
 TUI: `/unipi:notify-settings` → Platforms → Quiet after activity (Space), ←→ then Space for channels, +/− for the window (1s steps).
+
+### Re-notify unanswered prompts (default: enabled)
+
+When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered, notify re-sends the same notification every `intervalMs`, title suffixed `(still waiting)`, priority `high`, up to `maxRepeats` times.
+
+```json
+"renotify": {
+  "enabled": true,
+  "intervalMs": 120000,
+  "maxRepeats": 3
+}
+```
+
+- `enabled` — master switch (default: true)
+- `intervalMs` — delay between reminders in milliseconds, minimum 10000 (default: 120000 = 2 min)
+- `maxRepeats` — reminders after the first notification, 0 sends none (default: 3)
+
+Reminders stop as soon as the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn, or the session ends. Arming a new prompt replaces any existing reminder (only one can be outstanding). Reminders bypass `silenceAfterInput` since blocking events are exempt.
+
+TUI: `/unipi:notify-settings` → Re-notify → Space toggles enabled, +/− adjusts interval (30s steps) and max repeats.
 
 ### Gotify (default: disabled)
 
@@ -185,6 +210,8 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 
 Each event can override `platforms` — empty array means use `defaultPlatforms`.
 
+`ask_user_prompt` and `permission_request` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see the Re-notify unanswered prompts section under Platforms).
+
 ### `permission_request`
 
 Fires on the `permissions:ui_prompt` broadcast from
@@ -246,3 +273,5 @@ For general settings: suggest `/unipi:notify-settings`
 - Telegram: `botToken` and `chatId` required when enabled
 - ntfy: `serverUrl` and `topic` required when enabled
 - ntfy: `priority` must be 1-5
+- renotify: `intervalMs` must be a finite number >= 10000 (else the default 120000 is used)
+- renotify: `maxRepeats` must be an integer >= 0 (else the default 3 is used)

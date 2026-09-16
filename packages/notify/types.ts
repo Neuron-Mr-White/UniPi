@@ -90,6 +90,16 @@ export interface SilenceAfterInputConfig {
   platforms: NotifyPlatform[];
 }
 
+/** Re-send an unanswered human-blocking prompt until someone acts */
+export interface RenotifyConfig {
+  /** Master switch */
+  enabled: boolean;
+  /** Delay between reminders, in milliseconds */
+  intervalMs: number;
+  /** Reminders to send after the first notification (0 = none) */
+  maxRepeats: number;
+}
+
 /** Full notification configuration */
 export interface NotifyConfig {
   /** Global default platforms for all events */
@@ -106,6 +116,8 @@ export interface NotifyConfig {
   recap: RecapConfig;
   /** Suppress listed platforms after recent terminal input */
   silenceAfterInput: SilenceAfterInputConfig;
+  /** Re-notify unanswered human-blocking prompts */
+  renotify: RenotifyConfig;
 }
 
 /** Parameters for the notify_user agent tool */

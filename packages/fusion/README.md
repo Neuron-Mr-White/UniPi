@@ -92,8 +92,11 @@ persist across handoffs. The sidekick's context compacts independently of the
 lead's (it is its own pi session). `sidekick({message, block:true})` waits by
 default; `block:false` returns immediately and delivers a
 `<subagent_completion_notification>`. Calling it while busy steers the same
-handoff. `read_subagent({agent_id?, block?, timeout?})` reads or waits for a
-handoff.
+handoff. Background tasks keep that handoff open through their completion
+notification and any follow-up turn, so the report is not released at an
+intermediate checkpoint. If a prompt arrives while the child is processing,
+Fusion retries it once with pi's `followUp` streaming behavior.
+`read_subagent({agent_id?, block?, timeout?})` reads or waits for a handoff.
 
 The child receives `UNIPI_FUSION_CHILD=1` and `UNIPI_SUBAGENT_CHILD=1`; the
 Fusion extension guard prevents child processes from registering Fusion tools,
