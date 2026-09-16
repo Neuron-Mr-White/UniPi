@@ -451,6 +451,28 @@ function installGlanceEditor(
         };
       }),
     );
+    // setCustomEditorComponent detaches the previous editor, but any open
+    // overlay captured it as its preFocus restore target — closing the overlay
+    // would refocus a dead component and swallow all input. Right after the
+    // swap, getFocusedComponent() is the new editor; retarget stale preFocus
+    // entries to it (skip preFocus that points at a live overlay).
+    const newEditor = typeof tui?.getFocusedComponent === "function" ? tui.getFocusedComponent() : null;
+    const internals = tui as ({
+      overlayStack?: Array<{ component?: unknown; preFocus?: unknown }>;
+      isComponentMounted?: (c: unknown) => boolean;
+    }) | null | undefined;
+    const overlayStack = internals?.overlayStack;
+    const isMounted = typeof internals?.isComponentMounted === "function"
+      ? internals.isComponentMounted.bind(tui)
+      : undefined;
+    if (newEditor && overlayStack && isMounted) {
+      const overlayComponents = new Set(overlayStack.map((entry) => entry.component));
+      for (const entry of overlayStack) {
+        if (entry.preFocus && entry.preFocus !== newEditor && !overlayComponents.has(entry.preFocus) && !isMounted(entry.preFocus)) {
+          entry.preFocus = newEditor;
+        }
+      }
+    }
     if (overlayOwner && tui) tui.setFocus(overlayOwner);
     st.glanceInstalled = true;
   } catch {
