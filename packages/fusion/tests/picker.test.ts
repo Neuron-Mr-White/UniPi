@@ -125,10 +125,34 @@ test("an unpriced highlighted row shows provider pricing guidance", () => {
   assert.match(text, /no pricing data from provider/);
 });
 
-test("empty preset hides the fusion row but still lists the catalogue", () => {
+test("empty preset still shows a disabled Fusion row before the catalogue", () => {
   const { picker } = run(state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined }), []);
-  // No active selection → no pinned row; plain catalogue order.
-  assert.deepEqual(picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), ["a/opus", "b/glm", "c/mini"]);
+  assert.deepEqual(picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), ["fusion", "a/opus", "b/glm", "c/mini"]);
+});
+
+test("disabled Fusion row cannot be confirmed or expanded", () => {
+  const empty = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined, effort: {} });
+  assert.equal(run(empty, [ENTER]).result, undefined);
+  const tabbed = run(empty, [TAB]);
+  const tabbedText = tabbed.picker.render(140).join("\n");
+  assert.doesNotMatch(tabbedText, /no lead models in preset/);
+  assert.doesNotMatch(tabbedText, /▸/);
+  const selected = run(empty, [RIGHT, DOWN, ENTER]).result;
+  assert.equal(selected?.type, "single");
+  if (selected?.type === "single") {
+    assert.equal(selected.model, "a/opus");
+    assert.equal(selected.effort, "low");
+  }
+});
+
+test("disabled Fusion row renders setup hint", () => {
+  const empty = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined, effort: {} });
+  const text = run(empty, []).picker.render(160).join("\n");
+  assert.match(text, /not configured — run \/unipi:fusion-preset/);
+  assert.match(text, /Run \/unipi:fusion-preset to enable Fusion/);
+  assert.doesNotMatch(text, /tab lead/);
+  assert.doesNotMatch(text, /↵ confirm/);
+  assert.doesNotMatch(text, /no pricing data from provider/);
 });
 
 test("fusion-row effort is independent of per-model effort", () => {

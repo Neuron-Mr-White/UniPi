@@ -14,10 +14,11 @@
  *   $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M       $1.2 / 1M
  *   ↑/↓ select · ←/→ effort · tab lead · Enter confirm · esc cancel
  *
- * Row order: the active selection pinned first, then the Fusion row (when a
- * pair is configured), then recent (≤5, MRU), then the preset models, then
- * EVERY other available model — the catalogue is never hidden, the preset
- * only controls ordering. Typing filters all rows except the pinned one.
+ * Row order: the active selection pinned first, then the always-visible Fusion
+ * row (disabled with a setup hint when no pair is configured), then recent
+ * (≤5, MRU), then the preset models, then EVERY other available model — the
+ * catalogue is never hidden, the preset only controls ordering. Typing filters
+ * all rows except the pinned one.
  *
  * ←/→ steps the highlighted row's effort. Per-model effort is remembered for
  * plain model rows; the Fusion row keeps its own lead/sidekick efforts so
@@ -219,7 +220,7 @@ export class ModelPicker {
       out.push({ kind: "model", key: active.model });
       seen.add(active.model);
     }
-    if (!pinnedFusion && this.fusionAvailable()) out.push({ kind: "fusion" });
+    if (!pinnedFusion) out.push({ kind: "fusion" });
 
     const ordered: ModelKey[] = [
       ...this.state.recent,
@@ -265,6 +266,18 @@ export class ModelPicker {
         return;
       }
       this.finish({ type: "cancelled" });
+      return;
+    }
+
+    const disabledFusion = row?.kind === "fusion" && !this.fusionAvailable();
+    if (
+      disabledFusion &&
+      (matchesKey(data, Key.tab) ||
+        matchesKey(data, Key.left) ||
+        matchesKey(data, Key.right) ||
+        matchesKey(data, Key.enter) ||
+        data === "\r")
+    ) {
       return;
     }
 
@@ -406,11 +419,12 @@ export class ModelPicker {
   private renderRow(row: Row, highlighted: boolean, width: number): string {
     const t = this.theme;
     const pointer = highlighted ? t.fg("accent", "❭") : t.fg("dim", "·");
+    const disabledFusion = row.kind === "fusion" && !this.fusionAvailable();
     // The Fusion composite gets the check when it is the active selection —
     // same affordance a single active model gets on its own row.
     const marker =
       row.kind === "fusion"
-        ? this.state.active?.kind === "fusion"
+        ? !disabledFusion && this.state.active?.kind === "fusion"
           ? t.fg("success", "✓")
           : " "
         : this.markerFor(row.key);
@@ -418,9 +432,13 @@ export class ModelPicker {
     const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, NAME_COL - 1);
     const name =
       row.kind === "fusion"
-        ? highlighted
-          ? t.fg("accent", t.bold(nameRaw))
-          : t.fg("text", nameRaw)
+        ? disabledFusion
+          ? highlighted
+            ? t.fg("muted", t.bold(nameRaw))
+            : t.fg("dim", nameRaw)
+          : highlighted
+            ? t.fg("accent", t.bold(nameRaw))
+            : t.fg("text", nameRaw)
         : working
           ? t.fg("accent", t.bold(nameRaw))
           : highlighted
@@ -431,25 +449,33 @@ export class ModelPicker {
     const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
 
     const level = row.kind === "fusion" ? this.fusionLeadEffort : this.effortFor(row.key);
-    const arrowsOn = highlighted && this.focus === "effort";
+    const arrowsOn = !disabledFusion && highlighted && this.focus === "effort";
     const left = arrowsOn ? t.fg("accent", "←") : " ";
     const right = arrowsOn ? t.fg("accent", "→") : " ";
-    const label = highlighted ? t.fg("accent", effortLabel(level)) : t.fg("muted", effortLabel(level));
+    const label = disabledFusion
+      ? t.fg("dim", effortLabel(level))
+      : highlighted
+        ? t.fg("accent", effortLabel(level))
+        : t.fg("muted", effortLabel(level));
 
-    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, NAME_COL)} ${left} ${this.bar(level, highlighted)} ${right} ${pad(label, 8)}`;
+    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, NAME_COL)} ${left} ${this.bar(level, !disabledFusion && highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
-      const leadName = this.nameOf(this.lead, 14);
-      const sideName = this.nameOf(this.sidekick, 14);
-      const leadFocused = highlighted && this.focus === "lead";
-      const sideFocused = highlighted && this.focus === "sidekick";
-      const leadText = leadFocused
-        ? `${t.fg("accent", t.bold("Lead"))} ${t.fg("accent", leadName)} ${t.fg("accent", "▾")}`
-        : `${t.fg("dim", "Lead")} ${t.fg("text", leadName)} ${t.fg("dim", "▾")}`;
-      const sideText = sideFocused
-        ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}`
-        : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}`;
-      line += `   ${leadText}   ${sideText}`;
+      if (disabledFusion) {
+        line += `   ${t.fg("dim", "not configured — run /unipi:fusion-preset")}`;
+      } else {
+        const leadName = this.nameOf(this.lead, 14);
+        const sideName = this.nameOf(this.sidekick, 14);
+        const leadFocused = highlighted && this.focus === "lead";
+        const sideFocused = highlighted && this.focus === "sidekick";
+        const leadText = leadFocused
+          ? `${t.fg("accent", t.bold("Lead"))} ${t.fg("accent", leadName)} ${t.fg("accent", "▾")}`
+          : `${t.fg("dim", "Lead")} ${t.fg("text", leadName)} ${t.fg("dim", "▾")}`;
+        const sideText = sideFocused
+          ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}`
+          : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}`;
+        line += `   ${leadText}   ${sideText}`;
+      }
     }
     return truncateToWidth(line, Math.max(1, width - 1));
   }
@@ -478,6 +504,7 @@ export class ModelPicker {
   private renderPricePanel(row: Row | undefined, width: number): string[] {
     const t = this.theme;
     if (row === undefined) return [];
+    const disabledFusion = row.kind === "fusion" && !this.fusionAvailable();
     const primaryKey = row.kind === "fusion" ? this.lead : row.key;
     const primary = primaryKey === undefined ? undefined : this.modelsByKey.get(primaryKey);
     const side = row.kind === "fusion" && this.sidekick !== undefined ? this.modelsByKey.get(this.sidekick) : undefined;
@@ -505,18 +532,20 @@ export class ModelPicker {
     const head = cols.map(([h]) => pad(t.fg("dim", h), colWidth)).join("");
     const vals = cols.map(([, v]) => pad(t.fg("text", v), colWidth)).join("");
     const desc =
-      row.kind === "fusion"
-        ? t.fg("dim", "Pairs frontier intelligence with cost-efficient execution")
-        : primary?.reasoning
-          ? t.fg("dim", "Reasoning model · ←/→ adjusts thinking effort")
-          : t.fg("dim", "Non-reasoning model · effort is ignored by the provider");
+      disabledFusion
+        ? t.fg("warning", "Run /unipi:fusion-preset to enable Fusion — a powerful lead model plans and reviews while a cheaper sidekick executes, for frontier performance at lower cost")
+        : row.kind === "fusion"
+          ? t.fg("dim", "Pairs frontier intelligence with cost-efficient execution")
+          : primary?.reasoning
+            ? t.fg("dim", "Reasoning model · ←/→ adjusts thinking effort")
+            : t.fg("dim", "Non-reasoning model · effort is ignored by the provider");
     const badges = this.state.models.some((m) => m.badge !== undefined)
       ? `${t.fg("success", "✱")} ${t.fg("dim", "New")}  ${t.fg("accent", "✱")} ${t.fg("dim", "Promotion")}  ${t.fg("warning", "✱")} ${t.fg("dim", "Beta")} ${t.fg("dim", "·")}`
       : "";
     const noPricing = row.kind === "fusion"
       ? !hasPricing(primaryCost) || !hasPricing(sideCost)
       : !hasPricing(primaryCost);
-    const pricing = noPricing ? t.fg("dim", " · no pricing data from provider") : "";
+    const pricing = !disabledFusion && noPricing ? t.fg("dim", " · no pricing data from provider") : "";
     const description = `${badges}${badges.length > 0 ? " " : ""}${desc}${pricing}`;
     return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${description}`, width - 1)];
   }
@@ -524,7 +553,9 @@ export class ModelPicker {
   private hintLine(row: Row | undefined): string {
     const t = this.theme;
     const parts: string[] = [];
-    if (row?.kind === "fusion" && this.focus !== "effort") {
+    if (row?.kind === "fusion" && !this.fusionAvailable()) {
+      parts.push("↑↓ select", "esc cancel");
+    } else if (row?.kind === "fusion" && this.focus !== "effort") {
       parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "↵ apply", "esc collapse");
     } else {
       parts.push("↑↓ select");
