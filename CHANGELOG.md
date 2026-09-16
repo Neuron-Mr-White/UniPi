@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.19.1] — 2026-09-16
+
+### Changed
+
+- `fusion`: **sidekick work renders as ordinary tool activity — the two-agent chrome is gone.** `sidekick`/`read_subagent` results no longer wrap output in the `▍` rail + `customMessageBg` frame; during a blocking wait the sidekick's tool calls and messages render inline like the lead's own blocks, matching Devin's single-agent presentation. Report headers dropped the handoff id (tool-call count, duration, and token usage remain), and `read_subagent`'s call line shows `· waiting`/`· snapshot` instead of the id.
+
+### Fixed
+
+- `fusion`: **handoff internals no longer leak into the terminal.** Model-facing result text still carries ids and protocol instructions the lead needs, but a new `displayText()` sanitizer strips handoff uuids, `agent_id` markers, `<subagent_completion_notification>` tags, and `use read_subagent` instructions from anything rendered as plain content, rewriting `Handoff <uuid> failed` to `The handoff failed`. The `block:false` result renders as a one-line `◆ sidekick · continuing in background` instead of the raw "Handoff <uuid> started… use read_subagent to wait" text.
+
+### Added
+
+- `fusion`: **detached handoffs stay visible in a live widget above the editor.** A `block:false` handoff previously left the terminal showing only "started in the background" while the sidekick kept working — a real session looked idle for minutes mid-task. A `fusion-sidekick` widget (`ctx.ui.setWidget`, `aboveEditor`) now streams the same transcript until the completion card arrives; it is suppressed while a blocking wait is attached (`shouldShowSidekickWidget` in `sidekick-widget.ts`) and cleared when the report lands.
+
 ## [2.19.0] — 2026-09-16
 
 ### Added
