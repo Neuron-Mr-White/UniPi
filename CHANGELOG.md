@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-09-16
+
+### Added
+
+- `notify`: **unanswered blocking prompts are re-sent until someone acts** — `ask_user_prompt` and `permission_request` were fire-once, so a missed push left the agent parked with no further signal. New `renotify` config block (default on: `intervalMs: 120000`, `maxRepeats: 3`) re-dispatches the same title and message with a `(still waiting)` suffix at priority `high`; the loop is cancelled by any terminal keypress, `herdr:blocked` with `active: false`, `agent_start`, or session end, and re-arming replaces the pending timer (`armRenotify`/`disarmRenotify` in `events.ts`). New **Re-notify** tab in `/unipi:notify-settings` (Space toggles, `+`/`−` adjust interval and repeats). `maxRepeats: 0` sends the initial notification only.
+
+### Changed
+
+- `notify`: **blocking prompts now dispatch at `high` priority** (`ask_user_prompt`/`permission_request` → ntfy 5, Gotify 8, breaking through DND) while `agent_end`/`agent_settled` dispatch at `low`. `dispatchNotification` already accepted a priority — the event path just never passed one; an explicit `notify_user` priority still wins.
+- `fusion`: **a sidekick handoff now stays open while its background tasks run.** `SidekickRuntime` counts in-flight `bg_run` calls (`openBgTasks`, only when `notifyOnCompletion`/`triggerOnCompletion` are not `false`), and on `agent_settled` with tasks still running it holds the handoff instead of collecting the report at an intermediate checkpoint. The background-task completion message decrements the count; with none left and the agent settled, a `settleGraceMs` timer (new spawn-config option, default 3000, `unref`'d) waits for the follow-up turn before requesting the last assistant text, and `agent_start` clears it.
+- `fusion`: **a sidekick prompt rejected as "already processing" is retried once** as a pi `followUp` (`streamingBehavior: "followUp"`, guarded by `retriedPrompt`) instead of failing the handoff; a second rejection finishes it as an error. `PendingHandoff` is now resolve-only.
+
+### Fixed
+
+- `notify`: **no duplicate "agent finished" notification while a background task is still running.** `agent_end`/`agent_settled` notified for the intermediate turn that launched a `triggerOnCompletion` task and again when the wake started its own turn, making the session look finished when it wasn't. The lifecycle handlers now skip dispatch while the background-tasks shared registry reports a running wake-pending task; the registry is read off the `Symbol.for("unipi.background-tasks.shared-registry")` global, so there is no dependency or load-order coupling (synchronous, never blocks the lifecycle hook).
+- `notify`: **`silenceAfterInput` no longer mutes blocking prompts.** Submitting a prompt with a keypress could silence the permission request that arrived seconds later — precisely the notification that must not be missed. `ask_user_prompt`/`permission_request` now bypass the quiet window, threaded through the existing `eventType` argument (`isBlockingEvent` in `activity.ts`); no new config.
+- `fusion`: **a failed sidekick handoff is reported as a structured error result.** `waitForReport` races the handoff rejection into an `{ error }` outcome and `sidekick`/`read_subagent` return `Handoff <id> failed: <message>` with `isError`, instead of the rejection escaping through the race.
+
 ## [2.18.1] — 2026-09-16
 
 ### Fixed
