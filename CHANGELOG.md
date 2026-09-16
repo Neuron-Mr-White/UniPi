@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `updater`: update prompt / changelog detail bodies wrap to the overlay width instead of being truncated (was rendered at terminal width then chopped to the 80% overlay); footers advertise `↑/↓ j/k`.
+- `subagents`: process-backed children now receive `--no-extensions` when the agent sets `extensions: false` (`childExtensionsArg` in `pi-args.ts`); builtin `reviewer` sets `extensions: false` so parent extensions can no longer change its read-only tool surface (#37).
+
+### Changed
+
+- `btw`: the side-conversation session is read-only (`read, grep, find, ls`, no bash/edit/write) with an explicit read-only system instruction (#37).
+
 ## [2.18.0] — 2026-09-16
 
 ### Changed

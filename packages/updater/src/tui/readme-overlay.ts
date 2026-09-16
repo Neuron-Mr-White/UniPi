@@ -28,8 +28,8 @@ export function renderReadmeOverlay(params?: ReadmeParams) {
   return createListDetailOverlay<ReadmeEntry>({
     title: " 📖 README Browser ",
     emptyMessage: "No README files found.",
-    listFooter: " j/k navigate  Enter read  q/Esc close",
-    detailFooter: " j/k scroll  q/Esc back to list",
+    listFooter: " ↑/↓ j/k navigate  Enter read  q/Esc close",
+    detailFooter: " ↑/↓ j/k scroll  q/Esc back to list",
 
     loadEntries: () => {
       const entries = discoverReadmes();

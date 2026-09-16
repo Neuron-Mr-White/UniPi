@@ -24,8 +24,8 @@ export function renderChangelogOverlay() {
   return createListDetailOverlay<ChangelogEntry>({
     title: " 📋 Changelog ",
     emptyMessage: "No changelog available.",
-    listFooter: " j/k navigate  Enter view details  q/Esc close",
-    detailFooter: " j/k scroll  q/Esc back to list",
+    listFooter: " ↑/↓ j/k navigate  Enter view details  q/Esc close",
+    detailFooter: " ↑/↓ j/k scroll  q/Esc back to list",
 
     loadEntries: () => {
       const changelogPath = resolveChangelogPath();

@@ -7,7 +7,7 @@
  */
 
 import { join } from "path";
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { parseChangelog, getNewerVersions, resolveChangelogPath } from "../changelog.js";
 import { renderMarkdown } from "../markdown.js";
@@ -28,7 +28,7 @@ function padVisible(content: string, targetWidth: number): string {
 
 interface UpdateState {
   result: UpdateCheckResult;
-  contentLines: string[];
+  contentLines: { width: number; lines: string[] } | null;
   scroll: number;
   installing: boolean;
   installError: string | null;
@@ -61,27 +61,9 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
       }
     }
 
-    // Build content lines from changelog using markdown renderer
-    const contentLines: string[] = [];
-    for (const entry of newerVersions) {
-      const title = entry.date
-        ? `${theme.bold(entry.version)} — ${theme.fg("muted", entry.date)}`
-        : `${theme.bold(entry.version)} — ${theme.fg("muted", "Unreleased")}`;
-      contentLines.push(`  ${title}`);
-      // Use markdown renderer for the body content
-      const bodyLines = renderMarkdown(entry.body, (tui.terminal?.columns ?? 80) - 6, theme);
-      for (const line of bodyLines) {
-        contentLines.push(`  ${line}`);
-      }
-      contentLines.push("");
-    }
-    if (contentLines.length === 0) {
-      contentLines.push(`  ${theme.fg("muted", `No changelog available for ${checkResult.latestVersion} (offline?).`)}`);
-    }
-
     const state: UpdateState = {
       result: checkResult,
-      contentLines,
+      contentLines: null,
       scroll: 0,
       installing: false,
       installError: null,
@@ -125,6 +107,29 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
       const innerWidth = boxInnerWidth(width);
       const lines: string[] = [];
 
+      if (state.contentLines?.width !== innerWidth) {
+        const contentLines: string[] = [];
+        const wrapLine = (line: string) =>
+          visibleWidth(line) > innerWidth ? wrapTextWithAnsi(line, innerWidth) : [line];
+        for (const entry of newerVersions) {
+          const title = entry.date
+            ? `${theme.bold(entry.version)} — ${theme.fg("muted", entry.date)}`
+            : `${theme.bold(entry.version)} — ${theme.fg("muted", "Unreleased")}`;
+          contentLines.push(...wrapLine(`  ${title}`));
+          const bodyLines = renderMarkdown(entry.body, innerWidth - 2, theme);
+          for (const line of bodyLines) {
+            contentLines.push(...wrapLine(`  ${line}`));
+          }
+          contentLines.push("");
+        }
+        if (contentLines.length === 0) {
+          contentLines.push(...wrapLine(`  ${theme.fg("muted", `No changelog available for ${checkResult.latestVersion} (offline?).`)}`));
+        }
+        state.contentLines = { width: innerWidth, lines: contentLines };
+      }
+
+      const contentLines = state.contentLines.lines;
+
       // ── Header ──────────────────────────────────────────────────────
       lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
       lines.push(
@@ -150,16 +155,16 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
 
       // ── Changelog content (scrollable) ──────────────────────────────
       const contentHeight = 12;
-      const maxScroll = Math.max(0, state.contentLines.length - contentHeight);
+      const maxScroll = Math.max(0, contentLines.length - contentHeight);
       state.scroll = Math.min(state.scroll, maxScroll);
       state.scroll = Math.max(0, state.scroll);
 
-      const visible = state.contentLines.slice(state.scroll, state.scroll + contentHeight);
+      const visible = contentLines.slice(state.scroll, state.scroll + contentHeight);
       for (let i = 0; i < contentHeight; i++) {
         const line = visible[i] ?? "";
         lines.push(
           theme.fg("accent", "│") +
-          padVisible(truncateToWidth(line, innerWidth), innerWidth) +
+          padVisible(line, innerWidth) +
           theme.fg("accent", "│"),
         );
       }
@@ -192,7 +197,7 @@ export function renderUpdateOverlay(checkResult: UpdateCheckResult, providedNewe
           theme.fg("accent", "│"),
         );
       } else {
-        const actionLine = `  ${theme.fg("success", "[Y]")} Update now   ${theme.fg("muted", "[n]")} Skip   ${theme.fg("accent", "j/k")}: scroll`;
+        const actionLine = `  ${theme.fg("success", "[Y]")} Update now   ${theme.fg("muted", "[n]")} Skip   ${theme.fg("accent", "↑/↓ j/k")}: scroll`;
         lines.push(
           theme.fg("accent", "│") +
           padVisible(truncateToWidth(actionLine, innerWidth), innerWidth) +

@@ -5,7 +5,7 @@
  * Used by both the changelog and readme browsers.
  */
 
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { boxInnerWidth } from "@pi-unipi/core";
 
@@ -168,18 +168,22 @@ export function createListDetailOverlay<T>(
       }
 
       const title = config.renderDetailTitle(entry, theme);
-      lines.push(
-        theme.fg("accent", "│") +
-        padVisible(truncateToWidth(`  ${title}`, innerWidth), innerWidth) +
-        theme.fg("accent", "│"),
-      );
+      const wrapLine = (line: string) =>
+        visibleWidth(line) > innerWidth ? wrapTextWithAnsi(line, innerWidth) : [line];
+      for (const titleLine of wrapLine(`  ${title}`)) {
+        lines.push(
+          theme.fg("accent", "│") +
+          padVisible(titleLine, innerWidth) +
+          theme.fg("accent", "│"),
+        );
+      }
       lines.push(
         theme.fg("accent", "│") +
         padVisible("", innerWidth) +
         theme.fg("accent", "│"),
       );
 
-      const bodyLines = config.renderDetailBody(entry, innerWidth, theme);
+      const bodyLines = config.renderDetailBody(entry, innerWidth, theme).flatMap((line) => wrapLine(`  ${line}`));
       const maxScroll = Math.max(0, bodyLines.length - 15);
       state.detailScroll = Math.min(state.detailScroll, maxScroll);
       state.detailScroll = Math.max(0, state.detailScroll);
@@ -188,7 +192,7 @@ export function createListDetailOverlay<T>(
       for (const line of visible) {
         lines.push(
           theme.fg("accent", "│") +
-          padVisible(truncateToWidth(`  ${line}`, innerWidth), innerWidth) +
+          padVisible(line, innerWidth) +
           theme.fg("accent", "│"),
         );
       }
