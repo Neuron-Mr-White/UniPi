@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.19.3] — 2026-09-16
+
+### Fixed
+
+- `fusion`: **sidekick blocks get the standard tool highlight again.** Both fusion tools declared `renderShell: "self"`, which routes `renderCall`/`renderResult` into a bare `Container` and bypasses `ToolExecutionComponent`'s `toolPendingBg`/`toolSuccessBg`/`toolErrorBg` box. Once the `customMessageBg` frame was removed in 2.19.1, sidekick activity rendered as unhighlighted plain text — plainer than the lead's own tool calls. Dropping the self shell lets pi wrap the transcript in the same tinted block every other tool gets, with the normal pending → success/error repaint.
+
 ## [2.19.2] — 2026-09-16
 
 ### Fixed
