@@ -207,6 +207,22 @@ test("rendered sidekick output hides handoff ids and protocol text", async () =>
   assert.doesNotMatch(readRendered, PROTOCOL);
 });
 
+test("fusion tools use the default render shell so pi paints the standard tool background", () => {
+  const runtime = {
+    isBusy: () => false,
+    handoff: () => ({ id: "h1", done: Promise.resolve(report) }),
+    progress: () => undefined,
+    reports: new Map(),
+    latest: () => undefined,
+  };
+  const { tools } = setup(runtime);
+  // "self" bypasses ToolExecutionComponent's toolPendingBg/toolSuccessBg box,
+  // which leaves sidekick blocks unhighlighted next to ordinary tool activity.
+  for (const name of ["sidekick", "read_subagent"]) {
+    assert.notEqual(tools.get(name).renderShell, "self");
+  }
+});
+
 test("rendered fallback text strips ids and instructions", () => {
   const runtime = {
     isBusy: () => false,

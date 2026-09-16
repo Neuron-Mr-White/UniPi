@@ -178,7 +178,6 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Sidekick",
     description: "Hand off work to your persistent sidekick subagent (one per session; context and shells persist across handoffs; runs on the same machine). block:true (default) waits and returns the report. block:false returns immediately and the report arrives later as a <subagent_completion_notification>. Calling again while a handoff is running injects the message as an interrupt rather than starting a second sidekick.",
     parameters: SidekickParams,
-    renderShell: "self",
     renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ sidekick"))} ${theme.fg("dim", firstLine(String(args.message)).slice(0, 100))}`, 0, 0),
     renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "sidekick"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -214,7 +213,6 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     label: "Read Sidekick",
     description: "Read a sidekick handoff report by agent_id (omit for the latest). block:true waits for completion (default timeout 2700s when omitted); block:false returns the current progress snapshot immediately.",
     parameters: ReadSubagentParams,
-    renderShell: "self",
     renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ read_subagent"))} ${theme.fg("dim", args.block === false ? "· snapshot" : "· waiting")}`, 0, 0),
     renderResult: (result, options, theme) => renderToolTranscript(result, options, theme as unknown as ThemeLike, "read_subagent"),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
