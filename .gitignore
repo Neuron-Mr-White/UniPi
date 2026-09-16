@@ -1,6 +1,12 @@
 node_modules/
 dist/
 *.tgz
+
+# Local agent state and supervisor artifacts.
+.devin/
+.agents/
+.impeccable.md
+.supervisor-child-*.mts
 .npmrc
 .env
 .DS_Store
