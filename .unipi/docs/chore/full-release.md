@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-16 (v2.19.1, fusion single-agent rendering — inline sidekick activity, protocol/id sanitizer, detached live widget — full lockstep: all 23 packages + root)
+last-run: 2026-09-16 (v2.19.2, footer fix — retarget stale overlay preFocus after Glance editor swap; fixes TUI input freeze after updater overlay close — full lockstep: all 23 packages + root)
 ---
 
 # Full Release Pipeline

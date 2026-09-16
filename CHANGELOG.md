@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.19.2] — 2026-09-16
+
+### Fixed
+
+- `footer`: **the update overlay no longer leaves the TUI dead after pressing `y`.** The Glance editor install (`installGlanceEditor`) detaches the default editor, but any overlay opened before the swap — the updater prompt opens at `session_start`, the swap lands ~3.5s later — keeps that component as its `preFocus` restore target. On `hideOverlay()` the TUI refocused the detached editor, so every keystroke (including Ctrl+C) was routed to an unmounted component and the session had to be killed. After the swap we now walk `overlayStack` and retarget any `preFocus` pointing at an unmounted non-overlay component to the newly installed editor; `preFocus` entries referencing a live overlay or a still-mounted component are left alone. Regression covered in `glance-focus.test.ts`.
+
 ## [2.19.1] — 2026-09-16
 
 ### Changed
