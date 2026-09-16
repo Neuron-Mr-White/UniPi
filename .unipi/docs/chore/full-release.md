@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-16 (v2.18.0, sidekick transcript + tint, fusion working indicator, recurring nudges — lockstep bump)
+last-run: 2026-09-16 (v2.18.1, updater wrap fix, reviewer/btw extension isolation #37 — partial bump: updater, subagents, btw, fusion, root)
 ---
 
 # Full Release Pipeline

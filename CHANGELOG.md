@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.18.1] — 2026-09-16
+
 ### Fixed
 
 - `updater`: update prompt / changelog detail bodies wrap to the overlay width instead of being truncated (was rendered at terminal width then chopped to the 80% overlay); footers advertise `↑/↓ j/k`.
