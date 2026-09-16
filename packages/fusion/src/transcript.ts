@@ -1,9 +1,22 @@
-import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
-import type { SidekickEvent } from "./sidekick-runtime.js";
+import { Box, Container, Markdown, Text, type Component } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import type { HandoffProgress, SidekickEvent } from "./sidekick-runtime.js";
 
 export interface ThemeLike {
   fg: (color: string, text: string) => string;
   bold: (text: string) => string;
+}
+
+export function duration(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+export function markdownText(markdown: string): Component {
+  return new Markdown(markdown, 0, 0, getMarkdownTheme());
+}
+
+export function sidekickWorkingHeader(theme: ThemeLike, progress: Pick<HandoffProgress, "toolCalls" | "startedAt">, label = "sidekick"): string {
+  return `${theme.fg("accent", theme.bold(`◆ ${label} working`))} ${theme.fg("dim", `· ${String(progress.toolCalls)} tool calls · ${duration(Date.now() - progress.startedAt)}`)}`;
 }
 
 export class RailComponent implements Component {

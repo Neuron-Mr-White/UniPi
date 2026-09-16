@@ -12,7 +12,7 @@ const report: HandoffReport = {
   durationMs: 1200,
 };
 
-function setup(runtime: any, pending = false) {
+function setup(runtime: any, pending = false, callbacks: any = {}) {
   const tools = new Map<string, any>();
   const sent: any[] = [];
   const pi: any = {
@@ -21,9 +21,15 @@ function setup(runtime: any, pending = false) {
     sendMessage: (message: any, options: any) => sent.push({ message, options }),
   };
   const ctx: any = { hasPendingMessages: () => pending };
-  registerFusionTools(pi, { getRuntime: () => runtime, identity: () => ({ leadName: "lead", leadEffort: "medium", sidekickName: "side", sidekickEffort: "low" }) });
+  registerFusionTools(pi, { getRuntime: () => runtime, ...callbacks });
   return { tools, sent, ctx };
 }
+
+const theme = {
+  fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+};
 
 test("blocking sidekick returns a formatted report", async () => {
   const runtime = {
@@ -71,6 +77,63 @@ test("read_subagent defaults to the latest handoff", async () => {
   assert.match(result.content[0].text, /implemented/);
 });
 
+test("read_subagent background progress keeps transcript details", async () => {
+  const progress: HandoffProgress = {
+    toolCalls: 1,
+    recentTools: ["bash(ls)"],
+    textTail: "working",
+    startedAt: Date.now(),
+    events: [{ kind: "text", text: "working", open: true }],
+    droppedEvents: 0,
+  };
+  const runtime = {
+    reports: new Map(),
+    latest: () => ({ id: "h-progress", done: new Promise(() => undefined) }),
+    progress: () => progress,
+  };
+  const { tools, ctx } = setup(runtime);
+  const result = await tools.get("read_subagent").execute("call", { block: false }, undefined, undefined, ctx);
+  assert.deepEqual(result.details.progress.events, progress.events);
+});
+
+test("sidekick attach and detach callbacks follow wait mode", async () => {
+  const calls: string[] = [];
+  const blockingRuntime = {
+    isBusy: () => false,
+    handoff: () => ({ id: "h-block", done: Promise.resolve(report) }),
+    progress: () => undefined,
+    reports: new Map([["h-block", report]]),
+    latest: () => ({ id: "h-block", done: Promise.resolve(report), report }),
+  };
+  const blocking = setup(blockingRuntime, false, { onAttach: () => calls.push("attach"), onDetach: () => calls.push("detach") });
+  await blocking.tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, blocking.ctx);
+  assert.deepEqual(calls, ["attach"]);
+
+  let resolve!: (value: HandoffReport) => void;
+  const detachedRuntime = {
+    isBusy: () => false,
+    handoff: () => ({ id: "h-detached", done: new Promise<HandoffReport>((res) => { resolve = res; }) }),
+    progress: () => undefined,
+    reports: new Map(),
+    latest: () => undefined,
+  };
+  const detached = setup(detachedRuntime, false, { onAttach: () => calls.push("attach"), onDetach: () => calls.push("detach") });
+  await detached.tools.get("sidekick").execute("call", { message: "work", block: false }, undefined, undefined, detached.ctx);
+  assert.deepEqual(calls, ["attach", "detach"]);
+  resolve(report);
+
+  const interruptedRuntime = {
+    isBusy: () => false,
+    handoff: () => ({ id: "h-interrupted", done: new Promise(() => undefined) }),
+    progress: () => undefined,
+    reports: new Map(),
+    latest: () => undefined,
+  };
+  const interrupted = setup(interruptedRuntime, true, { onAttach: () => calls.push("attach"), onDetach: () => calls.push("detach") });
+  await interrupted.tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, interrupted.ctx);
+  assert.deepEqual(calls, ["attach", "detach", "attach", "detach"]);
+});
+
 test("read_subagent turns a rejected handoff into an error result", async () => {
   const done = Promise.reject(new Error("boom"));
   const runtime = {
@@ -96,8 +159,66 @@ test("non-blocking sidekick sends a follow-up completion message", async () => {
   const { tools, sent, ctx } = setup(runtime);
   const result = await tools.get("sidekick").execute("call", { message: "work", block: false }, undefined, undefined, ctx);
   assert.match(result.content[0].text, /h3 started/);
+  assert.equal(result.details.background, true);
+  const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
+  assert.doesNotMatch(rendered, /read_subagent/);
+  assert.match(rendered, /continuing in background/);
   resolve({ ...report, id: "h3" });
   await new Promise<void>((r) => setImmediate(r));
   assert.equal(sent[0]?.message.customType, "sidekick-completion");
   assert.equal(sent[0]?.options.deliverAs, "followUp");
+});
+
+const uuidId = "ecff5344-4e60-4892-8a86-1f8e962caf1b";
+const PROTOCOL = /ecff5344|subagent_completion|use `?read_subagent|agent_id/i;
+
+test("rendered sidekick output hides handoff ids and protocol text", async () => {
+  const uuidReport: HandoffReport = {
+    ...report,
+    id: uuidId,
+    events: [
+      { kind: "tool", toolCallId: "1", name: "bash", args: { command: "npm test" }, output: "ok", isError: false, done: true, startedAt: 0 },
+      { kind: "text", text: "implemented", open: false },
+    ],
+  };
+  const runtime = {
+    isBusy: () => false,
+    handoff: () => ({ id: uuidId, done: Promise.resolve(uuidReport) }),
+    progress: () => undefined,
+    reports: new Map([[uuidId, uuidReport]]),
+    latest: () => ({ id: uuidId, done: Promise.resolve(uuidReport), report: uuidReport }),
+  };
+  const { tools, ctx } = setup(runtime);
+
+  // Blocking report: renders as an ordinary transcript block — no id, no rail.
+  const result = await tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, ctx);
+  const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
+  assert.doesNotMatch(rendered, PROTOCOL);
+  assert.doesNotMatch(rendered, /▍/);
+  assert.match(rendered, /sidekick completed/);
+  assert.match(rendered, /implemented/);
+
+  // The call and result renderers never echo the agent id.
+  const call = tools.get("read_subagent").renderCall({ agent_id: uuidId, block: true }, theme).render(120).join("\n");
+  assert.doesNotMatch(call, PROTOCOL);
+
+  const read = await tools.get("read_subagent").execute("call", { block: true }, undefined, undefined, ctx);
+  const readRendered = tools.get("read_subagent").renderResult(read, {}, theme).render(120).join("\n");
+  assert.doesNotMatch(readRendered, PROTOCOL);
+});
+
+test("rendered fallback text strips ids and instructions", () => {
+  const runtime = {
+    isBusy: () => false,
+    handoff: () => ({ id: uuidId, done: Promise.reject(new Error("boom")) }),
+    progress: () => undefined,
+    reports: new Map(),
+    latest: () => ({ id: uuidId, done: Promise.reject(new Error("boom")) }),
+  };
+  const { tools, ctx } = setup(runtime);
+  return tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, ctx).then((result: any) => {
+    const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
+    assert.doesNotMatch(rendered, PROTOCOL);
+    assert.match(rendered, /The handoff failed: boom/);
+  });
 });

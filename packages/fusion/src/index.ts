@@ -40,6 +40,8 @@ import { estimateSavings } from "./savings.js";
 import { EDIT_NUDGE, bashNudge, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
 import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
+import { shouldShowSidekickWidget } from "./sidekick-widget.js";
+import { frameSidekick, markdownText, renderSidekickTranscript, sidekickWorkingHeader, type ThemeLike } from "./transcript.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
@@ -118,6 +120,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   let leadToolCalls = 0;
   let editNudgedThisTurn = false;
   let bashStreak = 0;
+  let attached = false;
+  let widgetTimer: NodeJS.Timeout | undefined;
+  let widgetTimerKind: "publish" | "clear" | undefined;
+  let widgetLastAt = 0;
 
   function identity(ctx: ExtensionContext): FusionIdentity {
     const reg = registryOf(ctx);
@@ -161,8 +167,79 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     }
   }
 
+  function clearSidekickWidget(): void {
+    if (widgetTimer !== undefined) {
+      clearTimeout(widgetTimer);
+      widgetTimer = undefined;
+      widgetTimerKind = undefined;
+    }
+    const ctx = lastCtx;
+    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
+    const clear = () => {
+      widgetTimer = undefined;
+      widgetTimerKind = undefined;
+      widgetLastAt = Date.now();
+      ctx.ui.setWidget("fusion-sidekick", undefined);
+    };
+    const wait = Math.max(0, 150 - (Date.now() - widgetLastAt));
+    if (wait === 0) clear();
+    else {
+      widgetTimerKind = "clear";
+      widgetTimer = setTimeout(clear, wait);
+      widgetTimer.unref();
+    }
+  }
+
+  function publishSidekickWidget(): void {
+    const ctx = lastCtx;
+    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
+    const progress = runtime?.progress();
+    if (!runtime || !shouldShowSidekickWidget(runtime.isBusy(), attached) || !progress) {
+      ctx.ui.setWidget("fusion-sidekick", undefined);
+      return;
+    }
+    ctx.ui.setWidget("fusion-sidekick", (_tui, theme) => {
+      const themeLike = theme as unknown as ThemeLike & { bg: (color: string, text: string) => string };
+      return frameSidekick(themeLike, "working", renderSidekickTranscript(themeLike, {
+        events: progress.events,
+        droppedEvents: progress.droppedEvents,
+        header: sidekickWorkingHeader(themeLike, progress),
+        expanded: false,
+        isPartial: true,
+        renderText: markdownText,
+      }));
+    }, { placement: "aboveEditor" });
+  }
+
+  function publishSidekickWidgetLater(): void {
+    const ctx = lastCtx;
+    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
+    if (widgetTimer !== undefined && widgetTimerKind === "publish") return;
+    if (widgetTimer !== undefined) {
+      clearTimeout(widgetTimer);
+      widgetTimer = undefined;
+      widgetTimerKind = undefined;
+    }
+    const wait = Math.max(0, 150 - (Date.now() - widgetLastAt));
+    const publish = () => {
+      widgetTimer = undefined;
+      widgetTimerKind = undefined;
+      widgetLastAt = Date.now();
+      publishSidekickWidget();
+    };
+    if (wait === 0) publish();
+    else {
+      widgetTimerKind = "publish";
+      widgetTimer = setTimeout(publish, wait);
+      widgetTimer.unref();
+    }
+  }
+
   function publishStatusLater(): void {
-    if (lastCtx) publishStatus(lastCtx);
+    if (lastCtx) {
+      publishStatus(lastCtx);
+      publishSidekickWidgetLater();
+    }
   }
 
   function leadSessionId(ctx: ExtensionContext): string {
@@ -186,6 +263,8 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   }
 
   function stopRuntime(): void {
+    clearSidekickWidget();
+    attached = false;
     runtime?.kill();
     runtime = undefined;
     leadToolCalls = 0;
@@ -206,8 +285,20 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   registerFusionTools(pi, {
     getRuntime,
-    onReport: (ctx) => publishStatus(ctx),
+    onReport: (ctx) => {
+      attached = false;
+      clearSidekickWidget();
+      publishStatus(ctx);
+    },
     onHandoffStart: (ctx) => publishStatus(ctx),
+    onAttach: () => {
+      attached = true;
+      clearSidekickWidget();
+    },
+    onDetach: () => {
+      attached = false;
+      publishSidekickWidgetLater();
+    },
   });
   pi.registerCommand("unipi:fusion-stats", {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
