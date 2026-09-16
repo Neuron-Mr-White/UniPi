@@ -58,6 +58,12 @@ describe("builtin file agents (packages/subagents/agents)", () => {
     assert.equal(worker.thinking, "high");
   });
 
+  it("reviewer is read-only and isolated from extensions", () => {
+    const reviewer = loadBuiltinFileAgents().get("reviewer")!;
+    assert.equal(reviewer.extensions, false);
+    assert.deepEqual(reviewer.builtinToolNames, ["read", "grep", "find", "ls"]);
+  });
+
   it("researcher uses our web-api tool names", () => {
     const agents = loadBuiltinFileAgents();
     const tools = agents.get("researcher")!.builtinToolNames!;

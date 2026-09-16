@@ -7,6 +7,8 @@ description: Helps you use the /unipi:btw side-conversation workflow effectively
 
 Use this skill when the user wants to work in parallel with the main agent instead of derailing the current turn.
 
+BTW side sessions are read-only: they can read and search files with `read`, `grep`, `find`, and `ls`, but cannot run commands or modify files. Send requested changes to the main session with `/unipi:btw-inject` or `/unipi:btw-summarize`.
+
 ## When to use BTW
 
 Prefer the BTW workflow when the user wants to:

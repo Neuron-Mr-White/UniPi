@@ -2,7 +2,7 @@
  * @pi-unipi/btw — Side Conversation Extension
  *
  * A /unipi:btw side conversation channel that opens a real pi sub-session
- * with coding-tool access, running immediately even while the main
+ * with read-only coding-tool access, running immediately even while the main
  * agent is still busy.
  *
  * Based on pi-btw by Dan Bachelder, adapted for the Unipi suite.
@@ -64,6 +64,7 @@ const BTW_SYSTEM_PROMPT = [
   "If no main session messages are provided, treat this as a fully contextless tangent thread and rely only on the user's words plus your general instructions.",
   "Focus on answering the user's side questions, helping them think through ideas, or planning next steps.",
   "Do not act as if you need to continue unfinished work from the main session unless the user explicitly asks you to prepare something for injection back to it.",
+  "This aside is read-only: you can read and search files but cannot run commands or modify anything. Never claim to have edited, written, or executed something. If the user wants changes made, tell them to hand this thread off to the main session instead. Use /unipi:btw-inject or /unipi:btw-summarize to hand it off.",
 ].join(" ");
 
 const BTW_SUMMARIZE_SYSTEM_PROMPT =
@@ -1355,7 +1356,7 @@ export default function (pi: ExtensionAPI) {
       model: ctx.model,
       modelRuntime: sessionModelRuntime(ctx),
       thinkingLevel: pi.getThinkingLevel() as SessionThinkingLevel,
-      tools: ["read", "bash", "edit", "write"],
+      tools: ["read", "grep", "find", "ls"],
       resourceLoader: createBtwResourceLoader(ctx),
     });
 

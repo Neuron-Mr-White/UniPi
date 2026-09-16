@@ -37,6 +37,7 @@ import {
   matchesDetachInput,
 } from "./foreground-detach.js";
 import { coerceThinkingLevel } from "./agent-runner.js";
+import { childExtensionsArg } from "./pi-args.js";
 
 /** Get info registry from global */
 function getInfoRegistry() {
@@ -300,6 +301,7 @@ export default function (pi: ExtensionAPI) {
             model: launch.model,
             thinking: launch.thinking,
             tools: agent.builtinToolNames,
+            extensions: childExtensionsArg(agent.extensions),
             timeoutMs: launch.timeoutMs,
             parentSessionId: asyncSessionId,
             config,

@@ -2,7 +2,7 @@
 
 Side conversations that run in parallel. Ask a question using `/unipi:btw` while the main agent keeps working — the answer streams into a modal overlay without interrupting the current task.
 
-BTW opens a real Pi sub-session with coding-tool access. Use it to clarify something, explore an idea, or think through next steps without derailing the main turn. When you're ready, inject the thread back or summarize it.
+BTW opens a real Pi sub-session with read-only file and search access. Use it to clarify something, explore an idea, or think through next steps without derailing the main turn. It cannot run commands or modify files; when you're ready, inject the thread back or summarize it.
 
 Based on [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.
 
@@ -47,8 +47,8 @@ The BTW overlay opens top-centered so the main session remains visible underneat
 ## How It Works
 
 1. `/unipi:btw` creates or reuses a BTW sub-session
-2. Your question runs in a real Pi session with tool access
-3. The answer streams into the BTW modal overlay
+2. Your question runs in a real Pi session with read/search tool access (`read`, `grep`, `find`, `ls`)
+3. The read-only answer streams into the BTW modal overlay
 4. The thread continues until you clear it or inject it back
 
 `/unipi:btw-inject` sends the full thread to the main agent as a user message. If Pi is busy, it queues as a follow-up. `/unipi:btw-summarize` does the same but summarizes first.

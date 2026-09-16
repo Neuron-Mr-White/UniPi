@@ -24,6 +24,12 @@ const TASK_ARG_LIMIT = 8000;
 
 export type SubagentTaskDelivery = "auto" | "file";
 
+export function childExtensionsArg(extensions: true | string[] | false): string[] | undefined {
+  if (extensions === false) return [];
+  if (extensions === true) return undefined;
+  return [...extensions];
+}
+
 export function resolveSubagentTaskDelivery(
   env: NodeJS.ProcessEnv = process.env,
 ): SubagentTaskDelivery {

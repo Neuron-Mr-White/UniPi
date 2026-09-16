@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildPiArgs,
+  childExtensionsArg,
   resolveSubagentTaskDelivery,
   cleanupTempDir,
   SUBAGENT_TASK_DELIVERY_ENV,
@@ -21,6 +22,16 @@ const TMP = mkdtempSync(join(tmpdir(), "unipi-piargs-test-"));
 
 afterEach(() => {
   rmSync(TMP, { recursive: true, force: true });
+});
+
+describe("childExtensionsArg", () => {
+  it("maps extension settings to child CLI arguments", () => {
+    assert.deepEqual(childExtensionsArg(false), []);
+    assert.equal(childExtensionsArg(true), undefined);
+    const extensions = ["/tmp/one.js"];
+    assert.deepEqual(childExtensionsArg(extensions), extensions);
+    assert.notEqual(childExtensionsArg(extensions), extensions);
+  });
 });
 
 describe("resolveSubagentTaskDelivery", () => {
@@ -80,6 +91,13 @@ describe("buildPiArgs", () => {
     const t2 = buildPiArgs({ baseArgs: [], task: "t", model: "haiku", thinking: "off" }); cleanupTempDir(t2.tempDir);
     assert.equal(modelValue(buildPiArgs({ baseArgs: [], task: "t", model: "haiku" })), "haiku");
     const t3 = buildPiArgs({ baseArgs: [], task: "t", model: "haiku" }); cleanupTempDir(t3.tempDir);
+  });
+
+  it("disables extensions without adding extension paths", () => {
+    const result = buildPiArgs({ baseArgs: [], task: "t", extensions: [] });
+    assert.ok(result.args.includes("--no-extensions"));
+    assert.equal(result.args.includes("--extension"), false);
+    cleanupTempDir(result.tempDir);
   });
 
   it("tool allowlist: --tools list or --no-tools", () => {
