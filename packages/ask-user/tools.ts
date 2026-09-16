@@ -20,6 +20,14 @@ import { getAskUserSettings } from "./config.js";
 import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
 
 /**
+ * Whether this process is a subagent child (subagents package or fusion sidekick).
+ * Subagent children never talk to the user directly — their lead owns ambiguity.
+ */
+export function isSubagentChild(env: Record<string, string | undefined> = process.env): boolean {
+  return env.UNIPI_SUBAGENT_CHILD === "1";
+}
+
+/**
  * Register ask-user tools.
  */
 export function registerAskUserTools(pi: ExtensionAPI): void {
@@ -129,6 +137,28 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         allowFreeform?: boolean;
         timeout?: number;
       };
+
+      // Subagent children have no user to talk to. Refuse loudly so the
+      // subagent surfaces the question to its lead instead of guessing.
+      if (isSubagentChild()) {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                "ask_user is not available inside a subagent. You cannot talk to the user directly — only your lead can. Do not guess or assume an answer. Stop and state the question, the options you considered, and your recommendation in your report so your lead can decide.",
+            },
+          ],
+          isError: true,
+          details: {
+            question,
+            response: {
+              kind: "cancelled",
+              comment: "ask_user is not available inside a subagent",
+            } as AskUserResponse,
+          },
+        };
+      }
 
       // Check settings
       const settings = getAskUserSettings();

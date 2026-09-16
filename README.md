@@ -1,6 +1,6 @@
 # Unipi
 
-22 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
+23 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
 
 One command installs everything:
 ```bash
@@ -24,6 +24,10 @@ pi install npm:@pi-unipi/unipi
 **[Prefix-cache architecture](./docs/prefix-cache-architecture.md)** — Append-only request discipline, explicit cache epochs, deterministic tools, privacy-safe diagnostics, provider limitations, and bounded cold-epoch output.
 
 **[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
+
+**[Fusion](./packages/fusion/README.md)** — Run two models as one: a frontier lead delegates to a cheaper persistent sidekick that keeps its own context and shells, and stays in the loop while the sidekick works. Pair them from `/unipi:model`; `/unipi:fusion-stats` shows what the sidekick saved you.
+
+**[Background Tasks](./packages/background-tasks/README.md)** — Long-running commands and delegate agents that survive the turn that started them, with a live dock, output capture, and a wake line while the agent waits on them.
 
 **[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Defaults to [wigolo](https://github.com/KnockOutEZ/wigolo), a local-first engine with multi-engine search and on-device reranking — $0/query, no API key. Plus a smart-fetch engine with browser-grade TLS fingerprinting. Paid providers as fallbacks, and auto-selection falls through when a provider is unavailable.
 
@@ -112,6 +116,8 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
 | `image_generate` / `image_recognize` | image | Image generation and vision (recognize auto-hides while the session model has vision) |
 | `notify_user` | notify | Push notifications |
+| `sidekick` / `read_subagent` | fusion | Delegate to the persistent sidekick and collect its report |
+| `bg_run` / `bg_status` / `bg_logs` / `bg_kill` / `bg_delegate` / `bg_result` | background-tasks | Long-running commands and background delegate agents |
 | `ask_user` | ask-user | User input |
 | `compact` / `session_recall` / `sandbox` | compactor | Context management |
 | `ctx_env` | utility | Environment info |
@@ -137,6 +143,8 @@ unipi/
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine
 │   ├── subagents/      # Parallel execution
+│   ├── fusion/         # Lead + sidekick pairing
+│   ├── background-tasks/ # Long-running tasks and delegates
 │   ├── web-api/        # Web research
 │   ├── image/          # Image generation and vision
 │   ├── mcp/            # MCP server integration

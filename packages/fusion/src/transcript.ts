@@ -53,6 +53,13 @@ export interface TranscriptOptions {
   renderText: (markdown: string) => Component;
 }
 
+/**
+ * Non-expanded transcripts show this many most recent events. Windowing is the
+ * only cap: a completed handoff renders its events, it is never collapsed into
+ * a "N steps" stub.
+ */
+export const TRANSCRIPT_WINDOW = 8;
+
 function firstLine(value: string): string {
   return value.split("\n", 1)[0] ?? "";
 }
@@ -91,14 +98,8 @@ export function renderSidekickTranscript(theme: ThemeLike, opts: TranscriptOptio
   const box = new Container();
   box.addChild(new Text(opts.header, 0, 0));
 
-  if (!opts.isPartial && !opts.expanded) {
-    if (opts.report?.text) box.addChild(opts.renderText(opts.report.text));
-    box.addChild(new Text(theme.fg("dim", `${String(opts.events.length)} steps · expand to see the transcript`), 0, 0));
-    return box;
-  }
-
   const dropped = opts.droppedEvents ?? 0;
-  const start = opts.expanded ? 0 : Math.max(0, opts.events.length - 8);
+  const start = opts.expanded ? 0 : Math.max(0, opts.events.length - TRANSCRIPT_WINDOW);
   if (opts.expanded && dropped > 0) {
     box.addChild(new Text(theme.fg("dim", `… ${String(dropped)} earliest steps dropped`), 0, 0));
   } else if (start > 0) {
@@ -110,12 +111,13 @@ export function renderSidekickTranscript(theme: ThemeLike, opts: TranscriptOptio
     else if (event.text.trim()) box.addChild(opts.renderText(event.text.trim()));
   }
 
-  if (!opts.isPartial && opts.expanded && opts.report?.text) {
+  if (!opts.isPartial && opts.report?.text) {
     // The final assistant message usually IS the report; don't print it twice.
     const last = opts.events.at(-1);
-    if (last?.kind === "text" && last.text.trim() === opts.report.text.trim()) return box;
-    box.addChild(new Text(theme.fg("dim", "── report ──"), 0, 0));
-    box.addChild(opts.renderText(opts.report.text));
+    if (!(last?.kind === "text" && last.text.trim() === opts.report.text.trim())) {
+      box.addChild(new Text(theme.fg("dim", "── report ──"), 0, 0));
+      box.addChild(opts.renderText(opts.report.text));
+    }
   }
   return box;
 }

@@ -28,7 +28,16 @@ function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
     setThinkingLevel: (value: string) => calls.thinking.push(value),
     getThinkingLevel: () => "medium",
   };
-  fusionExtension(pi as never);
+  // A Fusion sidekick child (UNIPI_FUSION_CHILD=1) makes the extension a
+  // deliberate no-op, so the harness must not inherit that ambient env.
+  const previousChild = process.env.UNIPI_FUSION_CHILD;
+  delete process.env.UNIPI_FUSION_CHILD;
+  try {
+    fusionExtension(pi as never);
+  } finally {
+    if (previousChild === undefined) delete process.env.UNIPI_FUSION_CHILD;
+    else process.env.UNIPI_FUSION_CHILD = previousChild;
+  }
   const ctx = {
     cwd,
     hasUI: true,

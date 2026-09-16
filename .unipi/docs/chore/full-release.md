@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-16 (v2.19.3, fusion fix — drop renderShell:"self" so sidekick blocks get the standard toolPendingBg/toolSuccessBg highlight — full lockstep: all 23 packages + root)
+last-run: 2026-09-17 (v2.20.1 — roll-forward after npm/cli#9889 burned 2.20.0 mid-publish, 20/23 landed; content: ask_user subagent guard, sidekick wake line, exactly-once completion delivery, uncollapsed transcripts + widget removal — full lockstep: all 23 packages + root)
 ---
 
 # Full Release Pipeline

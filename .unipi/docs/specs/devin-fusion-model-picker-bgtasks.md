@@ -14,6 +14,8 @@ Source material:
 
 Goal is to *learn the architecture and implement it*, not copy it.
 
+**UX correction pass (later session).** §3 was implemented as *a tool that calls a subagent* rather than *one model*, which produced three defects: `ask_user` silently self-cancelling in the sidekick, the session looking idle while the sidekick worked, and the transcript collapsing to a stub. All three are fixed; see "Sidekick is not a tool, it is the other half of one model" below.
+
 ---
 
 ## 0. Hard facts about pi 0.84.2 that constrain the design
@@ -96,6 +98,48 @@ unipi implementation:
   - `nudge.ts`: `tool_call` hook — first `edit`/`write` by lead while fusion.active → inject one-time system_guidance reminder (tool_result append). Setting `unipi.fusion.firstEditReminder` (default true).
   - `savings.ts`: track sidekick token usage from child events; compute `Σ sidekick tokens × lead price − Σ sidekick tokens × sidekick price`; show in footer status + `/unipi:fusion-stats`.
 - Not in v1: compaction-time dynamic routing.
+
+### Sidekick is not a tool, it is the other half of one model
+
+The governing fact, verified in `~/.pi/agent/extensions/herdr-agent-state.ts` (herdr installs its own pi
+extension; it is not in this repo and is overwritten on herdr update):
+
+```js
+pi.on("agent_settled", (_event, ctx) => {
+  if (!rootSession || ctx?.isIdle?.() !== true) return;   // stays "working"
+  agentActive = false;
+});
+```
+
+herdr's `working`/`idle`, pi's loader, and pi's elapsed timer are **not three things to synchronise**.
+They all derive from one fact: whether pi considers the turn over. herdr does not screen-scrape while
+an integration holds authority (`herdr agent explain` → `rule: none`,
+`screen_detection_skip_reason: full_lifecycle_hook_authority`), and pi is entirely herdr-unaware
+(`grep -ril herdr node_modules/@earendil-works/` → 0 files).
+
+Consequences, all of which we got wrong first time:
+
+1. **The only way to stay "working" is to genuinely still be working** — the `sidekick` tool call must
+   not have returned. Blocking-by-default is therefore an architectural requirement, not a preference.
+   Do not reach for a display fix (widget, status field, tool card) for a turn-lifecycle problem.
+2. **`herdr:blocked` is the wrong lever.** It can only ever produce `blocked`, never `working`; it is a
+   counter, so an unbalanced pair sticks the pane permanently; it means "a human is being asked
+   something"; and `active:false` disarms notify's renotify loop (`packages/notify/events.ts:241-246`).
+3. **The sidekick child has no voice in herdr at all** — `rootSession` is set only when `ctx.mode === "tui"`,
+   and the child runs `--mode rpc`.
+4. **`ctx.hasUI` is true in RPC mode but `ui.custom()` is a stub returning `undefined`**
+   (`rpc-mode.js:152` vs `runner.js:274`). Any `ui.custom`-based tool in the child therefore takes its
+   *cancel* branch silently. `ask_user` reported "User cancelled the selection" without the user ever
+   seeing a prompt. Guarded via `isSubagentChild()` in `packages/ask-user/tools.ts`: the sidekick never
+   talks to the user, so it must escalate the question to the lead (the blog's "interpretation of
+   ambiguity" is the lead's job).
+5. **Turns that end anyway must still wake the lead.** A handoff abandoned by an interrupt or a timeout
+   used to sit in `runtime.reports` unread. `createCompletionDelivery()` in `packages/fusion/src/tools.ts`
+   gives exactly-once delivery via `attach`/`detach`/`consume`; §4 UX fix 1's wake line covers the
+   visible gap.
+6. **Reuse §4's wake-line pattern rather than inventing one.** `pendingWakeText` + `createSpinnerLine`
+   already solved "looks idle but isn't" for bg tasks; it simply had never been applied to the sidekick.
+   `createSpinnerLine` owns an 80 ms frame timer, so it needs an install-once latch.
 
 ## 4. Background-tasks enchant (Q7)
 

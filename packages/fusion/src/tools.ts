@@ -2,7 +2,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SidekickRuntime, HandoffProgress, HandoffReport } from "./sidekick-runtime.js";
-import { duration, markdownText, renderSidekickTranscript, sidekickWorkingHeader } from "./transcript.js";
+import { duration, frameSidekick, markdownText, renderSidekickTranscript, sidekickWorkingHeader } from "./transcript.js";
 
 const SidekickParams = Type.Object({
   message: Type.String({ description: "A concrete implementation or verification brief for the sidekick" }),
@@ -20,6 +20,46 @@ export interface FusionToolDeps {
   onHandoffStart?: (ctx: ExtensionContext) => void;
   onAttach?: (ctx: ExtensionContext) => void;
   onDetach?: (ctx: ExtensionContext) => void;
+}
+
+/**
+ * Exactly-once completion delivery for handoffs nobody is waiting on.
+ *
+ * `attach`/`detach` bracket every waiting period. The completion is sent only
+ * if the report lands (or has already landed) while no waiter is attached, and
+ * only once per handoff id.
+ */
+export function createCompletionDelivery(send: (report: HandoffReport) => void): {
+  attach(id: string): void;
+  detach(id: string, done: Promise<HandoffReport>): void;
+  consume(id: string): void;
+} {
+  const waiting = new Set<string>();
+  const armed = new Set<string>();
+  const delivered = new Set<string>();
+
+  return {
+    attach(id) {
+      waiting.add(id);
+    },
+    detach(id, done) {
+      waiting.delete(id);
+      // One continuation per handoff, however many times a waiter gives up.
+      if (armed.has(id)) return;
+      armed.add(id);
+      void done
+        .then((report) => {
+          if (waiting.has(id) || delivered.has(id)) return;
+          delivered.add(id);
+          send(report);
+        })
+        .catch(() => undefined);
+    },
+    consume(id) {
+      waiting.delete(id);
+      delivered.add(id);
+    },
+  };
 }
 
 function firstLine(value: string): string {
@@ -101,6 +141,21 @@ type ThemeLike = {
   bold: (text: string) => string;
 };
 
+type FramedTheme = ThemeLike & { bg: (color: string, text: string) => string };
+
+function transcriptStatus(partial: boolean, report: HandoffReport | undefined): "working" | "completed" | "error" {
+  if (partial) return "working";
+  return report?.status === "completed" ? "completed" : "error";
+}
+
+/**
+ * Sidekick output on the main surface: the same markdown/tool format the lead
+ * uses, marked as sidekick-origin by the existing `▍` rail.
+ */
+function frameTranscript(theme: ThemeLike, status: "working" | "completed" | "error", content: Component): Component {
+  return frameSidekick(theme as FramedTheme, status, content);
+}
+
 // Model-facing result text carries handoff ids and protocol instructions the
 // lead needs; none of it may reach the terminal. Anything rendered as plain
 // content goes through this first.
@@ -147,7 +202,7 @@ function renderToolTranscript(result: { content?: unknown; details?: unknown; is
   const partial = progress !== undefined;
   if (!events) return new Text(displayText(contentText(result.content)), 0, 0);
   const header = partial ? sidekickWorkingHeader(theme, progress, label) : reportHeader(theme, label, report);
-  return renderSidekickTranscript(theme, {
+  return frameTranscript(theme, transcriptStatus(partial, report), renderSidekickTranscript(theme, {
     events,
     droppedEvents: progress?.droppedEvents,
     header,
@@ -155,23 +210,28 @@ function renderToolTranscript(result: { content?: unknown; details?: unknown; is
     isPartial: partial,
     report,
     renderText: markdownText,
-  });
+  }));
 }
 
 function renderCompletionCard(theme: ThemeLike, report: HandoffReport | undefined): Component {
   if (!report) return new Text(`${theme.fg("accent", "◆")} ${theme.fg("accent", theme.bold("sidekick done"))}`, 0, 0);
-  return renderSidekickTranscript(theme, {
+  return frameTranscript(theme, transcriptStatus(false, report), renderSidekickTranscript(theme, {
     events: report.events ?? [],
     header: reportHeader(theme, "sidekick", report),
     expanded: false,
     isPartial: false,
     report,
     renderText: markdownText,
-  });
+  }));
 }
 
 export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): void {
   pi.registerMessageRenderer("sidekick-completion", (message: { details?: HandoffReport }, _options, theme) => renderCompletionCard(theme as unknown as ThemeLike, message.details));
+
+  // One delivery mechanism for every handoff nobody is waiting on.
+  const completion = createCompletionDelivery((report) => {
+    pi.sendMessage(completionMessage(report) as never, { deliverAs: "followUp", triggerTurn: true } as never);
+  });
 
   pi.registerTool({
     name: "sidekick",
@@ -187,19 +247,20 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
       const handoff = runtime.handoff(params.message);
       if (!wasBusy) deps.onHandoffStart?.(ctx);
       if (params.block === false) {
-        void handoff.done.then((report) => {
-          deps.onReport?.(ctx, report);
-          pi.sendMessage(completionMessage(report) as never, { deliverAs: "followUp", triggerTurn: true } as never);
-        }).catch(() => undefined);
+        void handoff.done.then((report) => deps.onReport?.(ctx, report)).catch(() => undefined);
+        completion.detach(handoff.id, handoff.done);
         deps.onDetach?.(ctx);
         return result(`Handoff ${handoff.id} started in the background. You will receive a <subagent_completion_notification agent_id="${handoff.id}"> when it finishes; use read_subagent to wait.`, { background: true, id: handoff.id });
       }
       deps.onAttach?.(ctx);
+      completion.attach(handoff.id);
       const waited = await waitForReport(runtime, handoff.id, handoff.done, signal, ctx, onUpdate ? (update) => onUpdate(update as never) : undefined);
       if (waited.report) {
+        completion.consume(handoff.id);
         deps.onReport?.(ctx, waited.report);
         return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
       }
+      completion.detach(handoff.id, handoff.done);
       deps.onDetach?.(ctx);
       if (waited.error) return result(`Handoff ${handoff.id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`${progressText(runtime, handoff.id)}\nHandoff ${handoff.id} aborted.`, undefined, true);
@@ -222,16 +283,22 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
       if (!latest) return result("No sidekick handoff has run yet.", undefined, true);
       const id = params.agent_id ?? latest.id;
       const selected = runtime.reports.get(id);
-      if (selected) return result(reportText(selected), selected, selected.status !== "completed");
+      if (selected) {
+        completion.consume(id);
+        return result(reportText(selected), selected, selected.status !== "completed");
+      }
       if (id !== latest.id) return result(`No sidekick handoff found for ${id}.`, undefined, true);
       if (params.block !== true) return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`, { progress: runtime.progress(id), id });
       deps.onAttach?.(ctx);
+      completion.attach(id);
       const timeoutMs = (params.timeout ?? 2700) * 1000;
       const waited = await waitForReport(runtime, id, latest.done, signal, ctx, onUpdate ? (update) => onUpdate(update as never) : undefined, timeoutMs);
       if (waited.report) {
+        completion.consume(id);
         deps.onReport?.(ctx, waited.report);
         return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
       }
+      completion.detach(id, latest.done);
       deps.onDetach?.(ctx);
       if (waited.error) return result(`Handoff ${id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`Handoff ${id} aborted.`, undefined, true);

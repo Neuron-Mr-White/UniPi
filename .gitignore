@@ -5,6 +5,7 @@ dist/
 # Local agent state and supervisor artifacts.
 .devin/
 .agents/
+.litho/
 .impeccable.md
 .supervisor-child-*.mts
 .npmrc

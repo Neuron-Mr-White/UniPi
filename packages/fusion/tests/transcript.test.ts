@@ -72,10 +72,40 @@ test("primaryArg selects the tool's main argument", () => {
   assert.equal(primaryArg("read", { path: "/a/b" }), "/a/b");
 });
 
-test("final collapsed transcript shows report while expanded shows events", () => {
-  const events: SidekickEvent[] = [{ kind: "text", text: "hidden transcript", open: false }];
-  assert.match(output(events, false, false, { text: "final report" }), /final report/);
-  assert.doesNotMatch(output(events, false, false, { text: "final report" }), /hidden transcript/);
-  assert.match(output(events, true, false, { text: "final report" }), /hidden transcript/);
-  assert.match(output(events, true, false, { text: "final report" }), /── report ──/);
+test("a completed transcript renders its events inline, not a stub", () => {
+  const events: SidekickEvent[] = [
+    { kind: "text", text: "Working on it.", open: false },
+    { kind: "tool", toolCallId: "1", name: "bash", args: { command: "npm test" }, output: "all green", isError: false, done: true, startedAt: 0 },
+    { kind: "text", text: "final report", open: false },
+  ];
+  const text = output(events, false, false, { text: "final report" });
+  assert.match(text, /Working on it\./);
+  assert.match(text, /bash/);
+  assert.match(text, /all green/);
+  assert.match(text, /final report/);
+  assert.doesNotMatch(text, /steps · expand/);
+  assert.doesNotMatch(text, /── report ──/);
+});
+
+test("a completed transcript keeps the windowing cap and the earlier-steps affordance", () => {
+  const events: SidekickEvent[] = Array.from({ length: 12 }, (_, i) => ({ kind: "text", text: `step-${i}`, open: false }));
+  const text = output(events, false, false, { text: "final report" });
+  assert.match(text, /… 4 earlier steps/);
+  assert.doesNotMatch(text, /step-0\b/);
+  assert.match(text, /step-11/);
+  assert.match(text, /final report/);
+  assert.match(output(events, true, false, { text: "final report" }), /step-0\b/);
+});
+
+test("a report that is not the last event is appended once, under a divider", () => {
+  const events: SidekickEvent[] = [
+    { kind: "tool", toolCallId: "1", name: "bash", args: {}, output: "", isError: false, done: true, startedAt: 0 },
+  ];
+  const text = output(events, false, false, { text: "report text" });
+  assert.match(text, /── report ──/);
+  assert.equal(text.match(/report text/g)?.length, 1);
+
+  const echoed = output([{ kind: "text", text: "report text", open: false }], false, false, { text: "report text" });
+  assert.equal(echoed.match(/report text/g)?.length, 1);
+  assert.doesNotMatch(echoed, /── report ──/);
 });

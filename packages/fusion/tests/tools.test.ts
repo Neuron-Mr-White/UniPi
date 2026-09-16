@@ -14,15 +14,16 @@ const report: HandoffReport = {
 
 function setup(runtime: any, pending = false, callbacks: any = {}) {
   const tools = new Map<string, any>();
+  const renderers = new Map<string, any>();
   const sent: any[] = [];
   const pi: any = {
     registerTool: (tool: any) => tools.set(tool.name, tool),
-    registerMessageRenderer: () => undefined,
+    registerMessageRenderer: (name: string, renderer: any) => renderers.set(name, renderer),
     sendMessage: (message: any, options: any) => sent.push({ message, options }),
   };
   const ctx: any = { hasPendingMessages: () => pending };
   registerFusionTools(pi, { getRuntime: () => runtime, ...callbacks });
-  return { tools, sent, ctx };
+  return { tools, renderers, sent, ctx };
 }
 
 const theme = {
@@ -167,6 +168,24 @@ test("non-blocking sidekick sends a follow-up completion message", async () => {
   await new Promise<void>((r) => setImmediate(r));
   assert.equal(sent[0]?.message.customType, "sidekick-completion");
   assert.equal(sent[0]?.options.deliverAs, "followUp");
+  // Without triggerTurn the completion would sit in the transcript and never
+  // wake the lead, leaving the sidekick's result unread.
+  assert.equal(sent[0]?.options.triggerTurn, true);
+});
+
+test("a completion card bubbles the sidekick transcript onto the main surface", () => {
+  const run = setup({} as any);
+  const events = [
+    { kind: "tool", toolCallId: "1", name: "bash", args: { command: "npm test" }, output: "all green", isError: false, done: true, startedAt: 0 },
+    { kind: "text", text: "implemented", open: false },
+  ];
+  const card = run.renderers.get("sidekick-completion")({ details: { ...report, events } }, {}, theme).render(120).join("\n");
+  assert.match(card, /▍/, "sidekick-origin output is rail-marked");
+  assert.match(card, /sidekick completed/);
+  assert.match(card, /bash/);
+  assert.match(card, /all green/);
+  assert.match(card, /implemented/);
+  assert.doesNotMatch(card, /steps · expand/);
 });
 
 const uuidId = "ecff5344-4e60-4892-8a86-1f8e962caf1b";
@@ -190,11 +209,12 @@ test("rendered sidekick output hides handoff ids and protocol text", async () =>
   };
   const { tools, ctx } = setup(runtime);
 
-  // Blocking report: renders as an ordinary transcript block — no id, no rail.
+  // Blocking report: the sidekick's own transcript, rail-marked as sidekick
+  // output — no id, no protocol text.
   const result = await tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, ctx);
   const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
   assert.doesNotMatch(rendered, PROTOCOL);
-  assert.doesNotMatch(rendered, /▍/);
+  assert.match(rendered, /▍/);
   assert.match(rendered, /sidekick completed/);
   assert.match(rendered, /implemented/);
 

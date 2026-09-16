@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.1] — 2026-09-17
+
+### Fixed
+
+- `ask-user`: **`ask_user` no longer self-cancels inside a subagent.** Pi's RPC mode reports `ctx.hasUI` as `true` while `ui.custom()` is a stub returning `undefined` (`rpc-mode.js:152` vs `runner.js:274`), so the tool passed its UI guard, read the stub's `undefined` as a cancel, and answered "User cancelled the selection" without the user ever seeing a prompt — the Fusion sidekick then reasoned as if the user had refused to answer. `packages/ask-user/tools.ts` now short-circuits in the new exported `isSubagentChild()` helper *before* the `settings.enabled` check, returning `isError: true` with instructions to stop and escalate the question, options, and recommendation to the lead. Applies to every `UNIPI_SUBAGENT_CHILD=1` child, not only Fusion.
+- `fusion`: **a handoff that outlives its waiter now wakes the lead.** When a `hasPendingMessages` interrupt or a `waitForReport` timeout left a handoff running with nobody attached, the report landed silently in `runtime.reports` and the UI went quiet. New `createCompletionDelivery()` in `packages/fusion/src/tools.ts` delivers the `sidekick-completion` follow-up exactly once per handoff via `attach`/`detach`/`consume`: it fires only if the report lands (or already landed) while no waiter is attached, and never when a waiter returned the report inline. `block:false` now routes through the same single mechanism instead of its own `.then`.
+
+### Added
+
+- `fusion`: **"sidekick still working" wake line.** While the sidekick is busy and the lead's turn has already ended — a background handoff, an interrupted one, or a wait that timed out — an animated line above the editor shows the live tool count and elapsed time. Reuses `createSpinnerLine` from `@pi-unipi/core` with the install-once latch pattern from `packages/background-tasks`, so the 80 ms frame timer is never leaked by progress ticks, and keeps `pane.report_agent`/`herdr:blocked` untouched.
+
+### Changed
+
+- `fusion`: **sidekick transcripts render on the main surface.** The `N steps · expand to see the transcript` collapse stub is gone: a completed handoff now renders its events inline in the lead's own markdown/tool format, marked as sidekick-origin by the existing `▍` rail and windowed to the last 8 events (`TRANSCRIPT_WINDOW`) with the `… N earlier steps` affordance. `expanded` now controls only tool-output verbosity. The now-redundant `fusion-sidekick` transcript widget above the editor was removed and `packages/fusion/src/sidekick-widget.ts` deleted; the wake line covers the gap and the full transcript arrives in the message flow (blocking tool result and completion card).
+
+**Note.** `2.20.0` was burned by a registry-side staging fault and never published in full: npm partially failed with `E409 Cannot publish over previously staged version "2.20.0"` (npm/cli#9889), so 20 of 23 packages landed while `@pi-unipi/web-api`, `@pi-unipi/workflow` and the `@pi-unipi/unipi` umbrella were left with an unusable version number, and npm 11 has no client-side cleanup for a staged version (`npm stage` does not exist). `2.20.1` carries the same changes and is the first complete release of this work.
+
 ## [2.19.3] — 2026-09-16
 
 ### Fixed

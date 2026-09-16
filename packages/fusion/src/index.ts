@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
+import { createSpinnerLine, setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -40,14 +40,80 @@ import { estimateSavings } from "./savings.js";
 import { EDIT_NUDGE, bashNudge, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
 import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
-import { shouldShowSidekickWidget } from "./sidekick-widget.js";
-import { frameSidekick, markdownText, renderSidekickTranscript, sidekickWorkingHeader, type ThemeLike } from "./transcript.js";
+import { duration } from "./transcript.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
 
 export function sidekickSessionPath(leadSessionId?: string): string {
   return join(homedir(), ".unipi", "state", "fusion", "sidekick", `${leadSessionId ?? "default"}.jsonl`);
+}
+
+export const SIDEKICK_WAKE_WIDGET_KEY = "fusion-sidekick-wake";
+
+/**
+ * The lead is idle when pi says so. Any failure (including a context without
+ * `isIdle`) counts as idle — same contract as the background-tasks wake line.
+ */
+export function isLeadIdle(ctx: { isIdle(): boolean }): boolean {
+  try {
+    return ctx.isIdle();
+  } catch {
+    return true;
+  }
+}
+
+/** Body of the live line. `undefined` collapses it without disposing the widget. */
+export function sidekickWakeText(progress: { toolCalls: number; startedAt: number } | undefined): string | undefined {
+  if (!progress) return undefined;
+  return `sidekick working · ${String(progress.toolCalls)} tool calls · ${duration(Date.now() - progress.startedAt)} — resumes automatically when done`;
+}
+
+export interface SidekickWakeLine {
+  publish(ctx: ExtensionContext | undefined): void;
+  clear(ctx: ExtensionContext | undefined): void;
+}
+
+/**
+ * Self-animating "sidekick still working" line, shown while the sidekick is
+ * busy but the lead's turn has already ended (pi stopped its own loader).
+ *
+ * The widget owns an 80 ms frame timer, so it is installed ONCE while the
+ * condition holds and removed when it stops — never re-installed per progress
+ * tick.
+ */
+export function createSidekickWakeLine(deps: {
+  isBusy: () => boolean;
+  progress: () => { toolCalls: number; startedAt: number } | undefined;
+}): SidekickWakeLine {
+  let installed = false;
+
+  const removable = (ctx: ExtensionContext | undefined): ctx is ExtensionContext =>
+    Boolean(ctx?.hasUI) && typeof ctx?.ui.setWidget === "function";
+
+  return {
+    publish(ctx) {
+      if (!removable(ctx)) return;
+      const want = deps.isBusy() && isLeadIdle(ctx);
+      if (want && !installed) {
+        ctx.ui.setWidget(
+          SIDEKICK_WAKE_WIDGET_KEY,
+          createSpinnerLine({ text: () => sidekickWakeText(deps.progress()) }),
+          { placement: "aboveEditor" },
+        );
+        installed = true;
+      } else if (!want && installed) {
+        ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
+        installed = false;
+      }
+    },
+    clear(ctx) {
+      if (!installed) return;
+      installed = false;
+      if (!removable(ctx)) return;
+      ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
+    },
+  };
 }
 
 type Registry = { getAvailable(): Model<Api>[]; find(provider: string, id: string): Model<Api> | undefined };
@@ -120,10 +186,11 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   let leadToolCalls = 0;
   let editNudgedThisTurn = false;
   let bashStreak = 0;
-  let attached = false;
-  let widgetTimer: NodeJS.Timeout | undefined;
-  let widgetTimerKind: "publish" | "clear" | undefined;
-  let widgetLastAt = 0;
+
+  const wakeLine = createSidekickWakeLine({
+    isBusy: () => runtime?.isBusy() === true,
+    progress: () => runtime?.progress(),
+  });
 
   function identity(ctx: ExtensionContext): FusionIdentity {
     const reg = registryOf(ctx);
@@ -167,78 +234,11 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     }
   }
 
-  function clearSidekickWidget(): void {
-    if (widgetTimer !== undefined) {
-      clearTimeout(widgetTimer);
-      widgetTimer = undefined;
-      widgetTimerKind = undefined;
-    }
-    const ctx = lastCtx;
-    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
-    const clear = () => {
-      widgetTimer = undefined;
-      widgetTimerKind = undefined;
-      widgetLastAt = Date.now();
-      ctx.ui.setWidget("fusion-sidekick", undefined);
-    };
-    const wait = Math.max(0, 150 - (Date.now() - widgetLastAt));
-    if (wait === 0) clear();
-    else {
-      widgetTimerKind = "clear";
-      widgetTimer = setTimeout(clear, wait);
-      widgetTimer.unref();
-    }
-  }
-
-  function publishSidekickWidget(): void {
-    const ctx = lastCtx;
-    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
-    const progress = runtime?.progress();
-    if (!runtime || !shouldShowSidekickWidget(runtime.isBusy(), attached) || !progress) {
-      ctx.ui.setWidget("fusion-sidekick", undefined);
-      return;
-    }
-    ctx.ui.setWidget("fusion-sidekick", (_tui, theme) => {
-      const themeLike = theme as unknown as ThemeLike & { bg: (color: string, text: string) => string };
-      return frameSidekick(themeLike, "working", renderSidekickTranscript(themeLike, {
-        events: progress.events,
-        droppedEvents: progress.droppedEvents,
-        header: sidekickWorkingHeader(themeLike, progress),
-        expanded: false,
-        isPartial: true,
-        renderText: markdownText,
-      }));
-    }, { placement: "aboveEditor" });
-  }
-
-  function publishSidekickWidgetLater(): void {
-    const ctx = lastCtx;
-    if (!ctx?.hasUI || typeof ctx.ui.setWidget !== "function") return;
-    if (widgetTimer !== undefined && widgetTimerKind === "publish") return;
-    if (widgetTimer !== undefined) {
-      clearTimeout(widgetTimer);
-      widgetTimer = undefined;
-      widgetTimerKind = undefined;
-    }
-    const wait = Math.max(0, 150 - (Date.now() - widgetLastAt));
-    const publish = () => {
-      widgetTimer = undefined;
-      widgetTimerKind = undefined;
-      widgetLastAt = Date.now();
-      publishSidekickWidget();
-    };
-    if (wait === 0) publish();
-    else {
-      widgetTimerKind = "publish";
-      widgetTimer = setTimeout(publish, wait);
-      widgetTimer.unref();
-    }
-  }
-
-  function publishStatusLater(): void {
-    if (lastCtx) {
-      publishStatus(lastCtx);
-      publishSidekickWidgetLater();
+  function publishStatusLater(ctx?: ExtensionContext): void {
+    const target = ctx ?? lastCtx;
+    if (target) {
+      publishStatus(target);
+      wakeLine.publish(target);
     }
   }
 
@@ -263,8 +263,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   }
 
   function stopRuntime(): void {
-    clearSidekickWidget();
-    attached = false;
+    wakeLine.clear(lastCtx);
     runtime?.kill();
     runtime = undefined;
     leadToolCalls = 0;
@@ -285,20 +284,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   registerFusionTools(pi, {
     getRuntime,
-    onReport: (ctx) => {
-      attached = false;
-      clearSidekickWidget();
-      publishStatus(ctx);
-    },
+    onReport: (ctx) => publishStatusLater(ctx),
     onHandoffStart: (ctx) => publishStatus(ctx),
-    onAttach: () => {
-      attached = true;
-      clearSidekickWidget();
-    },
-    onDetach: () => {
-      attached = false;
-      publishSidekickWidgetLater();
-    },
+    onAttach: (ctx) => publishStatusLater(ctx),
+    onDetach: (ctx) => publishStatusLater(ctx),
   });
   pi.registerCommand("unipi:fusion-stats", {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
@@ -308,6 +297,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   pi.on("turn_start", () => {
     editNudgedThisTurn = false;
   });
+  // The wake line's condition flips when the LEAD goes idle, not when the
+  // sidekick reports progress, so re-evaluate on both turn end and settle.
+  pi.on("turn_end", (_event, ctx) => publishStatusLater(ctx));
+  pi.on("agent_settled", (_event, ctx) => publishStatusLater(ctx));
   pi.on("tool_result", (event) => {
     if (active?.kind !== "fusion") return;
     const toolName: string = event.toolName;
