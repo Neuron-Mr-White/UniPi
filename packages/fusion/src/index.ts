@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
+import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -85,6 +85,8 @@ export interface SidekickWakeLine {
 export function createSidekickWakeLine(deps: {
   isBusy: () => boolean;
   progress: () => { toolCalls: number; startedAt: number } | undefined;
+  /** Claim hook: called with a label when the line goes up, null when it comes down. */
+  onHeld?: (label: string | null) => void;
 }): SidekickWakeLine {
   let installed = false;
 
@@ -102,14 +104,17 @@ export function createSidekickWakeLine(deps: {
           { placement: "aboveEditor" },
         );
         installed = true;
+        deps.onHeld?.("sidekick working — resumes automatically");
       } else if (!want && installed) {
         ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
         installed = false;
+        deps.onHeld?.(null);
       }
     },
     clear(ctx) {
       if (!installed) return;
       installed = false;
+      deps.onHeld?.(null);
       if (!removable(ctx)) return;
       ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
     },
@@ -190,6 +195,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   const wakeLine = createSidekickWakeLine({
     isBusy: () => runtime?.isBusy() === true,
     progress: () => runtime?.progress(),
+    // While the wake line is up the pane must read `working` in herdr (the
+    // sidekick will re-invoke the lead), not `idle` — same claim the bg-tasks
+    // wake line makes.
+    onHeld: (label) => setHerdrWorking(pi, "fusion-sidekick", label),
   });
 
   function identity(ctx: ExtensionContext): FusionIdentity {

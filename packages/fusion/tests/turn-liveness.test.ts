@@ -52,6 +52,8 @@ interface Harness {
   tools: Map<string, AnyTool>;
   state: { idle: boolean; pendingUserMessage: boolean };
   wakeWidgets: () => Array<{ widget: unknown; placement?: string }>;
+  /** `herdr:working` claim events the extension emitted (for sidebar status). */
+  herdrWorking: () => Array<{ active: boolean; label: string }>;
   /** Fires the lead's end-of-turn lifecycle events and flushes the publishes. */
   endTurn: () => Promise<void>;
   shutdown: () => Promise<void>;
@@ -70,10 +72,16 @@ async function harness(): Promise<Harness> {
   const handlers = new Map<string, Handler>();
   const tools = new Map<string, AnyTool>();
   const widgets: Array<{ key: string; widget: unknown; placement?: string }> = [];
+  const herdrEvents: Array<{ name: string; payload: { active: boolean; label: string } }> = [];
   const state = { idle: false, pendingUserMessage: false };
   const lead = model("a", "lead");
   const pi = {
     on: (name: string, handler: Handler) => handlers.set(name, handler),
+    events: {
+      emit: (name: string, payload: { active: boolean; label: string }) => {
+        herdrEvents.push({ name, payload });
+      },
+    },
     registerTool: (tool: { name: string }) => tools.set(tool.name, tool),
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
@@ -124,6 +132,7 @@ async function harness(): Promise<Harness> {
     tools,
     state,
     wakeWidgets: () => widgets.filter((entry) => entry.key === WAKE_KEY),
+    herdrWorking: () => herdrEvents.filter((e) => e.name === "herdr:working").map((e) => e.payload),
     endTurn: async () => {
       handlers.get("turn_end")?.({}, ctx);
       handlers.get("agent_settled")?.({}, ctx);
@@ -153,6 +162,11 @@ test("path A: a user message ends the turn, the wake line covers the still-runni
     await h.endTurn();
     assert.equal(h.wakeWidgets().length, 1, "wake line shown once the turn has ended");
     assert.equal(typeof h.wakeWidgets()[0]?.widget, "function");
+    assert.deepEqual(
+      h.herdrWorking(),
+      [{ active: true, label: "sidekick working — resumes automatically" }],
+      "wake line claims herdr working exactly once",
+    );
   } finally {
     await h.shutdown();
   }
@@ -215,6 +229,11 @@ test("the wake line is cleared when the session shuts down", async () => {
 
     await h.shutdown();
     assert.equal(h.wakeWidgets().at(-1)?.widget, undefined, "session shutdown clears the line");
+    assert.deepEqual(
+      h.herdrWorking().at(-1),
+      { active: false, label: "sidekick working — resumes automatically" },
+      "session shutdown releases the herdr working claim",
+    );
   } finally {
     await h.shutdown();
   }

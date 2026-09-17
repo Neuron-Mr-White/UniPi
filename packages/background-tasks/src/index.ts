@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createSpinnerLine } from "@pi-unipi/core";
+import { createSpinnerLine, setHerdrWorking } from "@pi-unipi/core";
 import { loadBackgroundTasksConfig } from "./config.js";
 import { BackgroundTaskRegistry } from "./registry.js";
 import {
@@ -134,9 +134,21 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
           { placement: "aboveEditor" },
         );
         wakeLineInstalled = true;
+        // The pane is not done: a running task will re-invoke the agent. Keep
+        // herdr at `working` instead of `idle` for exactly as long as the wake
+        // line is up (one claim transition per widget install, not per tick).
+        const wakeCount = registry
+          .allTasks()
+          .filter((task) => task.status === "running" && task.triggerOnCompletion).length;
+        setHerdrWorking(
+          pi,
+          "bg-wake",
+          `${wakeCount === 1 ? "1 bg task" : `${String(wakeCount)} bg tasks`} will resume agent`,
+        );
       } else if (!wantWakeLine && wakeLineInstalled) {
         target.ui.setWidget("background-tasks", undefined);
         wakeLineInstalled = false;
+        setHerdrWorking(pi, "bg-wake", null);
       }
       if (running.length === 0 && unseenFinishedCount === 0) {
         target.ui.setStatus("background-tasks", undefined);

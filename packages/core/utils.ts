@@ -304,6 +304,42 @@ export async function withHerdrBlocked<T>(
   }
 }
 
+/**
+ * Claim herdr `working` state for a long-lived "the agent will auto-resume" wait
+ * (bg task wake, fusion sidekick handoff) — the states where pi has already
+ * settled but background work holds a pending wake.
+ *
+ * Key-scoped and level-based, not a wrapper: each key claims exactly once and
+ * emits `herdr:working` {active:true,label} on claim, {active:false,label} on
+ * clear — the same refcounted protocol `herdr:blocked` uses, so the herdr pi
+ * integration can keep the pane `working` after agent_settled.
+ *
+ * - label !== null && no previous claim  → emit active
+ * - label !== null && same label         → no emit (still claimed)
+ * - label !== null && different label    → emit inactive(previous) then active
+ * - label === null && claimed             → emit inactive, drop claim
+ * - label === null && not claimed         → no emit
+ */
+const herdrWorkingClaims = new Map<string, string>();
+
+export function setHerdrWorking(
+  pi: { events: { emit: (name: string, payload: unknown) => void } },
+  key: string,
+  label: string | null,
+): void {
+  const previous = herdrWorkingClaims.get(key);
+  if (label === null) {
+    if (previous === undefined) return;
+    herdrWorkingClaims.delete(key);
+    emitEvent(pi, "herdr:working", { active: false, label: previous });
+    return;
+  }
+  if (previous === label) return;
+  if (previous !== undefined) emitEvent(pi, "herdr:working", { active: false, label: previous });
+  herdrWorkingClaims.set(key, label);
+  emitEvent(pi, "herdr:working", { active: true, label });
+}
+
 /** Format a token count for display (e.g. 1234 → "1.2k", 1500000 → "1.5M"). */
 export function formatTokens(n: number): string {
   if (n < 1000) return String(n);
