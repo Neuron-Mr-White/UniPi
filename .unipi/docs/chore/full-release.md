@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-17 (v2.20.1 — roll-forward after npm/cli#9889 burned 2.20.0 mid-publish, 20/23 landed; content: ask_user subagent guard, sidekick wake line, exactly-once completion delivery, uncollapsed transcripts + widget removal — full lockstep: all 23 packages + root)
+last-run: 2026-09-17 (v2.20.2 — herdr held-working status for pending wakes: `herdr:working` claim protocol in core, held by bg-tasks + fusion wake lines, consumed by patched herdr integration; full lockstep: all 23 packages + root)
 ---
 
 # Full Release Pipeline

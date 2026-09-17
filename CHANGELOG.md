@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.2] — 2026-09-17
+
+### Fixed
+
+- `core`, `background-tasks`, `fusion`: **panes waiting on an auto-resume wake read `working` in herdr, not `idle`.** When the lead's turn ended while background work will re-invoke the agent — a bg task with wake-on-completion, or a Fusion sidekick handoff — herdr's sidebar flipped to `idle` the moment `agent_settled` fired, even as the session's own wake line said "agent resumes automatically when done". New key-scoped claim helper `setHerdrWorking()` in `@pi-unipi/core` emits `herdr:working {active,label}` exactly once per claim transition (the same refcounted event protocol `herdr:blocked` uses); `background-tasks` holds the claim while its bg-wake line is installed and `fusion` holds it while the sidekick wake line is up. Consumed by a one-listener patch to herdr's pi integration (held-working refcount in `desiredState()`, `blocked` still outranks it) — herdr enforces one status authority per pane and ignores second-source `pane.report_agent` reports, so the event protocol is the only channel. Until herdr upstreams the protocol, the patched integration file is local (`herdr integration install pi` reverts it; pristine v8 backup at `~/.pi/agent/herdr-agent-state.v8.orig.bak`).
+
 ## [2.20.1] — 2026-09-17
 
 ### Fixed
