@@ -52,13 +52,13 @@ export const BgRunParams = Type.Object({
   notifyOnCompletion: Type.Optional(
     Type.Boolean({
       description:
-        "Deliver a durable terminal notification when the task finishes. Default true. Do not disable unless opting out of completion handling.",
+        "Deliver a durable terminal notification when the task finishes. Default true for finite tasks. Set false or pair with triggerOnCompletion:false for persistent servers/daemons/watchers.",
     }),
   ),
   triggerOnCompletion: Type.Optional(
     Type.Boolean({
       description:
-        "Start a follow-up agent turn on terminal notification. Default true for bg_run. Requires notifyOnCompletion.",
+        "Start a follow-up agent turn on terminal notification. Default true for finite tasks (tests, builds, exports). MUST set false for persistent background services/servers (e.g. dev servers, watchers) so the harness and subagents do not wait indefinitely for the server to finish. Requires notifyOnCompletion.",
     }),
   ),
 });
@@ -185,14 +185,14 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
     promptSnippet:
       "Start a named long-running shell command; default terminal notification wakes a follow-up turn, so yield instead of polling",
     promptGuidelines: [
-      "Use bg_run instead of bash for commands expected to run for a long time, such as test suites, dev servers, watchers, or builds.",
+      "Use bg_run instead of bash for commands expected to run in the background (test suites, builds, dev servers, watchers).",
+      "For FINITE tasks (tests, builds, exports, scripts): leave triggerOnCompletion:true and notifyOnCompletion:true (defaults) to automatically wake the agent when finished.",
+      "For PERSISTENT servers/daemons/watchers (e.g. 'npm run dev', vite, live dev servers, background listeners): MUST set triggerOnCompletion:false (and optionally notifyOnCompletion:false) so the agent and sidekick do not wait for the server to exit.",
       "Set isAgent:true only when the background task launches an LLM/agent process; false for scripts, tests, dev servers, sleeps.",
       "Always set name to a concise 2-6 word human-readable label; do not use the raw command as the name.",
-      "bg_run returns immediately. With notifyOnCompletion:true and triggerOnCompletion:true (both defaults), completed, failed, or killed terminal state is delivered as <background-task-notification> and automatically starts a follow-up agent turn.",
-      "After a default bg_run launch, continue only independent useful work that does not merely wait for the task; otherwise briefly acknowledge it if useful, then end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.",
+      "bg_run returns immediately. For finite tasks with default wake-up, continue only independent useful work that does not merely wait for the task; otherwise end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.",
       "A running result is not an instruction to poll again.",
       "Treat <background-task-notification> as durable terminal truth. Do not call bg_status to reconfirm it.",
-      "Do not set notifyOnCompletion:false or triggerOnCompletion:false unless intentionally opting out.",
     ],
     parameters: BgRunParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.3] — 2026-09-17
+
+### Fixed
+
+- `background-tasks`: **distinguish persistent dev servers from finite jobs in `bg_run` prompt guidelines.** The prompt guidance previously grouped dev servers and test suites under the same "do not set `triggerOnCompletion:false`" rule. For persistent servers and watchers (e.g. `npm run dev`, `vite`), `triggerOnCompletion: true` caused the UI to show an indefinite "waiting on 1 bg task" spinner and caused `SidekickRuntime` in Fusion to hang waiting for `openBgTasks` to reach zero. `BgRunParams` and `promptGuidelines` in `packages/background-tasks/src/tools.ts` now explicitly instruct agents to set `triggerOnCompletion: false` for long-running servers/daemons so neither the harness nor sidekicks wait indefinitely for exit.
+
 ## [2.20.2] — 2026-09-17
 
 ### Fixed
