@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.4] — 2026-09-19
+
+### Changed
+
+- `fusion`: **the `/unipi:model` picker name column now grows with the terminal.** `NAME_COL` was a fixed 24 columns, so every name past 23 characters was ellipsized even on a wide terminal and the thinking-effort control sat close to the name. `packages/fusion/src/picker.ts` now computes the column per render from the widest row label (`NAME_COL_MIN = 24`, capped to the available width) and keeps the effort bar right-anchored, so full names fit before the effort control.
+
+### Fixed
+
+- `fusion`: **model rows that look like a `provider/id` key are no longer ambiguous.** Rows label with `model.name || model.id` and never showed the provider, so an OpenRouter model named `deepseek/deepseek-v4.1-flash` was indistinguishable from a model actually served by provider `deepseek`. A dim `provider · ` prefix is now added only when the display name contains `/` or the same name is offered by more than one provider; the prefix is never truncated (the friendly name truncates instead). The highlighted row's price panel now spells out the exact registry key (`Model key  openrouter/deepseek/deepseek-v4.1-flash`, both lead and sidekick keys on the Fusion row).
+
 ## [2.20.3] — 2026-09-17
 
 ### Fixed

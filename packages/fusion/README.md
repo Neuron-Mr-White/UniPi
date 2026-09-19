@@ -10,10 +10,9 @@ pi's extension and RPC APIs natively.
 ╭ Model ───────────────────────────────────────────────────────────────╮
 │/ Type to search                                                       │
 │───────────────────────────────────────────────────────────────────────│
-│❭ Fusion                  ← ▰▰▰▱▱ → Medium     Lead Claude Fable… ▾    │
-│· GLM-5.3 Flash ✱        ▰▰▰▰▰   Max                              │
-│· Claude Fable 5.1       ▰▰▰▱▱   Medium                           │
-│· DeepSeek V4.1 Flash ✱  ▰▱▱▱▱   High                             │
+│❭ Fusion                              ← ▰▰▰▱▱ → Medium  Lead Fable… ▾ │
+│· GLM-5.3 Flash ✱                        ▰▰▰▰▰   Max                │
+│· openrouter · deepseek/deepseek-v4.1-flash ▰▰▱▱▱   High              │
 │  ↓ more below                                                        │
 │                                                                       │
 │  ━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━               │
@@ -21,6 +20,7 @@ pi's extension and RPC APIs natively.
 │  $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M                     │
 │  Sidekick cached input   Sidekick output                             │
 │  $0.02 / 1M              $1.2 / 1M                                   │
+│  Model key  openrouter/deepseek/deepseek-v4.1-flash                  │
 │                                                                       │
 │  ✱ New  ✱ Promotion  ✱ Beta · Pairs frontier intelligence with cost-efficient execution │
 │↑↓ select · tab lead · ←→ effort · ↵ confirm · esc cancel              │
@@ -44,7 +44,16 @@ pi's extension and RPC APIs natively.
 - **Price panel**: the highlighted model's blended price is marked on a
   logarithmic red→orange→yellow→green→cyan→blue→violet slider. Fusion shows
   `Input`, `Cached input`, `Output`, `Sidekick input`, `Sidekick cached input`,
-  and `Sidekick output`.
+  and `Sidekick output`, and the exact registry key of the highlighted row is
+  spelled out (`Model key  openrouter/deepseek/deepseek-v4.1-flash`; both the
+  lead and sidekick keys on the Fusion row).
+- **Name column & provider**: the name column sizes itself to the widest row
+  label (minimum 24 columns) up to the terminal width, and the effort control
+  stays right-anchored — so wide terminals show full names. A row only gets a
+  dim `provider · ` prefix when its display name is ambiguous: it contains a
+  `/` (`deepseek/deepseek-v4.1-flash` reads like a key) or the same friendly
+  name is offered by more than one provider. Unique names stay clean, and the
+  prefix is never truncated.
 - **Confirm** applies: `pi.setModel`, `pi.setThinkingLevel(effort)`, updates
   MRU + persisted active selection, and shows `Fusion · Lead ◆ Sidekick` in
   the footer. Switching the model through pi's own `/model`/Ctrl+P drops
