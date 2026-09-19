@@ -109,9 +109,39 @@ type Row = { kind: "fusion" } | { kind: "model"; key: ModelKey };
 type FusionFocus = "effort" | "lead" | "sidekick";
 
 const DEFAULT_VISIBLE_ROWS = 10;
-const NAME_COL = 24;
+/** Minimum width of the name column (the pre-autosize default). */
+const NAME_COL_MIN = 24;
 const MARKER_COL = 2;
 const BAR_SEGMENTS = 5;
+/** Visible columns outside the name: pointer + marker prefix (4) + effort block (19). */
+const FIXED_COLS = 23;
+
+/**
+ * A model needs a provider prefix when its display name alone is ambiguous:
+ * it contains a "/" (so it reads like a `provider/id` key), or the same name
+ * is offered by more than one provider.
+ */
+function ambiguousNamesOf(models: readonly PickerModel[]): Set<string> {
+  const providersByName = new Map<string, Set<string>>();
+  for (const m of models) {
+    const set = providersByName.get(m.name) ?? new Set<string>();
+    set.add(m.provider);
+    providersByName.set(m.name, set);
+  }
+  const out = new Set<string>();
+  for (const [name, set] of providersByName) {
+    if (set.size > 1) out.add(name);
+  }
+  return out;
+}
+
+function needsProvider(m: PickerModel, ambiguous: ReadonlySet<string>): boolean {
+  return m.name.includes("/") || ambiguous.has(m.name);
+}
+
+function labelOf(m: PickerModel, ambiguous: ReadonlySet<string>): string {
+  return needsProvider(m, ambiguous) ? `${m.provider} \u00b7 ${m.name}` : m.name;
+}
 
 function printable(data: string): string | undefined {
   if (data.length !== 1) return undefined;
@@ -146,6 +176,9 @@ export class ModelPicker {
   private readonly modelsByKey: Map<ModelKey, PickerModel>;
   private readonly state: PickerState;
   private readonly priceRange: { min: number; max: number };
+  private readonly ambiguousNames: Set<string>;
+  /** Name column sized to the widest row label; capped to the available width at render time. */
+  private readonly naturalNameCol: number;
 
   private effort: Record<ModelKey, EffortLevel>;
   /** Fusion-row efforts — deliberately NOT stored in the per-model map. */
@@ -166,6 +199,12 @@ export class ModelPicker {
     this.onRenderRequest = options.onRenderRequest;
     this.visibleRows = options.visibleRows ?? DEFAULT_VISIBLE_ROWS;
     this.modelsByKey = new Map(options.state.models.map((m) => [m.key, m]));
+    this.ambiguousNames = ambiguousNamesOf(options.state.models);
+    const widestLabel = options.state.models.reduce(
+      (max, m) => Math.max(max, visibleWidth(labelOf(m, this.ambiguousNames))),
+      0,
+    );
+    this.naturalNameCol = Math.max(NAME_COL_MIN, widestLabel + 2);
     const prices = options.state.models.map((m) => (hasPricing(m.cost) ? blendedPrice(m.cost) : undefined)).filter((p): p is number => p !== undefined && p > 0);
     this.priceRange = { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 };
     this.effort = { ...options.state.effort };
@@ -416,7 +455,11 @@ export class ModelPicker {
     return shortName(m?.name ?? key, max);
   }
 
-  private renderRow(row: Row, highlighted: boolean, width: number): string {
+  private isAmbiguous(model: PickerModel): boolean {
+    return needsProvider(model, this.ambiguousNames);
+  }
+
+  private renderRow(row: Row, highlighted: boolean, width: number, nameCol: number): string {
     const t = this.theme;
     const pointer = highlighted ? t.fg("accent", "❭") : t.fg("dim", "·");
     const disabledFusion = row.kind === "fusion" && !this.fusionAvailable();
@@ -429,8 +472,14 @@ export class ModelPicker {
           : " "
         : this.markerFor(row.key);
     const working = row.kind === "model" && row.key === this.state.currentModelKey;
-    const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, NAME_COL - 1);
-    const name =
+    const model = row.kind === "model" ? this.modelsByKey.get(row.key) : undefined;
+    // Only ambiguous rows (slash-y names, or names shared across providers) pay
+    // the width cost of a dim provider prefix. The name is truncated, never the
+    // prefix, so `openrouter · …` always survives.
+    const providerPrefix = model !== undefined && this.isAmbiguous(model) ? t.fg("dim", `${model.provider} · `) : "";
+    const nameBudget = Math.max(1, nameCol - visibleWidth(providerPrefix) - 1);
+    const nameRaw = row.kind === "fusion" ? "Fusion" : this.nameOf(row.key, nameBudget);
+    const styled =
       row.kind === "fusion"
         ? disabledFusion
           ? highlighted
@@ -444,7 +493,7 @@ export class ModelPicker {
           : highlighted
             ? t.fg("accent", nameRaw)
             : t.fg("text", nameRaw);
-    const model = row.kind === "model" ? this.modelsByKey.get(row.key) : undefined;
+    const name = `${providerPrefix}${styled}`;
     const badge = model?.badge;
     const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
 
@@ -458,7 +507,7 @@ export class ModelPicker {
         ? t.fg("accent", effortLabel(level))
         : t.fg("muted", effortLabel(level));
 
-    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, NAME_COL)} ${left} ${this.bar(level, !disabledFusion && highlighted)} ${right} ${pad(label, 8)}`;
+    let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, nameCol)} ${left} ${this.bar(level, !disabledFusion && highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
       if (disabledFusion) {
@@ -480,10 +529,10 @@ export class ModelPicker {
     return truncateToWidth(line, Math.max(1, width - 1));
   }
 
-  private renderDropdown(width: number): string[] {
+  private renderDropdown(width: number, nameCol: number): string[] {
     const t = this.theme;
     const items = this.dropdownItems();
-    const indent = " ".repeat(MARKER_COL + NAME_COL + 5);
+    const indent = " ".repeat(MARKER_COL + nameCol + 5);
     if (items.length === 0) {
       return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — run /unipi:fusion-preset`)}`];
     }
@@ -547,7 +596,23 @@ export class ModelPicker {
       : !hasPricing(primaryCost);
     const pricing = !disabledFusion && noPricing ? t.fg("dim", " · no pricing data from provider") : "";
     const description = `${badges}${badges.length > 0 ? " " : ""}${desc}${pricing}`;
-    return [truncateToWidth(`  ${head}`, width - 1), truncateToWidth(`  ${vals}`, width - 1), truncateToWidth(`  ${description}`, width - 1)];
+    // The row label may be a friendly name; spell out the exact registry key so
+    // the highlighted model is unambiguous (`openrouter/deepseek/...`).
+    const keys = row.kind === "fusion"
+      ? [this.lead, this.sidekick].filter((k): k is ModelKey => k !== undefined)
+      : primaryKey === undefined
+        ? []
+        : [primaryKey];
+    const out = [
+      truncateToWidth(`  ${head}`, width - 1),
+      truncateToWidth(`  ${vals}`, width - 1),
+    ];
+    if (keys.length > 0) {
+      const keyText = keys.map((k) => t.fg("text", k)).join(t.fg("dim", " · "));
+      out.push(truncateToWidth(`  ${t.fg("dim", "Model key")}  ${keyText}`, width - 1));
+    }
+    out.push(truncateToWidth(`  ${description}`, width - 1));
+    return out;
   }
 
   private hintLine(row: Row | undefined): string {
@@ -572,6 +637,10 @@ export class ModelPicker {
   private renderBody(width: number): string[] {
     const t = this.theme;
     const rows = this.rows();
+    // Give the name column every spare column (the effort control stays
+    // right-anchored) but never less than the historical 24.
+    const maxNameCol = Math.max(NAME_COL_MIN, width - FIXED_COLS - 1);
+    const nameCol = Math.min(this.naturalNameCol, maxNameCol);
     if (this.selected >= rows.length) this.selected = Math.max(0, rows.length - 1);
     const row = rows[this.selected];
     const lines: string[] = [];
@@ -591,9 +660,9 @@ export class ModelPicker {
         const r = rows[i];
         if (r === undefined) continue;
         const highlighted = i === this.selected;
-        lines.push(this.renderRow(r, highlighted, width));
+        lines.push(this.renderRow(r, highlighted, width, nameCol));
         if (highlighted && r.kind === "fusion" && this.focus !== "effort") {
-          lines.push(...this.renderDropdown(width));
+          lines.push(...this.renderDropdown(width, nameCol));
         }
       }
       if (end < rows.length) lines.push(t.fg("dim", `  ↓ more below (${String(rows.length - end)})`));

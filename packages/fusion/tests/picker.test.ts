@@ -191,3 +191,54 @@ test("wraps selection with ↑ from the top", () => {
   const { result } = run(state(), [UP, ENTER]);
   assert.equal(result?.type === "single" && result.model, "a/opus");
 });
+
+test("ambiguous names get a provider prefix; unique names do not", () => {
+  const models = [
+    { key: "openrouter/deepseek/deepseek-v4.1-flash", name: "deepseek/deepseek-v4.1-flash", provider: "openrouter", reasoning: true },
+    { key: "zai/glm-5.3", name: "GLM-5.3", provider: "zai", reasoning: true },
+    { key: "openrouter/anthropic/claude-opus-5", name: "Claude Opus 5", provider: "openrouter", reasoning: true },
+    { key: "omniroute/claude/claude-opus-5", name: "Claude Opus 5", provider: "omniroute", reasoning: true },
+  ];
+  const s = state({
+    models,
+    fusionLeads: ["zai/glm-5.3"],
+    fusionSidekicks: ["zai/glm-5.3"],
+    fusionDefault: { lead: "zai/glm-5.3", sidekick: "zai/glm-5.3" },
+    recent: [],
+    active: undefined,
+    currentModelKey: undefined,
+    effort: {},
+  });
+  const text = run(s, []).picker.render(170).join("\n");
+  // A name that reads like a provider/id key always carries its provider.
+  assert.match(text, /openrouter · deepseek\/deepseek-v4\.1-flash/);
+  // A unique friendly name stays clean.
+  assert.doesNotMatch(text, /zai · GLM-5\.3/);
+  assert.match(text, /GLM-5\.3/);
+  // Same display name under two providers → both are qualified.
+  assert.match(text, /openrouter · Claude Opus 5/);
+  assert.match(text, /omniroute · Claude Opus 5/);
+});
+
+test("wide terminals show the full model name and the exact registry key", () => {
+  const key = "openrouter/deepseek/deepseek-v4.1-flash";
+  const models = [
+    { key, name: "deepseek/deepseek-v4.1-flash", provider: "openrouter", reasoning: true, cost: { input: 1, cachedInput: 0.1, output: 2 } },
+  ];
+  const s = state({
+    models,
+    fusionLeads: [],
+    fusionSidekicks: [],
+    fusionDefault: {},
+    recent: [],
+    active: { kind: "single", model: key },
+    currentModelKey: key,
+    effort: {},
+  });
+  const text = run(s, []).picker.render(170).join("\n");
+  // Name is not truncated (the old fixed 23-char column would ellipsize it).
+  assert.match(text, /openrouter · deepseek\/deepseek-v4\.1-flash\s+←/);
+  assert.doesNotMatch(text, /deepseek\/deepseek-v4\.1-flas…/);
+  // The highlighted row's price panel spells out the exact key.
+  assert.match(text, /Model key\s+openrouter\/deepseek\/deepseek-v4\.1-flash/);
+});
