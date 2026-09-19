@@ -9,6 +9,7 @@ import {
   compareVersions,
   getMemorySourceFingerprint,
   isMigrated,
+  isTransientBridgeError,
   isUpdateCheckDue,
   markMigrated,
   readMigrationState,
@@ -166,5 +167,23 @@ describe("MemPalace auto-update", () => {
     } finally {
       updateEmbeddingConfig({ mempalaceAutoUpdate: true });
     }
+  });
+});
+
+describe("transient bridge error classification", () => {
+  it("treats palace-lock contention as transient", () => {
+    assert.equal(
+      isTransientBridgeError("MineAlreadyRunning: palace /p is held by PID 123 (daemon serve); wait"),
+      true,
+    );
+    assert.equal(isTransientBridgeError("palace /p is held by PID 9"), true);
+  });
+
+  it("treats real backend errors and empty values as non-transient", () => {
+    assert.equal(isTransientBridgeError("ValueError: bad record"), false);
+    assert.equal(isTransientBridgeError("mempalace init failed: ImportError"), false);
+    assert.equal(isTransientBridgeError(undefined), false);
+    assert.equal(isTransientBridgeError(null), false);
+    assert.equal(isTransientBridgeError(""), false);
   });
 });

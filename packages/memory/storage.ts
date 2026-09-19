@@ -15,6 +15,8 @@ import {
   ensureMempalace,
   runBridge,
   runBridgeAsync,
+  runBridgeOutcome,
+  runBridgeAsyncOutcome,
   isMigrated,
   markMigrated,
   getMemorySourceFingerprint,
@@ -212,30 +214,34 @@ export class MemoryStorage {
   }
 
   /**
-   * Run a MemPalace bridge command, invalidating the ping-verified flag
-   * when the call fails. This ensures a palace that breaks after the
-   * startup ping-skip gets re-verified on the next session.
+   * Run a MemPalace bridge command. Invalidates the ping-verified flag only on
+   * a genuine backend failure (bad process, corrupt palace, protocol error) so
+   * a broken palace gets re-verified next session.
+   *
+   * L4: a successful call that legitimately returns `null` (e.g. a "not found"
+   * lookup) and transient palace-lock contention (`MineAlreadyRunning`, common
+   * while the daemon mines) must NOT invalidate the flag — doing so forced a
+   * ~0.5s cold-start ping on every boot.
    */
   private memPalaceCall<T>(cmd: string, args: Record<string, unknown> = {}): T | null {
     const install = this.mempalaceInstall;
     if (!install) return null;
-    const result = runBridge<T>(install, this.palacePath, cmd, args);
-    if (result === null) {
-      // Backend didn't respond — force a real ping next session.
+    const outcome = runBridgeOutcome<T>(install, this.palacePath, cmd, args);
+    if (!outcome.ok && !outcome.transient) {
       invalidatePingVerified();
     }
-    return result;
+    return outcome.result;
   }
 
   /** Async twin of memPalaceCall, for paths that must not block the UI. */
   private async memPalaceCallAsync<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T | null> {
     const install = this.mempalaceInstall;
     if (!install) return null;
-    const result = await runBridgeAsync<T>(install, this.palacePath, cmd, args);
-    if (result === null) {
+    const outcome = await runBridgeAsyncOutcome<T>(install, this.palacePath, cmd, args);
+    if (!outcome.ok && !outcome.transient) {
       invalidatePingVerified();
     }
-    return result;
+    return outcome.result;
   }
 
   /**

@@ -101,6 +101,27 @@ export interface BridgeResponse<T> {
   error?: string;
 }
 
+/**
+ * Full outcome of a bridge call. `result` is the parsed value (which may be a
+ * legitimate `null`, e.g. a "not found" lookup). `ok` distinguishes a
+ * successful call from a failure; `transient` marks failures that are just
+ * MemPalace palace-lock contention (retryable), not real backend errors.
+ */
+export interface BridgeOutcome<T> {
+  ok: boolean;
+  result: T | null;
+  error?: string;
+  transient: boolean;
+}
+
+/** MemPalace's non-blocking mine lock surfaces as MineAlreadyRunning / "is held by". */
+const TRANSIENT_BRIDGE_ERROR = /MineAlreadyRunning|is held by/i;
+
+/** True when a bridge error is transient palace-lock contention, not a real fault. */
+export function isTransientBridgeError(error: string | undefined | null): boolean {
+  return typeof error === "string" && TRANSIENT_BRIDGE_ERROR.test(error);
+}
+
 export interface MempalaceRecord {
   id: string;
   title: string;
@@ -342,23 +363,30 @@ export function markMigrated(
 }
 
 /**
- * Run one bridge command synchronously. Returns the parsed result, or null
- * on any failure (timeout, non-zero exit, bad JSON, ok=false).
+ * Run one bridge command synchronously, returning the full outcome so callers
+ * can tell a successful `null` result (e.g. "not found") apart from a failure,
+ * and transient palace-lock contention apart from a real backend error.
  */
-export function runBridge<T = unknown>(
+export function runBridgeOutcome<T = unknown>(
   install: MempalaceInstall,
   palace: string,
   cmd: string,
   args: Record<string, unknown> = {},
   timeoutMs = 60_000,
-): T | null {
+): BridgeOutcome<T> {
+  const fail = (error?: string): BridgeOutcome<T> => ({
+    ok: false,
+    result: null,
+    error,
+    transient: isTransientBridgeError(error),
+  });
   const bridgePath = getBridgePath();
-  if (!bridgePath) return null;
+  if (!bridgePath) return fail("bridge script not found");
   let argsJson: string;
   try {
     argsJson = JSON.stringify(args);
   } catch {
-    return null;
+    return fail("args not serializable");
   }
   let res;
   try {
@@ -367,21 +395,38 @@ export function runBridge<T = unknown>(
       timeout: timeoutMs,
       maxBuffer: 64 * 1024 * 1024,
     });
-  } catch {
-    return null;
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
   }
-  if (res.error || res.status !== 0) {
-    return null;
-  }
+  if (res.error) return fail(res.error.message);
   const out = (res.stdout || "").trim();
-  if (!out) return null;
-  try {
-    const parsed = JSON.parse(out) as BridgeResponse<T>;
-    if (!parsed.ok) return null;
-    return (parsed.result ?? null) as T | null;
-  } catch {
-    return null;
+  // A non-zero exit may still carry a structured {ok:false,error} on stdout
+  // (the bridge prints that then exits 1) — parse it so we can classify.
+  if (out) {
+    try {
+      const parsed = JSON.parse(out) as BridgeResponse<T>;
+      if (parsed.ok) return { ok: true, result: (parsed.result ?? null) as T | null, transient: false };
+      return fail(parsed.error);
+    } catch {
+      return fail("bad json from bridge");
+    }
   }
+  return fail(res.status === 0 ? "empty output" : `bridge exited ${String(res.status)}`);
+}
+
+/**
+ * Run one bridge command synchronously. Returns the parsed result, or null
+ * on any failure. Prefer {@link runBridgeOutcome} when you need to distinguish
+ * a "not found" null from a failure, or transient contention from a real error.
+ */
+export function runBridge<T = unknown>(
+  install: MempalaceInstall,
+  palace: string,
+  cmd: string,
+  args: Record<string, unknown> = {},
+  timeoutMs = 60_000,
+): T | null {
+  return runBridgeOutcome<T>(install, palace, cmd, args, timeoutMs).result;
 }
 
 /**
@@ -398,17 +443,30 @@ export function runBridgeAsync<T = unknown>(
   args: Record<string, unknown> = {},
   timeoutMs = 60_000,
 ): Promise<T | null> {
+  return runBridgeAsyncOutcome<T>(install, palace, cmd, args, timeoutMs).then((o) => o.result);
+}
+
+/** Async twin of {@link runBridgeOutcome}. Never rejects. */
+export function runBridgeAsyncOutcome<T = unknown>(
+  install: MempalaceInstall,
+  palace: string,
+  cmd: string,
+  args: Record<string, unknown> = {},
+  timeoutMs = 60_000,
+): Promise<BridgeOutcome<T>> {
   return new Promise((resolve) => {
+    const fail = (error?: string): void =>
+      resolve({ ok: false, result: null, error, transient: isTransientBridgeError(error) });
     const bridgePath = getBridgePath();
     if (!bridgePath) {
-      resolve(null);
+      fail("bridge script not found");
       return;
     }
     let argsJson: string;
     try {
       argsJson = JSON.stringify(args);
     } catch {
-      resolve(null);
+      fail("args not serializable");
       return;
     }
 
@@ -417,8 +475,8 @@ export function runBridgeAsync<T = unknown>(
       child = spawn(install.python, [bridgePath, palace, cmd, argsJson], {
         stdio: ["ignore", "pipe", "ignore"],
       });
-    } catch {
-      resolve(null);
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err));
       return;
     }
     // Fire-and-forget callers (e.g. the L0 background migrate) must never keep
@@ -427,32 +485,39 @@ export function runBridgeAsync<T = unknown>(
 
     let out = "";
     let settled = false;
-    const finish = (value: T | null) => {
+    const finish = (outcome: BridgeOutcome<T>): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(value);
+      resolve(outcome);
     };
 
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* already gone */ }
-      finish(null);
+      finish({ ok: false, result: null, error: "bridge timed out", transient: false });
     }, timeoutMs);
     // Do not hold the process open purely for a background bridge call.
     timer.unref?.();
 
     child.stdout?.setEncoding("utf-8");
     child.stdout?.on("data", (chunk) => { out += chunk; });
-    child.on("error", () => finish(null));
-    child.on("close", (code) => {
-      if (code !== 0) return finish(null);
+    child.on("error", (err) => finish({ ok: false, result: null, error: err.message, transient: false }));
+    child.on("close", () => {
       const trimmed = out.trim();
-      if (!trimmed) return finish(null);
+      // A non-zero exit still carries {ok:false,error} on stdout; parse first.
+      if (!trimmed) {
+        finish({ ok: false, result: null, error: "empty output", transient: false });
+        return;
+      }
       try {
         const parsed = JSON.parse(trimmed) as BridgeResponse<T>;
-        finish(parsed.ok ? ((parsed.result ?? null) as T | null) : null);
+        if (parsed.ok) {
+          finish({ ok: true, result: (parsed.result ?? null) as T | null, transient: false });
+        } else {
+          finish({ ok: false, result: null, error: parsed.error, transient: isTransientBridgeError(parsed.error) });
+        }
       } catch {
-        finish(null);
+        finish({ ok: false, result: null, error: "bad json from bridge", transient: false });
       }
     });
   });
