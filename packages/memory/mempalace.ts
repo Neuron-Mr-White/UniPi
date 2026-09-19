@@ -374,6 +374,81 @@ export function getMemorySourceFingerprint(
   return hash.digest("hex");
 }
 
+// ── Daemon awareness (L3) ───────────────────────────────────────────────────
+//
+// MemPalace can run as a long-lived daemon that holds the per-palace mine lock
+// while it mines. That lock is exactly what makes our direct-bridge upserts
+// defer (L1). The daemon exposes an HTTP control API, but it has NO idempotent
+// record-upsert job — its only generic write (`mcp_tool` -> tool_add_drawer)
+// uses a CONTENT-addressed drawer id, whereas our bridge uses a deterministic
+// SOURCE-URI-addressed id. Routing our writes through the daemon would fork the
+// id scheme and duplicate drawers, so we must NOT do that. Instead we detect a
+// reachable daemon and, when it is actively mining, skip the direct catch-up
+// this session and let the L1/L2 backoff ride it out — avoiding the lock fight
+// rather than joining it. The direct bridge stays the sole write path because
+// it alone produces the correct idempotent ids. When no daemon is running
+// (per-call / MCP-less mode) nothing changes.
+
+export interface DaemonStatus {
+  /** A daemon endpoint for this palace is reachable and healthy. */
+  reachable: boolean;
+  /** The daemon is currently running a job (holds the mine lock). */
+  busy: boolean;
+}
+
+/** Replicate the daemon's palace_key: sha256(realpath(palace))[:24] (normcase
+ *  is a no-op on POSIX). */
+function palaceKey(palacePath: string): string {
+  let canonical: string;
+  try {
+    canonical = fs.realpathSync(palacePath);
+  } catch {
+    canonical = path.resolve(palacePath);
+  }
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 24);
+}
+
+function daemonStateDir(palacePath: string): string {
+  const root = process.env.MEMPALACE_DAEMON_STATE_ROOT
+    ? path.resolve(os.homedir(), process.env.MEMPALACE_DAEMON_STATE_ROOT.replace(/^~(?=$|\/)/, os.homedir()))
+    : path.join(os.homedir(), ".mempalace", "daemon");
+  return path.join(root, palaceKey(palacePath));
+}
+
+/**
+ * Probe for a reachable MemPalace daemon for `palacePath` via its endpoint.json
+ * + token + /health. Never throws; returns `{reachable:false}` when there is no
+ * daemon, the endpoint is stale, or the probe errors/times out. `busy` reflects
+ * an in-flight job (active_job_id) — i.e. the mine lock is likely held.
+ */
+export async function probeDaemon(palacePath: string, timeoutMs = 300): Promise<DaemonStatus> {
+  const down: DaemonStatus = { reachable: false, busy: false };
+  try {
+    const dir = daemonStateDir(palacePath);
+    const endpointRaw = fs.readFileSync(path.join(dir, "endpoint.json"), "utf-8");
+    const token = fs.readFileSync(path.join(dir, "token"), "utf-8").trim();
+    const endpoint = JSON.parse(endpointRaw) as { host?: string; port?: number };
+    if (!endpoint.host || !endpoint.port || !token) return down;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    timer.unref?.();
+    try {
+      const resp = await fetch(`http://${endpoint.host}:${String(endpoint.port)}/health`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      if (!resp.ok) return down;
+      const health = (await resp.json()) as { ok?: boolean; active_job_id?: unknown };
+      if (!health.ok) return down;
+      return { reachable: true, busy: health.active_job_id != null };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return down;
+  }
+}
+
 // ── Record-level sync ledger (L2) ────────────────────────────────────────────
 //
 // The old size+mtime fingerprint invalidated the whole migration marker on any

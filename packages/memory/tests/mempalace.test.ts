@@ -370,3 +370,68 @@ describe("record-level sync ledger (L2)", () => {
     assert.equal(bootstrapLedgerFromLegacyMarker(root, ledgerPath, markerPath), null);
   });
 });
+
+describe("daemon awareness (L3)", () => {
+  it("returns not-reachable when no daemon endpoint exists", async () => {
+    const { probeDaemon } = await import("../mempalace.js");
+    const prev = process.env.MEMPALACE_DAEMON_STATE_ROOT;
+    const root = tempDir();
+    process.env.MEMPALACE_DAEMON_STATE_ROOT = root;
+    try {
+      const palace = tempDir();
+      const status = await probeDaemon(palace, 200);
+      assert.deepEqual(status, { reachable: false, busy: false });
+    } finally {
+      if (prev === undefined) delete process.env.MEMPALACE_DAEMON_STATE_ROOT;
+      else process.env.MEMPALACE_DAEMON_STATE_ROOT = prev;
+    }
+  });
+
+  it("detects a reachable daemon and reports busy from active_job_id", async () => {
+    const http = await import("node:http");
+    const { createHash } = await import("node:crypto");
+    const { realpathSync } = await import("node:fs");
+    const { probeDaemon } = await import("../mempalace.js");
+
+    // Start a stub daemon that authorizes on the token and reports busy.
+    let activeJob: string | null = "job-1";
+    let sawAuth = "";
+    const server = http.createServer((req, res) => {
+      sawAuth = req.headers["authorization"] ?? "";
+      if (sawAuth !== "Bearer secret-token") { res.statusCode = 401; res.end("{}"); return; }
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ ok: true, active_job_id: activeJob }));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as import("node:net").AddressInfo).port;
+
+    const prev = process.env.MEMPALACE_DAEMON_STATE_ROOT;
+    const root = tempDir();
+    process.env.MEMPALACE_DAEMON_STATE_ROOT = root;
+    try {
+      const palace = tempDir();
+      const key = createHash("sha256").update(realpathSync(palace)).digest("hex").slice(0, 24);
+      const dir = join(root, key);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "endpoint.json"), JSON.stringify({ host: "127.0.0.1", port }));
+      writeFileSync(join(dir, "token"), "secret-token\n");
+
+      const busy = await probeDaemon(palace, 1000);
+      assert.deepEqual(busy, { reachable: true, busy: true });
+      assert.equal(sawAuth, "Bearer secret-token");
+
+      activeJob = null; // idle
+      const idle = await probeDaemon(palace, 1000);
+      assert.deepEqual(idle, { reachable: true, busy: false });
+
+      // Wrong token on disk → treated as unreachable (401).
+      writeFileSync(join(dir, "token"), "wrong\n");
+      const bad = await probeDaemon(palace, 1000);
+      assert.deepEqual(bad, { reachable: false, busy: false });
+    } finally {
+      if (prev === undefined) delete process.env.MEMPALACE_DAEMON_STATE_ROOT;
+      else process.env.MEMPALACE_DAEMON_STATE_ROOT = prev;
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+});

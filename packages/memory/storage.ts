@@ -18,6 +18,7 @@ import {
   runBridgeOutcome,
   runBridgeAsyncOutcome,
   normalizeMigrationResult,
+  probeDaemon,
   readLedger,
   writeLedger,
   scanMemorySources,
@@ -328,6 +329,14 @@ export class MemoryStorage {
       const scannedByKey = new Map(scanned.map((r) => [r.key, r.hash]));
       const { keys, firstRun } = ledgerDelta(scanned, ledger);
       if (keys.length === 0) return; // fully in sync
+
+      // L3: if a MemPalace daemon is actively mining, it holds the palace lock,
+      // so a direct catch-up would just defer every contended upsert. Skip this
+      // session and let the L1/L2 backoff retry once the lock frees, rather than
+      // fighting the daemon. (There is no idempotent record-upsert daemon job to
+      // route through — its generic write path uses an incompatible drawer id.)
+      const daemon = await probeDaemon(this.palacePath);
+      if (daemon.reachable && daemon.busy) return;
 
       // First ever ledger population runs a full pass (source_dir only);
       // otherwise target just the delta so we never re-sweep the corpus.
