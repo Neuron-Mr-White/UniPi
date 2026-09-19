@@ -2,7 +2,7 @@
 
 Persistent memory that survives across sessions. Stores facts, preferences, and decisions with semantic vector search, so the agent remembers what you told it last week.
 
-**Primary backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with verified, resumable migration of existing legacy memories. If MemPalace or `uv` is unavailable, the package transparently falls back to the bundled SQLite + sqlite-vec store, so memory never hard-fails.
+**Backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with verified, resumable, incremental migration of existing markdown memories. Detection, ping, and migration run off the startup path, so loading the package never blocks the first prompt.
 
 Two storage tiers: MemPalace (or SQLite) for vector similarity search, markdown files for a durable human-readable copy you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
 
@@ -74,46 +74,56 @@ Examples:
 Memory has no configuration file. Storage paths are fixed:
 
 ```
-~/.unipi/memory/                 # UniPi memory root (legacy + markdown tier)
+~/.unipi/memory/                 # UniPi memory root (markdown tier)
 ├── .mempalace-install           # Cached MemPalace venv detection
-├── .mempalace-migrated          # Versioned migration verification state
+├── .mempalace-migrated          # Legacy migration marker (seeds the ledger once)
+├── .mempalace-ledger.json       # Record-level sync ledger (project/id -> content hash)
+├── .mempalace-ping-verified     # Recent-ping cache (skips the cold-start ping)
 ├── global/
-│   ├── memory.db              # Global vector DB (SQLite fallback)
-│   └── *.md                   # Global memory files
+│   └── *.md                   # Global memory files (durable, human-readable)
 └── <project_name>/
-    ├── memory.db              # Project vector DB (SQLite fallback)
-    └── *.md                   # Project memory files
+    └── *.md                   # Project memory files (durable, human-readable)
 
-~/.mempalace/palace/             # MemPalace palace (primary backend)
+~/.mempalace/palace/             # MemPalace palace (vector backend)
 ```
 
 ## MemPalace backend
 
-On first load, the memory package:
+MemPalace is the sole vector backend; the markdown files are the durable,
+human-readable tier and the migration source. On load, the memory package:
 1. Detects MemPalace; if missing and `uv` is available, runs
    `uv tool install mempalace` once (caches the venv python path in
    `~/.unipi/memory/.mempalace-install`).
-2. Pings the bridge to confirm the palace is usable.
-3. Fingerprints the durable SQLite and markdown sources. If they differ from
-   the verified state in `~/.unipi/memory/.mempalace-migrated`, performs an
-   idempotent read-only migration into MemPalace drawers. Unchanged drawers are
-   skipped, new or changed memories are upserted, and the versioned state is
-   written only after every discovered record is verified in MemPalace.
-   Failed or partial migrations remain unmarked and retry on a later session.
+2. Marks the backend active immediately, then does everything else
+   **off the startup path** so time-to-first-input is never blocked: a
+   background task pings the bridge (skipped when recently ping-verified) and
+   runs an incremental catch-up.
+3. Catch-up is driven by a record-level ledger
+   (`~/.unipi/memory/.mempalace-ledger.json`) mapping `project/id` to the
+   sha256 of the markdown bytes last confirmed in the palace. Only records whose
+   bytes differ from the ledger are upserted, so an ordinary write never
+   triggers a full re-scan. `store()` updates the ledger only after a confirmed
+   upsert; a pre-existing `.mempalace-migrated` marker seeds the ledger once.
    Legacy files are never deleted or mutated.
 
-Each memory operation invokes the packaged Python bridge
-(`bridge/mempalace_bridge.py`) once via `spawnSync` (~0.5s per call). Both the
-standalone memory package and the all-in-one umbrella tarball ship and resolve
-this bridge. The
-first MemPalace use on a machine also downloads the default ONNX embedding
-model (~80MB, cached at `~/.cache/chroma/onnx_models/`).
+Records contended by a running MemPalace daemon's mine lock are recorded as
+**deferred** (never as failures) and retried with exponential backoff, so the
+catch-up always converges instead of re-running every boot. When a daemon is
+reachable and actively mining, the background catch-up stands down for the
+session rather than fighting the lock.
+
+Memory operations invoke the packaged Python bridge
+(`bridge/mempalace_bridge.py`); startup-path work uses the async, non-blocking
+variant. Both the standalone memory package and the all-in-one umbrella tarball
+ship and resolve this bridge. The first MemPalace use on a machine also
+downloads the default ONNX embedding model (~80MB, cached at
+`~/.cache/chroma/onnx_models/`).
 
 ### Forcing re-detection / re-migration
 
 ```bash
 rm ~/.unipi/memory/.mempalace-install    # re-detect MemPalace next session
-rm ~/.unipi/memory/.mempalace-migrated   # force a full verified migration pass next session
+rm ~/.unipi/memory/.mempalace-ledger.json  # force a full verified catch-up pass next session
 ```
 
 ### Backend override

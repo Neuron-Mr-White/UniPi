@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.20.5] — 2026-09-19
+
+### Fixed
+
+- `memory`: **MemPalace init no longer blocks startup by ~8–9s, and its migration finally converges.** `MemoryStorage.init()` ran the palace `ping` and the full `migrate` synchronously inside the memory `session_start` handler; whenever the source fingerprint had changed (i.e. after almost any memory write) the migrate re-embedded every changed record and, when a MemPalace daemon held the per-palace mine lock, every contended upsert raised `MineAlreadyRunning`, was counted as a hard `failed`, and the completion marker (`failed===0`) never advanced — so the whole ~8s sweep re-ran on every boot. Time-to-first-input dropped from ~9.5s to ~1s. The fix spans several layers:
+  - **Non-blocking init.** `init()` now does only the cheap install check and marks the backend active optimistically; `ping` + migration/catch-up run in a single-flight background task via `runBridgeAsync` (the spawned child is `unref()`d so a fire-and-forget migrate never keeps the process alive). `session_start` no longer awaits the bridge.
+  - **Contention-aware convergence.** The Python bridge now classifies `MineAlreadyRunning` as `deferred` (with `deferred_keys`), distinct from a genuine `failed`, and accepts an `only:[keys]` targeted pass. `markMigrated` advances when `failed===0 && verified+deferred===discovered`, persisting the deferred keys with an exponential backoff (15m → 1h → 6h → 24h) so later sessions retry just those keys instead of re-sweeping. `deferred` (lock) is kept strictly separate from `failed` (malformed) so the marker never advances over lost data.
+  - **Record-level ledger.** A new `~/.unipi/memory/.mempalace-ledger.json` maps `project/id` → sha256 of the exact markdown bytes last confirmed in the palace, replacing the size+mtime fingerprint that a normal `store()` invalidated on every write. Catch-up now migrates only records whose bytes differ from the ledger (plus due-for-retry deferred keys), `store()` records the ledger only on a confirmed upsert, and an existing `.mempalace-migrated` marker is used once to seed the ledger. The bridge stops discovering legacy `memory.db` (the SQLite tier is gone), so the corpus matches the ledger scanner exactly.
+  - **Daemon-aware catch-up.** `probeDaemon()` reads the palace daemon's `endpoint.json` + token and checks `/health`; when a daemon is reachable and actively mining, the background catch-up stands down for the session and lets the backoff ride out the lock instead of contending. When no daemon is running, behaviour is unchanged. (Writes are deliberately not routed through the daemon `/jobs` queue: it exposes no idempotent record-upsert job, and its generic write path uses a content-addressed drawer id incompatible with the bridge's source-URI id.)
+  - **Ping-cache hygiene.** Bridge calls now distinguish a successful `null` result and transient lock contention from real backend errors (`runBridgeOutcome`/`isTransientBridgeError`), so `.mempalace-ping-verified` is only invalidated on a genuine failure instead of on nearly every session.
+
 ## [2.20.4] — 2026-09-19
 
 ### Changed

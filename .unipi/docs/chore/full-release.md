@@ -3,7 +3,7 @@ name: full-release
 type: chore
 description: Full release pipeline — typecheck, lint, test, verify mounts, verify commands, update changelog, update docs, publish to npm, push to GitHub
 created: 2026-04-28
-last-run: 2026-09-19 (v2.20.4 — fusion: autosize model picker name column + provider disambiguation; full lockstep: all 23 packages + root)
+last-run: 2026-09-19 (v2.20.5 — memory: MemPalace init off the startup path + converging migration [L0–L4], startup ~9.5s→~1s; full lockstep: all 23 packages + root)
 ---
 
 # Full Release Pipeline
