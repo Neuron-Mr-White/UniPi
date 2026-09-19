@@ -198,6 +198,8 @@ export class MemoryStorage {
   private scopeDir: string;
   private mempalaceInstall: MempalaceInstall | null = null;
   private palacePath: string = DEFAULT_PALACE;
+  /** Single-flight guard for the background ping+migrate task. */
+  private bgVerifyStarted = false;
 
   constructor(projectName: string) {
     this.projectName = projectName;
@@ -249,44 +251,57 @@ export class MemoryStorage {
   }
 
   /**
-   * Initialize storage. Tries MemPalace first (auto-install + one-way
-   * auto-migration of legacy memories). Throws if MemPalace is unavailable.
+   * Initialize storage. Requires the MemPalace backend to be installable
+   * (auto-install via uv); throws only when it is genuinely unavailable.
+   *
+   * L0: this is deliberately NON-BLOCKING. The synchronous path does only the
+   * cheap install check (a cached flag on normal boots) and then hands the
+   * ~0.5s ping and the potentially multi-second migrate/catch-up to a
+   * fire-and-forget background task. `mempalaceInstall` is set optimistically
+   * so tools work immediately; the migrate no longer sits on `session_start`
+   * and never blocks time-to-first-input.
    */
   init(): void {
     if (!fs.existsSync(this.scopeDir)) {
       fs.mkdirSync(this.scopeDir, { recursive: true });
     }
 
-    if (!this.tryInitMempalace()) {
-      throw new Error("MemPalace backend unavailable. Ensure uv is installed.");
-    }
-  }
-
-  /**
-   * Attempt to initialize the MemPalace backend. Returns true on success.
-   * Handles auto-install and one-way auto-migration of legacy memories.
-   * Never throws — any failure returns false so init() can throw a clear error.
-   */
-  private tryInitMempalace(): boolean {
     let install: MempalaceInstall | null;
     try {
       install = ensureMempalace();
     } catch {
-      return false;
+      install = null;
     }
-    if (!install) return false;
+    if (!install) {
+      throw new Error("MemPalace backend unavailable. Ensure uv is installed.");
+    }
 
-    // Sanity ping — if the palace/bridge is broken, fall back.
-    // Skip the ~0.5s Python cold-start when we ping-verified recently;
-    // the flag is invalidated on any backend failure so a broken palace
-    // is re-checked on the next session.
+    // Optimistic: mark the backend active now so memory tools are usable from
+    // the first turn. A palace that turns out to be broken simply returns null
+    // from bridge calls (and re-verifies next session) rather than blocking.
+    this.mempalaceInstall = install;
+
+    // Ping + migration/catch-up run off the startup path.
+    void this.backgroundVerifyAndMigrate(install);
+  }
+
+  /**
+   * Verify the palace is reachable (ping) and run the idempotent migration
+   * catch-up — entirely off the synchronous startup path. Single-flight per
+   * instance. Never throws into the caller.
+   */
+  private async backgroundVerifyAndMigrate(install: MempalaceInstall): Promise<void> {
+    if (this.bgVerifyStarted) return;
+    this.bgVerifyStarted = true;
+
+    // Sanity ping — skip the ~0.5s Python cold-start when we ping-verified
+    // recently. A failed ping leaves the flag unset so it re-checks next
+    // session; it does not disable the optimistically-active backend.
     if (!isPingVerified()) {
-      const ok = runBridge<string>(install, this.palacePath, "ping");
-      if (ok !== "pong") return false;
+      const ok = await runBridgeAsync<string>(install, this.palacePath, "ping");
+      if (ok !== "pong") return;
       markPingVerified();
     }
-
-    this.mempalaceInstall = install;
 
     // Idempotent migration + automatic catch-up. The source fingerprint turns
     // the old one-shot timestamp into a resumable state: new/changed markdown
@@ -297,7 +312,7 @@ export class MemoryStorage {
       try {
         // First migrations can embed thousands of records. Give the bridge a
         // practical bounded window rather than the normal per-operation 60s.
-        const result = runBridge<MigrationResult>(install, this.palacePath, "migrate", {
+        const result = await runBridgeAsync<MigrationResult>(install, this.palacePath, "migrate", {
           source_dir: getMemoryBaseDir(),
         }, 15 * 60_000);
         if (
@@ -312,8 +327,6 @@ export class MemoryStorage {
         // sources are untouched and migration retries because no state is set.
       }
     }
-
-    return true;
   }
 
 

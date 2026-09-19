@@ -421,6 +421,9 @@ export function runBridgeAsync<T = unknown>(
       resolve(null);
       return;
     }
+    // Fire-and-forget callers (e.g. the L0 background migrate) must never keep
+    // the process alive; the promise still resolves on close for awaiters.
+    child.unref?.();
 
     let out = "";
     let settled = false;
