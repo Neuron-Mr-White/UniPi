@@ -25,6 +25,8 @@ export const DEFAULT_PALACE = path.join(os.homedir(), ".mempalace", "palace");
 
 const INSTALL_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-install");
 const MIGRATED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-migrated");
+/** Record-level sync ledger (L2): supersedes the size+mtime fingerprint gate. */
+const LEDGER_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-ledger.json");
 /** Flag written after a successful ping, so subsequent sessions can skip
  *  the ~0.5s Python cold-start sanity check. Stale after PING_VERIFIED_TTL_MS. */
 const PING_VERIFIED_FLAG = path.join(os.homedir(), ".unipi", "memory", ".mempalace-ping-verified");
@@ -45,6 +47,8 @@ export interface MigrationResult {
   errors?: string[];
   /** "project/id" keys deferred by lock contention, for a targeted retry. */
   deferredKeys?: string[];
+  /** "project/id" keys confirmed durable in the palace after the run. */
+  verifiedKeys?: string[];
 }
 
 export interface MigrationState {
@@ -89,6 +93,11 @@ export function normalizeMigrationResult(raw: unknown): MigrationResult | null {
     : Array.isArray(r.deferred_keys)
       ? r.deferred_keys
       : [];
+  const vkeysRaw = Array.isArray(r.verifiedKeys)
+    ? r.verifiedKeys
+    : Array.isArray(r.verified_keys)
+      ? r.verified_keys
+      : [];
   return {
     discovered: num(r.discovered),
     imported: num(r.imported),
@@ -99,6 +108,7 @@ export function normalizeMigrationResult(raw: unknown): MigrationResult | null {
     verified: num(r.verified),
     errors: Array.isArray(r.errors) ? (r.errors as string[]) : undefined,
     deferredKeys: keys.filter((k): k is string => typeof k === "string"),
+    verifiedKeys: vkeysRaw.filter((k): k is string => typeof k === "string"),
   };
 }
 
@@ -362,6 +372,249 @@ export function getMemorySourceFingerprint(
   };
   visit(sourceDir);
   return hash.digest("hex");
+}
+
+// ── Record-level sync ledger (L2) ────────────────────────────────────────────
+//
+// The old size+mtime fingerprint invalidated the whole migration marker on any
+// memory write (store() rewrites the .md every time), forcing a full re-sweep.
+// The ledger instead tracks, per record, the content hash last confirmed durable
+// in the palace. Catch-up then touches only records whose file differs from the
+// ledger (out-of-band edits or writes whose palace upsert was deferred), never
+// the whole corpus.
+
+export const LEDGER_VERSION = 1;
+
+export interface LedgerEntry {
+  /** sha256 of the exact .md bytes last confirmed in the palace. */
+  hash: string;
+}
+
+export interface Ledger {
+  version: number;
+  /** "project/id" -> entry. */
+  entries: Record<string, LedgerEntry>;
+  /** Keys deferred by transient lock contention, awaiting a targeted retry. */
+  deferredKeys: string[];
+  /** Keys that hit a genuine (non-transient) failure; retried with backoff too. */
+  failedKeys: string[];
+  /** Consecutive contended/failed rounds, for exponential backoff. */
+  attempts: number;
+  /** Epoch ms; do not retry deferred/failed keys before this. */
+  retryAfter?: number;
+  updatedAt: string;
+}
+
+/** A record discovered on disk: its key and the hash of its current bytes. */
+export interface ScannedRecord {
+  key: string;
+  project: string;
+  id: string;
+  hash: string;
+}
+
+function emptyLedger(): Ledger {
+  return { version: LEDGER_VERSION, entries: {}, deferredKeys: [], failedKeys: [], attempts: 0, updatedAt: new Date(0).toISOString() };
+}
+
+/** sha256 of raw file bytes — the scanner and store() hash the same bytes so
+ *  the ledger never drifts through a parse/serialize round-trip. */
+export function hashBytes(text: string): string {
+  return createHash("sha256").update(text, "utf-8").digest("hex");
+}
+
+export function readLedger(flagPath = LEDGER_FLAG): Ledger {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(flagPath, "utf-8")) as Partial<Ledger>;
+    if (parsed?.version !== LEDGER_VERSION || !parsed.entries || typeof parsed.entries !== "object") {
+      return emptyLedger();
+    }
+    return {
+      version: LEDGER_VERSION,
+      entries: parsed.entries as Record<string, LedgerEntry>,
+      deferredKeys: Array.isArray(parsed.deferredKeys) ? parsed.deferredKeys : [],
+      failedKeys: Array.isArray(parsed.failedKeys) ? parsed.failedKeys : [],
+      attempts: typeof parsed.attempts === "number" ? parsed.attempts : 0,
+      retryAfter: typeof parsed.retryAfter === "number" ? parsed.retryAfter : undefined,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date(0).toISOString(),
+    };
+  } catch {
+    return emptyLedger();
+  }
+}
+
+export function writeLedger(ledger: Ledger, flagPath = LEDGER_FLAG): boolean {
+  try {
+    fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+    const temp = `${flagPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify({ ...ledger, version: LEDGER_VERSION }, null, 2), "utf-8");
+    fs.renameSync(temp, flagPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Scan the durable markdown tier and return one record per `.md` file with the
+ * hash of its exact bytes. Only markdown is a migration source now (the SQLite
+ * fallback was removed), so `memory.db` is deliberately ignored — its churn was
+ * a major cause of needless re-sweeps.
+ */
+export function scanMemorySources(sourceDir = path.join(os.homedir(), ".unipi", "memory")): ScannedRecord[] {
+  const out: ScannedRecord[] = [];
+  if (!fs.existsSync(sourceDir)) return out;
+  let projects: fs.Dirent[];
+  try {
+    projects = fs.readdirSync(sourceDir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const projEntry of projects) {
+    if (!projEntry.isDirectory() || projEntry.name.startsWith(".")) continue;
+    const project = projEntry.name;
+    const projDir = path.join(sourceDir, project);
+    let files: fs.Dirent[];
+    try {
+      files = fs.readdirSync(projDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.isFile() || f.name.startsWith(".") || !f.name.endsWith(".md")) continue;
+      const full = path.join(projDir, f.name);
+      let text: string;
+      try {
+        text = fs.readFileSync(full, "utf-8");
+      } catch {
+        continue;
+      }
+      // Key must match the bridge exactly (parse_markdown_memory):
+      //  - id: explicit frontmatter `id`, else the filename stem normalized
+      //    ([^A-Za-z0-9]+ -> _, trimmed, lowercased).
+      //  - project: frontmatter `project` if present, else the directory name.
+      // A mismatch would make targeted `--only` retries silently no-op.
+      const fmMatch = /^---\n([\s\S]*?)\n---/.exec(text);
+      const fm = fmMatch ? fmMatch[1]! : "";
+      const readField = (name: string): string => {
+        const m = new RegExp(`(^|\\n)${name}:\\s*(.+)`).exec(fm);
+        return m ? m[2]!.trim().replace(/^["']|["']$/g, "") : "";
+      };
+      const explicitId = readField("id");
+      const id = explicitId
+        || (f.name.replace(/\.md$/, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase() || "unknown");
+      const recProject = readField("project") || project;
+      out.push({ key: `${recProject}/${id}`, project: recProject, id, hash: hashBytes(text) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Compute which record keys still need a migrate pass: those whose current file
+ * hash differs from the ledger, plus any deferred/failed keys whose backoff has
+ * elapsed. Returns the keys and whether the ledger has never been populated
+ * (→ a first full pass is warranted).
+ */
+export function ledgerDelta(
+  scanned: ScannedRecord[],
+  ledger: Ledger,
+  now = Date.now(),
+): { keys: string[]; firstRun: boolean } {
+  const firstRun = Object.keys(ledger.entries).length === 0;
+  const due = new Set<string>();
+  for (const rec of scanned) {
+    if (ledger.entries[rec.key]?.hash !== rec.hash) due.add(rec.key);
+  }
+  const backoffElapsed = typeof ledger.retryAfter !== "number" || now >= ledger.retryAfter;
+  if (backoffElapsed) {
+    for (const k of ledger.deferredKeys) due.add(k);
+    for (const k of ledger.failedKeys) due.add(k);
+  }
+  return { keys: [...due], firstRun };
+}
+
+/**
+ * Fold a migrate result into the ledger: advance the content hash for every
+ * verified key, and re-track deferred/failed keys (with backoff) so they retry
+ * later. `scannedByKey` gives the on-disk hash to record for a verified key.
+ */
+export function applyMigrationToLedger(
+  ledger: Ledger,
+  result: MigrationResult,
+  scannedByKey: Map<string, string>,
+  now = Date.now(),
+): Ledger {
+  const entries = { ...ledger.entries };
+  for (const key of result.verifiedKeys ?? []) {
+    const hash = scannedByKey.get(key);
+    if (hash) entries[key] = { hash };
+  }
+  const deferredKeys = [...new Set(result.deferredKeys ?? [])];
+  // Genuine failures are surfaced via error strings; derive their keys from the
+  // error prefix "project/id: ..." so they, too, are retried (not silently
+  // dropped) but never recorded as synced.
+  const failedKeys = [...new Set((result.errors ?? [])
+    .map((e) => e.split(":")[0]?.trim())
+    .filter((k): k is string => !!k && k.includes("/")))];
+  const hadBacklog = deferredKeys.length > 0 || failedKeys.length > 0;
+  const attempts = hadBacklog ? ledger.attempts + 1 : 0;
+  return {
+    version: LEDGER_VERSION,
+    entries,
+    deferredKeys,
+    failedKeys,
+    attempts,
+    ...(hadBacklog ? { retryAfter: now + deferralBackoffMs(attempts) } : {}),
+    updatedAt: new Date(now).toISOString(),
+  };
+}
+
+/** Record a single successful store() upsert in the ledger. */
+export function ledgerRecordStore(key: string, fileText: string, flagPath = LEDGER_FLAG): void {
+  const ledger = readLedger(flagPath);
+  ledger.entries[key] = { hash: hashBytes(fileText) };
+  // A fresh successful write clears any pending retry state for this key.
+  ledger.deferredKeys = ledger.deferredKeys.filter((k) => k !== key);
+  ledger.failedKeys = ledger.failedKeys.filter((k) => k !== key);
+  ledger.updatedAt = new Date().toISOString();
+  writeLedger(ledger, flagPath);
+}
+
+/**
+ * One-time bootstrap: if there is no ledger yet but a completed legacy
+ * `.mempalace-migrated` marker exists for the current corpus, seed the ledger
+ * from the current on-disk hashes so we do not re-migrate everything once.
+ * Deferred keys from the old marker are carried over for targeted retry.
+ */
+export function bootstrapLedgerFromLegacyMarker(
+  sourceDir = path.join(os.homedir(), ".unipi", "memory"),
+  ledgerPath = LEDGER_FLAG,
+  markerPath = MIGRATED_FLAG,
+): Ledger | null {
+  if (fs.existsSync(ledgerPath)) return null;
+  const marker = readMigrationState(markerPath);
+  if (!marker) return null;
+  const scanned = scanMemorySources(sourceDir);
+  const deferred = new Set(marker.deferredKeys ?? []);
+  const entries: Record<string, LedgerEntry> = {};
+  for (const rec of scanned) {
+    // A record known-deferred under the old marker is NOT yet durable — leave
+    // it out of entries so the delta re-attempts it.
+    if (deferred.has(rec.key)) continue;
+    entries[rec.key] = { hash: rec.hash };
+  }
+  const ledger: Ledger = {
+    version: LEDGER_VERSION,
+    entries,
+    deferredKeys: [...deferred],
+    failedKeys: [],
+    attempts: marker.attempts ?? 0,
+    ...(marker.retryAfter ? { retryAfter: marker.retryAfter } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  writeLedger(ledger, ledgerPath);
+  return ledger;
 }
 
 /** Read a verified migration state. Legacy timestamp markers, wrong-version,

@@ -320,8 +320,12 @@ def discover_legacy_memories(source_dir: Path, project_filter: list[str] | None 
             rec = parse_markdown_memory(project, md_path)
             if rec:
                 by_key[(rec["project"], rec["id"])] = rec
-        for rec in load_sqlite_memories(project, project_dir / "memory.db"):
-            by_key.setdefault((rec["project"], rec["id"]), rec)
+        # Markdown is the sole durable source now (the SQLite fallback was
+        # removed). Discovering legacy memory.db here would surface records the
+        # TS ledger scanner cannot see, so `--only` targeted retries could not
+        # name them and the delta would never converge. `load_sqlite_memories`
+        # is retained for any explicit one-off recovery use, but is no longer
+        # part of the automatic catch-up corpus.
     return sorted(by_key.values(), key=lambda r: (r["project"], r["type"], r["title"], r["id"]))
 
 
@@ -598,6 +602,7 @@ class Bridge:
             if persisted_rec:
                 persisted[(persisted_rec["project"], persisted_rec["id"])] = doc
         verified = 0
+        verified_keys: list[str] = []
         for rec in records:
             expected_doc = build_document(
                 rec["title"], rec["content"], rec["tags"], rec["project"],
@@ -605,6 +610,7 @@ class Bridge:
             )
             if persisted.get((rec["project"], rec["id"])) == expected_doc:
                 verified += 1
+                verified_keys.append(f"{rec['project']}/{rec['id']}")
 
         return {
             "discovered": len(records),
@@ -617,6 +623,7 @@ class Bridge:
             "projects": by_project,
             "errors": errors,
             "deferred_keys": deferred_keys[:200],
+            "verified_keys": verified_keys,
         }
 
 

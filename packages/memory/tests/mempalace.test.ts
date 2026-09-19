@@ -20,6 +20,16 @@ import {
   readUpdateState,
   resolveMempalaceBridgePath,
   writeUpdateState,
+  hashBytes,
+  readLedger,
+  writeLedger,
+  scanMemorySources,
+  ledgerDelta,
+  applyMigrationToLedger,
+  ledgerRecordStore,
+  bootstrapLedgerFromLegacyMarker,
+  LEDGER_VERSION,
+  type Ledger,
   type MigrationResult,
 } from "../mempalace.js";
 import { parseMemoryFile, writeMemoryFile, type MemoryRecord } from "../storage.js";
@@ -256,5 +266,107 @@ describe("transient bridge error classification", () => {
     assert.equal(isTransientBridgeError(undefined), false);
     assert.equal(isTransientBridgeError(null), false);
     assert.equal(isTransientBridgeError(""), false);
+  });
+});
+
+describe("record-level sync ledger (L2)", () => {
+  function seedMd(root: string, project: string, id: string, body: string): string {
+    const dir = join(root, project);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${id}.md`);
+    writeFileSync(file, `---\nid: ${id}\ntitle: ${id}\nproject: ${project}\ntype: summary\n---\n\n${body}\n`);
+    return file;
+  }
+
+  it("scans markdown (not memory.db) and keys by project/id", () => {
+    const root = tempDir();
+    seedMd(root, "proj", "alpha", "one");
+    writeFileSync(join(root, "proj", "memory.db"), "binary-ish");
+    const scanned = scanMemorySources(root);
+    assert.equal(scanned.length, 1);
+    assert.equal(scanned[0]?.key, "proj/alpha");
+    assert.ok(scanned[0]?.hash.length === 64);
+  });
+
+  it("delta is empty when the ledger matches on-disk hashes", () => {
+    const root = tempDir();
+    seedMd(root, "proj", "alpha", "one");
+    const scanned = scanMemorySources(root);
+    const ledger = readLedger(join(tempDir(), ".ledger.json"));
+    ledger.entries[scanned[0]!.key] = { hash: scanned[0]!.hash };
+    assert.deepEqual(ledgerDelta(scanned, ledger).keys, []);
+  });
+
+  it("delta flags changed files and honours deferred backoff", () => {
+    const root = tempDir();
+    seedMd(root, "proj", "alpha", "one");
+    seedMd(root, "proj", "beta", "two");
+    const scanned = scanMemorySources(root);
+    const ledger = readLedger(join(tempDir(), ".ledger.json"));
+    // alpha in sync, beta unknown → beta is due; first run flagged when empty.
+    const first = ledgerDelta(scanned, ledger);
+    assert.equal(first.firstRun, true);
+    for (const r of scanned) ledger.entries[r.key] = { hash: r.hash };
+    // Now mutate alpha on disk → alpha due.
+    seedMd(root, "proj", "alpha", "one CHANGED");
+    const rescanned = scanMemorySources(root);
+    assert.deepEqual(ledgerDelta(rescanned, ledger).keys, ["proj/alpha"]);
+    // Deferred key inside backoff is not due; after backoff it is.
+    ledger.deferredKeys = ["proj/gamma"];
+    ledger.retryAfter = 10_000;
+    for (const r of rescanned) ledger.entries[r.key] = { hash: r.hash };
+    assert.deepEqual(ledgerDelta(rescanned, ledger, 5_000).keys, []);
+    assert.deepEqual(ledgerDelta(rescanned, ledger, 20_000).keys, ["proj/gamma"]);
+  });
+
+  it("applyMigrationToLedger advances verified keys and reschedules deferred/failed", () => {
+    const ledger = readLedger(join(tempDir(), ".ledger.json"));
+    const scannedByKey = new Map([["p/a", "hashA"], ["p/b", "hashB"]]);
+    const result: MigrationResult = {
+      discovered: 3, imported: 1, updated: 1, skipped: 0, failed: 1, deferred: 1, verified: 1,
+      verifiedKeys: ["p/a"], deferredKeys: ["p/b"], errors: ["p/c: ValueError: bad"],
+    };
+    const now = 1_000_000;
+    const next = applyMigrationToLedger(ledger, result, scannedByKey, now);
+    assert.deepEqual(next.entries["p/a"], { hash: "hashA" });
+    assert.equal(next.entries["p/b"], undefined); // deferred → not recorded
+    assert.deepEqual(next.deferredKeys, ["p/b"]);
+    assert.deepEqual(next.failedKeys, ["p/c"]);
+    assert.equal(next.attempts, 1);
+    assert.equal(next.retryAfter, now + 15 * 60_000);
+  });
+
+  it("ledgerRecordStore records a key and clears its pending retry state", () => {
+    const flag = join(tempDir(), ".ledger.json");
+    const seeded: Ledger = {
+      version: LEDGER_VERSION, entries: {}, deferredKeys: ["p/a"], failedKeys: ["p/a"],
+      attempts: 2, retryAfter: 999, updatedAt: new Date(0).toISOString(),
+    };
+    writeLedger(seeded, flag);
+    ledgerRecordStore("p/a", "some bytes", flag);
+    const after = readLedger(flag);
+    assert.equal(after.entries["p/a"]?.hash, hashBytes("some bytes"));
+    assert.deepEqual(after.deferredKeys, []);
+    assert.deepEqual(after.failedKeys, []);
+  });
+
+  it("bootstraps the ledger from a completed legacy marker, carrying deferred keys", () => {
+    const root = tempDir();
+    seedMd(root, "proj", "alpha", "one");
+    seedMd(root, "proj", "beta", "two");
+    const ledgerPath = join(root, ".mempalace-ledger.json");
+    const markerPath = join(root, ".mempalace-migrated");
+    // Complete marker with beta deferred.
+    markMigrated("fp", {
+      discovered: 2, imported: 0, updated: 0, skipped: 1, failed: 0, deferred: 1, verified: 1,
+      deferredKeys: ["proj/beta"],
+    }, markerPath);
+    const ledger = bootstrapLedgerFromLegacyMarker(root, ledgerPath, markerPath);
+    assert.ok(ledger);
+    assert.ok(ledger!.entries["proj/alpha"]); // verified → seeded
+    assert.equal(ledger!.entries["proj/beta"], undefined); // deferred → not seeded
+    assert.deepEqual(ledger!.deferredKeys, ["proj/beta"]);
+    // Idempotent: a second call returns null (ledger already exists).
+    assert.equal(bootstrapLedgerFromLegacyMarker(root, ledgerPath, markerPath), null);
   });
 });

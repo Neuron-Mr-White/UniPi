@@ -17,12 +17,14 @@ import {
   runBridgeAsync,
   runBridgeOutcome,
   runBridgeAsyncOutcome,
-  isMigrated,
-  markMigrated,
   normalizeMigrationResult,
-  deferredRetryDue,
-  bumpDeferredRetry,
-  getMemorySourceFingerprint,
+  readLedger,
+  writeLedger,
+  scanMemorySources,
+  ledgerDelta,
+  applyMigrationToLedger,
+  ledgerRecordStore,
+  bootstrapLedgerFromLegacyMarker,
   isPingVerified,
   markPingVerified,
   invalidatePingVerified,
@@ -311,40 +313,33 @@ export class MemoryStorage {
       markPingVerified();
     }
 
-    // Idempotent migration + automatic catch-up. The source fingerprint turns
-    // the old one-shot timestamp into a resumable state.
-    const sourceFingerprint = getMemorySourceFingerprint(getMemoryBaseDir());
+    // Incremental catch-up driven by the record-level ledger (L2). Ordinary
+    // store() writes update the ledger inline, so the only work here is
+    // out-of-band .md edits and records whose earlier upsert was deferred by
+    // lock contention. The whole-corpus fingerprint sweep is gone.
     const source = getMemoryBaseDir();
     try {
-      if (!isMigrated(sourceFingerprint)) {
-        // Full pass. First migrations can embed thousands of records, so give
-        // the bridge a bounded window rather than the per-operation 60s. Lock
-        // contention lands as `deferred` (not `failed`), so markMigrated can
-        // still record completion + a backoff'd retry list.
-        const raw = await runBridgeAsync<unknown>(install, this.palacePath, "migrate", {
-          source_dir: source,
-        }, 15 * 60_000);
-        const result = normalizeMigrationResult(raw);
-        if (result) markMigrated(sourceFingerprint, result);
-      } else {
-        // Already migrated for this fingerprint: retry only the keys that were
-        // deferred by lock contention, and only once their backoff elapsed.
-        const due = deferredRetryDue(sourceFingerprint);
-        if (due && due.length > 0) {
-          const raw = await runBridgeAsync<unknown>(install, this.palacePath, "migrate", {
-            source_dir: source,
-            only: due,
-          }, 15 * 60_000);
-          const result = normalizeMigrationResult(raw);
-          // Re-record completion (clears/refreshes the deferred set + backoff)
-          // only when nothing genuinely failed; otherwise push the window out.
-          if (result && result.failed === 0) markMigrated(sourceFingerprint, result);
-          else bumpDeferredRetry(sourceFingerprint);
-        }
-      }
+      // One-time: seed the ledger from a completed legacy marker so existing
+      // installs do not re-migrate everything on the first ledger-era boot.
+      bootstrapLedgerFromLegacyMarker(source);
+
+      const ledger = readLedger();
+      const scanned = scanMemorySources(source);
+      const scannedByKey = new Map(scanned.map((r) => [r.key, r.hash]));
+      const { keys, firstRun } = ledgerDelta(scanned, ledger);
+      if (keys.length === 0) return; // fully in sync
+
+      // First ever ledger population runs a full pass (source_dir only);
+      // otherwise target just the delta so we never re-sweep the corpus.
+      const args: Record<string, unknown> = firstRun
+        ? { source_dir: source }
+        : { source_dir: source, only: keys };
+      const raw = await runBridgeAsync<unknown>(install, this.palacePath, "migrate", args, 15 * 60_000);
+      const result = normalizeMigrationResult(raw);
+      if (result) writeLedger(applyMigrationToLedger(ledger, result, scannedByKey));
     } catch {
       // Palace remains available for current writes; durable markdown sources
-      // are untouched and migration retries on a later session.
+      // are untouched and catch-up retries on a later session.
     }
   }
 
@@ -384,7 +379,7 @@ export class MemoryStorage {
    * consistent and durable as a fallback source.
    */
   private storeMempalace(record: MemoryRecord): void {
-    this.memPalaceCall("store", {
+    const stored = this.memPalaceCall("store", {
       record: {
         id: record.id,
         title: record.title,
@@ -398,13 +393,24 @@ export class MemoryStorage {
       },
     });
     // Markdown tier (durable human copy + fallback source).
+    let mdPath: string | null = null;
     try {
-      const mdPath = path.join(this.scopeDir, `${record.id}.md`);
+      mdPath = path.join(this.scopeDir, `${record.id}.md`);
       const dir = path.dirname(mdPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       writeMemoryFile(mdPath, record);
     } catch {
       // Palace write succeeded; markdown is best-effort.
+    }
+    // L2: only record the ledger when the palace upsert actually succeeded
+    // (the bridge returns an object on success, null on transient/failed). A
+    // skipped ledger write means the incremental catch-up re-attempts this
+    // record later — we never claim an unsynced record as synced.
+    if (stored !== null && mdPath !== null) {
+      try {
+        const bytes = fs.readFileSync(mdPath, "utf-8");
+        ledgerRecordStore(`${record.project}/${record.id}`, bytes);
+      } catch { /* ledger is best-effort; delta will catch it next boot */ }
     }
   }
 
