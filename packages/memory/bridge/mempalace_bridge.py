@@ -46,6 +46,15 @@ except Exception:  # pragma: no cover
 MEMORY_TYPES = {"preference", "decision", "pattern", "summary"}
 MIGRATION_AGENT = "unipi-memory-bridge"
 
+# MemPalace's per-palace mine lock is non-blocking: when a daemon or another
+# writer holds it, upserts raise MineAlreadyRunning (message "... is held by
+# PID ..."). That is transient contention, not a data error.
+_TRANSIENT_LOCK_RE = re.compile(r"MineAlreadyRunning|is held by", re.IGNORECASE)
+
+
+def _is_transient_lock_error(exc: Exception) -> bool:
+    return bool(_TRANSIENT_LOCK_RE.search(f"{type(exc).__name__}: {exc}"))
+
 
 # ---------------------------------------------------------------------------
 # ID + URI helpers (mirror mempalace.ids when available, else deterministic fallback)
@@ -492,18 +501,39 @@ class Bridge:
             synced += 1
         return synced
 
-    def migrate(self, source_dir: str, project_filter: list[str] | None = None) -> dict[str, Any]:
+    def migrate(
+        self,
+        source_dir: str,
+        project_filter: list[str] | None = None,
+        only: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Idempotently import and then verify every discovered UniPi record.
 
         Migration callers must not infer success merely from a bridge process
         exiting cleanly. Return explicit discovery/failure/verification counts
         so UniPi only writes its completion marker after full verification.
+
+        Failures are split into two classes:
+        - ``deferred``: transient palace-lock contention (``MineAlreadyRunning``)
+          while a daemon/other writer holds the mine lock. The record is
+          untouched and simply needs retrying later; it is NOT a data error.
+        - ``failed``: a genuine per-record error (malformed record, backend
+          fault). The completion marker must never advance over these.
+
+        ``only`` optionally restricts the pass to a set of ``"project/id"`` keys
+        (targeted retry of previously deferred records) so a catch-up does not
+        re-sweep the entire corpus.
         """
         records = discover_legacy_memories(Path(source_dir), project_filter)
+        if only:
+            wanted = set(only)
+            records = [r for r in records if f"{r['project']}/{r['id']}" in wanted]
         imported = 0
         skipped = 0
         failed = 0
+        deferred = 0
         errors: list[str] = []
+        deferred_keys: list[str] = []
         by_project: dict[str, int] = {}
         expected = {(rec["project"], rec["id"]) for rec in records}
 
@@ -534,11 +564,19 @@ class Bridge:
                 existing_docs[key] = expected_doc
                 by_project[rec["project"]] = by_project.get(rec["project"], 0) + 1
             except Exception as exc:
-                failed += 1
-                if len(errors) < 20:
-                    errors.append(
-                        f"{rec['project']}/{rec['id']}: {type(exc).__name__}: {exc}"
-                    )
+                if _is_transient_lock_error(exc):
+                    # Palace held by a mine/daemon: the record is untouched and
+                    # just needs a later retry. Record the key, do not count it
+                    # as a data failure (which would block the completion marker
+                    # forever whenever a daemon is running).
+                    deferred += 1
+                    deferred_keys.append(f"{rec['project']}/{rec['id']}")
+                else:
+                    failed += 1
+                    if len(errors) < 20:
+                        errors.append(
+                            f"{rec['project']}/{rec['id']}: {type(exc).__name__}: {exc}"
+                        )
 
         # Re-read after writes and verify exact durable documents, not just
         # optimistic in-memory bookkeeping or collection counts. A palace may
@@ -574,9 +612,11 @@ class Bridge:
             "updated": imported,
             "skipped": skipped,
             "failed": failed,
+            "deferred": deferred,
             "verified": verified,
             "projects": by_project,
             "errors": errors,
+            "deferred_keys": deferred_keys[:200],
         }
 
 
@@ -617,7 +657,7 @@ def main(argv: list[str]) -> int:
         "has_title": lambda: bridge.has_title(args["wing"], args["title"]),
         "find_similar": lambda: bridge.find_similar(args["wing"], args["title"], float(args.get("threshold", 0.6))),
         "sync_orphaned": lambda: bridge.sync_orphaned(args["project_dir"], args["wing"]),
-        "migrate": lambda: bridge.migrate(args["source_dir"], args.get("projects")),
+        "migrate": lambda: bridge.migrate(args["source_dir"], args.get("projects"), args.get("only")),
     }
     handler = handlers.get(cmd)
     if handler is None:

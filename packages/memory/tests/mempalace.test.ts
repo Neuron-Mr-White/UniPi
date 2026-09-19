@@ -8,7 +8,11 @@ import {
   MIGRATION_STATE_VERSION,
   compareVersions,
   getMemorySourceFingerprint,
+  bumpDeferredRetry,
+  deferredRetryDue,
   isMigrated,
+  isMigrationComplete,
+  normalizeMigrationResult,
   isTransientBridgeError,
   isUpdateCheckDue,
   markMigrated,
@@ -107,6 +111,55 @@ describe("MemPalace migration state", () => {
     assert.equal(state?.result.verified, 2);
   });
 
+  it("accepts a run whose only shortfall is transiently deferred records", () => {
+    const flag = join(tempDir(), ".mempalace-migrated");
+    const now = 1_000_000;
+    const result: MigrationResult = {
+      discovered: 3, imported: 1, updated: 1, skipped: 1, failed: 0,
+      deferred: 1, verified: 2, deferredKeys: ["proj/a"],
+    };
+    assert.equal(isMigrationComplete(result), true);
+    assert.equal(markMigrated("fp", result, flag, now), true);
+    const state = readMigrationState(flag);
+    assert.deepEqual(state?.deferredKeys, ["proj/a"]);
+    assert.equal(state?.attempts, 1);
+    assert.equal(state?.retryAfter, now + 15 * 60_000); // first backoff step
+    // isMigrated is true (complete), but the deferred key is due only later.
+    assert.equal(isMigrated("fp", flag), true);
+    assert.equal(deferredRetryDue("fp", flag, now + 60_000), null); // inside backoff
+    assert.deepEqual(deferredRetryDue("fp", flag, now + 16 * 60_000), ["proj/a"]);
+  });
+
+  it("still refuses a run with a genuine failure", () => {
+    const flag = join(tempDir(), ".mempalace-migrated");
+    const result: MigrationResult = {
+      discovered: 2, imported: 0, updated: 0, skipped: 1, failed: 1, deferred: 0, verified: 1,
+    };
+    assert.equal(isMigrationComplete(result), false);
+    assert.equal(markMigrated("fp", result, flag), false);
+    assert.equal(readMigrationState(flag), null);
+  });
+
+  it("escalates the deferred backoff on repeated contention", () => {
+    const flag = join(tempDir(), ".mempalace-migrated");
+    const now = 5_000_000;
+    const deferredResult: MigrationResult = {
+      discovered: 1, imported: 0, updated: 0, skipped: 0, failed: 0,
+      deferred: 1, verified: 0, deferredKeys: ["p/x"],
+    };
+    markMigrated("fp", deferredResult, flag, now);
+    assert.equal(readMigrationState(flag)?.attempts, 1);
+    // A second complete-with-deferral run bumps attempts → longer backoff.
+    markMigrated("fp", deferredResult, flag, now);
+    assert.equal(readMigrationState(flag)?.attempts, 2);
+    assert.equal(readMigrationState(flag)?.retryAfter, now + 60 * 60_000);
+    // bumpDeferredRetry pushes the window without clearing the keys.
+    bumpDeferredRetry("fp", flag, now);
+    const s = readMigrationState(flag);
+    assert.equal(s?.attempts, 3);
+    assert.deepEqual(s?.deferredKeys, ["p/x"]);
+  });
+
   it("changes source fingerprint when durable memory sources change", () => {
     const root = tempDir();
     const project = join(root, "project");
@@ -167,6 +220,24 @@ describe("MemPalace auto-update", () => {
     } finally {
       updateEmbeddingConfig({ mempalaceAutoUpdate: true });
     }
+  });
+});
+
+describe("migration result normalization", () => {
+  it("maps the bridge snake_case deferred_keys into deferredKeys", () => {
+    const raw = {
+      discovered: 3979, imported: 0, updated: 0, skipped: 3659, failed: 0,
+      deferred: 320, verified: 3659, errors: [], deferred_keys: ["a/b", "c/d"],
+    };
+    const r = normalizeMigrationResult(raw);
+    assert.equal(r?.deferred, 320);
+    assert.deepEqual(r?.deferredKeys, ["a/b", "c/d"]);
+    assert.equal(isMigrationComplete(r!), true);
+  });
+
+  it("returns null for a missing or malformed payload", () => {
+    assert.equal(normalizeMigrationResult(null), null);
+    assert.equal(normalizeMigrationResult({ nope: 1 }), null);
   });
 });
 

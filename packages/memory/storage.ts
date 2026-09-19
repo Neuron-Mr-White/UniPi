@@ -19,6 +19,9 @@ import {
   runBridgeAsyncOutcome,
   isMigrated,
   markMigrated,
+  normalizeMigrationResult,
+  deferredRetryDue,
+  bumpDeferredRetry,
   getMemorySourceFingerprint,
   isPingVerified,
   markPingVerified,
@@ -29,7 +32,6 @@ import {
   type MempalaceSearchResult,
   type MempalaceListItem,
   type MempalaceListItemAll,
-  type MigrationResult,
 } from "./mempalace.js";
 
 
@@ -310,28 +312,39 @@ export class MemoryStorage {
     }
 
     // Idempotent migration + automatic catch-up. The source fingerprint turns
-    // the old one-shot timestamp into a resumable state: new/changed markdown
-    // or SQLite sources trigger another verified upsert pass. Never mark a
-    // failed/partial run complete; it will retry on a later session.
+    // the old one-shot timestamp into a resumable state.
     const sourceFingerprint = getMemorySourceFingerprint(getMemoryBaseDir());
-    if (!isMigrated(sourceFingerprint)) {
-      try {
-        // First migrations can embed thousands of records. Give the bridge a
-        // practical bounded window rather than the normal per-operation 60s.
-        const result = await runBridgeAsync<MigrationResult>(install, this.palacePath, "migrate", {
-          source_dir: getMemoryBaseDir(),
+    const source = getMemoryBaseDir();
+    try {
+      if (!isMigrated(sourceFingerprint)) {
+        // Full pass. First migrations can embed thousands of records, so give
+        // the bridge a bounded window rather than the per-operation 60s. Lock
+        // contention lands as `deferred` (not `failed`), so markMigrated can
+        // still record completion + a backoff'd retry list.
+        const raw = await runBridgeAsync<unknown>(install, this.palacePath, "migrate", {
+          source_dir: source,
         }, 15 * 60_000);
-        if (
-          result &&
-          result.failed === 0 &&
-          result.verified === result.discovered
-        ) {
-          markMigrated(sourceFingerprint, result);
+        const result = normalizeMigrationResult(raw);
+        if (result) markMigrated(sourceFingerprint, result);
+      } else {
+        // Already migrated for this fingerprint: retry only the keys that were
+        // deferred by lock contention, and only once their backoff elapsed.
+        const due = deferredRetryDue(sourceFingerprint);
+        if (due && due.length > 0) {
+          const raw = await runBridgeAsync<unknown>(install, this.palacePath, "migrate", {
+            source_dir: source,
+            only: due,
+          }, 15 * 60_000);
+          const result = normalizeMigrationResult(raw);
+          // Re-record completion (clears/refreshes the deferred set + backoff)
+          // only when nothing genuinely failed; otherwise push the window out.
+          if (result && result.failed === 0) markMigrated(sourceFingerprint, result);
+          else bumpDeferredRetry(sourceFingerprint);
         }
-      } catch {
-        // Palace remains available for current writes; durable markdown/SQLite
-        // sources are untouched and migration retries because no state is set.
       }
+    } catch {
+      // Palace remains available for current writes; durable markdown sources
+      // are untouched and migration retries on a later session.
     }
   }
 

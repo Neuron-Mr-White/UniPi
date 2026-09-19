@@ -39,8 +39,12 @@ export interface MigrationResult {
   updated: number;
   skipped: number;
   failed: number;
+  /** Records left untouched by transient palace-lock contention (retryable). */
+  deferred?: number;
   verified: number;
   errors?: string[];
+  /** "project/id" keys deferred by lock contention, for a targeted retry. */
+  deferredKeys?: string[];
 }
 
 export interface MigrationState {
@@ -48,6 +52,54 @@ export interface MigrationState {
   completedAt: string;
   sourceFingerprint: string;
   result: MigrationResult;
+  /** Keys still awaiting a retry after transient lock contention. */
+  deferredKeys?: string[];
+  /** Consecutive deferred-retry rounds, for exponential backoff. */
+  attempts?: number;
+  /** Epoch ms; do not retry deferred keys before this. */
+  retryAfter?: number;
+}
+
+/** Deferred-retry backoff schedule: 15m → 1h → 6h → 24h (capped). */
+const DEFERRAL_BACKOFF_MS = [15 * 60_000, 60 * 60_000, 6 * 60 * 60_000, 24 * 60 * 60_000];
+
+function deferralBackoffMs(attempts: number): number {
+  const idx = Math.min(Math.max(attempts, 1), DEFERRAL_BACKOFF_MS.length) - 1;
+  return DEFERRAL_BACKOFF_MS[idx] ?? DEFERRAL_BACKOFF_MS[DEFERRAL_BACKOFF_MS.length - 1]!;
+}
+
+/** A migrate outcome is complete when nothing genuinely failed and every
+ *  discovered record is either verified or transiently deferred. */
+export function isMigrationComplete(result: MigrationResult): boolean {
+  return result.failed === 0 && result.verified + (result.deferred ?? 0) === result.discovered;
+}
+
+/**
+ * Normalize the raw bridge migrate payload (snake_case `deferred_keys`) into a
+ * `MigrationResult`. Returns null for a missing/malformed payload so callers
+ * never advance the marker on garbage.
+ */
+export function normalizeMigrationResult(raw: unknown): MigrationResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  if (typeof r.discovered !== "number") return null;
+  const keys = Array.isArray(r.deferredKeys)
+    ? r.deferredKeys
+    : Array.isArray(r.deferred_keys)
+      ? r.deferred_keys
+      : [];
+  return {
+    discovered: num(r.discovered),
+    imported: num(r.imported),
+    updated: num(r.updated),
+    skipped: num(r.skipped),
+    failed: num(r.failed),
+    deferred: num(r.deferred),
+    verified: num(r.verified),
+    errors: Array.isArray(r.errors) ? (r.errors as string[]) : undefined,
+    deferredKeys: keys.filter((k): k is string => typeof k === "string"),
+  };
 }
 
 let cachedBridgePath: string | null | undefined;
@@ -312,7 +364,9 @@ export function getMemorySourceFingerprint(
   return hash.digest("hex");
 }
 
-/** Read a verified v2 migration state. Legacy timestamp markers return null. */
+/** Read a verified migration state. Legacy timestamp markers, wrong-version,
+ *  malformed, or non-complete states all return null (→ treated as not
+ *  migrated). A state with transiently-deferred records is still complete. */
 export function readMigrationState(flagPath = MIGRATED_FLAG): MigrationState | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(flagPath, "utf-8")) as MigrationState;
@@ -321,13 +375,52 @@ export function readMigrationState(flagPath = MIGRATED_FLAG): MigrationState | n
       typeof parsed.completedAt !== "string" ||
       typeof parsed.sourceFingerprint !== "string" ||
       !parsed.result ||
-      parsed.result.failed !== 0 ||
-      parsed.result.verified !== parsed.result.discovered
+      !isMigrationComplete(parsed.result)
     ) return null;
     return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * The deferred "project/id" keys due for a targeted retry now, or null when
+ * there is nothing to retry (no complete marker for this fingerprint, no
+ * deferred keys, or the backoff window has not elapsed).
+ */
+export function deferredRetryDue(
+  sourceFingerprint = getMemorySourceFingerprint(),
+  flagPath = MIGRATED_FLAG,
+  now = Date.now(),
+): string[] | null {
+  const state = readMigrationState(flagPath);
+  if (!state || state.sourceFingerprint !== sourceFingerprint) return null;
+  const keys = state.deferredKeys ?? [];
+  if (keys.length === 0) return null;
+  if (typeof state.retryAfter === "number" && now < state.retryAfter) return null;
+  return keys;
+}
+
+/**
+ * Push the deferred-retry schedule forward without changing completion — used
+ * when a targeted retry could not be recorded as complete (e.g. it surfaced a
+ * genuine failure) so we do not re-attempt it on every boot.
+ */
+export function bumpDeferredRetry(
+  sourceFingerprint: string,
+  flagPath = MIGRATED_FLAG,
+  now = Date.now(),
+): void {
+  const state = readMigrationState(flagPath);
+  if (!state || state.sourceFingerprint !== sourceFingerprint) return;
+  const attempts = (state.attempts ?? 0) + 1;
+  const next: MigrationState = { ...state, attempts, retryAfter: now + deferralBackoffMs(attempts) };
+  try {
+    fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+    const temp = `${flagPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify(next, null, 2), "utf-8");
+    fs.renameSync(temp, flagPath);
+  } catch { /* best effort */ }
 }
 
 /** Is the palace verified against the current durable source set? */
@@ -338,20 +431,35 @@ export function isMigrated(
   return readMigrationState(flagPath)?.sourceFingerprint === sourceFingerprint;
 }
 
-/** Mark migration complete only after the caller has verified every record. */
+/**
+ * Mark migration complete. Accepts a run where every discovered record is
+ * verified or transiently deferred (lock contention) and nothing genuinely
+ * failed. When records are deferred, persist their keys plus an exponential
+ * backoff `retryAfter` so a later session retries only those keys instead of
+ * re-sweeping the corpus. A genuine failure (`failed > 0`) or an incomplete
+ * run is refused, so the marker never advances over lost data.
+ */
 export function markMigrated(
   sourceFingerprint: string,
   result: MigrationResult,
   flagPath = MIGRATED_FLAG,
+  now = Date.now(),
 ): boolean {
-  if (result.failed !== 0 || result.verified !== result.discovered) return false;
+  if (!isMigrationComplete(result)) return false;
+  const deferred = result.deferred ?? 0;
+  const prev = readMigrationState(flagPath);
+  const prevAttempts = prev?.sourceFingerprint === sourceFingerprint ? prev.attempts ?? 0 : 0;
+  const attempts = deferred > 0 ? prevAttempts + 1 : 0;
   try {
     fs.mkdirSync(path.dirname(flagPath), { recursive: true });
     const state: MigrationState = {
       version: MIGRATION_STATE_VERSION,
-      completedAt: new Date().toISOString(),
+      completedAt: new Date(now).toISOString(),
       sourceFingerprint,
       result,
+      deferredKeys: deferred > 0 ? (result.deferredKeys ?? []) : [],
+      attempts,
+      ...(deferred > 0 ? { retryAfter: now + deferralBackoffMs(attempts) } : {}),
     };
     const temp = `${flagPath}.${process.pid}.tmp`;
     fs.writeFileSync(temp, JSON.stringify(state, null, 2), "utf-8");
