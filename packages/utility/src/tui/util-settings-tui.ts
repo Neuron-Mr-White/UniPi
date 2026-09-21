@@ -101,6 +101,9 @@ export class UtilSettingsTui implements Component {
   onClose?: () => void;
   requestRender?: () => void;
 
+  /** Called after every save; commands use it to react (e.g. hide the badge). */
+  onSettingsSaved?: (settings: UtilSettings) => void;
+
   constructor() {
     this.settings = readUtilSettings();
     this.models = readModelCache();
@@ -198,6 +201,7 @@ export class UtilSettingsTui implements Component {
 
   private save(): void {
     writeUtilSettings(this.settings);
+    this.onSettingsSaved?.(this.settings);
   }
 
   render(width: number): string[] {

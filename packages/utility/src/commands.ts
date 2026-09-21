@@ -87,6 +87,9 @@ export function registerNameBadgeCommands(
         if ("autoGen|badgeEnabled|agentTool|herdrSync".includes(key)) {
           const boolValue = value === "on" || value === "true" || value === "1";
           updateBadgeSetting(key, boolValue);
+          // The visible overlay must react, not just the file — this was the
+          // "cannot be disabled" bug: the flag saved but the badge stayed.
+          if (key === "badgeEnabled" && !boolValue) state.hide();
           ctx.ui.notify(`Badge ${key} set to ${boolValue}`, "info");
           return;
         }
@@ -112,6 +115,9 @@ export function registerNameBadgeCommands(
         (tui, _theme, _keybindings, done) => {
           const overlay = new UtilSettingsTui();
           overlay.onClose = () => done(undefined);
+          overlay.onSettingsSaved = (saved) => {
+            if (!saved.badge.badgeEnabled) state.hide();
+          };
           overlay.requestRender = () => tui.requestRender();
           return {
             render: (w: number) => overlay.render(w),
@@ -201,6 +207,9 @@ export function registerNameBadgeCommands(
         (tui, _theme, _keybindings, done) => {
           const overlay = new UtilSettingsTui();
           overlay.onClose = () => done(undefined);
+          overlay.onSettingsSaved = (saved) => {
+            if (!saved.badge.badgeEnabled) state.hide();
+          };
           overlay.requestRender = () => tui.requestRender();
           return {
             render: (w: number) => overlay.render(w),

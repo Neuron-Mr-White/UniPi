@@ -11,6 +11,7 @@ import type { FooterSegment, FooterSegmentContext, RenderedSegment, SemanticColo
 import { applyColor } from "../rendering/theme.js";
 import { getIcon } from "../rendering/icons.js";
 import { tpsTracker } from "../tps-tracker.js";
+import { LONG_HORIZON_SEGMENTS } from "./long-horizon.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -403,6 +404,7 @@ export const CORE_SEGMENTS: FooterSegment[] = [
   { id: "session", label: "Session", shortLabel: "SES", description: "Session identifier", zone: "left", render: renderSessionSegment, defaultShow: false },
   { id: "hostname", label: "Hostname", shortLabel: "HST", description: "Machine hostname", zone: "left", render: renderHostnameSegment, defaultShow: false },
   { id: "uni", label: "Unipi", shortLabel: "UNI", description: "Unipi brand mark", zone: "left", render: renderUniBrandSegment, defaultShow: true },
+  ...LONG_HORIZON_SEGMENTS,
   { id: "directory", label: "Directory", shortLabel: "DIR", description: "Current directory name", zone: "left", render: renderDirectorySegment, defaultShow: true },
   { id: "clock", label: "Clock", shortLabel: "CLK", description: "Current wall time (HH:MM:SS)", zone: "right", render: renderClockSegment, defaultShow: true },
   { id: "duration", label: "Duration", shortLabel: "DUR", description: "Session duration", zone: "right", render: renderDurationSegment, defaultShow: true },
