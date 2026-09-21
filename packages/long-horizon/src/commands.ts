@@ -19,7 +19,7 @@ import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
 import type { OwnerCoordinator } from "./owner.js";
 import type { RalphLoop } from "./engine/ralph.js";
-import { loadSettings, saveSettings } from "./settings.js";
+import { loadSettings } from "./settings.js";
 
 export interface LongHorizonCommandDeps {
   readonly gate: Gate;

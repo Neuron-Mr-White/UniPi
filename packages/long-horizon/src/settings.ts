@@ -33,8 +33,6 @@ export interface LongHorizonSettings {
   defaultMode: LhMode;
   /** Model used for goal-completion verification (empty = session model). */
   verifierModel: string;
-  /** Show the ⟐ decision badge entry each turn (default true). */
-  showDecisionBadge: boolean;
 }
 
 export const DEFAULT_SETTINGS: LongHorizonSettings = {
@@ -47,7 +45,6 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
   },
   defaultMode: "goal",
   verifierModel: "",
-  showDecisionBadge: true,
 };
 
 const settingsPath = (): string => join(homedir(), ".pi", "agent", "settings.json");
@@ -95,8 +92,6 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
       ? (stored.defaultMode as LhMode)
       : DEFAULT_SETTINGS.defaultMode,
     verifierModel: typeof stored.verifierModel === "string" ? stored.verifierModel : "",
-    showDecisionBadge:
-      typeof stored.showDecisionBadge === "boolean" ? stored.showDecisionBadge : DEFAULT_SETTINGS.showDecisionBadge,
   };
 }
 
