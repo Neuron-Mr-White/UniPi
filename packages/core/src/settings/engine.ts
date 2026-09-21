@@ -11,7 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { globalSettingsPath, migrationLedgerPath, projectLedgerPath, projectSettingsPath } from "./paths.js";
-import { isMigrated, migrateGlobalScope, migrateProjectScope } from "./migrations.js";
+import { importGlobalScope, importProjectScope, isMigrated } from "./migrations.js";
 import { tryRead, writeJson } from "../../utils.js";
 
 export interface SettingsDefinition {
@@ -71,12 +71,18 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
 let globalGateDone = false;
 const projectGatesDone = new Set<string>();
 
+/** Test hook: forget gate latches so a fresh process start can be simulated. */
+export function resetSettingsGates(): void {
+  globalGateDone = false;
+  projectGatesDone.clear();
+}
+
 function runGates(cwd: string): void {
   if (!globalGateDone) {
     globalGateDone = true;
     if (!isMigrated(migrationLedgerPath())) {
       try {
-        migrateGlobalScope();
+        importGlobalScope();
       } catch {
         // Failures never block reads; legacy sources remain for repair.
       }
@@ -86,7 +92,7 @@ function runGates(cwd: string): void {
     projectGatesDone.add(cwd);
     if (!isMigrated(projectLedgerPath(cwd))) {
       try {
-        migrateProjectScope(cwd);
+        importProjectScope(cwd);
       } catch {
         // Same: repairable via /unipi:settings migrate.
       }

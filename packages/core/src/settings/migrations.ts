@@ -30,14 +30,19 @@ import { compareVersions, tryRead, writeJson } from "../../utils.js";
 export const CURRENT_SETTINGS_VERSION = "3.0.0";
 
 export interface MigrationLedger {
-  /** Semver of the layout this scope is on; >= CURRENT skips migration. */
+  /** Semver of the layout this scope is on; >= CURRENT skips import. */
   readonly migrated_version: string;
+  /**
+   * False after import (legacy copies remain — v2 installs keep working).
+   * True after finalize (legacy stripped/deleted — the explicit step).
+   */
+  readonly finalized: boolean;
   readonly appliedAt: string;
   readonly log: MigrationLogEntry[];
 }
 
 export interface MigrationLogEntry {
-  action: "moved" | "stripped-key" | "conflict:kept-existing" | "skipped:missing" | "removed-legacy";
+  action: "copied" | "moved" | "stripped-key" | "conflict:kept-existing" | "skipped:missing" | "removed-legacy";
   from: string;
   to?: string;
 }
@@ -83,6 +88,17 @@ export function isMigrated(ledgerPath: string): boolean {
   }
 }
 
+function readLedger(ledgerPath: string): MigrationLedger | null {
+  const raw = tryRead(ledgerPath);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as MigrationLedger;
+    return typeof parsed?.migrated_version === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Resolved at call time — HOME flips between tests (and users). */
 function piSettingsPath(): string {
   return join(homedir(), ".pi", "agent", "settings.json");
@@ -100,73 +116,67 @@ function backupFile(backupDir: string, file: string): void {
   cpSync(file, target, { force: true });
 }
 
-function moveWithSafety(move: Move, backupDir: string, log: MigrationLogEntry[]): boolean {
+/**
+ * IMPORT (copy-only): legacy → target, legacy left in place. v2 installs
+ * sharing this machine keep working off the originals.
+ */
+function copyWithSafety(move: Move, log: MigrationLogEntry[]): boolean {
   if (!existsSync(move.from)) {
     log.push({ action: "skipped:missing", from: move.from });
     return false;
   }
-  backupFile(backupDir, move.from);
   if (existsSync(move.to)) {
     log.push({ action: "conflict:kept-existing", from: move.from, to: move.to });
     return false;
   }
   ensureParent(move.to);
-  const content = readFileSync(move.from, "utf-8");
-  writeFileSync(move.to, content, "utf-8");
-  if (tryRead(move.to) === content) {
-    rmSync(move.from);
-    log.push({ action: "moved", from: move.from, to: move.to });
-    log.push({ action: "removed-legacy", from: move.from });
-    return true;
-  }
-  log.push({ action: "conflict:kept-existing", from: move.from, to: move.to });
-  return false;
-}
-
-function writeLedger(path: string, log: MigrationLogEntry[]): void {
-  writeJson(path, {
-    migrated_version: CURRENT_SETTINGS_VERSION,
-    appliedAt: new Date().toISOString(),
-    log,
-  } satisfies MigrationLedger);
+  writeFileSync(move.to, readFileSync(move.from, "utf-8"), "utf-8");
+  log.push({ action: "copied", from: move.from, to: move.to });
+  return true;
 }
 
 /**
- * Migrate the GLOBAL scope (layout A keys out of pi's settings.json).
- * Gated by ~/.unipi/config/settings-version.json → migrated_version.
+ * FINALIZE (destructive): delete a legacy file after a verified backup.
+ * Only called from the explicit finalize entry points.
  */
-export function migrateGlobalScope(): MigrationResult {
+function removeLegacyAfterBackup(file: string, backupDir: string, log: MigrationLogEntry[]): void {
+  if (!existsSync(file)) return;
+  backupFile(backupDir, file);
+  const content = readFileSync(file, "utf-8");
+  const backupCopy = join(backupDir, file.startsWith(homedir()) ? file.slice(homedir().length) : join("abs", file));
+  if (existsSync(backupCopy) && tryRead(backupCopy) === content) {
+    rmSync(file);
+    log.push({ action: "removed-legacy", from: file });
+  }
+}
+
+/**
+ * IMPORT the global scope (copy-only). Layout A keys are COPIED into module
+ * dirs; pi's settings.json and its unipi.* keys are left untouched so v2
+ * installs sharing this machine keep working. Idempotent via the marker.
+ */
+export function importGlobalScope(): MigrationResult {
   const ledgerPath = migrationLedgerPath();
-  if (isMigrated(ledgerPath)) {
-    return {
-      ran: false,
-      reason: "already-migrated",
-      ledger: {
-        migrated_version: CURRENT_SETTINGS_VERSION,
-        appliedAt: "",
-        log: [],
-      },
-    };
+  const existing = readLedger(ledgerPath);
+  if (existing && compareVersions(existing.migrated_version, CURRENT_SETTINGS_VERSION) >= 0) {
+    return { ran: false, reason: "already-migrated", ledger: existing };
   }
 
-  const backupDir = migrationBackupDir("pre-3.0.0");
   const log: MigrationLogEntry[] = [];
   let touched = false;
-  mkdirSync(backupDir, { recursive: true });
 
   const piSettingsFile = piSettingsPath();
   if (existsSync(piSettingsFile)) {
-    backupFile(backupDir, piSettingsFile);
     try {
       const raw = JSON.parse(readFileSync(piSettingsFile, "utf-8")) as Record<string, unknown>;
       const unipi = raw.unipi;
       if (unipi && typeof unipi === "object") {
-        const unipiRecord = unipi as Record<string, unknown>;
-        const keysSeen = new Set<string>();
         for (const { namespace, key } of A_KEY_MODULES) {
-          const value = unipiRecord[key];
-          if (value === undefined) continue;
-          keysSeen.add(key);
+          const value = (unipi as Record<string, unknown>)[key];
+          if (value === undefined) {
+            log.push({ action: "skipped:missing", from: `pi-settings:unipi.${key}` });
+            continue;
+          }
           const target = globalSettingsPath(namespace);
           if (existsSync(target)) {
             log.push({ action: "conflict:kept-existing", from: `pi-settings:unipi.${key}`, to: target });
@@ -174,10 +184,55 @@ export function migrateGlobalScope(): MigrationResult {
           }
           ensureParent(target);
           writeJson(target, value);
-          log.push({ action: "moved", from: `pi-settings:unipi.${key}`, to: target });
+          log.push({ action: "copied", from: `pi-settings:unipi.${key}`, to: target });
           touched = true;
         }
-        // Strip only the keys we own; leave anything unknown in place.
+      }
+    } catch {
+      // Unreadable pi settings: leave untouched; module defaults apply.
+    }
+  }
+
+  const ledger: MigrationLedger = {
+    migrated_version: CURRENT_SETTINGS_VERSION,
+    finalized: false,
+    appliedAt: new Date().toISOString(),
+    log,
+  };
+  writeJson(ledgerPath, ledger);
+  if (!touched && log.length === 0) {
+    return { ran: false, reason: "nothing-to-migrate", ledger };
+  }
+  return { ran: true, ledger };
+}
+
+/**
+ * FINALIZE the global scope (explicit, destructive): backup + strip the
+ * unipi.* keys we own from pi's settings.json. Legacy project override
+ * files are NOT touched here (they belong to their project finalize).
+ */
+export function finalizeGlobalScope(): { ran: boolean; ledger: MigrationLedger } {
+  const ledgerPath = migrationLedgerPath();
+  const existing = readLedger(ledgerPath);
+  if (existing?.finalized) {
+    return { ran: false, ledger: existing };
+  }
+  const backupDir = migrationBackupDir("pre-3.0.0");
+  mkdirSync(backupDir, { recursive: true });
+  const log: MigrationLogEntry[] = [];
+
+  const piSettingsFile = piSettingsPath();
+  if (existsSync(piSettingsFile)) {
+    try {
+      backupFile(backupDir, piSettingsFile);
+      const raw = JSON.parse(readFileSync(piSettingsFile, "utf-8")) as Record<string, unknown>;
+      const unipi = raw.unipi;
+      if (unipi && typeof unipi === "object") {
+        const unipiRecord = unipi as Record<string, unknown>;
+        const keysSeen = new Set<string>();
+        for (const { key } of A_KEY_MODULES) {
+          if (unipiRecord[key] !== undefined) keysSeen.add(key);
+        }
         if (keysSeen.size > 0) {
           for (const key of keysSeen) delete unipiRecord[key];
           if (Object.keys(unipiRecord).length === 0) delete raw.unipi;
@@ -186,63 +241,84 @@ export function migrateGlobalScope(): MigrationResult {
         }
       }
     } catch {
-      // Unreadable pi settings: leave untouched; module defaults apply.
+      // Unreadable: nothing to strip.
     }
   }
 
-  writeLedger(ledgerPath, log);
-  if (!touched && log.length === 0) {
-    return {
-      ran: false,
-      reason: "nothing-to-migrate",
-      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
-    };
-  }
-  return {
-    ran: true,
-    ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+  const ledger: MigrationLedger = {
+    migrated_version: CURRENT_SETTINGS_VERSION,
+    finalized: true,
+    appliedAt: new Date().toISOString(),
+    log,
   };
+  writeJson(ledgerPath, ledger);
+  return { ran: true, ledger };
 }
 
 /**
- * Migrate the PROJECT scope (layout C override shapes). Gated by its own
- * marker at <cwd>/.unipi/config/settings-version.json — a project that
- * never opens never migrates.
+ * IMPORT the project scope (copy-only): legacy override shapes are COPIED
+ * into <module>/config.json; the originals remain for v2 sessions in this
+ * project. Idempotent via the project marker.
  */
-export function migrateProjectScope(cwd: string): MigrationResult {
+export function importProjectScope(cwd: string): MigrationResult {
   const ledgerPath = projectLedgerPath(cwd);
-  if (isMigrated(ledgerPath)) {
-    return {
-      ran: false,
-      reason: "already-migrated",
-      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: "", log: [] },
-    };
+  const existing = readLedger(ledgerPath);
+  if (existing && compareVersions(existing.migrated_version, CURRENT_SETTINGS_VERSION) >= 0) {
+    return { ran: false, reason: "already-migrated", ledger: existing };
   }
 
-  const backupDir = join(projectSettingsRoot(cwd), ".backup", "pre-3.0.0");
   const log: MigrationLogEntry[] = [];
   let touched = false;
+  for (const { namespace, from } of C_OVERRIDE_MOVES) {
+    if (copyWithSafety({ from: join(cwd, from), to: join(projectSettingsRoot(cwd), namespace, "config.json") }, log)) {
+      touched = true;
+    }
+  }
+
+  const ledger: MigrationLedger = {
+    migrated_version: CURRENT_SETTINGS_VERSION,
+    finalized: false,
+    appliedAt: new Date().toISOString(),
+    log,
+  };
+  writeJson(ledgerPath, ledger);
+  if (!touched && log.length === 0) {
+    return { ran: false, reason: "nothing-to-migrate", ledger };
+  }
+  return { ran: true, ledger };
+}
+
+/**
+ * FINALIZE the project scope (explicit, destructive): backup + delete the
+ * legacy override files after verified copies exist at the new locations.
+ */
+export function finalizeProjectScope(cwd: string): { ran: boolean; ledger: MigrationLedger } {
+  const ledgerPath = projectLedgerPath(cwd);
+  const existing = readLedger(ledgerPath);
+  if (existing?.finalized) {
+    return { ran: false, ledger: existing };
+  }
+  const backupDir = join(projectSettingsRoot(cwd), ".backup", "pre-3.0.0");
   mkdirSync(backupDir, { recursive: true });
+  const log: MigrationLogEntry[] = [];
 
   for (const { namespace, from } of C_OVERRIDE_MOVES) {
-    const moved = moveWithSafety(
-      { from: join(cwd, from), to: join(projectSettingsRoot(cwd), namespace, "config.json") },
-      backupDir,
-      log,
-    );
-    if (moved) touched = true;
+    const legacyFile = join(cwd, from);
+    const target = join(projectSettingsRoot(cwd), namespace, "config.json");
+    // Only remove when the new location actually holds content.
+    if (existsSync(legacyFile) && existsSync(target)) {
+      removeLegacyAfterBackup(legacyFile, backupDir, log);
+    } else if (existsSync(legacyFile)) {
+      log.push({ action: "conflict:kept-existing", from: legacyFile, to: target });
+    }
   }
 
-  writeLedger(ledgerPath, log);
-  if (!touched && log.length === 0) {
-    return {
-      ran: false,
-      reason: "nothing-to-migrate",
-      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
-    };
-  }
-  return {
-    ran: true,
-    ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+  const ledger: MigrationLedger = {
+    migrated_version: CURRENT_SETTINGS_VERSION,
+    finalized: true,
+    appliedAt: new Date().toISOString(),
+    log,
   };
+  writeJson(ledgerPath, ledger);
+  return { ran: true, ledger };
 }

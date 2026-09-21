@@ -4,14 +4,17 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
-  migrateGlobalScope,
-  migrateProjectScope,
+  importGlobalScope,
+  importProjectScope,
+  finalizeGlobalScope,
+  finalizeProjectScope,
   CURRENT_SETTINGS_VERSION,
 } from "./src/settings/migrations.js";
 import {
   getSettings,
   listSettingsDefinitions,
   registerSettings,
+  resetSettingsGates,
   setSettings,
   settingsLayers,
 } from "./src/settings/engine.js";
@@ -30,6 +33,7 @@ function sandbox(): { home: string; cwd: string } {
   mkdirSync(join(home, ".pi", "agent"), { recursive: true });
   mkdirSync(cwd, { recursive: true });
   process.env.HOME = home;
+  resetSettingsGates(); // fresh process-start semantics per test
   return { home, cwd };
 }
 
@@ -57,25 +61,36 @@ test("layout A: unipi.* keys move to module dirs and are stripped from pi settin
     piNative: { model: "x" },
   });
 
-  const result = migrateGlobalScope();
+  const result = importGlobalScope();
   assert.equal(result.ran, true);
 
-  // Moved into module dirs.
+  // Copied into module dirs.
   assert.deepEqual(readJson(globalSettingsPath("long-horizon")), { judge: { enabled: true } });
   assert.deepEqual(readJson(globalSettingsPath("ask-user")), { enabled: false });
   // ask-user module dir uses kebab namespace.
   assert.equal(existsSync(globalSettingsPath("footer")), false); // absent key → skipped
 
-  // pi settings: our keys stripped, foreign keys and pi-native untouched.
+  // IMPORT IS COPY-ONLY: pi settings keeps ALL keys — a v2 install sharing
+  // this machine still reads its unipi.* view and keeps working.
   const piSettings = readJson(join(home, ".pi", "agent", "settings.json"));
-  assert.deepEqual(piSettings.piNative, { model: "x" }); // pi-native untouched
+  assert.deepEqual(piSettings.piNative, { model: "x" });
   assert.deepEqual((piSettings.unipi as Record<string, unknown>).foreignKey, { keep: true });
-  assert.equal((piSettings.unipi as Record<string, unknown>).longHorizon, undefined);
+  assert.deepEqual((piSettings.unipi as Record<string, unknown>).longHorizon, { judge: { enabled: true } });
+  assert.deepEqual((piSettings.unipi as Record<string, unknown>).askUser, { enabled: false });
 
-  // Ledger written with the moves logged.
+  // Ledger: imported but NOT finalized.
   const ledger = JSON.parse(readFileSync(migrationLedgerPath(), "utf-8"));
   assert.equal(ledger.migrated_version, CURRENT_SETTINGS_VERSION);
-  assert.ok(ledger.log.some((entry: { action: string; to?: string }) => entry.action === "moved" && entry.to === globalSettingsPath("long-horizon")));
+  assert.equal(ledger.finalized, false);
+  assert.ok(ledger.log.some((entry: { action: string; to?: string }) => entry.action === "copied" && entry.to === globalSettingsPath("long-horizon")));
+
+  // FINALIZE (explicit): our keys stripped, foreign keys stay, v2 view ends.
+  finalizeGlobalScope();
+  const afterFinalize = readJson(join(home, ".pi", "agent", "settings.json"));
+  assert.deepEqual((afterFinalize.unipi as Record<string, unknown>).foreignKey, { keep: true });
+  assert.equal((afterFinalize.unipi as Record<string, unknown>).longHorizon, undefined);
+  const finalizedLedger = JSON.parse(readFileSync(migrationLedgerPath(), "utf-8"));
+  assert.equal(finalizedLedger.finalized, true);
 
   restore(home, cwd);
 });
@@ -87,12 +102,17 @@ test("layout C: project override shapes unify into <module>/config.json", () => 
   writeFileSync(join(cwd, ".unipi", "fusion-preset.json"), '{"lead":"zai/glm-4.7"}');
   writeFileSync(join(cwd, ".unipi", "config", "background-tasks.json"), '{"maxTasks":9}');
 
-  const result = migrateProjectScope(cwd);
+  const result = importProjectScope(cwd);
   assert.equal(result.ran, true);
   assert.deepEqual(readJson(projectSettingsPath(cwd, "compactor")), { threshold: 80 });
   assert.deepEqual(readJson(projectSettingsPath(cwd, "fusion")), { lead: "zai/glm-4.7" });
   assert.deepEqual(readJson(projectSettingsPath(cwd, "background-tasks")), { maxTasks: 9 });
-  // Legacy shapes gone.
+  // IMPORT IS COPY-ONLY: legacy shapes remain for v2 sessions in this project.
+  assert.equal(existsSync(join(cwd, ".unipi", "config", "compactor.json")), true);
+  assert.equal(existsSync(join(cwd, ".unipi", "fusion-preset.json")), true);
+  assert.equal(existsSync(join(cwd, ".unipi", "config", "background-tasks.json")), true);
+  // FINALIZE (explicit): legacy removed after verified copies exist.
+  finalizeProjectScope(cwd);
   assert.equal(existsSync(join(cwd, ".unipi", "config", "compactor.json")), false);
   assert.equal(existsSync(join(cwd, ".unipi", "fusion-preset.json")), false);
   assert.equal(existsSync(join(cwd, ".unipi", "config", "background-tasks.json")), false);
@@ -107,7 +127,7 @@ test("conflict: existing target is never clobbered; legacy stays", () => {
   writeFileSync(legacy, '{"old":true}');
   writeFileSync(projectSettingsPath(cwd, "compactor"), '{"new":true}');
 
-  const result = migrateProjectScope(cwd);
+  const result = importProjectScope(cwd);
   assert.equal(result.ran, true);
   assert.deepEqual(readJson(projectSettingsPath(cwd, "compactor")), { new: true });
   assert.equal(existsSync(legacy), true); // kept for manual resolution
@@ -118,9 +138,9 @@ test("conflict: existing target is never clobbered; legacy stays", () => {
 test("idempotent: second run is a no-op with the ledger", () => {
   const { home, cwd } = sandbox();
   writePiSettings(home, { unipi: { footer: { preset: "glance" } } });
-  const first = migrateGlobalScope();
+  const first = importGlobalScope();
   assert.equal(first.ran, true);
-  const second = migrateGlobalScope();
+  const second = importGlobalScope();
   assert.equal(second.ran, false);
   assert.equal(second.reason, "already-migrated");
   restore(home, cwd);
@@ -131,8 +151,10 @@ test("backup captures pi settings and legacy files before removal", () => {
   writePiSettings(home, { unipi: { infoScreen: { dense: true } } });
   mkdirSync(join(cwd, ".unipi", "config"), { recursive: true });
   writeFileSync(join(cwd, ".unipi", "config", "compactor.json"), "{}");
-  migrateGlobalScope();
-  migrateProjectScope(cwd);
+  importGlobalScope();
+  importProjectScope(cwd);
+  finalizeGlobalScope();
+  finalizeProjectScope(cwd);
   // Global backup: pi settings.json (layout A source).
   const globalBackup = join(home, ".unipi", "config", ".backup", "pre-3.0.0");
   assert.equal(existsSync(join(globalBackup, ".pi", "agent", "settings.json")), true);
@@ -176,5 +198,36 @@ test("engine: modules can opt out of project overrides", () => {
   assert.throws(() => setSettings("global-only", { z: 1 }, "project", cwd), /does not support project overrides/);
   const layers = settingsLayers("global-only", cwd);
   assert.equal(layers.project, false);
+  restore(home, cwd);
+});
+
+test("coexistence: v3 import does not disturb a v2 session's view (both on one PC)", () => {
+  const { home, cwd } = sandbox();
+  writePiSettings(home, {
+    unipi: { footer: { preset: "glance" }, askUser: { enabled: true } },
+    piNative: { theme: "dark" },
+  });
+  mkdirSync(join(cwd, ".unipi", "config"), { recursive: true });
+  writeFileSync(join(cwd, ".unipi", "config", "compactor.json"), '{"threshold":90}');
+
+  // v3 session: first settings access runs the IMPORT gates.
+  registerSettings({ namespace: "coexist-test", label: "C", defaults: { x: 1 } });
+  getSettings("coexist-test", cwd);
+
+  // v3 sees the imported data.
+  assert.deepEqual(readJson(globalSettingsPath("footer")), { preset: "glance" });
+  assert.deepEqual(readJson(projectSettingsPath(cwd, "compactor")), { threshold: 90 });
+
+  // v2 session (same machine, same project) reads its legacy locations:
+  // everything is still there — untouched.
+  const v2View = readJson(join(home, ".pi", "agent", "settings.json"));
+  assert.deepEqual((v2View.unipi as Record<string, unknown>).footer, { preset: "glance" });
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, ".unipi", "config", "compactor.json"), "utf-8")), { threshold: 90 });
+
+  // Neither marker is finalized.
+  const globalLedger = JSON.parse(readFileSync(migrationLedgerPath(), "utf-8"));
+  const projectLedger = JSON.parse(readFileSync(join(cwd, ".unipi", "config", "settings-version.json"), "utf-8"));
+  assert.equal(globalLedger.finalized, false);
+  assert.equal(projectLedger.finalized, false);
   restore(home, cwd);
 });
