@@ -8,7 +8,6 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { setFooterMode } from "./segments/long-horizon.js";
 import { UNIPI_EVENTS } from "@pi-unipi/core";
 import type { FooterRegistry } from "./registry/index.js";
 
@@ -160,7 +159,10 @@ export function subscribeToEvents(
     pi.events.on(UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, (event: unknown) => {
       try {
         const mode = (event as { mode?: string })?.mode;
-        if (typeof mode === "string") setFooterMode(mode);
+        if (typeof mode === "string" && mode.length > 0) {
+          const existing = registry.getGroupData("core") as Record<string, unknown> | undefined;
+          registry.updateData("core", { ...existing, lhMode: mode });
+        }
       } catch {
         // Silently ignore — event handler errors are non-blocking.
       }

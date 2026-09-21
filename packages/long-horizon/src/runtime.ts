@@ -135,13 +135,17 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
   let changedFiles: string[] = [];
 
   pi.on("tool_call", (event) => {
-    const toolEvent = event as { toolName?: string; input?: unknown };
-    if (typeof toolEvent.toolName !== "string") return;
-    if (deps.gate.current()?.mode === "none") return; // plain turns don't feed the loop
-    toolCalls += 1;
-    const classified = classifyToolCall(toolEvent.toolName, toolEvent.input);
-    if (classified.command) commands.push(classified.command.slice(0, 200));
-    if (classified.file) changedFiles.push(classified.file.slice(0, 200));
+    try {
+      const toolEvent = event as { toolName?: string; input?: unknown };
+      if (typeof toolEvent.toolName !== "string") return;
+      if (deps.gate.current()?.mode === "none") return; // plain turns don't feed the loop
+      toolCalls += 1;
+      const classified = classifyToolCall(toolEvent.toolName, toolEvent.input);
+      if (classified.command) commands.push(classified.command.slice(0, 200));
+      if (classified.file) changedFiles.push(classified.file.slice(0, 200));
+    } catch {
+      // Instrumentation must never abort a turn.
+    }
   });
 
   // ── runaway guard: feed steps, steer once per turn ─────────────────
@@ -151,6 +155,7 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     },
   });
   pi.on("tool_execution_end", (event) => {
+    try {
     const toolEvent = event as { toolName?: string; result?: unknown; isError?: boolean };
     if (typeof toolEvent.toolName !== "string") return;
     const resultText =
@@ -169,12 +174,16 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
       resultText: resultText.slice(0, 400),
       isError: toolEvent.isError === true,
     });
+    } catch {
+      // Detector instrumentation must never abort a turn.
+    }
   });
 
   // ── agent_end → continuation settlement ─────────────────────────────
   let evalContext: EvalContext | null = null;
 
   pi.on("agent_end", async (event, ctx) => {
+    try {
     runaway.resetTurn();
     const messages = (event as { messages?: unknown[] }).messages ?? [];
     evalContext = { registry: ctx.modelRegistry, model: ctx.model };
@@ -195,6 +204,9 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     // keeps the last known counter (and never erases an injected one).
     if (tokens !== undefined) deps.continuation.setTokenCounter(() => tokens);
     await deps.continuation.onTurnEnd(activity);
+    } catch {
+      // Settlement failures must never surface as turn aborts.
+    }
   });
 
   // ── verifier evaluate → modelRegistry.complete ──────────────────────

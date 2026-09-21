@@ -22,20 +22,15 @@ export const MODE_LABELS: Record<string, string> = {
   none: "Regular Mode",
 };
 
-/** Last mode resolved this session (null = no event yet → segment hidden). */
-let currentMode: string | null = null;
-
-export function setFooterMode(mode: string): void {
-  currentMode = mode;
-}
-
-export function getFooterMode(): string | null {
-  return currentMode;
-}
-
+/**
+ * Mode rides the CORE group's data ({ lhMode }) via registry.updateData —
+ * the data-change notification is what triggers a footer re-render (a
+ * module store alone never invalidates).
+ */
 function renderModeSegment(ctx: FooterSegmentContext): RenderedSegment {
-  if (currentMode === null) return { content: "", visible: false };
-  const label = MODE_LABELS[currentMode] ?? currentMode;
+  const mode = (ctx.data as { lhMode?: string } | undefined)?.lhMode;
+  if (typeof mode !== "string" || mode.length === 0) return { content: "", visible: false };
+  const label = MODE_LABELS[mode] ?? mode;
   return { content: applyColor("model", label, ctx.theme, ctx.colors), visible: true };
 }
 

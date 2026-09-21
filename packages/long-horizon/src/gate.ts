@@ -222,17 +222,22 @@ export class Gate {
     });
 
     pi.on("tool_call", (event) => {
-      const state = this.turn;
-      if (!state) return;
-      const hidden = hiddenToolNames(state.mode);
-      const name = (event as { toolName?: string }).toolName;
-      if (typeof name === "string" && hidden.has(name)) {
-        return {
-          block: true,
-          reason: `long-horizon: "${name}" is not available in ${state.mode} mode. Switch with /unipi:goal, /unipi:ralph, /unipi:swarm, or /unipi:graph.`,
-        };
+      try {
+        const state = this.turn;
+        if (!state) return undefined;
+        const hidden = hiddenToolNames(state.mode);
+        const name = (event as { toolName?: string }).toolName;
+        if (typeof name === "string" && hidden.has(name)) {
+          return {
+            block: true,
+            reason: `long-horizon: "${name}" is not available in ${state.mode} mode. Switch with /unipi:goal, /unipi:ralph, /unipi:swarm, or /unipi:graph.`,
+          };
+        }
+        return undefined;
+      } catch {
+        // A guard handler must never abort a turn.
+        return undefined;
       }
-      return undefined;
     });
   }
 }
