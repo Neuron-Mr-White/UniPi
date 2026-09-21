@@ -198,14 +198,17 @@ export class Gate {
         source: state.source,
         ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
       });
-      try {
-        pi.appendEntry("long-horizon-decision", {
-          mode: state.mode,
-          source: state.source,
-          ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
-        });
-      } catch {
-        // Best-effort badge; never block a turn on it.
+      const badgeEnabled = (this.deps.loadSettings?.() ?? loadSettings()).showDecisionBadge;
+      if (badgeEnabled) {
+        try {
+          pi.appendEntry("long-horizon-decision", {
+            mode: state.mode,
+            source: state.source,
+            ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
+          });
+        } catch {
+          // Best-effort badge; never block a turn on it.
+        }
       }
       const fragment = renderModeFragment(
         state,
