@@ -14,13 +14,13 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 ## Phase 2 — Gate + judge
 - [x] `src/judge/typesafe.ts` — POST /v1/systemone client: {state, model:"jev-latest", questions:{mode: choice{goal,ralph,swarm,graph,none}, decomposable: noul}} → {choice, confidence}; injectable fetch; provider typesafe|openrouter (baseUrl+key from settings/env TYPESAFE_API_KEY | OPENROUTTER_API_KEY); 1s timeout, fail-open
 - [x] `src/judge/resolve.ts` — confidence gate (threshold, default 0.6; low → owner-if-active else default), single-entry cache (prompt hash → decision, TTL), judge runs on NEW user messages only
-- [ ] `src/gate.ts` — resolution ladder: explicit /unipi:<mode> > active owner > judge > default(goal when judge off, none never a judge-off default); tool surface switching via pi 0.86 deferred tools; orchestration prompt fragment injection + owner status line; `mode-resolved` event
-- [ ] Commands: /unipi:goal, /unipi:ralph, /unipi:swarm, /unipi:graph (<prompt> = turn override; `resume`, `clear`, `status` subcommands), /unipi:continue (resume owner)
-- [ ] Unit tests: resolution ladder all branches, judge fixtures (record/replay, no network), fail-open paths
+- [x] `src/gate.ts` — resolution ladder: explicit /unipi:<mode> > active owner > judge > default(goal when judge off, none never a judge-off default); tool surface switching via pi 0.86 deferred tools; orchestration prompt fragment injection + owner status line; `mode-resolved` event
+- [x] Commands: /unipi:goal, /unipi:ralph, /unipi:swarm, /unipi:graph (<prompt> = turn override; `resume`, `clear`, `status` subcommands), /unipi:continue (resume owner)
+- [x] Unit tests: resolution ladder all branches, judge fixtures (record/replay, no network), fail-open paths
 
 ## Phase 3 — Goal mode (mcode spine)
 - [ ] `src/tools/goal.ts` — create_goal / get_goal / update_goal (mcode schemas: update_goal mode "status"|"token_budget" with expected_goal_id+expected_updated_at CAS); lease-guarded; create_goal rejected while goal parked/unfinished
-- [ ] `src/engine/goal-state.ts` — statuses active|waiting|paused|complete|blocked|budget_limited|usage_limited + reason taxonomy (mcode's 25); revision checkpoints; baseline-pending token budget; stall counter (neutral on evaluator failure); iteration cap
+- [x] `src/engine/goal-state.ts` — statuses active|waiting|paused|complete|blocked|budget_limited|usage_limited + reason taxonomy (mcode's 25); revision checkpoints; baseline-pending token budget; stall counter (neutral on evaluator failure); iteration cap
 - [ ] `src/engine/continuation.ts` — turn-end → settle → continue|wait|stop; kickoff contract ONCE (cache-stable, XML-escaped objective) then one-line hints; NO_PROGRESS/NO_TOOL nudges; 5-turn terminal audit; waiting backoff 5s×2ⁿ cap 5min; wrap-up turn on budget exhaustion keyed f(goalId, epoch)
 - [ ] `src/engine/verifier.ts` — evaluator adapter: bounded evidence brief (objective digest, claim, changed files/commands ≤4000 chars, recent tail 5×800), verdict met|not_met+missing[]|impossible|inconclusive, notMetStreak, fail-open-neutral on error; injectable for tests
 - [ ] Compactor integration: kickoff contract + owner status in preserved sections; post-compaction status fragment re-injection
