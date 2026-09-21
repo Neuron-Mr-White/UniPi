@@ -1,7 +1,7 @@
 {
   "name": "long-horizon-build",
   "taskFile": ".unipi/ralph/long-horizon-build.md",
-  "iteration": 10,
+  "iteration": 11,
   "maxIterations": 40,
   "itemsPerIteration": 2,
   "reflectEvery": 5,
@@ -9,5 +9,5 @@
   "active": true,
   "status": "active",
   "startedAt": "2026-09-21T09:17:04.564Z",
-  "lastReflectionAt": 6
+  "lastReflectionAt": 11
 }

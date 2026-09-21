@@ -15,7 +15,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Workflow](./packages/workflow/README.md)** — 20 commands that take ideas to shipped code. Brainstorm, plan, execute in worktrees, review, consolidate. The agent follows skill files step by step.
 
-**[Ralph](./packages/ralph/README.md)** — Long-running loops that persist across sessions. Start a task, iterate through checklist items, resume after crashes. Progress tracked, state saved.
+**[Long-Horizon](./packages/long-horizon/)** — Mode-gated long-horizon execution: `/goal` (one objective until verifiably true, propose+verify), `/ralph` (task-file iteration loops), `/swarm` (independent fan-out + synthesis), `/graph` (dependent multi-step work). A TypeSafe jev prompt judge routes each turn; one automation owner per session with park/resume; runaway-guard steering; token/turn/stall budgets.
 
 **[Memory](./packages/memory/README.md)** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
 
@@ -87,7 +87,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Category | Prefix | Examples |
 |----------|--------|----------|
 | Workflow | `/unipi:` | brainstorm, plan, work, review-work, consolidate, quick-work, debug, fix |
-| Ralph | `/unipi:ralph` | start, stop, resume, status |
+| Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
 | Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-settings, compact-preset, compact-help |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
@@ -104,7 +104,11 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 
 | Tool | Package | What It Does |
 |------|---------|--------------|
-| `ralph_start` / `ralph_done` | ralph | Loop control |
+| `create_goal` / `get_goal` / `update_goal` | long-horizon | Goal propose+verify lifecycle |
+| `todowrite` | long-horizon | Visible session plan |
+| `ralph_done` / `loop_status` | long-horizon | Loop iteration + progress |
+| `swarm_report` / `swarm_status` / `swarm_yield` | long-horizon | Fan-out supervision |
+| `update_agent_graph` / `graph_output` / `view_agent_graph` | long-horizon | Dependent work graph |
 | `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
 | `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
 | `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
@@ -133,7 +137,7 @@ unipi/
 ├── packages/
 │   ├── core/           # Shared constants, events, utilities
 │   ├── workflow/       # 20 skill-based commands
-│   ├── ralph/          # Iterative loops
+│   ├── long-horizon/  # /goal /ralph /swarm /graph mode-gated execution
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine
 │   ├── subagents/      # Parallel execution

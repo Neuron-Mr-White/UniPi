@@ -32,16 +32,19 @@ Removals and recreations are green-lit to start immediately.
 - [x] Drop `trajectory` entries from the command registry / autocomplete catalog
 - [x] Remove `createUnipiTracer` wiring from the umbrella — `packages/unipi/index.ts` now passes `pi` straight through (tracer was trajectory-only observability; no other consumer)
 
-### Recreate `ralph` → `long-horizon`
-- [ ] Delete `packages/ralph/` (keep the folder out of the workspace)
-- [ ] Create `packages/long-horizon/` — long-horizon work orchestration module
-- [ ] Provide `/goal` — goal-state continuation (thread goal, budget steering, completion evidence; learn from minimax-code goal module)
-- [ ] Provide `/ralph` — iterative loop mode (back-compat with the ralph workflow, checklist-driven)
-- [ ] Provide `/swarm` — parallel multi-agent mode (learn from maka and Devin's fleet patterns)
-- [ ] Study sources: `~/Projects/Personal/archived/maka`, `~/Projects/Personal/unimportant/minimax-code` (goal module, runaway-guard), Devin public docs
-- [ ] Preserve prefix-cache discipline: continuation hints cache-prefix-stable, append-only snapshots
-- [ ] Update footer/info-screen/compactor references that consumed ralph iteration state
-- [ ] Drop `ralph` entries from the command registry / autocomplete catalog
+### Recreate `ralph` → `long-horizon` ✅ (2026-09-20, d09ff2d..b7bbb02)
+- [x] Delete `packages/ralph/` (umbrella, deps, pi.skills, lockfile, workflow bridge, autocomplete, mise — all references cleaned)
+- [x] Create `packages/long-horizon/` — mode-gated orchestration: TypeSafe jev judge (goal|ralph|swarm|graph|none), gate with payload tool filtering + defense-in-depth blocking, one-owner-per-session with max-1 park + control leases
+- [x] Provide `/goal` — mcode propose+verify spine: create/get/update tools, kickoff-once contract + one-line hints, baseline-pending token budget, stall-neutral-on-verifier-failure, blocked 3-turn threshold, waiting backoff, wrap-up-once, 5-turn terminal audit, independent evaluator with missing[] feedback
+- [x] Provide `/ralph` — task-file loop re-hosted on the goal machine (same .unipi/ralph files; gains budgets + verifier on all-checked); ralph_done lease-guarded; footer RALPH_* events preserved
+- [x] Provide `/swarm` — Maka prescription over spawn_helper/bg_delegate: ledger + swarm_report/status/yield, all-settled auto-close, orchestration block
+- [x] Provide `/graph` (staged v1) — declare-time cycle validation, topological waves, input frontiers (committed summaries, never restated conclusions), failure blocking + abort cascade
+- [x] Runaway guard — six step-end detectors, steer-once-per-turn with anti-poisoning text
+- [x] Study sources: maka (goal-evaluator/GoalManager/agent-graph/swarm/scheduled-task) + minimax-code (thread-goal/verifier/runaway-guard) — docs/long-horizon-study.md, design docs/long-horizon-design.md
+- [x] Preserve prefix-cache discipline: kickoff-once + one-line hints, static-per-mode system fragment (status rides tail messages), order-preserving identity-stable tool filtering
+- [x] Footer keeps its ralph segment (engine emits RALPH_* events); todowrite emits LONG_HORIZON_TODO_UPDATED
+- [x] Autocomplete registry: goal/ralph/swarm/graph commands + freed `goal` alias → long-horizon
+- Plus: todowrite (mcode-style), 122 package tests + full suite green, mise run sandbox, scenarios suite (design §6 matrix)
 
 ---
 

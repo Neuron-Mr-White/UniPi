@@ -61,6 +61,24 @@ mode is genuinely usable end-to-end first.
 **Next:** 3.5 wiring → compactor integration → todowrite → ralph re-host (+old pkg
 removal) → swarm + runaway → graph staged → sandbox + umbrella.
 
+
+## Reflection — iteration 11 (final)
+
+**Done:** All phases complete. 122 package tests green, full workspace suite EXIT:0,
+typecheck clean. 11 commits d09ff2d..b7bbb02 (+ polish). Design docs drove every
+checkpoint; the scenario suite (design §6 matrix) caught two real engine bugs
+(gate-level suspend-and-switch, token-counter overwrite) — acceptance tests earn
+their keep.
+
+**Test-first tally across the build:** 6 real bugs caught (signal-ignoring fetch hang,
+cache-busting fragment revision, baseline-pending semantics, millisecond CAS collision,
+detector count() key mismatch, suspend-switch living only in commands).
+
+**Learned for future loops:** engine/library separation (pi-free core + thin runtime
+wiring) made everything testable without pi; the fake-pi pattern from runtime tests
+scales to full scenario narratives; module-level path constants and shared mutable
+settings objects are the two recurring test-isolation traps.
+
 ## Guardrails
 - Prefix-cache discipline everywhere: deterministic rendering, kickoff-once, deferred tool activation never rewrites prefix
 - Zero network in CI (fixtures only); sandbox task is the only network path
