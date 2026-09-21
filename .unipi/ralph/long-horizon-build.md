@@ -28,7 +28,7 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [x] Unit tests: state machine transitions, CAS rejections, settlement math, verifier fixtures, crash/repair recovery fragment (80 tests green across owner/judge/gate/goal-tools/goal-state/verifier/continuation)
 
 ## Phase 4 — todowrite + ralph mode
-- [ ] `src/tools/todo.ts` — todowrite snapshot-replace (pending/in_progress/completed/cancelled + priority, one in_progress, "updating ≠ completing"); footer/info-screen render from events
+- [x] `src/tools/todo.ts` — todowrite snapshot-replace (pending/in_progress/completed/cancelled + priority, one in_progress, "updating ≠ completing"); footer/info-screen render from events
 - [ ] Re-host ralph on the coordinator: keep task-file methodology (.unipi/ralph/ task files, iteration cadence, reflection); ralph_start stays command-side; ralph_done becomes lease-guarded iteration yield; gains stall cap + token budget + completion claim → verifier when all items checked; migration from packages/ralph state files
 - [ ] Remove `packages/ralph/` + all references (umbrella, root pi.skills, autocomplete, README, v3-tasks.md) once long-horizon ralph mode passes tests
 

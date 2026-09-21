@@ -26,6 +26,8 @@ export const UNIPI_EVENTS = {
   LONG_HORIZON_MODE_RESOLVED: "unipi:long-horizon:mode:resolved",
   /** Long-horizon automation owner lifecycle changed */
   LONG_HORIZON_OWNER_CHANGED: "unipi:long-horizon:owner:changed",
+  /** Long-horizon visible todo plan updated */
+  LONG_HORIZON_TODO_UPDATED: "unipi:long-horizon:todo:updated",
 
 
   /** Info screen group registered */
