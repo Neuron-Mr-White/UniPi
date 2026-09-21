@@ -13,6 +13,10 @@ import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
 import { loadSettings } from "./src/settings.js";
+import { GoalMachine } from "./src/engine/goal-state.js";
+import { GoalToolset } from "./src/tools/goal.js";
+import { GoalContinuation } from "./src/engine/continuation.js";
+import { wireRuntime } from "./src/runtime.js";
 
 export * from "./src/modes.js";
 export * from "./src/owner.js";
@@ -41,11 +45,30 @@ export default function longHorizon(pi: ExtensionAPI): void {
   gate.register(pi);
   registerLongHorizonCommands(pi, gate, owner);
 
+  // Goal engine: machine + tools + continuation + runtime wiring.
+  const machine = new GoalMachine({
+    statePath: () => join(resolve(process.cwd()), LH_DIR, "goal.json"),
+  });
+  const toolset = new GoalToolset({ machine, owner });
+  toolset.register(pi);
+  const continuation = new GoalContinuation({
+    machine,
+    toolset,
+    owner,
+    verifier: { evaluate: async () => { throw new Error("verifier unbound"); } },
+    send: (message) => {
+      void pi.sendUserMessage(message);
+    },
+  });
+  wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings });
+
   // Crash recovery: repair, don't resume — reload durable state so the gate
-  // reattaches the owner's tool surface; the goal/loop engines surface their
-  // own recovery fragments on their next turn.
+  // reattaches the owner's tool surface; the continuation arms a recovery
+  // fragment for the first post-restart turn.
   pi.on("session_start", () => {
     owner.restore();
+    machine.restore();
+    if (machine.getActive()) continuation.armRecovery();
   });
 
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
@@ -58,6 +81,6 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:graph",
       "unipi:continue",
     ],
-    tools: [],
+    tools: ["create_goal", "get_goal", "update_goal"],
   });
 }

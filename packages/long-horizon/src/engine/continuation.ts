@@ -91,9 +91,21 @@ export class GoalContinuation {
   private lastVerifierReason?: string;
   private recoveryArmed = false;
   private readonly deps: ContinuationDeps;
+  private tokenCounter?: () => number | undefined;
+  private evaluateOverride?: VerifierDeps["evaluate"];
 
   constructor(deps: ContinuationDeps) {
     this.deps = deps;
+  }
+
+  /** Late-bound token counter (runtime wiring sets it per agent_end). */
+  setTokenCounter(counter: () => number | undefined): void {
+    this.tokenCounter = counter;
+  }
+
+  /** Late-bound evaluator (runtime wiring resolves the model per session). */
+  setEvaluate(evaluate: VerifierDeps["evaluate"]): void {
+    this.evaluateOverride = evaluate;
   }
 
   /** Crash/interrupt marker: the next continuation carries the recovery fragment. */
@@ -125,7 +137,7 @@ export class GoalContinuation {
     }
 
     const proposal = this.deps.toolset.consumeProposal();
-    const tokensNow = this.deps.getTokenCount?.();
+    const tokensNow = this.tokenCounter?.() ?? this.deps.getTokenCount?.();
 
     let settled: GoalState | undefined;
     if (proposal?.kind === "completion") {
@@ -137,7 +149,11 @@ export class GoalContinuation {
         commands: activity.commands,
         recentTail: activity.recentTail,
       });
-      const verdict = await verifyCompletion(this.deps.verifier, goal.objective, brief);
+      const verdict = await verifyCompletion(
+        { ...this.deps.verifier, ...(this.evaluateOverride ? { evaluate: this.evaluateOverride } : {}) },
+        goal.objective,
+        brief,
+      );
       this.lastVerifierReason = verdict.evaluatorFailed
         ? undefined
         : `${verdict.reason}${verdict.missing.length > 0 ? ` (missing: ${verdict.missing.join("; ")})` : ""}`;

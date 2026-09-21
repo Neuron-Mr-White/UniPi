@@ -23,8 +23,9 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [x] `src/engine/goal-state.ts` — statuses active|waiting|paused|complete|blocked|budget_limited|usage_limited + reason taxonomy (mcode's 25); revision checkpoints; baseline-pending token budget; stall counter (neutral on evaluator failure); iteration cap
 - [x] `src/engine/continuation.ts` — turn-end → settle → continue|wait|stop; kickoff contract ONCE (cache-stable, XML-escaped objective) then one-line hints; NO_PROGRESS/NO_TOOL nudges; 5-turn terminal audit; waiting backoff 5s×2ⁿ cap 5min; wrap-up turn on budget exhaustion keyed f(goalId, epoch)
 - [x] `src/engine/verifier.ts` — evaluator adapter: bounded evidence brief (objective digest, claim, changed files/commands ≤4000 chars, recent tail 5×800), verdict met|not_met+missing[]|impossible|inconclusive, notMetStreak, fail-open-neutral on error; injectable for tests
-- [ ] Compactor integration: kickoff contract + owner status in preserved sections; post-compaction status fragment re-injection
-- [ ] Unit tests: state machine transitions, CAS rejections, settlement math, verifier fixtures, crash/repair (reload state.json, retracted-turn recovery fragment)
+- [x] `src/runtime.ts` — wire engine to pi: agent_end → collect TurnActivity (tool_call/tool_result counters, changed files from edit/write, commands from bash) → onTurnEnd; continuation.send → pi.sendUserMessage; verifier evaluate → model call (notify summarize pattern via settings.verifierModel or session model)
+- [x] Compactor integration: session_compact → armRecovery (post-compaction fragment rides next continuation); kickoff is disk-flagged (kickoffDelivered) so it never re-sends after compaction; owner status lives in tail messages which compaction preserves by our prefix-cache architecture
+- [x] Unit tests: state machine transitions, CAS rejections, settlement math, verifier fixtures, crash/repair recovery fragment (80 tests green across owner/judge/gate/goal-tools/goal-state/verifier/continuation)
 
 ## Phase 4 — todowrite + ralph mode
 - [ ] `src/tools/todo.ts` — todowrite snapshot-replace (pending/in_progress/completed/cancelled + priority, one in_progress, "updating ≠ completing"); footer/info-screen render from events
@@ -41,6 +42,24 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [ ] Sandbox: `mise run sandbox` task (pi + long-horizon only; judge on if key, else fail-open) + scripted-provider scenario suite (the 8 scenarios in design §6) + judge record/replay fixtures
 - [ ] Umbrella wiring (packages/unipi/index.ts), root package.json deps + pi.skills entry, autocomplete registry (goal/ralph/swarm/graph commands incl. freed `goal` alias), README section, docs/v3-tasks.md checkpoints, full suite + typecheck green
 - [ ] Memory: store implementation-learned patterns
+
+
+## Reflection — iteration 6 (2026-09-20)
+
+**Done:** Phases 1-2 complete; Phase 3 engine complete in tests (80/80): owner machine,
+judge+gate, goal state, tools, verifier, continuation.
+
+**Working well:** mcode/Maka mechanics translated cleanly; test-first caught three real
+bugs (signal-ignoring fetch hang, cache-busting revision in the gate fragment,
+baseline-pending budget semantics). ~2 items/iteration keeps commits reviewable.
+
+**Gap discovered:** the engine is a library, not yet an extension — nothing calls
+onTurnEnd on turn end, TurnActivity is unfed, verifier.evaluate and continuation.send
+are unwired to pi. Added Phase 3.5 (wiring) BEFORE todowrite/ralph re-host so goal
+mode is genuinely usable end-to-end first.
+
+**Next:** 3.5 wiring → compactor integration → todowrite → ralph re-host (+old pkg
+removal) → swarm + runaway → graph staged → sandbox + umbrella.
 
 ## Guardrails
 - Prefix-cache discipline everywhere: deterministic rendering, kickoff-once, deferred tool activation never rewrites prefix
