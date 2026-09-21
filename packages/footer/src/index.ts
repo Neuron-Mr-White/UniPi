@@ -30,6 +30,7 @@ import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
 import type { FooterGroup, FooterSegment } from "./types.js";
 import { tpsTracker } from "./tps-tracker.js";
 import { renderProcessLine } from "./process-line.js";
+import { MODE_LABELS } from "./segments/long-horizon.js";
 
 /** All segment groups */
 const ALL_GROUPS: FooterGroup[] = [
@@ -440,8 +441,13 @@ function installGlanceEditor(
         if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
         const branch = (st.footerData as any)?.getGitBranch?.() ?? null;
         const fusion = getSharedFusionStatus() ?? null;
+        const lhModeRaw = (st.registry.getGroupData("core") as { lhMode?: string } | undefined)?.lhMode;
+        const lhMode = typeof lhModeRaw === "string" && lhModeRaw.length > 0
+          ? MODE_LABELS[lhModeRaw] ?? lhModeRaw
+          : null;
         return {
           workspace,
+          lhMode,
           branch: typeof branch === "string" ? branch : null,
           contextPct: typeof usage?.percent === "number" ? usage.percent : null,
           contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,

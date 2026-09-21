@@ -25,6 +25,8 @@ import { lolcatRainbow, paintLolcatGradient } from "./rendering/lolcat.js";
 export interface GlanceStatus {
 	/** Workspace/project directory name (bottom-left). */
 	workspace: string;
+	/** Active long-horizon mode label, beside the brand (null → omitted). */
+	lhMode: string | null;
 	/** Git branch for the top title (null → omitted). */
 	branch: string | null;
 	/** Context usage percent (null when unknown). */
@@ -140,15 +142,18 @@ export function composeGlanceTitles(
 	brand: string,
 	branch: string | null,
 	workspace: string,
+	lhMode: string | null = null,
 ): { titleParts: string[]; leftTitle: string } {
 	const titleParts: string[] = [];
 	if (getResolvedIconStyle() === "text") {
 		titleParts.push(brand);
+		if (lhMode) titleParts.push(`mode:${lhMode}`);
 		if (branch) titleParts.push(`branch:${branch}`);
 		return { titleParts, leftTitle: ` workspace:${workspace} ` };
 	}
 	const brandIcon = getIcon("model");
 	titleParts.push(`${brandIcon ? brandIcon + " " : ""}${brand}`);
+	if (lhMode) titleParts.push(lhMode);
 	if (branch) {
 		const gitIcon = getIcon("git");
 		titleParts.push(`${gitIcon ? gitIcon + " " : ""}${branch}`);
@@ -218,7 +223,7 @@ export class GlanceEditor extends CustomEditor {
 		// Brand rendered as an animated lolcat gradient (phase from wall time;
 		// the footer's 1s refresh timer re-renders, so it shimmers each tick).
 		const brand = lolcatRainbow("UNIPI", Date.now() / 1000);
-		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace);
+		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace, st.lhMode);
 		const title = titleParts.join(SEP);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;

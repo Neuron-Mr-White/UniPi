@@ -15,7 +15,7 @@ import { getDefaultColors } from "./rendering/theme.js";
 /** Default preset — glance-style status line + branded head */
 const DEFAULT_PRESET: PresetDef = {
   leftSegments: [
-    "uni", "model", "thinking_level", "directory", "git",
+    "uni", "lh_mode", "model", "thinking_level", "directory", "git",
   ],
   rightSegments: [
     "context_pct", "tokens_total",
@@ -29,7 +29,7 @@ const DEFAULT_PRESET: PresetDef = {
 /** Classic preset — the pre-v3 balanced view (kept for /unipi:footer) */
 const CLASSIC_PRESET: PresetDef = {
   leftSegments: [
-    "model", "api_state", "tool_count", "git",
+    "lh_mode", "model", "api_state", "tool_count", "git",
   ],
   rightSegments: [
     "tps", "context_pct", "cost",
@@ -46,7 +46,7 @@ const CLASSIC_PRESET: PresetDef = {
 /** Minimal preset — just the essentials */
 const MINIMAL_PRESET: PresetDef = {
   leftSegments: [
-    "model", "git",
+    "lh_mode", "model", "git",
   ],
   rightSegments: [
     "context_pct",
@@ -59,7 +59,7 @@ const MINIMAL_PRESET: PresetDef = {
 /** Compact preset — core + key stats */
 const COMPACT_PRESET: PresetDef = {
   leftSegments: [
-    "model", "git",
+    "lh_mode", "model", "git",
   ],
   rightSegments: [
     "tps", "context_pct", "cost",
@@ -72,7 +72,7 @@ const COMPACT_PRESET: PresetDef = {
 /** Full preset — everything */
 const FULL_PRESET: PresetDef = {
   leftSegments: [
-    "model", "api_state", "tool_count", "git", "current_command", "session",
+    "lh_mode", "model", "api_state", "tool_count", "git", "current_command", "session",
   ],
   rightSegments: [
     "tps", "context_pct", "cost", "tokens_total",
@@ -97,7 +97,7 @@ const FULL_PRESET: PresetDef = {
 /** ASCII preset — safe for any terminal */
 const ASCII_PRESET: PresetDef = {
   leftSegments: [
-    "model", "git",
+    "lh_mode", "model", "git",
   ],
   rightSegments: [
     "tps", "context_pct", "cost",
