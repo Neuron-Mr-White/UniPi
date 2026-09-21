@@ -5,11 +5,11 @@ Decisions: mcode goal spine (propose+verify) · Maka swarm+graph · ralph re-hos
 coordinator · mode-gated tool exposure · TypeSafe jev judge · max-1 parked owner ·
 sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 
-## Phase 1 — Foundation
-- [ ] Scaffold `packages/long-horizon/` (package.json @pi-unipi/long-horizon 3.0.0-alpha.0, tsconfig, index.ts, workspace wiring; follow an existing small package like notify for conventions)
-- [ ] `src/modes.ts` — mode registry: id (goal|ralph|swarm|graph|none), label, control tools[], prompt fragment id, owner kind
-- [ ] `src/owner.ts` — automation-owner state machine: one active owner per session, statuses (active/paused/terminal × reasons), control lease {ownerId, generation}, revision checkpoint, max-1 park slot with refusal, persistence to `.unipi/long-horizon/state.json` on every transition, `owner-changed` event emission; unit tests
-- [ ] Survey existing per-package config patterns (ask-user config.ts, notify, footer, compactor presets) → pick shared approach; define `long_horizon.*` settings schema (judge.enabled/provider/model/baseUrl/threshold, default_mode, verifier.model) designed for the future `/unipi:settings` hub — no new scattered command
+## Phase 1 — Foundation ✅ (d09ff2d)
+- [x] Scaffold `packages/long-horizon/` (notify conventions; root typecheck covers workspaces — no per-package tsconfig)
+- [x] `src/modes.ts` — five-mode registry with control-tools/prompt-fragment/owner-kind/delegation mapping
+- [x] `src/owner.ts` — owner coordinator: one active owner, max-1 park (refusal), control leases, revision checkpoints, bounded history, crash-restore; 12 tests
+- [x] Config survey: two patterns exist (notify per-package file vs ask-user shared ~/.pi/agent/settings.json `unipi.*`). Picked shared-file: `unipi.longHorizon` key (settings.ts), lazy path resolution (module-level path constants break test isolation — ask-user has this latent flaw), deep-merge repair; 4 tests
 
 ## Phase 2 — Gate + judge
 - [ ] `src/judge/typesafe.ts` — POST /v1/systemone client: {state, model:"jev-latest", questions:{mode: choice{goal,ralph,swarm,graph,none}, decomposable: noul}} → {choice, confidence}; injectable fetch; provider typesafe|openrouter (baseUrl+key from settings/env TYPESAFE_API_KEY | OPENROUTTER_API_KEY); 1s timeout, fail-open
