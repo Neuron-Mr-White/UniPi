@@ -1,6 +1,12 @@
 /**
  * v2.x → v3 settings migration.
  *
+ * Gate: a `migrated_version` marker. Absent or < CURRENT → migrate once,
+ * then the marker reads "3.0.0" forever after (one file read per process,
+ * no startup effect — the check is called lazily by the engine's first
+ * settings access). Project-scope moves carry their own per-project marker
+ * under <cwd>/.unipi/config/, so a project that never opens never migrates.
+ *
  * Pre-3.0.0 layouts (all still present in the wild):
  *   A  ~/.pi/agent/settings.json → unipi.<module> keys
  *      (askUser, footer, infoScreen, longHorizon)
@@ -9,28 +15,25 @@
  *        <cwd>/.unipi/config/compactor.json          (flat)
  *        <cwd>/.unipi/fusion-preset.json             (other dir, flat)
  *        <cwd>/.unipi/config/background-tasks.json   (flat in config/)
- *        <cwd>/.unipi/config/notify/ntfy.json        (already shaped)
  *
- * migrateToV3Layout moves A into module dirs, unifies C into
- * <cwd>/.unipi/config/<module>/config.json, strips the unipi key from pi's
- * settings.json, and records everything in the ledger. Backup-first,
- * conflict-kept-existing (never clobber), delete-only-after-verify, and any
- * failure leaves legacy sources untouched.
+ * Safety: backup-first (.backup/pre-3.0.0/), conflict:kept-existing
+ * (never clobber), delete-only-after-verify, ledgered, idempotent.
  */
 
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { globalSettingsPath, migrationBackupDir, migrationLedgerPath, projectSettingsPath } from "./paths.js";
-import { tryRead, writeJson } from "../../utils.js";
+import { globalSettingsPath, migrationBackupDir, migrationLedgerPath, projectSettingsRoot, projectLedgerPath } from "./paths.js";
+import { compareVersions, tryRead, writeJson } from "../../utils.js";
 
-export const CURRENT_SETTINGS_VERSION = 3;
+export const CURRENT_SETTINGS_VERSION = "3.0.0";
 
 export interface MigrationLedger {
-  version: number;
-  appliedAt: string;
-  log: MigrationLogEntry[];
+  /** Semver of the layout this scope is on; >= CURRENT skips migration. */
+  readonly migrated_version: string;
+  readonly appliedAt: string;
+  readonly log: MigrationLogEntry[];
 }
 
 export interface MigrationLogEntry {
@@ -41,18 +44,13 @@ export interface MigrationLogEntry {
 
 export interface MigrationResult {
   ran: boolean;
-  reason?: "already-applied" | "nothing-to-migrate";
+  reason?: "already-migrated" | "nothing-to-migrate";
   ledger: MigrationLedger;
 }
 
 interface Move {
   from: string;
   to: string;
-}
-
-/** Resolved at call time — HOME flips between tests (and users). */
-function piSettingsPath(): string {
-  return join(homedir(), ".pi", "agent", "settings.json");
 }
 
 /** Modules stored as unipi.<module> keys in pi's settings.json (layout A). */
@@ -70,16 +68,24 @@ const C_OVERRIDE_MOVES: ReadonlyArray<{ namespace: string; from: string }> = [
   { namespace: "background-tasks", from: join(".unipi", "config", "background-tasks.json") },
 ];
 
-export function readLedger(): MigrationLedger | null {
-  const raw = tryRead(migrationLedgerPath());
-  if (!raw) return null;
+/** Semver gate compare — core's compareVersions (pre-release aware). */
+
+/** True when this scope's marker says it is on CURRENT or newer. */
+export function isMigrated(ledgerPath: string): boolean {
+  const raw = tryRead(ledgerPath);
+  if (!raw) return false;
   try {
     const parsed = JSON.parse(raw) as MigrationLedger;
-    if (typeof parsed?.version === "number" && Array.isArray(parsed.log)) return parsed;
+    return typeof parsed?.migrated_version === "string" &&
+      compareVersions(parsed.migrated_version, CURRENT_SETTINGS_VERSION) >= 0;
   } catch {
-    // corrupt ledger = absent
+    return false;
   }
-  return null;
+}
+
+/** Resolved at call time — HOME flips between tests (and users). */
+function piSettingsPath(): string {
+  return join(homedir(), ".pi", "agent", "settings.json");
 }
 
 function ensureParent(file: string): void {
@@ -107,32 +113,47 @@ function moveWithSafety(move: Move, backupDir: string, log: MigrationLogEntry[])
   ensureParent(move.to);
   const content = readFileSync(move.from, "utf-8");
   writeFileSync(move.to, content, "utf-8");
-  // Verify, then remove the legacy file.
   if (tryRead(move.to) === content) {
     rmSync(move.from);
     log.push({ action: "moved", from: move.from, to: move.to });
     log.push({ action: "removed-legacy", from: move.from });
     return true;
   }
-  // Write verify failed — leave both, log the conflict.
   log.push({ action: "conflict:kept-existing", from: move.from, to: move.to });
   return false;
 }
 
-export function migrateToV3Layout(cwd: string): MigrationResult {
-  const existing = readLedger();
-  if (existing?.version === CURRENT_SETTINGS_VERSION) {
-    return { ran: false, reason: "already-applied", ledger: existing };
+function writeLedger(path: string, log: MigrationLogEntry[]): void {
+  writeJson(path, {
+    migrated_version: CURRENT_SETTINGS_VERSION,
+    appliedAt: new Date().toISOString(),
+    log,
+  } satisfies MigrationLedger);
+}
+
+/**
+ * Migrate the GLOBAL scope (layout A keys out of pi's settings.json).
+ * Gated by ~/.unipi/config/settings-version.json → migrated_version.
+ */
+export function migrateGlobalScope(): MigrationResult {
+  const ledgerPath = migrationLedgerPath();
+  if (isMigrated(ledgerPath)) {
+    return {
+      ran: false,
+      reason: "already-migrated",
+      ledger: {
+        migrated_version: CURRENT_SETTINGS_VERSION,
+        appliedAt: "",
+        log: [],
+      },
+    };
   }
 
-  const migrationId = "pre-3.0.0";
-  const backupDir = migrationBackupDir(migrationId);
+  const backupDir = migrationBackupDir("pre-3.0.0");
   const log: MigrationLogEntry[] = [];
   let touched = false;
-
   mkdirSync(backupDir, { recursive: true });
 
-  // ── Layout A: unipi.<module> keys out of pi's settings.json ───────────
   const piSettingsFile = piSettingsPath();
   if (existsSync(piSettingsFile)) {
     backupFile(backupDir, piSettingsFile);
@@ -169,24 +190,59 @@ export function migrateToV3Layout(cwd: string): MigrationResult {
     }
   }
 
-  // ── Layout C: unify project override shapes ───────────────────────────
+  writeLedger(ledgerPath, log);
+  if (!touched && log.length === 0) {
+    return {
+      ran: false,
+      reason: "nothing-to-migrate",
+      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+    };
+  }
+  return {
+    ran: true,
+    ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+  };
+}
+
+/**
+ * Migrate the PROJECT scope (layout C override shapes). Gated by its own
+ * marker at <cwd>/.unipi/config/settings-version.json — a project that
+ * never opens never migrates.
+ */
+export function migrateProjectScope(cwd: string): MigrationResult {
+  const ledgerPath = projectLedgerPath(cwd);
+  if (isMigrated(ledgerPath)) {
+    return {
+      ran: false,
+      reason: "already-migrated",
+      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: "", log: [] },
+    };
+  }
+
+  const backupDir = join(projectSettingsRoot(cwd), ".backup", "pre-3.0.0");
+  const log: MigrationLogEntry[] = [];
+  let touched = false;
+  mkdirSync(backupDir, { recursive: true });
+
   for (const { namespace, from } of C_OVERRIDE_MOVES) {
     const moved = moveWithSafety(
-      { from: join(cwd, from), to: projectSettingsPath(cwd, namespace) },
+      { from: join(cwd, from), to: join(projectSettingsRoot(cwd), namespace, "config.json") },
       backupDir,
       log,
     );
     if (moved) touched = true;
   }
 
-  const ledger: MigrationLedger = {
-    version: CURRENT_SETTINGS_VERSION,
-    appliedAt: new Date().toISOString(),
-    log,
-  };
-  writeJson(migrationLedgerPath(), ledger);
+  writeLedger(ledgerPath, log);
   if (!touched && log.length === 0) {
-    return { ran: false, reason: "nothing-to-migrate", ledger };
+    return {
+      ran: false,
+      reason: "nothing-to-migrate",
+      ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+    };
   }
-  return { ran: true, ledger };
+  return {
+    ran: true,
+    ledger: { migrated_version: CURRENT_SETTINGS_VERSION, appliedAt: new Date().toISOString(), log },
+  };
 }

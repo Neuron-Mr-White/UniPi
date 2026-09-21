@@ -10,9 +10,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { globalSettingsPath, projectSettingsPath } from "./paths.js";
-import { migrateToV3Layout } from "./migrations.js";
-import { ensureDir, tryRead, writeJson } from "../../utils.js";
+import { globalSettingsPath, migrationLedgerPath, projectLedgerPath, projectSettingsPath } from "./paths.js";
+import { isMigrated, migrateGlobalScope, migrateProjectScope } from "./migrations.js";
+import { tryRead, writeJson } from "../../utils.js";
 
 export interface SettingsDefinition {
   /** Directory name under ~/.unipi/config (kebab-case module id). */
@@ -26,7 +26,6 @@ export interface SettingsDefinition {
 }
 
 const registry = new Map<string, SettingsDefinition>();
-let migrated = false;
 
 export function registerSettings(definition: SettingsDefinition): void {
   registry.set(definition.namespace, definition);
@@ -64,14 +63,34 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
   return out;
 }
 
-/** Run the v2→v3 migration once per process before any settings read. */
-export function ensureMigrated(cwd: string): void {
-  if (migrated) return;
-  migrated = true;
-  try {
-    migrateToV3Layout(cwd);
-  } catch {
-    // Migration failures never block startup; legacy sources remain.
+/**
+ * Lazy migration gates — called on first settings access per process, never
+ * at startup. Each gate is one marker read once migrated; the migration body
+ * runs exactly once per machine (global) and once per project (project).
+ */
+let globalGateDone = false;
+const projectGatesDone = new Set<string>();
+
+function runGates(cwd: string): void {
+  if (!globalGateDone) {
+    globalGateDone = true;
+    if (!isMigrated(migrationLedgerPath())) {
+      try {
+        migrateGlobalScope();
+      } catch {
+        // Failures never block reads; legacy sources remain for repair.
+      }
+    }
+  }
+  if (!projectGatesDone.has(cwd)) {
+    projectGatesDone.add(cwd);
+    if (!isMigrated(projectLedgerPath(cwd))) {
+      try {
+        migrateProjectScope(cwd);
+      } catch {
+        // Same: repairable via /unipi:settings migrate.
+      }
+    }
   }
 }
 
@@ -81,6 +100,7 @@ export function getSettings(
   namespace: string,
   cwd: string,
 ): Record<string, unknown> {
+  runGates(cwd);
   const definition = registry.get(namespace);
   if (!definition) return {};
   let effective = { ...definition.defaults };
@@ -99,6 +119,7 @@ export function setSettings(
   scope: SettingsScope,
   cwd: string,
 ): void {
+  runGates(cwd);
   const definition = registry.get(namespace);
   if (!definition) throw new Error(`unknown settings namespace: ${namespace}`);
   if (scope === "project" && definition.projectOverrides === false) {
@@ -112,6 +133,7 @@ export function setSettings(
 
 /** Which layers currently exist for a namespace (hub status display). */
 export function settingsLayers(namespace: string, cwd: string): { global: boolean; project: boolean } {
+  runGates(cwd);
   return {
     global: tryRead(globalSettingsPath(namespace)) !== null,
     project: tryRead(projectSettingsPath(cwd, namespace)) !== null,

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
-  migrateToV3Layout,
-  readLedger,
+  migrateGlobalScope,
+  migrateProjectScope,
   CURRENT_SETTINGS_VERSION,
 } from "./src/settings/migrations.js";
 import {
@@ -57,7 +57,7 @@ test("layout A: unipi.* keys move to module dirs and are stripped from pi settin
     piNative: { model: "x" },
   });
 
-  const result = migrateToV3Layout(cwd);
+  const result = migrateGlobalScope();
   assert.equal(result.ran, true);
 
   // Moved into module dirs.
@@ -73,9 +73,9 @@ test("layout A: unipi.* keys move to module dirs and are stripped from pi settin
   assert.equal((piSettings.unipi as Record<string, unknown>).longHorizon, undefined);
 
   // Ledger written with the moves logged.
-  const ledger = readLedger();
-  assert.equal(ledger?.version, CURRENT_SETTINGS_VERSION);
-  assert.ok(ledger?.log.some((entry) => entry.action === "moved" && entry.to === globalSettingsPath("long-horizon")));
+  const ledger = JSON.parse(readFileSync(migrationLedgerPath(), "utf-8"));
+  assert.equal(ledger.migrated_version, CURRENT_SETTINGS_VERSION);
+  assert.ok(ledger.log.some((entry: { action: string; to?: string }) => entry.action === "moved" && entry.to === globalSettingsPath("long-horizon")));
 
   restore(home, cwd);
 });
@@ -87,7 +87,7 @@ test("layout C: project override shapes unify into <module>/config.json", () => 
   writeFileSync(join(cwd, ".unipi", "fusion-preset.json"), '{"lead":"zai/glm-4.7"}');
   writeFileSync(join(cwd, ".unipi", "config", "background-tasks.json"), '{"maxTasks":9}');
 
-  const result = migrateToV3Layout(cwd);
+  const result = migrateProjectScope(cwd);
   assert.equal(result.ran, true);
   assert.deepEqual(readJson(projectSettingsPath(cwd, "compactor")), { threshold: 80 });
   assert.deepEqual(readJson(projectSettingsPath(cwd, "fusion")), { lead: "zai/glm-4.7" });
@@ -107,7 +107,7 @@ test("conflict: existing target is never clobbered; legacy stays", () => {
   writeFileSync(legacy, '{"old":true}');
   writeFileSync(projectSettingsPath(cwd, "compactor"), '{"new":true}');
 
-  const result = migrateToV3Layout(cwd);
+  const result = migrateProjectScope(cwd);
   assert.equal(result.ran, true);
   assert.deepEqual(readJson(projectSettingsPath(cwd, "compactor")), { new: true });
   assert.equal(existsSync(legacy), true); // kept for manual resolution
@@ -118,11 +118,11 @@ test("conflict: existing target is never clobbered; legacy stays", () => {
 test("idempotent: second run is a no-op with the ledger", () => {
   const { home, cwd } = sandbox();
   writePiSettings(home, { unipi: { footer: { preset: "glance" } } });
-  const first = migrateToV3Layout(cwd);
+  const first = migrateGlobalScope();
   assert.equal(first.ran, true);
-  const second = migrateToV3Layout(cwd);
+  const second = migrateGlobalScope();
   assert.equal(second.ran, false);
-  assert.equal(second.reason, "already-applied");
+  assert.equal(second.reason, "already-migrated");
   restore(home, cwd);
 });
 
@@ -131,10 +131,13 @@ test("backup captures pi settings and legacy files before removal", () => {
   writePiSettings(home, { unipi: { infoScreen: { dense: true } } });
   mkdirSync(join(cwd, ".unipi", "config"), { recursive: true });
   writeFileSync(join(cwd, ".unipi", "config", "compactor.json"), "{}");
-  migrateToV3Layout(cwd);
-  const backupRoot = join(home, ".unipi", "config", ".backup", "pre-3.0.0");
-  assert.equal(existsSync(join(backupRoot, ".pi", "agent", "settings.json")), true);
-  const projectBackup = join(backupRoot, "abs", cwd.replace(/^\//, ""), ".unipi", "config", "compactor.json");
+  migrateGlobalScope();
+  migrateProjectScope(cwd);
+  // Global backup: pi settings.json (layout A source).
+  const globalBackup = join(home, ".unipi", "config", ".backup", "pre-3.0.0");
+  assert.equal(existsSync(join(globalBackup, ".pi", "agent", "settings.json")), true);
+  // Project backup: the legacy override, under the project's own backup dir.
+  const projectBackup = join(cwd, ".unipi", "config", ".backup", "pre-3.0.0", "abs", cwd.replace(/^\//, ""), ".unipi", "config", "compactor.json");
   assert.equal(existsSync(projectBackup), true);
   restore(home, cwd);
 });

@@ -23,8 +23,16 @@ export function globalSettingsPath(namespace: string, file = "config.json"): str
   return join(unipiConfigRoot(), namespace, file);
 }
 
+export function projectSettingsRoot(cwd: string): string {
+  return join(cwd, ".unipi", "config");
+}
+
 export function projectSettingsPath(cwd: string, namespace: string, file = "config.json"): string {
-  return join(cwd, ".unipi", "config", namespace, file);
+  return join(projectSettingsRoot(cwd), namespace, file);
+}
+
+export function projectLedgerPath(cwd: string): string {
+  return join(projectSettingsRoot(cwd), "settings-version.json");
 }
 
 export function migrationLedgerPath(): string {
