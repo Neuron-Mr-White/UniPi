@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.0] — 2026-09-20
+
+### Changed
+
+- **Pi SDK 0.84 → 0.86.** All `@earendil-works/{pi-coding-agent,pi-ai,pi-tui,pi-agent-core}` peer dependencies bump from `^0.84.0` to `^0.86.0` (installs 0.86.1). Two 0.86 breaking changes touched unipi:
+  - `ToolCall.arguments` / `ToolResultMessage.details` are now JSON-strict (`JsonValue` values). The background-tasks scripted test providers dropped their local `Record<PropertyKey, unknown>` alias and import pi-ai's `JsonObject` instead; production code needed no changes.
+  - Raw pi-ai API adapters (`pi-ai/api/*`) now require a normalized `TranscriptContext` — a raw `Context` passed to them silently loses its `systemPrompt` and `tools`. The `tests/prefix-provider-payload.test.js` harness normalizes via `normalizeContext()` (`@earendil-works/pi-ai/utils/transcript`) before invoking the openai-completions adapter. No unipi production code calls raw adapters (all model calls flow through pi's extension API, which normalizes internally).
+  - Not adopted yet, but relevant to v3: native prompt-cache warming, transcript-aware prompt/tool updates with cached-prefix preservation, per-model compaction budgets, `ctx.modelRegistry.stream()`, deferred tool loading (`ToolSearch`).
+- `core`, `updater`: **prerelease-aware version comparison.** `compareVersions` in `@pi-unipi/core` previously split on `.` and `-` and compared only the numeric triple, discarding prerelease identifiers entirely — `3.0.0`, `3.0.0-alpha.0` and `3.0.0-alpha.9` all compared equal, so an alpha-channel install would never be prompted when `3.0.0` graduated to stable, and `3.0.0-alpha.10` never looked newer than `3.0.0-alpha.9`. The comparison now orders prerelease identifiers by semver §11 precedence (release > prerelease, numeric ids numerically and below alphanumeric ones). `updater`'s `getNewerVersions` also gains channel discipline: a stable install (npm `latest`) is never offered prerelease changelog entries, while a prerelease install sees every entry newer than itself.
+
+### Added
+
+- **Prerelease channel.** The v3 branch publishes as `3.0.0-alpha.N` under npm dist-tags (`--tag alpha`), leaving `latest` on the 2.x line. `scripts/sync-pins.mjs` now accepts prerelease versions, and the full-release chore documents the prerelease rules (never omit `--tag` on a prerelease, fresh suffix per publish, graduation moves `latest`).
+
 ## [2.20.5] — 2026-09-19
 
 ### Fixed

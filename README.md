@@ -9,7 +9,7 @@ pi install npm:@pi-unipi/unipi
 
 ## Requirements
 
-- **Pi (`@earendil-works/pi-coding-agent`) `^0.84.0`** — Unipi 2.9.0 tracks the Pi 0.84 SDK (extension event map incl. `agent_settled`, `ModelRuntime` session options, kitty-protocol keyboard handling). Older Pi releases (0.80–0.83) still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<2.9.0` if you must stay on an older Pi.
+- **Pi (`@earendil-works/pi-coding-agent`) `^0.86.0`** — Unipi 3.0.0-alpha tracks the Pi 0.86 SDK (JSON-strict `ToolCall.arguments` / `ToolResultMessage.details`, `TranscriptContext` custom-provider inputs, native prompt-cache warming, per-model compaction budgets, `ctx.modelRegistry.stream()`). Older Pi releases (0.80–0.85) still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<3.0.0` if you must stay on an older Pi.
 
 ## What You Get
 

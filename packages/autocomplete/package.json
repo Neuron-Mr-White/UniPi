@@ -29,8 +29,8 @@
     "!src/**/*.test.ts"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0"
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0"
   },
   "scripts": {
     "test": "vitest run"

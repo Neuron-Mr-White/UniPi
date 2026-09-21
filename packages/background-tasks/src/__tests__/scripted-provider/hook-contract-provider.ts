@@ -6,6 +6,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEventStream,
   type Context,
+  type JsonObject,
   type Message,
   type Model,
   type TextContent,
@@ -30,8 +31,6 @@ const USAGE = {
   totalTokens: 10,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
-
-type JsonObject = Record<PropertyKey, unknown>;
 
 interface ScriptedToolCall extends Omit<ToolCall, 'arguments'> {
   arguments: JsonObject;

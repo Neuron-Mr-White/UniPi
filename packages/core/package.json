@@ -24,13 +24,13 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0",
     "typebox": "^1.1.38",
     "@types/node": "^22.0.0"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/utility",
   "version": "3.0.0-alpha.0",
-  "description": "Utility commands and tools for Pi coding agent — lifecycle, diagnostics, cache, analytics, display, batch execution",
+  "description": "Utility commands and tools for Pi coding agent \u2014 lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -40,8 +40,8 @@
   },
   "devDependencies": {},
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0",
     "typebox": "^1.1.38"
   },
   "scripts": {

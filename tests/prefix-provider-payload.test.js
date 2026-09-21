@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { buildRalphLoopReminder } from "../packages/ralph/index.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
 import { formatMilestoneSnapshot } from "../packages/milestone/hooks.ts";
@@ -58,7 +59,7 @@ function assistant(text) {
 async function capturePayload(context, options = {}) {
   let payload;
   const marker = new Error("payload captured");
-  const events = streamOpenAICompletions(options.model ?? MODEL, context, {
+  const events = streamOpenAICompletions(options.model ?? MODEL, normalizeContext(context), {
     apiKey: "test-only",
     temperature: options.temperature,
     maxTokens: options.maxTokens,

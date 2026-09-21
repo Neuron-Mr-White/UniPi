@@ -36,9 +36,9 @@
     "@pi-unipi/subagents": "3.0.0-alpha.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.84.0",
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0"
+    "@earendil-works/pi-ai": "^0.86.0",
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0"
   },
   "scripts": {
     "test": "npx tsx --test tests/**/*.test.ts"

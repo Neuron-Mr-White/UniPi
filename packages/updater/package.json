@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/updater",
   "version": "3.0.0-alpha.0",
-  "description": "Auto-updater, changelog browser, and readme browser for Unipi — checks npm registry, renders CHANGELOG.md and README.md files in TUI overlays",
+  "description": "Auto-updater, changelog browser, and readme browser for Unipi \u2014 checks npm registry, renders CHANGELOG.md and README.md files in TUI overlays",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -37,8 +37,8 @@
     "@pi-unipi/core": "3.0.0-alpha.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@earendil-works/pi-tui": "^0.84.0"
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

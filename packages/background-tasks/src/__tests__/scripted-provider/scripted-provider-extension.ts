@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEventStream,
   type Context,
+  type JsonObject,
   type Model,
   type Api,
   type Message,
@@ -33,8 +34,6 @@ type Scenario =
   | 'json-tool-telemetry';
 type ScriptedStopReason = 'stop' | 'length' | 'toolUse';
 
-type JsonObject = Record<PropertyKey, unknown>;
-
 interface ScriptedToolCall extends Omit<ToolCall, 'arguments'> {
   arguments: JsonObject;
 }
@@ -59,7 +58,7 @@ function parseScenario(value: string | undefined): Scenario {
   return 'bg-run-follow-up';
 }
 
-function record(event: JsonObject): void {
+function record(event: object): void {
   const path = process.env['UNIPI_BG_SCRIPTED_EVENTS'];
   if (!path) return;
   appendFileSync(path, `${JSON.stringify({ ...event, timestamp: Date.now() })}\n`, 'utf8');
