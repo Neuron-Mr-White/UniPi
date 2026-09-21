@@ -18,12 +18,13 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
-import { LH_MODES, MODE_REGISTRY, type LhMode } from "./modes.js";
+import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
 import type { OwnerCoordinator, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
 import type { FetchLike } from "./judge/typesafe.js";
 import { loadSettings, type LongHorizonSettings } from "./settings.js";
 import { SWARM_ORCHESTRATION_PROMPT } from "./tools/swarm.js";
+import { GRAPH_ORCHESTRATION_PROMPT } from "./tools/graph.js";
 
 export interface GateState {
   readonly mode: LhMode;
@@ -37,6 +38,13 @@ export interface GateDeps {
   readonly fetchImpl?: FetchLike;
   readonly env?: Record<string, string | undefined>;
   readonly now?: () => number;
+  /**
+   * Suspend-and-switch hook: called when an explicit override differs from
+   * the active owner's mode. Wired by index (pauses the goal machine, parks
+   * the owner). If it returns false (park slot held), the override is
+   * refused and the owner keeps the turn.
+   */
+  readonly onExplicitSwitch?: (mode: LhMode) => boolean;
 }
 
 /** Delegation tools governed by the exposure matrix (design §8). */
@@ -121,7 +129,9 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
   if (status) lines.push(status);
   lines.push("</long-horizon>");
   // The swarm prescription rides the fragment in swarm mode (deterministic text).
-  return state.mode === "swarm" ? `${lines.join("\n")}\n${SWARM_ORCHESTRATION_PROMPT}` : lines.join("\n");
+  if (state.mode === "swarm") return `${lines.join("\n")}\n${SWARM_ORCHESTRATION_PROMPT}`;
+  if (state.mode === "graph") return `${lines.join("\n")}\n${GRAPH_ORCHESTRATION_PROMPT}`;
+  return lines.join("\n");
 }
 
 export class Gate {
@@ -144,10 +154,24 @@ export class Gate {
 
   async resolveForTurn(prompt: string): Promise<GateState> {
     const settings = this.deps.loadSettings?.() ?? loadSettings();
+    // Explicit switch away from an active owner suspends it first (max-1
+    // park slot; a held slot refuses the override and the owner keeps mode).
+    let explicit = this.pendingExplicit;
+    if (explicit) {
+      const active = this.deps.owner.getActive();
+      if (active && modeForOwnerKind(active.kind) !== explicit) {
+        // Suspend-and-switch: the hook (when wired) also pauses engines; the
+        // fallback parks the owner directly. Park-slot-full refuses the switch.
+        const switched = this.deps.onExplicitSwitch
+          ? this.deps.onExplicitSwitch(explicit)
+          : Boolean(this.deps.owner.suspend(`paused(superseded_by:${explicit})`));
+        if (!switched) explicit = null; // refused — owner wins this turn
+      }
+    }
     const resolution = await resolveMode({
       settings,
       activeOwner: this.deps.owner.getActive(),
-      ...(this.pendingExplicit ? { explicit: this.pendingExplicit } : {}),
+      ...(explicit ? { explicit } : {}),
       prompt,
       ...(this.deps.fetchImpl ? { fetchImpl: this.deps.fetchImpl } : {}),
       ...(this.deps.env ? { env: this.deps.env } : {}),

@@ -52,3 +52,7 @@ run = "pi --no-extensions --no-skills -e packages/subagents/src/index.ts"
 [tasks.typecheck]
 description = "Run TypeScript type check"
 run = "npx tsc --noEmit --skipLibCheck"
+
+[tasks.sandbox]
+description = "Launch pi with long-horizon only (judge on when TYPESAFE_API_KEY/OPENROUTER_API_KEY present, else fail-open default)"
+run = "pi --no-extensions --no-skills -e packages/long-horizon/index.ts"

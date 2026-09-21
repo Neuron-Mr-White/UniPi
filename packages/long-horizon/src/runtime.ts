@@ -191,7 +191,9 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     changedFiles = [];
 
     const tokens = sumUsageTokens(messages);
-    deps.continuation.setTokenCounter(() => tokens);
+    // Only update when this turn actually reported usage — a usage-less turn
+    // keeps the last known counter (and never erases an injected one).
+    if (tokens !== undefined) deps.continuation.setTokenCounter(() => tokens);
     await deps.continuation.onTurnEnd(activity);
   });
 

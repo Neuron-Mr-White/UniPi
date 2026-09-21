@@ -38,8 +38,8 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [x] Unit tests: swarm ledger lifecycle + tool registration, runaway detector fixtures (12 tests)
 
 ## Phase 6 — Graph (staged v1) + polish
-- [ ] `src/tools/graph.ts` — single-wave scheduling with input frontiers over committed results (real but minimal graph; full DAG + finish semantics later); /unipi:graph first-class
-- [ ] Sandbox: `mise run sandbox` task (pi + long-horizon only; judge on if key, else fail-open) + scripted-provider scenario suite (the 8 scenarios in design §6) + judge record/replay fixtures
+- [x] `src/tools/graph.ts` — single-wave scheduling with input frontiers over committed results (real but minimal graph; full DAG + finish semantics later); /unipi:graph first-class
+- [x] Sandbox: `mise run sandbox` task (pi + long-horizon only; judge on if key, else fail-open) + scripted-provider scenario suite (the 8 scenarios in design §6) + judge record/replay fixtures
 - [ ] Umbrella wiring (packages/unipi/index.ts), root package.json deps + pi.skills entry, autocomplete registry (goal/ralph/swarm/graph commands incl. freed `goal` alias), README section, docs/v3-tasks.md checkpoints, full suite + typecheck green
 - [ ] Memory: store implementation-learned patterns
 

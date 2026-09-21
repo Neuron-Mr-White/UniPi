@@ -19,6 +19,7 @@ import { GoalContinuation } from "./src/engine/continuation.js";
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
 import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
+import { GraphLedger, registerGraphTools } from "./src/tools/graph.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
 
@@ -45,7 +46,21 @@ export default function longHorizon(pi: ExtensionAPI): void {
     },
   });
 
-  const gate = new Gate({ owner, loadSettings });
+  const suspendActiveFor = (mode: string): boolean => {
+    const active = owner.getActive();
+    if (!active) return true;
+    if (active.kind === "goal") machine.pause("paused(superseded)");
+    const suspended = owner.suspend(`paused(superseded_by:${mode})`);
+    if (suspended) {
+      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+        event: "suspended",
+        ownerId: suspended.ownerId,
+        reason: `paused(superseded_by:${mode})`,
+      });
+    }
+    return Boolean(suspended);
+  };
+  const gate = new Gate({ owner, loadSettings, onExplicitSwitch: suspendActiveFor });
   gate.register(pi);
 
   // Goal engine: machine + tools + continuation + runtime wiring.
@@ -86,6 +101,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
   registerRalphTools(pi, ralph);
   const swarm = new SwarmLedger(owner);
   registerSwarmTools(pi, { ledger: swarm, owner });
+  const graph = new GraphLedger(owner);
+  registerGraphTools(pi, { ledger: graph });
   wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
   registerLongHorizonCommands(pi, gate, owner, ralph);
 
@@ -107,6 +124,6 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:swarm",
       "unipi:graph",
     ],
-    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield"],
+    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield", "update_agent_graph", "graph_output", "view_agent_graph"],
   });
 }

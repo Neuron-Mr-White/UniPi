@@ -112,15 +112,16 @@ test("fragment is deterministic and carries mode + owner status", () => {
 
 // ── gate resolution state ────────────────────────────────────────────────
 
-test("explicit override beats owner and is consumed once", async () => {
+test("explicit override beats owner, parks it, and is consumed once", async () => {
   const { gate, owner, dir } = harness();
   owner.activate("goal", "g");
   gate.setExplicit("swarm");
   const first = await gate.resolveForTurn("do the thing");
   assert.deepEqual(first, { mode: "swarm", source: "explicit" });
+  assert.equal(owner.getParked()?.kind, "goal"); // suspend-and-switch
   const second = await gate.resolveForTurn("another message");
-  assert.equal(second.mode, "goal"); // owner wins after override consumed
-  assert.equal(second.source, "owner");
+  assert.equal(second.mode, "goal"); // owner parked → default mode (judge off)
+  assert.equal(second.source, "default");
   rmSync(dir, { recursive: true, force: true });
 });
 
