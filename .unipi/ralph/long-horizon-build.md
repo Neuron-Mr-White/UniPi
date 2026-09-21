@@ -12,8 +12,8 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [x] Config survey: two patterns exist (notify per-package file vs ask-user shared ~/.pi/agent/settings.json `unipi.*`). Picked shared-file: `unipi.longHorizon` key (settings.ts), lazy path resolution (module-level path constants break test isolation — ask-user has this latent flaw), deep-merge repair; 4 tests
 
 ## Phase 2 — Gate + judge
-- [ ] `src/judge/typesafe.ts` — POST /v1/systemone client: {state, model:"jev-latest", questions:{mode: choice{goal,ralph,swarm,graph,none}, decomposable: noul}} → {choice, confidence}; injectable fetch; provider typesafe|openrouter (baseUrl+key from settings/env TYPESAFE_API_KEY | OPENROUTTER_API_KEY); 1s timeout, fail-open
-- [ ] `src/judge/resolve.ts` — confidence gate (threshold, default 0.6; low → owner-if-active else default), single-entry cache (prompt hash → decision, TTL), judge runs on NEW user messages only
+- [x] `src/judge/typesafe.ts` — POST /v1/systemone client: {state, model:"jev-latest", questions:{mode: choice{goal,ralph,swarm,graph,none}, decomposable: noul}} → {choice, confidence}; injectable fetch; provider typesafe|openrouter (baseUrl+key from settings/env TYPESAFE_API_KEY | OPENROUTTER_API_KEY); 1s timeout, fail-open
+- [x] `src/judge/resolve.ts` — confidence gate (threshold, default 0.6; low → owner-if-active else default), single-entry cache (prompt hash → decision, TTL), judge runs on NEW user messages only
 - [ ] `src/gate.ts` — resolution ladder: explicit /unipi:<mode> > active owner > judge > default(goal when judge off, none never a judge-off default); tool surface switching via pi 0.86 deferred tools; orchestration prompt fragment injection + owner status line; `mode-resolved` event
 - [ ] Commands: /unipi:goal, /unipi:ralph, /unipi:swarm, /unipi:graph (<prompt> = turn override; `resume`, `clear`, `status` subcommands), /unipi:continue (resume owner)
 - [ ] Unit tests: resolution ladder all branches, judge fixtures (record/replay, no network), fail-open paths

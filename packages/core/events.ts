@@ -22,6 +22,11 @@ export const UNIPI_EVENTS = {
   /** Ralph loop iteration completed */
   RALPH_ITERATION_DONE: "unipi:ralph:iteration:done",
 
+  /** Long-horizon mode resolved for the current turn */
+  LONG_HORIZON_MODE_RESOLVED: "unipi:long-horizon:mode:resolved",
+  /** Long-horizon automation owner lifecycle changed */
+  LONG_HORIZON_OWNER_CHANGED: "unipi:long-horizon:owner:changed",
+
 
   /** Info screen group registered */
   INFO_GROUP_REGISTERED: "unipi:info:group:registered",
