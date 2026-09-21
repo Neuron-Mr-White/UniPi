@@ -15,7 +15,7 @@ import { TpsTracker } from "../src/tps-tracker.js";
 describe("v3 default preset", () => {
   it("default is UNI > model > thinking > directory > git | ctx/tokens ...", () => {
     const d = PRESETS.default;
-    assert.deepEqual(d.leftSegments.slice(0, 3), ["uni", "model", "thinking_level"]);
+    assert.deepEqual(d.leftSegments.slice(0, 4), ["uni", "lh_mode", "model", "thinking_level"]);
     assert.ok(d.leftSegments.includes("directory"));
     assert.ok(d.leftSegments.includes("git"));
     for (const id of ["context_pct", "tokens_total"]) {
@@ -25,7 +25,7 @@ describe("v3 default preset", () => {
 
   it("classic preset preserves the old balanced view", () => {
     const c = PRESETS.classic;
-    assert.deepEqual(c.leftSegments, ["model", "api_state", "tool_count", "git"]);
+    assert.deepEqual(c.leftSegments, ["lh_mode", "model", "api_state", "tool_count", "git"]);
     assert.equal(getPreset("classic"), c);
   });
 
