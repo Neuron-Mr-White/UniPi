@@ -19,6 +19,7 @@ import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
 import type { OwnerCoordinator } from "./owner.js";
 import type { RalphLoop } from "./engine/ralph.js";
+import { loadSettings } from "./settings.js";
 
 export interface LongHorizonCommandDeps {
   readonly gate: Gate;
@@ -51,6 +52,46 @@ function ownerSnapshotText(owner: OwnerCoordinator): string {
   }
   return lines.join("\n");
 }
+
+/** Short user-facing mode descriptions: use case + cost/success (design §2 rubric). */
+const MODE_DESCRIPTIONS = {
+  goal: "One objective until verifiably true. Use: medium-complex single deliverables. Cost/success: pareto per success. (<prompt> | status | resume | clear)",
+  ralph: "Checklist grind over iterations. Use: enumerable chores, repo-scale plans. Cost/success: low cost, solid success. (start <name> | stop | status | resume | clear | <prompt>)",
+  swarm: "Parallel fan-out + one synthesis. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | resume | clear)",
+  graph: "Dependent multi-step work. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | resume | clear)",
+} as const;
+
+interface CompletionItem {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+/** Shared subcommand completions: <prompt> | status | resume | clear. */
+const goalCompletions = (prefix: string): CompletionItem[] => {
+  const subs: CompletionItem[] = [
+    { value: "status", label: "status", description: "show owner + mode snapshot" },
+    { value: "resume", label: "resume", description: "reactivate the parked owner" },
+    { value: "clear", label: "clear", description: "drop the parked owner" },
+  ];
+  const hits = subs.filter((item) => item.value.startsWith(prefix));
+  if (prefix.length === 0) {
+    return [{ value: "", label: "<prompt>", description: "run one turn in this mode" }, ...subs];
+  }
+  return hits;
+};
+
+const ralphCompletions = (prefix: string): CompletionItem[] => {
+  const subs: CompletionItem[] = [
+    { value: "start ", label: "start <name>", description: "begin a loop with a task file" },
+    { value: "stop", label: "stop", description: "park the active loop" },
+    { value: "status", label: "status", description: "loop + task-file progress" },
+    { value: "resume", label: "resume", description: "reactivate the parked loop" },
+    { value: "clear", label: "clear", description: "drop the parked loop" },
+  ];
+  const hits = subs.filter((item) => item.value.trim().startsWith(prefix.trim()));
+  return hits.length > 0 ? hits : [{ value: "", label: "<prompt>", description: "run one turn in ralph mode" }];
+};
 
 export function registerLongHorizonCommands(
   pi: ExtensionAPI,
@@ -110,9 +151,12 @@ export function registerLongHorizonCommands(
 
     if (sub === "status" || (sub === "" && parts.length <= 1)) {
       const current = gate.current();
+      const settings = loadSettings();
       notify(
         ctx,
-        `Mode command: ${definition.label}\nLast resolved: ${current ? `${current.mode} (${current.source})` : "none yet"}\n${ownerSnapshotText(owner)}`,
+        `Mode command: ${definition.label}\nLast resolved: ${current ? `${current.mode} (${current.source})` : "none yet"}\n${ownerSnapshotText(owner)}` +
+          `\nJudge: ${settings.judge.enabled ? `${settings.judge.provider}/${settings.judge.model} (threshold ${settings.judge.threshold})` : "off"} — default mode: ${settings.defaultMode}` +
+          `\nSettings: ~/.pi/agent/settings.json → unipi.longHorizon`,
       );
       return;
     }
@@ -173,9 +217,9 @@ export function registerLongHorizonCommands(
     await pi.sendUserMessage(args.trim());
   };
 
-  pi.registerCommand("unipi:goal", { description: "Goal mode — one objective until verifiably true (<prompt> | status | resume | clear)", handler: modeHandler("goal") });
-  pi.registerCommand("unipi:ralph", { description: "Ralph loop — task-file iterations (start <name> | stop | status | resume | clear | <prompt>)", handler: modeHandler("ralph") });
-  pi.registerCommand("unipi:swarm", { description: "Swarm mode — independent fan-out + synthesis (<prompt> | status | resume | clear)", handler: modeHandler("swarm") });
-  pi.registerCommand("unipi:graph", { description: "Graph mode — dependent multi-step work (<prompt> | status | resume | clear)", handler: modeHandler("graph") });
+  pi.registerCommand("unipi:goal", { description: MODE_DESCRIPTIONS.goal, getArgumentCompletions: goalCompletions, handler: modeHandler("goal") });
+  pi.registerCommand("unipi:ralph", { description: MODE_DESCRIPTIONS.ralph, getArgumentCompletions: ralphCompletions, handler: modeHandler("ralph") });
+  pi.registerCommand("unipi:swarm", { description: MODE_DESCRIPTIONS.swarm, getArgumentCompletions: goalCompletions, handler: modeHandler("swarm") });
+  pi.registerCommand("unipi:graph", { description: MODE_DESCRIPTIONS.graph, getArgumentCompletions: goalCompletions, handler: modeHandler("graph") });
 
 }

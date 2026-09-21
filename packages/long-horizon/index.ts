@@ -7,6 +7,7 @@
  */
 
 import { join, resolve } from "node:path";
+import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitEvent, getPackageVersion, UNIPI_EVENTS } from "@pi-unipi/core";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
@@ -62,6 +63,37 @@ export default function longHorizon(pi: ExtensionAPI): void {
   };
   const gate = new Gate({ owner, loadSettings, onExplicitSwitch: suspendActiveFor });
   gate.register(pi);
+  // Decision badge renderer — special background so routing decisions are
+  // visible in the transcript (UI-only; appendEntry never reaches the LLM).
+  try {
+    pi.registerEntryRenderer<{ mode: string; source: string; confidence?: number }>(
+      "long-horizon-decision",
+      (entry, _options, theme) => {
+        const data = entry.data;
+        if (!data) return undefined;
+        const t = theme as unknown as {
+          bg?: (c: string, t: string) => string;
+          fg?: (c: string, t: string) => string;
+          bold?: (t: string) => string;
+        };
+        const badge = t.bg?.("customMessageBg", ` ⟐ long-horizon ${t.bold?.(data.mode) ?? data.mode} `) ?? ` ⟐ ${data.mode} `;
+        const via =
+          data.source === "judge"
+            ? `judged${data.confidence !== undefined ? ` (${data.confidence.toFixed(2)})` : ""}`
+            : data.source === "explicit"
+              ? "/unipi command"
+              : data.source === "owner"
+                ? "active owner"
+                : data.source === "judge_abstained_low_confidence"
+                  ? "judge abstained → default"
+                  : "default";
+        const line = t.fg?.("custom", `${badge} ${via}`) ?? `${badge} ${via}`;
+        return new Text(line, 0, 0);
+      },
+    );
+  } catch {
+    // Renderer registration is UI-dependent; skip where unavailable.
+  }
 
   // Goal engine: machine + tools + continuation + runtime wiring.
   const machine = new GoalMachine({

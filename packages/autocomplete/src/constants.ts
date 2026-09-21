@@ -223,10 +223,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:chore-create":   "Create reusable chore definition",
   "unipi:chore-execute":  "Execute a saved chore",
 
-  "unipi:goal":           "Goal mode — one objective until verifiably true",
-  "unipi:ralph":          "Ralph loop — start/stop/status/resume",
-  "unipi:swarm":          "Swarm mode — independent fan-out + synthesis",
-  "unipi:graph":          "Graph mode — dependent multi-step work",
+  "unipi:goal":           "One objective until verifiably true · medium complexity · pareto cost/success",
+  "unipi:ralph":          "Checklist grind over iterations · enumerable chores · low cost, solid success",
+  "unipi:swarm":          "Parallel fan-out + synthesis · complex decomposable · higher cost, high coverage",
+  "unipi:graph":          "Dependent multi-step work · later steps need earlier results · highest cost",
 
   "unipi:memory-process":     "Process and store conversation learnings",
   "unipi:memory-search":      "Search project memory for past context",

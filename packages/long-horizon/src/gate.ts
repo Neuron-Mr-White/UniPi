@@ -188,6 +188,9 @@ export class Gate {
 
   /** pi wiring. Registered once from index.ts. */
   register(pi: ExtensionAPI): void {
+    // Decision badge: a UI-only session entry (never sent to the LLM) so the
+    // user always sees how the turn was routed — rendered with a distinct
+    // background by the entry renderer registered in index.ts.
     pi.on("before_agent_start", async (event) => {
       const state = await this.resolveForTurn(event.prompt);
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
@@ -195,6 +198,15 @@ export class Gate {
         source: state.source,
         ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
       });
+      try {
+        pi.appendEntry("long-horizon-decision", {
+          mode: state.mode,
+          source: state.source,
+          ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
+        });
+      } catch {
+        // Best-effort badge; never block a turn on it.
+      }
       const fragment = renderModeFragment(
         state,
         this.deps.owner.getActive(),
