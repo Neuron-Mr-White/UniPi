@@ -54,19 +54,25 @@ One `POST https://api.typesafe.ai/v1/systemone` call per **new user message only
   "questions": {
     "mode": {
       "type": "choice",
-      "instructions": "Which execution mode fits this request?",
+      "instructions": "Which execution mode fits this request? Route by task complexity and shape, not by ambition.",
       "criteria": {
-        "goal":  "one objective pursued across turns until verifiably true",
-        "ralph": "work through a task file / checklist over many iterations",
-        "swarm": "several independent items that parallel workers can settle, then synthesize",
-        "graph": "multi-step work where later steps depend on earlier results",
-        "none":  "ordinary conversational or coding request"
+        "none":  "Straight-to-the-point request: rename, small edit, quick question. Lowest cost, and for simple tasks the optimal choice",
+        "goal":  "One objective pursued across many turns until verifiably true. Iterative self-driven work; pareto cost-per-success for medium complexity",
+        "ralph": "Work through a task file / checklist over many iterations. Lower cost than goal, good success on enumerable multi-item chores",
+        "swarm": "Several independent items parallel workers can settle, then synthesize. For complex decomposable work; costs more",
+        "graph": "Multi-step work where later steps depend on earlier results; most complex shape"
       }
     },
     "decomposable": { "type": "noul", "instructions": "Can this be split into independent parallel items?" }
   }
 }
 ```
+
+The criteria encode the routing rubric (owner's cost/success model):
+simple → `none` (lowest cost, optimal for simple) · enumerable checklist → `ralph` (low cost,
+mid success) · single verifiable objective → `goal` (higher cost, pareto cost/success) ·
+decomposable complex → `swarm` · dependent complex → `graph` · highest-reliability single-shot
+needs → judge says `none`/`goal` and the user routes to subagents explicitly.
 
 - **Confidence gate**: `confidence < threshold (default 0.6)` → keep active owner, else
   default mode. Optionally surface a one-line note (`/unipi:mode` to override). Configurable.
@@ -95,9 +101,29 @@ One `POST https://api.typesafe.ai/v1/systemone` call per **new user message only
 
 - One **active** owner per session: goal | ralph-loop | swarm | graph.
 - Owner state persisted on every transition: `{mode, ownerId, status, revision, lease, updatedAt}`.
-- `paused` owners are kept (max 1 parked owner in v1) and resumable; resuming replaces the active owner.
+- **`create_goal` while a goal is parked is rejected** (mcode's create-replaces-only-complete rule
+  extended to parked): the model is told to ask the user to `/unipi:goal resume` or
+  `/unipi:goal clear` first.
 - Control lease `{ownerId, generation}` so a stale `update_goal`/`ralph_done` from a
   pre-suspend turn is rejected, not applied.
+
+### Walkthrough: in `/unipi:goal`, user types `/unipi:swarm <prompt>`
+
+1. Message queues; a running goal turn finishes (or is interrupted) — no mid-turn surface swap.
+2. Gate admits next turn, sees the explicit override.
+3. Coordinator **suspends the goal**: status → `paused(superseded_by:swarm)`, lease
+   generation++ (any in-flight `update_goal` from the old turn now stale-rejects), iteration
+   and token counters **freeze** (budget accrues only on settled active turns — parked time
+   costs nothing), state persisted, `owner-changed` event → footer shows `goal parked`.
+4. Swarm turn is admitted: swarm tools active + orchestration block; goal tools leave the
+   surface (deferred). The swarm context is clean — the parked goal is not carried in — but
+   the fragment notes `parked goal exists · /unipi:goal resume`.
+5. Swarm runs its lifecycle (schedule → yield → wakes → finish/synthesize).
+6. Swarm terminal → owner slot vacant; **the parked goal stays parked** (footer keeps the
+   reminder). A new plain prompt re-resolves normally (judge/default). If the agent tries
+   `create_goal` for a *new* objective while one is parked → rejected (see owner rules).
+7. `/unipi:goal resume` → goal reactivates with a recovery-flavored continuation hint
+   ("resuming after suspension — call get_goal"); stall counter and revision survive.
 
 ## 4. Mode internals (inherited from the study)
 
@@ -174,10 +200,18 @@ mise run sandbox   # pi + long-horizon only, judge on, requires TYPESAFE_API_KEY
   7. wake during swarm → supervisor turn with swarm tools; user-first ordering
   8. stale `update_goal`/`ralph_done` after suspend → lease rejection
 
-## 7. Open questions
+## 7. Decisions (resolved 2026-09-20) and open items
 
-1. Should judge-ON still allow `none` (plain turns get no goal tools), or is goal-always the rule?
-   (Design assumes `none` exists; "goal by default" applies to judge-OFF only.)
-2. Parking limit: keep at most 1 paused owner (simplest UX) or a park list?
-3. Should ralph mode also expose goal tools for per-item deep work? (Design: no in v1.)
-4. Graph in v1 as a stub that error-hints "use /unipi:swarm", or fully hidden?
+1. **Resolved: `none` exists.** Judge-on plain turns ("change the name of xxx") get no mode
+   tools — straight-to-the-point stays straight. `goal` default applies to judge-off only.
+2. **Open — parked-owner capacity** (see §3): v1 proposal = **one parked owner max**;
+   switching while the park slot is full → refuse with
+   `"goal 'X' is parked — /unipi:goal resume or clear before parking another"`.
+   Alternatives: (a) park list capped ~3 with `/unipi:owners`; (b) auto-terminate oldest
+   parked owner on overflow. Recommendation: the max-1 refusal — simplest UX, teaches the rule,
+   matches unipi's minimalism; upgrade to a list only if real usage hits the wall.
+3. **Resolved: ralph is ralph, goal is goal.** No goal tools inside ralph mode. Each mode is a
+   distinct cost/success point on the rubric; mixing them blurs what you paid for.
+4. **Resolved: graph is a first-class user trigger.** `/unipi:graph <prompt>` works in v1
+   (never hidden). The engine behind it ships staged: v1 = single-wave scheduling with input
+   frontiers (a real but minimal graph); full monotonic DAG + finish semantics when proven.
