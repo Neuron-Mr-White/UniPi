@@ -39,5 +39,8 @@
     "skills": [],
     "prompts": [],
     "themes": []
+  },
+  "scripts": {
+    "test": "npx tsx --test *.test.ts"
   }
 }

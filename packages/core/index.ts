@@ -14,3 +14,8 @@ export * from "./tui-overlay.js";
 export * from "./bounded-output.js";
 export * from "./spinner-line.js";
 export * from "./fusion-status.js";
+
+// v3 settings engine + migration (canonical ~/.unipi/config layout)
+export * from "./src/settings/paths.js";
+export * from "./src/settings/engine.js";
+export * from "./src/settings/migrations.js";
