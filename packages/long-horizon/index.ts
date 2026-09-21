@@ -87,7 +87,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
                 : data.source === "judge_abstained_low_confidence"
                   ? "judge abstained → default"
                   : "default";
-        const line = t.fg?.("custom", `${badge} ${via}`) ?? `${badge} ${via}`;
+        const line = `${t.fg?.("customMessageText", badge) ?? badge} ${t.fg?.("dim", via) ?? via}`;
         return new Text(line, 0, 0);
       },
     );
