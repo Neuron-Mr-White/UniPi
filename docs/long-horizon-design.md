@@ -200,16 +200,35 @@ mise run sandbox   # pi + long-horizon only, judge on, requires TYPESAFE_API_KEY
   7. wake during swarm → supervisor turn with swarm tools; user-first ordering
   8. stale `update_goal`/`ralph_done` after suspend → lease rejection
 
-## 7. Decisions (resolved 2026-09-20) and open items
+## 8. Tool classification: infrastructure vs delegation vs mode
+
+| Class | Tools | Exposure |
+|---|---|---|
+| Infrastructure | `sidekick`, `read_subagent` (fusion), `bg_run`/`bg_status`/`bg_logs`/`bg_kill`, file/shell, memory, `ask_user`, notify, web, sandbox, context | Always on, every mode — `sidekick` is part of the fused model, not orchestration |
+| Delegation | `spawn_helper`, `get_helper_result`, `bg_delegate`, `bg_result` | Full in swarm/graph; deferred-loadable in goal/ralph/none |
+| Mode control | goal trio, `ralph_done`, `swarm_status`/`swarm_yield`, graph tools, `todowrite` | Per-mode per §1 matrix |
+
+Guardrails: mode tools are **root-session only** (helpers/children never receive them);
+helpers never own continuation (they run, return, die); the "direct subagent" high-reliability
+route = plain turn + explicit deferred load — not a judge mode.
+
+## 9. Model configuration
+
+All `long_horizon.*` settings target the unified `/unipi:settings` hub (v3 utility task —
+"all config in one place; currently scattered"):
+`judge.enabled` · `judge.provider (typesafe|openrouter)` · `judge.model` · `judge.baseUrl` ·
+`judge.threshold` · `default_mode` · `verifier.model`. Build on the shared config pattern
+(none of the current per-package scattered styles) so hub absorption is a rename, not a
+migration. No interim `/unipi:lh-settings` command — register into whatever the utility
+settings surface exposes today and move with it.
+
+## 10. Resolved decisions
 
 1. **Resolved: `none` exists.** Judge-on plain turns ("change the name of xxx") get no mode
    tools — straight-to-the-point stays straight. `goal` default applies to judge-off only.
-2. **Open — parked-owner capacity** (see §3): v1 proposal = **one parked owner max**;
-   switching while the park slot is full → refuse with
-   `"goal 'X' is parked — /unipi:goal resume or clear before parking another"`.
-   Alternatives: (a) park list capped ~3 with `/unipi:owners`; (b) auto-terminate oldest
-   parked owner on overflow. Recommendation: the max-1 refusal — simplest UX, teaches the rule,
-   matches unipi's minimalism; upgrade to a list only if real usage hits the wall.
+2. **Resolved: max 1 parked owner.** Switching while the park slot is full → refuse with
+   `"<mode> 'X' is parked — resume or clear before parking another"`. Upgrade to a list only
+   if real usage hits the wall.
 3. **Resolved: ralph is ralph, goal is goal.** No goal tools inside ralph mode. Each mode is a
    distinct cost/success point on the rubric; mixing them blurs what you paid for.
 4. **Resolved: graph is a first-class user trigger.** `/unipi:graph <prompt>` works in v1
