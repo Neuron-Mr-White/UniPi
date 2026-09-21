@@ -94,16 +94,13 @@ export function filterPayloadTools<T>(payload: T, mode: LhMode): T {
   return { ...record, tools: filtered } as T;
 }
 
-function ownerStatusLine(owner?: OwnerState, parked?: OwnerState): string {
+function ownerPresenceLine(owner?: OwnerState, parked?: OwnerState): string {
+  // Presence only — numbers change every settlement and would bust the prefix
+  // cache. Live status rides tail messages (continuation hints), not here.
   const parts: string[] = [];
-  if (owner) {
-    parts.push(`active owner: ${owner.kind} "${owner.label}" (rev ${owner.revision})`);
-  }
-  if (parked) {
-    const mode = parked.kind === "ralph-loop" ? "ralph" : parked.kind;
-    parts.push(`parked owner: ${parked.kind} "${parked.label}" — /unipi:${mode} resume`);
-  }
-  return parts.join(" · ");
+  if (owner) parts.push(`an active ${owner.kind} owner is driving this session`);
+  if (parked) parts.push(`a parked ${parked.kind} owner exists (see /unipi:continue)`);
+  return parts.join("; ");
 }
 
 /** Deterministic orchestration fragment for the resolved mode. */
@@ -119,7 +116,7 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
           : " Delegation tools are hidden; finish here or ask the user to switch modes."),
     );
   }
-  const status = ownerStatusLine(owner, parked);
+  const status = ownerPresenceLine(owner, parked);
   if (status) lines.push(status);
   lines.push("</long-horizon>");
   return lines.join("\n");

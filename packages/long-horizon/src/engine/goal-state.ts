@@ -109,6 +109,10 @@ export interface GoalState {
   readonly lease: GoalLease;
   readonly revision: number;
   readonly updatedAt: string;
+  /** Kickoff contract delivered for this goal (once, cache-stable). */
+  readonly kickoffDelivered?: boolean;
+  /** Revision at which the budget wrap-up turn was delivered (once). */
+  readonly wrapUpDeliveredRevision?: number;
 }
 
 export interface GoalSettlement {
@@ -277,6 +281,28 @@ export class GoalMachine {
     const goal = this.goal;
     if (!goal) return undefined;
     const next = this.withGoal(goal, { tokenBudget: budget });
+    this.goal = next;
+    this.commit(next, goal.status);
+    return next;
+  }
+
+  markKickoffDelivered(goalId: string): GoalState | undefined {
+    const goal = this.goal;
+    if (!goal || goal.goalId !== goalId || goal.kickoffDelivered) return goal ?? undefined;
+    const next = this.withGoal(goal, { kickoffDelivered: true });
+    this.goal = next;
+    this.commit(next, goal.status);
+    return next;
+  }
+
+  isWrapUpDelivered(goal: GoalState): boolean {
+    return goal.wrapUpDeliveredRevision !== undefined;
+  }
+
+  markWrapUpDelivered(goalId: string, revision: number): GoalState | undefined {
+    const goal = this.goal;
+    if (!goal || goal.goalId !== goalId) return undefined;
+    const next = this.withGoal(goal, { wrapUpDeliveredRevision: revision });
     this.goal = next;
     this.commit(next, goal.status);
     return next;

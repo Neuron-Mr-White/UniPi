@@ -21,7 +21,7 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 ## Phase 3 — Goal mode (mcode spine)
 - [x] `src/tools/goal.ts` — create_goal / get_goal / update_goal (mcode schemas: update_goal mode "status"|"token_budget" with expected_goal_id+expected_updated_at CAS); lease-guarded; create_goal rejected while goal parked/unfinished
 - [x] `src/engine/goal-state.ts` — statuses active|waiting|paused|complete|blocked|budget_limited|usage_limited + reason taxonomy (mcode's 25); revision checkpoints; baseline-pending token budget; stall counter (neutral on evaluator failure); iteration cap
-- [ ] `src/engine/continuation.ts` — turn-end → settle → continue|wait|stop; kickoff contract ONCE (cache-stable, XML-escaped objective) then one-line hints; NO_PROGRESS/NO_TOOL nudges; 5-turn terminal audit; waiting backoff 5s×2ⁿ cap 5min; wrap-up turn on budget exhaustion keyed f(goalId, epoch)
+- [x] `src/engine/continuation.ts` — turn-end → settle → continue|wait|stop; kickoff contract ONCE (cache-stable, XML-escaped objective) then one-line hints; NO_PROGRESS/NO_TOOL nudges; 5-turn terminal audit; waiting backoff 5s×2ⁿ cap 5min; wrap-up turn on budget exhaustion keyed f(goalId, epoch)
 - [x] `src/engine/verifier.ts` — evaluator adapter: bounded evidence brief (objective digest, claim, changed files/commands ≤4000 chars, recent tail 5×800), verdict met|not_met+missing[]|impossible|inconclusive, notMetStreak, fail-open-neutral on error; injectable for tests
 - [ ] Compactor integration: kickoff contract + owner status in preserved sections; post-compaction status fragment re-injection
 - [ ] Unit tests: state machine transitions, CAS rejections, settlement math, verifier fixtures, crash/repair (reload state.json, retracted-turn recovery fragment)

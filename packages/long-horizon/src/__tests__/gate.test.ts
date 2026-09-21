@@ -105,7 +105,7 @@ test("fragment is deterministic and carries mode + owner status", () => {
     owner.getActive(),
     owner.getParked(),
   );
-  assert.match(withOwner, /parked owner: goal "all tests pass"/);
+  assert.match(withOwner, /a parked goal owner exists/);
   assert.match(withOwner, /\/unipi:goal resume/);
   rmSync(dir, { recursive: true, force: true });
 });
