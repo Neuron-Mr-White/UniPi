@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/updater",
-  "version": "2.20.5",
+  "version": "3.0.0-alpha.0",
   "description": "Auto-updater, changelog browser, and readme browser for Unipi — checks npm registry, renders CHANGELOG.md and README.md files in TUI overlays",
   "type": "module",
   "main": "index.ts",
@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "2.20.5"
+    "@pi-unipi/core": "3.0.0-alpha.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",
