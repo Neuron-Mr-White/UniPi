@@ -53,7 +53,7 @@ export const MODE_REGISTRY: Readonly<Record<LhMode, ModeDefinition>> = {
     id: "swarm",
     label: "Swarm",
     rubric: "Independent items parallel workers settle, then synthesize",
-    controlTools: ["swarm_status", "swarm_yield", "todowrite"],
+    controlTools: ["swarm_status", "swarm_yield", "swarm_report", "todowrite"],
     promptFragment: "swarm",
     ownerKind: "swarm",
     delegation: "full",

@@ -23,6 +23,7 @@ import type { OwnerCoordinator, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
 import type { FetchLike } from "./judge/typesafe.js";
 import { loadSettings, type LongHorizonSettings } from "./settings.js";
+import { SWARM_ORCHESTRATION_PROMPT } from "./tools/swarm.js";
 
 export interface GateState {
   readonly mode: LhMode;
@@ -119,7 +120,8 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
   const status = ownerPresenceLine(owner, parked);
   if (status) lines.push(status);
   lines.push("</long-horizon>");
-  return lines.join("\n");
+  // The swarm prescription rides the fragment in swarm mode (deterministic text).
+  return state.mode === "swarm" ? `${lines.join("\n")}\n${SWARM_ORCHESTRATION_PROMPT}` : lines.join("\n");
 }
 
 export class Gate {

@@ -33,9 +33,9 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 - [x] Remove `packages/ralph/` + all references (umbrella, root pi.skills, autocomplete, README, v3-tasks.md) once long-horizon ralph mode passes tests
 
 ## Phase 5 — Swarm + runaway guard
-- [ ] `src/tools/swarm.ts` — swarm_status projection (item statuses → running|needs_attention|settled) + swarm_yield; orchestration block (Maka swarm-mode prompt adapted to spawn_helper/bg_delegate); claim-before-dispatch (idempotency key per item); replace-failed; finish + dedupe + synthesize; wakes via background-tasks notifications, user-first ordering
-- [ ] `src/engine/runaway.ts` — step-end detectors (exact_action_repeat, exact_result_repeat, same_error_family, polling_repeat, unchanged_progress_repeat, abab) → steer-once-per-turn nudge with anti-poisoning text; remindAfter ≥3
-- [ ] Unit tests: swarm lifecycle with scripted bg tasks, runaway detector fixtures
+- [x] `src/tools/swarm.ts` — swarm_status projection (item statuses → running|needs_attention|settled) + swarm_yield; orchestration block (Maka swarm-mode prompt adapted to spawn_helper/bg_delegate); claim-before-dispatch (idempotency key per item); replace-failed; finish + dedupe + synthesize; wakes via background-tasks notifications, user-first ordering
+- [x] `src/engine/runaway.ts` — step-end detectors (exact_action_repeat, exact_result_repeat, same_error_family, polling_repeat, unchanged_progress_repeat, abab) → steer-once-per-turn nudge with anti-poisoning text; remindAfter ≥3
+- [x] Unit tests: swarm ledger lifecycle + tool registration, runaway detector fixtures (12 tests)
 
 ## Phase 6 — Graph (staged v1) + polish
 - [ ] `src/tools/graph.ts` — single-wave scheduling with input frontiers over committed results (real but minimal graph; full DAG + finish semantics later); /unipi:graph first-class

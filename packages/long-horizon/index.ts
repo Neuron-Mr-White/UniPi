@@ -18,6 +18,7 @@ import { GoalToolset } from "./src/tools/goal.js";
 import { GoalContinuation } from "./src/engine/continuation.js";
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
+import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
 
@@ -83,6 +84,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
     },
   });
   registerRalphTools(pi, ralph);
+  const swarm = new SwarmLedger(owner);
+  registerSwarmTools(pi, { ledger: swarm, owner });
   wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
   registerLongHorizonCommands(pi, gate, owner, ralph);
 
@@ -104,6 +107,6 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:swarm",
       "unipi:graph",
     ],
-    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status"],
+    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield"],
   });
 }

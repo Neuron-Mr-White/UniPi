@@ -23,6 +23,7 @@ import type { Gate } from "./gate.js";
 import type { RalphLoop } from "./engine/ralph.js";
 import type { LongHorizonSettings } from "./settings.js";
 import { loadSettings } from "./settings.js";
+import { RunawayGuard } from "./engine/runaway.js";
 
 /** Extract command/file signals from a tool call for the activity record. */
 export function classifyToolCall(
@@ -143,10 +144,38 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     if (classified.file) changedFiles.push(classified.file.slice(0, 200));
   });
 
+  // ── runaway guard: feed steps, steer once per turn ─────────────────
+  const runaway = new RunawayGuard({
+    steer: (text) => {
+      void pi.sendUserMessage(text, { deliverAs: "steer" });
+    },
+  });
+  pi.on("tool_execution_end", (event) => {
+    const toolEvent = event as { toolName?: string; result?: unknown; isError?: boolean };
+    if (typeof toolEvent.toolName !== "string") return;
+    const resultText =
+      typeof toolEvent.result === "string"
+        ? toolEvent.result
+        : (() => {
+            try {
+              return JSON.stringify(toolEvent.result ?? "");
+            } catch {
+              return String(toolEvent.result ?? "");
+            }
+          })();
+    runaway.feed({
+      tool: toolEvent.toolName,
+      input: (event as { input?: unknown }).input,
+      resultText: resultText.slice(0, 400),
+      isError: toolEvent.isError === true,
+    });
+  });
+
   // ── agent_end → continuation settlement ─────────────────────────────
   let evalContext: EvalContext | null = null;
 
   pi.on("agent_end", async (event, ctx) => {
+    runaway.resetTurn();
     const messages = (event as { messages?: unknown[] }).messages ?? [];
     evalContext = { registry: ctx.modelRegistry, model: ctx.model };
 
