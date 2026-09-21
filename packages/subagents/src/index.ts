@@ -254,7 +254,7 @@ export default function (pi: ExtensionAPI) {
         );
       }
     }
-    const runDir = createAsyncRunDir(launch.agentName);
+    const runDir = createAsyncRunDir(launch.agentName, asyncSessionId);
     const runId = runDir.split("/").pop()!;
     const controller = new AbortController();
     activeAsyncRuns.set(runId, controller);
@@ -610,6 +610,7 @@ export default function (pi: ExtensionAPI) {
   // ---- FleetView (persistent fleet panel; our AgentWidget slot system) ----
   const fleetView = new FleetView(manager, agentActivity, ASYNC_DIR, {
     placement: config.fleetView === false ? undefined : (config.fleetViewPlacement ?? "belowEditor"),
+    sessionId: asyncSessionId,
     openInspector: async (entry) => {
       if (!sessionCtx?.ui) return;
       if (entry.source === "inprocess") {
@@ -667,6 +668,7 @@ export default function (pi: ExtensionAPI) {
     manager,
     config,
     asyncDirRoot: ASYNC_DIR,
+    sessionId: asyncSessionId,
   });
 
   // Register info group at factory time (not session_start)

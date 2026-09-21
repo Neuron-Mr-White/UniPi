@@ -32,6 +32,11 @@ export interface FleetViewOptions {
   refreshMs?: number;
   maxAgentRows?: number;
   placement?: "belowEditor" | "aboveEditor";
+  /**
+   * Current session id. The dock only shows async runs stamped with it, so a
+   * crashed sibling session's orphans never leak into this project's footer.
+   */
+  sessionId?: string;
   /** Open the inspector for an entry (wired to ConversationViewer overlay). */
   openInspector?: (entry: FleetEntry) => Promise<void> | void;
 }
@@ -45,6 +50,7 @@ export function collectFleetEntries(
   manager: AgentManager,
   activity: Map<string, AgentActivity>,
   asyncDirRoot: string,
+  sessionId?: string,
 ): FleetEntry[] {
   const entries: FleetEntry[] = [];
 
@@ -62,7 +68,7 @@ export function collectFleetEntries(
     void act;
   }
 
-  for (const run of listAsyncRunSummaries(asyncDirRoot)) {
+  for (const run of listAsyncRunSummaries(asyncDirRoot, sessionId ? { sessionId } : {})) {
     if (!isActiveState(run.state)) continue;
     entries.push({
       key: `async:${run.runId}`,
@@ -118,7 +124,7 @@ export class FleetView {
   refresh(): void {
     const ctx = this.uiCtx;
     if (!ctx) return;
-    this.entries = collectFleetEntries(this.manager, this.activity, this.asyncDirRoot);
+    this.entries = collectFleetEntries(this.manager, this.activity, this.asyncDirRoot, this.options.sessionId);
     this.clampSelection();
 
     if (this.inspectorOpen) {

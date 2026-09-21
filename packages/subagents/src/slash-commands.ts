@@ -15,6 +15,8 @@ export interface SlashDeps {
   manager: AgentManager;
   config: { maxConcurrent: number; enabled: boolean; types: Record<string, { enabled?: boolean }> };
   asyncDirRoot: string;
+  /** Current session id — scopes the fleet list to this session's own runs. */
+  sessionId?: string;
   retainedDir?: string;
 }
 
@@ -30,9 +32,10 @@ export function registerSlashCommands(pi: ExtensionAPI, getCtx: () => ExtensionC
     description: "Show active subagent fleet (in-process + process runs)",
     handler: async (_args, _ctx) => {
       const inProcess = deps.manager.listAgents().filter((a) => a.status === "running" || a.status === "queued");
-      const asyncRuns = listAsyncRunSummaries(deps.asyncDirRoot).filter(
-        (r) => r.state === "running" || r.state === "queued" || r.state === "pending",
-      );
+      const asyncRuns = listAsyncRunSummaries(
+        deps.asyncDirRoot,
+        deps.sessionId ? { sessionId: deps.sessionId } : {},
+      ).filter((r) => r.state === "running" || r.state === "queued" || r.state === "pending");
       const lines: string[] = ["Active subagent fleet:", ""];
       if (inProcess.length === 0 && asyncRuns.length === 0) {
         lines.push("  (no active work — use spawn_helper to delegate)");

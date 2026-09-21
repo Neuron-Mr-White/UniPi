@@ -346,12 +346,17 @@ function extractUsage(event: ChildEvent): AsyncRunResult["usage"] | undefined {
 // ============================================================================
 
 /** Create the run directory + initial status.json. */
-export function createAsyncRunDir(agentName: string): string {
+export function createAsyncRunDir(agentName: string, sessionId?: string): string {
   ensureDirs();
   const runId = `${agentName.replace(/[^A-Za-z0-9._-]/g, "_")}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
   const runDir = path.join(ASYNC_DIR, runId);
   fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
-  writeStatus(runDir, { status: "queued", agent: agentName, createdAt: Date.now() });
+  writeStatus(runDir, {
+    status: "queued",
+    agent: agentName,
+    createdAt: Date.now(),
+    ...(sessionId ? { sessionId, ownerPid: process.pid } : {}),
+  });
   return runDir;
 }
 

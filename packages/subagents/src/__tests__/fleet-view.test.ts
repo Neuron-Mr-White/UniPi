@@ -29,7 +29,12 @@ afterEach(() => {
 function writeRun(runId: string, status: Record<string, unknown>): void {
   const runDir = join(asyncDir, runId);
   mkdirSync(runDir, { recursive: true });
-  writeFileSync(join(runDir, "status.json"), JSON.stringify({ updatedAt: Date.now(), ...status }));
+  // Default to a live same-process owner so "running" fixtures look active;
+  // individual tests override ownerPid/sessionId to exercise scoping + heal.
+  writeFileSync(
+    join(runDir, "status.json"),
+    JSON.stringify({ updatedAt: Date.now(), ownerPid: process.pid, ...status }),
+  );
 }
 
 describe("collectFleetEntries", () => {
@@ -42,6 +47,26 @@ describe("collectFleetEntries", () => {
     assert.equal(entries[0]!.source, "async");
     assert.equal(entries[0]!.agent, "scout");
     assert.ok(entries[0]!.runDir!.endsWith("async-run-1"));
+  });
+
+  it("drops crash orphans: a 'running' run whose owner pid is dead", () => {
+    // A never-assigned pid on this host; process.kill(pid, 0) throws ESRCH.
+    writeRun("crash-orphan", { status: "running", agent: "scout", ownerPid: 2_147_480_000 });
+    writeRun("pid-pending", { status: "running", agent: "scout", ownerPid: "pending" });
+    const entries = collectFleetEntries(manager, activity, asyncDir);
+    assert.equal(entries.length, 0, "dead-owner runs must not haunt the dock");
+  });
+
+  it("session-scopes async runs when a sessionId is given", () => {
+    writeRun("mine", { status: "running", agent: "scout", sessionId: "unipi-100" });
+    writeRun("theirs", { status: "running", agent: "worker", sessionId: "unipi-999" });
+    writeRun("legacy", { status: "running", agent: "reviewer" }); // no sessionId
+    const scoped = collectFleetEntries(manager, activity, asyncDir, "unipi-100");
+    assert.equal(scoped.length, 1);
+    assert.ok(scoped[0]!.runDir!.endsWith("mine"));
+    // Without scoping, all live runs are visible (back-compat path).
+    const unscoped = collectFleetEntries(manager, activity, asyncDir);
+    assert.equal(unscoped.length, 3);
   });
 });
 
