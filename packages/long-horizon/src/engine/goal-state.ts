@@ -272,6 +272,16 @@ export class GoalMachine {
     return next;
   }
 
+  /** Budget mutation after the tool layer CAS-checked get_goal freshness. */
+  setTokenBudget(budget: number | null): GoalState | undefined {
+    const goal = this.goal;
+    if (!goal) return undefined;
+    const next = this.withGoal(goal, { tokenBudget: budget });
+    this.goal = next;
+    this.commit(next, goal.status);
+    return next;
+  }
+
   // ── settlement ───────────────────────────────────────────────────────
 
   settleTurn(input: GoalSettlement): GoalState | undefined {
