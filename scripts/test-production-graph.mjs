@@ -7,7 +7,6 @@ const removed = [
   "packages/memory/search.ts",
   "packages/kanboard/tui/kanboard-overlay.ts",
   "packages/input-shortcuts/src/status.ts",
-  "packages/milestone/coexist.ts",
   "packages/subagents/src/prompts.ts",
   "packages/web-api/src/tui/progress.ts",
   "packages/web-api/src/tui/result.ts",

@@ -31,7 +31,6 @@ This matrix reflects UniPi source and Pi 0.84.1 APIs as audited for the v2.5.x r
 | Surface | Status | Ownership and behavior |
 |---|---|---|
 | Ralph iteration state | Fixed | Hidden `unipi-ralph-loop-reminder` tail snapshots; no system-prompt mutation. |
-| Milestone state | Fixed | Workspace-qualified, compaction-aware `unipi-milestone-snapshot` messages append only when state changes. |
 | Workflow sandbox | Fixed | Stable tool schemas; `tool_call` blocks disallowed execution; active/inactive snapshots supersede prior state. |
 | Memory reminders | Fixed | First-turn and retrospective reminders are tail messages. |
 | Compactor resume | Fixed | One-shot hidden resume context extends the post-compaction epoch. Snapshot rendering is deterministic for fixed stored events. |

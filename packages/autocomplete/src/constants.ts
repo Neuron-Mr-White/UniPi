@@ -21,7 +21,6 @@ export const PACKAGE_ORDER: string[] = [
   "ralph",
   "memory",
   "btw",
-  "milestone",
   "mcp",
   "utility",
   "ask-user",
@@ -30,7 +29,6 @@ export const PACKAGE_ORDER: string[] = [
   "compact",
   "notify",
   "kanboard",
-  "trajectory",
   "footer",
   "updater",
   "input-shortcuts",
@@ -47,7 +45,6 @@ export const PACKAGE_COLORS: Record<string, string> = {
   ralph:     `${ESC}[33m`, // Yellow/Orange
   memory:    `${ESC}[93m`, // Bright Yellow
   btw:       `${ESC}[95m`, // Bright Magenta
-  milestone: `${ESC}[32m`, // Green
   mcp:       `${ESC}[32m`, // Green
   utility:   `${ESC}[36m`, // Cyan
   "ask-user": `${ESC}[94m`, // Bright Blue
@@ -56,7 +53,6 @@ export const PACKAGE_COLORS: Record<string, string> = {
   compact:   `${ESC}[37m`, // White
   notify:    `${ESC}[96m`, // Bright Cyan
   kanboard:  `${ESC}[92m`, // Bright Green
-  trajectory: `${ESC}[94m`, // Bright Blue
   footer:    `${ESC}[34m`, // Blue
   updater:   `${ESC}[93m`, // Bright Yellow
   "input-shortcuts": `${ESC}[95m`, // Bright Magenta
@@ -174,10 +170,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-help":    "compact",
 
 
-  // milestone (2 commands)
-  "unipi:milestone-onboard": "milestone",
-  "unipi:milestone-update":  "milestone",
-
   // notify (6 commands)
   "unipi:notify-settings":  "notify",
   "unipi:notify-set-gotify": "notify",
@@ -190,9 +182,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // kanboard (2 commands)
   "unipi:kanboard":          "kanboard",
   "unipi:kanboard-doctor":   "kanboard",
-
-  // trajectory (1 command)
-  "unipi:trajectory":        "trajectory",
 
   // footer (3 commands)
   "unipi:footer":            "footer",
@@ -272,7 +261,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:skills-settings": "Toggle skill startup discovery (skills catalog in system prompt)",
   "unipi:kanboard":        "Start the kanboard visualization server",
   "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
-  "unipi:trajectory":      "Open/reuse trajectory; add stop/off or toggle to close it",
 
   "unipi:ask-user-settings": "Configure ask-user settings",
 
@@ -299,9 +287,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-test":      "Test all enabled notification platforms",
   "unipi:notify-recap-model": "Select model for notification recaps",
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
-
-  "unipi:milestone-onboard": "Create MILESTONES.md from existing workflow docs",
-  "unipi:milestone-update":  "Sync MILESTONES.md with completed work",
 
   "unipi:footer":            "Toggle footer or switch preset",
   "unipi:footer-settings":   "Open footer settings — toggle groups and segments",
@@ -331,7 +316,6 @@ export const PACKAGE_LABELS: Record<string, string> = {
   ralph:     "ralph",
   memory:    "memory",
   btw:       "btw",
-  milestone: "milestone",
   mcp:       "mcp",
   utility:   "utility",
   "ask-user": "ask-user",
@@ -340,7 +324,6 @@ export const PACKAGE_LABELS: Record<string, string> = {
   compact:   "compact",
   notify:    "notify",
   kanboard:  "kanboard",
-  trajectory: "trajectory",
   footer:    "footer",
   updater:   "updater",
   "input-shortcuts": "input-shortcuts",

@@ -32,7 +32,6 @@ const PACKAGE_MAP: Record<string, string> = {
   compactor: MODULES.COMPACTOR,
   notify: MODULES.NOTIFY,
   btw: MODULES.BTW,
-  milestone: MODULES.MILESTONE,
   kanboard: MODULES.KANBOARD,
   footer: MODULES.FOOTER,
   updater: MODULES.UPDATER,

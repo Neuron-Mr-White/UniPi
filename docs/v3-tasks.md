@@ -18,16 +18,19 @@ Base analysis: minimax-code harness comparison (loop machinery, goal continuatio
 
 Removals and recreations are green-lit to start immediately.
 
-### Remove `milestone`
-- [ ] Delete `packages/milestone/` from the workspace
-- [ ] Remove from root `package.json` workspaces manifest / bundle list / dependencies
-- [ ] Remove milestone snapshots from the prefix-cache gap matrix (docs/prefix-cache-architecture.md)
-- [ ] Drop `milestone` entries from the command registry / autocomplete catalog
+### Remove `milestone` ✅ (2026-09-20)
+- [x] Delete `packages/milestone/` from the workspace
+- [x] Remove from root `package.json` workspaces manifest / bundle list / dependencies (deps + `pi.skills` entry + lockfile)
+- [x] Remove milestone snapshots from the prefix-cache gap matrix (docs/prefix-cache-architecture.md)
+- [x] Drop `milestone` entries from the command registry / autocomplete catalog (provider aliases incl. `ms`/`goal`, package list, colors, labels, command descriptions)
+- [x] Remove `formatMilestoneSnapshot` case from tests/prefix-provider-payload.test.js
+- [x] Remove `MODULES.MILESTONE`, `MILESTONE_COMMANDS`, `MILESTONE_DIRS` from core/constants.ts + updater readme map
 
-### Remove `trajectory`
-- [ ] Delete `packages/trajectory/` from the workspace
-- [ ] Remove from root manifest / bundle / dependencies
-- [ ] Drop `trajectory` entries from the command registry / autocomplete catalog
+### Remove `trajectory` ✅ (2026-09-20)
+- [x] Delete `packages/trajectory/` from the workspace
+- [x] Remove from root manifest / bundle / dependencies (deps + lockfile)
+- [x] Drop `trajectory` entries from the command registry / autocomplete catalog
+- [x] Remove `createUnipiTracer` wiring from the umbrella — `packages/unipi/index.ts` now passes `pi` straight through (tracer was trajectory-only observability; no other consumer)
 
 ### Recreate `ralph` → `long-horizon`
 - [ ] Delete `packages/ralph/` (keep the folder out of the workspace)

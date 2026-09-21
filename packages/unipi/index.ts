@@ -23,7 +23,6 @@ import utility from "@pi-unipi/utility";
 import askUser from "@pi-unipi/ask-user";
 import mcp from "@pi-unipi/mcp";
 import notify from "@pi-unipi/notify";
-import milestone from "@pi-unipi/milestone";
 import kanboard from "@pi-unipi/kanboard";
 import commandEnchantment from "@pi-unipi/command-enchantment";
 import compactor from "@pi-unipi/compactor";
@@ -32,11 +31,9 @@ import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import image from "@pi-unipi/image";
 import fusion from "@pi-unipi/fusion";
-import trajectory, { createUnipiTracer } from "@pi-unipi/trajectory";
 
 export default function (pi: ExtensionAPI) {
-  const tracer = createUnipiTracer(pi);
-  const load = (name: string, extension: (api: ExtensionAPI) => void) => extension(tracer.scope(name));
+  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(pi);
 
   load("workflow", workflow);
   load("ralph", ralph);
@@ -55,7 +52,6 @@ export default function (pi: ExtensionAPI) {
   load("ask-user", askUser);
   load("mcp", mcp);
   load("notify", notify);
-  load("milestone", milestone);
   load("kanboard", kanboard);
   load("command-enchantment", commandEnchantment);
   load("compactor", compactor);
@@ -64,5 +60,4 @@ export default function (pi: ExtensionAPI) {
   load("input-shortcuts", inputShortcuts);
   load("image", image);
   load("fusion", fusion);
-  trajectory(pi, { traceRecorder: tracer.recorder });
 }

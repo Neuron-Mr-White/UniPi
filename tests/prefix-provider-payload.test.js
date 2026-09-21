@@ -4,7 +4,6 @@ import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/ope
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { buildRalphLoopReminder } from "../packages/ralph/index.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
-import { formatMilestoneSnapshot } from "../packages/milestone/hooks.ts";
 import { formatActiveSandboxSnapshot } from "../packages/workflow/index.ts";
 import { buildResumeSnapshot } from "../packages/compactor/src/session/snapshot.ts";
 
@@ -136,7 +135,6 @@ describe("provider-native prefix structure", () => {
         canSearch: true,
         canStore: true,
       })],
-      ["milestone", formatMilestoneSnapshot("/workspace", "Overall progress: 1/2 items (50%)")],
       ["workflow", formatActiveSandboxSnapshot("brainstorm", "brainstorm")],
       ["compactor resume", buildResumeSnapshot([event], { compactCount: 2 })],
     ];

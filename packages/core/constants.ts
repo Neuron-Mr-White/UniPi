@@ -33,7 +33,6 @@ export const MODULES = {
   COMPACTOR: "@pi-unipi/compactor",
   NOTIFY: "@pi-unipi/notify",
   BTW: "@pi-unipi/btw",
-  MILESTONE: "@pi-unipi/milestone",
   KANBOARD: "@pi-unipi/kanboard",
   FOOTER: "@pi-unipi/footer",
   UPDATER: "@pi-unipi/updater",
@@ -311,17 +310,6 @@ export const BTW_COMMANDS = {
   CLEAR: "btw-clear",
   INJECT: "btw-inject",
   SUMMARIZE: "btw-summarize",
-} as const;
-
-/** Milestone command names */
-export const MILESTONE_COMMANDS = {
-  ONBOARD: "milestone-onboard",
-  UPDATE: "milestone-update",
-} as const;
-
-/** Milestone directory paths */
-export const MILESTONE_DIRS = {
-  MILESTONES: ".unipi/docs/MILESTONES.md",
 } as const;
 
 /** Updater command names */
