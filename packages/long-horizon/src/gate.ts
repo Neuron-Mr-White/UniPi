@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
 import type { OwnerCoordinator, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
@@ -193,6 +193,9 @@ export class Gate {
     // background by the entry renderer registered in index.ts.
     pi.on("before_agent_start", async (event) => {
       const state = await this.resolveForTurn(event.prompt);
+      // Shared holder the footer pulls each render (timing-independent), plus
+      // the event for the badge/other listeners.
+      setSharedLongHorizonMode(state.mode);
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
         mode: state.mode,
         source: state.source,

@@ -9,7 +9,7 @@
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
@@ -142,9 +142,19 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // reattaches the owner's tool surface; the continuation arms a recovery
   // fragment for the first post-restart turn.
   pi.on("session_start", () => {
-    owner.restore();
+    const restored = owner.restore();
     machine.restore();
     if (machine.getActive()) continuation.armRecovery();
+    // Resume (`pi -r`) starts no turn, so before_agent_start never fires. Publish
+    // the mode to the shared holder the footer PULLS each render — the active
+    // owner's mode if one survived, else the default — so the header restores
+    // without depending on a one-shot event beating the footer's subscription.
+    try {
+      const active = restored.active;
+      setSharedLongHorizonMode(active ? active.kind : loadSettings().defaultMode);
+    } catch {
+      // Best-effort restore; never block session start on the header.
+    }
   });
 
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {

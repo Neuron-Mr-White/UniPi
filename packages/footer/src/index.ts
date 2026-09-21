@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedLongHorizonMode } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
 import { subscribeToEvents } from "./events.js";
@@ -441,7 +441,10 @@ function installGlanceEditor(
         if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
         const branch = (st.footerData as any)?.getGitBranch?.() ?? null;
         const fusion = getSharedFusionStatus() ?? null;
-        const lhModeRaw = (st.registry.getGroupData("core") as { lhMode?: string } | undefined)?.lhMode;
+        // Pull the mode from the shared holder (set on both resume and live
+        // turns); fall back to the registry data the event listener writes.
+        const lhModeRaw = getSharedLongHorizonMode()
+          ?? (st.registry.getGroupData("core") as { lhMode?: string } | undefined)?.lhMode;
         const lhMode = typeof lhModeRaw === "string" && lhModeRaw.length > 0
           ? MODE_LABELS[lhModeRaw] ?? lhModeRaw
           : null;
