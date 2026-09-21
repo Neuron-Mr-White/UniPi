@@ -7,8 +7,9 @@
 import fs from "node:fs";
 
 const ver = process.argv[2];
-if (!ver || !/^\d+\.\d+\.\d+$/.test(ver)) {
+if (!ver || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(ver)) {
   console.error(`usage: node scripts/sync-pins.mjs <version>`);
+  console.error(`  version may include a prerelease suffix, e.g. 3.0.0-alpha.0`);
   process.exit(1);
 }
 

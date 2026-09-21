@@ -398,6 +398,25 @@ npm publish --access public
 
 Expected: All packages published successfully.
 
+### Step 13b: Prerelease Channel (alpha/beta) — v3 branch only
+
+Prereleases publish under a dist-tag so `latest` never moves. The branch version
+already carries the suffix (`3.0.0-alpha.N`); publish with the matching tag:
+
+```bash
+npm publish --workspaces --access public --tag alpha   # or --tag beta / --tag rc
+```
+
+Rules:
+
+- **Never omit `--tag` on a prerelease** — npm would move `latest` to it.
+- Every publish needs a fresh suffix increment (`-alpha.N+1`); npm rejects duplicates.
+- `scripts/sync-pins.mjs` accepts prerelease versions (`3.0.0-alpha.0`).
+- Install: `pi install npm:@pi-unipi/unipi@alpha`.
+- Graduation: publish `3.0.0` **without** `--tag` — `latest` moves automatically.
+  The `alpha` tag keeps pointing at the last alpha; remove it with
+  `npm dist-tag rm @pi-unipi/unipi alpha` (repeat per package) or leave it.
+
 ### Step 14: Verify Alias Performance
 
 Confirm the `unipi` alias (which loads from ext4 source) starts fast after the release:
