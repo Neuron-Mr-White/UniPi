@@ -165,10 +165,23 @@ interface StoredState {
 
 export class GoalMachine {
   private goal: GoalState | null = null;
+  private lastTimestamp = 0;
   private readonly deps: GoalMachineDeps;
 
   constructor(deps: GoalMachineDeps) {
     this.deps = deps;
+  }
+
+  /**
+   * Monotonic ISO timestamp: two transitions within one wall-clock
+   * millisecond must still differ, or the model-facing CAS pair
+   * (expected_updated_at) cannot distinguish them.
+   */
+  private nowIso(): string {
+    const now = this.deps.now?.() ?? Date.now();
+    const monotonic = Math.max(now, this.lastTimestamp + 1);
+    this.lastTimestamp = monotonic;
+    return new Date(monotonic).toISOString();
   }
 
   // ── reads ────────────────────────────────────────────────────────────
@@ -209,7 +222,7 @@ export class GoalMachine {
     if (existing && !TERMINAL_GOAL_STATUSES.has(existing.status)) {
       return { kind: "unfinished", goal: existing };
     }
-    const now = new Date(this.deps.now?.() ?? Date.now()).toISOString();
+    const now = this.nowIso();
     const goalId = randomUUID();
     const goal: GoalState = Object.freeze({
       goalId,
@@ -461,7 +474,7 @@ export class GoalMachine {
       ...goal,
       ...patch,
       revision: goal.revision + 1,
-      updatedAt: new Date(this.deps.now?.() ?? Date.now()).toISOString(),
+      updatedAt: this.nowIso(),
     });
   }
 
