@@ -1,0 +1,54 @@
+{
+  "name": "@pi-unipi/long-horizon",
+  "version": "3.0.0-alpha.0",
+  "description": "Long-horizon execution for Pi — mode-gated /goal /ralph /swarm /graph orchestration with a TypeSafe prompt judge",
+  "type": "module",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/long-horizon"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "long-horizon",
+    "goal",
+    "ralph",
+    "swarm",
+    "graph"
+  ],
+  "scripts": {
+    "test": "tsc --noEmit && npx tsx --test src/__tests__/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "*.ts",
+    "src/**/*",
+    "skills/**/*",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "3.0.0-alpha.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-tui": "^0.86.0",
+    "typebox": "^1.1.38"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
+}
