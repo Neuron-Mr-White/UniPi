@@ -53,7 +53,11 @@ function detectNamespaceBoost(query: string): string | null {
   const NAMESPACE_ALIASES: Record<string, string> = {
     // Full package names
     workflow: "workflow",
-    ralph: "ralph",
+    ralph: "long-horizon",
+    goal: "long-horizon",
+    swarm: "long-horizon",
+    graph: "long-horizon",
+    lh: "long-horizon",
     memory: "memory",
     mcp: "mcp",
     utility: "utility",

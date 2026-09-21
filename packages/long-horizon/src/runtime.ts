@@ -20,6 +20,7 @@ import type { GoalToolset } from "./tools/goal.js";
 import type { GoalContinuation, TurnActivity } from "./engine/continuation.js";
 import type { VerifierEvaluate } from "./engine/verifier.js";
 import type { Gate } from "./gate.js";
+import type { RalphLoop } from "./engine/ralph.js";
 import type { LongHorizonSettings } from "./settings.js";
 import { loadSettings } from "./settings.js";
 
@@ -115,6 +116,7 @@ export interface RuntimeDeps {
   readonly toolset: GoalToolset;
   readonly continuation: GoalContinuation;
   readonly gate: Gate;
+  readonly ralph?: RalphLoop;
   readonly loadSettings?: () => LongHorizonSettings;
 }
 
@@ -200,6 +202,7 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     return text;
   };
   deps.continuation.setEvaluate(evaluate);
+  if (deps.ralph) deps.ralph.setEvaluate(evaluate);
 
   // ── compaction → recovery fragment on the next continuation ─────────
   pi.on("session_compact", () => {

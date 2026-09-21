@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import ralphExtension from "../packages/ralph/index.ts";
+import longHorizonExtension from "../packages/long-horizon/index.ts";
 
 function captureExtension(factory) {
   const tools = [];
@@ -37,11 +37,15 @@ function providerDefinition(tool) {
 }
 
 describe("prefix-cache tool registration", () => {
-  it("registers Ralph's static schemas before session_start", () => {
-    const first = captureExtension(ralphExtension);
-    const second = captureExtension(ralphExtension);
+  it("registers long-horizon's static schemas before session_start", () => {
+    const first = captureExtension(longHorizonExtension);
+    const second = captureExtension(longHorizonExtension);
 
-    assert.deepEqual(first.tools.map((tool) => tool.name), ["ralph_start", "ralph_done"]);
+    assert.ok(
+      ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status"].every(
+        (name) => first.tools.some((tool) => tool.name === name),
+      ),
+    );
     assert.deepEqual(
       first.tools.map(providerDefinition),
       second.tools.map(providerDefinition),

@@ -59,7 +59,6 @@
     ],
     "skills": [
       "packages/workflow/skills",
-      "packages/ralph/SKILL.md",
       "packages/memory/skills",
       "packages/btw/skills",
       "packages/ask-user/skills",
@@ -98,7 +97,6 @@
     "@pi-unipi/mcp": "3.0.0-alpha.0",
     "@pi-unipi/memory": "3.0.0-alpha.0",
     "@pi-unipi/notify": "3.0.0-alpha.0",
-    "@pi-unipi/ralph": "3.0.0-alpha.0",
     "@pi-unipi/subagents": "3.0.0-alpha.0",
     "@pi-unipi/updater": "3.0.0-alpha.0",
     "@pi-unipi/utility": "3.0.0-alpha.0",

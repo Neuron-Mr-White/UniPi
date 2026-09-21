@@ -22,6 +22,12 @@ import { randomUUID } from "node:crypto";
 import { ensureDir, tryRead, writeJson } from "@pi-unipi/core";
 import type { GoalMachine } from "./goal-state.js";
 import type { OwnerCoordinator } from "../owner.js";
+import {
+  assembleEvidenceBrief,
+  verifyCompletion,
+  type VerificationVerdict,
+  type VerifierDeps,
+} from "./verifier.js";
 
 export const RALPH_DIR = ".unipi/ralph";
 export const RALPH_COMPLETE_MARKER = "<promise>COMPLETE</promise>";
@@ -89,14 +95,40 @@ export interface RalphLoopDeps {
   ralphDir(): string;
   send(message: string): void;
   now?(): number;
+  /** Footer/info-screen events (loop_start / iteration_done / loop_end). */
+  onEvent?(event: RalphEvent): void;
 }
+
+export type RalphEvent =
+  | { type: "loop_start"; name: string; iteration: number; total: number }
+  | { type: "iteration_done"; name: string; iteration: number; remaining: number }
+  | { type: "loop_end"; name: string; reason: string; iterations: number };
 
 export class RalphLoop {
   private state: LoopFileState | null = null;
+  private evaluateOverride?: VerifierDeps["evaluate"];
   private readonly deps: RalphLoopDeps;
 
   constructor(deps: RalphLoopDeps) {
     this.deps = deps;
+  }
+
+  /** Late-bound verifier (runtime wiring resolves the model per session). */
+  setEvaluate(evaluate: VerifierDeps["evaluate"]): void {
+    this.evaluateOverride = evaluate;
+  }
+
+  /** Checked/total/next summary for the loop_status tool and footer. */
+  progressSummary(): { checked: number; total: number; next: string[] } {
+    const state = this.state;
+    if (!state) return { checked: 0, total: 0, next: [] };
+    const items = parseChecklist(tryRead(this.taskPath(state.name)) ?? "");
+    const checked = items.filter((item) => item.checked).length;
+    return {
+      checked,
+      total: items.length,
+      next: nextUnchecked(items, state.itemsPerIteration).map((item) => item.text),
+    };
   }
 
   private dir(): string {
@@ -179,6 +211,8 @@ export class RalphLoop {
     writeJson(this.statePath(name), state);
 
     this.deps.owner.activate("ralph-loop", name);
+    const itemsTotal = parseChecklist(taskContent).length;
+    this.deps.onEvent?.({ type: "loop_start", name: state.name, iteration: 1, total: itemsTotal });
     const firstPrompt = this.buildIterationPrompt(state, false);
     this.deps.send(firstPrompt);
     return { ok: true, state, firstPrompt };
@@ -208,17 +242,76 @@ export class RalphLoop {
     }
 
     if (remaining === 0) {
-      // All items checked → completion claim; the goal verifier judges the file.
+      // All items checked → completion claim; the verifier judges the file.
+      this.deps.onEvent?.({ type: "iteration_done", name: state.name, iteration: state.iteration, remaining: 0 });
       return { ok: true, completionClaim: true };
     }
 
     const next = { ...state, iteration: state.iteration + 1 };
     this.state = next;
     writeJson(this.statePath(next.name), next);
+    this.deps.onEvent?.({ type: "iteration_done", name: state.name, iteration: next.iteration, remaining });
     const isReflection = next.reflectEvery > 0 && next.iteration % next.reflectEvery === 0;
     const prompt = this.buildIterationPrompt(next, isReflection);
     this.deps.send(prompt);
     return { ok: true, prompt };
+  }
+
+  /**
+   * Verify an all-checked claim against the task file and settle the goal.
+   * met completes the loop; anything else keeps it running with feedback.
+   */
+  async verifyCompletion(): Promise<
+    | { kind: "met"; reason: string }
+    | { kind: "not_met"; reason: string; missing: string[] }
+    | { kind: "inconclusive"; reason: string }
+  > {
+    const state = this.state;
+    const goal = state ? this.deps.machine.getActive() : undefined;
+    if (!state || !goal) return { kind: "inconclusive", reason: "no active loop goal" };
+
+    const brief = assembleEvidenceBrief({
+      objective: goal.objective,
+      objectiveDigest: goal.objectiveDigest,
+      claim: "Every checklist item in the task file is checked.",
+      changedFiles: [`.unipi/ralph/${state.taskFile}`],
+      commands: [],
+      recentTail: [],
+    });
+    const verdict: VerificationVerdict = await verifyCompletion(
+      {
+        evaluate: this.evaluateOverride ?? (async () => { throw new Error("verifier unbound"); }),
+      },
+      goal.objective,
+      brief,
+    );
+
+    const settled = this.deps.machine.settleTurn({
+      goalId: goal.goalId,
+      revision: goal.revision,
+      completionClaim: { summary: "all items checked" },
+      verifier: {
+        verdict: verdict.verdict,
+        ...(verdict.missing.length > 0 ? { missing: verdict.missing } : {}),
+      },
+    });
+
+    if (verdict.verdict === "met" || settled?.status === "complete") {
+      this.state = state.status === "complete" ? state : { ...state, status: "complete" };
+      writeJson(this.statePath(state.name), this.state);
+      this.deps.owner.finish("complete(verifier_met)");
+      this.deps.onEvent?.({
+        type: "loop_end",
+        name: state.name,
+        reason: "complete(verifier_met)",
+        iterations: state.iteration,
+      });
+      return { kind: "met", reason: verdict.reason };
+    }
+    if (verdict.verdict === "not_met") {
+      return { kind: "not_met", reason: verdict.reason, missing: [...verdict.missing] };
+    }
+    return { kind: "inconclusive", reason: verdict.reason };
   }
 
   buildIterationPrompt(state: LoopFileState, isReflection: boolean): string {

@@ -2,7 +2,7 @@
  * @unipi/workflow — Structured development workflow commands
  *
  * Registers workflow commands that dispatch to skills for LLM instruction.
- * Emits MODULE_READY for inter-module discovery and detects @unipi/ralph.
+ * Emits MODULE_READY for inter-module discovery and detects @pi-unipi/long-horizon.
  * Enforces workflow sandboxes without changing Pi's active tool schemas.
  */
 
@@ -229,7 +229,7 @@ export default function (pi: ExtensionAPI) {
     if (!ralphDetected) {
       try {
         const allTools = pi.getAllTools();
-        ralphDetected = allTools.some((tool) => tool.name === "ralph_start");
+        ralphDetected = allTools.some((tool) => tool.name === "ralph_done" || tool.name === "create_goal");
       } catch {
         // Ignore — ralph not present.
       }
@@ -243,7 +243,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.events.on(UNIPI_EVENTS.MODULE_READY, (data) => {
     const event = data as { name?: string };
-    if (event?.name === MODULES.RALPH) ralphDetected = true;
+    if (event?.name === MODULES.LONG_HORIZON) ralphDetected = true;
   });
 
   pi.on("session_shutdown", async () => {

@@ -18,7 +18,7 @@ import type { ReadmeEntry } from "../types.js";
 const PACKAGE_MAP: Record<string, string> = {
   core: MODULES.CORE,
   workflow: MODULES.WORKFLOW,
-  ralph: MODULES.RALPH,
+  "long-horizon": MODULES.LONG_HORIZON,
   memory: MODULES.MEMORY,
   "info-screen": MODULES.INFO_SCREEN,
   registry: MODULES.REGISTRY,

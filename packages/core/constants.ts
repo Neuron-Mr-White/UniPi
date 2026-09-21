@@ -18,7 +18,7 @@ export const UNIPI_SETTINGS_KEY = "unipi" as const;
 export const MODULES = {
   CORE: "@pi-unipi/core",
   WORKFLOW: "@pi-unipi/workflow",
-  RALPH: "@pi-unipi/ralph",
+  LONG_HORIZON: "@pi-unipi/long-horizon",
   SUBAGENTS: "@pi-unipi/subagents",
   MEMORY: "@pi-unipi/memory",
   INFO_SCREEN: "@pi-unipi/info-screen",
@@ -62,19 +62,6 @@ export const WORKFLOW_COMMANDS = {
   RESEARCH: "research",
   CHORE_CREATE: "chore-create",
   CHORE_EXECUTE: "chore-execute",
-} as const;
-
-/** Ralph command names */
-export const RALPH_COMMANDS = {
-  START: "ralph-start",
-  STOP: "ralph-stop",
-  RESUME: "ralph-resume",
-  STATUS: "ralph-status",
-  CANCEL: "ralph-cancel",
-  ARCHIVE: "ralph-archive",
-  CLEAN: "ralph-clean",
-  LIST: "ralph-list",
-  NUKE: "ralph-nuke",
 } as const;
 
 /** Ralph tool names */

@@ -12,7 +12,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import workflow from "@pi-unipi/workflow";
-import ralph from "@pi-unipi/ralph";
+import longHorizon from "@pi-unipi/long-horizon";
 import memory from "@pi-unipi/memory";
 import infoScreen from "@pi-unipi/info-screen";
 import subagents from "@pi-unipi/subagents";
@@ -36,7 +36,7 @@ export default function (pi: ExtensionAPI) {
   const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(pi);
 
   load("workflow", workflow);
-  load("ralph", ralph);
+  load("long-horizon", longHorizon);
   load("memory", memory);
   // Utility loads BEFORE info-screen: the name badge overlay must be pushed
   // to the BOTTOM of the overlay stack. hideOverlay() pops the topmost entry,

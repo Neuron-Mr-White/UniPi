@@ -29,8 +29,8 @@ sidekick/bg_run = infrastructure, spawn_helper/bg_delegate = delegation.
 
 ## Phase 4 — todowrite + ralph mode
 - [x] `src/tools/todo.ts` — todowrite snapshot-replace (pending/in_progress/completed/cancelled + priority, one in_progress, "updating ≠ completing"); footer/info-screen render from events
-- [ ] Re-host ralph on the coordinator: keep task-file methodology (.unipi/ralph/ task files, iteration cadence, reflection); ralph_start stays command-side; ralph_done becomes lease-guarded iteration yield; gains stall cap + token budget + completion claim → verifier when all items checked; migration from packages/ralph state files
-- [ ] Remove `packages/ralph/` + all references (umbrella, root pi.skills, autocomplete, README, v3-tasks.md) once long-horizon ralph mode passes tests
+- [x] Re-host ralph on the coordinator: keep task-file methodology (.unipi/ralph/ task files, iteration cadence, reflection); ralph_start stays command-side; ralph_done becomes lease-guarded iteration yield; gains stall cap + token budget + completion claim → verifier when all items checked; migration from packages/ralph state files
+- [x] Remove `packages/ralph/` + all references (umbrella, root pi.skills, autocomplete, README, v3-tasks.md) once long-horizon ralph mode passes tests
 
 ## Phase 5 — Swarm + runaway guard
 - [ ] `src/tools/swarm.ts` — swarm_status projection (item statuses → running|needs_attention|settled) + swarm_yield; orchestration block (Maka swarm-mode prompt adapted to spawn_helper/bg_delegate); claim-before-dispatch (idempotency key per item); replace-failed; finish + dedupe + synthesize; wakes via background-tasks notifications, user-first ordering

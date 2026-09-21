@@ -18,7 +18,7 @@ export function colorize(ansiCode: string, text: string): string {
 /** Packages sorted by display priority (top-to-bottom in autocomplete) */
 export const PACKAGE_ORDER: string[] = [
   "workflow",
-  "ralph",
+  "long-horizon",
   "memory",
   "btw",
   "mcp",
@@ -42,7 +42,7 @@ export const PACKAGE_ORDER: string[] = [
 /** ANSI bright-color codes per package */
 export const PACKAGE_COLORS: Record<string, string> = {
   workflow:  `${ESC}[91m`, // Bright Red
-  ralph:     `${ESC}[33m`, // Yellow/Orange
+  "long-horizon": `${ESC}[33m`, // Yellow/Orange
   memory:    `${ESC}[93m`, // Bright Yellow
   btw:       `${ESC}[95m`, // Bright Magenta
   mcp:       `${ESC}[32m`, // Green
@@ -88,10 +88,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:chore-create":   "workflow",
   "unipi:chore-execute":  "workflow",
 
-  // ralph (3 commands)
-  "unipi:ralph":          "ralph",
-  "unipi:ralph-start":    "ralph",
-  "unipi:ralph-stop":     "ralph",
+  // long-horizon (4 commands)
+  "unipi:goal":           "long-horizon",
+  "unipi:ralph":          "long-horizon",
+  "unipi:swarm":          "long-horizon",
+  "unipi:graph":          "long-horizon",
 
   // memory (7 commands)
   "unipi:memory-process":     "memory",
@@ -222,9 +223,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:chore-create":   "Create reusable chore definition",
   "unipi:chore-execute":  "Execute a saved chore",
 
-  "unipi:ralph":          "Ralph loop — start/resume/status commands",
-  "unipi:ralph-start":    "Start a ralph loop for the current task",
-  "unipi:ralph-stop":     "Stop the active ralph loop",
+  "unipi:goal":           "Goal mode — one objective until verifiably true",
+  "unipi:ralph":          "Ralph loop — start/stop/status/resume",
+  "unipi:swarm":          "Swarm mode — independent fan-out + synthesis",
+  "unipi:graph":          "Graph mode — dependent multi-step work",
 
   "unipi:memory-process":     "Process and store conversation learnings",
   "unipi:memory-search":      "Search project memory for past context",
@@ -312,8 +314,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 // ─── Package Display Names ───────────────────────────────────────────
 /** Pretty names for package tags in autocomplete items */
 export const PACKAGE_LABELS: Record<string, string> = {
+  "long-horizon": "long-horizon",
   workflow:  "workflow",
-  ralph:     "ralph",
+  ralph:     "long-horizon",
   memory:    "memory",
   btw:       "btw",
   mcp:       "mcp",

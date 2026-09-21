@@ -142,7 +142,7 @@ const COMMANDS: WorkflowCommand[] = [
       "Execute plan — implement in worktree, test, commit on done",
     skillName: "work",
     argumentHint: "plan:<file> <description>",
-    ralphHint: "Ralph detected. Use /unipi:ralph-start for long-running tasks.",
+    ralphHint: "Long-horizon detected. Use /unipi:ralph start <name> for long-running tasks.",
   },
   {
     name: WORKFLOW_COMMANDS.REVIEW_WORK,
@@ -378,30 +378,5 @@ export function registerWorkflowCommands(
     });
   }
 
-  // Register the ralph integration command if ralph is detected
-  pi.registerCommand(`${UNIPI_PREFIX}ralph-start`, {
-    description: "Start a ralph loop for the current task",
-    handler: async (args, ctx) => {
-      if (!options.isRalphDetected()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify(
-            "Ralph module not detected. Install @unipi/ralph first.",
-            "warning",
-          );
-        }
-        return;
-      }
 
-      // Delegate to ralph's start command
-      const taskContent = args?.trim() || "Continue current task in a ralph loop.";
-      pi.sendUserMessage(
-        `Start a ralph loop with this task:\n\n${taskContent}`,
-        { deliverAs: "followUp" },
-      );
-
-      if (ctx.hasUI) {
-        ctx.ui.notify("Starting ralph loop...", "info");
-      }
-    },
-  });
 }

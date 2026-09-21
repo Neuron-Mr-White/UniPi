@@ -16,6 +16,9 @@ import { loadSettings } from "./src/settings.js";
 import { GoalMachine } from "./src/engine/goal-state.js";
 import { GoalToolset } from "./src/tools/goal.js";
 import { GoalContinuation } from "./src/engine/continuation.js";
+import { RalphLoop } from "./src/engine/ralph.js";
+import { registerRalphTools } from "./src/tools/ralph.js";
+import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
 
 export * from "./src/modes.js";
@@ -43,7 +46,6 @@ export default function longHorizon(pi: ExtensionAPI): void {
 
   const gate = new Gate({ owner, loadSettings });
   gate.register(pi);
-  registerLongHorizonCommands(pi, gate, owner);
 
   // Goal engine: machine + tools + continuation + runtime wiring.
   const machine = new GoalMachine({
@@ -51,6 +53,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
   });
   const toolset = new GoalToolset({ machine, owner });
   toolset.register(pi);
+  const todoStore = new TodoStore();
+  registerTodoTool(pi, todoStore);
   const continuation = new GoalContinuation({
     machine,
     toolset,
@@ -60,7 +64,27 @@ export default function longHorizon(pi: ExtensionAPI): void {
       void pi.sendUserMessage(message);
     },
   });
-  wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings });
+  // Ralph loop rides the same goal machine + verifier; footer events preserved.
+  const ralph = new RalphLoop({
+    machine,
+    owner,
+    ralphDir: () => join(resolve(process.cwd()), ".unipi", "ralph"),
+    send: (message) => {
+      void pi.sendUserMessage(message);
+    },
+    onEvent: (event) => {
+      if (event.type === "loop_start") {
+        emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_START, { name: event.name, iteration: event.iteration, total: event.total });
+      } else if (event.type === "iteration_done") {
+        emitEvent(pi, UNIPI_EVENTS.RALPH_ITERATION_DONE, { name: event.name, iteration: event.iteration, remaining: event.remaining });
+      } else if (event.type === "loop_end") {
+        emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_END, { name: event.name, reason: event.reason, iterations: event.iterations });
+      }
+    },
+  });
+  registerRalphTools(pi, ralph);
+  wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
+  registerLongHorizonCommands(pi, gate, owner, ralph);
 
   // Crash recovery: repair, don't resume — reload durable state so the gate
   // reattaches the owner's tool surface; the continuation arms a recovery
@@ -79,8 +103,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:ralph",
       "unipi:swarm",
       "unipi:graph",
-      "unipi:continue",
     ],
-    tools: ["create_goal", "get_goal", "update_goal"],
+    tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status"],
   });
 }

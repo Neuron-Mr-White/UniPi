@@ -5,7 +5,7 @@
 #
 # Individual (for debugging):
 #   mise run workflow
-#   mise run ralph
+#   mise run long-horizon
 #   mise run memory
 #   mise run info-screen
 #   mise run btw
@@ -29,9 +29,9 @@ run = "pi --no-extensions --no-skills -e packages/unipi/index.ts -e ~/Projects/P
 description = "Launch pi with workflow only"
 run = "pi --no-extensions --no-skills -e packages/workflow/index.ts"
 
-[tasks.ralph]
-description = "Launch pi with ralph only"
-run = "pi --no-extensions --no-skills -e packages/ralph/index.ts"
+[tasks.long-horizon]
+description = "Launch pi with long-horizon only"
+run = "pi --no-extensions --no-skills -e packages/long-horizon/index.ts"
 
 [tasks.memory]
 description = "Launch pi with memory only"

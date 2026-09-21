@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
-import { buildRalphLoopReminder } from "../packages/ralph/index.ts";
+import { renderModeFragment } from "../packages/long-horizon/src/gate.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
 import { formatActiveSandboxSnapshot } from "../packages/workflow/index.ts";
 import { buildResumeSnapshot } from "../packages/compactor/src/session/snapshot.ts";
@@ -122,13 +122,7 @@ describe("provider-native prefix structure", () => {
       data_hash: "stable-hash",
     };
     const snapshots = [
-      ["Ralph", buildRalphLoopReminder({
-        name: "cache-rollout",
-        iteration: 4,
-        maxIterations: 30,
-        taskFile: ".unipi/ralph/cache-rollout.md",
-        itemsPerIteration: 2,
-      })],
+      ["long-horizon", renderModeFragment({ mode: "ralph", source: "owner" })],
       ["memory", buildMemoryRecallReminder({
         projectName: "unipi",
         memories: [{ title: "prefix_cache_invariant" }],
