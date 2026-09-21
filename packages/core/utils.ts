@@ -355,27 +355,69 @@ export function isActiveSnapshot(snapshot: { content: unknown; details?: { activ
   return typeof snapshot.content === "string" && snapshot.content.includes("Status: active");
 }
 
-/** Compare two semver-ish version strings.
- * Returns 1 when a > b, -1 when a < b, 0 when equal.
- * Handles `v` prefix, splits on `.` or `-`, ignores non-numeric suffixes. */
-export function compareVersions(a: string, b: string): number {
-  const parse = (version: string): number[] => version
-    .replace(/^v/, "")
-    .split(/[.-]/)
+/** A parsed semver-ish version: numeric core plus optional prerelease identifiers. */
+interface ParsedSemver {
+  core: [number, number, number];
+  pre: string[];
+}
+
+function parseSemverParts(version: string): ParsedSemver {
+  const cleaned = version.replace(/^v/, "");
+  const dash = cleaned.indexOf("-");
+  const coreStr = dash === -1 ? cleaned : cleaned.slice(0, dash);
+  const preStr = dash === -1 ? "" : cleaned.slice(dash + 1);
+  const core = coreStr
+    .split(".")
     .slice(0, 3)
     .map((part) => {
       const parsed = Number.parseInt(part, 10);
       return Number.isNaN(parsed) ? 0 : parsed;
     });
+  while (core.length < 3) core.push(0);
+  return { core: core as [number, number, number], pre: preStr ? preStr.split(".") : [] };
+}
 
-  const left = parse(a);
-  const right = parse(b);
+/** Semver §11 prerelease precedence: release > prerelease; numeric ids compare
+ *  numerically and sort below alphanumeric ones; a longer id list wins when the
+ *  shared prefix is equal. */
+function comparePreRelease(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  if (a.length === 0) return 1;
+  if (b.length === 0) return -1;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNum = /^\d+$/.test(x);
+    const yNum = /^\d+$/.test(y);
+    if (xNum && yNum) {
+      const diff = Number.parseInt(x, 10) - Number.parseInt(y, 10);
+      if (diff !== 0) return diff > 0 ? 1 : -1;
+    } else if (xNum !== yNum) {
+      return xNum ? -1 : 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+/** Compare two semver-ish version strings.
+ * Returns 1 when a > b, -1 when a < b, 0 when equal.
+ * Handles `v` prefix, splits the core on `.`, treats the `-` suffix as semver
+ * prerelease identifiers (so `3.0.0-alpha.9 < 3.0.0-alpha.10 < 3.0.0`),
+ * ignoring non-numeric core parts. */
+export function compareVersions(a: string, b: string): number {
+  const left = parseSemverParts(a);
+  const right = parseSemverParts(b);
   for (let i = 0; i < 3; i++) {
-    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    const diff = left.core[i] - right.core[i];
     if (diff > 0) return 1;
     if (diff < 0) return -1;
   }
-  return 0;
+  return comparePreRelease(left.pre, right.pre);
 }
 
 /** Return true only when `latest` is newer than `current`. */

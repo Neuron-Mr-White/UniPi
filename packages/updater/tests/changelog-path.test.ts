@@ -71,6 +71,31 @@ test("reports versions newer than the installed one", () => {
   }
 });
 
+test("never offers prerelease entries to a stable install", () => {
+  const entries = parseChangelog(resolveChangelogPath());
+  const newestStable = entries
+    .map((e) => e.version)
+    .find((v) => /^\d+\.\d+\.\d+$/.test(v));
+  assert.ok(newestStable, "expected at least one stable versioned entry");
+  const newer = getNewerVersions(entries, newestStable);
+  for (const entry of newer) {
+    assert.doesNotMatch(entry.version, /-/, `prerelease ${entry.version} must not be offered to stable ${newestStable}`);
+  }
+});
+
+test("a prerelease install sees newer prerelease and stable entries", () => {
+  const entries = parseChangelog(resolveChangelogPath());
+  const fromOldAlpha = getNewerVersions(entries, "0.0.1-alpha.0").filter(
+    (e) => e.version !== "Unreleased",
+  );
+  const versions = fromOldAlpha.map((e) => e.version);
+  assert.ok(versions.length > 0, "everything is newer than 0.0.1-alpha.0");
+  // The newest released entry must be present regardless of its channel.
+  const newest = entries.find((e) => e.version !== "Unreleased");
+  assert.ok(newest, "expected at least one released entry");
+  assert.equal(versions.includes(newest.version), true);
+});
+
 test("CHANGELOG.md is included in the published package", () => {
   // Without this the overlays have nothing to read on an npm install, no
   // matter how the path is resolved.

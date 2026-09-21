@@ -144,6 +144,10 @@ export function getNewerVersions(
   installedVersion: string,
 ): ChangelogEntry[] {
   const result: ChangelogEntry[] = [];
+  // Channel discipline: a stable install follows the npm `latest` tag, so
+  // prerelease entries are never offered to it; a prerelease install (the v3
+  // alpha channel) sees every entry newer than itself.
+  const onPrerelease = /-/.test(installedVersion);
   for (const entry of entries) {
     if (entry.version === "Unreleased") {
       if (Object.keys(entry.sections).length > 0) result.push(entry);
@@ -154,6 +158,7 @@ export function getNewerVersions(
     // (a local build, a yanked release, or simply a newer version) every
     // historical entry was reported as "new".
     if (!isNewerVersion(entry.version, installedVersion)) break;
+    if (!onPrerelease && entry.version.includes("-")) continue;
     result.push(entry);
   }
   return result;
