@@ -13,6 +13,8 @@ import {
   MCP_COMMANDS,
   emitEvent,
   getPackageVersion,
+  registerCommandRunner,
+  registerSettings,
 } from "@pi-unipi/core";
 import type { ResolvedServer } from "./types.js";
 import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
@@ -244,65 +246,101 @@ export default function (pi: ExtensionAPI) {
   });
 
   // /unipi:mcp-add — add server overlay
+  const openMcpAdd = async (_args: string, ctx: ExtensionCommandContext) => {
+    if (!ctx.hasUI) {
+      ctx.ui.notify("MCP Add requires an interactive UI.", "warning");
+      return;
+    }
+
+    ctx.ui.custom(
+      renderMcpAddOverlay({
+        onComplete: () => {
+          ctx.ui.notify("MCP server saved. Restart pi to activate.", "info");
+        },
+      }),
+      {
+        overlay: true,
+        overlayOptions: {
+          width: "90%",
+          minWidth: 80,
+          anchor: "center",
+          margin: 2,
+        },
+      },
+    );
+  };
   pi.registerCommand(`unipi:${MCP_COMMANDS.ADD}`, {
     description: "Add an MCP server (browse catalog or custom config)",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("MCP Add requires an interactive UI.", "warning");
-        return;
-      }
+    handler: openMcpAdd,
+  });
 
+  // /unipi:mcp-settings — settings overlay
+  const openMcpSettings = async (_args: string, ctx: ExtensionCommandContext) => {
+    if (!ctx.hasUI) {
+      ctx.ui.notify("MCP Settings requires an interactive UI.", "warning");
+      return;
+    }
+
+    const cwd = ctx.cwd ?? process.cwd();
+
+    function openSettings() {
       ctx.ui.custom(
-        renderMcpAddOverlay({
-          onComplete: () => {
-            ctx.ui.notify("MCP server saved. Restart pi to activate.", "info");
-          },
+        renderMcpSettingsOverlay({
+          registry: registry ?? undefined,
+          cwd,
+          onComplete: () => {},
         }),
         {
           overlay: true,
           overlayOptions: {
-            width: "90%",
-            minWidth: 80,
+            width: "80%",
+            minWidth: 70,
             anchor: "center",
             margin: 2,
           },
         },
       );
-    },
-  });
+    }
 
-  // /unipi:mcp-settings — settings overlay
+    openSettings();
+  };
   pi.registerCommand(`unipi:${MCP_COMMANDS.SETTINGS}`, {
     description: "Manage MCP server settings",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("MCP Settings requires an interactive UI.", "warning");
-        return;
-      }
+    handler: openMcpSettings,
+  });
 
-      const cwd = ctx.cwd ?? process.cwd();
-
-      function openSettings() {
-        ctx.ui.custom(
-          renderMcpSettingsOverlay({
-            registry: registry ?? undefined,
-            cwd,
-            onComplete: () => {},
-          }),
+  // Settings-hub integration: the hub's action rows invoke these flows and
+  // the /unipi:settings panel carries the entry points (jira etc. flow back).
+  registerCommandRunner(`unipi:${MCP_COMMANDS.ADD}`, (ctx) =>
+    openMcpAdd("", ctx as ExtensionCommandContext));
+  registerCommandRunner(`unipi:${MCP_COMMANDS.SETTINGS}`, (ctx) =>
+    openMcpSettings("", ctx as ExtensionCommandContext));
+  registerSettings({
+    namespace: "mcp",
+    label: "MCP",
+    defaults: {},
+    schema: [
+      {
+        title: "Servers",
+        description: "Server registry lives in its own overlay (catalog, jira, …)",
+        fields: [
           {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 70,
-              anchor: "center",
-              margin: 2,
-            },
+            key: "configure",
+            type: "action",
+            label: "Configure MCP servers…",
+            command: `unipi:${MCP_COMMANDS.SETTINGS}`,
+            description: "add / edit / enable servers",
           },
-        );
-      }
-
-      openSettings();
-    },
+          {
+            key: "add",
+            type: "action",
+            label: "Add MCP server…",
+            command: `unipi:${MCP_COMMANDS.ADD}`,
+            description: "browse the catalog or paste a custom config",
+          },
+        ],
+      },
+    ],
   });
 
   // /unipi:mcp-reload — restart all MCP servers

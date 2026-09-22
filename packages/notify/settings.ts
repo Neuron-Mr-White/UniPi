@@ -69,16 +69,67 @@ registerSettings({
   defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
   schema: [
     {
-      title: "Platforms",
+      title: "General",
       description: "Event-by-event routing lives in /unipi:notify-settings",
       fields: [
         { key: "native.enabled", type: "boolean", label: "Native desktop", description: "OS notifications" },
-        { key: "gotify.enabled", type: "boolean", label: "Gotify", description: "Self-hosted push" },
-        { key: "telegram.enabled", type: "boolean", label: "Telegram", description: "Telegram bot messages" },
+        { key: "native.suppressWhenFocused", type: "boolean", label: "Quiet when focused" },
         { key: "recap.enabled", type: "boolean", label: "Recap", description: "Session recap digests" },
-        { key: "ntfy.enabled", type: "boolean", label: "ntfy" },
-        { key: "ntfy.serverUrl", type: "string", label: "ntfy server", description: "https://ntfy.sh or self-hosted" },
-        { key: "ntfy.priority", type: "number", label: "ntfy priority", min: 1, max: 5 },
+        { key: "recap.model", type: "model", label: "Recap model", emptyLabel: "inherit (session model)" },
+      ],
+    },
+    {
+      title: "Platforms",
+      description: "Per-platform credentials and targets",
+      fields: [
+        {
+          key: "gotify",
+          type: "page",
+          label: "gotify",
+          sections: [
+            {
+              title: "gotify",
+              fields: [
+                { key: "gotify.enabled", type: "boolean", label: "Enabled" },
+                { key: "gotify.serverUrl", type: "string", label: "Server URL", emptyLabel: "https://gotify.example" },
+                { key: "gotify.appToken", type: "secret", label: "App token", emptyLabel: "unset" },
+                { key: "gotify.priority", type: "number", label: "Priority", min: 0, max: 10 },
+              ],
+            },
+          ],
+        },
+        {
+          key: "telegram",
+          type: "page",
+          label: "telegram",
+          sections: [
+            {
+              title: "telegram",
+              fields: [
+                { key: "telegram.enabled", type: "boolean", label: "Enabled" },
+                { key: "telegram.botToken", type: "secret", label: "Bot token", emptyLabel: "unset" },
+                { key: "telegram.chatId", type: "secret", label: "Chat ID", emptyLabel: "unset" },
+              ],
+            },
+          ],
+        },
+        {
+          key: "ntfy",
+          type: "page",
+          label: "ntfy",
+          sections: [
+            {
+              title: "ntfy",
+              fields: [
+                { key: "ntfy.enabled", type: "boolean", label: "Enabled" },
+                { key: "ntfy.serverUrl", type: "string", label: "Server", emptyLabel: "https://ntfy.sh" },
+                { key: "ntfy.topic", type: "string", label: "Topic", emptyLabel: "unset" },
+                { key: "ntfy.token", type: "secret", label: "Access token", emptyLabel: "unset" },
+                { key: "ntfy.priority", type: "number", label: "Priority", min: 1, max: 5 },
+              ],
+            },
+          ],
+        },
       ],
     },
   ],

@@ -29,8 +29,8 @@ always one key away** (recoverable by construction), not staged buffers.
 ## Phase 6 — per-category flows return (item 6)
 - [x] Hub gains nested PAGES + ACTION rows: page fields (sections, full keys) push a sub-page with breadcrumb ` unipi settings › tavily — global [g] ` (Esc pops, restores parent cursor/scroll); action fields run a named command via core command-runner (modules registerCommandRunner(name, ctx=>…); utility wires runAction). u/d/R skip page/action rows; page fields write their full keys through the engine. 42/42.
 - [x] Web API: providers are PAGES per provider (enabled + apiKey secret with 'unset (public access)'). Auth MOVED into the engine (providers.<id>.apiKey; auth.json imported once; loadAuth/saveAuth/getApiKey/setApiKey read engine; removeApiKey writes '' since merge can't delete). Tavily/serpapi/firecrawl/perplexity configurable in-UI. +auth-engine test.
-- [ ] Notify: gotify/telegram/ntfy become PAGES (url/token/chatId secrets). background-tasks delegate page already flat — keep. mcp: ACTION row "Configure MCP servers…" launching the existing overlay (jira etc. flows back).
-- [ ] Tests: page push/pop + breadcrumb, action row invokes command hook, web-api auth import + secret round-trip.
+- [x] Notify: gotify/telegram/ntfy are PAGES (serverUrl/topic/tokens as secrets; native/recap stay top-level with recap.model as a model field). background-tasks delegate stays flat. mcp: ACTION rows 'Configure MCP servers…' + 'Add MCP server…' via registerCommandRunner (handlers extracted to shared invokers). 100 notify + 10 mcp tests.
+- [x] Tests (done prev iteration + now): page push/pop + breadcrumb + full-key writes (42/42), action row hook + Enter, web-api auth import/round-trip/clear, core command-runner 3/3.
 
 ## Phase 7 — verify + close
 - [ ] coffee + PC tmux drive with evidence: u/d/R recovery flow; title scope toggle; emptyLabel displays; enum-custom list flow; judge advanced collapse + model pick auto-derives; web-api tavily key via page; mcp action row opens overlay.

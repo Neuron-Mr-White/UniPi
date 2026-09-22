@@ -1,7 +1,7 @@
 {
   "name": "settings-hub-safety",
   "taskFile": ".unipi/ralph/settings-hub-safety.md",
-  "iteration": 4,
+  "iteration": 5,
   "maxIterations": 40,
   "itemsPerIteration": 2,
   "reflectEvery": 5,
