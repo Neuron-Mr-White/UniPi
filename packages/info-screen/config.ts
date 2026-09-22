@@ -11,6 +11,8 @@ import { homedir } from "node:os";
 import type { InfoScreenSettings, GroupSettings, BootMode } from "./types.js";
 import { DEFAULT_SETTINGS, BOOT_MODES } from "./types.js";
 
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+
 /** Settings path */
 const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
@@ -56,18 +58,37 @@ function writeSettingsFile(data: Record<string, unknown>): void {
 /**
  * Get info-screen settings from settings.json.
  */
+// Registered with the unified settings hub (engine imports the legacy
+// pi-settings unipi.info block once via the A_KEY migration).
+registerSettings({
+  namespace: "info-screen",
+  label: "Info Screen",
+  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Boot",
+      fields: [
+        {
+          key: "bootMode",
+          type: "enum",
+          label: "Boot mode",
+          options: ["on", "off", "auto-close"],
+          description: "Dashboard behavior at startup",
+        },
+        { key: "bootTimeoutMs", type: "number", label: "Auto-close ms", min: 0 },
+      ],
+    },
+  ],
+});
+
 export function getInfoSettings(): InfoScreenSettings {
   if (cachedSettings) return cachedSettings;
 
-  const settings = readSettingsFile();
-  const unipi = settings[SETTINGS_KEY];
-
-  if (!isRecord(unipi) || !isRecord(unipi.info)) {
+  const info = getSettings("info-screen", process.cwd());
+  if (!isRecord(info) || Object.keys(info).length === 0) {
     cachedSettings = { ...DEFAULT_SETTINGS };
     return cachedSettings;
   }
-
-  const info = unipi.info as Record<string, unknown>;
 
   cachedSettings = {
     bootMode: parseBootMode(info),
@@ -131,19 +152,7 @@ function parseStatSettings(raw: Record<string, unknown>): Record<string, boolean
  * Save info-screen settings to settings.json.
  */
 export function saveInfoSettings(settings: InfoScreenSettings): void {
-  const file = readSettingsFile();
-
-  if (!isRecord(file[SETTINGS_KEY])) {
-    file[SETTINGS_KEY] = {};
-  }
-
-  (file[SETTINGS_KEY] as Record<string, unknown>).info = {
-    bootMode: settings.bootMode,
-    bootTimeoutMs: settings.bootTimeoutMs,
-    groups: settings.groups,
-  };
-
-  writeSettingsFile(file);
+  setSettings("info-screen", settings as unknown as Record<string, unknown>, "global", process.cwd());
   cachedSettings = settings;
 }
 

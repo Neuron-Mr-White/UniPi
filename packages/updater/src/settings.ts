@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
-import { UPDATER_DIRS } from "@pi-unipi/core";
+import { UPDATER_DIRS, getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 import type { UpdaterConfig } from "../types.js";
 
 /** Default configuration — 1 hour check interval, notify mode */
@@ -33,15 +33,43 @@ function resolveConfigPath(): string {
   return join(base, "config.json");
 }
 
-/** Load config from disk, returning defaults if missing or invalid */
+// Registered with the unified settings hub — canonical path already matched.
+registerSettings({
+  namespace: "updater",
+  label: "Updater",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Updates",
+      fields: [
+        {
+          key: "checkIntervalMs",
+          type: "enum",
+          label: "Check interval",
+          options: [
+            { value: "1800000", label: "30 min" },
+            { value: "3600000", label: "1 hour" },
+            { value: "21600000", label: "6 hours" },
+            { value: "86400000", label: "daily" },
+          ],
+          description: "How often to check npm for updates",
+        },
+        {
+          key: "autoUpdate",
+          type: "enum",
+          label: "Auto update",
+          options: ["disabled", "notify", "auto"],
+        },
+      ],
+    },
+  ],
+});
+
+/** Load config (engine-layered), returning defaults if missing or invalid */
 export function loadConfig(): UpdaterConfig {
-  const configPath = resolveConfigPath();
   try {
-    if (existsSync(configPath)) {
-      const raw = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<UpdaterConfig>;
-      return mergeWithDefaults(parsed);
-    }
+    const parsed = getSettings("updater", process.cwd()) as Partial<UpdaterConfig>;
+    return mergeWithDefaults(parsed);
   } catch (_err) {
     // Config load failure — using defaults silently.
   }
@@ -50,10 +78,7 @@ export function loadConfig(): UpdaterConfig {
 
 /** Save config to disk, creating directory if needed */
 export function saveConfig(config: UpdaterConfig): void {
-  const configPath = resolveConfigPath();
-  const dir = dirname(configPath);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  setSettings("updater", config as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /** Get human-readable label for an interval */

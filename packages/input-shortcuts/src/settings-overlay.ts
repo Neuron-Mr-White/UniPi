@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import type { InputShortcutsConfig } from "./types.ts";
 import { CONFIG_FILE, DEFAULT_CONFIG } from "./types.ts";
+import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 // ─── Available ALT key options ───────────────────────────────────────────────
 
@@ -27,27 +28,87 @@ const FREE_ALT_KEYS = ALT_KEY_OPTIONS.filter((k) => !CONFLICTS.has(k));
 
 // ─── Config persistence ─────────────────────────────────────────────────────
 
-/** Load config from disk, returns defaults if missing. */
-export function loadConfig(baseDir?: string): InputShortcutsConfig {
-  const filePath = baseDir ? join(baseDir, CONFIG_FILE) : CONFIG_FILE;
+// Registered with the unified settings hub. Input-shortcuts config is
+// project-scoped; the legacy <cwd>/.unipi/config/input-shortcuts-config.json
+// is imported once on first read.
+registerSettings({
+  namespace: "input-shortcuts",
+  label: "Input Shortcuts",
+  defaults: { ...DEFAULT_CONFIG },
+  schema: [
+    {
+      title: "Keys",
+      description: "Key names as pi keybinding ids (e.g. alt+s)",
+      fields: [
+        {
+          key: "chordKey",
+          type: "enum",
+          label: "Chord key",
+          options: ["alt+s", "alt+d", "alt+x"],
+          allowCustom: true,
+        },
+        {
+          key: "tabInsertKey",
+          type: "enum",
+          label: "Tab-insert key",
+          options: ["alt+i", "alt+o", "alt+p"],
+          allowCustom: true,
+        },
+      ],
+    },
+  ],
+});
+
+/** One-time legacy import. */
+function importLegacyInputShortcuts(): void {
+  const layers = settingsLayers("input-shortcuts", process.cwd());
+  if (layers.global || layers.project) return;
   try {
-    if (existsSync(filePath)) {
-      const raw = readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<InputShortcutsConfig>;
-      return {
-        chordKey: typeof parsed.chordKey === "string" ? parsed.chordKey : DEFAULT_CONFIG.chordKey,
-        tabInsertKey: typeof parsed.tabInsertKey === "string" ? parsed.tabInsertKey : DEFAULT_CONFIG.tabInsertKey,
-      };
-    }
+    const raw = readFileSync(CONFIG_FILE, "utf-8");
+    setSettings("input-shortcuts", JSON.parse(raw) as Record<string, unknown>, "project", process.cwd());
   } catch {
-    // Fall through to defaults
+    // No legacy config — defaults apply.
   }
-  return { ...DEFAULT_CONFIG };
 }
 
-/** Save config to disk with atomic write. */
+/** Load config (engine-layered), returns defaults if missing. */
+export function loadConfig(baseDir?: string): InputShortcutsConfig {
+  // Explicit baseDir (tests/registers) keeps reading the file directly.
+  if (baseDir) {
+    const filePath = join(baseDir, CONFIG_FILE);
+    try {
+      if (existsSync(filePath)) {
+        const raw = readFileSync(filePath, "utf-8");
+        const parsed = JSON.parse(raw) as Partial<InputShortcutsConfig>;
+        return {
+          chordKey: typeof parsed.chordKey === "string" ? parsed.chordKey : DEFAULT_CONFIG.chordKey,
+          tabInsertKey: typeof parsed.tabInsertKey === "string" ? parsed.tabInsertKey : DEFAULT_CONFIG.tabInsertKey,
+        };
+      }
+    } catch {
+      // Fall through to defaults
+    }
+    return { ...DEFAULT_CONFIG };
+  }
+  try {
+    importLegacyInputShortcuts();
+    const parsed = getSettings("input-shortcuts", process.cwd()) as Partial<InputShortcutsConfig>;
+    return {
+      chordKey: typeof parsed.chordKey === "string" ? parsed.chordKey : DEFAULT_CONFIG.chordKey,
+      tabInsertKey: typeof parsed.tabInsertKey === "string" ? parsed.tabInsertKey : DEFAULT_CONFIG.tabInsertKey,
+    };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+/** Save config (engine project scope; direct file when baseDir given). */
 export function saveConfig(config: InputShortcutsConfig, baseDir?: string): void {
-  const filePath = baseDir ? join(baseDir, CONFIG_FILE) : CONFIG_FILE;
+  if (!baseDir) {
+    setSettings("input-shortcuts", { ...config }, "project", process.cwd());
+    return;
+  }
+  const filePath = join(baseDir, CONFIG_FILE);
   try {
     const dir = dirname(filePath);
     if (!existsSync(dir)) {

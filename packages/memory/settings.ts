@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Embedding provider type */
 export type EmbeddingProvider = "openrouter" | "none";
@@ -69,15 +70,51 @@ function getConfigPath(): string {
   return path.join(os.homedir(), ".unipi", "memory", "config.json");
 }
 
+// Registered with the unified settings hub. Memory's config lived under its
+// own root (~/.unipi/memory/config.json) — imported once into the engine
+// layout on first read, legacy file left in place for MemPalace tooling.
+registerSettings({
+  namespace: "memory",
+  label: "Memory",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Embeddings",
+      fields: [
+        {
+          key: "provider",
+          type: "enum",
+          label: "Provider",
+          options: ["none", "openrouter"],
+          description: "Semantic search over stored memories",
+        },
+        { key: "model", type: "model", label: "Model" },
+        { key: "dimensions", type: "number", label: "Dimensions", min: 1 },
+        { key: "mempalaceAutoUpdate", type: "boolean", label: "MemPalace auto-update", description: "Daily PyPI check + uv upgrade" },
+      ],
+    },
+  ],
+});
+
+/** One-time import from the legacy ~/.unipi/memory/config.json root. */
+function importLegacyMemoryConfig(): void {
+  const layers = settingsLayers("memory", process.cwd());
+  if (layers.global || layers.project) return;
+  try {
+    const raw = fs.readFileSync(getConfigPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    setSettings("memory", parsed as Record<string, unknown>, "global", process.cwd());
+  } catch {
+    // Absent/unreadable legacy config — defaults apply.
+  }
+}
+
 /** Load embedding config */
 export function loadEmbeddingConfig(): EmbeddingConfig {
-  const configPath = getConfigPath();
   try {
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_CONFIG, ...parsed };
-    }
+    importLegacyMemoryConfig();
+    const parsed = getSettings("memory", process.cwd());
+    return { ...DEFAULT_CONFIG, ...parsed };
   } catch {
     // Ignore parse errors
   }
@@ -86,12 +123,7 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
 
 /** Save embedding config */
 export function saveEmbeddingConfig(config: EmbeddingConfig): void {
-  const configPath = getConfigPath();
-  const dir = path.dirname(configPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  setSettings("memory", config as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /** Update partial config */

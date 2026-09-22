@@ -14,7 +14,7 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 ## Phase 1 — COMPLETE settings inventory (nothing hidden)
 - [x] Audit EVERY package for settings surfaces: grep for `.unipi/config`, `~/.pi/agent/settings.json` unipi.* keys, homedir config paths, project-level config files, env-var settings, defaults objects. Produce `docs/settings-inventory.md`: module → settings shape → current storage path → registered-in-engine (y/n) → schema fields planned.
 - [x] Include modules never touched yet: fusion (preset.json + project fusion-preset), image, mcp, web-api (wigolo config), input-shortcuts, subagents (config + missions/schedules config), background-tasks (config.ts), btw, info-screen, memory (config.json + MemPalace flags), compactor's REMAINING depth (strategy modes, pipeline opts), footer's remaining depth (groups/segments toggles, separators), notify's remaining depth (event matrix, gotify/telegram/ntfy platform configs — ntfy.json is a second file), long-horizon remaining (none left), workflow/kanboard (if they still have config), updater, ask-user (done), utility (done: badge; skill-discovery?).
-- [ ] Distinguish: settings (hub) vs secrets (env/api keys — hub secret fields) vs state (NOT hub).
+- [x] Distinguish settings vs secrets vs state — documented in docs/settings-inventory.md (web-api auth.json stays a secrets file; registers/missions/schedules = state, not hub).
 
 ## Phase 2 — hub rewrite (core/src/settings/hub.ts)
 - [x] Rewrite SettingsHub per spec: new key handling (space/tab/enter/esc/search), inline input below row (insert row, prefill), enum allowCustom cycling + custom input, model picker component (search + 5 rows), scope row, per-row hints, instant writes via engine (setSettings per change), layered value display (show effective + which layer? keep [G]/[P] tags).
@@ -22,7 +22,7 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 - [x] Unit tests: 15 hub tests green (all key flows, 5-row window, scope write, invalid-number rejection; catalog from fixture). GOTCHA learned: pi-tui Input setValue leaves cursor at 0 — send \x1b[F (End) after prefill; ctrl-U does NOT clear.
 
 ## Phase 3 — register ALL modules from inventory
-- [ ] Register + migrate reads for every module in the inventory not yet on the engine (fusion, image, mcp, web-api, input-shortcuts, subagents, background-tasks, btw, info-screen, memory, + depth fields of footer/compactor/notify). Keep module APIs stable (same load/save functions, engine underneath). Legacy imports where files predate the engine (follow existing patterns: A_KEY imports, one-time importers).
+- [~] Register + migrate reads: DONE image, web-api, updater (canonical), info-screen (fixed A_KEY migration key infoScreen→info!), memory (legacy-root import), input-shortcuts (project + legacy import). REMAINING: fusion, mcp, subagents, background-tasks, notify-ntfy fold, footer/compactor/notify depth fields.
 - [ ] EVERY schema: model-ish fields get type "model"; enums that need free values get allowCustom; secrets (API keys/tokens: notify gotify/telegram/ntfy tokens, mcp env, web-api keys) become secret fields.
 - [ ] Update per-module tests for engine semantics (resetSettingsGates in HOME-swap tests; path assertions to canonical layout).
 

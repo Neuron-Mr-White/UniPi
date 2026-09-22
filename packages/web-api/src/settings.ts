@@ -17,6 +17,7 @@ import {
   DEFAULT_REMOVE_IMAGES,
   DEFAULT_INCLUDE_REPLIES,
 } from "./engine/constants.js";
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 
 /** Auth storage structure (API keys) */
 export interface WebApiAuth {
@@ -140,25 +141,49 @@ export function saveAuth(auth: WebApiAuth): void {
   fs.writeFileSync(authPath, JSON.stringify(auth, null, 2), "utf-8");
 }
 
+// Registered with the unified settings hub — canonical path already matched.
+// (auth.json stays a separate secrets file; provider keys are NOT hub fields.)
+registerSettings({
+  namespace: "web-api",
+  label: "Web API",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Providers",
+      description: "Search/read provider toggles (keys live in auth.json)",
+      fields: Object.keys(DEFAULT_CONFIG.providers).map((id) => ({
+        key: `providers.${id}.enabled` as string,
+        type: "boolean" as const,
+        label: id,
+      })),
+    },
+    {
+      title: "Smart fetch",
+      fields: [
+        { key: "smartFetch.maxChars", type: "number", label: "Max chars", min: 1000 },
+        { key: "smartFetch.timeoutMs", type: "number", label: "Timeout ms", min: 1000 },
+        { key: "smartFetch.batchConcurrency", type: "number", label: "Batch concurrency", min: 1, max: 32 },
+        { key: "smartFetch.removeImages", type: "boolean", label: "Remove images" },
+      ],
+    },
+  ],
+});
+
 /**
- * Load configuration from config.json.
+ * Load configuration (engine-layered).
  * @returns Configuration object
  */
 export function loadConfig(): WebApiConfig {
   try {
-    const configPath = getConfigPath();
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, "utf-8");
-      const config = JSON.parse(content) as Partial<WebApiConfig>;
-      return {
-        ...DEFAULT_CONFIG,
-        ...config,
-        providers: {
-          ...DEFAULT_CONFIG.providers,
-          ...config.providers,
-        },
-      };
-    }
+    const config = getSettings("web-api", process.cwd()) as Partial<WebApiConfig>;
+    return {
+      ...DEFAULT_CONFIG,
+      ...config,
+      providers: {
+        ...DEFAULT_CONFIG.providers,
+        ...config.providers,
+      },
+    };
   } catch {
     // Silently ignore — config load failure falls back to defaults.
   }
@@ -170,9 +195,7 @@ export function loadConfig(): WebApiConfig {
  * @param config - Configuration object
  */
 export function saveConfig(config: WebApiConfig): void {
-  ensureConfigDir();
-  const configPath = getConfigPath();
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  setSettings("web-api", config as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /**

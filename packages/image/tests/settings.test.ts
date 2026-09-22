@@ -14,20 +14,29 @@ import * as path from "node:path";
 let tmpDir: string;
 let originalEnv: string | undefined;
 
+import { resetSettingsGates } from "@pi-unipi/core";
+
+let originalHome: string | undefined;
+
 beforeEach(() => {
-  originalEnv = process.env.UNIPI_IMAGE_CONFIG_DIR;
+  originalHome = process.env.HOME;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unipi-image-test-"));
-  process.env.UNIPI_IMAGE_CONFIG_DIR = tmpDir;
+  process.env.HOME = tmpDir;
+  resetSettingsGates();
 });
 
 afterEach(() => {
-  if (originalEnv === undefined) delete process.env.UNIPI_IMAGE_CONFIG_DIR;
-  else process.env.UNIPI_IMAGE_CONFIG_DIR = originalEnv;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 function configPath(): string {
-  return path.join(tmpDir, "config.json");
+  // Engine canonical layout under the sandboxed HOME (pre-created so test
+  // fixtures can write directly without mkdir gymnastics).
+  const dir = path.join(tmpDir, ".unipi", "config", "image");
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, "config.json");
 }
 
 describe("loadConfig", () => {
@@ -113,13 +122,10 @@ describe("saveConfig / updateConfig", () => {
     assert.deepEqual(loadConfig(), custom);
   });
 
-  it("creates the config directory when missing", async () => {
+  it("creates the canonical engine directory when missing", async () => {
     const { saveConfig, DEFAULT_CONFIG } = await import("../src/settings.ts");
-    const nested = path.join(tmpDir, "deep", "nested");
-    process.env.UNIPI_IMAGE_CONFIG_DIR = nested;
-
     assert.equal(saveConfig(DEFAULT_CONFIG), true);
-    assert.ok(fs.existsSync(path.join(nested, "config.json")));
+    assert.ok(fs.existsSync(configPath()), "engine layout created on demand");
   });
 
   it("merges one level deep on update", async () => {
@@ -133,12 +139,12 @@ describe("saveConfig / updateConfig", () => {
     assert.equal(config.recognize.model, "c/d");
   });
 
-  it("reports failure instead of throwing when the path is unwritable", async () => {
+  it("reports failure instead of throwing when the home is unwritable", async () => {
     const { saveConfig, DEFAULT_CONFIG } = await import("../src/settings.ts");
-    // A file where the directory should be makes mkdir fail.
+    // HOME pointing at a FILE makes every engine mkdir fail.
     const blocked = path.join(tmpDir, "blocker");
     fs.writeFileSync(blocked, "not a directory");
-    process.env.UNIPI_IMAGE_CONFIG_DIR = path.join(blocked, "sub");
+    process.env.HOME = blocked;
 
     assert.equal(saveConfig(DEFAULT_CONFIG), false);
   });

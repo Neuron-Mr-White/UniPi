@@ -62,7 +62,7 @@ interface Move {
 const A_KEY_MODULES: ReadonlyArray<{ namespace: string; key: string }> = [
   { namespace: "ask-user", key: "askUser" },
   { namespace: "footer", key: "footer" },
-  { namespace: "info-screen", key: "infoScreen" },
+  { namespace: "info-screen", key: "info" },
   { namespace: "long-horizon", key: "longHorizon" },
 ];
 

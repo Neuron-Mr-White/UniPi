@@ -64,6 +64,33 @@ export const DEFAULT_CONFIG: ImageConfig = {
 };
 
 /** Resolve the config directory, honouring the test override. */
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+
+// Registered with the unified settings hub — canonical path already matched.
+registerSettings({
+  namespace: "image",
+  label: "Image",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Generate",
+      fields: [
+        { key: "generate.enabled", type: "boolean", label: "Generate enabled", description: "Register the image_generate tool" },
+        { key: "generate.model", type: "model", label: "Generate model", description: "Image generation model" },
+        { key: "generate.outputDir", type: "string", label: "Output dir", description: "~ expanded" },
+        { key: "generate.saveToDisk", type: "boolean", label: "Save to disk" },
+      ],
+    },
+    {
+      title: "Recognize",
+      fields: [
+        { key: "recognize.enabled", type: "boolean", label: "Recognize enabled", description: "Register the image_recognize tool" },
+        { key: "recognize.model", type: "model", label: "Recognize model", description: "Empty = session model" },
+      ],
+    },
+  ],
+});
+
 export function getConfigDir(): string {
   const override = process.env.UNIPI_IMAGE_CONFIG_DIR;
   if (override && override.trim().length > 0) return override;
@@ -103,13 +130,11 @@ function mergeSection<T extends object>(defaults: T, loaded: unknown): T {
   return merged;
 }
 
-/** Load config from disk, falling back to defaults on any problem. */
+/** Load config (engine-layered), falling back to defaults on any problem. */
 export function loadConfig(): ImageConfig {
   try {
-    const raw = fs.readFileSync(getConfigPath(), "utf-8");
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = getSettings("image", process.cwd());
     if (!isRecord(parsed)) return structuredClone(DEFAULT_CONFIG);
-
     return {
       generate: mergeSection(DEFAULT_CONFIG.generate, parsed.generate),
       recognize: mergeSection(DEFAULT_CONFIG.recognize, parsed.recognize),
@@ -122,9 +147,7 @@ export function loadConfig(): ImageConfig {
 /** Persist config. Returns false instead of throwing when the write fails. */
 export function saveConfig(config: ImageConfig): boolean {
   try {
-    const dir = getConfigDir();
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(getConfigPath(), `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+    setSettings("image", config as unknown as Record<string, unknown>, "global", process.cwd());
     return true;
   } catch {
     return false;
