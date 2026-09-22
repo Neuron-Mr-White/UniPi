@@ -108,7 +108,7 @@ Removals and recreations are green-lit to start immediately.
 
 ### 18. `utility` — ux + settings hub
 - [ ] UX improvements
-- [ ] Add centralized settings that can configure ALL unipi modules (settings are currently scattered across every package)
+- [x] Add centralized settings that can configure ALL unipi modules — `/unipi:settings` hub shipped (bc85981): core schema+hub, utility command; long-horizon (incl. judge.apiKey secret, env-free), footer, compactor, ask-user, notify, autocomplete, utility-badge adopted onto the engine
 - [ ] Add a startup hint that shuffles every session (fun)
 
 ### 19. `web-api` — partial rewrite
@@ -123,7 +123,7 @@ Removals and recreations are green-lit to start immediately.
 
 ## Cross-cutting
 
-- [ ] `utility` settings hub becomes the single settings surface — inventory every module's scattered settings and migrate them under it
+- [x] `utility` settings hub is the single settings surface for the 7 adopted modules — REMAINING: fusion (preset editor), image, mcp, web-api, input-shortcuts, subagents, background-tasks, btw, info-screen registrations
 - [ ] Prefix-cache gap matrix re-audit after milestone removal + long-horizon creation (docs/prefix-cache-architecture.md)
 - [ ] pi 0.86 ownership audit: prompt-cache warming, transcript-aware prompt/tool updates, per-model compaction, deferred tool loading — delegate to pi vs keep owning
 - [ ] Update the full-release chore package inventory when milestone/trajectory/ralph leave and long-horizon arrives
