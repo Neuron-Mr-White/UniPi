@@ -20,6 +20,12 @@ export type SettingsField =
       readonly description?: string;
       /** Cycle order; entries are raw values or value:label pairs. */
       readonly options: readonly (string | { readonly value: string; readonly label: string })[];
+      /**
+       * When true the field also accepts a free-text value: the cycle ends with
+       * `custom…`, and Space on any position jumps to custom + opens the inline
+       * editor prefilled with the current raw value.
+       */
+      readonly allowCustom?: boolean;
     }
   | { readonly key: string; readonly type: "string"; readonly label: string; readonly description?: string }
   | {
@@ -30,7 +36,16 @@ export type SettingsField =
       readonly min?: number;
       readonly max?: number;
     }
-  | { readonly key: string; readonly type: "secret"; readonly label: string; readonly description?: string };
+  | { readonly key: string; readonly type: "secret"; readonly label: string; readonly description?: string }
+  | {
+      /** Model id ("provider/model") — searchable 5-row picker in the hub. */
+      readonly key: string;
+      readonly type: "model";
+      readonly label: string;
+      readonly description?: string;
+      /** Restrict the picker to one provider's catalog (empty = all). */
+      readonly provider?: string;
+    };
 
 export interface SettingsSection {
   /** Section heading in the hub (e.g. "Judge", "Badge"). */
@@ -92,12 +107,20 @@ export function formatFieldValue(field: SettingsField, value: unknown): string {
   }
 }
 
+/** True when a field's raw value is NOT one of its enum options (a custom value). */
+export function isCustomEnumValue(field: SettingsField, value: unknown): boolean {
+  if (field.type !== "enum") return false;
+  if (value === undefined || value === null) return false;
+  return !field.options.map(enumOption).some((o) => o.value === String(value));
+}
+
 /** Parse raw input text for a field; returns undefined when invalid. */
 export function parseFieldValue(field: SettingsField, raw: string): unknown {
   const trimmed = raw.trim();
   switch (field.type) {
     case "string":
     case "secret":
+    case "model":
       return trimmed;
     case "number": {
       const n = Number(trimmed);
