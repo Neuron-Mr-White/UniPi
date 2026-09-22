@@ -6,10 +6,11 @@
  * parked. Design: docs/long-horizon-design.md.
  */
 
+import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
@@ -30,9 +31,30 @@ export * from "./src/gate.js";
 
 const LH_DIR = ".unipi/long-horizon";
 
+/**
+ * Durable project state now lives at ~/.unipi/workspace/<id>/state/long-horizon/
+ * (survives repo moves, keyed by the workspace marker). One-time lazy migration:
+ * if the new file is absent but the legacy in-repo <cwd>/.unipi/long-horizon/
+ * file exists, move it over on first access.
+ */
+function lhStatePath(file: string): string {
+  const dest = join(stateDir("long-horizon", "state"), file);
+  if (!existsSync(dest)) {
+    const legacy = join(resolve(process.cwd()), LH_DIR, file);
+    if (existsSync(legacy)) {
+      try {
+        renameSync(legacy, dest);
+      } catch {
+        // Fall through: a failed move just means we start fresh at dest.
+      }
+    }
+  }
+  return dest;
+}
+
 export default function longHorizon(pi: ExtensionAPI): void {
   const version = getPackageVersion("long-horizon");
-  const statePath = () => join(resolve(process.cwd()), LH_DIR, "state.json");
+  const statePath = () => lhStatePath("state.json");
 
   // Owner lifecycle → unipi event bus (footer/info-screen consume these).
   const owner = new OwnerCoordinator({
@@ -97,7 +119,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
 
   // Goal engine: machine + tools + continuation + runtime wiring.
   const machine = new GoalMachine({
-    statePath: () => join(resolve(process.cwd()), LH_DIR, "goal.json"),
+    statePath: () => lhStatePath("goal.json"),
   });
   const toolset = new GoalToolset({ machine, owner });
   toolset.register(pi);
@@ -116,7 +138,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
   const ralph = new RalphLoop({
     machine,
     owner,
-    ralphDir: () => join(resolve(process.cwd()), ".unipi", "ralph"),
+    ralphDir: () => join(stateDir("long-horizon", "state"), "ralph"),
     send: (message) => {
       void pi.sendUserMessage(message);
     },

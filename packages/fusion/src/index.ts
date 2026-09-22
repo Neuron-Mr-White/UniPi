@@ -16,8 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, UNIPI_PREFIX } from "@pi-unipi/core";
-import { homedir } from "node:os";
+import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -46,7 +45,11 @@ export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
 
 export function sidekickSessionPath(leadSessionId?: string): string {
-  return join(homedir(), ".unipi", "state", "fusion", "sidekick", `${leadSessionId ?? "default"}.jsonl`);
+  // Session-scoped: the sidekick transcript is ephemeral child state that dies
+  // with the lead session. Living under sessions/<sid>/fusion/ means the
+  // startup orphan-sweep reaps it after a crash — no more unbounded pile of
+  // abandoned sidekick .jsonl files.
+  return join(stateDir("fusion", "session"), "sidekick", `${leadSessionId ?? "default"}.jsonl`);
 }
 
 export const SIDEKICK_WAKE_WIDGET_KEY = "fusion-sidekick-wake";
