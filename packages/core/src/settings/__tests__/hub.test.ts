@@ -231,6 +231,23 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(rows.length, 1, "just the Token field (headers/scope filtered out)");
     assert.equal(rows[0]!.label, "Token");
   });
+
+  it("multi-word search matches across section title + field label", () => {
+    const hub = makeHub();
+    // "types flag": 'types' lives in the section title, 'flag' in the label.
+    hub.handleInput("/");
+    hub.handleInput("types flag");
+    const rows = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.label, "Flag");
+  });
+
+  it("a word matching nothing empties the list (no crash)", () => {
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("zzz nothing");
+    assert.equal((hub as unknown as { visibleRows: () => unknown[] }).visibleRows().length, 0);
+  });
 });
 
 describe("model catalog", () => {

@@ -24,12 +24,12 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 ## Phase 3 — register ALL modules from inventory
 - [x] Register + migrate reads: ALL modules adopted — image, web-api, updater, info-screen, memory, input-shortcuts, subagents (engine layering replaces manual merge; raw loaders on engine paths), background-tasks (corrupt-file warnings preserved in importer), fusion (default-pair engine overlay; curated lists stay with /unipi:fusion-preset), notify-ntfy (folded into notify ns). mcp SKIPPED by design (server registry = content, not settings). REMAINING: footer/compactor/notify depth fields (optional polish).
 - [x] Model fields: judge.model/verifierModel, badge.generationModel, image generate/recognize, memory embedding, fusion default pair. allowCustom: input-shortcuts keys. Secrets: judge.apiKey (web-api/gotify/telegram tokens stay in their own secrets files by design).
-- [ ] Update per-module tests for engine semantics (resetSettingsGates in HOME-swap tests; path assertions to canonical layout).
+- [x] Per-module tests updated along the way (image HOME-swap+canonical paths, background-tasks lazy-write + corrupt-warning importer, subagents raw loaders, utility project path, long-horizon engine-file semantics + resetSettingsGates).
 
 ## Phase 4 — verification
-- [ ] tmux on coffee: /unipi:settings opens; every module section visible (count vs inventory); drive: toggle a boolean, edit a string (prefilled), enum cycle, enum custom input, model picker search+5rows+pick; capture-pane evidence each step; writes land in ~/.unipi/config/<ns>/config.json (or ./.unipi/config for project scope); fresh session reads changed value.
-- [ ] PC tmux: same flow once.
-- [ ] `npm run typecheck` 0 errors; full `npm test` EXIT:0; sync repo to coffee (rsync alias pattern).
+- [x] tmux on coffee VERIFIED: panel opens (15 modules/10 sections per screen); boolean toggle on→off→on (judge.enabled, engine file verified both ways); number edit prefilled inline (threshold 0.6→0.7→0.6); enum cycle (updater autoUpdate notify→auto→disabled→notify); model picker (verifierModel: search glm → 5-row window → down → enter → engine write verified); scope Tab global→project + project write landed in ./pi-test/.unipi/config/notify/config.json. FIXES during verification: word-wise AND search across label+section+module (single-string search emptied the panel on 'judge model'); judge.model/verifierModel/badge.generationModel retyped string→model. GOTCHAs: session-name badge overlay must be dismissed (Esc) before driving; tmux extended-keys ON breaks Space/Enter encoding — keep OFF.
+- [x] PC tmux VERIFIED (pi 0.86.1): panel opens, sections render, Tab navigation + boolean toggles + scope switch + PROJECT-scope writes all verified (ask-user enabled toggle landed in ./pi-test/.unipi/config/ask-user/config.json). pi 0.86 delivers Enter as \n in overlay paths — added \r||\n handling (coffee's 0.87 uses \r).
+- [x] typecheck 0 errors · full suite EXIT:0 · synced to coffee.
 - [ ] Commit per phase; update docs/v3-tasks.md checkboxes + memory at end.
 
 ## Guardrails

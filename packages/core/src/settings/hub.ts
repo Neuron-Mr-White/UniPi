@@ -56,6 +56,8 @@ interface Row {
   readonly id: string;
   readonly label: string;
   readonly namespace?: string;
+  /** Module label + section title — search haystack parts ("Judge", "Long-Horizon"). */
+  readonly context?: string;
   readonly field?: SettingsField;
   readonly layerTag?: string;
 }
@@ -127,6 +129,7 @@ export class SettingsHub {
           rows.push({
             kind: "field", id: `${def.namespace}::${field.key}`,
             label: field.label, namespace: def.namespace, field,
+            context: `${def.label} ${section.title}`,
           });
         }
       }
@@ -137,16 +140,25 @@ export class SettingsHub {
   // ── filtering ───────────────────────────────────────────────────────────
   private visibleRows(): Row[] {
     if (!this.filter) return this.rows;
-    const f = this.filter.toLowerCase();
+    // Word-wise AND: every word must appear somewhere in the row's haystack
+    // (field label, module label, section title, namespace, description) —
+    // so "judge model" matches Long-Horizon's Judge section's Model field.
+    const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return this.rows;
     return this.rows.filter((r) => {
       if (r.kind === "field") {
-        return (
-          r.label.toLowerCase().includes(f) ||
-          (r.namespace ?? "").includes(f) ||
-          (r.field?.description ?? "").toLowerCase().includes(f)
-        );
+        const haystack = [
+          r.label,
+          r.context ?? "",
+          r.namespace ?? "",
+          r.field?.description ?? "",
+        ].join(" ").toLowerCase();
+        return words.every((w) => haystack.includes(w));
       }
-      return r.kind === "scope" && "write scope".includes(f);
+      if (r.kind === "scope") {
+        return words.every((w) => "write scope".includes(w));
+      }
+      return false;
     });
   }
 
@@ -309,7 +321,7 @@ export class SettingsHub {
       this.mode = "list";
       return;
     }
-    if (data === "\r") {
+    if (data === "\r" || data === "\n") {
       const options = this.pickerFiltered();
       const pick = options[p.selected];
       if (pick !== undefined) this.applyChange(p.row, pick);
@@ -341,7 +353,7 @@ export class SettingsHub {
       this.cursor = 0;
       return;
     }
-    if (data === "\r") {
+    if (data === "\r" || data === "\n") {
       this.filter = input.getValue();
       this.mode = "list";
       this.cursor = 0;
