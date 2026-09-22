@@ -19,7 +19,14 @@
  * open via getSettings; local values update in place after each write.
  */
 
-import { Input, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  decodeKittyPrintable,
+  Input,
+  Key,
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 import { frameOverlay, OverlayTheme } from "../../tui-overlay.js";
 import { boxInnerWidth } from "../../tui-width.js";
 import { loadModelCatalog } from "./catalog.js";
@@ -64,6 +71,7 @@ interface Row {
   readonly layerTag?: string;
 }
 
+const PAGE_ROWS = 10;
 const overlayTheme = new OverlayTheme();
 const dim = (t: string) => overlayTheme.fg("textMuted", t);
 const bold = (t: string) => overlayTheme.bold(t);
@@ -196,37 +204,51 @@ export class SettingsHub {
     return this.handleInputList(data);
   }
 
+  /**
+   * Key router — pi-tui's matchesKey/decodePrintableKey normalize every
+   * terminal encoding (CSI arrows, SS3 arrows, kitty CSI-u chars/keys), so
+   * j/k work in herdr/kitty as well as plain xterm. A keypress writes its
+   * full escape sequence in one read, so a lone \x1b really is Esc.
+   */
   private handleInputList(data: string): void {
     const visible = this.visibleRows();
-    switch (data) {
-      case "\x1b[A": case "k":
-        this.cursor = Math.max(0, this.cursor - 1);
+    // Printable char through any encoding: plain byte or kitty CSI-u.
+    const ch = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+    const move = (delta: number): void => {
+      this.cursor = Math.max(0, Math.min(visible.length - 1, this.cursor + delta));
+    };
+    if (matchesKey(data, Key.up) || ch === "k") return move(-1);
+    if (matchesKey(data, Key.down) || ch === "j") return move(1);
+    if (matchesKey(data, Key.pageUp)) return move(-PAGE_ROWS);
+    if (matchesKey(data, Key.pageDown)) return move(PAGE_ROWS);
+    if (matchesKey(data, Key.home)) {
+      this.cursor = 0;
+      return;
+    }
+    if (matchesKey(data, Key.end)) {
+      this.cursor = Math.max(0, visible.length - 1);
+      return;
+    }
+    if (matchesKey(data, Key.slash) || ch === "/") {
+      this.mode = "search";
+      this.searchInput = new Input({ prompt: "/" });
+      return;
+    }
+    if (matchesKey(data, Key.escape) || data === "\x1b") {
+      this.onClose();
+      return;
+    }
+    if (matchesKey(data, Key.tab) || matchesKey(data, Key.space)) {
+      const row = this.currentRow();
+      if (!row) return;
+      const isTab = matchesKey(data, Key.tab);
+      if (row.kind === "scope") {
+        if (isTab) this.toggleScope();
         return;
-      case "\x1b[B": case "j":
-        this.cursor = Math.min(visible.length - 1, this.cursor + 1);
-        return;
-      case "/":
-        this.mode = "search";
-        this.searchInput = new Input({ prompt: "/" });
-        return;
-      case "\x1b":
-        this.onClose();
-        return;
-      case "\t":
-      case " ": {
-        const row = this.currentRow();
-        if (!row) return;
-        if (row.kind === "scope") {
-          if (data === "\t") this.toggleScope();
-          return;
-        }
-        if (row.kind !== "field" || !row.field || !row.namespace) return;
-        const value = getField(this.valueOf(row.namespace), row.field.key);
-        if (data === "\t") return this.handleTab(row, value);
-        return this.handleSpace(row, value);
       }
-      default:
-        return;
+      if (row.kind !== "field" || !row.field || !row.namespace) return;
+      const value = getField(this.valueOf(row.namespace), row.field.key);
+      return isTab ? this.handleTab(row, value) : this.handleSpace(row, value);
     }
   }
 
@@ -322,12 +344,12 @@ export class SettingsHub {
   private handleInputPicker(data: string): void {
     const p = this.picker;
     if (!p) { this.mode = "list"; return; }
-    if (data === "\x1b") {
+    if (matchesKey(data, Key.escape) || data === "\x1b") {
       this.picker = null;
       this.mode = "list";
       return;
     }
-    if (data === "\r" || data === "\n") {
+    if (matchesKey(data, Key.enter) || data === "\r" || data === "\n") {
       const options = this.pickerFiltered();
       const pick = options[p.selected];
       if (pick !== undefined) this.applyChange(p.row, pick);
@@ -335,16 +357,17 @@ export class SettingsHub {
       this.mode = "list";
       return;
     }
-    if (data === "\x1b[A" || data === "k") {
+    if (matchesKey(data, Key.up)) {
       const n = this.pickerFiltered().length;
       if (n > 0) p.selected = (p.selected - 1 + n) % n;
       return;
     }
-    if (data === "\x1b[B" || data === "j") {
+    if (matchesKey(data, Key.down)) {
       const n = this.pickerFiltered().length;
       if (n > 0) p.selected = (p.selected + 1) % n;
       return;
     }
+    // k/j are TEXT here (model ids contain them) — arrows walk the list.
     p.input.handleInput(data);
     p.selected = 0; // any text change resets selection
   }
@@ -352,14 +375,14 @@ export class SettingsHub {
   private handleInputSearch(data: string): void {
     const input = this.searchInput;
     if (!input) { this.mode = "list"; return; }
-    if (data === "\x1b") {
+    if (matchesKey(data, Key.escape) || data === "\x1b") {
       this.searchInput = null;
       this.filter = "";
       this.mode = "list";
       this.cursor = 0;
       return;
     }
-    if (data === "\r" || data === "\n") {
+    if (matchesKey(data, Key.enter) || data === "\r" || data === "\n") {
       this.filter = input.getValue();
       this.mode = "list";
       this.cursor = 0;

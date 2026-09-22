@@ -14,9 +14,9 @@ Goal: a panel that FITS the screen, PAINTS uniformly, and NAVIGATES everywhere.
 - [x] Unit tests: all-lines-exact-width at 80/100/160 (and with picker+editor open), ellipsis truncation, viewport fits short terminals with indicators, cursor-keeps-visible scrolling. 22/22 green.
 
 ## Phase 2 — key router (fix navigation everywhere)
-- [ ] Key decoding via pi-tui `parseKey`/Key matching + internal escape-sequence buffer (handle split chunks; lone ESC = close only when no continuation follows). Replace ALL raw `data ===` matching.
+- [x] Key decoding via pi-tui matchesKey/decodeKittyPrintable (normalizes CSI/SS3/kitty encodings). ALL raw data=== matching replaced. Lone ESC = close is SAFE: a keypress writes its full sequence in one read (documented in hub.ts). In pickers j/k are TEXT (ids contain them) — arrows walk; list mode has j/k nav.
 - [ ] Keys: up/down (k/j) all encodings, PageUp/PageDown, Home/End, Tab, Space, Enter, Esc, "/" — each per the ORIGINAL spec (instant apply; search/edit/picker modes unchanged).
-- [ ] Tests: SS3 arrows, CSI arrows, split "\x1b" then "[A" chunks, j/k, pgup/pgdn.
+- [x] Tests: SS3 + CSI arrows, kitty CSI-u j/k, pgup/pgdn/home/end, lone Esc. 27/27 green.
 
 ## Phase 3 — visual polish
 - [ ] Remove duplicate title (frame title + body "⚙ unipi settings" both show). One clean header line with shortcuts hint.

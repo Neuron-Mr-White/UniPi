@@ -325,3 +325,56 @@ describe("layout: uniform paint + viewport", () => {
     assert.ok(idx >= scroll && idx < scroll + 5, "cursor within [scroll, scroll+maxRows)");
   });
 });
+
+describe("key router (real-terminal encodings)", () => {
+  function cursorLabel(hub: SettingsHub): string {
+    const h = hub as unknown as { visibleRows: () => { label: string }[]; cursor: number };
+    return h.visibleRows()[h.cursor]?.label ?? "";
+  }
+
+  it("arrows work in CSI (\x1b[A) and SS3 (\x1bOA) encodings", () => {
+    const hub = makeHub();
+    hub.handleInput("\x1b[B"); // CSI down → header
+    const afterCsi = cursorLabel(hub);
+    hub.handleInput("\x1bOB"); // SS3 down → next
+    assert.notEqual(cursorLabel(hub), afterCsi, "SS3 arrow moves the cursor too");
+    hub.handleInput("\x1bOA"); // SS3 up → back
+    assert.equal(cursorLabel(hub), afterCsi);
+  });
+
+  it("j/k navigate regardless of encoding (plain bytes here)", () => {
+    const hub = makeHub();
+    hub.handleInput("j");
+    hub.handleInput("j");
+    const two = cursorLabel(hub);
+    hub.handleInput("k");
+    assert.notEqual(cursorLabel(hub), two);
+  });
+
+  it("kitty CSI-u printable 'j' also navigates", () => {
+    const hub = makeHub();
+    hub.handleInput("\x1b[106u"); // 'j' as CSI-u (kitty flag 1)
+    hub.handleInput("\x1b[107u"); // 'k' CSI-u
+    // cursor ended where it started (down then up)
+    assert.equal(cursorLabel(hub), "Write scope");
+  });
+
+  it("pageDown/pageUp jump by 10 rows; home/end hit the edges", () => {
+    const hub = makeHub();
+    hub.handleInput("\x1b[6~"); // pageDown
+    const rows = (hub as unknown as { visibleRows: () => unknown[] }).visibleRows();
+    assert.equal((hub as unknown as { cursor: number }).cursor, Math.min(10, rows.length - 1));
+    hub.handleInput("\x1b[5~"); // pageUp
+    assert.equal((hub as unknown as { cursor: number }).cursor, 0);
+    hub.handleInput("\x1b[F"); // end
+    assert.equal((hub as unknown as { cursor: number }).cursor, rows.length - 1);
+    hub.handleInput("\x1b[H"); // home
+    assert.equal((hub as unknown as { cursor: number }).cursor, 0);
+  });
+
+  it("a lone Esc still closes (keypress sequences arrive in one read)", () => {
+    const hub = makeHub();
+    hub.handleInput("\x1b");
+    assert.equal(closed, 1);
+  });
+});
