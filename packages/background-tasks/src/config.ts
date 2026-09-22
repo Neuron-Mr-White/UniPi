@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Full config surface. Reference keys preserved; ours added where noted. */
 export interface BackgroundTasksConfig {
@@ -182,29 +183,76 @@ export interface LoadedBackgroundTasksConfig {
  * Load config with workspace-wins layering. Auto-generates the global file on
  * first run. Corrupt layers are skipped with a warning rather than crashing.
  */
-export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksConfig {
-  const warnings: string[] = [];
-  const globalPath = getGlobalConfigPath();
+// Registered with the unified settings hub — engine layering replaces the
+// manual global/workspace merge. Legacy flat JSONs
+// (~/.unipi/config/background-tasks.json + <cwd>/.unipi/config/background-tasks.json)
+// are imported once into the engine layout on first load.
+registerSettings({
+  namespace: "background-tasks",
+  label: "Background Tasks",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Tasks",
+      fields: [
+        { key: "enabled", type: "boolean", label: "Enabled", description: "Master toggle — off registers nothing" },
+        { key: "notifyOnCompletion", type: "boolean", label: "Notify on completion" },
+        { key: "triggerOnCompletion", type: "boolean", label: "Follow-up wake", description: "Terminal state wakes the agent" },
+        { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0 },
+        { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1 },
+      ],
+    },
+    {
+      title: "Delegate",
+      fields: [
+        {
+          key: "delegate.extensionMode",
+          type: "enum",
+          label: "Extension mode",
+          options: [
+            { value: "isolated", label: "isolated" },
+            { value: "ambient", label: "ambient (weakens isolation)" },
+          ],
+        },
+        {
+          key: "delegate.autoDeliver",
+          type: "enum",
+          label: "Auto deliver",
+          options: ["when_small", "always", "never"],
+        },
+        { key: "delegate.maxTurns", type: "number", label: "Max turns", min: 1 },
+        { key: "delegate.maxToolCalls", type: "number", label: "Max tool calls", min: 1 },
+        { key: "delegate.timeoutSeconds", type: "number", label: "Timeout s", min: 1 },
+      ],
+    },
+  ],
+});
 
-  if (!existsSync(globalPath)) {
-    try {
-      ensureDirExists(join(globalPath, ".."));
-      writeConfigAtomic(globalPath, DEFAULT_CONFIG);
-    } catch {
-      warnings.push(`could not create global config at ${globalPath}`);
+/** One-time import of the legacy flat JSONs into the engine layout. */
+function importLegacyBackgroundTasksConfig(cwd: string): string[] {
+  const warnings: string[] = [];
+  const layers = settingsLayers("background-tasks", cwd);
+  if (!layers.global) {
+    const path = getGlobalConfigPath();
+    const raw = loadConfigFromPath(path);
+    if (raw) setSettings("background-tasks", raw as Record<string, unknown>, "global", cwd);
+    else if (existsSync(path)) warnings.push(`global config at ${path} is corrupt; using defaults`);
+  }
+  if (!layers.project) {
+    const path = cwd ? getWorkspaceConfigPath(cwd) : null;
+    if (path) {
+      const raw = loadConfigFromPath(path);
+      if (raw) setSettings("background-tasks", raw as Record<string, unknown>, "project", cwd);
+      else if (existsSync(path)) warnings.push(`workspace config is corrupt; ignoring it`);
     }
   }
+  return warnings;
+}
 
-  const globalLayer = loadConfigFromPath(globalPath);
-  if (globalLayer === null && existsSync(globalPath)) {
-    warnings.push(`global config at ${globalPath} is corrupt; using defaults`);
-  }
-  const workspaceLayer = cwd ? loadConfigFromPath(getWorkspaceConfigPath(cwd)) : null;
-  if (workspaceLayer === null && cwd && existsSync(getWorkspaceConfigPath(cwd))) {
-    warnings.push(`workspace config is corrupt; ignoring it`);
-  }
+export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksConfig {
+  const warnings: string[] = importLegacyBackgroundTasksConfig(cwd);
 
-  const merged = mergeLayers(DEFAULT_CONFIG, globalLayer ?? {}, workspaceLayer ?? {});
+  const merged = getSettings("background-tasks", cwd) as unknown as Partial<BackgroundTasksConfig> & Record<string, unknown>;
   const problems = validateBackgroundTasksConfig(merged);
   if (problems.length > 0) {
     warnings.push(...problems.map((p) => `config problem: ${p}`));
@@ -242,9 +290,7 @@ export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksCon
   return { config, warnings };
 }
 
-/** Persist settings back to the global config file (settings overlay save path). */
+/** Persist settings to the engine global scope (settings overlay save path). */
 export function saveGlobalBackgroundTasksConfig(config: BackgroundTasksConfig): void {
-  const globalPath = getGlobalConfigPath();
-  ensureDirExists(join(globalPath, ".."));
-  writeConfigAtomic(globalPath, config);
+  setSettings("background-tasks", config as unknown as Record<string, unknown>, "global", process.cwd());
 }

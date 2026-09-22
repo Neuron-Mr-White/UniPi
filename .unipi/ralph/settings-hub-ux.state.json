@@ -1,7 +1,7 @@
 {
   "name": "settings-hub-ux",
   "taskFile": ".unipi/ralph/settings-hub-ux.md",
-  "iteration": 2,
+  "iteration": 3,
   "maxIterations": 40,
   "itemsPerIteration": 2,
   "reflectEvery": 5,

@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -42,12 +42,13 @@ test("defaults: enabled true, notify+wake on, 20MiB cap", () => {
   assert.equal(DEFAULT_CONFIG.delegate.extensionMode, "isolated");
 });
 
-test("first run creates the global config file", () => {
+test("first run yields defaults (engine writes lazily on first change)", () => {
   withTempHome((home) => {
     const { config } = loadBackgroundTasksConfig("");
     assert.equal(config.enabled, true);
-    const written = JSON.parse(readFileSync(join(home, ".unipi", "config", "background-tasks.json"), "utf-8"));
-    assert.equal(written.enabled, true);
+    // The engine no longer eagerly materializes a config file on first read;
+    // defaults apply in-memory and the file appears on the first write.
+    assert.ok(!existsSync(join(home, ".unipi", "config", "background-tasks.json")));
   });
 });
 

@@ -9,6 +9,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import {
+  getSettings,
+  globalSettingsPath,
+  projectSettingsPath,
+  registerSettings,
+  setSettings,
+  settingsLayers,
+  tryRead,
+} from "@pi-unipi/core";
 import type { SubagentsConfig } from "./types.js";
 
 const DEFAULT_CONFIG: SubagentsConfig = {
@@ -143,50 +152,56 @@ function repairCorrupted(filePath: string): SubagentsConfig {
  * - If corrupted: rename to .bak, generate fresh
  * - If valid: load
  */
+// Registered with the unified settings hub — the engine's global ⊕ project
+// layering replaces the manual merge. Legacy flat JSONs
+// (~/.unipi/config/subagents.json + <cwd>/.unipi/config/subagents.json) are
+// imported once into the engine layout on first init.
+registerSettings({
+  namespace: "subagents",
+  label: "Subagents",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Fleet",
+      fields: [
+        { key: "enabled", type: "boolean", label: "Enabled" },
+        { key: "maxConcurrent", type: "number", label: "Max concurrent", min: 1, max: 32 },
+        { key: "types.explore.enabled", type: "boolean", label: "Explore type" },
+        { key: "types.work.enabled", type: "boolean", label: "Work type" },
+      ],
+    },
+  ],
+});
+
+/** One-time import of the legacy flat JSONs into the engine layout. */
+function importLegacySubagentsConfig(cwd: string): void {
+  const layers = settingsLayers("subagents", cwd);
+  if (!layers.global) {
+    const raw = loadConfigFromPath(getGlobalConfigPath());
+    if (raw) setSettings("subagents", raw as unknown as Record<string, unknown>, "global", cwd);
+  }
+  if (!layers.project) {
+    const raw = loadConfigFromPath(getWorkspaceConfigPath(cwd));
+    if (raw) setSettings("subagents", raw as unknown as Record<string, unknown>, "project", cwd);
+  }
+}
+
 export function initConfig(cwd: string): SubagentsConfig {
-  const globalPath = getGlobalConfigPath();
-  const globalDir = join(homedir(), ".unipi", "config");
   const globalAgentsDir = join(homedir(), ".unipi", "config", "agents");
-
-  // Ensure directories exist
-  ensureDirExists(globalDir);
   ensureDirExists(globalAgentsDir);
-
-  // Load or create global config
-  let globalConfig = loadConfigFromPath(globalPath);
-  if (globalConfig === null) {
-    globalConfig = repairCorrupted(globalPath);
-  }
-
-  // Ensure workspace directories exist if workspace exists
-  const workspaceDir = join(cwd, ".unipi", "config");
-  const workspaceAgentsDir = join(cwd, ".unipi", "config", "agents");
   if (cwd && !cwd.startsWith(homedir())) {
-    // Only create workspace dirs if not in home directory
-    ensureDirExists(workspaceDir);
-    ensureDirExists(workspaceAgentsDir);
+    ensureDirExists(join(cwd, ".unipi", "config", "agents"));
   }
 
-  // Load workspace override if exists
-  const workspacePath = getWorkspaceConfigPath(cwd);
-  const workspaceConfig = loadConfigFromPath(workspacePath);
-
-  if (workspaceConfig) {
-    // Merge: workspace overrides global on any field present
-    const merged: SubagentsConfig = {
-      ...globalConfig,
-      ...workspaceConfig,
-      types: {
-        ...globalConfig.types,
-        ...workspaceConfig.types,
-      },
-    };
+  try {
+    importLegacySubagentsConfig(cwd);
+    const merged = getSettings("subagents", cwd) as unknown as SubagentsConfig;
     reportConfigProblems(merged);
     return merged;
+  } catch {
+    reportConfigProblems(DEFAULT_CONFIG);
+    return { ...DEFAULT_CONFIG };
   }
-
-  reportConfigProblems(globalConfig);
-  return globalConfig;
 }
 
 /** Surface config validation problems visibly (non-fatal, reference behavior). */
@@ -199,28 +214,36 @@ function reportConfigProblems(config: SubagentsConfig): void {
 
 /** Load the RAW parsed global config (for parity settings extraction). */
 export function loadRawGlobalConfig(): Record<string, unknown> | null {
-  return loadConfigFromPath(getGlobalConfigPath()) as Record<string, unknown> | null;
+  const raw = tryRead(globalSettingsPath("subagents"));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 /** Load the RAW parsed workspace config (for parity settings extraction). */
 export function loadRawWorkspaceConfig(cwd: string): Record<string, unknown> | null {
-  return loadConfigFromPath(getWorkspaceConfigPath(cwd)) as Record<string, unknown> | null;
+  const raw = tryRead(projectSettingsPath(cwd, "subagents"));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Save global config.
  */
 export function saveGlobalConfig(config: SubagentsConfig): void {
-  const globalPath = getGlobalConfigPath();
-  ensureDir(globalPath);
-  writeConfigAtomic(globalPath, config);
+  setSettings("subagents", config as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /**
  * Save workspace config.
  */
 export function saveWorkspaceConfig(cwd: string, config: SubagentsConfig): void {
-  const workspacePath = getWorkspaceConfigPath(cwd);
-  ensureDir(workspacePath);
-  writeConfigAtomic(workspacePath, config);
+  setSettings("subagents", config as unknown as Record<string, unknown>, "project", cwd);
 }

@@ -22,8 +22,8 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 - [x] Unit tests: 15 hub tests green (all key flows, 5-row window, scope write, invalid-number rejection; catalog from fixture). GOTCHA learned: pi-tui Input setValue leaves cursor at 0 — send \x1b[F (End) after prefill; ctrl-U does NOT clear.
 
 ## Phase 3 — register ALL modules from inventory
-- [~] Register + migrate reads: DONE image, web-api, updater (canonical), info-screen (fixed A_KEY migration key infoScreen→info!), memory (legacy-root import), input-shortcuts (project + legacy import). REMAINING: fusion, mcp, subagents, background-tasks, notify-ntfy fold, footer/compactor/notify depth fields.
-- [ ] EVERY schema: model-ish fields get type "model"; enums that need free values get allowCustom; secrets (API keys/tokens: notify gotify/telegram/ntfy tokens, mcp env, web-api keys) become secret fields.
+- [x] Register + migrate reads: ALL modules adopted — image, web-api, updater, info-screen, memory, input-shortcuts, subagents (engine layering replaces manual merge; raw loaders on engine paths), background-tasks (corrupt-file warnings preserved in importer), fusion (default-pair engine overlay; curated lists stay with /unipi:fusion-preset), notify-ntfy (folded into notify ns). mcp SKIPPED by design (server registry = content, not settings). REMAINING: footer/compactor/notify depth fields (optional polish).
+- [x] Model fields: judge.model/verifierModel, badge.generationModel, image generate/recognize, memory embedding, fusion default pair. allowCustom: input-shortcuts keys. Secrets: judge.apiKey (web-api/gotify/telegram tokens stay in their own secrets files by design).
 - [ ] Update per-module tests for engine semantics (resetSettingsGates in HOME-swap tests; path assertions to canonical layout).
 
 ## Phase 4 — verification

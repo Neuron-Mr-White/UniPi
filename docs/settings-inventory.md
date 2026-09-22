@@ -12,7 +12,7 @@ Legend: ✅ adopted · 🔶 adopted partial (depth remains) · ❌ not yet · �
 | compactor | `compactor` | engine file (paths already canonical) | 🔶 | strategy `mode` enums, pipeline opts |
 | ask-user | `ask-user` | engine file (was pi-settings unipi.askUser) | ✅ | — |
 | notify | `notify` | engine file (was same path) | 🔶 | gotify url/token/priority, telegram token+chatId, event matrix, recap |
-| notify-ntfy | (fold into `notify`) | **2nd file** `notify/ntfy.json` g+p | ❌ | one-time import into notify config.json; fields: enabled, serverUrl, priority, topic, token(secret) |
+| notify-ntfy | (folded into `notify`) | ~~`notify/ntfy.json`~~ → notify config.json `ntfy` subtree | ✅ | imported once per scope; schema: enabled/serverUrl/priority; saveNtfyConfig → engine |
 | autocomplete | `command-enchantment` | engine file (was same path) | ✅ | — |
 | utility | `utility` | engine file, project-scope (was `<cwd>/.unipi/config/util-settings.json`) | ✅ | badge.generationModel → `model` type; skill-discovery toggle (pi-settings) |
 | info-screen | `info-screen` | **pi-settings `unipi.info`** | ❌ | register + A_KEY-style import; bootMode enum, group toggles |
@@ -23,8 +23,8 @@ Legend: ✅ adopted · 🔶 adopted partial (depth remains) · ❌ not yet · �
 | input-shortcuts | `input-shortcuts` | `<cwd>/.unipi/config/input-shortcuts-config.json` (project) | ❌ | register (project-primary) + legacy import; chordKey, tabInsertKey (allowCustom enums of key names) |
 | subagents | `subagents` | `~/.unipi/config/subagents.json` g + `<cwd>/.unipi/config/subagents.json` p | ❌ | register + route; maxConcurrent (number), enabled, types.explore/work toggles |
 | background-tasks | `background-tasks` | `background-tasks.json` g+p (flat in config/) | ❌ | register + route; enabled, notifyOnCompletion, triggerOnCompletion, defaultTimeoutSeconds |
-| mcp | `mcp` | `<cwd>/.unipi/config/mcp/` (manager) | ❌ | register main toggles (defer server list — content, not settings) |
-| fusion | `fusion` | `~/.unipi/config/fusion/preset.json` + project `<cwd>/.unipi/fusion-preset.json` | ❌ | register + route; lead/sidekick lists → `model` picker fields, default pair, prices (defer) |
+| mcp | — | `<cwd>/.unipi/config/mcp/` | ➖ | SKIPPED by design: the config is a server REGISTRY (content/state), not settings — hub has no mcp fields (see settings-vs-state distinction) |
+| fusion | `fusion` | preset files (arrays/effort/recent/prices) + engine overlay | ✅ | hub edits the DEFAULT PAIR via model pickers (engine layer wins on load); curated lists stay with /unipi:fusion-preset |
 | btw | — | none found | ➖ | stateless |
 | workflow | — | none found | ➖ | deprecated path (v3-tasks) |
 | kanboard | — | none found | ➖ | full rewrite pending (v3-tasks) |

@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 
 export const PRESET_SCHEMA_VERSION = 1;
 
@@ -205,6 +206,26 @@ export interface LoadedPreset {
   hasProjectLayer: boolean;
 }
 
+// Registered with the unified settings hub: the DEFAULT PAIR is editable
+// there (model pickers, engine-layered). The curated arrays, effort, recent,
+// badges and prices remain in the preset files — /unipi:fusion-preset owns
+// those. The engine overlay wins for the default pair on load.
+registerSettings({
+  namespace: "fusion",
+  label: "Fusion",
+  defaults: { default: { lead: "", sidekick: "" } },
+  schema: [
+    {
+      title: "Default pair",
+      description: "Used when the Fusion row is confirmed without editing",
+      fields: [
+        { key: "default.lead", type: "model", label: "Lead" },
+        { key: "default.sidekick", type: "model", label: "Sidekick" },
+      ],
+    },
+  ],
+});
+
 export function loadPreset(cwd: string, home = homedir()): LoadedPreset {
   const globalPath = globalPresetPath(home);
   const projectPath = projectPresetPath(cwd);
@@ -213,7 +234,22 @@ export function loadPreset(cwd: string, home = homedir()): LoadedPreset {
   let preset = mergePresets(emptyPreset(), parsePreset(globalRaw));
   const hasProjectLayer = projectRaw !== undefined;
   if (hasProjectLayer) preset = mergePresets(preset, parsePreset(projectRaw));
+  // Engine overlay: hub-edited default pair wins over the preset files.
+  try {
+    const engine = getSettings("fusion", cwd) as { default?: Partial<FusionPair> };
+    if (engine?.default?.lead) preset = { ...preset, default: { ...preset.default, lead: engine.default.lead } };
+    if (engine?.default?.sidekick) {
+      preset = { ...preset, default: { ...preset.default, sidekick: engine.default.sidekick } };
+    }
+  } catch {
+    // Engine unavailable — preset files stand alone.
+  }
   return { preset, globalPath, projectPath, hasProjectLayer };
+}
+
+/** Persist a hub-side default-pair change to the engine layer. */
+export function saveDefaultPair(cwd: string, pair: Partial<FusionPair>): void {
+  setSettings("fusion", { default: pair } as Record<string, unknown>, "global", cwd);
 }
 
 function writeJsonAtomic(path: string, value: unknown): void {

@@ -10,6 +10,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname, join } from "path";
+import { getSettings, setSettings } from "@pi-unipi/core";
 import { homedir } from "os";
 import type { NtfyConfig } from "./types.js";
 
@@ -58,11 +59,26 @@ function readNtfyJson(filePath: string): NtfyConfig | null {
  *
  * Runs legacy migration once if global ntfy.json is missing.
  */
+// ntfy rides INSIDE the notify engine namespace (notify config.json, ntfy
+// subtree) — the hub renders it as Notify's ntfy section. Legacy ntfy.json
+// files are imported once per scope on first read.
+function importLegacyNtfy(scope: "global" | "project", cwd: string): void {
+  const engine = getSettings("notify", cwd) as { ntfy?: unknown };
+  if (engine?.ntfy && typeof engine.ntfy === "object") return;
+  const legacy = readNtfyJson(scope === "project" ? getProjectNtfyPath(cwd) : getGlobalNtfyPath());
+  if (legacy) setSettings("notify", { ntfy: legacy } as Record<string, unknown>, scope, cwd);
+}
+
 export function loadNtfyConfig(cwd: string): NtfyConfig {
   // Attempt migration from legacy config.json if global ntfy.json doesn't exist
   migrateFromLegacyConfig();
 
-  // Try project-level first
+  importLegacyNtfy("global", cwd);
+  importLegacyNtfy("project", cwd);
+  const engine = getSettings("notify", cwd) as { ntfy?: Partial<NtfyConfig> };
+  if (engine?.ntfy) return { ...DEFAULT_NTFY_CONFIG, ...engine.ntfy };
+
+  // Legacy files as final fallback (pre-engine scopes not yet imported).
   const projectConfig = readNtfyJson(getProjectNtfyPath(cwd));
   if (projectConfig !== null) {
     return projectConfig;
@@ -87,11 +103,7 @@ export function saveNtfyConfig(
   cwd: string,
   config: NtfyConfig
 ): void {
-  const filePath =
-    scope === "project" ? getProjectNtfyPath(cwd) : getGlobalNtfyPath();
-  const dir = dirname(filePath);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  setSettings("notify", { ntfy: config } as Record<string, unknown>, scope, cwd);
 }
 
 /**
