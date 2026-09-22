@@ -25,4 +25,5 @@ export * from "./src/settings/paths.js";
 export * from "./src/settings/engine.js";
 export * from "./src/settings/schema.js";
 export { SettingsHub, type SettingsHubDeps } from "./src/settings/hub.js";
+export * from "./src/settings/catalog.js";
 export * from "./src/settings/migrations.js";

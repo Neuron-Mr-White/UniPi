@@ -17,9 +17,9 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 - [ ] Distinguish: settings (hub) vs secrets (env/api keys — hub secret fields) vs state (NOT hub).
 
 ## Phase 2 — hub rewrite (core/src/settings/hub.ts)
-- [ ] Rewrite SettingsHub per spec: new key handling (space/tab/enter/esc/search), inline input below row (insert row, prefill), enum allowCustom cycling + custom input, model picker component (search + 5 rows), scope row, per-row hints, instant writes via engine (setSettings per change), layered value display (show effective + which layer? keep [G]/[P] tags).
-- [ ] schema.ts: add `allowCustom?: boolean` to enum fields; add `{ type: "model" }` field type (+ catalog loader util reading ~/.pi/agent/models.json — injectable for tests).
-- [ ] Unit tests: key handling per field type, inline input prefill/save/cancel, enum custom flow, model picker filter/nav/5-rows, scope switching, invalid number rejection. No network (catalog from fixture).
+- [x] Rewrite SettingsHub per spec: new key handling (space/tab/enter/esc/search), inline input below row (insert row, prefill), enum allowCustom cycling + custom input, model picker component (search + 5 rows), scope row, per-row hints, instant writes via engine (setSettings per change), layered value display (show effective + which layer? keep [G]/[P] tags).
+- [x] schema.ts: allowCustom + model type + isCustomEnumValue; catalog.ts (parseModelCatalog/loadModelCatalog, injectable).
+- [x] Unit tests: 15 hub tests green (all key flows, 5-row window, scope write, invalid-number rejection; catalog from fixture). GOTCHA learned: pi-tui Input setValue leaves cursor at 0 — send \x1b[F (End) after prefill; ctrl-U does NOT clear.
 
 ## Phase 3 — register ALL modules from inventory
 - [ ] Register + migrate reads for every module in the inventory not yet on the engine (fusion, image, mcp, web-api, input-shortcuts, subagents, background-tasks, btw, info-screen, memory, + depth fields of footer/compactor/notify). Keep module APIs stable (same load/save functions, engine underneath). Legacy imports where files predate the engine (follow existing patterns: A_KEY imports, one-time importers).
