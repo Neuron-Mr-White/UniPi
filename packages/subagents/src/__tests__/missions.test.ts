@@ -44,10 +44,16 @@ function location() {
 }
 
 describe("store location", () => {
-  it("resolves to ~/.unipi/missions/<project-hash>/", () => {
+  it("resolves per-project missions under the workspace state root", () => {
     const loc = location();
-    assert.equal(loc.missionDir, join(fakeHome, ".unipi", "missions", projectHashKey(projectRoot)));
-    assert.equal(loc.globalIndexDir, join(fakeHome, ".unipi", "missions", "index"));
+    // ~/.unipi/workspace/<uuid>/state/subagents/missions/
+    assert.ok(loc.missionDir.includes(join(".unipi", "workspace")));
+    assert.ok(loc.missionDir.endsWith(join("state", "subagents", "missions")));
+    // The cross-project index stays global.
+    assert.equal(
+      loc.globalIndexDir,
+      join(fakeHome, ".unipi", "global", "subagents", "missions-index"),
+    );
     assert.equal(loc.writeGlobalIndex, true);
   });
 

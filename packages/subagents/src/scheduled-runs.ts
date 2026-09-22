@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { stateDir } from "@pi-unipi/core";
 
 export type ScheduleTrigger =
   | { kind: "once"; at: string; atMs: number }
@@ -108,13 +109,10 @@ export function parseScheduleInterval(every: string): number {
 
 export function scheduleStorePath(projectRoot: string, storeRoot?: string): string {
   const resolved = path.resolve(projectRoot);
-  if (!storeRoot) return path.join(homedir(), ".unipi", "schedules", projectHashKey(resolved));
+  // Default: durable per-workspace state, collision-safe by marker uuid.
+  if (!storeRoot) return path.join(stateDir("subagents", "state", resolved), "schedules");
   const projectKey = createHash("sha256").update(resolved).digest("hex").slice(0, 20);
   return path.join(storeRoot.startsWith("~/") ? path.join(homedir(), storeRoot.slice(2)) : storeRoot, projectKey);
-}
-
-function projectHashKey(projectRoot: string): string {
-  return createHash("sha256").update(projectRoot).digest("hex").slice(0, 16);
 }
 
 function writeAtomic(filePath: string, value: unknown): void {

@@ -246,17 +246,11 @@ export const DEFAULT_LOG_BYTES = Math.min(DEFAULT_MAX_BYTES, 50 * 1024);
 export const MAX_LOG_BYTES = Math.min(DEFAULT_MAX_BYTES, 50 * 1024);
 export const COMMAND_PREVIEW_CHARS = 90;
 
-// ── Our storage roots (convention: ~/.unipi + os.tmpdir, never .pi/) ────────
-
-/** Durable state root: ~/.unipi/background-tasks/<project-hash>/<session-id>-<pid>/ */
-export function bgStateRoot(projectHash: string): string {
-  return join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".unipi", "background-tasks", projectHash);
-}
-
-/** Runtime artifact root under our temp dir: os.tmpdir()/unipi-bg-tasks-<scope>/ */
-export function bgTempRoot(scope: string): string {
-  return join(process.env.UNIPI_BG_TMP_DIR ?? (process.env.TMPDIR ?? "/tmp"), `unipi-bg-tasks-${scope}`);
-}
+// ── Our storage roots ───────────────────────────────────────────────────────
+// Runtime artifacts live under the OS temp root ($TMPDIR/unipi-bg-tasks/<runId>),
+// keyed by session+pid+nonce and inlined at the call site in registry.ts. They
+// are intentionally ephemeral OS-temp (reboot-cleaned), NOT part of the
+// ~/.unipi state tree, so there is no durable per-workspace root to resolve.
 
 const parseJsonValue: (text: string) => unknown = globalThis.JSON.parse;
 

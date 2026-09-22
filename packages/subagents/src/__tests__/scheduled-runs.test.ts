@@ -70,10 +70,10 @@ describe("parseScheduleInterval", () => {
 });
 
 describe("scheduleStorePath", () => {
-  it("defaults to ~/.unipi/schedules/<project-hash>/", () => {
+  it("defaults to the workspace state root (schedules/)", () => {
     const store = scheduleStorePath(projectRoot);
-    assert.ok(store.startsWith(join(fakeHome, ".unipi", "schedules")));
-    assert.notEqual(store, join(fakeHome, ".unipi", "schedules"));
+    assert.ok(store.includes(join(".unipi", "workspace")));
+    assert.ok(store.endsWith(join("state", "subagents", "schedules")));
   });
 });
 

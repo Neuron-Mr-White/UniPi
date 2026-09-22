@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { stateDir } from "@pi-unipi/core";
 
 export const MISSION_STATUSES = [
   "planned",
@@ -212,14 +213,15 @@ export function resolveMissionStoreLocation(input: {
   config?: MissionStoreConfig;
 }): MissionStoreLocation {
   const projectRoot = path.resolve(input.projectRoot);
-  const unipiDir = path.join(homedir(), ".unipi");
-  const defaultMissionDir = path.join(unipiDir, "missions", projectHashKey(projectRoot));
+  // Per-project missions live in the workspace state root (collision-safe by
+  // marker uuid); the cross-project index legitimately stays global.
+  const defaultMissionDir = path.join(stateDir("subagents", "state", projectRoot), "missions");
   const missionDir = input.config?.directory
     ? expandConfiguredPath(input.config.directory, projectRoot)
     : defaultMissionDir;
   const globalIndexDir = input.config?.globalIndexDir
     ? expandConfiguredPath(input.config.globalIndexDir, projectRoot)
-    : path.join(unipiDir, "missions", "index");
+    : path.join(homedir(), ".unipi", "global", "subagents", "missions-index");
   return {
     projectRoot,
     missionDir,
