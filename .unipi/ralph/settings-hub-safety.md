@@ -33,10 +33,33 @@ always one key away** (recoverable by construction), not staged buffers.
 - [x] Tests (done prev iteration + now): page push/pop + breadcrumb + full-key writes (42/42), action row hook + Enter, web-api auth import/round-trip/clear, core command-runner 3/3.
 
 ## Phase 7 — verify + close
-- [ ] coffee + PC tmux drive with evidence: u/d/R recovery flow; title scope toggle; emptyLabel displays; enum-custom list flow; judge advanced collapse + model pick auto-derives; web-api tavily key via page; mcp action row opens overlay.
-- [ ] typecheck 0 · full suite EXIT:0 · sync coffee · commits per phase · v3-tasks + memory.
+- [x] VERIFIED BOTH MACHINES. coffee: title 'unipi settings — global [g]' + g→project; emptyLabel 'inherit (session model)'; toggle→u (file False→True)→d (False); enum list custom…; filter-reveals advanced provider; ▸/▾ Advanced expand; tavily page breadcrumb + key 'tv-LIVE'→u→unset; mcp action OPENS the MCP Settings overlay. PC smoke: title, undo toast, enum custom…, tavily breadcrumb. ALL SIX user items live-verified.
+- [x] typecheck 0 · full suite EXIT:0 · synced coffee · commits 2411c81/fd09f5e/f2c693a/03e3ebc/bb16c4c · v3-tasks + memory updated.
 
 ## Guardrails
 - Keep instant-apply (NO staged buffers) — undo/reset provide recovery.
 - matchesKey router + exact-width paint + relative height MUST survive (regression tests already exist).
 - /unipi:settings command + engine layering unchanged; module load/save APIs stable.
+## Reflection (iteration 6)
+
+1. **Accomplished**: Phases 1–6 — all six user items implemented: recovery net
+   (u/d/R + toasts + baseline), scope-in-title with `g`, friendly defaults
+   (emptyLabel/zeroLabel), enum option-lists + ⚙ marker, judge progressive
+   disclosure (▸ Advanced + provider "auto" derivation), per-category flows
+   (pages + action rows; web-api auth→engine; notify platform pages; mcp
+   actions via command-runner). 6 commits, suites green each iteration.
+2. **Working well**: file-evidenced engine tests (read the config.json after
+   each drive key); the omp principle framing (defaults one key away) kept
+   instant-apply AND made recovery trivial; effectiveProvider() derivation
+   kept the hub free of transport logic; asserted python replaces.
+3. **Not working**: (a) python `str.replace` SILENTLY no-ops on anchor drift —
+   burned 4 hunks this loop (renderPicker, ⚙ marker, createJudgeTransport,
+   enum case); now assert-in-sub + edit tool for critical hunks. (b) test
+   helpers hardcoded to the fixture namespace bit once (readEngine vs
+   hubtestpage). (c) one spec/guardrail conflict (Tab scope vs Tab cycle)
+   needed a documented deviation (`g` key).
+4. **Approach adjustments**: verification-after-replace is mandatory; keep
+   ~2 items/iteration cadence (worked — each iteration shipped a clean
+   commit); defer risky refactors (mcp handler extraction) to their own item.
+5. **Next priorities**: Phase 7 evidence drive on coffee + PC covering all six
+   items; then close with memory + v3-tasks + final commit.
