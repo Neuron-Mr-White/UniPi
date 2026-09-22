@@ -210,31 +210,58 @@ describe("hub interactions (instant apply)", () => {
     const hub = makeHub();
     // scope row is row 0
     hub.handleInput("\t");
-    hub.handleInput("\x1b[B"); // down to header
-    jumpTo(hub, "Flag");
+    jumpTo(hub, "Flag"); // header band is skipped by navigation
     hub.handleInput(" ");
     const projectFile = join(cwd, ".unipi", "config", NS, "config.json");
     assert.equal(JSON.parse(readFileSync(projectFile, "utf8")).flag, false, "written to PROJECT scope");
   });
 
-  it("k/up and j/down navigate", () => {
+  it("k/up and j/down navigate (skipping header bands)", () => {
     const hub = makeHub();
-    const before = (hub as unknown as { cursor: number }).cursor;
-    hub.handleInput("\x1b[B");
+    const label = (): string =>
+      (hub as unknown as { visibleRows: () => { label: string }[]; cursor: number })
+        .visibleRows()[(hub as unknown as { cursor: number }).cursor]!.label;
+    assert.equal(label(), "Write scope");
+    hub.handleInput("\x1b[B"); // skips the header band
+    assert.equal(label(), "Flag");
     hub.handleInput("j");
-    assert.equal((hub as unknown as { cursor: number }).cursor, before + 2);
-    hub.handleInput("\x1b[A");
+    assert.equal(label(), "Choice");
     hub.handleInput("k");
-    assert.equal((hub as unknown as { cursor: number }).cursor, before);
+    assert.equal(label(), "Flag");
+    hub.handleInput("\x1b[A");
+    assert.equal(label(), "Write scope");
+  });
+
+  it("headers persist under filter and never hold the cursor", () => {
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("types flag");
+    hub.handleInput("\r");
+    // rows = [header, Flag]; cursor normalized PAST the header.
+    const h = hub as unknown as { visibleRows: () => { kind: string; label: string }[]; cursor: number };
+    assert.equal(h.visibleRows()[h.cursor]!.label, "Flag", "cursor lands on the field, not the header");
+    hub.handleInput(" ");
+    assert.equal(readEngine().flag, false, "actions work from the filtered view");
+    hub.handleInput(" ");
+  });
+
+  it("height is RELATIVE (~half the terminal), not near-full", () => {
+    const hub = makeHub(() => 50); // half = 25
+    const lines = hub.render(100);
+    const bodyLines = lines.length - 4; // minus 2 frame borders + hint + blank-ish structure
+    assert.ok(lines.length <= 30, `panel (${lines.length} lines) must be ≈ half of 50 rows`);
+    void bodyLines;
   });
 
   it("search filters to matching fields live", () => {
     const hub = makeHub();
     hub.handleInput("/");
     hub.handleInput("Token");
-    const rows = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows();
-    assert.equal(rows.length, 1, "just the Token field (headers/scope filtered out)");
-    assert.equal(rows[0]!.label, "Token");
+    const rows = (hub as unknown as { visibleRows: () => { label: string; kind: string }[] }).visibleRows();
+    // Group header PERSISTS above its matching field.
+    assert.equal(rows.length, 2, "header + Token field");
+    assert.equal(rows[0]!.kind, "header");
+    assert.equal(rows[1]!.label, "Token");
   });
 
   it("multi-word search matches across section title + field label", () => {
@@ -242,9 +269,9 @@ describe("hub interactions (instant apply)", () => {
     // "types flag": 'types' lives in the section title, 'flag' in the label.
     hub.handleInput("/");
     hub.handleInput("types flag");
-    const rows = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows();
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]!.label, "Flag");
+    const rows = (hub as unknown as { visibleRows: () => { label: string; kind: string }[] }).visibleRows();
+    assert.equal(rows.length, 2, "persisted header + Flag");
+    assert.equal(rows[1]!.label, "Flag");
   });
 
   it("picker with an uncatalogued value opens UNFILTERED", () => {

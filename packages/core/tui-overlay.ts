@@ -43,6 +43,11 @@ const FALLBACK_COLORS: Record<string, string> = {
  * }
  * ```
  */
+/** Drop a trailing full reset so a targeted-off close can follow instead. */
+function stripTrailingReset(styled: string): string {
+  return styled.replace(/\x1b\[0m$/, "");
+}
+
 export class OverlayTheme {
   private theme: Theme | null = null;
 
@@ -50,16 +55,19 @@ export class OverlayTheme {
     this.theme = theme;
   }
 
-  /** Color text using the active theme, or a fallback ANSI code. */
+  /** Color text using the active theme, or a fallback ANSI code.
+   *  Closes with fg-off (\x1b[39m), NOT the full reset — a mid-line \x1b[0m
+   *  would kill an enclosing background and paint rows partially. */
   fg(color: string, text: string): string {
-    if (this.theme) return this.theme.fg(color as never, text);
-    return `${FALLBACK_COLORS[color] ?? ""}${text}\x1b[0m`;
+    if (this.theme) return stripTrailingReset(this.theme.fg(color as never, text)) + "\x1b[39m";
+    return `${FALLBACK_COLORS[color] ?? ""}${text}\x1b[39m`;
   }
 
-  /** Bold text using the active theme, or a fallback ANSI code. */
+  /** Bold text using the active theme, or a fallback ANSI code.
+   *  Closes with bold-off (\x1b[22m) for the same background-safety reason. */
   bold(text: string): string {
-    if (this.theme) return this.theme.bold(text);
-    return `\x1b[1m${text}\x1b[0m`;
+    if (this.theme) return stripTrailingReset(this.theme.bold(text)) + "\x1b[22m";
+    return `\x1b[1m${text}\x1b[22m`;
   }
 
   /** Background color using the active theme, or text unchanged. */
@@ -107,15 +115,18 @@ export function frameOverlay(
   const inner = Math.max(1, width - 2);
   const border = options.borderFg ?? ((t: string) => `\x1b[38;2;83;160;215m${t}\x1b[0m`);
   const bg = options.bgFn ?? ((t: string) => `\x1b[48;2;24;26;32m${t}\x1b[49m`);
+  // Full-bleed paint: the bg wraps the ENTIRE line including the border
+  // columns — a frame whose borders show through reads as "paint here and
+  // there". Border coloring uses targeted-off closes (see OverlayTheme.fg).
   const row = (content: string): string => {
     const cut = truncateToWidth(content, inner, "");
     const padded = cut + safeRepeat(" ", Math.max(0, inner - visibleWidth(cut)));
-    return `${border("│")}${bg(padded)}${border("│")}`;
+    return bg(`${border("│")}${padded}${border("│")}`);
   };
   const titleText = options.title ? ` ${options.title} ` : "";
   const topFill = Math.max(0, inner - visibleWidth(titleText));
-  const lines = [border(`╭${titleText}${safeRepeat("─", topFill)}╮`)];
+  const lines = [bg(border(`╭${titleText}${safeRepeat("─", topFill)}╮`))];
   for (const line of body) lines.push(row(line));
-  lines.push(border(`╰${safeRepeat("─", inner)}╯`));
+  lines.push(bg(border(`╰${safeRepeat("─", inner)}╯`)));
   return lines;
 }

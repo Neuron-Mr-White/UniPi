@@ -159,21 +159,52 @@ export class SettingsHub {
     // so "judge model" matches Long-Horizon's Judge section's Model field.
     const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return this.rows;
-    return this.rows.filter((r) => {
-      if (r.kind === "field") {
-        const haystack = [
-          r.label,
-          r.context ?? "",
-          r.namespace ?? "",
-          r.field?.description ?? "",
-        ].join(" ").toLowerCase();
-        return words.every((w) => haystack.includes(w));
+    // Group headers PERSIST under filtering so matching fields keep their
+    // context ("Long-Horizon — Judge" above its Model row).
+    const out: Row[] = [];
+    let currentHeader: Row | undefined;
+    for (const r of this.rows) {
+      if (r.kind === "header") {
+        currentHeader = r;
+        continue;
       }
       if (r.kind === "scope") {
-        return words.every((w) => "write scope".includes(w));
+        if (words.every((w) => "write scope".includes(w))) out.push(r);
+        continue;
       }
-      return false;
-    });
+      const haystack = [
+        r.label,
+        r.context ?? "",
+        r.namespace ?? "",
+        r.field?.description ?? "",
+      ].join(" ").toLowerCase();
+      if (words.every((w) => haystack.includes(w))) {
+        if (currentHeader && out[out.length - 1] !== currentHeader) out.push(currentHeader);
+        out.push(r);
+      }
+    }
+    return out;
+  }
+
+  /** First selectable (non-header) row index at or after `from` (or -1). */
+  private nextSelectable(visible: Row[], from: number): number {
+    for (let i = from; i < visible.length; i++) if (visible[i]!.kind !== "header") return i;
+    return -1;
+  }
+
+  /** Previous selectable row index at or before `from` (or -1). */
+  private prevSelectable(visible: Row[], from: number): number {
+    for (let i = from; i >= 0; i--) if (visible[i]!.kind !== "header") return i;
+    return -1;
+  }
+
+  /** Normalize cursor onto a selectable row (headers never hold the cursor). */
+  private normalizeCursor(): void {
+    const visible = this.visibleRows();
+    if (visible[this.cursor]?.kind === "header" || this.cursor >= visible.length) {
+      const i = this.nextSelectable(visible, this.cursor);
+      this.cursor = i >= 0 ? i : Math.max(0, this.prevSelectable(visible, this.cursor - 1));
+    }
   }
 
   private currentRow(): Row | undefined {
@@ -215,18 +246,29 @@ export class SettingsHub {
     // Printable char through any encoding: plain byte or kitty CSI-u.
     const ch = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
     const move = (delta: number): void => {
-      this.cursor = Math.max(0, Math.min(visible.length - 1, this.cursor + delta));
+      // Headers are non-selectable bands — jump straight past them.
+      const target = delta > 0
+        ? this.nextSelectable(visible, this.cursor + delta)
+        : this.prevSelectable(visible, this.cursor + delta);
+      if (target >= 0) {
+        this.cursor = target;
+        return;
+      }
+      // At an edge: clamp to the extreme selectable row.
+      this.cursor = Math.max(0, delta > 0
+        ? this.prevSelectable(visible, visible.length - 1)
+        : this.nextSelectable(visible, 0));
     };
     if (matchesKey(data, Key.up) || ch === "k") return move(-1);
     if (matchesKey(data, Key.down) || ch === "j") return move(1);
     if (matchesKey(data, Key.pageUp)) return move(-PAGE_ROWS);
     if (matchesKey(data, Key.pageDown)) return move(PAGE_ROWS);
     if (matchesKey(data, Key.home)) {
-      this.cursor = 0;
+      this.cursor = Math.max(0, this.nextSelectable(visible, 0));
       return;
     }
     if (matchesKey(data, Key.end)) {
-      this.cursor = Math.max(0, visible.length - 1);
+      this.cursor = Math.max(0, this.prevSelectable(visible, visible.length - 1));
       return;
     }
     if (matchesKey(data, Key.slash) || ch === "/") {
@@ -388,11 +430,13 @@ export class SettingsHub {
       this.filter = input.getValue();
       this.mode = "list";
       this.cursor = 0;
+      this.normalizeCursor();
       return;
     }
     input.handleInput(data);
     this.filter = input.getValue(); // live filtering
     this.cursor = 0;
+    this.normalizeCursor();
   }
 
   private handleInputEdit(data: string): void {
@@ -456,17 +500,14 @@ export class SettingsHub {
       return overlayTheme.bg("customMessageBg", dim(bold(plain)));
     }
     if (row.kind === "scope") {
-      return this.exactRow(this.rowColumns(cursor, "  Write scope", `${this.scope} [tab]`, inner, selected), inner);
+      return this.exactRow(this.rowColumns(cursor, "  Write scope", this.scope, inner, selected), inner);
     }
     const field = row.field!;
     const value = getField(this.valueOf(row.namespace!), field.key);
-    const display = formatFieldValue(field, value);
-    const hint =
-      field.type === "boolean" ? " [space]" :
-      field.type === "enum" ? (field.allowCustom ? " [tab/space]" : " [tab]") :
-      field.type === "model" ? " [space]" : " [space]";
+    // Value only — no per-row key hints (they read inconsistently); the
+    // bottom hint line names the keys that work on the cursor's row.
     return this.exactRow(
-      this.rowColumns(cursor, `  ${row.label}`, `${display}${hint}`, inner, selected),
+      this.rowColumns(cursor, `  ${row.label}`, formatFieldValue(field, value), inner, selected),
       inner,
     );
   }
@@ -538,7 +579,10 @@ export class SettingsHub {
     const visible = this.visibleRows();
     // Reserve room below the window when an inline editor/picker is open.
     const overlayReserve = this.mode === "input" || this.mode === "model" ? 7 : 0;
-    const maxRows = Math.max(4, this.terminalRows() - 7 - overlayReserve);
+    // RELATIVE height: about half the terminal — a dialog, not a takeover —
+    // but never taller than fits (term - 7 of chrome) and never below 3 rows.
+    const term = this.terminalRows();
+    const maxRows = Math.max(3, Math.min(Math.floor(term / 2), term - 7) - overlayReserve);
     this.clampScroll(visible.length, maxRows);
 
     if (this.scroll > 0) body.push(this.exactRow(dim(`  ↑ ${this.scroll} more`), inner));
