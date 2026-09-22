@@ -5,9 +5,7 @@
  * under the "unipi.askUser" key.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 
 /** Ask-user settings */
 export interface AskUserSettings {
@@ -37,13 +35,7 @@ export const DEFAULT_SETTINGS: AskUserSettings = {
   notifyOnAsk: true,
 };
 
-/** Settings path */
-const SETTINGS_PATH = join(homedir(), ".pi", "agent", "settings.json");
 
-/** Settings key within settings.json */
-const SETTINGS_KEY = "unipi";
-
-/** Cached settings */
 let cachedSettings: AskUserSettings | null = null;
 
 /**
@@ -54,44 +46,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Read the full settings file.
- */
-function readSettingsFile(): Record<string, unknown> {
-  if (!existsSync(SETTINGS_PATH)) return {};
-  try {
-    const parsed = JSON.parse(readFileSync(SETTINGS_PATH, "utf-8"));
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Write the full settings file.
- */
-function writeSettingsFile(data: Record<string, unknown>): void {
-  const dir = require("node:path").dirname(SETTINGS_PATH);
-  if (!existsSync(dir)) {
-    require("node:fs").mkdirSync(dir, { recursive: true });
-  }
-  writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
-}
-
-/**
  * Get ask-user settings from settings.json.
  */
+// Registered with the unified settings hub. The engine's migration imports
+// the legacy ~/.pi/agent/settings.json unipi.askUser block once automatically.
+registerSettings({
+  namespace: "ask-user",
+  label: "Ask User",
+  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Tool",
+      fields: [
+        { key: "enabled", type: "boolean", label: "Enable ask_user tool", description: "Allow the agent to ask structured questions" },
+        { key: "notifyOnAsk", type: "boolean", label: "Notify on ask", description: "Send a notification when the agent pauses to ask" },
+      ],
+    },
+    {
+      title: "Allowed formats",
+      fields: [
+        { key: "allowedFormats.singleSelect", type: "boolean", label: "Single-select", description: "Questions with one correct answer" },
+        { key: "allowedFormats.multiSelect", type: "boolean", label: "Multi-select", description: "Questions with several answers" },
+        { key: "allowedFormats.freeform", type: "boolean", label: "Freeform", description: "Plain text input" },
+      ],
+    },
+  ],
+});
+
 export function getAskUserSettings(): AskUserSettings {
   if (cachedSettings) return cachedSettings;
-
-  const settings = readSettingsFile();
-  const unipi = settings[SETTINGS_KEY];
-
-  if (!isRecord(unipi) || !isRecord(unipi.askUser)) {
+  const askUser = getSettings("ask-user", process.cwd()) as Record<string, unknown>;
+  if (!isRecord(askUser)) {
     cachedSettings = { ...DEFAULT_SETTINGS };
     return cachedSettings;
   }
-
-  const askUser = unipi.askUser as Record<string, unknown>;
 
   const enabled = typeof askUser.enabled === "boolean" ? askUser.enabled : DEFAULT_SETTINGS.enabled;
 
@@ -115,19 +103,7 @@ export function getAskUserSettings(): AskUserSettings {
  * Save ask-user settings to settings.json.
  */
 export function saveAskUserSettings(settings: AskUserSettings): void {
-  const file = readSettingsFile();
-
-  if (!isRecord(file[SETTINGS_KEY])) {
-    file[SETTINGS_KEY] = {};
-  }
-
-  (file[SETTINGS_KEY] as Record<string, unknown>).askUser = {
-    enabled: settings.enabled,
-    allowedFormats: settings.allowedFormats,
-    notifyOnAsk: settings.notifyOnAsk,
-  };
-
-  writeSettingsFile(file);
+  setSettings("ask-user", settings as unknown as Record<string, unknown>, "global", process.cwd());
   cachedSettings = settings;
 }
 

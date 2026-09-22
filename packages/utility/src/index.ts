@@ -21,6 +21,7 @@ import {
   UTILITY_TOOLS,
   emitEvent,
   getPackageVersion,
+  SettingsHub,
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
@@ -86,6 +87,36 @@ export default function (pi: ExtensionAPI) {
       } else {
         pi.sendMessage({ customType: "unipi-response", content: report, display: true }, { deliverAs: "followUp" });
       }
+    },
+  });
+
+  // The unified settings hub — every registered module in one panel.
+  pi.registerCommand("unipi:settings", {
+    description: "Configure all unipi modules in one panel (global + project scopes)",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) throw new Error("/unipi:settings needs the interactive TUI");
+      await ctx.ui.custom<void>(
+        (tui, _theme, _keybindings, done) => {
+          const hub = new SettingsHub({ cwd: ctx.cwd ?? process.cwd() });
+          hub.onClose = () => done();
+          return {
+            focused: true,
+            invalidate: () => hub.invalidate(),
+            render: (width: number) => hub.render(width),
+            handleInput: (data: string) => {
+              hub.handleInput(data);
+              tui.requestRender();
+            },
+            dispose: () => {},
+          };
+        },
+        {
+          overlay: true,
+          overlayOptions: () => ({ anchor: "center" as const }),
+        },
+      ).catch(() => {
+        // Overlay errors are non-blocking.
+      });
     },
   });
 

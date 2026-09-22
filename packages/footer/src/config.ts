@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle, ColorMode } from "./types.js";
-import { UNIPI_SETTINGS_KEY } from "@pi-unipi/core";
+import { UNIPI_SETTINGS_KEY, getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 
 /** Default footer settings */
 export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
@@ -80,17 +80,50 @@ function writeSettingsFile(settings: Record<string, unknown>): boolean {
  * Load footer settings from settings.json.
  * Falls back to defaults for any missing fields.
  */
+// Registered with the unified settings hub; the engine's migration imports
+// the legacy pi-settings unipi.footer block into the canonical layout once.
+registerSettings({
+  namespace: "footer",
+  label: "Footer",
+  defaults: DEFAULT_FOOTER_SETTINGS as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "General",
+      fields: [
+        { key: "enabled", type: "boolean", label: "Footer enabled" },
+        {
+          key: "preset",
+          type: "enum",
+          label: "Preset",
+          options: ["default", "classic", "minimal", "dense", "devops", "zen"],
+          description: "Segment layout preset (glance mode uses its own frame)",
+        },
+        { key: "glanceMode", type: "boolean", label: "Glance mode", description: "The input-box frame renderer" },
+        { key: "showFullLabels", type: "boolean", label: "Full labels", description: "Labeled instead of compact segments" },
+        {
+          key: "iconStyle",
+          type: "enum",
+          label: "Icon style",
+          options: [
+            { value: "emoji", label: "emoji" },
+            { value: "nerd", label: "nerd font" },
+            { value: "text", label: "text only" },
+          ],
+        },
+        {
+          key: "colorMode",
+          type: "enum",
+          label: "Color mode",
+          options: ["auto", "truecolor", "256", "mono"],
+        },
+      ],
+    },
+  ],
+});
+
 export function loadFooterSettings(): FooterSettings {
-  const raw = readSettingsFile();
-  if (!raw) return { ...DEFAULT_FOOTER_SETTINGS };
-
+  const footer = getSettings("footer", process.cwd());
   try {
-    const unipi = raw[UNIPI_SETTINGS_KEY] as Record<string, unknown> | undefined;
-    if (!unipi) return { ...DEFAULT_FOOTER_SETTINGS };
-
-    const footer = unipi.footer as Record<string, unknown> | undefined;
-    if (!footer) return { ...DEFAULT_FOOTER_SETTINGS };
-
     return {
       enabled: typeof footer.enabled === "boolean" ? footer.enabled : DEFAULT_FOOTER_SETTINGS.enabled,
       preset: typeof footer.preset === "string" ? footer.preset : DEFAULT_FOOTER_SETTINGS.preset,
@@ -116,14 +149,12 @@ export function loadFooterSettings(): FooterSettings {
  * Merges with existing settings (preserves other keys).
  */
 export function saveFooterSettings(partial: Partial<FooterSettings>): boolean {
-  const raw = readSettingsFile() ?? {};
-  const unipi = (raw[UNIPI_SETTINGS_KEY] as Record<string, unknown>) ?? {};
-  const existing = (unipi.footer as Record<string, unknown>) ?? {};
-
-  unipi.footer = { ...existing, ...partial };
-  raw[UNIPI_SETTINGS_KEY] = unipi;
-
-  return writeSettingsFile(raw);
+  try {
+    setSettings("footer", partial as Record<string, unknown>, "global", process.cwd());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

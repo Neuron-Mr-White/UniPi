@@ -12,6 +12,8 @@
 import { readFileSync } from "node:fs";
 import { globalSettingsPath, migrationLedgerPath, projectLedgerPath, projectSettingsPath } from "./paths.js";
 import { importGlobalScope, importProjectScope, isMigrated } from "./migrations.js";
+import type { SettingsSection } from "./schema.js";
+export type { SettingsField, SettingsSection } from "./schema.js";
 import { tryRead, writeJson } from "../../utils.js";
 
 export interface SettingsDefinition {
@@ -23,6 +25,8 @@ export interface SettingsDefinition {
   readonly defaults: Record<string, unknown>;
   /** False when a module has no project-level override layer. Default true. */
   readonly projectOverrides?: boolean;
+  /** Field schema — sections/fields the hub renders automatically. */
+  readonly schema?: readonly SettingsSection[];
 }
 
 const registry = new Map<string, SettingsDefinition>();
@@ -116,7 +120,9 @@ export function getSettings(
     const project = readJson(projectSettingsPath(cwd, namespace));
     if (project) effective = deepMerge(effective, project);
   }
-  return effective;
+  // Deep-clone: callers mutate nested objects; the registered defaults must
+  // never be handed out (or polluted) by reference.
+  return structuredClone(effective);
 }
 
 export function setSettings(

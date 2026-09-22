@@ -135,6 +135,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // ask-user (1 command)
   "unipi:ask-user-settings": "ask-user",
 
+  // utility (settings hub)
+  "unipi:settings":         "utility",
+
   // subagents (3 commands)
   "unipi:subagents-fleet":  "subagents",
   "unipi:subagents-doctor": "subagents",
@@ -265,6 +268,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
 
   "unipi:ask-user-settings": "Configure ask-user settings",
+  "unipi:settings": "Configure all unipi modules in one panel",
 
   "unipi:info":          "Show system information",
   "unipi:info-settings": "Configure info display",

@@ -39,8 +39,12 @@ export function judgeEnv(
   provider: "typesafe" | "openrouter",
   base: Record<string, string | undefined> = process.env,
   baseUrl = "",
+  settingsApiKey = "",
 ): Record<string, string | undefined> {
-  if (provider !== "openrouter" || base.OPENROUTER_API_KEY) return base;
+  if (provider !== "openrouter") return base;
+  // Precedence: settings file (works env-free) > environment > oino bridge.
+  if (settingsApiKey) return { ...base, OPENROUTER_API_KEY: settingsApiKey };
+  if (base.OPENROUTER_API_KEY) return base;
   if (!baseUrl.includes("oino")) return base; // only the omniroute proxy accepts this key
   const key = omnirouteApiKey();
   return key ? { ...base, OPENROUTER_API_KEY: key } : base;

@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 import type { LhMode } from "./modes.js";
 
 export interface JudgeSettings {
@@ -32,6 +33,12 @@ export interface JudgeSettings {
    * acceptable and never recurs mid-task.
    */
   timeoutMs: number;
+  /**
+   * API key stored in the settings file (set via /unipi:settings) — wins over
+   * the environment, so tmux/ssh-c/systemd launches work without shell env.
+   * Empty = use env / provider fallback.
+   */
+  apiKey: string;
 }
 
 export interface LongHorizonSettings {
@@ -50,6 +57,7 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
     baseUrl: "",
     threshold: 0.6,
     timeoutMs: 0,
+    apiKey: "",
   },
   defaultMode: "goal",
   verifierModel: "",
@@ -99,6 +107,7 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
         typeof judge.timeoutMs === "number" && judge.timeoutMs >= 0
           ? judge.timeoutMs
           : DEFAULT_SETTINGS.judge.timeoutMs,
+      apiKey: typeof judge.apiKey === "string" ? judge.apiKey : "",
     },
     defaultMode: ["goal", "ralph", "swarm", "graph", "none"].includes(stored.defaultMode as string)
       ? (stored.defaultMode as LhMode)
@@ -109,22 +118,65 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
 
 let cache: LongHorizonSettings | null = null;
 
+// Register with the unified settings hub (core engine). Reads/writes go
+// through the engine's global scope; the A_KEY_MODULES migration imports the
+// legacy ~/.pi/agent/settings.json unipi.longHorizon block once, automatically.
+registerSettings({
+  namespace: "long-horizon",
+  label: "Long-Horizon",
+  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  projectOverrides: true,
+  schema: [
+    {
+      title: "Judge",
+      description: "Prompt → mode routing (TypeSafe jev via OpenRouter, or any chat model)",
+      fields: [
+        { key: "judge.enabled", type: "boolean", label: "Judge enabled", description: "Route new prompts automatically; off = always defaultMode" },
+        {
+          key: "judge.provider",
+          type: "enum",
+          label: "Provider",
+          options: [
+            { value: "typesafe", label: "typesafe (native systemone)" },
+            { value: "openrouter", label: "openrouter (jev or chat)" },
+          ],
+          description: "jev models auto-use the decisions endpoint",
+        },
+        { key: "judge.model", type: "string", label: "Model", description: "e.g. typesafe/jev-1.13 or zai/glm-5.3-flash" },
+        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "empty = provider default; oino proxy = https://router.oino.dev/v1" },
+        { key: "judge.threshold", type: "number", label: "Confidence threshold", description: "Below this the judge abstains (0-1)", min: 0.01, max: 1 },
+        { key: "judge.timeoutMs", type: "number", label: "Timeout ms", description: "0 = provider default (1s typesafe, 6s openrouter)", min: 0 },
+        { key: "judge.apiKey", type: "secret", label: "API key", description: "Stored key wins over env (works in tmux/ssh-c/systemd)" },
+      ],
+    },
+    {
+      title: "Modes",
+      fields: [
+        {
+          key: "defaultMode",
+          type: "enum",
+          label: "Default mode",
+          options: ["goal", "ralph", "swarm", "graph", "none"],
+          description: "Used when judge is off/abstains",
+        },
+        { key: "verifierModel", type: "string", label: "Verifier model", description: "Goal completion verification (empty = session model)" },
+      ],
+    },
+  ],
+});
+
 export function loadSettings(force = false): LongHorizonSettings {
   if (cache && !force) return cache;
-  const file = readSettingsFile();
-  const ns = isRecord(file[NAMESPACE_KEY]) ? file[NAMESPACE_KEY] : {};
-  cache = mergeSettings(isRecord(ns) ? ns[MODULE_KEY] : undefined);
+  const raw = getSettings("long-horizon", process.cwd());
+  // The engine stores validated shapes; re-validate defensively anyway.
+  cache = mergeSettings(raw);
   return cache;
 }
 
 export function saveSettings(update: Partial<LongHorizonSettings>): LongHorizonSettings {
-  const file = readSettingsFile();
-  const ns = isRecord(file[NAMESPACE_KEY]) ? { ...file[NAMESPACE_KEY] } : {};
-  const current = mergeSettings(isRecord(ns) ? ns[MODULE_KEY] : undefined);
+  const current = mergeSettings(getSettings("long-horizon", process.cwd()));
   const next = mergeSettings({ ...current, ...update, judge: { ...current.judge, ...(update.judge ?? {}) } });
-  ns[MODULE_KEY] = next;
-  file[NAMESPACE_KEY] = ns;
-  writeSettingsFile(file);
+  setSettings("long-horizon", next as unknown as Record<string, unknown>, "global", process.cwd());
   cache = next;
   return next;
 }

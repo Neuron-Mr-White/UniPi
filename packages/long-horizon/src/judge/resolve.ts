@@ -74,7 +74,12 @@ async function consultJudge(
   const settings = deps.settings;
   // Openrouter provider with no explicit key falls back to the omniroute bridge
   // key, so enabling the judge works out of the box for omniroute users.
-  const env = judgeEnv(settings.judge.provider, deps.env ?? process.env, settings.judge.baseUrl);
+  const env = judgeEnv(
+    settings.judge.provider,
+    deps.env ?? process.env,
+    settings.judge.baseUrl,
+    settings.judge.apiKey,
+  );
   const hasKey =
     settings.judge.provider === "typesafe"
       ? Boolean(env.TYPESAFE_API_KEY)

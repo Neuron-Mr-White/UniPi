@@ -23,4 +23,6 @@ export * from "./src/workspace/state-migration.js";
 // v3 settings engine + migration (canonical ~/.unipi/config layout)
 export * from "./src/settings/paths.js";
 export * from "./src/settings/engine.js";
+export * from "./src/settings/schema.js";
+export { SettingsHub, type SettingsHubDeps } from "./src/settings/hub.js";
 export * from "./src/settings/migrations.js";

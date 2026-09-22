@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
-import { NOTIFY_DIRS } from "@pi-unipi/core";
+import { NOTIFY_DIRS, getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 import { mergeSilenceAfterInput } from "./activity.js";
 import type { NotifyConfig, RenotifyConfig } from "./types.js";
 
@@ -60,15 +60,31 @@ export const DEFAULT_CONFIG: NotifyConfig = {
 };
 
 /** Load config from disk, returning defaults if missing or invalid */
+// Registered with the unified settings hub. The canonical file
+// (~/.unipi/config/notify/config.json) is exactly what this module already
+// used, so switching to the engine is a no-op on disk.
+registerSettings({
+  namespace: "notify",
+  label: "Notify",
+  defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Platforms",
+      description: "Event-by-event routing lives in /unipi:notify-settings",
+      fields: [
+        { key: "native.enabled", type: "boolean", label: "Native desktop", description: "OS notifications" },
+        { key: "gotify.enabled", type: "boolean", label: "Gotify", description: "Self-hosted push" },
+        { key: "telegram.enabled", type: "boolean", label: "Telegram", description: "Telegram bot messages" },
+        { key: "recap.enabled", type: "boolean", label: "Recap", description: "Session recap digests" },
+      ],
+    },
+  ],
+});
+
 export function loadConfig(): NotifyConfig {
-  const configPath = resolveConfigPath();
   try {
-    if (existsSync(configPath)) {
-      const raw = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<NotifyConfig>;
-      // Merge with defaults to ensure new fields are present
-      return mergeWithDefaults(parsed);
-    }
+    const parsed = getSettings("notify", process.cwd()) as Partial<NotifyConfig>;
+    return mergeWithDefaults(parsed);
   } catch (_err) {
     // Config load failure — using defaults silently.
   }
@@ -80,10 +96,7 @@ export function loadConfig(): NotifyConfig {
 
 /** Save config to disk, creating directory if needed */
 export function saveConfig(config: NotifyConfig): void {
-  const configPath = resolveConfigPath();
-  const dir = dirname(configPath);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  setSettings("notify", config as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /** Update config with partial changes */

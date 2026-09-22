@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, loadSettings, resetSettingsCache, saveSettings } from "../settings.js";
+import { resetSettingsGates } from "@pi-unipi/core";
 
 const originalHome = process.env.HOME;
 
@@ -11,6 +12,9 @@ function sandboxHome(): string {
   const dir = mkdtempSync(join(tmpdir(), "lh-settings-"));
   process.env.HOME = dir;
   resetSettingsCache();
+  // The engine's migration gate latches per-process; each sandboxed HOME
+  // must be allowed to run its own (one-time) legacy import.
+  resetSettingsGates();
   return dir;
 }
 
@@ -44,17 +48,23 @@ test("reads unipi.longHorizon from the shared settings file", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("saveSettings merges and preserves sibling modules' keys", () => {
+test("saveSettings writes the engine file and never touches sibling modules", () => {
   const dir = sandboxHome();
   const path = writeSettings(dir, { unipi: { askUser: { enabled: false } }, other: 1 });
   const next = saveSettings({ defaultMode: "none", judge: { threshold: 0.8 } });
   assert.equal(next.defaultMode, "none");
   assert.equal(next.judge.threshold, 0.8);
   assert.equal(next.judge.enabled, false);
+  // The engine namespace file holds the update…
+  const engineFile = join(dir, ".unipi", "config", "long-horizon", "config.json");
+  const onEngine = JSON.parse(readFileSync(engineFile, "utf-8"));
+  assert.equal(onEngine.defaultMode, "none");
+  // …while the legacy shared file is left exactly as the migration found it —
+  // namespacing makes "preserve sibling keys" structural, not a merge dance.
   const onDisk = JSON.parse(readFileSync(path, "utf-8"));
   assert.deepEqual(onDisk.unipi.askUser, { enabled: false });
   assert.equal(onDisk.other, 1);
-  assert.equal(onDisk.unipi.longHorizon.defaultMode, "none");
+  assert.equal(onDisk.unipi.longHorizon, undefined);
   process.env.HOME = originalHome;
   resetSettingsCache();
   rmSync(dir, { recursive: true, force: true });

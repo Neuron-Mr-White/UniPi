@@ -79,12 +79,12 @@ describe("UtilSettingsTui", () => {
     assert.ok(closed);
   });
 
-  it("saves settings to util-settings.json on close", async () => {
+  it("saves settings to the engine's project file on close", async () => {
     const { UtilSettingsTui } = await import("../src/tui/util-settings-tui.js");
     const tui = new UtilSettingsTui();
     tui.onClose = () => {};
     tui.handleInput("\x1b");
-    assert.ok(fs.existsSync(".unipi/config/util-settings.json"));
+    assert.ok(fs.existsSync(".unipi/config/utility/config.json"));
   });
 
   it("handles enter to enter picker mode", async () => {

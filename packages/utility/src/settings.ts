@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Badge settings */
 export interface BadgeSettingsSection {
@@ -72,22 +73,56 @@ function atomicWrite(filePath: string, data: string): void {
   fs.renameSync(tmpPath, filePath);
 }
 
+// Registered with the unified settings hub. Badge settings are project-scoped
+// (they live with the repo), so the hub's project scope is the primary target.
+registerSettings({
+  namespace: "utility",
+  label: "Utility",
+  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  schema: [
+    {
+      title: "Badge",
+      description: "Session name badge",
+      fields: [
+        { key: "badge.badgeEnabled", type: "boolean", label: "Badge enabled", description: "Show the session-name badge" },
+        { key: "badge.autoGen", type: "boolean", label: "Auto-generate name", description: "Generate a session name on demand" },
+        { key: "badge.agentTool", type: "boolean", label: "Agent tool", description: "Expose the badge tool to the agent" },
+        { key: "badge.herdrSync", type: "boolean", label: "Herdr sync", description: "Sync session name to herdr pane title" },
+        { key: "badge.generationModel", type: "string", label: "Generation model", description: "Model for name generation (empty = session model)" },
+      ],
+    },
+  ],
+});
+
+/** One-time import from the legacy <cwd>/.unipi/config/util-settings.json. */
+function importLegacyUtilSettings(): void {
+  const layers = settingsLayers("utility", process.cwd());
+  if (layers.global || layers.project) return;
+  const legacy = (() => {
+    try {
+      const configPath = getConfigPath(UTIL_SETTINGS_FILE);
+      if (!fs.existsSync(configPath)) return null;
+      return normalizeSettings(JSON.parse(fs.readFileSync(configPath, "utf-8")));
+    } catch {
+      return null;
+    }
+  })();
+  if (legacy) {
+    setSettings("utility", legacy as unknown as Record<string, unknown>, "project", process.cwd());
+    return;
+  }
+  const legacyBadge = readLegacyBadgeSettings();
+  if (legacyBadge) {
+    setSettings("utility", { badge: legacyBadge } as unknown as Record<string, unknown>, "project", process.cwd());
+  }
+}
+
 export function readUtilSettings(): UtilSettings {
   try {
-    const configPath = getConfigPath(UTIL_SETTINGS_FILE);
-
-    if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      return normalizeSettings(parsed);
-    }
-
-    const legacyBadge = readLegacyBadgeSettings();
-    if (legacyBadge) {
-      const migrated: UtilSettings = { badge: legacyBadge };
-      writeUtilSettings(migrated);
-      return migrated;
-    }
-
+    importLegacyUtilSettings();
+    const raw = getSettings("utility", process.cwd());
+    const normalized = normalizeSettings(raw);
+    if (normalized) return normalized;
     return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
   } catch {
     return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
@@ -96,12 +131,8 @@ export function readUtilSettings(): UtilSettings {
 
 export function writeUtilSettings(settings: UtilSettings): void {
   try {
-    const configPath = getConfigPath(UTIL_SETTINGS_FILE);
-    const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    atomicWrite(configPath, JSON.stringify(settings, null, 2) + "\n");
+    // Badge settings are project-scoped — they travel with the repo.
+    setSettings("utility", settings as unknown as Record<string, unknown>, "project", process.cwd());
   } catch {
     // Best effort
   }
