@@ -27,9 +27,8 @@ always one key away** (recoverable by construction), not staged buffers.
 - [x] Tests: advanced collapse/expand/filter-reveal; provider resolution table (auto+jev→openrouter decisions shape, auto+glm→chat shape, explicit native honored). 40/40 hub + 15/15 judge + 7/7 scenarios; full suite EXIT:0.
 
 ## Phase 6 — per-category flows return (item 6)
-- [ ] Hub gains nested PAGES + ACTION rows:
-      field type `page` { key, label, description?, sections } — Space/Enter pushes a sub-page (breadcrumb in title ` Web API › serpapi `, Esc pops). field type `action` { label, description?, command } — runs a named command (utility executes via ctx) e.g. "MCP servers… → unipi:mcp-add overlay".
-- [ ] Web API: providers become PAGES per provider (enabled toggle + apiKey secret + extra provider keys). Move provider auth INTO the engine namespace (auth.json imported once; loadAuth/getApiKey read engine providers.<id>.apiKey). Tavily/serpapi/firecrawl/perplexity configurable again in-UI.
+- [x] Hub gains nested PAGES + ACTION rows: page fields (sections, full keys) push a sub-page with breadcrumb ` unipi settings › tavily — global [g] ` (Esc pops, restores parent cursor/scroll); action fields run a named command via core command-runner (modules registerCommandRunner(name, ctx=>…); utility wires runAction). u/d/R skip page/action rows; page fields write their full keys through the engine. 42/42.
+- [x] Web API: providers are PAGES per provider (enabled + apiKey secret with 'unset (public access)'). Auth MOVED into the engine (providers.<id>.apiKey; auth.json imported once; loadAuth/saveAuth/getApiKey/setApiKey read engine; removeApiKey writes '' since merge can't delete). Tavily/serpapi/firecrawl/perplexity configurable in-UI. +auth-engine test.
 - [ ] Notify: gotify/telegram/ntfy become PAGES (url/token/chatId secrets). background-tasks delegate page already flat — keep. mcp: ACTION row "Configure MCP servers…" launching the existing overlay (jira etc. flows back).
 - [ ] Tests: page push/pop + breadcrumb, action row invokes command hook, web-api auth import + secret round-trip.
 

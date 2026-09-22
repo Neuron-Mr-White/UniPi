@@ -17,7 +17,7 @@ import {
   DEFAULT_REMOVE_IMAGES,
   DEFAULT_INCLUDE_REPLIES,
 } from "./engine/constants.js";
-import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+import { getField, getSettings, registerSettings, setField, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Auth storage structure (API keys) */
 export interface WebApiAuth {
@@ -118,17 +118,34 @@ function ensureConfigDir(): void {
  * Load API keys from auth.json.
  * @returns API keys object
  */
-export function loadAuth(): WebApiAuth {
+/** Provider keys as stored in the engine (providers.<id>.apiKey). */
+function engineAuth(): WebApiAuth {
+  const cfg = getSettings("web-api", process.cwd()) as { providers?: Record<string, { apiKey?: string }> };
+  const out: WebApiAuth = {};
+  for (const [id, p] of Object.entries(cfg.providers ?? {})) {
+    if (p && typeof p.apiKey === "string" && p.apiKey.length > 0) out[id] = p.apiKey;
+  }
+  return out;
+}
+
+/** One-time import of the legacy auth.json into the engine namespace. */
+function importLegacyAuth(): void {
+  if (Object.keys(engineAuth()).length > 0) return;
   try {
     const authPath = getAuthPath();
-    if (fs.existsSync(authPath)) {
-      const content = fs.readFileSync(authPath, "utf-8");
-      return JSON.parse(content);
-    }
+    if (!fs.existsSync(authPath)) return;
+    const legacy = JSON.parse(fs.readFileSync(authPath, "utf-8")) as WebApiAuth;
+    let patch: Record<string, unknown> = {};
+    for (const [id, key] of Object.entries(legacy)) patch = setField(patch, `providers.${id}.apiKey`, key);
+    if (Object.keys(patch).length > 0) setSettings("web-api", patch, "global", process.cwd());
   } catch {
-    // Silently ignore — auth load failure returns empty.
+    // Legacy unreadable — nothing to import.
   }
-  return {};
+}
+
+export function loadAuth(): WebApiAuth {
+  importLegacyAuth();
+  return engineAuth();
 }
 
 /**
@@ -136,13 +153,15 @@ export function loadAuth(): WebApiAuth {
  * @param auth - API keys object
  */
 export function saveAuth(auth: WebApiAuth): void {
-  ensureConfigDir();
-  const authPath = getAuthPath();
-  fs.writeFileSync(authPath, JSON.stringify(auth, null, 2), "utf-8");
+  // Keys ride the engine as providers.<id>.apiKey (hub pages edit them too).
+  let patch: Record<string, unknown> = {};
+  for (const [id, key] of Object.entries(auth)) patch = setField(patch, `providers.${id}.apiKey`, key);
+  if (Object.keys(patch).length > 0) setSettings("web-api", patch, "global", process.cwd());
 }
 
-// Registered with the unified settings hub — canonical path already matched.
-// (auth.json stays a separate secrets file; provider keys are NOT hub fields.)
+// Registered with the unified settings hub. Provider auth rides the engine
+// (providers.<id>.apiKey secret fields, editable via per-provider pages);
+// legacy auth.json is imported once on first read.
 registerSettings({
   namespace: "web-api",
   label: "Web API",
@@ -150,11 +169,25 @@ registerSettings({
   schema: [
     {
       title: "Providers",
-      description: "Search/read provider toggles (keys live in auth.json)",
+      description: "Per-provider pages — enable + API key (tavily, serpapi, …)",
       fields: Object.keys(DEFAULT_CONFIG.providers).map((id) => ({
-        key: `providers.${id}.enabled` as string,
-        type: "boolean" as const,
+        key: `providers.${id}` as string,
+        type: "page" as const,
         label: id,
+        sections: [
+          {
+            title: id,
+            fields: [
+              { key: `providers.${id}.enabled` as string, type: "boolean" as const, label: "Enabled" },
+              {
+                key: `providers.${id}.apiKey` as string,
+                type: "secret" as const,
+                label: "API key",
+                emptyLabel: "unset (public access)",
+              },
+            ],
+          },
+        ],
       })),
     },
     {
@@ -224,9 +257,13 @@ export function setApiKey(providerId: string, apiKey: string): void {
  * @param providerId - Provider ID
  */
 export function removeApiKey(providerId: string): void {
-  const auth = loadAuth();
-  delete auth[providerId];
-  saveAuth(auth);
+  // Engine merge can't delete — clearing to "" makes the key read as unset.
+  setSettings(
+    "web-api",
+    setField({}, `providers.${providerId}.apiKey`, ""),
+    "global",
+    process.cwd(),
+  );
 }
 
 /**

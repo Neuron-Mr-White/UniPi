@@ -21,6 +21,7 @@ import {
   UTILITY_TOOLS,
   emitEvent,
   getPackageVersion,
+  runCommandByName,
   SettingsHub,
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
@@ -97,7 +98,13 @@ export default function (pi: ExtensionAPI) {
       if (!ctx.hasUI) throw new Error("/unipi:settings needs the interactive TUI");
       await ctx.ui.custom<void>(
         (tui, _theme, _keybindings, done) => {
-          const hub = new SettingsHub({ cwd: ctx.cwd ?? process.cwd() });
+          const hub = new SettingsHub({
+            cwd: ctx.cwd ?? process.cwd(),
+            runAction: async (command) => {
+              const ran = await runCommandByName(command, ctx);
+              if (!ran) ctx.ui.notify(`no handler registered for ${command}`, "warning");
+            },
+          });
           hub.onClose = () => done();
           return {
             focused: true,

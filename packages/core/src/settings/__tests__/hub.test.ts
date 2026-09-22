@@ -571,3 +571,83 @@ describe("progressive disclosure (advanced sections)", () => {
     assert.ok(!flat().includes("Secret cfg"), "Space collapses again");
   });
 });
+
+describe("nested pages + action rows (per-category flows)", () => {
+  it("page rows open with a breadcrumb; Esc pops back", () => {
+    registerSettings({
+      namespace: "hubtestpage",
+      label: "Pages",
+      defaults: { tavily: { enabled: true, apiKey: "tk-1" } },
+      schema: [
+        {
+          title: "Providers",
+          fields: [
+            {
+              key: "tavily",
+              type: "page",
+              label: "tavily",
+              sections: [
+                {
+                  title: "tavily",
+                  fields: [
+                    { key: "tavily.enabled", type: "boolean", label: "Enabled" },
+                    { key: "tavily.apiKey", type: "secret", label: "API key", emptyLabel: "unset" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("tavily");
+    hub.handleInput("\r");
+    // cursor on the page row → Space opens
+    hub.handleInput(" ");
+    const flat = (): string => hub.render(100).join("\n");
+    assert.ok(flat().includes("› tavily —"), "breadcrumb in the title");
+    assert.ok(flat().includes("API key"), "page fields visible");
+    // edit inside the page writes through the prefixed key
+    jumpTo(hub, "API key");
+    hub.handleInput(" ");
+    hub.handleInput("2");
+    hub.handleInput("\r");
+    const pageFile = join(home, ".unipi", "config", "hubtestpage", "config.json");
+    const pageCfg = JSON.parse(readFileSync(pageFile, "utf8"));
+    assert.equal(pageCfg.tavily.apiKey, "tk-12", "page field writes its full key");
+    hub.handleInput("\x1b"); // Esc pops the page
+    assert.ok(!flat().includes("› tavily —"), "back at the root title");
+  });
+
+  it("action rows invoke the runAction hook", () => {
+    registerSettings({
+      namespace: "hubtestact",
+      label: "Acts",
+      defaults: {},
+      schema: [
+        {
+          title: "Servers",
+          fields: [{ key: "configure", type: "action", label: "Configure servers…", command: "unipi:test-configure" }],
+        },
+      ],
+    });
+    const ran: string[] = [];
+    const hub = new SettingsHub({
+      cwd,
+      modelCatalog: () => CATALOG,
+      terminalRows: () => 40,
+      runAction: (command) => {
+        ran.push(command);
+      },
+    });
+    hub.handleInput("/");
+    hub.handleInput("configure");
+    hub.handleInput("\r");
+    hub.handleInput(" ");
+    assert.deepEqual(ran, ["unipi:test-configure"], "action row invokes the hook");
+    hub.handleInput("\r");
+    assert.deepEqual(ran, ["unipi:test-configure", "unipi:test-configure"], "Enter runs it too");
+  });
+});

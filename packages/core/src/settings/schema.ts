@@ -63,6 +63,22 @@ export type SettingsField =
       readonly provider?: string;
       /** Shown when "" (e.g. "inherit (session model)"). */
       readonly emptyLabel?: string;
+    }
+  | {
+      /** Nested config page (Space/Enter opens; Esc pops). Fields use FULL keys. */
+      readonly key: string;
+      readonly type: "page";
+      readonly label: string;
+      readonly description?: string;
+      readonly sections: readonly SettingsSection[];
+    }
+  | {
+      /** Runs a named command (registered via core registerCommandRunner). */
+      readonly key: string;
+      readonly type: "action";
+      readonly label: string;
+      readonly description?: string;
+      readonly command: string;
     };
 
 export interface SettingsSection {

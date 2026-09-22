@@ -38,6 +38,7 @@ import {
   parseFieldValue,
   setField,
   type SettingsField,
+  type SettingsSection,
 } from "./schema.js";
 import {
   getSettings,
@@ -55,6 +56,8 @@ export interface SettingsHubDeps {
   readonly onChanged?: (namespace: string) => void;
   /** Model catalog for model-type pickers (tests inject a fixture). */
   readonly modelCatalog?: () => string[];
+  /** Invoker for `action` rows (utility wires core runCommandByName + ctx). */
+  readonly runAction?: (command: string) => void | Promise<void>;
   /** Terminal rows for viewport sizing (tests inject; default stdout.rows). */
   readonly terminalRows?: () => number;
 }
@@ -131,12 +134,22 @@ export class SettingsHub {
   private toast: string | null = null;
   /** Namespaces whose `advanced` sections are expanded. */
   private readonly expandedAdvanced = new Set<string>();
+  /** Nested page stack (push on `page` rows; Esc pops). */
+  private readonly pageStack: Array<{
+    label: string;
+    namespace: string;
+    rows: Row[];
+    cursor: number;
+    scroll: number;
+  }> = [];
+  private readonly runActionFn?: (command: string) => void | Promise<void>;
   private readonly terminalRowsFn: () => number;
 
   constructor(deps: SettingsHubDeps) {
     this.cwd = deps.cwd;
     this.onChanged = deps.onChanged;
     this.catalog = deps.modelCatalog ?? loadModelCatalog;
+    this.runActionFn = deps.runAction;
     this.terminalRowsFn = deps.terminalRows ?? (() => process.stdout.rows ?? 40);
     this.buildRows();
   }
@@ -203,10 +216,16 @@ export class SettingsHub {
   }
 
   // ── filtering ───────────────────────────────────────────────────────────
+  /** Current page's rows (root rows at stack bottom). */
+  private rowsOf(): Row[] {
+    return this.pageStack.length > 0 ? this.pageStack[this.pageStack.length - 1]!.rows : this.rows;
+  }
+
   private visibleRows(): Row[] {
+    const pageRows = this.rowsOf();
     if (!this.filter) {
       // Progressive disclosure: advanced rows show only when expanded.
-      return this.rows.filter((r) => r.kind !== "toggle"
+      return pageRows.filter((r) => r.kind !== "toggle"
         ? !r.advancedOf || this.expandedAdvanced.has(r.advancedOf)
         : true);
     }
@@ -219,7 +238,7 @@ export class SettingsHub {
     // context ("Long-Horizon — Judge" above its Model row).
     const out: Row[] = [];
     let currentHeader: Row | undefined;
-    for (const r of this.rows) {
+    for (const r of pageRows) {
       if (r.kind === "toggle") continue; // no toggle rows while searching
       if (r.kind === "header") {
         currentHeader = r;
@@ -305,6 +324,55 @@ export class SettingsHub {
     this.toast = `reverted: ${row.label}`;
   }
 
+  /** Build a page's rows from its sections (full keys; namespace from owner). */
+  private pageRows(namespace: string, sections: readonly SettingsSection[]): Row[] {
+    const rows: Row[] = [];
+    for (const section of sections) {
+      rows.push({
+        kind: "header", id: `${namespace}::page::${section.title}`,
+        label: section.title,
+      });
+      for (const field of section.fields) {
+        rows.push({
+          kind: "field", id: `${namespace}::${field.key}`,
+          label: field.label, namespace, field,
+          context: section.title,
+        });
+      }
+    }
+    return rows;
+  }
+
+  private openPage(row: Row): void {
+    if (row.kind !== "field" || !row.namespace || row.field?.type !== "page") return;
+    this.pageStack.push({
+      label: row.field.label,
+      namespace: row.namespace,
+      rows: this.pageRows(row.namespace, row.field.sections),
+      cursor: this.cursor, // parent's return position
+      scroll: this.scroll,
+    });
+    this.cursor = 0;
+    this.scroll = 0;
+    this.normalizeCursor();
+  }
+
+  private popPage(): void {
+    const top = this.pageStack.pop();
+    if (!top) return;
+    this.cursor = top.cursor;
+    this.scroll = top.scroll;
+    this.toast = `back: ${top.label}`;
+  }
+
+  private runActionRow(row: Row): void {
+    if (row.kind !== "field" || row.field?.type !== "action") return;
+    void Promise.resolve(this.runActionFn?.(row.field.command)).catch(() => {
+      // Action failures never block the panel.
+    });
+    this.toast = `run: ${row.field.label}`;
+  }
+
   private toggleScope(): void {
     const defs = listSettingsDefinitions();
     const projectAllowed = defs.some((d) => d.projectOverrides !== false);
@@ -365,16 +433,17 @@ export class SettingsHub {
     if (ch === "u") return this.undoLast();
     if (ch === "d") {
       const row = this.currentRow();
-      if (row) this.resetToDefault(row);
+      if (row && row.field?.type !== "page" && row.field?.type !== "action") this.resetToDefault(row);
       return;
     }
     if (ch === "R") {
       const row = this.currentRow();
-      if (row) this.revertToBaseline(row);
+      if (row && row.field?.type !== "page" && row.field?.type !== "action") this.revertToBaseline(row);
       return;
     }
     if (matchesKey(data, Key.escape) || data === "\x1b") {
-      this.onClose();
+      if (this.pageStack.length > 0) this.popPage();
+      else this.onClose();
       return;
     }
     if (ch === "g") return this.toggleScope();
@@ -387,7 +456,12 @@ export class SettingsHub {
         return;
       }
       if (row.kind !== "field" || !row.field || !row.namespace) return;
-      // Enter is inert in list mode for fields (its spec meaning is save-in-input).
+      // page/action rows: Space or Enter opens/runs; Tab stays inert.
+      if (row.field.type === "page" || row.field.type === "action") {
+        if (matchesKey(data, Key.tab)) return;
+        return row.field.type === "page" ? this.openPage(row) : this.runActionRow(row);
+      }
+      // Enter is inert in list mode for value fields (its spec meaning is save-in-input).
       if (matchesKey(data, Key.enter)) return;
       const value = getField(this.valueOf(row.namespace), row.field.key);
       return matchesKey(data, Key.tab) ? this.handleTab(row, value) : this.handleSpace(row, value);
@@ -632,6 +706,12 @@ export class SettingsHub {
       return overlayTheme.bg("customMessageBg", dim(bold(plain)));
     }
     const field = row.field!;
+    if (field.type === "page") {
+      return this.exactRow(this.rowColumns(cursor, `  ${row.label}`, "› open", inner, selected), inner);
+    }
+    if (field.type === "action") {
+      return this.exactRow(this.rowColumns(cursor, `  ${row.label}`, "⏎ run", inner, selected), inner);
+    }
     const value = getField(this.valueOf(row.namespace!), field.key);
     // Value only — no per-row key hints (they read inconsistently); the
     // bottom hint line names the keys that work on the cursor's row.
@@ -683,6 +763,8 @@ export class SettingsHub {
     const row = this.currentRow();
     const f = row?.field;
     if (!f) return `↑↓/kj · / search · g scope · ${recover}`;
+    if (f.type === "page") return `enter/space open · esc back · ↑↓/kj · ${recover}`;
+    if (f.type === "action") return `enter/space run · ↑↓/kj · g scope · ${recover}`;
     const scope = "g scope";
     switch (f.type) {
       case "boolean":
@@ -739,7 +821,8 @@ export class SettingsHub {
     this.toast = null; // shown for exactly one render
     return frameOverlay(body, width, {
       // Scope lives in the TITLE — it's global state, not a list row.
-      title: bold(` unipi settings — ${this.scope} [g] `),
+      // Pages breadcrumb into it: ` unipi settings › serpapi — global [g] `.
+      title: bold(` unipi settings${this.pageStack.map((p) => ` › ${p.label}`).join("")} — ${this.scope} [g] `),
       borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
     });
   }
