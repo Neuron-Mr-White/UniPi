@@ -46,11 +46,16 @@ let home: string;
 let cwd: string;
 let closed = 0;
 
-function makeHub(): SettingsHub {
+function makeHub(rows?: () => number): SettingsHub {
   closed = 0;
-  const hub = new SettingsHub({ cwd, modelCatalog: () => CATALOG });
+  const hub = new SettingsHub({ cwd, modelCatalog: () => CATALOG, ...(rows ? { terminalRows: rows } : {}) });
   hub.onClose = () => { closed++; };
   return hub;
+}
+
+/** Strip ANSI and measure visible width. */
+function vw(line: string): number {
+  return line.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length;
 }
 
 /** Row order: scope, header, then 7 fields (registration order). */
@@ -261,5 +266,62 @@ describe("model catalog", () => {
   it("missing file or bad json → empty catalog", () => {
     assert.deepEqual(parseModelCatalog(() => { throw new Error("enoent"); }), []);
     assert.deepEqual(parseModelCatalog(() => "not json"), []);
+  });
+});
+
+describe("layout: uniform paint + viewport", () => {
+  it("every rendered line is EXACTLY the frame width (uniform bg paint)", () => {
+    const hub = makeHub();
+    for (const width of [80, 100, 160]) {
+      for (const line of hub.render(width)) {
+        assert.equal(vw(line), width, `line must be exactly ${width} cells: ${line.slice(0, 40)}`);
+      }
+    }
+  });
+
+  it("lines stay exact width with the picker and inline editor open", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Model");
+    hub.handleInput(" ");
+    for (const line of hub.render(100)) assert.equal(vw(line), 100);
+    hub.handleInput("\x1b");
+    const hub2 = makeHub();
+    jumpTo(hub2, "Text");
+    hub2.handleInput(" ");
+    for (const line of hub2.render(100)) assert.equal(vw(line), 100);
+  });
+
+  it("long values truncate with ellipsis instead of overflowing", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Model");
+    hub.handleInput(" "); // picker
+    for (let i = 0; i < 3; i++) hub.handleInput("\x7f"); // clear "m1" prefill partially
+    hub.handleInput("verylongmodelname/that-should-truncate/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    hub.handleInput("\r");
+    for (const line of hub.render(60)) assert.equal(vw(line), 60);
+  });
+
+  it("viewport: panel fits a short terminal and shows scroll indicators", () => {
+    // 20 terminal rows → window ≈ 13 rows; fixture has scope+header+7 fields = 9 rows… use narrow rows.
+    const hub = makeHub(() => 12); // maxRows = 12 - 7 = 5
+    const lines = hub.render(100);
+    const flat = lines.join("\n");
+    assert.ok(flat.includes("↓ 4 more") || flat.includes("↓ "), "bottom scroll indicator present");
+    // Window shows at most 5 rows + indicator + hint + frame — never more rows than fit.
+    const bodyRows = lines.length;
+    assert.ok(bodyRows <= 12, `panel height ${bodyRows} must fit the terminal (12)`);
+  });
+
+  it("cursor moves scroll the window to stay visible", () => {
+    const hub = makeHub(() => 12); // maxRows = 5
+    // Cursor starts at 0 (scope); walk to the last row (Token field = row 8).
+    jumpTo(hub, "Token");
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("Token"), "cursor row stays inside the window");
+    assert.ok(flat.includes("↑ "), "top scroll indicator shows the hidden rows");
+    const rows = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows();
+    const idx = rows.findIndex((r) => r.label === "Token");
+    const scroll = (hub as unknown as { scroll: number }).scroll;
+    assert.ok(idx >= scroll && idx < scroll + 5, "cursor within [scroll, scroll+maxRows)");
   });
 });

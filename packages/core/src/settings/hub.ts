@@ -47,6 +47,8 @@ export interface SettingsHubDeps {
   readonly onChanged?: (namespace: string) => void;
   /** Model catalog for model-type pickers (tests inject a fixture). */
   readonly modelCatalog?: () => string[];
+  /** Terminal rows for viewport sizing (tests inject; default stdout.rows). */
+  readonly terminalRows?: () => number;
 }
 
 type Mode = "list" | "search" | "input" | "model";
@@ -95,11 +97,15 @@ export class SettingsHub {
   /** Model picker state. */
   private picker: { row: Row; input: Input; options: string[]; selected: number } | null = null;
   private renderWidth = 80;
+  /** Viewport: index of the first visible row. */
+  private scroll = 0;
+  private readonly terminalRowsFn: () => number;
 
   constructor(deps: SettingsHubDeps) {
     this.cwd = deps.cwd;
     this.onChanged = deps.onChanged;
     this.catalog = deps.modelCatalog ?? loadModelCatalog;
+    this.terminalRowsFn = deps.terminalRows ?? (() => process.stdout.rows ?? 40);
     this.buildRows();
   }
 
@@ -372,45 +378,57 @@ export class SettingsHub {
   // ── rendering ───────────────────────────────────────────────────────────
   invalidate(): void {}
 
-  render(width: number): string[] {
-    this.renderWidth = width;
-    const inner = boxInnerWidth(width);
-    const body: string[] = [bold("  ⚙  unipi settings")];
+  // ── rendering ───────────────────────────────────────────────────────────
+  //
+  // Every emitted line is measured in PLAIN text at exactly `inner` visible
+  // cells; styling wraps whole spans afterwards (ANSI never changes visible
+  // width). This is what keeps the background paint uniform — the old mixed
+  // styled-then-measured rows miscounted and bled paint past the frame.
 
-    if (this.mode === "search" && this.searchInput) {
-      body.push(...this.searchInput.render(inner).map((l) => ` ${l}`), "");
+  private terminalRows(): number {
+    try {
+      return this.terminalRowsFn() || 40;
+    } catch {
+      return 40;
     }
-
-    const visible = this.visibleRows();
-    const rows: string[] = [];
-    for (let i = 0; i < visible.length; i++) {
-      const row = visible[i]!;
-      const selected = i === this.cursor && this.mode !== "search";
-      rows.push(this.renderRow(row, selected, inner));
-      if (this.mode === "input" && this.edit && this.edit.row.id === row.id) {
-        rows.push(...this.renderEdit(inner));
-      }
-      if (this.mode === "model" && this.picker && this.picker.row.id === row.id) {
-        rows.push(...this.renderPicker(inner));
-      }
-    }
-    body.push(...rows);
-    body.push("");
-    body.push(dim("  ↑↓/kj move · space toggle/edit · tab cycle · / search · esc close"));
-    return frameOverlay(body, width, {
-      title: bold(" unipi settings "),
-      borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
-    });
   }
 
-  private renderRow(row: Row, selected: boolean, width: number): string {
+  /** Truncate/pad styled or plain content to exactly `inner` visible cells. */
+  private exactRow(content: string, inner: number): string {
+    const w = visibleWidth(content);
+    if (w === inner) return content;
+    if (w > inner) return truncateToWidth(content, Math.max(0, inner), "");
+    return content + " ".repeat(inner - w);
+  }
+
+  /**
+   * Two-column row (label left, value right) measured in plain text first,
+   * then styled per span. Always exactly `inner` cells.
+   */
+  private rowColumns(
+    cursor: string,
+    label: string,
+    value: string,
+    inner: number,
+    selected: boolean,
+  ): string {
+    const valW = visibleWidth(value);
+    const room = Math.max(0, inner - 2 - valW - 2);
+    const labelT = truncateToWidth(label, room, "…");
+    const gap = Math.max(1, inner - 2 - visibleWidth(labelT) - valW);
+    const labelStyled = selected ? bold(labelT) : labelT;
+    const valueStyled = selected ? bold(value) : dim(value);
+    return `${cursor}${labelStyled}${" ".repeat(gap)}${valueStyled}`;
+  }
+
+  private renderRow(row: Row, selected: boolean, inner: number): string {
     const cursor = selected ? "› " : "  ";
     if (row.kind === "header") {
-      const tag = row.layerTag ? dim(` [${row.layerTag}]`) : "";
-      return `${cursor}${dim(row.label)}${tag}`;
+      const tag = row.layerTag ? ` [${row.layerTag}]` : "";
+      return this.exactRow(dim(`  ${row.label}${tag}`), inner);
     }
     if (row.kind === "scope") {
-      return `${cursor}${selected ? bold(row.label) : row.label}${padValue(width, row.label, this.scope + dim(" [tab]"))}`;
+      return this.exactRow(this.rowColumns(cursor, "  Write scope", `${this.scope} [tab]`, inner, selected), inner);
     }
     const field = row.field!;
     const value = getField(this.valueOf(row.namespace!), field.key);
@@ -419,42 +437,104 @@ export class SettingsHub {
       field.type === "boolean" ? " [space]" :
       field.type === "enum" ? (field.allowCustom ? " [tab/space]" : " [tab]") :
       field.type === "model" ? " [space]" : " [space]";
-    const valueCol = `${display}${dim(hint)}`;
-    return `${cursor}${selected ? bold(`  ${row.label}`) : `  ${row.label}`}${padValue(width, `  ${row.label}`, valueCol, selected)}`;
+    return this.exactRow(
+      this.rowColumns(cursor, `  ${row.label}`, `${display}${hint}`, inner, selected),
+      inner,
+    );
   }
 
-  private renderEdit(width: number): string[] {
+  private renderEdit(inner: number): string[] {
     if (!this.edit) return [];
-    const lines = this.edit.input.render(width - 4).map((l) => `   ${l}`);
-    return this.edit.error ? [...lines, dim(`   ⚠ ${this.edit.error}`)] : lines;
+    const width = Math.max(8, inner - 4);
+    const out = this.edit.input.render(width).map((l) => this.exactRow(`  ${l}`, inner));
+    if (this.edit.error) out.push(this.exactRow(dim(`  ⚠ ${this.edit.error}`), inner));
+    return out;
   }
 
-  private renderPicker(width: number): string[] {
+  private renderPicker(inner: number): string[] {
     const p = this.picker;
     if (!p) return [];
-    const box = Math.max(20, Math.min(width - 6, 76));
+    const width = Math.max(8, inner - 4);
     const out: string[] = [];
-    out.push(`   ${dim("┌")} ${p.input.render(box - 6).join("")} ${dim("┐")}`);
+    out.push(this.exactRow(`  ${p.input.render(width).join("")}`, inner));
     const options = this.pickerFiltered();
     const start = Math.min(p.selected, Math.max(0, options.length - 5));
     for (let i = start; i < Math.min(start + 5, options.length); i++) {
       const sel = i === p.selected;
-      const id = truncateToWidth(`  ${options[i]}`, box - 6, "");
-      out.push(`   ${dim("│")} ${sel ? bold(id) : dim(id)}${" ".repeat(Math.max(0, box - 8 - visibleWidth(id)))} ${dim("│")}`);
+      const label = truncateToWidth(`  ${options[i]}`, width, "…");
+      out.push(this.exactRow(sel ? `  ${bold(label)}` : `  ${dim(label)}`, inner));
     }
-    // Pad to exactly 5 visible rows so the panel never jumps.
-    for (let i = options.length - start; i < 5; i++) {
-      out.push(`   ${dim("│")}${" ".repeat(Math.max(0, box - 4))}${dim("│")}`);
-    }
-    out.push(`   ${dim("└")} enter pick · esc cancel ${dim("┘")}`);
+    // Pad to exactly 5 rows so the panel never jumps.
+    for (let i = options.length - start; i < 5; i++) out.push(this.exactRow(`  ${dim("  ·")}`, inner));
+    out.push(this.exactRow(dim("  enter pick · esc cancel"), inner));
     return out;
   }
-}
 
-/** Right-align a value column against the label within width. */
-function padValue(width: number, label: string, value: string, selected = false): string {
-  const used = 2 + visibleWidth(label);
-  const valueW = visibleWidth(value);
-  const space = Math.max(1, width - used - valueW - 1);
-  return `${" ".repeat(space)}${selected ? bold(value) : value}`;
+  private clampScroll(len: number, maxRows: number): void {
+    if (this.cursor < this.scroll) this.scroll = this.cursor;
+    if (this.cursor > this.scroll + maxRows - 1) this.scroll = this.cursor - maxRows + 1;
+    this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, len - maxRows)));
+  }
+
+  private hintLine(): string {
+    if (this.mode === "search") return "type to filter · enter apply · esc clear";
+    if (this.mode === "input") return "enter save · esc cancel";
+    if (this.mode === "model") return "↑↓/kj pick · enter select · esc cancel";
+    const row = this.currentRow();
+    if (row?.kind === "scope") return "tab switch global/project · esc close";
+    const f = row?.field;
+    if (!f) return "↑↓/kj move · / search · esc close";
+    switch (f.type) {
+      case "boolean":
+        return "space/tab toggle · ↑↓/kj move · / search · esc close";
+      case "enum":
+        return f.allowCustom
+          ? "tab cycle · space custom · ↑↓/kj move · esc close"
+          : "tab cycle · ↑↓/kj move · / search · esc close";
+      case "model":
+        return "space/tab pick model · ↑↓/kj move · esc close";
+      default:
+        return "space edit · ↑↓/kj move · / search · esc close";
+    }
+  }
+
+  render(width: number): string[] {
+    this.renderWidth = width;
+    const inner = boxInnerWidth(width);
+    const body: string[] = [];
+
+    if (this.mode === "search" && this.searchInput) {
+      for (const l of this.searchInput.render(Math.max(8, inner - 2))) body.push(this.exactRow(` ${l}`, inner));
+    }
+
+    const visible = this.visibleRows();
+    // Reserve room below the window when an inline editor/picker is open.
+    const overlayReserve = this.mode === "input" || this.mode === "model" ? 7 : 0;
+    const maxRows = Math.max(4, this.terminalRows() - 7 - overlayReserve);
+    this.clampScroll(visible.length, maxRows);
+
+    if (this.scroll > 0) body.push(this.exactRow(dim(`  ↑ ${this.scroll} more`), inner));
+
+    const end = Math.min(visible.length, this.scroll + maxRows);
+    for (let i = this.scroll; i < end; i++) {
+      const row = visible[i]!;
+      const selected = i === this.cursor && this.mode !== "search";
+      body.push(this.renderRow(row, selected, inner));
+      if (this.mode === "input" && this.edit && this.edit.row.id === row.id) {
+        body.push(...this.renderEdit(inner));
+      }
+      if (this.mode === "model" && this.picker && this.picker.row.id === row.id) {
+        body.push(...this.renderPicker(inner));
+      }
+    }
+
+    const below = visible.length - end;
+    if (below > 0) body.push(this.exactRow(dim(`  ↓ ${below} more`), inner));
+
+    body.push(this.exactRow(dim(`  ${this.hintLine()}`), inner));
+    return frameOverlay(body, width, {
+      title: bold(" unipi settings "),
+      borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
+    });
+  }
 }
