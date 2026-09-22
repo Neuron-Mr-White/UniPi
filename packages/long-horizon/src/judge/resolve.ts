@@ -14,7 +14,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { askJudge, createJudgeTransport, type FetchLike, type JudgeTransport } from "./typesafe.js";
+import { askJudge, createJudgeTransport, judgeTimeoutMs, type FetchLike, type JudgeTransport } from "./typesafe.js";
+import { judgeEnv } from "./omniroute-key.js";
 import type { LhMode } from "../modes.js";
 import { modeForOwnerKind } from "../modes.js";
 import type { LongHorizonSettings } from "../settings.js";
@@ -71,16 +72,19 @@ async function consultJudge(
   }
 
   const settings = deps.settings;
+  // Openrouter provider with no explicit key falls back to the omniroute bridge
+  // key, so enabling the judge works out of the box for omniroute users.
+  const env = judgeEnv(settings.judge.provider, deps.env ?? process.env);
   const hasKey =
     settings.judge.provider === "typesafe"
-      ? Boolean((deps.env ?? process.env).TYPESAFE_API_KEY)
-      : Boolean((deps.env ?? process.env).OPENROUTER_API_KEY);
+      ? Boolean(env.TYPESAFE_API_KEY)
+      : Boolean(env.OPENROUTER_API_KEY);
   if (!settings.judge.enabled || !hasKey) return null;
 
   const transport =
     deps.transport ??
-    createJudgeTransport({ settings: settings.judge, fetchImpl: deps.fetchImpl, env: deps.env });
-  const answer = await askJudge(transport, prompt);
+    createJudgeTransport({ settings: settings.judge, fetchImpl: deps.fetchImpl, env });
+  const answer = await askJudge(transport, prompt, judgeTimeoutMs(settings.judge));
   if (answer) cacheEntry = { hash, answer, at: now };
   return answer;
 }

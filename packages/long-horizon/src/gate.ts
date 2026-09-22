@@ -137,6 +137,8 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
 export class Gate {
   private turn: GateState | null = null;
   private pendingExplicit: LhMode | null = null;
+  /** Mode of the last badge shown, so only mode TRANSITIONS reprint. */
+  private lastBadge: LhMode | null = null;
   private readonly deps: GateDeps;
 
   constructor(deps: GateDeps) {
@@ -201,14 +203,27 @@ export class Gate {
         source: state.source,
         ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
       });
-      try {
-        pi.appendEntry("long-horizon-decision", {
-          mode: state.mode,
-          source: state.source,
-          ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
-        });
-      } catch {
-        // Best-effort badge; never block a turn on it.
+      // Only surface the routing badge when it's INTERESTING. The footer shows
+      // the current mode persistently, so the badge is for MODE TRANSITIONS,
+      // not a per-turn stamp. Dedup on the resolved MODE (not source), so a
+      // run of identical `none`/`goal` turns — whether judged or default —
+      // prints at most once.
+      //   - explicit switch            → always worth showing (user action)
+      //   - mode changed from last     → worth showing
+      //   - same mode as last shown    → silent (footer already reflects it)
+      const showBadge =
+        state.source === "explicit" || this.lastBadge !== state.mode;
+      this.lastBadge = state.mode;
+      if (showBadge) {
+        try {
+          pi.appendEntry("long-horizon-decision", {
+            mode: state.mode,
+            source: state.source,
+            ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),
+          });
+        } catch {
+          // Best-effort badge; never block a turn on it.
+        }
       }
       const fragment = renderModeFragment(
         state,

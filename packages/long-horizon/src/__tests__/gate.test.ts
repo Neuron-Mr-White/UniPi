@@ -133,3 +133,47 @@ test("delegation set matches the design matrix", () => {
     "spawn_helper",
   ]);
 });
+
+// ── badge de-dup (UX: no ⟐ spam on steady-state turns) ─────────────────────
+
+function fakePi(appended: Array<{ mode: string; source: string }>) {
+  const handlers: Record<string, (e: unknown) => unknown> = {};
+  return {
+    on: (evt: string, fn: (e: unknown) => unknown) => {
+      handlers[evt] = fn;
+    },
+    appendEntry: (_type: string, data: { mode: string; source: string }) => {
+      appended.push({ mode: data.mode, source: data.source });
+    },
+    // no-ops for the rest of register()'s wiring
+    emit: () => {},
+    async fire(prompt: string) {
+      await handlers["before_agent_start"]?.({ prompt, systemPrompt: "" });
+    },
+  };
+}
+
+test("badge prints on mode transitions only, not every turn", async () => {
+  const { gate, owner, dir } = harness();
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+
+  await pi.fire("hi");        // default mode (goal): first badge → show once
+  assert.equal(appended.length, 1);
+  await pi.fire("still hi");  // same mode (goal) → silent
+  await pi.fire("more");      // same mode (goal) → silent
+  assert.equal(appended.length, 1, "no reprint while mode is unchanged");
+
+  // Transition to a different mode via an active swarm owner.
+  owner.activate("swarm", "s");
+  await pi.fire("parallelize this"); // mode swarm ≠ goal → show once
+  assert.equal(appended.length, 2);
+  assert.equal(appended[1]!.mode, "swarm");
+
+  await pi.fire("keep going");        // still swarm → silent
+  assert.equal(appended.length, 2, "no reprint while steady in swarm mode");
+
+  rmSync(dir, { recursive: true, force: true });
+});

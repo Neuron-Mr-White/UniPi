@@ -40,6 +40,14 @@ export interface JudgeDeps {
 const DEFAULT_TYPESAFE_BASE = "https://api.typesafe.ai";
 const DEFAULT_OPENROUTER_BASE = "https://openrouter.ai";
 export const JUDGE_TIMEOUT_MS = 1_000;
+/** Chat-model judges (openrouter/OpenAI-compat proxies) are slower than jev. */
+export const JUDGE_TIMEOUT_OPENROUTER_MS = 6_000;
+
+/** Resolve the judge abort budget: explicit override, else provider default. */
+export function judgeTimeoutMs(settings: JudgeSettings): number {
+  if (settings.timeoutMs && settings.timeoutMs > 0) return settings.timeoutMs;
+  return settings.provider === "openrouter" ? JUDGE_TIMEOUT_OPENROUTER_MS : JUDGE_TIMEOUT_MS;
+}
 
 function apiKey(settings: JudgeSettings, env: Record<string, string | undefined>): string | undefined {
   return settings.provider === "typesafe" ? env.TYPESAFE_API_KEY : env.OPENROUTER_API_KEY;
@@ -49,6 +57,22 @@ function baseUrl(settings: JudgeSettings): string {
   const configured = settings.baseUrl.trim();
   if (configured) return configured.replace(/\/$/, "");
   return settings.provider === "typesafe" ? DEFAULT_TYPESAFE_BASE : DEFAULT_OPENROUTER_BASE;
+}
+
+/**
+ * Chat-completions URL for the openrouter-style transport.
+ *
+ * OpenRouter's canonical path is `/api/v1/chat/completions`. OpenAI-compatible
+ * proxies (omniroute/oino, LiteLLM, vLLM, …) instead expose `/v1/chat/completions`.
+ * A configured baseUrl that already ends in a version segment (`/v1`, `/api/v1`)
+ * is treated as the API root and only gets `/chat/completions` appended, so any
+ * OpenAI-compat gateway works by pointing baseUrl at it (e.g.
+ * `https://router.oino.dev/v1`). Bare hosts fall back to OpenRouter's prefix.
+ */
+function chatCompletionsUrl(settings: JudgeSettings): string {
+  const base = baseUrl(settings);
+  if (/\/(?:api\/)?v\d+$/.test(base)) return `${base}/chat/completions`;
+  return `${base}/api/v1/chat/completions`;
 }
 
 /** The one judge question set: the mode choice plus a decomposable side-signal. */
@@ -154,7 +178,7 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
       try {
         const raw = await postJson(
           fetchImpl,
-          `${baseUrl(settings)}/api/v1/chat/completions`,
+          chatCompletionsUrl(settings),
           { authorization: `Bearer ${key}`, "x-title": "unipi-long-horizon" },
           {
             model: settings.model,

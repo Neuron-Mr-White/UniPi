@@ -25,6 +25,13 @@ export interface JudgeSettings {
   baseUrl: string;
   /** Confidence floor; below it the judge abstains (owner/default wins). */
   threshold: number;
+  /**
+   * Abort budget for one judge call. 0 = provider default (typesafe's native
+   * jev is sub-second → 1s; an openrouter chat-model judge needs ~6s). Only
+   * paid on genuinely new prompts with no active owner, so a few seconds is
+   * acceptable and never recurs mid-task.
+   */
+  timeoutMs: number;
 }
 
 export interface LongHorizonSettings {
@@ -42,6 +49,7 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
     model: "jev-latest",
     baseUrl: "",
     threshold: 0.6,
+    timeoutMs: 0,
   },
   defaultMode: "goal",
   verifierModel: "",
@@ -87,6 +95,10 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
         typeof judge.threshold === "number" && judge.threshold > 0 && judge.threshold <= 1
           ? judge.threshold
           : DEFAULT_SETTINGS.judge.threshold,
+      timeoutMs:
+        typeof judge.timeoutMs === "number" && judge.timeoutMs >= 0
+          ? judge.timeoutMs
+          : DEFAULT_SETTINGS.judge.timeoutMs,
     },
     defaultMode: ["goal", "ralph", "swarm", "graph", "none"].includes(stored.defaultMode as string)
       ? (stored.defaultMode as LhMode)
