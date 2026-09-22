@@ -247,6 +247,22 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(rows[0]!.label, "Flag");
   });
 
+  it("picker with an uncatalogued value opens UNFILTERED", () => {
+    // Seed a value outside the catalog first.
+    mkdirSync(join(home, ".unipi", "config", NS), { recursive: true });
+    writeFileSync(engineFile(), JSON.stringify({ model: "custom/x" }));
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("Model");
+    hub.handleInput("\r");
+    hub.handleInput(" ");
+    const picker = (hub as unknown as { picker: { input: { getValue(): string } } }).picker;
+    assert.equal(picker.input.getValue(), "", "search starts empty for uncatalogued values");
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("prov/m2"), "unfiltered list shows catalog entries");
+    hub.handleInput("\x1b");
+  });
+
   it("a word matching nothing empties the list (no crash)", () => {
     const hub = makeHub();
     hub.handleInput("/");

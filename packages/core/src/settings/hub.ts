@@ -325,7 +325,9 @@ export class SettingsHub {
     if (field.type === "model" && field.provider) options = options.filter((id) => id.startsWith(`${field.provider}/`));
     const input = new Input({ prompt: "search: " });
     const start = getField(this.valueOf(row.namespace!), field.key);
-    if (typeof start === "string" && start) {
+    // Prefill only when the value is IN the catalog — otherwise the search
+    // would filter the list to nothing (custom values aren't listed ids).
+    if (typeof start === "string" && start && options.includes(start)) {
       input.setValue(start);
       input.handleInput("\x1b[F");
     }
@@ -438,7 +440,8 @@ export class SettingsHub {
     const valW = visibleWidth(value);
     const room = Math.max(0, inner - 2 - valW - 2);
     const labelT = truncateToWidth(label, room, "…");
-    const gap = Math.max(1, inner - 2 - visibleWidth(labelT) - valW);
+    // One trailing cell of air before the frame border.
+    const gap = Math.max(1, inner - 2 - visibleWidth(labelT) - valW - 1);
     const labelStyled = selected ? bold(labelT) : labelT;
     const valueStyled = selected ? bold(value) : dim(value);
     return `${cursor}${labelStyled}${" ".repeat(gap)}${valueStyled}`;
@@ -448,7 +451,9 @@ export class SettingsHub {
     const cursor = selected ? "› " : "  ";
     if (row.kind === "header") {
       const tag = row.layerTag ? ` [${row.layerTag}]` : "";
-      return this.exactRow(dim(`  ${row.label}${tag}`), inner);
+      // Distinct full-width band (bg wrap is width-safe — measures on plain).
+      const plain = this.exactRow(`  ${row.label}${tag}`, inner);
+      return overlayTheme.bg("customMessageBg", dim(bold(plain)));
     }
     if (row.kind === "scope") {
       return this.exactRow(this.rowColumns(cursor, "  Write scope", `${this.scope} [tab]`, inner, selected), inner);

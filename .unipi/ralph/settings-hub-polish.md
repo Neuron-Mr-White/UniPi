@@ -15,16 +15,16 @@ Goal: a panel that FITS the screen, PAINTS uniformly, and NAVIGATES everywhere.
 
 ## Phase 2 — key router (fix navigation everywhere)
 - [x] Key decoding via pi-tui matchesKey/decodeKittyPrintable (normalizes CSI/SS3/kitty encodings). ALL raw data=== matching replaced. Lone ESC = close is SAFE: a keypress writes its full sequence in one read (documented in hub.ts). In pickers j/k are TEXT (ids contain them) — arrows walk; list mode has j/k nav.
-- [ ] Keys: up/down (k/j) all encodings, PageUp/PageDown, Home/End, Tab, Space, Enter, Esc, "/" — each per the ORIGINAL spec (instant apply; search/edit/picker modes unchanged).
+- [x] Keys (done b9fabec): up/down (k/j) all encodings, PageUp/PageDown, Home/End, Tab, Space, Enter, Esc, "/" — spec semantics unchanged.
 - [x] Tests: SS3 + CSI arrows, kitty CSI-u j/k, pgup/pgdn/home/end, lone Esc. 27/27 green.
 
 ## Phase 3 — visual polish
-- [ ] Remove duplicate title (frame title + body "⚙ unipi settings" both show). One clean header line with shortcuts hint.
-- [ ] Value ellipsis for long values (openrouter/google/gemini-3-pro-image…), stable column, [G]/[P] tags consistent, section bands distinct from field rows but uniform width.
-- [ ] Hint line shows the keys that matter for the cursor's row type.
+- [x] Duplicate title removed (frame title only). Section headers get a distinct full-width bg band (width-safe). Per-row hint line already shows the right keys.
+- [x] Value ellipsis + stable column + 1-cell right margin before the frame; [G]/[P] tags on headers. ALSO fixed in live drive: picker prefills search ONLY when the value is in the catalog (custom judge.model used to filter the list to EMPTY).
+- [x] Hint line is per-row-type (scope/boolean/enum/model/text/search/edit/picker).
 
 ## Phase 4 — verify
-- [ ] tmux on coffee + PC (extended-keys OFF), full drive: open (fits screen!), scroll top→bottom (pgdn/pgdn), toggle, edit, picker, search — capture evidence each.
+- [~] coffee tmux VERIFIED: fits (46 box lines ≤ 50) with hint visible; ↓65 more / ↑18 more indicators + NPage scroll top→bottom; inline edit prefilled (0.6→0.7→0.6, file evidence); picker: unfiltered-with-custom-value (the 0-rows bug, now 5 rows) → glm pick → file → restored jev. GOTCHA: tmux key names are PPage/NPage (PageDown/PageDown send nothing). REMAINING: PC tmux pass + search drive.
 - [ ] Herdr-path key test if reachable; at minimum SS3/split-sequence unit coverage.
 - [ ] typecheck 0; full suite EXIT:0; sync coffee; commit per phase; memory + v3-tasks at end.
 
