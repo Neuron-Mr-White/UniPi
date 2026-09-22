@@ -62,7 +62,7 @@ export interface SettingsHubDeps {
 type Mode = "list" | "search" | "input" | "model";
 
 interface Row {
-  readonly kind: "scope" | "header" | "field";
+  readonly kind: "header" | "field";
   readonly id: string;
   readonly label: string;
   readonly namespace?: string;
@@ -138,9 +138,7 @@ export class SettingsHub {
 
   private buildRows(): void {
     const defs = listSettingsDefinitions().filter((d) => d.schema && d.schema.length > 0);
-    const rows: Row[] = [{
-      kind: "scope", id: "::scope", label: "Write scope",
-    }];
+    const rows: Row[] = [];
     for (const def of defs) {
       const layers = settingsLayers(def.namespace, this.cwd);
       const tag = `${layers.global ? "G" : "-"}${layers.project ? "P" : "-"}`;
@@ -159,6 +157,8 @@ export class SettingsHub {
       }
     }
     this.rows = rows;
+    // First row is a header band — start the cursor on a selectable row.
+    this.cursor = Math.max(0, this.nextSelectable(rows, 0));
   }
 
   // ── filtering ───────────────────────────────────────────────────────────
@@ -176,10 +176,6 @@ export class SettingsHub {
     for (const r of this.rows) {
       if (r.kind === "header") {
         currentHeader = r;
-        continue;
-      }
-      if (r.kind === "scope") {
-        if (words.every((w) => "write scope".includes(w))) out.push(r);
         continue;
       }
       const haystack = [
@@ -334,17 +330,12 @@ export class SettingsHub {
       this.onClose();
       return;
     }
+    if (ch === "g") return this.toggleScope();
     if (matchesKey(data, Key.tab) || matchesKey(data, Key.space)) {
       const row = this.currentRow();
-      if (!row) return;
-      const isTab = matchesKey(data, Key.tab);
-      if (row.kind === "scope") {
-        if (isTab) this.toggleScope();
-        return;
-      }
-      if (row.kind !== "field" || !row.field || !row.namespace) return;
+      if (!row || row.kind !== "field" || !row.field || !row.namespace) return;
       const value = getField(this.valueOf(row.namespace), row.field.key);
-      return isTab ? this.handleTab(row, value) : this.handleSpace(row, value);
+      return matchesKey(data, Key.tab) ? this.handleTab(row, value) : this.handleSpace(row, value);
     }
   }
 
@@ -553,9 +544,6 @@ export class SettingsHub {
       const plain = this.exactRow(`  ${row.label}${tag}`, inner);
       return overlayTheme.bg("customMessageBg", dim(bold(plain)));
     }
-    if (row.kind === "scope") {
-      return this.exactRow(this.rowColumns(cursor, "  Write scope", this.scope, inner, selected), inner);
-    }
     const field = row.field!;
     const value = getField(this.valueOf(row.namespace!), field.key);
     // Value only — no per-row key hints (they read inconsistently); the
@@ -605,20 +593,20 @@ export class SettingsHub {
     if (this.mode === "model") return "↑↓/kj pick · enter select · esc cancel";
     const recover = `${this.history.length > 0 ? "u undo · " : ""}d default · R revert`;
     const row = this.currentRow();
-    if (row?.kind === "scope") return `tab switch global/project · ${recover} · esc close`;
     const f = row?.field;
-    if (!f) return `↑↓/kj move · / search · ${recover} · esc close`;
+    if (!f) return `↑↓/kj · / search · g scope · ${recover}`;
+    const scope = "g scope";
     switch (f.type) {
       case "boolean":
-        return `space/tab toggle · ↑↓/kj · / search · ${recover}`;
+        return `space/tab toggle · ↑↓/kj · / search · ${scope} · ${recover}`;
       case "enum":
         return f.allowCustom
-          ? `tab cycle · space custom · ↑↓/kj · ${recover}`
-          : `tab cycle · ↑↓/kj · / search · ${recover}`;
+          ? `tab cycle · space custom · ↑↓/kj · ${scope} · ${recover}`
+          : `tab cycle · ↑↓/kj · / search · ${scope} · ${recover}`;
       case "model":
-        return `space/tab pick model · ↑↓/kj · ${recover}`;
+        return `space/tab pick model · ↑↓/kj · ${scope} · ${recover}`;
       default:
-        return `space edit · ↑↓/kj · / search · ${recover}`;
+        return `space edit · ↑↓/kj · / search · ${scope} · ${recover}`;
     }
   }
 
@@ -662,7 +650,8 @@ export class SettingsHub {
     body.push(this.exactRow(dim(`  ${this.hintLine()}`), inner));
     this.toast = null; // shown for exactly one render
     return frameOverlay(body, width, {
-      title: bold(" unipi settings "),
+      // Scope lives in the TITLE — it's global state, not a list row.
+      title: bold(` unipi settings — ${this.scope} [g] `),
       borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
     });
   }

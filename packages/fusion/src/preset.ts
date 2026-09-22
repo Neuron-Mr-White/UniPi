@@ -219,8 +219,8 @@ registerSettings({
       title: "Default pair",
       description: "Used when the Fusion row is confirmed without editing",
       fields: [
-        { key: "default.lead", type: "model", label: "Lead" },
-        { key: "default.sidekick", type: "model", label: "Sidekick" },
+        { key: "default.lead", type: "model", label: "Lead", emptyLabel: "picker default" },
+        { key: "default.sidekick", type: "model", label: "Sidekick", emptyLabel: "picker default" },
       ],
     },
   ],

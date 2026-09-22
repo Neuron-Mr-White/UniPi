@@ -90,6 +90,7 @@ registerSettings({
         },
         { key: "model", type: "model", label: "Model" },
         { key: "dimensions", type: "number", label: "Dimensions", min: 1 },
+        { key: "apiKey", type: "secret", label: "OpenRouter key", emptyLabel: "unset (no semantic search)" },
         { key: "mempalaceAutoUpdate", type: "boolean", label: "MemPalace auto-update", description: "Daily PyPI check + uv upgrade" },
       ],
     },

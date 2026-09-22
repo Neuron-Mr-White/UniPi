@@ -9,13 +9,13 @@ always one key away** (recoverable by construction), not staged buffers.
 - [x] Tests: undo file-evidence + one-render toast, default reset, baseline revert, 50-cap LIFO across toggles, empty-stack no-op. 35/35 green.
 
 ## Phase 2 — scope into the title (item 2)
-- [ ] Frame title becomes ` unipi settings — global [tab] ` (scope segment IN the title, Tab toggles from anywhere). DELETE the Write-scope row entirely. Filter matching for "scope" words keeps working via the title? (no — remove scope-row search match; document).
-- [ ] Tab toggles scope regardless of cursor row EXCEPT inside editor/picker inputs (unchanged). Tests updated (row indices shift: scope row gone).
+- [x] Title carries the scope: ` unipi settings — global [g] `. Write-scope row DELETED (rows start at the first header; cursor initializes past it). DEVATION (guardrail conflict): 'Tab toggles from anywhere' would break Tab=toggle/cycle semantics — scope toggles on **`g`** (global key, like u/d/R) instead; Tab per-row semantics untouched.
+- [x] `g` toggles scope from anywhere in list mode; editor/picker unaffected. Tests: title shows scope + g-switch + project write; nav/home/end/kitty start rows updated (38/38).
 
 ## Phase 3 — friendly defaults (item 3)
-- [ ] schema: `emptyLabel?: string` (string/model/secret when "" or undefined), `zeroLabel?: string` (number when 0). formatFieldValue renders them; parse stays strict.
-- [ ] Apply: verifierModel + badge.generationModel + image.recognize.model → "inherit (session model)"; judge.timeoutMs 0 → "auto (1s native / 6s chat)"; timeout 0 fields (bg-tasks defaultTimeoutSeconds, delegate.timeoutSeconds stays) → "∞ none"; judge.apiKey empty → "env / bridge fallback"; fusion lead/sidekick empty → "picker default"; memory apiKey "" → "unset".
-- [ ] Tests: emptyLabel/zeroLabel rendering incl. secret masking precedence.
+- [x] schema: emptyLabel (string/model/secret) + zeroLabel (number); formatFieldValue renders them; secret masking WINS over emptyLabel; parse stays strict.
+- [x] Applied: verifierModel/badge.generationModel/recognize.model → 'inherit (session model)'; judge.timeoutMs 0 → 'auto (1s native / 6s chat)'; judge.baseUrl → 'provider default'; judge.apiKey → 'env / bridge fallback'; bg-tasks timeout 0 → '∞ none'; fusion pair → 'picker default'; memory apiKey field ADDED with 'unset (no semantic search)'.
+- [x] Tests: emptyLabel/zeroLabel rendering + secret-masking precedence + live rows (38/38).
 
 ## Phase 4 — enum+custom flow (item 4)
 - [ ] allowCustom enums: Space opens an OPTION-LIST page (same 5-row windowed picker as models) listing enum options + `custom…`; Enter picks (instant); picking `custom…` opens the inline input (prefilled). Tab remains quick-cycle incl. custom… landing→input. Custom values display as `⚙ <value>` (marker) so state is visible.

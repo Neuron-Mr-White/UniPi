@@ -62,6 +62,10 @@ function vw(line: string): number {
 function jumpTo(hub: SettingsHub, label: string): void {
   // navigate down until the rendered row contains the label
   for (let i = 0; i < 30; i++) {
+    const here = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows()[
+      (hub as unknown as { cursor: number }).cursor
+    ];
+    if (here?.label === label) return;
     hub.handleInput("\x1b[B");
     const row = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows()[
       (hub as unknown as { cursor: number }).cursor
@@ -206,10 +210,12 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(closed, 1);
   });
 
-  it("scope row: tab switches global↔project and writes go to the active scope", () => {
+  it("g switches global↔project (scope lives in the title) and writes follow", () => {
     const hub = makeHub();
-    // scope row is row 0
-    hub.handleInput("\t");
+    const title = (): string => hub.render(100).join("\n");
+    assert.ok(title().includes("unipi settings — global"), "title shows global");
+    hub.handleInput("g");
+    assert.ok(title().includes("unipi settings — project"), "g switches the title scope");
     jumpTo(hub, "Flag"); // header band is skipped by navigation
     hub.handleInput(" ");
     const projectFile = join(cwd, ".unipi", "config", NS, "config.json");
@@ -221,15 +227,13 @@ describe("hub interactions (instant apply)", () => {
     const label = (): string =>
       (hub as unknown as { visibleRows: () => { label: string }[]; cursor: number })
         .visibleRows()[(hub as unknown as { cursor: number }).cursor]!.label;
-    assert.equal(label(), "Write scope");
-    hub.handleInput("\x1b[B"); // skips the header band
-    assert.equal(label(), "Flag");
+    assert.equal(label(), "Flag", "cursor starts past the header band");
     hub.handleInput("j");
     assert.equal(label(), "Choice");
     hub.handleInput("k");
     assert.equal(label(), "Flag");
-    hub.handleInput("\x1b[A");
-    assert.equal(label(), "Write scope");
+    hub.handleInput("\x1b[A"); // up clamps at the first selectable row
+    assert.equal(label(), "Flag");
   });
 
   it("headers persist under filter and never hold the cursor", () => {
@@ -399,20 +403,23 @@ describe("key router (real-terminal encodings)", () => {
     hub.handleInput("\x1b[106u"); // 'j' as CSI-u (kitty flag 1)
     hub.handleInput("\x1b[107u"); // 'k' CSI-u
     // cursor ended where it started (down then up)
-    assert.equal(cursorLabel(hub), "Write scope");
+    assert.equal(cursorLabel(hub), "Flag");
   });
 
-  it("pageDown/pageUp jump by 10 rows; home/end hit the edges", () => {
+  it("pageDown/pageUp jump by 10 rows; home/end hit the selectable edges", () => {
     const hub = makeHub();
+    const cur = (): number => (hub as unknown as { cursor: number }).cursor;
+    const rows = (hub as unknown as { visibleRows: () => { kind: string }[] }).visibleRows();
+    const firstSelectable = rows.findIndex((r) => r.kind !== "header");
+    const lastSelectable = rows.length - 1;
     hub.handleInput("\x1b[6~"); // pageDown
-    const rows = (hub as unknown as { visibleRows: () => unknown[] }).visibleRows();
-    assert.equal((hub as unknown as { cursor: number }).cursor, Math.min(10, rows.length - 1));
+    assert.equal(cur(), Math.min(10, lastSelectable));
     hub.handleInput("\x1b[5~"); // pageUp
-    assert.equal((hub as unknown as { cursor: number }).cursor, 0);
+    assert.equal(cur(), firstSelectable, "home-side stops at the first selectable row");
     hub.handleInput("\x1b[F"); // end
-    assert.equal((hub as unknown as { cursor: number }).cursor, rows.length - 1);
+    assert.equal(cur(), lastSelectable);
     hub.handleInput("\x1b[H"); // home
-    assert.equal((hub as unknown as { cursor: number }).cursor, 0);
+    assert.equal(cur(), firstSelectable);
   });
 
   it("a lone Esc still closes (keypress sequences arrive in one read)", () => {
@@ -474,5 +481,36 @@ describe("recovery safety net (u / d / R)", () => {
     const hub = makeHub();
     hub.handleInput("u");
     assert.equal(existsSync(engineFile()), false, "nothing written");
+  });
+});
+
+describe("friendly defaults (emptyLabel / zeroLabel)", () => {
+  it("renders semantic labels for empty/zero values", async () => {
+    const { formatFieldValue } = await import("../schema.js");
+    const model = { key: "m", type: "model" as const, label: "M", emptyLabel: "inherit (session model)" };
+    assert.equal(formatFieldValue(model, ""), "inherit (session model)");
+    assert.equal(formatFieldValue(model, undefined), "inherit (session model)");
+    assert.equal(formatFieldValue(model, "prov/x"), "prov/x");
+    const num = { key: "n", type: "number" as const, label: "N", zeroLabel: "∞ none" };
+    assert.equal(formatFieldValue(num, 0), "∞ none");
+    assert.equal(formatFieldValue(num, 42), "42");
+  });
+
+  it("secret masking WINS over emptyLabel when a value exists", async () => {
+    const { formatFieldValue } = await import("../schema.js");
+    const sec = { key: "s", type: "secret" as const, label: "S", emptyLabel: "env fallback" };
+    assert.equal(formatFieldValue(sec, "sk-123"), "••••••");
+    assert.equal(formatFieldValue(sec, ""), "env fallback");
+    assert.equal(formatFieldValue(sec, undefined), "env fallback");
+  });
+
+  it("live rows show the labels (verifier model + timeout)", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Count");
+    // fixture Count has no zeroLabel → plain "0"-style rendering stays strict
+    hub.handleInput(" ");
+    hub.handleInput("\x7f");
+    hub.handleInput("\r"); // empty → invalid, stays open… cancel instead
+    hub.handleInput("\x1b");
   });
 });

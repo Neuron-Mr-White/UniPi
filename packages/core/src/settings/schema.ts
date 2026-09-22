@@ -27,7 +27,14 @@ export type SettingsField =
        */
       readonly allowCustom?: boolean;
     }
-  | { readonly key: string; readonly type: "string"; readonly label: string; readonly description?: string }
+  | {
+      readonly key: string;
+      readonly type: "string";
+      readonly label: string;
+      readonly description?: string;
+      /** Shown when the value is "" or unset (e.g. "inherit (session model)"). */
+      readonly emptyLabel?: string;
+    }
   | {
       readonly key: string;
       readonly type: "number";
@@ -35,8 +42,17 @@ export type SettingsField =
       readonly description?: string;
       readonly min?: number;
       readonly max?: number;
+      /** Shown when the value is 0 (e.g. "∞ none" for timeouts). */
+      readonly zeroLabel?: string;
     }
-  | { readonly key: string; readonly type: "secret"; readonly label: string; readonly description?: string }
+  | {
+      readonly key: string;
+      readonly type: "secret";
+      readonly label: string;
+      readonly description?: string;
+      /** Shown when unset (masking wins when a value exists). */
+      readonly emptyLabel?: string;
+    }
   | {
       /** Model id ("provider/model") — searchable 5-row picker in the hub. */
       readonly key: string;
@@ -45,6 +61,8 @@ export type SettingsField =
       readonly description?: string;
       /** Restrict the picker to one provider's catalog (empty = all). */
       readonly provider?: string;
+      /** Shown when "" (e.g. "inherit (session model)"). */
+      readonly emptyLabel?: string;
     };
 
 export interface SettingsSection {
@@ -100,10 +118,20 @@ export function formatFieldValue(field: SettingsField, value: unknown): string {
       const match = field.options.map(enumOption).find((o) => o.value === String(value));
       return match ? match.label : String(value);
     }
-    case "secret":
-      return typeof value === "string" && value.length > 0 ? "••••••" : "unset";
-    default:
+    case "secret": {
+      // Masking wins whenever a value exists.
+      if (typeof value === "string" && value.length > 0) return "••••••";
+      return field.emptyLabel ?? "unset";
+    }
+    case "number":
+      if (value === 0 && field.type === "number" && field.zeroLabel) return field.zeroLabel;
       return value === undefined || value === null ? "unset" : String(value);
+    default: {
+      if ((value === undefined || value === null || value === "") && "emptyLabel" in field && field.emptyLabel) {
+        return field.emptyLabel;
+      }
+      return value === undefined || value === null ? "unset" : String(value);
+    }
   }
 }
 

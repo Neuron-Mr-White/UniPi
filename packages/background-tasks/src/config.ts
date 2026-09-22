@@ -198,7 +198,7 @@ registerSettings({
         { key: "enabled", type: "boolean", label: "Enabled", description: "Master toggle — off registers nothing" },
         { key: "notifyOnCompletion", type: "boolean", label: "Notify on completion" },
         { key: "triggerOnCompletion", type: "boolean", label: "Follow-up wake", description: "Terminal state wakes the agent" },
-        { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0 },
+        { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0, zeroLabel: "∞ none" },
         { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1 },
       ],
     },
