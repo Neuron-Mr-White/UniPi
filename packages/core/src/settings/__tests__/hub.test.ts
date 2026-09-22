@@ -118,7 +118,7 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(readEngine().choice, "b", "space must not change a plain enum");
   });
 
-  it("allowCustom enum: tab walks options then custom… opens the prefilled input", () => {
+  it("allowCustom enum: tab quick-cycles; Space opens the option list", () => {
     const hub = makeHub();
     jumpTo(hub, "Custom");
     hub.handleInput("\t"); // a → b
@@ -127,9 +127,31 @@ describe("hub interactions (instant apply)", () => {
     hub.handleInput("z"); // append → "bz"
     hub.handleInput("\r"); // Enter saves
     assert.equal(readEngine().custom, "bz");
-    hub.handleInput(" "); // space jumps straight to custom editor from any position
-    hub.handleInput("\r"); // save prefilled "bz" unchanged
-    assert.equal(readEngine().custom, "bz");
+
+    // Space opens the OPTION LIST (a, b, custom…) — small lists show no search.
+    hub.handleInput(" ");
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("custom…"), "list shows the custom… entry");
+    assert.ok(!flat.includes("search:"), "no search box for ≤8 options");
+    hub.handleInput("\x1b[B"); // down → "b"
+    hub.handleInput("\x1b[B"); // down → "custom…"
+    hub.handleInput("\r"); // pick custom… → editor prefilled "bz"
+    hub.handleInput("X");
+    hub.handleInput("\r");
+    assert.equal(readEngine().custom, "bzX", "custom… path edits the raw value");
+
+    // Picking a LISTED option applies instantly (list starts on the first option
+    // when the current value is custom and not listed).
+    hub.handleInput(" ");
+    hub.handleInput("\r");
+    assert.equal(readEngine().custom, "a");
+  });
+
+  it("custom enum values display with the ⚙ marker", async () => {
+    const { formatFieldValue } = await import("../schema.js");
+    const f = { key: "c", type: "enum" as const, label: "C", options: ["a", "b"], allowCustom: true };
+    assert.equal(formatFieldValue(f, "a"), "a");
+    assert.equal(formatFieldValue(f, "weird"), "⚙ weird");
   });
 
   it("inline input: prefilled with cursor at end, Enter saves, Esc cancels", () => {
@@ -512,5 +534,40 @@ describe("friendly defaults (emptyLabel / zeroLabel)", () => {
     hub.handleInput("\x7f");
     hub.handleInput("\r"); // empty → invalid, stays open… cancel instead
     hub.handleInput("\x1b");
+  });
+});
+
+describe("progressive disclosure (advanced sections)", () => {
+  it("advanced sections collapse behind one toggle; Space expands; search reveals", () => {
+    registerSettings({
+      namespace: "hubtestadv",
+      label: "Adv",
+      defaults: { open: true, secretCfg: "top" },
+      schema: [
+        { title: "Main", fields: [{ key: "open", type: "boolean", label: "Open" }] },
+        { title: "Tuning", advanced: true, fields: [{ key: "secretCfg", type: "string", label: "Secret cfg" }] },
+      ],
+    });
+    const hub = makeHub();
+    const flat = (): string => hub.render(100).join("\n");
+    assert.ok(!flat().includes("Secret cfg"), "advanced field hidden by default");
+    assert.ok(flat().includes("▸ Advanced"), "toggle row present");
+
+    // search finds advanced fields even when collapsed
+    hub.handleInput("/");
+    hub.handleInput("secret cfg");
+    assert.ok(flat().includes("Secret cfg"), "filter reveals advanced fields");
+    hub.handleInput("\x1b"); // clear filter
+
+    // Space on the toggle expands
+    const h = hub as unknown as { visibleRows: () => { label: string; kind: string }[]; cursor: number };
+    const idx = h.visibleRows().findIndex((r) => r.label.includes("Advanced"));
+    assert.ok(idx >= 0);
+    h.cursor = idx;
+    hub.handleInput(" ");
+    assert.ok(flat().includes("Secret cfg"), "expanded shows advanced fields");
+    assert.ok(flat().includes("▾ Advanced"), "toggle flips open");
+    hub.handleInput(" ");
+    assert.ok(!flat().includes("Secret cfg"), "Space collapses again");
   });
 });

@@ -70,6 +70,11 @@ export interface SettingsSection {
   readonly title: string;
   readonly description?: string;
   readonly fields: readonly SettingsField[];
+  /**
+   * Progressive disclosure: collapsed behind the namespace's "▸ Advanced"
+   * toggle. Search still finds these fields (filter reveals them).
+   */
+  readonly advanced?: boolean;
 }
 
 /** Read the value at a dot-path key from a settings object. */
@@ -116,7 +121,9 @@ export function formatFieldValue(field: SettingsField, value: unknown): string {
     case "enum": {
       if (value === undefined || value === null) return "unset";
       const match = field.options.map(enumOption).find((o) => o.value === String(value));
-      return match ? match.label : String(value);
+      if (match) return match.label;
+      // Custom value on an allowCustom enum — visible state marker.
+      return field.allowCustom ? `⚙ ${String(value)}` : String(value);
     }
     case "secret": {
       // Masking wins whenever a value exists.

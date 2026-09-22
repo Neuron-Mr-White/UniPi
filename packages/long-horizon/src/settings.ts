@@ -18,8 +18,8 @@ import type { LhMode } from "./modes.js";
 export interface JudgeSettings {
   /** Master switch. Off → default_mode is exposed, no judge calls. */
   enabled: boolean;
-  /** Where the judgment call goes. */
-  provider: "typesafe" | "openrouter";
+  /** Where the judgment call goes. "auto" derives the transport from the model. */
+  provider: "auto" | "typesafe" | "openrouter";
   /** Model id (typesafe: jev-latest; openrouter: any routing-capable model). */
   model: string;
   /** Base URL override; empty = provider default. */
@@ -52,7 +52,7 @@ export interface LongHorizonSettings {
 export const DEFAULT_SETTINGS: LongHorizonSettings = {
   judge: {
     enabled: false,
-    provider: "typesafe",
+    provider: "auto",
     model: "jev-latest",
     baseUrl: "",
     threshold: 0.6,
@@ -96,7 +96,7 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
   return {
     judge: {
       enabled: typeof judge.enabled === "boolean" ? judge.enabled : DEFAULT_SETTINGS.judge.enabled,
-      provider: judge.provider === "openrouter" ? "openrouter" : "typesafe",
+      provider: judge.provider === "openrouter" || judge.provider === "auto" ? judge.provider : "typesafe",
       model: typeof judge.model === "string" && judge.model ? judge.model : DEFAULT_SETTINGS.judge.model,
       baseUrl: typeof judge.baseUrl === "string" ? judge.baseUrl : "",
       threshold:
@@ -129,7 +129,7 @@ registerSettings({
   schema: [
     {
       title: "Judge",
-      description: "Prompt → mode routing (TypeSafe jev via OpenRouter, or any chat model)",
+      description: "Prompt → mode routing — the transport derives from the model",
       fields: [
         { key: "judge.enabled", type: "boolean", label: "Judge enabled", description: "Route new prompts automatically; off = always defaultMode" },
         {
@@ -137,14 +137,32 @@ registerSettings({
           type: "enum",
           label: "Provider",
           options: [
+            { value: "auto", label: "auto (from model)" },
             { value: "typesafe", label: "typesafe (native systemone)" },
             { value: "openrouter", label: "openrouter (jev or chat)" },
           ],
-          description: "jev models auto-use the decisions endpoint",
+          description: "auto routes jev models to the decisions endpoint, others to chat",
         },
-        { key: "judge.model", type: "model", label: "Model", description: "jev models auto-use the decisions endpoint" },
-        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "oino proxy = https://router.oino.dev/v1", emptyLabel: "provider default" },
+        { key: "judge.model", type: "model", label: "Model", description: "transport derives from the model — jev → decisions, others → chat" },
         { key: "judge.threshold", type: "number", label: "Confidence threshold", description: "Below this the judge abstains (0-1)", min: 0.01, max: 1 },
+      ],
+    },
+    {
+      title: "Judge — Advanced",
+      advanced: true,
+      description: "Rarely needed — the model pick usually decides everything",
+      fields: [
+        {
+          key: "judge.provider",
+          type: "enum",
+          label: "Provider",
+          options: [
+            { value: "auto", label: "auto (from model)" },
+            { value: "typesafe", label: "typesafe (native systemone)" },
+            { value: "openrouter", label: "openrouter (jev or chat)" },
+          ],
+        },
+        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "oino proxy = https://router.oino.dev/v1", emptyLabel: "provider default" },
         { key: "judge.timeoutMs", type: "number", label: "Timeout ms", min: 0, zeroLabel: "auto (1s native / 6s chat)" },
         { key: "judge.apiKey", type: "secret", label: "API key", description: "Stored key wins over env (works in tmux/ssh-c/systemd)", emptyLabel: "env / bridge fallback" },
       ],

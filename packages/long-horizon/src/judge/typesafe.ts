@@ -46,11 +46,16 @@ export const JUDGE_TIMEOUT_OPENROUTER_MS = 6_000;
 /** Resolve the judge abort budget: explicit override, else provider default. */
 export function judgeTimeoutMs(settings: JudgeSettings): number {
   if (settings.timeoutMs && settings.timeoutMs > 0) return settings.timeoutMs;
-  return settings.provider === "openrouter" ? JUDGE_TIMEOUT_OPENROUTER_MS : JUDGE_TIMEOUT_MS;
+  return effectiveProvider(settings) === "openrouter" ? JUDGE_TIMEOUT_OPENROUTER_MS : JUDGE_TIMEOUT_MS;
+}
+
+/** "auto" resolves to the openrouter-shape transport (it self-detects jev). */
+export function effectiveProvider(settings: JudgeSettings): "typesafe" | "openrouter" {
+  return settings.provider === "typesafe" ? "typesafe" : "openrouter";
 }
 
 function apiKey(settings: JudgeSettings, env: Record<string, string | undefined>): string | undefined {
-  return settings.provider === "typesafe" ? env.TYPESAFE_API_KEY : env.OPENROUTER_API_KEY;
+  return effectiveProvider(settings) === "typesafe" ? env.TYPESAFE_API_KEY : env.OPENROUTER_API_KEY;
 }
 
 function baseUrl(settings: JudgeSettings): string {
@@ -239,7 +244,7 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
 }
 
 export function createJudgeTransport(deps: JudgeDeps): JudgeTransport {
-  return deps.settings.provider === "openrouter"
+  return effectiveProvider(deps.settings) === "openrouter"
     ? createOpenRouterTransport(deps)
     : createTypesafeTransport(deps);
 }

@@ -45,7 +45,13 @@ const invalidMode: FetchLike = async () =>
 const httpError: FetchLike = async () => new Response("server exploded", { status: 500 });
 
 function settings(overrides: Partial<typeof DEFAULT_SETTINGS> = {}, judge: Partial<typeof DEFAULT_SETTINGS.judge> = {}) {
-  return { ...DEFAULT_SETTINGS, ...overrides, judge: { ...DEFAULT_SETTINGS.judge, ...judge } };
+  // Native systemone is the TEST default (these cases mock /v1/systemone);
+  // runtime default is "auto" — covered by the provider-auto test below.
+  return {
+    ...DEFAULT_SETTINGS,
+    ...overrides,
+    judge: { ...DEFAULT_SETTINGS.judge, provider: "typesafe" as const, ...judge },
+  };
 }
 
 const owner = (kind: OwnerState["kind"]): OwnerState => ({
@@ -230,4 +236,23 @@ test("cache: identical prompt within TTL does not hit the transport twice", asyn
   assert.equal(first.source, "judge");
   assert.equal(second.source, "judge");
   assert.equal(calls, 1);
+});
+
+test("provider auto derives the transport from the model", async () => {
+  const { createJudgeTransport, effectiveProvider } = await import("../judge/typesafe.js");
+  const base = { threshold: 0.6, timeoutMs: 0, apiKey: "", baseUrl: "" };
+  // jev-shaped model + auto → openrouter shape (decisions endpoint inside)
+  const jev = { ...base, enabled: true, provider: "auto" as const, model: "typesafe/jev-1.13" };
+  assert.equal(effectiveProvider(jev), "openrouter");
+  assert.equal(createJudgeTransport({ settings: jev }).provider, "openrouter");
+  // chat model + auto → openrouter chat shape
+  const chat = { ...base, enabled: true, provider: "auto" as const, model: "zai/glm-5.3-flash" };
+  assert.equal(createJudgeTransport({ settings: chat }).provider, "openrouter");
+  // explicit native honored
+  const native = { ...base, enabled: true, provider: "typesafe" as const, model: "jev-latest" };
+  assert.equal(effectiveProvider(native), "typesafe");
+  assert.equal(createJudgeTransport({ settings: native }).provider, "typesafe");
+  // explicit openrouter honored
+  const or = { ...base, enabled: true, provider: "openrouter" as const, model: "jev-latest" };
+  assert.equal(effectiveProvider(or), "openrouter");
 });

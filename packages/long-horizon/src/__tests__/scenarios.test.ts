@@ -68,7 +68,12 @@ function world(settings: LongHorizonSettings = DEFAULT_SETTINGS): World {
   const pi = fakePi();
   // ONE shared mutable settings object: the gate and runtime must observe
   // judgeOn() flips together.
-  const shared: LongHorizonSettings = { ...settings, judge: { ...settings.judge } };
+  const shared: LongHorizonSettings = {
+    ...settings,
+    // These worlds mock the native /v1/systemone transport; runtime default
+    // is "auto" (covered by the provider-auto unit test in judge.test.ts).
+    judge: { ...settings.judge, provider: "typesafe" },
+  };
   const gate = new Gate({
     owner,
     loadSettings: () => shared,

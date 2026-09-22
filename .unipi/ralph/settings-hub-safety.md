@@ -18,13 +18,13 @@ always one key away** (recoverable by construction), not staged buffers.
 - [x] Tests: emptyLabel/zeroLabel rendering + secret-masking precedence + live rows (38/38).
 
 ## Phase 4 — enum+custom flow (item 4)
-- [ ] allowCustom enums: Space opens an OPTION-LIST page (same 5-row windowed picker as models) listing enum options + `custom…`; Enter picks (instant); picking `custom…` opens the inline input (prefilled). Tab remains quick-cycle incl. custom… landing→input. Custom values display as `⚙ <value>` (marker) so state is visible.
-- [ ] Reuse the picker renderer generically (options list + search only when >8 options). Tests: space→list→pick; custom…→input; tab-cycle unchanged.
+- [x] allowCustom enums: Space opens the OPTION-LIST (options + custom…, 5-row window, NO search ≤8 — j/k walk in that mode); Enter picks instantly; custom… → inline editor prefilled raw. Tab quick-cycle incl. custom… landing→input. Custom values show `⚙ <value>`.
+- [x] Picker generalized (options/values/selected/searchable). Tests: space→list→pick, custom…→editor, ⚙ marker, tab-cycle unchanged (40/40).
 
 ## Phase 5 — judge backend for newbies (item 5)
-- [ ] Sections gain `advanced?: true`. Hub renders advanced sections collapsed behind one "▸ Advanced" toggle row at the group end ('a' or Space on the row expands; state in-memory). Judge: visible = enabled, model, threshold; ADVANCED = provider, baseUrl, timeoutMs, apiKey.
-- [ ] provider enum gains "auto" (default): resolve at runtime — model looks jev-ish (typesafe/ or *jev*) → decisions transport (openrouter shape); explicit "typesafe (native)" forces native /v1/systemone. Derivation in long-horizon settings normalize, NOT in the hub. Description on model field: "transport derives from the model".
-- [ ] Tests: advanced collapse/expand; auto provider resolution table (jev→decisions, glm→chat, explicit native honored).
+- [x] Sections gain advanced?:true. One '▸/▾ Advanced' toggle row at the namespace end (Space/Enter flips; rows tagged advancedOf; FILTER reveals advanced fields even when collapsed). Judge: visible = enabled/model/threshold; Judge — Advanced = provider/baseUrl/timeoutMs/apiKey.
+- [x] provider 'auto' (NEW default) via effectiveProvider(): auto → openrouter-shape (transport self-detects jev→decisions vs chat); explicit typesafe → native systemone. Model field description: 'transport derives from the model'. Legacy judge/scenario tests pinned native provider (their mocks target systemone).
+- [x] Tests: advanced collapse/expand/filter-reveal; provider resolution table (auto+jev→openrouter decisions shape, auto+glm→chat shape, explicit native honored). 40/40 hub + 15/15 judge + 7/7 scenarios; full suite EXIT:0.
 
 ## Phase 6 — per-category flows return (item 6)
 - [ ] Hub gains nested PAGES + ACTION rows:

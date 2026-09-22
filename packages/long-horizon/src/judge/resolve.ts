@@ -14,7 +14,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { askJudge, createJudgeTransport, judgeTimeoutMs, type FetchLike, type JudgeTransport } from "./typesafe.js";
+import { askJudge, createJudgeTransport, effectiveProvider, judgeTimeoutMs, type FetchLike, type JudgeTransport } from "./typesafe.js";
 import { judgeEnv } from "./omniroute-key.js";
 import type { LhMode } from "../modes.js";
 import { modeForOwnerKind } from "../modes.js";
@@ -81,7 +81,7 @@ async function consultJudge(
     settings.judge.apiKey,
   );
   const hasKey =
-    settings.judge.provider === "typesafe"
+    effectiveProvider(settings.judge) === "typesafe"
       ? Boolean(env.TYPESAFE_API_KEY)
       : Boolean(env.OPENROUTER_API_KEY);
   if (!settings.judge.enabled || !hasKey) return null;
