@@ -30,7 +30,7 @@ Authoritative spec (user, 2026-09-22). Test on **coffee** via tmux (`ssh coffee`
 - [x] tmux on coffee VERIFIED: panel opens (15 modules/10 sections per screen); boolean toggle on→off→on (judge.enabled, engine file verified both ways); number edit prefilled inline (threshold 0.6→0.7→0.6); enum cycle (updater autoUpdate notify→auto→disabled→notify); model picker (verifierModel: search glm → 5-row window → down → enter → engine write verified); scope Tab global→project + project write landed in ./pi-test/.unipi/config/notify/config.json. FIXES during verification: word-wise AND search across label+section+module (single-string search emptied the panel on 'judge model'); judge.model/verifierModel/badge.generationModel retyped string→model. GOTCHAs: session-name badge overlay must be dismissed (Esc) before driving; tmux extended-keys ON breaks Space/Enter encoding — keep OFF.
 - [x] PC tmux VERIFIED (pi 0.86.1): panel opens, sections render, Tab navigation + boolean toggles + scope switch + PROJECT-scope writes all verified (ask-user enabled toggle landed in ./pi-test/.unipi/config/ask-user/config.json). pi 0.86 delivers Enter as \n in overlay paths — added \r||\n handling (coffee's 0.87 uses \r).
 - [x] typecheck 0 errors · full suite EXIT:0 · synced to coffee.
-- [ ] Commit per phase; update docs/v3-tasks.md checkboxes + memory at end.
+- [x] Committed per phase (490e0c9, 8466c62, d293648, 81fd694, c60ad26); v3-tasks.md updated; memory stored (settings_hub_ux_verified_all_fifteen_modules).
 
 ## Guardrails
 - Instant-apply only — NO staged/pending state anywhere.
