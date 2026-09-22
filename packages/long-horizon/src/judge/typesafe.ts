@@ -157,9 +157,28 @@ export function createTypesafeTransport(deps: JudgeDeps): JudgeTransport {
 }
 
 /**
- * OpenRouter transport: jev served as a chat model. Same decision shape via a
- * JSON-constrained completion; the prompt mirrors the System One question.
+ * OpenRouter transport. Two shapes, auto-detected by model id:
+ *
+ *   - DECISIONS models (typesafe/jev-*): served via /api/alpha/decisions —
+ *     OpenRouter's hosting of TypeSafe's System One protocol. Same payload
+ *     and response shape as the native /v1/systemone call (choice +
+ *     probabilities + calibrated confidence), ~0.5s, ~$0.00002/call.
+ *   - Chat models (anything else): JSON-constrained chat completion; the
+ *     prompt mirrors the System One question.
  */
+function isDecisionsModel(model: string): boolean {
+  const m = model.toLowerCase();
+  return m.startsWith("typesafe/") || m.includes("jev");
+}
+
+function decisionsUrl(settings: JudgeSettings): string {
+  const base = baseUrl(settings);
+  // OpenRouter's alpha decisions path. A configured base already ending in a
+  // version segment is treated as the API root (same convention as chat).
+  if (/\/(?:api\/alpha|api\/)?v\d+$/.test(base)) return `${base}/decisions`;
+  return `${base}/api/alpha/decisions`;
+}
+
 export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
   const { settings } = deps;
   const fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
@@ -170,12 +189,25 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
     "goal = one objective pursued until verifiably true; ralph = work through a task file " +
     "over iterations; swarm = independent parallel items then synthesize; graph = later steps " +
     "depend on earlier results; none = straight-to-the-point small request. Be conservative.";
+  const useDecisions = isDecisionsModel(settings.model);
   return {
     provider: "openrouter",
     async ask(state, signal) {
       const key = apiKey(settings, env);
       if (!key) return null;
       try {
+        if (useDecisions) {
+          // System One shape — parseAnswer reads answers.<q>.choice/confidence,
+          // which OpenRouter's decisions endpoint returns verbatim.
+          const raw = await postJson(
+            fetchImpl,
+            decisionsUrl(settings),
+            { authorization: `Bearer ${key}`, "x-title": "unipi-long-horizon" },
+            { state, model: settings.model, questions: buildQuestions() },
+            signal,
+          );
+          return parseAnswer(raw);
+        }
         const raw = await postJson(
           fetchImpl,
           chatCompletionsUrl(settings),
