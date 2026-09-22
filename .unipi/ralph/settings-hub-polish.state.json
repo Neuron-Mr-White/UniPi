@@ -1,7 +1,7 @@
 {
   "name": "settings-hub-polish",
   "taskFile": ".unipi/ralph/settings-hub-polish.md",
-  "iteration": 2,
+  "iteration": 3,
   "maxIterations": 30,
   "itemsPerIteration": 2,
   "reflectEvery": 4,

@@ -24,9 +24,9 @@ Goal: a panel that FITS the screen, PAINTS uniformly, and NAVIGATES everywhere.
 - [x] Hint line is per-row-type (scope/boolean/enum/model/text/search/edit/picker).
 
 ## Phase 4 — verify
-- [~] coffee tmux VERIFIED: fits (46 box lines ≤ 50) with hint visible; ↓65 more / ↑18 more indicators + NPage scroll top→bottom; inline edit prefilled (0.6→0.7→0.6, file evidence); picker: unfiltered-with-custom-value (the 0-rows bug, now 5 rows) → glm pick → file → restored jev. GOTCHA: tmux key names are PPage/NPage (PageDown/PageDown send nothing). REMAINING: PC tmux pass + search drive.
-- [ ] Herdr-path key test if reachable; at minimum SS3/split-sequence unit coverage.
-- [ ] typecheck 0; full suite EXIT:0; sync coffee; commit per phase; memory + v3-tasks at end.
+- [x] coffee + PC tmux VERIFIED (0.87 + 0.86): fits (46 box lines ≤ 50) with hint visible; ↓65 more / ↑18 more indicators + NPage scroll; inline edit prefilled (0.6→0.7→0.6, file evidence both machines); picker unfiltered-with-custom-value → glm pick → file → jev restored; SEARCH drive: multi-word 'judge model' matches section+label+description (cursor on Provider — description says 'model'); boolean toggle → file → restore on PC too. GOTCHA: tmux key names PPage/NPage.
+- [x] Herdr-path coverage via unit tests (herdr not drivable from here): SS3 arrows, kitty CSI-u j/k, CSI arrows, page/home/end, lone Esc — matchesKey/decodeKittyPrintable normalize every encoding the TUI delivers.
+- [x] typecheck 0 · full suite EXIT:0 · synced to coffee · commits c9e9e00/b9fabec/1207b1b · memory + v3-tasks updated.
 
 ## Guardrails
 - Do NOT change the interaction spec (space/tab/enter/esc semantics stay).
