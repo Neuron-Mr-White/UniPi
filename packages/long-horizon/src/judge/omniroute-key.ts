@@ -30,13 +30,18 @@ export function omnirouteApiKey(): string | null {
 
 /**
  * Return an env view for the judge transport, injecting OPENROUTER_API_KEY from
- * the omniroute bridge when the provider is openrouter and no explicit key is set.
+ * the omniroute bridge when the provider is openrouter AND the call targets the
+ * omniroute/oino proxy (baseUrl contains "oino"), and no explicit key is set.
+ * The fallback must NOT fire for real openrouter.ai calls (baseUrl empty or
+ * pointing elsewhere) — the oino key would 401 there and fail open silently.
  */
 export function judgeEnv(
   provider: "typesafe" | "openrouter",
   base: Record<string, string | undefined> = process.env,
+  baseUrl = "",
 ): Record<string, string | undefined> {
   if (provider !== "openrouter" || base.OPENROUTER_API_KEY) return base;
+  if (!baseUrl.includes("oino")) return base; // only the omniroute proxy accepts this key
   const key = omnirouteApiKey();
   return key ? { ...base, OPENROUTER_API_KEY: key } : base;
 }
