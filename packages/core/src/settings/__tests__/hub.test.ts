@@ -421,3 +421,58 @@ describe("key router (real-terminal encodings)", () => {
     assert.equal(closed, 1);
   });
 });
+
+describe("recovery safety net (u / d / R)", () => {
+  it("u undoes the last change (file evidence) and shows a toast", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Flag");
+    hub.handleInput(" ");           // true → false (instant write)
+    assert.equal(readEngine().flag, false);
+    hub.handleInput("u");           // undo
+    assert.equal(readEngine().flag, true, "undo restores the prior value");
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("undo: Flag"), "toast confirms the undo");
+    assert.ok(!hub.render(100).join("\n").includes("undo: Flag"), "toast lasts one render");
+  });
+
+  it("d resets the cursor field to its schema default", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Count");
+    hub.handleInput(" ");           // editor
+    hub.handleInput("\x7f");       // clear "5"
+    hub.handleInput("9");
+    hub.handleInput("\r");         // saved 9
+    assert.equal(readEngine().count, 9);
+    hub.handleInput("d");           // default = 5
+    assert.equal(readEngine().count, 5);
+  });
+
+  it("R reverts the cursor field to the panel-open baseline", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Text");
+    hub.handleInput(" ");
+    hub.handleInput("!");
+    hub.handleInput("\r");         // "hello!"
+    assert.equal(readEngine().text, "hello!");
+    hub.handleInput("R");           // baseline = "hello"
+    assert.equal(readEngine().text, "hello");
+  });
+
+  it("undo stack is capped at 50 and undoes LIFO across fields", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Flag");
+    for (let i = 0; i < 60; i++) hub.handleInput(" "); // 60 toggles
+    const stack = (hub as unknown as { history: unknown[] }).history;
+    assert.equal(stack.length, 50, "capped at 50");
+    hub.handleInput("u");
+    assert.equal(readEngine().flag, false, "LIFO: 60 toggles end false → undo yields false(60-1=odd)");
+    hub.handleInput("u");
+    assert.equal(readEngine().flag, true, "second undo restores the other phase");
+  });
+
+  it("u on an empty stack is a safe no-op", () => {
+    const hub = makeHub();
+    hub.handleInput("u");
+    assert.equal(existsSync(engineFile()), false, "nothing written");
+  });
+});

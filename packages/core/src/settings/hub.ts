@@ -41,6 +41,7 @@ import {
 } from "./schema.js";
 import {
   getSettings,
+  getSettingsDefinition,
   listSettingsDefinitions,
   setSettings,
   settingsLayers,
@@ -72,6 +73,7 @@ interface Row {
 }
 
 const PAGE_ROWS = 10;
+const HISTORY_CAP = 50;
 const overlayTheme = new OverlayTheme();
 const dim = (t: string) => overlayTheme.fg("textMuted", t);
 const bold = (t: string) => overlayTheme.bold(t);
@@ -107,6 +109,12 @@ export class SettingsHub {
   private renderWidth = 80;
   /** Viewport: index of the first visible row. */
   private scroll = 0;
+  /** Values as of panel-open — `R` reverts the cursor's field to these. */
+  private readonly baseline = new Map<string, Record<string, unknown>>();
+  /** Instant-apply undo stack (LIFO), capped. */
+  private history: Array<{ namespace: string; key: string; prev: unknown; scope: SettingsScope; label: string }> = [];
+  /** One-render confirmation line (e.g. "undo: Judge enabled"). */
+  private toast: string | null = null;
   private readonly terminalRowsFn: () => number;
 
   constructor(deps: SettingsHubDeps) {
@@ -122,6 +130,8 @@ export class SettingsHub {
     if (!v) {
       v = getSettings(namespace, this.cwd);
       this.values.set(namespace, v);
+      // First load ≈ panel open: snapshot the baseline for `R` revert.
+      if (!this.baseline.has(namespace)) this.baseline.set(namespace, structuredClone(v));
     }
     return v;
   }
@@ -214,10 +224,42 @@ export class SettingsHub {
   // ── writes ──────────────────────────────────────────────────────────────
   private applyChange(row: Row, value: unknown): void {
     if (!row.namespace || !row.field) return;
-    const next = setField(this.valueOf(row.namespace), row.field.key, value);
+    const current = this.valueOf(row.namespace);
+    const prev = getField(current, row.field.key);
+    const next = setField(current, row.field.key, value);
     this.values.set(row.namespace, next);
     setSettings(row.namespace, setField({}, row.field.key, value), this.scope, this.cwd);
+    this.history.push({ namespace: row.namespace, key: row.field.key, prev, scope: this.scope, label: row.label });
+    if (this.history.length > HISTORY_CAP) this.history.shift();
     this.onChanged?.(row.namespace);
+  }
+
+  // ── recovery: undo / reset-to-default / revert-to-baseline ───────────────
+
+  private undoLast(): void {
+    const entry = this.history.pop();
+    if (!entry) return;
+    const next = setField(this.valueOf(entry.namespace), entry.key, entry.prev);
+    this.values.set(entry.namespace, next);
+    setSettings(entry.namespace, setField({}, entry.key, entry.prev), entry.scope, this.cwd);
+    this.toast = `undo: ${entry.label}`;
+    this.onChanged?.(entry.namespace);
+  }
+
+  private resetToDefault(row: Row): void {
+    if (row.kind !== "field" || !row.namespace || !row.field) return;
+    const definition = getSettingsDefinition(row.namespace);
+    const fallback = definition ? getField(definition.defaults, row.field.key) : undefined;
+    this.applyChange(row, fallback);
+    this.toast = `default: ${row.label}`;
+  }
+
+  private revertToBaseline(row: Row): void {
+    if (row.kind !== "field" || !row.namespace || !row.field) return;
+    const snapshot = this.baseline.get(row.namespace);
+    const base = snapshot ? getField(snapshot, row.field.key) : undefined;
+    this.applyChange(row, base);
+    this.toast = `reverted: ${row.label}`;
   }
 
   private toggleScope(): void {
@@ -274,6 +316,18 @@ export class SettingsHub {
     if (matchesKey(data, Key.slash) || ch === "/") {
       this.mode = "search";
       this.searchInput = new Input({ prompt: "/" });
+      return;
+    }
+    // Recovery keys (omp principle: defaults are always one key away).
+    if (ch === "u") return this.undoLast();
+    if (ch === "d") {
+      const row = this.currentRow();
+      if (row) this.resetToDefault(row);
+      return;
+    }
+    if (ch === "R") {
+      const row = this.currentRow();
+      if (row) this.revertToBaseline(row);
       return;
     }
     if (matchesKey(data, Key.escape) || data === "\x1b") {
@@ -549,21 +603,22 @@ export class SettingsHub {
     if (this.mode === "search") return "type to filter · enter apply · esc clear";
     if (this.mode === "input") return "enter save · esc cancel";
     if (this.mode === "model") return "↑↓/kj pick · enter select · esc cancel";
+    const recover = `${this.history.length > 0 ? "u undo · " : ""}d default · R revert`;
     const row = this.currentRow();
-    if (row?.kind === "scope") return "tab switch global/project · esc close";
+    if (row?.kind === "scope") return `tab switch global/project · ${recover} · esc close`;
     const f = row?.field;
-    if (!f) return "↑↓/kj move · / search · esc close";
+    if (!f) return `↑↓/kj move · / search · ${recover} · esc close`;
     switch (f.type) {
       case "boolean":
-        return "space/tab toggle · ↑↓/kj move · / search · esc close";
+        return `space/tab toggle · ↑↓/kj · / search · ${recover}`;
       case "enum":
         return f.allowCustom
-          ? "tab cycle · space custom · ↑↓/kj move · esc close"
-          : "tab cycle · ↑↓/kj move · / search · esc close";
+          ? `tab cycle · space custom · ↑↓/kj · ${recover}`
+          : `tab cycle · ↑↓/kj · / search · ${recover}`;
       case "model":
-        return "space/tab pick model · ↑↓/kj move · esc close";
+        return `space/tab pick model · ↑↓/kj · ${recover}`;
       default:
-        return "space edit · ↑↓/kj move · / search · esc close";
+        return `space edit · ↑↓/kj · / search · ${recover}`;
     }
   }
 
@@ -603,7 +658,9 @@ export class SettingsHub {
     const below = visible.length - end;
     if (below > 0) body.push(this.exactRow(dim(`  ↓ ${below} more`), inner));
 
+    if (this.toast) body.push(this.exactRow(`  ${bold(this.toast)}`, inner));
     body.push(this.exactRow(dim(`  ${this.hintLine()}`), inner));
+    this.toast = null; // shown for exactly one render
     return frameOverlay(body, width, {
       title: bold(" unipi settings "),
       borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
