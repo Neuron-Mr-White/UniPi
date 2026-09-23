@@ -378,7 +378,9 @@ impl Task {
         self.activity.push(ActivityEntry {
             at,
             actor,
-            text: text.into(),
+            // Trailing whitespace/newlines would round-trip as blank
+            // continuation lines; normalise on the way in.
+            text: text.into().trim_end().to_string(),
         });
         self.updated = at;
     }

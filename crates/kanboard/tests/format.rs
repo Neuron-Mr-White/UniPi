@@ -229,3 +229,29 @@ fn duplicate_ids_are_reported() {
         result.problems
     );
 }
+
+#[test]
+fn activity_with_trailing_whitespace_stays_canonical() {
+    let mut task = sample();
+    // A note that ends with a newline (agents do this) used to render a blank
+    // continuation line, which made the file permanently non-canonical and the
+    // strict board refused to load it.
+    task.push_activity(Utc::now(), Actor::Agent, "created the file\n");
+    let text = format::render(&task);
+    assert!(!text.contains("\n  \n"), "no blank continuation line: {text:?}");
+    let (parsed, problems) = format::parse("x.md", &text);
+    assert!(problems.is_empty(), "{problems:?}");
+    let parsed = parsed.unwrap();
+    assert_eq!(parsed.activity.last().unwrap().text, "created the file");
+    assert_eq!(format::render(&parsed), text, "render is idempotent");
+}
+
+#[test]
+fn multi_line_notes_with_blank_lines_round_trip() {
+    let mut task = sample();
+    task.push_activity(Utc::now(), Actor::User, "line one\n\nline three\n\n");
+    let text = format::render(&task);
+    let (parsed, problems) = format::parse("x.md", &text);
+    assert!(problems.is_empty(), "{problems:?}");
+    assert_eq!(format::render(&parsed.unwrap()), text);
+}

@@ -503,3 +503,38 @@ fn eight_threads_claiming_three_tasks_produce_exactly_three_claims() {
         .count();
     assert_eq!(in_progress, 3, "no double claims, no lost writes");
 }
+
+#[test]
+fn re_registering_a_project_never_reuses_ids() {
+    let fixture = Fixture::new();
+    let first = fixture.add("original task");
+    let stored = fixture.tasks()[0].clone();
+    assert_eq!(stored.id, first.id);
+
+    // `project add` again (what a re-onboard does) must not reset the counter.
+    let root = fixture.root();
+    let again = kanboard::commands::project_add(&fixture.layout, Some(&root), Some("Fixture"), Some("FIX"))
+        .expect("re-register");
+    assert_eq!(again["nextId"], first.id.trim_start_matches("FIX-").parse::<u64>().unwrap() + 1);
+
+    let second = fixture.add("second task");
+    assert_ne!(second.id, first.id, "a fresh id, not the existing one");
+    let tasks = fixture.tasks();
+    assert_eq!(tasks.len(), 2, "the first task was not overwritten");
+    assert!(tasks.iter().any(|task| task.title == "original task"));
+}
+
+#[test]
+fn reserve_id_skips_ids_that_already_exist_on_disk() {
+    let fixture = Fixture::new();
+    let task = fixture.add("existing");
+    // Force the counter back to 1, as a stale/hand-edited project.json would.
+    let mut project = kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+    project.next_id = 1;
+    project.save(&fixture.layout).unwrap();
+
+    let mut project = kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+    let reserved = project.reserve_id(&fixture.layout).unwrap();
+    assert_ne!(reserved, task.id);
+    assert_eq!(reserved, "FIX-2");
+}

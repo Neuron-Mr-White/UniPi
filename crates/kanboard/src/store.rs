@@ -184,8 +184,15 @@ impl Project {
     }
 
     /// Reserve the next task id (`<PREFIX>-<n>`), persisting the counter.
+    ///
+    /// Skips ids that already exist on disk: a stale counter (or a project
+    /// re-registration) must never hand out an id that would overwrite a task.
     pub fn reserve_id(&mut self, layout: &Layout) -> Result<String> {
-        let id = format!("{}-{}", self.prefix, self.next_id);
+        let mut id = format!("{}-{}", self.prefix, self.next_id);
+        while layout.task_path(&self.slug, &id).exists() {
+            self.next_id += 1;
+            id = format!("{}-{}", self.prefix, self.next_id);
+        }
         self.next_id += 1;
         self.save(layout)?;
         Ok(id)
@@ -233,7 +240,7 @@ fn basename(path: &Path) -> String {
         .unwrap_or_else(|| "project".to_string())
 }
 
-fn canonical_root(root: &Path) -> Result<PathBuf> {
+pub fn canonical_root(root: &Path) -> Result<PathBuf> {
     fs::canonicalize(root).map_err(|err| Error::usage(format!("cannot resolve {}: {err}", root.display())))
 }
 

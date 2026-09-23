@@ -71,7 +71,15 @@ pub fn project_add(
 ) -> Result<Value> {
     let cwd = std::env::current_dir()?;
     let root = root.map(|path| path.to_path_buf()).unwrap_or_else(|| store::resolve_root(&cwd));
-    let project = Project::create(layout, &root, name, prefix)?;
+    let slug = store::slug_for(&store::canonical_root(&root)?);
+    // Re-registering a project must never reset its id counter: a reset hands
+    // out ids that already exist on disk and overwrites those tasks.
+    let existing = Project::load(layout, &slug).ok();
+    let mut project = Project::create(layout, &root, name, prefix)?;
+    if let Some(previous) = existing {
+        project.next_id = project.next_id.max(previous.next_id);
+        project.save(layout)?;
+    }
     Ok(json!(project))
 }
 

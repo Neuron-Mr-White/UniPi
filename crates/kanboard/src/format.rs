@@ -64,6 +64,11 @@ pub fn render(task: &Task) -> String {
             first
         ));
         for line in lines {
+            // A blank continuation line would render as `  ` and make the file
+            // permanently non-canonical (validate would refuse the board).
+            if line.trim().is_empty() {
+                continue;
+            }
             out.push_str(&format!("  {line}\n"));
         }
     }
