@@ -19,7 +19,7 @@ One config key disables the entire module — no tools, no commands, no hooks, n
 }
 ```
 
-Open `/unipi:bg-settings` for the interactive settings overlay (master toggle,
+Open `/unipi:settings` (Background Tasks group) for the master toggle,
 defaults, output caps, delegate defaults).
 
 ## Surfaces
@@ -35,7 +35,7 @@ defaults, output caps, delegate defaults).
 ### Commands
 
 `/unipi:bg` (start a shell task), `/unipi:bg-tasks` (open the dock),
-`/unipi:bg-settings`.
+`/unipi:settings` (Background Tasks group).
 
 Shortcuts: `Shift↓` opens the task manager dock; `Ctrl+Alt+C` clears finished notices.
 

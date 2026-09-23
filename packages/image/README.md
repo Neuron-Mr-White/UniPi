@@ -13,7 +13,7 @@ Image generation and image recognition tools for the agent.
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:image-settings` | Configure models, output directory and the recognition system prompt |
+| `/unipi:settings` | Configure models, output directory and the recognition system prompt |
 
 ## image_generate
 
@@ -33,13 +33,13 @@ Models come from two places, merged into one list:
   Recraft, Seedream, Stable Diffusion) alongside the built-ins.
 
 Because that detection is heuristic, the picker has a **custom entry** — press
-`c` in `/unipi:image-settings` and type any `provider/model-id`. A
+`c` in `/unipi:settings` and type any `provider/model-id`. A
 well-formed reference is always accepted, even when the catalog has never
 heard of it, so no model is ever unreachable.
 
 The `model` parameter is fuzzy-matched, so `flux`, `recraft` and
 `gemini-3-pro` all work. Omit it to use the model chosen in
-`/unipi:image-settings`.
+`/unipi:settings`.
 
 Images are returned inline **and** written to `~/.unipi/images` by default;
 the saved path is reported back to the agent. A failed write never discards a

@@ -5,7 +5,7 @@
  *
  * On session start: loads config, checks npm registry for updates,
  * shows update overlay if available. Registers commands for
- * /unipi:readme, /unipi:changelog, /unipi:updater-settings.
+ * /unipi:readme and /unipi:changelog.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

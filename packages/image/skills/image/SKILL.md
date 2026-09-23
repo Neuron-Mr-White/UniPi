@@ -19,7 +19,7 @@ image_generate(prompt: "...", model: "flux.2-pro")
   Detail materially improves the result.
 - `model` (optional) — fuzzy-matched against the image catalog
   (`flux`, `gemini-3-pro-image`, `recraft-v4`, …). Omit to use the model
-  configured in `/unipi:image-settings`.
+  configured in `/unipi:settings`.
 
 The image is returned inline and, when `saveToDisk` is on (the default),
 written to the output directory (default `~/.unipi/images`). The saved path is
@@ -61,7 +61,7 @@ magic numbers, so a misnamed extension still works.
 
 ## Configuration
 
-`/unipi:image-settings` configures both tools:
+`/unipi:settings` configures both tools:
 
 - Generation model (picker over the built-in catalog plus image models from
   any provider registered by another extension)

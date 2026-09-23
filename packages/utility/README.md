@@ -73,7 +73,7 @@ The badge is a persistent HUD overlay in the top-right corner showing the curren
 Controls whether Unipi's built-in skills are cataloged in the agent's system prompt at startup (default: on). Your own skills — global, project, settings-mounted, and third-party packages — always stay cataloged.
 
 ```
-/unipi:skills-settings        # Interactive toggle (or /unipi:skills-settings on|off)
+/unipi:settings               # Skill discovery toggle (Skills group)
 ```
 
 Or edit `~/.pi/agent/settings.json` directly:

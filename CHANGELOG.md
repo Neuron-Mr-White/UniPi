@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Legacy per-module settings commands — use `/unipi:settings`.** Every settings overlay absorbed into the unified hub; only interactive wizards/tools remain as overlays:
+  - `unipi:updater-settings` — check interval + auto-update were already in the hub (Updater group).
+  - `unipi:ask-user-settings` — tool + format toggles already in the hub (Ask User group).
+  - `unipi:stash-settings` — chordKey/tabInsertKey enums (with hint + keybinding validator) in the hub; config/registration moved to `input-shortcuts/src/settings.ts`.
+  - `unipi:badge-settings` + `unipi:util-settings` — badge fields already in the hub; disabling the badge still hides it live (hub `onChanged`).
+  - `unipi:skills-settings` — `unipi.skills.discovery` migrated into the utility namespace (one-time import); the gate now reads the engine.
+  - `unipi:bg-settings` — master toggle/defaults already in the hub; orphan `maxOutputBytes` added.
+  - `unipi:image-settings` — `recognize.systemPrompt` added to the hub schema; generate.model presets + recognize image-input capability replace the dialog/model selector.
+  - `unipi:web-settings` — provider pages already in the hub; `browser`/`os`/`includeReplies` enums added.
+  - `unipi:info-settings` — absorbed as a dynamic "Groups & stats…" page (live from the group registry) + "Group order" reorder field.
+  - `unipi:footer-settings` — absorbed: separator + zoneSeparator enums, dynamic "Segments…" page (per-group and per-segment visibility). Zone Headers was a non-functional stub in the old overlay and was not absorbed.
+  - `unipi:compact-settings` — absorbed: per-strategy mode enums, Auto (%-trigger) section, Pipeline toggles, and "Apply preset" action rows (precise/balanced/thorough/lean). `/unipi:compact-preset` (CLI args) is kept.
+  - `unipi:notify-settings` — absorbed: "Events…" page (enable + platform multiselect per event), defaultPlatforms/silence/renotify fields, per-platform "Setup & test…" wizard actions, and a "Send test notification" action. `/unipi:notify-recap-model` keeps the recap selector overlay.
+  - `unipi:memory-settings` — absorbed: provider none/inherit/openrouter/custom with per-provider model presets + baseUrl, and a "Re-embed all memories…" action (confirm + progress toast).
+
 ## [3.0.0-alpha.0] — 2026-09-20
 
 ### Changed

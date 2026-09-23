@@ -22,7 +22,7 @@ Press `ALT+S`, a small overlay appears with key hints. Press a key, the action r
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:stash-settings` | Open settings TUI for keybinding customization |
+| `/unipi:settings` | Customize keybindings (Input Shortcuts group) |
 
 ## Special Triggers
 
@@ -65,7 +65,7 @@ Cycles through Pi's thinking levels: off → low → medium → high → xhigh �
 
 ## Configurables
 
-Run `/unipi:stash-settings` to customize keybindings:
+Run `/unipi:settings` (Input Shortcuts group) to customize keybindings:
 
 - **Chord trigger key** — default `alt+s`
 - **Tab insert key** — default `alt+i`
