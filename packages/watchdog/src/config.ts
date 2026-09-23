@@ -61,7 +61,7 @@ export function loadWatchdogSettings(cwd: string): WatchdogSettings {
     return {
       enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : DEFAULT_WATCHDOG_SETTINGS.enabled,
       intervalMin: num(parsed?.intervalMin, DEFAULT_WATCHDOG_SETTINGS.intervalMin, 0.1),
-      firstCheckMin: num(parsed?.firstCheckMin, DEFAULT_WATCHDOG_SETTINGS.firstCheckMin, 0.1),
+      firstCheckMin: num(parsed?.firstCheckMin, DEFAULT_WATCHDOG_SETTINGS.firstCheckMin, 0),
       confidence: num(parsed?.confidence, DEFAULT_WATCHDOG_SETTINGS.confidence, 0, 1),
       agreeChecks: num(parsed?.agreeChecks, DEFAULT_WATCHDOG_SETTINGS.agreeChecks, 1),
       action,
@@ -88,7 +88,7 @@ export function registerWatchdogSettings(cwd: string): void {
         fields: [
           { key: "enabled", type: "boolean", label: "Enabled", description: "Off by default — no timers run until enabled" },
           { key: "intervalMin", type: "number", label: "Check interval (min)", min: 0.1, description: "Every watched item is judged once per interval" },
-          { key: "firstCheckMin", type: "number", label: "First check after (min)", min: 0.1 },
+          { key: "firstCheckMin", type: "number", label: "First check after (min)", min: 0 },
           { key: "confidence", type: "number", label: "Confidence", min: 0, max: 1, description: "Minimum jev confidence to act" },
           { key: "agreeChecks", type: "number", label: "Agreeing checks", min: 1, description: "Consecutive agreeing checks before acting" },
           {

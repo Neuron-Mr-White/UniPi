@@ -19,8 +19,7 @@ import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
 import { loadWatchdogSettings, registerWatchdogSettings, type WatchdogSettings } from "./src/config.js";
 import { evaluateTick } from "./src/decide.js";
 import { findBashChildren, killProcessGroup } from "./src/bash-kill.js";
-
-const VERSION = "0.1.0";
+import { extractText } from "./src/extract.js";
 
 /** Tools that are inherently quick or human-interactive — never watched. */
 const NEVER_WATCH = new Set([
@@ -57,6 +56,12 @@ const state = {
   kills: new Map<string, KillRecord>(),
   pending: [] as string[],
   busy: false,
+  /** Per-key previous tail for the "output changed" comparison across ticks. */
+  tails: new Map<string, string>(),
+  /** Per-key last-change timestamp across ticks. */
+  changes: new Map<string, number>(),
+  /** Per-key last-checked timestamp (at most once per intervalMin). */
+  checked: new Map<string, number>(),
 };
 
 function debugLog(line: string): void {
@@ -79,10 +84,6 @@ export async function __watchdogTick(ctx: ExtensionContext): Promise<void> {
 /** Test hook: pretend the watchdog killed this bash call (drives the rewrite). */
 export function __recordKill(toolCallId: string, record: { durationMs: number; reason: string }): void {
   state.kills.set(toolCallId, { toolCallId, ...record });
-}
-
-export function __getKills(): Map<string, unknown> {
-  return state.kills;
 }
 
 /** Test hook: override the bg task list the scanner reads. */
@@ -110,7 +111,9 @@ export function resetWatchdogState(): void {
   state.streaks.clear();
   state.kills.clear();
   state.pending = [];
-  tailMemory.clear();
+  state.tails.clear();
+  state.changes.clear();
+  state.checked.clear();
   registryOverride = null;
 }
 
@@ -120,16 +123,13 @@ export default function (pi: ExtensionAPI): void {
 }
 
 /** Extension wiring, separable for tests. */
-/** Minimal event-registrar (real ExtensionAPI or a test fake). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function registerWatchdogExtension(pi: any): void {
-  try { const { appendFileSync, mkdirSync } = require("node:fs"); const { join } = require("node:path"); const d = join(require("node:os").homedir(), ".unipi", "logs"); mkdirSync(d, {recursive:true}); appendFileSync(join(d, "watchdog.log"), new Date().toISOString() + " registerWatchdogExtension called\n"); } catch {}
-  state.pi = pi;
+export function registerWatchdogExtension(pi: { on(event: string, handler: (event: any, ctx: any) => unknown): void }): void {
+  state.pi = pi as ExtensionAPI;
   registerWatchdogSettings(process.cwd());
+
   pi.on("__watchdog_tick", () => __watchdogTick(state.ctx as ExtensionContext));
 
   pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
-    try { const { appendFileSync } = require("node:fs"); appendFileSync(require("node:path").join(require("node:os").homedir(), ".unipi", "logs", "watchdog.log"), new Date().toISOString() + " session_start enabled=" + loadWatchdogSettings(ctx.cwd).enabled + "\n"); } catch {}
     state.ctx = ctx;
     const settings = loadWatchdogSettings(ctx.cwd);
     if (settings.enabled) startTimer(settings);
@@ -143,6 +143,9 @@ export function registerWatchdogExtension(pi: any): void {
     state.streaks.clear();
     state.kills.clear();
     state.pending = [];
+    state.tails.clear();
+    state.changes.clear();
+    state.checked.clear();
     state.ctx = null;
   });
 
@@ -165,7 +168,7 @@ export function registerWatchdogExtension(pi: any): void {
   pi.on("tool_execution_update", (event: { toolCallId: string; partialResult: unknown }) => {
     const tracked = state.bash.get(event.toolCallId) ?? state.other.get(event.toolCallId);
     if (!tracked) return;
-    const tail = String(event.partialResult ?? "");
+    const tail = extractText(event.partialResult);
     if (tail && tail !== tracked.lastTail) {
       tracked.lastChangeAt = Date.now();
       tracked.lastTail = tail.slice(-3200);
@@ -179,8 +182,7 @@ export function registerWatchdogExtension(pi: any): void {
   });
 
   // Annotate the tool result of a watchdog-killed bash call.
-  pi.on("tool_result", (event: { toolCallId: string; content: Array<{ type: string; text: string }> }) => {
-    console.error("[WD tool_result] id:", event.toolCallId, "kills size:", state.kills.size, "has:", state.kills.has(event.toolCallId));
+  pi.on("tool_result", (event: { toolCallId: string; content: Array<{ type: string; text: string }>; isError: boolean }) => {
     const kill = state.kills.get(event.toolCallId);
     if (!kill) return undefined;
     state.kills.delete(event.toolCallId);
@@ -199,7 +201,7 @@ export function registerWatchdogExtension(pi: any): void {
   });
 
   // Deliver warn/other-tool notifications to the agent on the next turn.
-  pi.on("before_agent_start", async (event: { prompt: string; systemPrompt: string; systemPromptOptions?: { skills?: unknown[] } }) => {
+  pi.on("before_agent_start", async (event: { prompt: string; systemPrompt: string }) => {
     if (state.pending.length === 0) return undefined;
     const content = state.pending.join("\n\n");
     state.pending = [];
@@ -219,7 +221,6 @@ function startTimer(settings: WatchdogSettings): void {
     void tick(settings.enabled);
     state.intervalTimer = setInterval(() => void tick(settings.enabled), settings.intervalMin * 60_000);
   }, settings.firstCheckMin * 60_000);
-  state.firstTimer.unref?.();
 }
 
 function stopTimer(): void {
@@ -248,14 +249,16 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
 
   if (settings.watchBash) {
     for (const tracked of state.bash.values()) {
+      const lastTail = state.tails.get(`bash:${tracked.toolCallId}`) ?? "";
+      const lastChange = state.changes.get(`bash:${tracked.toolCallId}`) ?? tracked.lastChangeAt;
       items.push({
         key: `bash:${tracked.toolCallId}`,
         kind: "bash",
         toolName: "bash",
         command: tracked.display.slice(0, 500),
         startedAt: tracked.startedAt,
-        sinceLastOutputSec: Math.round((now - tracked.lastChangeAt) / 1000),
-        outputChanged: false, // filled per-tick by the caller-side comparison
+        sinceLastOutputSec: Math.round((now - lastChange) / 1000),
+        outputChanged: lastTail !== tracked.lastTail,
         tail: tracked.lastTail.slice(-3000),
       });
     }
@@ -265,8 +268,8 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
     const tasks = registryOverride ?? getSharedTaskRegistry()?.allTasks() ?? [];
     for (const task of tasks) {
       if (task.status !== "running") continue;
-      // Declared-persistent items (servers/watchers) are never checked.
-      if (!task.triggerOnCompletion && !task.notifyOnCompletion) continue;
+      // triggerOnCompletion === false alone marks a persistent service.
+      if (task.triggerOnCompletion === false) continue;
       const tail = (task.outputTail ?? []).join("\n");
       items.push({
         key: `bg:${task.id}`,
@@ -277,10 +280,6 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
         sinceLastOutputSec: 0, // computed by the caller against the previous tail
         outputChanged: false,
         tail: tail.slice(-3000),
-        task: {
-          id: task.id,
-          persistent: !task.triggerOnCompletion && !task.notifyOnCompletion,
-        },
       });
     }
   }
@@ -303,6 +302,7 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
 }
 
 async function tick(enabled: boolean): Promise<void> {
+  
   if (state.busy) return;
   const ctx = state.ctx;
   if (!ctx) return;
@@ -313,21 +313,34 @@ async function tick(enabled: boolean): Promise<void> {
   }
   state.busy = true;
   try {
-    const items = gatherWatched(settings);
+    const allItems = gatherWatched(settings);
+    const now = Date.now();
+
+    // Per-item minimum age: skip items younger than firstCheckMin.
+    const items = allItems.filter((item) => now - item.startedAt >= settings.firstCheckMin * 60_000);
 
     if (items.length > 0) ctx.ui.setStatus("watchdog", `watchdog: ${items.length}`);
     else ctx.ui.setStatus("watchdog", undefined);
 
+    // One jevSettings read for the entire tick.
     const jevSettings = readJudgeJevSettings(ctx.cwd);
-    const seen = new Map<string, string>(); // key → tail at this tick
+
     for (const item of items) {
-      const previous = state.streaks.get(item.key) ?? 0;
+      // At most once per intervalMin per item.
+      const lastChecked = state.checked.get(item.key) ?? 0;
+      if (now - lastChecked < settings.intervalMin * 60_000 * 0.9) continue;
+
+      const previousStreak = state.streaks.get(item.key) ?? 0;
+      const previousTail = state.tails.get(item.key);
+      const outputChanged = previousTail !== undefined && previousTail !== item.tail;
+      const sinceLastOutput = outputChanged ? 0 : item.sinceLastOutputSec;
+
       const state_text =
         `Tool: ${item.toolName}\n` +
         `Command/args: ${item.command}\n` +
-        `Running for: ${Math.round((Date.now() - item.startedAt) / 1000)}s\n` +
+        `Running for: ${Math.round((now - item.startedAt) / 1000)}s\n` +
         `Since last new output: ${item.sinceLastOutputSec}s\n` +
-        `Output changed since previous check: ${item.outputChanged ? "yes" : "no"}\n` +
+        `Output changed since previous check: ${outputChanged ? "yes" : "no"}\n` +
         `Last output (tail):\n${item.tail || "(no output yet)"}`;
       const questions = {
         status: {
@@ -343,34 +356,40 @@ async function tick(enabled: boolean): Promise<void> {
         persistent: {
           type: "noul",
           instructions:
-            "Is this a long-lived process meant to run indefinitely (dev server, watcher, daemon, tail -f)?",
+            "Is this a long-lived service (dev server, file watcher, daemon, log tail) operating normally, " +
+            "i.e. its recent output shows normal activity rather than repeated errors or failures?",
         },
       };
       const answers = await askJev({
         state: state_text,
         questions,
-        settings: readJudgeJevSettings(ctx.cwd),
+        settings: jevSettings,
         fetchImpl: undefined,
         env: process.env,
       });
-      const decision = evaluateTick(answers, previous, { confidence: settings.confidence });
-      seen.set(item.key, item.tail);
+      const decision = evaluateTick(answers, previousStreak, {
+        confidence: settings.confidence,
+        agreeChecks: settings.agreeChecks,
+      });
+      state.streaks.set(item.key, decision.streak);
+      state.tails.set(item.key, item.tail);
+      state.checked.set(item.key, now);
       debugLog(
         `tick ${item.key}: status=${decision.status} confidence=${decision.confidence.toFixed(2)} ` +
-        `streak=${decision.streak} persistent=${decision.persistent}`,
+        `streak=${decision.streak}/${settings.agreeChecks} persistent=${decision.persistent} ` +
+        `act=${decision.act} tail[:200]=${JSON.stringify(item.tail.slice(0, 200))}`,
       );
 
       if (!decision.act) continue;
 
-      const durationMs = Date.now() - item.startedAt;
+      const durationMs = now - item.startedAt;
       const reason =
         `${decision.status} (confidence ${decision.confidence.toFixed(2)}) ` +
         `on ${decision.streak} consecutive checks — ` +
-        `${item.outputChanged ? "output keeps changing oddly" : `no new output for ${item.sinceLastOutputSec}s`}`;
+        `${outputChanged ? "output keeps changing oddly" : `no new output for ${item.sinceLastOutputSec}s`}`;
 
       if (item.kind === "bash") {
-        const action = settings.action;
-        if (action === "kill" && process.platform !== "win32") {
+        if (settings.action === "kill" && process.platform !== "win32") {
           const candidates = findBashChildren(process.pid, item.command);
           if (candidates.pids.length === 1) {
             killProcessGroup(candidates.pgids[0]!, candidates.pids[0]!, 1);
@@ -404,7 +423,7 @@ async function tick(enabled: boolean): Promise<void> {
           const text = `⚠ Watchdog aborted "${item.toolName}": jev judged it ${reason}.`;
           try {
             ctx.abort();
-            piSend(text);
+            state.pi?.sendUserMessage(text, { deliverAs: "followUp" });
           } catch {
             // best-effort
           }
@@ -414,21 +433,9 @@ async function tick(enabled: boolean): Promise<void> {
         }
       }
     }
-
-    // Remember tails for the next tick's "output changed" comparison.
-    for (const item of items) seen.set(item.key, item.tail);
-    applySeen(seen);
   } finally {
     state.busy = false;
   }
-}
-
-/** Per-key tail memory for the outputChanged comparison. */
-const tailMemory = new Map<string, string>();
-
-function applySeen(seen: Map<string, string>): void {
-  tailMemory.clear();
-  for (const [key, tail] of seen) tailMemory.set(key, tail);
 }
 
 function summarizeArgs(args: unknown): string {
@@ -457,8 +464,4 @@ function queueWarn(item: WatchedItem, decision: { status: string; confidence: nu
     `⚠ Watchdog: "${item.toolName}" looks ${decision.status} ` +
     `(confidence ${decision.confidence.toFixed(2)}, ${decision.streak} consecutive checks): ${reason}.`,
   );
-}
-
-function piSend(content: string): void {
-  state.pi?.sendUserMessage(content, { deliverAs: "followUp" });
 }

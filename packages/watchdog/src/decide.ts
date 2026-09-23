@@ -3,12 +3,17 @@
  *
  * Turns one jev answer set + the watchdog settings into either "no action"
  * (streak continues/starts) or an action with a human-readable reason.
+ *
+ * act = (status ∈ {stuck, looping})
+ *     && confidence ≥ threshold
+ *     && !(persistent ≥ 0.5 && status ≠ looping)
+ *     && streak ≥ agreeChecks
  */
 
 import type { JevAnswer } from "@pi-unipi/core";
 
 export interface WatchdogDecision {
-  /** true when the item is judged stuck/looping with enough confidence. */
+  /** true when all conditions are met (status + confidence + streak). */
   act: boolean;
   status: "progressing" | "waiting" | "stuck" | "looping" | "unknown";
   confidence: number;
@@ -16,8 +21,10 @@ export interface WatchdogDecision {
   streak: number;
   /** Human-readable signal for the kill/warn reason. */
   signal: string;
-  /** The item is a long-lived process — never kill (veto). */
+  /** jev judged the process as long-lived (noul ≥ 0.5). */
   persistent: boolean;
+  /** Streak meets the agreeChecks threshold. */
+  enoughChecks: boolean;
 }
 
 const STATUSES = ["progressing", "waiting", "stuck", "looping"] as const;
@@ -29,12 +36,13 @@ const STATUSES = ["progressing", "waiting", "stuck", "looping"] as const;
 export function evaluateTick(
   answers: Record<string, JevAnswer> | null,
   previousStreak: number,
-  opts: { confidence: number },
+  opts: { confidence: number; agreeChecks: number },
 ): WatchdogDecision {
   if (!answers) {
     return {
       act: false, status: "unknown", confidence: 0,
       streak: previousStreak, signal: "", persistent: false,
+      enoughChecks: previousStreak >= opts.agreeChecks,
     };
   }
 
@@ -45,15 +53,16 @@ export function evaluateTick(
   const confidence = typeof answers.status?.confidence === "number" ? answers.status.confidence : 0;
   const persistent = typeof answers.persistent?.noul === "number" ? answers.persistent.noul >= 0.5 : false;
 
-  // Persistent veto: long-lived services (dev servers, watchers) are protected
-  // UNLESS the status is looping — a loop that keeps printing errors is NOT
-  // healthy operation, even for a service.
+  // Persistent veto: a long-lived service that is operating normally (not
+  // looping with errors) is protected. A looping service with repeated errors
+  // is NOT healthy — it gets killed even if it looks like a daemon.
   const veto = persistent && status !== "looping";
   const agrees =
     (status === "stuck" || status === "looping") && confidence >= opts.confidence && !veto;
   const streak = agrees ? previousStreak + 1 : 0;
+  const enoughChecks = streak >= opts.agreeChecks;
 
-  return { act: agrees, status, confidence, streak, signal: statusSignal(status), persistent };
+  return { act: agrees && enoughChecks, status, confidence, streak, signal: statusSignal(status), persistent, enoughChecks };
 }
 
 function statusSignal(status: WatchdogDecision["status"]): string {
