@@ -42,12 +42,22 @@ describe("evaluateTick", () => {
     assert.equal(d.streak, 0, "disagreeing check resets the streak");
   });
 
-  it("persistent veto: long-lived processes never act even when stuck", () => {
+  it("persistent veto: stuck persistent process never acts", () => {
     const persistentStuck = { answers: { status: { choice: "stuck", confidence: 0.99 }, persistent: { noul: 0.9 } } };
     const d = evaluateTick(persistentStuck.answers, 3, { confidence: 0.8 });
-    assert.equal(d.act, false, "persistent veto");
+    assert.equal(d.act, false, "persistent veto on stuck");
     assert.equal(d.persistent, true);
     assert.equal(d.streak, 0);
+  });
+
+  it("looping + persistent: kill after the streak (error loop is NOT healthy)", () => {
+    const persistentLooping = { answers: { status: { choice: "looping", confidence: 0.95 }, persistent: { noul: 0.9 } } };
+    const d1 = evaluateTick(persistentLooping.answers, 0, { confidence: 0.8 });
+    assert.equal(d1.act, true, "looping overrides the persistent veto");
+    assert.equal(d1.streak, 1);
+    const d2 = evaluateTick(persistentLooping.answers, 1, { confidence: 0.8 });
+    assert.equal(d2.act, true);
+    assert.equal(d2.streak, 2);
   });
 
   it("waiting status never acts and resets the streak", () => {

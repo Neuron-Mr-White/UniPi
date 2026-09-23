@@ -97,6 +97,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Utility | `/unipi:` | env, doctor, status, cleanup, badge-name |
 | Kanboard | `/unipi:kanboard` | toggle, doctor |
 | Footer | `/unipi:footer` | toggle, settings |
+| Watchdog | `/unipi:settings` | jev judges long-running tools; kills or warns when stuck |
 | Updater | `/unipi:` | readme, changelog |
 | Info | `/unipi:info` | dashboard, settings |
 

@@ -60,7 +60,7 @@ const state = {
 };
 
 function debugLog(line: string): void {
-  if (process.env.UNIPI_DEBUG_SKILLS !== "1") return; // same gate as the skills judge
+  if (process.env.UNIPI_DEBUG_WATCHDOG !== "1") return;
   try {
     const dir = `${os.homedir()}/.unipi/logs`;
     mkdirSync(dir, { recursive: true });
@@ -263,7 +263,6 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
 
   if (settings.watchBgTasks) {
     const tasks = registryOverride ?? getSharedTaskRegistry()?.allTasks() ?? [];
-    debugLog(`bg tasks: ${tasks.length} total, running: ${tasks.filter((t: { status?: string }) => t.status === "running").length}`);
     for (const task of tasks) {
       if (task.status !== "running") continue;
       // Declared-persistent items (servers/watchers) are never checked.

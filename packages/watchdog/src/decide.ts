@@ -45,8 +45,12 @@ export function evaluateTick(
   const confidence = typeof answers.status?.confidence === "number" ? answers.status.confidence : 0;
   const persistent = typeof answers.persistent?.noul === "number" ? answers.persistent.noul >= 0.5 : false;
 
+  // Persistent veto: long-lived services (dev servers, watchers) are protected
+  // UNLESS the status is looping — a loop that keeps printing errors is NOT
+  // healthy operation, even for a service.
+  const veto = persistent && status !== "looping";
   const agrees =
-    (status === "stuck" || status === "looping") && confidence >= opts.confidence && !persistent;
+    (status === "stuck" || status === "looping") && confidence >= opts.confidence && !veto;
   const streak = agrees ? previousStreak + 1 : 0;
 
   return { act: agrees, status, confidence, streak, signal: statusSignal(status), persistent };
