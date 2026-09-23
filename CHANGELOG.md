@@ -21,7 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `unipi:footer-settings` — absorbed: separator + zoneSeparator enums, dynamic "Segments…" page (per-group and per-segment visibility). Zone Headers was a non-functional stub in the old overlay and was not absorbed.
   - `unipi:compact-settings` — absorbed: per-strategy mode enums, Auto (%-trigger) section, Pipeline toggles, and "Apply preset" action rows (precise/balanced/thorough/lean). `/unipi:compact-preset` (CLI args) is kept.
   - `unipi:notify-settings` — absorbed: "Events…" page (enable + platform multiselect per event), defaultPlatforms/silence/renotify fields, per-platform "Setup & test…" wizard actions, and a "Send test notification" action. `/unipi:notify-recap-model` keeps the recap selector overlay.
-  - `unipi:memory-settings` — absorbed: provider none/inherit/openrouter/custom with per-provider model presets + baseUrl, and a "Re-embed all memories…" action (confirm + progress toast).
+  - `unipi:memory-settings` — absorbed:
+  - `unipi:badge-name` / `unipi:badge-gen` / `unipi:badge-toggle` — hub Badge group: "Show name badge" field + "Set session name…" / "Generate session name" actions.
+  - `unipi:notify-set-gotify` / `unipi:notify-set-tg` / `unipi:notify-set-ntfy` / `unipi:notify-test` / `unipi:notify-recap-model` — hub Notify group: per-platform "Setup & test…" actions, "Send test notification" action, and the `recap.model` field.
+  - `unipi:compact-preset` — hub Compactor › Presets action rows (precise/balanced/thorough/lean).
+  - `unipi:mcp-add` / `unipi:mcp-settings` / `unipi:mcp-sync` / `unipi:mcp-reload` — hub MCP group: "Configure MCP servers…", "Add server…", "Sync catalog…", "Reload servers…" actions.
+  - `unipi:fusion-preset` — hub Fusion group: "Edit fusion presets…" action.
+  - `unipi:web-cache-clear` — hub Web API group: "Clear web cache…" action (with confirm). provider none/inherit/openrouter/custom with per-provider model presets + baseUrl, and a "Re-embed all memories…" action (confirm + progress toast).
 
 ## [3.0.0-alpha.0] — 2026-09-20
 
