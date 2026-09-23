@@ -8,15 +8,14 @@ The add command opens a split-pane overlay: server browser on the left, JSON con
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:mcp-add` | Open browse and editor overlay to add MCP servers |
-| `/unipi:mcp-settings` | Interactive settings with enable/disable/edit |
+| `/unipi:settings` | Add servers, enable/disable, sync catalog (MCP group) |
 | `/unipi:mcp-sync` | Force sync server catalog from GitHub |
 | `/unipi:mcp-status` | Text summary of all configured servers |
 | `/unipi:mcp-reload` | Remind you to restart Pi so tool schemas reload as a clean cache epoch |
 
 ### Setup Flow
 
-1. Run `/unipi:mcp-add`
+1. Run `/unipi:settings` → MCP → "Add server…"
 2. Browse or search the server catalog
 3. Edit the config in the right pane
 4. Save and restart Pi to activate

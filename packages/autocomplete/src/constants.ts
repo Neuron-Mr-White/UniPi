@@ -84,10 +84,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // mcp (5 commands)
   "unipi:mcp-status":   "mcp",
-  "unipi:mcp-sync":     "mcp",
-  "unipi:mcp-add":      "mcp",
-  "unipi:mcp-settings": "mcp",
-  "unipi:mcp-reload":   "mcp",
 
   // utility (11 commands)
   "unipi:continue":   "utility",
@@ -195,10 +191,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:btw-summarize": "Summarize and inject the BTW thread",
 
   "unipi:mcp-status":   "Show MCP server status",
-  "unipi:mcp-sync":     "Sync MCP server connections",
-  "unipi:mcp-add":      "Add a new MCP server",
-  "unipi:mcp-settings": "Configure MCP settings",
-  "unipi:mcp-reload":   "Reload MCP connections",
 
   "unipi:continue":   "Continue the last conversation",
   "unipi:reload":     "Reload extensions and settings",

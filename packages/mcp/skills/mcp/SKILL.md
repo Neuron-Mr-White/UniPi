@@ -10,7 +10,7 @@ Tools from MCP servers are named `{serverName}__{toolName}` — e.g., `github__s
 
 ## Adding Servers
 
-Use `/unipi:mcp-add` to browse the catalog of 7,800+ MCP servers and add them interactively.
+Use `/unipi:settings` (MCP → "Add server…") to browse the catalog of 7,800+ MCP servers and add them interactively.
 The split-pane overlay lets you:
 - **Browse**: Search the cached server catalog by name, description, or category
 - **Select**: Pick a server to get a pre-filled config template

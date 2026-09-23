@@ -151,13 +151,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.MCP,
       version: VERSION,
-      commands: [
-        `unipi:${MCP_COMMANDS.ADD}`,
-        `unipi:${MCP_COMMANDS.SETTINGS}`,
-        `unipi:${MCP_COMMANDS.SYNC}`,
-        `unipi:${MCP_COMMANDS.STATUS}`,
-        `unipi:${MCP_COMMANDS.RELOAD}`,
-      ],
+      commands: [`unipi:${MCP_COMMANDS.STATUS}`],
       tools: activeServers
         .flatMap((server) => registry?.getEntry(server.name)?.toolNames ?? [])
         .sort(compareCodeUnits),
@@ -187,7 +181,7 @@ export default function (pi: ExtensionAPI) {
 
       const all = reg.getAll();
       if (all.length === 0) {
-        ctx.ui.notify("No MCP servers configured. Use /unipi:mcp-add to add one.", "info");
+        ctx.ui.notify("No MCP servers configured. Add one via /unipi:settings (MCP → Add server…).", "info");
         return;
       }
 
@@ -223,31 +217,29 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /unipi:mcp-sync — force catalog sync
-  pi.registerCommand(`unipi:${MCP_COMMANDS.SYNC}`, {
-    description: "Sync MCP server catalog from GitHub",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      try {
-        ctx.ui.notify("Syncing MCP catalog from GitHub...", "info");
-        const catalog = await syncCatalog();
-        emitEvent(pi, UNIPI_EVENTS.MCP_CATALOG_SYNCED, {
-          totalServers: catalog.totalServers,
-          source: catalog.source,
-        });
-        ctx.ui.notify(
-          `MCP Catalog Synced\nSource: ${catalog.source}\nServers: ${catalog.totalServers}\nUpdated: ${catalog.lastUpdated}`,
-          "info",
-        );
-      } catch (err) {
-        ctx.ui.notify(
-          `MCP sync failed: ${err instanceof Error ? err.message : String(err)}`,
-          "error",
-        );
-      }
-    },
+  // mcp-sync — hub action runner ("Sync catalog…" row in /unipi:settings).
+  registerCommandRunner(`unipi:${MCP_COMMANDS.SYNC}`, async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionCommandContext;
+    try {
+      ctx.ui.notify("Syncing MCP catalog from GitHub...", "info");
+      const catalog = await syncCatalog();
+      emitEvent(pi, UNIPI_EVENTS.MCP_CATALOG_SYNCED, {
+        totalServers: catalog.totalServers,
+        source: catalog.source,
+      });
+      ctx.ui.notify(
+        `MCP Catalog Synced\nSource: ${catalog.source}\nServers: ${catalog.totalServers}\nUpdated: ${catalog.lastUpdated}`,
+        "info",
+      );
+    } catch (err) {
+      ctx.ui.notify(
+        `MCP sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    }
   });
 
-  // /unipi:mcp-add — add server overlay
+  // mcp-add — add server overlay (hub action row)
   const openMcpAdd = async (_args: string, ctx: ExtensionCommandContext) => {
     if (!ctx.hasUI) {
       ctx.ui.notify("MCP Add requires an interactive UI.", "warning");
@@ -263,12 +255,7 @@ export default function (pi: ExtensionAPI) {
       { ...HUB_WIDE_OVERLAY_OPTIONS },
     );
   };
-  pi.registerCommand(`unipi:${MCP_COMMANDS.ADD}`, {
-    description: "Add an MCP server (browse catalog or custom config)",
-    handler: openMcpAdd,
-  });
-
-  // /unipi:mcp-settings — settings overlay
+  // mcp-settings — settings overlay (hub action row)
   const openMcpSettings = async (_args: string, ctx: ExtensionCommandContext) => {
     if (!ctx.hasUI) {
       ctx.ui.notify("MCP Settings requires an interactive UI.", "warning");
@@ -290,11 +277,6 @@ export default function (pi: ExtensionAPI) {
 
     openSettings();
   };
-  pi.registerCommand(`unipi:${MCP_COMMANDS.SETTINGS}`, {
-    description: "Manage MCP server settings",
-    handler: openMcpSettings,
-  });
-
   // Settings-hub integration: the hub's action rows invoke these flows and
   // the /unipi:settings panel carries the entry points (jira etc. flow back).
   registerCommandRunner(`unipi:${MCP_COMMANDS.ADD}`, (ctx) =>
@@ -320,23 +302,33 @@ export default function (pi: ExtensionAPI) {
           {
             key: "add",
             type: "action",
-            label: "Add MCP server…",
+            label: "Add server…",
             command: `unipi:${MCP_COMMANDS.ADD}`,
             description: "browse the catalog or paste a custom config",
+          },
+          {
+            key: "sync",
+            type: "action",
+            label: "Sync catalog…",
+            description: "refresh the server catalog from GitHub",
+            command: `unipi:${MCP_COMMANDS.SYNC}`,
+          },
+          {
+            key: "reload",
+            type: "action",
+            label: "Reload servers…",
+            description: "restart pi to apply tool-schema changes safely",
+            command: `unipi:${MCP_COMMANDS.RELOAD}`,
           },
         ],
       },
     ],
   });
 
-  // /unipi:mcp-reload — restart all MCP servers
-  pi.registerCommand(`unipi:${MCP_COMMANDS.RELOAD}`, {
-    description: "Explain how to reload MCP servers safely",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      // Pi 0.80 does not expose dynamic tool removal. Restarting in place can
-      // leave stale schemas in the provider-visible tool list, so require a
-      // process/extension restart to establish a clean cache epoch.
-      ctx.ui.notify("Restart Pi to reload MCP servers and tool schemas safely.", "info");
-    },
+  // mcp-reload — hub action runner ("Reload servers…" row): Pi 0.80 does not
+  // expose dynamic tool removal, so reloading safely means a process restart.
+  registerCommandRunner(`unipi:${MCP_COMMANDS.RELOAD}`, (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionCommandContext;
+    ctx.ui.notify("Restart Pi to reload MCP servers and tool schemas safely.", "info");
   });
 }

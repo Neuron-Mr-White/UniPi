@@ -201,7 +201,7 @@ export function translateMcpTool(
             type: "text",
             text:
               `MCP tool "${mcpTool.name}" on server "${serverName}" failed: ${message}\n` +
-              `Check server status via /unipi:mcp-settings`,
+              `Configure servers via /unipi:settings (MCP)`,
           },
         ],
         details: { error: true, server: serverName, tool: mcpTool.name },
