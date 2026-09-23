@@ -4,6 +4,7 @@ import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/ope
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { renderModeFragment } from "../packages/long-horizon/src/gate.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
+import { planReminder } from "../packages/workflow/src/plan/index.ts";
 import { buildResumeSnapshot } from "../packages/compactor/src/session/snapshot.ts";
 
 const MODEL = {
@@ -128,6 +129,7 @@ describe("provider-native prefix structure", () => {
         canSearch: true,
         canStore: true,
       })],
+      ["workflow plan mode", planReminder(".unipi/plans/2026-09-24-abcd1234.md")],
       ["compactor resume", buildResumeSnapshot([event], { compactCount: 2 })],
     ];
 

@@ -35,8 +35,12 @@ export const PACKAGE_ORDER: string[] = [
 ];
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (47 verified commands) */
+/** Mapping of full command name → package name (49 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
+  // workflow (2 commands)
+  "unipi:plan":           "workflow",
+  "unipi:permission":     "workflow",
+
   "unipi:prefix-cache":   "utility",
 
   // long-horizon (4 commands)
@@ -126,6 +130,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 // ─── Description Map ─────────────────────────────────────────────────
 /** Short descriptions for each command (used when base suggestions lack them) */
 export const COMMAND_DESCRIPTIONS: Record<string, string> = {
+  "unipi:plan":           "Plan mode — investigate read-only, then approve a plan",
+  "unipi:permission":     "Permission mode — ask · auto (jev-judged) · full",
   "unipi:prefix-cache":   "Show privacy-safe provider prefix-cache diagnostics",
 
   "unipi:goal":           "One objective until verifiably true · medium complexity · pareto cost/success",
