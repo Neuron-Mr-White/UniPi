@@ -55,24 +55,47 @@ export class OverlayTheme {
     this.theme = theme;
   }
 
+  /** Theme keys pi rejected (a hostile theme.fg throws on unknown keys). */
+  private unsupportedKeys = new Set<string>();
+
   /** Color text using the active theme, or a fallback ANSI code.
    *  Closes with fg-off (\x1b[39m), NOT the full reset — a mid-line \x1b[0m
-   *  would kill an enclosing background and paint rows partially. */
+   *  would kill an enclosing background and paint rows partially.
+   *  A theme that rejects a key (e.g. "textMuted") degrades to the fallback
+   *  ANSI code instead of crashing the overlay mid-render. */
   fg(color: string, text: string): string {
-    if (this.theme) return stripTrailingReset(this.theme.fg(color as never, text)) + "\x1b[39m";
+    if (this.theme && !this.unsupportedKeys.has(color)) {
+      try {
+        return stripTrailingReset(this.theme.fg(color as never, text)) + "\x1b[39m";
+      } catch {
+        this.unsupportedKeys.add(color);
+      }
+    }
     return `${FALLBACK_COLORS[color] ?? ""}${text}\x1b[39m`;
   }
 
   /** Bold text using the active theme, or a fallback ANSI code.
    *  Closes with bold-off (\x1b[22m) for the same background-safety reason. */
   bold(text: string): string {
-    if (this.theme) return stripTrailingReset(this.theme.bold(text)) + "\x1b[22m";
+    if (this.theme) {
+      try {
+        return stripTrailingReset(this.theme.bold(text)) + "\x1b[22m";
+      } catch {
+        // Fall through to the plain-bold fallback.
+      }
+    }
     return `\x1b[1m${text}\x1b[22m`;
   }
 
   /** Background color using the active theme, or text unchanged. */
   bg(color: string, text: string): string {
-    if (this.theme) return this.theme.bg(color as never, text);
+    if (this.theme && !this.unsupportedKeys.has(color)) {
+      try {
+        return this.theme.bg(color as never, text);
+      } catch {
+        this.unsupportedKeys.add(color);
+      }
+    }
     return text;
   }
 

@@ -157,3 +157,25 @@ describe("exact-width primitives", () => {
     );
   });
 });
+
+describe("theme resilience (hostile themes must not crash overlays)", () => {
+  it("OverlayTheme.fg falls back when the theme rejects a color key", async () => {
+    const { OverlayTheme } = await import("../../../tui-overlay.js");
+    const t = new OverlayTheme();
+    t.setTheme({
+      fg: (color: string, text: string) => {
+        if (color === "textMuted") throw new Error("Unknown theme color: textMuted");
+        return `\x1b[38;5;244m${text}\x1b[0m`;
+      },
+      bold: (x: string) => `\x1b[1m${x}\x1b[0m`,
+      bg: (color: string, text: string) => {
+        if (color === "customMessageBg") throw new Error("Unknown theme color: customMessageBg");
+        return text;
+      },
+    } as never);
+    assert.equal(t.fg("accent", "ok"), "\x1b[38;5;244mok\x1b[39m", "known key uses the theme");
+    assert.equal(t.fg("textMuted", "safe"), "\x1b[39msafe\x1b[39m".replace("\x1b[39m", ""), "unknown key degrades to the (empty) fallback prefix + fg-off");
+    assert.ok(t.fg("textMuted", "safe").endsWith("safe\x1b[39m"));
+    assert.equal(t.bg("customMessageBg", "plain"), "plain", "bg unknown key returns text unchanged");
+  });
+});
