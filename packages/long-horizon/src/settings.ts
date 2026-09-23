@@ -171,7 +171,7 @@ registerSettings({
           type: "model",
           label: "Decision model",
           description: "decision (classifier) model — jev; custom… for others",
-          providerKey: "provider",
+          providerKey: "judge.provider",
           presetsByProvider: {
             typesafe: ["jev-latest"],
             openrouter: ["typesafe/jev-1.13"],
