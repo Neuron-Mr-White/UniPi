@@ -6,7 +6,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
-import { NOTIFY_COMMANDS, registerCommandRunner } from "@pi-unipi/core";
+import { HUB_OVERLAY_OPTIONS, NOTIFY_COMMANDS, registerCommandRunner } from "@pi-unipi/core";
 import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
@@ -106,13 +106,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         };
       },
       {
-        overlay: true,
-        overlayOptions: {
-          width: "80%",
-          minWidth: 60,
-          anchor: "center",
-          margin: 2,
-        },
+        ...HUB_OVERLAY_OPTIONS,
       }
     );
   };
@@ -149,13 +143,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         };
       },
       {
-        overlay: true,
-        overlayOptions: {
-          width: "80%",
-          minWidth: 60,
-          anchor: "center",
-          margin: 2,
-        },
+        ...HUB_OVERLAY_OPTIONS,
       }
     );
   };
@@ -192,13 +180,7 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
         };
       },
       {
-        overlay: true,
-        overlayOptions: {
-          width: "80%",
-          minWidth: 60,
-          anchor: "center",
-          margin: 2,
-        },
+        ...HUB_OVERLAY_OPTIONS,
       }
     );
   };

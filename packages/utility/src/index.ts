@@ -23,6 +23,7 @@ import {
   getPackageVersion,
   runCommandByName,
   SettingsHub,
+  HUB_OVERLAY_OPTIONS,
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
@@ -124,10 +125,7 @@ export default function (pi: ExtensionAPI) {
             dispose: () => {},
           };
         },
-        {
-          overlay: true,
-          overlayOptions: () => ({ anchor: "center" as const }),
-        },
+        HUB_OVERLAY_OPTIONS,
       ).catch(() => {
         // Overlay errors are non-blocking.
       });

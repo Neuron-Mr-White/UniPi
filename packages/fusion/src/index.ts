@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX } from "@pi-unipi/core";
+import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -438,10 +438,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
             onDone: done,
             onRenderRequest: () => tui.requestRender(),
           }),
-        {
-          overlay: true,
-          overlayOptions: { anchor: "center", width: "88%", minWidth: 72, maxHeight: "80%" },
-        },
+        HUB_OVERLAY_OPTIONS,
       );
       await applyResult(ctx, result, preset, loaded);
     },
@@ -470,10 +467,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
             onDone: done,
             onRenderRequest: () => tui.requestRender(),
           }),
-        {
-          overlay: true,
-          overlayOptions: { anchor: "center", width: "80%", minWidth: 64, maxHeight: "80%" },
-        },
+        HUB_OVERLAY_OPTIONS,
       );
       if (result.type !== "saved") return;
       const path = result.target === "project" ? loaded.projectPath : loaded.globalPath;

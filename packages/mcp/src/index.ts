@@ -15,6 +15,8 @@ import {
   getPackageVersion,
   registerCommandRunner,
   registerSettings,
+  HUB_OVERLAY_OPTIONS,
+  HUB_WIDE_OVERLAY_OPTIONS,
 } from "@pi-unipi/core";
 import type { ResolvedServer } from "./types.js";
 import { loadAndResolve, getGlobalConfigDir } from "./config/manager.js";
@@ -258,15 +260,7 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("MCP server saved. Restart pi to activate.", "info");
         },
       }),
-      {
-        overlay: true,
-        overlayOptions: {
-          width: "90%",
-          minWidth: 80,
-          anchor: "center",
-          margin: 2,
-        },
-      },
+      { ...HUB_WIDE_OVERLAY_OPTIONS },
     );
   };
   pi.registerCommand(`unipi:${MCP_COMMANDS.ADD}`, {
@@ -290,15 +284,7 @@ export default function (pi: ExtensionAPI) {
           cwd,
           onComplete: () => {},
         }),
-        {
-          overlay: true,
-          overlayOptions: {
-            width: "80%",
-            minWidth: 70,
-            anchor: "center",
-            margin: 2,
-          },
-        },
+        { ...HUB_OVERLAY_OPTIONS },
       );
     }
 

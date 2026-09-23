@@ -22,6 +22,7 @@ import {
   decodeKittyPrintable,
   truncateToWidth,
   visibleWidth,
+  type OverlayOptions,
 } from "@earendil-works/pi-tui";
 import { OverlayTheme } from "../../tui-overlay.js";
 import { namespaceColor } from "../package-colors.js";
@@ -33,6 +34,33 @@ export const hubTheme = new OverlayTheme();
 export function setHubTheme(theme: Parameters<OverlayTheme["setTheme"]>[0]): void {
   hubTheme.setTheme(theme);
 }
+
+// ─── Shared overlay sizing ─────────────────────────────────────────────
+
+/**
+ * THE ctx.ui.custom options for every kit-ported overlay — the hub's own
+ * included. Centered at pi's default overlay width (~80 cols) so the hub and
+ * its second-layer overlays read as one family.
+ */
+export const HUB_OVERLAY_OPTIONS: {
+  readonly overlay: true;
+  readonly overlayOptions: () => OverlayOptions;
+} = {
+  overlay: true,
+  overlayOptions: () => ({ anchor: "center" }),
+};
+
+/**
+ * Wide variant for genuinely two-pane overlays (mcp add-overlay): the hub's
+ * ~80-col default scaled ×1.5 = 120 columns.
+ */
+export const HUB_WIDE_OVERLAY_OPTIONS: {
+  readonly overlay: true;
+  readonly overlayOptions: () => OverlayOptions;
+} = {
+  overlay: true,
+  overlayOptions: () => ({ anchor: "center", width: 120, minWidth: 100 }),
+};
 
 const hubDim = (t: string): string => hubTheme.fg("textMuted", t);
 const hubBold = (t: string): string => hubTheme.bold(t);
