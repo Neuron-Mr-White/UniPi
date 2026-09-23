@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { SettingsHub } from "../hub.js";
 import { registerSettings, resetSettingsGates } from "../engine.js";
 import { parseModelCatalog } from "../catalog.js";
+import { namespaceColor, PACKAGE_COLORS } from "../../package-colors.js";
 
 // ── fixture namespace (unique per run to dodge the process-global registry) ─
 const NS = "hubtest";
@@ -102,49 +103,37 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(readEngine().flag, true);
   });
 
-  it("tab toggles a boolean too", () => {
+  it("enter and tab each toggle a boolean", () => {
     const hub = makeHub();
     jumpTo(hub, "Flag");
-    hub.handleInput("\t");
+    hub.handleInput("\r"); // Enter activates
     assert.equal(readEngine().flag, false);
+    hub.handleInput("\t"); // Tab activates too
+    assert.equal(readEngine().flag, true);
   });
 
-  it("tab cycles a plain enum; space is ignored on plain enums", () => {
+  it("enter/tab open the option list on a plain enum; enter/tab in the list picks", () => {
     const hub = makeHub();
     jumpTo(hub, "Choice");
-    hub.handleInput("\t");
-    assert.equal(readEngine().choice, "b");
-    hub.handleInput(" ");
-    assert.equal(readEngine().choice, "b", "space must not change a plain enum");
+    hub.handleInput("\t"); // Tab ACTIVATES → option list (no custom… on plain enums)
+    assert.ok(!hub.render(100).join("\n").includes("custom…"), "plain enum list omits custom…");
+    hub.handleInput("\x1b[B"); // down → b
+    hub.handleInput("\t"); // Tab picks (unified with Enter)
+    assert.equal(readEngine().choice, "b", "tab in the list picks");
+    hub.handleInput("\r"); // Enter opens the list again
+    hub.handleInput("\r"); // Enter picks the selected option ("b")
+    assert.equal(readEngine().choice, "b", "enter in the list picks");
   });
 
-  it("allowCustom enum: tab quick-cycles; Space opens the option list", () => {
+  it("space quick-cycles a plain enum", () => {
     const hub = makeHub();
-    jumpTo(hub, "Custom");
-    hub.handleInput("\t"); // a → b
-    assert.equal(readEngine().custom, "b");
-    hub.handleInput("\t"); // b → custom… → editor opens prefilled "b" (cursor at end)
-    hub.handleInput("z"); // append → "bz"
-    hub.handleInput("\r"); // Enter saves
-    assert.equal(readEngine().custom, "bz");
-
-    // Space opens the OPTION LIST (a, b, custom…) — small lists show no search.
+    jumpTo(hub, "Choice");
     hub.handleInput(" ");
-    const flat = hub.render(100).join("\n");
-    assert.ok(flat.includes("custom…"), "list shows the custom… entry");
-    assert.ok(!flat.includes("search:"), "no search box for ≤8 options");
-    hub.handleInput("\x1b[B"); // down → "b"
-    hub.handleInput("\x1b[B"); // down → "custom…"
-    hub.handleInput("\r"); // pick custom… → editor prefilled "bz"
-    hub.handleInput("X");
-    hub.handleInput("\r");
-    assert.equal(readEngine().custom, "bzX", "custom… path edits the raw value");
-
-    // Picking a LISTED option applies instantly (list starts on the first option
-    // when the current value is custom and not listed).
+    assert.equal(readEngine().choice, "b");
     hub.handleInput(" ");
-    hub.handleInput("\r");
-    assert.equal(readEngine().custom, "a");
+    assert.equal(readEngine().choice, "c");
+    hub.handleInput(" ");
+    assert.equal(readEngine().choice, "a", "cycles back to the first option");
   });
 
   it("custom enum values display with the ⚙ marker", async () => {
@@ -154,24 +143,62 @@ describe("hub interactions (instant apply)", () => {
     assert.equal(formatFieldValue(f, "weird"), "⚙ weird");
   });
 
+  it("allowCustom enum: enter/tab open the option list; space cycles skipping custom…", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Custom");
+    hub.handleInput("\t"); // ACTIVATE → option list (a, b, custom…)
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("custom…"), "list shows the custom… entry");
+    assert.ok(!flat.includes("search:"), "no search box for ≤8 options");
+    hub.handleInput("\x1b[B"); // down → "b"
+    hub.handleInput("\r"); // pick b
+    assert.equal(readEngine().custom, "b");
+    hub.handleInput("\t"); // list again
+    hub.handleInput("\x1b[B"); // → "custom…"
+    hub.handleInput("\r"); // editor opens prefilled "b" (cursor at end)
+    hub.handleInput("z"); // append → "bz"
+    hub.handleInput("\t"); // TAB submits the inline editor
+    assert.equal(readEngine().custom, "bz", "tab submits the editor");
+
+    // Space quick-cycles LISTED options only — custom… never offered; a custom
+    // value restarts at the first option.
+    hub.handleInput(" ");
+    assert.equal(readEngine().custom, "a", "custom value cycles back to the first option");
+    hub.handleInput(" ");
+    assert.equal(readEngine().custom, "b");
+    hub.handleInput(" ");
+    assert.equal(readEngine().custom, "a");
+  });
+
   it("inline input: prefilled with cursor at end, Enter saves, Esc cancels", () => {
     const hub = makeHub();
     jumpTo(hub, "Text");
-    hub.handleInput(" "); // opens editor prefilled "hello" (cursor at end)
+    hub.handleInput("\r"); // Enter opens the editor prefilled "hello" (cursor at end)
     hub.handleInput("!");
     hub.handleInput("\r");
     assert.equal(readEngine().text, "hello!");
 
-    hub.handleInput(" ");
+    hub.handleInput("\t"); // Tab also opens the editor
     hub.handleInput("XXX");
     hub.handleInput("\x1b"); // Esc cancels
     assert.equal(readEngine().text, "hello!", "esc discards the edit");
   });
 
+  it("space is a no-op on a string field (enter/tab edit)", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Text");
+    hub.handleInput(" ");
+    assert.equal((hub as unknown as { mode: string }).mode, "list", "space does not open the editor");
+    assert.equal(existsSync(engineFile()), false, "space changes nothing (no write)");
+    hub.handleInput("\t"); // Tab edits
+    assert.equal((hub as unknown as { mode: string }).mode, "input");
+    hub.handleInput("\x1b");
+  });
+
   it("invalid number keeps the editor open with an error; valid saves", () => {
     const hub = makeHub();
     jumpTo(hub, "Count");
-    hub.handleInput(" "); // prefilled "5", cursor at end
+    hub.handleInput("\r"); // prefilled "5", cursor at end
     for (let i = 0; i < 1; i++) hub.handleInput("\x7f"); // "5" → ""
     hub.handleInput("999"); // out of range
     hub.handleInput("\r");
@@ -185,7 +212,7 @@ describe("hub interactions (instant apply)", () => {
   it("secret edits prefills the real value and saves", () => {
     const hub = makeHub();
     jumpTo(hub, "Token");
-    hub.handleInput(" ");
+    hub.handleInput("\r");
     hub.handleInput("2");
     hub.handleInput("\r");
     assert.equal(readEngine().token, "secret-value2");
@@ -194,7 +221,7 @@ describe("hub interactions (instant apply)", () => {
   it("model picker: filters, arrows walk, Enter picks instantly", () => {
     const hub = makeHub();
     jumpTo(hub, "Model");
-    hub.handleInput(" "); // opens picker, search prefilled "prov/m1" (cursor end)
+    hub.handleInput("\r"); // opens picker, search prefilled "prov/m1" (cursor end)
     for (let i = 0; i < 7; i++) hub.handleInput("\x7f"); // clear "prov/m1"
     hub.handleInput("glm"); // → zai/glm
     hub.handleInput("\r");
@@ -211,7 +238,7 @@ describe("hub interactions (instant apply)", () => {
   it("model picker renders EXACTLY 5 visible rows regardless of list size", () => {
     const hub = makeHub();
     jumpTo(hub, "Model");
-    hub.handleInput(" ");
+    hub.handleInput("\r");
     for (let i = 0; i < 7; i++) hub.handleInput("\x7f"); // clear → all 7 options
     const lines = hub.render(100).join("\n");
     // The picker window shows EXACTLY the first 5 of 7 options: m1,m2,m3,x1,x2
@@ -308,7 +335,7 @@ describe("hub interactions (instant apply)", () => {
     hub.handleInput("/");
     hub.handleInput("Model");
     hub.handleInput("\r");
-    hub.handleInput(" ");
+    hub.handleInput("\r"); // Enter opens the picker
     const picker = (hub as unknown as { picker: { input: { getValue(): string } } }).picker;
     assert.equal(picker.input.getValue(), "", "search starts empty for uncatalogued values");
     const flat = hub.render(100).join("\n");
@@ -351,19 +378,19 @@ describe("layout: uniform paint + viewport", () => {
   it("lines stay exact width with the picker and inline editor open", () => {
     const hub = makeHub();
     jumpTo(hub, "Model");
-    hub.handleInput(" ");
+    hub.handleInput("\r"); // picker
     for (const line of hub.render(100)) assert.equal(vw(line), 100);
     hub.handleInput("\x1b");
     const hub2 = makeHub();
     jumpTo(hub2, "Text");
-    hub2.handleInput(" ");
+    hub2.handleInput("\r"); // inline editor
     for (const line of hub2.render(100)) assert.equal(vw(line), 100);
   });
 
   it("long values truncate with ellipsis instead of overflowing", () => {
     const hub = makeHub();
     jumpTo(hub, "Model");
-    hub.handleInput(" "); // picker
+    hub.handleInput("\r"); // picker
     for (let i = 0; i < 3; i++) hub.handleInput("\x7f"); // clear "m1" prefill partially
     hub.handleInput("verylongmodelname/that-should-truncate/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     hub.handleInput("\r");
@@ -392,6 +419,34 @@ describe("layout: uniform paint + viewport", () => {
     const idx = rows.findIndex((r) => r.label === "Token");
     const scroll = (hub as unknown as { scroll: number }).scroll;
     assert.ok(idx >= scroll && idx < scroll + 5, "cursor within [scroll, scroll+maxRows)");
+  });
+
+  it("scrolling back to the top shows the first header — no ↑ line, no stall", () => {
+    const hub = makeHub(() => 12); // maxRows = 5
+    const h = hub as unknown as { visibleRows: () => { label: string }[]; cursor: number; scroll: number };
+    jumpTo(hub, "Token"); // scroll down; cursor 6
+    hub.render(100); // render applies clampScroll → window scrolled
+    assert.ok(h.scroll > 0, "window scrolled down");
+    hub.handleInput("\x1b[H"); // home → first selectable row (Flag, index 1)
+    assert.equal(h.cursor, 1);
+    hub.render(100); // render applies clampScroll
+    assert.equal(h.scroll, 0, "scroll includes the header run above the cursor");
+    const flat = hub.render(100).join("\n");
+    assert.ok(!flat.includes("↑ "), "no top scroll indicator at the top");
+    assert.ok(flat.includes("Hub Test — All types"), "first header visible");
+    hub.handleInput("\x1b[F"); // end → last selectable
+    assert.ok(!hub.render(100).join("\n").includes("↓ "), "↓ N more reaches 0 at End");
+  });
+
+  it("picker 5-row window shows the selected LAST option (no off-by-one)", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Model");
+    hub.handleInput("\r"); // picker
+    for (let i = 0; i < 7; i++) hub.handleInput("\x7f"); // clear search → all 7 options
+    for (let i = 0; i < 6; i++) hub.handleInput("\x1b[B"); // walk to the 7th option
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("zai/glm"), "selected last option visible in the window");
+    assert.ok(!flat.includes("prov/m2"), "earliest options scrolled off");
   });
 });
 
@@ -467,7 +522,7 @@ describe("recovery safety net (u / d / R)", () => {
   it("d resets the cursor field to its schema default", () => {
     const hub = makeHub();
     jumpTo(hub, "Count");
-    hub.handleInput(" ");           // editor
+    hub.handleInput("\r");           // editor
     hub.handleInput("\x7f");       // clear "5"
     hub.handleInput("9");
     hub.handleInput("\r");         // saved 9
@@ -479,7 +534,7 @@ describe("recovery safety net (u / d / R)", () => {
   it("R reverts the cursor field to the panel-open baseline", () => {
     const hub = makeHub();
     jumpTo(hub, "Text");
-    hub.handleInput(" ");
+    hub.handleInput("\r");
     hub.handleInput("!");
     hub.handleInput("\r");         // "hello!"
     assert.equal(readEngine().text, "hello!");
@@ -530,7 +585,7 @@ describe("friendly defaults (emptyLabel / zeroLabel)", () => {
     const hub = makeHub();
     jumpTo(hub, "Count");
     // fixture Count has no zeroLabel → plain "0"-style rendering stays strict
-    hub.handleInput(" ");
+    hub.handleInput("\r");
     hub.handleInput("\x7f");
     hub.handleInput("\r"); // empty → invalid, stays open… cancel instead
     hub.handleInput("\x1b");
@@ -604,14 +659,14 @@ describe("nested pages + action rows (per-category flows)", () => {
     hub.handleInput("/");
     hub.handleInput("tavily");
     hub.handleInput("\r");
-    // cursor on the page row → Space opens
-    hub.handleInput(" ");
+    // cursor on the page row → Enter opens
+    hub.handleInput("\r");
     const flat = (): string => hub.render(100).join("\n");
     assert.ok(flat().includes("› tavily —"), "breadcrumb in the title");
     assert.ok(flat().includes("API key"), "page fields visible");
     // edit inside the page writes through the prefixed key
     jumpTo(hub, "API key");
-    hub.handleInput(" ");
+    hub.handleInput("\r");
     hub.handleInput("2");
     hub.handleInput("\r");
     const pageFile = join(home, ".unipi", "config", "hubtestpage", "config.json");
@@ -645,9 +700,113 @@ describe("nested pages + action rows (per-category flows)", () => {
     hub.handleInput("/");
     hub.handleInput("configure");
     hub.handleInput("\r");
-    hub.handleInput(" ");
+    hub.handleInput("\t"); // Tab runs it too
     assert.deepEqual(ran, ["unipi:test-configure"], "action row invokes the hook");
     hub.handleInput("\r");
     assert.deepEqual(ran, ["unipi:test-configure", "unipi:test-configure"], "Enter runs it too");
+  });
+});
+
+describe("group colors (namespace ▌)", () => {
+  it("namespaceColor maps hub namespaces onto package colors", () => {
+    assert.equal(namespaceColor("info-screen"), PACKAGE_COLORS.info);
+    assert.equal(namespaceColor("compactor"), PACKAGE_COLORS.compact);
+    assert.equal(namespaceColor("command-enchantment"), PACKAGE_COLORS.autocomplete);
+    assert.equal(namespaceColor("utility"), PACKAGE_COLORS.utility, "identity for known packages");
+    assert.equal(namespaceColor("hubtest"), "", "unknown namespaces have no color");
+  });
+
+  it("▌ with the namespace ANSI code on header + field rows; widths stay exact", () => {
+    registerSettings({
+      namespace: "info-screen",
+      label: "Info Screen",
+      defaults: { show: true },
+      schema: [{ title: "Display", fields: [{ key: "show", type: "boolean", label: "Show" }] }],
+    });
+    const hub = makeHub();
+    const color = namespaceColor("info-screen");
+    assert.ok(color, "info-screen resolves to a package color");
+    const lines = hub.render(100);
+    const strip = (l: string): string => l.replace(/\x1b\[[0-9;]*m/g, "");
+    const header = lines.find((l) => strip(l).includes("Info Screen — Display"));
+    const field = lines.find((l) => strip(l).includes("▌ Show"));
+    assert.ok(header, "header row found");
+    assert.ok(field, "field row found");
+    assert.ok(strip(header!).startsWith("│▌ "), "header ▌ sits at column 0 inside the band");
+    assert.ok(header!.includes(color), "header ▌ carries the namespace ANSI code");
+    assert.ok(field!.includes(color), "field ▌ carries the namespace ANSI code");
+    for (const line of lines) assert.equal(vw(line), 100, "exact width kept");
+  });
+
+  it("unknown namespaces keep the plain two-space indent (no ▌)", () => {
+    const hub = makeHub();
+    const strip = (l: string): string => l.replace(/\x1b\[[0-9;]*m/g, "");
+    const field = hub.render(100).find((l) => strip(l).includes("Flag"));
+    assert.ok(field);
+    assert.ok(!strip(field!).includes("▌"), "uncolored namespace has no marker");
+  });
+});
+
+describe("search backspace exit", () => {
+  it("backspace on an EMPTY search input exits search; non-empty deletes", () => {
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("ju");
+    hub.handleInput("\x7f"); // "ju" → "j" — stays in search
+    const h = hub as unknown as {
+      mode: string; filter: string; cursor: number;
+      searchInput: { getValue(): string } | null;
+      visibleRows: () => { kind: string }[];
+    };
+    assert.equal(h.mode, "search", "non-empty backspace stays in search");
+    assert.equal(h.searchInput?.getValue(), "j");
+    hub.handleInput("\x7f"); // "j" → "" — still in search, input now empty
+    assert.equal(h.mode, "search", "backspace to empty stays in search");
+    assert.equal(h.searchInput?.getValue(), "");
+    hub.handleInput("\x7f"); // empty → exits search like Esc
+    assert.equal(h.mode, "list", "third backspace exits to list mode");
+    assert.equal(h.filter, "", "filter cleared");
+    assert.equal(h.searchInput, null);
+    assert.notEqual(h.visibleRows()[h.cursor]?.kind, "header", "cursor normalized onto a selectable row");
+  });
+});
+
+describe("field hints + validators", () => {
+  it("hint renders as ⓘ under the editor input; validator blocks submit with ⚠", () => {
+    registerSettings({
+      namespace: "hubtesthint",
+      label: "Hinted",
+      defaults: { key: "" },
+      schema: [{
+        title: "Keys",
+        fields: [{
+          key: "key",
+          type: "string",
+          label: "Keybind",
+          hint: "format mod+key",
+          validate: (raw) => (raw === "bad" ? "nope" : null),
+        }],
+      }],
+    });
+    const cfgFile = (): string => join(home, ".unipi", "config", "hubtesthint", "config.json");
+    const hub = makeHub();
+    hub.handleInput("/");
+    hub.handleInput("keybind");
+    hub.handleInput("\r");
+    hub.handleInput("\r"); // Enter opens the editor
+    let flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("ⓘ"), "hint line rendered");
+    assert.ok(flat.includes("format mod+key"), "hint text shown");
+    hub.handleInput("bad");
+    hub.handleInput("\r"); // validator blocks
+    flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("⚠ nope"), "validation error shown");
+    assert.equal(existsSync(cfgFile()), false, "invalid input writes nothing");
+    hub.handleInput("\x7f"); // clear "bad"
+    hub.handleInput("\x7f");
+    hub.handleInput("\x7f");
+    hub.handleInput("ok");
+    hub.handleInput("\t"); // Tab submits
+    assert.equal(JSON.parse(readFileSync(cfgFile(), "utf8")).key, "ok", "valid input applies");
   });
 });

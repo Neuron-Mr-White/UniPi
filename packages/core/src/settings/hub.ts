@@ -3,13 +3,15 @@
  *
  * Interaction spec (user, 2026-09-22; instant-apply, no staged state):
  *   ↑/k ↓/j   move
- *   /         search (esc exits search; esc again closes)
- *   Space     boolean → toggle · string/number/secret → inline input below the
- *             row (prefilled) · enum(allowCustom) → jump to custom + input ·
- *             model → searchable picker
- *   Tab       boolean → toggle · enum → cycle (allowCustom ends with custom…)
- *             · scope row → switch global↔project
- *   Enter     inside an input/picker: save/pick (instant write)
+ *   /         search (esc, or backspace on empty input, exits; esc again
+ *             closes)
+ *   Enter/Tab ACTIVATE: boolean → toggle · enum → option list (custom… only
+ *             when allowCustom) · string/number/secret → inline input ·
+ *             model → searchable picker · page → open · action → run ·
+ *             ▸ Advanced → flip
+ *   Space     quick action: boolean → toggle · enum → next option (custom…
+ *             skipped; custom values restart at the first option) ·
+ *             ▸ Advanced → flip · everything else no-op
  *   Esc       input/picker → cancel · search → exit · list → close panel
  *
  * Model picker: search box + EXACTLY 5 visible rows; typing filters; ↑/↓ walk
@@ -29,12 +31,12 @@ import {
 } from "@earendil-works/pi-tui";
 import { frameOverlay, OverlayTheme } from "../../tui-overlay.js";
 import { boxInnerWidth } from "../../tui-width.js";
+import { namespaceColor } from "../package-colors.js";
 import { loadModelCatalog } from "./catalog.js";
 import {
   enumOption,
   formatFieldValue,
   getField,
-  isCustomEnumValue,
   parseFieldValue,
   setField,
   type SettingsField,
@@ -85,16 +87,17 @@ const overlayTheme = new OverlayTheme();
 const dim = (t: string) => overlayTheme.fg("textMuted", t);
 const bold = (t: string) => overlayTheme.bold(t);
 
-/** Cycle a value through an enum's options (allowCustom appends custom…). */
+/**
+ * Quick-cycle an enum to the NEXT LISTED option — `custom…` is never offered;
+ * a custom (unlisted) value restarts at the first option.
+ */
 export function nextEnumValue(field: SettingsField, current: unknown): { value: unknown; label: string } | null {
-  if (field.type !== "enum") return null;
+  if (field.type !== "enum" || field.options.length === 0) return null;
   const opts = field.options.map(enumOption);
   const cur = String(current ?? "");
-  const custom = field.allowCustom === true && isCustomEnumValue(field, current);
-  const order = custom ? [...opts, { value: "\u0000custom", label: "custom…" }] : field.allowCustom === true ? [...opts, { value: "\u0000custom", label: "custom…" }] : opts;
-  const idx = order.findIndex((o) => o.value === cur);
-  const next = order[(idx + 1 + order.length) % order.length]!;
-  return { value: next.value === "\u0000custom" ? next.value : next.value, label: next.label };
+  const idx = opts.findIndex((o) => o.value === cur);
+  const next = idx === -1 ? opts[0]! : opts[(idx + 1) % opts.length]!;
+  return { value: next.value, label: next.label };
 }
 
 export class SettingsHub {
@@ -178,6 +181,7 @@ export class SettingsHub {
         rows.push({
           kind: "header", id: `${def.namespace}::${section.title}`,
           label: `${def.label} — ${section.title}`, layerTag: tag,
+          namespace: def.namespace,
         });
         for (const field of section.fields) {
           rows.push({
@@ -197,6 +201,7 @@ export class SettingsHub {
           rows.push({
             kind: "header", id: `${def.namespace}::${section.title}`,
             label: `${def.label} — ${section.title}`, layerTag: tag,
+            namespace: def.namespace,
             advancedOf: def.namespace,
           });
           for (const field of section.fields) {
@@ -330,7 +335,7 @@ export class SettingsHub {
     for (const section of sections) {
       rows.push({
         kind: "header", id: `${namespace}::page::${section.title}`,
-        label: section.title,
+        label: section.title, namespace,
       });
       for (const field of section.fields) {
         rows.push({
@@ -450,60 +455,47 @@ export class SettingsHub {
     if (matchesKey(data, Key.tab) || matchesKey(data, Key.space) || matchesKey(data, Key.enter)) {
       const row = this.currentRow();
       if (!row) return;
+      // Unified keys (user-approved): Enter/Tab = ACTIVATE, Space = quick action.
+      const quick = matchesKey(data, Key.space);
       if (row.kind === "toggle") {
         if (row.namespace && this.expandedAdvanced.has(row.namespace)) this.expandedAdvanced.delete(row.namespace);
         else if (row.namespace) this.expandedAdvanced.add(row.namespace);
         return;
       }
       if (row.kind !== "field" || !row.field || !row.namespace) return;
-      // page/action rows: Space or Enter opens/runs; Tab stays inert.
-      if (row.field.type === "page" || row.field.type === "action") {
-        if (matchesKey(data, Key.tab)) return;
-        return row.field.type === "page" ? this.openPage(row) : this.runActionRow(row);
+      const field = row.field;
+      const value = getField(this.valueOf(row.namespace), field.key);
+      if (quick) {
+        // Quick action: boolean toggle + enum cycle only; everything else no-op.
+        if (field.type === "boolean") this.applyChange(row, value !== true);
+        else if (field.type === "enum") {
+          const next = nextEnumValue(field, value);
+          if (next) this.applyChange(row, next.value);
+        }
+        return;
       }
-      // Enter is inert in list mode for value fields (its spec meaning is save-in-input).
-      if (matchesKey(data, Key.enter)) return;
-      const value = getField(this.valueOf(row.namespace), row.field.key);
-      return matchesKey(data, Key.tab) ? this.handleTab(row, value) : this.handleSpace(row, value);
-    }
-  }
-
-  private handleTab(row: Row, value: unknown): void {
-    const field = row.field!;
-    if (field.type === "boolean") {
-      this.applyChange(row, value !== true);
-      return;
-    }
-    if (field.type === "enum") {
-      const opts = field.options.map(enumOption);
-      const order = field.allowCustom === true ? [...opts, { value: "\u0000custom", label: "custom…" }] : opts;
-      const cur = String(value ?? "");
-      const idx = order.findIndex((o) => o.value === cur);
-      const next = order[(idx + 1 + order.length) % order.length]!;
-      if (next.value !== "\u0000custom") this.applyChange(row, next.value);
-      // Landing ON custom… opens the editor (prefilled) rather than guessing.
-      else this.openEdit(row);
-    }
-    if (field.type === "model") this.openPicker(row);
-  }
-
-  private handleSpace(row: Row, value: unknown): void {
-    const field = row.field!;
-    switch (field.type) {
-      case "boolean":
-        this.applyChange(row, value !== true);
-        return;
-      case "string":
-      case "number":
-      case "secret":
-        this.openEdit(row);
-        return;
-      case "enum":
-        if (field.allowCustom === true) this.openEnumList(row);
-        return; // plain enums ignore Space
-      case "model":
-        this.openPicker(row);
-        return;
+      switch (field.type) {
+        case "boolean":
+          this.applyChange(row, value !== true);
+          return;
+        case "enum":
+          this.openEnumList(row);
+          return;
+        case "string":
+        case "number":
+        case "secret":
+          this.openEdit(row);
+          return;
+        case "model":
+          this.openPicker(row);
+          return;
+        case "page":
+          this.openPage(row);
+          return;
+        case "action":
+          this.runActionRow(row);
+          return;
+      }
     }
   }
 
@@ -517,6 +509,13 @@ export class SettingsHub {
     input.setValue(raw);
     input.handleInput("\x1b[F"); // cursor to end — typing extends the prefilled value
     input.onSubmit = (text) => {
+      // Optional field validator gates the raw text before anything applies.
+      const validate = "validate" in field ? field.validate : undefined;
+      const validationError = validate?.(text.trim()) ?? null;
+      if (validationError) {
+        this.edit = { row, input, error: validationError };
+        return;
+      }
       // Enum-custom: the raw text IS the value. Others go through validation.
       const parsed = field.type === "enum" ? text.trim() : parseFieldValue(field, text);
       if (parsed === undefined || parsed === "") {
@@ -551,13 +550,17 @@ export class SettingsHub {
     this.mode = "model";
   }
 
-  /** allowCustom enums: windowed option list (options + "custom…"), no search ≤8. */
+  /**
+   * Enum option list (Enter/Tab on an enum row). `custom…` appears only for
+   * allowCustom fields; ≤8 options show NO search box.
+   */
   private openEnumList(row: Row): void {
     const field = row.field!;
     if (field.type !== "enum") return;
     const opts = field.options.map(enumOption);
-    const options = [...opts.map((o) => o.label), "custom…"];
-    const values: unknown[] = [...opts.map((o) => o.value), CUSTOM_VALUE];
+    const custom = field.allowCustom === true;
+    const options = custom ? [...opts.map((o) => o.label), "custom…"] : opts.map((o) => o.label);
+    const values: unknown[] = custom ? [...opts.map((o) => o.value), CUSTOM_VALUE] : opts.map((o) => o.value);
     const start = getField(this.valueOf(row.namespace!), field.key);
     const idx = opts.findIndex((o) => o.value === String(start));
     const input = new Input({ prompt: "search: " });
@@ -590,7 +593,7 @@ export class SettingsHub {
       this.mode = "list";
       return;
     }
-    if (matchesKey(data, Key.enter) || data === "\r" || data === "\n") {
+    if (matchesKey(data, Key.enter) || matchesKey(data, Key.tab) || data === "\r" || data === "\n") {
       const filtered = this.pickerFiltered();
       const idx = filtered[p.selected];
       const value = idx === undefined ? undefined : p.values[idx];
@@ -621,10 +624,12 @@ export class SettingsHub {
     const input = this.searchInput;
     if (!input) { this.mode = "list"; return; }
     if (matchesKey(data, Key.escape) || data === "\x1b") {
-      this.searchInput = null;
-      this.filter = "";
-      this.mode = "list";
-      this.cursor = 0;
+      this.exitSearch();
+      return;
+    }
+    // Backspace on an EMPTY search input exits search exactly like Esc.
+    if ((matchesKey(data, Key.backspace) || data === "\x7f" || data === "\b") && input.getValue() === "") {
+      this.exitSearch();
       return;
     }
     if (matchesKey(data, Key.enter) || data === "\r" || data === "\n") {
@@ -640,7 +645,22 @@ export class SettingsHub {
     this.normalizeCursor();
   }
 
+  /** Leave search: clear the filter, return to list navigation, normalize cursor. */
+  private exitSearch(): void {
+    this.searchInput = null;
+    this.filter = "";
+    this.mode = "list";
+    this.cursor = 0;
+    this.normalizeCursor();
+  }
+
   private handleInputEdit(data: string): void {
+    // Tab submits like Enter — intercepted before Input (which ignores it).
+    if (matchesKey(data, Key.tab)) {
+      const edit = this.edit;
+      if (edit) edit.input.onSubmit?.(edit.input.getValue());
+      return;
+    }
     // pi-tui's Input handles editing + calls onSubmit/onEscape itself.
     this.edit?.input.handleInput(data);
   }
@@ -673,7 +693,8 @@ export class SettingsHub {
 
   /**
    * Two-column row (label left, value right) measured in plain text first,
-   * then styled per span. Always exactly `inner` cells.
+   * then styled per span. `markNamespace` swaps the first indent cell for a
+   * colored `▌` group mark. Always exactly `inner` cells.
    */
   private rowColumns(
     cursor: string,
@@ -681,15 +702,33 @@ export class SettingsHub {
     value: string,
     inner: number,
     selected: boolean,
+    markNamespace?: string,
   ): string {
     const valW = visibleWidth(value);
-    const room = Math.max(0, inner - 2 - valW - 2);
+    // Cursor + group mark eat 4 cells before the label.
+    const room = Math.max(0, inner - 4 - valW - 2);
     const labelT = truncateToWidth(label, room, "…");
     // One trailing cell of air before the frame border.
-    const gap = Math.max(1, inner - 2 - visibleWidth(labelT) - valW - 1);
+    const gap = Math.max(1, inner - 4 - visibleWidth(labelT) - valW - 1);
+    const mark = markNamespace ? `${this.markSpan(markNamespace)} ` : "  ";
     const labelStyled = selected ? bold(labelT) : labelT;
     const valueStyled = selected ? bold(value) : dim(value);
-    return `${cursor}${labelStyled}${" ".repeat(gap)}${valueStyled}`;
+    return `${cursor}${mark}${labelStyled}${" ".repeat(gap)}${valueStyled}`;
+  }
+
+  /** Plain-text group-mark cell: `▌` for colored namespaces, else a space. */
+  private markChar(namespace: string | undefined): string {
+    return namespaceColor(namespace ?? "") ? "▌" : " ";
+  }
+
+  /**
+   * Styled `▌` group mark — bold + the namespace's ANSI color. Closes with
+   * targeted-off codes ([22m[39m), never [0m: a full reset mid-line would kill
+   * the header band's background paint.
+   */
+  private markSpan(namespace: string | undefined): string {
+    const color = namespaceColor(namespace ?? "");
+    return color ? `${color}${bold("▌")}\x1b[39m` : " ";
   }
 
   private renderRow(row: Row, selected: boolean, inner: number): string {
@@ -697,26 +736,31 @@ export class SettingsHub {
     if (row.kind === "toggle") {
       const open = row.namespace ? this.expandedAdvanced.has(row.namespace) : false;
       const label = open ? "▾ Advanced" : "▸ Advanced";
-      return this.exactRow(this.rowColumns(cursor, `  ${label}`, "space", inner, selected), inner);
+      return this.exactRow(this.rowColumns(cursor, label, "space", inner, selected, row.namespace), inner);
     }
     if (row.kind === "header") {
       const tag = row.layerTag ? ` [${row.layerTag}]` : "";
-      // Distinct full-width band (bg wrap is width-safe — measures on plain).
-      const plain = this.exactRow(`  ${row.label}${tag}`, inner);
-      return overlayTheme.bg("customMessageBg", dim(bold(plain)));
+      const plain = this.exactRow(`${this.markChar(row.namespace)} ${row.label}${tag}`, inner);
+      const color = namespaceColor(row.namespace ?? "");
+      // Distinct full-width band (bg wrap is width-safe — measures on plain);
+      // the ▌ sits at column 0 INSIDE the band, in the namespace color.
+      const painted = color
+        ? this.markSpan(row.namespace) + dim(bold(plain.slice(1)))
+        : dim(bold(plain));
+      return overlayTheme.bg("customMessageBg", painted);
     }
     const field = row.field!;
     if (field.type === "page") {
-      return this.exactRow(this.rowColumns(cursor, `  ${row.label}`, "› open", inner, selected), inner);
+      return this.exactRow(this.rowColumns(cursor, row.label, "› open", inner, selected, row.namespace), inner);
     }
     if (field.type === "action") {
-      return this.exactRow(this.rowColumns(cursor, `  ${row.label}`, "⏎ run", inner, selected), inner);
+      return this.exactRow(this.rowColumns(cursor, row.label, "⏎ run", inner, selected, row.namespace), inner);
     }
     const value = getField(this.valueOf(row.namespace!), field.key);
     // Value only — no per-row key hints (they read inconsistently); the
     // bottom hint line names the keys that work on the cursor's row.
     return this.exactRow(
-      this.rowColumns(cursor, `  ${row.label}`, formatFieldValue(field, value), inner, selected),
+      this.rowColumns(cursor, row.label, formatFieldValue(field, value), inner, selected, row.namespace),
       inner,
     );
   }
@@ -725,6 +769,9 @@ export class SettingsHub {
     if (!this.edit) return [];
     const width = Math.max(8, inner - 4);
     const out = this.edit.input.render(width).map((l) => this.exactRow(`  ${l}`, inner));
+    const field = this.edit.row.field;
+    const hint = field && "hint" in field ? field.hint : undefined;
+    if (hint) out.push(this.exactRow(dim(`  ⓘ ${hint}`), inner));
     if (this.edit.error) out.push(this.exactRow(dim(`  ⚠ ${this.edit.error}`), inner));
     return out;
   }
@@ -750,33 +797,39 @@ export class SettingsHub {
   }
 
   private clampScroll(len: number, maxRows: number): void {
-    if (this.cursor < this.scroll) this.scroll = this.cursor;
+    if (this.cursor < this.scroll) {
+      // Scrolled up: keep the header run DIRECTLY above the cursor visible —
+      // scroll to its first header (0 when no selectable row precedes), so
+      // arriving at a group's first field shows the group band too.
+      let start = this.cursor;
+      const visible = this.visibleRows();
+      while (start > 0 && visible[start - 1]?.kind === "header") start--;
+      this.scroll = start;
+    }
     if (this.cursor > this.scroll + maxRows - 1) this.scroll = this.cursor - maxRows + 1;
     this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, len - maxRows)));
   }
 
   private hintLine(): string {
-    if (this.mode === "search") return "type to filter · enter apply · esc clear";
-    if (this.mode === "input") return "enter save · esc cancel";
-    if (this.mode === "model") return "↑↓/kj pick · enter select · esc cancel";
+    if (this.mode === "search") return "type to filter · enter apply · esc/bksp exit";
+    if (this.mode === "input") return "enter/tab save · esc cancel";
+    if (this.mode === "model") return "↑↓ move · enter/tab pick · esc cancel";
     const recover = `${this.history.length > 0 ? "u undo · " : ""}d default · R revert`;
     const row = this.currentRow();
     const f = row?.field;
     if (!f) return `↑↓/kj · / search · g scope · ${recover}`;
-    if (f.type === "page") return `enter/space open · esc back · ↑↓/kj · ${recover}`;
-    if (f.type === "action") return `enter/space run · ↑↓/kj · g scope · ${recover}`;
+    if (f.type === "page") return `enter/tab open · esc back · ↑↓/kj · ${recover}`;
+    if (f.type === "action") return `enter/tab run · ↑↓/kj · g scope · ${recover}`;
     const scope = "g scope";
     switch (f.type) {
       case "boolean":
-        return `space/tab toggle · ↑↓/kj · / search · ${scope} · ${recover}`;
+        return `enter/tab toggle · space toggle · ↑↓/kj · / search · ${scope} · ${recover}`;
       case "enum":
-        return f.allowCustom
-          ? `tab cycle · space custom · ↑↓/kj · ${scope} · ${recover}`
-          : `tab cycle · ↑↓/kj · / search · ${scope} · ${recover}`;
+        return `enter/tab choose · space cycle · ↑↓/kj · ${scope} · ${recover}`;
       case "model":
-        return `space/tab pick model · ↑↓/kj · ${scope} · ${recover}`;
+        return `enter/tab pick · ↑↓/kj · ${scope} · ${recover}`;
       default:
-        return `space edit · ↑↓/kj · / search · ${scope} · ${recover}`;
+        return `enter/tab edit · ↑↓/kj · / search · ${scope} · ${recover}`;
     }
   }
 

@@ -26,6 +26,47 @@ const CONFLICTS = new Set(["alt+e"]); // alt+e = cursorWordRight
 
 const FREE_ALT_KEYS = ALT_KEY_OPTIONS.filter((k) => !CONFLICTS.has(k));
 
+// ─── Keybinding id grammar (matches pi-tui keys.js parseKeyId/matchesKey) ────
+// pi-tui parses ids as: lowercase, split on "+", last part = key, modifiers
+// detected by membership (ctrl/alt/shift/super, any order, combinable).
+// Valid keys: a-z, 0-9, ASCII symbols (SYMBOL_KEYS), f1-f12, and named keys
+// (escape/esc, enter/return, tab, space, backspace, delete, insert, clear,
+// home, end, pageup, pagedown, up, down, left, right).
+
+const KEYBINDING_HINT =
+  "format mod+key — mods: ctrl alt shift super (combine: ctrl+shift+x) · keys: a-z 0-9 f1-f12 space tab enter escape up down left right home end pageup pagedown";
+
+const KEYBINDING_MODS = new Set(["ctrl", "alt", "shift", "super"]);
+const KEYBINDING_SYMBOLS = new Set([
+  "`", "-", "=", "[", "]", "\\", ";", "'", ",", ".", "/",
+  "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+",
+  "|", "~", "{", "}", ":", "<", ">", "?",
+]);
+const KEYBINDING_KEYS = new Set([
+  "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete",
+  "insert", "clear", "home", "end", "pageup", "pagedown",
+  "up", "down", "left", "right",
+  ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`),
+]);
+
+/** Validate a pi-tui keybinding id ("mod+key"); returns an error or null. */
+export function validateKeybinding(raw: string): string | null {
+  const parts = raw.toLowerCase().split("+");
+  const key = parts[parts.length - 1]!;
+  const mods = parts.slice(0, -1);
+  if (mods.length === 0 || key === "") {
+    return `invalid key "${raw}" — expected mod+key like alt+s`;
+  }
+  if (!mods.every((m) => KEYBINDING_MODS.has(m)) || new Set(mods).size !== mods.length) {
+    return `invalid key "${raw}" — mods: ctrl alt shift super`;
+  }
+  const single = key.length === 1 && ((key >= "a" && key <= "z") || (key >= "0" && key <= "9"));
+  if (!single && !KEYBINDING_KEYS.has(key) && !KEYBINDING_SYMBOLS.has(key)) {
+    return `invalid key "${raw}" — keys: a-z 0-9 f1-f12 or a named key (space, enter, escape, …)`;
+  }
+  return null;
+}
+
 // ─── Config persistence ─────────────────────────────────────────────────────
 
 // Registered with the unified settings hub. Input-shortcuts config is
@@ -46,6 +87,8 @@ registerSettings({
           label: "Chord key",
           options: ["alt+s", "alt+d", "alt+x"],
           allowCustom: true,
+          hint: KEYBINDING_HINT,
+          validate: validateKeybinding,
         },
         {
           key: "tabInsertKey",
@@ -53,6 +96,8 @@ registerSettings({
           label: "Tab-insert key",
           options: ["alt+i", "alt+o", "alt+p"],
           allowCustom: true,
+          hint: KEYBINDING_HINT,
+          validate: validateKeybinding,
         },
       ],
     },

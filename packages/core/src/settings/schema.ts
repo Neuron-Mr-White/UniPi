@@ -26,6 +26,10 @@ export type SettingsField =
        * editor prefilled with the current raw value.
        */
       readonly allowCustom?: boolean;
+      /** Shown as a dim `ⓘ` line under the inline editor's input. */
+      readonly hint?: string;
+      /** Gate custom input on submit; returns an error message or null. */
+      readonly validate?: (raw: string) => string | null;
     }
   | {
       readonly key: string;
@@ -34,6 +38,10 @@ export type SettingsField =
       readonly description?: string;
       /** Shown when the value is "" or unset (e.g. "inherit (session model)"). */
       readonly emptyLabel?: string;
+      /** Shown as a dim `ⓘ` line under the inline editor's input. */
+      readonly hint?: string;
+      /** Gate raw input on submit; returns an error message or null. */
+      readonly validate?: (raw: string) => string | null;
     }
   | {
       readonly key: string;
@@ -44,6 +52,10 @@ export type SettingsField =
       readonly max?: number;
       /** Shown when the value is 0 (e.g. "∞ none" for timeouts). */
       readonly zeroLabel?: string;
+      /** Shown as a dim `ⓘ` line under the inline editor's input. */
+      readonly hint?: string;
+      /** Gate raw input on submit; returns an error message or null. */
+      readonly validate?: (raw: string) => string | null;
     }
   | {
       readonly key: string;
@@ -52,6 +64,10 @@ export type SettingsField =
       readonly description?: string;
       /** Shown when unset (masking wins when a value exists). */
       readonly emptyLabel?: string;
+      /** Shown as a dim `ⓘ` line under the inline editor's input. */
+      readonly hint?: string;
+      /** Gate raw input on submit; returns an error message or null. */
+      readonly validate?: (raw: string) => string | null;
     }
   | {
       /** Model id ("provider/model") — searchable 5-row picker in the hub. */

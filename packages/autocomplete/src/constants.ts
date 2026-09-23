@@ -5,14 +5,10 @@
  * These drive the enhanced autocomplete display for /unipi:* commands.
  */
 
-// ─── ANSI Color Helpers ──────────────────────────────────────────────
-const ESC = "\x1b";
-const RESET = `${ESC}[0m`;
-
-/** Wrap text in an ANSI color code */
-export function colorize(ansiCode: string, text: string): string {
-  return `${ansiCode}${text}${RESET}`;
-}
+// ─── Package Colors (shared with core) ──────────────────────────────
+// The color map + colorize live in core so the settings hub paints the same
+// per-package identity; re-exported here to keep this module's API stable.
+export { PACKAGE_COLORS, colorize } from "@pi-unipi/core";
 
 // ─── Package Order ───────────────────────────────────────────────────
 /** Packages sorted by display priority (top-to-bottom in autocomplete) */
@@ -37,30 +33,6 @@ export const PACKAGE_ORDER: string[] = [
   "background-tasks",
   "fusion",
 ];
-
-// ─── Package Colors ──────────────────────────────────────────────────
-/** ANSI bright-color codes per package */
-export const PACKAGE_COLORS: Record<string, string> = {
-  workflow:  `${ESC}[91m`, // Bright Red
-  "long-horizon": `${ESC}[33m`, // Yellow/Orange
-  memory:    `${ESC}[93m`, // Bright Yellow
-  btw:       `${ESC}[95m`, // Bright Magenta
-  mcp:       `${ESC}[32m`, // Green
-  utility:   `${ESC}[36m`, // Cyan
-  "ask-user": `${ESC}[94m`, // Bright Blue
-  info:      `${ESC}[35m`, // Magenta
-  "web-api": `${ESC}[95m`, // Bright Magenta
-  compact:   `${ESC}[37m`, // White
-  notify:    `${ESC}[96m`, // Bright Cyan
-  kanboard:  `${ESC}[92m`, // Bright Green
-  footer:    `${ESC}[34m`, // Blue
-  updater:   `${ESC}[93m`, // Bright Yellow
-  "input-shortcuts": `${ESC}[95m`, // Bright Magenta
-  image:     `${ESC}[35m`, // Magenta
-  subagents: `${ESC}[34m`, // Blue
-  "background-tasks": `${ESC}[91m`, // Bright Red
-  fusion:    `${ESC}[96m`, // Bright Cyan
-};
 
 // ─── Command Registry ────────────────────────────────────────────────
 /** Mapping of full command name → package name (88 verified commands) */

@@ -19,6 +19,7 @@ export * from "./long-horizon-status.js";
 // v3 workspace identity + state layout (marker-file id, per-workspace roots)
 export * from "./src/workspace/identity.js";
 export * from "./src/workspace/paths.js";
+export * from "./src/package-colors.js";
 export * from "./src/workspace/state-migration.js";
 // v3 settings engine + migration (canonical ~/.unipi/config layout)
 export * from "./src/settings/paths.js";
