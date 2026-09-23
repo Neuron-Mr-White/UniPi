@@ -20,7 +20,7 @@ description: Context management — compact session, recall history, run code, s
 
 ## Complex Multi-Step Tasks
 ⚠ When the task spans many operations, PREFER Ralph loops
-   (`/unipi:work`, `ralph_start`) if available — they manage
+   (`the implementation step`, `ralph_start`) if available — they manage
    context pressure better than monolithic runs.
 
 ## Critical Rules

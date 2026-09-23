@@ -55,7 +55,7 @@ ask_user({
       label: "Proceed to work",
       value: "work",
       action: "new_session",
-      prefill: "/unipi:work specs:2026-05-06-feature-plan.md",
+      prefill: "the implementation step specs:2026-05-06-feature-plan.md",
     },
     { label: "Done for now", value: "done", action: "end_turn" },
   ],

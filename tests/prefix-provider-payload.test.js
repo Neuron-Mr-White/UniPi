@@ -4,7 +4,6 @@ import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/ope
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { renderModeFragment } from "../packages/long-horizon/src/gate.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
-import { formatActiveSandboxSnapshot } from "../packages/workflow/index.ts";
 import { buildResumeSnapshot } from "../packages/compactor/src/session/snapshot.ts";
 
 const MODEL = {
@@ -129,7 +128,6 @@ describe("provider-native prefix structure", () => {
         canSearch: true,
         canStore: true,
       })],
-      ["workflow", formatActiveSandboxSnapshot("brainstorm", "brainstorm")],
       ["compactor resume", buildResumeSnapshot([event], { compactCount: 2 })],
     ];
 

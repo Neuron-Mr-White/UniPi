@@ -3,7 +3,9 @@
  *
  * Replaces 7 separate parser classes (Spec, QuickWork, Debug, Fix, Chore, Review,
  * and the checkbox-extraction half of Milestone) with one config-driven class.
- * Each doc type is just: path regex + type label + command string + checkbox pattern.
+ * Each doc type is just: path regex + type label + checkbox pattern. The
+ * optional `command` field produced a copy-to-clipboard button; it is unused
+ * since the workflow slash commands were removed (see @pi-unipi/skill-registry).
  */
 
 import * as fs from "node:fs";
@@ -18,7 +20,8 @@ interface CheckboxDocConfig {
   /** Path regex to match (e.g. /\/specs\//) */
   pathRegex: RegExp;
   /** Command string for parsed items */
-  command: string | ((fileName: string) => string);
+  /** Optional copy-to-clipboard command shown on the card. */
+  command?: string | ((fileName: string) => string);
   /** Whether to also extract ## headers as items (default: false) */
   extractHeaders?: boolean;
   /** Status for header items (default: "todo") */
@@ -129,24 +132,20 @@ export const CHECKBOX_DOC_CONFIGS: CheckboxDocConfig[] = [
   {
     type: "spec",
     pathRegex: /\/specs\//,
-    command: (f) => `/unipi:plan specs:${f}`,
   },
   {
     type: "quick-work",
     pathRegex: /\/quick-work\//,
-    command: "/unipi:quick-work",
   },
   {
     type: "debug",
     pathRegex: /\/debug\//,
-    command: (f) => `/unipi:fix debug:${f}`,
     extractHeaders: true,
     headerStatus: "todo",
   },
   {
     type: "fix",
     pathRegex: /\/fix\//,
-    command: "/unipi:fix",
     extractHeaders: true,
     headerStatus: "done",
     extraMetadata: (m) => ({ ...m, related_debug: m.related_debug ?? m.debug ?? "" }),
@@ -154,12 +153,10 @@ export const CHECKBOX_DOC_CONFIGS: CheckboxDocConfig[] = [
   {
     type: "chore",
     pathRegex: /\/chore\//,
-    command: (f) => `/unipi:chore-execute chore:${f}`,
     titleExtractor: (m, f) => m.title ?? m.name ?? f.replace(/\.md$/, ""),
   },
   {
     type: "review",
     pathRegex: /\/reviews\//,
-    command: "/unipi:review-work",
   },
 ];

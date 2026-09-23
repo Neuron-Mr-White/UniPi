@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **workflow: the twenty workflow slash commands** — `unipi:brainstorm`, `unipi:work`, `unipi:review-work`, `unipi:consolidate`, `unipi:worktree-create`/`-list`/`-merge`, `unipi:consultant`, `unipi:quick-work`, `unipi:gather-context`, `unipi:document`, `unipi:scan-issues`, `unipi:auto`, `unipi:debug`, `unipi:fix`, `unipi:quick-fix`, `unipi:research`, `unipi:chore-create`/`-execute`, plus the old `unipi:plan` pipeline and its per-command tool sandboxes. Replaced by **plan mode** and **permission modes**; their skills moved to the new `@pi-unipi/skill-registry` package (still loadable via `/skill:<name>`, still visible to jev skill judging). `@pi-unipi/workflow` keeps its name and now hosts plan/permission enforcement.
+- **core: the workflow sandbox module** (`sandbox.ts`) — tool-access levels existed only to back the removed workflow commands. Call-time enforcement is now the permission gate in `@pi-unipi/workflow`.
 - **Legacy per-module settings commands — use `/unipi:settings`.** Every settings overlay absorbed into the unified hub; only interactive wizards/tools remain as overlays:
   - `unipi:updater-settings` — check interval + auto-update were already in the hub (Updater group).
   - `unipi:ask-user-settings` — tool + format toggles already in the hub (Ask User group).

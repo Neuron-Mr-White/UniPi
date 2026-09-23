@@ -113,8 +113,8 @@ function getEnhancedUnipiItems(
     // Works for both "/workflow" and "/unipi:workflow".
     matched = entries;
   } else {
-    // Case A: match short name ("brain" against "brainstorm")
-    // Case B: match full value ("uni" against "unipi:work") so all unipi
+    // Case A: match short name ("perm" against "permission")
+    // Case B: match full value ("uni" against "unipi:plan") so all unipi
     //         commands surface when the user hasn't typed the full prefix.
     matched = entries.filter(([cmd]) => {
       if (isPastUnipiColon) {
@@ -183,8 +183,8 @@ function getEnhancedUnipiItems(
 
 /**
  * Return true when textBeforeCursor is inside the arguments of a /unipi:* command.
- * e.g. "/unipi:work " or "/unipi:work plan:foo" → true
- *      "/unipi:work" (no space) → false
+ * e.g. "/unipi:plan " or "/unipi:plan view" → true
+ *      "/unipi:plan" (no space) → false
  */
 function isInUnipiArgPosition(textBeforeCursor: string): boolean {
   const spaceIdx = textBeforeCursor.indexOf(" ");

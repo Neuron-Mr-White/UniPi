@@ -13,7 +13,7 @@ pi install npm:@pi-unipi/unipi
 
 ## What You Get
 
-**[Workflow](./packages/workflow/README.md)** — 20 commands that take ideas to shipped code. Brainstorm, plan, execute in worktrees, review, consolidate. The agent follows skill files step by step.
+**[Workflow](./packages/workflow/README.md)** — **plan mode** (`/unipi:plan`, `Alt+P`) and **permission modes** (`ask` · `auto` · `full`). Plan mode makes a session read-only except for its plan file; auto mode lets jev judge ambiguous bash before it runs. The twenty workflow skills moved to [@pi-unipi/skill-registry](./packages/skill-registry/README.md).
 
 **[Long-Horizon](./packages/long-horizon/)** — Mode-gated long-horizon execution: `/goal` (one objective until verifiably true, propose+verify), `/ralph` (task-file iteration loops), `/swarm` (independent fan-out + synthesis), `/graph` (dependent multi-step work). A TypeSafe jev prompt judge routes each turn; one automation owner per session with park/resume; runaway-guard steering; token/turn/stall budgets.
 
@@ -86,7 +86,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 
 | Category | Prefix | Examples |
 |----------|--------|----------|
-| Workflow | `/unipi:` | brainstorm, plan, work, review-work, consolidate, quick-work, debug, fix |
+| Workflow | `/unipi:` | plan (plan mode), permission (permission modes) |
 | Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
 | Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-preset, compact-help |
@@ -137,7 +137,8 @@ npm run typecheck
 unipi/
 ├── packages/
 │   ├── core/           # Shared constants, events, utilities
-│   ├── workflow/       # 20 skill-based commands
+│   ├── workflow/       # plan mode + permission modes
+│   ├── skill-registry/  # bundled workflow skills (no code yet)
 │   ├── long-horizon/  # /goal /ralph /swarm /graph mode-gated execution
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine

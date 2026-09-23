@@ -161,4 +161,4 @@ When a user selects a `new_session` option, a secondary launcher overlay appears
 | ▶ Run directly | Queues/submits the prefill immediately as a follow-up message, without compaction |
 | ✕ Cancel | Cancels the session launch; no prefill is queued |
 
-The prefill can be a slash command (for example `/unipi:work specs:...`) or any non-empty message. If automatic delivery fails, ask_user places the prefill in the editor and warns the user to press Enter. This two-step flow lets the user manage context window usage before starting a new task while avoiding unnecessary LLM follow-up in the old session.
+The prefill can be a slash command (for example `the implementation step specs:...`) or any non-empty message. If automatic delivery fails, ask_user places the prefill in the editor and warns the user to press Enter. This two-step flow lets the user manage context window usage before starting a new task while avoiding unnecessary LLM follow-up in the old session.

@@ -1,165 +1,119 @@
 # @pi-unipi/workflow
 
-20 slash commands that take work from idea to shipped code. Each command loads a skill file that tells the agent exactly what to do — brainstorm, plan, execute, review, or fix.
+Two always-on session mechanisms:
 
-The core loop: brainstorm an idea, plan the implementation, execute in a worktree, review the result, consolidate what you learned. Everything else supports this cycle.
+- **permission modes** — every tool call passes a gate before it runs: `ask`, `auto`
+  (default), or `full`. In `auto`, a cheap **jev** (TypeSafe System One) call judges
+  ambiguous bash instead of prompting you for everything.
+- **plan mode** — a read-only session that can only write its own plan file, then
+  hands you an approval prompt when the plan is ready.
 
-## Commands
+The twenty slash commands this package used to register (`/unipi:brainstorm`,
+`/unipi:work`, `/unipi:review-work`, `/unipi:auto`, …) are gone; their skills moved
+to [@pi-unipi/skill-registry](../skill-registry/README.md) and stay loadable via
+`/skill:<name>`. Plan mode and ordinary prompting replace the command pipeline.
 
-| Command | Description | Format |
-|---------|-------------|--------|
-| `/unipi:brainstorm` | Collaborative discovery, write design spec | `<string>` |
-| `/unipi:plan` | Create implementation plan from specs | `specs:<path> <string>` |
-| `/unipi:work` | Execute plan in worktree | `worktree:<branch> specs:<path> <string>` |
-| `/unipi:review-work` | Review work, run checks, mark remarks | `plan:<path> <string>` |
-| `/unipi:consolidate` | Save learnings, craft skills | `<string>` |
-| `/unipi:worktree-create` | Create git worktree | `<string>` |
-| `/unipi:worktree-list` | List all unipi worktrees | — |
-| `/unipi:worktree-merge` | Merge worktrees to main | `<branch> <string>` |
-| `/unipi:consultant` | Expert advisory | `<string>` |
-| `/unipi:quick-work` | Fast single-task execution | `<string>` |
-| `/unipi:gather-context` | Research codebase, prepare for brainstorm | `<string>` |
-| `/unipi:document` | Generate documentation | `<string>` |
-| `/unipi:scan-issues` | Find bugs, anti-patterns, security issues (passive scan) | `<string>` |
-| `/unipi:debug` | Active bug investigation, root-cause analysis | `<string>` |
-| `/unipi:fix` | Fix bugs using debug reports | `debug:<path> <string>` |
-| `/unipi:quick-fix` | Fast bug fix without debug report | `<string>` |
-| `/unipi:research` | Read-only research with bash access | `<string>` |
-| `/unipi:chore-create` | Create reusable chore definition | `<string>` |
-| `/unipi:chore-execute` | Execute a saved chore | `chore:<path> <string>` |
+## Commands & keys
 
-## Typical Flow
+| Command / key | Effect |
+|---|---|
+| `/unipi:plan [on\|off\|view\|approve]` | Toggle/enter plan mode, view the plan file, or run the approval prompt |
+| `Alt+P` | Toggle plan mode |
+| `/unipi:permission [ask\|auto\|full]` | Set or show the permission mode |
+| `Alt+M` | Cycle `ask → auto → full` |
 
-```
-brainstorm → plan → work → review-work → consolidate
-    ↑                                        │
-    └────────────────────────────────────────┘
-```
+## Permission modes
 
-```bash
-# 1. Brainstorm an idea
-/unipi:brainstorm redesign auth system
+| Mode | Behaviour |
+|---|---|
+| `ask` | Prompt before every write/edit, bash call, and other tool |
+| `auto` (default) | Read-only tools always run; writes inside the workspace (or the temp dir) run; dangerous commands still prompt; anything else is judged by jev — `safe` with confidence ≥ `jevConfidence` runs, otherwise it prompts |
+| `full` | Everything runs except commands matching a saved **deny** rule |
 
-# 2. Create implementation plan
-/unipi:plan specs:2026-04-26-auth-redesign-design
+Classification order for a tool call:
 
-# 3. Execute plan in worktree
-/unipi:work worktree:feat/auth specs:2026-04-26-auth-redesign-plan
+1. **Saved rules** — glob rules (`allow`/`deny`) stored per project, checked first.
+   Deny rules apply in every mode, including `full`.
+2. **Read-only tools** — `read`, `grep`, `find`, `ls`, `ffgrep`, `fffind`,
+   `memory_search`, `web_search`, `bg_status`, `ask_user`, … always allowed.
+3. **`write` / `edit`** — allowed in `auto`/`full` when the resolved path is inside
+   the workspace or the temp dir; outside it always prompts.
+4. **`bash`** — split into simple commands (quote-aware) and classified:
+   - **dangerous** patterns (`rm -rf`, `sudo`, `dd`, `mkfs`, `chmod -R`, `curl | sh`,
+     `git push --force`, `git reset --hard`, `git clean -f`, `kill -9`/`pkill`,
+     writes into `~/.ssh`, `~/.aws`, `/etc`, reading `.env`/`id_rsa`/`*.pem`) always
+     prompt — even in `ask` mode;
+   - **read-only allowlist** (`ls`, `cat`, `grep`, `find` without `-exec`, `git
+     status/diff/log`, `jq`, `diff`, …) runs in `auto`;
+   - anything else: one jev `risk` question (`safe` / `needs_approval` /
+     `dangerous`) over `cwd` + the command. jev failure → prompt.
+5. **Other tools** (MCP, subagents, background tasks) — allowed in `auto`/`full`;
+   `ask` mode prompts.
 
-# 4. Review what was built
-/unipi:review-work plan:2026-04-26-auth-redesign-plan
-
-# 5. Consolidate learnings
-/unipi:consolidate
-```
-
-### Quick Tasks
-
-For small tasks that skip the full flow:
-
-```bash
-/unipi:quick-work fix typo in README
-```
-
-### Research and Advisory
-
-```bash
-/unipi:gather-context how we handle errors
-/unipi:consultant should we use GraphQL or REST?
-/unipi:document the auth module
-/unipi:research TypeScript 5.0 migration path
-/unipi:scan-issues focus on security
-```
-
-### Bug Fixing
-
-```bash
-# Full debug flow
-/unipi:debug TypeError in auth middleware
-/unipi:fix debug:2026-04-28-auth-typeerror-debug
-
-# Quick fix for simple bugs
-/unipi:quick-fix fix null check in user validation
-```
-
-### Chores
-
-```bash
-/unipi:chore-create push to github main
-/unipi:chore-execute chore:push-github-main
-```
-
-### Worktree Management
-
-```bash
-/unipi:worktree-create feat/new-feature
-/unipi:worktree-list
-/unipi:worktree-merge feat/new-feature
-```
-
-Worktree command arguments autocomplete from `.unipi/worktrees`. Suggestions are cached after the first scan in a Pi session so large worktree directories do not slow down repeated `/unipi:worktree-merge` completions.
-
-## Special Triggers
-
-Workflow skills detect installed packages and enhance their behavior automatically. This is the coexists system — each package adds capabilities without requiring configuration.
-
-| Package Present | Skills Affected | What Changes |
-|-----------------|-----------------|--------------|
-| `@pi-unipi/ask-user` | All skills | Structured user input for decisions |
-| `@pi-unipi/subagents` | brainstorm, document, gather-context, review-work, scan-issues, work | Parallel execution with file locking |
-| `@pi-unipi/mcp` | All skills | MCP server tools available |
-| `@pi-unipi/web-api` | research, gather-context, consultant | Web search and page reading |
-| `@pi-unipi/compactor` | All skills (main agent) | Context tools available |
-| `@pi-unipi/ralph` | work, review-work | Ralph loop for 3+ tasks |
-
-When `@pi-unipi/ask-user` is installed, skills use `ask_user` for decision gates — presenting options instead of guessing. When `@pi-unipi/subagents` is installed, investigation skills spawn parallel agents to explore code faster.
-
-The footer package subscribes to workflow events (`WORKFLOW_START`, `WORKFLOW_END`) to show current command and duration. Info-screen displays workflow state in its dashboard.
-
-## How Skills Work
-
-Each command maps to a skill file in `packages/workflow/skills/{name}/SKILL.md`. When you run `/unipi:brainstorm`, Pi loads the brainstorm skill and follows its instructions.
-
-Skills define:
-- What the agent should do step by step
-- What tools to use (subagents, web search, ask-user)
-- What output to produce (specs, plans, reviews)
-- Where to save results (`.unipi/docs/`)
-
-The agent reads the skill, executes the steps, and produces artifacts in the `.unipi/` directory.
-
-## Workflow Sandbox
-
-Each workflow activates a command-specific sandbox for the duration of its agent run. The sandbox blocks disallowed tool calls by name (for example, `write`, `edit`, or `bash` in read-only workflows) without changing Pi's active tool list. Keeping the provider tool schemas and their order unchanged makes the workflow prefix cache-stable.
-
-Sandbox instructions are stored as hidden, append-only `unipi-workflow-sandbox-snapshot` messages rather than being injected into the system prompt. An active snapshot explicitly supersedes older snapshots. After the workflow completes at `agent_end`, the next agent start appends an inactive snapshot when needed so stale restrictions no longer apply. Sessions that have never activated a workflow do not receive a marker.
-
-The sandbox preserves the existing command-level semantics; skill instructions still define narrower write locations and setup-only shell usage where applicable.
-
-## Directory Structure
+### The approval prompt
 
 ```
-.unipi/
-├── docs/
-│   ├── specs/          ← brainstorm output (design specs)
-│   ├── plans/          ← plan output (implementation plans)
-│   ├── generated/      ← document output (docs, guides)
-│   ├── reviews/        ← review remarks (in plan docs)
-│   ├── debug/          ← debug reports
-│   ├── fix/            ← fix reports
-│   ├── quick-work/     ← quick-work summaries
-│   └── chore/          ← reusable chore definitions
-├── memory/             ← consolidate memory
-├── ralph/              ← ralph loop state
-└── worktrees/          ← git worktrees
-    ├── feat/auth/
-    └── fix/login-bug/
+Allow bash: rm -rf /tmp/wd-test?
+jev: dangerous 0.94
+  1. Allow once                     ← Enter
+  2. Always allow `rm -rf *`
+  3. Deny
+  4. Deny with note…
 ```
 
-## Configuration
+The first option is selected, so `Enter` allows once. `Always allow …` writes a
+project-scoped allow rule for the suggested pattern (bash: first word(s) + `*`,
+write/edit: the containing directory glob). `Deny with note…` collects a note that
+becomes part of the block reason the agent sees:
+`Blocked by permission (user denied): <note>`. `Esc` denies.
 
-Workflow has no configuration. Skills are static files — the agent follows them as-is. Behavior changes come from which packages are installed (see Special Triggers above).
+With no UI (print mode, subagent children) nothing ever prompts: it behaves like
+`full`, except saved deny rules and dangerous patterns are blocked with a reason.
 
-## License
+## Plan mode
 
-MIT
+Entering plan mode (`/unipi:plan`, `Alt+P`):
+
+- state is persisted per session, so a resume keeps it;
+- a compact message states the rules: investigation only, the plan file is the ONLY
+  writable path (`.unipi/plans/<YYYY-MM-DD>-<short-session-id>.md`), bash is limited
+  to read-only commands;
+- every later turn gets a short reminder `[plan mode: read-only · plan file … ·
+  call plan_submit when ready]` — appended as a message, never to the system prompt,
+  so the provider prefix cache stays intact.
+
+Enforcement runs before the permission gate: writes to anything but the plan file are
+blocked, bash must match the read-only allowlist (no jev), and mutating tools such as
+`bg_run` are refused with
+`Plan mode is read-only. Write your plan to <path> and call plan_submit.`
+
+`plan_submit` shows the approval prompt — `Approve & implement` (Enter),
+`Keep planning…` (your feedback returns as the tool result so the agent keeps going),
+or `Discard plan`. Approving turns plan mode off, answers `Plan approved.`, and queues
+the plan markdown as the next user message with the instruction to implement it.
+`/unipi:plan view` shows the plan file; `/unipi:plan approve` runs the same approval
+path without the tool call.
+
+## Settings
+
+Registered as the `permission` namespace and rendered by `/unipi:settings` →
+**Permissions**:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `mode` | `auto` | `ask` · `auto` · `full` |
+| `jevJudge` | `true` | Let jev judge ambiguous bash in `auto` |
+| `jevConfidence` | `0.7` | Minimum jev confidence to accept `safe` |
+| `rules` | `[]` | Saved rules (count shown; clear via the action row) |
+
+The footer shows the active mode (`auto` dim, `ask` accent, `full` warning) and a bold
+`PLAN` marker while plan mode is active.
+
+## Debugging
+
+`UNIPI_DEBUG_PERMISSION=1` appends every decision to
+`~/.unipi/logs/permission.log`:
+
+```
+decision tool=bash mode=auto verdict=jev risk=needs_approval confidence=0.82 action=ask cmd="npm publish"
+```

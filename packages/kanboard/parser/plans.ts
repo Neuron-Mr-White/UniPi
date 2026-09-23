@@ -79,7 +79,6 @@ export class PlanParser implements DocParser {
           status,
           lineNumber: currentTaskLine ?? lineNum,
           sourceFile: fileName,
-          command: `/unipi:work plan:${fileName}`,
         });
 
         // Reset current task

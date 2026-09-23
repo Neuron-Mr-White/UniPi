@@ -15,6 +15,11 @@ export const UNIPI_EVENTS = {
   /** Workflow command ended */
   WORKFLOW_END: "unipi:workflow:end",
 
+  /** Permission mode changed (ask | auto | full) */
+  PERMISSION_MODE_CHANGED: "unipi:permission:mode:changed",
+  /** Plan mode toggled on/off */
+  PLAN_MODE_CHANGED: "unipi:plan:mode:changed",
+
   /** Ralph loop started */
   RALPH_LOOP_START: "unipi:ralph:loop:start",
   /** Ralph loop ended */
@@ -104,7 +109,7 @@ export interface UnipiModuleEvent {
 export interface UnipiWorkflowEvent {
   /** Command name, e.g. "brainstorm" */
   command: string;
-  /** Full command with prefix, e.g. "/unipi:brainstorm" */
+  /** Full command with prefix, e.g. "/unipi:plan" */
   fullCommand: string;
   /** Arguments passed to command */
   args: string;

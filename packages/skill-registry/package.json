@@ -1,0 +1,34 @@
+{
+  "name": "@pi-unipi/skill-registry",
+  "version": "3.0.0-alpha.0",
+  "description": "Placeholder for the upcoming unipi skill registry — hosts the bundled workflow skills",
+  "type": "module",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/skill-registry"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-skills",
+    "unipi",
+    "skill-registry"
+  ],
+  "files": [
+    "skills/**/*",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [],
+    "themes": []
+  }
+}

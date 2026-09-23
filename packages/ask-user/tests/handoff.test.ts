@@ -65,16 +65,16 @@ describe("ask-user handoff helpers", () => {
     const { pi, sent } = createFakePi();
     const { ctx } = createFakeCtx();
 
-    const result = queueDirectHandoff(pi as never, ctx as never, "  /unipi:work specs:plan.md  ");
+    const result = queueDirectHandoff(pi as never, ctx as never, "  /unipi:plan specs:plan.md  ");
 
     assert.deepEqual(result, {
       status: "queued",
       reason: "direct",
-      prefill: "/unipi:work specs:plan.md",
+      prefill: "/unipi:plan specs:plan.md",
     });
     assert.deepEqual(sent, [
       {
-        message: "/unipi:work specs:plan.md",
+        message: "/unipi:plan specs:plan.md",
         options: { deliverAs: "followUp" },
       },
     ]);
@@ -145,7 +145,7 @@ describe("ask-user handoff helpers", () => {
     const result = queueCompactHandoff({
       pi: pi as never,
       ctx: ctx as never,
-      prefill: "/unipi:work specs:plan.md",
+      prefill: "/unipi:plan specs:plan.md",
       customInstructions: "__compactor__\nPreparing",
     });
 
@@ -154,7 +154,7 @@ describe("ask-user handoff helpers", () => {
     onComplete?.();
 
     assert.equal(sent.length, 1);
-    assert.equal(sent[0]?.message, "/unipi:work specs:plan.md");
+    assert.equal(sent[0]?.message, "/unipi:plan specs:plan.md");
   });
 
   it("delivers compact handoff if compact start throws", () => {

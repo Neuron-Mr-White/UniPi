@@ -21,8 +21,8 @@ export interface TaggedItem {
  *
  *   Tier 0 — Base command exact match: full `item.value` equals the query.
  *            Also catches `unipi:abc` when user typed `unipi:abc`.
- *   Tier 1 — Unipi short-name exact match: query `brainstorm` →
- *            `unipi:brainstorm` (text after `unipi:` matches exactly).
+ *   Tier 1 — Unipi short-name exact match: query `plan` →
+ *            `unipi:plan` (text after `unipi:` matches exactly).
  *   Tier 2 — Prefix match: command name starts with the query.
  *   Tier 3 — Fuzzy match: character subsequence.
  */

@@ -41,28 +41,10 @@ export const MODULES = {
   WATCHDOG: "@pi-unipi/watchdog",
 } as const;
 
-/** Workflow command names */
+/** Workflow command names — plan mode + permission modes */
 export const WORKFLOW_COMMANDS = {
-  BRAINSTORM: "brainstorm",
   PLAN: "plan",
-  WORK: "work",
-  REVIEW_WORK: "review-work",
-  CONSOLIDATE: "consolidate",
-  WORKTREE_CREATE: "worktree-create",
-  WORKTREE_LIST: "worktree-list",
-  WORKTREE_MERGE: "worktree-merge",
-  CONSULTANT: "consultant",
-  QUICK_WORK: "quick-work",
-  GATHER_CONTEXT: "gather-context",
-  DOCUMENT: "document",
-  SCAN_ISSUES: "scan-issues",
-  AUTO: "auto",
-  DEBUG: "debug",
-  FIX: "fix",
-  QUICK_FIX: "quick-fix",
-  RESEARCH: "research",
-  CHORE_CREATE: "chore-create",
-  CHORE_EXECUTE: "chore-execute",
+  PERMISSION: "permission",
 } as const;
 
 /** Ralph tool names */

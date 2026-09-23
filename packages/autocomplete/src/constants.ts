@@ -35,30 +35,9 @@ export const PACKAGE_ORDER: string[] = [
 ];
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (88 verified commands) */
+/** Mapping of full command name → package name (47 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
-  // workflow (20 commands)
-  "unipi:brainstorm":     "workflow",
-  "unipi:plan":           "workflow",
-  "unipi:work":           "workflow",
-  "unipi:review-work":    "workflow",
-  "unipi:consolidate":    "workflow",
-  "unipi:worktree-create": "workflow",
-  "unipi:worktree-list":  "workflow",
-  "unipi:worktree-merge": "workflow",
-  "unipi:consultant":     "workflow",
   "unipi:prefix-cache":   "utility",
-  "unipi:quick-work":     "workflow",
-  "unipi:gather-context": "workflow",
-  "unipi:document":       "workflow",
-  "unipi:scan-issues":    "workflow",
-  "unipi:auto":           "workflow",
-  "unipi:debug":          "workflow",
-  "unipi:fix":            "workflow",
-  "unipi:quick-fix":      "workflow",
-  "unipi:research":       "workflow",
-  "unipi:chore-create":   "workflow",
-  "unipi:chore-execute":  "workflow",
 
   // long-horizon (4 commands)
   "unipi:goal":           "long-horizon",
@@ -147,27 +126,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 // ─── Description Map ─────────────────────────────────────────────────
 /** Short descriptions for each command (used when base suggestions lack them) */
 export const COMMAND_DESCRIPTIONS: Record<string, string> = {
-  "unipi:brainstorm":     "Collaborative discovery — explore problem space",
-  "unipi:plan":           "Strategic planning — tasks, dependencies",
-  "unipi:work":           "Execute plan — implement tasks, test, commit",
-  "unipi:review-work":    "Review work — check task completion, run lint",
-  "unipi:consolidate":    "Save learnings to memory, craft skills",
-  "unipi:worktree-create": "Create git worktree for parallel work",
-  "unipi:worktree-list":  "List all unipi worktrees",
-  "unipi:worktree-merge": "Merge worktree branches back to main",
-  "unipi:consultant":     "Expert consultation — advisory analysis",
   "unipi:prefix-cache":   "Show privacy-safe provider prefix-cache diagnostics",
-  "unipi:quick-work":     "Fast single-task execution — one shot",
-  "unipi:gather-context": "Research codebase — surface patterns",
-  "unipi:document":       "Generate documentation — README, API docs",
-  "unipi:scan-issues":    "Deep investigation — find bugs, issues",
-  "unipi:auto":           "Full pipeline — brainstorm → plan → work → review",
-  "unipi:debug":          "Active bug investigation — reproduce, diagnose",
-  "unipi:fix":            "Fix bugs using debug reports",
-  "unipi:quick-fix":      "Fast bug fix without debug report",
-  "unipi:research":       "Read-only research with bash access",
-  "unipi:chore-create":   "Create reusable chore definition",
-  "unipi:chore-execute":  "Execute a saved chore",
 
   "unipi:goal":           "One objective until verifiably true · medium complexity · pareto cost/success",
   "unipi:ralph":          "Checklist grind over iterations · enumerable chores · low cost, solid success",

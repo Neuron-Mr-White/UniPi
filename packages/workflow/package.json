@@ -1,14 +1,11 @@
 {
   "name": "@pi-unipi/workflow",
   "version": "3.0.0-alpha.0",
-  "description": "Structured development workflow commands for Pi coding agent",
+  "description": "Plan mode and permission modes for the Pi coding agent",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
-  "scripts": {
-    "test": "npx bun test lifecycle.test.ts tests"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
@@ -18,12 +15,12 @@
     "pi-package",
     "pi-extension",
     "unipi",
-    "workflow"
+    "permissions",
+    "plan-mode"
   ],
   "files": [
-    "*.ts",
-    "!*.test.ts",
-    "skills/**/*",
+    "index.ts",
+    "src/**/*.ts",
     "README.md"
   ],
   "publishConfig": {
@@ -42,9 +39,7 @@
     "extensions": [
       "./index.ts"
     ],
-    "skills": [
-      "./skills"
-    ],
+    "skills": [],
     "prompts": [],
     "themes": []
   }
