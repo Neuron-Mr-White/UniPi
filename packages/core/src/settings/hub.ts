@@ -668,9 +668,6 @@ export class SettingsHub {
     const field = row.field!;
     if (field.type !== "multiselect") return;
     const opts = field.options.map(enumOption);
-    const selectedValue = new Set(Array.isArray(getField(this.valueOf(row.namespace!), field.key))
-      ? (getField(this.valueOf(row.namespace!), field.key) as unknown[]).map(String)
-      : []);
     const input = new Input({ prompt: "search: " });
     this.picker = {
       row,
@@ -679,7 +676,7 @@ export class SettingsHub {
       values: opts.map((o) => o.value),
       selected: 0,
       searchable: opts.length > 8,
-      header: `${opts.filter((o) => selectedValue.has(o.value)).length}/${opts.length} selected · space/enter toggle · esc done`,
+      header: "", // computed at render — the count changes as items toggle
       multi: true,
     };
     this.mode = "model";
@@ -816,7 +813,12 @@ export class SettingsHub {
       if (n > 0) p.selected = (p.selected + 1) % n;
       return;
     }
-    // Enter/tab/space are inert here — Esc is the only exit.
+    // Enter/Tab close the editor too — same as Esc (done).
+    if (matchesKey(data, Key.enter) || matchesKey(data, Key.tab) || data === "\r" || data === "\n") {
+      this.picker = null;
+      this.mode = "list";
+      return;
+    }
   }
 
   private handleInputSearch(data: string): void {
@@ -980,8 +982,13 @@ export class SettingsHub {
     if (!p) return [];
     const width = Math.max(8, inner - 4);
     const out: string[] = [];
-    // Context line (source + count) when the picker declares one.
-    if (p.header) out.push(this.exactRow(dim(`  ${p.header}`), inner));
+    // Context line (source + count) when the picker declares one. Multi lists
+    // compute their N/M count HERE — it changes as items toggle.
+    if (p.multi) {
+      out.push(this.exactRow(dim(`  ${this.checkedSet(p.row).size}/${p.values.length} selected · space/enter toggle · esc done`), inner));
+    } else if (p.header) {
+      out.push(this.exactRow(dim(`  ${p.header}`), inner));
+    }
     // Small option lists (enums ≤8) show NO search box.
     if (p.searchable) out.push(this.exactRow(`  ${p.input.render(width).join("")}`, inner));
     const filtered = this.pickerFiltered();

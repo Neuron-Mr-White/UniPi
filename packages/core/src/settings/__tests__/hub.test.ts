@@ -1025,13 +1025,15 @@ describe("multiselect fields", () => {
     const h = hub as unknown as { picker: unknown; mode: string };
     assert.ok(h.picker, "list stays open");
     assert.equal(h.mode, "model");
-    // checkbox rendering
+    // checkbox rendering + LIVE header count
     const flat = hub.render(100).join("\n");
     assert.ok(flat.includes("[x] Alpha") && flat.includes("[x] Beta"), "checked boxes rendered");
     assert.ok(flat.includes("[ ] Gamma"), "unchecked box rendered");
+    assert.ok(flat.includes("2/3 selected"), "header count recomputed at render");
     hub.handleInput("\x1b[B"); // down to Gamma
     hub.handleInput("\t"); // Tab toggles too
     assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a", "b", "c"], "tab toggles");
+    assert.ok(hub.render(100).join("\n").includes("3/3 selected"), "header count follows toggles");
     hub.handleInput(" "); // toggle Gamma OFF again
     assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a", "b"], "toggle off writes too");
     hub.handleInput("\x1b"); // Esc closes
@@ -1124,10 +1126,8 @@ describe("order fields", () => {
     assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["mid", "top", "bottom"], "alt+down shifts");
     hub.handleInput("\x1b[1;3A");
     assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["top", "mid", "bottom"], "alt+up shifts back");
-    flat = hub.render(100).join("\n");
-    assert.ok(flat, "editor open");
-    hub.handleInput("\x1b"); // Esc closes
-    assert.equal((hub as unknown as { mode: string }).mode, "list", "esc exits the editor");
+    hub.handleInput("\r"); // Enter closes the editor too (done)
+    assert.equal((hub as unknown as { mode: string }).mode, "list", "enter exits the editor");
   });
 
   it("u undoes a reorder", () => {
