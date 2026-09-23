@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedLongHorizonMode } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedLongHorizonMode, getSharedPlanPermissionStatus } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
 import { subscribeToEvents } from "./events.js";
@@ -453,14 +453,17 @@ function installGlanceEditor(
         const coreData = st.registry.getGroupData("core") as
           | { planMode?: boolean; permissionMode?: string }
           | undefined;
+        const sharedBadges = getSharedPlanPermissionStatus();
         return {
           workspace,
           lhMode,
-          planMode: coreData?.planMode === true,
+          planMode: sharedBadges.planMode || coreData?.planMode === true,
           permissionMode:
-            typeof coreData?.permissionMode === "string" && coreData.permissionMode.length > 0
-              ? coreData.permissionMode
-              : null,
+            typeof sharedBadges.permissionMode === "string" && sharedBadges.permissionMode.length > 0
+              ? sharedBadges.permissionMode
+              : typeof coreData?.permissionMode === "string" && coreData.permissionMode.length > 0
+                ? coreData.permissionMode
+                : null,
           branch: typeof branch === "string" ? branch : null,
           contextPct: typeof usage?.percent === "number" ? usage.percent : null,
           contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,
