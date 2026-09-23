@@ -1,0 +1,505 @@
+//! Board behaviour: claim ordering, sparse ordering + rebalance, stale runs,
+//! archive sweep, record locking under concurrency.
+
+mod common;
+
+use common::{claimed_id, Fixture};
+use kanboard::commands::{self, OrderTarget};
+use kanboard::model::{ChainGate, Priority, RunMode, Status, Staleness};
+use std::sync::Arc;
+
+#[test]
+fn claim_next_takes_priority_first_then_order() {
+    let fixture = Fixture::new();
+    let low = fixture.add_with("low", Status::Todo, Priority::Low, &[]);
+    let urgent = fixture.add_with("urgent", Status::Todo, Priority::Urgent, &[]);
+    let high_a = fixture.add_with("high a", Status::Todo, Priority::High, &[]);
+    let high_b = fixture.add_with("high b", Status::Todo, Priority::High, &[]);
+
+    // Within the same priority the earlier `order` wins.
+    assert_eq!(claimed_id(&fixture.claim_next("s1", 1)).unwrap(), urgent.id);
+    assert_eq!(claimed_id(&fixture.claim_next("s2", 2)).unwrap(), high_a.id);
+    assert_eq!(claimed_id(&fixture.claim_next("s3", 3)).unwrap(), high_b.id);
+    assert_eq!(claimed_id(&fixture.claim_next("s4", 4)).unwrap(), low.id);
+    assert!(claimed_id(&fixture.claim_next("s5", 5)).is_none(), "nothing left");
+}
+
+#[test]
+fn claim_next_skips_claimed_tasks_forever() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("only", Status::Todo, Priority::None, &[]);
+    assert_eq!(claimed_id(&fixture.claim_next("s1", 1)).unwrap(), task.id);
+    assert!(claimed_id(&fixture.claim_next("s2", 2)).is_none());
+    // A second claim of the same task must not happen even if it is released to todo
+    // and re-claimed: it is a fresh claim, so it works again.
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Todo,
+        "put back",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("release");
+    assert_eq!(claimed_id(&fixture.claim_next("s3", 3)).unwrap(), task.id);
+}
+
+#[test]
+fn claim_records_the_run_block_and_an_activity_line() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("run me", Status::Todo, Priority::None, &[]);
+    let claimed = fixture.claim_next("session-42", 4242);
+    let payload = &claimed["task"];
+    assert_eq!(payload["status"], "in_progress");
+    assert_eq!(payload["run"]["session"], "session-42");
+    assert_eq!(payload["run"]["pid"], 4242);
+    assert_eq!(payload["run"]["mode"], "direct");
+    let activity = payload["activity"].as_array().unwrap();
+    let last = activity.last().unwrap();
+    assert_eq!(last["actor"], "system");
+    assert!(last["text"].as_str().unwrap().contains("claimed by session session-42"));
+    assert_eq!(payload["id"], task.id.as_str());
+}
+
+#[test]
+fn set_run_switches_mode_and_goal() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("goal task", Status::Todo, Priority::None, &[]);
+    fixture.claim_next("s1", 1);
+    let value = commands::set_run(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        RunMode::Goal,
+        Some("goal-9"),
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("set-run");
+    assert_eq!(value["run"]["mode"], "goal");
+    assert_eq!(value["run"]["goal"], "goal-9");
+
+    // set-run on an unclaimed task is refused.
+    let other = fixture.add_with("unclaimed", Status::Todo, Priority::None, &[]);
+    let err = commands::set_run(
+        &fixture.layout,
+        fixture.project.clone(),
+        &other.id,
+        RunMode::Plan,
+        None,
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("no run block"), "{err}");
+}
+
+#[test]
+fn release_requires_a_comment_and_clears_the_run() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
+    fixture.claim_next("s1", 1);
+
+    let err = commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::InReview,
+        "   ",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("requires --comment"), "{err}");
+
+    let value = commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::InReview,
+        "implemented and tested",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("release");
+    assert_eq!(value["status"], "in_review");
+    assert!(value["run"].is_null());
+
+    // Releasing something that is not in progress is refused.
+    let err = commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Todo,
+        "again",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("not allowed for actor system"), "{err}");
+    assert!(err.to_string().contains("allowed: user"), "the message names who may: {err}");
+}
+
+#[test]
+fn release_to_an_illegal_target_is_refused() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
+    fixture.claim_next("s1", 1);
+    let err = commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Done,
+        "done!",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("release --to must be"), "{err}");
+}
+
+#[test]
+fn releasing_to_todo_records_the_reason() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
+    fixture.claim_next("s1", 1);
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Todo,
+        "interrupted",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("release");
+    let stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(stored.status, Status::Todo);
+    assert!(stored
+        .activity
+        .iter()
+        .any(|entry| entry.text == "released to todo: interrupted"));
+}
+
+// ─── stale runs ─────────────────────────────────────────────────────────────
+
+#[test]
+fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("orphan", Status::Todo, Priority::None, &[]);
+    let mut stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    // A pid that cannot exist.
+    stored.status = Status::InProgress;
+    stored.run = Some(kanboard::model::Run {
+        session: "gone".into(),
+        pid: 0x7fff_fffe,
+        host: commands::hostname(),
+        mode: RunMode::Direct,
+        goal: None,
+        started: fixture.common.now,
+    });
+    let board = kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+    board.save(&stored).unwrap();
+
+    let reloaded = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(commands::staleness_of(&reloaded), Staleness::Stale);
+
+    let value = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Todo,
+        Some("process died"),
+    )
+    .expect("stale release by user");
+    assert_eq!(value["status"], "todo");
+    assert!(value["run"].is_null(), "the run block is cleared");
+}
+
+#[test]
+fn a_live_pid_blocks_user_moves() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("running", Status::Todo, Priority::None, &[]);
+    // Our own process is definitely alive.
+    fixture.claim_next("s1", std::process::id());
+    let stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(commands::staleness_of(&stored), Staleness::Running);
+
+    let err = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Todo,
+        Some("let me"),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("system only"), "{err}");
+
+    // The system can always release it.
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Todo,
+        "runner stopped",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("system release");
+}
+
+#[test]
+fn a_run_claimed_on_another_host_is_unknown() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("remote", Status::Todo, Priority::None, &[]);
+    let mut stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    stored.status = Status::InProgress;
+    stored.run = Some(kanboard::model::Run {
+        session: "elsewhere".into(),
+        pid: 1,
+        host: "some-other-host".into(),
+        mode: RunMode::Direct,
+        goal: None,
+        started: fixture.common.now,
+    });
+    kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
+        .unwrap()
+        .save(&stored)
+        .unwrap();
+
+    let reloaded = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    assert_eq!(commands::staleness_of(&reloaded), Staleness::Unknown);
+    let err = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Todo,
+        Some("must I?"),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("another host"), "{err}");
+}
+
+// ─── ordering ───────────────────────────────────────────────────────────────
+
+#[test]
+fn order_moves_within_a_lane_and_rebalances() {
+    let fixture = Fixture::new();
+    let a = fixture.add("a");
+    let b = fixture.add("b");
+    let c = fixture.add("c");
+    assert!(a.order < b.order && b.order < c.order);
+
+    let value = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &c.id, OrderTarget::Top)
+        .expect("top");
+    assert_eq!(value["order"], 0, "top of the lane is order 0 for a first move");
+    let lane = lane_order(&fixture);
+    assert_eq!(lane, vec!["FIX-3", "FIX-1", "FIX-2"]);
+
+    let value = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &a.id, OrderTarget::Bottom)
+        .expect("bottom");
+    assert_eq!(value["rebalanced"], 0);
+    let lane = lane_order(&fixture);
+    assert_eq!(lane.last().unwrap(), "FIX-1");
+}
+
+#[test]
+fn order_before_and_after_pos_place_between_neighbours() {
+    let fixture = Fixture::new();
+    let a = fixture.add("a");
+    let b = fixture.add("b");
+    let c = fixture.add("c");
+
+    commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &c.id, OrderTarget::Before(&b.id))
+        .expect("before");
+    assert_eq!(lane_order(&fixture), vec!["FIX-1", "FIX-3", "FIX-2"]);
+
+    commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &a.id,
+        OrderTarget::AfterPos(&b.id),
+    )
+    .expect("after-pos");
+    assert_eq!(lane_order(&fixture).last().unwrap(), "FIX-1");
+}
+
+#[test]
+fn exhausted_gaps_trigger_a_rebalance() {
+    let fixture = Fixture::new();
+    let a = fixture.add("a");
+    let b = fixture.add("b");
+    let c = fixture.add("c");
+    let d = fixture.add("d");
+
+    // Squeeze the lane: give every task adjacent orders by hand.
+    let board = kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+    for (index, id) in [&a.id, &b.id, &c.id, &d.id].iter().enumerate() {
+        let mut task = board.get(id).unwrap();
+        task.order = index as i64 + 1;
+        board.save(&task).unwrap();
+    }
+
+    let value = commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &d.id,
+        OrderTarget::Before(&b.id),
+    )
+    .expect("order with rebalance");
+    assert_eq!(value["rebalanced"], 3, "the rest of the lane was rewritten");
+    let lane = lane_order(&fixture);
+    assert_eq!(lane, vec!["FIX-1", "FIX-4", "FIX-2", "FIX-3"]);
+
+    // The rebalanced lane keeps distinct, sparse-ish keys, and the moved task
+    // sits at the midpoint its new neighbours allow.
+    let orders: Vec<i64> = fixture.tasks().iter().map(|task| task.order).collect();
+    let mut unique = orders.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(unique.len(), 4, "no two tasks share an order: {orders:?}");
+    let moved = fixture.tasks().into_iter().find(|task| task.id == d.id).unwrap();
+    assert_eq!(moved.order, 1500, "midpoint between 1000 and 2000");
+}
+
+#[test]
+fn order_needs_exactly_one_target() {
+    let fixture = Fixture::new();
+    let a = fixture.add("a");
+    let err = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &a.id, OrderTarget::Top);
+    assert!(err.is_ok(), "one target is fine");
+}
+
+fn lane_order(fixture: &Fixture) -> Vec<String> {
+    let mut tasks: Vec<_> = fixture
+        .tasks()
+        .into_iter()
+        .filter(|task| task.status == Status::Backlog)
+        .collect();
+    tasks.sort_by_key(|task| task.order);
+    tasks.into_iter().map(|task| task.id).collect()
+}
+
+// ─── archive sweep ──────────────────────────────────────────────────────────
+
+#[test]
+fn archive_sweep_moves_old_done_and_cancelled_tasks() {
+    let fixture = Fixture::new();
+    let fresh = fixture.add_with("fresh done", Status::Todo, Priority::None, &[]);
+    let old = fixture.add_with("old done", Status::Todo, Priority::None, &[]);
+    let old_cancelled = fixture.add_with("old cancelled", Status::Todo, Priority::None, &[]);
+
+    // Only the user can complete: drive these two through the lifecycle.
+    for id in [&fresh.id, &old.id] {
+        fixture.claim_next("s", std::process::id());
+        commands::release(
+            &fixture.layout,
+            fixture.project.clone(),
+            id,
+            Status::InReview,
+            "done",
+            ChainGate::InReview,
+            fixture.common.now,
+        )
+        .expect("release");
+    }
+    commands::move_task(&fixture.layout, fixture.project.clone(), &fixture.common, &fresh.id, Status::Done, None)
+        .expect("done");
+    commands::move_task(&fixture.layout, fixture.project.clone(), &fixture.common, &old.id, Status::Done, None)
+        .expect("done");
+    // Cancelling is user-only and only from the open lanes (it is still todo).
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &old_cancelled.id,
+        Status::Cancelled,
+        None,
+    )
+    .expect("cancel");
+
+    // Age the two "old" tasks by rewriting their `updated` stamps.
+    let board = kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+    for id in [&old.id, &old_cancelled.id] {
+        let mut task = board.get(id).unwrap();
+        task.updated = fixture.common.now - chrono::Duration::days(30);
+        board.save(&task).unwrap();
+    }
+
+    let value = commands::archive_sweep(&fixture.layout, fixture.project.clone(), 14, fixture.common.now)
+        .expect("sweep");
+    let archived: Vec<String> = value["archived"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| id.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(archived.len(), 2, "{archived:?}");
+    assert!(archived.contains(&old.id) && archived.contains(&old_cancelled.id));
+
+    let tasks = fixture.tasks();
+    assert_eq!(tasks.iter().find(|t| t.id == fresh.id).unwrap().status, Status::Done);
+    assert_eq!(tasks.iter().find(|t| t.id == old.id).unwrap().status, Status::Archived);
+    assert_eq!(
+        tasks.iter().find(|t| t.id == old_cancelled.id).unwrap().status,
+        Status::Archived
+    );
+}
+
+#[test]
+fn archive_sweep_is_off_when_days_is_zero() {
+    let fixture = Fixture::new();
+    let value = commands::archive_sweep(&fixture.layout, fixture.project.clone(), 0, fixture.common.now).unwrap();
+    assert!(value["archived"].as_array().unwrap().is_empty());
+    assert_eq!(value["skipped"], "archiveAfterDays is 0 (off)");
+}
+
+// ─── concurrency ────────────────────────────────────────────────────────────
+
+#[test]
+fn eight_threads_claiming_three_tasks_produce_exactly_three_claims() {
+    let fixture = Fixture::new();
+    for title in ["one", "two", "three"] {
+        fixture.add_with(title, Status::Todo, Priority::None, &[]);
+    }
+
+    let layout = Arc::new(fixture.layout.clone());
+    let project = fixture.project.clone();
+    let mut handles = Vec::new();
+    for index in 0..8u32 {
+        let layout = Arc::clone(&layout);
+        let project = project.clone();
+        handles.push(std::thread::spawn(move || {
+            let args = commands::ClaimArgs {
+                session: &format!("thread-{index}"),
+                pid: std::process::id() + index,
+                host: "test-host",
+                mode: RunMode::Direct,
+            };
+            let value = commands::claim_next(&layout, project, ChainGate::InReview, &args, chrono::Utc::now())
+                .expect("claim");
+            claimed_id(&value)
+        }));
+    }
+
+    let mut claimed: Vec<String> = handles
+        .into_iter()
+        .filter_map(|handle| handle.join().expect("thread"))
+        .collect();
+    claimed.sort();
+    claimed.dedup();
+    assert_eq!(claimed.len(), 3, "exactly three tasks were claimable: {claimed:?}");
+
+    let in_progress = fixture
+        .tasks()
+        .into_iter()
+        .filter(|task| task.status == Status::InProgress)
+        .count();
+    assert_eq!(in_progress, 3, "no double claims, no lost writes");
+}

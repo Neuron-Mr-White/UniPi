@@ -1,0 +1,221 @@
+//! clap definitions for `unipi-kanboard`.
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
+
+use crate::model::{ChainGate, Priority, RunMode, Status};
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "unipi-kanboard",
+    version,
+    about = "unipi kanboard — deferred-work board for a project",
+    long_about = "Every write goes through this binary: it validates the task format and transition rules and writes atomically under a per-project lock."
+)]
+pub struct Cli {
+    /// Project slug (defaults to the project registered for the current git root).
+    #[arg(long, global = true, value_name = "SLUG")]
+    pub project: Option<String>,
+
+    /// Who is acting: user | agent | system (defaults to $UNIPI_KANBOARD_ACTOR, else user).
+    #[arg(long, global = true, value_name = "ACTOR")]
+    pub actor: Option<String>,
+
+    /// Chain gate for readiness: in_review | done.
+    #[arg(long, global = true, value_name = "GATE", default_value = "in_review")]
+    pub gate: String,
+
+    /// Machine-readable output.
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Register or inspect projects.
+    #[command(subcommand)]
+    Project(ProjectCommand),
+
+    /// Create a task (Backlog by default).
+    Add {
+        /// Task title.
+        title: String,
+        /// Body text, or `-` to read stdin.
+        #[arg(long)]
+        body: Option<String>,
+        /// Landing lane.
+        #[arg(long, value_name = "backlog|todo")]
+        status: Option<String>,
+        /// Priority.
+        #[arg(long, value_name = "none|low|medium|high|urgent")]
+        priority: Option<String>,
+        /// Dependency ids (may repeat).
+        #[arg(long = "after", value_name = "ID")]
+        after: Vec<String>,
+    },
+
+    /// List tasks.
+    List {
+        #[arg(long, value_name = "STATUS")]
+        status: Option<String>,
+        /// Only tasks whose deps reached the chain gate.
+        #[arg(long)]
+        ready: bool,
+    },
+
+    /// Show one task.
+    Show { id: String },
+
+    /// Move a task to another lane.
+    Move {
+        id: String,
+        status: String,
+        /// Required for some transitions (rework notes, block/unblock answers).
+        #[arg(long)]
+        comment: Option<String>,
+    },
+
+    /// Append an activity note.
+    Note { id: String, text: String },
+
+    /// Edit task fields.
+    Edit {
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// New body, or `-` to read stdin.
+        #[arg(long)]
+        body: Option<String>,
+        #[arg(long, value_name = "PRIORITY")]
+        priority: Option<String>,
+        /// Comma-separated labels.
+        #[arg(long, value_name = "A,B")]
+        labels: Option<String>,
+    },
+
+    /// Add a dependency.
+    Link {
+        id: String,
+        #[arg(long = "after", value_name = "DEP")]
+        after: String,
+    },
+
+    /// Remove a dependency.
+    Unlink {
+        id: String,
+        #[arg(long = "after", value_name = "DEP")]
+        after: String,
+    },
+
+    /// Reposition a task inside its lane.
+    Order {
+        id: String,
+        #[arg(long, value_name = "ID")]
+        before: Option<String>,
+        #[arg(long = "after-pos", value_name = "ID")]
+        after_pos: Option<String>,
+        #[arg(long)]
+        top: bool,
+        #[arg(long)]
+        bottom: bool,
+    },
+
+    /// Claim the next ready task (system).
+    ClaimNext {
+        #[arg(long)]
+        session: String,
+        #[arg(long)]
+        pid: u32,
+        #[arg(long)]
+        host: String,
+        #[arg(long, value_name = "direct|plan|goal", default_value = "direct")]
+        mode: String,
+    },
+
+    /// Release a claimed task (system).
+    Release {
+        id: String,
+        #[arg(long = "to", value_name = "todo|in_review|blocked")]
+        to: String,
+        #[arg(long)]
+        comment: String,
+    },
+
+    /// Record the mode/goal of a claimed task (system).
+    SetRun {
+        id: String,
+        #[arg(long, value_name = "direct|plan|goal")]
+        mode: String,
+        #[arg(long)]
+        goal: Option<String>,
+    },
+
+    /// Copy a task into Backlog.
+    Duplicate { id: String },
+
+    /// Archive done/cancelled tasks older than N days.
+    ArchiveSweep {
+        #[arg(long = "after-days", value_name = "N")]
+        after_days: Option<i64>,
+    },
+
+    /// Check every task file (and the board) for rule violations.
+    Validate {
+        /// Rewrite canonical formatting where the file is otherwise valid.
+        #[arg(long)]
+        fix: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProjectCommand {
+    /// Register a project (defaults to the current git root).
+    Add(AddProjectArgs),
+    /// List registered projects.
+    List,
+    /// Show one project and its lane counts.
+    Show,
+}
+
+#[derive(Debug, Args)]
+pub struct AddProjectArgs {
+    #[arg(long, value_name = "PATH")]
+    pub root: Option<PathBuf>,
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long, value_name = "PREFIX")]
+    pub prefix: Option<String>,
+}
+
+/// Values clap validates at parse time.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum GateArg {
+    #[value(name = "in_review")]
+    InReview,
+    #[value(name = "done")]
+    Done,
+}
+
+impl From<GateArg> for ChainGate {
+    fn from(value: GateArg) -> Self {
+        match value {
+            GateArg::InReview => ChainGate::InReview,
+            GateArg::Done => ChainGate::Done,
+        }
+    }
+}
+
+pub fn parse_status(value: &str) -> crate::error::Result<Status> {
+    value.parse()
+}
+
+pub fn parse_priority(value: &str) -> crate::error::Result<Priority> {
+    value.parse()
+}
+
+pub fn parse_mode(value: &str) -> crate::error::Result<RunMode> {
+    value.parse()
+}

@@ -27,3 +27,8 @@ __pycache__/
 .unipi/config/
 .unipi/delegate/
 .unipi/fusion/
+
+# Rust
+crates/*/target/
+target/
+Cargo.lock.orig
