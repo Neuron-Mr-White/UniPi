@@ -6,27 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- **docs live in the project's `docs/` folder — the `.unipi/docs/` convention is gone.** Skills write to `docs/specs`, `docs/plans`, `docs/debug`, `docs/fix`, `docs/quick-work`, `docs/chore`, `docs/reviews`, `docs/generated` and `docs/research` in the project (creating the folder when it is missing), plan mode writes `docs/plans/<YYYY-MM-DD>-<short-session-id>.md`, and kanboard parses `docs/` (default `docsRoot`). `.unipi/` now holds runtime state only (config, sessions, ralph), nothing is created there eagerly, and `UNIPI_DIRS` + the eager docs-directory creation are removed. **Existing `.unipi/docs/` folders are left untouched — there is no automatic migration.**
-
 ### Added
+
+- **kanboard: the v3 daemon and web UI** (`unipi-kanboard serve`). Single instance via `flock(daemon.lock)` (a second `serve` prints the running `daemon.json` and exits 0), binds `127.0.0.1` with `--port` or an OS-assigned port, writes `daemon.json` atomically, removes it on exit (SIGTERM/SIGINT/idle), and shuts down after `--idle-min` (default 10) with no SSE clients and no requests. A `notify` watcher on `projects/` bumps one revision per content change (access events ignored, bursts coalesced) and `GET /events?project=<slug>` streams it, so CLI and agent writes appear live. `status` reports the daemon + liveness, `stop` SIGTERMs it and waits ≤3s.
+
+- **kanboard: JSON API + server-rendered board UI.** `/api/health`, `/api/projects`, task list/show, and create/move/note/edit/link/unlink/order/duplicate — every handler calls the same library functions as the CLI, the actor is always `user`, and rule violations answer 4xx with the rule text (a move that needs a comment answers **409 + `needsComment`**). The UI is Topcoat 0.8.1 (pinned, `router/serve/view/sse/discover` only, no runtime/asset/tailwind): project picker, 7 lanes + Archive toggle, priority/dep/running/stale badges, quick-add, drag to move or reorder (comment modal on 409, toast + snap-back on refusal), card drawer with edit/deps/comment/activity and Duplicate/Cancel/Archive, EventSource live refresh — and no run button: work still starts only from a terminal.
+
+- **kanboard: `rust-toolchain.toml` + edition 2024** for the crate (Topcoat's `impl View` idiom requires it), CSS/JS inlined with `include_str!` so the binary stays self-contained.
+
 - **watchdog: jev watchdog for long-running tool calls.** New `@pi-unipi/watchdog` package (off by default, configurable in /unipi:settings → Watchdog). Every interval, jev judges whether a running bash tool call or background task is stuck or looping. Kills the process group (bash) or stops the task (bg_run) with the reason injected into the tool result or completion notification. Persistent processes (dev servers, watchers) are vetoed unless they're looping with errors. Configurable: interval, confidence, agreeing checks, action (kill/warn), per-kind toggles, otherTools (warn/abort-turn).
 
 - **utility: jev-judged skill exposure.** With many skills installed, `<available_skills>` bloats the system prompt. New `skills.mode` setting (`judged` default / `all` / `off`): on the session's first prompt jev (the long-horizon Decision model) scores every skill's relevance in ONE System One call; only relevant skills stay cataloged (sorted by relevance, capped at `skills.maxSkills`, threshold `skills.threshold`), the set is frozen per session and persisted via a custom session entry so the system prompt stays byte-identical on every later turn. `skills.recheck` (default on) announces newly relevant hidden skills on later prompts via a persisted message (never twice, max 5 per prompt). The old `skills.discovery` boolean migrates (`false` → `off`, `true` → `judged`).
+
 - **core: shared jev client** (`askJev`) — native typesafe `/v1/systemone` and OpenRouter `/api/alpha/decisions` transports with the judge's baseUrl/key/timeout rules; fail-open (null) on any error, missing key, or timeout. The long-horizon judge now uses it for its System One transports (chat-model fallback unchanged).
 
-### Added
-
 - **workflow: permission modes.** Every tool call now passes a gate: `ask` · `auto` (default) · `full`. Read-only tools always run; writes inside the workspace run in auto/full; **dangerous** bash (`rm -rf`, `sudo`, `dd`/`mkfs`, `chmod -R`, `curl|sh`, `git push --force`, `git reset --hard`, `git clean -f`, `git branch -D`, `kill -9`/`pkill`, writes into `~/.ssh`/`~/.aws`/`/etc`, reads of `.env`/`id_rsa`/`*.pem`) always asks; anything else in auto is judged by **jev** (one Decision-model call: `safe` / `needs_approval` / `dangerous`) — `safe` above `jevConfidence` runs, otherwise it prompts. Saved allow/deny glob **rules** are checked first and deny wins in every mode. The prompt is Enter-friendly: `Allow once` (default) · `Always allow <pattern>` (saves a project rule) · `Deny` · `Deny with note…` (the note reaches the agent as the block reason). Without a UI nothing ever prompts: full behaviour, except deny rules and dangerous patterns, which are blocked with a reason. `/unipi:permission [ask|auto|full]` and `Alt+M` (cycles) set the mode; hub → **Permissions** renders mode/jevJudge/jevConfidence plus a clear-rules action showing the saved-rule count. `UNIPI_DEBUG_PERMISSION=1` logs every decision to `~/.unipi/logs/permission.log`.
+
 - **workflow: plan mode.** `/unipi:plan [on|off|view|approve]` (no argument toggles) or `Alt+P` turns the session read-only: the only writable file is `.unipi/plans/<YYYY-MM-DD>-<short-session-id>.md`, bash must be a read-only command (no jev), every other mutating tool is refused with `Plan mode is read-only. Write your plan to <path> and call plan_submit.` State is persisted in a session entry (resume keeps it, and the footer re-shows PLAN) and the mode reaches the model as appended messages — never the system prompt — so the provider prefix cache stays intact. `plan_submit` opens the approval prompt: `Approve & implement` (Enter) answers `Plan approved.` and queues the plan as the next user message with `Treat it as authoritative; do not re-plan.`; `Keep planning…` returns your feedback as the tool result; `Discard plan` turns the mode off.
+
 - **footer: PLAN badge + permission mode.** The top frame's right side shows a bold `PLAN` badge while plan mode is active and the permission mode just before the top-right corner (dim `auto`, accent `ask`, warning `full`). Narrow terminals drop the permission label first, then truncate.
+
 - **`@pi-unipi/skill-registry`** — new code-free package hosting the twenty bundled workflow skills (a future home for registry features).
+
+### Changed
+
+- **kanboard: the Topcoat spike is retired** — its findings live on at `docs/research/2026-09-24-topcoat-spike.md`; Topcoat 0.8.1 is the adopted UI layer for the daemon.
+
+- **docs live in the project's `docs/` folder — the `.unipi/docs/` convention is gone.** Skills write to `docs/specs`, `docs/plans`, `docs/debug`, `docs/fix`, `docs/quick-work`, `docs/chore`, `docs/reviews`, `docs/generated` and `docs/research` in the project (creating the folder when it is missing), plan mode writes `docs/plans/<YYYY-MM-DD>-<short-session-id>.md`, and kanboard parses `docs/` (default `docsRoot`). `.unipi/` now holds runtime state only (config, sessions, ralph), nothing is created there eagerly, and `UNIPI_DIRS` + the eager docs-directory creation are removed. **Existing `.unipi/docs/` folders are left untouched — there is no automatic migration.**
 
 ### Removed
 
 - **workflow: the twenty workflow slash commands** — `unipi:brainstorm`, `unipi:work`, `unipi:review-work`, `unipi:consolidate`, `unipi:worktree-create`/`-list`/`-merge`, `unipi:consultant`, `unipi:quick-work`, `unipi:gather-context`, `unipi:document`, `unipi:scan-issues`, `unipi:auto`, `unipi:debug`, `unipi:fix`, `unipi:quick-fix`, `unipi:research`, `unipi:chore-create`/`-execute`, plus the old `unipi:plan` pipeline and its per-command tool sandboxes. Replaced by **plan mode** and **permission modes**; their skills moved to the new `@pi-unipi/skill-registry` package (still loadable via `/skill:<name>`, still visible to jev skill judging). `@pi-unipi/workflow` keeps its name and now hosts plan/permission enforcement.
+
 - **core: the workflow sandbox module** (`sandbox.ts`) — tool-access levels existed only to back the removed workflow commands. Call-time enforcement is now the permission gate in `@pi-unipi/workflow`.
+
 - **Legacy per-module settings commands — use `/unipi:settings`.** Every settings overlay absorbed into the unified hub; only interactive wizards/tools remain as overlays:
   - `unipi:updater-settings` — check interval + auto-update were already in the hub (Updater group).
   - `unipi:ask-user-settings` — tool + format toggles already in the hub (Ask User group).
@@ -952,3 +965,4 @@ Startup went from **23.1s to 0.75s** — 31× faster, and within ~0.7s of bare `
 ### Changed
 - Compactor commands need `unipi:` prefix
 - Footer icon style now configurable
+

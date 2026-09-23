@@ -8,7 +8,9 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 
 ```
 crates/kanboard/
-  src/lib.rs          library (K2's daemon reuses this)
+  rust-toolchain.toml pinned to 1.98.1 (Topcoat's MSRV; the crate is edition 2024)
+  assets/             the board's JS + CSS, inlined via include_str! (no bundler)
+  src/lib.rs          library (the daemon reuses this)
   src/main.rs         the `unipi-kanboard` binary (clap → library)
   src/format.rs       task file format: strict parser (line numbers) + renderer
   src/model.rs        statuses, priorities, actors, run blocks, staleness
@@ -19,7 +21,82 @@ crates/kanboard/
   src/board.rs        read/write every task file in a project
   src/commands.rs     the operations behind every subcommand
   src/run.rs          CLI dispatcher (JSON + human rendering)
+  src/daemon.rs       daemon.json, the single-instance lock, `status`, `stop`
+  src/serve/mod.rs    `serve`: listener, file watcher, idle shutdown, signals
+  src/serve/api.rs    JSON API (every handler calls the library the CLI uses)
+  src/serve/events.rs SSE `/events?project=<slug>`
+  src/serve/ui.rs     Topcoat pages + fragments (board, drawer, picker)
 ```
+
+## Daemon (`serve`)
+
+```bash
+unipi-kanboard serve [--port N] [--idle-min N]   # 0 = OS-assigned port; idle default 10
+unipi-kanboard status                            # daemon.json + liveness
+unipi-kanboard stop [--timeout SECS]             # SIGTERM, waits ≤3s by default
+```
+
+- **Single instance:** `flock(daemon.lock)`. A second `serve` prints the running
+  `daemon.json` as JSON and exits `0` (the pi extension relies on that).
+- Binds `127.0.0.1` (`--port 0` → OS picks), writes `daemon.json`
+  `{pid, port, version, startedAt}` atomically, and removes it on exit —
+  including SIGTERM/SIGINT and idle shutdown.
+- **Idle shutdown** after `--idle-min` (default 10) with no SSE clients and no
+  HTTP requests in that window (`--idle-secs` is a hidden test knob).
+- **File watcher** (`notify`) on `projects/`: content changes bump that project's
+  revision and every `/events?project=<slug>` client gets `data: <rev>`. Access
+  events are ignored (a read must not wake the UI) and bursts are coalesced, so
+  one CLI write is exactly one revision.
+- A pid whose process is gone (or a **zombie**) counts as dead, so `stop` and the
+  stale-run check never hang on a corpse.
+
+## JSON API
+
+Every handler calls the same library functions as the CLI, so the UI cannot drift
+from the terminal rules. The actor is always `user` (the UI never claims work).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/health` | `{ok, version, pid}` |
+| GET | `/api/projects` | project summaries + per-lane counts |
+| GET | `/api/projects/{slug}/tasks` | `?status=` `?ready=true` |
+| GET | `/api/tasks/{slug}/{id}` | one task (deps status, staleness, ready) |
+| POST | `/api/tasks/{slug}/create` | `{title, body?, status?, priority?, after?}` |
+| POST | `/api/tasks/{slug}/{id}/move` | `{status, comment?}` — **409 + `needsComment`** when the rule needs one |
+| POST | `/api/tasks/{slug}/{id}/note` · `/edit` · `/link` · `/unlink` · `/order` · `/duplicate` | |
+
+Rule violations answer 4xx with the message the CLI prints
+(`{"ok":false,"error":"in_review → todo requires --comment (rework note)","kind":"rule"}`),
+404 for unknown project/task, 400 for usage.
+
+## UI
+
+Topcoat **0.8.1 pinned**, `default-features = false, features = ["router", "serve",
+"view", "sse", "discover"]` — no `runtime`, no `asset`, no `tailwind`, so there is
+**no asset bundle and no bundling step**: the CSS and JS are `include_str!`ed and
+served from `GET /kanboard.css` / `GET /kanboard.js`. The crate is **edition 2024**
+(Topcoat's `impl View` idiom does not compile under 2021) and pins the toolchain in
+`rust-toolchain.toml`.
+
+- `/` — project picker (name, root, per-lane counts).
+- `/p/{slug}` — the board: 7 visible lanes + Archive behind a toggle; cards show
+  id, title, priority chip, dep badge (`after KD-3` / `waiting on 2`), a running
+  indicator (pulsing dot, session · mode) and a stale-run warning; quick-add in
+  Backlog and Todo; **no run button anywhere**.
+- Drag between lanes → `POST move`; a rule that needs a comment opens the comment
+  modal (the 409 carries the rule text) and retries; a refused move toasts the
+  reason and the card snaps back. Drag within a lane → `order` (before/bottom).
+- Click a card → detail drawer fragment: editable title/body, priority select,
+  dependency editor, comment box, activity log, Duplicate / Cancel / Archive where
+  the table allows.
+- Live: one `EventSource` per board → on a revision the board fragment is refetched
+  (scroll and the open drawer are preserved).
+- Dark/light via `prefers-color-scheme`; readable at 1280px, lanes scroll
+  horizontally at 800px.
+
+Evidence for the manual check (12-task board, 3-task chain, one running task):
+`/tmp/kanboard-evidence/k2-board.png`, `k2-drawer.png`, `k2-comment-modal.png`,
+`k2-board-800.png`, `k2-api.txt`.
 
 ## Storage
 

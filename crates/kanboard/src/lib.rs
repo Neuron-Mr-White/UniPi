@@ -5,6 +5,7 @@
 
 pub mod board;
 pub mod cli;
+pub mod daemon;
 pub mod commands;
 pub mod deps;
 pub mod error;
@@ -12,6 +13,7 @@ pub mod format;
 pub mod model;
 pub mod order;
 pub mod run;
+pub mod serve;
 pub mod store;
 pub mod transitions;
 

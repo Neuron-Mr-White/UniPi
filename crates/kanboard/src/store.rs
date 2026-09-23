@@ -26,12 +26,12 @@ pub struct Layout {
 impl Layout {
     /// `UNIPI_KANBOARD_HOME`, else `~/.unipi/kanboard`.
     pub fn from_env() -> Result<Layout> {
-        if let Ok(home) = std::env::var(HOME_ENV) {
-            if !home.trim().is_empty() {
-                return Ok(Layout {
-                    home: PathBuf::from(home),
-                });
-            }
+        if let Ok(home) = std::env::var(HOME_ENV)
+            && !home.trim().is_empty()
+        {
+            return Ok(Layout {
+                home: PathBuf::from(home),
+            });
         }
         let base = std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -271,12 +271,12 @@ pub fn resolve_root(cwd: &Path) -> PathBuf {
         .arg(cwd)
         .args(["rev-parse", "--show-toplevel"])
         .output();
-    if let Ok(output) = output {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return PathBuf::from(path);
-            }
+    if let Ok(output) = output
+        && output.status.success()
+    {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return PathBuf::from(path);
         }
     }
     cwd.to_path_buf()

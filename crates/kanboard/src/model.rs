@@ -9,7 +9,7 @@ use std::str::FromStr;
 use crate::error::{Error, Result};
 
 /// JSON dates use the same second-precision form as the task files.
-fn serialize_iso<S: Serializer>(value: &DateTime<Utc>, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+pub(crate) fn serialize_iso<S: Serializer>(value: &DateTime<Utc>, serializer: S) -> std::result::Result<S::Ok, S::Error> {
     serializer.serialize_str(&value.to_rfc3339_opts(SecondsFormat::Secs, true))
 }
 

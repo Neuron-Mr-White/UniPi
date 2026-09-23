@@ -1,8 +1,14 @@
-# Topcoat spike — findings (K1, throwaway)
+# Topcoat spike — findings (K1)
+
+> **Outcome (K2):** adopted. Topcoat 0.8.1 is pinned in `crates/kanboard` with
+> `default-features = false, features = ["router", "serve", "view", "sse", "discover"]`,
+> using page/route/view!/Sse only — no `runtime`/`asset`/`tailwind`, so the board UI
+> ships inside the single `unipi-kanboard` binary with no bundling step. The spike
+> crate was deleted after the verdict; this file is the record.
 
 Question: can [Topcoat](https://github.com/tokio-rs/topcoat) (crates.io `topcoat`,
-tokio-rs, early-stage) serve the kanboard v3 UI? This directory is a spike, **not**
-a dependency of `crates/kanboard` and not part of the product.
+tokio-rs, early-stage) serve the kanboard v3 UI? The spike was a throwaway crate,
+**not** a dependency of `crates/kanboard` and not part of the product.
 
 - Version tested: **topcoat 0.8.1** (crates.io), `rust-version = "1.98"`, MIT.
 - Toolchain: rustc/cargo **1.98.1**.
@@ -44,16 +50,14 @@ a dependency of `crates/kanboard` and not part of the product.
 5. The framework is early-stage (0.8.x, API moving); pin the version and expect
    breakage on minor upgrades.
 
-## How to re-run
+## How it is exercised now
+
+The spike crate is gone; the same ground is covered by the real daemon:
 
 ```bash
-cd crates/kanboard-topcoat-spike
-cargo run                     # prints "spike listening on http://127.0.0.1:<port>"
-curl -s  http://127.0.0.1:<port>/ | head -c 400
-curl -s  http://127.0.0.1:<port>/board | head -c 200
-curl -s -X POST http://127.0.0.1:<port>/move -H 'content-type: application/json' \
-     -d '{"id":3,"lane":"todo"}'
-curl -sN http://127.0.0.1:<port>/events | head -6      # live pushes every 5s
+cd crates/kanboard
+cargo run -- serve --port 0     # prints the URL; UI at / , JSON API at /api/*
+cargo test --test daemon        # 12 integration tests: health, single instance,
+                                # stale daemon.json, 409 needsComment, SSE, idle
 ```
 
-Open the URL in a browser to drag cards between lanes.

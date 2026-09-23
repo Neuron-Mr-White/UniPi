@@ -202,6 +202,33 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::archive_sweep(&layout, project, days, common.now)
         }
 
+        Command::Serve {
+            port,
+            idle_min,
+            idle_secs,
+        } => {
+            let options = crate::serve::ServeOptions {
+                port: *port,
+                idle: match idle_secs {
+                    Some(secs) => std::time::Duration::from_secs(*secs),
+                    None => std::time::Duration::from_secs(
+                        idle_min.unwrap_or(crate::daemon::DEFAULT_IDLE_MIN).max(1) * 60,
+                    ),
+                },
+            };
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| Error::Io(format!("cannot start the async runtime: {err}")))?;
+            runtime.block_on(crate::serve::serve(layout, options))
+        }
+
+        Command::Status => crate::daemon::status(&layout),
+
+        Command::Stop { timeout } => {
+            crate::daemon::stop(&layout, std::time::Duration::from_secs(*timeout))
+        }
+
         Command::Validate { fix } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let result = commands::validate(&layout, project, *fix)?;
@@ -220,15 +247,15 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
 }
 
 pub fn resolve_actor(explicit: Option<&str>) -> Actor {
-    if let Some(value) = explicit {
-        if let Ok(actor) = value.trim().parse() {
-            return actor;
-        }
+    if let Some(value) = explicit
+        && let Ok(actor) = value.trim().parse()
+    {
+        return actor;
     }
-    if let Ok(value) = std::env::var(store::ACTOR_ENV) {
-        if let Ok(actor) = value.trim().parse() {
-            return actor;
-        }
+    if let Ok(value) = std::env::var(store::ACTOR_ENV)
+        && let Ok(actor) = value.trim().parse()
+    {
+        return actor;
     }
     Actor::User
 }
@@ -445,6 +472,58 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 format!("archived: {archived}")
             }
         }
+        Command::Serve { .. } => {
+            if field(payload, "alreadyRunning").as_bool().unwrap_or(false) {
+                let daemon = field(payload, "daemon");
+                format!(
+                    "kanboard already running on http://127.0.0.1:{} (pid {})",
+                    text(daemon, "port"),
+                    text(daemon, "pid")
+                )
+            } else if field(payload, "stopped").as_bool().unwrap_or(false) {
+                let daemon = field(payload, "daemon");
+                format!(
+                    "kanboard stopped (was pid {} on port {})",
+                    text(daemon, "pid"),
+                    text(daemon, "port")
+                )
+            } else {
+                let daemon = field(payload, "daemon");
+                format!(
+                    "kanboard listening on http://127.0.0.1:{} (pid {})",
+                    text(daemon, "port"),
+                    text(daemon, "pid")
+                )
+            }
+        }
+        Command::Status => {
+            let daemon = field(payload, "daemon");
+            if daemon.is_null() {
+                "no daemon recorded".to_string()
+            } else {
+                format!(
+                    "pid {} · port {} · version {} · started {} · alive={}",
+                    text(daemon, "pid"),
+                    text(daemon, "port"),
+                    text(daemon, "version"),
+                    text(daemon, "startedAt"),
+                    field(payload, "alive")
+                )
+            }
+        }
+        Command::Stop { .. } => {
+            if field(payload, "stopped").as_bool().unwrap_or(false) {
+                format!("stopped pid {}", text(payload, "pid"))
+            } else {
+                format!(
+                    "not stopped: {}",
+                    payload
+                        .get("reason")
+                        .and_then(|reason| reason.as_str())
+                        .unwrap_or("unknown")
+                )
+            }
+        }
         Command::Validate { .. } => {
             let problems = field(payload, "problems")
                 .as_array()
@@ -477,14 +556,13 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
 
 /// Exit code: rule violations and validation findings are failures.
 pub fn exit_code(cli: &Cli, payload: &Value) -> i32 {
-    if let Command::Validate { .. } = cli.command {
-        if field(payload, "problems")
+    if let Command::Validate { .. } = cli.command
+        && field(payload, "problems")
             .as_array()
             .map(|problems| !problems.is_empty())
             .unwrap_or(false)
-        {
-            return 1;
-        }
+    {
+        return 1;
     }
     if let Command::ClaimNext { .. } = cli.command {
         // "no ready task" is a normal outcome, not an error.

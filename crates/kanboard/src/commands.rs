@@ -594,7 +594,8 @@ fn pid_alive(pid: u32) -> bool {
 
 #[cfg(unix)]
 unsafe fn libc_kill(pid: i32) -> i32 {
-    extern "C" {
+    // Edition 2024 requires the unsafe marker on extern blocks.
+    unsafe extern "C" {
         fn kill(pid: i32, sig: i32) -> i32;
     }
     unsafe { kill(pid, 0) }

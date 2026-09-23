@@ -162,6 +162,28 @@ pub enum Command {
         after_days: Option<i64>,
     },
 
+    /// Start the daemon: UI + JSON API + SSE (single instance).
+    Serve {
+        /// Port to bind on 127.0.0.1 (0 = let the OS choose).
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        /// Shut down after this many idle minutes with no UI and no clients.
+        #[arg(long = "idle-min", value_name = "N")]
+        idle_min: Option<u64>,
+        /// Hidden: idle seconds instead of minutes (tests).
+        #[arg(long = "idle-secs", value_name = "N", hide = true)]
+        idle_secs: Option<u64>,
+    },
+
+    /// Show the recorded daemon (pid, port, version) and whether it is alive.
+    Status,
+
+    /// Stop the daemon (SIGTERM, waits up to --timeout).
+    Stop {
+        #[arg(long, default_value_t = 3, value_name = "SECS")]
+        timeout: u64,
+    },
+
     /// Check every task file (and the board) for rule violations.
     Validate {
         /// Rewrite canonical formatting where the file is otherwise valid.
