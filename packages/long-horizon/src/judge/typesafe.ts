@@ -13,6 +13,7 @@
  * Design: docs/long-horizon-design.md §2.
  */
 
+import { askJev, isJevDecisionsModel, type JevAnswer } from "@pi-unipi/core";
 import type { LhMode } from "../modes.js";
 import { isLhMode } from "../modes.js";
 import type { JudgeSettings } from "../settings.js";
@@ -104,23 +105,6 @@ export function buildQuestions(): Record<string, unknown> {
   };
 }
 
-function normalizeConfidence(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
-    ? value
-    : 0;
-}
-
-function parseAnswer(raw: unknown): JudgeResult {
-  if (typeof raw !== "object" || raw === null) return null;
-  const answers = (raw as { answers?: unknown }).answers;
-  if (typeof answers !== "object" || answers === null) return null;
-  const mode = (answers as Record<string, unknown>).mode;
-  if (typeof mode !== "object" || mode === null) return null;
-  const choice = (mode as Record<string, unknown>).choice;
-  if (typeof choice !== "string" || !isLhMode(choice)) return null;
-  return { mode: choice, confidence: normalizeConfidence((mode as Record<string, unknown>).confidence) };
-}
-
 async function postJson(
   fetchImpl: FetchLike,
   url: string,
@@ -138,28 +122,35 @@ async function postJson(
   return (await response.json()) as unknown;
 }
 
-/** Native System One transport (provider: typesafe). */
+function normalizeConfidence(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : 0;
+}
+
+function parseAnswer(answers: Record<string, JevAnswer>): JudgeResult {
+  const mode = (answers as Record<string, unknown>).mode;
+  if (typeof mode !== "object" || mode === null) return null;
+  const choice = (mode as Record<string, unknown>).choice;
+  if (typeof choice !== "string" || !isLhMode(choice)) return null;
+  return { mode: choice, confidence: normalizeConfidence((mode as Record<string, unknown>).confidence) };
+}
+
+/** Native System One transport (provider: typesafe) — core jev client. */
 export function createTypesafeTransport(deps: JudgeDeps): JudgeTransport {
   const { settings } = deps;
-  const fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
-  const env = deps.env ?? process.env;
   return {
     provider: "typesafe",
     async ask(state, signal) {
-      const key = apiKey(settings, env);
-      if (!key) return null;
-      try {
-        const raw = await postJson(
-          fetchImpl,
-          `${baseUrl(settings)}/v1/systemone`,
-          { authorization: `Bearer ${key}` },
-          { state, model: settings.model, questions: buildQuestions() },
-          signal,
-        );
-        return parseAnswer(raw);
-      } catch {
-        return null;
-      }
+      const raw = await askJev({
+        state,
+        questions: buildQuestions(),
+        settings: { ...settings, timeoutMs: settings.timeoutMs },
+        signal,
+        fetchImpl: deps.fetchImpl,
+        env: deps.env ?? process.env,
+      });
+      return raw ? parseAnswer(raw) : null;
     },
   };
 }
@@ -174,19 +165,6 @@ export function createTypesafeTransport(deps: JudgeDeps): JudgeTransport {
  *   - Chat models (anything else): JSON-constrained chat completion; the
  *     prompt mirrors the System One question.
  */
-function isDecisionsModel(model: string): boolean {
-  const m = model.toLowerCase();
-  return m.startsWith("typesafe/") || m.includes("jev");
-}
-
-function decisionsUrl(settings: JudgeSettings): string {
-  const base = baseUrl(settings);
-  // OpenRouter's alpha decisions path. A configured base already ending in a
-  // version segment is treated as the API root (same convention as chat).
-  if (/\/(?:api\/alpha|api\/)?v\d+$/.test(base)) return `${base}/decisions`;
-  return `${base}/api/alpha/decisions`;
-}
-
 export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
   const { settings } = deps;
   const fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
@@ -200,7 +178,7 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
     "goal = one objective pursued until verifiably true; ralph = work through a task file " +
     "over iterations; swarm = independent parallel items then synthesize; graph = later steps " +
     "depend on earlier results; none = straight-to-the-point small request. Be conservative.";
-  const useDecisions = isDecisionsModel(settings.model);
+  const useDecisions = isJevDecisionsModel(settings.model);
   return {
     provider: "openrouter",
     async ask(state, signal) {
@@ -210,15 +188,16 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
       try {
         if (useDecisions) {
           // System One shape — parseAnswer reads answers.<q>.choice/confidence,
-          // which OpenRouter's decisions endpoint returns verbatim.
-          const raw = await postJson(
-            fetchImpl,
-            decisionsUrl(settings),
-            { authorization: `Bearer ${key}`, "x-title": "unipi-long-horizon" },
-            { state, model: settings.model, questions: buildQuestions() },
+          // which OpenRouter's decisions endpoint returns verbatim (core client).
+          const raw = await askJev({
+            state,
+            questions: buildQuestions(),
+            settings: { ...settings, timeoutMs: settings.timeoutMs },
             signal,
-          );
-          return parseAnswer(raw);
+            fetchImpl: deps.fetchImpl,
+            env,
+          });
+          return raw ? parseAnswer(raw) : null;
         }
         const raw = await postJson(
           fetchImpl,
