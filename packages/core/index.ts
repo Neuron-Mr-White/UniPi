@@ -21,6 +21,7 @@ export * from "./src/workspace/identity.js";
 export * from "./src/workspace/paths.js";
 export * from "./src/package-colors.js";
 export * from "./src/tui/hub-kit.js";
+export * from "./src/jev/client.js";
 export * from "./src/workspace/state-migration.js";
 // v3 settings engine + migration (canonical ~/.unipi/config layout)
 export * from "./src/settings/paths.js";
