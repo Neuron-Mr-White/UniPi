@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { askJev, getSettings, type JevAnswer, type JevSettings } from "@pi-unipi/core";
+import { askJev, getSettings, readJudgeJevSettings, type JevAnswer, type JevSettings } from "@pi-unipi/core";
 import { migrateSkillsDiscovery } from "./settings.js";
 
 export type SkillExposureMode = "judged" | "all" | "off";
@@ -260,17 +260,7 @@ export function applyJudgement(
 
 /** The Decision-model settings the skill judge shares with long-horizon. */
 function judgeSettings(): JevSettings {
-  const raw = getSettings("long-horizon", process.cwd()) as {
-    judge?: Record<string, unknown>;
-  };
-  const j = raw?.judge ?? {};
-  return {
-    provider: j.provider === "typesafe" ? "typesafe" : "openrouter",
-    model: typeof j.model === "string" ? j.model : "",
-    baseUrl: typeof j.baseUrl === "string" ? j.baseUrl : "",
-    apiKey: typeof j.apiKey === "string" ? j.apiKey : "",
-    timeoutMs: typeof j.timeoutMs === "number" ? j.timeoutMs : 0,
-  };
+  return readJudgeJevSettings(process.cwd());
 }
 
 /** Debug logging, gated by UNIPI_DEBUG_SKILLS=1 → ~/.unipi/logs/skills.log. */
