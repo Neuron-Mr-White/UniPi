@@ -220,6 +220,50 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     assert.match(stopped.lines.at(-1) ?? "", /daemon stopped/);
   });
 
+  it("commands read the binary at call time, not at registration (lazy deps)", async () => {
+    // Regression: index.ts registers the command before the binary is resolved.
+    // A frozen `cli: null` made every subcommand answer "kanboard: null".
+    const { registerKanboardCommand } = await import("../src/commands.js");
+    let current: ReturnType<typeof createCli> | null = null;
+    let unavailable: string | null = null;
+    const noted = notifications();
+
+    let handler!: (args: string, ctx: unknown) => Promise<void>;
+    const pi = {
+      registerCommand: (_name: string, options: { handler: typeof handler }) => {
+        handler = options.handler;
+      },
+    } as never;
+
+    const lazyDeps = {
+      get cli() {
+        return current;
+      },
+      get unavailable() {
+        return unavailable;
+      },
+      settings: () => ({ chainGate: "in_review", continue: false, idleMin: 10, port: 0, archiveAfterDays: 0, openBrowser: false }),
+      revealSkill: () => undefined,
+      work: async () => undefined,
+      stop: () => undefined,
+      status: () => ({ taskId: null, mode: null, phase: "idle" }),
+      debug: () => undefined,
+    };
+    registerKanboardCommand(pi, lazyDeps as never);
+
+    const ctx = { cwd: workspace, ui: noted.ui } as never;
+    // Before the binary is resolved: refuse, and say why.
+    unavailable = "kanboard binary unavailable for linux-x64";
+    await handler("status", ctx);
+    assert.deepEqual(noted.lines, ["kanboard: kanboard binary unavailable for linux-x64"]);
+
+    // After it resolves, the same registered handler works.
+    current = cli;
+    unavailable = null;
+    await handler("add lazy capture", ctx);
+    assert.match(noted.lines.at(-1) ?? "", /^[A-Z]+-\d+ added to Backlog$/);
+  });
+
   it("archive sweep runs on session start when archiveAfterDays is set", async () => {
     delete process.env.UNIPI_KANBOARD_PROJECT;
     const tasks = execFileSync(debugBinary, ["list", "--json"], {

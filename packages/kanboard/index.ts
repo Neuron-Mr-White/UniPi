@@ -60,19 +60,22 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  const buildDeps = (): CommandDeps => {
-    const client = cli;
-    return {
-      cli: client,
-      unavailable,
+  // Live getters: the command is registered before the binary is resolved, so
+  // the deps object must read the current state at call time.
+  const buildDeps = (): CommandDeps => ({
+      get cli() {
+        return cli;
+      },
+      get unavailable() {
+        return unavailable;
+      },
       settings: () => readKanboardSettings(process.cwd()),
       revealSkill,
       work: (ctx) => runner?.work(ctx) ?? Promise.resolve(),
       stop: (ctx) => runner?.stop(ctx),
       status: () => runner?.status() ?? { taskId: null, mode: null, phase: "idle" },
       debug,
-    };
-  };
+    }) as CommandDeps;
 
   const revealSkill = (ctx: ExtensionContext | { cwd?: string }): void => {
     // Append-only reveal (never the system prompt), so the prefix cache holds.
