@@ -59,7 +59,8 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
     enabled: false,
     // "auto" (the pre-custom default) resolved to the openrouter shape.
     provider: "openrouter",
-    model: "jev-latest",
+    // openrouter/custom ride the decisions endpoint → the hosted jev id.
+    model: "typesafe/jev-1.13",
     baseUrl: "",
     threshold: 0.6,
     timeoutMs: 0,
@@ -95,20 +96,29 @@ function writeSettingsFile(data: Record<string, unknown>): void {
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 }
 
+/** Default model per provider: native typesafe speaks bare ids, gateways don't. */
+function defaultModelFor(provider: JudgeSettings["provider"]): string {
+  return provider === "typesafe" ? "jev-latest" : "typesafe/jev-1.13";
+}
+
 /** Deep-merge stored values over defaults so new keys appear automatically. */
 function mergeSettings(stored: unknown): LongHorizonSettings {
   if (!isRecord(stored)) return structuredClone(DEFAULT_SETTINGS);
   const judge = isRecord(stored.judge) ? stored.judge : {};
+  const provider =
+    judge.provider === "typesafe" || judge.provider === "openrouter" || judge.provider === "custom"
+      ? judge.provider
+      : judge.provider === "auto"
+        ? "openrouter" // stored "auto" → its effective transport
+        : "typesafe";
   return {
     judge: {
       enabled: typeof judge.enabled === "boolean" ? judge.enabled : DEFAULT_SETTINGS.judge.enabled,
-      provider:
-        judge.provider === "typesafe" || judge.provider === "openrouter" || judge.provider === "custom"
-          ? judge.provider
-          : judge.provider === "auto"
-            ? "openrouter" // stored "auto" → its effective transport
-            : "typesafe",
-      model: typeof judge.model === "string" && judge.model ? judge.model : DEFAULT_SETTINGS.judge.model,
+      provider,
+      model:
+        typeof judge.model === "string" && judge.model
+          ? judge.model
+          : defaultModelFor(provider),
       baseUrl: typeof judge.baseUrl === "string" ? judge.baseUrl : "",
       threshold:
         typeof judge.threshold === "number" && judge.threshold > 0 && judge.threshold <= 1
@@ -154,12 +164,19 @@ registerSettings({
           ],
           description: "typesafe = native systemone · openrouter = decisions/chat · custom = your own gateway",
         },
+        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "required when provider=custom · oino proxy = https://router.oino.dev/v1", emptyLabel: "provider default" },
+        { key: "judge.apiKey", type: "secret", label: "API key", description: "Stored key wins over env (works in tmux/ssh-c/systemd)", emptyLabel: "env / bridge fallback" },
         {
           key: "judge.model",
           type: "model",
           label: "Decision model",
           description: "decision (classifier) model — jev; custom… for others",
-          presets: ["typesafe/jev-1.13"],
+          providerKey: "provider",
+          presetsByProvider: {
+            typesafe: ["jev-latest"],
+            openrouter: ["typesafe/jev-1.13"],
+            custom: ["typesafe/jev-1.13"],
+          },
         },
         { key: "judge.threshold", type: "number", label: "Confidence threshold", description: "Below this the judge abstains (0-1)", min: 0.01, max: 1 },
       ],
@@ -167,11 +184,9 @@ registerSettings({
     {
       title: "Judge — Advanced",
       advanced: true,
-      description: "Rarely needed — custom provider requires a Base URL",
+      description: "Rarely needed — zero means the provider default",
       fields: [
-        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "required when provider=custom · oino proxy = https://router.oino.dev/v1", emptyLabel: "provider default" },
         { key: "judge.timeoutMs", type: "number", label: "Timeout ms", min: 0, zeroLabel: "auto (1s native / 6s chat)" },
-        { key: "judge.apiKey", type: "secret", label: "API key", description: "Stored key wins over env (works in tmux/ssh-c/systemd)", emptyLabel: "env / bridge fallback" },
       ],
     },
     {

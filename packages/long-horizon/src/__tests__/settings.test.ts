@@ -39,8 +39,8 @@ test("reads unipi.longHorizon from the shared settings file", () => {
   const settings = loadSettings(true);
   assert.equal(settings.judge.enabled, true);
   assert.equal(settings.judge.provider, "openrouter");
-  // Untouched judge keys fall back to defaults.
-  assert.equal(settings.judge.model, "jev-latest");
+  // Untouched judge keys fall back to defaults (provider-aware model).
+  assert.equal(settings.judge.model, "typesafe/jev-1.13");
   assert.equal(settings.judge.threshold, 0.6);
   assert.equal(settings.defaultMode, "swarm");
   process.env.HOME = originalHome;
@@ -87,6 +87,23 @@ test("stored provider \"auto\" migrates to \"openrouter\" (its effective transpo
   writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "auto" } } } });
   const settings = loadSettings(true);
   assert.equal(settings.judge.provider, "openrouter");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("empty model defaults per provider: jev-latest native, hosted id for gateways", () => {
+  const dir = sandboxHome();
+  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "typesafe", model: "" } } } });
+  assert.equal(loadSettings(true).judge.model, "jev-latest", "native typesafe speaks bare ids");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "custom", model: "" } } } });
+  assert.equal(loadSettings(true).judge.model, "typesafe/jev-1.13", "gateways use the hosted jev id");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  writeSettings(dir, { unipi: { longHorizon: {} } });
+  assert.equal(loadSettings(true).judge.model, "typesafe/jev-1.13", "runtime default (openrouter) uses the hosted id");
   process.env.HOME = originalHome;
   resetSettingsCache();
   rmSync(dir, { recursive: true, force: true });
