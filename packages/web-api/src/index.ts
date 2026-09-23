@@ -53,7 +53,6 @@ export default function (pi: ExtensionAPI) {
       name: MODULES.WEB_API,
       version: VERSION,
       commands: [
-        `unipi:${WEB_COMMANDS.SETTINGS}`,
         `unipi:${WEB_COMMANDS.CACHE_CLEAR}`,
       ],
       tools: [

@@ -100,12 +100,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:badge-name": "utility",
   "unipi:badge-gen":  "utility",
   "unipi:badge-toggle": "utility",
-  "unipi:badge-settings": "utility",
-  "unipi:util-settings": "utility",
-  "unipi:skills-settings": "utility",
 
   // ask-user (1 command)
-  "unipi:ask-user-settings": "ask-user",
 
   // utility (settings hub)
   "unipi:settings":         "utility",
@@ -118,7 +114,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // background-tasks (8 commands)
   "unipi:bg":          "background-tasks",
   "unipi:bg-tasks":    "background-tasks",
-  "unipi:bg-settings": "background-tasks",
 
   // fusion (3 commands)
   "unipi:model":         "fusion",
@@ -127,12 +122,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // info (2 commands)
   "unipi:info":          "info",
-  "unipi:info-settings": "info",
 
   // web-api (2 commands)
-  "unipi:web-settings":    "web-api",
   "unipi:web-cache-clear": "web-api",
-  "unipi:image-settings":  "image",
 
   // compact (9 commands)
   "unipi:lossless-compact": "compact",
@@ -141,13 +133,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-recall":  "compact",
   "unipi:compact-stats":   "compact",
   "unipi:compact-doctor":  "compact",
-  "unipi:compact-settings": "compact",
   "unipi:compact-preset":  "compact",
   "unipi:compact-help":    "compact",
 
 
   // notify (6 commands)
-  "unipi:notify-settings":  "notify",
   "unipi:notify-set-gotify": "notify",
   "unipi:notify-set-tg":    "notify",
   "unipi:notify-set-ntfy":  "notify",
@@ -161,16 +151,13 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // footer (3 commands)
   "unipi:footer":            "footer",
-  "unipi:footer-settings":   "footer",
   "unipi:footer-help":       "footer",
 
   // updater (3 commands)
   "unipi:readme":            "updater",
   "unipi:changelog":         "updater",
-  "unipi:updater-settings":  "updater",
 
   // input-shortcuts (1 command)
-  "unipi:stash-settings":   "input-shortcuts",
 };
 
 // ─── Description Map ─────────────────────────────────────────────────
@@ -233,21 +220,14 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:badge-name": "Toggle session name badge overlay",
   "unipi:badge-gen":  "Generate session name via background agent",
   "unipi:badge-toggle": "Configure badge settings (autoGen, badgeEnabled, agentTool)",
-  "unipi:badge-settings": "Configure badge settings via TUI overlay",
-  "unipi:util-settings": "Unified settings — badge + diff rendering config",
-  "unipi:skills-settings": "Toggle skill startup discovery (skills catalog in system prompt)",
   "unipi:kanboard":        "Start the kanboard visualization server",
   "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
 
-  "unipi:ask-user-settings": "Configure ask-user settings",
   "unipi:settings": "Configure all unipi modules in one panel",
 
   "unipi:info":          "Show system information",
-  "unipi:info-settings": "Configure info display",
 
-  "unipi:web-settings":    "Configure web search settings",
   "unipi:web-cache-clear": "Clear web search cache",
-  "unipi:image-settings":  "Configure image generation and recognition models",
 
   "unipi:lossless-compact": "Immediate zero-LLM compaction",
   "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",
@@ -255,10 +235,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-recall":   "(DEPRECATED) Use /unipi:session-recall instead",
   "unipi:compact-stats":    "Show compaction statistics",
   "unipi:compact-doctor":   "Diagnose compaction issues",
-  "unipi:compact-settings": "Configure compaction settings",
   "unipi:compact-preset":   "Manage compaction presets",
   "unipi:compact-help":     "Show compactor command help",
-  "unipi:notify-settings":  "Configure notification platforms and events",
   "unipi:notify-set-gotify": "Set up Gotify push notifications",
   "unipi:notify-set-tg":    "Set up Telegram bot notifications",
   "unipi:notify-set-ntfy":  "Set up ntfy push notifications",
@@ -267,18 +245,14 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 
   "unipi:footer":            "Toggle footer or switch preset",
-  "unipi:footer-settings":   "Open footer settings — toggle groups and segments",
   "unipi:footer-help":       "Show footer segment guide",
 
   "unipi:readme":            "Browse package README files",
   "unipi:changelog":         "Browse changelog (Keep a Changelog format)",
-  "unipi:updater-settings":  "Configure updater — check interval and auto-update",
 
-  "unipi:stash-settings":   "Open input shortcuts settings — customize keybindings",
 
   "unipi:bg":          "Start a shell command as a tracked background task",
   "unipi:bg-tasks":    "Open the background task manager UI",
-  "unipi:bg-settings": "Open background-tasks settings (master toggle, defaults)",
   "unipi:model":         "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
   "unipi:fusion-preset": "Curate the model preset used by /unipi:model",
   "unipi:fusion-stats":  "Estimated Fusion savings (sidekick tokens priced at lead rates)",

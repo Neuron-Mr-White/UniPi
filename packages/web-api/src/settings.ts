@@ -17,6 +17,7 @@ import {
   DEFAULT_REMOVE_IMAGES,
   DEFAULT_INCLUDE_REPLIES,
 } from "./engine/constants.js";
+import { BROWSER_PROFILES, OS_PROFILES } from "./engine/profiles.js";
 import { getField, getSettings, registerSettings, setField, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Auth storage structure (API keys) */
@@ -193,6 +194,25 @@ registerSettings({
     {
       title: "Smart fetch",
       fields: [
+        {
+          key: "smartFetch.browser",
+          type: "enum",
+          label: "Browser profile",
+          description: "TLS fingerprint profile (newest first)",
+          options: [...BROWSER_PROFILES].reverse(),
+        },
+        { key: "smartFetch.os", type: "enum", label: "OS fingerprint", options: [...OS_PROFILES] },
+        {
+          key: "smartFetch.includeReplies",
+          type: "enum",
+          label: "Include replies",
+          description: "Comment/reply extraction for supported providers",
+          options: [
+            { value: "true", label: "yes" },
+            { value: "false", label: "no" },
+            { value: "extractors", label: "extractors (default)" },
+          ],
+        },
         { key: "smartFetch.maxChars", type: "number", label: "Max chars", min: 1000 },
         { key: "smartFetch.timeoutMs", type: "number", label: "Timeout ms", min: 1000 },
         { key: "smartFetch.batchConcurrency", type: "number", label: "Batch concurrency", min: 1, max: 32 },
@@ -301,9 +321,15 @@ export function setProviderEnabled(providerId: string, enabled: boolean): void {
  */
 export function loadSmartFetchSettings(): SmartFetchSettings {
   const config = loadConfig();
+  // The hub enum writes strings; coerce back to the boolean the fetchers use.
+  const stored = config.smartFetch as { includeReplies?: unknown } | undefined;
+  const includeReplies = stored?.includeReplies;
+  const normalized =
+    includeReplies === "true" ? true : includeReplies === "false" ? false : undefined;
   return {
     ...DEFAULT_SMART_FETCH_SETTINGS,
     ...config.smartFetch,
+    ...(normalized !== undefined ? { includeReplies: normalized as SmartFetchSettings["includeReplies"] } : {}),
   };
 }
 

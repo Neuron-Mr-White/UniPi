@@ -300,7 +300,7 @@ export function resolveImageGenModel(
     return (
       "No image generation models are available.\n" +
       "→ Image generation requires an OpenRouter account: https://openrouter.ai/keys\n" +
-      "→ Or set an exact model with /unipi:image-settings (press c to enter one manually)."
+      "→ Or set an exact model with /unipi:settings (press c to enter one manually)."
     );
   }
 
@@ -345,7 +345,7 @@ export function resolveImageGenModel(
   return (
     `Unknown image model "${input}".\n` +
     `Available models (${models.length} total):\n${sample}` +
-    (models.length > 10 ? "\n  …run /unipi:image-settings to browse all" : "")
+    (models.length > 10 ? "\n  …run /unipi:settings to browse all" : "")
   );
 }
 
@@ -437,7 +437,7 @@ export function resolveVisionModel(
       "No vision-capable models are configured.\n" +
       "→ image_recognize needs a model that accepts image input " +
       "(e.g. anthropic/claude-sonnet, openai/gpt-5, google/gemini-3-pro).\n" +
-      "→ Configure one with /model or /unipi:image-settings."
+      "→ Configure one with /model or /unipi:settings."
     );
   }
 

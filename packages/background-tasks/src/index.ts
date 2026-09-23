@@ -253,37 +253,12 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     }
   }
 
-  async function openSettings(ctx: ExtensionContext): Promise<void> {
-    currentCtx = ctx;
-    if (!ctx.hasUI) {
-      ctx.ui.notify(
-        "Background-tasks settings require an interactive UI. Edit ~/.unipi/config/background-tasks.json directly instead.",
-        "error",
-      );
-      return;
-    }
-    const { renderBackgroundTasksSettingsOverlay } = await import("./settings-overlay.js");
-    await ctx.ui.custom(
-      renderBackgroundTasksSettingsOverlay({ cwd: ctx.cwd ?? process.cwd() }),
-      {
-        overlay: true,
-        overlayOptions: {
-          anchor: "center",
-          width: "70%",
-          minWidth: 56,
-          margin: 2,
-        } as never,
-      },
-    );
-  }
-
   registerToolsAndCommands({
     pi,
     registry,
     startTask,
     openTaskManager,
     clearFinishedNotices,
-    openSettings,
   });
 
   registerDelegateExtension(pi, {

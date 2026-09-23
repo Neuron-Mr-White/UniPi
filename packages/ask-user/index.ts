@@ -16,23 +16,21 @@ import {
   getPackageVersion,
 } from "@pi-unipi/core";
 import { registerAskUserTools } from "./tools.js";
-import { registerAskUserCommands } from "./commands.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 export default function (pi: ExtensionAPI) {
 
-  // Register tools and commands
+  // Register tools
   registerAskUserTools(pi);
-  registerAskUserCommands(pi);
 
   // Session lifecycle — announce module
   pi.on("session_start", async () => {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.ASK_USER,
       version: VERSION,
-      commands: ["unipi:ask-user-settings"],
+      commands: [],
       tools: [ASK_USER_TOOLS.ASK],
     });
   });

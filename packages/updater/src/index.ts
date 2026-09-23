@@ -42,7 +42,6 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       commands: [
         `${UNIPI_PREFIX}${UPDATER_COMMANDS.README}`,
         `${UNIPI_PREFIX}${UPDATER_COMMANDS.CHANGELOG}`,
-        `${UNIPI_PREFIX}${UPDATER_COMMANDS.UPDATER_SETTINGS}`,
       ],
       tools: [],
     });

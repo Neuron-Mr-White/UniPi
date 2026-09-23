@@ -94,7 +94,7 @@ function registerGenerateTool(pi: ExtensionAPI): void {
       "Pass `image` to edit an existing image instead of generating a new one.",
       "Editing regenerates the whole image, so unmentioned details may change.",
       "Describe what you DO want; negation is unreliable in image models.",
-      "Omit model to use the one configured in /unipi:image-settings.",
+      "Omit model to use the one configured in /unipi:settings.",
       "Generated images cost money per call; do not regenerate without being asked.",
     ],
     parameters: Type.Object({
@@ -257,7 +257,7 @@ function registerRecognizeTool(pi: ExtensionAPI): void {
         if (!requested) {
           return errorResult(
             "No vision model configured.\n" +
-              "→ Choose one with /unipi:image-settings, or pass `model`.",
+              "→ Choose one with /unipi:settings, or pass `model`.",
           );
         }
 

@@ -159,7 +159,7 @@ function annotateModelError(message: string, model: ImageGenModel): string {
       `${message}\n` +
       `→ Model id sent: "${model.id}" (provider "${model.provider}").\n` +
       "→ Some gateways list aliases they cannot serve. Try the id exactly as it " +
-      "appears in the provider's own catalog, or pick another with /unipi:image-settings."
+      "appears in the provider's own catalog, or pick another with /unipi:settings."
     );
   }
   return message;

@@ -24,16 +24,16 @@ Browse the root CHANGELOG.md in a TUI overlay.
 - Select a version to view its changelog details (Added, Fixed, Changed sections)
 - Follows [Keep a Changelog](https://keepachangelog.com) format
 
-### `/unipi:updater-settings`
+### `/unipi:settings`
 
-Configure the updater module.
+Configure the updater module (Updater group). Settings:
 
-**Settings:**
 - **Check Interval** — How often to check npm for updates (30min / 1h / 6h / 1d)
 - **Auto Update** — What happens when an update is found:
   - `disabled` — No update checks on session start
   - `notify` — Show update overlay, user chooses to update or skip
   - `auto` — Auto-install after 5-second countdown (press `n` to cancel)
+
 
 ## Config File
 
@@ -61,5 +61,3 @@ All TUI overlays support:
 - `Enter` — Select/open
 - `q`/`Esc` — Back/close
 - `g`/`G` — Jump to top/bottom
-- `Space` — Cycle options (settings)
-- `h`/`l` or ←/→ — Cycle options (settings)

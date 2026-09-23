@@ -200,6 +200,7 @@ registerSettings({
         { key: "triggerOnCompletion", type: "boolean", label: "Follow-up wake", description: "Terminal state wakes the agent" },
         { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0, zeroLabel: "∞ none" },
         { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1 },
+        { key: "maxOutputBytes", type: "number", label: "Output cap bytes", min: 1024, description: "Kill+fail a task past this output size" },
       ],
     },
     {

@@ -144,10 +144,7 @@ export const UTILITY_COMMANDS = {
   BADGE_NAME: "badge-name",
   BADGE_GEN: "badge-gen",
   BADGE_TOGGLE: "badge-toggle",
-  BADGE_SETTINGS: "badge-settings",
-  UTIL_SETTINGS: "util-settings",
   PREFIX_CACHE: "prefix-cache",
-  SKILLS_SETTINGS: "skills-settings",
 } as const;
 
 /** Utility tool names */
@@ -180,10 +177,6 @@ export const IMAGE_TOOLS = {
 } as const;
 
 /** Image command names */
-export const IMAGE_COMMANDS = {
-  SETTINGS: "image-settings",
-} as const;
-
 /** Image directory paths */
 export const IMAGE_DIRS = {
   CONFIG: "~/.unipi/config/image",
@@ -303,7 +296,6 @@ export const BTW_COMMANDS = {
 export const UPDATER_COMMANDS = {
   README: "readme",
   CHANGELOG: "changelog",
-  UPDATER_SETTINGS: "updater-settings",
 } as const;
 
 /** Updater directory paths */
@@ -313,10 +305,6 @@ export const UPDATER_DIRS = {
 } as const;
 
 /** Input-shortcuts command names */
-export const INPUT_SHORTCUTS_COMMANDS = {
-  STASH_SETTINGS: "stash-settings",
-} as const;
-
 /** Footer command names */
 export const FOOTER_COMMANDS = {
   FOOTER: "footer",

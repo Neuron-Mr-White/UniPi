@@ -18,7 +18,6 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 
 import { renderAskUI } from "../ask-ui.ts";
 import { renderLauncherUI } from "../launcher-ui.ts";
-import { AskUserSettingsOverlay } from "../settings-tui.ts";
 import type { NormalizedOption } from "../types.ts";
 
 /** Minimal Theme stub — components only use fg() and the editor theme fields. */
@@ -156,21 +155,6 @@ describe("launcher-ui render width invariant", () => {
   });
 });
 
-describe("settings-tui render width invariant", () => {
-  it("never renders a line wider than the terminal", () => {
-    const overlay = new AskUserSettingsOverlay();
-    for (const width of WIDTHS) {
-      assertFits(overlay.render(width), width, "settings-tui");
-    }
-  });
-
-  it("respects a narrower width after a resize", () => {
-    const overlay = new AskUserSettingsOverlay();
-    overlay.render(80);
-    assertFits(overlay.render(30), 30, "settings-tui after shrink");
-    assertFits(overlay.render(1), 1, "settings-tui at width 1");
-  });
-});
 
 describe("degenerate widths", () => {
   it("does not throw on zero, negative, fractional or NaN widths", () => {

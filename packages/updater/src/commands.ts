@@ -1,14 +1,13 @@
 /**
  * @pi-unipi/updater — Command Registration
  *
- * Registers /unipi:readme [package], /unipi:changelog, /unipi:updater-settings
+ * Registers /unipi:readme [package] and /unipi:changelog
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, UPDATER_COMMANDS } from "@pi-unipi/core";
 import { renderReadmeOverlay } from "./tui/readme-overlay.js";
 import { renderChangelogOverlay } from "./tui/changelog-overlay.js";
-import { renderSettingsOverlay } from "./tui/settings-overlay.js";
 
 /** Common overlay options for all updater overlays */
 const OVERLAY_OPTIONS = {
@@ -60,24 +59,4 @@ export function registerCommands(pi: ExtensionAPI): void {
     },
   );
 
-  // /unipi:updater-settings — Open updater settings
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${UPDATER_COMMANDS.UPDATER_SETTINGS}`,
-    {
-      description: "Configure updater — check interval and auto-update mode",
-      handler: async (_args: string, ctx: ExtensionCommandContext) => {
-        try {
-          const result = await ctx.ui.custom(
-            renderSettingsOverlay(),
-            OVERLAY_OPTIONS,
-          );
-          if (result?.saved) {
-            ctx.ui.notify("Updater settings saved.", "info");
-          }
-        } catch (err) {
-          ctx.ui.notify(`Settings overlay error: ${err}`, "error");
-        }
-      },
-    },
-  );
 }

@@ -10,7 +10,7 @@ The update overlay appears automatically when a newer version is found. Press `Y
 |---------|-------------|
 | `/unipi:readme [package]` | Browse package README files in TUI overlay |
 | `/unipi:changelog` | Browse CHANGELOG.md with version list and detail view |
-| `/unipi:updater-settings` | Configure check interval and auto-update mode |
+| `/unipi:settings` | Configure check interval and auto-update mode (Updater group) |
 
 ### TUI Controls
 

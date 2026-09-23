@@ -168,7 +168,7 @@ export async function generateImage(options: GenerateOptions): Promise<GenerateR
         `→ Available: ${supported.join(", ") || "openrouter"}.\n` +
         "→ Providers are bridged from pi automatically; one without a baseUrl " +
         "or an API key cannot be used.\n" +
-        "→ Pick another with /unipi:image-settings.",
+        "→ Pick another with /unipi:settings.",
     );
   }
 

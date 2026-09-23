@@ -13,12 +13,11 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
-import { MODULES, emitEvent, UNIPI_EVENTS, INPUT_SHORTCUTS_COMMANDS } from "@pi-unipi/core";
+import { MODULES, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
 import { UndoRedoBuffer } from "./undo-redo.ts";
 import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
-import { SettingsOverlay } from "./settings-overlay.ts";
-import { loadConfig } from "./settings-overlay.ts";
+import { loadConfig } from "./settings.ts";
 import { copyToClipboard } from "./clipboard.ts";
 import { THINKING_CYCLE } from "./types.ts";
 
@@ -327,31 +326,6 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
     },
   });
 
-  // ─── Register /unipi:stash-settings command ────────────────────────────
-
-  pi.registerCommand(`unipi:${INPUT_SHORTCUTS_COMMANDS.STASH_SETTINGS}`, {
-    description: "Open input shortcuts settings overlay to customize keybindings",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.hasUI) return;
-
-      void ctx.ui.custom<void>(
-        async (_tui, _theme, _keybindings, done) => {
-          return new SettingsOverlay(done);
-        },
-        {
-          overlay: true,
-          overlayOptions: {
-            width: "60%",
-            minWidth: 40,
-            maxHeight: "50%",
-            anchor: "top-center",
-            margin: { top: 2, left: 2, right: 2 },
-          },
-        },
-      );
-    },
-  });
-
   // ─── Session lifecycle ─────────────────────────────────────────────────
 
   pi.on("session_shutdown", async () => {
@@ -404,7 +378,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
     name: MODULES.INPUT_SHORTCUTS,
     version: "0.1.0",
-    commands: [`unipi:${INPUT_SHORTCUTS_COMMANDS.STASH_SETTINGS}`],
+    commands: [],
     tools: [],
   });
 }

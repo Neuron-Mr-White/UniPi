@@ -28,7 +28,7 @@ import {
 import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
 import { isSkillDiscoveryEnabled, stripBundledSkills } from "./skill-discovery.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
-import { readBadgeSettings } from "./settings.js";
+import { readBadgeSettings, readUtilSettings } from "./settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
 import { getAnalyticsCollector } from "./analytics/collector.js";
 import { registerInfoScreen } from "./info-screen.js";
@@ -60,10 +60,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.BADGE_NAME,
   UTILITY_COMMANDS.BADGE_GEN,
   UTILITY_COMMANDS.BADGE_TOGGLE,
-  UTILITY_COMMANDS.BADGE_SETTINGS,
-  UTILITY_COMMANDS.UTIL_SETTINGS,
   UTILITY_COMMANDS.PREFIX_CACHE,
-  UTILITY_COMMANDS.SKILLS_SETTINGS,
 ].map((cmd) => `unipi:${cmd}`);
 
 /** All tools registered by this module */
@@ -100,6 +97,16 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const hub = new SettingsHub({
             cwd: ctx.cwd ?? process.cwd(),
+            onChanged: (namespace) => {
+              // Preserve the old util-settings overlay's live side-effect:
+              // disabling the badge hides the overlay immediately.
+              if (namespace !== "utility") return;
+              try {
+                if (!readUtilSettings().badge.badgeEnabled) nameBadgeState.hide();
+              } catch {
+                // Best effort — settings UI must never crash the panel.
+              }
+            },
             runAction: async (command) => {
               const ran = await runCommandByName(command, ctx);
               if (!ran) ctx.ui.notify(`no handler registered for ${command}`, "warning");

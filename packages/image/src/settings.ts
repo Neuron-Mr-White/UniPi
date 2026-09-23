@@ -86,6 +86,7 @@ registerSettings({
       fields: [
         { key: "recognize.enabled", type: "boolean", label: "Recognize enabled", description: "Register the image_recognize tool" },
         { key: "recognize.model", type: "model", label: "Recognize model", emptyLabel: "inherit (session model)", capability: "image-input", emptyOption: "inherit (session model)" },
+        { key: "recognize.systemPrompt", type: "string", label: "System prompt", description: "Sent with every recognition request", emptyLabel: "built-in analyst prompt" },
       ],
     },
   ],

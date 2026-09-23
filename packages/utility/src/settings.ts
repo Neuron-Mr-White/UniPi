@@ -6,6 +6,7 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
@@ -19,9 +20,15 @@ export interface BadgeSettingsSection {
   herdrSync: boolean;
 }
 
+/** Skill discovery settings (migrated from unipi.skills.discovery). */
+export interface SkillDiscoverySection {
+  discovery: boolean;
+}
+
 /** Unified utility settings */
 export interface UtilSettings {
   badge: BadgeSettingsSection;
+  skills: SkillDiscoverySection;
 }
 
 /** Default badge settings */
@@ -33,9 +40,15 @@ const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
   herdrSync: true,
 };
 
+/** Default skill discovery settings */
+const DEFAULT_SKILL_DISCOVERY: SkillDiscoverySection = {
+  discovery: true,
+};
+
 /** Default unified settings */
 const DEFAULT_SETTINGS: UtilSettings = {
   badge: { ...DEFAULT_BADGE_SETTINGS },
+  skills: { ...DEFAULT_SKILL_DISCOVERY },
 };
 
 /** Config file paths */
@@ -91,8 +104,34 @@ registerSettings({
         { key: "badge.generationModel", type: "model", label: "Generation model", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
       ],
     },
+    {
+      title: "Skills",
+      description: "Skill startup discovery",
+      fields: [
+        { key: "skills.discovery", type: "boolean", label: "Skill discovery", description: "Catalog skills in the system prompt at startup; off = invoke-only via /skill:name" },
+      ],
+    },
   ],
 });
+
+/**
+ * One-time import of `unipi.skills.discovery` from pi's settings.json into the
+ * engine layout (global scope), so the hub owns the value from here on.
+ */
+function importLegacySkillDiscovery(): void {
+  try {
+    const agentDir = process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
+    const raw = JSON.parse(fs.readFileSync(path.join(agentDir, "settings.json"), "utf-8")) as {
+      unipi?: { skills?: { discovery?: unknown } };
+    };
+    const discovery = raw?.unipi?.skills?.discovery;
+    if (typeof discovery !== "boolean") return;
+    if (settingsLayers("utility", process.cwd()).global) return; // engine value wins
+    setSettings("utility", { skills: { discovery } } as unknown as Record<string, unknown>, "global", process.cwd());
+  } catch {
+    // Absent/unreadable legacy value — default applies.
+  }
+}
 
 /** One-time import from the legacy <cwd>/.unipi/config/util-settings.json. */
 function importLegacyUtilSettings(): void {
@@ -120,6 +159,7 @@ function importLegacyUtilSettings(): void {
 export function readUtilSettings(): UtilSettings {
   try {
     importLegacyUtilSettings();
+    importLegacySkillDiscovery();
     const raw = getSettings("utility", process.cwd());
     const normalized = normalizeSettings(raw);
     if (normalized) return normalized;
@@ -146,6 +186,9 @@ function normalizeSettings(parsed: any): UtilSettings {
       agentTool: typeof parsed?.badge?.agentTool === "boolean" ? parsed.badge.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
       generationModel: typeof parsed?.badge?.generationModel === "string" ? parsed.badge.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
       herdrSync: typeof parsed?.badge?.herdrSync === "boolean" ? parsed.badge.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
+    },
+    skills: {
+      discovery: typeof parsed?.skills?.discovery === "boolean" ? parsed.skills.discovery : DEFAULT_SKILL_DISCOVERY.discovery,
     },
   };
 }

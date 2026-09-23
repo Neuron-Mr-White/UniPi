@@ -2,23 +2,20 @@
  * @pi-unipi/image — Extension entry
  *
  * Provides the `image_generate` and `image_recognize` agent tools plus the
- * `/unipi:image-settings` command.
+ * Settings are managed in the unified /unipi:settings hub.
  */
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  IMAGE_COMMANDS,
   IMAGE_TOOLS,
   MODULES,
   UNIPI_EVENTS,
-  UNIPI_PREFIX,
   emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
 
-import { registerImageCommands } from "./commands.js";
 import { registerImageTools } from "./tools.js";
 import {
   applyRecognizeGating,
@@ -57,7 +54,6 @@ function applyVisionGating(pi: ExtensionAPI, model: unknown): boolean {
 
 export default function (pi: ExtensionAPI) {
   registerImageTools(pi);
-  registerImageCommands(pi);
 
   pi.on("model_select", (event) => {
     if (!loadConfig().recognize.enabled) return;
@@ -88,7 +84,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.IMAGE,
       version: VERSION,
-      commands: [`${UNIPI_PREFIX}${IMAGE_COMMANDS.SETTINGS}`],
+      commands: [],
       tools,
     });
 

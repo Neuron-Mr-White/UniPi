@@ -2,8 +2,9 @@
  * @pi-unipi/utility — Skill Startup Discovery Gate
  *
  * Controls whether discovered skills are cataloged in the agent's system
- * prompt at session start. Setting: `unipi.skills.discovery` in pi's
- * settings.json (default: true).
+ * prompt at session start. Setting: `skills.discovery` in the utility
+ * namespace (engine; migrated from the legacy `unipi.skills.discovery` pi
+ * settings.json key on first read — default: true).
  *
  * When off, the `<available_skills>` section is stripped from the system
  * prompt every turn. Skills remain invocable via `/skill:name` — pi expands
@@ -11,10 +12,7 @@
  * prompt catalog.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { UNIPI_SETTINGS_KEY } from "@pi-unipi/core";
+import { getSettings } from "@pi-unipi/core";
 
 /** Skill discovery settings */
 export interface SkillDiscoverySettings {
@@ -32,80 +30,23 @@ const SKILLS_OPEN_TAG = "<available_skills>";
 const SKILLS_CLOSE_TAG = "</available_skills>";
 
 /**
- * Get the path to pi's settings.json.
- */
-function getSettingsPath(): string {
-  const agentDir = process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
-  return path.join(agentDir, "settings.json");
-}
-
-/**
- * Read the raw settings.json file.
- * Returns null if the file doesn't exist or is malformed.
- */
-function readSettingsFile(): Record<string, unknown> | null {
-  try {
-    const settingsPath = getSettingsPath();
-    if (!fs.existsSync(settingsPath)) return null;
-    const raw = fs.readFileSync(settingsPath, "utf-8");
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    // Silently ignore — read failure falls back to defaults.
-    return null;
-  }
-}
-
-/**
- * Write settings back to settings.json.
- */
-function writeSettingsFile(settings: Record<string, unknown>): boolean {
-  try {
-    const settingsPath = getSettingsPath();
-    const dir = path.dirname(settingsPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-    return true;
-  } catch {
-    // Silently ignore — write failure is non-blocking.
-    return false;
-  }
-}
-
-/**
- * Load skill discovery settings from settings.json.
- * Falls back to defaults for any missing fields.
+ * Load skill discovery settings from the engine (utility namespace). The
+ * one-time legacy import lives in settings.ts; defaults apply when unset.
  */
 export function loadSkillDiscoverySettings(): SkillDiscoverySettings {
-  const raw = readSettingsFile();
-  if (!raw) return { ...DEFAULT_SKILL_DISCOVERY_SETTINGS };
-
   try {
-    const unipi = raw[UNIPI_SETTINGS_KEY] as Record<string, unknown> | undefined;
-    const skills = unipi?.skills as Record<string, unknown> | undefined;
-    if (!skills) return { ...DEFAULT_SKILL_DISCOVERY_SETTINGS };
+    const parsed = getSettings("utility", process.cwd()) as {
+      skills?: { discovery?: unknown };
+    };
     return {
-      discovery: typeof skills.discovery === "boolean" ? skills.discovery : DEFAULT_SKILL_DISCOVERY_SETTINGS.discovery,
+      discovery:
+        typeof parsed?.skills?.discovery === "boolean"
+          ? parsed.skills.discovery
+          : DEFAULT_SKILL_DISCOVERY_SETTINGS.discovery,
     };
   } catch {
     return { ...DEFAULT_SKILL_DISCOVERY_SETTINGS };
   }
-}
-
-/**
- * Save skill discovery settings to settings.json.
- * Merges with existing settings (preserves other keys).
- */
-export function saveSkillDiscoverySettings(partial: Partial<SkillDiscoverySettings>): boolean {
-  const raw = readSettingsFile() ?? {};
-  const unipi = (raw[UNIPI_SETTINGS_KEY] as Record<string, unknown>) ?? {};
-  const existing = (unipi.skills as Record<string, unknown>) ?? {};
-
-  unipi.skills = { ...existing, ...partial };
-  raw[UNIPI_SETTINGS_KEY] = unipi;
-
-  return writeSettingsFile(raw);
 }
 
 /**

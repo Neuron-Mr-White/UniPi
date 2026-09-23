@@ -93,7 +93,6 @@ export interface RegisterSurfaceOptions {
   startTask: (ctx: any, command: string, options?: StartTaskOptions) => Promise<any>;
   openTaskManager: (ctx: any, initialTaskId?: string) => Promise<void>;
   clearFinishedNotices: (ctx: any) => number;
-  openSettings: (ctx: any) => Promise<void>;
 }
 
 function renderPlainResult(
@@ -144,14 +143,6 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
     handler: async (args, ctx) => {
       const taskId = typeof args === "string" ? args.trim() : "";
       await options.openTaskManager(ctx, taskId || undefined);
-    },
-  });
-
-  // Shortcuts (same keys as reference; documented in our README)
-  pi.registerCommand("unipi:bg-settings", {
-    description: "Open background-tasks settings (master toggle, defaults)",
-    handler: async (_args, ctx) => {
-      await options.openSettings(ctx);
     },
   });
 

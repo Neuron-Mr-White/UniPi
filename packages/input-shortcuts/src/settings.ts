@@ -1,11 +1,11 @@
 /**
- * Settings TUI overlay for customizing shortcut keybindings.
- * Uses SettingsList from pi-tui following compactor pattern.
- * Persists config to .unipi/config/input-shortcuts-config.json.
+ * @pi-unipi/input-shortcuts — Settings
+ *
+ * Keybinding config (chordKey/tabInsertKey) registered with the unified
+ * settings hub; the engine's migration imports the legacy
+ * <cwd>/.unipi/config/input-shortcuts-config.json once on first read.
  */
 
-import type { Component } from "@earendil-works/pi-tui";
-import { SettingsList, type SettingItem, type SettingsListTheme } from "@earendil-works/pi-tui";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { InputShortcutsConfig } from "./types.ts";
@@ -164,76 +164,5 @@ export function saveConfig(config: InputShortcutsConfig, baseDir?: string): void
     renameSync(tmpPath, filePath);
   } catch {
     // Silent fail — config persistence is best-effort
-  }
-}
-
-// ─── SettingsOverlay Component ──────────────────────────────────────────────
-
-const THEME: SettingsListTheme = {
-  label: (text, selected) => (selected ? `\x1b[1;36m${text}\x1b[0m` : text),
-  value: (text, selected) => (selected ? `\x1b[1;33m${text}\x1b[0m` : `\x1b[33m${text}\x1b[0m`),
-  description: (text) => `\x1b[2m${text}\x1b[0m`,
-  cursor: "▸ ",
-  hint: (text) => `\x1b[2m${text}\x1b[0m`,
-};
-
-export class SettingsOverlay implements Component {
-  private list: SettingsList;
-  private config: InputShortcutsConfig;
-
-  constructor(done: () => void) {
-    this.config = loadConfig();
-
-    const items = this.buildItems();
-    this.list = new SettingsList(
-      items,
-      10,
-      THEME,
-      (id, newValue) => this.handleChange(id, newValue),
-      () => {
-        saveConfig(this.config);
-        done();
-      },
-    );
-  }
-
-  private buildItems(): SettingItem[] {
-    return [
-      {
-        id: "chordKey",
-        label: "Chord trigger key",
-        description: "Key to open the input shortcuts overlay",
-        currentValue: this.config.chordKey,
-        values: FREE_ALT_KEYS,
-      },
-      {
-        id: "tabInsertKey",
-        label: "Tab insert key",
-        description: "Key to insert a literal tab character",
-        currentValue: this.config.tabInsertKey,
-        values: FREE_ALT_KEYS,
-      },
-    ];
-  }
-
-  private handleChange(id: string, newValue: string): void {
-    if (id === "chordKey") {
-      this.config.chordKey = newValue;
-    } else if (id === "tabInsertKey") {
-      this.config.tabInsertKey = newValue;
-    }
-    this.list.updateValue(id, newValue);
-  }
-
-  handleInput(data: string): void {
-    this.list.handleInput(data);
-  }
-
-  invalidate(): void {
-    this.list.invalidate();
-  }
-
-  render(width: number): string[] {
-    return this.list.render(width);
   }
 }
