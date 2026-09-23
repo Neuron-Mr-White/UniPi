@@ -115,7 +115,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:info":          "info",
 
   // web-api (2 commands)
-  "unipi:web-cache-clear": "web-api",
 
   // compact (9 commands)
   "unipi:lossless-compact": "compact",
@@ -204,7 +203,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:info":          "Show system information",
 
-  "unipi:web-cache-clear": "Clear web search cache",
 
   "unipi:lossless-compact": "Immediate zero-LLM compaction",
   "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",

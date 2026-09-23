@@ -217,6 +217,7 @@ registerSettings({
         { key: "smartFetch.timeoutMs", type: "number", label: "Timeout ms", min: 1000 },
         { key: "smartFetch.batchConcurrency", type: "number", label: "Batch concurrency", min: 1, max: 32 },
         { key: "smartFetch.removeImages", type: "boolean", label: "Remove images" },
+        { key: "cache.clear", type: "action", label: "Clear web cache…", description: "drop every cached response (with confirm)", command: "unipi:web-cache-clear" },
       ],
     },
   ],

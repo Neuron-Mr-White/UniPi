@@ -1,34 +1,31 @@
 /**
- * @unipi/web-api — Commands registration
+ * @unipi/web-api — Hub action runners
  *
- * Registers /unipi:web-cache-clear. Provider/fetch settings live in the
- * unified /unipi:settings hub (web-api namespace).
+ * "Clear web cache" lives in /unipi:settings (Web API group). There are no
+ * slash commands in this package.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_PREFIX } from "@pi-unipi/core";
+import { registerCommandRunner } from "@pi-unipi/core";
 import { webCache } from "./cache.js";
 
-/** Command names */
-export const WEB_COMMANDS = {
-  CACHE_CLEAR: "web-cache-clear",
-} as const;
-
 /**
- * Register web commands with pi.
+ * Register hub action runners with pi.
  */
 export function registerWebCommands(pi: ExtensionAPI): void {
-  // --- /unipi:web-cache-clear command ---
-  pi.registerCommand(`${UNIPI_PREFIX}${WEB_COMMANDS.CACHE_CLEAR}`, {
-    description: "Clear all cached web content",
-    handler: async (_args, ctx) => {
-      const stats = webCache.getStats();
-      const cleared = webCache.clear();
-
-      ctx.ui.notify(
-        `Cache cleared: ${cleared} entries removed (${stats.totalSizeBytes} bytes freed)`,
-        "info",
-      );
-    },
+  // "Clear web cache" — confirm, then drop every cached entry.
+  registerCommandRunner("unipi:web-cache-clear", async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionCommandContext;
+    const stats = webCache.getStats();
+    const ok = await ctx.ui.confirm(
+      "Clear web cache?",
+      `${stats.totalSizeBytes} bytes cached. This cannot be undone.`,
+    );
+    if (!ok) return;
+    const cleared = webCache.clear();
+    ctx.ui.notify(
+      `Cache cleared: ${cleared} entries removed (${stats.totalSizeBytes} bytes freed)`,
+      "info",
+    );
   });
 }

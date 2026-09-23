@@ -15,7 +15,7 @@ import {
   getPackageVersion,
 } from "@pi-unipi/core";
 import { registerWebTools, WEB_TOOLS } from "./tools.js";
-import { registerWebCommands, WEB_COMMANDS } from "./commands.js";
+import { registerWebCommands } from "./commands.js";
 import { webCache } from "./cache.js";
 import { loadConfig, loadSmartFetchSettings } from "./settings.js";
 import { checkDependencies } from "./engine/dependencies.js";
@@ -53,7 +53,6 @@ export default function (pi: ExtensionAPI) {
       name: MODULES.WEB_API,
       version: VERSION,
       commands: [
-        `unipi:${WEB_COMMANDS.CACHE_CLEAR}`,
       ],
       tools: [
         WEB_TOOLS.SEARCH,
