@@ -948,3 +948,196 @@ describe("model pickers: capability / presets / emptyOption / providerKey", () =
     assert.ok(flat.includes("model catalog \u00b7 7"), "default catalog header with count");
   });
 });
+
+describe("dynamic pages (function sections)", () => {
+  it("resolves sections at openPage time — live registries", () => {
+    let calls = 0;
+    const liveSections = (): ReturnType<() => unknown> => {
+      calls++;
+      return [{
+        title: calls === 1 ? "First" : "Second",
+        fields: [{ key: `dyn.v${calls}`, type: "boolean" as const, label: `Dyn ${calls}` }],
+      }];
+    };
+    registerSettings({
+      namespace: "hubtestdyn",
+      label: "Dyn",
+      defaults: { "dyn.v1": false, "dyn.v2": false },
+      schema: [{ title: "Root", fields: [{ key: "dyn", type: "page", label: "Live page", sections: liveSections as never }] }],
+    });
+    const hub = makeHub();
+    hub.handleInput("/"); hub.handleInput("live page"); hub.handleInput("\r");
+    hub.handleInput("\r"); // open the page
+    let flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("First"), "first resolution shown");
+    assert.equal(calls, 1, "sections resolved once at open");
+    hub.handleInput("\x1b"); // pop the page
+    hub.handleInput("/"); hub.handleInput("live page"); hub.handleInput("\r");
+    hub.handleInput("\r"); // open again — the getter re-runs
+    flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("Second"), "second resolution reflects live state");
+    assert.equal(calls, 2);
+  });
+});
+
+describe("multiselect fields", () => {
+  function registerMulti(): void {
+    registerSettings({
+      namespace: "hubtestmulti",
+      label: "MultiNs",
+      defaults: { targets: ["a"] },
+      schema: [{
+        title: "Pick",
+        fields: [{
+          key: "targets",
+          type: "multiselect",
+          label: "Targets",
+          options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }, { value: "c", label: "Gamma" }],
+          emptyLabel: "nothing",
+        }],
+      }],
+    });
+  }
+
+  const cfg = (): string => join(home, ".unipi", "config", "hubtestmulti", "config.json");
+
+  it("row shows comma-joined labels; empty selection shows emptyLabel", () => {
+    registerMulti();
+    const hub = makeHub();
+    jumpTo(hub, "Targets");
+    assert.ok(hub.render(100).join("\n").includes("Alpha"), "joined label on the row");
+    hub.handleInput(" "); // list-mode Space on multiselect = no-op
+    assert.equal((hub as unknown as { mode: string }).mode, "list", "space is a no-op in list mode");
+    hub.handleInput("\t"); // Tab opens the option list
+    const h = hub as unknown as { picker: { multi?: boolean } | null };
+    assert.ok(h.picker?.multi, "multi list open");
+    hub.handleInput("\x1b");
+  });
+
+  it("space toggles in the list, writes instantly, and the list stays open", () => {
+    registerMulti();
+    const hub = makeHub();
+    jumpTo(hub, "Targets");
+    hub.handleInput("\t"); // open
+    hub.handleInput("\x1b[B"); // down to Beta
+    hub.handleInput(" "); // toggle Beta on
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a", "b"], "instant write, canonical order");
+    const h = hub as unknown as { picker: unknown; mode: string };
+    assert.ok(h.picker, "list stays open");
+    assert.equal(h.mode, "model");
+    // checkbox rendering
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("[x] Alpha") && flat.includes("[x] Beta"), "checked boxes rendered");
+    assert.ok(flat.includes("[ ] Gamma"), "unchecked box rendered");
+    hub.handleInput("\x1b[B"); // down to Gamma
+    hub.handleInput("\t"); // Tab toggles too
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a", "b", "c"], "tab toggles");
+    hub.handleInput(" "); // toggle Gamma OFF again
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a", "b"], "toggle off writes too");
+    hub.handleInput("\x1b"); // Esc closes
+    assert.equal((hub as unknown as { mode: string }).mode, "list");
+  });
+
+  it("u/d/R work on array values", () => {
+    registerMulti();
+    const hub = makeHub();
+    jumpTo(hub, "Targets");
+    hub.handleInput("\t"); hub.handleInput("\x1b[B"); hub.handleInput(" "); // +Beta
+    hub.handleInput("\x1b"); // close the list first
+    hub.handleInput("u"); // undo → ["a"]
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a"], "undo restores the array");
+    hub.handleInput("d"); // default = ["a"]
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).targets, ["a"]);
+  });
+});
+
+describe("order fields", () => {
+  function registerOrder(): void {
+    registerSettings({
+      namespace: "hubtestorder",
+      label: "OrderNs",
+      defaults: { sequence: ["top", "mid", "bottom"] },
+      schema: [{
+        title: "Order",
+        fields: [{
+          key: "sequence",
+          type: "order",
+          label: "Sequence",
+          items: () => [
+            { value: "top", label: "Top" },
+            { value: "mid", label: "Middle" },
+            { value: "bottom", label: "Bottom" },
+          ],
+        }],
+      }],
+    });
+  }
+
+  const cfg = (): string => join(home, ".unipi", "config", "hubtestorder", "config.json");
+
+  it("row shows the first labels, truncated past three", () => {
+    registerOrder();
+    const hub = makeHub();
+    jumpTo(hub, "Sequence");
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("Top › Middle › Bottom"), "three labels fit without ellipsis");
+    // five-item universe truncates
+    registerSettings({
+      namespace: "hubtestorder5",
+      label: "OrderNs5",
+      defaults: { sequence: ["i1", "i2", "i3", "i4", "i5"] },
+      schema: [{
+        title: "Order",
+        fields: [{
+          key: "sequence",
+          type: "order",
+          label: "Sequence",
+          items: () => [
+            { value: "i1", label: "One" }, { value: "i2", label: "Two" }, { value: "i3", label: "Three" },
+            { value: "i4", label: "Four" }, { value: "i5", label: "Five" },
+          ],
+        }],
+      }],
+    });
+    const hub2 = makeHub();
+    hub2.handleInput("/"); hub2.handleInput("orderns5"); hub2.handleInput("\r"); // unique label search
+    const flat2 = hub2.render(100).join("\n");
+    assert.ok(flat2.includes("One › Two › Three …"), "fourth and fifth collapse into …");
+    assert.ok(!flat2.includes("Five ›"), "nothing past three shown on the row");
+  });
+
+  it("editor: J shifts the item down and writes instantly; K shifts back", () => {
+    registerOrder();
+    const hub = makeHub();
+    jumpTo(hub, "Sequence");
+    hub.handleInput("\t"); // open the order editor
+    const h = hub as unknown as { picker: { order?: boolean } | null };
+    assert.ok(h.picker?.order, "order editor open");
+    hub.handleInput("J"); // shift Top down (legacy shift+j = "J")
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["mid", "top", "bottom"], "instant write after J");
+    let flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("Middle"), "editor still open with new order");
+    hub.handleInput("K"); // shift back up
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["top", "mid", "bottom"], "K restores");
+    // alt+down / alt+up (CSI encodings)
+    hub.handleInput("\x1b[1;3B");
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["mid", "top", "bottom"], "alt+down shifts");
+    hub.handleInput("\x1b[1;3A");
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["top", "mid", "bottom"], "alt+up shifts back");
+    flat = hub.render(100).join("\n");
+    assert.ok(flat, "editor open");
+    hub.handleInput("\x1b"); // Esc closes
+    assert.equal((hub as unknown as { mode: string }).mode, "list", "esc exits the editor");
+  });
+
+  it("u undoes a reorder", () => {
+    registerOrder();
+    const hub = makeHub();
+    jumpTo(hub, "Sequence");
+    hub.handleInput("\t");
+    hub.handleInput("J"); // reorder
+    hub.handleInput("\x1b");
+    hub.handleInput("u");
+    assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["top", "mid", "bottom"], "undo restores the order");
+  });
+});

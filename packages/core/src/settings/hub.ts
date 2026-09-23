@@ -7,7 +7,9 @@
  *             closes)
  *   Enter/Tab ACTIVATE: boolean → toggle · enum → option list (custom… only
  *             when allowCustom) · string/number/secret → inline input ·
- *             model → searchable picker · page → open · action → run ·
+ *             model → searchable picker · multiselect → checkbox list ·
+ *             order → reorder editor · page → open (sections may be a
+ *             getter, resolved live at open) · action → run ·
  *             ▸ Advanced → flip
  *   Space     quick action: boolean → toggle · enum → next option (custom…
  *             skipped; custom values restart at the first option) ·
@@ -131,6 +133,10 @@ export class SettingsHub {
     searchable: boolean;
     /** Context line above the list (e.g. "image-input models · 556"). */
     header: string;
+    /** multiselect list: Enter/Tab/Space toggle + write, list stays open. */
+    multi?: boolean;
+    /** order editor: ↑↓ walk, Shift+J/K (alt+↑/↓) shift items, Esc done. */
+    order?: boolean;
   } | null = null;
   private renderWidth = 80;
   /** Viewport: index of the first visible row. */
@@ -362,10 +368,15 @@ export class SettingsHub {
 
   private openPage(row: Row): void {
     if (row.kind !== "field" || !row.namespace || row.field?.type !== "page") return;
+    // Dynamic pages resolve their sections at open time (live registries).
+    const sections = typeof row.field.sections === "function" ? row.field.sections() : row.field.sections;
+    // A page is a fresh context — a root-level filter must not bleed into it.
+    this.filter = "";
+    this.searchInput = null;
     this.pageStack.push({
       label: row.field.label,
       namespace: row.namespace,
-      rows: this.pageRows(row.namespace, row.field.sections),
+      rows: this.pageRows(row.namespace, sections),
       cursor: this.cursor, // parent's return position
       scroll: this.scroll,
     });
@@ -501,6 +512,12 @@ export class SettingsHub {
         case "model":
           this.openPicker(row);
           return;
+        case "multiselect":
+          this.openMultiList(row);
+          return;
+        case "order":
+          this.openOrderList(row);
+          return;
         case "page":
           this.openPage(row);
           return;
@@ -633,6 +650,55 @@ export class SettingsHub {
     this.mode = "model";
   }
 
+  /**
+   * multiselect editor: one row per option with an [x]/[ ] checkbox. Enter,
+   * Tab and Space toggle the highlighted option and write instantly; the
+   * list stays open until Esc.
+   */
+  private openMultiList(row: Row): void {
+    const field = row.field!;
+    if (field.type !== "multiselect") return;
+    const opts = field.options.map(enumOption);
+    const selectedValue = new Set(Array.isArray(getField(this.valueOf(row.namespace!), field.key))
+      ? (getField(this.valueOf(row.namespace!), field.key) as unknown[]).map(String)
+      : []);
+    const input = new Input({ prompt: "search: " });
+    this.picker = {
+      row,
+      input,
+      options: opts.map((o) => o.label),
+      values: opts.map((o) => o.value),
+      selected: 0,
+      searchable: opts.length > 8,
+      header: `${opts.filter((o) => selectedValue.has(o.value)).length}/${opts.length} selected · space/enter toggle · esc done`,
+      multi: true,
+    };
+    this.mode = "model";
+  }
+
+  /** order editor: the current value order; Shift+J/K (alt+↑/↓) shift items. */
+  private openOrderList(row: Row): void {
+    const field = row.field!;
+    if (field.type !== "order") return;
+    const universe = field.items();
+    const stored = getField(this.valueOf(row.namespace!), field.key);
+    const known = new Set(universe.map((i) => i.value));
+    // Current order first (unknown ids dropped), then any never-ordered items.
+    const ids = (Array.isArray(stored) ? stored.map(String) : []).filter((id) => known.has(id));
+    for (const item of universe) if (!ids.includes(item.value)) ids.push(item.value);
+    this.picker = {
+      row,
+      input: new Input({ prompt: "" }),
+      options: ids.map((id) => universe.find((i) => i.value === id)?.label ?? id),
+      values: [...ids],
+      selected: 0,
+      searchable: false,
+      header: `↑↓/jk move · J/K or alt+↑↓ shift · esc done`,
+      order: true,
+    };
+    this.mode = "model";
+  }
+
   private pickerFiltered(): number[] {
     const p = this.picker;
     if (!p) return [];
@@ -651,6 +717,8 @@ export class SettingsHub {
       this.mode = "list";
       return;
     }
+    if (p.order) return this.handleOrderPicker(data, p);
+    if (p.multi) return this.handleMultiPicker(data, p);
     if (matchesKey(data, Key.enter) || matchesKey(data, Key.tab) || data === "\r" || data === "\n") {
       const filtered = this.pickerFiltered();
       const idx = filtered[p.selected];
@@ -676,6 +744,70 @@ export class SettingsHub {
     // k/j are TEXT here (model ids contain them) — arrows walk the list.
     p.input.handleInput(data);
     p.selected = 0; // any text change resets selection
+  }
+
+  /** Toggle-and-stay-open multiselect list: enter/tab/space toggle + write. */
+  private handleMultiPicker(data: string, p: NonNullable<SettingsHub["picker"]>): void {
+    if (matchesKey(data, Key.enter) || matchesKey(data, Key.tab) || matchesKey(data, Key.space)
+      || data === "\r" || data === "\n" || data === " ") {
+      const filtered = this.pickerFiltered();
+      const idx = filtered[p.selected];
+      if (idx === undefined) return;
+      const field = p.row.field!;
+      if (field.type !== "multiselect") return;
+      const optionValue = String(p.values[idx]);
+      const current = new Set(Array.isArray(getField(this.valueOf(p.row.namespace!), field.key))
+        ? (getField(this.valueOf(p.row.namespace!), field.key) as unknown[]).map(String)
+        : []);
+      // Canonical option order keeps the stored array stable across toggles.
+      current.has(optionValue) ? current.delete(optionValue) : current.add(optionValue);
+      const next = field.options.map(enumOption).filter((o) => current.has(o.value)).map((o) => o.value);
+      this.applyChange(p.row, next);
+      return; // list stays open
+    }
+    const ch = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+    const up = matchesKey(data, Key.up) || (!p.searchable && ch === "k");
+    const down = matchesKey(data, Key.down) || (!p.searchable && ch === "j");
+    if (up || down) {
+      const n = this.pickerFiltered().length;
+      if (n > 0) p.selected = (p.selected + (down ? 1 : -1) + n) % n;
+      return;
+    }
+    if (!p.searchable) return;
+    p.input.handleInput(data);
+    p.selected = 0;
+  }
+
+  /** order editor: ↑↓/jk walk; Shift+J/K (alt+↑/↓) shift items and write. */
+  private handleOrderPicker(data: string, p: NonNullable<SettingsHub["picker"]>): void {
+    const field = p.row.field!;
+    if (field.type !== "order") return;
+    const move = (delta: -1 | 1): void => {
+      const ids = p.values.map(String);
+      const at = p.selected;
+      const to = at + delta;
+      if (to < 0 || to >= ids.length) return;
+      [ids[at], ids[to]] = [ids[to]!, ids[at]!];
+      p.values = ids;
+      p.options = ids.map((id) => field.items().find((i) => i.value === id)?.label ?? id);
+      p.selected = to; // follow the moved item
+      this.applyChange(p.row, ids);
+    };
+    const ch = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+    // Shift+J/K arrive as the uppercase letters in legacy mode; alt+↑/↓ via CSI.
+    if (matchesKey(data, "shift+j") || matchesKey(data, "alt+down")) return move(1);
+    if (matchesKey(data, "shift+k") || matchesKey(data, "alt+up")) return move(-1);
+    if (matchesKey(data, Key.up) || ch === "k") {
+      const n = p.values.length;
+      if (n > 0) p.selected = (p.selected - 1 + n) % n;
+      return;
+    }
+    if (matchesKey(data, Key.down) || ch === "j") {
+      const n = p.values.length;
+      if (n > 0) p.selected = (p.selected + 1) % n;
+      return;
+    }
+    // Enter/tab/space are inert here — Esc is the only exit.
   }
 
   private handleInputSearch(data: string): void {
@@ -844,16 +976,27 @@ export class SettingsHub {
     // Small option lists (enums ≤8) show NO search box.
     if (p.searchable) out.push(this.exactRow(`  ${p.input.render(width).join("")}`, inner));
     const filtered = this.pickerFiltered();
+    const checked = p.multi ? this.checkedSet(p.row) : null;
     const start = Math.min(p.selected, Math.max(0, filtered.length - 5));
     for (let i = start; i < Math.min(start + 5, filtered.length); i++) {
       const sel = i === p.selected;
-      const label = truncateToWidth(`  ${p.options[filtered[i]!]}`, width, "…");
+      const raw = checked
+        ? `[${checked.has(String(p.values[filtered[i]!])) ? "x" : " "}] ${p.options[filtered[i]!]}`
+        : p.options[filtered[i]!];
+      const label = truncateToWidth(`  ${raw}`, width, "…");
       out.push(this.exactRow(sel ? `  ${bold(label)}` : `  ${dim(label)}`, inner));
     }
     // Pad to exactly 5 rows so the panel never jumps.
     for (let i = filtered.length - start; i < 5; i++) out.push(this.exactRow(`  ${dim("  ·")}`, inner));
     out.push(this.exactRow(dim("  enter/tab pick · esc cancel"), inner));
     return out;
+  }
+
+  /** Currently selected values of a multiselect row (for the [x] checkboxes). */
+  private checkedSet(row: Row): Set<string> {
+    const field = row.field;
+    const value = field ? getField(this.valueOf(row.namespace!), field.key) : undefined;
+    return new Set(Array.isArray(value) ? value.map(String) : []);
   }
 
   private clampScroll(len: number, maxRows: number): void {
@@ -873,6 +1016,8 @@ export class SettingsHub {
   private hintLine(): string {
     if (this.mode === "search") return "type to filter · enter apply · esc/bksp exit";
     if (this.mode === "input") return "enter/tab save · esc cancel";
+    if (this.mode === "model" && this.picker?.multi) return "↑↓ move · space/enter toggle · esc done";
+    if (this.mode === "model" && this.picker?.order) return "↑↓/jk move · J/K or alt+↑↓ shift · esc done";
     if (this.mode === "model") return "↑↓ move · enter/tab pick · esc cancel";
     const recover = `${this.history.length > 0 ? "u undo · " : ""}d default · R revert`;
     const row = this.currentRow();
@@ -886,6 +1031,10 @@ export class SettingsHub {
         return `enter/tab toggle · space toggle · ↑↓/kj · / search · ${scope} · ${recover}`;
       case "enum":
         return `enter/tab choose · space cycle · ↑↓/kj · ${scope} · ${recover}`;
+      case "multiselect":
+        return `enter/tab choose · ↑↓/kj · ${scope} · ${recover}`;
+      case "order":
+        return `enter/tab reorder · ↑↓/kj · ${scope} · ${recover}`;
       case "model":
         return `enter/tab pick · ↑↓/kj · ${scope} · ${recover}`;
       default:

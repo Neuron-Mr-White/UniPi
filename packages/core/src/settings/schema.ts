@@ -100,12 +100,16 @@ export type SettingsField =
       readonly filter?: (entry: { readonly id: string; readonly input: string[] }) => boolean;
     }
   | {
-      /** Nested config page (Space/Enter opens; Esc pops). Fields use FULL keys. */
+      /** Nested config page (Enter/Tab opens; Esc pops). Fields use FULL keys. */
       readonly key: string;
       readonly type: "page";
       readonly label: string;
       readonly description?: string;
-      readonly sections: readonly SettingsSection[];
+      /**
+       * Static sections, or a getter resolved at openPage time so registry-
+       * driven pages (info groups, footer segments) stay live.
+       */
+      readonly sections: readonly SettingsSection[] | (() => readonly SettingsSection[]);
     }
   | {
       /** Runs a named command (registered via core registerCommandRunner). */
@@ -114,6 +118,32 @@ export type SettingsField =
       readonly label: string;
       readonly description?: string;
       readonly command: string;
+    }
+  | {
+      /**
+       * Set of string options — value is string[]. The picker shows [x]/[ ]
+       * checkboxes; toggling writes instantly and keeps the list open.
+       */
+      readonly key: string;
+      readonly type: "multiselect";
+      readonly label: string;
+      readonly description?: string;
+      readonly options: readonly (string | { readonly value: string; readonly label: string })[];
+      /** Shown when the selection is empty (e.g. "all platforms"). */
+      readonly emptyLabel?: string;
+    }
+  | {
+      /**
+       * Ordered subset of items — value is string[] in display order. The
+       * editor lists the current order; Shift+J/K (alt+↑/↓) shift an item
+       * and write instantly.
+       */
+      readonly key: string;
+      readonly type: "order";
+      readonly label: string;
+      readonly description?: string;
+      /** The full item universe in canonical order. */
+      readonly items: () => readonly { readonly value: string; readonly label: string }[];
     };
 
 export interface SettingsSection {
@@ -184,6 +214,21 @@ export function formatFieldValue(field: SettingsField, value: unknown): string {
     case "number":
       if (value === 0 && field.type === "number" && field.zeroLabel) return field.zeroLabel;
       return value === undefined || value === null ? "unset" : String(value);
+    case "multiselect": {
+      const chosen = Array.isArray(value) ? value.map(String) : [];
+      if (chosen.length === 0) return field.emptyLabel ?? "none";
+      const labels = field.options.map(enumOption);
+      return chosen
+        .map((v) => labels.find((o) => o.value === v)?.label ?? v)
+        .join(", ");
+    }
+    case "order": {
+      const ids = Array.isArray(value) ? value.map(String) : [];
+      if (ids.length === 0) return "unset";
+      const universe = field.items();
+      const labels = ids.map((id) => universe.find((i) => i.value === id)?.label ?? id);
+      return labels.slice(0, 3).join(" › ") + (labels.length > 3 ? " …" : "");
+    }
     default: {
       if ((value === undefined || value === null || value === "") && "emptyLabel" in field && field.emptyLabel) {
         return field.emptyLabel;
