@@ -31,7 +31,7 @@ Legend: ✅ adopted · 🔶 adopted partial (depth remains) · ❌ not yet · �
 | fusion | `fusion` | preset files (arrays/effort/recent/prices) + engine overlay | ✅ | hub edits the DEFAULT PAIR via model pickers (engine layer wins on load); curated lists stay with /unipi:fusion preset action |
 | watchdog | `watchdog` | engine file | ✅ | jev judges long-running tool calls; kills or warns |
 | btw | — | none found | ➖ | stateless |
-| workflow | — | none found | ➖ | deprecated path (v3-tasks) |
+| workflow | `permission` | engine file (project scope for mode + rules) | ✅ | permission modes (mode enum, jevJudge, jevConfidence, saved-rule count + clear action); plan mode is session state, not settings |
 | kanboard | — | none found | ➖ | full rewrite pending (v3-tasks) |
 
 ## Hidden-surface notes (found during audit)
