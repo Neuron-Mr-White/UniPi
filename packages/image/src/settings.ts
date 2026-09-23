@@ -76,7 +76,7 @@ registerSettings({
       title: "Generate",
       fields: [
         { key: "generate.enabled", type: "boolean", label: "Generate enabled", description: "Register the image_generate tool" },
-        { key: "generate.model", type: "model", label: "Generate model", description: "Image generation model" },
+        { key: "generate.model", type: "model", label: "Generate model", description: "Image generation model", presets: [DEFAULT_GENERATE_MODEL, "openrouter/openai/gpt-5-image", "openrouter/black-forest-labs/flux.2-pro"] },
         { key: "generate.outputDir", type: "string", label: "Output dir", description: "~ expanded" },
         { key: "generate.saveToDisk", type: "boolean", label: "Save to disk" },
       ],
@@ -85,7 +85,7 @@ registerSettings({
       title: "Recognize",
       fields: [
         { key: "recognize.enabled", type: "boolean", label: "Recognize enabled", description: "Register the image_recognize tool" },
-        { key: "recognize.model", type: "model", label: "Recognize model", emptyLabel: "inherit (session model)" },
+        { key: "recognize.model", type: "model", label: "Recognize model", emptyLabel: "inherit (session model)", capability: "image-input", emptyOption: "inherit (session model)" },
       ],
     },
   ],

@@ -79,6 +79,25 @@ export type SettingsField =
       readonly provider?: string;
       /** Shown when "" (e.g. "inherit (session model)"). */
       readonly emptyLabel?: string;
+      /**
+       * Filter the registry catalog by the model's declared `input` array:
+       * "text" → must include "text"; "image-input" → must include "image".
+       */
+      readonly capability?: "text" | "image-input";
+      /** When set, the picker lists ONLY these ids (+ custom…), not the catalog. */
+      readonly presets?: readonly string[];
+      /**
+       * Per-provider preset lists, keyed by the sibling `providerKey` field's
+       * value. A matched key replaces the catalog; "inherit" providers (no
+       * match) keep the capability-filtered catalog.
+       */
+      readonly presetsByProvider?: Record<string, readonly string[]>;
+      /** When set, the picker's FIRST entry is this label and picks "". */
+      readonly emptyOption?: string;
+      /** Sibling key (same namespace) whose value selects a presetsByProvider list. */
+      readonly providerKey?: string;
+      /** Extra catalog filter (e.g. image's looksLikeImageGenerator); no presets. */
+      readonly filter?: (entry: { readonly id: string; readonly input: string[] }) => boolean;
     }
   | {
       /** Nested config page (Space/Enter opens; Esc pops). Fields use FULL keys. */

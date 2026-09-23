@@ -11,7 +11,20 @@ import * as os from "node:os";
 import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Embedding provider type */
-export type EmbeddingProvider = "openrouter" | "none";
+export type EmbeddingProvider = "none" | "inherit" | "openrouter" | "custom";
+
+/** OpenRouter's published embeddings catalog (GET /api/v1/embeddings/models). */
+export const EMBEDDING_PRESETS = [
+  "openai/text-embedding-3-small",
+  "openai/text-embedding-3-large",
+  "qwen/qwen3-embedding-8b",
+  "qwen/qwen3-embedding-4b",
+  "google/gemini-embedding-001",
+  "baai/bge-m3",
+  "mistralai/mistral-embed-2312",
+  "nvidia/nemotron-3-embed-1b:free",
+  "liquid/lfm-2.5-embedding-350m:free",
+] as const;
 
 /** Embedding configuration */
 export interface EmbeddingConfig {
@@ -21,6 +34,8 @@ export interface EmbeddingConfig {
   model: string;
   /** OpenRouter API key (encrypted or plaintext) */
   apiKey?: string;
+  /** Custom gateway base URL (provider=custom); empty = provider default */
+  baseUrl: string;
   /** Embedding dimensions (default 384 for compatibility) */
   dimensions: number;
   /** Model that was used to generate existing embeddings */
@@ -35,6 +50,7 @@ export interface EmbeddingConfig {
 const DEFAULT_CONFIG: EmbeddingConfig = {
   provider: "none",
   model: "openai/text-embedding-3-small",
+  baseUrl: "",
   dimensions: 384,
   suppressMigrationWarning: false,
   mempalaceAutoUpdate: true,
@@ -85,12 +101,28 @@ registerSettings({
           key: "provider",
           type: "enum",
           label: "Provider",
-          options: ["none", "openrouter"],
+          options: [
+            { value: "none", label: "none (fuzzy-only)" },
+            { value: "inherit", label: "inherit (pi registry provider)" },
+            { value: "openrouter", label: "openrouter" },
+            { value: "custom", label: "custom (Base URL + key)" },
+          ],
           description: "Semantic search over stored memories",
         },
-        { key: "model", type: "model", label: "Model" },
+        {
+          key: "model",
+          type: "model",
+          label: "Model",
+          capability: "text",
+          providerKey: "provider",
+          presetsByProvider: {
+            openrouter: EMBEDDING_PRESETS,
+            custom: [],
+          },
+        },
+        { key: "baseUrl", type: "string", label: "Base URL", emptyLabel: "provider default", description: "required when provider=custom" },
         { key: "dimensions", type: "number", label: "Dimensions", min: 1 },
-        { key: "apiKey", type: "secret", label: "OpenRouter key", emptyLabel: "unset (no semantic search)" },
+        { key: "apiKey", type: "secret", label: "API key", emptyLabel: "unset (no semantic search)" },
         { key: "mempalaceAutoUpdate", type: "boolean", label: "MemPalace auto-update", description: "Daily PyPI check + uv upgrade" },
       ],
     },
@@ -135,10 +167,100 @@ export function updateEmbeddingConfig(partial: Partial<EmbeddingConfig>): Embedd
   return updated;
 }
 
-/** Check if embeddings are configured and usable */
+/** Check if embeddings are configured and usable (any non-none provider). */
 export function isEmbeddingReady(): boolean {
   const config = loadEmbeddingConfig();
-  return config.provider === "openrouter" && !!config.apiKey && !!config.model;
+  if (!config.model) return false;
+  return !!resolveEmbeddingEndpoint(config, piRegistryReader)?.apiKey;
+}
+
+// ─── Endpoint resolution (pure, testable) ────────────────────────────────
+
+export interface EmbeddingEndpoint {
+  readonly url: string;
+  readonly apiKey?: string;
+}
+
+/** A pi registry provider's endpoint bits (from ~/.pi/agent/models.json). */
+export interface RegistryProviderInfo {
+  readonly baseUrl?: string;
+  readonly apiKey?: string;
+}
+
+export type RegistryReader = (provider: string) => RegistryProviderInfo | undefined;
+
+const OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings";
+
+/**
+ * Embeddings URL for a gateway base. A base already ending in a version
+ * segment (`/v1`, `/api/v1`) is the API root → append `/embeddings`; a bare
+ * host gets `/v1/embeddings` (same convention as the judge's chat URL).
+ */
+export function embeddingsUrl(base: string): string {
+  const trimmed = base.trim().replace(/\/$/, "");
+  if (/\/(?:api\/)?v\d+$/.test(trimmed)) return `${trimmed}/embeddings`;
+  return `${trimmed}/v1/embeddings`;
+}
+
+/** models.json provider keys use `$VAR` for environment indirection. */
+export function resolveEnvApiKey(
+  key: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  if (!key) return undefined;
+  if (key.startsWith("$")) {
+    const name = key.slice(1);
+    return name ? env[name] : undefined;
+  }
+  return key;
+}
+
+/**
+ * Resolve where (and with what key) an embedding call goes for a config.
+ * Returns null when the provider is none or the config is incomplete —
+ * callers treat that as "semantic search unavailable".
+ */
+export function resolveEmbeddingEndpoint(
+  config: EmbeddingConfig,
+  registryReader: RegistryReader,
+  env: Record<string, string | undefined> = process.env,
+): EmbeddingEndpoint | null {
+  if (config.provider === "none") return null;
+  if (config.provider === "openrouter") {
+    return {
+      url: OPENROUTER_EMBEDDINGS_URL,
+      apiKey: config.apiKey || env.OPENROUTER_API_KEY || env.OPEN_ROUTER_API_KEY,
+    };
+  }
+  if (config.provider === "custom") {
+    if (!config.baseUrl.trim()) return null;
+    return { url: embeddingsUrl(config.baseUrl), apiKey: config.apiKey || env.OPENROUTER_API_KEY };
+  }
+  // inherit — the model's first segment names a pi registry provider whose
+  // baseUrl + apiKey (a $VAR name or a literal) this call reuses.
+  const slash = config.model.indexOf("/");
+  if (slash <= 0) return null;
+  const info = registryReader(config.model.slice(0, slash));
+  const base = info?.baseUrl?.trim();
+  if (!base) return null;
+  return { url: embeddingsUrl(base), apiKey: resolveEnvApiKey(info?.apiKey, env) };
+}
+
+/** Default registry reader over ~/.pi/agent/models.json. */
+export function piRegistryReader(provider: string): RegistryProviderInfo | undefined {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".pi", "agent", "models.json"), "utf8")) as {
+      providers?: Record<string, { baseUrl?: unknown; apiKey?: unknown }>;
+    };
+    const def = raw.providers?.[provider];
+    if (!def || typeof def !== "object") return undefined;
+    return {
+      baseUrl: typeof def.baseUrl === "string" ? def.baseUrl : undefined,
+      apiKey: typeof def.apiKey === "string" ? def.apiKey : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Check if model changed since last embedding generation */

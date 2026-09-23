@@ -81,3 +81,24 @@ test("invalid stored values are repaired to defaults", () => {
   resetSettingsCache();
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("stored provider \"auto\" migrates to \"openrouter\" (its effective transport)", () => {
+  const dir = sandboxHome();
+  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "auto" } } } });
+  const settings = loadSettings(true);
+  assert.equal(settings.judge.provider, "openrouter");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("provider \"custom\" is accepted and round-trips", () => {
+  const dir = sandboxHome();
+  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "custom", baseUrl: "https://gw.example/v1" } } } });
+  const settings = loadSettings(true);
+  assert.equal(settings.judge.provider, "custom");
+  assert.equal(settings.judge.baseUrl, "https://gw.example/v1");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  rmSync(dir, { recursive: true, force: true });
+});

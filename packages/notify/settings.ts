@@ -75,7 +75,7 @@ registerSettings({
         { key: "native.enabled", type: "boolean", label: "Native desktop", description: "OS notifications" },
         { key: "native.suppressWhenFocused", type: "boolean", label: "Quiet when focused" },
         { key: "recap.enabled", type: "boolean", label: "Recap", description: "Session recap digests" },
-        { key: "recap.model", type: "model", label: "Recap model", emptyLabel: "inherit (session model)" },
+        { key: "recap.model", type: "model", label: "Recap model", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
       ],
     },
     {

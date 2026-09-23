@@ -810,3 +810,141 @@ describe("field hints + validators", () => {
     assert.equal(JSON.parse(readFileSync(cfgFile(), "utf8")).key, "ok", "valid input applies");
   });
 });
+
+describe("model pickers: capability / presets / emptyOption / providerKey", () => {
+  /** Registry-style catalog entries (id + input modalities). */
+  const ENTRIES = [
+    { id: "prov/m1", input: ["text"] },
+    { id: "vision/v1", input: ["text", "image"] },
+    { id: "vision/v2", input: ["image", "text"] },
+    { id: "other/x1", input: ["text"] },
+    { id: "blind/b1", input: [] },
+  ];
+
+  function makeEntriesHub(): SettingsHub {
+    const hub = new SettingsHub({
+      cwd,
+      modelCatalogEntries: () => ENTRIES,
+      terminalRows: () => 40,
+    });
+    hub.onClose = () => {};
+    return hub;
+  }
+
+  // Namespace/label chosen so the "Model" search matches ONLY the model row
+  // (the namespace and module label must not contain the substring "model").
+  function registerModelNs(field: Record<string, unknown>): void {
+    registerSettings({
+      namespace: "hubtestpick",
+      label: "PickerNs",
+      defaults: { provider: "openrouter", model: "" },
+      schema: [{
+        title: "Pick",
+        fields: [
+          { key: "provider", type: "enum", label: "Provider", options: ["openrouter", "custom", "inherit"] },
+          field as never,
+        ],
+      }],
+    });
+  }
+
+  function jumpAndOpen(hub: SettingsHub): void {
+    // "picker" only appears in this namespace's haystack — the fixture also
+    // registers a "Model" row, and the first match would win the cursor.
+    hub.handleInput("/");
+    hub.handleInput("picker model");
+    hub.handleInput("\r");
+    hub.handleInput("\r"); // Enter opens the picker
+  }
+
+  it("capability image-input hides text-only models and labels the list", () => {
+    registerModelNs({ key: "model", type: "model", label: "Model", capability: "image-input" });
+    const hub = makeEntriesHub();
+    jumpAndOpen(hub);
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("vision/v1") && flat.includes("vision/v2"), "image-input models listed");
+    assert.ok(!flat.includes("prov/m1") && !flat.includes("other/x1"), "text-only models hidden");
+    assert.ok(flat.includes("image-input models \u00b7 2"), "header shows capability + count");
+  });
+
+  it("presets replace the catalog; custom\u2026 opens the editor prefilled", () => {
+    registerModelNs({ key: "model", type: "model", label: "Model", presets: ["a/one", "b/two"] });
+    const cfgPath = (): string => join(home, ".unipi", "config", "hubtestpick", "config.json");
+    mkdirSync(join(home, ".unipi", "config", "hubtestpick"), { recursive: true });
+    writeFileSync(cfgPath(), JSON.stringify({ model: "kept/x" }));
+    const hub = makeEntriesHub();
+    jumpAndOpen(hub);
+    let flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("a/one") && flat.includes("b/two"), "preset ids listed");
+    assert.ok(!flat.includes("vision/v1"), "catalog entries NOT listed");
+    assert.ok(flat.includes("presets \u00b7 custom\u2026 for any id"), "preset header");
+    assert.ok(flat.includes("custom\u2026"), "custom\u2026 always available");
+    hub.handleInput("\x1b[B"); // \u2192 b/two
+    hub.handleInput("\x1b[B"); // \u2192 custom\u2026
+    hub.handleInput("\r"); // editor opens prefilled with the raw stored value
+    flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("kept/x"), "editor prefilled with the raw value");
+    hub.handleInput("2");
+    hub.handleInput("\r"); // save
+    assert.equal(JSON.parse(readFileSync(cfgPath(), "utf8")).model, "kept/x2", "custom id applies");
+  });
+
+  it("emptyOption is the first entry and picks \"\"", () => {
+    registerModelNs({ key: "model", type: "model", label: "Model", capability: "text", emptyOption: "inherit (session model)" });
+    const hub = makeEntriesHub();
+    jumpAndOpen(hub);
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("inherit (session model)"), "emptyOption listed");
+    hub.handleInput("\r"); // selected starts at 0 = emptyOption
+    const cfg = JSON.parse(readFileSync(join(home, ".unipi", "config", "hubtestpick", "config.json"), "utf8"));
+    assert.equal(cfg.model, "", "emptyOption picks the empty value");
+  });
+
+  it("providerKey switches the list when the sibling provider changes", () => {
+    registerModelNs({
+      key: "model",
+      type: "model",
+      label: "Model",
+      capability: "text",
+      providerKey: "provider",
+      presetsByProvider: { openrouter: ["oa/e1", "oa/e2"], custom: [] },
+    });
+    const cfgPath = (): string => join(home, ".unipi", "config", "hubtestpick", "config.json");
+    mkdirSync(join(home, ".unipi", "config", "hubtestpick"), { recursive: true });
+
+    writeFileSync(cfgPath(), JSON.stringify({ provider: "openrouter" }));
+    const hub = makeEntriesHub();
+    jumpAndOpen(hub);
+    let flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("oa/e1") && flat.includes("oa/e2"), "provider presets listed");
+    assert.ok(flat.includes("presets (openrouter) \u00b7 custom\u2026 for any id"), "sibling header");
+
+    hub.handleInput("\x1b"); // close picker
+    writeFileSync(cfgPath(), JSON.stringify({ provider: "custom" }));
+    const hub2 = makeEntriesHub();
+    jumpAndOpen(hub2);
+    flat = hub2.render(100).join("\n");
+    assert.ok(!flat.includes("oa/e1"), "custom list is empty (only custom\u2026)");
+    assert.ok(flat.includes("presets (custom) \u00b7 custom\u2026 for any id"), "custom header");
+
+    hub2.handleInput("\x1b");
+    writeFileSync(cfgPath(), JSON.stringify({ provider: "inherit" }));
+    const hub3 = makeEntriesHub();
+    jumpAndOpen(hub3);
+    flat = hub3.render(100).join("\n");
+    assert.ok(flat.includes("prov/m1"), "inherit falls back to the capability-filtered catalog");
+    assert.ok(!flat.includes("blind/b1"), "capability filter still applies on inherit (no modalities \u2192 hidden)");
+    assert.ok(flat.includes("text models \u00b7 4"), "inherit header counts the text-capable catalog");
+  });
+
+  it("catalog pickers always end with custom\u2026 for out-of-list ids", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Model");
+    hub.handleInput("\r"); // picker over the fixture catalog
+    for (let i = 0; i < 7; i++) hub.handleInput("\x7f"); // clear the "prov/m1" prefill
+    for (let i = 0; i < 7; i++) hub.handleInput("\x1b[B"); // walk to the last entry
+    const flat = hub.render(100).join("\n");
+    assert.ok(flat.includes("custom\u2026"), "custom\u2026 entry present (8th, inside the window)");
+    assert.ok(flat.includes("model catalog \u00b7 7"), "default catalog header with count");
+  });
+});

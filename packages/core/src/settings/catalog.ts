@@ -18,18 +18,30 @@ export function defaultModelCatalogPath(): string {
   return join(homedir(), ".pi", "agent", "models.json");
 }
 
-let cache: string[] | undefined;
+/** A catalog model with the metadata capability filtering needs. */
+export interface ModelCatalogEntry {
+  readonly id: string;
+  /** Declared input modalities, e.g. ["text"] or ["text", "image"]. */
+  readonly input: string[];
+}
+
+let entryCache: ModelCatalogEntry[] | undefined;
 
 /** Load and cache the full "provider/model" id list. Empty on any failure. */
 export function loadModelCatalog(path: string = defaultModelCatalogPath()): string[] {
-  if (cache && path === defaultModelCatalogPath()) return cache;
-  const ids = parseModelCatalog(() => readFileSync(path, "utf8"));
-  if (path === defaultModelCatalogPath()) cache = ids;
-  return ids;
+  return loadModelCatalogEntries(path).map((e) => e.id);
+}
+
+/** Load and cache catalog entries (ids + metadata). Empty on any failure. */
+export function loadModelCatalogEntries(path: string = defaultModelCatalogPath()): ModelCatalogEntry[] {
+  if (entryCache && path === defaultModelCatalogPath()) return entryCache;
+  const entries = parseModelCatalogEntries(() => readFileSync(path, "utf8"));
+  if (path === defaultModelCatalogPath()) entryCache = entries;
+  return entries;
 }
 
 /** Pure parser — testable without the filesystem. */
-export function parseModelCatalog(read: () => string): string[] {
+export function parseModelCatalogEntries(read: () => string): ModelCatalogEntry[] {
   let raw: string;
   try {
     raw = read();
@@ -41,7 +53,7 @@ export function parseModelCatalog(read: () => string): string[] {
     if (typeof parsed !== "object" || parsed === null) return [];
     const providers = (parsed as { providers?: unknown }).providers;
     if (typeof providers !== "object" || providers === null) return [];
-    const ids: string[] = [];
+    const entries: ModelCatalogEntry[] = [];
     for (const [provider, def] of Object.entries(providers as Record<string, unknown>)) {
       if (typeof def !== "object" || def === null) continue;
       const models = (def as { models?: unknown }).models;
@@ -49,13 +61,18 @@ export function parseModelCatalog(read: () => string): string[] {
       for (const model of models) {
         if (typeof model === "object" && model !== null) {
           const id = (model as { id?: unknown }).id;
-          if (typeof id === "string" && id.length > 0) ids.push(`${provider}/${id}`);
+          if (typeof id !== "string" || id.length === 0) continue;
+          const input = (model as { input?: unknown }).input;
+          entries.push({
+            id: `${provider}/${id}`,
+            input: Array.isArray(input) ? input.filter((m): m is string => typeof m === "string") : [],
+          });
         } else if (typeof model === "string") {
-          ids.push(`${provider}/${model}`);
+          entries.push({ id: `${provider}/${model}`, input: [] });
         }
       }
     }
-    return ids;
+    return entries;
   } catch {
     return [];
   }
@@ -63,5 +80,10 @@ export function parseModelCatalog(read: () => string): string[] {
 
 /** Test hook. */
 export function resetModelCatalogCache(): void {
-  cache = undefined;
+  entryCache = undefined;
+}
+
+/** Pure id-only parser (back-compat shim over parseModelCatalogEntries). */
+export function parseModelCatalog(read: () => string): string[] {
+  return parseModelCatalogEntries(read).map((e) => e.id);
 }

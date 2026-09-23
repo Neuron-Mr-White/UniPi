@@ -72,6 +72,9 @@ async function consultJudge(
   }
 
   const settings = deps.settings;
+  // provider=custom without a baseUrl has no endpoint — the judge is
+  // unconfigured and resolution falls through to the default mode.
+  const unconfigured = settings.judge.provider === "custom" && !settings.judge.baseUrl.trim();
   // Openrouter provider with no explicit key falls back to the omniroute bridge
   // key, so enabling the judge works out of the box for omniroute users.
   const env = judgeEnv(
@@ -84,7 +87,7 @@ async function consultJudge(
     effectiveProvider(settings.judge) === "typesafe"
       ? Boolean(env.TYPESAFE_API_KEY)
       : Boolean(env.OPENROUTER_API_KEY);
-  if (!settings.judge.enabled || !hasKey) return null;
+  if (!settings.judge.enabled || unconfigured || !hasKey) return null;
 
   const transport =
     deps.transport ??

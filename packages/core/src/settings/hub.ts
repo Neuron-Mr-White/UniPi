@@ -32,6 +32,7 @@ import {
 import { frameOverlay, OverlayTheme } from "../../tui-overlay.js";
 import { boxInnerWidth } from "../../tui-width.js";
 import { namespaceColor } from "../package-colors.js";
+import { loadModelCatalogEntries, type ModelCatalogEntry } from "./catalog.js";
 import { loadModelCatalog } from "./catalog.js";
 import {
   enumOption,
@@ -58,6 +59,8 @@ export interface SettingsHubDeps {
   readonly onChanged?: (namespace: string) => void;
   /** Model catalog for model-type pickers (tests inject a fixture). */
   readonly modelCatalog?: () => string[];
+  /** Catalog entries with metadata (capability filtering); tests may inject. */
+  readonly modelCatalogEntries?: () => ModelCatalogEntry[];
   /** Invoker for `action` rows (utility wires core runCommandByName + ctx). */
   readonly runAction?: (command: string) => void | Promise<void>;
   /** Terminal rows for viewport sizing (tests inject; default stdout.rows). */
@@ -105,6 +108,7 @@ export class SettingsHub {
   private readonly cwd: string;
   private readonly onChanged?: (namespace: string) => void;
   private readonly catalog: () => string[];
+  private readonly entries: () => ModelCatalogEntry[];
   private rows: Row[] = [];
   private cursor = 0;
   private mode: Mode = "list";
@@ -118,13 +122,15 @@ export class SettingsHub {
   private picker: {
     row: Row;
     input: Input;
-    /** Display strings (catalog ids or enum labels + "custom…"). */
+    /** Display strings (catalog ids, preset ids, enum labels + "custom…"). */
     options: string[];
     /** Parallel picked values; CUSTOM sentinel opens the inline editor. */
     values: unknown[];
     selected: number;
     /** Enum lists ≤8 options show NO search box (typing does nothing). */
     searchable: boolean;
+    /** Context line above the list (e.g. "image-input models · 556"). */
+    header: string;
   } | null = null;
   private renderWidth = 80;
   /** Viewport: index of the first visible row. */
@@ -152,6 +158,12 @@ export class SettingsHub {
     this.cwd = deps.cwd;
     this.onChanged = deps.onChanged;
     this.catalog = deps.modelCatalog ?? loadModelCatalog;
+    // Entries power capability/preset pickers; an ids-only fixture still works
+    // (its models are treated as text-only).
+    this.entries = deps.modelCatalogEntries
+      ?? (deps.modelCatalog
+        ? () => deps.modelCatalog!().map((id) => ({ id, input: ["text"] as string[] }))
+        : loadModelCatalogEntries);
     this.runActionFn = deps.runAction;
     this.terminalRowsFn = deps.terminalRows ?? (() => process.stdout.rows ?? 40);
     this.buildRows();
@@ -537,16 +549,61 @@ export class SettingsHub {
   private openPicker(row: Row): void {
     const field = row.field!;
     let options = this.catalog();
-    if (field.type === "model" && field.provider) options = options.filter((id) => id.startsWith(`${field.provider}/`));
+    let header = `model catalog · ${options.length}`;
+    if (field.type === "model") {
+      // Source list: sibling-selected presets > static presets > filtered catalog.
+      const sibling = field.providerKey
+        ? String(getField(this.valueOf(row.namespace!), field.providerKey) ?? "")
+        : "";
+      const fromSibling = field.providerKey && sibling &&
+        field.presetsByProvider && sibling in field.presetsByProvider
+        ? [...field.presetsByProvider[sibling]!]
+        : null;
+      if (fromSibling) {
+        options = fromSibling;
+        header = `presets (${sibling}) · custom… for any id`;
+      } else if (field.presets) {
+        options = [...field.presets];
+        header = "presets · custom… for any id";
+      } else {
+        const entries = this.entries();
+        if (field.capability) {
+          const want = field.capability === "image-input" ? "image" : field.capability;
+          options = entries.filter((e) => e.input.includes(want)).map((e) => e.id);
+          header = `${field.capability} models · ${options.length}`;
+        } else if (field.filter) {
+          const matches = field.filter;
+          options = entries.filter((e) => matches(e)).map((e) => e.id);
+          header = `filtered models · ${options.length}`;
+        }
+        if (field.provider) options = options.filter((id) => id.startsWith(`${field.provider}/`));
+      }
+    }
     const input = new Input({ prompt: "search: " });
     const start = getField(this.valueOf(row.namespace!), field.key);
-    // Prefill only when the value is IN the catalog — otherwise the search
-    // would filter the list to nothing (custom values aren't listed ids).
+    // Prefill only when the value is IN the list — otherwise the search would
+    // filter the list to nothing (custom values aren't listed ids).
     if (typeof start === "string" && start && options.includes(start)) {
       input.setValue(start);
       input.handleInput("\x1b[F");
     }
-    this.picker = { row, input, options, values: [...options], selected: 0, searchable: true };
+    // Trailing custom… lets values outside the list in through the editor.
+    const allOptions = [...options, "custom…"];
+    const allValues: unknown[] = [...options, CUSTOM_VALUE];
+    // Optional first entry that picks "" (e.g. back to "inherit (session model)").
+    if (field.type === "model" && field.emptyOption) {
+      allOptions.unshift(field.emptyOption);
+      allValues.unshift("");
+    }
+    this.picker = {
+      row,
+      input,
+      options: allOptions,
+      values: allValues,
+      selected: 0,
+      searchable: true,
+      header,
+    };
     this.mode = "model";
   }
 
@@ -571,6 +628,7 @@ export class SettingsHub {
       values,
       selected: idx >= 0 ? idx : 0,
       searchable: options.length > 8,
+      header: "",
     };
     this.mode = "model";
   }
@@ -736,7 +794,7 @@ export class SettingsHub {
     if (row.kind === "toggle") {
       const open = row.namespace ? this.expandedAdvanced.has(row.namespace) : false;
       const label = open ? "▾ Advanced" : "▸ Advanced";
-      return this.exactRow(this.rowColumns(cursor, label, "space", inner, selected, row.namespace), inner);
+      return this.exactRow(this.rowColumns(cursor, label, "enter/tab/space", inner, selected, row.namespace), inner);
     }
     if (row.kind === "header") {
       const tag = row.layerTag ? ` [${row.layerTag}]` : "";
@@ -781,6 +839,8 @@ export class SettingsHub {
     if (!p) return [];
     const width = Math.max(8, inner - 4);
     const out: string[] = [];
+    // Context line (source + count) when the picker declares one.
+    if (p.header) out.push(this.exactRow(dim(`  ${p.header}`), inner));
     // Small option lists (enums ≤8) show NO search box.
     if (p.searchable) out.push(this.exactRow(`  ${p.input.render(width).join("")}`, inner));
     const filtered = this.pickerFiltered();
@@ -792,7 +852,7 @@ export class SettingsHub {
     }
     // Pad to exactly 5 rows so the panel never jumps.
     for (let i = filtered.length - start; i < 5; i++) out.push(this.exactRow(`  ${dim("  ·")}`, inner));
-    out.push(this.exactRow(dim("  enter pick · esc cancel"), inner));
+    out.push(this.exactRow(dim("  enter/tab pick · esc cancel"), inner));
     return out;
   }
 

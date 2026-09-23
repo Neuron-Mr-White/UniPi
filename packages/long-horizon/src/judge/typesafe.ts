@@ -49,7 +49,10 @@ export function judgeTimeoutMs(settings: JudgeSettings): number {
   return effectiveProvider(settings) === "openrouter" ? JUDGE_TIMEOUT_OPENROUTER_MS : JUDGE_TIMEOUT_MS;
 }
 
-/** "auto" resolves to the openrouter-shape transport (it self-detects jev). */
+/**
+ * "custom" rides the openrouter-shape transport too (it self-detects jev),
+ * but is unconfigured until a baseUrl is set — the transport then fails open.
+ */
 export function effectiveProvider(settings: JudgeSettings): "typesafe" | "openrouter" {
   return settings.provider === "typesafe" ? "typesafe" : "openrouter";
 }
@@ -188,6 +191,9 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
   const { settings } = deps;
   const fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init));
   const env = deps.env ?? process.env;
+  // provider=custom without a baseUrl has nowhere to send the call — the
+  // judge is unconfigured and fails open (null) without any network I/O.
+  const unconfigured = settings.provider === "custom" && !settings.baseUrl.trim();
   const instruction =
     "You are a mode router. Given a user request, answer which execution mode fits. " +
     'Respond ONLY with JSON: {"mode":"goal|ralph|swarm|graph|none","confidence":0..1}. ' +
@@ -198,6 +204,7 @@ export function createOpenRouterTransport(deps: JudgeDeps): JudgeTransport {
   return {
     provider: "openrouter",
     async ask(state, signal) {
+      if (unconfigured) return null;
       const key = apiKey(settings, env);
       if (!key) return null;
       try {

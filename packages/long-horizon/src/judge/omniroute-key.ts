@@ -36,12 +36,12 @@ export function omnirouteApiKey(): string | null {
  * pointing elsewhere) — the oino key would 401 there and fail open silently.
  */
 export function judgeEnv(
-  provider: "auto" | "typesafe" | "openrouter",
+  provider: "typesafe" | "openrouter" | "custom",
   base: Record<string, string | undefined> = process.env,
   baseUrl = "",
   settingsApiKey = "",
 ): Record<string, string | undefined> {
-  if (provider === "typesafe") return base; // auto + openrouter take the openrouter key path
+  if (provider === "typesafe") return base; // openrouter/custom take the openrouter key path
   // Precedence: settings file (works env-free) > environment > oino bridge.
   if (settingsApiKey) return { ...base, OPENROUTER_API_KEY: settingsApiKey };
   if (base.OPENROUTER_API_KEY) return base;

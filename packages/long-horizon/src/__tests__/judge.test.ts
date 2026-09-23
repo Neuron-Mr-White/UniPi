@@ -46,7 +46,7 @@ const httpError: FetchLike = async () => new Response("server exploded", { statu
 
 function settings(overrides: Partial<typeof DEFAULT_SETTINGS> = {}, judge: Partial<typeof DEFAULT_SETTINGS.judge> = {}) {
   // Native systemone is the TEST default (these cases mock /v1/systemone);
-  // runtime default is "auto" — covered by the provider-auto test below.
+  // runtime default is "openrouter" — covered by the provider-table test below.
   return {
     ...DEFAULT_SETTINGS,
     ...overrides,
@@ -238,21 +238,56 @@ test("cache: identical prompt within TTL does not hit the transport twice", asyn
   assert.equal(calls, 1);
 });
 
-test("provider auto derives the transport from the model", async () => {
+test("provider table: typesafe native; openrouter and custom ride the openrouter shape", async () => {
   const { createJudgeTransport, effectiveProvider } = await import("../judge/typesafe.js");
   const base = { threshold: 0.6, timeoutMs: 0, apiKey: "", baseUrl: "" };
-  // jev-shaped model + auto → openrouter shape (decisions endpoint inside)
-  const jev = { ...base, enabled: true, provider: "auto" as const, model: "typesafe/jev-1.13" };
-  assert.equal(effectiveProvider(jev), "openrouter");
-  assert.equal(createJudgeTransport({ settings: jev }).provider, "openrouter");
-  // chat model + auto → openrouter chat shape
-  const chat = { ...base, enabled: true, provider: "auto" as const, model: "zai/glm-5.3-flash" };
-  assert.equal(createJudgeTransport({ settings: chat }).provider, "openrouter");
   // explicit native honored
   const native = { ...base, enabled: true, provider: "typesafe" as const, model: "jev-latest" };
   assert.equal(effectiveProvider(native), "typesafe");
   assert.equal(createJudgeTransport({ settings: native }).provider, "typesafe");
-  // explicit openrouter honored
-  const or = { ...base, enabled: true, provider: "openrouter" as const, model: "jev-latest" };
-  assert.equal(effectiveProvider(or), "openrouter");
+  // openrouter: jev-shaped model → decisions endpoint, chat model → chat shape
+  const jev = { ...base, enabled: true, provider: "openrouter" as const, model: "typesafe/jev-1.13" };
+  assert.equal(effectiveProvider(jev), "openrouter");
+  assert.equal(createJudgeTransport({ settings: jev }).provider, "openrouter");
+  const chat = { ...base, enabled: true, provider: "openrouter" as const, model: "zai/glm-5.3-flash" };
+  assert.equal(createJudgeTransport({ settings: chat }).provider, "openrouter");
+  // custom rides the openrouter shape against its own baseUrl
+  const custom = { ...base, enabled: true, provider: "custom" as const, model: "typesafe/jev-1.13", baseUrl: "https://gw.example/v1" };
+  assert.equal(effectiveProvider(custom), "openrouter");
+  assert.equal(createJudgeTransport({ settings: custom }).provider, "openrouter");
+});
+
+test("custom provider with empty baseUrl is unconfigured — fails open with no network", async () => {
+  const { createJudgeTransport } = await import("../judge/typesafe.js");
+  const base = { threshold: 0.6, timeoutMs: 0, apiKey: "", baseUrl: "" };
+  const custom = { ...base, enabled: true, provider: "custom" as const, model: "typesafe/jev-1.13", baseUrl: "   " };
+  let calls = 0;
+  const transport = createJudgeTransport({
+    settings: custom,
+    env: { OPENROUTER_API_KEY: "k" },
+    fetchImpl: async () => {
+      calls++;
+      throw new Error("must not fetch");
+    },
+  });
+  assert.equal(await transport.ask("state", new AbortController().signal), null, "fail-open null");
+  assert.equal(calls, 0, "no request is attempted");
+});
+
+test("custom provider with a baseUrl targets it (version-segment root)", async () => {
+  const { createJudgeTransport } = await import("../judge/typesafe.js");
+  const base = { threshold: 0.6, timeoutMs: 0, apiKey: "", baseUrl: "" };
+  const custom = { ...base, enabled: true, provider: "custom" as const, model: "zai/glm-5.3-flash", baseUrl: "https://gw.example/v1" };
+  const urls: string[] = [];
+  const transport = createJudgeTransport({
+    settings: custom,
+    env: { OPENROUTER_API_KEY: "k" },
+    fetchImpl: (async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"mode":"goal","confidence":0.9}' } }] }), { status: 200 });
+    }) as typeof fetch,
+  });
+  const answer = await transport.ask("state", new AbortController().signal);
+  assert.equal(answer?.mode, "goal");
+  assert.deepEqual(urls, ["https://gw.example/v1/chat/completions"]);
 });

@@ -1,8 +1,9 @@
 /**
  * @unipi/memory — Embedding generation
  *
- * Primary: OpenRouter API (openai/text-embedding-3-small)
- * Fallback: fuzzy-only mode (returns null)
+ * Providers (settings.provider): none → fuzzy-only (null); inherit → a pi
+ * registry provider's baseUrl+apiKey; openrouter → OpenRouter embeddings;
+ * custom → any OpenAI-compatible gateway (baseUrl + key).
  *
  * Embedding dimensions default to 384 for sqlite-vec compatibility.
  * openai/text-embedding-3 supports custom dimensions via API param.
@@ -11,9 +12,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   loadEmbeddingConfig,
-  getApiKey,
+  resolveEmbeddingEndpoint,
+  piRegistryReader,
   markModelUsed,
-  isEmbeddingReady,
   type EmbeddingConfig,
 } from "./settings.js";
 
@@ -32,17 +33,17 @@ function getConfig(): EmbeddingConfig {
 }
 
 /**
- * Generate an embedding for the given text via OpenRouter API.
- * Returns null if not configured or on error.
+ * Generate an embedding for the given text.
+ * Returns null if not configured or on error (fuzzy-only fallback).
  */
 export async function generateEmbedding(
   text: string,
   _ai?: ExtensionAPI | any
 ): Promise<Float32Array | null> {
   const config = getConfig();
-  const apiKey = getApiKey();
+  const endpoint = resolveEmbeddingEndpoint(config, piRegistryReader);
 
-  if (config.provider !== "openrouter" || !apiKey || !config.model) {
+  if (!endpoint || !endpoint.apiKey || !config.model) {
     return null; // Fuzzy-only mode
   }
 
@@ -60,14 +61,19 @@ export async function generateEmbedding(
       body.dimensions = config.dimensions;
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    const headers: Record<string, string> = {
+      "Authorization": `Bearer ${endpoint.apiKey}`,
+      "Content-Type": "application/json",
+    };
+    // OpenRouter attribution headers (harmless elsewhere, required there).
+    if (config.provider === "openrouter") {
+      headers["HTTP-Referer"] = "https://github.com/Neuron-Mr-White/unipi";
+      headers["X-Title"] = "unipi-memory";
+    }
+
+    const response = await fetch(endpoint.url, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Neuron-Mr-White/unipi",
-        "X-Title": "unipi-memory",
-      },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
     });
@@ -113,9 +119,9 @@ export async function generateEmbeddingsBatch(
   _ai?: ExtensionAPI | any
 ): Promise<(Float32Array | null)[]> {
   const config = getConfig();
-  const apiKey = getApiKey();
+  const endpoint = resolveEmbeddingEndpoint(config, piRegistryReader);
 
-  if (config.provider !== "openrouter" || !apiKey || !config.model) {
+  if (!endpoint || !endpoint.apiKey || !config.model) {
     return texts.map(() => null);
   }
 
@@ -131,14 +137,18 @@ export async function generateEmbeddingsBatch(
       body.dimensions = config.dimensions;
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    const headers: Record<string, string> = {
+      "Authorization": `Bearer ${endpoint.apiKey}`,
+      "Content-Type": "application/json",
+    };
+    if (config.provider === "openrouter") {
+      headers["HTTP-Referer"] = "https://github.com/Neuron-Mr-White/unipi";
+      headers["X-Title"] = "unipi-memory";
+    }
+
+    const response = await fetch(endpoint.url, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Neuron-Mr-White/unipi",
-        "X-Title": "unipi-memory",
-      },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
     });
