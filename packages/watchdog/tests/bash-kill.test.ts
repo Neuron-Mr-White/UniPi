@@ -6,7 +6,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { findBashChildren, killProcessGroup } from "../src/bash-kill.js";
+import { rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { commandNeedles, findBashChildren, killProcessGroup } from "../src/bash-kill.js";
 
 const isWin = process.platform === "win32";
 
@@ -70,5 +72,56 @@ describe("findBashChildren + killProcessGroup", () => {
     } else {
       assert.equal(candidates.pids.length, 0, "no child matches an unspawned command");
     }
+  });
+
+  it("matches a simple command whose ~ the shell expanded (pi bash implicit-exec)", async () => {
+    if (isWin) return;
+    const name = `.pi-unipi-watchdog-match-${process.pid}.sh`;
+    const abs = `${homedir()}/${name}`;
+    writeFileSync(abs, "sleep 300\n");
+    let child: ChildProcess | undefined;
+    try {
+      // `sh -c "bash <abs>"` implicit-execs the simple command, so the child's
+      // argv holds the EXPANDED path while the tool arg keeps the `~`.
+      child = spawn("sh", ["-c", `bash ${abs}`], { detached: true, stdio: "ignore" });
+      child.unref();
+      await sleep(200);
+
+      const candidates = findBashChildren(process.pid, `bash ~/${name}`);
+      assert.equal(candidates.pids.length, 1, "tilde-expanded command matched exactly once");
+
+      const outcome = killProcessGroup(candidates.pgids[0]!, candidates.pids[0]!, 1);
+      assert.equal(outcome.killed, true);
+      await sleep(300);
+      let alive = true;
+      try { process.kill(candidates.pids[0]!, 0); } catch { alive = false; }
+      assert.equal(alive, false, "expanded-path child was killed");
+    } finally {
+      try { child?.kill("SIGKILL"); } catch { /* already gone */ }
+      rmSync(abs, { force: true });
+    }
+  });
+});
+
+describe("commandNeedles", () => {
+  it("adds the ~-expanded form used by the child argv", () => {
+    const needles = commandNeedles("bash ~/pi-test/loop.sh", {}, "/home/coffee");
+    assert.ok(needles.includes("bash ~/pi-test/loop.sh"), "raw form kept");
+    assert.ok(needles.includes("bash /home/coffee/pi-test/loop.sh"), "expanded form added");
+  });
+
+  it("expands $VAR and ${VAR}", () => {
+    assert.ok(commandNeedles("bash $HOME/x.sh", { HOME: "/h" }, "/h").includes("bash /h/x.sh"));
+    assert.ok(commandNeedles("bash ${HOME}/x.sh", { HOME: "/h" }, "/h").includes("bash /h/x.sh"));
+  });
+
+  it("keeps the literal token when the variable is unset", () => {
+    assert.ok(commandNeedles("echo $NOPE_UNSET_VAR_42").includes("echo $NOPE_UNSET_VAR_42"));
+  });
+
+  it("adds a quote-stripped form for argv-joined cmdlines", () => {
+    const needles = commandNeedles(`sh -c "echo hi"`);
+    assert.ok(needles.includes(`sh -c "echo hi"`), "raw form kept");
+    assert.ok(needles.includes("sh -c echo hi"), "quote-stripped form added");
   });
 });

@@ -11,10 +11,39 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { homedir } from "node:os";
 
 export interface KillCandidates {
   pids: number[];
   pgids: number[];
+}
+
+/**
+ * Command forms to look for in a child's argv. pi's bash runs the command
+ * through a `-c` shell, which expands `~`/`$VAR` and (for a simple command)
+ * implicit-execs it, so the child's argv holds the EXPANDED command while the
+ * tool arg still has the literal source. Quoting differs too: `-c` keeps the
+ * raw string, an exec'd argv has the quotes stripped by the shell.
+ */
+export function commandNeedles(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): string[] {
+  const expand = (s: string): string =>
+    s
+      .replace(/(^|[\s"'=(])~(?=\/|[\s"')]|$)/g, (_m, prefix: string) => `${prefix}${home}`)
+      .replace(
+        /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+        (match, braced: string | undefined, bare: string | undefined) =>
+          env[braced ?? bare ?? ""] ?? match,
+      );
+  const stripQuotes = (s: string): string => s.replace(/["']/g, "");
+  const needles = new Set<string>();
+  for (const form of [command, expand(command), stripQuotes(command), stripQuotes(expand(command))]) {
+    if (form.trim().length >= 3) needles.add(form);
+  }
+  return [...needles];
 }
 
 /** Direct children of `parentPid` whose args contain `command` (exact single match required). */
@@ -27,6 +56,7 @@ export function findBashChildren(parentPid: number, command: string): KillCandid
 function fromLinux(parentPid: number, command: string): KillCandidates {
   const pids: number[] = [];
   const pgids: number[] = [];
+  const needles = commandNeedles(command);
   try {
     for (const entry of existsSync("/proc") ? readdirSync("/proc") : []) {
       if (!/^\d+$/.test(entry)) continue;
@@ -50,7 +80,7 @@ function fromLinux(parentPid: number, command: string): KillCandidates {
       } catch {
         continue;
       }
-      if (!cmdline.includes(command)) continue;
+      if (!needles.some((needle) => cmdline.includes(needle))) continue;
       const pgid = Number(fields[2]);
       pids.push(pid);
       pgids.push(pgid);
@@ -66,6 +96,7 @@ function fromPs(parentPid: number, command: string): KillCandidates {
     const out = execFileSync("ps", ["-o", "pid=,ppid=,pgid=,args=", "-A"], { encoding: "utf-8" });
     const pids: number[] = [];
     const pgids: number[] = [];
+    const needles = commandNeedles(command);
     for (const line of out.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -74,7 +105,7 @@ function fromPs(parentPid: number, command: string): KillCandidates {
       const ppid = Number(parts[1]);
       const pgid = Number(parts[2]);
       const args = parts.slice(3).join(" ");
-      if (ppid === parentPid && args.includes(command)) {
+      if (ppid === parentPid && needles.some((needle) => args.includes(needle))) {
         pids.push(pid);
         pgids.push(pgid);
       }

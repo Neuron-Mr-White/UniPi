@@ -25,6 +25,8 @@ The persistent veto protects dev servers, file watchers, and daemons that are op
 | Item | Setting | Kill mechanism |
 |---|---|---|
 | bash tool calls | `watchBash` (default on) | process-group kill of the detected child shell |
+
+The bash kill never overrides pi's tool: it scans pi's direct children for the command string (in its raw and shell-expanded forms — `~`/`$VAR`, quotes stripped, since a `-c` shell expands and implicit-execs a simple command) and requires EXACTLY ONE match. Zero or several matches downgrade to a warning instead of guessing.
 | background tasks | `watchBgTasks` (default on) | `stopTask` via the shared registry |
 | other tools (web, image, mcp, subagents) | `otherTools` (off/warn/abort-turn) | notify / abort turn |
 

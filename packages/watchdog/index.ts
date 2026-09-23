@@ -61,7 +61,17 @@ const state = {
   changes: new Map<string, number>(),
   /** Per-key last-checked timestamp (at most once per intervalMin). */
   checked: new Map<string, number>(),
+  /** Per-item warn dedupe (key:status) so a repeat tick doesn't re-warn. */
+  warned: new Set<string>(),
 };
+
+/** Wall clock; swappable in tests (fake-clock gating tests). */
+let clock: () => number = () => Date.now();
+
+/** Test hook: replace the clock (pass null to restore Date.now). */
+export function __setClock(fn: (() => number) | null): void {
+  clock = fn ?? (() => Date.now());
+}
 
 function debugLog(line: string): void {
   if (process.env.UNIPI_DEBUG_WATCHDOG !== "1") return;
@@ -83,6 +93,10 @@ export async function __watchdogTick(ctx: ExtensionContext): Promise<void> {
 /** Test hook: pretend the watchdog killed this bash call (drives the rewrite). */
 export function __recordKill(toolCallId: string, record: { durationMs: number; reason: string }): void {
   state.kills.set(toolCallId, { toolCallId, ...record });
+}
+
+export function __getKills(): Map<string, unknown> {
+  return state.kills;
 }
 
 /** Test hook: override the bg task list the scanner reads. */
@@ -113,7 +127,9 @@ export function resetWatchdogState(): void {
   state.tails.clear();
   state.changes.clear();
   state.checked.clear();
+  state.warned.clear();
   registryOverride = null;
+  clock = () => Date.now();
 }
 
 /** Register the watchdog with pi. */
@@ -131,6 +147,7 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
   pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
     state.ctx = ctx;
     const settings = loadWatchdogSettings(ctx.cwd);
+    debugLog(`session_start enabled=${settings.enabled} intervalMin=${settings.intervalMin} firstCheckMin=${settings.firstCheckMin}`);
     if (settings.enabled) startTimer(settings);
     else stopTimer();
   });
@@ -145,13 +162,14 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
     state.tails.clear();
     state.changes.clear();
     state.checked.clear();
+    state.warned.clear();
     state.ctx = null;
   });
 
   pi.on("tool_execution_start", (event: { toolCallId: string; toolName: string; args: unknown }) => {
     if (NEVER_WATCH.has(event.toolName)) return;
     const display = summarizeArgs(event.args);
-    const now = Date.now();
+    const now = clock();
     const tracked: TrackedCall = {
       toolCallId: event.toolCallId,
       toolName: event.toolName,
@@ -169,7 +187,7 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
     if (!tracked) return;
     const tail = extractText(event.partialResult);
     if (tail && tail !== tracked.lastTail) {
-      tracked.lastChangeAt = Date.now();
+      tracked.lastChangeAt = clock();
       tracked.lastTail = tail.slice(-3200);
     }
   });
@@ -178,6 +196,9 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
     state.bash.delete(event.toolCallId);
     state.other.delete(event.toolCallId);
     state.streaks.delete(event.toolCallId);
+    for (const key of [...state.warned]) {
+      if (key.startsWith(`${event.toolCallId}:`) || key.endsWith(`:${event.toolCallId}`)) state.warned.delete(key);
+    }
   });
 
   // Annotate the tool result of a watchdog-killed bash call.
@@ -225,7 +246,10 @@ export const HEARTBEAT_MS = 15_000;
 function startTimer(settings: WatchdogSettings): void {
   stopTimer();
   const period = Math.min(HEARTBEAT_MS, settings.firstCheckMin * 60_000, settings.intervalMin * 60_000);
-  state.intervalTimer = setInterval(() => void tick(settings.enabled), Math.max(1_000, period));
+  state.intervalTimer = setInterval(() => {
+    debugLog(`heartbeat bash=${state.bash.size} other=${state.other.size} busy=${state.busy}`);
+    void tick(settings.enabled);
+  }, Math.max(1_000, period));
   state.intervalTimer.unref?.();
 }
 
@@ -248,7 +272,7 @@ interface WatchedItem {
 }
 
 function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
-  const now = Date.now();
+  const now = clock();
   const items: WatchedItem[] = [];
 
   if (settings.watchBash) {
@@ -308,7 +332,6 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
 }
 
 async function tick(enabled: boolean): Promise<void> {
-  
   if (state.busy) return;
   const ctx = state.ctx;
   if (!ctx) return;
@@ -320,11 +343,10 @@ async function tick(enabled: boolean): Promise<void> {
   state.busy = true;
   try {
     const allItems = gatherWatched(settings);
-    const now = Date.now();
+    const now = clock();
 
     // Per-item minimum age: skip items younger than firstCheckMin.
     const items = allItems.filter((item) => now - item.startedAt >= settings.firstCheckMin * 60_000);
-    console.error("[WD-TICK-DBG] allItems:", allItems.length, "items:", items.length, "enabled:", settings.enabled, "firstCheckMin:", settings.firstCheckMin);
 
     if (items.length > 0) ctx.ui.setStatus("watchdog", `watchdog: ${items.length}`);
     else ctx.ui.setStatus("watchdog", undefined);
@@ -474,6 +496,9 @@ function itemKeyToolCallId(key: string): string {
 }
 
 function queueWarn(item: WatchedItem, decision: { status: string; confidence: number; streak: number }, reason: string): void {
+  const dedupeKey = `${item.key}:${decision.status}`;
+  if (state.warned.has(dedupeKey)) return;
+  state.warned.add(dedupeKey);
   state.pending.push(
     `⚠ Watchdog: "${item.toolName}" looks ${decision.status} ` +
     `(confidence ${decision.confidence.toFixed(2)}, ${decision.streak} consecutive checks): ${reason}.`,

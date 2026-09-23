@@ -23,6 +23,8 @@ describe("watchdog extension", () => {
     resetWatchdogState: () => void;
     __watchdogTick: (ctx: unknown) => Promise<void>;
     __getKills: () => Map<string, unknown>;
+    __setClock: (fn: (() => number) | null) => void;
+    setRegistryTasks: (tasks: unknown[]) => void;
   };
 
   function fakePi(): unknown {
@@ -126,50 +128,130 @@ describe("watchdog extension", () => {
     await new Promise((r) => setTimeout(r, 100));
   });
 
-  it("agreeChecks 2: first tick no kill, second tick kills", async () => {
+  // ── fake-clock gating tests ───────────────────────────────────────────
+  // Settings the gating tests share: jev reachable (stubbed fetch) through
+  // the long-horizon Decision-model settings.
+  async function enableJudge(watchdog: Record<string, unknown>): Promise<void> {
     const { setSettings } = await import("@pi-unipi/core");
-    setSettings("watchdog", { enabled: true, agreeChecks: 2, confidence: 0.8, watchBash: true, intervalMin: 0.1, firstCheckMin: 0 }, "global", process.cwd());
-    // start a bash tool call
-    handlers["tool_execution_start"]!(
-      { type: "tool_execution_start", toolCallId: "call-wd", toolName: "bash", args: { command: "while true; do echo err; done" } },
-      fakeCtx(),
-    );
-    (globalThis as { fetch: unknown }).fetch = async (url: unknown, init: { body: string }) => {
-      fetchCalls.push({ url: String(url), body: JSON.parse(String(init.body)) });
+    await import("@pi-unipi/long-horizon/src/settings.js");
+    setSettings("long-horizon", { judge: { provider: "openrouter", model: "typesafe/jev-1.13", apiKey: "test-key", baseUrl: "" } }, "global", process.cwd());
+    setSettings("watchdog", { enabled: true, confidence: 0.8, watchBash: true, watchBgTasks: true, action: "kill", ...watchdog }, "global", process.cwd());
+  }
+
+  function stubJev(status: string, onCall?: (state: string) => void): { calls: () => number } {
+    let calls = 0;
+    (globalThis as { fetch: unknown }).fetch = async (_url: unknown, init: { body: string }) => {
+      calls++;
+      onCall?.(String((JSON.parse(String(init.body)) as { state?: string }).state ?? ""));
       return new Response(JSON.stringify({
-        answers: {
-          status: { choice: "looping", confidence: 0.95 },
-          persistent: { noul: 0.0 },
-        },
+        answers: { status: { choice: status, confidence: 0.95 }, persistent: { noul: 0.0 } },
       }), { status: 200 });
     };
+    return { calls: () => calls };
+  }
+
+  it("firstCheckMin 0.5 / intervalMin 0.5 / agreeChecks 2: checked at ~30s and ~60s, killed at the 2nd check", async () => {
+    await enableJudge({ agreeChecks: 2, intervalMin: 0.5, firstCheckMin: 0.5 });
+    const jev = stubJev("looping");
+    let now = 1_000_000;
+    watchdogMod.__setClock(() => now);
+
+    // A real detached child whose command the pid finder must match exactly once.
+    const cmd = "sleep 300; echo wd-gating-unique";
+    const child = spawn("sh", ["-c", cmd], { detached: true, stdio: "ignore" });
+    child.unref();
+    await new Promise((r) => setTimeout(r, 150));
+
+    handlers["tool_execution_start"]!(
+      { type: "tool_execution_start", toolCallId: "call-gate", toolName: "bash", args: { command: cmd } },
+      fakeCtx(),
+    );
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
 
-    // tick 1: streak 1, no kill
+    now += 15_000; // 15s: younger than firstCheckMin → not checked
     await tickFn(fakeCtx());
-    assert.equal(fetchCalls.length, 1, "one jev call");
-    assert.ok(!handlers["tool_result"], "no tool_result override on streak 1");
+    assert.equal(jev.calls(), 0, "not checked before firstCheckMin");
 
-    // tick 2: streak 2, act = true
+    now += 15_000; // 30s: first check, streak 1/2 → no kill
     await tickFn(fakeCtx());
-    assert.equal(fetchCalls.length, 2, "two jev calls");
-    assert.ok(watchdogMod.__getKills().has("call-wd"), "kill recorded on streak 2");
+    assert.equal(jev.calls(), 1, "first check at ~30s");
+    assert.ok(!watchdogMod.__getKills().has("call-gate"), "no kill on streak 1");
+
+    now += 15_000; // 45s: within intervalMin of the last check → skipped
+    await tickFn(fakeCtx());
+    assert.equal(jev.calls(), 1, "not re-checked within intervalMin");
+
+    now += 15_000; // 60s: second check, streak 2/2 → kill
+    await tickFn(fakeCtx());
+    assert.equal(jev.calls(), 2, "second check at ~60s");
+    assert.ok(watchdogMod.__getKills().has("call-gate"), "killed at the 2nd agreeing check");
+
+    await new Promise((r) => setTimeout(r, 300));
+    let alive = true;
+    try { process.kill(child.pid!, 0); } catch { alive = false; }
+    if (alive) child.kill("SIGKILL");
+    assert.equal(alive, false, "the child process group was actually killed");
   });
 
   it("never checked twice within intervalMin", async () => {
-    const { setSettings } = await import("@pi-unipi/core");
-    setSettings("watchdog", { enabled: true, agreeChecks: 1, confidence: 0.8, watchBash: true, intervalMin: 0.5, firstCheckMin: 0 }, "global", process.cwd());
+    await enableJudge({ agreeChecks: 5, intervalMin: 0.5, firstCheckMin: 0 });
+    const jev = stubJev("stuck");
+    let now = 2_000_000;
+    watchdogMod.__setClock(() => now);
     handlers["tool_execution_start"]!(
       { type: "tool_execution_start", toolCallId: "call-x", toolName: "bash", args: { command: "sleep 300" } },
       fakeCtx(),
     );
-    (globalThis as { fetch: unknown }).fetch = async () =>
-      new Response(JSON.stringify({ answers: { status: { choice: "stuck", confidence: 0.95 }, persistent: { noul: 0.0 } } }), { status: 200 });
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
     await tickFn(fakeCtx());
-    const afterFirst = fetchCalls.length;
-    assert.ok(afterFirst > 0, "first tick jev calls made");
-    await tickFn(fakeCtx()); // immediate second tick → per-item gate skips
-    assert.equal(fetchCalls.length, afterFirst, "no new jev calls within intervalMin");
+    assert.equal(jev.calls(), 1, "first tick checks");
+    for (const step of [1_000, 5_000, 10_000]) {
+      now += step; // cumulative 16s < 30s interval
+      await tickFn(fakeCtx());
+    }
+    assert.equal(jev.calls(), 1, "no new jev calls within intervalMin");
+    now += 14_000; // cumulative 30s → due again
+    await tickFn(fakeCtx());
+    assert.equal(jev.calls(), 2, "checked again once intervalMin elapsed");
+  });
+
+  it("bg sinceLastOutput grows while the tail is unchanged and resets on change", async () => {
+    await enableJudge({ agreeChecks: 5, intervalMin: 0.5, firstCheckMin: 0 });
+    const states: string[] = [];
+    stubJev("progressing", (s) => states.push(s));
+    let now = 3_000_000;
+    watchdogMod.__setClock(() => now);
+    const task = {
+      id: "bg-1", command: "bash loop.sh", status: "running", startTime: now,
+      notifyOnCompletion: true, triggerOnCompletion: true, outputTail: ["line a"],
+    };
+    watchdogMod.setRegistryTasks([task]);
+    const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
+    const since = (s: string) => Number(/Since last new output: (\d+)s/.exec(s)?.[1]);
+
+    await tickFn(fakeCtx());          // t=0: first sighting
+    now += 30_000; await tickFn(fakeCtx()); // t=30: unchanged tail
+    now += 30_000; await tickFn(fakeCtx()); // t=60: unchanged tail
+    task.outputTail = ["line a", "line b"];
+    now += 30_000; await tickFn(fakeCtx()); // t=90: changed tail
+
+    assert.equal(states.length, 4);
+    assert.equal(since(states[0]!), 0);
+    assert.equal(since(states[1]!), 30, "grows while unchanged");
+    assert.equal(since(states[2]!), 60, "keeps growing");
+    assert.equal(since(states[3]!), 0, "resets when the tail changes");
+    assert.ok(states[3]!.includes("Output changed since previous check: yes"));
+  });
+
+  it("bg task with triggerOnCompletion false (persistent service) is never checked", async () => {
+    await enableJudge({ agreeChecks: 1, intervalMin: 0.5, firstCheckMin: 0 });
+    const jev = stubJev("stuck");
+    watchdogMod.setRegistryTasks([{
+      id: "srv", command: "python3 -m http.server", status: "running", startTime: 0,
+      notifyOnCompletion: true, triggerOnCompletion: false, outputTail: [],
+    }]);
+    const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
+    await tickFn(fakeCtx());
+    assert.equal(jev.calls(), 0);
   });
 });
