@@ -153,6 +153,34 @@ export function subscribeToEvents(
     })
   );
 
+  // ─── Plan mode / permission mode (workflow) ─────────────────────────────
+
+  unsubscribers.push(
+    pi.events.on(UNIPI_EVENTS.PLAN_MODE_CHANGED, (event: unknown) => {
+      try {
+        const active = (event as { active?: boolean })?.active === true;
+        const existing = registry.getGroupData("core") as Record<string, unknown> | undefined;
+        registry.updateData("core", { ...existing, planMode: active });
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
+      }
+    })
+  );
+
+  unsubscribers.push(
+    pi.events.on(UNIPI_EVENTS.PERMISSION_MODE_CHANGED, (event: unknown) => {
+      try {
+        const mode = (event as { mode?: string })?.mode;
+        if (typeof mode === "string" && mode.length > 0) {
+          const existing = registry.getGroupData("core") as Record<string, unknown> | undefined;
+          registry.updateData("core", { ...existing, permissionMode: mode });
+        }
+      } catch {
+        // Silently ignore — event handler errors are non-blocking.
+      }
+    })
+  );
+
   // ─── Long-horizon events ────────────────────────────────────────────────
 
   unsubscribers.push(

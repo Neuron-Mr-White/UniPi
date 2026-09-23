@@ -448,9 +448,19 @@ function installGlanceEditor(
         const lhMode = typeof lhModeRaw === "string" && lhModeRaw.length > 0
           ? MODE_LABELS[lhModeRaw] ?? lhModeRaw
           : null;
+        // Plan/permission state rides the same CORE registry data, written by
+        // the workflow module's events (also re-emitted on session_start).
+        const coreData = st.registry.getGroupData("core") as
+          | { planMode?: boolean; permissionMode?: string }
+          | undefined;
         return {
           workspace,
           lhMode,
+          planMode: coreData?.planMode === true,
+          permissionMode:
+            typeof coreData?.permissionMode === "string" && coreData.permissionMode.length > 0
+              ? coreData.permissionMode
+              : null,
           branch: typeof branch === "string" ? branch : null,
           contextPct: typeof usage?.percent === "number" ? usage.percent : null,
           contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,

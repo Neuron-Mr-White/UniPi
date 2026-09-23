@@ -27,6 +27,10 @@ export interface GlanceStatus {
 	workspace: string;
 	/** Active long-horizon mode label, beside the brand (null → omitted). */
 	lhMode: string | null;
+	/** Plan mode is active (top-right PLAN badge). */
+	planMode: boolean;
+	/** Permission mode (ask | auto | full) shown top-right (null → omitted). */
+	permissionMode: string | null;
 	/** Git branch for the top title (null → omitted). */
 	branch: string | null;
 	/** Context usage percent (null when unknown). */
@@ -58,6 +62,55 @@ const SEP = " \u2502 "; // │
 const RESET = "\x1b[0m";
 const LEAD_FG = "\x1b[1m\x1b[38;2;181;189;104m"; // bold accent (matches success tint)
 const DIM_FG = "\x1b[38;2;120;124;134m"; // muted grey
+const WARN_FG = "\x1b[38;2;214;140;60m"; // warning / full-permission
+// PLAN badge: dark text on a warning-coloured block. Targeted-off closes keep
+// the surrounding border span intact.
+const PLAN_BG = "\x1b[1m\x1b[48;2;214;140;60m\x1b[38;2;26;20;14m";
+const PLAN_BG_OFF = "\x1b[49m\x1b[39m\x1b[22m";
+
+/** Top-right permission/plan cluster: ` PLAN  auto ` (plain text returned too). */
+export function renderTopRightBadges(planMode: boolean, permissionMode: string | null): string {
+	const parts: string[] = [];
+	if (planMode) parts.push(`${PLAN_BG} PLAN ${PLAN_BG_OFF}`);
+	if (permissionMode) {
+		const painted =
+			permissionMode === "full"
+				? `${WARN_FG}${permissionMode}${RESET}`
+				: permissionMode === "ask"
+					? `${LEAD_FG}${permissionMode}${RESET}`
+					: `${DIM_FG}${permissionMode}${RESET}`;
+		parts.push(painted);
+	}
+	return parts.length > 0 ? `${parts.join(" ")} ` : "";
+}
+
+/** Same cluster without the permission label (narrow-terminal fallback). */
+export function renderTopRightBadgesNoPermission(planMode: boolean): string {
+	return planMode ? `${PLAN_BG} PLAN ${PLAN_BG_OFF} ` : "";
+}
+
+/**
+ * Top-frame layout: the right cluster plus the rule fill, with the narrow-
+ * terminal policy applied (drop the permission label first).
+ */
+export function planTopFrameWidths(
+	safe: number,
+	plainLeadWidth: number,
+	planMode: boolean,
+	permissionMode: string | null,
+): { cluster: string; filler: number; permissionDropped: boolean } {
+	const fits = (cluster: string): number => safe - 2 - plainLeadWidth - visibleWidth(stripControls(cluster));
+	let cluster = renderTopRightBadges(planMode, permissionMode);
+	let permissionDropped = false;
+	if (cluster.length > 0 && fits(cluster) < 2) {
+		const withoutPermission = renderTopRightBadgesNoPermission(planMode);
+		if (withoutPermission !== cluster) {
+			cluster = withoutPermission;
+			permissionDropped = true;
+		}
+	}
+	return { cluster, filler: Math.max(2, fits(cluster)), permissionDropped };
+}
 
 type FusionDisplay = NonNullable<GlanceStatus["fusion"]>;
 
@@ -227,15 +280,20 @@ export class GlanceEditor extends CustomEditor {
 		const title = titleParts.join(SEP);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;
-		// Width ledger counts PLAIN text — strip SGR (rainbow codes) first.
-		const topFiller = Math.max(
-			2,
-			safe - 2 - visibleWidth(stripControls(leadRule + titleText)),
+		// Right-aligned PLAN/permission cluster. Narrow terminals drop the
+		// permission label first; the final truncateToWidth trims the rest.
+		const plainLead = visibleWidth(stripControls(leadRule + titleText));
+		const { cluster: topCluster, filler: topFiller } = planTopFrameWidths(
+			safe,
+			plainLead,
+			st.planMode,
+			st.permissionMode,
 		);
 		const top =
 			border(BORDER.topLeft) +
 			border(leadRule + titleText) +
 			border(repeat(BORDER.horizontal, topFiller)) +
+			topCluster +
 			border(BORDER.topRight);
 
 		// ── Body rows: │ content │ ──
