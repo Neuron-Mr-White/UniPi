@@ -66,25 +66,23 @@ Or edit `.unipi/config/util-settings.json` directly (migrated automatically from
 
 The badge is a persistent HUD overlay in the top-right corner showing the current session name. It auto-restores visibility on session restart.
 
-### Skill Startup Discovery
+### Skill Exposure (jev-judged)
 
-Controls whether Unipi's built-in skills are cataloged in the agent's system prompt at startup (default: on). Your own skills — global, project, settings-mounted, and third-party packages — always stay cataloged.
+Controls which discovered skills are cataloged in the agent's system prompt. Configure via `/unipi:settings` (Skills group) or the engine file (`skills` subtree):
 
-```
-/unipi:settings               # Skill discovery toggle (Skills group)
-```
+- **mode: `judged`** (default) — on the session's first prompt, if more than `maxSkills` skills are discovered, ONE jev (TypeSafe System One) request scores every skill's relevance to your prompt; only relevant ones stay cataloged, sorted by relevance and capped. The set is frozen per session and persisted, so the system prompt is byte-identical on every later turn (provider prefix cache stays intact).
+- **mode: `all`** — no judging; every skill stays.
+- **mode: `off`** — Unipi's bundled skills are stripped from the catalog (old `discovery: false` behavior).
 
-Or edit `~/.pi/agent/settings.json` directly:
+Extra knobs: `threshold` (min jev relevance, default 0.3), `maxSkills` (cap, default 12), `recheck` (default on — later prompts on new topics get a "newly relevant skills" message revealing up to 5 hidden skills; revealed skills are never announced twice, and the system prompt itself never changes after the freeze).
+
+Skills stay invocable in every mode via `/skill:name` or by reading their SKILL.md directly. The judged set reuses the long-horizon **Decision model** (jev) — provider, model, key and base URL come from the Judge settings; missing key, timeout, or any failure exposes ALL skills (fail-open).
 
 ```json
 {
-  "unipi": {
-    "skills": { "discovery": false }
-  }
+  "skills": { "mode": "judged", "threshold": 0.3, "maxSkills": 12, "recheck": true }
 }
 ```
-
-When off, Unipi's bundled skills are removed from the `<available_skills>` catalog, so their metadata never populates agent context. They remain invocable via `/skill:name` — pi expands those commands by reading the skill file directly, independent of the prompt catalog. The filter is applied consistently every turn, so provider prefix caching is unaffected.
 
 ## Programmatic API
 

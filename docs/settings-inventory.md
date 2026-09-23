@@ -18,7 +18,7 @@ Legend: ✅ adopted · 🔶 adopted partial (depth remains) · ❌ not yet · �
 | notify | `notify` | engine file | ✅ | Events page (multiselect platforms), defaultPlatforms/silence/renotify, platform Setup+test actions (overlay deleted) |
 | notify-ntfy | (folded into `notify`) | ~~`notify/ntfy.json`~~ → notify config.json `ntfy` subtree | ✅ | imported once per scope; schema: enabled/serverUrl/priority; saveNtfyConfig → engine |
 | autocomplete | `command-enchantment` | engine file (was same path) | ✅ | — |
-| utility | `utility` | engine file, project-scope | ✅ | skills.discovery migrated from pi-settings; badge side-effect wired via hub onChanged |
+| utility | `utility` | engine file, project-scope | ✅ | skills.mode judged/all/off (jev-judged exposure, pi-settings flag migrated); badge side-effect wired via hub onChanged |
 | info-screen | `info-screen` | engine file (A_KEY import of pi-settings unipi.info) | ✅ | dynamic Groups & stats page + Group order `order` field (overlay deleted) |
 | image | `image` | `~/.unipi/config/image/config.json` | ✅ | generate.model presets, recognize capability image-input + systemPrompt (overlay deleted) |
 | web-api | `web-api` | `~/.unipi/config/web-api/` | ✅ | provider pages, browser/os/includeReplies enums added (overlay deleted) |

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **utility: jev-judged skill exposure.** With many skills installed, `<available_skills>` bloats the system prompt. New `skills.mode` setting (`judged` default / `all` / `off`): on the session's first prompt jev (the long-horizon Decision model) scores every skill's relevance in ONE System One call; only relevant skills stay cataloged (sorted by relevance, capped at `skills.maxSkills`, threshold `skills.threshold`), the set is frozen per session and persisted via a custom session entry so the system prompt stays byte-identical on every later turn. `skills.recheck` (default on) announces newly relevant hidden skills on later prompts via a persisted message (never twice, max 5 per prompt). The old `skills.discovery` boolean migrates (`false` → `off`, `true` → `judged`).
+- **core: shared jev client** (`askJev`) — native typesafe `/v1/systemone` and OpenRouter `/api/alpha/decisions` transports with the judge's baseUrl/key/timeout rules; fail-open (null) on any error, missing key, or timeout. The long-horizon judge now uses it for its System One transports (chat-model fallback unchanged).
+
 ### Removed
 
 - **Legacy per-module settings commands — use `/unipi:settings`.** Every settings overlay absorbed into the unified hub; only interactive wizards/tools remain as overlays:
