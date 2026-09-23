@@ -275,13 +275,16 @@ export class SettingsHub {
     const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return this.rows;
     // Group headers PERSIST under filtering so matching fields keep their
-    // context ("Long-Horizon — Judge" above its Model row).
+    // context ("Long-Horizon — Judge" above its Model row) — exactly ONCE per
+    // header run, even when several consecutive rows match the filter.
     const out: Row[] = [];
     let currentHeader: Row | undefined;
+    let headerPushed = false;
     for (const r of pageRows) {
       if (r.kind === "toggle") continue; // no toggle rows while searching
       if (r.kind === "header") {
         currentHeader = r;
+        headerPushed = false;
         continue;
       }
       const haystack = [
@@ -291,7 +294,10 @@ export class SettingsHub {
         r.field?.description ?? "",
       ].join(" ").toLowerCase();
       if (words.every((w) => haystack.includes(w))) {
-        if (currentHeader && out[out.length - 1] !== currentHeader) out.push(currentHeader);
+        if (currentHeader && !headerPushed) {
+          out.push(currentHeader);
+          headerPushed = true;
+        }
         out.push(r);
       }
     }

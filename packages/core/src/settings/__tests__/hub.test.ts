@@ -1141,3 +1141,63 @@ describe("order fields", () => {
     assert.deepEqual(JSON.parse(readFileSync(cfg(), "utf8")).sequence, ["top", "mid", "bottom"], "undo restores the order");
   });
 });
+
+describe("regression: Utility badge section renders each row exactly once", () => {
+  function registerBadgeSection(): void {
+    registerSettings({
+      namespace: "hubtestbadge",
+      label: "Utility",
+      defaults: { show: true, auto: true, tool: true, sync: true, model: "m" },
+      schema: [{
+        title: "Badge",
+        fields: [
+          { key: "show", type: "boolean", label: "Show name badge" },
+          { key: "auto", type: "boolean", label: "Auto-generate name" },
+          { key: "tool", type: "boolean", label: "Agent tool" },
+          { key: "sync", type: "boolean", label: "Herdr sync" },
+          { key: "model", type: "model", label: "Generation model" },
+          { key: "setName", type: "action", label: "Set session name…", command: "unipi:badge-set-name" },
+          { key: "generate", type: "action", label: "Generate session name", command: "unipi:badge-generate" },
+        ],
+      }],
+    });
+  }
+
+  const strip = (l: string): string => l.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+
+  function counts(hub: SettingsHub, width: number): Map<string, number> {
+    const labels = ["Show name badge", "Auto-generate name", "Agent tool", "Herdr sync", "Generation model", "Set session name…", "Generate session name", "Utility — Badge"];
+    const out = new Map(labels.map((l) => [l, 0]));
+    for (const line of hub.render(width)) {
+      const plain = strip(line);
+      for (const label of labels) {
+        if (plain.includes(label)) out.set(label, (out.get(label) ?? 0) + 1);
+      }
+    }
+    return out;
+  }
+
+  it("full render at width 78: every label exactly once, header exactly once", () => {
+    registerBadgeSection();
+    const hub = makeHub();
+    hub.handleInput("/"); hub.handleInput("badge"); hub.handleInput("\r");
+    const c = counts(hub, 78);
+    for (const [label, n] of c) {
+      if (label === "Utility — Badge") assert.equal(n, 1, `header band count: ${n}`);
+      else assert.equal(n, 1, `"${label}" count: ${n}`);
+    }
+  });
+
+  it("same after scrolling through the section (no search filter)", () => {
+    registerBadgeSection();
+    const hub = makeHub();
+    hub.handleInput("/"); hub.handleInput("badge"); hub.handleInput("\r");
+    hub.handleInput("\x1b"); // apply empty search → full list
+    for (let i = 0; i < 12; i++) hub.handleInput("\x1b[B"); // scroll deep
+    for (let i = 0; i < 14; i++) hub.handleInput("\x1b[A"); // scroll back
+    const c = counts(hub, 78);
+    assert.equal(c.get("Utility — Badge"), 1);
+    assert.equal(c.get("Show name badge"), 1);
+    assert.equal(c.get("Generate session name"), 1);
+  });
+});
