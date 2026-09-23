@@ -18,7 +18,10 @@
  * SKILL.md reads are independent of the prompt catalog.
  */
 
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+import * as path from "node:path";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { askJev, getSettings, type JevAnswer, type JevSettings } from "@pi-unipi/core";
 import { migrateSkillsDiscovery } from "./settings.js";
@@ -270,6 +273,18 @@ function judgeSettings(): JevSettings {
   };
 }
 
+/** Debug logging, gated by UNIPI_DEBUG_SKILLS=1 → ~/.unipi/logs/skills.log. */
+function debugLog(line: string): void {
+  if (process.env.UNIPI_DEBUG_SKILLS !== "1") return;
+  try {
+    const dir = join(homedir(), ".unipi", "logs");
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(path.join(dir, "skills.log"), `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    // Debug logging is best-effort.
+  }
+}
+
 // ─── per-session frozen state ────────────────────────────────────────────
 
 export interface SessionSkillsState {
@@ -291,16 +306,18 @@ let sessionState: SessionSkillsState | null = null;
 export function restoreSkillsSessionState(
   sessionId: string,
   entries: ReadonlyArray<object>,
-): void {
+): SessionSkillsState {
   sessionState = { sessionId, judged: false, hiddenCount: 0, kept: [], hidden: [], revealed: new Set() };
   for (const entry of entries) {
     const customType = (entry as { customType?: string }).customType;
     if (customType !== SKILLS_JUDGED_ENTRY && customType !== SKILLS_REVEALED_ENTRY) continue;
     const data = (entry as { data?: unknown }).data as
-      | { kept?: unknown; hidden?: unknown; names?: unknown }
+      | { kept?: unknown; hidden?: unknown; hiddenCount?: unknown; names?: unknown }
       | undefined;
     if (customType === SKILLS_JUDGED_ENTRY) {
       if (Array.isArray(data?.kept) && Array.isArray(data?.hidden)) {
+        // The freeze is authoritative: later turns reuse it (never re-judge).
+        sessionState.judged = true;
         sessionState.kept = data.kept.map(String);
         sessionState.hidden = (data.hidden as ParsedSkill[]).map((h) => ({
           name: String(h.name ?? ""),
@@ -308,11 +325,21 @@ export function restoreSkillsSessionState(
           location: String(h.location ?? ""),
           raw: "",
         }));
+        sessionState.hiddenCount =
+          typeof data.hiddenCount === "number" ? data.hiddenCount : sessionState.hidden.length;
       }
     } else if (Array.isArray(data?.names)) {
       for (const name of data.names) sessionState.revealed.add(String(name));
+      // Announced skills are no longer recheck candidates.
+      sessionState.hidden = sessionState.hidden.filter((h) => !sessionState!.revealed.has(h.name));
     }
   }
+  if (sessionState.judged) {
+    debugLog(
+      `restored frozen set from session entry (kept=${sessionState.kept.length} hidden=${sessionState.hiddenCount})`,
+    );
+  }
+  return sessionState;
 }
 
 /** Drop per-session state (new session). */
@@ -332,6 +359,15 @@ function currentState(ctx: ExtensionContext): SessionSkillsState {
  * Wire the skills pipeline into pi: session restore + the before_agent_start
  * system-prompt rewrite (bundled strip → freeze → judge → recheck).
  */
+/**
+ * Wire the skills pipeline into pi: session restore + the before_agent_start
+ * options mutation (bundled strip → freeze → judge → recheck).
+ *
+ * Integration note: pi renders the skills catalog from
+ * `event.systemPromptOptions.skills` AFTER handlers run, so judging works by
+ * MUTATING that array to the frozen exposed set — the system prompt stays
+ * byte-identical on every later turn (prefix-cache safe).
+ */
 export function registerSkillJudging(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     // resume/fork/new: re-derive state from the (possibly branched) entries.
@@ -340,33 +376,42 @@ export function registerSkillJudging(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", async (event, ctx) => {
     const st = loadSkillDiscoverySettings();
-    let prompt = event.systemPrompt;
+    const optionSkills = event.systemPromptOptions?.skills ?? [];
+    const skillDir = (s: { filePath?: string; baseDir?: string }): string =>
+      s.baseDir ?? s.filePath ?? "";
+    debugLog(
+      `before_agent_start mode=${st.mode} skills=${optionSkills.length} ` +
+      `promptChars=${event.systemPrompt.length}`,
+    );
 
-    // Bundled stripping runs first, exactly as it always has.
+    // Bundled stripping runs first, exactly as it always has (mode off).
     if (st.mode === "off") {
-      const stripped = stripBundledSkills(prompt);
-      return stripped ? { systemPrompt: stripped } : undefined;
+      event.systemPromptOptions.skills = optionSkills.filter(
+        (s) => !isBundledSkillLocation(skillDir(s)),
+      );
+      return undefined;
     }
-    const stripped = stripBundledSkills(prompt);
-    if (stripped) prompt = stripped;
+    if (st.mode === "all") {
+      return undefined; // every skill stays; nothing to judge
+    }
 
     const state = currentState(ctx);
 
-    if (st.mode === "all") {
-      return prompt === event.systemPrompt ? undefined : { systemPrompt: prompt };
-    }
-
-    // ── judged ──
+    // ── judged: freeze on the session's first prompt ──
     if (!state.judged) {
-      const parsed = parseSkillsCatalog(prompt);
-      if (!parsed || parsed.entries.length === 0) {
-        return prompt === event.systemPrompt ? undefined : { systemPrompt: prompt };
-      }
-      if (parsed.entries.length <= st.maxSkills) {
+      if (optionSkills.length <= st.maxSkills) {
         // Small catalog: everyone stays; nothing hidden, nothing frozen.
-        return prompt === event.systemPrompt ? undefined : { systemPrompt: prompt };
+        debugLog(`catalog ${optionSkills.length} <= maxSkills ${st.maxSkills} — not judged`);
+        return undefined;
       }
-      const req = judgeRequest(parsed.entries, event.prompt, basename(process.cwd()));
+      const entries: ParsedSkill[] = optionSkills.map((s) => ({
+        name: s.name,
+        description: s.description,
+        location: skillDir(s),
+        raw: "",
+      }));
+      const req = judgeRequest(entries, event.prompt, basename(process.cwd()));
+      const startedAt = Date.now();
       const answers = await askJev({
         ...req,
         settings: judgeSettings(),
@@ -375,39 +420,49 @@ export function registerSkillJudging(pi: ExtensionAPI): void {
       });
       let kept: ParsedSkill[];
       let hidden: ParsedSkill[];
+      let failOpen = false;
       if (answers) {
-        ({ kept, hidden } = applyJudgement(parsed.entries, answers, st.threshold, st.maxSkills));
+        ({ kept, hidden } = applyJudgement(entries, answers, st.threshold, st.maxSkills));
       } else {
-        kept = parsed.entries; // fail-open: expose everything
+        kept = entries; // fail-open: expose everything
         hidden = [];
+        failOpen = true;
       }
-      state.kept = kept.map((e) => e.name);
-      state.hidden = hidden;
       state.judged = true;
       state.hiddenCount = hidden.length;
+      state.kept = kept.map((e) => e.name);
+      state.hidden = hidden;
+      debugLog(
+        `judged ${entries.length} -> ${kept.length} ` +
+        `kept=[${kept.map((e) => e.name).join(", ")}] ` +
+        `latency=${Date.now() - startedAt}ms failOpen=${failOpen}`,
+      );
       pi.appendEntry(SKILLS_JUDGED_ENTRY, {
         kept: state.kept,
         hidden: hidden.map((h) => ({ name: h.name, description: h.description, location: h.location })),
+        hiddenCount: hidden.length,
+        ...(failOpen ? { failOpen: true } : {}),
       });
-      if (hidden.length > 0) {
-        prompt = rebuildSkillsCatalog(prompt, kept, hidden.length);
-        if (ctx.hasUI) ctx.ui.setStatus("skills", `skills: ${kept.length}/${parsed.entries.length} exposed`);
+      event.systemPromptOptions.skills = optionSkills.filter((s) =>
+        kept.some((e) => e.name === s.name),
+      );
+      if (ctx.hasUI) {
+        ctx.ui.setStatus("skills", `skills: ${kept.length}/${entries.length} exposed`);
       }
-      return { systemPrompt: prompt };
+      return undefined;
     }
 
-    // ── frozen turns: ALWAYS override with the frozen exposed set. Returning
-    // undefined here would let pi's rebuilt full catalog (all skills) leak
-    // back into the prompt and break the prefix-cache guarantee.
-    const parsedFrozen = parseSkillsCatalog(prompt);
-    if (parsedFrozen) {
-      const keptSet = new Set(state.kept);
-      const kept = parsedFrozen.entries.filter((e) => keptSet.has(e.name));
-      prompt = rebuildSkillsCatalog(prompt, kept, state.hiddenCount);
+    // ── frozen turns: re-apply the frozen exposed set. The system prompt pi
+    // renders stays byte-identical every turn; recheck only ADDS a message.
+    const keptSet = new Set(state.kept);
+    event.systemPromptOptions.skills = optionSkills.filter((s) => keptSet.has(s.name));
+    if (ctx.hasUI) {
+      ctx.ui.setStatus("skills", `skills: ${state.kept.length}/${state.kept.length + state.hiddenCount} exposed`);
     }
 
     if (st.recheck && state.hidden.length > 0) {
-      const req = judgeRequest(state.hidden, event.prompt, basename(process.cwd()));
+      const entries: ParsedSkill[] = state.hidden;
+      const req = judgeRequest(entries, event.prompt, basename(process.cwd()));
       const answers = await askJev({
         ...req,
         settings: judgeSettings(),
@@ -415,7 +470,7 @@ export function registerSkillJudging(pi: ExtensionAPI): void {
         env: process.env,
       });
       if (answers) {
-        const newly = state.hidden
+        const newly = entries
           .filter((h, i) => {
             const score = answers[`s${i}`]?.noul;
             return typeof score === "number" && score >= st.threshold && !state.revealed.has(h.name);
@@ -426,7 +481,6 @@ export function registerSkillJudging(pi: ExtensionAPI): void {
           state.hidden = state.hidden.filter((h) => !newly.includes(h));
           pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: newly.map((n) => n.name) });
           return {
-            systemPrompt: prompt,
             message: {
               customType: "unipi-skills-revealed",
               content:
@@ -440,6 +494,6 @@ export function registerSkillJudging(pi: ExtensionAPI): void {
       }
     }
 
-    return { systemPrompt: prompt };
+    return undefined;
   });
 }
