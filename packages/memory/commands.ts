@@ -5,10 +5,30 @@
  * All storage is project-scoped. "Global" commands search across all projects.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { registerCommandRunner } from "@pi-unipi/core";
 import { MemoryStorage, searchAllProjects, listAllProjects } from "./storage.js";
-import { showMemorySettings } from "./tui/settings-tui.js";
 import { isEmbeddingReady, hasModelChanged, loadEmbeddingConfig } from "./settings.js";
+
+registerCommandRunner("unipi:memory-reembed", async (rawCtx: unknown) => {
+  const ctx = rawCtx as ExtensionCommandContext;
+  const config = loadEmbeddingConfig();
+  if (!isEmbeddingReady()) {
+    ctx.ui.notify(
+      "Embeddings are not configured. Set provider, model, and API key in /unipi:settings (Memory).",
+      "warning"
+    );
+    return;
+  }
+  const ok = await ctx.ui.confirm(
+    "Re-embed all memories?",
+    `This regenerates embeddings for every stored memory using ${config.model}. Continue?`
+  );
+  if (!ok) return;
+  const { reembedAllMemories } = await import("./embedding.js");
+  const count = await reembedAllMemories(ctx as never);
+  ctx.ui.notify(`Re-embedded ${count} memories.`, "info");
+});
 
 /**
  * Register memory commands.
@@ -175,30 +195,6 @@ For each item, use the memory_store tool to save it with an appropriate title an
         `All memories across ${grouped.size} projects (${memories.length} total):${output}`,
         "info"
       );
-    },
-  });
-
-  // --- /unipi:memory-settings ---
-  pi.registerCommand("unipi:memory-settings", {
-    description: "Configure embedding provider and model for vector search",
-    handler: async (_args, ctx) => {
-      // Quick status if called with no TUI
-      if (!ctx.hasUI) {
-        const config = loadEmbeddingConfig();
-        const ready = isEmbeddingReady();
-        const migrated = hasModelChanged();
-        ctx.ui.notify(
-          `Embedding: ${ready ? "✓ Ready" : "✗ Not configured"}\n` +
-          `Provider: ${config.provider}\n` +
-          `Model: ${config.model}\n` +
-          `Dimensions: ${config.dimensions}\n` +
-          (migrated ? "⚠ Model changed — re-embed needed" : ""),
-          "info"
-        );
-        return;
-      }
-
-      await showMemorySettings(ctx);
     },
   });
 }

@@ -6,8 +6,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX } from "@pi-unipi/core";
-import { NOTIFY_COMMANDS } from "@pi-unipi/core";
-import { NotifySettingsOverlay } from "./tui/settings-overlay.js";
+import { NOTIFY_COMMANDS, registerCommandRunner } from "@pi-unipi/core";
 import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
@@ -42,74 +41,6 @@ function registryModels(ctx: ExtensionContext): CachedModel[] | undefined {
  * Register notify commands.
  */
 export function registerNotifyCommands(pi: ExtensionAPI): void {
-  // /unipi:notify-settings — Opens settings TUI overlay
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SETTINGS}`,
-    {
-      description: "Configure notification platforms and events",
-      handler: async (_args: string, ctx: ExtensionContext) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Settings require an interactive UI.", "warning");
-          return;
-        }
-
-        ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            const overlay = new NotifySettingsOverlay();
-            overlay.setTheme(theme);
-            overlay.onClose = () => done(undefined);
-            overlay.requestRender = () => tui.requestRender();
-            overlay.onOpenModelSelector = () => {
-              // Open model selector as nested overlay
-              ctx.ui.custom(
-                (innerTui: any, innerTheme: any, _innerKb: any, innerDone: any) => {
-                  const selector = new RecapModelSelectorOverlay(registryModels(ctx));
-                  selector.setTheme(innerTheme);
-                  selector.onClose = () => innerDone(undefined);
-                  selector.requestRender = () => innerTui.requestRender();
-                  return {
-                    render: (w: number) => selector.render(w),
-                    invalidate: () => selector.invalidate(),
-                    handleInput: (data: string) => {
-                      selector.handleInput(data);
-                      innerTui.requestRender();
-                    },
-                  };
-                },
-                {
-                  overlay: true,
-                  overlayOptions: {
-                    width: "60%",
-                    minWidth: 40,
-                    anchor: "center",
-                    margin: 4,
-                  },
-                }
-              );
-            };
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 60,
-              anchor: "center",
-              margin: 2,
-            },
-          }
-        );
-      },
-    }
-  );
-
   // /unipi:notify-recap-model — Open recap model selector directly
   pi.registerCommand(
     `${UNIPI_PREFIX}${NOTIFY_COMMANDS.RECAP_MODEL}`,
@@ -151,123 +82,134 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
     }
   );
 
+  // Shared setup-wizard invoker — also registered as a hub action runner so
+  // the platform pages in /unipi:settings can open the same wizards.
+  const gotifySetupHandler = async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionContext;
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Gotify setup requires an interactive UI.", "warning");
+      return;
+    }
+    await ctx.ui.custom(
+      (tui, theme, _keybindings, done) => {
+        const overlay = new GotifySetupOverlay();
+        overlay.setTheme(theme);
+        overlay.onClose = () => done(undefined);
+        overlay.requestRender = () => tui.requestRender();
+        return {
+          render: (w: number) => overlay.render(w),
+          invalidate: () => overlay.invalidate(),
+          handleInput: (data: string) => {
+            overlay.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: {
+          width: "80%",
+          minWidth: 60,
+          anchor: "center",
+          margin: 2,
+        },
+      }
+    );
+  };
+  registerCommandRunner(NOTIFY_COMMANDS.SET_GOTIFY, gotifySetupHandler);
+
   // /unipi:notify-set-gotify — Interactive Gotify setup
   pi.registerCommand(
     `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_GOTIFY}`,
     {
       description: "Set up Gotify push notifications with connection test",
-      handler: async (_args: string, ctx: ExtensionContext) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Gotify setup requires an interactive UI.", "warning");
-          return;
-        }
-
-        ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            const overlay = new GotifySetupOverlay();
-            overlay.setTheme(theme);
-            overlay.onClose = () => done(undefined);
-            overlay.requestRender = () => tui.requestRender();
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 60,
-              anchor: "center",
-              margin: 2,
-            },
-          }
-        );
-      },
+      handler: (_args, ctx) => gotifySetupHandler(ctx),
     }
   );
+
+  const telegramSetupHandler = async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionContext;
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Telegram setup requires an interactive UI.", "warning");
+      return;
+    }
+    await ctx.ui.custom(
+      (tui, theme, _keybindings, done) => {
+        const overlay = new TelegramSetupOverlay();
+        overlay.setTheme(theme);
+        overlay.onClose = () => done(undefined);
+        overlay.requestRender = () => tui.requestRender();
+        return {
+          render: (w: number) => overlay.render(w),
+          invalidate: () => overlay.invalidate(),
+          handleInput: (data: string) => {
+            overlay.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: {
+          width: "80%",
+          minWidth: 60,
+          anchor: "center",
+          margin: 2,
+        },
+      }
+    );
+  };
+  registerCommandRunner(NOTIFY_COMMANDS.SET_TG, telegramSetupHandler);
 
   // /unipi:notify-set-tg — Interactive Telegram setup
   pi.registerCommand(
     `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_TG}`,
     {
       description: "Set up Telegram bot notifications with auto-detection",
-      handler: async (_args: string, ctx: ExtensionContext) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Telegram setup requires an interactive UI.", "warning");
-          return;
-        }
-
-        ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            const overlay = new TelegramSetupOverlay();
-            overlay.setTheme(theme);
-            overlay.onClose = () => done(undefined);
-            overlay.requestRender = () => tui.requestRender();
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 60,
-              anchor: "center",
-              margin: 2,
-            },
-          }
-        );
-      },
+      handler: (_args, ctx) => telegramSetupHandler(ctx),
     }
   );
+
+  const ntfySetupHandler = async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionContext;
+    if (!ctx.hasUI) {
+      ctx.ui.notify("ntfy setup requires an interactive UI.", "warning");
+      return;
+    }
+    await ctx.ui.custom(
+      (tui, theme, _keybindings, done) => {
+        const overlay = new NtfySetupOverlay();
+        overlay.setTheme(theme);
+        overlay.onClose = () => done(undefined);
+        overlay.requestRender = () => tui.requestRender();
+        return {
+          render: (w: number) => overlay.render(w),
+          invalidate: () => overlay.invalidate(),
+          handleInput: (data: string) => {
+            overlay.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      {
+        overlay: true,
+        overlayOptions: {
+          width: "80%",
+          minWidth: 60,
+          anchor: "center",
+          margin: 2,
+        },
+      }
+    );
+  };
+  registerCommandRunner(NOTIFY_COMMANDS.SET_NTFY, ntfySetupHandler);
 
   // /unipi:notify-set-ntfy — Interactive ntfy setup
   pi.registerCommand(
     `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_NTFY}`,
     {
       description: "Set up ntfy push notifications with connection test",
-      handler: async (_args: string, ctx: ExtensionContext) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("ntfy setup requires an interactive UI.", "warning");
-          return;
-        }
-
-        ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            const overlay = new NtfySetupOverlay();
-            overlay.setTheme(theme);
-            overlay.onClose = () => done(undefined);
-            overlay.requestRender = () => tui.requestRender();
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "80%",
-              minWidth: 60,
-              anchor: "center",
-              margin: 2,
-            },
-          }
-        );
-      },
+      handler: (_args, ctx) => ntfySetupHandler(ctx),
     }
   );
 
@@ -309,12 +251,9 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
     }
   );
 
-  // /unipi:notify-test — Send test notification to all enabled platforms
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.TEST}`,
-    {
-      description: "Send a test notification to all enabled platforms",
-      handler: async (_args: string, ctx: ExtensionContext) => {
+  // notify-test handler — shared with the hub "Send test notification" action.
+  const notifyTestHandler = async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionContext;
         const config = loadConfig();
         const title = "Pi — Test Notification";
         const message = `Test notification sent at ${new Date().toLocaleTimeString()}`;
@@ -394,12 +333,20 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
           }
         }
 
-        if (results.length === 0) {
-          ctx.ui.notify("No platforms enabled. Use /unipi:notify-settings first.", "warning");
-        } else {
-          ctx.ui.notify(`Test results:\n${results.join("\n")}`, "info");
-        }
-      },
+    if (results.length === 0) {
+      ctx.ui.notify("No platforms enabled. Enable one in /unipi:settings (Notify).", "warning");
+    } else {
+      ctx.ui.notify(`Test results:\n${results.join("\n")}`, "info");
+    }
+  };
+  registerCommandRunner(NOTIFY_COMMANDS.TEST, notifyTestHandler);
+
+  // /unipi:notify-test — Send test notification to all enabled platforms
+  pi.registerCommand(
+    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.TEST}`,
+    {
+      description: "Send a test notification to all enabled platforms",
+      handler: (_args, ctx) => notifyTestHandler(ctx),
     }
   );
 }

@@ -124,6 +124,8 @@ registerSettings({
         { key: "dimensions", type: "number", label: "Dimensions", min: 1 },
         { key: "apiKey", type: "secret", label: "API key", emptyLabel: "unset (no semantic search)" },
         { key: "mempalaceAutoUpdate", type: "boolean", label: "MemPalace auto-update", description: "Daily PyPI check + uv upgrade" },
+        { key: "suppressMigrationWarning", type: "boolean", label: "Suppress migration warning", description: "Hide the model-changed re-embed nag" },
+        { key: "actions.reembed", type: "action", label: "Re-embed all memories…", description: "Regenerate every stored embedding with the current model", command: "unipi:memory-reembed" },
       ],
     },
   ],

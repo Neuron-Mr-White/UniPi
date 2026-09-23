@@ -186,7 +186,6 @@ export default function (pi: ExtensionAPI) {
         "unipi:memory-forget",
         "unipi:global-memory-search",
         "unipi:global-memory-list",
-        "unipi:memory-settings",
       ],
       tools: [
         MEMORY_TOOLS.STORE,

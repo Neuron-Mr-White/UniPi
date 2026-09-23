@@ -60,9 +60,35 @@ export const DEFAULT_CONFIG: NotifyConfig = {
 };
 
 /** Load config from disk, returning defaults if missing or invalid */
+/** Platform options shared by every multiselect in the schema. */
+const PLATFORM_OPTIONS = [
+  { value: "native", label: "native" },
+  { value: "gotify", label: "gotify" },
+  { value: "telegram", label: "telegram" },
+  { value: "ntfy", label: "ntfy" },
+];
+
+/** One section per known event: enable + platform routing. */
+const EVENT_SECTIONS = Object.keys(DEFAULT_CONFIG.events).map((event) => ({
+  title: event,
+  fields: [
+    { key: `events.${event}.enabled`, type: "boolean" as const, label: "Enabled" },
+    {
+      key: `events.${event}.platforms`,
+      type: "multiselect" as const,
+      label: "Platforms",
+      options: PLATFORM_OPTIONS,
+      emptyLabel: "default platforms",
+    },
+  ],
+}));
+
 // Registered with the unified settings hub. The canonical file
 // (~/.unipi/config/notify/config.json) is exactly what this module already
 // used, so switching to the engine is a no-op on disk.
+//
+// Absorbs the deleted /unipi:notify-settings overlay: the event matrix lives
+// in a dynamic "Events…" page, platform pages carry Setup wizard actions.
 registerSettings({
   namespace: "notify",
   label: "Notify",
@@ -70,12 +96,44 @@ registerSettings({
   schema: [
     {
       title: "General",
-      description: "Event-by-event routing lives in /unipi:notify-settings",
       fields: [
+        {
+          key: "defaultPlatforms",
+          type: "multiselect",
+          label: "Default platforms",
+          options: PLATFORM_OPTIONS,
+          emptyLabel: "none",
+          description: "Used when an event lists no platforms of its own",
+        },
         { key: "native.enabled", type: "boolean", label: "Native desktop", description: "OS notifications" },
         { key: "native.suppressWhenFocused", type: "boolean", label: "Quiet when focused" },
         { key: "recap.enabled", type: "boolean", label: "Recap", description: "Session recap digests" },
         { key: "recap.model", type: "model", label: "Recap model", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
+      ],
+    },
+    {
+      title: "Silence & renotify",
+      fields: [
+        { key: "silenceAfterInput.enabled", type: "boolean", label: "Silence after input", description: "Hold notifications while you are typing" },
+        { key: "silenceAfterInput.windowMs", type: "number", label: "Silence window ms", min: 0 },
+        { key: "silenceAfterInput.platforms", type: "multiselect", label: "Silence platforms", options: PLATFORM_OPTIONS, emptyLabel: "none" },
+        { key: "renotify.enabled", type: "boolean", label: "Renotify", description: "Repeat unresolved notifications" },
+        { key: "renotify.intervalMs", type: "number", label: "Renotify interval ms", min: 0 },
+        { key: "renotify.maxRepeats", type: "number", label: "Max repeats", min: 0 },
+      ],
+    },
+    {
+      title: "Events",
+      description: "Event-by-event routing",
+      fields: [
+        {
+          key: "events-page",
+          type: "page",
+          label: "Events…",
+          description: "One section per event: enable + platform routing",
+          sections: EVENT_SECTIONS,
+        },
+        { key: "actions.test", type: "action", label: "Send test notification", description: "All enabled platforms", command: "unipi:notify-test" },
       ],
     },
     {
