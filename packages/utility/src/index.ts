@@ -28,7 +28,7 @@ import {
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
 import { registerUtilityCommands } from "./commands.js";
-import { isSkillDiscoveryEnabled, stripBundledSkills } from "./skill-discovery.js";
+import { registerSkillJudging } from "./skill-discovery.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings, readUtilSettings } from "./settings.js";
 import { getLifecycle } from "./lifecycle/process.js";
@@ -204,11 +204,8 @@ export default function (pi: ExtensionAPI) {
   // invocation is unaffected either way: pi expands those commands by reading
   // SKILL.md directly. Applied consistently per turn, so the provider prefix
   // cache stays intact.
-  pi.on("before_agent_start", (event) => {
-    if (isSkillDiscoveryEnabled()) return undefined;
-    const filtered = stripBundledSkills(event.systemPrompt);
-    return filtered ? { systemPrompt: filtered } : undefined;
-  });
+  // Skill exposure pipeline: bundled strip → jev freeze → recheck reveals.
+  registerSkillJudging(pi);
 
   // Register commands
   registerUtilityCommands(pi);

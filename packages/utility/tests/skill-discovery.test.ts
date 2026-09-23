@@ -194,32 +194,37 @@ describe("skill discovery settings", () => {
     fs.rmSync(engineHome, { recursive: true, force: true });
   });
 
-  it("defaults to discovery on when settings file is missing", async () => {
+  it("defaults to judged mode when settings file is missing", async () => {
     const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
-    assert.equal(loadSkillDiscoverySettings().discovery, true);
+    assert.equal(loadSkillDiscoverySettings().mode, "judged");
+    assert.equal(loadSkillDiscoverySettings().threshold, 0.3);
+    assert.equal(loadSkillDiscoverySettings().maxSkills, 12);
+    assert.equal(loadSkillDiscoverySettings().recheck, true);
   });
 
-  it("defaults to discovery on when the unipi.skills key is absent", async () => {
+  it("defaults to judged mode when the unipi.skills key is absent", async () => {
     const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
     fs.writeFileSync(
       path.join(tmpDir, "settings", "settings.json"),
       JSON.stringify({ theme: "dark", unipi: { footer: { enabled: true } } }),
     );
-    assert.equal(loadSkillDiscoverySettings().discovery, true);
+    assert.equal(loadSkillDiscoverySettings().mode, "judged");
   });
 
-  it("round-trips through the engine (utility namespace)", async () => {
+  it("migrates the legacy discovery boolean: false → off, true → judged", async () => {
     await import("../src/settings.js"); // registers the utility namespace
-    const { setSettings, getSettings } = await import("@pi-unipi/core");
+    const { setSettings } = await import("@pi-unipi/core");
     const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
-    setSettings("utility", { skills: { discovery: false } }, "global", process.cwd());
-    assert.equal(loadSkillDiscoverySettings().discovery, false);
-    assert.equal(
-      (getSettings("utility", process.cwd()) as { skills: { discovery: boolean } }).skills.discovery,
-      false,
-    );
+    // Fresh layer each time: after migration the mode is authoritative, so a
+    // later raw `discovery` flag no longer overrides an existing mode.
     setSettings("utility", { skills: { discovery: true } }, "global", process.cwd());
-    assert.equal(loadSkillDiscoverySettings().discovery, true);
+    assert.equal(loadSkillDiscoverySettings().mode, "judged", "explicit true → judged");
+    fs.rmSync(path.join(process.env.HOME!, ".unipi", "config", "utility"), { recursive: true, force: true });
+    setSettings("utility", { skills: { discovery: false } }, "global", process.cwd());
+    assert.equal(loadSkillDiscoverySettings().mode, "off", "explicit false → off");
+    fs.rmSync(path.join(process.env.HOME!, ".unipi", "config", "utility"), { recursive: true, force: true });
+    setSettings("utility", { skills: { mode: "all" } }, "global", process.cwd());
+    assert.equal(loadSkillDiscoverySettings().mode, "all", "explicit mode wins over a stale discovery flag");
   });
 
   it("legacy unipi.skills.discovery is imported one-time into the engine", async () => {
@@ -231,16 +236,16 @@ describe("skill discovery settings", () => {
     const { readUtilSettings } = await import("../src/settings.js");
     readUtilSettings(); // registers the namespace + triggers the one-time legacy imports
     const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
-    assert.equal(loadSkillDiscoverySettings().discovery, false, "legacy off value migrated");
+    assert.equal(loadSkillDiscoverySettings().mode, "off", "legacy off value migrated to mode off");
     // Sibling legacy keys are preserved verbatim.
     const raw = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.equal(raw.theme, "dark");
     assert.deepEqual(raw.unipi.footer, { enabled: true });
   });
 
-  it("ignores malformed settings files", async () => {
+  it("ignores malformed settings files (defaults apply)", async () => {
     const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
     fs.writeFileSync(path.join(tmpDir, "settings", "settings.json"), "{not json");
-    assert.equal(loadSkillDiscoverySettings().discovery, true);
+    assert.equal(loadSkillDiscoverySettings().mode, "judged");
   });
 });

@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getSettings, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
+import { getSettings, globalSettingsPath, projectSettingsPath, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Badge settings */
 export interface BadgeSettingsSection {
@@ -20,9 +20,22 @@ export interface BadgeSettingsSection {
   herdrSync: boolean;
 }
 
-/** Skill discovery settings (migrated from unipi.skills.discovery). */
+/**
+ * Skill exposure (migrated from the unipi.skills.discovery boolean):
+ *   judged \u2014 jev decides which skills stay in the system-prompt catalog
+ *   all    \u2014 every discovered skill stays (no judging)
+ *   off    \u2014 old "false" behavior (bundled skills stripped)
+ */
+export type SkillExposureMode = "judged" | "all" | "off";
+
 export interface SkillDiscoverySection {
-  discovery: boolean;
+  mode: SkillExposureMode;
+  /** Minimum jev relevance (noul 0\u20131) for a skill to stay exposed. */
+  threshold: number;
+  /** Hard cap on exposed skills; above this the catalog gets judged. */
+  maxSkills: number;
+  /** Suggest newly relevant hidden skills on later prompts. */
+  recheck: boolean;
 }
 
 /** Unified utility settings */
@@ -42,7 +55,10 @@ const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
 
 /** Default skill discovery settings */
 const DEFAULT_SKILL_DISCOVERY: SkillDiscoverySection = {
-  discovery: true,
+  mode: "judged",
+  threshold: 0.3,
+  maxSkills: 12,
+  recheck: true,
 };
 
 /** Default unified settings */
@@ -110,7 +126,20 @@ registerSettings({
       title: "Skills",
       description: "Skill startup discovery",
       fields: [
-        { key: "skills.discovery", type: "boolean", label: "Skill discovery", description: "Catalog skills in the system prompt at startup; off = invoke-only via /skill:name" },
+        {
+          key: "skills.mode",
+          type: "enum",
+          label: "Skill exposure",
+          options: [
+            { value: "judged", label: "judged (jev decides)" },
+            { value: "all", label: "all (no judging)" },
+            { value: "off", label: "off (bundled stripped)" },
+          ],
+          description: "judged = jev picks the skills exposed per session",
+        },
+        { key: "skills.threshold", type: "number", label: "Relevance threshold", min: 0, max: 1, description: "Minimum jev relevance for a skill to stay exposed" },
+        { key: "skills.maxSkills", type: "number", label: "Max skills exposed", min: 1 },
+        { key: "skills.recheck", type: "boolean", label: "Suggest newly relevant skills on later prompts" },
       ],
     },
   ],
@@ -129,9 +158,34 @@ function importLegacySkillDiscovery(): void {
     const discovery = raw?.unipi?.skills?.discovery;
     if (typeof discovery !== "boolean") return;
     if (settingsLayers("utility", process.cwd()).global) return; // engine value wins
-    setSettings("utility", { skills: { discovery } } as unknown as Record<string, unknown>, "global", process.cwd());
+    setSettings("utility", { skills: { mode: discovery ? "judged" : "off" } } as unknown as Record<string, unknown>, "global", process.cwd());
   } catch {
     // Absent/unreadable legacy value — default applies.
+  }
+}
+
+/**
+ * One-time in-file migration: stored `skills.discovery` boolean → `skills.mode`
+ * (false → "off", true/absent → "judged"). Runs per layer before reads so the
+ * merged settings never carry an ambiguous pair.
+ */
+export function migrateSkillsDiscovery(cwd: string): void {
+  for (const file of [globalSettingsPath("utility"), projectSettingsPath(cwd, "utility")]) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+        skills?: Record<string, unknown>;
+      };
+      const skills = raw?.skills;
+      if (!skills || typeof skills !== "object" || skills.mode !== undefined || skills.discovery === undefined) {
+        continue;
+      }
+      const mode = skills.discovery === false ? "off" : "judged";
+      const { discovery: _dropped, ...rest } = skills;
+      atomicWrite(file, JSON.stringify({ ...raw, skills: { ...rest, mode } }, null, 2));
+    } catch {
+      // Corrupt layer — defaults apply.
+    }
   }
 }
 
@@ -190,7 +244,21 @@ function normalizeSettings(parsed: any): UtilSettings {
       herdrSync: typeof parsed?.badge?.herdrSync === "boolean" ? parsed.badge.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
     },
     skills: {
-      discovery: typeof parsed?.skills?.discovery === "boolean" ? parsed.skills.discovery : DEFAULT_SKILL_DISCOVERY.discovery,
+      mode:
+        parsed?.skills?.mode === "judged" || parsed?.skills?.mode === "all" || parsed?.skills?.mode === "off"
+          ? parsed.skills.mode
+          : parsed?.skills?.discovery === false
+            ? "off"
+            : "judged",
+      threshold:
+        typeof parsed?.skills?.threshold === "number" && parsed.skills.threshold >= 0 && parsed.skills.threshold <= 1
+          ? parsed.skills.threshold
+          : DEFAULT_SKILL_DISCOVERY.threshold,
+      maxSkills:
+        typeof parsed?.skills?.maxSkills === "number" && parsed.skills.maxSkills >= 1
+          ? parsed.skills.maxSkills
+          : DEFAULT_SKILL_DISCOVERY.maxSkills,
+      recheck: typeof parsed?.skills?.recheck === "boolean" ? parsed.skills.recheck : DEFAULT_SKILL_DISCOVERY.recheck,
     },
   };
 }
