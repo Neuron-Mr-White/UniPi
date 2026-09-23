@@ -10,6 +10,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle, ColorMode } from "./types.js";
 import { UNIPI_SETTINGS_KEY, getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+import { getFooterRegistry } from "./registry/index.js";
 
 /** Default footer settings */
 export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
@@ -82,6 +83,8 @@ function writeSettingsFile(settings: Record<string, unknown>): boolean {
  */
 // Registered with the unified settings hub; the engine's migration imports
 // the legacy pi-settings unipi.footer block into the canonical layout once.
+// The "Segments…" page resolves sections from the LIVE FooterRegistry at
+// open time — it replaces the deleted /unipi:footer-settings overlay.
 registerSettings({
   namespace: "footer",
   label: "Footer",
@@ -101,6 +104,20 @@ registerSettings({
         { key: "glanceMode", type: "boolean", label: "Glance mode", description: "The input-box frame renderer" },
         { key: "showFullLabels", type: "boolean", label: "Full labels", description: "Labeled instead of compact segments" },
         {
+          key: "separator",
+          type: "enum",
+          label: "Separator",
+          description: "Segment divider style",
+          options: ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"],
+        },
+        {
+          key: "zoneSeparator",
+          type: "enum",
+          label: "Zone separator",
+          description: "Divider between zones (left · center · right)",
+          options: ["│", "╎", "·", "─", "none"],
+        },
+        {
           key: "iconStyle",
           type: "enum",
           label: "Icon style",
@@ -115,6 +132,29 @@ registerSettings({
           type: "enum",
           label: "Color mode",
           options: ["auto", "truecolor", "256", "mono"],
+        },
+      ],
+    },
+    {
+      title: "Segments",
+      fields: [
+        {
+          key: "segments-page",
+          type: "page",
+          label: "Segments…",
+          description: "Per-group and per-segment visibility",
+          sections: () =>
+            getFooterRegistry().getAllGroups().map((g) => ({
+              title: g.name,
+              fields: [
+                { key: `groups.${g.id}.show`, type: "boolean" as const, label: `Show ${g.name}` },
+                ...g.segments.map((seg) => ({
+                  key: `groups.${g.id}.segments.${seg.id}`,
+                  type: "boolean" as const,
+                  label: seg.label,
+                })),
+              ],
+            })),
         },
       ],
     },

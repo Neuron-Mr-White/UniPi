@@ -1,26 +1,20 @@
 /**
  * @pi-unipi/footer — Commands
  *
- * Footer commands: /unipi:footer (toggle), /unipi:footer <preset>,
- * /unipi:footer-settings.
+ * Footer commands: /unipi:footer (toggle) and /unipi:footer <preset>.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UNIPI_PREFIX, FOOTER_COMMANDS } from "@pi-unipi/core";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
-import { showFooterSettings } from "./tui/settings-tui.js";
 import { showFooterHelp } from "./help.js";
-import type { FooterGroup, FooterSegment } from "./types.js";
+import type { FooterSegment } from "./types.js";
 import { applyGlanceMode, type FooterState } from "./index.js";
 
 /**
  * Register footer commands.
  */
-export function registerCommands(
-  pi: ExtensionAPI,
-  state: FooterState,
-  groups?: FooterGroup[],
-): void {
+export function registerCommands(pi: ExtensionAPI, state: FooterState): void {
   // /unipi:footer — toggle on/off only
   pi.registerCommand(`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`, {
     description: "Toggle footer on/off",
@@ -64,44 +58,6 @@ export function registerCommands(
       }
 
       saveFooterSettings({ enabled: state.enabled });
-    },
-  });
-
-  // /unipi:footer-settings — open settings TUI
-  pi.registerCommand(`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_SETTINGS}`, {
-    description: "Open footer settings (toggle groups and segments)",
-    handler: async (_args, ctx) => {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("Footer settings requires a TUI", "warning");
-        return;
-      }
-
-      if (groups && groups.length > 0) {
-        showFooterSettings(ctx, groups, () => {
-          // Instant, focus-safe updates: mode flag + renderer reset. Widget
-          // renders read state.glanceMode every frame, so the strip/classic
-          // row swap is live immediately. The EDITOR component swap is
-          // deferred to overlay close — see .finally below.
-          const updated = loadFooterSettings();
-          state.renderer.setPreset(updated.preset);
-          state.glanceMode = updated.glanceMode !== false;
-          state.renderer.resetLayoutCache();
-        }).finally(() => {
-          // Overlay closed → focus back on the editor; safe to swap it now.
-          applyGlanceMode(state, ctx as unknown as Parameters<typeof applyGlanceMode>[1]);
-        });
-      } else {
-        // Fallback: show text summary
-        const settings = loadFooterSettings();
-        const info = [
-          `Enabled: ${settings.enabled}`,
-          `Preset: ${state.renderer.getPresetName()}`,
-          `Separator: ${settings.separator}`,
-          `Icon: ${settings.iconStyle}`,
-          `Groups: ${Object.entries(settings.groups).filter(([, g]) => g.show).map(([id]) => id).join(", ")}`,
-        ].join("\n");
-        ctx.ui.notify(info, "info");
-      }
     },
   });
 
