@@ -1,92 +1,101 @@
 # @pi-unipi/kanboard
 
-Visualization for workflow data. An HTTP server with htmx + Alpine.js UI shows your milestones, specs, plans, and tasks in a web browser. A TUI overlay gives you a kanban board without leaving Pi.
+The pi half of **kanboard v3**: a per-project board for deferred work. The
+storage, transition rules and web UI live in the Rust binary
+([`crates/kanboard`](../../crates/kanboard) — one writer for every change); this
+package is the terminal-side bridge: commands, the task runner, hub settings and
+the `kanboard` skill.
 
-Parses 8 document types from `docs/` — specs, plans, milestones, quick-work, debug, fix, chore, and review — and renders them as cards with progress indicators.
+Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-24-kanboard-v3-design.md).
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:kanboard` | Toggle kanboard server on/off |
-| `/unipi:kanboard-doctor` | Diagnose and fix parser issues |
+`/unipi:kanboard [open|onboard|add|work|stop|status]` (with arg completions):
 
-## Web Pages
+| Sub | What it does |
+|---|---|
+| *(none)* / `open` | Ensure the daemon (reuse a healthy one, else spawn `serve` detached) and print `http://127.0.0.1:<port>/p/<slug>`. The browser opens only when `openBrowser` is on. |
+| `onboard` | `project add` for this workspace, remembers the slug, reveals the skill, prints a 3-line how-to. Idempotent. |
+| `add <text>` | Quick capture into Backlog — no agent turn. |
+| `work` | Claim the next ready task and let the agent do it (below). |
+| `stop` | Finish the current task, then stop. |
+| `status` | Daemon pid/port, project counts, and the runner's current task. |
 
-### Milestones (`/`)
-- Phases with progress bars
-- Checklist items with status indicators (done/todo)
-- Collapsible sections per phase
+Any other text (`/unipi:kanboard buy milk`) is treated as a quick capture.
 
-### Workflow (`/workflow`)
-- Cards grouped by document type
-- Progress indicators per card
-- Filtering by status (All, To Do, In Progress, Done)
+## Runner (`work`)
 
-## TUI Overlay
+One job per session. The **runner owns the lifecycle transitions** the agent is
+not allowed to write:
 
-Two tabs accessible via the kanboard overlay:
+1. `claim-next --session <sid> --pid <ppid> --host <host> --gate <chainGate>` —
+   nothing ready → `Nothing ready (N waiting on deps, M blocked)`.
+2. **jev picks the mode** (one `choice` call over title + body ≤2000 chars):
+   `direct` (small clear change) · `plan` (needs an approved plan) · `goal`
+   (multi-turn objective with verification). jev null → `direct`; the choice is
+   logged to `~/.unipi/logs/kanboard.log` with `UNIPI_DEBUG_KANBOARD=1`.
+3. `set-run --mode`, then the task goes to the agent as a user message: title,
+   body, last 10 activity entries, each dependency with its status and last note,
+   and the rules (block with a comment to ask a question; never write
+   `in_review`/`done`/`cancelled`; work only on this task).
+   - **plan** → plan mode is entered through workflow's `unipi:plan-enter` runner
+     first; approval stays interactive; a discarded plan releases the task to Todo
+     with `plan discarded`.
+   - **goal** → long-horizon's `unipi:goal-start` runner starts a goal with the
+     task as the objective; the goal id is recorded with `set-run --goal` and
+     completion is read back with `unipi:goal-status`.
+4. Run end (a `/plan` settle after the last `agent_end`, once the agent reports
+   idle with no queued messages): the task is re-read — if the agent blocked it,
+   that is respected and reported (`▣ UNI-12 blocked: <comment>`) and the loop
+   continues; otherwise `release --to in_review --comment <last assistant text
+   ≤500 chars>`. `Esc` (aborted turn) → `release --to todo --comment "interrupted
+   by user"` and the loop stops. Session shutdown → `release --to todo` with
+   `session ended`.
+5. After each task: `✓ UNI-12 → In Review: <first line>`, then the next task is
+   claimed when `continue` is on (queued as a follow-up message; the event loop
+   is never blocked).
 
-- **Tasks** — Flat list of all tasks from all documents with status icons
-- **Board** — Kanban columns (To Do / In Progress / Done)
+Footer: `▣ UNI-12 · direct` while a task runs. The claimed task is persisted with
+`pi.appendEntry("unipi:kanboard-runner", …)`, so `/reload` or a resume offers to
+resume it or releases it to Todo.
 
-### Controls
+## Settings (hub section "Kanboard")
 
-| Key | Action |
-|-----|--------|
-| `j/k` | Navigate up/down |
-| `h/l` | Switch columns (Board tab) |
-| `Tab` or `b` | Switch between Tasks/Board tabs |
-| `t` | Switch to Tasks tab |
-| `gg/G` | Jump to top/bottom |
-| `q/Esc` | Close overlay |
+| Setting | Default | Notes |
+|---|---|---|
+| `chainGate` | `in_review` | `done` waits for a finished dependency |
+| `continue` | `true` | Claim the next task after each run |
+| `idleMin` | `10` | Passed to `serve --idle-min` |
+| `port` | `0` | Passed to `serve --port` (0 = OS-assigned) |
+| `archiveAfterDays` | `0` | > 0 → `archive-sweep --after-days N` on session start (fire and forget) |
+| `openBrowser` | `false` | Open the board in a browser on `open` |
+| *actions* | | `Open board…`, `Stop daemon` |
 
-## Special Triggers
+## Binary resolution
 
-Kanboard registers with the info-screen dashboard, showing document count, tasks done, total tasks, and completion percentage. The footer subscribes to kanboard registry data to display task stats in the status bar.
+1. `UNIPI_KANBOARD_BIN` (explicit path)
+2. `@pi-unipi/kanboard-<platform>-<arch>/bin/unipi-kanboard[.exe]` (K4 ships these)
+3. the dev build `<repo>/crates/kanboard/target/{release,debug}/unipi-kanboard`
 
-## Parser System
+Nothing found → every command reports
+`kanboard binary unavailable for <platform>-<arch>` and does nothing else.
 
-Kanboard parses 8 document types:
+**Agent bash env:** pi has no extension-level mechanism to add env vars to the
+`bash` tool (only replacing bash via `registerTool` + `BashToolOptions`, which
+would change tool schemas mid-session and break the prefix cache — spec principle
+4 forbids that). So the task prompt and the skill pass `--actor agent --project
+<slug>` explicitly and call the binary by absolute path.
 
-| Type | Directory | What's Parsed |
-|------|-----------|---------------|
-| Spec | `specs/` | `- [ ]` / `- [x]` checklist items |
-| Plan | `plans/` | `unstarted:` / `in-progress:` / `completed:` statuses |
-| Milestone | `MILESTONES.md` | Phase headers + checklist items |
-| Quick-work | `quick-work/` | Title + checklist items |
-| Debug | `debug/` | Headers + checklists |
-| Fix | `fix/` | Headers + checklists + related debug ref |
-| Chore | `chore/` | Chore steps as checklist items |
-| Review | `reviews/` | Review remarks as checklist items |
+## Skill
 
-Parsers are resilient — they collect warnings per file and return partial results. Warnings are surfaced in the kanboard-doctor skill.
+`skills/kanboard/SKILL.md` describes the CLI, the lanes, who may move what, and
+the rules agents must follow. It is a normal pi skill (jev skill-judging can
+reveal it on intent), and `onboard`/`work` force-reveal it by emitting
+`unipi:skills:reveal`, which utility turns into the usual append-only reveal
+message — the system prompt is never touched.
 
-## API Endpoints
+## Tests
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Milestone page |
-| GET | `/workflow` | Workflow page |
-| GET | `/api/milestones` | Milestone JSON data |
-| GET | `/api/workflow` | Workflow JSON data |
-| POST | `/api/docs/:type/:file/items/:line` | Update item status |
-
-## Configurables
-
-Default port configuration from `@pi-unipi/core`:
-
-```typescript
-KANBOARD_DEFAULTS = {
-  PORT: 8165,      // Starting port
-  MAX_PORT: 8175,  // Maximum port to try
-}
+```bash
+npm test -w packages/kanboard     # bin resolution, commands, runner, settings
 ```
-
-- Port allocation: tries 8165, increments on EADDRINUSE
-- PID file: `.unipi/kanboard.pid`
-- Graceful shutdown on SIGINT/SIGTERM
-
-## License
-
-MIT

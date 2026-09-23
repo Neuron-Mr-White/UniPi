@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, registerCommandRunner, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
@@ -158,6 +158,46 @@ export default function longHorizon(pi: ExtensionAPI): void {
   const graph = new GraphLedger(owner);
   registerGraphTools(pi, { ledger: graph });
   wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
+
+  // Cross-module entry points: another module (kanboard's runner) can start a
+  // goal and read its status without importing this package. Mirrors what the
+  // create_goal tool does, minus the proposal the continuation drains.
+  registerCommandRunner("unipi:goal-start", async (_ctx, args) => {
+    const objective = String((args as { objective?: unknown } | undefined)?.objective ?? "").trim();
+    if (!objective) return { ok: false, reason: "an objective is required" };
+    const existing = machine.get();
+    if (existing && existing.status === "paused") {
+      return { ok: false, reason: `a parked goal exists ("${existing.objective}") — resume or clear it first` };
+    }
+    try {
+      const result = machine.create(objective);
+      if (result.kind === "unfinished") {
+        return { ok: false, reason: `an unfinished goal is ${result.goal.status}` };
+      }
+      if (!owner.getActive()) {
+        owner.activate("goal", result.goal.objective);
+      } else if (owner.getActive()?.kind !== "goal") {
+        return {
+          ok: false,
+          reason: `the session is owned by a ${owner.getActive()?.kind} owner — finish or suspend it first`,
+        };
+      }
+      gate.setExplicit("goal");
+      return { ok: true, goalId: result.goal.goalId, objective: result.goal.objective };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  registerCommandRunner("unipi:goal-status", async (_ctx, args) => {
+    const goalId = (args as { goalId?: unknown } | undefined)?.goalId;
+    const goal = machine.get();
+    if (!goal) return { found: false, reason: "no goal in this session" };
+    if (typeof goalId === "string" && goalId.length > 0 && goal.goalId !== goalId) {
+      return { found: false, reason: `the active goal is ${goal.goalId}` };
+    }
+    return { found: true, goalId: goal.goalId, status: goal.status, objective: goal.objective };
+  });
   registerLongHorizonCommands(pi, gate, owner, ralph);
 
   // Crash recovery: repair, don't resume — reload durable state so the gate

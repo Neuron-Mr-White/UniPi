@@ -1,38 +1,24 @@
 {
   "name": "@pi-unipi/kanboard",
   "version": "3.0.0-alpha.0",
-  "description": "Visualization layer for unipi workflow \u2014 HTTP server with htmx/Alpine.js UI, modular parsers, TUI overlay, and kanban board",
+  "description": "Kanboard v3 — deferred-work board: CLI/daemon bridge, task runner and skill",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
   "author": "Neuron Mr White",
+  "scripts": {
+    "test": "npx tsx --test tests/**/*.test.ts"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
     "directory": "packages/kanboard"
   },
-  "keywords": [
-    "pi-package",
-    "pi-extension",
-    "pi-coding-agent",
-    "unipi",
-    "kanboard",
-    "kanban",
-    "visualization",
-    "milestones",
-    "workflow"
-  ],
+  "keywords": ["pi-package", "pi-extension", "unipi", "kanboard", "tasks"],
   "files": [
     "index.ts",
-    "commands.ts",
-    "types.ts",
-    "parser/**/*.ts",
-    "server/**/*.ts",
-    "tui/**/*.ts",
-    "ui/**/*.ts",
-    "ui/**/*.css",
-    "ui/**/*.js",
-    "skills/**/*",
+    "src/**/*.ts",
+    "skills/**/*.md",
     "README.md"
   ],
   "publishConfig": {
@@ -43,19 +29,11 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.86.0",
-    "@earendil-works/pi-tui": "^0.86.0"
-  },
-  "devDependencies": {
-    "@types/node": "^25.6.0",
-    "typescript": "^6.0.0"
+    "typebox": "^1.1.38"
   },
   "pi": {
-    "extensions": [
-      "./index.ts"
-    ],
-    "skills": [
-      "./skills"
-    ],
+    "extensions": ["./index.ts"],
+    "skills": ["./skills"],
     "prompts": [],
     "themes": []
   }

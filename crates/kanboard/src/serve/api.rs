@@ -47,7 +47,7 @@ impl ApiResponse {
             status,
             body: json!({
                 "ok": false,
-                "error": error.to_string(),
+                "error": ui_message(error),
                 "kind": match error {
                     Error::Usage(_) => "usage",
                     Error::NotFound(_) => "not_found",
@@ -73,6 +73,13 @@ impl IntoResponse for ApiResponse {
         parts.status = self.status;
         Ok(Response::from_parts(parts, body))
     }
+}
+
+/// The same rule message reads differently on the two surfaces: the CLI names
+/// the flag a human must type, the UI/API says what is missing. Only the CLI
+/// may mention `--comment`.
+pub fn ui_message(error: &Error) -> String {
+    error.to_string().replace("requires --comment", "requires a comment")
 }
 
 /// Rule violations are client errors: 404 for missing things, 400 otherwise.
@@ -519,4 +526,21 @@ pub fn claim_for_runner(
 ) -> Result<Value, Error> {
     let _ = mode;
     commands::claim_next(layout, project, gate(), args, chrono::Utc::now())
+}
+
+#[cfg(test)]
+mod phrasing_tests {
+    use super::*;
+
+    #[test]
+    fn ui_messages_do_not_name_cli_flags() {
+        let error = Error::rule("in_review → todo requires --comment (rework note)");
+        assert_eq!(
+            ui_message(&error),
+            "in_review → todo requires a comment (rework note)"
+        );
+        // A message without a flag is untouched.
+        let other = Error::rule("todo → in_progress is system only — claim it with `claim-next`");
+        assert_eq!(ui_message(&other), other.to_string());
+    }
 }

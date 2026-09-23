@@ -35,7 +35,7 @@ export const PACKAGE_ORDER: string[] = [
 ];
 
 // ─── Command Registry ────────────────────────────────────────────────
-/** Mapping of full command name → package name (49 verified commands) */
+/** Mapping of full command name → package name (48 verified commands) */
 export const COMMAND_REGISTRY: Record<string, string> = {
   // workflow (2 commands)
   "unipi:plan":           "workflow",
@@ -114,7 +114,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // kanboard (2 commands)
   "unipi:kanboard":          "kanboard",
-  "unipi:kanboard-doctor":   "kanboard",
 
   // footer (3 commands)
   "unipi:footer":            "footer",
@@ -161,8 +160,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:cleanup":    "Clean up old sessions and cache",
   "unipi:env":        "Show environment info",
   "unipi:doctor":     "Run diagnostics",
-  "unipi:kanboard":        "Start the kanboard visualization server",
-  "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
+  "unipi:kanboard":        "Kanboard — capture tasks, run them, open the board",
 
   "unipi:settings": "Configure all unipi modules in one panel",
 

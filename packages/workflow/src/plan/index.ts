@@ -139,6 +139,7 @@ export function disablePlanMode(
   emitEvent(pi, UNIPI_EVENTS.PLAN_MODE_CHANGED, {
     active: false,
     planFile: displayPlanPath(ctx.cwd, planFile),
+    reason,
   });
   if (reason !== "approved") {
     const note = reason === "discarded" ? "[plan mode off — plan discarded]" : "[plan mode off]";
@@ -312,5 +313,22 @@ export function registerPlanMode(pi: ExtensionAPI): void {
     const context = ctx as ExtensionContext | undefined;
     if (!context) return;
     disablePlanMode(pi, context);
+  });
+
+  // Cross-module entry points (kanboard's runner drives plan mode through these,
+  // so it needs no dependency on this package).
+  registerCommandRunner("unipi:plan-enter", async (ctx) => {
+    const context = ctx as ExtensionContext | undefined;
+    if (!context) return { ok: false, reason: "no context" };
+    if (currentPlanState(sessionId(context)).active) return { ok: true, alreadyActive: true };
+    const planFile = enablePlanMode(pi, context);
+    return { ok: true, planFile };
+  });
+
+  registerCommandRunner("unipi:plan-exit", async (ctx) => {
+    const context = ctx as ExtensionContext | undefined;
+    if (!context) return { ok: false, reason: "no context" };
+    disablePlanMode(pi, context);
+    return { ok: true };
   });
 }

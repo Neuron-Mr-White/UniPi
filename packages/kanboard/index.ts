@@ -1,71 +1,157 @@
 /**
- * @pi-unipi/kanboard — Extension entry
+ * @pi-unipi/kanboard — pi extension.
  *
- * Visualization layer for unipi workflow data.
- * HTTP server with htmx + Alpine.js UI, modular parsers, TUI overlay, and kanban board.
+ * Bridges the terminal to the board: `/unipi:kanboard` (open/onboard/add/work/
+ * stop/status), the runner that owns claim → In Progress and run-end → In Review,
+ * the hub settings, and the kanboard skill. The board itself is written by the
+ * Rust binary (`crates/kanboard`); this extension never edits task files.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { MODULES, KANBOARD_COMMANDS } from "@pi-unipi/core";
-import { registerCommands } from "./commands.js";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  MODULES,
+  UNIPI_EVENTS,
+  emitEvent,
+  getPackageVersion,
+  initUnipiDirs,
+  registerCommandRunner,
+  getSettings,
+} from "@pi-unipi/core";
 
-/** Package version */
-const VERSION = "0.1.0";
+import { openCli, type KanboardCli } from "./src/bin.js";
+import {
+  registerKanboardCommand,
+  runOpen,
+  runStopDaemon,
+  type CommandDeps,
+} from "./src/commands.js";
+import { createDebugLog, createRunner, registerPlanEventListener, type Runner } from "./src/runner.js";
+import {
+  ACTION_OPEN,
+  ACTION_STOP_DAEMON,
+  readKanboardSettings,
+  registerKanboardSettings,
+} from "./src/settings.js";
 
-export default function (pi: ExtensionAPI): void {
+const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
-  // Register commands
-  registerCommands(pi);
+/** Utility owns the frozen judged set, so kanboard asks it to reveal the skill. */
+export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
+export const KANBOARD_SKILL = "kanboard";
 
-  // Note: Badge generation on first message is handled by the utility module.
-  // Kanboard no longer manages badge generation to avoid duplication.
+export default function (pi: ExtensionAPI) {
+  const debug = createDebugLog();
+  registerKanboardSettings();
 
-  // Register info-screen group
-  const registry = globalThis.__unipi_info_registry;
-  if (registry) {
-    registry.registerGroup({
-      id: "kanboard",
-      name: "Kanboard",
-      icon: "📋",
-      priority: 50,
-      config: {
-        showByDefault: true,
-        stats: [
-          { id: "status", label: "Server Status", show: true },
-          { id: "url", label: "URL", show: true },
-          { id: "docs", label: "Documents", show: true },
-          { id: "tasks", label: "Tasks", show: true },
-        ],
-      },
-      dataProvider: async () => {
-        const { createDefaultRegistry } = await import("./parser/index.js");
-        const registry = await createDefaultRegistry();
-        const docs = registry.parseAll("docs");
-        const totalItems = docs.reduce((sum, d) => sum + d.items.length, 0);
-        const doneItems = docs.reduce(
-          (sum, d) => sum + d.items.filter((i) => i.status === "done").length,
-          0,
-        );
+  let cli: KanboardCli | null = null;
+  let unavailable: string | null = null;
+  let runner: Runner | null = null;
 
-        return {
-          status: {
-            value: "Ready",
-            detail: "Server not running (use /unipi:kanboard to start)",
-          },
-          url: {
-            value: "—",
-            detail: "Start server to get URL",
-          },
-          docs: {
-            value: String(docs.length),
-            detail: `${docs.length} documents parsed`,
-          },
-          tasks: {
-            value: `${doneItems}/${totalItems}`,
-            detail: `${totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0}% complete`,
-          },
-        };
-      },
+  const projectSlug = (): string => {
+    const fromEnv = process.env.UNIPI_KANBOARD_PROJECT?.trim();
+    if (fromEnv) return fromEnv;
+    try {
+      const settings = getSettings("kanboard", process.cwd()) as { slug?: string };
+      return typeof settings.slug === "string" ? settings.slug : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const buildDeps = (): CommandDeps => {
+    const client = cli;
+    return {
+      cli: client,
+      unavailable,
+      settings: () => readKanboardSettings(process.cwd()),
+      revealSkill,
+      work: (ctx) => runner?.work(ctx) ?? Promise.resolve(),
+      stop: (ctx) => runner?.stop(ctx),
+      status: () => runner?.status() ?? { taskId: null, mode: null, phase: "idle" },
+      debug,
+    };
+  };
+
+  const revealSkill = (ctx: ExtensionContext | { cwd?: string }): void => {
+    // Append-only reveal (never the system prompt), so the prefix cache holds.
+    emitEvent(pi, SKILL_REVEAL_EVENT, { names: [KANBOARD_SKILL], ctx });
+    debug(`reveal requested for ${KANBOARD_SKILL}`);
+  };
+
+  const attach = (ctx: ExtensionContext): boolean => {
+    if (cli) return true;
+    const opened = openCli();
+    if ("error" in opened) {
+      unavailable = opened.error;
+      return false;
+    }
+    cli = opened;
+    unavailable = null;
+    debug(`binary: ${opened.binary.path} (${opened.binary.source})`);
+    if (!runner) {
+      runner = createRunner({
+        pi,
+        cli,
+        project: projectSlug,
+        cwd: ctx.cwd,
+        settings: () => readKanboardSettings(ctx.cwd),
+        debug,
+      });
+      registerPlanEventListener(pi, runner);
+    }
+    return true;
+  };
+
+  registerKanboardCommand(pi, buildDeps());
+
+  registerCommandRunner(ACTION_OPEN, async (ctx) => {
+    const context = ctx as ExtensionContext | undefined;
+    if (!context?.ui) return;
+    if (!attach(context)) {
+      context.ui.notify(`kanboard: ${unavailable}`, "warning");
+      return;
+    }
+    await runOpen(buildDeps(), context);
+  });
+
+  registerCommandRunner(ACTION_STOP_DAEMON, async (ctx) => {
+    const context = ctx as ExtensionContext | undefined;
+    if (!context?.ui) return;
+    await runStopDaemon(buildDeps(), context);
+  });
+
+  pi.on("session_start", async (_event, ctx) => {
+    initUnipiDirs();
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+      name: MODULES.KANBOARD,
+      version: VERSION,
+      commands: ["kanboard"],
+      tools: [],
     });
-  }
+
+    if (!attach(ctx as unknown as ExtensionContext)) {
+      debug(`unavailable: ${unavailable}`);
+      return;
+    }
+    const client = cli!;
+    const settings = readKanboardSettings(ctx.cwd);
+    if (settings.archiveAfterDays > 0) {
+      // Fire and forget: sweeping must never delay startup.
+      void client
+        .run(["archive-sweep", "--after-days", String(settings.archiveAfterDays)])
+        .then((payload) => debug(`archive-sweep: ${JSON.stringify(payload)}`))
+        .catch((error) => debug(`archive-sweep failed: ${error instanceof Error ? error.message : String(error)}`));
+    }
+    await runner?.onSessionStart(ctx as unknown as ExtensionContext);
+  });
+
+  pi.on("agent_end", async (event, ctx) => {
+    runner?.onAgentEnd(event as { messages?: unknown[] }, ctx as unknown as ExtensionContext);
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    await runner?.onSessionShutdown(ctx as unknown as ExtensionContext);
+  });
 }

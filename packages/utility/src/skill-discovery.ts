@@ -358,7 +358,60 @@ function currentState(ctx: ExtensionContext): SessionSkillsState {
  * MUTATING that array to the frozen exposed set — the system prompt stays
  * byte-identical on every later turn (prefix-cache safe).
  */
+/** Event another module emits to force-reveal a skill by name (append-only). */
+export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
+
+/**
+ * Reveal skills on request from another module (kanboard's onboard/work).
+ * Append-only: the agent gets a message naming the skill and where it lives —
+ * the system prompt is never touched, so the prefix cache holds. Returns the
+ * names that were newly revealed.
+ */
+export function revealSkillsByName(
+  pi: ExtensionAPI,
+  names: readonly string[],
+  location: string,
+  description: string,
+): string[] {
+  const state = sessionState;
+  const wanted = names.filter((name) => name.trim().length > 0);
+  if (!state) return wanted;
+  const reveal = (name: string): boolean => {
+    if (state.revealed.has(name)) return false;
+    state.revealed.add(name);
+    state.hidden = state.hidden.filter((entry) => entry.name !== name);
+    return true;
+  };
+  const newly = wanted.filter(reveal);
+  if (newly.length === 0) return [];
+  pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: newly });
+  pi.sendMessage(
+    {
+      customType: "unipi-skills-revealed",
+      content:
+        `Skills revealed for this session:\n` +
+        newly.map((name) => `- ${name} \u2014 ${description} (${location})`).join("\n") +
+        `\nRead a skill's SKILL.md before using it.`,
+      display: true,
+    },
+    { triggerTurn: false },
+  );
+  return newly;
+}
+
 export function registerSkillJudging(pi: ExtensionAPI): void {
+  // The fake pi in tests has no event bus; registration must still succeed.
+  pi.events?.on?.(SKILL_REVEAL_EVENT, (payload: unknown) => {
+    const data = payload as { names?: unknown; location?: unknown; description?: unknown } | undefined;
+    if (!Array.isArray(data?.names)) return;
+    revealSkillsByName(
+      pi,
+      data.names.map(String),
+      typeof data.location === "string" ? data.location : "skills/",
+      typeof data.description === "string" ? data.description : "revealed on request",
+    );
+  });
+
   pi.on("session_start", (_event, ctx) => {
     // resume/fork/new: re-derive state from the (possibly branched) entries.
     restoreSkillsSessionState(ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());

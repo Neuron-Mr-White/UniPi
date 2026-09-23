@@ -158,10 +158,12 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
     assert_eq!(response.status, 409, "{}", response.body);
     let payload = response.json();
     assert_eq!(payload["needsComment"], true);
+    // The UI/API names what is missing; only the CLI talks about `--comment`.
     assert_eq!(
         payload["error"],
-        "in_review → todo requires --comment (rework note)"
+        "in_review → todo requires a comment (rework note)"
     );
+    assert!(!payload["error"].as_str().unwrap().contains("--comment"));
 
     // With the comment it goes through and lands in the file.
     let response = http(
