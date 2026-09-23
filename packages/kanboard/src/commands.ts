@@ -211,7 +211,7 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
   const slug = currentSlug();
   if (slug) {
     try {
-      const tasks = await client!.run<KanboardTask[]>(["list"], {});
+      const { tasks, problems } = await client!.run<{ tasks: KanboardTask[]; problems?: unknown[] }>(["list"], {});
       const counts = tasks.reduce<Record<string, number>>((acc, task) => {
         acc[task.status] = (acc[task.status] ?? 0) + 1;
         return acc;
@@ -221,6 +221,9 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
           .map(([status, count]) => `${status} ${count}`)
           .join(", ") || "empty"})`,
       );
+      if (problems && problems.length > 0) {
+        lines.push(`⚠ ${problems.length} task file(s) need repair — unipi-kanboard validate --fix`);
+      }
     } catch {
       lines.push(`project: ${slug} (unreadable board)`);
     }

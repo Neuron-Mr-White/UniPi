@@ -271,7 +271,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
       cwd: workspace,
       encoding: "utf-8",
     });
-    assert.ok(JSON.parse(tasks).length >= 1);
+    assert.ok(JSON.parse(tasks).tasks.length >= 1);
     const swept = execFileSync(debugBinary, ["archive-sweep", "--after-days", "7", "--json"], {
       env: { ...process.env, UNIPI_KANBOARD_HOME: home },
       cwd: workspace,

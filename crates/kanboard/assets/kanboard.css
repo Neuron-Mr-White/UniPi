@@ -162,3 +162,12 @@ button.primary { background: var(--accent-soft); border-color: var(--accent); co
 @media (max-width: 900px) {
   .board { grid-auto-columns: minmax(220px, 80vw); }
 }
+
+/* Repair banner: a hand-edited task file must be visible, not fatal. */
+.problems {
+  margin: 1rem 1rem 0; padding: .6rem .9rem; border: 1px solid var(--danger);
+  border-radius: 8px; background: var(--warn-soft); color: var(--text);
+}
+.problems strong { color: var(--danger); }
+.problems ul { margin: .4rem 0; padding-left: 1.2rem; font-size: .85rem; }
+.problems code { background: var(--panel-2); padding: 0 .3rem; border-radius: 4px; }

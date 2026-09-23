@@ -233,8 +233,8 @@ fn create_and_read_tasks_over_the_api() {
 
     // It is on disk (the CLI sees it) and in the listing.
     let list = cli(&fixture, &["list", "--json"]);
-    let tasks: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
-    assert!(tasks
+    let payload: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
+    assert!(payload["tasks"]
         .as_array()
         .unwrap()
         .iter()
@@ -242,7 +242,8 @@ fn create_and_read_tasks_over_the_api() {
 
     let listed = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("list");
     assert_eq!(listed.status, 200);
-    assert_eq!(listed.json().as_array().unwrap().len(), 3);
+    assert_eq!(listed.json()["tasks"].as_array().unwrap().len(), 3, "{}", listed.body);
+    assert!(listed.json()["problems"].as_array().unwrap().is_empty());
 
     // `ready` filtering works through the API too.
     let ready = http(
@@ -253,7 +254,7 @@ fn create_and_read_tasks_over_the_api() {
     )
     .expect("ready");
     // Backlog tasks are never ready; the two todo tasks are.
-    assert_eq!(ready.json().as_array().unwrap().len(), 2);
+    assert_eq!(ready.json()["tasks"].as_array().unwrap().len(), 2);
 }
 
 #[test]
@@ -308,6 +309,60 @@ fn idle_shutdown_removes_daemon_json() {
     let exited = child.wait().expect("wait");
     assert!(exited.success(), "idle shutdown is a clean exit: {exited:?}");
     assert!(!info_path.exists(), "daemon.json is removed on idle shutdown");
+}
+
+#[test]
+fn a_corrupt_task_file_shows_up_as_a_repair_banner_and_keeps_the_board_alive() {
+    let fixture = fixture_with_tasks();
+    let task = fixture.tasks().into_iter().next().unwrap();
+    let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
+    let text = std::fs::read_to_string(&path).unwrap().replace("status: todo", "status: nonsense");
+    std::fs::write(&path, text).unwrap();
+
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let slug = &fixture.project.slug;
+
+    // The API keeps serving the readable tasks and names the problem.
+    let listed = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("list");
+    assert_eq!(listed.status, 200, "{}", listed.body);
+    assert_eq!(listed.json()["tasks"].as_array().unwrap().len(), 1);
+    let problem = &listed.json()["problems"][0];
+    assert_eq!(problem["line"], 4);
+    assert!(problem["error"].as_str().unwrap().contains("unknown status"));
+
+    // The board page shows a red banner instead of failing.
+    let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
+    assert_eq!(board.status, 200);
+    assert!(board.body.contains("class=\"problems\""), "banner elements present");
+    assert!(board.body.contains("1 task file need repair"), "{}", board.body.contains("need repair"));
+    assert!(board.body.contains("validate --fix"));
+    // …and still renders the readable task (the corrupt one is skipped).
+    let readable = fixture.tasks().into_iter().next().unwrap();
+    assert!(board.body.contains(&format!("data-id=\"{}\"", readable.id)), "readable task rendered");
+}
+
+#[test]
+fn writing_to_a_corrupt_file_via_the_api_is_refused() {
+    let fixture = fixture_with_tasks();
+    let task = fixture.tasks().into_iter().next().unwrap();
+    let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
+    let text = std::fs::read_to_string(&path).unwrap().replace("status: todo", "status: nonsense");
+    std::fs::write(&path, text).unwrap();
+
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let slug = &fixture.project.slug;
+    let response = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/note", task.id),
+        Some(r#"{"text":"hello"}"#),
+    )
+    .expect("note");
+    assert_eq!(response.status, 400);
+    let error = response.json()["error"].as_str().unwrap().to_string();
+    assert!(error.contains("is unreadable"), "{error}");
+    assert!(error.contains("validate --fix"), "{error}");
+    assert!(!error.contains("--comment"), "UI messages keep CLI flags out");
 }
 
 #[test]

@@ -202,9 +202,11 @@ pub async fn projects() -> TcResult<ApiResponse> {
 pub fn project_summary(state: &AppState, project: &Project) -> Value {
     let mut counts = serde_json::Map::new();
     let mut total = 0usize;
+    let mut problems = Vec::new();
     if let Ok(opened) = crate::board::Board::open(&state.layout, project.clone())
-        && let Ok(task_list) = opened.tasks()
+        && let Ok((task_list, found)) = opened.state()
     {
+        problems = found;
         total = task_list.len();
         for status in Status::ALL {
             counts.insert(
@@ -221,6 +223,7 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
         "nextId": project.next_id,
         "counts": counts,
         "total": total,
+        "problems": commands::problems_json(&problems),
     })
 }
 

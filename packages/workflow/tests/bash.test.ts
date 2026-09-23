@@ -4,7 +4,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { classifyBash, dangerousReason, isReadOnlyCommand, parseBashCommands, tokenize } from "../src/permission/bash.js";
+import { classifyBash, dangerousReason, isKanboardAgentCommand, isReadOnlyCommand, parseBashCommands, tokenize } from "../src/permission/bash.js";
 
 describe("parseBashCommands", () => {
   it("splits on &&, ||, ;, | and newlines", () => {
@@ -182,5 +182,48 @@ describe("classifyBash", () => {
 
   it("an empty command is read-only", () => {
     assert.equal(classifyBash("   ").kind, "read_only");
+  });
+});
+
+describe("kanboard CLI allowance", () => {
+  const kanboard = [
+    "unipi-kanboard --actor agent --project uni-123456 list --json",
+    "/home/coffee/crates/kanboard/target/release/unipi-kanboard --actor agent move UNI-3 blocked --comment 'need the format'",
+    "unipi-kanboard --project p-1 --actor agent note UNI-3 'progress'",
+    "unipi-kanboard.exe --actor agent list",
+  ];
+  for (const command of kanboard) {
+    it(`allows: ${command}`, () => {
+      assert.equal(isKanboardAgentCommand(command), true);
+      assert.equal(classifyBash(command).kind, "kanboard");
+    });
+  }
+
+  const refused = [
+    "unipi-kanboard --actor user move UNI-3 done",
+    "unipi-kanboard --actor system release UNI-3 --to todo --comment x",
+    "unipi-kanboard list",
+    "unipi-kanboard.exe --actor user list",
+    "sudo unipi-kanboard --actor agent list",
+  ];
+  for (const command of refused) {
+    it(`does not allow: ${command}`, () => {
+      assert.equal(isKanboardAgentCommand(command), false);
+      assert.notEqual(classifyBash(command).kind, "kanboard");
+    });
+  }
+
+  it("a compound command keeps the normal rules for the other parts", () => {
+    // The board part is fine, `npm install` is not → jev's business.
+    assert.equal(classifyBash("unipi-kanboard --actor agent list && npm install").kind, "unknown");
+    // Read-only + board CLI is allowed as a whole.
+    assert.equal(classifyBash("ls && unipi-kanboard --actor agent list").kind, "kanboard");
+    // A dangerous part still wins.
+    assert.equal(classifyBash("unipi-kanboard --actor agent list && rm -rf /tmp/x").kind, "dangerous");
+  });
+
+  it("plan mode does not inherit the allowance", () => {
+    // Plan mode only accepts read-only commands; the board CLI is not one.
+    assert.equal(isReadOnlyCommand("unipi-kanboard --actor agent list"), false);
   });
 });

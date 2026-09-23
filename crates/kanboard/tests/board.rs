@@ -538,3 +538,76 @@ fn reserve_id_skips_ids_that_already_exist_on_disk() {
     assert_ne!(reserved, task.id);
     assert_eq!(reserved, "FIX-2");
 }
+
+/// A single hand-edited file must not take the board offline (K3 live finding).
+#[test]
+fn a_corrupt_file_no_longer_blocks_the_board() {
+    let fixture = Fixture::new();
+    let good = fixture.add_with("readable task", Status::Todo, Priority::None, &[]);
+    let also_good = fixture.add_with("another readable task", Status::Backlog, Priority::None, &[]);
+    let broken = fixture.add("broken task");
+    // Corrupt it the way a hand edit does: an unknown status.
+    let path = fixture.layout.task_path(&fixture.project.slug, &broken.id);
+    let text = std::fs::read_to_string(&path).unwrap().replace("status: backlog", "status: nonsense");
+    std::fs::write(&path, text).unwrap();
+
+    // list still works and reports the problem.
+    let payload = commands::list(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        None,
+        false,
+    )
+    .expect("list works with a corrupt file");
+    let tasks = payload["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2, "the readable tasks are listed");
+    assert_eq!(payload["problems"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["problems"][0]["line"], 4, "the bad status line");
+    assert!(payload["problems"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("unknown status"));
+
+    // Writes to the corrupt file are refused with a repair pointer.
+    let err = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &broken.id,
+        Status::Todo,
+        None,
+    )
+    .unwrap_err();
+    let message = err.to_string();
+    assert!(message.starts_with(&format!("{} is unreadable:", broken.id)), "{message}");
+    assert!(message.contains("line 4"), "{message}");
+    assert!(message.contains("validate --fix"), "{message}");
+
+    // add / move / claim-next all keep working on the valid tasks.
+    fixture.add("added while one file is broken");
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &also_good.id,
+        Status::Todo,
+        None,
+    )
+    .expect("move works");
+    let claimed = fixture.claim_next("s", 1);
+    assert!(claimed["task"].is_object(), "claim-next ignores the corrupt file");
+    assert_eq!(claimed["task"]["id"], good.id.as_str());
+}
+
+#[test]
+fn validate_still_reports_every_problem_and_can_fix_them() {
+    let fixture = Fixture::new();
+    let task = fixture.add("to be repaired");
+    let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
+    let text = std::fs::read_to_string(&path).unwrap().replace("status: backlog", "status: nope");
+    std::fs::write(&path, text).unwrap();
+
+    let result = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
+    assert_eq!(result.problems.len(), 1);
+}

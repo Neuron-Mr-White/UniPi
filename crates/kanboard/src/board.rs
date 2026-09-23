@@ -27,22 +27,21 @@ impl<'a> Board<'a> {
         self.layout.task_path(&self.project.slug, id)
     }
 
-    /// Every task file, parsed. Problems stop the caller: the board must be
-    /// readable before anything is written to it.
+    /// Every READABLE task. Unparseable files are skipped (and reported by
+    /// [`Board::problems`]) rather than taking the whole board offline: one
+    /// hand-edited file must not block every command.
     pub fn tasks(&self) -> Result<Vec<Task>> {
-        let (tasks, problems) = self.scan()?;
-        if !problems.is_empty() {
-            return Err(Error::rule(format!(
-                "{} task file(s) failed to parse — run `unipi-kanboard validate`:\n{}",
-                problems.len(),
-                problems
-                    .iter()
-                    .map(|problem| format!("  {problem}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )));
-        }
-        Ok(tasks)
+        Ok(self.scan()?.0)
+    }
+
+    /// Parse problems found while loading (file, line, message).
+    pub fn problems(&self) -> Result<Vec<Problem>> {
+        Ok(self.scan()?.1)
+    }
+
+    /// Tasks plus the problems, for callers that show both (list, the hub, the UI).
+    pub fn state(&self) -> Result<(Vec<Task>, Vec<Problem>)> {
+        self.scan()
     }
 
     /// Parsed tasks plus per-file problems (used by `validate`).
@@ -67,18 +66,18 @@ impl<'a> Board<'a> {
                 .to_string_lossy()
                 .to_string();
             let (task, mut file_problems) = format::parse(&file, &text);
-            if file_problems.is_empty() {
-                if let Some(task) = task {
-                    if format::render(&task) != text {
-                        file_problems.push(
-                            Problem::new(&file, 1, "formatting differs from canonical form").fixable(true),
-                        );
-                    }
-                    tasks.push(task);
+            if file_problems.is_empty()
+                && let Some(task) = task
+            {
+                if format::render(&task) != text {
+                    file_problems.push(
+                        Problem::new(&file, 1, "formatting differs from canonical form").fixable(true),
+                    );
                 }
-            } else if let Some(task) = task {
                 tasks.push(task);
             }
+            // A file with problems is skipped entirely: acting on a
+            // half-understood task could move the wrong lane.
             problems.append(&mut file_problems);
         }
         Ok((tasks, problems))
@@ -91,14 +90,10 @@ impl<'a> Board<'a> {
         })?;
         let file = path.to_string_lossy().to_string();
         let (task, problems) = format::parse(&file, &text);
-        if !problems.is_empty() {
+        if let Some(first) = problems.first() {
             return Err(Error::rule(format!(
-                "{id} is not readable — run `unipi-kanboard validate`:\n{}",
-                problems
-                    .iter()
-                    .map(|problem| format!("  {problem}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                "{id} is unreadable: {} (line {}); run `unipi-kanboard validate --fix`",
+                first.message, first.line
             )));
         }
         task.ok_or_else(|| Error::rule(format!("{id} has no usable frontmatter")))

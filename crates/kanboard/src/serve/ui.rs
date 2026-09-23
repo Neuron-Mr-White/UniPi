@@ -251,13 +251,39 @@ async fn board_fragment_route(cx: &Cx) -> TcResult<ViewHandle> {
 #[component]
 async fn board_body(project: Option<&Project>) -> TcResult<impl View> {
     let state = state();
+    let mut problems: Vec<crate::error::Problem> = Vec::new();
     let tasks: Vec<Task> = project
         .and_then(|project| crate::board::Board::open(&state.layout, project.clone()).ok())
-        .and_then(|board| board.tasks().ok())
+        .and_then(|board| board.state().ok())
+        .map(|(tasks, found)| {
+            problems = found;
+            tasks
+        })
         .unwrap_or_default();
+    let problem_lines: Vec<String> = problems
+        .iter()
+        .map(|problem| format!("{}:{}: {}", problem.file, problem.line, problem.message))
+        .collect();
     let by_id: HashMap<String, Task> = tasks.iter().map(|task| (task.id.clone(), task.clone())).collect();
 
     Ok(view! {
+        <div>
+            if !problem_lines.is_empty() {
+                <div class="problems">
+                    <strong>(format!(
+                        "{} task file{} need repair:",
+                        problem_lines.len(),
+                        if problem_lines.len() == 1 { "" } else { "s" }
+                    ))</strong>
+                    <ul>
+                        for line in problem_lines.clone() {
+                            <li>(line)</li>
+                        }
+                    </ul>
+                    <div>"Run " <code>"unipi-kanboard validate --fix"</code> " to fix the formatting."</div>
+                </div>
+            }
+        </div>
         <div class="board">
             if project.is_none() {
                 <p class="empty">"Project not found."</p>

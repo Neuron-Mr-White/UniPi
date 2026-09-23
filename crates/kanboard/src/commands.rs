@@ -155,6 +155,19 @@ pub fn add(
     Ok(value)
 }
 
+/// `[{file, line, error}]` — the shape the CLI and the UI both report.
+pub fn problems_json(problems: &[crate::error::Problem]) -> Value {
+    json!(problems
+        .iter()
+        .map(|problem| json!({
+            "file": problem.file,
+            "line": problem.line,
+            "error": problem.message,
+            "fixable": problem.fixable,
+        }))
+        .collect::<Vec<_>>())
+}
+
 pub fn list(
     layout: &Layout,
     project: Project,
@@ -163,7 +176,7 @@ pub fn list(
     ready_only: bool,
 ) -> Result<Value> {
     let board = Board::open(layout, project)?;
-    let tasks = board.tasks()?;
+    let (tasks, problems) = board.state()?;
     let by_id = |id: &str| tasks.iter().find(|task| task.id == id).cloned();
 
     let mut selected: Vec<&Task> = tasks
@@ -192,7 +205,10 @@ pub fn list(
             value
         })
         .collect();
-    Ok(json!(items))
+    Ok(json!({
+        "tasks": items,
+        "problems": problems_json(&problems),
+    }))
 }
 
 pub fn show(layout: &Layout, project: Project, id: &str, gate: ChainGate) -> Result<Value> {

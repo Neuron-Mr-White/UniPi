@@ -208,8 +208,31 @@ export function dangerousReason(command: string, argv: string[] = tokenize(comma
   return null;
 }
 
+/**
+ * The board CLI run by an agent: `unipi-kanboard … --actor agent …`. Safe to
+ * run without a prompt in auto/full (the task runner taught the agent to call
+ * it), but never in ask mode and never for `--actor user|system`.
+ */
+export function isKanboardAgentCommand(command: string): boolean {
+  const argv = tokenize(command);
+  const head = argv[0];
+  if (!head) return false;
+  const bin = head.split("/").pop() ?? head;
+  if (bin !== "unipi-kanboard" && bin !== "unipi-kanboard.exe") return false;
+  let actor: string | null = null;
+  for (let index = 1; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === "--actor") {
+      actor = argv[index + 1] ?? null;
+      continue;
+    }
+    if (arg.startsWith("--actor=")) actor = arg.slice("--actor=".length);
+  }
+  return actor === "agent";
+}
+
 export interface BashClassification {
-  kind: "dangerous" | "read_only" | "unknown";
+  kind: "dangerous" | "read_only" | "kanboard" | "unknown";
   /** Short human-readable reason (used in prompts and the debug log). */
   reason: string;
 }
@@ -226,6 +249,14 @@ export function classifyBash(input: string): BashClassification {
   if (ambiguous) return { kind: "unknown", reason: "command substitution or unbalanced quotes" };
   if (commands.every((command) => isReadOnlyCommand(command))) {
     return { kind: "read_only", reason: "read-only command" };
+  }
+  // Every part must be either read-only or the agent's board CLI; a compound
+  // command with anything else keeps the normal rules (jevy/ask).
+  if (
+    commands.every((command) => isReadOnlyCommand(command) || isKanboardAgentCommand(command)) &&
+    commands.some((command) => isKanboardAgentCommand(command))
+  ) {
+    return { kind: "kanboard", reason: "kanboard CLI (--actor agent)" };
   }
   return { kind: "unknown", reason: "not a known read-only command" };
 }

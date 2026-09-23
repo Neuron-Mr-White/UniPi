@@ -134,7 +134,9 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   async function countWaiting(): Promise<{ waiting: number; blocked: number }> {
     try {
-      const tasks = await cli.run<KanboardTask[]>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } });
+      const { tasks } = await cli.run<{ tasks: KanboardTask[] }>(["list"], {
+        extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
+      });
       return {
         waiting: tasks.filter((task) => task.status === "todo").length,
         blocked: tasks.filter((task) => task.status === "blocked").length,
@@ -249,9 +251,9 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
     state.mode = mode;
 
-    const all = await cli
-      .run<KanboardTask[]>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
-      .catch(() => [] as KanboardTask[]);
+    const { tasks: all } = await cli
+      .run<{ tasks: KanboardTask[] }>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
+      .catch(() => ({ tasks: [] as KanboardTask[] }));
 
     // Record the mode (and the goal id once it exists) on the task itself.
     await cli

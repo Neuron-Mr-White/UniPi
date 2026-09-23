@@ -118,6 +118,11 @@ export async function decideToolCall(input: ToolCallInput, deps: DecideDeps): Pr
       return { action: "ask", reason: `dangerous: ${verdict.reason}`, subject };
     }
 
+    if (verdict.kind === "kanboard") {
+      if (deps.mode === "ask" && deps.hasUI) return { action: "ask", reason: "ask mode", subject };
+      return { action: "allow", reason: verdict.reason };
+    }
+
     if (verdict.kind === "read_only") {
       if (deps.mode === "ask" && deps.hasUI) return { action: "ask", reason: "ask mode", subject };
       return { action: "allow", reason: verdict.reason };

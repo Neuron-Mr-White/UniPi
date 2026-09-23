@@ -142,6 +142,25 @@ describe("bash matrix", () => {
     assert.equal(called, false, "jev must not be consulted when disabled");
   });
 
+  it("the agent's kanboard CLI is allowed in auto and full, asks in ask mode", async () => {
+    const command = "unipi-kanboard --actor agent --project p-1 move UNI-3 blocked --comment 'need format'";
+    for (const mode of ["auto", "full"] as PermissionMode[]) {
+      const decision = await decideToolCall({ toolName: "bash", subject: command }, deps({ mode }));
+      assert.equal(decision.action, "allow", `${mode}: ${JSON.stringify(decision)}`);
+      assert.match(decision.action === "allow" ? decision.reason : "", /kanboard CLI/);
+    }
+    const asked = await decideToolCall({ toolName: "bash", subject: command }, deps({ mode: "ask" }));
+    assert.equal(asked.action, "ask");
+  });
+
+  it("a kanboard CLI call with --actor user is not covered by the allowance", async () => {
+    const decision = await decideToolCall(
+      { toolName: "bash", subject: "unipi-kanboard --actor user move UNI-3 done" },
+      deps({ askJevRisk: riskyJev }),
+    );
+    assert.equal(decision.action, "ask", "normal rules apply");
+  });
+
   it("full mode never asks", async () => {
     const decision = await decideToolCall({ toolName: "bash", subject: "npm publish" }, deps({ mode: "full" }));
     assert.equal(decision.action, "allow");

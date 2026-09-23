@@ -87,7 +87,8 @@ fn list_ready_uses_the_gate_flag() {
     // Nothing is ready: the dep has no deps but… it *is* ready, so only the
     // dependent is filtered out.
     let run = kb(&fixture, &["list", "--ready", "--json"]);
-    let ids: Vec<&str> = run.json.as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
+    let items = run.json["tasks"].as_array().unwrap();
+    let ids: Vec<&str> = items.iter().map(|t| t["id"].as_str().unwrap()).collect();
     assert_eq!(ids, vec![dep.id.as_str()]);
     assert!(!ids.contains(&dependent.id.as_str()));
 
@@ -105,11 +106,16 @@ fn list_ready_uses_the_gate_flag() {
     .unwrap();
 
     let run = kb(&fixture, &["list", "--ready", "--json"]);
-    let ids: Vec<&str> = run.json.as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = run.json["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
     assert_eq!(ids, vec![dependent.id.as_str()], "in_review satisfies the default gate");
 
     let run = kb(&fixture, &["list", "--ready", "--gate", "done", "--json"]);
-    assert!(run.json.as_array().unwrap().is_empty(), "nothing reached done");
+    assert!(run.json["tasks"].as_array().unwrap().is_empty(), "nothing reached done");
 }
 
 #[test]
@@ -380,11 +386,10 @@ fn eight_processes_claiming_three_tasks_produce_exactly_three_claims() {
 fn a_corrupt_task_file_stops_writes_with_a_pointer_to_validate() {
     let fixture = Fixture::new();
     common::write_task_file(&fixture, "FIX-900", "not a task at all\n");
+    // A corrupt file no longer stops the board; it is reported instead.
     let run = kb(&fixture, &["list", "--json"]);
-    assert_eq!(run.code, 1);
-    let error = run.json["error"].as_str().unwrap();
-    assert!(error.contains("failed to parse"), "{error}");
-    assert!(error.contains("validate"), "{error}");
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.json["problems"].as_array().unwrap().len(), 1);
 }
 
 #[test]
