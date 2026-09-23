@@ -185,12 +185,14 @@ describe("Badge generation — event bus (CRITICAL FIX)", () => {
     );
   });
 
-  it("workflow listens for MODULE_READY via pi.events.on (NOT pi.on)", () => {
+  it("workflow still announces itself via pi.events.emit (no MODULE_READY listener left)", () => {
     const src = readSource("packages/workflow/index.ts");
 
+    // The ralph-detection MODULE_READY listener belonged to the removed workflow
+    // command suite; the module only announces itself now.
     assert.ok(
-      src.includes("pi.events.on(UNIPI_EVENTS.MODULE_READY"),
-      "Workflow should listen via pi.events.on",
+      src.includes("emitEvent(pi, UNIPI_EVENTS.MODULE_READY"),
+      "Workflow should emit MODULE_READY",
     );
 
     const piOnMatch = src.match(/pi\.on\(UNIPI_EVENTS\.MODULE_READY/g);
@@ -307,10 +309,11 @@ describe("Badge generation — ROOT CAUSE SUMMARY", () => {
       !utilitySrc.includes("pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST"),
       "utility: no duplicate BADGE_GENERATE_REQUEST listener",    );
 
-    // Workflow: correct event bus
+    // Workflow: announces via the event bus (its MODULE_READY listener was part
+    // of the removed ralph-detection code).
     assert.ok(
-      workflowSrc.includes("pi.events.on(UNIPI_EVENTS.MODULE_READY"),
-      "workflow: must use pi.events.on for MODULE_READY",
+      workflowSrc.includes("emitEvent(pi, UNIPI_EVENTS.MODULE_READY"),
+      "workflow: must emit MODULE_READY on the event bus",
     );
   });
 });
