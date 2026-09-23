@@ -1,0 +1,12 @@
+[package]
+name = "kanboard-topcoat-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Throwaway spike: can Topcoat serve the kanboard v3 UI? Not a dependency of crates/kanboard."
+
+[dependencies]
+topcoat = { version = "0.8.1", features = ["sse"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+futures-util = "0.3"
