@@ -84,9 +84,13 @@ export function suggestPattern(tool: string, subject: string): string {
     const dir = subject.replace(/\/[^/]*$/, "");
     return dir && dir !== subject ? `${dir}/*` : subject;
   }
-  const words = subject.trim().split(/\s+/);
+  const trimmed = subject.trim();
+  // Compound commands (&&, ||, ;, |, newlines) must stay exact: `Always allow
+  // \`cd *\`` would otherwise also cover whatever follows the `cd`.
+  if (/[&|;\n]/.test(trimmed)) return trimmed;
+  const words = trimmed.split(/\s+/);
   const bin = (words[0] ?? "").split("/").pop() ?? "";
-  if (EXACT_ONLY_BINS.has(bin)) return subject.trim();
+  if (EXACT_ONLY_BINS.has(bin)) return trimmed;
   const head: string[] = [];
   for (const word of words) {
     if (head.length > 0 && (word.startsWith("-") || word.includes("/") || word.includes("="))) break;

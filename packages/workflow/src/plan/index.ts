@@ -80,7 +80,12 @@ export async function approvePlan(
     return { status: "keep", feedback: feedback?.trim() || undefined };
   }
 
-  if (choice !== APPROVE) {
+  if (choice !== APPROVE && choice !== DISCARD) {
+    // Esc (undefined) keeps planning rather than silently dropping the session.
+    return { status: "keep", feedback: undefined };
+  }
+
+  if (choice === DISCARD) {
     disablePlanMode(pi, ctx, "discarded");
     return { status: "discarded" };
   }

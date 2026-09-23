@@ -78,6 +78,12 @@ describe("suggestPattern", () => {
     assert.equal(suggestPattern("bash", "chmod -R 777 ."), "chmod -R 777 .");
   });
 
+  it("keeps compound commands exact", () => {
+    assert.equal(suggestPattern("bash", "cd /tmp && ./loop.sh --verbose"), "cd /tmp && ./loop.sh --verbose");
+    assert.equal(suggestPattern("bash", "ls | wc -l"), "ls | wc -l");
+    assert.equal(suggestPattern("bash", "a; b"), "a; b");
+  });
+
   it("uses the containing directory for a path", () => {
     assert.equal(suggestPattern("write", "/home/me/project/src/a.ts"), "/home/me/project/src/*");
   });

@@ -142,6 +142,39 @@ describe("plan state persistence", () => {
   });
 });
 
+describe("plan approval options", () => {
+  it("keeps the documented option order", async () => {
+    const { approvePlan } = await import("../src/plan/index.js");
+    const dir = cwd();
+    const state = activeState(dir);
+    writeFileSync(state.planFile!, "## Summary\nDo the thing\n");
+    restorePlanState(state.sessionId, [{ customType: PLAN_STATE_ENTRY, data: { active: true, planFile: state.planFile } }], dir);
+
+    const calls: string[] = [];
+    const ctx = {
+      cwd: dir,
+      hasUI: true,
+      sessionManager: { getSessionId: () => state.sessionId, getEntries: () => [] },
+      ui: {
+        async select(_title: string, options: string[]) {
+          calls.push(...options);
+          return undefined; // Esc
+        },
+        async input() {
+          return undefined;
+        },
+        notify() {},
+      },
+    };
+    const pi = { sendUserMessage() {}, appendEntry() {}, events: { emit() {} } };
+    const result = await approvePlan(pi as never, ctx as never, state.sessionId);
+    assert.deepEqual(calls, ["Approve & implement", "Keep planning…", "Discard plan"]);
+    assert.equal(result.status, "keep", "Esc keeps planning");
+    assert.equal(currentPlanState(state.sessionId).active, true, "plan mode stays on after Esc");
+    resetPlanState(state.sessionId);
+  });
+});
+
 describe("plan messages", () => {
   it("instructions name the plan file and the required sections", () => {
     const text = planInstructions(".unipi/plans/2026-09-24-abcd1234.md");
