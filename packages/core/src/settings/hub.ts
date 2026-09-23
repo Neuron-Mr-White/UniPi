@@ -34,6 +34,22 @@ import {
 import { frameOverlay, OverlayTheme } from "../../tui-overlay.js";
 import { boxInnerWidth } from "../../tui-width.js";
 import { namespaceColor } from "../package-colors.js";
+import {
+  hubClampScroll,
+  hubExactRow,
+  hubFrameTitle,
+  hubHeaderBand,
+  hubHintLine,
+  hubKey,
+  hubMaxRows,
+  hubMoreAbove,
+  hubMoreBelow,
+  hubMarkChar,
+  hubMarkSpan,
+  hubRowColumns,
+  HubSearch,
+  type HubKey,
+} from "../tui/hub-kit.js";
 import { loadModelCatalogEntries, type ModelCatalogEntry } from "./catalog.js";
 import { loadModelCatalog } from "./catalog.js";
 import {
@@ -116,7 +132,8 @@ export class SettingsHub {
   private mode: Mode = "list";
   private scope: SettingsScope = "global";
   private readonly values = new Map<string, Record<string, unknown>>();
-  private searchInput: Input | null = null;
+  /** Hub search state — `/` opens; Esc or Backspace-on-empty exits. */
+  private searchInput: HubSearch | null = null;
   private filter = "";
   /** Inline editor state (input mode). */
   private edit: { row: Row; input: Input; error: string | null } | null = null;
@@ -433,8 +450,6 @@ export class SettingsHub {
    */
   private handleInputList(data: string): void {
     const visible = this.visibleRows();
-    // Printable char through any encoding: plain byte or kitty CSI-u.
-    const ch = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
     const move = (delta: number): void => {
       // Headers are non-selectable bands — jump straight past them.
       const target = delta > 0
@@ -449,46 +464,47 @@ export class SettingsHub {
         ? this.prevSelectable(visible, visible.length - 1)
         : this.nextSelectable(visible, 0));
     };
-    if (matchesKey(data, Key.up) || ch === "k") return move(-1);
-    if (matchesKey(data, Key.down) || ch === "j") return move(1);
-    if (matchesKey(data, Key.pageUp)) return move(-PAGE_ROWS);
-    if (matchesKey(data, Key.pageDown)) return move(PAGE_ROWS);
-    if (matchesKey(data, Key.home)) {
+    const key: HubKey = hubKey(data);
+    if (key === "up") return move(-1);
+    if (key === "down") return move(1);
+    if (key === "pageUp") return move(-PAGE_ROWS);
+    if (key === "pageDown") return move(PAGE_ROWS);
+    if (key === "home") {
       this.cursor = Math.max(0, this.nextSelectable(visible, 0));
       return;
     }
-    if (matchesKey(data, Key.end)) {
+    if (key === "end") {
       this.cursor = Math.max(0, this.prevSelectable(visible, visible.length - 1));
       return;
     }
-    if (matchesKey(data, Key.slash) || ch === "/") {
+    if (key === "search") {
       this.mode = "search";
-      this.searchInput = new Input({ prompt: "/" });
+      this.searchInput = new HubSearch("/");
       return;
     }
     // Recovery keys (omp principle: defaults are always one key away).
-    if (ch === "u") return this.undoLast();
-    if (ch === "d") {
+    if (typeof key === "object" && key.char === "u") return this.undoLast();
+    if (typeof key === "object" && key.char === "d") {
       const row = this.currentRow();
       if (row && row.field?.type !== "page" && row.field?.type !== "action") this.resetToDefault(row);
       return;
     }
-    if (ch === "R") {
+    if (typeof key === "object" && key.char === "R") {
       const row = this.currentRow();
       if (row && row.field?.type !== "page" && row.field?.type !== "action") this.revertToBaseline(row);
       return;
     }
-    if (matchesKey(data, Key.escape) || data === "\x1b") {
+    if (key === "back") {
       if (this.pageStack.length > 0) this.popPage();
       else this.onClose();
       return;
     }
-    if (ch === "g") return this.toggleScope();
-    if (matchesKey(data, Key.tab) || matchesKey(data, Key.space) || matchesKey(data, Key.enter)) {
+    if (typeof key === "object" && key.char === "g") return this.toggleScope();
+    if (key === "activate" || key === "quick") {
       const row = this.currentRow();
       if (!row) return;
       // Unified keys (user-approved): Enter/Tab = ACTIVATE, Space = quick action.
-      const quick = matchesKey(data, Key.space);
+      const quick = key === "quick";
       if (row.kind === "toggle") {
         if (row.namespace && this.expandedAdvanced.has(row.namespace)) this.expandedAdvanced.delete(row.namespace);
         else if (row.namespace) this.expandedAdvanced.add(row.namespace);
@@ -822,26 +838,17 @@ export class SettingsHub {
   }
 
   private handleInputSearch(data: string): void {
-    const input = this.searchInput;
-    if (!input) { this.mode = "list"; return; }
-    if (matchesKey(data, Key.escape) || data === "\x1b") {
+    const search = this.searchInput;
+    if (!search) { this.mode = "list"; return; }
+    const event = search.handle(data);
+    if (event === "exited") {
       this.exitSearch();
       return;
     }
-    // Backspace on an EMPTY search input exits search exactly like Esc.
-    if ((matchesKey(data, Key.backspace) || data === "\x7f" || data === "\b") && input.getValue() === "") {
-      this.exitSearch();
-      return;
-    }
-    if (matchesKey(data, Key.enter) || data === "\r" || data === "\n") {
-      this.filter = input.getValue();
+    this.filter = search.filter; // applied OR live-typing — both re-filter
+    if (event === "applied") {
       this.mode = "list";
-      this.cursor = 0;
-      this.normalizeCursor();
-      return;
     }
-    input.handleInput(data);
-    this.filter = input.getValue(); // live filtering
     this.cursor = 0;
     this.normalizeCursor();
   }
@@ -886,10 +893,7 @@ export class SettingsHub {
 
   /** Truncate/pad styled or plain content to exactly `inner` visible cells. */
   private exactRow(content: string, inner: number): string {
-    const w = visibleWidth(content);
-    if (w === inner) return content;
-    if (w > inner) return truncateToWidth(content, Math.max(0, inner), "");
-    return content + " ".repeat(inner - w);
+    return hubExactRow(content, inner);
   }
 
   /**
@@ -905,31 +909,7 @@ export class SettingsHub {
     selected: boolean,
     markNamespace?: string,
   ): string {
-    const valW = visibleWidth(value);
-    // Cursor + group mark eat 4 cells before the label.
-    const room = Math.max(0, inner - 4 - valW - 2);
-    const labelT = truncateToWidth(label, room, "…");
-    // One trailing cell of air before the frame border.
-    const gap = Math.max(1, inner - 4 - visibleWidth(labelT) - valW - 1);
-    const mark = markNamespace ? `${this.markSpan(markNamespace)} ` : "  ";
-    const labelStyled = selected ? bold(labelT) : labelT;
-    const valueStyled = selected ? bold(value) : dim(value);
-    return `${cursor}${mark}${labelStyled}${" ".repeat(gap)}${valueStyled}`;
-  }
-
-  /** Plain-text group-mark cell: `▌` for colored namespaces, else a space. */
-  private markChar(namespace: string | undefined): string {
-    return namespaceColor(namespace ?? "") ? "▌" : " ";
-  }
-
-  /**
-   * Styled `▌` group mark — bold + the namespace's ANSI color. Closes with
-   * targeted-off codes ([22m[39m), never [0m: a full reset mid-line would kill
-   * the header band's background paint.
-   */
-  private markSpan(namespace: string | undefined): string {
-    const color = namespaceColor(namespace ?? "");
-    return color ? `${color}${bold("▌")}\x1b[39m` : " ";
+    return hubRowColumns({ inner, selected, label, value, markNamespace });
   }
 
   private renderRow(row: Row, selected: boolean, inner: number): string {
@@ -941,14 +921,9 @@ export class SettingsHub {
     }
     if (row.kind === "header") {
       const tag = row.layerTag ? ` [${row.layerTag}]` : "";
-      const plain = this.exactRow(`${this.markChar(row.namespace)} ${row.label}${tag}`, inner);
-      const color = namespaceColor(row.namespace ?? "");
       // Distinct full-width band (bg wrap is width-safe — measures on plain);
       // the ▌ sits at column 0 INSIDE the band, in the namespace color.
-      const painted = color
-        ? this.markSpan(row.namespace) + dim(bold(plain.slice(1)))
-        : dim(bold(plain));
-      return overlayTheme.bg("customMessageBg", painted);
+      return hubHeaderBand({ inner, text: `${row.label}${tag}`, namespace: row.namespace });
     }
     const field = row.field!;
     if (field.type === "page") {
@@ -1016,17 +991,15 @@ export class SettingsHub {
   }
 
   private clampScroll(len: number, maxRows: number): void {
-    if (this.cursor < this.scroll) {
-      // Scrolled up: keep the header run DIRECTLY above the cursor visible —
-      // scroll to its first header (0 when no selectable row precedes), so
-      // arriving at a group's first field shows the group band too.
-      let start = this.cursor;
-      const visible = this.visibleRows();
-      while (start > 0 && visible[start - 1]?.kind === "header") start--;
-      this.scroll = start;
-    }
-    if (this.cursor > this.scroll + maxRows - 1) this.scroll = this.cursor - maxRows + 1;
-    this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, len - maxRows)));
+    // Kit clamp keeps the header run DIRECTLY above the cursor visible when
+    // scrolling up (see hubClampScroll).
+    this.scroll = hubClampScroll(
+      this.visibleRows().map((r) => r.kind),
+      this.cursor,
+      this.scroll,
+      maxRows,
+    );
+    void len;
   }
 
   private hintLine(): string {
@@ -1064,7 +1037,7 @@ export class SettingsHub {
     const body: string[] = [];
 
     if (this.mode === "search" && this.searchInput) {
-      for (const l of this.searchInput.render(Math.max(8, inner - 2))) body.push(this.exactRow(` ${l}`, inner));
+      for (const l of this.searchInput.input.render(Math.max(8, inner - 2))) body.push(this.exactRow(` ${l}`, inner));
     }
 
     const visible = this.visibleRows();
@@ -1073,10 +1046,10 @@ export class SettingsHub {
     // RELATIVE height: about half the terminal — a dialog, not a takeover —
     // but never taller than fits (term - 7 of chrome) and never below 3 rows.
     const term = this.terminalRows();
-    const maxRows = Math.max(3, Math.min(Math.floor(term / 2), term - 7) - overlayReserve);
+    const maxRows = hubMaxRows(term, overlayReserve);
     this.clampScroll(visible.length, maxRows);
 
-    if (this.scroll > 0) body.push(this.exactRow(dim(`  ↑ ${this.scroll} more`), inner));
+    if (this.scroll > 0) body.push(hubMoreAbove(this.scroll, inner));
 
     const end = Math.min(visible.length, this.scroll + maxRows);
     for (let i = this.scroll; i < end; i++) {
@@ -1092,15 +1065,15 @@ export class SettingsHub {
     }
 
     const below = visible.length - end;
-    if (below > 0) body.push(this.exactRow(dim(`  ↓ ${below} more`), inner));
+    if (below > 0) body.push(hubMoreBelow(below, inner));
 
     if (this.toast) body.push(this.exactRow(`  ${bold(this.toast)}`, inner));
-    body.push(this.exactRow(dim(`  ${this.hintLine()}`), inner));
+    body.push(hubHintLine(this.hintLine(), inner));
     this.toast = null; // shown for exactly one render
     return frameOverlay(body, width, {
       // Scope lives in the TITLE — it's global state, not a list row.
       // Pages breadcrumb into it: ` unipi settings › serpapi — global [g] `.
-      title: bold(` unipi settings${this.pageStack.map((p) => ` › ${p.label}`).join("")} — ${this.scope} [g] `),
+      title: bold(hubFrameTitle("unipi settings", this.pageStack.map((p) => p.label), `— ${this.scope} [g]`)),
       borderFg: (t: string) => overlayTheme.fg("borderMuted", t),
     });
   }
