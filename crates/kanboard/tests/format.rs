@@ -250,8 +250,18 @@ fn activity_with_trailing_whitespace_stays_canonical() {
 fn multi_line_notes_with_blank_lines_round_trip() {
     let mut task = sample();
     task.push_activity(Utc::now(), Actor::User, "line one\n\nline three\n\n");
+    // Indented continuation lines are the case that used to break: the parser
+    // trimmed them, so the file could never re-render canonically.
+    task.push_activity(Utc::now(), Actor::User, "parent\n  indented child\n    deeper");
     let text = format::render(&task);
     let (parsed, problems) = format::parse("x.md", &text);
     assert!(problems.is_empty(), "{problems:?}");
-    assert_eq!(format::render(&parsed.unwrap()), text);
+    let parsed = parsed.unwrap();
+    assert_eq!(parsed.activity.last().unwrap().text, "parent\n  indented child\n    deeper");
+    assert_eq!(format::render(&parsed), text);
+    // And an indented note written through the CLI validates.
+    let round_tripped = format::render(&parsed);
+    let (again, problems) = format::parse("x.md", &round_tripped);
+    assert!(problems.is_empty(), "{problems:?}");
+    assert_eq!(format::render(&again.unwrap()), round_tripped);
 }

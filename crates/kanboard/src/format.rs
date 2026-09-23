@@ -374,7 +374,11 @@ fn parse_body(
             match pending.as_mut() {
                 Some(entry) => {
                     entry.text.push('\n');
-                    entry.text.push_str(line.trim_start());
+                    // The file adds a two-space indent to continuation lines;
+                    // strip exactly that (not all leading whitespace) so a note
+                    // indented by its author round-trips byte-for-byte.
+                    let content = line.strip_prefix("  ").unwrap_or_else(|| line.trim_start());
+                    entry.text.push_str(content);
                 }
                 None => problems.push(Problem::new(
                     file,
