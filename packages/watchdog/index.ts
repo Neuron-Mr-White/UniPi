@@ -48,7 +48,6 @@ interface KillRecord {
 const state = {
   pi: null as ExtensionAPI | null,
   ctx: null as ExtensionContext | null,
-  firstTimer: null as NodeJS.Timeout | null,
   intervalTimer: null as NodeJS.Timeout | null,
   bash: new Map<string, TrackedCall>(),
   other: new Map<string, TrackedCall>(),
@@ -215,18 +214,23 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
   });
 }
 
+/**
+ * Fixed-granularity heartbeat. Ticks are cheap (no jev call unless an item is
+ * due): per-item gating in tick() decides eligibility (age ≥ firstCheckMin,
+ * last check ≥ intervalMin ago), so an item is judged close to its due time
+ * instead of waiting for the next coarse interval boundary.
+ */
+export const HEARTBEAT_MS = 15_000;
+
 function startTimer(settings: WatchdogSettings): void {
   stopTimer();
-  state.firstTimer = setTimeout(() => {
-    void tick(settings.enabled);
-    state.intervalTimer = setInterval(() => void tick(settings.enabled), settings.intervalMin * 60_000);
-  }, settings.firstCheckMin * 60_000);
+  const period = Math.min(HEARTBEAT_MS, settings.firstCheckMin * 60_000, settings.intervalMin * 60_000);
+  state.intervalTimer = setInterval(() => void tick(settings.enabled), Math.max(1_000, period));
+  state.intervalTimer.unref?.();
 }
 
 function stopTimer(): void {
-  if (state.firstTimer) clearTimeout(state.firstTimer);
   if (state.intervalTimer) clearInterval(state.intervalTimer);
-  state.firstTimer = null;
   state.intervalTimer = null;
 }
 
@@ -277,9 +281,11 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
         toolName: task.delegate ? "bg_delegate" : "bg_run",
         command: task.command.slice(0, 500),
         startedAt: task.startTime,
-        sinceLastOutputSec: 0, // computed by the caller against the previous tail
+        // Filled in tick() from the per-key tail history.
+        sinceLastOutputSec: -1,
         outputChanged: false,
         tail: tail.slice(-3000),
+        task: { id: task.id, persistent: false },
       });
     }
   }
@@ -318,6 +324,7 @@ async function tick(enabled: boolean): Promise<void> {
 
     // Per-item minimum age: skip items younger than firstCheckMin.
     const items = allItems.filter((item) => now - item.startedAt >= settings.firstCheckMin * 60_000);
+    console.error("[WD-TICK-DBG] allItems:", allItems.length, "items:", items.length, "enabled:", settings.enabled, "firstCheckMin:", settings.firstCheckMin);
 
     if (items.length > 0) ctx.ui.setStatus("watchdog", `watchdog: ${items.length}`);
     else ctx.ui.setStatus("watchdog", undefined);
@@ -333,13 +340,20 @@ async function tick(enabled: boolean): Promise<void> {
       const previousStreak = state.streaks.get(item.key) ?? 0;
       const previousTail = state.tails.get(item.key);
       const outputChanged = previousTail !== undefined && previousTail !== item.tail;
-      const sinceLastOutput = outputChanged ? 0 : item.sinceLastOutputSec;
+      // Per-key last-change clock (bg tasks have no update events; bash/other
+      // also get it so all kinds share one definition).
+      if (previousTail === undefined || outputChanged) state.changes.set(item.key, now);
+      const lastChange = state.changes.get(item.key) ?? item.startedAt;
+      const sinceLastOutput =
+        item.sinceLastOutputSec >= 0
+          ? Math.min(item.sinceLastOutputSec, Math.round((now - lastChange) / 1000))
+          : Math.round((now - lastChange) / 1000);
 
       const state_text =
         `Tool: ${item.toolName}\n` +
         `Command/args: ${item.command}\n` +
         `Running for: ${Math.round((now - item.startedAt) / 1000)}s\n` +
-        `Since last new output: ${item.sinceLastOutputSec}s\n` +
+        `Since last new output: ${sinceLastOutput}s\n` +
         `Output changed since previous check: ${outputChanged ? "yes" : "no"}\n` +
         `Last output (tail):\n${item.tail || "(no output yet)"}`;
       const questions = {
@@ -386,7 +400,7 @@ async function tick(enabled: boolean): Promise<void> {
       const reason =
         `${decision.status} (confidence ${decision.confidence.toFixed(2)}) ` +
         `on ${decision.streak} consecutive checks — ` +
-        `${outputChanged ? "output keeps changing oddly" : `no new output for ${item.sinceLastOutputSec}s`}`;
+        `${outputChanged ? "output keeps repeating without progress" : `no new output for ${sinceLastOutput}s`}`;
 
       if (item.kind === "bash") {
         if (settings.action === "kill" && process.platform !== "win32") {

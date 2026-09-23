@@ -16,11 +16,13 @@ describe("watchdog extension", () => {
   let home: string;
   let origHome: string | undefined;
   let handlers: Record<string, Handler>;
+  let fetchCalls: Array<{ url: string; body: { state?: string; model?: string; questions?: Record<string, unknown> } }> = [];
   let watchdogMod: {
     registerWatchdogExtension: (pi: any) => void;
     __recordKill: (id: string, r: { durationMs: number; reason: string }) => void;
     resetWatchdogState: () => void;
     __watchdogTick: (ctx: unknown) => Promise<void>;
+    __getKills: () => Map<string, unknown>;
   };
 
   function fakePi(): unknown {
@@ -44,7 +46,10 @@ describe("watchdog extension", () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), "wd-test-"));
     origHome = process.env.HOME;
     process.env.HOME = home;
+    fetchCalls = [];
     watchdogMod = (await import("../index.js")) as typeof watchdogMod;
+    // registers the utility namespace (for the new gating tests)
+    await import("@pi-unipi/utility/src/settings.js");
     watchdogMod.registerWatchdogExtension(fakePi());
   });
 
@@ -82,6 +87,7 @@ describe("watchdog extension", () => {
     (globalThis as { fetch: unknown }).fetch = () => { calls++; return new Response("{}", { status: 200 }); };
     const sessionStart = handlers["session_start"]!;
     await sessionStart({ type: "session_start", reason: "startup" }, fakeCtx());
+    await import("@pi-unipi/utility/src/settings.js"); // registers the utility namespace
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
     await tickFn(fakeCtx());
     assert.equal(calls, 0, "disabled → no jev call");
@@ -118,5 +124,52 @@ describe("watchdog extension", () => {
     assert.equal(outcome.killed, false, "ambiguous → no kill");
     c1.kill("SIGKILL"); c2.kill("SIGKILL");
     await new Promise((r) => setTimeout(r, 100));
+  });
+
+  it("agreeChecks 2: first tick no kill, second tick kills", async () => {
+    const { setSettings } = await import("@pi-unipi/core");
+    setSettings("watchdog", { enabled: true, agreeChecks: 2, confidence: 0.8, watchBash: true, intervalMin: 0.1, firstCheckMin: 0 }, "global", process.cwd());
+    // start a bash tool call
+    handlers["tool_execution_start"]!(
+      { type: "tool_execution_start", toolCallId: "call-wd", toolName: "bash", args: { command: "while true; do echo err; done" } },
+      fakeCtx(),
+    );
+    (globalThis as { fetch: unknown }).fetch = async (url: unknown, init: { body: string }) => {
+      fetchCalls.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({
+        answers: {
+          status: { choice: "looping", confidence: 0.95 },
+          persistent: { noul: 0.0 },
+        },
+      }), { status: 200 });
+    };
+    const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
+
+    // tick 1: streak 1, no kill
+    await tickFn(fakeCtx());
+    assert.equal(fetchCalls.length, 1, "one jev call");
+    assert.ok(!handlers["tool_result"], "no tool_result override on streak 1");
+
+    // tick 2: streak 2, act = true
+    await tickFn(fakeCtx());
+    assert.equal(fetchCalls.length, 2, "two jev calls");
+    assert.ok(watchdogMod.__getKills().has("call-wd"), "kill recorded on streak 2");
+  });
+
+  it("never checked twice within intervalMin", async () => {
+    const { setSettings } = await import("@pi-unipi/core");
+    setSettings("watchdog", { enabled: true, agreeChecks: 1, confidence: 0.8, watchBash: true, intervalMin: 0.5, firstCheckMin: 0 }, "global", process.cwd());
+    handlers["tool_execution_start"]!(
+      { type: "tool_execution_start", toolCallId: "call-x", toolName: "bash", args: { command: "sleep 300" } },
+      fakeCtx(),
+    );
+    (globalThis as { fetch: unknown }).fetch = async () =>
+      new Response(JSON.stringify({ answers: { status: { choice: "stuck", confidence: 0.95 }, persistent: { noul: 0.0 } } }), { status: 200 });
+    const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
+    await tickFn(fakeCtx());
+    const afterFirst = fetchCalls.length;
+    assert.ok(afterFirst > 0, "first tick jev calls made");
+    await tickFn(fakeCtx()); // immediate second tick → per-item gate skips
+    assert.equal(fetchCalls.length, afterFirst, "no new jev calls within intervalMin");
   });
 });
