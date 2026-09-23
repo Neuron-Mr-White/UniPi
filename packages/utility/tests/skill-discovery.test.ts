@@ -171,17 +171,27 @@ describe("isBundledSkillLocation", () => {
 });
 
 describe("skill discovery settings", () => {
+  let origHome: string | undefined;
+  let engineHome: string;
+
   beforeEach(() => {
     origAgentDir = process.env.PI_AGENT_DIR;
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "unipi-skills-test-"));
     fs.mkdirSync(path.join(tmpDir, "settings"), { recursive: true });
     process.env.PI_AGENT_DIR = path.join(tmpDir, "settings");
+    // Engine layout sandbox: getSettings("utility") reads ~/.unipi/config/...
+    origHome = process.env.HOME;
+    engineHome = fs.mkdtempSync(path.join(os.tmpdir(), "unipi-skills-engine-"));
+    process.env.HOME = engineHome;
   });
 
   afterEach(() => {
     if (origAgentDir === undefined) delete process.env.PI_AGENT_DIR;
     else process.env.PI_AGENT_DIR = origAgentDir;
+    if (origHome === undefined) delete process.env.HOME;
+    else process.env.HOME = origHome;
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(engineHome, { recursive: true, force: true });
   });
 
   it("defaults to discovery on when settings file is missing", async () => {
@@ -198,24 +208,34 @@ describe("skill discovery settings", () => {
     assert.equal(loadSkillDiscoverySettings().discovery, true);
   });
 
-  it("round-trips off and preserves sibling unipi keys", async () => {
-    const { loadSkillDiscoverySettings, saveSkillDiscoverySettings } = await import("../src/skill-discovery.js");
+  it("round-trips through the engine (utility namespace)", async () => {
+    await import("../src/settings.js"); // registers the utility namespace
+    const { setSettings, getSettings } = await import("@pi-unipi/core");
+    const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
+    setSettings("utility", { skills: { discovery: false } }, "global", process.cwd());
+    assert.equal(loadSkillDiscoverySettings().discovery, false);
+    assert.equal(
+      (getSettings("utility", process.cwd()) as { skills: { discovery: boolean } }).skills.discovery,
+      false,
+    );
+    setSettings("utility", { skills: { discovery: true } }, "global", process.cwd());
+    assert.equal(loadSkillDiscoverySettings().discovery, true);
+  });
+
+  it("legacy unipi.skills.discovery is imported one-time into the engine", async () => {
     const settingsPath = path.join(tmpDir, "settings", "settings.json");
     fs.writeFileSync(
       settingsPath,
-      JSON.stringify({ theme: "dark", unipi: { footer: { enabled: true } } }),
+      JSON.stringify({ theme: "dark", unipi: { footer: { enabled: true }, skills: { discovery: false } } }),
     );
-
-    assert.equal(saveSkillDiscoverySettings({ discovery: false }), true);
-    assert.equal(loadSkillDiscoverySettings().discovery, false);
-
+    const { readUtilSettings } = await import("../src/settings.js");
+    readUtilSettings(); // registers the namespace + triggers the one-time legacy imports
+    const { loadSkillDiscoverySettings } = await import("../src/skill-discovery.js");
+    assert.equal(loadSkillDiscoverySettings().discovery, false, "legacy off value migrated");
+    // Sibling legacy keys are preserved verbatim.
     const raw = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     assert.equal(raw.theme, "dark");
     assert.deepEqual(raw.unipi.footer, { enabled: true });
-    assert.deepEqual(raw.unipi.skills, { discovery: false });
-
-    assert.equal(saveSkillDiscoverySettings({ discovery: true }), true);
-    assert.equal(loadSkillDiscoverySettings().discovery, true);
   });
 
   it("ignores malformed settings files", async () => {
