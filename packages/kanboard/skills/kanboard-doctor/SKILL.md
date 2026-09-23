@@ -12,7 +12,7 @@ Diagnose parser issues across all workflow documents. Non-destructive — only s
 Execute each parser against its document type directory:
 
 1. Load the parser registry from `@pi-unipi/kanboard`
-2. Run `registry.parseAll(".unipi/docs")` to parse all documents
+2. Run `registry.parseAll("docs")` to parse all documents
 3. Collect all `ParsedDoc` results including their `warnings` arrays
 
 ## Phase 2: Collect Errors
@@ -35,11 +35,11 @@ Show a structured error report:
 Files scanned: N
 Files with issues: M
 
-📄 .unipi/docs/specs/example.md
+📄 docs/specs/example.md
   ⚠ Line 15: Empty checkbox text
   ⚠ Line 23: Malformed checkbox (missing bracket)
 
-📄 .unipi/docs/plans/old-plan.md
+📄 docs/plans/old-plan.md
   ⚠ Line 5: Empty task name after status
 ```
 

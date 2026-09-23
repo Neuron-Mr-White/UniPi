@@ -9,10 +9,10 @@ Active investigation to reproduce, diagnose, and root-cause bugs. Produces a str
 
 ## Boundaries
 
-**This skill MAY:** read codebase, run diagnostic commands, spawn subagents, write debug report to `.unipi/docs/debug/`.
+**This skill MAY:** read codebase, run diagnostic commands, spawn subagents, write debug report to `docs/debug/`.
 **This skill MAY NOT:** edit code, fix issues, run tests that modify state, deploy.
 
-**Write-permission clarification:** "Read-only" means source/project code is read-only for diagnosis. It does **not** prohibit creating or updating the debug report. The agent should use available file-writing tools to write exactly the report under `.unipi/docs/debug/`. If writing that report fails, report the write failure explicitly.
+**Write-permission clarification:** "Read-only" means source/project code is read-only for diagnosis. It does **not** prohibit creating or updating the debug report. The agent should use available file-writing tools to write exactly the report under `docs/debug/`. If writing that report fails, report the write failure explicitly.
 
 **This is diagnosis only — not fixing.**
 
@@ -23,14 +23,16 @@ the debug step <string(greedy)>
 ```
 
 - `string(greedy)` — bug description, error message, or reproduction steps
-- Source/code read-only sandbox, with explicit permission to write the debug report to `.unipi/docs/debug/`
+- Source/code read-only sandbox, with explicit permission to write the debug report to `docs/debug/`
 - Spawns subagents if `@unipi/subagents` extension is installed
 
 ## Output Path
 
 ```
-.unipi/docs/debug/YYYY-MM-DD-<topic>-debug.md
+docs/debug/YYYY-MM-DD-<topic>-debug.md
 ```
+
+Create the `docs/debug/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 ---
 
@@ -106,7 +108,7 @@ Deep dive into root cause:
 
 ### Phase 4: Document Findings
 
-Write debug report to `.unipi/docs/debug/YYYY-MM-DD-<topic>-debug.md` using the available file-writing tool. Do not skip this because the investigation is otherwise read-only:
+Write debug report to `docs/debug/YYYY-MM-DD-<topic>-debug.md` using the available file-writing tool. Do not skip this because the investigation is otherwise read-only:
 
 ```markdown
 ---
@@ -181,7 +183,7 @@ How to verify the fix works:
 
 Present summary to user:
 
-> "Debug report written to `.unipi/docs/debug/YYYY-MM-DD-<topic>-debug.md`"
+> "Debug report written to `docs/debug/YYYY-MM-DD-<topic>-debug.md`"
 > 
 > **Root Cause:** {brief summary}
 > **Suggested Fix:** {brief summary}

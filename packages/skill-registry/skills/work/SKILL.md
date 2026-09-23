@@ -9,7 +9,7 @@ Load plan, review critically, execute tasks, commit when complete.
 
 ## Boundaries
 
-**This skill MAY:** read/write code, read/write `.unipi/docs/`, run tests, commit, create worktree.
+**This skill MAY:** read/write code, read/write the project's `docs/`, run tests, commit, create worktree.
 **This skill MAY NOT:** merge branches, deploy.
 
 **Worktree vs Main:**
@@ -30,7 +30,7 @@ the implementation step worktree:<branch>(optional) specs:<path>(multiple,option
 ## Sandbox
 
 - **Read/Write:** full access within worktree (or project root if on main)
-- **Write:** `.unipi/docs/` for progress tracking
+- **Write:** `docs/` in the project for progress tracking (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.)
 
 ---
 
@@ -38,7 +38,7 @@ the implementation step worktree:<branch>(optional) specs:<path>(multiple,option
 
 1. **Specs:**
    - If `specs:` arg provided, read those plan files
-   - If not, list available plans in `.unipi/docs/plans/` and ask user
+   - If not, list available plans in `docs/plans/` and ask user
    - Can select multiple
 
 2. **Read `workbranch` from plan frontmatter:**

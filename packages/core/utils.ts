@@ -237,27 +237,16 @@ export function isModuleAvailable(cwd: string, moduleName: string): boolean {
 }
 
 /**
- * Initialize .unipi directory structure.
- * Creates all standard directories if they don't exist.
- * Call on session_start in each extension.
+ * Create the `.unipi` state root if it is missing. Call on session_start in
+ * each extension.
+ *
+ * Documentation lives in the project's own `docs/` directory now, so nothing is
+ * created eagerly there — whoever writes a document creates its folder.
  */
 export function initUnipiDirs(cwd: string = process.cwd()): void {
-  const dirs = [
-    ".unipi",
-    ".unipi/docs",
-    ".unipi/docs/specs",
-    ".unipi/docs/plans",
-    ".unipi/docs/generated",
-    ".unipi/docs/reviews",
-    ".unipi/memory",
-    ".unipi/quick-work",
-    ".unipi/worktrees",
-  ];
-  for (const dir of dirs) {
-    const full = path.join(cwd, dir);
-    if (!fs.existsSync(full)) {
-      fs.mkdirSync(full, { recursive: true });
-    }
+  const full = path.join(cwd, ".unipi");
+  if (!fs.existsSync(full)) {
+    fs.mkdirSync(full, { recursive: true });
   }
 }
 

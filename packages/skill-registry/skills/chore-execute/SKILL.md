@@ -25,8 +25,10 @@ chore execution chore:<path>(optional) <string(greedy)>(optional)
 ## Input Path
 
 ```
-.unipi/docs/chore/<chore-name>.md
+docs/chore/<chore-name>.md
 ```
+
+Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.
 
 ---
 
@@ -35,11 +37,11 @@ chore execution chore:<path>(optional) <string(greedy)>(optional)
 ### Phase 1: Load Chore
 
 **If `chore:` arg provided:**
-1. Read the chore file from `.unipi/docs/chore/`
+1. Read the chore file from `docs/chore/`
 2. Understand: steps, pre-conditions, failure handling
 
 **If no chore provided:**
-1. List available chore files in `.unipi/docs/chore/`
+1. List available chore files in `docs/chore/`
 2. Present to user for selection (autocomplete-style)
 
 ```
@@ -309,4 +311,4 @@ Which option?
 - Pre-condition checks prevent common failures
 - Failure handling provides recovery paths
 - Context overrides allow flexibility without editing chore files
-- Chores stored in `.unipi/docs/chore/` for discoverability
+- Chores live in `docs/chore/` in the project

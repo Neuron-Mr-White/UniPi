@@ -193,8 +193,8 @@ describe("saved rules", () => {
 
   it("rules match the resolved write path", async () => {
     const decision = await decideToolCall(
-      { toolName: "write", subject: ".unipi/plans/p.md" },
-      deps({ rules: [{ tool: "write", pattern: `${CWD}/.unipi/plans/*`, decision: "allow", scope: "project" }] }),
+      { toolName: "write", subject: "docs/plans/p.md" },
+      deps({ rules: [{ tool: "write", pattern: `${CWD}/docs/plans/*`, decision: "allow", scope: "project" }] }),
     );
     assert.equal(decision.action, "allow");
   });

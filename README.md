@@ -159,7 +159,8 @@ unipi/
 │   ├── input-shortcuts/ # Keyboard shortcuts
 │   ├── autocomplete/   # Enhanced command autocomplete
 │   └── unipi/          # Umbrella package
-├── .unipi/             # Runtime data (specs, plans, worktrees)
+├── docs/               # Project documentation (specs, plans, fixes, …)
+├── .unipi/             # Runtime data (config, sessions, ralph)
 └── CHANGELOG.md
 ```
 

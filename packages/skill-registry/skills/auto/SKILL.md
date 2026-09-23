@@ -96,7 +96,7 @@ Ask after each section if it looks right.
 
 ### 2.5: Write Spec
 
-Create `.unipi/docs/specs/YYYY-MM-DD-<topic>-design.md`:
+Create `docs/specs/YYYY-MM-DD-<topic>-design.md` (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.):
 
 ```markdown
 ---
@@ -143,7 +143,7 @@ Before presenting:
 
 ### 2.7: Design Gate
 
-> "Spec written to `.unipi/docs/specs/YYYY-MM-DD-<topic>-design.md`. Please review and let me know if you want changes before we plan."
+> "Spec written to `docs/specs/YYYY-MM-DD-<topic>-design.md`. Please review and let me know if you want changes before we plan."
 
 **WAIT for user approval.** If changes requested, make them and re-review.
 
@@ -172,7 +172,7 @@ Record the decision for plan frontmatter.
 
 ### 3.3: Create Implementation Plan
 
-Create `.unipi/docs/plans/YYYY-MM-DD-<topic>-plan.md`:
+Create `docs/plans/YYYY-MM-DD-<topic>-plan.md`:
 
 ```markdown
 ---
@@ -410,15 +410,15 @@ Report pipeline results:
 ```
 Pipeline Complete: {topic}
 
-✓ Brainstorm — .unipi/docs/specs/{spec}
-✓ Plan — .unipi/docs/plans/{plan}
+✓ Brainstorm — docs/specs/{spec}
+✓ Plan — docs/plans/{plan}
 ✓ Work — {N} tasks completed on {branch or "main"}
 ✓ Review — all checks passed
 ✓ Merge — {merged to main, worktree cleaned or "already on main"}
 
 Artifacts:
-- Spec: .unipi/docs/specs/{spec}
-- Plan: .unipi/docs/plans/{plan}
+- Spec: docs/specs/{spec}
+- Plan: docs/plans/{plan}
 ```
 
 Suggest next steps:

@@ -28,7 +28,7 @@ export function planFileName(sessionId: string, now: Date = new Date()): string 
 }
 
 export function planFilePath(cwd: string, sessionId: string): string {
-  return resolve(cwd, ".unipi", "plans", planFileName(sessionId));
+  return resolve(cwd, "docs", "plans", planFileName(sessionId));
 }
 
 export function ensurePlanDir(planFile: string): void {
@@ -76,7 +76,7 @@ export function activePlanFile(cwd: string, sessionId: string): string {
 
 /** Absolute path used in messages (stable across cwd spelling). */
 export function displayPlanPath(cwd: string, planFile: string | null): string {
-  if (!planFile) return join(cwd, ".unipi", "plans");
+  if (!planFile) return join(cwd, "docs", "plans");
   const rel = planFile.startsWith(cwd) ? planFile.slice(cwd.length + 1) : planFile;
   return rel;
 }

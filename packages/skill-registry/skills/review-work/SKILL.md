@@ -28,7 +28,7 @@ the review step plan:<path>(optional) <string(greedy)>(optional)
 ## Phase 1: Load Plan & Switch Branch
 
 1. If `plan:` arg provided, read that plan
-2. If not, list plans in `.unipi/docs/plans/` and ask user
+2. If not, list plans in `docs/plans/` and ask user
 3. Read plan fully — understand tasks, acceptance criteria, current status
 4. **Read `workbranch:` from plan frontmatter:**
    - If `workbranch:` exists and is not empty → switch to that branch/worktree

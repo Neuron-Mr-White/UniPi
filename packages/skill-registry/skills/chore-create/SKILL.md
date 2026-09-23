@@ -5,11 +5,11 @@ description: "Create reusable chore — save repeatable tasks like deploy, publi
 
 # Creating Chores
 
-Create reusable chore definitions for repeatable tasks. Save to `.unipi/docs/chore/` for future execution.
+Create reusable chore definitions for repeatable tasks. Save to `docs/chore/` for future execution.
 
 ## Boundaries
 
-**This skill MAY:** read codebase, ask questions, write chore to `.unipi/docs/chore/`.
+**This skill MAY:** read codebase, ask questions, write chore to `docs/chore/`.
 **This skill MAY NOT:** edit code, execute the chore, run tests, deploy.
 
 **This is definition only — not execution.**
@@ -21,13 +21,15 @@ chore creation <string(greedy)>
 ```
 
 - `string(greedy)` — description of the chore to create (e.g., "push to github main", "publish npm package")
-- Write-only sandbox (`.unipi/docs/chore/`)
+- Writes only to `docs/chore/`
 
 ## Output Path
 
 ```
-.unipi/docs/chore/<chore-name>.md
+docs/chore/<chore-name>.md
 ```
+
+Create the `docs/chore/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 ---
 
@@ -68,7 +70,7 @@ Plan the chore:
 
 ### Phase 3: Write Chore File
 
-Create `.unipi/docs/chore/<chore-name>.md`:
+Create `docs/chore/<chore-name>.md`:
 
 ```markdown
 ---
@@ -146,7 +148,7 @@ Before presenting:
 
 Present to user:
 
-> "Chore created at `.unipi/docs/chore/<chore-name>.md`"
+> "Chore created at `docs/chore/<chore-name>.md`"
 >
 > **Steps:** {count} steps
 > **Type:** {deploy/publish/git/etc.}
@@ -186,7 +188,7 @@ Use kebab-case with action-verb prefix:
 chore creation push current branch to github main
 ```
 
-Creates `.unipi/docs/chore/push-github-main.md`:
+Creates `docs/chore/push-github-main.md`:
 ```markdown
 ---
 name: push-github-main
@@ -240,7 +242,7 @@ If push rejected:
 chore creation publish package to npm registry
 ```
 
-Creates `.unipi/docs/chore/publish-npm.md`:
+Creates `docs/chore/publish-npm.md`:
 ```markdown
 ---
 name: publish-npm
@@ -310,4 +312,4 @@ If publish fails:
 - Keep steps clear and executable by anyone
 - Include verification steps for confidence
 - Document failure scenarios for resilience
-- Chores are stored in `.unipi/docs/chore/` for discoverability
+- Chores live in `docs/chore/` in the project so they are easy to find

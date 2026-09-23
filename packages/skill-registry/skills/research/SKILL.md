@@ -27,7 +27,7 @@ the research step <string(greedy)>
 
 ## Output
 
-Findings presented in conversation. Can be saved to `.unipi/docs/generated/` if user requests.
+Findings presented in conversation. Can be saved to `docs/generated/` if user requests.
 
 ---
 
@@ -192,7 +192,7 @@ the document step {topic}
 
 **If research was exploratory:**
 > "Want me to save these findings?"
-- Save to `.unipi/docs/generated/YYYY-MM-DD-research-{topic}.md`
+- Save to `docs/generated/YYYY-MM-DD-research-{topic}.md` (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.)
 
 ---
 

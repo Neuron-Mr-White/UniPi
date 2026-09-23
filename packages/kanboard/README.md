@@ -2,7 +2,7 @@
 
 Visualization for workflow data. An HTTP server with htmx + Alpine.js UI shows your milestones, specs, plans, and tasks in a web browser. A TUI overlay gives you a kanban board without leaving Pi.
 
-Parses 8 document types from `.unipi/docs/` — specs, plans, milestones, quick-work, debug, fix, chore, and review — and renders them as cards with progress indicators.
+Parses 8 document types from `docs/` — specs, plans, milestones, quick-work, debug, fix, chore, and review — and renders them as cards with progress indicators.
 
 ## Commands
 

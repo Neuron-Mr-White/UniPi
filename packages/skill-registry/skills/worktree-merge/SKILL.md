@@ -15,8 +15,8 @@ Merge completed worktree branches into main. Gather context from docs before mer
 
 Before merging, read existing specs and plans to understand what each worktree was implementing:
 
-1. Read all files in `.unipi/docs/specs/` (if exists)
-2. Read all files in `.unipi/docs/plans/` (if exists)
+1. Read all files in `docs/specs/` (if exists)
+2. Read all files in `docs/plans/` (if exists)
 3. Build a map: branch → what it was working on
 
 This context helps during merge conflicts and in the final report.

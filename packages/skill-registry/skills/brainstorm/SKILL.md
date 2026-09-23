@@ -35,8 +35,10 @@ Every project goes through this process. A todo list, a utility, a config change
 ## Output Path
 
 ```
-.unipi/docs/specs/YYYY-MM-DD-<topic>-design.md
+docs/specs/YYYY-MM-DD-<topic>-design.md
 ```
+
+Create the `docs/specs/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 Committed to current branch. Accessible across worktrees via git.
 
@@ -101,7 +103,7 @@ Once approach chosen, present design in sections:
 
 ## Phase 5: Write Design Document
 
-Write to `.unipi/docs/specs/YYYY-MM-DD-<topic>-design.md`:
+Write to `docs/specs/YYYY-MM-DD-<topic>-design.md`:
 
 ```markdown
 ---
@@ -169,7 +171,7 @@ Fix issues inline. No need to re-review — fix and move on.
 
 After self-review passes:
 
-> "Spec written and committed to `.unipi/docs/specs/YYYY-MM-DD-<topic>-design.md`. Please review and let me know if you want changes before we plan."
+> "Spec written and committed to `docs/specs/YYYY-MM-DD-<topic>-design.md`. Please review and let me know if you want changes before we plan."
 
 Wait for user response. If changes requested, make them and re-run self-review.
 

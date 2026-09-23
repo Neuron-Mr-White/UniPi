@@ -114,7 +114,7 @@ ask_user({
   context: "Context gathered from {N} files across {areas}. Summary includes structure, patterns, prior art, and recommendations.",
   options: [
     { label: "Save to memory", description: "Store findings in .unipi/memory/ for future sessions", value: "save" },
-    { label: "Save to file", description: "Write findings to .unipi/docs/research/<topic>.md", value: "file" },
+    { label: "Save to file", description: "Write findings to docs/research/<topic>.md", value: "file" },
     { label: "Don't save", description: "Discard — context was just for this session", value: "discard" }
   ],
   allowFreeform: false
@@ -122,7 +122,7 @@ ask_user({
 ```
 
 - **Save to memory:** Write findings to `.unipi/memory/` following the consolidate skill's memory file format.
-- **Save to file:** Write findings to `.unipi/docs/research/<topic>.md` using the synthesis output format from Phase 3.
+- **Save to file:** Write findings to `docs/research/<topic>.md` (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.) using the synthesis output format from Phase 3.
 - **Don't save:** Skip — findings stay in conversation only.
 
 After the save decision, hand off:

@@ -53,21 +53,6 @@ export const RALPH_TOOLS = {
   DONE: "ralph_done",
 } as const;
 
-/** Unipi directory paths */
-export const UNIPI_DIRS = {
-  ROOT: ".unipi",
-  DOCS: ".unipi/docs",
-  SPECS: ".unipi/docs/specs",
-  PLANS: ".unipi/docs/plans",
-  GENERATED: ".unipi/docs/generated",
-  REVIEWS: ".unipi/docs/reviews",
-  DEBUG: ".unipi/docs/debug",
-  FIX: ".unipi/docs/fix",
-  QUICK_WORK: ".unipi/docs/quick-work",
-  CHORE: ".unipi/docs/chore",
-  MEMORY: ".unipi/memory",
-} as const;
-
 /** Memory tool names */
 export const MEMORY_TOOLS = {
   STORE: "memory_store",

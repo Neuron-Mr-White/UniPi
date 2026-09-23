@@ -40,7 +40,7 @@ export default function (pi: ExtensionAPI): void {
       dataProvider: async () => {
         const { createDefaultRegistry } = await import("./parser/index.js");
         const registry = await createDefaultRegistry();
-        const docs = registry.parseAll(".unipi/docs");
+        const docs = registry.parseAll("docs");
         const totalItems = docs.reduce((sum, d) => sum + d.items.length, 0);
         const doneItems = docs.reduce(
           (sum, d) => sum + d.items.filter((i) => i.status === "done").length,

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **docs live in the project's `docs/` folder — the `.unipi/docs/` convention is gone.** Skills write to `docs/specs`, `docs/plans`, `docs/debug`, `docs/fix`, `docs/quick-work`, `docs/chore`, `docs/reviews`, `docs/generated` and `docs/research` in the project (creating the folder when it is missing), plan mode writes `docs/plans/<YYYY-MM-DD>-<short-session-id>.md`, and kanboard parses `docs/` (default `docsRoot`). `.unipi/` now holds runtime state only (config, sessions, ralph), nothing is created there eagerly, and `UNIPI_DIRS` + the eager docs-directory creation are removed. **Existing `.unipi/docs/` folders are left untouched — there is no automatic migration.**
+
 ### Added
 - **watchdog: jev watchdog for long-running tool calls.** New `@pi-unipi/watchdog` package (off by default, configurable in /unipi:settings → Watchdog). Every interval, jev judges whether a running bash tool call or background task is stuck or looping. Kills the process group (bash) or stops the task (bg_run) with the reason injected into the tool result or completion notification. Persistent processes (dev servers, watchers) are vetoed unless they're looping with errors. Configurable: interval, confidence, agreeing checks, action (kill/warn), per-kind toggles, otherTools (warn/abort-turn).
 

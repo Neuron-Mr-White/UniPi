@@ -24,18 +24,20 @@ Turn brainstorm decisions into an actionable implementation plan.
   plan file, `approve` runs the approval path
 - scope guidance is ordinary prose in the prompt, not a command argument
 - if it is unclear which spec to plan from → ask the user
-- Runs in current session, read-only sandbox + write to `.unipi/docs/`
+- Runs in the current session, read-only except for the `docs/` folder
 
 ## Sandbox
 
 - **Read:** full codebase access for context
-- **Write:** only `.unipi/docs/` directory
+- **Write:** only the project's `docs/` folder
 
 ## Output Path
 
 ```
-.unipi/docs/plans/YYYY-MM-DD-<topic>-plan.md
+docs/plans/YYYY-MM-DD-<topic>-plan.md
 ```
+
+Create the `docs/plans/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 Committed to current branch.
 
@@ -44,7 +46,7 @@ Committed to current branch.
 ## Phase 1: Load Specs
 
 1. If `specs:` arg provided, read those spec files
-2. If not provided, list available specs in `.unipi/docs/specs/` and ask user to choose
+2. If not provided, list available specs in `docs/specs/` and ask user to choose
 3. Read the spec(s) fully — understand problem, approach, design, checklist
 
 **Exit:** Spec(s) loaded. Understand what to plan.

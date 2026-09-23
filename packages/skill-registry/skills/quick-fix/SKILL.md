@@ -9,7 +9,7 @@ Fix simple bugs directly without requiring a debug report. One-shot execution fo
 
 ## Boundaries
 
-**This skill MAY:** read/write code, run tests, commit, write fix report to `.unipi/docs/fix/`.
+**This skill MAY:** read/write code, run tests, commit, write fix report to `docs/fix/`.
 **This skill MAY NOT:** create worktrees, merge branches, deploy.
 
 ## Command Format
@@ -25,8 +25,10 @@ a quick fix <string(greedy)>
 ## Output Path
 
 ```
-.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md
+docs/fix/YYYY-MM-DD-<topic>-fix.md
 ```
+
+Create the `docs/fix/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 ---
 
@@ -63,7 +65,7 @@ a quick fix <string(greedy)>
 
 ### Phase 3: Write Fix Report
 
-Write to `.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md`:
+Write to `docs/fix/YYYY-MM-DD-<topic>-fix.md`:
 
 ```markdown
 ---
@@ -98,7 +100,7 @@ date: YYYY-MM-DD
 1. Commit with descriptive message
 2. Report to user:
 
-> "Fixed. Changes committed. Report at `.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md`"
+> "Fixed. Changes committed. Report at `docs/fix/YYYY-MM-DD-<topic>-fix.md`"
 
 No further suggestions needed — this was a quick fix.
 
@@ -130,4 +132,4 @@ When in doubt, start with quick-fix. If it gets complex, suggest switching to de
 - No debug report required — direct fix
 - Summary provides record of what was fixed
 - For complex bugs, use `the debug step` first
-- Fix reports go to same `.unipi/docs/fix/` directory as regular fixes
+- Fix reports go to same `docs/fix/` directory as regular fixes

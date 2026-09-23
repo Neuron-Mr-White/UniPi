@@ -9,7 +9,7 @@ Create documentation for code, features, or the project. Works with gather-conte
 
 ## Boundaries
 
-**This skill MAY:** read codebase, run read-only commands, write docs to `.unipi/docs/generated/`.
+**This skill MAY:** read codebase, run read-only commands, write docs to `docs/generated/`.
 **This skill MAY NOT:** edit source code, run tests, implement features.
 
 ## Command Format
@@ -20,7 +20,7 @@ the document step <string(greedy)>(optional)
 
 - `string(greedy)` — optional scope (e.g., "document the auth module", "write API docs for /api/users")
 - If not provided → agent asks what to document
-- Output: `.unipi/docs/generated/` in markdown
+- Output: `docs/generated/` in markdown (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.)
 
 ---
 
@@ -84,7 +84,7 @@ Based on doc type:
 
 ### Phase 4: Write
 
-Write to `.unipi/docs/generated/YYYY-MM-DD-<topic>.md`:
+Write to `docs/generated/YYYY-MM-DD-<topic>.md`:
 
 ```markdown
 ---
@@ -102,7 +102,7 @@ scope: {what was documented}
 ### Phase 5: Present
 
 Show summary to user:
-> "Documentation written to `.unipi/docs/generated/YYYY-MM-DD-<topic>.md`"
+> "Documentation written to `docs/generated/YYYY-MM-DD-<topic>.md`"
 > "Covers: {summary of what's documented}"
 
 Ask:
@@ -115,6 +115,6 @@ Ask:
 ## Notes
 
 - Output in markdown — portable, readable, diffable
-- `.unipi/docs/generated/` keeps docs separate from workflow artifacts
+- `docs/generated/` keeps generated docs separate from hand-written ones
 - Can document code, features, architecture, or processes
 - Natural extension of gather-context — research then document

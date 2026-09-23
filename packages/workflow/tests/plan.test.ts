@@ -25,7 +25,7 @@ function cwd(): string {
 
 function activeState(dir: string, sessionId = "session-1"): PlanSessionState {
   const file = planFilePath(dir, sessionId);
-  mkdirSync(join(dir, ".unipi", "plans"), { recursive: true });
+  mkdirSync(join(dir, "docs", "plans"), { recursive: true });
   return { sessionId, active: true, planFile: file };
 }
 
@@ -35,8 +35,8 @@ describe("plan file naming", () => {
     assert.equal(name, "2026-09-24-2f1a9c34.md");
   });
 
-  it("sits under .unipi/plans", () => {
-    assert.equal(planFilePath("/w", "abcdef123456"), "/w/.unipi/plans/" + planFileName("abcdef123456"));
+  it("sits under docs/plans", () => {
+    assert.equal(planFilePath("/w", "abcdef123456"), "/w/docs/plans/" + planFileName("abcdef123456"));
   });
 });
 
@@ -93,7 +93,7 @@ describe("plan mode enforcement", () => {
     const dir = cwd();
     const state = activeState(dir);
     const reason = planBlockReason(state.planFile, dir, "Nope.");
-    assert.match(reason.reason, /\.unipi\/plans\/\d{4}-\d{2}-\d{2}-session1\.md/);
+    assert.match(reason.reason, /docs\/plans\/\d{4}-\d{2}-\d{2}-session1\.md/);
     assert.match(reason.reason, /call plan_submit/);
   });
 });
@@ -177,7 +177,7 @@ describe("plan approval options", () => {
 
 describe("plan messages", () => {
   it("instructions name the plan file and the required sections", () => {
-    const text = planInstructions(".unipi/plans/2026-09-24-abcd1234.md");
+    const text = planInstructions("docs/plans/2026-09-24-abcd1234.md");
     assert.match(text, /investigation only/i);
     assert.match(text, /2026-09-24-abcd1234\.md/);
     assert.match(text, /## Summary/);
@@ -189,9 +189,9 @@ describe("plan messages", () => {
   });
 
   it("the per-turn reminder is one compact line", () => {
-    const text = planReminder(".unipi/plans/x.md");
+    const text = planReminder("docs/plans/x.md");
     assert.equal(text.includes("\n"), false);
-    assert.match(text, /^\[plan mode: read-only · plan file \.unipi\/plans\/x\.md · call plan_submit when ready\]$/);
+    assert.match(text, /^\[plan mode: read-only · plan file docs\/plans\/x\.md · call plan_submit when ready\]$/);
   });
 });
 

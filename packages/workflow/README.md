@@ -76,7 +76,7 @@ Entering plan mode (`/unipi:plan`, `Alt+P`):
 
 - state is persisted per session, so a resume keeps it;
 - a compact message states the rules: investigation only, the plan file is the ONLY
-  writable path (`.unipi/plans/<YYYY-MM-DD>-<short-session-id>.md`), bash is limited
+  writable path (`docs/plans/<YYYY-MM-DD>-<short-session-id>.md`), bash is limited
   to read-only commands;
 - every later turn gets a short reminder `[plan mode: read-only · plan file … ·
   call plan_submit when ready]` — appended as a message, never to the system prompt,

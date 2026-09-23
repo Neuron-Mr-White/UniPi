@@ -9,7 +9,7 @@ Execute a single task directly. No brainstorm, no plan — just do it and record
 
 ## Boundaries
 
-**This skill MAY:** read/write code, run tests, commit, write summary to `.unipi/docs/quick-work/`.
+**This skill MAY:** read/write code, run tests, commit, write summary to `docs/quick-work/`.
 **This skill MAY NOT:** create worktrees, merge branches, deploy.
 
 ## Command Format
@@ -49,7 +49,7 @@ Straightforward — no planning, no discussion, just work.
 
 ### Phase 3: Write Summary
 
-Write summary to `.unipi/docs/quick-work/YYYY-MM-DD-<topic>.md`:
+Write summary to `docs/quick-work/YYYY-MM-DD-<topic>.md` (Create the folder if it does not exist — it is an ordinary project folder, not a unipi store.):
 
 ```markdown
 ---
@@ -76,7 +76,7 @@ date: YYYY-MM-DD
 
 ### Phase 4: Report
 
-> "Done. Changes committed. Summary at `.unipi/docs/quick-work/YYYY-MM-DD-<topic>.md`"
+> "Done. Changes committed. Summary at `docs/quick-work/YYYY-MM-DD-<topic>.md`"
 
 No further suggestions needed — this was a one-shot task.
 

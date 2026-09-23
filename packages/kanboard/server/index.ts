@@ -49,7 +49,7 @@ export class KanboardServer {
     this.config = {
       port: config?.port ?? KANBOARD_DEFAULTS.PORT,
       maxPort: config?.maxPort ?? KANBOARD_DEFAULTS.MAX_PORT,
-      docsRoot: config?.docsRoot ?? ".unipi/docs",
+      docsRoot: config?.docsRoot ?? "docs",
       pidFile: config?.pidFile ?? KANBOARD_DIRS.PID_FILE,
     };
     this.staticDir = path.resolve(

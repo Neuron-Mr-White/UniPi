@@ -9,7 +9,7 @@ Implement fixes based on debug reports. Autocomplete available for debug file se
 
 ## Boundaries
 
-**This skill MAY:** read/write code, run tests, commit, write fix report to `.unipi/docs/fix/`.
+**This skill MAY:** read/write code, run tests, commit, write fix report to `docs/fix/`.
 **This skill MAY NOT:** create worktrees, merge branches, deploy.
 
 ## Command Format
@@ -26,8 +26,10 @@ the fix step debug:<path>(optional) <string(greedy)>(optional)
 ## Output Path
 
 ```
-.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md
+docs/fix/YYYY-MM-DD-<topic>-fix.md
 ```
+
+Create the `docs/fix/` folder if it does not exist yet — it is an ordinary project folder, not a unipi store.
 
 ---
 
@@ -36,11 +38,11 @@ the fix step debug:<path>(optional) <string(greedy)>(optional)
 ### Phase 1: Load Debug Report
 
 **If `debug:` arg provided:**
-1. Read the debug report from `.unipi/docs/debug/`
+1. Read the debug report from `docs/debug/`
 2. Understand: root cause, affected files, suggested fix, verification plan
 
 **If no debug provided:**
-1. List available debug reports in `.unipi/docs/debug/`
+1. List available debug reports in `docs/debug/`
 2. Present to user for selection (autocomplete-style)
 3. Or ask if fixing without debug report (→ suggest `a quick fix`)
 
@@ -93,7 +95,7 @@ If verification fails:
 
 ### Phase 5: Write Fix Report
 
-Write to `.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md`:
+Write to `docs/fix/YYYY-MM-DD-<topic>-fix.md`:
 
 ```markdown
 ---
@@ -110,7 +112,7 @@ status: {fixed|partial-fix|could-not-fix}
 {One-line description of what was fixed}
 
 ## Debug Report Reference
-- Report: `.unipi/docs/debug/{filename}`
+- Report: `docs/debug/{filename}`
 - Root Cause: {brief summary}
 
 ## Changes Made
@@ -159,7 +161,7 @@ status: {fixed|partial-fix|could-not-fix}
 > 
 > **Fix:** {brief summary}
 > **Files:** {list of changed files}
-> **Report:** `.unipi/docs/fix/YYYY-MM-DD-<topic>-fix.md`
+> **Report:** `docs/fix/YYYY-MM-DD-<topic>-fix.md`
 
 Suggest next steps:
 

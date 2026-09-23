@@ -129,7 +129,7 @@ describe("provider-native prefix structure", () => {
         canSearch: true,
         canStore: true,
       })],
-      ["workflow plan mode", planReminder(".unipi/plans/2026-09-24-abcd1234.md")],
+      ["workflow plan mode", planReminder("docs/plans/2026-09-24-abcd1234.md")],
       ["compactor resume", buildResumeSnapshot([event], { compactCount: 2 })],
     ];
 
