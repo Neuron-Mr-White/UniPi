@@ -395,10 +395,19 @@ export class SettingsHub {
 
   private runActionRow(row: Row): void {
     if (row.kind !== "field" || row.field?.type !== "action") return;
-    void Promise.resolve(this.runActionFn?.(row.field.command)).catch(() => {
-      // Action failures never block the panel.
-    });
-    this.toast = `run: ${row.field.label}`;
+    const command = row.field.command;
+    const label = row.field.label;
+    void Promise.resolve(this.runActionFn?.(command))
+      .catch(() => {
+        // Action failures never block the panel.
+      })
+      .finally(() => {
+        // Actions may rewrite settings behind the hub's back (e.g. a preset
+        // apply) — drop the per-namespace cache so rows re-read the engine.
+        this.values.clear();
+        this.toast = `run: ${label}`;
+      });
+    this.toast = `run: ${label}`;
   }
 
   private toggleScope(): void {

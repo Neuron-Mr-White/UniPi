@@ -5,13 +5,27 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+import { getSettings, registerSettings, setSettings, type SettingsField } from "@pi-unipi/core";
 import type { CompactorConfig } from "../types.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
 // Registered with the unified settings hub. Canonical paths match this
 // module's existing layout exactly (global ~/.unipi/config/compactor/config.json,
 // project .unipi/config/compactor/config.json after the v3 migration move).
+//
+// Absorbs the deleted /unipi:compact-settings overlay: per-strategy modes,
+// the % auto-compaction trigger, pipeline toggles, and preset actions.
+const STRATEGY_MODES: ReadonlyArray<SettingsField> = [
+  { key: "sessionGoals.mode", type: "enum", label: "Session goals mode", options: ["full", "brief", "off"] },
+  { key: "filesAndChanges.mode", type: "enum", label: "Files & changes mode", options: ["all", "modified-only", "off"] },
+  { key: "commits.mode", type: "enum", label: "Commits mode", options: ["full", "brief", "off"] },
+  { key: "outstandingContext.mode", type: "enum", label: "Outstanding context mode", options: ["full", "critical-only", "off"] },
+  { key: "userPreferences.mode", type: "enum", label: "User preferences mode", options: ["all", "recent-only", "off"] },
+  { key: "briefTranscript.mode", type: "enum", label: "Brief transcript mode", options: ["full", "compact", "minimal", "off"] },
+  { key: "sessionContinuity.mode", type: "enum", label: "Session continuity mode", options: ["full", "off"] },
+  { key: "sandboxExecution.mode", type: "enum", label: "Sandbox execution mode", options: ["all", "off"] },
+];
+
 registerSettings({
   namespace: "compactor",
   label: "Compactor",
@@ -19,7 +33,7 @@ registerSettings({
   schema: [
     {
       title: "Strategies",
-      description: "Per-strategy modes live here; detailed tuning in /unipi:compactor-settings",
+      description: "What the lossless summarizer extracts",
       fields: [
         { key: "sessionGoals.enabled", type: "boolean", label: "Session goals" },
         { key: "filesAndChanges.enabled", type: "boolean", label: "Files and changes" },
@@ -29,6 +43,37 @@ registerSettings({
         { key: "briefTranscript.enabled", type: "boolean", label: "Brief transcript" },
         { key: "sessionContinuity.enabled", type: "boolean", label: "Session continuity" },
         { key: "sandboxExecution.enabled", type: "boolean", label: "Sandbox execution" },
+        ...STRATEGY_MODES,
+      ],
+    },
+    {
+      title: "Auto",
+      description: "UniPi-managed %-of-context auto-compaction",
+      fields: [
+        { key: "autoCompaction.enabled", type: "boolean", label: "Percentage trigger", description: "Compact when Pi reports context usage at or above the threshold" },
+        { key: "autoCompaction.thresholdPercent", type: "number", label: "Threshold %", min: 50, max: 99 },
+        { key: "autoCompaction.cooldownMs", type: "number", label: "Cooldown ms", min: 0, zeroLabel: "0s none", description: "Minimum delay between auto-compaction attempts" },
+        { key: "autoCompaction.repeatMinGrowthTokens", type: "number", label: "Repeat growth tokens", min: 0, zeroLabel: "off", description: "New tokens required to re-compact above threshold" },
+        { key: "autoCompaction.notify", type: "boolean", label: "Notifications", description: "Notify when auto-compaction triggers or fails" },
+      ],
+    },
+    {
+      title: "Pipeline",
+      fields: [
+        { key: "pipeline.autoInjection", type: "boolean", label: "Auto injection", description: "Inject behavioral state after compaction" },
+        { key: "smartKeepTail", type: "boolean", label: "Smart keep tail", description: "Grow keep:N tail to ≥5k tokens when it would be tiny" },
+        { key: "continueAfterThresholdCompact", type: "boolean", label: "Auto-continue", description: "Resume the agent after threshold/overflow compaction" },
+        { key: "debug", type: "boolean", label: "Debug output", description: "Write compaction diagnostics to /tmp/compactor-debug.json" },
+      ],
+    },
+    {
+      title: "Presets",
+      description: "One-key bundles of strategy + auto settings",
+      fields: [
+        { key: "preset.precise", type: "action", label: "Apply preset: precise", description: "Maximum fidelity — everything on, full modes", command: "unipi:compact-apply-precise" },
+        { key: "preset.balanced", type: "action", label: "Apply preset: balanced", description: "Default mix", command: "unipi:compact-apply-balanced" },
+        { key: "preset.thorough", type: "action", label: "Apply preset: thorough", description: "Deep extraction, heavier output", command: "unipi:compact-apply-thorough" },
+        { key: "preset.lean", type: "action", label: "Apply preset: lean", description: "Minimal footprint", command: "unipi:compact-apply-lean" },
       ],
     },
   ],

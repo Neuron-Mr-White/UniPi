@@ -232,7 +232,6 @@ export const COMPACTOR_COMMANDS = {
   COMPACT_RECALL: "compact-recall",
   COMPACT_STATS: "compact-stats",
   COMPACT_DOCTOR: "compact-doctor",
-  COMPACT_SETTINGS: "compact-settings",
   COMPACT_PRESET: "compact-preset",
   COMPACT_HELP: "compact-help",
 } as const;

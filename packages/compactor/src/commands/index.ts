@@ -8,7 +8,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
 import { applyPreset, parsePreset } from "../config/presets.js";
-import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
+import { COMPACTOR_INSTRUCTION, formatTokens, registerCommandRunner } from "@pi-unipi/core";
 import { getLastCompactionStats, formatCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxStats } from "../tools/ctx-stats.js";
@@ -154,24 +154,13 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
     },
   });
 
-  // ── /unipi:compact-settings ──────────────────────────
-  pi.registerCommand("unipi:compact-settings", {
-    description: "Open TUI settings overlay",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      try {
-        const cwd = (ctx as any).cwd ?? process.cwd();
-        const { renderSettingsOverlay } = await import("../tui/settings-overlay.js");
-        const result = await ctx.ui.custom(renderSettingsOverlay(cwd));
-        if (result) {
-          ctx.ui.notify("Settings saved.", "info");
-        } else {
-          ctx.ui.notify("Settings cancelled.", "info");
-        }
-      } catch (err) {
-        ctx.ui.notify(`Settings overlay error: ${err}`, "error");
-      }
-    },
-  });
+  // Hub action runners — "Apply preset: X" rows in /unipi:settings. These
+  // mirror the /unipi:compact-preset <name> code path (applyPreset + save).
+  for (const name of ["precise", "balanced", "thorough", "lean"] as const) {
+    registerCommandRunner(`unipi:compact-apply-${name}`, () => {
+      saveConfig(applyPreset(name));
+    });
+  }
 
   // ── /unipi:compact-preset ────────────────────────────
   pi.registerCommand("unipi:compact-preset", {
@@ -203,11 +192,11 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         "  /unipi:session-recall <query> — search session history\n" +
         "  /unipi:compact-stats — view stats\n" +
         "  /unipi:compact-doctor — run diagnostics\n" +
-        "  /unipi:compact-settings — TUI settings, including optional % auto-compaction\n" +
+        "  auto-compaction settings — /unipi:settings (Compactor group)\n" +
         "  /unipi:compact-preset <name> — apply preset\n" +
         "\n" +
         "Percentage trigger:\n" +
-        "  Disabled by default. Enable in /unipi:compact-settings to compact at a context % before Pi's reserve-token limit.",
+        "  Disabled by default. Enable it in /unipi:settings (Compactor › Auto) to compact at a context % before Pi's reserve-token limit.",
         "info",
       );
     },
