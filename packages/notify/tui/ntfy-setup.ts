@@ -68,7 +68,7 @@ export class NtfySetupOverlay implements Component {
   handleInput(data: string): void {
     switch (this.phase) {
       case "instructions":
-        if (data === "\r" || data === " ") {
+        if (data === "\r" || data === "\t" || data === " ") {
           this.phase = "scope";
         } else if (matchesKey(data, "escape")) {
           this.onClose?.();
@@ -82,7 +82,7 @@ export class NtfySetupOverlay implements Component {
         } else if (matchesKey(data, Key.down) || data === "j") {
           // Down
           this.scopeIndex = Math.min(1, this.scopeIndex + 1);
-        } else if (data === "\r" || data === " ") {
+        } else if (data === "\r" || data === "\t" || data === " ") {
           this.scope = this.scopeIndex === 1 ? "project" : "global";
           this.phase = this.serverUrl ? "topic" : "server-url";
         } else if (matchesKey(data, "escape")) {
@@ -112,7 +112,7 @@ export class NtfySetupOverlay implements Component {
         break;
 
       case "priority":
-        if (data === "\r" && this.isValidPriority()) {
+        if ((data === "\r" || data === "\t") && this.isValidPriority()) {
           this.testConnection();
         } else if (matchesKey(data, "escape")) {
           this.onClose?.();
@@ -135,7 +135,7 @@ export class NtfySetupOverlay implements Component {
       case "success":
       case "error":
       case "test-failed":
-        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
+        if (data === "\r" || data === "\t" || data === " " || matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -171,7 +171,7 @@ export class NtfySetupOverlay implements Component {
       this.pasteBuffer = data.replace("\x1b[200~", "");
       return;
     }
-    if (data === "\r") {
+    if (data === "\r" || data === "\t") {
       onEnter();
     } else if (matchesKey(data, "escape")) {
       // Escape during token phase — skip token (optional field)
@@ -319,7 +319,7 @@ export class NtfySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Press Enter to continue, Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -385,7 +385,7 @@ export class NtfySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -421,7 +421,7 @@ export class NtfySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -460,7 +460,7 @@ export class NtfySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to continue · Esc to skip"),
+            this.overlay.fg("dim", "enter/tab continue · esc skip"),
             innerWidth
           )
         );
@@ -490,7 +490,7 @@ export class NtfySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to test connection · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab test · esc cancel"),
             innerWidth
           )
         );

@@ -57,7 +57,7 @@ export class GotifySetupOverlay implements Component {
   handleInput(data: string): void {
     switch (this.phase) {
       case "instructions":
-        if (data === "\r" || data === " ") {
+        if (data === "\r" || data === "\t" || data === " ") {
           this.phase = this.serverUrl ? "app-token" : "server-url";
         } else if (matchesKey(data, "escape")) {
           this.onClose?.();
@@ -77,7 +77,7 @@ export class GotifySetupOverlay implements Component {
         break;
 
       case "priority":
-        if (data === "\r" && this.isValidPriority()) {
+        if ((data === "\r" || data === "\t") && this.isValidPriority()) {
           this.testConnection();
         } else if (matchesKey(data, "escape")) {
           this.onClose?.();
@@ -100,7 +100,7 @@ export class GotifySetupOverlay implements Component {
       case "success":
       case "error":
       case "test-failed":
-        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
+        if (data === "\r" || data === "\t" || data === " " || matchesKey(data, "escape")) {
           this.onClose?.();
         }
         break;
@@ -135,7 +135,7 @@ export class GotifySetupOverlay implements Component {
       this.pasteBuffer = data.replace("\x1b[200~", "");
       return;
     }
-    if (data === "\r") {
+    if (data === "\r" || data === "\t") {
       onEnter();
     } else if (matchesKey(data, "escape")) {
       this.onClose?.();
@@ -279,7 +279,7 @@ export class GotifySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Press Enter to continue, Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -309,7 +309,7 @@ export class GotifySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -342,7 +342,7 @@ export class GotifySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to continue · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab continue · esc cancel"),
             innerWidth
           )
         );
@@ -372,7 +372,7 @@ export class GotifySetupOverlay implements Component {
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(
           this.overlay.frameLine(
-            this.overlay.fg("dim", "Enter to test connection · Esc to cancel"),
+            this.overlay.fg("dim", "enter/tab test · esc cancel"),
             innerWidth
           )
         );

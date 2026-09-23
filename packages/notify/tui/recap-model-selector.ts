@@ -66,8 +66,8 @@ export class RecapModelSelectorOverlay implements Component {
 
     // Filter mode: type to search
     if (this.filterMode) {
-      if (matchesKey(data, "enter")) {
-        // Enter — exit filter mode
+      if (matchesKey(data, "enter") || matchesKey(data, "tab")) {
+        // Enter/Tab — exit filter mode (hub: Tab = Enter = activate)
         this.filterMode = false;
         return;
       }
@@ -128,8 +128,8 @@ export class RecapModelSelectorOverlay implements Component {
       this.filter = "";
       return;
     }
-    if (matchesKey(data, "enter")) {
-      // Enter — select and save
+    if (matchesKey(data, "enter") || matchesKey(data, "tab")) {
+      // Enter/Tab — select and save (hub: Tab = Enter = activate)
       this.selectModel();
       return;
     }

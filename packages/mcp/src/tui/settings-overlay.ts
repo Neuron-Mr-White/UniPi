@@ -1,12 +1,16 @@
 /**
- * @pi-unipi/mcp — Settings overlay TUI
+ * @pi-unipi/mcp — Settings overlay TUI (hub-kit look)
  *
- * Interactive list of configured MCP servers with enable/disable toggle,
- * edit, delete, scope switching, and sync trigger.
+ * Interactive list of configured MCP servers: enable/disable toggle, edit,
+ * delete (with confirm), scope switching via `g`, and sync trigger.
+ *
+ * Visual + key contract come from the shared hub kit: ▌ group mark, header
+ * band, bottom hint line, exact-width rows, relative-height viewport, and
+ * ↑↓/jk · Enter/Tab activate · Space quick · g scope · Esc back.
  */
 
-import { Key, matchesKey, truncateToWidth, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme, KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
 import type { ServerState } from "../types.js";
 import {
   loadMcpConfig,
@@ -16,7 +20,25 @@ import {
   getGlobalConfigDir,
   getProjectConfigDir,
 } from "../config/manager.js";
-import { boxInnerWidth, normalizeWidth, WidthKeyedCache } from "@pi-unipi/core";
+import {
+  boxInnerWidth,
+  frameOverlay,
+  hubBoldText as bold,
+  hubClampScroll,
+  hubExactRow,
+  hubFrameTitle,
+  hubHeaderBand,
+  hubHintLine,
+  hubTheme,
+  hubKey,
+  hubMaxRows,
+  hubMarkSpan,
+  hubMoreAbove,
+  hubMoreBelow,
+  hubRowColumns,
+  setHubTheme,
+  type HubKey,
+} from "@pi-unipi/core";
 
 /** Server display item */
 interface ServerDisplayItem {
@@ -33,9 +55,13 @@ interface ServerDisplayItem {
 interface SettingsOverlayState {
   servers: ServerDisplayItem[];
   selectedIndex: number;
+  scroll: number;
   viewScope: "global" | "project";
   confirmDelete: string | null;
 }
+
+/** Namespace whose package color paints the ▌ mark (mcp = green). */
+const MARK_NS = "mcp";
 
 /**
  * Render the MCP settings overlay.
@@ -49,6 +75,8 @@ export function renderMcpSettingsOverlay(params?: {
   };
   cwd?: string;
   onComplete?: () => void;
+  /** Terminal rows for the relative-height viewport (default 30). */
+  terminalRows?: number;
 }) {
   return (
     tui: TUI,
@@ -56,18 +84,17 @@ export function renderMcpSettingsOverlay(params?: {
     _kb: KeybindingsManager,
     done: (result: { action?: string } | null) => void,
   ) => {
+    setHubTheme(theme);
     const registry = params?.registry;
     const cwd = params?.cwd ?? process.cwd();
 
     const state: SettingsOverlayState = {
       servers: [],
       selectedIndex: 0,
+      scroll: 0,
       viewScope: "global",
       confirmDelete: null,
     };
-
-    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
-    const lineCache = new WidthKeyedCache();
 
     function refreshServers() {
       const configDir =
@@ -111,15 +138,21 @@ export function renderMcpSettingsOverlay(params?: {
       if (state.selectedIndex >= items.length) {
         state.selectedIndex = Math.max(0, items.length - 1);
       }
+      state.scroll = hubClampScroll(
+        state.servers.map(() => "row"),
+        state.selectedIndex,
+        state.scroll,
+        viewportRows(),
+      );
+    }
+
+    /** Relative-height viewport (~hub proportions, minus band + hint). */
+    function viewportRows(): number {
+      return hubMaxRows(params?.terminalRows ?? 30, 2);
     }
 
     // Initial load
     refreshServers();
-
-    function refresh() {
-      lineCache.clear();
-      tui.requestRender();
-    }
 
     async function toggleServer(index: number) {
       const server = state.servers[index];
@@ -145,8 +178,7 @@ export function renderMcpSettingsOverlay(params?: {
         // Persist the setting now; the next Pi restart applies the new set as
         // one deterministic cache epoch.
         refreshServers();
-        refresh();
-      } catch (err) {
+      } catch {
         // Silently fail
       }
     }
@@ -167,7 +199,6 @@ export function renderMcpSettingsOverlay(params?: {
         saveMetadata(configDir, meta);
 
         refreshServers();
-        refresh();
       } catch {
         // Ignore errors
       }
@@ -179,184 +210,152 @@ export function renderMcpSettingsOverlay(params?: {
         if (data === "y" || data === "Y") {
           deleteServer(state.confirmDelete);
           state.confirmDelete = null;
-          refresh();
           return;
         }
-        if (data === "n" || data === "N" || matchesKey(data, Key.escape)) {
+        if (data === "n" || data === "N" || hubKey(data) === "back") {
           state.confirmDelete = null;
-          refresh();
           return;
         }
         return;
       }
 
-      // Close
-      if (matchesKey(data, Key.escape) || data === "q") {
+      const key: HubKey = hubKey(data);
+
+      if (key === "back") {
         done(null);
         return;
       }
 
-      // Navigation (arrows + vim j/k)
-      if (matchesKey(data, Key.up) || data === "k") {
-        if (state.selectedIndex > 0) {
-          state.selectedIndex--;
-          refresh();
+      if (key === "up" || key === "down") {
+        const next = state.selectedIndex + (key === "down" ? 1 : -1);
+        if (next >= 0 && next < state.servers.length) {
+          state.selectedIndex = next;
+          state.scroll = hubClampScroll(
+            state.servers.map(() => "row"),
+            state.selectedIndex,
+            state.scroll,
+            viewportRows(),
+          );
         }
         return;
       }
 
-      if (matchesKey(data, Key.down) || data === "j") {
-        if (state.selectedIndex < state.servers.length - 1) {
-          state.selectedIndex++;
-          refresh();
-        }
+      // Space = quick action: toggle enable/disable
+      if (key === "quick") {
+        void toggleServer(state.selectedIndex);
         return;
       }
 
-      // Space: toggle enable/disable
-      if (data === " ") {
-        toggleServer(state.selectedIndex);
-        return;
-      }
-
-      // 'g': switch to global view
-      if (data === "g") {
-        state.viewScope = "global";
+      // `g` toggles scope (global ↔ project) — replaces the old g/p pair.
+      if (typeof key === "object" && key.char === "g") {
+        state.viewScope = state.viewScope === "global" ? "project" : "global";
         refreshServers();
-        refresh();
         return;
       }
 
-      // 'p': switch to project view
-      if (data === "p") {
-        state.viewScope = "project";
-        refreshServers();
-        refresh();
-        return;
-      }
-
-      // 'd': delete (with confirmation)
-      if (data === "d") {
+      // `x`: delete (with confirmation) — `d` stays "default" in the hub.
+      if (typeof key === "object" && key.char === "x") {
         const server = state.servers[state.selectedIndex];
-        if (server) {
-          state.confirmDelete = server.name;
-          refresh();
-        }
+        if (server) state.confirmDelete = server.name;
         return;
       }
 
-      // Enter/e: edit (placeholder)
-      if (data === "\r" || data === "e") {
-        // Edit not yet implemented in TUI — notify would need ctx
+      // Enter/Tab = activate: open the server detail/edit flow.
+      if (key === "activate") {
+        // Edit UI is not implemented yet — reserved (same as before).
         return;
       }
 
-      // 'a': add (would open add overlay — placeholder)
-      if (data === "a") {
+      // `a`: add (opens the add overlay via the host action wiring)
+      if (typeof key === "object" && key.char === "a") {
         done({ action: "add" });
         return;
       }
 
-      // 's': sync
-      if (data === "s") {
+      // `s`: sync
+      if (typeof key === "object" && key.char === "s") {
         done({ action: "sync" });
         return;
       }
     }
 
-    /** Pad content to exact visible width, accounting for ANSI codes and emoji */
-    function padVisible(content: string, targetWidth: number): string {
-      const vw = visibleWidth(content);
-      const pad = Math.max(0, targetWidth - vw);
-      return content + " ".repeat(pad);
-    }
-
     function render(rawWidth: number): string[] {
-      const width = normalizeWidth(rawWidth);
-      const cached = lineCache.get(width);
-      if (cached) return cached;
+      const width = rawWidth;
+      const inner = boxInnerWidth(width);
+      const body: string[] = [];
 
-      const lines: string[] = [];
-      const innerWidth = boxInnerWidth(width);
+      // ── Header band ─────────────────────────────────────────────
+      body.push(hubHeaderBand({
+        inner,
+        namespace: MARK_NS,
+        text: `MCP servers — ${state.viewScope} · ${state.servers.length} configured`,
+      }));
 
-      // ── Header ──────────────────────────────────────────────────────
-      const header = " MCP Settings ";
-      const scopeLabel = state.viewScope === "global" ? "● Global" : "● Project";
-      const headerPad = Math.max(0, innerWidth - visibleWidth(header) - visibleWidth(scopeLabel));
-      lines.push(theme.fg("accent", `╭${"─".repeat(innerWidth)}╮`));
-      lines.push(
-        theme.fg("accent", "│") +
-        theme.bold(header) +
-        theme.fg("accent", " ".repeat(headerPad) + scopeLabel) +
-        theme.fg("accent", "│"),
+      // ── Server window (relative height) ─────────────────────────
+      const rows = viewportRows();
+      state.scroll = hubClampScroll(
+        state.servers.map(() => "row"),
+        state.selectedIndex,
+        state.scroll,
+        rows,
       );
-      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
+      if (state.scroll > 0) body.push(hubMoreAbove(state.scroll, inner));
 
-      // ── Server list ─────────────────────────────────────────────────
-      if (state.servers.length === 0) {
-        lines.push(
-          theme.fg("accent", "│") +
-          padVisible(theme.fg("muted", " No servers configured"), innerWidth) +
-          theme.fg("accent", "│"),
-        );
-      } else {
-        for (let i = 0; i < state.servers.length; i++) {
-          const server = state.servers[i];
-          const selected = i === state.selectedIndex;
+      const end = Math.min(state.servers.length, state.scroll + rows);
+      for (let i = state.scroll; i < end; i++) {
+        const server = state.servers[i]!;
+        const selected = i === state.selectedIndex;
 
-          const statusIcon =
-            server.status === "running"
-              ? theme.fg("success", "●")
-              : server.status === "error"
-                ? theme.fg("error", "✗")
-                : server.enabled
-                  ? theme.fg("muted", "○")
-                  : theme.fg("dim", "○");
+        const statusIcon =
+          server.status === "running" ? "●" :
+          server.status === "error" ? "✗" :
+          server.enabled ? "○" : "○";
 
-          const name = selected ? theme.bold(server.name) : theme.fg("text", server.name);
-          const cmd = theme.fg("muted", truncateToWidth(server.command, 24));
-          const tools =
-            server.status === "running" && server.toolCount > 0
-              ? theme.fg("accent", `${server.toolCount} tools`)
-              : server.status === "error" && server.error
-                ? theme.fg("error", truncateToWidth(server.error, 20))
-                : theme.fg("dim", "stopped");
+        const label = `${statusIcon} ${server.enabled ? "" : "disabled · "}${server.name}`;
+        const tools =
+          server.status === "running" && server.toolCount > 0
+            ? `${server.toolCount} tools`
+            : server.status === "error" && server.error
+              ? truncate(server.error, 20)
+              : "stopped";
+        const value = `${truncate(server.command, 24)} · ${tools} · [${server.source}]`;
 
-          const source = theme.fg("muted", `[${server.source}]`);
-          const prefix = selected ? theme.fg("accent", "▸ ") : "  ";
-
-          const line = ` ${prefix}${statusIcon} ${name}  ${cmd}  ${tools}  ${source}`;
-          lines.push(
-            theme.fg("accent", "│") +
-            padVisible(truncateToWidth(line, innerWidth), innerWidth) +
-            theme.fg("accent", "│"),
-          );
-        }
+        body.push(hubExactRow(hubRowColumns({
+          inner,
+          selected,
+          label,
+          value,
+          markNamespace: MARK_NS,
+        }), inner));
       }
+      const below = state.servers.length - end;
+      if (below > 0) body.push(hubMoreBelow(below, inner));
 
-      // ── Confirm delete ─────────────────────────────────────────────
+      // ── Confirm delete ──────────────────────────────────────────
       if (state.confirmDelete) {
-        lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
-        lines.push(
-          theme.fg("accent", "│") +
-          padVisible(theme.fg("warning", ` Delete '${state.confirmDelete}'? (y/n)`), innerWidth) +
-          theme.fg("accent", "│"),
-        );
+        body.push(hubExactRow(hubMarkSpan(MARK_NS) + bold(` ⚠ Delete '${state.confirmDelete}'? y/n`), inner));
       }
 
-      // ── Keybinds ───────────────────────────────────────────────────
-      lines.push(theme.fg("accent", `├${"─".repeat(innerWidth)}┤`));
-      const binds = " ↑↓ select  Space toggle  a add  s sync  g global  p project  d delete  q/Esc close";
-      lines.push(
-        theme.fg("accent", "│") +
-        padVisible(theme.fg("muted", truncateToWidth(binds, innerWidth)), innerWidth) +
-        theme.fg("accent", "│"),
-      );
-      lines.push(theme.fg("accent", `╰${"─".repeat(innerWidth)}╯`));
+      // ── Hint line ───────────────────────────────────────────────
+      body.push(hubHintLine(
+        "↑↓/jk move · enter edit · space toggle · a add · s sync · x delete · g scope · esc close",
+        inner,
+      ));
 
-      return lineCache.set(width, lines);
+      return frameOverlay(body, width, {
+        title: bold(hubFrameTitle("mcp", [], `— ${state.viewScope}`)),
+        borderFg: (t) => hubTheme.fg("borderMuted", t),
+      });
+
+      function truncate(text: string, n: number): string {
+        return text.length > n ? text.slice(0, n - 1) + "…" : text;
+      }
     }
 
-    return { render, invalidate: refresh, handleInput };
+    return {
+      render,
+      invalidate: () => tui.requestRender(),
+      handleInput,
+    };
   };
 }

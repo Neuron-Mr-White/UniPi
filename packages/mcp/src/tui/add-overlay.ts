@@ -31,7 +31,7 @@ import {
   getProjectConfigDir,
 } from "../config/manager.js";
 import { validateMcpConfig, DEFAULT_MCP_CONFIG, DEFAULT_METADATA } from "../config/schema.js";
-import { boxInnerWidth, normalizeWidth, WidthKeyedCache } from "@pi-unipi/core";
+import { boxInnerWidth, hubMarkSpan, normalizeWidth, WidthKeyedCache } from "@pi-unipi/core";
 
 type Mode = "normal" | "search" | "editor";
 type StatusKind = "info" | "success" | "warn" | "error";
@@ -297,6 +297,12 @@ export function renderMcpAddOverlay(params?: {
       if (matchesKey(data, Key.escape)) {
         state.mode = "normal";
         state.validationError = null;
+        refresh();
+        return;
+      }
+      // Tab-out: back to the browse pane (same swap the pane's l/Tab does).
+      if (data === "\t") {
+        state.mode = "normal";
         refresh();
         return;
       }
@@ -608,6 +614,7 @@ export function renderMcpAddOverlay(params?: {
         if (state.searchQuery) return ` ${theme.fg("muted", "/")}${theme.fg("text", state.searchQuery)}`;
         return ` ${theme.fg("muted", "/ press / to search")}`;
       })();
+      const markedSearchBar = `${hubMarkSpan("mcp")}${searchBar}`;
 
       const editingLabel = (() => {
         const sel = state.filteredServers[state.selectedIndex];
@@ -627,7 +634,7 @@ export function renderMcpAddOverlay(params?: {
         shown < total
           ? theme.fg("dim", `${shown}/${total} `)
           : theme.fg("dim", `${total} `);
-      const leftHeaderRight = padVisible(searchBar, leftW - visibleWidth(counter)) + counter;
+      const leftHeaderRight = padVisible(markedSearchBar, leftW - visibleWidth(counter)) + counter;
 
       lines.push(
         border("│") +
@@ -769,7 +776,7 @@ export function renderMcpAddOverlay(params?: {
 
       const binds =
         state.mode === "editor"
-          ? " Ctrl+S=save · Ctrl+P=prettify · Enter=newline · Esc=back to list "
+          ? " Tab=browse · ctrl+s save · ctrl+p prettify · enter newline · esc back "
           : state.mode === "search"
             ? " Type to filter · ↑↓ navigate · Enter load+edit · Esc cancel "
             : " j/k move · / search · Enter edit · r reload tmpl · c custom · Tab pane · q close ";

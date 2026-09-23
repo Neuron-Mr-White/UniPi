@@ -37,6 +37,11 @@ export function setHubTheme(theme: Parameters<OverlayTheme["setTheme"]>[0]): voi
 const hubDim = (t: string): string => hubTheme.fg("textMuted", t);
 const hubBold = (t: string): string => hubTheme.bold(t);
 
+/** Styled dim text (theme-aware) — for spans outside the kit's rows. */
+export const hubDimText = hubDim;
+/** Styled bold text (theme-aware) — for spans outside the kit's rows. */
+export const hubBoldText = hubBold;
+
 // ─── Key classifier ──────────────────────────────────────────────────────
 
 export type HubKey =

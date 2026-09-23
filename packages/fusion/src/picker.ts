@@ -356,7 +356,21 @@ export class ModelPicker {
         this.effort[row.key] = stepEffort(this.effortFor(row.key), delta);
       }
     } else if (matchesKey(data, Key.tab)) {
+      // Fusion row: Tab cycles focus (lead → sidekick → effort). Model rows:
+      // Tab = activate, same as Enter (hub key contract).
       if (row?.kind === "fusion") this.cycleFocus(matchesKey(data, "shift+tab"));
+      else if (!disabledFusion) {
+        this.confirm(row);
+        return;
+      }
+    } else if (data === " " || matchesKey(data, Key.space)) {
+      // Space = quick action: stage the highlighted model as the Fusion lead.
+      if (row?.kind === "model" && !disabledFusion) {
+        this.lead = row.key;
+        this.changed();
+        return;
+      }
+      return;
     } else if (matchesKey(data, Key.enter) || data === "\r") {
       this.confirm(row);
       return;
@@ -621,11 +635,11 @@ export class ModelPicker {
     if (row?.kind === "fusion" && !this.fusionAvailable()) {
       parts.push("↑↓ select", "esc cancel");
     } else if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "↵ apply", "esc collapse");
+      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "esc collapse");
     } else {
       parts.push("↑↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←→ effort", "↵ confirm", "esc cancel");
+      parts.push("←→ effort", "enter/tab confirm", "space set lead", "esc cancel");
     }
     return t.fg("dim", parts.join(" · "));
   }

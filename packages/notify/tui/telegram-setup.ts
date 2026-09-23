@@ -46,7 +46,7 @@ export class TelegramSetupOverlay implements Component {
   handleInput(data: string): void {
     switch (this.phase) {
       case "instructions":
-        if (data === "\r" || data === " ") {
+        if (data === "\r" || data === "\t" || data === " ") {
           this.phase = "token";
         } else if (matchesKey(data, "escape")) {
           this.cleanup();
@@ -73,7 +73,7 @@ export class TelegramSetupOverlay implements Component {
           this.pasteBuffer = data.replace("\x1b[200~", "");
           return;
         }
-        if (data === "\r" && this.botToken.length > 0) {
+        if ((data === "\r" || data === "\t") && this.botToken.length > 0) {
           this.startPolling();
         } else if (matchesKey(data, "escape")) {
           this.cleanup();
@@ -93,7 +93,7 @@ export class TelegramSetupOverlay implements Component {
       case "success":
       case "error":
       case "timeout":
-        if (data === "\r" || data === " " || matchesKey(data, "escape")) {
+        if (data === "\r" || data === "\t" || data === " " || matchesKey(data, "escape")) {
           this.cleanup();
           this.onClose?.();
         }
@@ -213,7 +213,7 @@ export class TelegramSetupOverlay implements Component {
         lines.push(this.overlay.frameLine(`  ${this.overlay.bold("3.")} Send any message to your new bot`, innerWidth));
         lines.push(this.overlay.frameLine(`     (We'll detect your chat ID automatically)`, innerWidth));
         lines.push(this.overlay.ruleLine(innerWidth));
-        lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Press Enter to continue, Esc to cancel"), innerWidth));
+        lines.push(this.overlay.frameLine(this.overlay.fg("dim", "enter/tab continue · esc cancel"), innerWidth));
         break;
 
       case "token":
@@ -222,7 +222,7 @@ export class TelegramSetupOverlay implements Component {
         const display = this.overlay.fg("accent", this.overlay.bold(this.botToken || " "));
         lines.push(this.overlay.frameLine(`  ${display}${this.overlay.fg("dim", "█")}`, innerWidth));
         lines.push(this.overlay.frameLine("", innerWidth));
-        lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Enter to start polling · Esc to cancel"), innerWidth));
+        lines.push(this.overlay.frameLine(this.overlay.fg("dim", "enter/tab start polling · esc cancel"), innerWidth));
         break;
 
       case "polling": {

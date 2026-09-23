@@ -188,7 +188,7 @@ export class PresetEditor {
     }
     if (list.length > win) lines.push(t.fg("dim", `  ${String(start + 1)}-${String(end)} of ${String(list.length)}`));
     lines.push("");
-    lines.push(t.fg("dim", `↑/↓ select · ←/→ column · space toggle ${this.column} · Enter save · esc cancel · type to filter`));
+    lines.push(t.fg("dim", `↑/↓ select · ←/→|tab column · space toggle ${this.column} · enter save · esc cancel · type to filter`));
     return lines;
   }
 }
