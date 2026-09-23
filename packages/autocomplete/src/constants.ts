@@ -129,7 +129,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:compact-recall":  "compact",
   "unipi:compact-stats":   "compact",
   "unipi:compact-doctor":  "compact",
-  "unipi:compact-preset":  "compact",
   "unipi:compact-help":    "compact",
 
 
@@ -222,7 +221,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-recall":   "(DEPRECATED) Use /unipi:session-recall instead",
   "unipi:compact-stats":    "Show compaction statistics",
   "unipi:compact-doctor":   "Diagnose compaction issues",
-  "unipi:compact-preset":   "Manage compaction presets",
   "unipi:compact-help":     "Show compactor command help",
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 

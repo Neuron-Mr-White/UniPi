@@ -48,7 +48,7 @@ Per-project config is merged over global config when the current project directo
 | `/unipi:compact-stats` | Shows session events, compaction count, token savings, sandbox runs, and search counts. | Stats are DB-backed with runtime fallbacks. |
 | `/unipi:compact-doctor` | Runs diagnostics for config, SQLite/session DB, and runtimes. | Useful when stats/recall/sandbox look broken. |
 | `/unipi:settings (Compactor)` | Opens the TUI settings overlay. | Tabs: Presets, Strategies, Auto, Pipeline. |
-| `/unipi:compact-preset <name>` | Applies a preset globally. | Names: `precise`, `balanced`, `thorough`, `lean`. Old names map to new ones: `opencode→precise`, `verbose→thorough`, `minimal→lean`. |
+| `/unipi:settings (Compactor › Presets) <name>` | Applies a preset globally. | Names: `precise`, `balanced`, `thorough`, `lean`. Old names map to new ones: `opencode→precise`, `verbose→thorough`, `minimal→lean`. |
 | `/unipi:compact-help` | Shows compact help inside Pi. | Quick command reference. |
 
 Content/project indexing is not part of this package. Use `read`/`bash` (rg) for project search.

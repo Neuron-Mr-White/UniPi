@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, saveConfig } from "../config/manager.js";
-import { applyPreset, parsePreset } from "../config/presets.js";
+import { applyPreset } from "../config/presets.js";
 import { COMPACTOR_INSTRUCTION, formatTokens, registerCommandRunner } from "@pi-unipi/core";
 import { getLastCompactionStats, formatCompactionStats } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
@@ -155,31 +155,12 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
 
   // Hub action runners — "Apply preset: X" rows in /unipi:settings. These
-  // mirror the /unipi:compact-preset <name> code path (applyPreset + save).
+  // mirror the old /unipi:compact-preset <name> code path (applyPreset + save).
   for (const name of ["precise", "balanced", "thorough", "lean"] as const) {
     registerCommandRunner(`unipi:compact-apply-${name}`, () => {
       saveConfig(applyPreset(name));
     });
   }
-
-  // ── /unipi:compact-preset ────────────────────────────
-  pi.registerCommand("unipi:compact-preset", {
-    description: "Apply quick preset (precise/balanced/thorough/lean)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      const presetName = parsePreset(args.trim());
-      if (!presetName) {
-        ctx.ui.notify("Unknown preset. Use: precise, balanced, thorough, lean", "error");
-        return;
-      }
-      const config = applyPreset(presetName);
-      const result = saveConfig(config);
-      if (result.success) {
-        ctx.ui.notify(`Applied '${presetName}' preset.`, "info");
-      } else {
-        ctx.ui.notify(`Failed to save preset: ${result.error}`, "error");
-      }
-    },
-  });
 
   // ── /unipi:compact-help ──────────────────────────────
   pi.registerCommand("unipi:compact-help", {
@@ -193,8 +174,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
         "  /unipi:compact-stats — view stats\n" +
         "  /unipi:compact-doctor — run diagnostics\n" +
         "  auto-compaction settings — /unipi:settings (Compactor group)\n" +
-        "  /unipi:compact-preset <name> — apply preset\n" +
-        "\n" +
+              "\n" +
         "Percentage trigger:\n" +
         "  Disabled by default. Enable it in /unipi:settings (Compactor › Auto) to compact at a context % before Pi's reserve-token limit.",
         "info",
