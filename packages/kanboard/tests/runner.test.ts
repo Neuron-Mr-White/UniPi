@@ -221,6 +221,27 @@ describe("runner", { skip: !hasBinary }, () => {
     assert.match(kind.sent[1]!.message, new RegExp(`\\[kanboard ${second}\\]`));
   });
 
+  it("a late agent_end from the previous task does not settle the next one", async () => {
+    setup({ continue: true });
+    const first = add("First task");
+    const second = add("Second task");
+    runnerRef = null;
+    build();
+    await runner.work(fakeCtx());
+    const turnA = [{ role: "assistant", content: [{ type: "text", text: "First task finished." }] }];
+    kind.fireAgentEnd(turnA);
+    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(show(first).status, "in_review");
+    // The loop claimed the next task; the previous turn's end arrives again.
+    kind.fireAgentEnd(turnA);
+    await new Promise((r) => setTimeout(r, 1500));
+    const secondTask = show(second);
+    assert.equal(secondTask.status, "in_progress", "the second task was not released by the stale end");
+    const releases = (secondTask.activity ?? []).filter((entry) => entry.text.startsWith("released to"));
+    assert.deepEqual(releases, [], "no release summary leaked from the previous task");
+  });
+
   it("an aborted turn releases to Todo and stops", async () => {
     setup();
     const id = add("Interrupted task");
@@ -300,7 +321,7 @@ describe("runner", { skip: !hasBinary }, () => {
       delete process.env.OPENROUTER_API_KEY;
     }
     // Completion: the goal reports complete → In Review with the summary.
-    kind.fireAgentEnd([{ role: "assistant", content: [{ text: "goal done" }] }]);
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "goal done" }] }]);
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(show(id).status, "in_review");
   });

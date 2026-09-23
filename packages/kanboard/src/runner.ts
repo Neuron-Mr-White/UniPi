@@ -40,6 +40,10 @@ interface RunnerState {
   planOutcome: "approved" | "discarded" | null;
   /** Last assistant text seen on agent_end — the run summary source. */
   lastText: string;
+  /** Text already consumed as a release summary (guards duplicate/late ends). */
+  consumedText: string;
+  /** When the current task's prompt was sent (ms). */
+  sentAt: number;
 }
 
 export interface RunnerDeps {
@@ -75,6 +79,8 @@ export function createRunner(deps: RunnerDeps): Runner {
     settleTimer: null,
     planOutcome: null,
     lastText: "",
+    consumedText: "",
+    sentAt: 0,
   };
 
   const setStatus = (ctx: ExtensionContext, text?: string): void => {
@@ -290,6 +296,7 @@ export function createRunner(deps: RunnerDeps): Runner {
 
     const prompt = renderPrompt(claimed, all);
     const busy = typeof ctx.isIdle === "function" ? !ctx.isIdle() : false;
+    state.sentAt = Date.now();
     pi.sendUserMessage(prompt, busy ? { deliverAs: "followUp" } : undefined);
     return true;
   }
@@ -338,6 +345,7 @@ export function createRunner(deps: RunnerDeps): Runner {
         "error",
       );
     }
+    state.consumedText = state.lastText.trim();
     state.task = null;
     state.goalId = null;
     state.endsSinceSend = 0;
@@ -420,8 +428,19 @@ export function createRunner(deps: RunnerDeps): Runner {
         });
         return;
       }
-      state.endsSinceSend += 1;
+      // A late agent_end from the PREVIOUS task can arrive just after we claimed
+      // the next one; settling on it would release the new task with the old
+      // summary (seen live: PIT-3 released with PIT-2's text).
       const text = lastAssistantText(event.messages);
+      if (text && text === state.consumedText) {
+        deps.debug(`ignored late agent_end (same turn text as the previous release)`);
+        return;
+      }
+      if (!text && Date.now() - state.sentAt < 150) {
+        deps.debug("ignored agent_end right after sending the prompt");
+        return;
+      }
+      state.endsSinceSend += 1;
       if (text) state.lastText = text;
       // A turnover can take several agent_end events (bg wakeups, extra turns):
       // settle only once nothing new arrives and the agent reports idle.
