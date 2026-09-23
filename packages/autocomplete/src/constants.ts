@@ -96,9 +96,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:cleanup":    "utility",
   "unipi:env":        "utility",
   "unipi:doctor":     "utility",
-  "unipi:badge-name": "utility",
-  "unipi:badge-gen":  "utility",
-  "unipi:badge-toggle": "utility",
 
   // ask-user (1 command)
 
@@ -215,9 +212,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:cleanup":    "Clean up old sessions and cache",
   "unipi:env":        "Show environment info",
   "unipi:doctor":     "Run diagnostics",
-  "unipi:badge-name": "Toggle session name badge overlay",
-  "unipi:badge-gen":  "Generate session name via background agent",
-  "unipi:badge-toggle": "Configure badge settings (autoGen, badgeEnabled, agentTool)",
   "unipi:kanboard":        "Start the kanboard visualization server",
   "unipi:kanboard-doctor": "Diagnose and fix kanboard parser issues",
 

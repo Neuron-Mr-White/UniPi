@@ -141,9 +141,6 @@ export const UTILITY_COMMANDS = {
   CLEANUP: "cleanup",
   ENV: "env",
   DOCTOR: "doctor",
-  BADGE_NAME: "badge-name",
-  BADGE_GEN: "badge-gen",
-  BADGE_TOGGLE: "badge-toggle",
   PREFIX_CACHE: "prefix-cache",
 } as const;
 

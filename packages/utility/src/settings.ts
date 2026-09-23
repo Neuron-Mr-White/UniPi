@@ -97,11 +97,13 @@ registerSettings({
       title: "Badge",
       description: "Session name badge",
       fields: [
-        { key: "badge.badgeEnabled", type: "boolean", label: "Badge enabled", description: "Show the session-name badge" },
+        { key: "badge.badgeEnabled", type: "boolean", label: "Show name badge", description: "Show the session-name badge overlay" },
         { key: "badge.autoGen", type: "boolean", label: "Auto-generate name", description: "Generate a session name on demand" },
         { key: "badge.agentTool", type: "boolean", label: "Agent tool", description: "Expose the badge tool to the agent" },
         { key: "badge.herdrSync", type: "boolean", label: "Herdr sync", description: "Sync session name to herdr pane title" },
         { key: "badge.generationModel", type: "model", label: "Generation model", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
+        { key: "badge.setName", type: "action", label: "Set session name…", description: "Prompt for a name and show the badge", command: "unipi:badge-set-name" },
+        { key: "badge.generate", type: "action", label: "Generate session name", description: "Invent a name via the generation model", command: "unipi:badge-generate" },
       ],
     },
     {

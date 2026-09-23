@@ -13,7 +13,7 @@
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, InputEvent, AgentEndEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, InputEvent, AgentEndEvent } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -22,11 +22,12 @@ import {
   emitEvent,
   getPackageVersion,
   runCommandByName,
+  registerCommandRunner,
   SettingsHub,
   HUB_OVERLAY_OPTIONS,
   type UnipiBadgeGenerateRequestEvent,
 } from "@pi-unipi/core";
-import { registerUtilityCommands, registerNameBadgeCommands } from "./commands.js";
+import { registerUtilityCommands } from "./commands.js";
 import { isSkillDiscoveryEnabled, stripBundledSkills } from "./skill-discovery.js";
 import { NameBadgeState } from "./tui/name-badge-state.js";
 import { readBadgeSettings, readUtilSettings } from "./settings.js";
@@ -58,9 +59,6 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.CLEANUP,
   UTILITY_COMMANDS.ENV,
   UTILITY_COMMANDS.DOCTOR,
-  UTILITY_COMMANDS.BADGE_NAME,
-  UTILITY_COMMANDS.BADGE_GEN,
-  UTILITY_COMMANDS.BADGE_TOGGLE,
   UTILITY_COMMANDS.PREFIX_CACHE,
 ].map((cmd) => `unipi:${cmd}`);
 
@@ -89,6 +87,31 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // Badge actions — "Set session name…" / "Generate session name" rows in
+  // /unipi:settings (Utility group). The old /unipi:badge-name|gen|toggle
+  // slash commands are gone; the hub field is the same persisted setting.
+  registerCommandRunner("unipi:badge-set-name", async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionCommandContext;
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Setting the session name requires an interactive UI.", "warning");
+      return;
+    }
+    const current = nameBadgeState.isVisible() ? undefined : "";
+    const name = await ctx.ui.input("Session name", current ?? "");
+    if (!name || !name.trim()) return;
+    nameBadgeState.setSessionName(pi, name.trim());
+    ctx.ui.notify(`Session name set to "${name.trim()}"`, "info");
+  });
+  registerCommandRunner("unipi:badge-generate", async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionCommandContext;
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Badge generation requires an interactive UI.", "warning");
+      return;
+    }
+    await nameBadgeState.generate(pi, ctx);
+    ctx.ui.notify("Generating session name...", "info");
+  });
+
   // The unified settings hub — every registered module in one panel.
   pi.registerCommand("unipi:settings", {
     description: "Configure all unipi modules in one panel (global + project scopes)",
@@ -99,11 +122,12 @@ export default function (pi: ExtensionAPI) {
           const hub = new SettingsHub({
             cwd: ctx.cwd ?? process.cwd(),
             onChanged: (namespace) => {
-              // Preserve the deleted legacy overlay's live side-effect:
-              // disabling the badge hides the overlay immediately.
-              if (namespace !== "utility") return;
+              // Preserve the old overlay's live side-effect: the badge reacts
+              // immediately when "Show name badge" is toggled in the hub.
+              if (namespace !== "utility" || !ctx.hasUI) return;
               try {
-                if (!readUtilSettings().badge.badgeEnabled) nameBadgeState.hide();
+                if (readUtilSettings().badge.badgeEnabled) void nameBadgeState.show(pi, ctx);
+                else nameBadgeState.hide();
               } catch {
                 // Best effort — settings UI must never crash the panel.
               }
@@ -188,7 +212,6 @@ export default function (pi: ExtensionAPI) {
 
   // Register commands
   registerUtilityCommands(pi);
-  registerNameBadgeCommands(pi, nameBadgeState);
 
   // Register tools
   registerUtilityTools(pi, nameBadgeState);

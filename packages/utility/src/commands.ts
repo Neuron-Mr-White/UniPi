@@ -21,7 +21,6 @@ import { cleanupStale, formatCleanupReport } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
 import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
 import type { NameBadgeState } from "./tui/name-badge-state.js";
-import { readBadgeSettings, updateBadgeSetting, formatBadgeSettings } from "./settings.js";
 import { isSkillDiscoveryEnabled } from "./skill-discovery.js";
 
 /** Send a markdown response via pi.sendMessage */
@@ -34,74 +33,6 @@ function sendResponse(pi: ExtensionAPI, markdown: string): void {
     },
     { deliverAs: "followUp" },
   );
-}
-
-/**
- * Register name badge commands: /unipi:badge-name, /unipi:badge-gen.
- */
-export function registerNameBadgeCommands(
-  pi: ExtensionAPI,
-  state: NameBadgeState,
-): void {
-  // ─── /unipi:badge-name — toggle badge overlay ───────────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_NAME}`, {
-    description: "Toggle session name badge overlay",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("Name badge requires an interactive UI.", "warning");
-        return;
-      }
-
-      const nowVisible = await state.toggle(pi, ctx);
-      ctx.ui.notify(
-        nowVisible ? "Name badge enabled" : "Name badge disabled",
-        "info",
-      );
-    },
-  });
-
-  // ─── /unipi:badge-gen — generate name via background agent ─────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_GEN}`, {
-    description: "Generate session name via background agent and enable badge",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.hasUI) {
-        ctx.ui.notify("Badge generation requires an interactive UI.", "warning");
-        return;
-      }
-
-      await state.generate(pi, ctx);
-      ctx.ui.notify("Generating session name...", "info");
-    },
-  });
-
-  // ─── /unipi:badge-toggle — configure badge settings ─────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_TOGGLE}`, {
-    description: "Configure badge settings (autoGen, badgeEnabled, agentTool, herdrSync)",
-    handler: async (args: string, ctx: ExtensionContext) => {
-      // Parse args: /unipi:badge-toggle [key] [on|off]
-      const parts = args.trim().split(/\s+/);
-      if (parts.length >= 2 && parts[0]) {
-        const key = parts[0] as "autoGen" | "badgeEnabled" | "agentTool" | "herdrSync";
-        const value = parts[1]?.toLowerCase();
-        if ("autoGen|badgeEnabled|agentTool|herdrSync".includes(key)) {
-          const boolValue = value === "on" || value === "true" || value === "1";
-          updateBadgeSetting(key, boolValue);
-          // The visible overlay must react, not just the file — this was the
-          // "cannot be disabled" bug: the flag saved but the badge stayed.
-          if (key === "badgeEnabled" && !boolValue) state.hide();
-          ctx.ui.notify(`Badge ${key} set to ${boolValue}`, "info");
-          return;
-        }
-      }
-
-      // Show current settings
-      const settings = readBadgeSettings();
-      sendResponse(pi, formatBadgeSettings(settings));
-    },
-  });
-
-
-
 }
 
 /**
