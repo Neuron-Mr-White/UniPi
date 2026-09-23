@@ -155,7 +155,7 @@ export function registerCommands(pi: ExtensionAPI, deps?: CommandDeps): void {
   });
 
   // Hub action runners — "Apply preset: X" rows in /unipi:settings. These
-  // mirror the old /unipi:compact-preset <name> code path (applyPreset + save).
+  // mirror the removed slash-command preset flow (applyPreset + save).
   for (const name of ["precise", "balanced", "thorough", "lean"] as const) {
     registerCommandRunner(`unipi:compact-apply-${name}`, () => {
       saveConfig(applyPreset(name));

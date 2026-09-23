@@ -69,7 +69,7 @@ Hand-edited preset badge metadata renders `✱` as New, Promotion, or Beta:
 {"badges": {"provider/model": "new"}}
 ```
 
-## `/unipi:fusion-preset` — curation
+## `/unipi:settings → Fusion → "Edit fusion presets…"` — curation
 
 Two-column checklist over every available model:
 

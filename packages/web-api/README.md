@@ -24,7 +24,7 @@ nothing breaks if you skip it. Disable it entirely in `/unipi:settings (Web API)
 | Command | Description |
 |---------|-------------|
 | `/unipi:settings (Web API)` | Configure providers, API keys, and smart-fetch defaults |
-| `/unipi:web-cache-clear` | Clear all cached web content |
+| `/unipi:settings` | Clear web cache, provider keys, fetch defaults (Web API group) |
 
 ## Special Triggers
 

@@ -8,13 +8,8 @@ Configure once, get alerts everywhere. Per-event platform routing lets you send 
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:settings (Notify)` | Open settings overlay to configure platforms and events |
-| `/unipi:notify-set-gotify` | Configure Gotify server connection |
-| `/unipi:notify-set-tg` | Interactive Telegram bot setup |
-| `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
-| `/unipi:notify-recap-model` | Set model for notification recaps |
+| `/unipi:settings (Notify)` | Platforms setup wizards, test notification, recap model, event matrix |
 | `/unipi:notify-event` | Toggle a single event without the TUI (`<event> <on\|off>`) — reports the new value; run `/reload` to re-register listeners |
-| `/unipi:notify-test` | Send test notification to all enabled platforms |
 
 ## Special Triggers
 
@@ -114,7 +109,7 @@ Self-hosted push notification server:
 
 ### Telegram
 
-Bot API notifications. Run `/unipi:notify-set-tg` for interactive setup:
+Bot API notifications. Run `/unipi:settings` → Notify → telegram → "Setup & test…":
 1. Create a bot via @BotFather
 2. Paste the bot token
 3. Auto-detect your chat ID

@@ -259,7 +259,7 @@ export class TelegramSetupOverlay implements Component {
         lines.push(this.overlay.frameLine(`  ${this.overlay.fg("warning", "⏰ Timed out after 5 minutes")}`, innerWidth));
         lines.push(this.overlay.frameLine("", innerWidth));
         lines.push(this.overlay.frameLine(`  ${this.overlay.fg("dim", "Make sure you sent a message to your bot in Telegram")}`, innerWidth));
-        lines.push(this.overlay.frameLine(`  ${this.overlay.fg("dim", "You can try again with /unipi:notify-set-tg")}`, innerWidth));
+        lines.push(this.overlay.frameLine(`  ${this.overlay.fg("dim", "You can retry via /unipi:settings → Notify → telegram → Setup & test…")}`, innerWidth));
         lines.push(this.overlay.ruleLine(innerWidth));
         lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Press Enter to close"), innerWidth));
         break;

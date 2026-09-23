@@ -174,5 +174,5 @@ Configure providers via `/unipi:settings (Web API)` command.
 
 Web content is cached for 1 hour by default.
 
-- Clear cache: `/unipi:web-cache-clear`
+- Clear cache: `/unipi:settings` (Web API → "Clear web cache…")
 - Cache includes smart-fetch results (keyed by URL + browser + format + maxChars)

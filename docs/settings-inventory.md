@@ -28,7 +28,7 @@ Legend: ✅ adopted · 🔶 adopted partial (depth remains) · ❌ not yet · �
 | subagents | `subagents` | `~/.unipi/config/subagents.json` g + `<cwd>/.unipi/config/subagents.json` p | ❌ | register + route; maxConcurrent (number), enabled, types.explore/work toggles |
 | background-tasks | `background-tasks` | engine files g+p | ✅ | maxOutputBytes added (overlay deleted) |
 | mcp | — | `<cwd>/.unipi/config/mcp/` | ➖ | SKIPPED by design: the config is a server REGISTRY (content/state), not settings — hub has no mcp fields (see settings-vs-state distinction) |
-| fusion | `fusion` | preset files (arrays/effort/recent/prices) + engine overlay | ✅ | hub edits the DEFAULT PAIR via model pickers (engine layer wins on load); curated lists stay with /unipi:fusion-preset |
+| fusion | `fusion` | preset files (arrays/effort/recent/prices) + engine overlay | ✅ | hub edits the DEFAULT PAIR via model pickers (engine layer wins on load); curated lists stay with /unipi:fusion preset action |
 | btw | — | none found | ➖ | stateless |
 | workflow | — | none found | ➖ | deprecated path (v3-tasks) |
 | kanboard | — | none found | ➖ | full rewrite pending (v3-tasks) |

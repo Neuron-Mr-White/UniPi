@@ -2,7 +2,7 @@
  * @unipi/web-api — Cache layer
  *
  * Caches web content with configurable TTL.
- * Manual invalidation via /unipi:web-cache-clear command.
+ * Manual invalidation via /unipi:settings (Web API → Clear web cache…).
  */
 
 import * as fs from "node:fs";

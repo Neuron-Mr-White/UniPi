@@ -12,8 +12,7 @@ Environment info, diagnostics, cleanup, and the session name badge. The grab-bag
 | `/unipi:cleanup` | Clean stale DBs, temp files, old sessions |
 | `/unipi:reload` | Explain how to reload extensions |
 | `/unipi:name-badge` | Toggle name badge overlay |
-| `/unipi:badge-gen` | Generate session name via LLM and enable badge |
-| `/unipi:badge-name` | Set the session name shown in the badge |
+| `/unipi:settings` | Badge field + "Set/Generate session name" actions (Utility group) |
 | `/unipi:settings` | Hub — badge behavior (Utility group) |
 | `/unipi:prefix-cache` | Show privacy-safe request-prefix transitions and provider cache token counters |
 
@@ -25,7 +24,7 @@ Environment info, diagnostics, cleanup, and the session name badge. The grab-bag
 /unipi:cleanup             # Clean stale files
 /unipi:cleanup --dry-run   # Preview what would be cleaned
 /unipi:name-badge          # Toggle the session name badge
-/unipi:badge-gen           # Generate a session name via LLM
+/unipi:settings            # → Utility → "Generate session name"
 ```
 
 ## Special Triggers

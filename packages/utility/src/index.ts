@@ -88,8 +88,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Badge actions — "Set session name…" / "Generate session name" rows in
-  // /unipi:settings (Utility group). The old /unipi:badge-name|gen|toggle
-  // slash commands are gone; the hub field is the same persisted setting.
+  // /unipi:settings (Utility group). The old badge slash commands are
+  // gone; the hub field is the same persisted setting.
   registerCommandRunner("unipi:badge-set-name", async (rawCtx: unknown) => {
     const ctx = rawCtx as ExtensionCommandContext;
     if (!ctx.hasUI) {

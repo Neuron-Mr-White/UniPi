@@ -9,9 +9,9 @@ The add command opens a split-pane overlay: server browser on the left, JSON con
 | Command | Description |
 |---------|-------------|
 | `/unipi:settings` | Add servers, enable/disable, sync catalog (MCP group) |
-| `/unipi:mcp-sync` | Force sync server catalog from GitHub |
+| `/unipi:settings` | Sync catalog, add/enable servers (MCP group) |
 | `/unipi:mcp-status` | Text summary of all configured servers |
-| `/unipi:mcp-reload` | Remind you to restart Pi so tool schemas reload as a clean cache epoch |
+| `/unipi:settings` | "Reload servers…" reminds you to restart Pi for a clean tool-schema epoch |
 
 ### Setup Flow
 
@@ -101,7 +101,7 @@ The agent doesn't need to know about MCP directly — tools appear in its tool l
 
 **Config issues:** Validate JSON syntax and check file permissions.
 
-**Sync issues:** Run `/unipi:mcp-sync`, check network. The seed catalog (49 servers) is available offline as fallback.
+**Sync issues:** Run `/unipi:settings` → MCP → "Sync catalog…", check network. The seed catalog (49 servers) is available offline as fallback.
 
 ## License
 

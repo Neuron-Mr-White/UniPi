@@ -1,5 +1,5 @@
 /**
- * @pi-unipi/fusion — `/unipi:fusion-preset` curation component
+ * @pi-unipi/fusion — preset curation component (hub action "Edit fusion presets…")
  *
  * Two-column checklist over every available model:
  *

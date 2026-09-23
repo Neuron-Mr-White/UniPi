@@ -19,7 +19,7 @@ The split-pane overlay lets you:
 
 ## Managing Servers
 
-Use `/unipi:mcp-settings` to manage configured servers:
+Use `/unipi:settings` (MCP group) to manage configured servers:
 - **Toggle**: Press Space to enable/disable a server
 - **Delete**: Press `d` then `y` to remove a server
 - **Scope**: Press `g` for global config, `p` for project config
@@ -96,9 +96,9 @@ You can call these tools directly in conversations.
 ### Config issues
 - Validate JSON syntax in your config files
 - Check file permissions (mcp-config.json should be readable)
-- Use `/unipi:mcp-settings` to view current configuration
+- Use `/unipi:settings` (MCP) to view current configuration
 
 ### Catalog sync issues
-- Run `/unipi:mcp-sync` to force a refresh
+- Use `/unipi:settings` (MCP → "Sync catalog…") to force a refresh
 - Check network connectivity to GitHub
 - The seed catalog (49 servers) is available offline as fallback

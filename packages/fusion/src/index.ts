@@ -3,7 +3,7 @@
  *
  * Commands
  *   /unipi:model          Devin-style picker over the curated preset
- *   /unipi:fusion-preset  Curate the preset (lead / sidekick lists, defaults)
+ *   /unipi:settings → Fusion → "Edit fusion presets…"  Curate the preset
  *
  * Autocomplete: when the user types `/model`, `/unipi:model` is pinned as the
  * first suggestion (pi's own `/model` cannot be overridden by extensions).

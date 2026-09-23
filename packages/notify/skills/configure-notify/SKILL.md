@@ -128,7 +128,7 @@ Self-hosted push notification server. Requires:
 - `priority` — 1-10 (default: 5)
 
 **Setup options:**
-1. **Interactive overlay:** Tell user to run `/unipi:notify-set-gotify` for guided setup with connection test
+1. **Interactive overlay:** Tell user to run `/unipi:settings → Notify → gotify → "Setup & test…"` for guided setup with connection test
 2. **Manual config:** Edit `config.json` directly with the fields above
 3. **Agent can write config:** Read the current config, merge changes, write back
 
@@ -136,7 +136,7 @@ Self-hosted push notification server. Requires:
 
 Bot API notifications. Requires:
 - `botToken` — From @BotFather
-- `chatId` — Auto-detected by `/unipi:notify-set-tg`
+- `chatId` — Auto-detected by `/unipi:settings → Notify → telegram → "Setup & test…"`
 
 ### ntfy (default: disabled)
 
@@ -148,7 +148,7 @@ Requires:
 - `priority` — 1-5 (default: 3)
 
 **Setup options:**
-1. **Interactive overlay:** Run `/unipi:notify-set-ntfy` for guided setup with scope selection and connection test
+1. **Interactive overlay:** Run `/unipi:settings → Notify → ntfy → "Setup & test…"` for guided setup with scope selection and connection test
 2. **Manual config:** Edit `ntfy.json` directly (see Project-Level ntfy Config below)
 3. **Agent can write config:** Read the current ntfy.json, merge changes, write back
 
@@ -176,7 +176,7 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 }
 ```
 
-**Scope selection in wizard:** When running `/unipi:notify-set-ntfy`, the wizard now asks where to save the config (Global or Project). Re-running the wizard pre-selects the current scope and pre-fills existing values.
+**Scope selection in wizard:** When running `/unipi:settings → Notify → ntfy → "Setup & test…"`, the wizard now asks where to save the config (Global or Project). Re-running the wizard pre-selects the current scope and pre-fills existing values.
 
 **Settings overlay:** The ntfy line in `/unipi:settings (Notify)` shows topic, priority, and scope label (`[project]`, `[global]`, or "Not configured").
 
@@ -189,10 +189,10 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 | Command | Description |
 |---------|-------------|
 | `/unipi:settings (Notify)` | TUI overlay to toggle platforms and events |
-| `/unipi:notify-set-gotify` | Interactive Gotify setup wizard |
-| `/unipi:notify-set-tg` | Interactive Telegram setup wizard |
-| `/unipi:notify-set-ntfy` | Interactive ntfy setup wizard |
-| `/unipi:notify-test` | Send test notification to all enabled platforms |
+| `/unipi:settings → Notify → gotify → "Setup & test…"` | Interactive Gotify setup wizard |
+| `/unipi:settings → Notify → telegram → "Setup & test…"` | Interactive Telegram setup wizard |
+| `/unipi:settings → Notify → ntfy → "Setup & test…"` | Interactive ntfy setup wizard |
+| `/unipi:settings → Notify → "Send test notification"` | Send test notification to all enabled platforms |
 
 ## Events
 
@@ -261,9 +261,9 @@ Read the JSON, make changes, write it back. Example:
 
 ### Guiding user to interactive setup
 
-For Gotify: suggest running `/unipi:notify-set-gotify`
-For Telegram: suggest running `/unipi:notify-set-tg`
-For ntfy: suggest running `/unipi:notify-set-ntfy`
+For Gotify: suggest running `/unipi:settings → Notify → gotify → "Setup & test…"`
+For Telegram: suggest running `/unipi:settings → Notify → telegram → "Setup & test…"`
+For ntfy: suggest running `/unipi:settings → Notify → ntfy → "Setup & test…"`
 For general settings: suggest `/unipi:settings (Notify)`
 
 ## Validation rules
