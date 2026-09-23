@@ -26,7 +26,6 @@
   "files": [
     "*.ts",
     "tui/*.ts",
-    "settings/*.ts",
     "README.md"
   ],
   "publishConfig": {

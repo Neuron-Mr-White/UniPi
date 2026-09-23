@@ -6,7 +6,6 @@
  *
  * Usage:
  *   /unipi:info          - Show info dashboard
- *   /unipi:info-settings - Configure info display
  */
 
 import { dirname } from "node:path";
@@ -20,7 +19,6 @@ import { registerCoreGroups, trackModule, trackTool, setPiApi, registerSkillDir,
 export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking };
 import { getInfoSettings } from "./config.js";
 import { InfoOverlay } from "./tui/info-overlay.js";
-import { SettingsOverlay } from "./settings/settings-tui.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -215,7 +213,7 @@ export default function (pi: ExtensionAPI) {
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.INFO_SCREEN,
       version: VERSION,
-      commands: ["unipi:info", "unipi:info-settings"],
+      commands: ["unipi:info"],
       tools: [],
     });
   });
@@ -228,33 +226,4 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /unipi:info-settings
-  pi.registerCommand(`${UNIPI_PREFIX}info-settings`, {
-    description: "Configure info screen display",
-    handler: async (_args, ctx) => {
-      ctx.ui.custom(
-        (tui: any, _theme: any, _keybindings: any, done: any) => {
-          const overlay = new SettingsOverlay();
-          overlay.onClose = () => done(undefined);
-          return {
-            render: (w: number) => overlay.render(w),
-            invalidate: () => overlay.invalidate(),
-            handleInput: (data: string) => {
-              overlay.handleInput?.(data);
-              tui.requestRender();
-            },
-          };
-        },
-        {
-          overlay: true,
-          overlayOptions: {
-            width: "60%",
-            minWidth: 50,
-            anchor: "center",
-            margin: 2,
-          },
-        }
-      );
-    },
-  });
 }

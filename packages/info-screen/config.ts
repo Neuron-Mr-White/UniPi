@@ -60,6 +60,11 @@ function writeSettingsFile(data: Record<string, unknown>): void {
  */
 // Registered with the unified settings hub (engine imports the legacy
 // pi-settings unipi.info block once via the A_KEY migration).
+//
+// The "Groups & stats" page resolves its sections from the LIVE group
+// registry at open time (dynamic page), and "Group order" is an `order`
+// field writing groupOrder — both replace the deleted /unipi:info-settings
+// overlay.
 registerSettings({
   namespace: "info-screen",
   label: "Info Screen",
@@ -76,6 +81,42 @@ registerSettings({
           description: "Dashboard behavior at startup",
         },
         { key: "bootTimeoutMs", type: "number", label: "Auto-close ms", min: 0 },
+      ],
+    },
+    {
+      title: "Groups",
+      fields: [
+        {
+          key: "groups-page",
+          type: "page",
+          label: "Groups & stats…",
+          description: "Per-group and per-stat visibility",
+          sections: () => {
+            const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string; config: { stats: Array<{ id: string; label: string }> } }> } }).__unipi_info_registry;
+            const groups = registry?.getAllGroups() ?? [];
+            return groups.map((g) => ({
+              title: g.name,
+              fields: [
+                { key: `groups.${g.id}.show`, type: "boolean" as const, label: `Show ${g.name}` },
+                ...g.config.stats.map((s) => ({
+                  key: `groups.${g.id}.stats.${s.id}`,
+                  type: "boolean" as const,
+                  label: s.label,
+                })),
+              ],
+            }));
+          },
+        },
+        {
+          key: "groupOrder",
+          type: "order",
+          label: "Group order",
+          description: "Tab order of the dashboard groups",
+          items: () => {
+            const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string }> } }).__unipi_info_registry;
+            return (registry?.getAllGroups() ?? []).map((g) => ({ value: g.id, label: g.name }));
+          },
+        },
       ],
     },
   ],
