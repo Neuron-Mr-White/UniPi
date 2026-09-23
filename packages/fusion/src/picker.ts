@@ -525,7 +525,7 @@ export class ModelPicker {
 
     if (row.kind === "fusion") {
       if (disabledFusion) {
-        line += `   ${t.fg("dim", "not configured — run /unipi:fusion-preset")}`;
+        line += `   ${t.fg("dim", "not configured — open /unipi:settings → Fusion → Edit fusion presets…")}`;
       } else {
         const leadName = this.nameOf(this.lead, 14);
         const sideName = this.nameOf(this.sidekick, 14);
@@ -548,7 +548,7 @@ export class ModelPicker {
     const items = this.dropdownItems();
     const indent = " ".repeat(MARKER_COL + nameCol + 5);
     if (items.length === 0) {
-      return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — run /unipi:fusion-preset`)}`];
+      return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — open /unipi:settings → Fusion → "Edit fusion presets…"`)}`];
     }
     const win = 6;
     const start = Math.max(0, Math.min(this.dropdownIndex - Math.floor(win / 2), items.length - win));
@@ -596,7 +596,7 @@ export class ModelPicker {
     const vals = cols.map(([, v]) => pad(t.fg("text", v), colWidth)).join("");
     const desc =
       disabledFusion
-        ? t.fg("warning", "Run /unipi:fusion-preset to enable Fusion — a powerful lead model plans and reviews while a cheaper sidekick executes, for frontier performance at lower cost")
+        ? t.fg("warning", "Run /unipi:settings (Fusion) to enable Fusion — a powerful lead model plans and reviews while a cheaper sidekick executes, for frontier performance at lower cost")
         : row.kind === "fusion"
           ? t.fg("dim", "Pairs frontier intelligence with cost-efficient execution")
           : primary?.reasoning

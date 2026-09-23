@@ -208,7 +208,7 @@ export interface LoadedPreset {
 
 // Registered with the unified settings hub: the DEFAULT PAIR is editable
 // there (model pickers, engine-layered). The curated arrays, effort, recent,
-// badges and prices remain in the preset files — /unipi:fusion-preset owns
+// badges and prices remain in the preset files — the hub action "Edit fusion presets…" owns
 // those. The engine overlay wins for the default pair on load.
 registerSettings({
   namespace: "fusion",
@@ -221,6 +221,7 @@ registerSettings({
       fields: [
         { key: "default.lead", type: "model", label: "Lead", emptyLabel: "picker default", capability: "text", emptyOption: "picker default" },
         { key: "default.sidekick", type: "model", label: "Sidekick", emptyLabel: "picker default", capability: "text", emptyOption: "picker default" },
+        { key: "presets.editor", type: "action", label: "Edit fusion presets…", description: "curate lead/sidekick lists + defaults", command: "unipi:fusion-preset" },
       ],
     },
   ],

@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS } from "@pi-unipi/core";
+import { createSpinnerLine, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -42,7 +42,6 @@ import { registerFusionTools } from "./tools.js";
 import { duration } from "./transcript.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
-export const PRESET_COMMAND = `${UNIPI_PREFIX}fusion-preset`;
 
 export function sidekickSessionPath(leadSessionId?: string): string {
   // Session-scoped: the sidekick transcript is ephemeral child state that dies
@@ -444,10 +443,12 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerCommand("unipi:fusion-preset", {
-    description: "Curate the model preset used by /unipi:model (lead + sidekick lists, defaults)",
-    handler: async (_args, ctx) => {
-      if (!ctx.hasUI) throw new Error(`/${PRESET_COMMAND} needs the interactive TUI`);
+  // fusion-preset — hub action runner ("Edit fusion presets…" row in the
+  // Fusion group). The old /unipi:fusion-preset slash command is gone.
+  const PRESET_COMMAND = "unipi:fusion-preset";
+  registerCommandRunner(PRESET_COMMAND, async (rawCtx: unknown) => {
+    const ctx = rawCtx as ExtensionContext;
+      if (!ctx.hasUI) throw new Error("Edit fusion presets needs the interactive TUI");
       const reg = registryOf(ctx);
       if (!reg) {
         ctx.ui.notify("Model registry unavailable in this context.", "error");
@@ -476,7 +477,6 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         `Saved preset → ${path}\n${String(result.curation.lead.length)} lead · ${String(result.curation.sidekick.length)} sidekick`,
         "info",
       );
-    },
   });
 
   pi.on("session_start", async (_e, ctx) => {
