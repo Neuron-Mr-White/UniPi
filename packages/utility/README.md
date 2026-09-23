@@ -14,8 +14,7 @@ Environment info, diagnostics, cleanup, and the session name badge. The grab-bag
 | `/unipi:name-badge` | Toggle name badge overlay |
 | `/unipi:badge-gen` | Generate session name via LLM and enable badge |
 | `/unipi:badge-name` | Set the session name shown in the badge |
-| `/unipi:badge-settings` | Configure badge behavior |
-| `/unipi:util-settings` | Unified settings TUI (badge) |
+| `/unipi:settings` | Hub — badge behavior (Utility group) |
 | `/unipi:prefix-cache` | Show privacy-safe request-prefix transitions and provider cache token counters |
 
 ### Examples
@@ -53,7 +52,7 @@ The fingerprints are keyed HMAC-SHA-256 values using a random in-memory key that
 ### Name Badge
 
 ```
-/unipi:util-settings        # Open unified settings TUI
+/unipi:settings              # Badge + skills discovery (Utility group)
 ```
 
 Or edit `.unipi/config/util-settings.json` directly (migrated automatically from the legacy `.unipi/config/badge.json` on first read):

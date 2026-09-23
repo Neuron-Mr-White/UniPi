@@ -22,7 +22,7 @@ let home = "";
 
 function freshHome(): string {
   if (home) rmSync(home, { recursive: true, force: true });
-  home = mkdtempSync(join(tmpdir(), "notify-settings-test-"));
+  home = mkdtempSync(join(tmpdir(), "notify-hub-test-"));
   process.env.HOME = home;
   return home;
 }

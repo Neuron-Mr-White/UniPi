@@ -63,13 +63,13 @@ const NOT_INSTALLED_MESSAGE =
   "wigolo is not installed.\n" +
   "→ Install it:  npm install -g wigolo && npx wigolo init\n" +
   "→ wigolo is a separate AGPL-licensed project and is not bundled with UniPi.\n" +
-  "→ Disable it in /unipi:web-settings to silence this.";
+  "→ Disable it in /unipi:settings (Web API) to silence this.";
 
 const NOT_RUNNING_MESSAGE =
   "wigolo is installed but the local daemon could not be reached.\n" +
   "→ Initialize it:  npx wigolo init\n" +
   "→ Check health:   npx wigolo doctor\n" +
-  "→ Disable it in /unipi:web-settings to silence this.";
+  "→ Disable it in /unipi:settings (Web API) to silence this.";
 
 /** Cached singleton — the daemon is far too expensive to start per call. */
 let clientPromise: Promise<WigoloLocalClient> | null = null;

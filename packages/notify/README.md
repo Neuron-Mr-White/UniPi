@@ -8,7 +8,7 @@ Configure once, get alerts everywhere. Per-event platform routing lets you send 
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:notify-settings` | Open settings overlay to configure platforms and events |
+| `/unipi:settings (Notify)` | Open settings overlay to configure platforms and events |
 | `/unipi:notify-set-gotify` | Configure Gotify server connection |
 | `/unipi:notify-set-tg` | Interactive Telegram bot setup |
 | `/unipi:notify-set-ntfy` | Configure ntfy topic and server |
@@ -65,7 +65,7 @@ Zero configuration — works out of the box. Set `native.suppressWhenFocused` to
 
 ### Silence after input
 
-After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:notify-settings` → Platforms (Quiet after activity + channel chips), or in `~/.unipi/config/notify/config.json`:
+After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:settings (Notify)` → Platforms (Quiet after activity + channel chips), or in `~/.unipi/config/notify/config.json`:
 
 ```json
 {
@@ -95,7 +95,7 @@ When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered
 
 `maxRepeats: 0` sends the initial notification only. Reminders stop as soon as any of these fires: the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn (`agent_start`), or the session ends. Only one prompt can be outstanding at a time — arming a new one replaces the previous reminder. Reminders bypass `silenceAfterInput` because blocking events are exempt from it.
 
-Edit in `/unipi:notify-settings` → Re-notify, or in `~/.unipi/config/notify/config.json`.
+Edit in `/unipi:settings (Notify)` → Re-notify, or in `~/.unipi/config/notify/config.json`.
 
 ### Gotify
 
@@ -136,7 +136,7 @@ HTTP-based pub-sub notifications via [ntfy.sh](https://ntfy.sh) or self-hosted:
 
 ## Configurables
 
-Settings stored at `~/.unipi/config/notify/config.json`. Edit via `/unipi:notify-settings` or manual JSON editing.
+Settings stored at `~/.unipi/config/notify/config.json`. Edit via `/unipi:settings (Notify)` or manual JSON editing.
 
 Per-event platform routing lets you control where each event type goes. The settings overlay shows all events with platform toggles.
 

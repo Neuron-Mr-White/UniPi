@@ -98,7 +98,7 @@ export default function (pi: ExtensionAPI) {
           const hub = new SettingsHub({
             cwd: ctx.cwd ?? process.cwd(),
             onChanged: (namespace) => {
-              // Preserve the old util-settings overlay's live side-effect:
+              // Preserve the deleted legacy overlay's live side-effect:
               // disabling the badge hides the overlay immediately.
               if (namespace !== "utility") return;
               try {

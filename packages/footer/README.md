@@ -6,7 +6,7 @@ Subscribes to events from every package and renders segments using Pi's `setFoot
 
 ## Glance Footer (new in 2.12)
 
-An experimental input surface, on by default and toggleable in `/unipi:footer-settings` → Appearance → **Glance Footer**:
+An experimental input surface, on by default and toggleable in `/unipi:settings` (Footer) → **Glance mode**:
 
 ```
 ╭─ 󰚩 UNIPI │  feat/footer-default-v2 │ ───────────────────────────╮
@@ -27,7 +27,7 @@ An experimental input surface, on by default and toggleable in `/unipi:footer-se
 |---------|-------------|
 | `/unipi:footer` | Toggle footer on/off |
 | `/unipi:footer on` / `/unipi:footer off` | Enable/disable explicitly |
-| `/unipi:footer-settings` | Open settings TUI — preset, separator, icon style, glance mode, per-segment toggles |
+| `/unipi:settings` | Hub — preset, separator, zone separator, icon style, glance mode, per-segment toggles (Footer group) |
 | `/unipi:footer-help` | Show footer segment guide |
 
 ## Special Triggers

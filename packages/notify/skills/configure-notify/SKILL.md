@@ -98,7 +98,7 @@ Quiet listed platforms for `windowMs` after any terminal keypress. **Default: of
 - `windowMs` — quiet window in milliseconds (default: 10000)
 - `platforms` — channels to silence (`native`, `gotify`, `telegram`, `ntfy`). Empty list silences all enabled platforms (same as `events.*.platforms`).
 
-TUI: `/unipi:notify-settings` → Platforms → Quiet after activity (Space), ←→ then Space for channels, +/− for the window (1s steps).
+TUI: `/unipi:settings (Notify)` → Platforms → Quiet after activity (Space), ←→ then Space for channels, +/− for the window (1s steps).
 
 ### Re-notify unanswered prompts (default: enabled)
 
@@ -118,7 +118,7 @@ When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered
 
 Reminders stop as soon as the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn, or the session ends. Arming a new prompt replaces any existing reminder (only one can be outstanding). Reminders bypass `silenceAfterInput` since blocking events are exempt.
 
-TUI: `/unipi:notify-settings` → Re-notify → Space toggles enabled, +/− adjusts interval (30s steps) and max repeats.
+TUI: `/unipi:settings (Notify)` → Re-notify → Space toggles enabled, +/− adjusts interval (30s steps) and max repeats.
 
 ### Gotify (default: disabled)
 
@@ -178,7 +178,7 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 
 **Scope selection in wizard:** When running `/unipi:notify-set-ntfy`, the wizard now asks where to save the config (Global or Project). Re-running the wizard pre-selects the current scope and pre-fills existing values.
 
-**Settings overlay:** The ntfy line in `/unipi:notify-settings` shows topic, priority, and scope label (`[project]`, `[global]`, or "Not configured").
+**Settings overlay:** The ntfy line in `/unipi:settings (Notify)` shows topic, priority, and scope label (`[project]`, `[global]`, or "Not configured").
 
 **Migration:** On first run, if `config.json` has ntfy settings and `ntfy.json` doesn't exist, settings are automatically migrated to `ntfy.json`. The legacy `config.json` ntfy section is left untouched for backward compatibility.
 
@@ -188,7 +188,7 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:notify-settings` | TUI overlay to toggle platforms and events |
+| `/unipi:settings (Notify)` | TUI overlay to toggle platforms and events |
 | `/unipi:notify-set-gotify` | Interactive Gotify setup wizard |
 | `/unipi:notify-set-tg` | Interactive Telegram setup wizard |
 | `/unipi:notify-set-ntfy` | Interactive ntfy setup wizard |
@@ -264,7 +264,7 @@ Read the JSON, make changes, write it back. Example:
 For Gotify: suggest running `/unipi:notify-set-gotify`
 For Telegram: suggest running `/unipi:notify-set-tg`
 For ntfy: suggest running `/unipi:notify-set-ntfy`
-For general settings: suggest `/unipi:notify-settings`
+For general settings: suggest `/unipi:settings (Notify)`
 
 ## Validation rules
 

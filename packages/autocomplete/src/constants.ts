@@ -73,7 +73,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:memory-forget":      "memory",
   "unipi:global-memory-search": "memory",
   "unipi:global-memory-list":   "memory",
-  "unipi:memory-settings":   "memory",
 
   // btw (6 commands)
   "unipi:btw":           "btw",
@@ -196,7 +195,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:memory-forget":      "Remove memory entries",
   "unipi:global-memory-search": "Search across all project memories",
   "unipi:global-memory-list":   "List all project memories",
-  "unipi:memory-settings":   "Configure memory settings",
 
   "unipi:btw":           "Run a parallel side conversation",
   "unipi:btw-tangent":   "Start a contextless BTW tangent thread",

@@ -35,7 +35,7 @@ Run diagnostics and troubleshoot compactor issues.
 
 - Normal on first run.
 - Config is created by the extension or on settings save.
-- Fix: open `/unipi:compact-settings`, adjust if desired, then save.
+- Fix: open `/unipi:settings (Compactor)`, adjust if desired, then save.
 
 ### "Session DB: Connection failed"
 

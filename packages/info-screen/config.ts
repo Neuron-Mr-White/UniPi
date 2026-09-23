@@ -63,7 +63,7 @@ function writeSettingsFile(data: Record<string, unknown>): void {
 //
 // The "Groups & stats" page resolves its sections from the LIVE group
 // registry at open time (dynamic page), and "Group order" is an `order`
-// field writing groupOrder — both replace the deleted /unipi:info-settings
+// field writing groupOrder — both replace the deleted legacy overlay
 // overlay.
 registerSettings({
   namespace: "info-screen",

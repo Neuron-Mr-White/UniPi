@@ -86,7 +86,7 @@ export function selectProviderChain(
     const providerNames = allProviders.map((p) => p.name).join(", ");
     throw new Error(
       `No ${capability} provider configured.\n` +
-      `→ Run /unipi:web-settings to enable providers and add API keys.\n` +
+      `→ Run /unipi:settings (Web API) to enable providers and add API keys.\n` +
       `→ Free options: wigolo (search + read, local), DuckDuckGo (search), Jina Reader (read).\n` +
       `→ Available providers: ${providerNames}`
     );

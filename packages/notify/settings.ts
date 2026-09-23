@@ -87,7 +87,7 @@ const EVENT_SECTIONS = Object.keys(DEFAULT_CONFIG.events).map((event) => ({
 // (~/.unipi/config/notify/config.json) is exactly what this module already
 // used, so switching to the engine is a no-op on disk.
 //
-// Absorbs the deleted /unipi:notify-settings overlay: the event matrix lives
+// Absorbs the deleted legacy settings overlay: the event matrix lives
 // in a dynamic "Events…" page, platform pages carry Setup wizard actions.
 registerSettings({
   namespace: "notify",

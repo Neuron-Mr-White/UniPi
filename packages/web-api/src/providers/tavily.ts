@@ -73,7 +73,7 @@ const tavilyProvider: WebProvider = {
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.TAVILY_API_KEY;
     if (!apiKey) {
-      throw new Error("Tavily requires an API key. Set TAVILY_API_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("Tavily requires an API key. Set TAVILY_API_KEY environment variable or configure via /unipi:settings (Web API)");
     }
     return searchTavily(query, apiKey);
   },

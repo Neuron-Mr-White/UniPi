@@ -9,7 +9,7 @@ Every Unipi module registers itself via `MODULE_READY` events. Info-screen picks
 | Command | Description |
 |---------|-------------|
 | `/unipi:info` | Show info screen dashboard |
-| `/unipi:info-settings` | Configure info display (groups, stats, visibility) |
+| `/unipi:settings` | Configure info display (groups, stats, visibility — Info Screen group) |
 
 ## Special Triggers
 

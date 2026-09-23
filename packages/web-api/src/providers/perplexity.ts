@@ -146,7 +146,7 @@ const perplexityProvider: WebProvider = {
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.PERPLEXITY_API_KEY;
     if (!apiKey) {
-      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:settings (Web API)");
     }
     return searchPerplexity(query, apiKey);
   },
@@ -154,7 +154,7 @@ const perplexityProvider: WebProvider = {
   async read(url: string, config?: ProviderConfig): Promise<ReadResult> {
     const apiKey = config?.apiKey || process.env.PERPLEXITY_API_KEY;
     if (!apiKey) {
-      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:settings (Web API)");
     }
 
     const result = await summarizePerplexity(url, "Extract and return the full content of this URL as markdown.", apiKey);
@@ -169,7 +169,7 @@ const perplexityProvider: WebProvider = {
   async summarize(url: string, prompt?: string, config?: ProviderConfig): Promise<SummarizeResult> {
     const apiKey = config?.apiKey || process.env.PERPLEXITY_API_KEY;
     if (!apiKey) {
-      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("Perplexity requires an API key. Set PERPLEXITY_API_KEY environment variable or configure via /unipi:settings (Web API)");
     }
     return summarizePerplexity(url, prompt, apiKey);
   },

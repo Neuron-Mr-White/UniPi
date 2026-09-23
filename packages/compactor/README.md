@@ -18,7 +18,7 @@ The compaction pipeline is deterministic and runs locally. It does not call an L
 ## Quick start
 
 ```text
-/unipi:compact-settings
+/unipi:settings (Compactor)
 ```
 
 1. Choose a preset in **Presets**.
@@ -47,7 +47,7 @@ Per-project config is merged over global config when the current project directo
 | `/unipi:compact-recall <query>` | Deprecated alias for `/unipi:session-recall`. | Kept for backward compatibility. |
 | `/unipi:compact-stats` | Shows session events, compaction count, token savings, sandbox runs, and search counts. | Stats are DB-backed with runtime fallbacks. |
 | `/unipi:compact-doctor` | Runs diagnostics for config, SQLite/session DB, and runtimes. | Useful when stats/recall/sandbox look broken. |
-| `/unipi:compact-settings` | Opens the TUI settings overlay. | Tabs: Presets, Strategies, Auto, Pipeline. |
+| `/unipi:settings (Compactor)` | Opens the TUI settings overlay. | Tabs: Presets, Strategies, Auto, Pipeline. |
 | `/unipi:compact-preset <name>` | Applies a preset globally. | Names: `precise`, `balanced`, `thorough`, `lean`. Old names map to new ones: `opencode→precise`, `verbose→thorough`, `minimal→lean`. |
 | `/unipi:compact-help` | Shows compact help inside Pi. | Quick command reference. |
 
@@ -57,7 +57,7 @@ Content/project indexing is not part of this package. Use `read`/`bash` (rg) for
 
 ## User-facing settings
 
-Open settings with `/unipi:compact-settings`.
+Open settings with `/unipi:settings (Compactor)`.
 
 Keyboard:
 

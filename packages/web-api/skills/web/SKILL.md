@@ -130,7 +130,7 @@ npm install -g wigolo && npx wigolo init
 If it is missing or uninitialized, the provider raises an actionable error and
 auto-selection falls through to the next provider. Never tell the user wigolo
 is broken — tell them to run `npx wigolo init`, or to disable it in
-`/unipi:web-settings`.
+`/unipi:settings (Web API)`.
 
 ## Smart-Fetch Engine
 
@@ -148,7 +148,7 @@ The smart-fetch engine is a local content extraction pipeline:
 - Client-side meta redirect following
 - Multiple output formats
 
-**Configure defaults** via `/unipi:web-settings` → "Smart Fetch Defaults"
+**Configure defaults** via `/unipi:settings (Web API)` → "Smart Fetch Defaults"
 
 ## Cost Awareness
 
@@ -163,7 +163,7 @@ The smart-fetch engine is a local content extraction pipeline:
 
 ## Configuration
 
-Configure providers via `/unipi:web-settings` command.
+Configure providers via `/unipi:settings (Web API)` command.
 
 - Add/remove API keys
 - Enable/disable providers

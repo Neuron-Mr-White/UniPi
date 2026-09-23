@@ -255,7 +255,7 @@ test("rejects a provider the images collection cannot generate with", async () =
     (err: Error) => {
       assert.match(err.message, /no image-generation route/);
       assert.match(err.message, /openrouter/);
-      assert.match(err.message, /image-settings/);
+      assert.match(err.message, /unipi:settings/);
       return true;
     },
   );

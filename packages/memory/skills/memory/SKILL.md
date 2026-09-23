@@ -114,7 +114,7 @@ This prevents memory duplication and keeps memory clean.
 Memory supports vector similarity search via OpenRouter API.
 
 ### Setup
-1. Run `/unipi:memory-settings`
+1. Open `/unipi:settings` (Memory group)
 2. Add your OpenRouter API key
 3. Select embedding model (default: `openai/text-embedding-3-small`)
 
@@ -126,7 +126,7 @@ Memory supports vector similarity search via OpenRouter API.
 ### Model compatibility
 ⚠ **Different embedding models produce incompatible vectors.**
 If you switch models, existing embeddings won't match new searches.
-Use `/unipi:memory-settings` → "Re-embed All Memories" to fix.
+Use `/unipi:settings` (Memory) → "Re-embed all memories…" to fix.
 
 ### No API key?
 Falls back to fuzzy text-only search. Still works, just less semantic.

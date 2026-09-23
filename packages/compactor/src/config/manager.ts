@@ -13,7 +13,7 @@ import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 // module's existing layout exactly (global ~/.unipi/config/compactor/config.json,
 // project .unipi/config/compactor/config.json after the v3 migration move).
 //
-// Absorbs the deleted /unipi:compact-settings overlay: per-strategy modes,
+// Absorbs the deleted legacy settings overlay: per-strategy modes,
 // the % auto-compaction trigger, pipeline toggles, and preset actions.
 const STRATEGY_MODES: ReadonlyArray<SettingsField> = [
   { key: "sessionGoals.mode", type: "enum", label: "Session goals mode", options: ["full", "brief", "off"] },

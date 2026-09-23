@@ -2,7 +2,7 @@
  * @pi-unipi/input-shortcuts — Extension entry point
  *
  * Registers ALT+S (chord overlay) and ALT+I (tab insert) shortcuts.
- * Provides /unipi:stash-settings command for keybinding customization.
+ * Keybinding customization lives in /unipi:settings (Input Shortcuts group).
  *
  * ARCHITECTURE:
  * - The overlay ONLY captures action selection (pure UI, no side effects)

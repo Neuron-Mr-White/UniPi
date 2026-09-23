@@ -84,7 +84,7 @@ function writeSettingsFile(settings: Record<string, unknown>): boolean {
 // Registered with the unified settings hub; the engine's migration imports
 // the legacy pi-settings unipi.footer block into the canonical layout once.
 // The "Segments…" page resolves sections from the LIVE FooterRegistry at
-// open time — it replaces the deleted /unipi:footer-settings overlay.
+// open time — it replaces the deleted legacy footer overlay.
 registerSettings({
   namespace: "footer",
   label: "Footer",

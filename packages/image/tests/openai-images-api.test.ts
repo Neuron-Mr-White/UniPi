@@ -154,7 +154,7 @@ describe("generateImages", () => {
 
     assert.equal(result.stopReason, "error");
     assert.match(result.errorMessage ?? "", /Model id sent: "fal\/x"/);
-    assert.match(result.errorMessage ?? "", /image-settings/);
+    assert.match(result.errorMessage ?? "", /unipi:settings/);
   });
 
   it("reports a provider error without throwing", async () => {

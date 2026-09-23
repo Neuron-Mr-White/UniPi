@@ -78,7 +78,7 @@ export function registerNameBadgeCommands(
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.BADGE_TOGGLE}`, {
     description: "Configure badge settings (autoGen, badgeEnabled, agentTool, herdrSync)",
     handler: async (args: string, ctx: ExtensionContext) => {
-      // Parse args: /unipi:badge-settings [key] [on|off]
+      // Parse args: /unipi:badge-toggle [key] [on|off]
       const parts = args.trim().split(/\s+/);
       if (parts.length >= 2 && parts[0]) {
         const key = parts[0] as "autoGen" | "badgeEnabled" | "agentTool" | "herdrSync";

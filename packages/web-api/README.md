@@ -17,13 +17,13 @@ npx wigolo doctor    # verify
 ```
 
 Until then, web calls fall through automatically to the next-ranked provider, so
-nothing breaks if you skip it. Disable it entirely in `/unipi:web-settings`.
+nothing breaks if you skip it. Disable it entirely in `/unipi:settings (Web API)`.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:web-settings` | Configure providers, API keys, and smart-fetch defaults |
+| `/unipi:settings (Web API)` | Configure providers, API keys, and smart-fetch defaults |
 | `/unipi:web-cache-clear` | Clear all cached web content |
 
 ## Special Triggers
@@ -126,7 +126,7 @@ Outputs clean markdown with metadata (title, author, site, word count). Supports
 
 ### API Keys
 
-Configure via `/unipi:web-settings` (interactive TUI) or environment variables:
+Configure via `/unipi:settings (Web API)` (interactive TUI) or environment variables:
 
 ```bash
 export SERPAPI_KEY="your-key"
@@ -140,7 +140,7 @@ Providers auto-enable when you add a valid API key.
 
 ### Smart-Fetch Defaults
 
-Configure browser profile, OS, max chars, timeout via `/unipi:web-settings → "Smart Fetch Defaults"`.
+Configure browser profile, OS, max chars, timeout via `/unipi:settings (Web API) → "Smart Fetch Defaults"`.
 
 ### Settings Files
 
@@ -155,7 +155,7 @@ Configure browser profile, OS, max chars, timeout via `/unipi:web-settings → "
 
 ## Troubleshooting
 
-**No provider available:** Run `/unipi:web-settings` and add API keys or enable a free provider.
+**No provider available:** Run `/unipi:settings (Web API)` and add API keys or enable a free provider.
 
 **Smart-fetch fails:** Try a different browser profile (`browser: "chrome_133"`) or a provider fallback (`source: 1`).
 

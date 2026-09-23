@@ -83,7 +83,7 @@ const firecrawlProvider: WebProvider = {
   async read(url: string, config?: ProviderConfig): Promise<ReadResult> {
     const apiKey = config?.apiKey || process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
-      throw new Error("Firecrawl requires an API key. Set FIRECRAWL_API_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("Firecrawl requires an API key. Set FIRECRAWL_API_KEY environment variable or configure via /unipi:settings (Web API)");
     }
     return readFirecrawl(url, apiKey);
   },

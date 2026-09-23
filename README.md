@@ -89,7 +89,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Workflow | `/unipi:` | brainstorm, plan, work, review-work, consolidate, quick-work, debug, fix |
 | Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
-| Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-settings, compact-preset, compact-help |
+| Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-preset, compact-help |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |

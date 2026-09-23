@@ -64,7 +64,7 @@ const serpapiProvider: WebProvider = {
   async search(query: string, config?: ProviderConfig): Promise<SearchResult[]> {
     const apiKey = config?.apiKey || process.env.SERPAPI_KEY;
     if (!apiKey) {
-      throw new Error("SerpAPI requires an API key. Set SERPAPI_KEY environment variable or configure via /unipi:web-settings");
+      throw new Error("SerpAPI requires an API key. Set SERPAPI_KEY environment variable or configure via /unipi:settings (Web API)");
     }
     return searchSerpAPI(query, apiKey);
   },
