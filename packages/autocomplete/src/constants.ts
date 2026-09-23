@@ -134,11 +134,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
 
   // notify (6 commands)
-  "unipi:notify-set-gotify": "notify",
-  "unipi:notify-set-tg":    "notify",
-  "unipi:notify-set-ntfy":  "notify",
-  "unipi:notify-test":      "notify",
-  "unipi:notify-recap-model": "notify",
   "unipi:notify-event":     "notify",
 
   // kanboard (2 commands)
@@ -229,11 +224,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-doctor":   "Diagnose compaction issues",
   "unipi:compact-preset":   "Manage compaction presets",
   "unipi:compact-help":     "Show compactor command help",
-  "unipi:notify-set-gotify": "Set up Gotify push notifications",
-  "unipi:notify-set-tg":    "Set up Telegram bot notifications",
-  "unipi:notify-set-ntfy":  "Set up ntfy push notifications",
-  "unipi:notify-test":      "Test all enabled notification platforms",
-  "unipi:notify-recap-model": "Select model for notification recaps",
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 
   "unipi:footer":            "Toggle footer or switch preset",

@@ -10,8 +10,6 @@ import { HUB_OVERLAY_OPTIONS, NOTIFY_COMMANDS, registerCommandRunner } from "@pi
 import { GotifySetupOverlay } from "./tui/gotify-setup.js";
 import { TelegramSetupOverlay } from "./tui/telegram-setup.js";
 import { NtfySetupOverlay } from "./tui/ntfy-setup.js";
-import { RecapModelSelectorOverlay } from "./tui/recap-model-selector.js";
-import type { CachedModel } from "@pi-unipi/core";
 import { loadConfig, saveConfig } from "./settings.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
@@ -20,68 +18,9 @@ import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
 
 /**
- * Collect models for the recap selector from Pi's live model registry.
- * Returns undefined when the registry is unavailable so the overlay can fall
- * back to the project-wide model cache (issue #27: selector was empty because
- * it only read ~/.unipi/config/models-cache.json, which may not exist even
- * when models are configured in ~/.pi/agent/models.json).
- */
-function registryModels(ctx: ExtensionContext): CachedModel[] | undefined {
-  const registry = ctx.modelRegistry;
-  if (!registry) return undefined;
-  try {
-    const models = registry.getAvailable?.() ?? registry.getAll() ?? [];
-    return models.map((m) => ({ provider: m.provider, id: m.id, name: m.name }));
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Register notify commands.
  */
 export function registerNotifyCommands(pi: ExtensionAPI): void {
-  // /unipi:notify-recap-model — Open recap model selector directly
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.RECAP_MODEL}`,
-    {
-      description: "Select model for notification recaps",
-      handler: async (_args: string, ctx: ExtensionContext) => {
-        if (!ctx.hasUI) {
-          ctx.ui.notify("Model selector requires an interactive UI.", "warning");
-          return;
-        }
-
-        const models = registryModels(ctx);
-        ctx.ui.custom(
-          (tui, theme, _keybindings, done) => {
-            const overlay = new RecapModelSelectorOverlay(models);
-            overlay.setTheme(theme);
-            overlay.onClose = () => done(undefined);
-            overlay.requestRender = () => tui.requestRender();
-            return {
-              render: (w: number) => overlay.render(w),
-              invalidate: () => overlay.invalidate(),
-              handleInput: (data: string) => {
-                overlay.handleInput(data);
-                tui.requestRender();
-              },
-            };
-          },
-          {
-            overlay: true,
-            overlayOptions: {
-              width: "60%",
-              minWidth: 40,
-              anchor: "center",
-              margin: 4,
-            },
-          }
-        );
-      },
-    }
-  );
-
   // Shared setup-wizard invoker — also registered as a hub action runner so
   // the platform pages in /unipi:settings can open the same wizards.
   const gotifySetupHandler = async (rawCtx: unknown) => {
@@ -112,14 +51,6 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
   };
   registerCommandRunner(NOTIFY_COMMANDS.SET_GOTIFY, gotifySetupHandler);
 
-  // /unipi:notify-set-gotify — Interactive Gotify setup
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_GOTIFY}`,
-    {
-      description: "Set up Gotify push notifications with connection test",
-      handler: (_args, ctx) => gotifySetupHandler(ctx),
-    }
-  );
 
   const telegramSetupHandler = async (rawCtx: unknown) => {
     const ctx = rawCtx as ExtensionContext;
@@ -149,14 +80,6 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
   };
   registerCommandRunner(NOTIFY_COMMANDS.SET_TG, telegramSetupHandler);
 
-  // /unipi:notify-set-tg — Interactive Telegram setup
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_TG}`,
-    {
-      description: "Set up Telegram bot notifications with auto-detection",
-      handler: (_args, ctx) => telegramSetupHandler(ctx),
-    }
-  );
 
   const ntfySetupHandler = async (rawCtx: unknown) => {
     const ctx = rawCtx as ExtensionContext;
@@ -186,14 +109,6 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
   };
   registerCommandRunner(NOTIFY_COMMANDS.SET_NTFY, ntfySetupHandler);
 
-  // /unipi:notify-set-ntfy — Interactive ntfy setup
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.SET_NTFY}`,
-    {
-      description: "Set up ntfy push notifications with connection test",
-      handler: (_args, ctx) => ntfySetupHandler(ctx),
-    }
-  );
 
   // /unipi:notify-event <event> <on|off> — Non-TUI event toggle (issue #27 escape
   // hatch for terminals where overlay input is unusable)
@@ -323,12 +238,4 @@ export function registerNotifyCommands(pi: ExtensionAPI): void {
   };
   registerCommandRunner(NOTIFY_COMMANDS.TEST, notifyTestHandler);
 
-  // /unipi:notify-test — Send test notification to all enabled platforms
-  pi.registerCommand(
-    `${UNIPI_PREFIX}${NOTIFY_COMMANDS.TEST}`,
-    {
-      description: "Send a test notification to all enabled platforms",
-      handler: (_args, ctx) => notifyTestHandler(ctx),
-    }
-  );
 }
