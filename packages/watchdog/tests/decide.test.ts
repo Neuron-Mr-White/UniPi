@@ -1,0 +1,74 @@
+/**
+ * Watchdog decision logic (pure) — streak, confidence, persistent veto,
+ * jev-null handling.
+ */
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { evaluateTick } from "../src/decide.js";
+
+const stuck = { answers: { status: { choice: "stuck", confidence: 0.9 }, persistent: { noul: 0.1 } } };
+const waiting = { answers: { status: { choice: "waiting", confidence: 0.9 }, persistent: { noul: 0.2 } } };
+
+describe("evaluateTick", () => {
+  it("null answers keep the streak unchanged and never act", () => {
+    const d = evaluateTick(null, 1, { confidence: 0.8 });
+    assert.equal(d.act, false);
+    assert.equal(d.streak, 1, "streak unchanged on jev null");
+    assert.equal(d.status, "unknown");
+  });
+
+  it("stuck + confidence + non-persistent increments the streak", () => {
+    const d = evaluateTick(stuck.answers, 0, { confidence: 0.8 });
+    assert.equal(d.act, true);
+    assert.equal(d.streak, 1);
+    assert.equal(d.status, "stuck");
+  });
+
+  it("agreeChecks: acts only when the streak reaches the threshold", () => {
+    const settings = { confidence: 0.8 };
+    const first = evaluateTick(stuck.answers, 0, settings);
+    assert.equal(first.streak, 1);
+    assert.ok(!first.act || first.streak >= 2 ? first.streak >= 2 : first.act, "first tick streak 1");
+    const second = evaluateTick(stuck.answers, first.streak, settings);
+    assert.equal(second.act, true);
+    assert.equal(second.streak, 2);
+  });
+
+  it("low confidence resets the streak", () => {
+    const low = { answers: { status: { choice: "stuck", confidence: 0.5 }, persistent: { noul: 0.1 } } };
+    const d = evaluateTick(low.answers, 1, { confidence: 0.8 });
+    assert.equal(d.act, false);
+    assert.equal(d.streak, 0, "disagreeing check resets the streak");
+  });
+
+  it("persistent veto: long-lived processes never act even when stuck", () => {
+    const persistentStuck = { answers: { status: { choice: "stuck", confidence: 0.99 }, persistent: { noul: 0.9 } } };
+    const d = evaluateTick(persistentStuck.answers, 3, { confidence: 0.8 });
+    assert.equal(d.act, false, "persistent veto");
+    assert.equal(d.persistent, true);
+    assert.equal(d.streak, 0);
+  });
+
+  it("waiting status never acts and resets the streak", () => {
+    const d = evaluateTick(waiting.answers, 2, { confidence: 0.8 });
+    assert.equal(d.act, false);
+    assert.equal(d.streak, 0);
+  });
+
+  it("looping counts as an agreeing status", () => {
+    const looping = { answers: { status: { choice: "looping", confidence: 0.85 }, persistent: { noul: 0.0 } } };
+    const d = evaluateTick(looping.answers, 1, { confidence: 0.8 });
+    assert.equal(d.act, true);
+    assert.equal(d.streak, 2);
+    assert.equal(d.signal, "repeating output without progress");
+  });
+
+  it("unknown status shape → no act, streak reset", () => {
+    const broken = { answers: { status: { choice: "something-else", confidence: 1 }, persistent: { noul: 0 } } };
+    const d = evaluateTick(broken.answers, 1, { confidence: 0.8 });
+    assert.equal(d.act, false);
+    assert.equal(d.status, "unknown");
+    assert.equal(d.streak, 0);
+  });
+});

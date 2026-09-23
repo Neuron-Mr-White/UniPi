@@ -40,6 +40,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   subagents: `${ESC}[34m`, // Blue
   "background-tasks": `${ESC}[91m`, // Bright Red
   fusion:    `${ESC}[96m`, // Bright Cyan
+  watchdog:  `${ESC}[90m`, // Bright Black (gray)
 };
 
 /** Hub namespace → PACKAGE_COLORS key (others use the namespace identity). */

@@ -32,6 +32,7 @@ import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import image from "@pi-unipi/image";
 import fusion from "@pi-unipi/fusion";
+import watchdog from "@pi-unipi/watchdog";
 
 export default function (pi: ExtensionAPI) {
   // One-time v3 state relocation into ~/.unipi/{global,workspace}/, then reap
@@ -71,4 +72,5 @@ export default function (pi: ExtensionAPI) {
   load("input-shortcuts", inputShortcuts);
   load("image", image);
   load("fusion", fusion);
+  load("watchdog", watchdog);
 }

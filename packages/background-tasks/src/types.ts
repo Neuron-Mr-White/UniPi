@@ -18,7 +18,7 @@ export const TERMINAL_TASK_STATUS_VALUES = ["completed", "failed", "killed"] as 
 
 export type TaskStatus = (typeof TASK_STATUS_VALUES)[number];
 export type TerminalTaskStatus = (typeof TERMINAL_TASK_STATUS_VALUES)[number];
-export type KillKind = "user" | "timeout" | "output_cap" | "shutdown";
+export type KillKind = "user" | "timeout" | "output_cap" | "shutdown" | "watchdog";
 
 export type JsonObject = Readonly<Record<PropertyKey, unknown>>;
 

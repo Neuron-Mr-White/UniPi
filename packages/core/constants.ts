@@ -38,6 +38,7 @@ export const MODULES = {
   UPDATER: "@pi-unipi/updater",
   INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
   IMAGE: "@pi-unipi/image",
+  WATCHDOG: "@pi-unipi/watchdog",
 } as const;
 
 /** Workflow command names */
