@@ -1,0 +1,24 @@
+{
+  "name": "@pi-unipi/kanboard-win32-x64",
+  "version": "3.0.0-alpha.0",
+  "description": "unipi kanboard binary for win32 x64 (MSVC) \u2014 installed by @pi-unipi/kanboard",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/kanboard-bin/win32-x64"
+  }
+}

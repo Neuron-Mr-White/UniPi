@@ -35,3 +35,31 @@ jobs:
 
       - name: Test
         run: npm test
+
+  kanboard-rust:
+    name: Kanboard crate (test + clippy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV).
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/kanboard
+
+      - name: Test
+        working-directory: crates/kanboard
+        run: cargo test
+
+      - name: Clippy
+        working-directory: crates/kanboard
+        run: cargo clippy --all-targets -- -D warnings

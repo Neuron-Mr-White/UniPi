@@ -87,6 +87,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Category | Prefix | Examples |
 |----------|--------|----------|
 | Workflow | `/unipi:` | plan (plan mode), permission (permission modes) |
+| Kanboard | `/unipi:` | kanboard (board: capture, work runner, web UI) |
 | Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
 | Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-preset, compact-help |

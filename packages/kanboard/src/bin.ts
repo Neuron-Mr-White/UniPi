@@ -47,10 +47,14 @@ function isRunnable(path: string): boolean {
   }
 }
 
-function platformPackagePath(): string | null {
+/**
+ * Where the platform package's binary lives, or null when the package is not
+ * installed. `from` is injectable so tests can simulate an installed layout.
+ */
+export function platformPackagePath(from?: string): string | null {
   const name = `@pi-unipi/kanboard-${platformKey()}`;
   try {
-    const require = createRequire(import.meta.url);
+    const require = createRequire(from ?? import.meta.url);
     const pkg = require.resolve(`${name}/package.json`);
     return join(dirname(pkg), "bin", `unipi-kanboard${exeSuffix()}`);
   } catch {
@@ -71,12 +75,12 @@ function devBuildPath(): string | null {
   return null;
 }
 
-export function resolveBinary(env: NodeJS.ProcessEnv = process.env): KanboardBinary | null {
+export function resolveBinary(env: NodeJS.ProcessEnv = process.env, from?: string): KanboardBinary | null {
   const explicit = env.UNIPI_KANBOARD_BIN?.trim();
   if (explicit) {
     return isRunnable(explicit) ? { path: explicit, source: "env" } : null;
   }
-  const packaged = platformPackagePath();
+  const packaged = platformPackagePath(from);
   if (packaged && isRunnable(packaged)) return { path: packaged, source: "platform-package" };
   const dev = devBuildPath();
   if (dev) return { path: dev, source: "dev-build" };

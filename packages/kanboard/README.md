@@ -94,6 +94,56 @@ reveal it on intent), and `onboard`/`work` force-reveal it by emitting
 `unipi:skills:reveal`, which utility turns into the usual append-only reveal
 message — the system prompt is never touched.
 
+## Platforms and packaging
+
+| Platform | npm package | Rust target | Notes |
+|---|---|---|---|
+| Linux x64 | `@pi-unipi/kanboard-linux-x64` | `x86_64-unknown-linux-musl` | static-pie, 3.9 MB |
+| Linux arm64 | `@pi-unipi/kanboard-linux-arm64` | `aarch64-unknown-linux-musl` | static |
+| macOS arm64 | `@pi-unipi/kanboard-darwin-arm64` | `aarch64-apple-darwin` | |
+| macOS x64 | `@pi-unipi/kanboard-darwin-x64` | `x86_64-apple-darwin` | cross-built from macos-14 |
+| Windows x64 | `@pi-unipi/kanboard-win32-x64` | `x86_64-pc-windows-msvc` | |
+
+They are **optional dependencies** of this package (`os`/`cpu` gated), so `npm install`
+pulls exactly one. `.github/workflows/kanboard-binaries.yml` builds them (tests +
+clippy on native targets, release build per target, artifact per platform) and, on
+a `v*` tag, attaches the binaries to the GitHub release. Publishing to npm:
+
+```bash
+npm run publish:kanboard -- --dry-run   # what would ship
+npm run publish:kanboard                # publishes, or skips loudly
+```
+
+The script **skips any platform package whose `bin/` is empty** (and exits 2), so
+an empty platform package can never be published. CI publishes only when an
+`NPM_TOKEN` secret exists — this repository has none, so the release job attaches
+artifacts and says so.
+
+Local packaging proof (no registry, no network):
+
+```bash
+node scripts/test-kanboard-packaging.mjs
+# packs packages/kanboard + the linux-x64 platform package, installs both into a
+# temp node_modules, resolves the binary through src/bin.ts and runs --version
+```
+
+## Storage
+
+`~/.unipi/kanboard/` (`UNIPI_KANBOARD_HOME` overrides it): `daemon.json` +
+`daemon.lock` for the daemon, and `projects/<slug>/{project.json,board.lock,tasks/*.md}`.
+The extension never edits those files — the binary owns them.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `kanboard binary unavailable for <platform>-<arch>` | No `UNIPI_KANBOARD_BIN`, no platform package and no dev build. Build `crates/kanboard` (`cargo build --release`) or set `UNIPI_KANBOARD_BIN`. |
+| The board says *"N task file(s) need repair"* | A file was edited by hand. One bad file no longer blocks the board (it is skipped and reported); run `unipi-kanboard validate --fix`, then `validate`. |
+| `UNI-5 is unreadable: … (line N)` | That task's own file is broken — repair it before moving/noting it. |
+| The daemon looks stale | `unipi-kanboard status` (pid + liveness), then `unipi-kanboard stop` (SIGTERM, ≤3s) or the hub's **Stop daemon** action. |
+| Nothing is ready | `unipi-kanboard list --ready --json` shows `waitingFor`; a cancelled dependency blocks forever — `link`/`unlink` to re-plan. |
+| The runner prompts for permission on every board call | Fixed in auto mode: `unipi-kanboard … --actor agent` is allow-listed by the permission gate (ask mode still asks). |
+
 ## Tests
 
 ```bash

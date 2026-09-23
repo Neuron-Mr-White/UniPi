@@ -10,7 +10,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createCli, resolveBinary, unavailableMessage, KanboardCliError, platformKey } from "../src/bin.js";
+import { createCli, exeSuffix, platformKey, platformPackagePath, resolveBinary, unavailableMessage, KanboardCliError } from "../src/bin.js";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const debugBinary = join(repoRoot, "crates", "kanboard", "target", "debug", "unipi-kanboard");
@@ -46,6 +46,31 @@ describe("binary resolution", () => {
   it("reports nothing when the env path does not exist", () => {
     assert.equal(resolveBinary({ UNIPI_KANBOARD_BIN: "/nope/unipi-kanboard" } as NodeJS.ProcessEnv), null);
     assert.match(unavailableMessage("linux", "x64"), /^kanboard binary unavailable for linux-x64$/);
+  });
+
+  it("resolves an installed platform package before the dev build", () => {
+    // Simulate `npm install` laying out the platform package in node_modules.
+    const project = mkdtempSync(join(tmpdir(), "kb-install-"));
+    const pkgDir = join(project, "node_modules", `@pi-unipi/kanboard-${platformKey()}`, "bin");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(
+      join(project, "node_modules", `@pi-unipi/kanboard-${platformKey()}`, "package.json"),
+      JSON.stringify({ name: `@pi-unipi/kanboard-${platformKey()}`, version: "9.9.9", main: "index.js" }),
+    );
+    const binary = join(pkgDir, `unipi-kanboard${exeSuffix()}`);
+    writeFileSync(binary, "#!/bin/sh\necho ok\n");
+    chmodSync(binary, 0o755);
+
+    const resolved = resolveBinary({} as NodeJS.ProcessEnv, join(project, "index.js"));
+    assert.equal(resolved?.source, "platform-package", "the installed package wins");
+    assert.equal(resolved?.path, binary);
+    // …and the dev build is only a fallback.
+    assert.equal(platformPackagePath(join(project, "index.js")), binary);
+  });
+
+  it("ignores a platform package that is not installed", () => {
+    const empty = mkdtempSync(join(tmpdir(), "kb-empty-"));
+    assert.equal(platformPackagePath(join(empty, "index.js")), null);
   });
 
   it("falls back to the dev build in the repo", { skip: !hasBinary }, () => {

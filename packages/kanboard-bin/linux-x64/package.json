@@ -1,0 +1,24 @@
+{
+  "name": "@pi-unipi/kanboard-linux-x64",
+  "version": "3.0.0-alpha.0",
+  "description": "unipi kanboard binary for linux x64 (static (musl)) \u2014 installed by @pi-unipi/kanboard",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/kanboard-bin/linux-x64"
+  }
+}

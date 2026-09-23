@@ -1,0 +1,183 @@
+name: Kanboard binaries
+
+# Builds the `unipi-kanboard` binary for every supported platform, runs the Rust
+# tests on native targets, and (on a tag or a manual dispatch) attaches the
+# binaries to a GitHub release. Publishing the platform packages to npm is done
+# by `npm run publish:kanboard` locally, or in CI only when NPM_TOKEN exists
+# (there is no npm secret configured in this repository today, so the release
+# job uploads artifacts and stops there).
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "crates/kanboard/**"
+      - "packages/kanboard/**"
+      - "packages/kanboard-bin/**"
+      - ".github/workflows/kanboard-binaries.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64 (musl, static)
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            platform: linux-x64
+            binary: unipi-kanboard
+            test: true
+          - name: linux-arm64 (musl, static)
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            platform: linux-arm64
+            binary: unipi-kanboard
+            test: true
+          - name: darwin-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            platform: darwin-arm64
+            binary: unipi-kanboard
+            test: true
+          - name: darwin-x64 (cross from arm64)
+            os: macos-14
+            target: x86_64-apple-darwin
+            platform: darwin-x64
+            binary: unipi-kanboard
+            test: false
+          - name: win32-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: win32-x64
+            binary: unipi-kanboard.exe
+            test: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV for the daemon).
+      - name: Install Rust (1.98.1, as rust-toolchain.toml pins)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/kanboard
+
+      - name: Target info
+        run: rustc --version && cargo --version && rustup target list --installed
+
+      - name: Test (native target)
+        if: matrix.test
+        working-directory: crates/kanboard
+        run: cargo test --all-targets
+
+      - name: Clippy (native target)
+        if: matrix.test
+        working-directory: crates/kanboard
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build release
+        working-directory: crates/kanboard
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Verify the binary is static (linux musl)
+        if: contains(matrix.target, 'musl')
+        run: |
+          file crates/kanboard/target/${{ matrix.target }}/release/${{ matrix.binary }}
+          ldd crates/kanboard/target/${{ matrix.target }}/release/${{ matrix.binary }} || true
+
+      - name: Stage the platform package
+        shell: bash
+        run: |
+          mkdir -p "packages/kanboard-bin/${{ matrix.platform }}/bin"
+          cp "crates/kanboard/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+             "packages/kanboard-bin/${{ matrix.platform }}/bin/${{ matrix.binary }}"
+          ls -l "packages/kanboard-bin/${{ matrix.platform }}/bin"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kanboard-${{ matrix.platform }}
+          path: packages/kanboard-bin/${{ matrix.platform }}/bin/${{ matrix.binary }}
+          if-no-files-found: error
+
+      - name: Pack the platform package (proves the tarball carries the binary)
+        run: npm pack --dry-run "packages/kanboard-bin/${{ matrix.platform }}"
+
+  release:
+    name: Package and release (tag or manual)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install the binaries into the platform packages
+        run: |
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            exe="unipi-kanboard"
+            [ "$platform" = "win32-x64" ] && exe="unipi-kanboard.exe"
+            src="artifacts/kanboard-$platform/$exe"
+            if [ ! -f "$src" ]; then
+              echo "::warning::missing artifact for $platform"
+              continue
+            fi
+            mkdir -p "packages/kanboard-bin/$platform/bin"
+            cp "$src" "packages/kanboard-bin/$platform/bin/$exe"
+            chmod +x "packages/kanboard-bin/$platform/bin/$exe" || true
+            echo "✓ $platform ($(du -h "$src" | cut -f1))"
+          done
+
+      - name: Verify every platform package is installable
+        run: |
+          for manifest in packages/kanboard-bin/*/package.json; do
+            directory=$(dirname "$manifest")
+            name=$(node -p "require('./$manifest').name")
+            if [ -z "$(ls -A "$directory/bin" 2>/dev/null)" ]; then
+              echo "::warning::$name has no binary — it must not be published"
+            else
+              echo "✓ $name has a binary"
+            fi
+          done
+
+      - name: Attach the binaries to a GitHub release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packages/kanboard-bin/*/bin/unipi-kanboard
+            packages/kanboard-bin/*/bin/unipi-kanboard.exe
+          fail_on_unmatched_files: false
+
+      - name: Publish the platform packages (only when NPM_TOKEN is configured)
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          npm run publish:kanboard
+
+      - name: Note the npm step when no token is configured
+        if: ${{ env.NPM_TOKEN == '' }}
+        run: |
+          echo "::notice::No NPM_TOKEN secret — platform packages were not published. Run 'npm run publish:kanboard' locally, or add NPM_TOKEN to enable this step."

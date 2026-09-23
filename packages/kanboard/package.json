@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/kanboard",
   "version": "3.0.0-alpha.0",
-  "description": "Kanboard v3 — deferred-work board: CLI/daemon bridge, task runner and skill",
+  "description": "Kanboard v3 \u2014 deferred-work board: CLI/daemon bridge, task runner and skill",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -14,7 +14,13 @@
     "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
     "directory": "packages/kanboard"
   },
-  "keywords": ["pi-package", "pi-extension", "unipi", "kanboard", "tasks"],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "unipi",
+    "kanboard",
+    "tasks"
+  ],
   "files": [
     "index.ts",
     "src/**/*.ts",
@@ -32,9 +38,20 @@
     "typebox": "^1.1.38"
   },
   "pi": {
-    "extensions": ["./index.ts"],
-    "skills": ["./skills"],
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
     "prompts": [],
     "themes": []
+  },
+  "optionalDependencies": {
+    "@pi-unipi/kanboard-linux-x64": "3.0.0-alpha.0",
+    "@pi-unipi/kanboard-linux-arm64": "3.0.0-alpha.0",
+    "@pi-unipi/kanboard-darwin-x64": "3.0.0-alpha.0",
+    "@pi-unipi/kanboard-darwin-arm64": "3.0.0-alpha.0",
+    "@pi-unipi/kanboard-win32-x64": "3.0.0-alpha.0"
   }
 }

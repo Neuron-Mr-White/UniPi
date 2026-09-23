@@ -28,7 +28,8 @@
     "prepublishOnly": "npm run build",
     "publish:all": "npm publish --workspaces --access public",
     "test": "npx tsx --test tests/*.test.js packages/memory/tests/*.test.ts && npm test --workspaces --if-present",
-    "typecheck": "npx tsc --noEmit --skipLibCheck"
+    "typecheck": "npx tsc --noEmit --skipLibCheck",
+    "publish:kanboard": "node scripts/publish-kanboard-platforms.mjs"
   },
   "files": [
     "CHANGELOG.md",
