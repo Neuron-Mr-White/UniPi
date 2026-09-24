@@ -240,14 +240,14 @@ export function TaskPanel(props: PanelProps): JSX.Element {
                   </Show>
                 </div>
 
-                <div class="field row" style={{ gap: "8px", "align-items": "stretch" }}>
+                <div class="field stack" style={{ gap: "8px" }}>
                   <Show when={!MUTED_LANES.has(current().status)}>
-                    <button class="secondary grow" disabled={busy()} onClick={() => void run(() => api.duplicate(props.slug, current().id), "Duplicated")}>
+                    <button class="secondary" disabled={busy()} onClick={() => void run(() => api.duplicate(props.slug, current().id), "Duplicated")}>
                       Duplicate
                     </button>
                   </Show>
                   <Show when={canMove(rules, current(), "cancelled")}>
-                    <button class="danger grow" disabled={busy()} onClick={() => void moveTo(current(), "cancelled")}>
+                    <button class="danger" disabled={busy()} onClick={() => void moveTo(current(), "cancelled")}>
                       Cancel task
                     </button>
                   </Show>

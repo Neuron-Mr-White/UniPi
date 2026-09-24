@@ -212,7 +212,8 @@ label { font-size: 12px; color: var(--muted); display: block; margin-bottom: var
   box-shadow: var(--shadow); z-index: 50; display: flex; flex-direction: column;
 }
 .panel-head { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border); }
-.panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s4); display: grid; grid-template-columns: minmax(0, 1fr) 168px; gap: var(--s5); align-items: start; }
+.panel-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: var(--s4); display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 196px); gap: var(--s4); align-items: start; }
+.panel-side button { width: 100%; }
 .panel-main { min-width: 0; display: flex; flex-direction: column; gap: var(--s4); }
 .panel-side { display: flex; flex-direction: column; gap: var(--s3); position: sticky; top: 0; }
 .title-input { font-size: 18px; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 4px 6px; }

@@ -317,6 +317,20 @@ try {
     panelBits.buttons.every(chrome),
     panelBits.buttons.map((entry) => `${entry.label}:${entry.background}`).join(" · "),
   );
+  const panelFit = await session.evaluate(`(() => {
+    const panel = document.querySelector('.panel');
+    if (!panel) return null;
+    const box = panel.getBoundingClientRect();
+    const escaping = [...panel.querySelectorAll('button, select, input, textarea')]
+      .filter((node) => node.getBoundingClientRect().right > box.right + 1)
+      .map((node) => (node.textContent || node.id || node.tagName).trim().slice(0, 24));
+    return { scroll: panel.scrollWidth - panel.clientWidth, escaping };
+  })()`);
+  check(
+    "nothing in the panel overflows it",
+    !!panelFit && panelFit.scroll <= 1 && panelFit.escaping.length === 0,
+    panelFit ? `scroll delta ${panelFit.scroll}${panelFit.escaping.length ? ` · escaping: ${panelFit.escaping.join(", ")}` : ""}` : "no panel",
+  );
   const themed = panelBits.appearance === "none" && panelBits.chevron;
   check("Status/Priority use the themed select", themed, `appearance=${panelBits.appearance} chevron=${panelBits.chevron}`);
   // Read the rules through the page: it already holds the daemon token and a
@@ -340,7 +354,18 @@ try {
   await session.evaluate(`document.querySelector('.panel-head button').click()`);
   await sleep(400);
 
-  // 5. drag a todo card into backlog (HTML5 drag events, real handlers)
+  // 5. drag a todo card into backlog (HTML5 drag events, real handlers).
+  //    A remote board may have no todo card (the runner drains them), so create
+  //    one through the page — it holds the token — instead of skipping the check.
+  const hasTodo = await session.evaluate(`document.querySelectorAll('.lane[data-lane="todo"] .card').length`);
+  if (hasTodo === 0) {
+    const token = new URLSearchParams(base.split("?")[1] ?? "").get("t");
+    await session.evaluate(
+      `fetch('/api/tasks/${slug}/create${token ? `?t=${token}` : ""}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'ui check: drag me', status: 'todo' }) }).then((r) => r.json())`,
+    );
+    await session.send("Page.reload");
+    await session.until(`document.querySelectorAll('.lane[data-lane="todo"] .card').length`, (n) => n >= 1, 20000);
+  }
   const before = await session.evaluate(`document.querySelectorAll('.lane[data-lane="backlog"] .card').length`);
   const drag = await session.evaluate(`(async () => {
     const card = document.querySelector('.lane[data-lane="todo"] .card');
