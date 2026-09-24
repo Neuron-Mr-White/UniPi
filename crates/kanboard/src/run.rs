@@ -345,11 +345,24 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             text(payload, "title")
         ),
         Command::List { .. } => {
-            let items = payload.as_array().cloned().unwrap_or_default();
-            if items.is_empty() {
+            // K4 turned the JSON payload into `{tasks, problems}`; this table kept
+            // reading a bare array and printed "no tasks" on every board that had
+            // tasks (found on coffee: `list --json` returned 18, `list` said none).
+            let items = payload
+                .get("tasks")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .or_else(|| payload.as_array().cloned())
+                .unwrap_or_default();
+            let problems = payload
+                .get("problems")
+                .and_then(|value| value.as_array())
+                .map(|list| list.len())
+                .unwrap_or(0);
+            if items.is_empty() && problems == 0 {
                 return "no tasks".to_string();
             }
-            items
+            let mut lines = items
                 .iter()
                 .map(|task| {
                     let ready = field(task, "ready").as_bool().unwrap_or(false);
@@ -371,8 +384,16 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                         }
                     )
                 })
-                .collect::<Vec<_>>()
-                .join("\n")
+                .collect::<Vec<_>>();
+            if items.is_empty() {
+                lines.push("no tasks".to_string());
+            }
+            if problems > 0 {
+                lines.push(format!(
+                    "⚠ {problems} task file(s) need repair — unipi-kanboard validate --fix"
+                ));
+            }
+            lines.join("\n")
         }
         Command::Show { .. } => {
             let status = text(payload, "status");

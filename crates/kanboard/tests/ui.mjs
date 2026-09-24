@@ -220,7 +220,7 @@ try {
   await sleep(900);
   const picker = await session.until(`document.querySelectorAll('.project-card').length`, (n) => n >= 1, 20000);
   check("project picker lists projects", picker >= 1, `${picker} cards`);
-  await session.shot("k6-picker-dark-1440.png");
+  await session.shot("k6-picker-light-1440.png");
 
   // open the board
   await session.send("Page.navigate", { url: boardUrl(slug) });
@@ -245,11 +245,17 @@ try {
     };
   })()`);
   check("no card overflows horizontally", tight.overflowing === 0, `${tight.cards} cards, ${tight.overflowing} overflowing`);
-  check(
-    "a 140-char title clamps to 3 lines",
-    tight.long && tight.lines !== null && tight.lines <= 3,
-    `rendered ${tight.lines} lines (overflow ${tight.clamped ? "clipped" : "visible"})`,
-  );
+  // The hostile title is seeded by this script's own temp home; a remote board
+  // (coffee) has none, so report that instead of failing.
+  if (tight.long) {
+    check(
+      "a 140-char title clamps to 3 lines",
+      tight.lines !== null && tight.lines <= 3,
+      `rendered ${tight.lines} lines (overflow ${tight.clamped ? "clipped" : "visible"})`,
+    );
+  } else {
+    console.log("· a 140-char title clamps to 3 lines — skipped (no long title on this board)");
+  }
 
   // 2. lanes start at the left edge with no dead space
   const geometry = await session.until(`(() => {
@@ -313,19 +319,24 @@ try {
   );
   const themed = panelBits.appearance === "none" && panelBits.chevron;
   check("Status/Priority use the themed select", themed, `appearance=${panelBits.appearance} chevron=${panelBits.chevron}`);
-  const rulesDoc = await (await fetch(`${base}/api/rules`)).json();
+  // Read the rules through the page: it already holds the daemon token and a
+  // working route to the host (Node's fetch can be blocked by proxies/env).
+  const token = new URLSearchParams(base.split("?")[1] ?? "").get("t");
+  const rulesDoc = await session.evaluate(
+    `fetch('/api/rules${token ? `?t=${token}` : ""}').then((response) => response.json())`,
+  );
   const allowed = new Set([panelBits.statusValue, ...(rulesDoc.allowedMoves?.[panelBits.statusValue] ?? [])]);
   check(
     "the status select offers allowed moves only",
     panelBits.statusOptions.every((option) => allowed.has(option)) && panelBits.statusOptions.includes(panelBits.statusValue),
     panelBits.statusOptions.join(","),
   );
-  check(
-    "the clamped title is intact in the panel",
-    openedLong === "long" && panelBits.titleLength === 140,
-    `opened ${openedLong}, ${panelBits.titleLength} chars in the panel`,
-  );
-  await session.shot("k6-detail-dark-1440.png");
+  if (openedLong === "long") {
+    check("the clamped title is intact in the panel", panelBits.titleLength === 140, `${panelBits.titleLength} chars`);
+  } else {
+    check("the panel shows the task title", panelBits.titleLength > 0, `opened ${openedLong} card`);
+  }
+  await session.shot("k6-detail-light-1440.png");
   await session.evaluate(`document.querySelector('.panel-head button').click()`);
   await sleep(400);
 
@@ -377,7 +388,7 @@ try {
     return node ? node.querySelector('.prompt')?.textContent ?? 'no prompt' : 'no modal';
   })()`);
   check("comment-required move shows the modal", typeof modal === "string" && !modal.startsWith("no "), String(modal));
-  await session.shot("k6-comment-dark-1440.png");
+  await session.shot("k6-comment-light-1440.png");
   await session.evaluate(`document.querySelector('.dialog-head button').click()`);
   await sleep(300);
 
@@ -389,7 +400,7 @@ try {
     return node ? node.querySelectorAll('input, textarea, select').length : 0;
   })()`);
   check("new-task dialog opens", dialog >= 5, `${dialog} fields`);
-  await session.shot("k6-newtask-dark-1440.png");
+  await session.shot("k6-newtask-light-1440.png");
   await session.evaluate(`document.querySelector('.dialog-head button').click()`);
   await sleep(300);
 

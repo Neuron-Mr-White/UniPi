@@ -409,3 +409,34 @@ fn unknown_project_errors_mention_project_add() {
     assert!(stderr.contains("no project registered"), "{stderr}");
     assert!(stderr.contains("project add"), "{stderr}");
 }
+
+/// Regression (K7 review, found on coffee): the table printer read the raw JSON
+/// as a bare array while `list --json` had become `{tasks, problems}`, so every
+/// board with tasks printed "no tasks" in the human-readable output.
+#[test]
+fn list_prints_tasks_and_warns_about_problems() {
+    let fixture = Fixture::new();
+    fixture.add_with("first", kanboard::model::Status::Backlog, kanboard::model::Priority::None, &[]);
+    fixture.add_with("second", kanboard::model::Status::Todo, kanboard::model::Priority::High, &[]);
+
+    let run = kb(&fixture, &["list"]);
+    assert_eq!(run.code, 0);
+    assert!(!run.stdout.contains("no tasks"), "the table must not claim an empty board: {}", run.stdout);
+    assert!(run.stdout.contains("first"), "{}", run.stdout);
+    assert!(run.stdout.contains("[todo] second (high)"), "{}", run.stdout);
+
+    // A broken task file shows up in the table too, not only in the JSON.
+    let mut ids: Vec<String> = std::fs::read_dir(fixture.layout.tasks_dir(&fixture.project.slug))
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    ids.sort();
+    let broken = ids.first().expect("the fixture has task files");
+    std::fs::write(broken, "---\nid: broken\ntitle: [unclosed\n---\n").unwrap();
+
+    let run = kb(&fixture, &["list"]);
+    assert!(run.stdout.contains("need repair"), "{}", run.stdout);
+}
