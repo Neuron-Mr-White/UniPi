@@ -104,6 +104,10 @@ class Session {
       ws.onerror = fail;
     });
     const session = new Session(ws);
+    ws.onclose = () => {
+      for (const [, entry] of session.pending) entry.reject(new Error("CDP socket closed"));
+      session.pending.clear();
+    };
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
       const entry = message.id && session.pending.get(message.id);
@@ -113,10 +117,40 @@ class Session {
     };
     return session;
   }
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 15000) {
     const id = ++this.id;
     this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+    });
+  }
+  /** Poll an expression until the predicate accepts it (a reloaded page takes time). */
+  async until(expression, accept, timeoutMs = 20000, step = 400) {
+    const deadline = Date.now() + timeoutMs;
+    let last;
+    for (;;) {
+      try {
+        last = await this.evaluate(expression);
+        if (accept(last)) return last;
+      } catch (error) {
+        last = `error: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      if (Date.now() > deadline) return last;
+      await sleep(step);
+    }
   }
   async evaluate(expression) {
     const result = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
@@ -152,7 +186,16 @@ try {
   await session.send("Page.addScriptToEvaluateOnNewDocument", {
     source: `window.__kbErrors = []; window.addEventListener('error', (e) => window.__kbErrors.push(String(e.message))); window.addEventListener('unhandledrejection', (e) => window.__kbErrors.push('rejection: ' + String(e.reason && e.reason.message || e.reason)));`,
   });
-  await session.send("Page.navigate", { url: `${base}/` });
+  // `--url` may carry the daemon token (`http://host:port/?t=…`); keep it and
+  // append the project, so the remote board's API calls stay authorized.
+  const boardUrl = (project) => {
+    const [root, query] = base.split("?");
+    const params = new URLSearchParams(query ?? "");
+    if (project) params.set("project", project);
+    const search = params.toString();
+    return `${root}${search ? `?${search}` : ""}`;
+  };
+  await session.send("Page.navigate", { url: boardUrl(null) });
   await sleep(2500);
 
   // 1. the picker page (a single project auto-opens, so use the switcher)
@@ -173,25 +216,27 @@ try {
     all?.click();
   })()`);
   await sleep(900);
-  const picker = await session.evaluate(`document.querySelectorAll('.project-card').length`);
+  const picker = await session.until(`document.querySelectorAll('.project-card').length`, (n) => n >= 1, 20000);
   check("project picker lists projects", picker >= 1, `${picker} cards`);
   await session.shot("k6-picker-dark-1440.png");
 
   // open the board
-  await session.send("Page.navigate", { url: `${base}/?project=${encodeURIComponent(slug)}` });
+  await session.send("Page.navigate", { url: boardUrl(slug) });
   await sleep(2000);
-  const lanes = await session.evaluate(`document.querySelectorAll('.lane').length`);
+  const lanes = await session.until(`document.querySelectorAll('.lane').length`, (n) => n >= 7, 25000);
   const cards = await session.evaluate(`document.querySelectorAll('.card').length`);
   check("board renders lanes", lanes >= 7, `${lanes} lanes`);
   check("board renders cards", cards >= 4, `${cards} cards`);
 
   // 2. lanes start at the left edge with no dead space
-  const geometry = await session.evaluate(`(() => {
-    const lane = document.querySelector('.lane').getBoundingClientRect();
+  const geometry = await session.until(`(() => {
+    const laneNode = document.querySelector('.lane');
+    if (!laneNode) return null;
+    const lane = laneNode.getBoundingClientRect();
     const wrap = document.querySelector('.board-wrap').getBoundingClientRect();
     const styles = getComputedStyle(document.querySelector('.board'));
     return { laneLeft: lane.left - wrap.left, laneWidth: lane.width, gap: styles.gap };
-  })()`);
+  })()`, (value) => !!value, 15000);
   check("first lane is at the left edge", geometry.laneLeft <= 20, `offset ${Math.round(geometry.laneLeft)}px`);
   check("lane width is ~300px", Math.abs(geometry.laneWidth - 300) <= 2, `${Math.round(geometry.laneWidth)}px`);
 

@@ -46,7 +46,11 @@ pane()   { remote "tmux capture-pane -t $SESSION -p" 2>/dev/null; }
 
 submitted=0
 for attempt in 1 2 3; do
-  # 1. make sure the editor is empty/clean (Escape only clears, never submits,)
+  # 1. clear the composer first: Escape only dismisses the popup, it does NOT
+  #    remove text, so a swallowed submit would otherwise be concatenated with
+  #    the next command (a stray task title like "status/unipi:kanboard status").
+  remote "tmux send-keys -t $SESSION C-u" >/dev/null 2>&1
+  sleep 0.2
   remote "tmux send-keys -t $SESSION Escape" >/dev/null 2>&1
   sleep 0.3
   # 2. type
@@ -57,8 +61,9 @@ for attempt in 1 2 3; do
     echo "attempt $attempt: text not in the editor yet, retrying" >&2
     continue
   fi
-  # 4./5. dismiss the popup, then submit
-  remote "tmux send-keys -t $SESSION Right" >/dev/null 2>&1
+  # 4./5. dismiss the popup, then submit. Escape (not Right) — Right accepts the
+  #      completion and can leave the popup open, swallowing the Enter.
+  remote "tmux send-keys -t $SESSION Escape" >/dev/null 2>&1
   sleep 0.25
   remote "tmux send-keys -t $SESSION Enter" >/dev/null 2>&1
   sleep 1.2
