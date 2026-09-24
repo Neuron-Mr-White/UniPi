@@ -520,6 +520,10 @@ function DisplayMenu(): JSX.Element {
           </div>
           <MenuSeparator />
           <div class="display-row">
+            Group linked tasks
+            <button class="switch" role="switch" aria-checked={display.chains} aria-label="Group linked tasks" onClick={() => setDisplay("chains", !display.chains)} />
+          </div>
+          <div class="display-row">
             Show description excerpt
             <button class="switch" role="switch" aria-checked={display.excerpt} aria-label="Show description excerpt" onClick={() => setDisplay("excerpt", !display.excerpt)} />
           </div>

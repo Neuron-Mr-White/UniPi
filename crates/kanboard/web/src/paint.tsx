@@ -47,19 +47,34 @@ export function PriorityTag(props: { priority: string }): JSX.Element {
   );
 }
 
-export function DepTag(props: { task: Task }): JSX.Element {
-  const waiting = () => props.task.waitingFor ?? [];
-  const deps = () => props.task.deps ?? [];
+/**
+ * Dependency tag. Three states:
+ *  - locked:  a dep is still in Backlog — nothing moves until a human schedules it;
+ *  - waiting: deps are in flight (todo / in progress) — the runner will get there;
+ *  - ready:   every dep reached the gate.
+ * Deps drawn directly above in the same chain are omitted (the connector shows them).
+ */
+export function DepTag(props: { task: Task; drawnParents?: string[] }): JSX.Element {
+  const drawn = () => new Set(props.drawnParents ?? []);
+  const deps = () => (props.task.deps ?? []).filter((dep) => !drawn().has(dep) || (props.task.deps ?? []).length > 1);
+  const locked = () => (props.task.lockedBy ?? []).filter((dep) => deps().includes(dep));
+  const waiting = () => (props.task.waitingFor ?? []).filter((dep) => deps().includes(dep));
+  const title = (): string =>
+    locked().length > 0
+      ? `Locked: ${locked().join(", ")} ${locked().length === 1 ? "is" : "are"} still in Backlog. Move ${locked().length === 1 ? "it" : "them"} to Todo to unlock.`
+      : waiting().length > 0
+        ? `Waiting on ${waiting().join(", ")}`
+        : `After ${deps().join(", ")} (ready)`;
   return (
     <Show when={deps().length > 0}>
-      <span
-        class={`tag dep${waiting().length > 0 ? " waiting" : ""}`}
-        title={waiting().length > 0 ? `Waiting on ${waiting().join(", ")}` : `After ${deps().join(", ")} (ready)`}
-      >
-        <Show when={waiting().length > 0} fallback={<Icon.link size={11} />}>
+      <span class={`tag dep${locked().length > 0 ? " locked" : waiting().length > 0 ? " waiting" : ""}`} title={title()}>
+        <Show when={locked().length > 0 || waiting().length > 0} fallback={<Icon.link size={11} />}>
           <Icon.lock size={11} />
         </Show>
-        <span>after {deps().join(", ")}</span>
+        <span>
+          after {deps().join(", ")}
+          <Show when={locked().length > 0}> · not scheduled</Show>
+        </span>
       </span>
     </Show>
   );

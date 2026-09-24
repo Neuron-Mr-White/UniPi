@@ -2200,3 +2200,104 @@ button.prop-value:hover:not(:disabled) {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── dependency chains (same lane) ──────────────────────────────────────── */
+/* Members of a chain sit together; a rail on the left joins them, with a node
+   per card. Tighter gaps inside a block, the usual gap around it. */
+.card.chained {
+  position: relative;
+  margin-left: 14px;
+}
+.card.chain-middle,
+.card.chain-last {
+  margin-top: -3px;
+}
+.card.chained::before {
+  /* the node */
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 16px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 1.5px var(--chain, var(--brand));
+  z-index: 1;
+}
+.card.chained::after {
+  /* the rail: from this node down to the next card's node */
+  content: "";
+  position: absolute;
+  left: -9px;
+  width: 1.5px;
+  background: color-mix(in srgb, var(--chain, var(--brand)) 55%, transparent);
+  top: 23px;
+  bottom: -21px;
+}
+.card.chain-last::after {
+  display: none;
+}
+.card.chain-first::before {
+  background: var(--chain, var(--brand));
+}
+.card.chained.locked {
+  --chain: var(--s-backlog);
+}
+
+/* locked = a dependency is still in Backlog; stronger than "waiting" */
+.tag.dep.locked {
+  color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 28%, transparent);
+  font-weight: 550;
+}
+.card.locked .card-title {
+  color: var(--text-2);
+}
+.lock-note {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: start;
+  margin: 2px 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--danger-soft);
+  color: var(--text-2);
+  font-size: var(--t-meta);
+  line-height: 1.45;
+}
+.lock-note > svg {
+  margin-top: 2px;
+  color: var(--danger);
+}
+.lock-note .btn {
+  grid-column: 2;
+  justify-self: start;
+  height: 24px;
+  padding: 0 8px;
+  color: var(--danger);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+/* list view: children indented under their chain's first row */
+.row.chain-middle .row-title,
+.row.chain-last .row-title {
+  position: relative;
+  padding-left: 18px;
+}
+.row.chain-middle .row-title::before,
+.row.chain-last .row-title::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 8px;
+  height: 12px;
+  margin-top: -12px;
+  border-left: 1.5px solid var(--hairline-strong);
+  border-bottom: 1.5px solid var(--hairline-strong);
+  border-bottom-left-radius: 4px;
+}

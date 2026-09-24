@@ -3,10 +3,10 @@ import { For, Show, type JSX } from "solid-js";
 import { Icon, PriorityGlyph, PRIORITY_LABEL, StatusGlyph } from "./icons.js";
 import { relativeTime } from "./markdown.js";
 import { AgentChip, DepTag, LabelTags } from "./paint.js";
-import { board, laneTasks, scope, selectedId, setNewTaskLane, setOpenTaskId, setSelectedId, visibleLanes } from "./state.js";
+import { board, laneLayout, laneTasks, scope, selectedId, setNewTaskLane, setOpenTaskId, setSelectedId, visibleLanes } from "./state.js";
 
 export function ListView(): JSX.Element {
-  const groups = () => visibleLanes().map((lane) => ({ lane, tasks: laneTasks(lane.id) }));
+  const groups = () => visibleLanes().map((lane) => ({ lane, tasks: laneTasks(lane.id), items: laneLayout(lane.id) }));
   const nonEmpty = () => groups().filter((group) => group.tasks.length > 0 || scope() !== "all");
   return (
     <div class="list" role="table" aria-label="Tasks">
@@ -23,10 +23,13 @@ export function ListView(): JSX.Element {
                 </button>
               </Show>
             </div>
-            <For each={group.tasks} fallback={<div class="list-empty">Nothing here.</div>}>
-              {(task) => (
+            <For each={group.items} fallback={<div class="list-empty">Nothing here.</div>}>
+              {({ task, chain, parents }) => (
                 <div
-                  class={`row${selectedId() === task.id ? " selected" : ""}`}
+                  class={`row${selectedId() === task.id ? " selected" : ""}${chain !== "single" ? ` chained chain-${chain}` : ""}${
+                    (task.lockedBy ?? []).length > 0 ? " locked" : ""
+                  }`}
+                  data-chain={chain}
                   role="row"
                   tabindex="0"
                   data-id={task.id}
@@ -46,7 +49,7 @@ export function ListView(): JSX.Element {
                   <span class="row-title">{task.title}</span>
                   <span class="row-tags">
                     <AgentChip task={task} />
-                    <DepTag task={task} />
+                    <DepTag task={task} drawnParents={parents} />
                   </span>
                   <span class="row-tags">
                     <LabelTags labels={task.labels ?? []} max={2} />

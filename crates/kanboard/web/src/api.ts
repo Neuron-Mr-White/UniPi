@@ -41,6 +41,8 @@ export interface Task {
   activity: Activity[];
   ready?: boolean;
   waitingFor?: string[];
+  /** Deps still in Backlog (or missing): only a human can schedule them. */
+  lockedBy?: string[];
   depsStatus?: Array<{ id: string; status: string | null }>;
   staleness?: string;
   allowedMoves?: string[];

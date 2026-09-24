@@ -10,6 +10,7 @@ import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { relativeTime, renderMarkdown } from "./markdown.js";
 import { hue } from "./paint.js";
+import { offerToSchedule } from "./schedule.js";
 import {
   board,
   describe,
@@ -106,7 +107,9 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
       setCommentRequest({ task: { ...current }, to, hint });
       return;
     }
-    void run(async () => upsertTask(await api.move(target(), current.id, to)), `Moved ${current.id} to ${laneLabel(to)}`);
+    void run(async () => upsertTask(await api.move(target(), current.id, to)), `Moved ${current.id} to ${laneLabel(to)}`).then(
+      (ok) => ok && to === "todo" && offerToSchedule(current.id),
+    );
   }
 
   const saveTitle = (): void => {
@@ -427,6 +430,25 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
 
           <div class="rail-sep" />
           <div class="rail-title">Runs after</div>
+          <Show when={(props.task.lockedBy ?? []).length > 0}>
+            <div class="lock-note">
+              <Icon.lock size={12} />
+              <span>
+                Locked — {(props.task.lockedBy ?? []).join(", ")} {(props.task.lockedBy ?? []).length === 1 ? "is" : "are"} still in Backlog.
+              </span>
+              <button
+                class="btn"
+                disabled={busy()}
+                onClick={() =>
+                  void run(async () => {
+                    for (const dep of props.task.lockedBy ?? []) await api.move(target(), dep, "todo");
+                  }, `Scheduled ${(props.task.lockedBy ?? []).join(", ")}`)
+                }
+              >
+                Move to Todo
+              </button>
+            </div>
+          </Show>
           <div class="dep-list">
             <For each={props.task.deps}>
               {(dep) => (

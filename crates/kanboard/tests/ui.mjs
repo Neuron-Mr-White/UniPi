@@ -51,6 +51,13 @@ if (!urlMode) {
     kb("add", `${name} task`, "--status", index === 2 || index === 4 ? "todo" : "backlog").id,
   );
   kb("add", "dependent task", "--status", "todo", "--after", ids[2]);
+  // chain demo: head, unrelated, child (after head) — the child must be drawn under the head
+  const head = kb("add", "chain head", "--status", "todo").id;
+  kb("add", "unrelated between", "--status", "todo");
+  kb("add", "chain child", "--status", "todo", "--after", head);
+  // locked: a todo task whose parent stays in backlog
+  const parked = kb("add", "parked parent").id;
+  kb("add", "locked child", "--status", "todo", "--after", parked);
   const harsh = "X".repeat(140);
   kb("add", harsh, "--status", "backlog");
   // One task in review so the comment-required move can be exercised.
@@ -465,6 +472,68 @@ try {
   await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }))`);
   await sleep(300);
   check("[ collapses the sidebar to a rail", collapsed <= 60, `${collapsed}px`);
+
+  // 7e. chains: same-lane dependents drawn right under their parent, with chain markers
+  if (!urlMode) {
+    const chain = await session.evaluate(`(() => {
+      const cards = [...document.querySelectorAll('.lane[data-lane="todo"] .card')];
+      const title = (card) => card.querySelector('.card-title').textContent;
+      const at = (text) => cards.findIndex((card) => title(card) === text);
+      const head = cards[at('chain head')], child = cards[at('chain child')];
+      return { head: at('chain head'), child: at('chain child'), headChain: head?.dataset.chain, childChain: child?.dataset.chain,
+        childTag: child?.querySelector('.tag.dep')?.textContent ?? null };
+    })()`);
+    check("a same-lane dependent is drawn right under its parent", chain.child === chain.head + 1 && chain.headChain === "first" && chain.childChain === "last", JSON.stringify(chain));
+    check("the connector replaces the 'after' tag inside a chain", chain.childTag === null, String(chain.childTag));
+
+    const locked = await session.evaluate(`(() => {
+      const card = [...document.querySelectorAll('.card')].find((node) => node.querySelector('.card-title').textContent === 'locked child');
+      const tag = card?.querySelector('.tag.dep');
+      return { locked: card?.classList.contains('locked'), tagLocked: tag?.classList.contains('locked'), text: tag?.textContent };
+    })()`);
+    check("a task behind a Backlog parent shows as locked", locked.locked && locked.tagLocked && /not scheduled/.test(locked.text ?? ""), JSON.stringify(locked));
+
+    // Drop target never lands between chain members: hovering the child's top half snaps to the head.
+    const snapped = await session.evaluate(`(async () => {
+      const lane = document.querySelector('.lane[data-lane="todo"]');
+      const mover = [...lane.querySelectorAll('.card')].find((c) => c.querySelector('.card-title').textContent === 'unrelated between');
+      const child = [...lane.querySelectorAll('.card')].find((c) => c.querySelector('.card-title').textContent === 'chain child');
+      const dt = new DataTransfer();
+      mover.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      await new Promise((r) => setTimeout(r, 120));
+      lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, clientY: child.getBoundingClientRect().top + 4 }));
+      await new Promise((r) => setTimeout(r, 150));
+      const line = lane.querySelector('.drop-line');
+      const after = line?.nextElementSibling?.querySelector('.card-title')?.textContent ?? null;
+      mover.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+      return after;
+    })()`);
+    check("the drop line snaps outside a chain", snapped === "chain head", String(snapped));
+
+    // Moving a task into Todo while its parent is in Backlog offers to schedule the parent.
+    const offer = await session.evaluate(`(async () => {
+      const parked = [...document.querySelectorAll('.card')].find((n) => n.querySelector('.card-title').textContent === 'parked parent').dataset.id;
+      const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+      const probe = await post('/api/tasks/${slug}/create', { title: 'offer probe', status: 'backlog', after: [parked] });
+      await new Promise((r) => setTimeout(r, 900)); // SSE refresh
+      const lane = document.querySelector('.lane[data-lane="todo"]');
+      const card = document.querySelector('.card[data-id="' + probe.id + '"]');
+      if (!card) return 'probe card missing';
+      const dt = new DataTransfer();
+      card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, clientY: lane.getBoundingClientRect().bottom - 20 }));
+      lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
+      await new Promise((r) => setTimeout(r, 1200));
+      const toast = [...document.querySelectorAll('.toast')].find((t) => /is locked/.test(t.textContent));
+      if (!toast) return 'no offer: ' + [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ');
+      const button = [...toast.querySelectorAll('button')].find((b) => /to Todo/.test(b.textContent));
+      button.click();
+      await new Promise((r) => setTimeout(r, 1200));
+      const parent = await fetch('/api/tasks/${slug}/' + parked).then((r) => r.json());
+      return 'offered, parent now ' + parent.status;
+    })()`);
+    check("moving to Todo offers to schedule a Backlog parent", offer === "offered, parent now todo", String(offer));
+  }
 
   // 8. theme toggle + light screenshots + 1920
   const initialTheme = await session.evaluate(`document.documentElement.dataset.theme`);

@@ -56,6 +56,15 @@ kb note "${P[@]}" "$E" "Prefer the OTLP/HTTP exporter; gRPC is blocked by the pr
 # One live agent keeps its run block.
 X=$(claim s-c55e); kb set-run "${P[@]}" "$X" --mode goal >/dev/null 2>&1 || true
 
+# Chains for the grouping demo: a 3-step chain in Todo, interleaved by order with
+# an unrelated task, and a task locked behind a Backlog parent.
+C1=$(id add "${P[@]}" "Design the webhook retry schema" --status todo --priority high)
+id add "${P[@]}" "Bump the TLS minimum to 1.3" --status todo --priority low >/dev/null
+C2=$(id add "${P[@]}" "Implement retries with exponential backoff" --status todo --priority high --after "$C1")
+C3=$(id add "${P[@]}" "Expose retry metrics on the dashboard" --status todo --priority medium --after "$C2")
+LP=$(id add "${P[@]}" "Pick the feature-flag provider" --priority medium)
+id add "${P[@]}" "Gate the new billing page behind a flag" --status todo --priority medium --after "$LP" >/dev/null
+
 # A second, smaller project so the sidebar lists more than one.
 cd "$(mktemp -d /tmp/kb-demo-ws2-XXXX)" && git init -q
 S2=$(kb project add --name "Mobile app" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["slug"])')

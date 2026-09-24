@@ -6,6 +6,7 @@
 
 import { For, Show, createSignal, type JSX } from "solid-js";
 import { api, canMove, needsComment, type Task } from "./api.js";
+import { offerToSchedule } from "./schedule.js";
 import { Icon, StatusGlyph } from "./icons.js";
 import { AgentChip, DepTag, LabelTags, PriorityTag } from "./paint.js";
 import {
@@ -14,6 +15,7 @@ import {
   display,
   laneCount,
   laneLabel,
+  laneLayout,
   laneTasks,
   loadBoard,
   rules,
@@ -74,11 +76,16 @@ export function Board(): JSX.Element {
     const cards = [...document.querySelectorAll<HTMLElement>(`.lane[data-lane="${laneId}"] .card`)].filter(
       (node) => node.dataset.id !== dragging()?.id,
     );
-    const next = cards.find((node) => {
+    const index = cards.findIndex((node) => {
       const box = node.getBoundingClientRect();
       return event.clientY < box.top + box.height / 2;
     });
-    return next?.dataset.id ?? null;
+    if (index === -1) return null;
+    // Chains are drawn as one block: never insert between two members — snap to
+    // the start of the block the pointer is in.
+    let at = index;
+    while (at > 0 && /^(middle|last)$/.test(cards[at]!.dataset.chain ?? "")) at -= 1;
+    return cards[at]?.dataset.id ?? null;
   }
 
   async function commit(original: Task, toLane: string, beforeId: string | null): Promise<void> {
@@ -95,6 +102,7 @@ export function Board(): JSX.Element {
       else if (original.status !== toLane) await api.order(target, original.id, { bottom: true });
       await loadBoard(target);
       const moved = original.status !== toLane;
+      if (moved && toLane === "todo") offerToSchedule(original.id);
       const reversible = !moved || (canMove(rules, { ...original, status: toLane, allowedMoves: undefined }, original.status) && !needsComment(rules, toLane, original.status));
       toast(
         moved ? `Moved ${original.id} to ${laneLabel(toLane)}` : `Reordered ${original.id}`,
@@ -218,13 +226,20 @@ export function Board(): JSX.Element {
               </header>
 
               <div class="lane-body">
-                <For each={laneTasks(lane.id)}>
-                  {(task) => (
+                <For each={laneLayout(lane.id)}>
+                  {(item) => (
                     <>
-                      <Show when={dropLane() === lane.id && dropBefore() === task.id && dragging() && dragging()!.id !== task.id && allows(dragging()!, lane.id)}>
+                      <Show when={dropLane() === lane.id && dropBefore() === item.task.id && dragging() && dragging()!.id !== item.task.id && allows(dragging()!, lane.id)}>
                         <div class="drop-line" />
                       </Show>
-                      <Card task={task} dragging={dragging()?.id === task.id} onDragStart={(event) => onDragStart(event, task)} onDragEnd={reset} />
+                      <Card
+                        task={item.task}
+                        chain={item.chain}
+                        parents={item.parents}
+                        dragging={dragging()?.id === item.task.id}
+                        onDragStart={(event) => onDragStart(event, item.task)}
+                        onDragEnd={reset}
+                      />
                     </>
                   )}
                 </For>
@@ -257,15 +272,25 @@ export function Board(): JSX.Element {
   );
 }
 
-function Card(props: { task: Task; dragging: boolean; onDragStart: (event: DragEvent) => void; onDragEnd: () => void }): JSX.Element {
+function Card(props: {
+  task: Task;
+  chain: "single" | "first" | "middle" | "last";
+  parents: string[];
+  dragging: boolean;
+  onDragStart: (event: DragEvent) => void;
+  onDragEnd: () => void;
+}): JSX.Element {
   const task = () => props.task;
   const excerpt = (): string => (task().body ?? "").replace(/[#>*_`[\]]/g, " ").replace(/\s+/g, " ").trim();
   return (
     <article
       class={`card${props.dragging ? " dragging" : ""}${FINAL.has(task().status) ? " final" : ""}${task().status === "cancelled" ? " cancelled" : ""}${
         selectedId() === task().id ? " selected" : ""
-      }${task().run ? " running" : ""}`}
+      }${task().run ? " running" : ""}${props.chain !== "single" ? ` chained chain-${props.chain}` : ""}${
+        (task().lockedBy ?? []).length > 0 ? " locked" : ""
+      }`}
       data-id={task().id}
+      data-chain={props.chain}
       draggable={task().run ? "false" : "true"}
       tabindex="0"
       role="button"
@@ -298,7 +323,7 @@ function Card(props: { task: Task; dragging: boolean; onDragStart: (event: DragE
       </Show>
       <div class="card-meta">
         <PriorityTag priority={task().priority} />
-        <DepTag task={task()} />
+        <DepTag task={task()} drawnParents={props.parents} />
         <LabelTags labels={task().labels ?? []} max={2} />
       </div>
     </article>

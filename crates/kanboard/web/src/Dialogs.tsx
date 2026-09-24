@@ -4,6 +4,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, type JSX } from 
 import { api, PRIORITIES, type Task } from "./api.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { ProjectTile } from "./paint.js";
+import { offerToSchedule } from "./schedule.js";
 import {
   board,
   commentRequest,
@@ -235,6 +236,7 @@ export function CommentDialog(): JSX.Element {
       await request.after?.();
       await loadBoard(target);
       toast(`Moved ${request.task.id} to ${laneLabel(request.to)}`, "success");
+      if (request.to === "todo") offerToSchedule(request.task.id);
       close();
     } catch (error) {
       toast(describe(error), "error");

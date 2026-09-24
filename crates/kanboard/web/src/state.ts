@@ -85,6 +85,8 @@ interface DisplayPrefs {
   hidden: string[];
   excerpt: boolean;
   density: Density;
+  /** Draw same-lane dependency chains as adjacent, connected blocks. */
+  chains: boolean;
 }
 export const [display, setDisplayStore] = createStore<DisplayPrefs>(initialDisplay());
 
@@ -110,12 +112,13 @@ function initialDisplay(): DisplayPrefs {
         hidden: parsed.hidden.filter((lane) => typeof lane === "string"),
         excerpt: parsed.excerpt !== false,
         density: parsed.density === "compact" ? "compact" : "comfortable",
+        chains: parsed.chains !== false,
       };
     }
   } catch {
     /* corrupt prefs → defaults */
   }
-  return { hidden: ["archived"], excerpt: true, density: "comfortable" };
+  return { hidden: ["archived"], excerpt: true, density: "comfortable", chains: true };
 }
 
 export function setDisplay<K extends keyof DisplayPrefs>(key: K, value: DisplayPrefs[K]): void {
@@ -320,13 +323,95 @@ export function laneTasks(laneId: string): Task[] {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
 }
 
+/** One drawn row of a lane: a task and its place in a same-lane chain. */
+export interface LaneItem {
+  task: Task;
+  /** Position within its chain block; `single` when it is not chained. */
+  chain: "single" | "first" | "middle" | "last";
+  /** Same-lane parents, drawn above it in the block. */
+  parents: string[];
+}
+
+/**
+ * Lane order with same-lane dependency chains pulled together. Pure layout: the
+ * stored order is untouched and every card still moves on its own.
+ *
+ * Tasks linked by deps *within the lane* form a component. The component is
+ * placed where its earliest member (by stored order) sits, and its members are
+ * laid out topologically (parents first), ties broken by stored order. Branches
+ * (several parents / children) stay one block in a valid order; tasks with more
+ * than one parent keep their "after …" tag so nothing is hidden.
+ */
+export function laneLayout(laneId: string): LaneItem[] {
+  const tasks = laneTasks(laneId);
+  if (!display.chains || tasks.length < 2) return tasks.map((task) => ({ task, chain: "single", parents: [] }));
+  const here = new Map(tasks.map((task) => [task.id, task]));
+  const rank = new Map(tasks.map((task, index) => [task.id, index]));
+  const parentsOf = (task: Task): string[] => (task.deps ?? []).filter((dep) => here.has(dep));
+
+  // Union-find over same-lane edges.
+  const root = new Map(tasks.map((task) => [task.id, task.id]));
+  const find = (id: string): string => {
+    let current = id;
+    while (root.get(current) !== current) current = root.get(current)!;
+    root.set(id, current);
+    return current;
+  };
+  for (const task of tasks) for (const dep of parentsOf(task)) root.set(find(task.id), find(dep));
+
+  const groups = new Map<string, Task[]>();
+  for (const task of tasks) {
+    const key = find(task.id);
+    groups.set(key, [...(groups.get(key) ?? []), task]);
+  }
+
+  const out: LaneItem[] = [];
+  const placed = new Set<string>();
+  for (const task of tasks) {
+    const key = find(task.id);
+    if (placed.has(key)) continue;
+    placed.add(key);
+    const members = groups.get(key)!;
+    if (members.length === 1) {
+      out.push({ task, chain: "single", parents: [] });
+      continue;
+    }
+    // Kahn's algorithm, ready set ordered by stored rank.
+    const ids = new Set(members.map((member) => member.id));
+    const indegree = new Map(members.map((member) => [member.id, parentsOf(member).filter((dep) => ids.has(dep)).length]));
+    const queue = members.filter((member) => indegree.get(member.id) === 0);
+    const ordered: Task[] = [];
+    while (queue.length > 0) {
+      queue.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+      const next = queue.shift()!;
+      ordered.push(next);
+      for (const member of members) {
+        if (!parentsOf(member).includes(next.id)) continue;
+        const left = indegree.get(member.id)! - 1;
+        indegree.set(member.id, left);
+        if (left === 0) queue.push(member);
+      }
+    }
+    // A cycle can't exist (the binary rejects it); fall back to rank for safety.
+    for (const member of members) if (!ordered.includes(member)) ordered.push(member);
+    ordered.forEach((member, index) =>
+      out.push({
+        task: member,
+        chain: index === 0 ? "first" : index === ordered.length - 1 ? "last" : "middle",
+        parents: parentsOf(member),
+      }),
+    );
+  }
+  return out;
+}
+
 export function laneCount(laneId: string): number {
   return board.tasks.filter((task) => task.status === laneId).length;
 }
 
 /** Every visible task in reading order (lane by lane) — drives J/K. */
 export function orderedVisible(): Task[] {
-  return visibleLanes().flatMap((lane) => laneTasks(lane.id));
+  return visibleLanes().flatMap((lane) => laneLayout(lane.id).map((item) => item.task));
 }
 
 export function moveSelection(delta: number): void {
