@@ -12,7 +12,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import { getSettings } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
-import type { KanboardTask } from "./runner.js";
+import { asProject, asStopResult, asTask, asTaskList, type KanboardTask } from "./shapes.js";
 import { readKanboardSettings, type KanboardSettings } from "./settings.js";
 
 export const KANBOARD_COMMAND = "kanboard";
@@ -328,9 +328,9 @@ export async function runOnboard(deps: CommandDeps, ctx: ExtensionCommandContext
   }
   const before = currentSlug();
   try {
-    const project = await client.run<{ slug: string; name: string }>(["project", "add"], {
+    const project = asProject("project add", await client.run<unknown>(["project", "add"], {
       cwd: ctx.cwd,
-    });
+    }));
     // Remember which project this workspace maps to, so later commands resolve
     // it without a git-root lookup. Best-effort: the board works regardless.
     try {
@@ -375,7 +375,7 @@ export async function runAdd(deps: CommandDeps, ctx: ExtensionCommandContext, te
     await runOnboard(deps, ctx);
   }
   try {
-    const task = await client.run<KanboardTask>(["add", title], { cwd: ctx.cwd });
+    const task = asTask("add", await client.run<unknown>(["add", title], { cwd: ctx.cwd }));
     ctx.ui.notify(`${task.id} added to Backlog`, "info");
     deps.debug(`add ${task.id}: ${title}`);
   } catch (error) {
@@ -398,7 +398,7 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
   const slug = currentSlug();
   if (slug) {
     try {
-      const { tasks, problems } = await client!.run<{ tasks: KanboardTask[]; problems?: unknown[] }>(["list"], {});
+      const { tasks, problems } = asTaskList(await client!.run<unknown>(["list"], {}));
       const counts = tasks.reduce<Record<string, number>>((acc, task) => {
         acc[task.status] = (acc[task.status] ?? 0) + 1;
         return acc;
@@ -429,7 +429,7 @@ export async function runStopDaemon(deps: CommandDeps, ctx: ExtensionCommandCont
     return;
   }
   try {
-    const payload = await client.run<{ stopped: boolean; reason?: string; pid?: number }>(["stop"]);
+    const payload = asStopResult(await client.run<unknown>(["stop"]));
     ctx.ui.notify(
       payload.stopped ? `kanboard daemon stopped (pid ${payload.pid})` : `kanboard: ${payload.reason ?? "not running"}`,
       "info",

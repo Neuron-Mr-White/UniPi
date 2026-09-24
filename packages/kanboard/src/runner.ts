@@ -7,27 +7,27 @@
  * (spec principle 2).
  */
 
+import { hostname as osHostname } from "node:os";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { callCommandRunner, readJudgeJevSettings, askJev, UNIPI_EVENTS } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
+import {
+  asClaimResult,
+  asTask,
+  asTaskList,
+  KanboardShapeError,
+  type KanboardActivity,
+  type KanboardRun,
+  type KanboardTask,
+} from "./shapes.js";
 import type { KanboardSettings } from "./settings.js";
 
 export const RUNNER_ENTRY = "unipi:kanboard-runner";
 
 export type RunMode = "direct" | "plan" | "goal";
 
-export interface KanboardTask {
-  id: string;
-  title: string;
-  body?: string;
-  status: string;
-  priority?: string;
-  deps?: string[];
-  activity?: Array<{ at: string; actor: string; text: string }>;
-  run?: { session?: string; mode?: string; goal?: string | null } | null;
-  [key: string]: unknown;
-}
+export type { KanboardTask, KanboardActivity, KanboardRun };
 
 interface RunnerState {
   phase: "idle" | "running" | "releasing";
@@ -107,7 +107,7 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   async function claimNext(): Promise<KanboardTask | null> {
     const gate = deps.settings().chainGate;
-    const payload = await cli.run<{ task: KanboardTask | null; waiting?: Array<{ id: string; waitingFor?: string[] }> }>(
+    const raw = await cli.run<unknown>(
       [
         "claim-next",
         "--session",
@@ -121,7 +121,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       ],
       { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } },
     );
-    return payload.task ?? null;
+    return asClaimResult(raw).task;
   }
 
   function sessionId(): string {
@@ -129,14 +129,24 @@ export function createRunner(deps: RunnerDeps): Runner {
   }
 
   function hostname(): string {
-    return process.env.HOSTNAME?.trim() || "unknown";
+    // `process.env.HOSTNAME` is absent in some launches (tmux/systemd), and a
+    // wrong host makes a stale run look like it belongs to another machine —
+    // then nobody can release it. Ask the OS.
+    const fromOs = (() => {
+      try {
+        return osHostname();
+      } catch {
+        return "";
+      }
+    })();
+    return fromOs.trim() || process.env.HOSTNAME?.trim() || "unknown";
   }
 
   async function countWaiting(): Promise<{ waiting: number; blocked: number }> {
     try {
-      const { tasks } = await cli.run<{ tasks: KanboardTask[] }>(["list"], {
-        extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
-      });
+      const { tasks } = asTaskList(
+        await cli.run<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+      );
       return {
         waiting: tasks.filter((task) => task.status === "todo").length,
         blocked: tasks.filter((task) => task.status === "blocked").length,
@@ -240,6 +250,42 @@ export function createRunner(deps: RunnerDeps): Runner {
     state.endsSinceSend = 0;
     state.planOutcome = null;
     state.lastText = "";
+    try {
+      return await runClaimedTask(ctx, claimed);
+    } catch (error) {
+      // Anything thrown after the claim would otherwise leave the task
+      // in_progress forever (K6 live bug: "all.map is not a function").
+      const detail = error instanceof Error ? error.message : String(error);
+      deps.debug(`task ${claimed.id} failed before the agent ran: ${detail}`);
+      await releaseAfterFailure(ctx, claimed, detail);
+      throw error;
+    }
+  }
+
+  async function releaseAfterFailure(ctx: ExtensionContext, task: KanboardTask, detail: string): Promise<void> {
+    state.phase = "releasing";
+    try {
+      const note = `runner error before handing the task over: ${detail}`.slice(0, 400);
+      await cli.run(["release", task.id, "--to", "todo", "--comment", note], {
+        extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
+      });
+      ctx.ui.notify(`kanboard: ${task.id} released to Todo — ${note}`, "error");
+    } catch (releaseError) {
+      ctx.ui.notify(
+        `kanboard: could not release ${task.id} after an error — ${
+          releaseError instanceof Error ? releaseError.message : String(releaseError)
+        }`,
+        "error",
+      );
+    }
+    state.task = null;
+    state.goalId = null;
+    state.phase = "idle";
+    persist("idle");
+    setStatus(ctx, undefined);
+  }
+
+  async function runClaimedTask(ctx: ExtensionContext, claimed: KanboardTask): Promise<boolean> {
     state.goalId = null;
     state.phase = "running";
 
@@ -251,9 +297,13 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
     state.mode = mode;
 
-    const { tasks: all } = await cli
-      .run<{ tasks: KanboardTask[] }>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
-      .catch(() => ({ tasks: [] as KanboardTask[] }));
+    const all = await cli
+      .run<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
+      .then((raw) => asTaskList(raw).tasks)
+      .catch((error) => {
+        deps.debug(`list failed while building the prompt: ${error instanceof Error ? error.message : String(error)}`);
+        return [] as KanboardTask[];
+      });
 
     // Record the mode (and the goal id once it exists) on the task itself.
     await cli
@@ -323,9 +373,10 @@ export function createRunner(deps: RunnerDeps): Runner {
     if (!task) return;
     state.phase = "releasing";
     try {
-      const value = await cli.run<KanboardTask>(["show", task.id], {
-        extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
-      });
+      const value = asTask(
+        "show",
+        await cli.run<unknown>(["show", task.id], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+      );
       if (value.status === "blocked") {
         const note = (value.activity ?? []).slice(-1)[0]?.text ?? "blocked";
         ctx.ui.notify(`▣ ${task.id} blocked: ${note}`, "warning");
@@ -477,9 +528,10 @@ export function createRunner(deps: RunnerDeps): Runner {
       if (!claimed?.taskId) return;
       let task: KanboardTask;
       try {
-        task = await cli.run<KanboardTask>(["show", claimed.taskId], {
-          extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
-        });
+        task = asTask(
+          "show",
+          await cli.run<unknown>(["show", claimed.taskId], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+        );
       } catch {
         return;
       }
