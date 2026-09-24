@@ -184,6 +184,8 @@ export const Icon = {
     ),
   folder: (props: IconProps = {}) => line(<path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1Z" />, props),
   arrowRight: (props: IconProps = {}) => line(<path d="M3 8h10M9 4l4 4-4 4" />, props),
+  paperclip: (props: IconProps = {}) =>
+    line(<path d="M13.2 7.6 8 12.8a3.3 3.3 0 0 1-4.7-4.7l5.4-5.4a2.2 2.2 0 0 1 3.1 3.1L6.4 11.2a1.1 1.1 0 0 1-1.6-1.6l4.9-4.9" />, props),
   undo: (props: IconProps = {}) => line(<path d="M5.5 3.5 2.5 6.5l3 3M2.5 6.5h7a4 4 0 0 1 0 8H7" />, props),
 };
 

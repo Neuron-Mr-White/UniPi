@@ -212,16 +212,24 @@ export function Tooltip(props: { text: string; children: JSX.Element }): JSX.Ele
 }
 
 /** Auto-growing textarea (min rows, grows to max height then scrolls). */
-export function AutoTextarea(props: JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string; maxHeight?: number }): JSX.Element {
+export function AutoTextarea(
+  props: JSX.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string; maxHeight?: number; areaRef?: (el: HTMLTextAreaElement) => void },
+): JSX.Element {
   let el: HTMLTextAreaElement | undefined;
   const fit = (): void => {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, props.maxHeight ?? 320)}px`;
   };
+  // Controlled value: spread props set `value` as an attribute, which stops
+  // reflecting once the user has typed — keep the DOM property in sync instead.
   createEffect(() => {
-    void props.value;
+    const next = props.value ?? "";
+    if (el && el.value !== next) el.value = next;
     queueMicrotask(fit);
   });
-  return <textarea {...props} ref={el} onInput={(event) => { fit(); (props.onInput as ((e: InputEvent & { currentTarget: HTMLTextAreaElement }) => void) | undefined)?.(event as never); }} />;
+  const { areaRef, maxHeight: _max, value: _value, ...rest } = props;
+  void _max;
+  void _value;
+  return <textarea {...rest} ref={(node) => { el = node; areaRef?.(node); }} onInput={(event) => { fit(); (props.onInput as ((e: InputEvent & { currentTarget: HTMLTextAreaElement }) => void) | undefined)?.(event as never); }} />;
 }

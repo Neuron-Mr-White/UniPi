@@ -5,6 +5,7 @@ import { api, PRIORITIES, type Task } from "./api.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { ProjectTile } from "./paint.js";
 import { offerToSchedule } from "./schedule.js";
+import { filesFrom, namedFile, uploadAll } from "./attach.js";
 import {
   board,
   commentRequest,
@@ -45,6 +46,12 @@ export function NewTaskDialog(): JSX.Element {
   const [after, setAfter] = createSignal<string[]>([]);
   const [more, setMore] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
+  /** Files picked/pasted before the task exists — uploaded right after creation. */
+  const [pending, setPending] = createSignal<File[]>([]);
+  let picker: HTMLInputElement | undefined;
+  const addFiles = (files: File[]): void => {
+    if (files.length > 0) setPending((current) => [...current, ...files.map(namedFile)]);
+  };
 
   createEffect(
     on(newTaskLane, (next) => {
@@ -54,6 +61,7 @@ export function NewTaskDialog(): JSX.Element {
       setBody("");
       setAfter([]);
       setPriority("none");
+      setPending([]);
     }),
   );
 
@@ -71,6 +79,14 @@ export function NewTaskDialog(): JSX.Element {
         priority: priority(),
         after: after().length > 0 ? after() : undefined,
       });
+      if (pending().length > 0) {
+        const uploaded = await uploadAll(created.id, pending());
+        if (uploaded.length > 0) {
+          const withFiles = [body().trim(), uploaded.map((item) => item.markdown).join("\n")].filter(Boolean).join("\n\n");
+          await api.edit(target, created.id, { body: withFiles });
+        }
+        setPending([]);
+      }
       await loadBoard(target);
       toast(`Created ${created.id}`, "success", { label: "Open", run: () => void setOpenTaskId(created.id) });
       if (more()) {
@@ -117,6 +133,12 @@ export function NewTaskDialog(): JSX.Element {
           }}
         />
         <AutoTextarea
+          onPaste={(event) => {
+            const files = filesFrom(event);
+            if (files.length === 0) return;
+            event.preventDefault();
+            addFiles(files);
+          }}
           class="dialog-body-input"
           placeholder="Add a description… (markdown)"
           aria-label="Description"
@@ -131,7 +153,30 @@ export function NewTaskDialog(): JSX.Element {
           }}
         />
       </div>
-      <div class="prop-row">
+      <Show when={pending().length > 0}>
+        <div class="pending-files">
+          <For each={pending()}>
+            {(file, index) => (
+              <span class="pending-file">
+                <Icon.paperclip size={12} />
+                <span>{file.name}</span>
+                <button aria-label={`Remove ${file.name}`} onClick={() => setPending((current) => current.filter((_, at) => at !== index()))}>
+                  <Icon.close size={10} />
+                </button>
+              </span>
+            )}
+          </For>
+        </div>
+      </Show>
+      <div
+        class="prop-row"
+        onDragOver={(event) => event.dataTransfer?.types.includes("Files") && event.preventDefault()}
+        onDrop={(event) => {
+          if (!event.dataTransfer?.types.includes("Files")) return;
+          event.preventDefault();
+          addFiles(filesFrom(event));
+        }}
+      >
         <Popover
           width={200}
           label="Status"
@@ -199,6 +244,20 @@ export function NewTaskDialog(): JSX.Element {
             </For>
           )}
         </Popover>
+        <button class="prop-chip empty" aria-label="Attach files" onClick={() => picker?.click()}>
+          <Icon.paperclip size={13} />
+          Attach
+        </button>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            addFiles([...(event.currentTarget.files ?? [])]);
+            event.currentTarget.value = "";
+          }}
+        />
       </div>
       <footer class="dialog-foot">
         <label class="hint" style={{ cursor: "pointer" }}>

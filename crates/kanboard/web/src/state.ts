@@ -16,6 +16,7 @@ import {
   type Rules,
   type Task,
 } from "./api.js";
+import { setAttachmentBase } from "./markdown.js";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +247,7 @@ function watchBoard(target: string): void {
 
 export async function openProject(target: string | null): Promise<void> {
   setSlug(target);
+  setAttachmentBase(target);
   setOpenTaskId(null);
   setSelectedId(null);
   setBoard({ tasks: [], problems: [], loaded: false });

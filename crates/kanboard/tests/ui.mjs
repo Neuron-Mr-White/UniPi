@@ -174,6 +174,51 @@ class Session {
   }
 }
 
+// Runs IN THE PAGE: paste a PNG + a log into the comment box, post, report.
+async function pasteAndPost() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const area = document.querySelector(".composer textarea");
+  const png = new File([bytes], "image.png", { type: "image/png" });
+  const log = new File([new TextEncoder().encode("panic at line 42\n")], "crash.log", { type: "text/plain" });
+  const dt = new DataTransfer();
+  dt.items.add(png);
+  dt.items.add(log);
+  area.focus();
+  area.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, clipboardData: dt }));
+  for (let i = 0; i < 40 && !/crash\.log\]\(att:/.test(area.value); i += 1) await sleep(150);
+  await sleep(200);
+  const draft = area.value;
+  const preview = document.querySelectorAll(".composer-preview img").length;
+  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+  set.call(area, "Header renders twice on Safari\n" + draft);
+  area.dispatchEvent(new Event("input", { bubbles: true }));
+  [...document.querySelectorAll(".composer .btn.primary")].find((b) => b.textContent.includes("Comment")).click();
+  for (let i = 0; i < 40 && !document.querySelector(".timeline .att-image img"); i += 1) await sleep(150);
+  const img = document.querySelector(".timeline .att-image img");
+  const chip = document.querySelector(".timeline .att-chip");
+  const loaded = img
+    ? await new Promise((ok) => {
+        if (img.complete && img.naturalWidth) return ok(true);
+        img.onload = () => ok(true);
+        img.onerror = () => ok(false);
+        setTimeout(() => ok(img.naturalWidth > 0), 3000);
+      })
+    : false;
+  return {
+    draft,
+    preview,
+    img: !!img,
+    loaded,
+    imgSrc: img ? img.getAttribute("src") : null,
+    chip: chip ? chip.textContent : null,
+    chipHref: chip ? chip.getAttribute("href") : null,
+    rail: document.querySelectorAll(".att-rail-item").length,
+    rawRefShown: [...document.querySelectorAll(".timeline .what")].some((n) => n.textContent.includes("att:")),
+  };
+}
+
 // ── run ─────────────────────────────────────────────────────────────────────
 const chromium = spawn("chromium", [
   "--headless=new",
@@ -410,7 +455,7 @@ try {
     const node = document.querySelector('.dialog');
     return node ? { title: !!node.querySelector('.dialog-title-input'), body: !!node.querySelector('.dialog-body-input'), chips: node.querySelectorAll('.prop-chip').length } : null;
   })()`);
-  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 3, JSON.stringify(dialog));
+  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 4, JSON.stringify(dialog));
   await session.shot("k7-newtask-light-1440.png");
   await session.evaluate(`document.querySelector('.dialog [aria-label="Close"]').click()`);
   await sleep(300);
@@ -533,6 +578,25 @@ try {
       return 'offered, parent now ' + parent.status;
     })()`);
     check("moving to Todo offers to schedule a Backlog parent", offer === "offered, parent now todo", String(offer));
+  }
+
+  // 7f. attachments: paste an image into the comment box, post it, and see it rendered
+  {
+    const firstCard = await session.evaluate(`document.querySelector('.lane[data-lane="todo"] .card')?.dataset.id ?? document.querySelector('.card').dataset.id`);
+    await session.evaluate(`document.querySelector('.card[data-id="${firstCard}"]').click()`);
+    await sleep(500);
+    const postedRaw = await session.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(${pasteAndPost.toString()})()` }, 30000);
+    if (postedRaw.exceptionDetails) console.log("  eval error:", JSON.stringify(postedRaw.exceptionDetails).slice(0, 600));
+    const posted = postedRaw.result?.value ?? {};
+    check("pasted files upload and land in the comment as markdown", /!\[screenshot-[\d-]+\.png\]\(att:/.test(posted.draft) && /\[crash\.log\]\(att:/.test(posted.draft), posted.draft);
+    check("the composer previews attachments before posting", posted.preview === 1, `${posted.preview} preview image(s)`);
+    check("a comment renders its image inline", posted.img && posted.loaded && /^\/api\/files\//.test(posted.imgSrc ?? ""), JSON.stringify({ img: posted.img, loaded: posted.loaded, src: posted.imgSrc }));
+    check("a comment renders a text file as a chip", /crash\.log/.test(posted.chip ?? "") && /^\/api\/files\//.test(posted.chipHref ?? ""), String(posted.chip));
+    check("raw att: references never show as text", posted.rawRefShown === false);
+    check("the rail lists the task's attachments", posted.rail === 2, `${posted.rail} items`);
+    await session.shot("k9-attachments-light-1440.png");
+    await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);
+    await sleep(300);
   }
 
   // 8. theme toggle + light screenshots + 1920

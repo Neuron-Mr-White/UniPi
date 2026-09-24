@@ -8,7 +8,8 @@ import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
-import { relativeTime, renderMarkdown } from "./markdown.js";
+import { hasMarkup, relativeTime, renderMarkdown } from "./markdown.js";
+import { filesFrom, insertAtCursor, uploadAll } from "./attach.js";
 import { hue } from "./paint.js";
 import { offerToSchedule } from "./schedule.js";
 import {
@@ -53,6 +54,46 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   const [comment, setComment] = createSignal("");
   const [labelDraft, setLabelDraft] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+  const [uploading, setUploading] = createSignal(0);
+  const [dropOver, setDropOver] = createSignal<"comment" | "body" | null>(null);
+  let commentArea: HTMLTextAreaElement | undefined;
+  let bodyArea: HTMLTextAreaElement | undefined;
+  let filePicker: HTMLInputElement | undefined;
+
+  /** Upload files and drop their markdown into the comment or the description draft. */
+  async function attach(files: File[], into: "comment" | "body"): Promise<void> {
+    if (files.length === 0) return;
+    setUploading((count) => count + files.length);
+    try {
+      const done = await uploadAll(props.task.id, files);
+      if (done.length === 0) return;
+      const snippet = done.map((item) => item.markdown).join("\n");
+      if (into === "body") setBody((current) => insertAtCursor(bodyArea, current, snippet));
+      else setComment((current) => insertAtCursor(commentArea, current, snippet));
+    } finally {
+      setUploading((count) => Math.max(0, count - files.length));
+    }
+  }
+  const dropHandlers = (into: "comment" | "body") => ({
+    onDragOver: (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      setDropOver(into);
+    },
+    onDragLeave: () => setDropOver(null),
+    onDrop: (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      setDropOver(null);
+      void attach(filesFrom(event), into);
+    },
+    onPaste: (event: ClipboardEvent) => {
+      const files = filesFrom(event);
+      if (files.length === 0) return;
+      event.preventDefault();
+      void attach(files, into);
+    },
+  });
 
   // Reset drafts when a different task opens (not on every live refresh).
   createEffect(
@@ -265,9 +306,10 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                 />
               }
             >
-              <div class="body-editor">
+              <div class={`body-editor${dropOver() === "body" ? " drop-over" : ""}`} {...dropHandlers("body")}>
                 <AutoTextarea
                   value={body()}
+                  areaRef={(el) => (bodyArea = el)}
                   maxHeight={480}
                   aria-label="Description (markdown)"
                   autofocus
@@ -290,7 +332,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   <button class="btn" onClick={() => setEditing(false)}>
                     Cancel
                   </button>
-                  <span class="hint">Markdown · {MOD}+Enter to save</span>
+                  <span class="hint">Markdown · paste or drop files · {MOD}+Enter to save</span>
                 </div>
               </div>
             </Show>
@@ -316,16 +358,22 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                           {relativeTime(entry.at)}
                         </time>
                       </div>
-                      <div class={`what${entry.actor === "system" ? " system" : ""}`}>{entry.text}</div>
+                      <Show
+                        when={hasMarkup(entry.text)}
+                        fallback={<div class={`what${entry.actor === "system" ? " system" : ""}`}>{entry.text}</div>}
+                      >
+                        <div class={`what md${entry.actor === "system" ? " system" : ""}`} innerHTML={renderMarkdown(entry.text)} />
+                      </Show>
                     </div>
                   </li>
                 )}
               </For>
             </ul>
-            <div class="composer">
+            <div class={`composer${dropOver() === "comment" ? " drop-over" : ""}`} {...dropHandlers("comment")}>
               <AutoTextarea
                 value={comment()}
-                placeholder="Leave a note — what changed, what's verified, what's blocked…"
+                areaRef={(el) => (commentArea = el)}
+                placeholder="Leave a note — paste or drop screenshots, logs, files…"
                 aria-label="Add a comment"
                 onInput={(event) => setComment(event.currentTarget.value)}
                 onKeyDown={(event) => {
@@ -335,12 +383,35 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   }
                 }}
               />
+              <Show when={comment().includes("att:")}>
+                <div class="composer-preview md" innerHTML={renderMarkdown(comment())} />
+              </Show>
               <div class="composer-foot">
+                <button class="icon-btn" aria-label="Attach files" title="Attach files (or paste / drop)" onClick={() => filePicker?.click()}>
+                  <Icon.paperclip />
+                </button>
+                <input
+                  ref={filePicker}
+                  type="file"
+                  multiple
+                  hidden
+                  aria-label="Choose files to attach"
+                  onChange={(event) => {
+                    const files = [...(event.currentTarget.files ?? [])];
+                    event.currentTarget.value = "";
+                    void attach(files, "comment");
+                  }}
+                />
+                <Show when={uploading() > 0}>
+                  <span class="uploading">
+                    <span class="spinner" /> Uploading {uploading()}…
+                  </span>
+                </Show>
                 <span class="hint">
                   <Kbd keys={[MOD, "↵"]} />
                 </span>
                 <span class="spacer" />
-                <button class="btn primary" disabled={busy() || comment().trim().length === 0} onClick={() => void addComment()}>
+                <button class="btn primary" disabled={busy() || uploading() > 0 || comment().trim().length === 0} onClick={() => void addComment()}>
                   Comment
                 </button>
               </div>
@@ -525,6 +596,24 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
             </div>
           </Show>
 
+          <Show when={(props.task.attachments ?? []).length > 0}>
+            <div class="rail-sep" />
+            <div class="rail-title">Attachments · {(props.task.attachments ?? []).length}</div>
+            <div class="att-rail">
+              <For each={props.task.attachments ?? []}>
+                {(item) => (
+                  <a class={`att-rail-item att-${item.kind}`} href={`/api/files/${encodeURIComponent(slug() ?? "")}/${props.task.id}/${item.name}`} target="_blank" rel="noopener" title={`${item.original} · ${formatSize(item.size)}`}>
+                    <Show when={item.kind === "image"} fallback={<span class="att-badge">{item.original.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</span>}>
+                      <img src={`/api/files/${encodeURIComponent(slug() ?? "")}/${props.task.id}/${item.name}`} alt={item.original} loading="lazy" />
+                    </Show>
+                    <span class="att-rail-name">{item.original}</span>
+                    <span class="att-rail-size">{formatSize(item.size)}</span>
+                  </a>
+                )}
+              </For>
+            </div>
+          </Show>
+
           <div class="rail-sep" />
           <dl class="meta-lines">
             <dt>Created</dt>
@@ -598,4 +687,10 @@ function DepPicker(props: { task: Task; onPick: (id: string) => void }): JSX.Ele
       )}
     </Popover>
   );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

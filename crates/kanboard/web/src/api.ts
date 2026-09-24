@@ -43,10 +43,22 @@ export interface Task {
   waitingFor?: string[];
   /** Deps still in Backlog (or missing): only a human can schedule them. */
   lockedBy?: string[];
+  attachments?: Attachment[];
   depsStatus?: Array<{ id: string; status: string | null }>;
   staleness?: string;
   allowedMoves?: string[];
   path?: string;
+}
+
+export interface Attachment {
+  name: string;
+  original: string;
+  ref: string;
+  path: string;
+  size: number;
+  mime: string;
+  kind: "image" | "video" | "audio" | "pdf" | "text" | "file";
+  markdown: string;
 }
 
 export interface ProjectSummary {
@@ -178,6 +190,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ before: target.before, after_pos: target.afterPos, top: target.top, bottom: target.bottom }),
     }),
+  upload: async (slug: string, id: string, file: File): Promise<Attachment> => {
+    const response = await fetch(
+      `/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/attachments?name=${encodeURIComponent(file.name || "pasted")}`,
+      { method: "POST", credentials: "same-origin", headers: { "content-type": "application/octet-stream" }, body: file },
+    );
+    const text = await response.text();
+    let payload: unknown = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message =
+        response.status === 413 ? `${file.name} is larger than 25 MB` : (payload as { error?: string } | null)?.error ?? `upload failed (${response.status})`;
+      throw new ApiError(message, response.status);
+    }
+    return payload as Attachment;
+  },
   duplicate: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/duplicate`, { method: "POST", body: "{}" }),
 };
