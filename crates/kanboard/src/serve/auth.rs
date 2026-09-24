@@ -186,19 +186,24 @@ pub async fn guard(cx: &Cx, body: Body, next: Next<'_>) -> TcResult<Response> {
         ));
     }
 
-    // 2. Loopback binds are open, as before.
+    // 2. Liveness is deliberately open (it leaks nothing: see api::health).
+    if uri(cx).path() == "/api/health" {
+        return next.run(cx, body).await;
+    }
+
+    // 3. Loopback binds are open, as before.
     let Some(expected) = state.token.as_deref() else {
         return next.run(cx, body).await;
     };
 
-    // 3. Token via header or cookie passes straight through.
+    // 4. Token via header or cookie passes straight through.
     if let Some(presented) = header_token(cx).or_else(|| cookie_token(cx))
         && tokens_match(expected, &presented)
     {
         return next.run(cx, body).await;
     }
 
-    // 4. Token via query: set the cookie and redirect to the clean URL.
+    // 5. Token via query: set the cookie and redirect to the clean URL.
     if let Some(presented) = query_token(cx)
         && tokens_match(expected, &presented)
     {

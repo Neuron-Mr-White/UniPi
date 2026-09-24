@@ -456,6 +456,11 @@ fn a_remote_bind_requires_the_token() {
     let response = http(daemon.port, "GET", "/api/projects", None).expect("api without token");
     assert_eq!(response.status, 401);
 
+    // Health is deliberately open (no pid off-loopback).
+    let health = http(daemon.port, "GET", "/api/health", None).expect("health without token");
+    assert_eq!(health.status, 200, "{}", health.body);
+    assert_eq!(health.json()["pid"], serde_json::Value::Null);
+
     // Wrong token → 401.
     let response = http(daemon.port, "GET", "/?t=wrong", None).expect("wrong token");
     assert_eq!(response.status, 401);
