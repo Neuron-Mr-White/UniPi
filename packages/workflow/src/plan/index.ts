@@ -20,6 +20,7 @@ import {
   resetPlanState,
   restorePlanState,
 } from "./state.js";
+import { renderPlanReview, type ReviewChoice } from "./review.js";
 
 export { currentPlanState } from "./state.js";
 
@@ -73,7 +74,7 @@ export async function approvePlan(
     return { status: "keep", feedback: "The plan file is empty — write the plan first." };
   }
 
-  const choice = await ctx.ui.select("Plan ready — what next?", [APPROVE, KEEP, DISCARD]);
+  const choice = await askForDecision(ctx, content, displayPlanPath(ctx.cwd, state.planFile));
 
   if (choice === KEEP) {
     const feedback = await ctx.ui.input("What should change in the plan?", "");
@@ -96,6 +97,34 @@ export async function approvePlan(
     { deliverAs: "followUp" },
   );
   return { status: "approved" };
+}
+
+/**
+ * Show the plan itself and ask what to do with it. The review overlay renders the
+ * plan as markdown with the three decisions under it; a UI without custom
+ * components (RPC, tests) falls back to the plain select.
+ */
+async function askForDecision(
+  ctx: ExtensionContext | ExtensionCommandContext,
+  plan: string,
+  path: string,
+): Promise<string | undefined> {
+  const ui = ctx.ui as typeof ctx.ui & { custom?: (...args: unknown[]) => Promise<unknown> };
+  if (typeof ui.custom === "function") {
+    try {
+      const picked = (await ui.custom(renderPlanReview({ plan, path }), {
+        overlay: true,
+        overlayOptions: { width: "90%", minWidth: 60, maxHeight: "92%", anchor: "center", margin: 1 },
+      })) as ReviewChoice | null | undefined;
+      if (picked === "approve") return APPROVE;
+      if (picked === "keep") return KEEP;
+      if (picked === "discard") return DISCARD;
+      return undefined; // Esc
+    } catch {
+      // A UI that cannot host the overlay → plain select below.
+    }
+  }
+  return ctx.ui.select(`Plan ready (${path}) — what next?`, [APPROVE, KEEP, DISCARD]);
 }
 
 export function enablePlanMode(
