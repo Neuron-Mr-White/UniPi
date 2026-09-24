@@ -1,249 +1,604 @@
-/** App shell: top bar, project picker, board, panels, toasts, repair banner. */
+/** App shell: sidebar + inset sheet (breadcrumb, toolbar, board/list), overlays, global keys. */
 
-import { For, Show, createSignal, onMount, type JSX } from "solid-js";
-import { LANES, type ProjectSummary, type Task } from "./api.js";
+import { For, Show, createMemo, onCleanup, onMount, type JSX } from "solid-js";
+import { LANES, PRIORITIES, type ProjectSummary } from "./api.js";
 import { Board } from "./Board.js";
-import { Icon } from "./icons.js";
-import { CommentModal, NewTaskDialog, TaskPanel, Toasts } from "./TaskPanel.js";
+import { CommandPalette, CommentDialog, NewTaskDialog, ShortcutsDialog, Toasts } from "./Dialogs.js";
+import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
+import { ListView } from "./List.js";
+import { hue, ProjectTile } from "./paint.js";
+import { TaskPanel } from "./TaskPanel.js";
 import {
+  allLabels,
   applyTheme,
   board,
+  clearFilters,
   conn,
-  loadBoard,
+  currentProject,
+  display,
+  elapsed,
+  filterCount,
+  filters,
+  laneLabel,
   loadProjects,
   loadRules,
+  matches,
+  moveSelection,
+  openProject,
+  openTaskId,
+  paletteOpen,
   projects,
   query,
+  runningTasks,
+  scope,
+  selectedId,
+  setDisplay,
+  setFilters,
+  setNewTaskLane,
   setOpenTaskId,
+  setPaletteOpen,
   setQuery,
-  setShowArchive,
-  showArchive,
-  watchBoard,
+  setShortcutsOpen,
+  setSidebarCollapsed,
+  setView,
+  sidebarCollapsed,
+  slug,
   theme,
   toast,
+  toggleLane,
+  toggleTheme,
+  view,
 } from "./state.js";
-
-const LANE_COLORS: Record<string, string> = {
-  backlog: "#8b93a1",
-  todo: "#60a5fa",
-  in_progress: "#fbbf24",
-  in_review: "#a78bfa",
-  blocked: "#f87171",
-  done: "#4ade80",
-  cancelled: "#6b7280",
-  archived: "#4b5563",
-};
+import { Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
 
 export function App(): JSX.Element {
-  const [slug, setSlug] = createSignal<string | null>(new URLSearchParams(location.search).get("project"));
-  const [commentRequest, setCommentRequest] = createSignal<{ task: Task; to: string; hint: string } | null>(null);
-  const [newTaskLane, setNewTaskLane] = createSignal<string | null>(null);
-  const [switcherOpen, setSwitcherOpen] = createSignal(false);
+  let searchInput: HTMLInputElement | undefined;
 
   onMount(() => {
     applyTheme(theme());
     void (async () => {
       await Promise.all([loadProjects(), loadRules()]);
-      const requested = slug() ?? projects.items[0]?.slug ?? null;
-      if (requested) await openProject(requested);
+      const requested = slug() ?? (projects.items.length === 1 ? projects.items[0]!.slug : null);
+      await openProject(requested && projects.items.some((project) => project.slug === requested) ? requested : requested ?? null);
+      if (board.problems.length > 0) toast(`${board.problems.length} task file(s) need repair`, "warning");
     })();
+
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null;
+      const typing = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      const mod = event.metaKey || event.ctrlKey;
+      if (mod && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(!paletteOpen());
+        return;
+      }
+      if (typing || mod || event.altKey) return;
+      if (document.querySelector(".overlay, .popover")) return;
+      const drawerOpen = openTaskId() !== null;
+      switch (event.key) {
+        case "c":
+          if (slug()) {
+            event.preventDefault();
+            setNewTaskLane("backlog");
+          }
+          break;
+        case "[":
+          event.preventDefault();
+          setSidebarCollapsed(!sidebarCollapsed());
+          break;
+        case "/":
+          if (slug()) {
+            event.preventDefault();
+            searchInput?.focus();
+          }
+          break;
+        case "j":
+        case "ArrowDown":
+          if (!drawerOpen && slug()) {
+            event.preventDefault();
+            moveSelection(1);
+          }
+          break;
+        case "k":
+        case "ArrowUp":
+          if (!drawerOpen && slug()) {
+            event.preventDefault();
+            moveSelection(-1);
+          }
+          break;
+        case "Enter":
+          if (!drawerOpen && selectedId() && !(target instanceof HTMLButtonElement)) {
+            event.preventDefault();
+            setOpenTaskId(selectedId());
+          }
+          break;
+        case "b":
+          setView("board");
+          break;
+        case "l":
+          setView("list");
+          break;
+        case "?":
+          setShortcutsOpen(true);
+          break;
+        case "Escape":
+          if (drawerOpen) setOpenTaskId(null);
+          else if (query()) setQuery("");
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
-  async function openProject(next: string): Promise<void> {
-    setSlug(next);
-    history.replaceState(null, "", `?project=${encodeURIComponent(next)}`);
-    await loadBoard(next);
-    watchBoard(next);
-    const missing = board.problems.length;
-    if (missing > 0) toast(`${missing} task file(s) need repair — run unipi-kanboard validate --fix`, "warning");
-  }
-
-  async function refresh(): Promise<void> {
-    const current = slug();
-    if (current) await loadBoard(current);
-    await Promise.all([loadProjects(), loadRules()]);
-  }
-
-  const currentProject = (): ProjectSummary | undefined => projects.items.find((project) => project.slug === slug());
+  const shown = createMemo(() => board.tasks.filter((task) => matches(task) && !display.hidden.includes(task.status)).length);
 
   return (
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <Icon.board size={18} />
-          <span>kanboard</span>
-        </div>
+    <div class={`app${sidebarCollapsed() ? " collapsed" : ""}`}>
+      <Sidebar />
 
-        <Show when={slug() !== null}>
-          <div style={{ position: "relative" }}>
-            <button aria-haspopup="listbox" aria-expanded={switcherOpen()} onClick={() => setSwitcherOpen(!switcherOpen())}>
-              {currentProject()?.name ?? slug()}
-              <Icon.chevron size={14} />
+      <main class={`sheet density-${display.density}`}>
+        <header class="sheet-head">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <Show when={sidebarCollapsed()}>
+              <button class="icon-btn" aria-label="Expand sidebar" title="Expand sidebar  [" onClick={() => setSidebarCollapsed(false)}>
+                <Icon.sidebar />
+              </button>
+            </Show>
+            <Show when={slug()} fallback={<span class="crumb here">All projects</span>}>
+              <button class="crumb" onClick={() => void openProject(null)}>
+                Projects
+              </button>
+              <Icon.chevronRight size={14} />
+              <span class="crumb">{currentProject()?.name ?? slug()}</span>
+              <Icon.chevronRight size={14} />
+              <span class="crumb here">
+                {scope() === "in_review" ? "Review queue" : scope() === "blocked" ? "Blocked" : view() === "list" ? "List" : "Board"}
+              </span>
+            </Show>
+          </nav>
+          <span class="spacer" />
+          <Show when={slug()}>
+            <span class="total num">
+              {shown()} {shown() === 1 ? "task" : "tasks"}
+            </span>
+            <button class="btn primary" onClick={() => setNewTaskLane("backlog")} title="New task  C">
+              <Icon.plus size={14} />
+              New task
             </button>
-            <Show when={switcherOpen()}>
-              <ul
-                role="listbox"
-                class="stack"
-                style={{
-                  position: "absolute", top: "calc(100% + 6px)", left: 0, "z-index": 30, margin: 0, padding: "6px",
-                  "list-style": "none", background: "var(--surface)", border: "1px solid var(--border)",
-                  "border-radius": "10px", "box-shadow": "var(--shadow)", "min-width": "260px",
+          </Show>
+        </header>
+
+        <Show when={slug()} fallback={<ProjectPicker />}>
+          <div class="toolbar">
+            <div class="segmented" role="group" aria-label="View">
+              <button class="btn" aria-pressed={view() === "board" && scope() === "all"} onClick={() => setView("board")}>
+                <Icon.board size={14} />
+                Board
+              </button>
+              <button class="btn" aria-pressed={view() === "list" && scope() === "all"} onClick={() => setView("list")}>
+                <Icon.list size={14} />
+                List
+              </button>
+            </div>
+            <label class="search">
+              <Icon.search size={14} />
+              <span class="sr-only">Filter tasks</span>
+              <input
+                ref={searchInput}
+                class="input"
+                placeholder="Search tasks"
+                value={query()}
+                onInput={(event) => setQuery(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setQuery("");
+                    event.currentTarget.blur();
+                  }
                 }}
-              >
-                <For each={projects.items}>
-                  {(project) => (
-                    <li>
-                      <button
-                        class="ghost"
-                        style={{ width: "100%", "text-align": "left" }}
-                        onClick={() => {
-                          setSwitcherOpen(false);
-                          void openProject(project.slug);
-                        }}
-                      >
-                        <span class="grow">{project.name}</span>
-                        <span class="meta">{project.total ?? 0}</span>
-                      </button>
-                    </li>
-                  )}
-                </For>
-                <li>
-                  <button class="ghost" style={{ width: "100%", "text-align": "left" }} onClick={() => { setSwitcherOpen(false); setSlug(null); history.replaceState(null, "", location.pathname); }}>
-                    All projects
-                  </button>
-                </li>
-              </ul>
+              />
+              <Show when={!query()}>
+                <kbd>/</kbd>
+              </Show>
+            </label>
+            <FilterMenu />
+            <DisplayMenu />
+            <Show when={filterCount() > 0 || query()}>
+              <button class="btn" onClick={clearFilters}>
+                Clear
+              </button>
             </Show>
           </div>
-        </Show>
 
-        <Show when={slug() !== null}>
-          <label class="search">
-            <Icon.search size={14} />
-            <span class="sr-only">Filter tasks</span>
-            <input placeholder="Filter tasks…" value={query()} onInput={(event) => setQuery(event.currentTarget.value)} />
-          </label>
-        </Show>
-
-        <span class="spacer" />
-
-        <Show when={slug() !== null}>
-          <button onClick={() => setShowArchive(!showArchive())} title="Toggle the archive lane">
-            <Icon.arch size={14} />
-            {showArchive() ? "Hide archive" : "Archive"}
-          </button>
-          <button class="primary" onClick={() => setNewTaskLane("backlog")}>
-            <Icon.plus size={14} />
-            New task
-          </button>
-          <button class="ghost icon" aria-label="Refresh" title="Refresh" onClick={() => void refresh()}>
-            <Icon.dot size={12} />
-          </button>
-        </Show>
-
-        <span class={`conn ${conn() === "live" ? "live" : conn() === "reconnecting" ? "down" : ""}`} title={`live updates: ${conn()}`}>
-          <span class="led" />
-          {conn()}
-        </span>
-        <button class="ghost icon" aria-label="Toggle theme" title="Toggle light/dark" onClick={() => applyTheme(theme() === "dark" ? "light" : "dark")}>
-          <Show when={theme() === "dark"} fallback={<Icon.moon size={15} />}>
-            <Icon.sun size={15} />
-          </Show>
-        </button>
-      </header>
-
-      <Show
-        when={slug() !== null}
-        fallback={<ProjectPicker onPick={(target: string) => void openProject(target)} />}
-      >
-        <Show when={board.problems.length > 0}>
-          <div class="banner" role="alert">
-            <Icon.warn size={16} />
-            <div>
-              <strong>
-                {board.problems.length} task file{board.problems.length === 1 ? "" : "s"} need repair
-              </strong>
-              <ul>
-                <For each={board.problems.slice(0, 6)}>
-                  {(problem) => (
-                    <li>
-                      <span class="mono">{problem.file}:{problem.line}</span> {problem.error}
-                    </li>
-                  )}
-                </For>
-              </ul>
-              <div class="meta">
-                Run <code>unipi-kanboard validate --fix</code> — the rest of the board keeps working.
+          <Show when={board.problems.length > 0}>
+            <div class="banner" role="alert">
+              <Icon.warn size={16} />
+              <div>
+                <strong>
+                  {board.problems.length} task file{board.problems.length === 1 ? "" : "s"} can't be read
+                </strong>{" "}
+                — the rest of the board keeps working.
+                <ul>
+                  <For each={board.problems.slice(0, 4)}>
+                    {(problem) => (
+                      <li>
+                        <code>
+                          {problem.file}:{problem.line}
+                        </code>{" "}
+                        {problem.error}
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                Repair with <code>unipi-kanboard validate --fix</code>
               </div>
             </div>
-          </div>
-        </Show>
-        <Board
-          slug={slug()!}
-          onOpenTask={(id) => setOpenTaskId(id)}
-          onNeedsComment={(task, to, hint) => setCommentRequest({ task, to, hint })}
-          onNewTask={(lane) => setNewTaskLane(lane)}
-        />
-      </Show>
+          </Show>
 
-      <TaskPanel slug={slug() ?? ""} onClose={() => setOpenTaskId(null)} />
-      <CommentModal request={commentRequest()} slug={slug() ?? ""} onClose={() => setCommentRequest(null)} />
-      <NewTaskDialog slug={slug() ?? ""} lane={newTaskLane()} onClose={() => setNewTaskLane(null)} />
+          <Show when={view() === "board"} fallback={<ListView />}>
+            <Board />
+          </Show>
+        </Show>
+      </main>
+
+      <TaskPanel />
+      <CommentDialog />
+      <NewTaskDialog />
+      <CommandPalette />
+      <ShortcutsDialog />
       <Toasts />
     </div>
   );
 }
 
-function ProjectPicker(props: { onPick: (slug: string) => void }): JSX.Element {
+// ─── sidebar ────────────────────────────────────────────────────────────────
+
+function Sidebar(): JSX.Element {
+  const counts = (status: string): number => board.tasks.filter((task) => task.status === status).length;
+  const isHere = (target: "board" | "list", targetScope: "all" | "in_review" | "blocked" = "all"): boolean =>
+    !!slug() && view() === target && scope() === targetScope;
+  const openCount = (project: ProjectSummary): number =>
+    ["backlog", "todo", "in_progress", "in_review", "blocked"].reduce((sum, status) => sum + (project.counts?.[status] ?? 0), 0);
+
+  return (
+    <aside class="sidebar" aria-label="Sidebar">
+      <div class="sb-head">
+        <Popover
+          width={260}
+          label="Switch project"
+          trigger={(api) => (
+            <button class="workspace" ref={api.ref} aria-expanded={api.open} aria-haspopup="menu" onClick={api.toggle} title={currentProject()?.root}>
+              <Show when={currentProject()} fallback={<Icon.logo size={22} />}>
+                {(project) => <ProjectTile name={project().name} size={22} />}
+              </Show>
+              <span class="ws-name">{currentProject()?.name ?? "kanboard"}</span>
+              <Icon.chevronDown size={14} class="ws-chevron" />
+            </button>
+          )}
+        >
+          {(close) => (
+            <>
+              <MenuLabel>Projects</MenuLabel>
+              <For each={projects.items}>
+                {(project) => (
+                  <MenuItem
+                    role="option"
+                    icon={<ProjectTile name={project.name} size={16} />}
+                    label={project.name}
+                    hint={<span class="num">{openCount(project)}</span>}
+                    checked={project.slug === slug()}
+                    onSelect={() => {
+                      close();
+                      void openProject(project.slug);
+                    }}
+                  />
+                )}
+              </For>
+              <MenuSeparator />
+              <MenuItem
+                icon={<Icon.folder size={14} />}
+                label="All projects"
+                onSelect={() => {
+                  close();
+                  void openProject(null);
+                }}
+              />
+            </>
+          )}
+        </Popover>
+        <button class="icon-btn" aria-label="Collapse sidebar" title="Collapse sidebar  [" onClick={() => setSidebarCollapsed(true)}>
+          <Icon.sidebar />
+        </button>
+      </div>
+
+      <button class="search-trigger" onClick={() => setPaletteOpen(true)} title={`Search  ${MOD}K`}>
+        <Icon.search size={14} />
+        <span>Search…</span>
+        <Kbd keys={[MOD, "K"]} />
+      </button>
+
+      <div class="sb-scroll">
+        <Show when={slug()}>
+          <button class="nav-item" aria-current={isHere("board") ? "page" : undefined} onClick={() => setView("board")} title="Board">
+            <Icon.board />
+            <span class="label">Board</span>
+          </button>
+          <button class="nav-item" aria-current={isHere("list") ? "page" : undefined} onClick={() => setView("list")} title="List">
+            <Icon.list />
+            <span class="label">List</span>
+          </button>
+          <button
+            class="nav-item"
+            aria-current={isHere("list", "in_review") ? "page" : undefined}
+            onClick={() => setView("list", "in_review")}
+            title="Review queue"
+          >
+            <Icon.review />
+            <span class="label">Review queue</span>
+            <Show when={counts("in_review") > 0}>
+              <span class="count">{counts("in_review")}</span>
+            </Show>
+          </button>
+          <button
+            class="nav-item"
+            aria-current={isHere("list", "blocked") ? "page" : undefined}
+            onClick={() => setView("list", "blocked")}
+            title="Blocked"
+          >
+            <Icon.blocked />
+            <span class="label">Blocked</span>
+            <Show when={counts("blocked") > 0}>
+              <span class="count">{counts("blocked")}</span>
+            </Show>
+          </button>
+        </Show>
+
+        <div class="sb-section">
+          Projects
+          <span class="count num">{projects.items.length}</span>
+        </div>
+        <For each={projects.items}>
+          {(project) => (
+            <button
+              class="nav-item"
+              aria-current={project.slug === slug() ? "page" : undefined}
+              onClick={() => void openProject(project.slug)}
+              title={project.name}
+            >
+              <ProjectTile name={project.name} size={18} />
+              <span class="label">{project.name}</span>
+              <span class="count">{openCount(project)}</span>
+            </button>
+          )}
+        </For>
+        <Show when={projects.loaded && projects.items.length === 0}>
+          <div class="sb-empty">No projects registered.</div>
+        </Show>
+
+        <Show when={slug()}>
+          <div class="agents">
+            <div class="sb-section">
+              Agents
+              <Show when={runningTasks().length > 0}>
+                <span class="count num">{runningTasks().length} running</span>
+              </Show>
+            </div>
+            <For each={runningTasks()} fallback={<div class="sb-empty">No agents running.</div>}>
+              {(task) => (
+                <button class="agent-row" onClick={() => setOpenTaskId(task.id)} title={task.title}>
+                  <span class="agent-dot">
+                    <span class="pulse" />
+                  </span>
+                  <span class="agent-title">
+                    <span class="mono muted">{task.id}</span> {task.title}
+                  </span>
+                  <span class="agent-time">{elapsed(task.run?.started)}</span>
+                  <span class="agent-meta">
+                    {task.run?.mode ?? "direct"} · session {task.run?.session ?? "?"}
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+
+      <div class="sb-foot">
+        <div class="daemon" title={`Live updates: ${conn()}`}>
+          <span class={`led ${slug() ? conn() : ""}`} />
+          <span class="where">{location.host}</span>
+        </div>
+        <button class="icon-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts  ?" onClick={() => setShortcutsOpen(true)}>
+          <Icon.keyboard />
+        </button>
+        <button class="icon-btn keep" aria-label="Toggle theme" title="Toggle theme" onClick={toggleTheme}>
+          <Show when={theme() === "dark"} fallback={<Icon.moon />}>
+            <Icon.sun />
+          </Show>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ─── toolbar menus ──────────────────────────────────────────────────────────
+
+function FilterMenu(): JSX.Element {
+  const togglePriority = (priority: string): void =>
+    setFilters("priorities", (current) => (current.includes(priority) ? current.filter((item) => item !== priority) : [...current, priority]));
+  const toggleLabel = (label: string): void =>
+    setFilters("labels", (current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));
+  return (
+    <Popover
+      width={236}
+      label="Filter"
+      trigger={(api) => (
+        <button class={`btn${filterCount() > 0 ? " on" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle}>
+          <Icon.filter size={14} />
+          Filter
+          <Show when={filterCount() > 0}>
+            <span class="count-badge">{filterCount()}</span>
+          </Show>
+        </button>
+      )}
+    >
+      {() => (
+        <>
+          <MenuLabel>Priority</MenuLabel>
+          <For each={[...PRIORITIES].reverse()}>
+            {(priority) => (
+              <MenuItem
+                role="menuitemcheckbox"
+                icon={<PriorityGlyph priority={priority} />}
+                label={PRIORITY_LABEL[priority]}
+                checked={filters.priorities.includes(priority)}
+                onSelect={() => togglePriority(priority)}
+              />
+            )}
+          </For>
+          <MenuSeparator />
+          <MenuLabel>Agent</MenuLabel>
+          <MenuItem
+            role="menuitemcheckbox"
+            icon={<Icon.sparkle size={14} />}
+            label="Running now"
+            checked={filters.running}
+            onSelect={() => setFilters("running", !filters.running)}
+          />
+          <MenuItem
+            role="menuitemcheckbox"
+            icon={<Icon.lock size={14} />}
+            label="Waiting on dependencies"
+            checked={filters.waiting}
+            onSelect={() => setFilters("waiting", !filters.waiting)}
+          />
+          <Show when={allLabels().length > 0}>
+            <MenuSeparator />
+            <MenuLabel>Labels</MenuLabel>
+            <For each={allLabels()}>
+              {(label) => (
+                <MenuItem
+                  role="menuitemcheckbox"
+                  icon={<span class="label-dot" style={{ width: "8px", height: "8px", "border-radius": "50%", background: hue(label) }} />}
+                  label={label}
+                  checked={filters.labels.includes(label)}
+                  onSelect={() => toggleLabel(label)}
+                />
+              )}
+            </For>
+          </Show>
+        </>
+      )}
+    </Popover>
+  );
+}
+
+function DisplayMenu(): JSX.Element {
+  return (
+    <Popover
+      width={280}
+      label="Display options"
+      trigger={(api) => (
+        <button class="btn" ref={api.ref} aria-expanded={api.open} onClick={api.toggle}>
+          <Icon.sliders size={14} />
+          Display
+        </button>
+      )}
+    >
+      {() => (
+        <>
+          <MenuLabel>Columns</MenuLabel>
+          <div class="lane-toggles">
+            <For each={LANES}>
+              {(lane) => (
+                <button class="lane-toggle" aria-pressed={!display.hidden.includes(lane.id)} onClick={() => toggleLane(lane.id)}>
+                  <StatusGlyph status={lane.id} size={12} />
+                  {laneLabel(lane.id)}
+                </button>
+              )}
+            </For>
+          </div>
+          <MenuSeparator />
+          <div class="display-row">
+            Show description excerpt
+            <button class="switch" role="switch" aria-checked={display.excerpt} aria-label="Show description excerpt" onClick={() => setDisplay("excerpt", !display.excerpt)} />
+          </div>
+          <div class="display-row">
+            Compact cards
+            <button
+              class="switch"
+              role="switch"
+              aria-checked={display.density === "compact"}
+              aria-label="Compact cards"
+              onClick={() => setDisplay("density", display.density === "compact" ? "comfortable" : "compact")}
+            />
+          </div>
+        </>
+      )}
+    </Popover>
+  );
+}
+
+// ─── all projects ───────────────────────────────────────────────────────────
+
+function ProjectPicker(): JSX.Element {
+  const segments = ["backlog", "todo", "in_progress", "in_review", "blocked", "done"];
   return (
     <div class="picker">
       <h1>Projects</h1>
-      <p class="muted">Every project registered on this machine. Pick one to open its board.</p>
+      <p class="lede">Every project registered on this machine.</p>
       <Show when={!projects.loaded}>
-        <div class="projects">
-          <div class="skeleton" style={{ height: "120px" }} />
-          <div class="skeleton" style={{ height: "120px" }} />
+        <div class="project-grid">
+          <div class="skeleton" style={{ height: "136px" }} />
+          <div class="skeleton" style={{ height: "136px" }} />
         </div>
       </Show>
       <Show when={projects.loaded && projects.items.length === 0}>
-        <div class="empty">
-          <Icon.board size={24} />
+        <div class="empty-state">
+          <div class="art">
+            <Icon.board size={24} />
+          </div>
+          <h2>No projects yet</h2>
           <p>
-            No projects yet. Register one from a terminal: <code>unipi-kanboard project add</code>, or run{" "}
-            <code>/unipi:kanboard onboard</code> in pi.
+            Register one with <code>/unipi:kanboard onboard</code> in pi, or <code>unipi-kanboard project add</code>.
           </p>
         </div>
       </Show>
-      <div class="projects">
+      <div class="project-grid">
         <For each={projects.items}>
           {(project) => (
-            <button class="project-card" onClick={() => props.onPick(project.slug)}>
-              <span class="name">{project.name}</span>
-              <span class="path">{project.root ?? project.slug}</span>
-              <span class="bar" aria-hidden="true">
-                <For each={LANES}>
-                  {(lane) => (
-                    <span
-                      style={{
-                        width: `${project.total ? ((project.counts?.[lane.id] ?? 0) / project.total) * 100 : 0}%`,
-                        background: LANE_COLORS[lane.id],
-                      }}
-                    />
+            <button class="project-card" onClick={() => void openProject(project.slug)}>
+              <div class="pc-head">
+                <ProjectTile name={project.name} size={28} />
+                <div style={{ "min-width": 0 }}>
+                  <div class="pc-name">{project.name}</div>
+                  <div class="pc-path">{project.root ?? project.slug}</div>
+                </div>
+              </div>
+              <div class="stack-bar" aria-hidden="true">
+                <For each={segments}>
+                  {(status) => (
+                    <Show when={(project.counts?.[status] ?? 0) > 0}>
+                      <span style={{ flex: String(project.counts?.[status] ?? 0), background: `var(--s-${status})` }} />
+                    </Show>
                   )}
                 </For>
-              </span>
-              <span class="bar-legend">
-                <span>{project.total ?? 0} tasks</span>
-                <For each={LANES.filter((lane) => (project.counts?.[lane.id] ?? 0) > 0)}>
-                  {(lane) => (
+              </div>
+              <div class="pc-stats">
+                <For each={segments.filter((status) => (project.counts?.[status] ?? 0) > 0)}>
+                  {(status) => (
                     <span>
-                      {lane.label} {project.counts?.[lane.id]}
+                      <StatusGlyph status={status} size={12} />
+                      <span class="num">{project.counts?.[status]}</span> {laneLabel(status)}
                     </span>
                   )}
                 </For>
-              </span>
+                <Show when={(project.total ?? 0) === 0}>
+                  <span>No tasks yet</span>
+                </Show>
+              </div>
               <Show when={(project.problems ?? []).length > 0}>
-                <span class="chip stale">{(project.problems ?? []).length} file(s) need repair</span>
+                <span class="tag stale">{(project.problems ?? []).length} file(s) need repair</span>
               </Show>
             </button>
           )}

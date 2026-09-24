@@ -1,25 +1,51 @@
 /**
- * The board: fixed-width lanes at the left edge, a themed horizontal scroll, and
- * HTML5 drag & drop with an explicit drop indicator, allowed-target highlighting
- * and optimistic updates that roll back on refusal.
+ * The board: tinted status columns, cards with the agent chip / dependency lock /
+ * priority badge, and HTML5 drag & drop with an insert line, disallowed columns
+ * faded, optimistic moves that roll back on refusal, and an undo toast.
  */
 
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { api, canMove, LANES, MUTED_LANES, needsComment, type Task } from "./api.js";
-import { Icon, PriorityIcon } from "./icons.js";
-import { board, laneCount, loadBoard, rules, showArchive, toast, upsertTask, visibleTasks } from "./state.js";
+import { api, canMove, needsComment, type Task } from "./api.js";
+import { Icon, StatusGlyph } from "./icons.js";
+import { AgentChip, DepTag, LabelTags, PriorityTag } from "./paint.js";
+import {
+  board,
+  describe,
+  display,
+  laneCount,
+  laneLabel,
+  laneTasks,
+  loadBoard,
+  rules,
+  selectedId,
+  setCommentRequest,
+  setNewTaskLane,
+  setOpenTaskId,
+  setSelectedId,
+  slug,
+  toast,
+  toggleLane,
+  upsertTask,
+  visibleLanes,
+} from "./state.js";
+import { MenuItem, Popover } from "./ui.js";
 
-const visibleLanes = (): readonly { id: string; label: string }[] =>
-  showArchive() ? LANES : LANES.filter((lane) => lane.id !== "archived");
+/** Lanes whose header shows a solid status pill (the "active" part of the flow). */
+const PILL_LANES = new Set(["in_progress", "in_review", "blocked", "done"]);
+const FINAL = new Set(["done", "cancelled", "archived"]);
 
-export interface BoardProps {
-  slug: string;
-  onOpenTask: (id: string) => void;
-  onNeedsComment: (task: Task, to: string, hint: string) => void;
-  onNewTask: (lane: string) => void;
-}
+const EMPTY: Record<string, string> = {
+  backlog: "Capture ideas here",
+  todo: "Ready work lands here",
+  in_progress: "No agent is working",
+  in_review: "Nothing waiting for review",
+  blocked: "Nothing blocked",
+  done: "Nothing finished yet",
+  cancelled: "Nothing cancelled",
+  archived: "Archive is empty",
+};
 
-export function Board(props: BoardProps): JSX.Element {
+export function Board(): JSX.Element {
   const [dragging, setDragging] = createSignal<Task | null>(null);
   const [dropLane, setDropLane] = createSignal<string | null>(null);
   const [dropBefore, setDropBefore] = createSignal<string | null>(null);
@@ -31,9 +57,9 @@ export function Board(props: BoardProps): JSX.Element {
   };
 
   function onDragStart(event: DragEvent, task: Task): void {
-    if (task.status === "in_progress") {
+    if (task.run) {
       event.preventDefault();
-      toast(`${task.id} is running — the runner owns it until the turn ends`, "warning");
+      toast(`${task.id} is running — the agent owns it until its turn ends`, "warning");
       return;
     }
     setDragging(task);
@@ -41,33 +67,59 @@ export function Board(props: BoardProps): JSX.Element {
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   }
 
-  function laneAllows(task: Task, laneId: string): boolean {
-    return canMove(rules, task, laneId);
+  const allows = (task: Task, laneId: string): boolean => canMove(rules, task, laneId);
+
+  /** Midpoint test → the card the dragged one would land before (null = end). */
+  function dropTargetFor(event: DragEvent, laneId: string): string | null {
+    const cards = [...document.querySelectorAll<HTMLElement>(`.lane[data-lane="${laneId}"] .card`)].filter(
+      (node) => node.dataset.id !== dragging()?.id,
+    );
+    const next = cards.find((node) => {
+      const box = node.getBoundingClientRect();
+      return event.clientY < box.top + box.height / 2;
+    });
+    return next?.dataset.id ?? null;
   }
 
-  /** Midpoint test gives the insertion line between two cards. */
-  function dropTargetFor(event: DragEvent): string | null {
-    const card = (event.target as HTMLElement | null)?.closest<HTMLElement>(".card");
-    if (!card || card.dataset.id === dragging()?.id) return null;
-    const box = card.getBoundingClientRect();
-    return event.clientY < box.top + box.height / 2 ? card.dataset.id! : (card.nextElementSibling as HTMLElement | null)?.dataset?.id ?? null;
-  }
-
-  async function applyDrop(task: Task, toLane: string, beforeId: string | null): Promise<void> {
-    const snapshot = { ...task, deps: [...(task.deps ?? [])], labels: [...(task.labels ?? [])] };
+  async function commit(original: Task, toLane: string, beforeId: string | null): Promise<void> {
+    const target = slug();
+    if (!target) return;
+    const siblings = board.tasks
+      .filter((task) => task.status === original.status)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((task) => task.id);
+    const previousNeighbour = siblings[siblings.indexOf(original.id) + 1] ?? null;
     try {
-      if (task.status !== toLane) {
-        const updated = await api.move(props.slug, task.id, toLane);
-        upsertTask(updated);
-        toast(`${task.id} → ${toLane.replace("_", " ")}`, "success");
-      }
-      if (beforeId) await api.order(props.slug, task.id, { before: beforeId });
-      else if (task.status !== toLane) await api.order(props.slug, task.id, { bottom: true });
-      await loadBoard(props.slug);
+      if (original.status !== toLane) upsertTask(await api.move(target, original.id, toLane));
+      if (beforeId) await api.order(target, original.id, { before: beforeId });
+      else if (original.status !== toLane) await api.order(target, original.id, { bottom: true });
+      await loadBoard(target);
+      const moved = original.status !== toLane;
+      const reversible = !moved || (canMove(rules, { ...original, status: toLane, allowedMoves: undefined }, original.status) && !needsComment(rules, toLane, original.status));
+      toast(
+        moved ? `Moved ${original.id} to ${laneLabel(toLane)}` : `Reordered ${original.id}`,
+        "success",
+        reversible
+          ? {
+              label: "Undo",
+              run: async () => {
+                try {
+                  if (moved) await api.move(target, original.id, original.status);
+                  if (previousNeighbour) await api.order(target, original.id, { before: previousNeighbour });
+                  else await api.order(target, original.id, { bottom: true });
+                } catch (error) {
+                  toast(describe(error), "error");
+                } finally {
+                  await loadBoard(target);
+                }
+              },
+            }
+          : undefined,
+      );
     } catch (error) {
-      upsertTask(snapshot);
-      await loadBoard(props.slug);
-      toast(error instanceof Error ? error.message : String(error), "error");
+      upsertTask(original);
+      await loadBoard(target);
+      toast(describe(error), "error");
     }
   }
 
@@ -78,37 +130,43 @@ export function Board(props: BoardProps): JSX.Element {
     const before = dropBefore();
     reset();
     if (!task || !lane) return;
-    if (lane === task.status && before === null) return;
-
-    if (lane !== task.status && !laneAllows(task, lane)) {
-      toast(`${task.id} cannot move from ${task.status} to ${lane}`, "error");
+    if (lane === task.status) {
+      const ids = laneTasks(lane).map((item) => item.id);
+      const index = ids.indexOf(task.id);
+      const unchanged = before === null ? index === ids.length - 1 : ids[index + 1] === before;
+      if (unchanged) return;
+    }
+    if (lane !== task.status && !allows(task, lane)) {
+      toast(`${task.id} can't move from ${laneLabel(task.status)} to ${laneLabel(lane)}`, "error");
       return;
     }
+    // Snapshot first: Solid store proxies reflect later writes.
+    const original: Task = { ...task, deps: [...(task.deps ?? [])], labels: [...(task.labels ?? [])] };
     const hint = lane !== task.status ? needsComment(rules, task.status, lane) : null;
     if (hint) {
-      props.onNeedsComment(task, lane, hint);
+      setCommentRequest({
+        task: original,
+        to: lane,
+        hint,
+        after: async () => {
+          const target = slug();
+          if (target && before) await api.order(target, original.id, { before });
+        },
+      });
       return;
     }
-    // Snapshot the pre-move state FIRST: Solid's store proxies reflect later
-    // writes, so reading `task.status` after the optimistic update would already
-    // report the new lane and the move would look like a no-op.
-    const original: Task = { ...task, deps: [...(task.deps ?? [])], labels: [...(task.labels ?? [])] };
     upsertTask({ ...original, status: lane });
-    await applyDrop(original, lane, before);
+    await commit(original, lane, before);
   }
 
   return (
     <div class="board-wrap">
-      <div class="board" role="list" aria-label="Board lanes">
+      <div class={`board${dragging() ? " is-dragging" : ""}`} role="list" aria-label="Board columns">
         <For each={visibleLanes()}>
           {(lane) => (
             <section
-              class={`lane${MUTED_LANES.has(lane.id) ? " muted-lane" : ""}${
-                dragging() && dropLane() === lane.id
-                  ? laneAllows(dragging()!, lane.id)
-                    ? " drop-ok"
-                    : " drop-bad"
-                  : ""
+              class={`lane${dragging() && dragging()!.status !== lane.id && !allows(dragging()!, lane.id) ? " not-allowed" : ""}${
+                dragging() && dropLane() === lane.id && dragging()!.status !== lane.id ? (allows(dragging()!, lane.id) ? " drop-ok" : " drop-bad") : ""
               }`}
               role="listitem"
               aria-label={`${lane.label}, ${laneCount(lane.id)} tasks`}
@@ -117,7 +175,7 @@ export function Board(props: BoardProps): JSX.Element {
                 if (!dragging()) return;
                 event.preventDefault();
                 setDropLane(lane.id);
-                setDropBefore(dropTargetFor(event));
+                setDropBefore(dropTargetFor(event, lane.id));
               }}
               onDragLeave={(event) => {
                 if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) setDropLane(null);
@@ -125,93 +183,70 @@ export function Board(props: BoardProps): JSX.Element {
               onDrop={(event) => void onDrop(event)}
             >
               <header class="lane-head">
-                <span class={`dot ${lane.id}`} aria-hidden="true" />
-                <h2>{lane.label}</h2>
-                <span class="count">{laneCount(lane.id)}</span>
+                <span class={`lane-name${PILL_LANES.has(lane.id) ? " pill" : " plain"}`}>
+                  <StatusGlyph status={lane.id} size={13} />
+                  {lane.label}
+                </span>
+                <span class="lane-count">{laneCount(lane.id)}</span>
+                <span class="spacer" />
+                <Popover
+                  width={200}
+                  align="end"
+                  label={`${lane.label} options`}
+                  trigger={(api) => (
+                    <button class="icon-btn sm" ref={api.ref} aria-expanded={api.open} aria-label={`${lane.label} options`} onClick={api.toggle}>
+                      <Icon.more size={14} />
+                    </button>
+                  )}
+                >
+                  {(close) => (
+                    <MenuItem
+                      icon={<Icon.close size={14} />}
+                      label="Hide column"
+                      onSelect={() => {
+                        close();
+                        toggleLane(lane.id);
+                      }}
+                    />
+                  )}
+                </Popover>
                 <Show when={lane.id === "backlog" || lane.id === "todo"}>
-                  <button class="ghost icon add" title={`Add to ${lane.label}`} aria-label={`Add to ${lane.label}`} onClick={() => props.onNewTask(lane.id)}>
+                  <button class="icon-btn sm" aria-label={`Add to ${lane.label}`} title={`Add to ${lane.label}`} onClick={() => setNewTaskLane(lane.id)}>
                     <Icon.plus size={14} />
                   </button>
                 </Show>
               </header>
+
               <div class="lane-body">
-                <For each={visibleTasks(lane.id)}>
+                <For each={laneTasks(lane.id)}>
                   {(task) => (
                     <>
-                      <Show when={dropBefore() === task.id && dropLane() === lane.id}>
+                      <Show when={dropLane() === lane.id && dropBefore() === task.id && dragging() && dragging()!.id !== task.id && allows(dragging()!, lane.id)}>
                         <div class="drop-line" />
                       </Show>
-                      <article
-                        class={`card${task.status === "in_progress" ? " running" : ""}${task.status === "blocked" ? " blocked" : ""}${
-                          MUTED_LANES.has(task.status) ? " done" : ""
-                        }${dragging()?.id === task.id ? " dragging" : ""}`}
-                        data-id={task.id}
-                        draggable={task.status !== "in_progress" ? "true" : "false"}
-                        tabindex="0"
-                        role="button"
-                        aria-label={`${task.id} ${task.title}`}
-                        onDragStart={(event) => onDragStart(event, task)}
-                        onDragEnd={reset}
-                        onClick={() => props.onOpenTask(task.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            props.onOpenTask(task.id);
-                          }
-                        }}
-                      >
-                        <span class="id">{task.id}</span>
-                        <span class="title">{task.title}</span>
-                        <span class="meta">
-                          <Show when={task.priority && task.priority !== "none"}>
-                            <span class={`chip prio-${task.priority}`}>
-                              <PriorityIcon priority={task.priority} />
-                              {task.priority}
-                            </span>
-                          </Show>
-                          <Show when={(task.deps ?? []).length > 0}>
-                            <span class={`chip${(task.waitingFor ?? []).length > 0 ? " waiting" : ""}`}>
-                              <Icon.link size={11} />
-                              {(task.waitingFor ?? []).length > 0
-                                ? `waiting on ${task.waitingFor!.join(", ")}`
-                                : `after ${task.deps.join(", ")}`}
-                            </span>
-                          </Show>
-                          <Show when={task.run}>
-                            <span class="pill" title={`session ${task.run?.session} · ${task.run?.mode}`}>
-                              <span class="pulse" aria-hidden="true" />
-                              {task.run?.session ?? "running"} · {task.run?.mode ?? "direct"}
-                            </span>
-                          </Show>
-                          <Show when={task.status === "in_progress" && task.staleness && task.staleness !== "running"}>
-                            <span class="chip stale">stale run</span>
-                          </Show>
-                          <Show when={(task.labels ?? []).length > 0}>
-                            <span class="labels">
-                              <For each={task.labels.slice(0, 3)}>{(label) => <span class="label-tag">{label}</span>}</For>
-                            </span>
-                          </Show>
-                        </span>
-                      </article>
+                      <Card task={task} dragging={dragging()?.id === task.id} onDragStart={(event) => onDragStart(event, task)} onDragEnd={reset} />
                     </>
                   )}
                 </For>
-                <Show when={dropBefore() === null && dropLane() === lane.id && dragging()}>
+                <Show when={dragging() && dropLane() === lane.id && dropBefore() === null && allows(dragging()!, lane.id)}>
                   <div class="drop-line" />
                 </Show>
-                <Show when={!board.loading && visibleTasks(lane.id).length === 0}>
-                  <p class="meta" style={{ padding: "8px 4px" }}>
-                    {lane.id === "backlog" ? "Nothing captured yet." : "Empty."}
-                  </p>
+
+                <Show when={board.loading && !board.loaded}>
+                  <div class="skeleton" />
+                  <div class="skeleton" style={{ height: "64px" }} />
+                </Show>
+                <Show when={board.loaded && laneTasks(lane.id).length === 0 && !dragging()}>
+                  <div class="lane-empty">
+                    <StatusGlyph status={lane.id} size={18} />
+                    {EMPTY[lane.id] ?? "Nothing here"}
+                  </div>
                 </Show>
                 <Show when={lane.id === "backlog" || lane.id === "todo"}>
-                  <button class="ghost" style={{ "justify-content": "flex-start", color: "var(--muted)" }} onClick={() => props.onNewTask(lane.id)}>
-                    <Icon.plus size={13} /> Add
+                  <button class="lane-add" onClick={() => setNewTaskLane(lane.id)}>
+                    <Icon.plus size={14} />
+                    Add task
                   </button>
-                </Show>
-                <Show when={board.loading && visibleTasks(lane.id).length === 0}>
-                  <div class="skeleton" />
-                  <div class="skeleton" />
                 </Show>
               </div>
             </section>
@@ -219,5 +254,53 @@ export function Board(props: BoardProps): JSX.Element {
         </For>
       </div>
     </div>
+  );
+}
+
+function Card(props: { task: Task; dragging: boolean; onDragStart: (event: DragEvent) => void; onDragEnd: () => void }): JSX.Element {
+  const task = () => props.task;
+  const excerpt = (): string => (task().body ?? "").replace(/[#>*_`[\]]/g, " ").replace(/\s+/g, " ").trim();
+  return (
+    <article
+      class={`card${props.dragging ? " dragging" : ""}${FINAL.has(task().status) ? " final" : ""}${task().status === "cancelled" ? " cancelled" : ""}${
+        selectedId() === task().id ? " selected" : ""
+      }${task().run ? " running" : ""}`}
+      data-id={task().id}
+      draggable={task().run ? "false" : "true"}
+      tabindex="0"
+      role="button"
+      aria-label={`${task().id} ${task().title}`}
+      onDragStart={(event) => props.onDragStart(event)}
+      onDragEnd={() => props.onDragEnd()}
+      onClick={() => {
+        setSelectedId(task().id);
+        setOpenTaskId(task().id);
+      }}
+      onFocus={() => setSelectedId(task().id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setOpenTaskId(task().id);
+        }
+      }}
+    >
+      <div class="card-top">
+        <span class="card-id">{task().id}</span>
+        <span class="spacer" />
+        <AgentChip task={task()} />
+        <Show when={task().status === "in_progress" && task().staleness && task().staleness !== "running"}>
+          <span class="tag stale">stale</span>
+        </Show>
+      </div>
+      <div class="card-title title">{task().title}</div>
+      <Show when={display.excerpt && excerpt()}>
+        <div class="card-excerpt">{excerpt()}</div>
+      </Show>
+      <div class="card-meta">
+        <PriorityTag priority={task().priority} />
+        <DepTag task={task()} />
+        <LabelTags labels={task().labels ?? []} max={2} />
+      </div>
+    </article>
   );
 }
