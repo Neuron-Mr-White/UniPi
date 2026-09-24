@@ -62,13 +62,20 @@ pub async fn events(
         async move { Ok(Event::default().event("revision").data(state.revision(&slug).to_string())) }
     };
 
+    let closing = state.closing.subscribe();
     let stream = stream::once(first).chain(stream::unfold(
-        (rx, ClientGuard(state)),
-        |(mut rx, guard)| async move {
-            let revision = rx.recv().await?;
+        (rx, ClientGuard(state), closing),
+        |(mut rx, guard, mut closing)| async move {
+            if *closing.borrow() {
+                return None;
+            }
+            let revision = tokio::select! {
+                revision = rx.recv() => revision?,
+                _ = closing.wait_for(|closing| *closing) => return None,
+            };
             Some((
                 Ok(Event::default().event("revision").data(revision.to_string())),
-                (rx, guard),
+                (rx, guard, closing),
             ))
         },
     ));

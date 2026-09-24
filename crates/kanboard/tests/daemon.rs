@@ -670,3 +670,27 @@ fn project_summaries_carry_counts_running_and_updated_at() {
     let payload = http(daemon.port, "GET", "/api/projects", None).unwrap().json();
     assert_eq!(payload[0]["running"], 1, "a claimed task counts as running");
 }
+
+#[test]
+fn stop_is_not_held_up_by_an_open_event_stream() {
+    // A browser tab keeps /events open forever; graceful shutdown must still finish.
+    let fixture = fixture_with_tasks();
+    let mut daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", daemon.port)).unwrap();
+    use std::io::Write;
+    write!(
+        stream,
+        "GET /events?project={} HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n",
+        fixture.project.slug
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+
+    let started = Instant::now();
+    let output = cli(&fixture, &["stop", "--timeout", "8", "--json"]);
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(payload["stopped"], true, "{payload}");
+    assert!(started.elapsed() < Duration::from_secs(6), "stopped in {:?}", started.elapsed());
+    let _ = daemon.child.wait();
+    drop(stream);
+}

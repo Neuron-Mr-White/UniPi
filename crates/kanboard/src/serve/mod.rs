@@ -38,6 +38,9 @@ pub struct AppState {
     pub revisions: Mutex<HashMap<String, u64>>,
     pub senders: Mutex<HashMap<String, broadcast::Sender<u64>>>,
     pub watcher: Mutex<Option<notify::RecommendedWatcher>>,
+    /// Flips on shutdown so open SSE streams end — graceful shutdown waits for
+    /// every connection, and an event stream never finishes by itself.
+    pub closing: tokio::sync::watch::Sender<bool>,
 }
 
 impl AppState {
@@ -52,6 +55,7 @@ impl AppState {
             revisions: Mutex::new(HashMap::new()),
             senders: Mutex::new(HashMap::new()),
             watcher: Mutex::new(None),
+            closing: tokio::sync::watch::channel(false).0,
         })
     }
 
@@ -182,7 +186,22 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
         }
     };
 
-    let result = axum::serve(listener, router).with_graceful_shutdown(signal).await;
+    let closing = state.closing.clone();
+    let signal = async move {
+        signal.await;
+        // End the event streams first, or the graceful drain never completes.
+        let _ = closing.send(true);
+    };
+    let server = axum::serve(listener, router).with_graceful_shutdown(signal);
+    let mut closing_rx = state.closing.subscribe();
+    let result = tokio::select! {
+        result = server => result,
+        // Hard ceiling on the drain: a stuck request must not keep a stopped daemon alive.
+        _ = async {
+            let _ = closing_rx.wait_for(|closing| *closing).await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        } => Ok(()),
+    };
 
     daemon::remove_info(&layout);
     // Keep the flock until the very end so a racing `serve` sees it held.
