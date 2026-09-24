@@ -52,6 +52,21 @@ pub fn blocked_by(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: Chain
     }
 }
 
+/// Dependencies that cannot progress on their own: still in Backlog (the runner
+/// never claims Backlog) or missing. A task waiting on these is "locked" until a
+/// human schedules the dependency — distinct from waiting on work in flight.
+pub fn locked_by(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: ChainGate) -> Vec<String> {
+    match blocked_by(task, by_id, gate) {
+        None => Vec::new(),
+        Some(blocked) => blocked
+            .pending
+            .into_iter()
+            .filter(|(_, status)| matches!(status, None | Some(Status::Backlog)))
+            .map(|(id, _)| id)
+            .collect(),
+    }
+}
+
 pub fn is_ready(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: ChainGate) -> bool {
     task.status == Status::Todo && !task.is_claimed() && blocked_by(task, by_id, gate).is_none()
 }

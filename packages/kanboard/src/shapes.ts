@@ -53,6 +53,8 @@ export interface KanboardTask {
   activity?: KanboardActivity[];
   ready?: boolean;
   waitingFor?: string[];
+  /** Deps still in Backlog (or missing): only a human can schedule them. */
+  lockedBy?: string[];
   staleness?: string;
   allowedMoves?: string[];
   [key: string]: unknown;
@@ -72,7 +74,7 @@ export interface KanboardProject {
 
 export interface KanboardClaim {
   task: KanboardTask | null;
-  waiting?: Array<{ id: string; waitingFor?: string[] }>;
+  waiting?: Array<{ id: string; waitingFor?: string[]; lockedBy?: string[] }>;
 }
 
 export interface KanboardStop {
@@ -142,7 +144,11 @@ export function asClaimResult(value: unknown): KanboardClaim {
   if (!("task" in record)) {
     throw new KanboardShapeError("claim-next", 'missing "task"');
   }
-  const waiting = optionalArray<{ id: string; waitingFor?: string[] }>(record.waiting) ?? [];
+  const waiting = (optionalArray<{ id: string; waitingFor?: unknown; lockedBy?: unknown }>(record.waiting) ?? []).map((entry) => ({
+    id: String(entry.id ?? ""),
+    waitingFor: optionalArray<string>(entry.waitingFor) ?? [],
+    lockedBy: optionalArray<string>(entry.lockedBy) ?? [],
+  }));
   return {
     task: record.task === null ? null : asTask("claim-next", record.task),
     waiting,

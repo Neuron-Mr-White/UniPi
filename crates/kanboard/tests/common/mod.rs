@@ -62,6 +62,14 @@ impl Fixture {
         board.tasks().expect("tasks")
     }
 
+    pub fn list_json(&self) -> Value {
+        commands::list(&self.layout, self.project.clone(), ChainGate::InReview, None, false).expect("list")
+    }
+
+    pub fn move_to(&self, id: &str, to: Status) -> Value {
+        commands::move_task(&self.layout, self.project.clone(), &self.common, id, to, None).expect("move")
+    }
+
     pub fn claim_next(&self, session: &str, pid: u32) -> Value {
         let host = commands::hostname();
         let args = commands::ClaimArgs {

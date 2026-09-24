@@ -265,3 +265,47 @@ fn find_cycles_detects_a_closed_loop() {
     let cycles = deps::find_cycles(&fixture.tasks());
     assert_eq!(cycles.len(), 2, "{cycles:?}");
 }
+
+#[test]
+fn a_dependency_still_in_backlog_locks_the_dependent() {
+    let fixture = Fixture::new();
+    let parked = fixture.add("parked parent"); // backlog
+    let flowing = fixture.add_with("flowing parent", Status::Todo, Priority::None, &[]);
+    let child = fixture.add_with("child", Status::Todo, Priority::None, &[parked.id.clone(), flowing.id.clone()]);
+    let tasks = fixture.tasks();
+    let child_now = tasks.iter().find(|t| t.id == child.id).cloned().unwrap();
+
+    // Both deps are pending, but only the backlog one needs a human to schedule it.
+    assert_eq!(deps::locked_by(&child_now, &by_id(&tasks), ChainGate::InReview), vec![parked.id.clone()]);
+    assert!(!deps::is_ready(&child_now, &by_id(&tasks), ChainGate::InReview));
+
+    // The JSON surfaces it for the UI and the runner.
+    let listed = fixture.list_json();
+    let entry = listed["tasks"].as_array().unwrap().iter().find(|t| t["id"] == child.id).unwrap();
+    assert_eq!(entry["lockedBy"], serde_json::json!([parked.id]));
+
+    // claim-next's "waiting" explains the lock too.
+    let claim = fixture.claim_next("s", 1);
+    // flowing parent is ready and gets claimed; the child still reports its lock.
+    assert_eq!(claim["task"]["id"], flowing.id);
+    let waiting = claim["waiting"].as_array().cloned().unwrap_or_default();
+    let _ = waiting; // only populated when nothing is ready — covered below
+
+    // Once the parent is scheduled, the lock clears (it may still be waiting).
+    fixture.move_to(&parked.id, Status::Todo);
+    let tasks = fixture.tasks();
+    let child_now = tasks.iter().find(|t| t.id == child.id).cloned().unwrap();
+    assert!(deps::locked_by(&child_now, &by_id(&tasks), ChainGate::InReview).is_empty());
+}
+
+#[test]
+fn nothing_ready_reports_which_waits_are_locked() {
+    let fixture = Fixture::new();
+    let parked = fixture.add("parked parent");
+    let child = fixture.add_with("child", Status::Todo, Priority::None, std::slice::from_ref(&parked.id));
+    let claim = fixture.claim_next("s", 1);
+    assert!(claim["task"].is_null());
+    let waiting = claim["waiting"].as_array().unwrap();
+    let entry = waiting.iter().find(|w| w["id"] == child.id).unwrap();
+    assert_eq!(entry["lockedBy"], serde_json::json!([parked.id]));
+}

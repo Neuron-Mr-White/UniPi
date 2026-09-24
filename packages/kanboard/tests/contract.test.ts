@@ -15,6 +15,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { nothingReadyMessage } from "../src/runner.js";
 import {
   asClaimResult,
   asDaemonStatus,
@@ -107,6 +108,28 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     }
     // Release it back for the following tests.
     asTask("release", cli(home, workspace, ["release", claimed.task!.id, "--to", "todo", "--comment", "contract"], env()));
+  });
+
+  it("a Backlog dependency surfaces as `lockedBy` in list and in claim-next's waiting", () => {
+    const home2 = mkdtempSync(join(tmpdir(), "kb-contract-lock-"));
+    const ws2 = mkdtempSync(join(tmpdir(), "kb-contract-lock-ws-"));
+    try {
+      const project = asProject("project add", cli(home2, ws2, ["project", "add", "--name", "Locks"]));
+      const env2 = { UNIPI_KANBOARD_PROJECT: project.slug };
+      const parent = asTask("add", cli(home2, ws2, ["add", "parked parent"], env2));
+      const child = asTask("add", cli(home2, ws2, ["add", "child", "--status", "todo", "--after", parent.id], env2));
+      const listed = asTaskList(cli(home2, ws2, ["list"], env2)).tasks.find((task) => task.id === child.id)!;
+      assert.deepEqual(listed.lockedBy, [parent.id]);
+      const claim = asClaimResult(cli(home2, ws2, ["claim-next", "--session", "c", "--pid", "1", "--host", "t"], env2));
+      assert.equal(claim.task, null);
+      const entry = claim.waiting!.find((item) => item.id === child.id)!;
+      assert.deepEqual(entry.lockedBy, [parent.id]);
+      const message = nothingReadyMessage({ waiting: 1, blocked: 0 }, claim.waiting!);
+      assert.match(message, new RegExp(`${child.id} waits on ${parent.id}, still in Backlog`));
+    } finally {
+      rmSync(home2, { recursive: true, force: true });
+      rmSync(ws2, { recursive: true, force: true });
+    }
   });
 
   it("`release`, `move`, `note` and `set-run` return the updated task", () => {

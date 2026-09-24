@@ -19,6 +19,7 @@ import {
   KanboardShapeError,
   type KanboardActivity,
   type KanboardRun,
+  type KanboardClaim,
   type KanboardTask,
 } from "./shapes.js";
 import type { KanboardSettings } from "./settings.js";
@@ -105,7 +106,7 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   // ── claiming ──────────────────────────────────────────────────────────────
 
-  async function claimNext(): Promise<KanboardTask | null> {
+  async function claimNext(): Promise<KanboardClaim> {
     const gate = deps.settings().chainGate;
     const raw = await cli.run<unknown>(
       [
@@ -121,7 +122,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       ],
       { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } },
     );
-    return asClaimResult(raw).task;
+    return asClaimResult(raw);
   }
 
   function sessionId(): string {
@@ -228,8 +229,10 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   async function startTask(ctx: ExtensionContext): Promise<boolean> {
     let claimed: KanboardTask | null;
+    let claim: KanboardClaim;
     try {
-      claimed = await claimNext();
+      claim = await claimNext();
+      claimed = claim.task;
     } catch (error) {
       const message = error instanceof KanboardCliError ? error.message : String(error);
       ctx.ui.notify(`kanboard: ${message}`, "error");
@@ -237,10 +240,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
     if (!claimed) {
       const counts = await countWaiting();
-      ctx.ui.notify(
-        `Nothing ready (${counts.waiting} waiting on deps, ${counts.blocked} blocked)`,
-        "info",
-      );
+      ctx.ui.notify(nothingReadyMessage(counts, claim.waiting ?? []), "info");
       state.phase = "idle";
       setStatus(ctx, undefined);
       return false;
@@ -642,4 +642,23 @@ export function createDebugLog(env: NodeJS.ProcessEnv = process.env): (line: str
 
 export function registerPlanEventListener(pi: ExtensionAPI, runner: Runner): void {
   pi.events.on(UNIPI_EVENTS.PLAN_MODE_CHANGED, (payload: unknown) => runner.onPlanModeChanged(payload));
+}
+
+/**
+ * "Nothing ready" with the reason spelled out: tasks locked behind a Backlog
+ * dependency need a human to schedule that dependency — the runner never claims
+ * Backlog — so name them instead of leaving a bare count.
+ */
+export function nothingReadyMessage(
+  counts: { waiting: number; blocked: number },
+  waiting: Array<{ id: string; waitingFor?: string[]; lockedBy?: string[] }>,
+): string {
+  const head = `Nothing ready (${counts.waiting} waiting on deps, ${counts.blocked} blocked)`;
+  const locked = waiting.filter((entry) => (entry.lockedBy ?? []).length > 0);
+  if (locked.length === 0) return head;
+  const lines = locked
+    .slice(0, 5)
+    .map((entry) => `  ${entry.id} waits on ${entry.lockedBy!.join(", ")}, still in Backlog — move it to Todo to unlock`);
+  if (locked.length > 5) lines.push(`  …and ${locked.length - 5} more`);
+  return [head, ...lines].join("\n");
 }

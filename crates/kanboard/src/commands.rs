@@ -57,6 +57,7 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
                 }))
                 .collect::<Vec<_>>()),
         );
+        map.insert("lockedBy".into(), json!(deps::locked_by(task, &by_id, gate)));
         map.insert(
             "waitingFor".into(),
             match blocked {
@@ -421,6 +422,7 @@ pub fn claim_next(layout: &Layout, project: Project, gate: ChainGate, args: &Cla
                     "waitingFor": deps::blocked_by(task, &by_id, gate)
                         .map(|blocked| blocked.pending.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>())
                         .unwrap_or_default(),
+                    "lockedBy": deps::locked_by(task, &by_id, gate),
                 })
             })
             .collect();
