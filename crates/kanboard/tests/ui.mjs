@@ -51,6 +51,8 @@ if (!urlMode) {
     kb("add", `${name} task`, "--status", index === 2 || index === 4 ? "todo" : "backlog").id,
   );
   kb("add", "dependent task", "--status", "todo", "--after", ids[2]);
+  const harsh = "X".repeat(140);
+  kb("add", harsh, "--status", "backlog");
   // One task in review so the comment-required move can be exercised.
   kb("claim-next", "--session", "ui-check", "--pid", "1", "--host", "test");
   kb("release", ids[2], "--to", "in_review", "--comment", "ready for review");
@@ -228,6 +230,27 @@ try {
   check("board renders lanes", lanes >= 7, `${lanes} lanes`);
   check("board renders cards", cards >= 4, `${cards} cards`);
 
+  // 1b. long unbroken text must not escape the card, and titles clamp to 3 lines
+  const tight = await session.evaluate(`(() => {
+    const cards = [...document.querySelectorAll('.card')];
+    const overflowing = cards.filter((card) => card.scrollWidth > card.clientWidth + 1);
+    const title = [...document.querySelectorAll('.card .title')].find((node) => node.textContent.length > 100);
+    const line = title ? parseFloat(getComputedStyle(title).lineHeight) : 0;
+    return {
+      cards: cards.length,
+      overflowing: overflowing.length,
+      long: !!title,
+      clamped: title ? title.scrollHeight <= title.clientHeight + 2 : null,
+      lines: title && line ? Math.round(title.getBoundingClientRect().height / line) : null,
+    };
+  })()`);
+  check("no card overflows horizontally", tight.overflowing === 0, `${tight.cards} cards, ${tight.overflowing} overflowing`);
+  check(
+    "a 140-char title clamps to 3 lines",
+    tight.long && tight.lines !== null && tight.lines <= 3,
+    `rendered ${tight.lines} lines (overflow ${tight.clamped ? "clipped" : "visible"})`,
+  );
+
   // 2. lanes start at the left edge with no dead space
   const geometry = await session.until(`(() => {
     const laneNode = document.querySelector('.lane');
@@ -248,15 +271,60 @@ try {
   check("board scrollbar is themed", /rgb|#/.test(String(scroll)), String(scroll));
 
   // 4. detail panel opens and closes
-  await session.evaluate(`document.querySelector('.card').click()`);
+  const openedLong = await session.evaluate(`(() => {
+    const title = [...document.querySelectorAll('.card .title')].find((node) => node.textContent.length > 100);
+    const card = title?.closest('.card') ?? document.querySelector('.card');
+    card.click();
+    return title ? 'long' : 'first';
+  })()`);
   await sleep(700);
   const panel = await session.evaluate(`(() => {
     const node = document.querySelector('.panel');
     if (!node) return null;
     return { title: node.querySelector('.title-input')?.value ?? '', tabs: node.querySelectorAll('.tabs button').length, timeline: node.querySelectorAll('.timeline li').length };
   })()`);
-  check("detail panel opens with the task", !!panel && panel.title.length > 0, panel ? `"${panel.title}"` : "missing");
+  check("detail panel opens with the task", !!panel && panel.title.length > 0, panel ? `${panel.title.length}-char title` : "missing");
   check("panel has edit/preview + a timeline", !!panel && panel.tabs === 2 && panel.timeline >= 1);
+  const panelBits = await session.evaluate(`(() => {
+    const button = (label) => [...document.querySelectorAll('.panel button')].find((node) => node.textContent.trim() === label);
+    const describe = (label) => {
+      const node = button(label);
+      if (!node) return { label, missing: true };
+      const style = getComputedStyle(node);
+      return { label, background: style.backgroundColor, border: style.borderTopColor, radius: style.borderRadius, color: style.color };
+    };
+    const select = document.querySelector('.panel #status');
+    const wrap = select?.closest('.select-wrap');
+    return {
+      buttons: [describe("Duplicate"), describe("Cancel task")],
+      statusOptions: [...(select?.options ?? [])].map((option) => option.value),
+      statusValue: select?.value ?? null,
+      appearance: select ? getComputedStyle(select).appearance : null,
+      chevron: !!wrap?.querySelector('svg'),
+      title: document.querySelector('.panel .title-input')?.value ?? '',
+      titleLength: (document.querySelector('.panel .title-input')?.value ?? '').length,
+    };
+  })()`);
+  const chrome = (entry) => !entry.missing && !/rgba\(0, 0, 0, 0\)|transparent/.test(entry.background);
+  check(
+    "Duplicate / Cancel task are real buttons",
+    panelBits.buttons.every(chrome),
+    panelBits.buttons.map((entry) => `${entry.label}:${entry.background}`).join(" · "),
+  );
+  const themed = panelBits.appearance === "none" && panelBits.chevron;
+  check("Status/Priority use the themed select", themed, `appearance=${panelBits.appearance} chevron=${panelBits.chevron}`);
+  const rulesDoc = await (await fetch(`${base}/api/rules`)).json();
+  const allowed = new Set([panelBits.statusValue, ...(rulesDoc.allowedMoves?.[panelBits.statusValue] ?? [])]);
+  check(
+    "the status select offers allowed moves only",
+    panelBits.statusOptions.every((option) => allowed.has(option)) && panelBits.statusOptions.includes(panelBits.statusValue),
+    panelBits.statusOptions.join(","),
+  );
+  check(
+    "the clamped title is intact in the panel",
+    openedLong === "long" && panelBits.titleLength === 140,
+    `opened ${openedLong}, ${panelBits.titleLength} chars in the panel`,
+  );
   await session.shot("k6-detail-dark-1440.png");
   await session.evaluate(`document.querySelector('.panel-head button').click()`);
   await sleep(400);

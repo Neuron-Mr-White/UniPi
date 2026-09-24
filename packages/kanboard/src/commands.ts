@@ -19,6 +19,90 @@ export const KANBOARD_COMMAND = "kanboard";
 export const SUBCOMMANDS = ["open", "onboard", "add", "work", "stop", "status"] as const;
 export type Subcommand = (typeof SUBCOMMANDS)[number];
 
+/** Options `add` understands; anything else stays in the title. */
+export const ADD_FLAGS = ["--after", "--priority", "--status", "--gate"] as const;
+
+/**
+ * Split a command line into words the way a shell would: whitespace separates,
+ * a token may start with a quoted span, and a quote inside a word is literal
+ * (so `it's fine` keeps its apostrophe).
+ */
+export function tokenizeArgs(text: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let started = false;
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (/\s/.test(char)) {
+      if (started) words.push(current);
+      current = "";
+      started = false;
+      index += 1;
+      continue;
+    }
+    if ((char === '"' || char === "'") && !started) {
+      const quote = char;
+      index += 1;
+      started = true;
+      while (index < text.length && text[index] !== quote) {
+        if (quote === '"' && text[index] === "\\" && index + 1 < text.length) {
+          index += 1;
+          current += text[index]!;
+        } else {
+          current += text[index]!;
+        }
+        index += 1;
+      }
+      index += 1;
+      continue;
+    }
+    current += char;
+    started = true;
+    index += 1;
+  }
+  if (started) words.push(current);
+  return words;
+}
+
+export interface AddArgs {
+  title: string;
+  /** CLI argv after the title (flags the user typed). */
+  flags: string[];
+  /** Set when the line was malformed, e.g. a flag without its value. */
+  error: string | null;
+}
+
+/**
+ * Parse `/unipi:kanboard add <title> [--after ID] [--priority P] [--status S]
+ * [--gate G]`. Quotes group words and are removed, so the stored title is clean;
+ * unknown `--flags` are kept in the title (a title may legitimately start with a
+ * dash) rather than silently dropped.
+ */
+export function parseAddArgs(text: string): AddArgs {
+  const words = tokenizeArgs(text);
+  const title: string[] = [];
+  const flags: string[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]!;
+    const equals = word.startsWith("--") && word.includes("=")
+      ? { name: word.slice(0, word.indexOf("=")), value: word.slice(word.indexOf("=") + 1) }
+      : null;
+    const name = equals ? equals.name : word;
+    if ((ADD_FLAGS as readonly string[]).includes(name)) {
+      const value = equals ? equals.value : words[index + 1];
+      if (value === undefined || value === "") {
+        return { title: title.join(" "), flags, error: `${name} needs a value` };
+      }
+      flags.push(name, value);
+      if (!equals) index += 1;
+      continue;
+    }
+    title.push(word);
+  }
+  return { title: title.join(" ").trim(), flags, error: null };
+}
+
 export interface CommandDeps {
   /** null when no binary was found (then `unavailable` explains why). */
   cli: KanboardCli | null;
@@ -366,7 +450,12 @@ export async function runAdd(deps: CommandDeps, ctx: ExtensionCommandContext, te
     ctx.ui.notify(`kanboard: ${deps.unavailable}`, "warning");
     return;
   }
-  const title = text.trim();
+  const parsed = parseAddArgs(text);
+  if (parsed.error) {
+    ctx.ui.notify(`kanboard: ${parsed.error} — /unipi:kanboard add <title> [--after ID] [--priority P] [--status S]`, "warning");
+    return;
+  }
+  const title = parsed.title;
   if (!title) {
     ctx.ui.notify("kanboard: add needs some text — /unipi:kanboard add <task>", "warning");
     return;
@@ -375,9 +464,11 @@ export async function runAdd(deps: CommandDeps, ctx: ExtensionCommandContext, te
     await runOnboard(deps, ctx);
   }
   try {
-    const task = asTask("add", await client.run<unknown>(["add", title], { cwd: ctx.cwd }));
-    ctx.ui.notify(`${task.id} added to Backlog`, "info");
-    deps.debug(`add ${task.id}: ${title}`);
+    const task = asTask("add", await client.run<unknown>(["add", title, ...parsed.flags], { cwd: ctx.cwd }));
+    const lane = task.status === "todo" ? "Todo" : "Backlog";
+    const deps_ = parsed.flags.length > 0 ? ` (${parsed.flags.join(" ")})` : "";
+    ctx.ui.notify(`${task.id} added to ${lane}${deps_}`, "info");
+    deps.debug(`add ${task.id} [${task.status}]: ${title}`);
   } catch (error) {
     ctx.ui.notify(
       `kanboard: could not add the task — ${error instanceof KanboardCliError ? error.message : String(error)}`,
@@ -463,6 +554,17 @@ export function registerKanboardCommand(pi: ExtensionAPI, deps: CommandDeps): vo
           ].filter((item) => item.value.startsWith(partial));
         }
       }
+      if (/^add(\s|$)/.test(raw)) {
+        const partial = raw.split(/\s+/).pop() ?? "";
+        if (partial.startsWith("--")) {
+          return [
+            { value: "--after", label: "--after <id>", description: "Dependency: stay unready until that task is done (repeatable)" },
+            { value: "--priority", label: "--priority <p>", description: "none · low · medium · high · urgent" },
+            { value: "--status", label: "--status <lane>", description: "Landing lane: backlog (default) or todo" },
+            { value: "--gate", label: "--gate <lane>", description: "Chain gate for readiness: in_review (default) or done" },
+          ].filter((item) => item.value.startsWith(partial));
+        }
+      }
       const items = SUBCOMMANDS.map((sub) => ({
         value: sub,
         label: sub,
@@ -472,7 +574,7 @@ export function registerKanboardCommand(pi: ExtensionAPI, deps: CommandDeps): vo
             : sub === "onboard"
               ? "Register this project on the board"
               : sub === "add"
-                ? "Quick capture into Backlog (no agent turn)"
+                ? `Quick capture into Backlog (--after ID, --priority P, --status ${["backlog", "todo"].join("|")})`
                 : sub === "work"
                   ? "Claim the next ready task and let the agent do it"
                   : sub === "stop"

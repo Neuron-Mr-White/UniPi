@@ -7,7 +7,9 @@
 # pi's autocomplete popup can swallow the Return, and Escape *clears* the editor
 # (which silently drops flags). This script:
 #   1. Escape          — close any open popup (only safe while the editor is empty)
-#   2. send-keys -l    — type the text literally
+#   2. send-keys -l    — type the text literally (base64 through stdin: the text
+#                        never passes through a second shell, so quotes and
+#                        backslashes arrive exactly as written)
 #   3. capture-pane    — VERIFY the text is in the editor; retype up to 3 times
 #   4. send-keys Right — dismiss the autocomplete popup without touching the text
 #   5. send-keys Enter — submit
@@ -53,8 +55,10 @@ for attempt in 1 2 3; do
   sleep 0.2
   remote "tmux send-keys -t $SESSION Escape" >/dev/null 2>&1
   sleep 0.3
-  # 2. type
-  remote "tmux send-keys -t $SESSION -l $(printf '%q' "$TEXT")" >/dev/null 2>&1
+  # 2. type. The payload is base64 so no shell layer can reinterpret quotes or
+  #    backslashes — `printf %q` used to leak `\\"` into task titles.
+  encoded="$(printf '%s' "$TEXT" | base64 | tr -d '\n')"
+  remote "tmux send-keys -t $SESSION -l \"\$(printf %s '$encoded' | base64 -d)\"" >/dev/null 2>&1
   sleep 0.7
   # 3. verify the text is in the editor
   if ! pane | grep -qF -- "$MARK"; then

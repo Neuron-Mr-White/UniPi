@@ -173,26 +173,32 @@ export function TaskPanel(props: PanelProps): JSX.Element {
               <aside class="panel-side">
                 <div class="field">
                   <label for="status">Status</label>
-                  <select
-                    id="status"
-                    value={current().status}
-                    disabled={busy()}
-                    onChange={(event) => void moveTo(current(), event.currentTarget.value)}
-                  >
-                    <For each={statusOptions(current())}>{(option) => <option value={option}>{option.replace("_", " ")}</option>}</For>
-                  </select>
+                  <div class="select-wrap">
+                    <select
+                      id="status"
+                      value={current().status}
+                      disabled={busy()}
+                      onChange={(event) => void moveTo(current(), event.currentTarget.value)}
+                    >
+                      <For each={statusOptions(current())}>{(option) => <option value={option}>{option.replace("_", " ")}</option>}</For>
+                    </select>
+                    <Icon.chevron size={14} />
+                  </div>
                 </div>
 
                 <div class="field">
                   <label for="priority">Priority</label>
-                  <select
-                    id="priority"
-                    value={current().priority}
-                    disabled={busy()}
-                    onChange={(event) => void run(() => api.edit(props.slug, current().id, { priority: event.currentTarget.value }), "Priority saved")}
-                  >
-                    <For each={PRIORITIES}>{(option) => <option value={option}>{option}</option>}</For>
-                  </select>
+                  <div class="select-wrap">
+                    <select
+                      id="priority"
+                      value={current().priority}
+                      disabled={busy()}
+                      onChange={(event) => void run(() => api.edit(props.slug, current().id, { priority: event.currentTarget.value }), "Priority saved")}
+                    >
+                      <For each={PRIORITIES}>{(option) => <option value={option}>{option}</option>}</For>
+                    </select>
+                    <Icon.chevron size={14} />
+                  </div>
                 </div>
 
                 <div class="field">
@@ -234,14 +240,14 @@ export function TaskPanel(props: PanelProps): JSX.Element {
                   </Show>
                 </div>
 
-                <div class="field">
+                <div class="field row" style={{ gap: "8px", "align-items": "stretch" }}>
                   <Show when={!MUTED_LANES.has(current().status)}>
-                    <button class="ghost" disabled={busy()} onClick={() => void run(() => api.duplicate(props.slug, current().id), "Duplicated")}>
+                    <button class="secondary grow" disabled={busy()} onClick={() => void run(() => api.duplicate(props.slug, current().id), "Duplicated")}>
                       Duplicate
                     </button>
                   </Show>
                   <Show when={canMove(rules, current(), "cancelled")}>
-                    <button class="ghost danger" disabled={busy()} onClick={() => void moveTo(current(), "cancelled")}>
+                    <button class="danger grow" disabled={busy()} onClick={() => void moveTo(current(), "cancelled")}>
                       Cancel task
                     </button>
                   </Show>
@@ -393,10 +399,13 @@ export function NewTaskDialog(props: { slug: string; lane: string | null; onClos
             <div class="row" style={{ gap: "12px" }}>
               <div class="field grow" style={{ margin: 0 }}>
                 <label for="new-lane">Lane</label>
-                <select id="new-lane" value={lane()} onChange={(event) => setLane(event.currentTarget.value)}>
-                  <option value="backlog">Backlog</option>
-                  <option value="todo">Todo</option>
-                </select>
+                <div class="select-wrap">
+                  <select id="new-lane" value={lane()} onChange={(event) => setLane(event.currentTarget.value)}>
+                    <option value="backlog">Backlog</option>
+                    <option value="todo">Todo</option>
+                  </select>
+                  <Icon.chevron size={14} />
+                </div>
               </div>
               <div class="field grow" style={{ margin: 0 }}>
                 <label for="new-priority">Priority</label>
