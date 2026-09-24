@@ -13,7 +13,7 @@ use topcoat::{
     router::{
         Body, HeaderValue, Next, StatusCode, header, layer,
         request::{headers, method, uri},
-        response::{IntoResponse, Response},
+        response::Response,
     },
 };
 
