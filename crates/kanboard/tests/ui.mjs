@@ -415,15 +415,16 @@ try {
     const input = document.querySelector('.palette-input input');
     if (!input) return 'no palette';
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    set.call(input, 'dependent');
+    const wanted = [...document.querySelectorAll('.card .card-title')].map((n) => n.textContent).find((t) => t.length > 6 && t.length < 60) ?? '';
+    set.call(input, wanted);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 200));
     const first = document.querySelector('.palette .option[aria-selected="true"] .label')?.textContent ?? '';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await new Promise((r) => setTimeout(r, 400));
-    return first + ' → ' + (document.querySelector('.panel .title-edit')?.value ?? 'no panel');
+    return { wanted, first, opened: document.querySelector('.panel .title-edit')?.value ?? 'no panel' };
   })()`);
-  check("⌘K palette finds and opens a task", typeof palette === "string" && palette.startsWith("dependent task → dependent task"), String(palette));
+  check("⌘K palette finds and opens a task", !!palette?.wanted && palette.first === palette.wanted && palette.opened === palette.wanted, JSON.stringify(palette));
   await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);
   await sleep(300);
 
