@@ -204,3 +204,10 @@ describe("add through the real handler + binary", { skip: !hasBinary }, () => {
     assert.equal(listed().length, 0);
   });
 });
+
+describe("/unipi:kanboard close", () => {
+  it("is a subcommand with its own completion", async () => {
+    const { SUBCOMMANDS } = await import("../src/commands.js");
+    assert.ok((SUBCOMMANDS as readonly string[]).includes("close"));
+  });
+});

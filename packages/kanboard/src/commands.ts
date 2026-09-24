@@ -16,7 +16,7 @@ import { asProject, asStopResult, asTask, asTaskList, type KanboardTask } from "
 import { readKanboardSettings, type KanboardSettings } from "./settings.js";
 
 export const KANBOARD_COMMAND = "kanboard";
-export const SUBCOMMANDS = ["open", "onboard", "add", "work", "stop", "status"] as const;
+export const SUBCOMMANDS = ["open", "close", "onboard", "add", "work", "stop", "status"] as const;
 export type Subcommand = (typeof SUBCOMMANDS)[number];
 
 /** Options `add` understands; anything else stays in the title. */
@@ -578,8 +578,10 @@ export function registerKanboardCommand(pi: ExtensionAPI, deps: CommandDeps): vo
                 : sub === "work"
                   ? "Claim the next ready task and let the agent do it"
                   : sub === "stop"
-                    ? "Finish the current task, then stop"
-                    : "Daemon, project counts and the runner state",
+                    ? "Finish the current task, then stop working"
+                    : sub === "close"
+                      ? "Shut down the board daemon (the web UI goes offline)"
+                      : "Daemon, project counts and the runner state",
       })).filter((item) => item.value.startsWith(needle));
       return items.length > 0 ? items : null;
     },
@@ -633,6 +635,9 @@ export function registerKanboardCommand(pi: ExtensionAPI, deps: CommandDeps): vo
           return;
         case "stop":
           deps.stop(ctx as unknown as ExtensionContext);
+          return;
+        case "close":
+          await runStopDaemon(deps, ctx);
           return;
         case "status":
           await runStatus(deps, ctx);

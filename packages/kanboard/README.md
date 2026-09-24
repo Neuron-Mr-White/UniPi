@@ -10,7 +10,7 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 
 ## Commands
 
-`/unipi:kanboard [open|onboard|add|work|stop|status]` (with arg completions):
+`/unipi:kanboard [open|close|onboard|add|work|stop|status]` (with arg completions):
 
 | Sub | What it does |
 |---|---|
@@ -18,7 +18,8 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 | `onboard` | `project add` for this workspace, remembers the slug, reveals the skill, prints a 3-line how-to. Idempotent. |
 | `add <text>` | Quick capture into Backlog — no agent turn. |
 | `work` | Claim the next ready task and let the agent do it (below). |
-| `stop` | Finish the current task, then stop. |
+| `stop` | Finish the current task, then stop working (the board stays up). |
+| `close` | Shut down the board daemon — the web UI goes offline until the next `open`. Running tasks are unaffected. |
 | `status` | Daemon pid/port, project counts, and the runner's current task. |
 
 Any other text (`/unipi:kanboard buy milk`) is treated as a quick capture.
@@ -181,7 +182,7 @@ The extension never edits those files — the binary owns them.
 | `kanboard binary unavailable for <platform>-<arch>` | No `UNIPI_KANBOARD_BIN`, no platform package and no dev build. Build `crates/kanboard` (`cargo build --release`) or set `UNIPI_KANBOARD_BIN`. |
 | The board says *"N task file(s) need repair"* | A file was edited by hand. One bad file no longer blocks the board (it is skipped and reported); run `unipi-kanboard validate --fix`, then `validate`. |
 | `UNI-5 is unreadable: … (line N)` | That task's own file is broken — repair it before moving/noting it. |
-| The daemon looks stale | `unipi-kanboard status` (pid + liveness), then `unipi-kanboard stop` (SIGTERM, ≤3s) or the hub's **Stop daemon** action. |
+| The daemon looks stale | `unipi-kanboard status` (pid + liveness), then `/unipi:kanboard close`, `unipi-kanboard stop` (SIGTERM, ≤3s) or the hub's **Stop daemon** action. |
 | Nothing is ready | `unipi-kanboard list --ready --json` shows `waitingFor`; a cancelled dependency blocks forever — `link`/`unlink` to re-plan. |
 | The runner prompts for permission on every board call | Fixed in auto mode: `unipi-kanboard … --actor agent` is allow-listed by the permission gate (ask mode still asks). |
 
