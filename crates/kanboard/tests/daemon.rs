@@ -652,3 +652,21 @@ fn a_daemon_on_another_binding_reports_the_change() {
     assert_eq!(payload["bindingChanged"], false, "{payload}");
     drop(daemon);
 }
+
+#[test]
+fn project_summaries_carry_counts_running_and_updated_at() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let payload = http(daemon.port, "GET", "/api/projects", None).unwrap().json();
+    let project = &payload.as_array().expect("array")[0];
+    assert_eq!(project["total"], 2);
+    assert_eq!(project["counts"]["todo"], 2);
+    assert_eq!(project["running"], 0, "no run blocks yet");
+    let updated = project["updatedAt"].as_str().expect("updatedAt is set when tasks exist");
+    assert!(chrono::DateTime::parse_from_rfc3339(updated).is_ok(), "{updated}");
+
+    let claimed = cli(&fixture, &["claim-next", "--session", "s1", "--pid", "1", "--host", "t", "--json"]);
+    assert!(claimed.status.success());
+    let payload = http(daemon.port, "GET", "/api/projects", None).unwrap().json();
+    assert_eq!(payload[0]["running"], 1, "a claimed task counts as running");
+}

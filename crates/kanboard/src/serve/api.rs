@@ -129,11 +129,19 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
     let mut counts = Map::new();
     let mut total = 0usize;
     let mut problems = Vec::new();
+    let mut running = 0usize;
+    let mut updated_at: Option<String> = None;
     if let Ok(opened) = crate::board::Board::open(&state.layout, project.clone())
         && let Ok((task_list, found)) = opened.state()
     {
         problems = found;
         total = task_list.len();
+        running = task_list.iter().filter(|item| item.run.is_some()).count();
+        updated_at = task_list
+            .iter()
+            .map(|item| item.updated)
+            .max()
+            .map(|at| at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
         for status in Status::ALL {
             counts.insert(
                 status.as_str().to_string(),
@@ -149,6 +157,10 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
         "nextId": project.next_id,
         "counts": counts,
         "total": total,
+        // Tasks with a live run block, and the newest task change — the sidebar's
+        // project list shows both without fetching every board.
+        "running": running,
+        "updatedAt": updated_at,
         "problems": commands::problems_json(&problems),
     })
 }
