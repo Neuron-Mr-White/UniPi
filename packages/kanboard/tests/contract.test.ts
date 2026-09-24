@@ -11,7 +11,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -217,6 +217,36 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
       assert.equal(typeof task.status, "string");
       assert.ok(Array.isArray(task.deps));
       assert.ok(Array.isArray(task.activity));
+    }
+  });
+});
+
+describe("attachments contract (real binary)", { skip: !hasBinary }, () => {
+  it("`attach` returns the task with an attachment descriptor, and the prompt lists it", async () => {
+    const { attachmentSection } = await import("../src/runner.js");
+    const home2 = mkdtempSync(join(tmpdir(), "kb-contract-att-"));
+    const ws2 = mkdtempSync(join(tmpdir(), "kb-contract-att-ws-"));
+    try {
+      const project = asProject("project add", cli(home2, ws2, ["project", "add", "--name", "Att"]));
+      const env2 = { UNIPI_KANBOARD_PROJECT: project.slug };
+      const task = asTask("add", cli(home2, ws2, ["add", "with a log", "--status", "todo"], env2));
+      const file = join(ws2, "build.log");
+      writeFileSync(file, "error: linker failed\n");
+      const attached = asTask("attach", cli(home2, ws2, ["attach", task.id, file, "--note", "CI output"], env2));
+      const descriptor = attached.attachment as { ref: string; path: string; kind: string; markdown: string };
+      assert.equal(descriptor.kind, "text");
+      assert.match(descriptor.ref, new RegExp(`^att:${task.id}/[0-9a-f]{8}-build\\.log$`));
+      assert.equal(descriptor.markdown, `[build.log](${descriptor.ref})`);
+      const last = attached.activity!.at(-1)!.text;
+      assert.equal(last, `CI output\n${descriptor.markdown}`);
+
+      const shown = asTask("show", cli(home2, ws2, ["show", task.id], env2));
+      const section = attachmentSection(shown).join("\n");
+      assert.match(section, /## Attachments/);
+      assert.ok(section.includes(descriptor.path), "the agent gets the absolute path");
+    } finally {
+      rmSync(home2, { recursive: true, force: true });
+      rmSync(ws2, { recursive: true, force: true });
     }
   });
 });

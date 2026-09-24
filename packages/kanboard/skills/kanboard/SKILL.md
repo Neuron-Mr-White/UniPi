@@ -20,6 +20,8 @@ be on `PATH`):
 <binary> --actor agent --project <slug> show <ID>
 <binary> --actor agent --project <slug> add "<title>" [--status todo] [--after <ID>]
 <binary> --actor agent --project <slug> note <ID> "<text>"
+<binary> --actor agent --project <slug> attach <ID> <file> --note "<what it shows>"
+<binary> --actor agent --project <slug> attachments <ID>
 <binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>"
 <binary> --actor agent --project <slug> link <ID> --after <DEP>
 <binary> --actor agent --project <slug> unlink <ID> --after <DEP>
@@ -70,3 +72,12 @@ task instead (the UI's "Duplicate" does that for you).
 The web UI can create, edit, reorder, link and move tasks, but it **never starts
 an agent** — there is no run button. Work starts only from a terminal with
 `/unipi:kanboard work`.
+
+## Attachments
+
+Users attach screenshots, logs and documents in the board UI; they appear in the
+text as markdown with `att:<ID>/<name>` references, and `show <ID> --json` lists
+them under `attachments` with an absolute `path` — read the file from there
+(use your image-reading tool for images). To hand back evidence, `attach` a file:
+it is stored beside the board and the comment embeds it, so the user sees the
+image or file inline.

@@ -213,6 +213,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       "## Dependencies",
       deps || "(none)",
       "",
+      ...attachmentSection(task),
       "## Rules",
       `Work only on this task (${task.id}).`,
       `Use the board CLI through its absolute path and always pass the actor and project:`,
@@ -222,6 +223,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       "and stop — the runner will hand the task back when the user answers.",
       `Do not move the task to in_review or done and do not cancel it: the runner writes those when your turn ends.`,
       `You may add notes with \`note ${task.id} "<text>"\`, link follow-up work with \`add\`, and reorder with \`order\`.`,
+      `To show evidence (a screenshot, a log, a report), attach it: \`attach ${task.id} <file> --note "<what it shows>"\`.`,
     ].join("\n");
   }
 
@@ -661,4 +663,19 @@ export function nothingReadyMessage(
     .map((entry) => `  ${entry.id} waits on ${entry.lockedBy!.join(", ")}, still in Backlog — move it to Todo to unlock`);
   if (locked.length > 5) lines.push(`  …and ${locked.length - 5} more`);
   return [head, ...lines].join("\n");
+}
+
+/**
+ * Attachments the user added (screenshots, logs, documents). `att:` references in
+ * the body/activity point at these; the agent reads them straight from disk.
+ */
+export function attachmentSection(task: KanboardTask): string[] {
+  const items = Array.isArray(task.attachments) ? (task.attachments as Array<{ ref?: string; path?: string; kind?: string; original?: string; size?: number }>) : [];
+  if (items.length === 0) return [];
+  return [
+    "## Attachments",
+    "References like `att:ID/name` in the text above are these files — read them from disk (images with your image-reading tool):",
+    ...items.map((item) => `- ${item.ref ?? "?"} → ${item.path ?? "?"} (${item.kind ?? "file"}, ${item.size ?? 0} bytes)`),
+    "",
+  ];
 }
