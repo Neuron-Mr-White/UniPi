@@ -8,8 +8,8 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 
 ```
 crates/kanboard/
-  rust-toolchain.toml pinned to 1.98.1 (Topcoat's MSRV; the crate is edition 2024)
-  assets/             the board's JS + CSS, inlined via include_str! (no bundler)
+  build.rs            fails the build if web/dist/index.html is missing
+  web/                the SolidJS UI (built separately with npm; web/dist is embedded)
   src/lib.rs          library (the daemon reuses this)
   src/main.rs         the `unipi-kanboard` binary (clap → library)
   src/format.rs       task file format: strict parser (line numbers) + renderer
@@ -22,10 +22,10 @@ crates/kanboard/
   src/commands.rs     the operations behind every subcommand
   src/run.rs          CLI dispatcher (JSON + human rendering)
   src/daemon.rs       daemon.json, the single-instance lock, `status`, `stop`
-  src/serve/mod.rs    `serve`: listener, file watcher, idle shutdown, signals
+  src/serve/mod.rs    `serve`: axum router, listener, file watcher, idle shutdown, signals
   src/serve/api.rs    JSON API (every handler calls the library the CLI uses)
   src/serve/events.rs SSE `/events?project=<slug>`
-  src/serve/ui.rs     Topcoat pages + fragments (board, drawer, picker)
+  src/serve/assets.rs embedded web/dist (rust-embed) + SPA fallback
 ```
 
 ## Daemon (`serve`)
@@ -63,6 +63,7 @@ from the terminal rules. The actor is always `user` (the UI never claims work).
 | GET | `/api/tasks/{slug}/{id}` | one task (deps status, staleness, ready) |
 | POST | `/api/tasks/{slug}/create` | `{title, body?, status?, priority?, after?}` |
 | POST | `/api/tasks/{slug}/{id}/move` | `{status, comment?}` — **409 + `needsComment`** when the rule needs one |
+| GET | `/api/rules` | transition table for the `user` actor — `allowedMoves`, `commentRequired`, `final` |
 | POST | `/api/tasks/{slug}/{id}/note` · `/edit` · `/link` · `/unlink` · `/order` · `/duplicate` | |
 
 Rule violations answer 4xx with the message the CLI prints
@@ -71,32 +72,12 @@ Rule violations answer 4xx with the message the CLI prints
 
 ## UI
 
-Topcoat **0.8.1 pinned**, `default-features = false, features = ["router", "serve",
-"view", "sse", "discover"]` — no `runtime`, no `asset`, no `tailwind`, so there is
-**no asset bundle and no bundling step**: the CSS and JS are `include_str!`ed and
-served from `GET /kanboard.css` / `GET /kanboard.js`. The crate is **edition 2024**
-(Topcoat's `impl View` idiom does not compile under 2021) and pins the toolchain in
-`rust-toolchain.toml`.
-
-- `/` — project picker (name, root, per-lane counts).
-- `/p/{slug}` — the board: 7 visible lanes + Archive behind a toggle; cards show
-  id, title, priority chip, dep badge (`after KD-3` / `waiting on 2`), a running
-  indicator (pulsing dot, session · mode) and a stale-run warning; quick-add in
-  Backlog and Todo; **no run button anywhere**.
-- Drag between lanes → `POST move`; a rule that needs a comment opens the comment
-  modal (the 409 carries the rule text) and retries; a refused move toasts the
-  reason and the card snaps back. Drag within a lane → `order` (before/bottom).
-- Click a card → detail drawer fragment: editable title/body, priority select,
-  dependency editor, comment box, activity log, Duplicate / Cancel / Archive where
-  the table allows.
-- Live: one `EventSource` per board → on a revision the board fragment is refetched
-  (scroll and the open drawer are preserved).
-- Dark/light via `prefers-color-scheme`; readable at 1280px, lanes scroll
-  horizontally at 800px.
-
-Evidence for the manual check (12-task board, 3-task chain, one running task):
-`/tmp/kanboard-evidence/k2-board.png`, `k2-drawer.png`, `k2-comment-modal.png`,
-`k2-board-800.png`, `k2-api.txt`.
+The UI is a SolidJS app under `web/`, built separately (`npm --prefix crates/kanboard/web
+run build`) and embedded into the binary from `web/dist` with `rust-embed` — no
+runtime filesystem dependency. `GET /` and any unmatched path serve `index.html`
+(client-side routing owns everything past `/`); hashed asset paths are served
+directly. `build.rs` fails the build with a clear message if `web/dist/index.html`
+is missing.
 
 ## Storage
 

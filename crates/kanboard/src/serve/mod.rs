@@ -1,16 +1,18 @@
-//! `serve` — the daemon: single instance, JSON API, Topcoat UI, SSE, file watch,
-//! idle shutdown.
+//! `serve` — the daemon: single instance, JSON API, embedded UI, SSE, file
+//! watch, idle shutdown.
 
 pub mod api;
+pub mod assets;
 pub mod auth;
 pub mod events;
-pub mod ui;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use axum::middleware;
+use axum::routing::{get, post};
 use chrono::Utc;
 use notify::{RecursiveMode, Watcher as _};
 use serde_json::{json, Value};
@@ -36,21 +38,6 @@ pub struct AppState {
     pub revisions: Mutex<HashMap<String, u64>>,
     pub senders: Mutex<HashMap<String, broadcast::Sender<u64>>>,
     pub watcher: Mutex<Option<notify::RecommendedWatcher>>,
-}
-
-static STATE: OnceLock<Arc<AppState>> = OnceLock::new();
-
-/// The running daemon's state. Panics outside `serve` (only the daemon builds
-/// the router).
-pub fn state() -> Arc<AppState> {
-    STATE
-        .get()
-        .cloned()
-        .expect("kanboard daemon state is only available inside `serve`")
-}
-
-pub fn try_state() -> Option<Arc<AppState>> {
-    STATE.get().cloned()
 }
 
 impl AppState {
@@ -157,7 +144,6 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
     // Remote binds are token-gated; loopback stays open.
     let token = if auth::is_loopback(&options.host) { None } else { Some(auth::generate_token()) };
     let state = AppState::new(layout.clone(), options.host.clone(), token.clone());
-    let _ = STATE.set(state.clone());
 
     *state.watcher.lock().expect("watcher slot") = Some(spawn_watcher(state.clone())?);
 
@@ -174,7 +160,7 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<&'static str>(4);
     spawn_idle_monitor(state.clone(), options.idle, shutdown_tx.clone());
 
-    let router = ui::router();
+    let router = router(state.clone());
     let signal = async move {
         #[cfg(unix)]
         {
@@ -196,14 +182,12 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
         }
     };
 
-    let result = topcoat::serve_until(listener, router, signal).await;
+    let result = axum::serve(listener, router).with_graceful_shutdown(signal).await;
 
     daemon::remove_info(&layout);
     // Keep the flock until the very end so a racing `serve` sees it held.
     drop(_lock);
-    if let Some(arc) = try_state() {
-        *arc.watcher.lock().expect("watcher slot") = None;
-    }
+    *state.watcher.lock().expect("watcher slot") = None;
 
     result.map_err(|err| crate::error::Error::Io(format!("daemon stopped: {err}")))?;
 
@@ -212,6 +196,28 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
         "daemon": info,
         "stopped": true,
     }))
+}
+
+fn router(state: Arc<AppState>) -> axum::Router {
+    axum::Router::new()
+        .route("/api/health", get(api::health))
+        .route("/api/projects", get(api::projects))
+        .route("/api/rules", get(api::rules))
+        .route("/api/projects/{slug}/tasks", get(api::tasks))
+        .route("/api/tasks/{slug}/{id}", get(api::task))
+        .route("/api/tasks/{slug}/create", post(api::create))
+        .route("/api/tasks/{slug}/{id}/move", post(api::move_task))
+        .route("/api/tasks/{slug}/{id}/note", post(api::note))
+        .route("/api/tasks/{slug}/{id}/edit", post(api::edit))
+        .route("/api/tasks/{slug}/{id}/link", post(api::link))
+        .route("/api/tasks/{slug}/{id}/unlink", post(api::unlink))
+        .route("/api/tasks/{slug}/{id}/order", post(api::order))
+        .route("/api/tasks/{slug}/{id}/duplicate", post(api::duplicate))
+        .route("/events", get(events::events))
+        .route("/", get(assets::index))
+        .route("/{*path}", get(assets::asset))
+        .layer(middleware::from_fn_with_state(state.clone(), auth::guard))
+        .with_state(state)
 }
 
 fn spawn_idle_monitor(state: Arc<AppState>, idle: Duration, shutdown: tokio::sync::mpsc::Sender<&'static str>) {

@@ -1,34 +1,23 @@
 //! JSON API. Every handler calls the same library functions the CLI uses, so
 //! the UI cannot drift from the terminal rules.
 
+use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
-use serde_json::{json, Value};
-use topcoat::{
-    Result as TcResult,
-    context::Cx,
-    router::{
-        HeaderValue, StatusCode, content::Json, response::IntoResponse, route,
-    },
-};
+use serde_json::{Map, json, Value};
 
 use crate::commands::{self, ClaimArgs, Common, EditArgs, OrderTarget};
 use crate::error::Error;
 use crate::model::{Actor, ChainGate, Priority, RunMode, Status};
 use crate::store::{self, Project};
 
-use super::{AppState, state};
-
-pub fn ok(body: Value) -> TcResult<ApiResponse> {
-    Ok(ApiResponse::ok(body))
-}
-
-pub fn err(status: StatusCode, error: &Error) -> TcResult<ApiResponse> {
-    Ok(ApiResponse::error(status, error))
-}
+use super::AppState;
 
 /// JSON response with an explicit status code.
-pub use topcoat::router::response::Response;
-
 pub struct ApiResponse {
     pub status: StatusCode,
     pub body: Value,
@@ -36,10 +25,7 @@ pub struct ApiResponse {
 
 impl ApiResponse {
     pub fn ok(body: Value) -> Self {
-        ApiResponse {
-            status: StatusCode::OK,
-            body,
-        }
+        ApiResponse { status: StatusCode::OK, body }
     }
 
     pub fn error(status: StatusCode, error: &Error) -> Self {
@@ -59,20 +45,17 @@ impl ApiResponse {
 }
 
 impl IntoResponse for ApiResponse {
-    fn into_response(self, cx: &Cx) -> TcResult<Response> {
-        let bytes = serde_json::to_vec(&self.body)?;
-        let response = (
-            [(
-                topcoat::router::header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            )],
-            bytes,
-        )
-            .into_response(cx)?;
-        let (mut parts, body) = response.into_parts();
-        parts.status = self.status;
-        Ok(Response::from_parts(parts, body))
+    fn into_response(self) -> Response {
+        (self.status, Json(self.body)).into_response()
     }
+}
+
+pub fn ok(body: Value) -> ApiResponse {
+    ApiResponse::ok(body)
+}
+
+pub fn err(status: StatusCode, error: &Error) -> ApiResponse {
+    ApiResponse::error(status, error)
 }
 
 /// The same rule message reads differently on the two surfaces: the CLI names
@@ -84,19 +67,19 @@ pub fn ui_message(error: &Error) -> String {
 
 /// Rule violations are client errors: 404 for missing things, 400 otherwise.
 /// A move that needs a comment is 409 so the UI can open its comment prompt.
-pub fn map_error(error: Error, needs_comment: bool) -> TcResult<ApiResponse> {
+pub fn map_error(error: Error, needs_comment: bool) -> ApiResponse {
     if needs_comment {
         let mut response = ApiResponse::error(StatusCode::CONFLICT, &error);
         if let Value::Object(ref mut map) = response.body {
             map.insert("needsComment".into(), json!(true));
         }
-        return Ok(response);
+        return response;
     }
     let status = match error {
         Error::NotFound(_) => StatusCode::NOT_FOUND,
         _ => StatusCode::BAD_REQUEST,
     };
-    Ok(ApiResponse::error(status, &error))
+    ApiResponse::error(status, &error)
 }
 
 pub fn gate() -> ChainGate {
@@ -110,73 +93,13 @@ fn common() -> Common {
     Common::new(Actor::User, gate())
 }
 
-pub fn project_by_slug(slug: &str) -> Result<Project, Error> {
-    store::Project::load(&state().layout, slug)
-}
-
-topcoat::router::path_param!(slug);
-topcoat::router::path_param!(id);
-
-/// `{slug}` from the matched path.
-pub fn slug_param(cx: &Cx) -> Option<String> {
-    Some(topcoat::router::path_param::<Slug>(cx).to_string())
-}
-
-/// `{id}` from the matched path.
-pub fn id_param(cx: &Cx) -> Option<String> {
-    Some(topcoat::router::path_param::<Id>(cx).to_string())
-}
-
-/// Read a query parameter from the request URI.
-pub fn query_param(cx: &Cx, key: &str) -> Option<String> {
-    let uri = topcoat::router::request::uri(cx);
-    let query = uri.query()?;
-    for pair in query.split('&') {
-        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-        if name == key {
-            return Some(percent_decode(value));
-        }
-    }
-    None
-}
-
-fn percent_decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'%' if index + 2 < bytes.len() => {
-                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
-                match u8::from_str_radix(hex, 16) {
-                    Ok(byte) => {
-                        out.push(byte);
-                        index += 3;
-                    }
-                    Err(_) => {
-                        out.push(bytes[index]);
-                        index += 1;
-                    }
-                }
-            }
-            b'+' => {
-                out.push(b' ');
-                index += 1;
-            }
-            byte => {
-                out.push(byte);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).to_string()
+pub fn project_by_slug(state: &AppState, slug: &str) -> Result<Project, Error> {
+    store::Project::load(&state.layout, slug)
 }
 
 // ─── health & projects ──────────────────────────────────────────────────────
 
-#[route(GET "/api/health")]
-pub async fn health() -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn health(State(state): State<Arc<AppState>>) -> ApiResponse {
     // A remote bind must not leak the daemon's pid.
     if super::auth::is_loopback(&state.host) {
         ok(json!({
@@ -189,9 +112,7 @@ pub async fn health() -> TcResult<ApiResponse> {
     }
 }
 
-#[route(GET "/api/projects")]
-pub async fn projects() -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn projects(State(state): State<Arc<AppState>>) -> ApiResponse {
     match state.layout.list_projects() {
         Ok(projects) => {
             let payload: Vec<Value> = projects
@@ -205,7 +126,7 @@ pub async fn projects() -> TcResult<ApiResponse> {
 }
 
 pub fn project_summary(state: &AppState, project: &Project) -> Value {
-    let mut counts = serde_json::Map::new();
+    let mut counts = Map::new();
     let mut total = 0usize;
     let mut problems = Vec::new();
     if let Ok(opened) = crate::board::Board::open(&state.layout, project.clone())
@@ -232,18 +153,70 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
     })
 }
 
+// ─── rules ──────────────────────────────────────────────────────────────────
+
+/// The transition table as JSON, for the `user` actor — so the UI can dim
+/// invalid drop targets and limit the status select without hard-coding the
+/// rules a second time.
+pub async fn rules() -> ApiResponse {
+    let actor = Actor::User;
+    let mut allowed_moves = Map::new();
+    let mut comment_required = Map::new();
+    for from in Status::ALL {
+        let targets = crate::transitions::allowed_targets(from, actor);
+        allowed_moves.insert(
+            from.as_str().to_string(),
+            json!(targets.iter().map(|status| status.as_str()).collect::<Vec<_>>()),
+        );
+        let mut per_from = Map::new();
+        for to in Status::ALL {
+            if let Some(rule) = crate::transitions::rule_for(from, to)
+                && let crate::transitions::Comment::Required(hint) = rule.comment
+            {
+                per_from.insert(to.as_str().to_string(), json!(hint));
+            }
+        }
+        if !per_from.is_empty() {
+            comment_required.insert(from.as_str().to_string(), Value::Object(per_from));
+        }
+    }
+    let table: Vec<Value> = crate::transitions::RULES
+        .iter()
+        .map(|rule| {
+            json!({
+                "from": rule.from.as_str(),
+                "to": rule.to.as_str(),
+                "actors": rule.actors.iter().map(|actor| actor.as_str()).collect::<Vec<_>>(),
+                "commentRequired": matches!(rule.comment, crate::transitions::Comment::Required(_)),
+            })
+        })
+        .collect();
+    ok(json!({
+        "statuses": Status::ALL.iter().map(|status| status.as_str()).collect::<Vec<_>>(),
+        "allowedMoves": allowed_moves,
+        "commentRequired": comment_required,
+        "final": ["done", "cancelled", "archived"],
+        "table": table,
+    }))
+}
+
 // ─── tasks ──────────────────────────────────────────────────────────────────
 
-#[route(GET "/api/projects/{slug}/tasks")]
-pub async fn tasks(cx: &Cx) -> TcResult<ApiResponse> {
-    let state = state();
+#[derive(Deserialize)]
+pub struct TasksQuery {
+    status: Option<String>,
+    ready: Option<String>,
+}
+
+pub async fn tasks(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Query(query): Query<TasksQuery>,
+) -> ApiResponse {
     state.touch();
-    let Some(slug) = slug_param(cx) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug"));
-    };
-    let status = query_param(cx, "status").and_then(|value| value.parse::<Status>().ok());
-    let ready_only = query_param(cx, "ready").as_deref() == Some("true");
-    let project = match project_by_slug(&slug) {
+    let status = query.status.as_deref().and_then(|value| value.parse::<Status>().ok());
+    let ready_only = query.ready.as_deref() == Some("true");
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -253,14 +226,9 @@ pub async fn tasks(cx: &Cx) -> TcResult<ApiResponse> {
     }
 }
 
-#[route(GET "/api/tasks/{slug}/{id}")]
-pub async fn task(cx: &Cx) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn task(State(state): State<Arc<AppState>>, Path((slug, id)): Path<(String, String)>) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -280,14 +248,13 @@ pub struct CreateRequest {
     pub after: Vec<String>,
 }
 
-#[route(POST "/api/tasks/{slug}/create")]
-pub async fn create(cx: &Cx, Json(request): Json<CreateRequest>) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn create(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(request): Json<CreateRequest>,
+) -> ApiResponse {
     state.touch();
-    let Some(slug) = slug_param(cx) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -321,14 +288,13 @@ pub struct MoveRequest {
     pub comment: Option<String>,
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/move")]
-pub async fn move_task(cx: &Cx, Json(request): Json<MoveRequest>) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn move_task(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<MoveRequest>,
+) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -373,14 +339,13 @@ pub struct NoteRequest {
     pub text: String,
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/note")]
-pub async fn note(cx: &Cx, Json(request): Json<NoteRequest>) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn note(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<NoteRequest>,
+) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -398,14 +363,13 @@ pub struct EditRequest {
     pub labels: Option<Vec<String>>,
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/edit")]
-pub async fn edit(cx: &Cx, Json(request): Json<EditRequest>) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn edit(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<EditRequest>,
+) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -430,23 +394,30 @@ pub struct LinkRequest {
     pub dep: String,
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/link")]
-pub async fn link(cx: &Cx, Json(request): Json<LinkRequest>) -> TcResult<ApiResponse> {
-    link_impl(cx, request, false).await
+pub async fn link(
+    state: State<Arc<AppState>>,
+    path: Path<(String, String)>,
+    request: Json<LinkRequest>,
+) -> ApiResponse {
+    link_impl(state, path, request, false).await
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/unlink")]
-pub async fn unlink(cx: &Cx, Json(request): Json<LinkRequest>) -> TcResult<ApiResponse> {
-    link_impl(cx, request, true).await
+pub async fn unlink(
+    state: State<Arc<AppState>>,
+    path: Path<(String, String)>,
+    request: Json<LinkRequest>,
+) -> ApiResponse {
+    link_impl(state, path, request, true).await
 }
 
-async fn link_impl(cx: &Cx, request: LinkRequest, remove: bool) -> TcResult<ApiResponse> {
-    let state = state();
+async fn link_impl(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<LinkRequest>,
+    remove: bool,
+) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -473,14 +444,13 @@ pub struct OrderRequest {
     pub bottom: Option<bool>,
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/order")]
-pub async fn order(cx: &Cx, Json(request): Json<OrderRequest>) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn order(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<OrderRequest>,
+) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
@@ -507,14 +477,9 @@ pub async fn order(cx: &Cx, Json(request): Json<OrderRequest>) -> TcResult<ApiRe
     }
 }
 
-#[route(POST "/api/tasks/{slug}/{id}/duplicate")]
-pub async fn duplicate(cx: &Cx) -> TcResult<ApiResponse> {
-    let state = state();
+pub async fn duplicate(State(state): State<Arc<AppState>>, Path((slug, id)): Path<(String, String)>) -> ApiResponse {
     state.touch();
-    let (Some(slug), Some(id)) = (slug_param(cx), id_param(cx)) else {
-        return err(StatusCode::BAD_REQUEST, &Error::usage("missing slug or id"));
-    };
-    let project = match project_by_slug(&slug) {
+    let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };

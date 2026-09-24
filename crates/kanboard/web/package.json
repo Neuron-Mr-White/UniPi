@@ -1,0 +1,21 @@
+{
+  "name": "kanboard-web",
+  "private": true,
+  "version": "3.0.0-alpha.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.4",
+    "marked": "^15.0.6",
+    "solid-js": "^1.9.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vite-plugin-solid": "^2.11.1"
+  }
+}

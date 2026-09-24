@@ -330,15 +330,12 @@ fn a_corrupt_task_file_shows_up_as_a_repair_banner_and_keeps_the_board_alive() {
     assert_eq!(problem["line"], 4);
     assert!(problem["error"].as_str().unwrap().contains("unknown status"));
 
-    // The board page shows a red banner instead of failing.
+    // The SPA shell is served for any board path (the repair banner is rendered
+    // client-side from the same `problems` payload; tests/ui.mjs exercises it).
     let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
     assert_eq!(board.status, 200);
-    assert!(board.body.contains("class=\"problems\""), "banner elements present");
-    assert!(board.body.contains("1 task file need repair"), "{}", board.body.contains("need repair"));
-    assert!(board.body.contains("validate --fix"));
-    // …and still renders the readable task (the corrupt one is skipped).
-    let readable = fixture.tasks().into_iter().next().unwrap();
-    assert!(board.body.contains(&format!("data-id=\"{}\"", readable.id)), "readable task rendered");
+    assert!(board.body.contains("<!DOCTYPE html>"), "spa shell");
+    assert!(board.body.contains("/assets/"), "hashed bundle referenced");
 }
 
 #[test]
@@ -371,33 +368,43 @@ fn ui_pages_render_the_board_and_the_drawer() {
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let slug = &fixture.project.slug;
 
+    // Any UI path returns the SPA shell, and the hashed bundle is served.
     let picker = http(daemon.port, "GET", "/", None).expect("picker");
     assert_eq!(picker.status, 200);
-    assert!(picker.body.contains(&format!("/p/{slug}")), "picker links the project");
-    assert!(picker.body.contains("/kanboard.css"));
+    assert!(picker.body.contains("<!DOCTYPE html>"));
+    let bundle = picker
+        .body
+        .split("src=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("the shell references its JS bundle");
+    let asset = http(daemon.port, "GET", bundle, None).expect("bundle");
+    assert_eq!(asset.status, 200, "bundle {bundle} is embedded");
+    assert!(asset.body.contains("kanboard") || asset.body.len() > 1000);
+    let bundle_body = asset.body.clone();
 
     let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
     assert_eq!(board.status, 200);
-    for lane in ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled", "archived"] {
-        assert!(board.body.contains(&format!("data-lane=\"{lane}\"")), "lane {lane}");
-    }
-    // No run button anywhere.
-    assert!(!board.body.to_lowercase().contains("run task"), "the UI never starts work");
+    assert!(board.body.contains("<!DOCTYPE html>"), "deep link serves the shell");
 
-    let task = fixture.tasks().into_iter().next().unwrap();
-    let drawer = http(daemon.port, "GET", &format!("/p/{slug}/card/{}", task.id), None).expect("drawer");
-    assert_eq!(drawer.status, 200);
-    for form in ["edit", "link", "note"] {
-        assert!(drawer.body.contains(&format!("data-form=\"{form}\"")), "drawer {form} form");
-    }
+    // Lane/panel behaviour is client-side: packages/../tests/ui.mjs drives it.
+    let tasks = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("tasks");
+    assert_eq!(tasks.status, 200);
+    assert!(!tasks.json()["tasks"].as_array().unwrap().is_empty());
 
-    // The assets are served from the binary (no bundling step).
-    let js = http(daemon.port, "GET", "/kanboard.js", None).expect("js");
-    assert_eq!(js.status, 200);
-    assert!(js.body.contains("EventSource"));
-    let css = http(daemon.port, "GET", "/kanboard.css", None).expect("css");
-    assert_eq!(css.status, 200);
-    assert!(css.body.contains("prefers-color-scheme"));
+    // The hashed CSS bundle is embedded too (no build step at runtime).
+    let css_href = picker
+        .body
+        .split("href=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("the shell references its stylesheet");
+    let css = http(daemon.port, "GET", css_href, None).expect("css");
+    assert_eq!(css.status, 200, "stylesheet {css_href} is embedded");
+    // The theme is applied by the app (data-theme + a matchMedia default in the
+    // bundle) so both the manual toggle and prefers-color-scheme work.
+    assert!(css.body.contains("data-theme"), "the stylesheet themes both modes");
+    assert!(bundle_body.contains("prefers-color-scheme"), "prefers-color-scheme drives the default");
 }
 
 #[test]

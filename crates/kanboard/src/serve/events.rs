@@ -1,37 +1,40 @@
 //! `GET /events?project=<slug>` — one SSE event per board revision, fed by the
 //! file watcher (so CLI and agent writes show up in the UI).
 
+use std::convert::Infallible;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use axum::extract::{Query, State};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::stream::{self, Stream, StreamExt};
-use topcoat::{
-    Result as TcResult,
-    context::Cx,
-    router::{
-        content::sse::{Event, KeepAlive, Sse},
-        route,
-    },
-};
+use serde::Deserialize;
 
-use super::state;
+use super::AppState;
 
 /// Keeps the SSE client count honest even when the stream is dropped.
-struct ClientGuard;
+struct ClientGuard(Arc<AppState>);
 
 impl Drop for ClientGuard {
     fn drop(&mut self) {
-        let state = state();
-        state.sse_clients.fetch_sub(1, Ordering::SeqCst);
+        self.0.sse_clients.fetch_sub(1, Ordering::SeqCst);
         // A client leaving restarts the idle window.
-        state.touch();
+        self.0.touch();
     }
 }
 
-#[route(GET "/events")]
-pub async fn events(cx: &Cx) -> TcResult<Sse<impl Stream<Item = TcResult<Event>> + use<>>> {
-    let state = state();
+#[derive(Deserialize)]
+pub struct EventsQuery {
+    #[serde(default)]
+    project: String,
+}
+
+pub async fn events(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<EventsQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     state.touch();
-    let slug = super::api::query_param(cx, "project").unwrap_or_default();
+    let slug = query.project;
 
     state.sse_clients.fetch_add(1, Ordering::SeqCst);
     let mut broadcast = state.subscribe(&slug);
@@ -56,15 +59,11 @@ pub async fn events(cx: &Cx) -> TcResult<Sse<impl Stream<Item = TcResult<Event>>
     let first = {
         let state = state.clone();
         let slug = slug.clone();
-        async move {
-            Ok(Event::default()
-                .event("revision")
-                .data(state.revision(&slug).to_string()))
-        }
+        async move { Ok(Event::default().event("revision").data(state.revision(&slug).to_string())) }
     };
 
     let stream = stream::once(first).chain(stream::unfold(
-        (rx, ClientGuard),
+        (rx, ClientGuard(state)),
         |(mut rx, guard)| async move {
             let revision = rx.recv().await?;
             Some((
@@ -74,5 +73,5 @@ pub async fn events(cx: &Cx) -> TcResult<Sse<impl Stream<Item = TcResult<Event>>
         },
     ));
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new()))
+    Sse::new(stream).keep_alive(KeepAlive::new())
 }

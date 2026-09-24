@@ -5,19 +5,17 @@
 //! HttpOnly cookie and redirects), as the `kb_token` cookie, or as
 //! `Authorization: Bearer <token>`.
 
+use std::sync::Arc;
+
+use axum::body::Body;
+use axum::extract::{Request, State};
+use axum::http::{HeaderValue, Method, StatusCode, header};
+use axum::middleware::Next;
+use axum::response::Response;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use topcoat::{
-    Result as TcResult,
-    context::Cx,
-    router::{
-        Body, HeaderValue, Next, StatusCode, header, layer,
-        request::{headers, method, uri},
-        response::Response,
-    },
-};
 
-use super::state;
+use super::AppState;
 
 pub const COOKIE_NAME: &str = "kb_token";
 pub const TOKEN_PARAM: &str = "t";
@@ -61,8 +59,8 @@ pub fn tokens_match(expected: &str, presented: &str) -> bool {
     diff == 0
 }
 
-fn query_token(cx: &Cx) -> Option<String> {
-    let query = uri(cx).query()?;
+fn query_token(uri: &axum::http::Uri) -> Option<String> {
+    let query = uri.query()?;
     for pair in query.split('&') {
         let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
         if name == TOKEN_PARAM && !value.is_empty() {
@@ -72,8 +70,8 @@ fn query_token(cx: &Cx) -> Option<String> {
     None
 }
 
-fn cookie_token(cx: &Cx) -> Option<String> {
-    let raw = headers(cx).get(header::COOKIE)?.to_str().ok()?;
+fn cookie_token(request: &Request) -> Option<String> {
+    let raw = request.headers().get(header::COOKIE)?.to_str().ok()?;
     for part in raw.split(';') {
         let (name, value) = part.trim().split_once('=')?;
         if name == COOKIE_NAME && !value.is_empty() {
@@ -83,8 +81,8 @@ fn cookie_token(cx: &Cx) -> Option<String> {
     None
 }
 
-fn header_token(cx: &Cx) -> Option<String> {
-    let raw = headers(cx).get(header::AUTHORIZATION)?.to_str().ok()?;
+fn header_token(request: &Request) -> Option<String> {
+    let raw = request.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
     raw.strip_prefix("Bearer ")
         .or_else(|| raw.strip_prefix("bearer "))
         .map(|token| token.trim().to_string())
@@ -111,8 +109,7 @@ fn percent_decode(value: &str) -> String {
 }
 
 /// The URL without the token parameter (used by the redirect).
-fn url_without_token(cx: &Cx) -> String {
-    let uri = uri(cx);
+fn url_without_token(uri: &axum::http::Uri) -> String {
     let path = uri.path();
     match uri.query() {
         Some(query) => {
@@ -138,12 +135,12 @@ fn plain_page(status: StatusCode, title: &str, body: &str) -> Response {
 code{{background:#eee;padding:0 .3rem;border-radius:4px}}</style></head>\
 <body><h1>{title}</h1><p>{body}</p></body></html>"
     );
-    let mut parts = Response::new(Body::empty()).into_parts().0;
-    parts.status = status;
-    parts
-        .headers
+    let mut response = Response::new(Body::from(html));
+    *response.status_mut() = status;
+    response
+        .headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
-    Response::from_parts(parts, Body::from(html))
+    response
 }
 
 fn unauthorized() -> Response {
@@ -169,55 +166,53 @@ fn cross_site(origin: &str, host_header: Option<&str>) -> bool {
 }
 
 /// The auth + CSRF layer. Wraps every route (including 404s).
-#[layer("/")]
-pub async fn guard(cx: &Cx, body: Body, next: Next<'_>) -> TcResult<Response> {
-    let state = state();
-    let host_header = headers(cx).get(header::HOST).and_then(|value| value.to_str().ok()).map(str::to_string);
+pub async fn guard(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
+    let host_header = request.headers().get(header::HOST).and_then(|value| value.to_str().ok()).map(str::to_string);
 
     // 1. Cross-site POSTs are refused in both modes (drive-by CSRF).
-    if method(cx) == topcoat::router::Method::POST
-        && let Some(origin) = headers(cx).get(header::ORIGIN).and_then(|value| value.to_str().ok())
+    if request.method() == Method::POST
+        && let Some(origin) = request.headers().get(header::ORIGIN).and_then(|value| value.to_str().ok())
         && cross_site(origin, host_header.as_deref())
     {
-        return Ok(plain_page(
+        return plain_page(
             StatusCode::FORBIDDEN,
             "kanboard: cross-site request refused",
             "This request came from another site. Open the board directly instead.",
-        ));
+        );
     }
 
     // 2. Liveness is deliberately open (it leaks nothing: see api::health).
-    if uri(cx).path() == "/api/health" {
-        return next.run(cx, body).await;
+    if request.uri().path() == "/api/health" {
+        return next.run(request).await;
     }
 
     // 3. Loopback binds are open, as before.
     let Some(expected) = state.token.as_deref() else {
-        return next.run(cx, body).await;
+        return next.run(request).await;
     };
 
     // 4. Token via header or cookie passes straight through.
-    if let Some(presented) = header_token(cx).or_else(|| cookie_token(cx))
+    if let Some(presented) = header_token(&request).or_else(|| cookie_token(&request))
         && tokens_match(expected, &presented)
     {
-        return next.run(cx, body).await;
+        return next.run(request).await;
     }
 
     // 5. Token via query: set the cookie and redirect to the clean URL.
-    if let Some(presented) = query_token(cx)
+    if let Some(presented) = query_token(request.uri())
         && tokens_match(expected, &presented)
     {
-        let (mut parts, _) = Response::new(Body::empty()).into_parts();
-        parts.status = StatusCode::SEE_OTHER;
-        if let Ok(location) = HeaderValue::from_str(&url_without_token(cx)) {
-            parts.headers.insert(header::LOCATION, location);
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::SEE_OTHER;
+        if let Ok(location) = HeaderValue::from_str(&url_without_token(request.uri())) {
+            response.headers_mut().insert(header::LOCATION, location);
         }
         let cookie = format!("{COOKIE_NAME}={expected}; HttpOnly; SameSite=Strict; Path=/");
         if let Ok(value) = HeaderValue::from_str(&cookie) {
-            parts.headers.insert(header::SET_COOKIE, value);
+            response.headers_mut().insert(header::SET_COOKIE, value);
         }
-        return Ok(Response::from_parts(parts, Body::empty()));
+        return response;
     }
 
-    Ok(unauthorized())
+    unauthorized()
 }

@@ -40,6 +40,13 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
         map.insert("ready".into(), json!(deps::is_ready(task, &by_id, gate)));
         map.insert("staleness".into(), json!(staleness_of(task)));
         map.insert(
+            "allowedMoves".into(),
+            json!(transitions::allowed_targets(task.status, Actor::User)
+                .iter()
+                .map(|status| status.as_str())
+                .collect::<Vec<_>>()),
+        );
+        map.insert(
             "depsStatus".into(),
             json!(task
                 .deps
