@@ -200,27 +200,16 @@ try {
   await session.send("Page.navigate", { url: boardUrl(null) });
   await sleep(2500);
 
-  // 1. the picker page (a single project auto-opens, so use the switcher)
-  await session.evaluate(`document.querySelector('.brand') && document.querySelectorAll('button').length`);
+  // 1. the all-projects page (breadcrumb "Projects")
+  await session.until(`document.querySelectorAll('.sidebar .nav-item').length`, (n) => n >= 1, 20000);
   await session.evaluate(`(() => {
-    const switcher = [...document.querySelectorAll('.topbar button')].find((b) => b.getAttribute('aria-haspopup') === 'listbox');
-    return switcher ? 'has switcher' : 'no switcher';
+    const crumb = [...document.querySelectorAll('.crumbs .crumb')].find((b) => b.textContent === 'Projects');
+    if (crumb) { crumb.click(); return 'crumb'; }
+    return 'already';
   })()`);
-  await session.evaluate(`(() => {
-    const all = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.includes('All projects'));
-    if (all) { all.click(); return; }
-    const switcher = [...document.querySelectorAll('.topbar button')].find((b) => b.getAttribute('aria-haspopup') === 'listbox');
-    switcher?.click();
-  })()`);
-  await sleep(600);
-  await session.evaluate(`(() => {
-    const all = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('All projects'));
-    all?.click();
-  })()`);
-  await sleep(900);
   const picker = await session.until(`document.querySelectorAll('.project-card').length`, (n) => n >= 1, 20000);
   check("project picker lists projects", picker >= 1, `${picker} cards`);
-  await session.shot("k6-picker-light-1440.png");
+  await session.shot("k7-picker-light-1440.png");
 
   // open the board
   await session.send("Page.navigate", { url: boardUrl(slug) });
@@ -234,7 +223,7 @@ try {
   const tight = await session.evaluate(`(() => {
     const cards = [...document.querySelectorAll('.card')];
     const overflowing = cards.filter((card) => card.scrollWidth > card.clientWidth + 1);
-    const title = [...document.querySelectorAll('.card .title')].find((node) => node.textContent.length > 100);
+    const title = [...document.querySelectorAll('.card .card-title')].find((node) => node.textContent.length > 100);
     const line = title ? parseFloat(getComputedStyle(title).lineHeight) : 0;
     return {
       cards: cards.length,
@@ -267,7 +256,7 @@ try {
     return { laneLeft: lane.left - wrap.left, laneWidth: lane.width, gap: styles.gap };
   })()`, (value) => !!value, 15000);
   check("first lane is at the left edge", geometry.laneLeft <= 20, `offset ${Math.round(geometry.laneLeft)}px`);
-  check("lane width is ~300px", Math.abs(geometry.laneWidth - 300) <= 2, `${Math.round(geometry.laneWidth)}px`);
+  check("lane width is ~288px", Math.abs(geometry.laneWidth - 288) <= 2, `${Math.round(geometry.laneWidth)}px`);
 
   // 3. scrollbar is themed (not the browser default white)
   const scroll = await session.evaluate(`(() => {
@@ -278,7 +267,7 @@ try {
 
   // 4. detail panel opens and closes
   const openedLong = await session.evaluate(`(() => {
-    const title = [...document.querySelectorAll('.card .title')].find((node) => node.textContent.length > 100);
+    const title = [...document.querySelectorAll('.card .card-title')].find((node) => node.textContent.length > 100);
     const card = title?.closest('.card') ?? document.querySelector('.card');
     card.click();
     return title ? 'long' : 'first';
@@ -287,43 +276,17 @@ try {
   const panel = await session.evaluate(`(() => {
     const node = document.querySelector('.panel');
     if (!node) return null;
-    return { title: node.querySelector('.title-input')?.value ?? '', tabs: node.querySelectorAll('.tabs button').length, timeline: node.querySelectorAll('.timeline li').length };
+    return { title: node.querySelector('.title-edit')?.value ?? '', body: !!node.querySelector('.body-view'), timeline: node.querySelectorAll('.timeline li').length, composer: !!node.querySelector('.composer textarea') };
   })()`);
   check("detail panel opens with the task", !!panel && panel.title.length > 0, panel ? `${panel.title.length}-char title` : "missing");
-  check("panel has edit/preview + a timeline", !!panel && panel.tabs === 2 && panel.timeline >= 1);
-  const panelBits = await session.evaluate(`(() => {
-    const button = (label) => [...document.querySelectorAll('.panel button')].find((node) => node.textContent.trim() === label);
-    const describe = (label) => {
-      const node = button(label);
-      if (!node) return { label, missing: true };
-      const style = getComputedStyle(node);
-      return { label, background: style.backgroundColor, border: style.borderTopColor, radius: style.borderRadius, color: style.color };
-    };
-    const select = document.querySelector('.panel #status');
-    const wrap = select?.closest('.select-wrap');
-    return {
-      buttons: [describe("Duplicate"), describe("Cancel task")],
-      statusOptions: [...(select?.options ?? [])].map((option) => option.value),
-      statusValue: select?.value ?? null,
-      appearance: select ? getComputedStyle(select).appearance : null,
-      chevron: !!wrap?.querySelector('svg'),
-      title: document.querySelector('.panel .title-input')?.value ?? '',
-      titleLength: (document.querySelector('.panel .title-input')?.value ?? '').length,
-    };
-  })()`);
-  const chrome = (entry) => !entry.missing && !/rgba\(0, 0, 0, 0\)|transparent/.test(entry.background);
-  check(
-    "Duplicate / Cancel task are real buttons",
-    panelBits.buttons.every(chrome),
-    panelBits.buttons.map((entry) => `${entry.label}:${entry.background}`).join(" · "),
-  );
+  check("panel has a description, timeline and composer", !!panel && panel.body && panel.timeline >= 1 && panel.composer);
   const panelFit = await session.evaluate(`(() => {
     const panel = document.querySelector('.panel');
     if (!panel) return null;
     const box = panel.getBoundingClientRect();
-    const escaping = [...panel.querySelectorAll('button, select, input, textarea')]
+    const escaping = [...panel.querySelectorAll('button, input, textarea')]
       .filter((node) => node.getBoundingClientRect().right > box.right + 1)
-      .map((node) => (node.textContent || node.id || node.tagName).trim().slice(0, 24));
+      .map((node) => (node.textContent || node.getAttribute('aria-label') || node.tagName).trim().slice(0, 24));
     return { scroll: panel.scrollWidth - panel.clientWidth, escaping };
   })()`);
   check(
@@ -331,27 +294,43 @@ try {
     !!panelFit && panelFit.scroll <= 1 && panelFit.escaping.length === 0,
     panelFit ? `scroll delta ${panelFit.scroll}${panelFit.escaping.length ? ` · escaping: ${panelFit.escaping.join(", ")}` : ""}` : "no panel",
   );
-  const themed = panelBits.appearance === "none" && panelBits.chevron;
-  check("Status/Priority use the themed select", themed, `appearance=${panelBits.appearance} chevron=${panelBits.chevron}`);
-  // Read the rules through the page: it already holds the daemon token and a
-  // working route to the host (Node's fetch can be blocked by proxies/env).
+  // actions menu: Duplicate + Cancel task as menu items
+  await session.evaluate(`document.querySelector('.panel [aria-label="Task actions"]').click()`);
+  await sleep(300);
+  const actions = await session.evaluate(`[...document.querySelectorAll('.popover .menu-item')].map((node) => node.textContent.trim())`);
+  check("task actions menu has Duplicate and Cancel task", actions.includes("Duplicate") && actions.includes("Cancel task"), actions.join(" · "));
+  await session.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(200);
+  // status picker: glyph menu limited to allowed moves
+  await session.evaluate(`document.querySelector('.panel #status').click()`);
+  await sleep(300);
+  const statusBits = await session.evaluate(`(() => {
+    const labels = [...document.querySelectorAll('.popover [role=option]')].map((node) => node.querySelector('.menu-label').textContent.trim());
+    return { labels, glyphs: document.querySelectorAll('.popover [role=option] .glyph').length, current: document.querySelector('.panel #status').textContent.trim() };
+  })()`);
+  await session.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await sleep(200);
+  check("status picker is a glyph menu", statusBits.glyphs === statusBits.labels.length && statusBits.labels.length >= 1, `${statusBits.labels.length} options`);
   const token = new URLSearchParams(base.split("?")[1] ?? "").get("t");
   const rulesDoc = await session.evaluate(
     `fetch('/api/rules${token ? `?t=${token}` : ""}').then((response) => response.json())`,
   );
-  const allowed = new Set([panelBits.statusValue, ...(rulesDoc.allowedMoves?.[panelBits.statusValue] ?? [])]);
+  const label = (id) => ({ backlog: "Backlog", todo: "Todo", in_progress: "In Progress", in_review: "In Review", blocked: "Blocked", done: "Done", cancelled: "Cancelled", archived: "Archive" })[id];
+  const currentId = Object.keys(rulesDoc.allowedMoves ?? {}).find((id) => label(id) === statusBits.current) ?? "backlog";
+  const allowed = new Set([label(currentId), ...(rulesDoc.allowedMoves?.[currentId] ?? []).map(label)]);
   check(
-    "the status select offers allowed moves only",
-    panelBits.statusOptions.every((option) => allowed.has(option)) && panelBits.statusOptions.includes(panelBits.statusValue),
-    panelBits.statusOptions.join(","),
+    "the status picker offers allowed moves only",
+    statusBits.labels.every((option) => allowed.has(option)),
+    statusBits.labels.join(","),
   );
+  const titleLength = panel?.title.length ?? 0;
   if (openedLong === "long") {
-    check("the clamped title is intact in the panel", panelBits.titleLength === 140, `${panelBits.titleLength} chars`);
+    check("the clamped title is intact in the panel", titleLength === 140, `${titleLength} chars`);
   } else {
-    check("the panel shows the task title", panelBits.titleLength > 0, `opened ${openedLong} card`);
+    check("the panel shows the task title", titleLength > 0, `opened ${openedLong} card`);
   }
-  await session.shot("k6-detail-light-1440.png");
-  await session.evaluate(`document.querySelector('.panel-head button').click()`);
+  await session.shot("k7-detail-light-1440.png");
+  await session.evaluate(`document.querySelector('[aria-label="Close details"]').click()`);
   await sleep(400);
 
   // 5. drag a todo card into backlog (HTML5 drag events, real handlers).
@@ -382,7 +361,7 @@ try {
     lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
     await new Promise((r) => setTimeout(r, 400));
     const optimistic = document.querySelectorAll('.lane[data-lane="backlog"] .card').length;
-    const modalOpen = !!document.querySelector('.modal');
+    const modalOpen = !!document.querySelector('.dialog.modal');
     const toasts = [...document.querySelectorAll('.toast')].map((t) => t.textContent).join('/');
     return card.dataset.id + ' dragging=' + dragging + ' lines=' + lines + ' drop-ok=' + okLane +
       ' optimistic=' + optimistic + ' modal=' + modalOpen + ' toasts=' + toasts + ' trace=' + (document.documentElement.dataset.kbDrop ?? 'none');
@@ -409,25 +388,82 @@ try {
     lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
     lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
     await new Promise((done) => setTimeout(done, 900));
-    const node = document.querySelector('.modal');
+    const node = document.querySelector('.dialog.modal');
     return node ? node.querySelector('.prompt')?.textContent ?? 'no prompt' : 'no modal';
   })()`);
   check("comment-required move shows the modal", typeof modal === "string" && !modal.startsWith("no "), String(modal));
-  await session.shot("k6-comment-light-1440.png");
-  await session.evaluate(`document.querySelector('.dialog-head button').click()`);
+  await session.shot("k7-comment-light-1440.png");
+  await session.evaluate(`document.querySelector('.dialog [aria-label="Cancel"]').click()`);
   await sleep(300);
 
-  // 7. new-task dialog
-  await session.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('New task')).click()`);
-  await sleep(600);
+  // 7. new-task dialog (C shortcut)
+  await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }))`);
+  await sleep(500);
   const dialog = await session.evaluate(`(() => {
     const node = document.querySelector('.dialog');
-    return node ? node.querySelectorAll('input, textarea, select').length : 0;
+    return node ? { title: !!node.querySelector('.dialog-title-input'), body: !!node.querySelector('.dialog-body-input'), chips: node.querySelectorAll('.prop-chip').length } : null;
   })()`);
-  check("new-task dialog opens", dialog >= 5, `${dialog} fields`);
-  await session.shot("k6-newtask-light-1440.png");
-  await session.evaluate(`document.querySelector('.dialog-head button').click()`);
+  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 3, JSON.stringify(dialog));
+  await session.shot("k7-newtask-light-1440.png");
+  await session.evaluate(`document.querySelector('.dialog [aria-label="Close"]').click()`);
   await sleep(300);
+
+  // 7b. command palette (Ctrl+K) finds a task and opens it
+  await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))`);
+  await sleep(400);
+  const palette = await session.evaluate(`(async () => {
+    const input = document.querySelector('.palette-input input');
+    if (!input) return 'no palette';
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, 'dependent');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    const first = document.querySelector('.palette .option[aria-selected="true"] .label')?.textContent ?? '';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    return first + ' → ' + (document.querySelector('.panel .title-edit')?.value ?? 'no panel');
+  })()`);
+  check("⌘K palette finds and opens a task", typeof palette === "string" && palette.startsWith("dependent task → dependent task"), String(palette));
+  await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);
+  await sleep(300);
+
+  // 7c. J/K selection + Enter opens it
+  const keys = await session.evaluate(`(async () => {
+    const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    document.activeElement?.blur();
+    for (let i = 0; i < 20; i += 1) press('k');
+    press('j'); await new Promise((r) => setTimeout(r, 40)); press('k');
+    press('j'); await new Promise((r) => setTimeout(r, 80));
+    const first = document.querySelector('.card.selected')?.dataset.id;
+    press('j'); await new Promise((r) => setTimeout(r, 80));
+    const second = document.querySelector('.card.selected')?.dataset.id;
+    press('k'); await new Promise((r) => setTimeout(r, 80));
+    const back = document.querySelector('.card.selected')?.dataset.id;
+    press('Enter'); await new Promise((r) => setTimeout(r, 400));
+    const opened = document.querySelector('.panel .crumb-pill')?.textContent.trim();
+    return { first, second, back, opened };
+  })()`);
+  check("J/K move the selection and Enter opens it", !!keys.first && keys.first !== keys.second && keys.back === keys.first && keys.opened === keys.first, JSON.stringify(keys));
+  await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);
+  await sleep(300);
+
+  // 7d. sidebar: list view + review queue + collapse
+  await session.evaluate(`[...document.querySelectorAll('.sidebar .nav-item')].find((b) => b.textContent.includes('List')).click()`);
+  await sleep(400);
+  const list = await session.evaluate(`({ groups: document.querySelectorAll('.list .group-head').length, rows: document.querySelectorAll('.list .row').length })`);
+  check("sidebar List shows grouped rows", list.groups >= 2 && list.rows >= 4, JSON.stringify(list));
+  await session.evaluate(`[...document.querySelectorAll('.sidebar .nav-item')].find((b) => b.textContent.includes('Review queue')).click()`);
+  await sleep(400);
+  const review = await session.evaluate(`[...document.querySelectorAll('.list .group-head')].map((node) => node.textContent.trim())`);
+  check("Review queue shows only In Review", review.length === 1 && review[0].startsWith("In Review"), review.join(" | "));
+  await session.evaluate(`[...document.querySelectorAll('.sidebar .nav-item')].find((b) => b.textContent.includes('Board')).click()`);
+  await sleep(400);
+  await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }))`);
+  await sleep(300);
+  const collapsed = await session.evaluate(`Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)`);
+  await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }))`);
+  await sleep(300);
+  check("[ collapses the sidebar to a rail", collapsed <= 60, `${collapsed}px`);
 
   // 8. theme toggle + light screenshots + 1920
   const initialTheme = await session.evaluate(`document.documentElement.dataset.theme`);
@@ -439,16 +475,16 @@ try {
     await session.evaluate(`document.querySelector('[aria-label="Toggle theme"]').click()`);
     await sleep(400);
   }
-  await session.shot("k6-board-light-1440.png");
+  await session.shot("k7-board-light-1440.png");
   await session.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
   await sleep(500);
-  await session.shot("k6-board-light-1920.png");
+  await session.shot("k7-board-light-1920.png");
   await session.evaluate(`document.querySelector('[aria-label="Toggle theme"]').click()`);
   await sleep(400);
-  await session.shot("k6-board-dark-1920.png");
+  await session.shot("k7-board-dark-1920.png");
   await session.send("Emulation.setDeviceMetricsOverride", { width: 800, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(500);
-  await session.shot("k6-board-dark-800.png");
+  await session.shot("k7-board-dark-800.png");
 
   // 9. no page errors during the session
   const errors = await session.evaluate(`window.__kbErrors ?? []`);
