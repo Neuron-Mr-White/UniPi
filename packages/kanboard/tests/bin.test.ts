@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createCli, exeSuffix, platformKey, platformPackagePath, resolveBinary, unavailableMessage, KanboardCliError } from "../src/bin.js";
+import { formatBoardUrls, isLoopbackHost, parseOpenArgs, reachableAddresses, readDaemonInfo, resolveHost } from "../src/commands.js";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const debugBinary = join(repoRoot, "crates", "kanboard", "target", "debug", "unipi-kanboard");
@@ -124,6 +125,97 @@ describe("CLI bridge", () => {
   });
 });
 
+describe("remote access helpers", () => {
+  it("parses open flags, overriding the settings for this call only", () => {
+    const settings = { host: "127.0.0.1", port: 0 };
+    assert.deepEqual(parseOpenArgs("", settings), { host: "127.0.0.1", port: 0, unknown: [] });
+    assert.deepEqual(parseOpenArgs("--host 0.0.0.0 --port 37473", settings), {
+      host: "0.0.0.0",
+      port: 37473,
+      unknown: [],
+    });
+    assert.deepEqual(parseOpenArgs("--host=tailscale --port=1234", settings), {
+      host: "tailscale",
+      port: 1234,
+      unknown: [],
+    });
+    // A bad port is reported, not silently accepted.
+    assert.deepEqual(parseOpenArgs("--port nope", settings), { host: "127.0.0.1", port: 0, unknown: ["--port nope"] });
+    assert.deepEqual(parseOpenArgs("--wat", settings).unknown, ["--wat"]);
+  });
+
+  it("classifies loopback hosts", () => {
+    for (const host of ["127.0.0.1", "127.5.5.5", "localhost", "::1", "[::1]"]) {
+      assert.equal(isLoopbackHost(host), true, host);
+    }
+    for (const host of ["0.0.0.0", "192.168.1.10", "coffee", "100.82.23.96"]) {
+      assert.equal(isLoopbackHost(host), false, host);
+    }
+  });
+
+  it("resolves `tailscale` to the first address of `tailscale ip -4`", async () => {
+    const executed: string[] = [];
+    const resolved = await resolveHost("tailscale", async (cmd, args) => {
+      executed.push(`${cmd} ${args.join(" ")}`);
+      return "100.82.23.96\n";
+    });
+    assert.equal(resolved.host, "100.82.23.96");
+    assert.equal(resolved.error, undefined);
+    assert.deepEqual(executed, ["tailscale ip -4"]);
+  });
+
+  it("reports a clear error when tailscale is missing or silent", async () => {
+    const missing = await resolveHost("tailscale", async () => {
+      throw new Error("spawn tailscale ENOENT");
+    });
+    assert.match(missing.error ?? "", /tailscale is not available/);
+    assert.match(missing.error ?? "", /--host/);
+
+    const silent = await resolveHost("tailscale", async () => "\n");
+    assert.match(silent.error ?? "", /returned nothing/);
+  });
+
+  it("passes any other host through untouched", async () => {
+    assert.equal((await resolveHost("0.0.0.0")).host, "0.0.0.0");
+  });
+
+  it("prints the tunnel hint for a loopback bind", () => {
+    const { urls, warnings } = formatBoardUrls({ host: "127.0.0.1", port: 37473, slug: "p-1", hostname: "oi" });
+    assert.deepEqual(urls, ["http://127.0.0.1:37473/p/p-1"]);
+    assert.match(warnings[0] ?? "", /ssh -N -L 37473:127\.0\.0\.1:37473 oi/);
+  });
+
+  it("lists every reachable address with the token for a wildcard bind", () => {
+    const { urls, warnings } = formatBoardUrls({
+      host: "0.0.0.0",
+      port: 37473,
+      slug: "p-1",
+      token: "tok-123",
+      hostname: "coffee",
+      addresses: ["192.168.1.10", "10.0.0.4"],
+      tailscale: "100.82.23.96",
+    });
+    assert.deepEqual(urls, [
+      "http://coffee:37473/p/p-1?t=tok-123",
+      "http://192.168.1.10:37473/p/p-1?t=tok-123",
+      "http://10.0.0.4:37473/p/p-1?t=tok-123",
+      "http://100.82.23.96:37473/p/p-1?t=tok-123",
+    ]);
+    assert.match(warnings[0] ?? "", /reachable from the network/);
+  });
+
+  it("uses the picker path when no project is onboarded", () => {
+    const { urls } = formatBoardUrls({ host: "0.0.0.0", port: 1, slug: null, token: "t" });
+    assert.equal(urls[0], "http://0.0.0.0:1/?t=t");
+  });
+
+  it("lists non-internal IPv4 interfaces only", () => {
+    const addresses = reachableAddresses();
+    assert.ok(Array.isArray(addresses));
+    for (const address of addresses) assert.match(address, /^\d+\.\d+\.\d+\.\d+$/);
+  });
+});
+
 describe("commands against the real binary", { skip: !hasBinary }, () => {
   let home: string;
   let workspace: string;
@@ -153,6 +245,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
         chainGate: "in_review" as const,
         continue: false,
         idleMin: 10,
+        host: "127.0.0.1",
         port: 0,
         archiveAfterDays: 0,
         openBrowser: false,
@@ -229,8 +322,12 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     const noted = notifications();
     const ctx = { cwd: workspace, ui: noted.ui } as never;
     await runOpen(deps as never, ctx);
-    const url = noted.lines.at(-1) ?? "";
+    const url = noted.lines.find((line) => /^kanboard: http:\/\//.test(line)) ?? "";
     assert.match(url, /^kanboard: http:\/\/127\.0\.0\.1:\d+\/p\//, `got: ${url}`);
+    assert.ok(
+      noted.lines.some((line) => line.includes("ssh -N -L")),
+      "loopback prints the tunnel hint",
+    );
     const port = Number(/127\.0\.0\.1:(\d+)/.exec(url)?.[1]);
     const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
     assert.equal((health as { ok: boolean }).ok, true);
@@ -238,7 +335,8 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     // A second open reuses the same daemon instead of spawning another.
     const again = notifications();
     await runOpen(deps as never, { cwd: workspace, ui: again.ui } as never);
-    assert.equal(/127\.0\.0\.1:(\d+)/.exec(again.lines.at(-1) ?? "")?.[1], String(port));
+    const againUrl = again.lines.find((line) => /^kanboard: http:\/\//.test(line)) ?? "";
+    assert.equal(/127\.0\.0\.1:(\d+)/.exec(againUrl)?.[1], String(port));
 
     const stopped = notifications();
     await runStopDaemon(deps as never, { cwd: workspace, ui: stopped.ui } as never);
@@ -267,7 +365,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
       get unavailable() {
         return unavailable;
       },
-      settings: () => ({ chainGate: "in_review", continue: false, idleMin: 10, port: 0, archiveAfterDays: 0, openBrowser: false }),
+      settings: () => ({ chainGate: "in_review", continue: false, idleMin: 10, host: "127.0.0.1", port: 0, archiveAfterDays: 0, openBrowser: false }),
       revealSkill: () => undefined,
       work: async () => undefined,
       stop: () => undefined,
@@ -287,6 +385,39 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     unavailable = null;
     await handler("add lazy capture", ctx);
     assert.match(noted.lines.at(-1) ?? "", /^[A-Z]+-\d+ added to Backlog$/);
+  });
+
+  it("rebinds the daemon when the requested host differs, and prints the URLs", async () => {
+    const { runOpen, runStopDaemon } = await import("../src/commands.js");
+    const noted = notifications();
+    const ctx = { cwd: workspace, ui: noted.ui } as never;
+    process.env.UNIPI_KANBOARD_PROJECT = "kb-test-000000";
+    // A daemon on loopback first…
+    await runOpen(deps as never, ctx);
+    const first = readDaemonInfo();
+    assert.equal(first?.host ?? "127.0.0.1", "127.0.0.1");
+
+    // …then a remote bind: it restarts with the new host and prints every URL
+    // with the token, plus the network warning.
+    const remote = notifications();
+    const urls = await runOpen(deps as never, { cwd: workspace, ui: remote.ui } as never, "--host 0.0.0.0 --port 37473");
+    assert.ok(
+      remote.lines.some((line) => line.includes("restarted kanboard on 0.0.0.0:37473")),
+      `expected a restart notice, got ${remote.lines.join(" | ")}`,
+    );
+    assert.equal(urls.length >= 1, true);
+    for (const url of urls) assert.match(url, /^http:\/\/[^/]+:37473\/p\/kb-test-000000\?t=/, url);
+    assert.ok(remote.lines.some((line) => line.includes("reachable from the network")), "warns loudly");
+
+    const info = readDaemonInfo();
+    assert.equal(info?.host, "0.0.0.0");
+    assert.equal(info?.port, 37473);
+    assert.ok((info?.token ?? "").length > 20, "a token exists for a remote bind");
+    // Same binding again → no restart notice.
+    const again = notifications();
+    await runOpen(deps as never, { cwd: workspace, ui: again.ui } as never, "--host 0.0.0.0 --port 37473");
+    assert.ok(!again.lines.some((line) => line.includes("restarted kanboard")), "no needless restart");
+    await runStopDaemon(deps as never, { cwd: workspace, ui: notifications().ui } as never);
   });
 
   it("archive sweep runs on session start when archiveAfterDays is set", async () => {

@@ -181,7 +181,12 @@ impl Daemon {
                 && let Some(port) = info.get("port").and_then(|port| port.as_u64())
             {
                 let port = port as u16;
-                if let Ok(response) = http(port, "GET", "/api/health", None)
+                // A remote bind is token-gated: the health probe needs it too.
+                let token = info.get("token").and_then(|token| token.as_str()).unwrap_or("");
+                let auth = format!("Bearer {token}");
+                let extra: Vec<(&str, &str)> =
+                    if token.is_empty() { Vec::new() } else { vec![("authorization", &auth)] };
+                if let Ok(response) = http_with_headers(port, "GET", "/api/health", None, &extra)
                     && response.status == 200
                 {
                     return Daemon { child, port };
@@ -206,9 +211,21 @@ impl Drop for Daemon {
     }
 }
 
+#[derive(Debug)]
 pub struct HttpResponse {
     pub status: u16,
     pub body: String,
+    /// Raw response headers, lower-cased names.
+    pub headers: Vec<(String, String)>,
+}
+
+/// A response header by (lower-case) name.
+pub fn response_header(response: &HttpResponse, name: &str) -> Option<String> {
+    response
+        .headers
+        .iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.clone())
 }
 
 impl HttpResponse {
@@ -219,12 +236,27 @@ impl HttpResponse {
 
 /// Minimal HTTP/1.1 client: one request, `Connection: close`, read to EOF.
 pub fn http(port: u16, method: &str, path: &str, body: Option<&str>) -> std::io::Result<HttpResponse> {
+    http_with_headers(port, method, path, body, &[])
+}
+
+/// Same, with extra request headers.
+pub fn http_with_headers(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    extra: &[(&str, &str)],
+) -> std::io::Result<HttpResponse> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     let payload = body.unwrap_or("");
+    let mut headers = String::new();
+    for (name, value) in extra {
+        headers.push_str(&format!("{name}: {value}\r\n"));
+    }
     let request = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\
-         content-type: application/json\r\ncontent-length: {}\r\n\r\n{payload}",
+         content-type: application/json\r\ncontent-length: {}\r\n{headers}\r\n{payload}",
         payload.len()
     );
     stream.write_all(request.as_bytes())?;
@@ -237,11 +269,18 @@ pub fn http(port: u16, method: &str, path: &str, body: Option<&str>) -> std::io:
         .nth(1)
         .and_then(|code| code.parse::<u16>().ok())
         .unwrap_or(0);
+    let head = text.split_once("\r\n\r\n").map(|(head, _)| head).unwrap_or("");
+    let headers: Vec<(String, String)> = head
+        .lines()
+        .skip(1)
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
+        .collect();
     let body = text
         .split_once("\r\n\r\n")
         .map(|(_, body)| body.to_string())
         .unwrap_or_default();
-    Ok(HttpResponse { status, body })
+    Ok(HttpResponse { status, body, headers })
 }
 
 /// Read SSE frames for `seconds`, returning the raw lines that arrived.

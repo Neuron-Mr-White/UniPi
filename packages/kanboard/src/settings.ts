@@ -13,6 +13,8 @@ export interface KanboardSettings {
   continue: boolean;
   /** Passed to `serve --idle-min`. */
   idleMin: number;
+  /** Passed to `serve --host` (127.0.0.1 = local only). */
+  host: string;
   /** Passed to `serve --port` (0 = OS-assigned). */
   port: number;
   /** Auto-archive done/cancelled tasks after N days (0 = off). */
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   chainGate: "in_review",
   continue: true,
   idleMin: 10,
+  host: "127.0.0.1",
   port: 0,
   archiveAfterDays: 0,
   openBrowser: false,
@@ -58,6 +61,14 @@ export function registerKanboardSettings(): void {
           },
           { key: "continue", type: "boolean", label: "Continue to the next task", description: "After a task finishes, claim the next ready one" },
           { key: "idleMin", type: "number", label: "Daemon idle minutes", min: 1, description: "Shut the daemon down after this long with no board open" },
+          {
+            key: "host",
+            type: "string",
+            label: "Bind address",
+            emptyLabel: "127.0.0.1 (local only)",
+            hint: "127.0.0.1 · 0.0.0.0 (LAN, token-gated) · tailscale (tailnet IP)",
+            description: "Anything but a loopback address requires an access token",
+          },
           { key: "port", type: "number", label: "Daemon port", min: 0, max: 65535, zeroLabel: "auto", description: "0 lets the OS pick a free port" },
           { key: "archiveAfterDays", type: "number", label: "Archive after (days)", min: 0, zeroLabel: "off", description: "Auto-archive done/cancelled tasks on session start" },
           { key: "openBrowser", type: "boolean", label: "Open the browser", description: "Open the board in a browser when /unipi:kanboard opens it" },
@@ -75,6 +86,8 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
     chainGate: raw.chainGate === "done" ? "done" : "in_review",
     continue: raw.continue !== false,
     idleMin: typeof raw.idleMin === "number" && raw.idleMin >= 1 ? raw.idleMin : DEFAULT_SETTINGS.idleMin,
+    host:
+      typeof raw.host === "string" && raw.host.trim().length > 0 ? raw.host.trim() : DEFAULT_SETTINGS.host,
     port: typeof raw.port === "number" && raw.port >= 0 && raw.port <= 65535 ? raw.port : 0,
     archiveAfterDays:
       typeof raw.archiveAfterDays === "number" && raw.archiveAfterDays > 0 ? raw.archiveAfterDays : 0,

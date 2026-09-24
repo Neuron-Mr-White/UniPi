@@ -203,11 +203,13 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Serve {
+            host,
             port,
             idle_min,
             idle_secs,
         } => {
             let options = crate::serve::ServeOptions {
+                host: host.clone(),
                 port: *port,
                 idle: match idle_secs {
                     Some(secs) => std::time::Duration::from_secs(*secs),
@@ -475,11 +477,20 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
         Command::Serve { .. } => {
             if field(payload, "alreadyRunning").as_bool().unwrap_or(false) {
                 let daemon = field(payload, "daemon");
-                format!(
-                    "kanboard already running on http://127.0.0.1:{} (pid {})",
+                let mut line = format!(
+                    "kanboard already running on {}:{} (pid {})",
+                    text(daemon, "host"),
                     text(daemon, "port"),
                     text(daemon, "pid")
-                )
+                );
+                if field(payload, "bindingChanged").as_bool().unwrap_or(false) {
+                    line.push_str(&format!(
+                        " — requested {}:{}; stop it first (unipi-kanboard stop) to rebind",
+                        text(field(payload, "requested"), "host"),
+                        text(field(payload, "requested"), "port")
+                    ));
+                }
+                line
             } else if field(payload, "stopped").as_bool().unwrap_or(false) {
                 let daemon = field(payload, "daemon");
                 format!(
@@ -490,9 +501,15 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             } else {
                 let daemon = field(payload, "daemon");
                 format!(
-                    "kanboard listening on http://127.0.0.1:{} (pid {})",
+                    "kanboard listening on {}:{} (pid {}){}",
+                    text(daemon, "host"),
                     text(daemon, "port"),
-                    text(daemon, "pid")
+                    text(daemon, "pid"),
+                    if field(daemon, "token").is_null() {
+                        String::new()
+                    } else {
+                        " · remote access requires the token from daemon.json".to_string()
+                    }
                 )
             }
         }

@@ -926,10 +926,12 @@ name = "kanboard"
 version = "3.0.0-alpha.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "fs2",
  "futures-util",
+ "getrandom 0.3.4",
  "notify",
  "serde",
  "serde_json",

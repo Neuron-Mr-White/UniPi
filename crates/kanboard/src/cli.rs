@@ -164,7 +164,10 @@ pub enum Command {
 
     /// Start the daemon: UI + JSON API + SSE (single instance).
     Serve {
-        /// Port to bind on 127.0.0.1 (0 = let the OS choose).
+        /// Bind address: 127.0.0.1 (default, open) or e.g. 0.0.0.0 (token-gated).
+        #[arg(long, default_value = "127.0.0.1", value_name = "ADDR")]
+        host: String,
+        /// Port to bind (0 = let the OS choose).
         #[arg(long, default_value_t = 0)]
         port: u16,
         /// Shut down after this many idle minutes with no UI and no clients.

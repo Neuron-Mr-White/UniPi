@@ -31,6 +31,8 @@ fs2 = "0.4"
 topcoat = { version = "=0.8.1", default-features = false, features = ["router", "serve", "view", "sse", "discover"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 notify = "8"
+base64 = "0.22"
+getrandom = "0.3"
 futures-util = "0.3"
 anyhow = "1"
 thiserror = "2"

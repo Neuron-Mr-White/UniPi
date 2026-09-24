@@ -428,3 +428,157 @@ fn the_ui_never_claims_tasks() {
     .expect("set-run attempt");
     assert!(response.status >= 400, "no set-run endpoint: {}", response.status);
 }
+
+// ─── remote access (token gate) ─────────────────────────────────────────────
+
+fn daemon_info(fixture: &Fixture) -> serde_json::Value {
+    serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap()).unwrap()
+}
+
+/// A request with an explicit extra header.
+fn http_with(port: u16, method: &str, path: &str, body: Option<&str>, extra: &[(&str, &str)]) -> common::HttpResponse {
+    common::http_with_headers(port, method, path, body, extra).expect("request")
+}
+
+#[test]
+fn a_remote_bind_requires_the_token() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--host", "0.0.0.0", "--idle-secs", "120"]);
+    let info = daemon_info(&fixture);
+    assert_eq!(info["host"], "0.0.0.0");
+    let token = info["token"].as_str().expect("a token for a remote bind").to_string();
+    assert!(token.len() >= 40, "long random token: {token}");
+
+    // No token → 401 with the instruction page.
+    let response = http(daemon.port, "GET", "/", None).expect("no token");
+    assert_eq!(response.status, 401, "{}", response.body);
+    assert!(response.body.contains("unipi:kanboard open"), "{}", response.body);
+    let response = http(daemon.port, "GET", "/api/projects", None).expect("api without token");
+    assert_eq!(response.status, 401);
+
+    // Wrong token → 401.
+    let response = http(daemon.port, "GET", "/?t=wrong", None).expect("wrong token");
+    assert_eq!(response.status, 401);
+
+    // Header token → 200.
+    let response = http_with(
+        daemon.port,
+        "GET",
+        "/",
+        None,
+        &[("authorization", &format!("Bearer {token}"))],
+    );
+    assert_eq!(response.status, 200, "{}", response.body);
+
+    // Query token → 303 + cookie, then the cookie alone works.
+    let response = http(daemon.port, "GET", &format!("/?t={token}"), None).expect("query token");
+    assert_eq!(response.status, 303, "{}", response.body);
+    let location = common::response_header(&response, "location").unwrap_or_default();
+    assert_eq!(location, "/", "redirect strips the token");
+    let cookie = common::response_header(&response, "set-cookie").unwrap_or_default();
+    assert!(cookie.starts_with(&format!("kb_token={token}")), "{cookie}");
+    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"), "{cookie}");
+
+    let response = http_with(daemon.port, "GET", "/", None, &[("cookie", &cookie)]);
+    assert_eq!(response.status, 200, "cookie is enough");
+}
+
+#[test]
+fn a_loopback_bind_needs_no_token() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let info = daemon_info(&fixture);
+    assert_eq!(info["host"], "127.0.0.1");
+    assert!(info.get("token").is_none() || info["token"].is_null(), "no token on loopback");
+    let response = http(daemon.port, "GET", "/", None).expect("open board");
+    assert_eq!(response.status, 200);
+    let response = http(daemon.port, "GET", "/api/projects", None).expect("open api");
+    assert_eq!(response.status, 200);
+}
+
+#[test]
+fn health_hides_the_pid_when_the_host_is_not_loopback() {
+    let fixture = fixture_with_tasks();
+    let local = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let payload = http(local.port, "GET", "/api/health", None).unwrap().json();
+    assert!(payload["pid"].as_u64().is_some(), "loopback keeps the pid");
+    drop(local);
+
+    let fixture = Fixture::new();
+    let remote = Daemon::start(&fixture, &["--host", "0.0.0.0", "--idle-secs", "120"]);
+    let info = daemon_info(&fixture);
+    let token = info["token"].as_str().unwrap();
+    let payload = http_with(
+        remote.port,
+        "GET",
+        "/api/health",
+        None,
+        &[("authorization", &format!("Bearer {token}"))],
+    )
+    .json();
+    assert!(payload["ok"].as_bool().unwrap());
+    assert_eq!(payload["pid"], serde_json::Value::Null, "no pid off-loopback");
+}
+
+#[test]
+fn a_cross_site_post_is_refused_in_both_modes() {
+    let fixture = fixture_with_tasks();
+    let task = fixture.tasks().into_iter().next().unwrap();
+    let slug = fixture.project.slug.clone();
+
+    for extra in [Vec::new(), vec!["--host", "0.0.0.0"]] {
+        let mut args = vec!["--idle-secs", "120"];
+        args.extend(extra.iter().copied());
+        let daemon = Daemon::start(&fixture, &args);
+        let token = daemon_info(&fixture)["token"].as_str().unwrap_or("").to_string();
+        let auth = if token.is_empty() { String::new() } else { format!("Bearer {token}") };
+        let mut headers: Vec<(&str, &str)> = vec![("origin", "http://evil.example"), ("host", "127.0.0.1")];
+        if !auth.is_empty() {
+            headers.push(("authorization", &auth));
+        }
+        let response = http_with(
+            daemon.port,
+            "POST",
+            &format!("/api/tasks/{slug}/{}/note", task.id),
+            Some(r#"{"text":"csrf"}"#),
+            &headers,
+        );
+        assert_eq!(response.status, 403, "cross-site POST refused: {}", response.body);
+
+        // A same-origin POST still works (the Origin matches our Host).
+        let origin = format!("http://127.0.0.1:{}", daemon.port);
+        let host = format!("127.0.0.1:{}", daemon.port);
+        let mut ok_headers: Vec<(&str, &str)> = vec![("origin", &origin), ("host", &host)];
+        if !auth.is_empty() {
+            ok_headers.push(("authorization", &auth));
+        }
+        let response = http_with(
+            daemon.port,
+            "POST",
+            &format!("/api/tasks/{slug}/{}/note", task.id),
+            Some(r#"{"text":"same origin"}"#),
+            &ok_headers,
+        );
+        assert_eq!(response.status, 200, "{}", response.body);
+        drop(daemon);
+    }
+}
+
+#[test]
+fn a_daemon_on_another_binding_reports_the_change() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    // Asking for a different host/port while one runs → alreadyRunning + the flag.
+    let output = cli(&fixture, &["serve", "--host", "0.0.0.0", "--port", "37473", "--json"]);
+    assert_eq!(output.status.code(), Some(0));
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["alreadyRunning"], true);
+    assert_eq!(payload["bindingChanged"], true);
+    assert_eq!(payload["requested"]["host"], "0.0.0.0");
+    assert_eq!(payload["daemon"]["host"], "127.0.0.1");
+    // Same binding → no change reported.
+    let output = cli(&fixture, &["serve", "--port", "0", "--json"]);
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["bindingChanged"], false, "{payload}");
+    drop(daemon);
+}

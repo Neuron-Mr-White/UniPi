@@ -127,6 +127,47 @@ node scripts/test-kanboard-packaging.mjs
 # temp node_modules, resolves the binary through src/bin.ts and runs --version
 ```
 
+## Remote access
+
+The daemon binds `127.0.0.1` by default — local only, no token. For access from
+another machine either **tunnel** it (nothing to configure):
+
+```bash
+ssh -N -L 37473:127.0.0.1:37473 <hostname>   # then open http://127.0.0.1:37473
+```
+
+…or bind a reachable interface, which turns on the **token gate**:
+
+```bash
+/unipi:kanboard open --host 0.0.0.0 --port 37473     # every interface
+/unipi:kanboard open --host tailscale                # the tailnet IPv4
+```
+
+`--host` and `--port` override the `host`/`port` settings for that invocation
+only. `tailscale` resolves through `tailscale ip -4` (clear error when tailscale
+is not installed). For a wildcard bind the printed URLs cover the machine
+hostname, every non-internal IPv4 and the tailnet address, and a warning says
+`board is reachable from the network; anyone with the link can edit it`.
+
+**Token model.** Any non-loopback bind generates a 32-byte token (base64url) and
+writes it to `daemon.json` alongside `host`. Every request must carry it:
+
+- `?t=<token>` — sets an `HttpOnly; SameSite=Strict` cookie and 303-redirects to
+  the same URL without the parameter (so the token leaves the address bar),
+- the `kb_token` cookie, or
+- `Authorization: Bearer <token>`.
+
+Missing or wrong tokens answer `401` with a page saying to open the link printed
+by `/unipi:kanboard open`. `/api/health` stays reachable but returns only
+`{ok, version}` (no pid) off-loopback, and POSTs are refused when their `Origin`
+does not match the request `Host` (drive-by CSRF), in both modes. Loopback binds
+keep no token at all.
+
+Changing the binding needs a restart: if a daemon already runs with a different
+host/port, `serve` reports `bindingChanged` and `/unipi:kanboard open` stops the
+old one and starts the new one (`restarted kanboard on 0.0.0.0:37473`). The
+daemon runs no jobs, so nothing is lost.
+
 ## Storage
 
 `~/.unipi/kanboard/` (`UNIPI_KANBOARD_HOME` overrides it): `daemon.json` +

@@ -176,12 +176,17 @@ fn percent_decode(value: &str) -> String {
 
 #[route(GET "/api/health")]
 pub async fn health() -> TcResult<ApiResponse> {
-    let pid = std::process::id();
-    ok(json!({
-        "ok": true,
-        "version": env!("CARGO_PKG_VERSION"),
-        "pid": pid,
-    }))
+    let state = state();
+    // A remote bind must not leak the daemon's pid.
+    if super::auth::is_loopback(&state.host) {
+        ok(json!({
+            "ok": true,
+            "version": env!("CARGO_PKG_VERSION"),
+            "pid": std::process::id(),
+        }))
+    } else {
+        ok(json!({ "ok": true, "version": env!("CARGO_PKG_VERSION") }))
+    }
 }
 
 #[route(GET "/api/projects")]

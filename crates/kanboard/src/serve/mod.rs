@@ -2,6 +2,7 @@
 //! idle shutdown.
 
 pub mod api;
+pub mod auth;
 pub mod events;
 pub mod ui;
 
@@ -25,6 +26,10 @@ use crate::store::Layout;
 /// through the framework.
 pub struct AppState {
     pub layout: Layout,
+    /** Bind address this daemon was started with. */
+    pub host: String,
+    /** Required when `host` is not loopback (None = open, loopback only). */
+    pub token: Option<String>,
     pub started: Instant,
     pub last_activity: Mutex<Instant>,
     pub sse_clients: AtomicUsize,
@@ -49,9 +54,11 @@ pub fn try_state() -> Option<Arc<AppState>> {
 }
 
 impl AppState {
-    fn new(layout: Layout) -> Arc<AppState> {
+    fn new(layout: Layout, host: String, token: Option<String>) -> Arc<AppState> {
         Arc::new(AppState {
             layout,
+            host,
+            token,
             started: Instant::now(),
             last_activity: Mutex::new(Instant::now()),
             sse_clients: AtomicUsize::new(0),
@@ -105,15 +112,18 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ServeOptions {
+    /// Bind address: 127.0.0.1 (default) or anything else for remote access.
+    pub host: String,
     pub port: u16,
     pub idle: Duration,
 }
 
 impl ServeOptions {
-    pub fn new(port: u16, idle_min: u64) -> Self {
+    pub fn new(host: impl Into<String>, port: u16, idle_min: u64) -> Self {
         ServeOptions {
+            host: host.into(),
             port,
             idle: Duration::from_secs(idle_min.max(1) * 60),
         }
@@ -125,18 +135,28 @@ impl ServeOptions {
 /// `{"alreadyRunning": true, "daemon": …}` (exit code 0).
 pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
     let Some(_lock) = daemon::take_lock(&layout)? else {
+        let running = daemon::read_info(&layout);
+        // Binding changes need a restart; say so instead of silently ignoring.
+        let binding_changed = running
+            .as_ref()
+            .map(|info| info.host != options.host || (options.port != 0 && info.port != options.port))
+            .unwrap_or(false);
         return Ok(json!({
             "alreadyRunning": true,
-            "daemon": daemon::read_info(&layout),
+            "bindingChanged": binding_changed,
+            "requested": { "host": options.host, "port": options.port },
+            "daemon": running,
         }));
     };
 
-    let listener = TcpListener::bind(("127.0.0.1", options.port))
+    let listener = TcpListener::bind((options.host.as_str(), options.port))
         .await
-        .map_err(|err| crate::error::Error::Io(format!("cannot bind 127.0.0.1:{}: {err}", options.port)))?;
+        .map_err(|err| crate::error::Error::Io(format!("cannot bind {}:{}: {err}", options.host, options.port)))?;
     let port = listener.local_addr()?.port();
 
-    let state = AppState::new(layout.clone());
+    // Remote binds are token-gated; loopback stays open.
+    let token = if auth::is_loopback(&options.host) { None } else { Some(auth::generate_token()) };
+    let state = AppState::new(layout.clone(), options.host.clone(), token.clone());
     let _ = STATE.set(state.clone());
 
     *state.watcher.lock().expect("watcher slot") = Some(spawn_watcher(state.clone())?);
@@ -146,6 +166,8 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
         port,
         version: env!("CARGO_PKG_VERSION").to_string(),
         started_at: Utc::now(),
+        host: options.host.clone(),
+        token: token.clone(),
     };
     daemon::write_info(&layout, &info)?;
 

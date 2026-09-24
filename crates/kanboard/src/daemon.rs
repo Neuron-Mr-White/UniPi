@@ -24,6 +24,16 @@ pub struct DaemonInfo {
     pub version: String,
     #[serde(rename = "startedAt", serialize_with = "crate::model::serialize_iso")]
     pub started_at: DateTime<Utc>,
+    /// Bind address (defaults to 127.0.0.1 for entries written before this field).
+    #[serde(default = "default_host")]
+    pub host: String,
+    /// Access token; present only for non-loopback binds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+}
+
+fn default_host() -> String {
+    "127.0.0.1".to_string()
 }
 
 pub fn info_path(layout: &Layout) -> PathBuf {
