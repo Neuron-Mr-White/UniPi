@@ -3,6 +3,7 @@
 //! The library is what K2's daemon reuses: the CLI is a thin wrapper over these
 //! functions, so the UI and the terminal enforce exactly the same rules.
 
+pub mod attachments;
 pub mod board;
 pub mod cli;
 pub mod daemon;

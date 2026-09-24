@@ -321,3 +321,37 @@ pub fn read_sse(port: u16, path: &str, seconds: u64) -> Vec<String> {
     }
     lines
 }
+
+/// Status, lower-cased headers, raw body.
+pub type RawResponse = (u16, Vec<(String, String)>, Vec<u8>);
+
+/// Raw-bytes request (uploads) returning status, headers and the raw body.
+pub fn http_bytes(port: u16, method: &str, path: &str, body: &[u8], extra: &[(&str, &str)]) -> std::io::Result<RawResponse> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+    let mut headers = String::new();
+    for (name, value) in extra {
+        headers.push_str(&format!("{name}: {value}\r\n"));
+    }
+    let head = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\ncontent-type: application/octet-stream\r\ncontent-length: {}\r\n{headers}\r\n",
+        body.len()
+    );
+    stream.write_all(head.as_bytes())?;
+    // A refused oversized upload may close the socket mid-write; that is an answer, not an error.
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+    let mut raw = Vec::new();
+    let _ = stream.read_to_end(&mut raw);
+    let split = raw.windows(4).position(|window| window == b"\r\n\r\n").unwrap_or(raw.len());
+    let head_text = String::from_utf8_lossy(&raw[..split]).to_string();
+    let status = head_text.split_whitespace().nth(1).and_then(|code| code.parse::<u16>().ok()).unwrap_or(0);
+    let headers = head_text
+        .lines()
+        .skip(1)
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
+        .collect();
+    let body = raw.get(split + 4..).map(|rest| rest.to_vec()).unwrap_or_default();
+    Ok((status, headers, body))
+}

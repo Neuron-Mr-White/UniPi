@@ -91,6 +91,23 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::note(&layout, project, &common, id, &text)
         }
 
+        Command::Attach { id, file, note, name } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let bytes = std::fs::read(file)
+                .map_err(|err| crate::error::Error::usage(format!("cannot read {}: {err}", file.display())))?;
+            let original = name.clone().unwrap_or_else(|| {
+                file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into())
+            });
+            commands::attach(&layout, project, &common, id, &original, &bytes, note.as_deref())
+        }
+
+        Command::Attachments { id } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let board = crate::board::Board::open(&layout, project)?;
+            let task = board.get(id)?;
+            Ok(serde_json::json!(crate::attachments::list(&layout, &board.project.slug, &task.id)))
+        }
+
         Command::Edit {
             id,
             title,
@@ -440,6 +457,23 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
 
         Command::Move { id, .. } => format!("{id} → {}", text(payload, "status")),
         Command::Note { id, .. } => format!("{id}: note added"),
+        Command::Attach { id, .. } => format!(
+            "{id}: attached {}\n  {}",
+            text(field(payload, "attachment"), "path"),
+            text(field(payload, "attachment"), "markdown")
+        ),
+        Command::Attachments { id } => {
+            let items = payload.as_array().cloned().unwrap_or_default();
+            if items.is_empty() {
+                format!("{id}: no attachments")
+            } else {
+                items
+                    .iter()
+                    .map(|item| format!("{}  {}  ({} bytes)", text(item, "kind"), text(item, "path"), field(item, "size")))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        }
         Command::Edit { id, .. } => format!("{id}: updated"),
         Command::Link { id, after } => format!("{id}: now depends on {after}"),
         Command::Unlink { id, after } => format!("{id}: no longer depends on {after}"),

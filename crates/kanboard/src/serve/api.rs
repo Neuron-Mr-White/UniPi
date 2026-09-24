@@ -529,3 +529,69 @@ mod phrasing_tests {
         assert_eq!(ui_message(&other), other.to_string());
     }
 }
+
+// ─── attachments ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UploadQuery {
+    pub name: Option<String>,
+}
+
+/// `POST /api/tasks/{slug}/{id}/attachments?name=<file>` — raw bytes in the body.
+/// Stores the file and returns its descriptor (`ref`, `markdown`, `kind`, …); the
+/// UI then posts the comment that references it.
+pub async fn upload(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Query(query): Query<UploadQuery>,
+    body: axum::body::Bytes,
+) -> ApiResponse {
+    state.touch();
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    let name = query.name.unwrap_or_else(|| "file".into());
+    match commands::upload(&state.layout, project, &id, &name, &body) {
+        Ok(value) => ok(value),
+        Err(error) => map_error(error, false),
+    }
+}
+
+/// `GET /api/files/{slug}/{task}/{name}` — serve a stored attachment.
+/// Images/video/audio/pdf render inline; everything else downloads. `nosniff` +
+/// a sandbox CSP so an uploaded HTML/SVG can never run as the board's origin.
+pub async fn file(
+    State(state): State<Arc<AppState>>,
+    Path((slug, task, name)): Path<(String, String, String)>,
+) -> Response {
+    state.touch();
+    let not_found = || (StatusCode::NOT_FOUND, "attachment not found").into_response();
+    if project_by_slug(&state, &slug).is_err() {
+        return not_found();
+    }
+    let Ok(found) = crate::attachments::resolve(&state.layout, &slug, &task, &name) else {
+        return not_found();
+    };
+    let Ok(bytes) = std::fs::read(&found.path) else {
+        return not_found();
+    };
+    let inline = matches!(found.kind.as_str(), "image" | "video" | "audio" | "pdf" | "text");
+    let content_type = if found.kind == "text" { "text/plain; charset=utf-8".to_string() } else { found.mime.clone() };
+    let disposition = format!(
+        "{}; filename=\"{}\"",
+        if inline { "inline" } else { "attachment" },
+        found.original.replace(['"', '\\'], "")
+    );
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, content_type),
+            (axum::http::header::CONTENT_DISPOSITION, disposition),
+            (axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+            (axum::http::header::CONTENT_SECURITY_POLICY, "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'".to_string()),
+            (axum::http::header::CACHE_CONTROL, "private, max-age=31536000, immutable".to_string()),
+        ],
+        bytes,
+    )
+        .into_response()
+}

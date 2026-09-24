@@ -81,6 +81,22 @@ pub enum Command {
     /// Append an activity note.
     Note { id: String, text: String },
 
+    /// Attach a file (image, log, document…) to a task and log a comment embedding it.
+    Attach {
+        id: String,
+        /// File to attach.
+        file: std::path::PathBuf,
+        /// Comment text shown above the attachment.
+        #[arg(long)]
+        note: Option<String>,
+        /// Name to store it under (defaults to the file name).
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// List a task's attachments.
+    Attachments { id: String },
+
     /// Edit task fields.
     Edit {
         id: String,

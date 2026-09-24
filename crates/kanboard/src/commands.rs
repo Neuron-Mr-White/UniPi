@@ -59,6 +59,10 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
         );
         map.insert("lockedBy".into(), json!(deps::locked_by(task, &by_id, gate)));
         map.insert(
+            "attachments".into(),
+            json!(crate::attachments::list(board.layout, &board.project.slug, &task.id)),
+        );
+        map.insert(
             "waitingFor".into(),
             match blocked {
                 Some(blocked) => json!(blocked.pending.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>()),
@@ -238,6 +242,44 @@ pub fn note(layout: &Layout, project: Project, common: &Common, id: &str, text: 
     drop(lock);
     let tasks = board.tasks()?;
     Ok(task_json(&board, &task, &tasks, common.gate))
+}
+
+/// Attach a file to a task; with `note`, also log a comment that embeds it.
+pub fn attach(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    original_name: &str,
+    bytes: &[u8],
+    note: Option<&str>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    let attachment = crate::attachments::store(layout, &board.project.slug, &task.id, original_name, bytes)?;
+    let text = match note.map(str::trim).filter(|text| !text.is_empty()) {
+        Some(text) => format!("{text}\n{}", attachment.markdown),
+        None => format!("attached {}", attachment.markdown),
+    };
+    task.push_activity(common.now, common.actor, &text);
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    let mut value = task_json(&board, &task, &tasks, common.gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("attachment".into(), json!(attachment));
+    }
+    Ok(value)
+}
+
+/// Store a file without logging activity (the UI uploads first, then posts the
+/// comment that references it — so one comment can carry several files).
+pub fn upload(layout: &Layout, project: Project, id: &str, original_name: &str, bytes: &[u8]) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let task = board.get(id)?;
+    let attachment = crate::attachments::store(layout, &board.project.slug, &task.id, original_name, bytes)?;
+    Ok(json!(attachment))
 }
 
 pub struct EditArgs<'a> {

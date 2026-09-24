@@ -213,6 +213,11 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/api/tasks/{slug}/{id}/unlink", post(api::unlink))
         .route("/api/tasks/{slug}/{id}/order", post(api::order))
         .route("/api/tasks/{slug}/{id}/duplicate", post(api::duplicate))
+        .route(
+            "/api/tasks/{slug}/{id}/attachments",
+            post(api::upload).layer(axum::extract::DefaultBodyLimit::max(crate::attachments::MAX_BYTES + 1024)),
+        )
+        .route("/api/files/{slug}/{task}/{name}", get(api::file))
         .route("/events", get(events::events))
         .route("/", get(assets::index))
         .route("/{*path}", get(assets::asset))
