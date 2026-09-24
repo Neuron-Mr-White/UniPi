@@ -1,0 +1,317 @@
+#!/usr/bin/env node
+/**
+ * UI checks for the kanboard board, driven over the Chrome DevTools Protocol
+ * (no Playwright dependency: Node 24 has a global WebSocket).
+ *
+ *   node crates/kanboard/tests/ui.mjs                  # own temp serve + checks
+ *   node crates/kanboard/tests/ui.mjs --url http://coffee:37473 --shots /tmp/kanboard-evidence
+ *
+ * In `--url` mode it does not start a server; it drives the running one and takes
+ * the screenshot set (dark/light × 1440/1920 + panels).
+ */
+import { spawn, execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = resolve(here, "..", "..", "..");
+const binary = process.env.UNIPI_KANBOARD_BIN ?? join(repo, "crates", "kanboard", "target", "debug", "unipi-kanboard");
+const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
+const args = process.argv.slice(2);
+const flag = (name, fallback) => {
+  const index = args.indexOf(name);
+  return index === -1 ? fallback : args[index + 1];
+};
+const urlMode = flag("--url", null);
+const shotDir = flag("--shots", null);
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+let failures = 0;
+const check = (label, ok, detail = "") => {
+  console.log(`${ok ? "✓" : "✗"} ${label}${detail ? ` — ${detail}` : ""}`);
+  if (!ok) failures += 1;
+};
+
+// ── optional: own server ────────────────────────────────────────────────────
+let server = null;
+let home = null;
+let workspace = null;
+let base = urlMode;
+let slug = flag("--project", null);
+
+if (!urlMode) {
+  home = mkdtempSync(join(tmpdir(), "kb-ui-home-"));
+  workspace = mkdtempSync(join(tmpdir(), "kb-ui-ws-"));
+  const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
+  const kb = (...call) => JSON.parse(execFileSync(binary, [...call, "--json"], { env, cwd: workspace, encoding: "utf-8" }));
+  slug = kb("project", "add", "--name", "UI Check").slug;
+  const ids = ["b", "t1", "t2", "r1", "chain"].map((name, index) =>
+    kb("add", `${name} task`, "--status", index === 2 || index === 4 ? "todo" : "backlog").id,
+  );
+  kb("add", "dependent task", "--status", "todo", "--after", ids[2]);
+  // One task in review so the comment-required move can be exercised.
+  kb("claim-next", "--session", "ui-check", "--pid", "1", "--host", "test");
+  kb("release", ids[2], "--to", "in_review", "--comment", "ready for review");
+
+  const port = 4399 + (process.pid % 100);
+  server = spawn(binary, ["serve", "--port", String(port), "--idle-secs", "900"], { env, cwd: workspace, stdio: "ignore" });
+  base = `http://127.0.0.1:${port}`;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const health = await (await fetch(`${base}/api/health`)).json();
+      if (health.ok) break;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(250);
+  }
+  console.log(`serve: ${base} (project ${slug})`);
+}
+
+const cleanup = () => {
+  server?.kill();
+  if (home) rmSync(home, { recursive: true, force: true });
+  if (workspace) rmSync(workspace, { recursive: true, force: true });
+};
+
+// ── CDP plumbing ────────────────────────────────────────────────────────────
+async function pageTarget() {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
+      const page = list.find((target) => target.type === "page" && target.webSocketDebuggerUrl);
+      if (page) return page;
+    } catch {
+      /* chromium still starting */
+    }
+    await sleep(250);
+  }
+  throw new Error("no CDP page target");
+}
+
+class Session {
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+  }
+  static async open(wsUrl) {
+    const ws = new WebSocket(wsUrl);
+    await new Promise((ok, fail) => {
+      ws.onopen = ok;
+      ws.onerror = fail;
+    });
+    const session = new Session(ws);
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      const entry = message.id && session.pending.get(message.id);
+      if (!entry) return;
+      session.pending.delete(message.id);
+      message.error ? entry.reject(new Error(JSON.stringify(message.error))) : entry.resolve(message.result);
+    };
+    return session;
+  }
+  send(method, params = {}) {
+    const id = ++this.id;
+    this.ws.send(JSON.stringify({ id, method, params }));
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
+  }
+  async evaluate(expression) {
+    const result = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    return result.result?.value;
+  }
+  async shot(file) {
+    if (!shotDir) return;
+    const { data } = await this.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    mkdirSync(shotDir, { recursive: true });
+    writeFileSync(join(shotDir, file), Buffer.from(data, "base64"));
+    console.log(`  saved ${join(shotDir, file)}`);
+  }
+}
+
+// ── run ─────────────────────────────────────────────────────────────────────
+const chromium = spawn("chromium", [
+  "--headless=new",
+  "--no-sandbox",
+  "--disable-gpu",
+  "--hide-scrollbars",
+  `--remote-debugging-port=${CDP_PORT}`,
+  `--user-data-dir=${mkdtempSync(join(tmpdir(), "kb-ui-chrome-"))}`,
+  "about:blank",
+], { stdio: "ignore" });
+
+try {
+  const page = await pageTarget();
+  const session = await Session.open(page.webSocketDebuggerUrl);
+  await session.send("Page.enable");
+  await session.send("Runtime.enable");
+  await session.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  // Record page errors so a blank screen is diagnosable (and checkable).
+  await session.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `window.__kbErrors = []; window.addEventListener('error', (e) => window.__kbErrors.push(String(e.message))); window.addEventListener('unhandledrejection', (e) => window.__kbErrors.push('rejection: ' + String(e.reason && e.reason.message || e.reason)));`,
+  });
+  await session.send("Page.navigate", { url: `${base}/` });
+  await sleep(2500);
+
+  // 1. the picker page (a single project auto-opens, so use the switcher)
+  await session.evaluate(`document.querySelector('.brand') && document.querySelectorAll('button').length`);
+  await session.evaluate(`(() => {
+    const switcher = [...document.querySelectorAll('.topbar button')].find((b) => b.getAttribute('aria-haspopup') === 'listbox');
+    return switcher ? 'has switcher' : 'no switcher';
+  })()`);
+  await session.evaluate(`(() => {
+    const all = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.includes('All projects'));
+    if (all) { all.click(); return; }
+    const switcher = [...document.querySelectorAll('.topbar button')].find((b) => b.getAttribute('aria-haspopup') === 'listbox');
+    switcher?.click();
+  })()`);
+  await sleep(600);
+  await session.evaluate(`(() => {
+    const all = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('All projects'));
+    all?.click();
+  })()`);
+  await sleep(900);
+  const picker = await session.evaluate(`document.querySelectorAll('.project-card').length`);
+  check("project picker lists projects", picker >= 1, `${picker} cards`);
+  await session.shot("k6-picker-dark-1440.png");
+
+  // open the board
+  await session.send("Page.navigate", { url: `${base}/?project=${encodeURIComponent(slug)}` });
+  await sleep(2000);
+  const lanes = await session.evaluate(`document.querySelectorAll('.lane').length`);
+  const cards = await session.evaluate(`document.querySelectorAll('.card').length`);
+  check("board renders lanes", lanes >= 7, `${lanes} lanes`);
+  check("board renders cards", cards >= 4, `${cards} cards`);
+
+  // 2. lanes start at the left edge with no dead space
+  const geometry = await session.evaluate(`(() => {
+    const lane = document.querySelector('.lane').getBoundingClientRect();
+    const wrap = document.querySelector('.board-wrap').getBoundingClientRect();
+    const styles = getComputedStyle(document.querySelector('.board'));
+    return { laneLeft: lane.left - wrap.left, laneWidth: lane.width, gap: styles.gap };
+  })()`);
+  check("first lane is at the left edge", geometry.laneLeft <= 20, `offset ${Math.round(geometry.laneLeft)}px`);
+  check("lane width is ~300px", Math.abs(geometry.laneWidth - 300) <= 2, `${Math.round(geometry.laneWidth)}px`);
+
+  // 3. scrollbar is themed (not the browser default white)
+  const scroll = await session.evaluate(`(() => {
+    document.querySelector('.board-wrap').style.scrollbarColor = '';
+    return getComputedStyle(document.querySelector('.board-wrap')).scrollbarColor;
+  })()`);
+  check("board scrollbar is themed", /rgb|#/.test(String(scroll)), String(scroll));
+
+  // 4. detail panel opens and closes
+  await session.evaluate(`document.querySelector('.card').click()`);
+  await sleep(700);
+  const panel = await session.evaluate(`(() => {
+    const node = document.querySelector('.panel');
+    if (!node) return null;
+    return { title: node.querySelector('.title-input')?.value ?? '', tabs: node.querySelectorAll('.tabs button').length, timeline: node.querySelectorAll('.timeline li').length };
+  })()`);
+  check("detail panel opens with the task", !!panel && panel.title.length > 0, panel ? `"${panel.title}"` : "missing");
+  check("panel has edit/preview + a timeline", !!panel && panel.tabs === 2 && panel.timeline >= 1);
+  await session.shot("k6-detail-dark-1440.png");
+  await session.evaluate(`document.querySelector('.panel-head button').click()`);
+  await sleep(400);
+
+  // 5. drag a todo card into backlog (HTML5 drag events, real handlers)
+  const before = await session.evaluate(`document.querySelectorAll('.lane[data-lane="backlog"] .card').length`);
+  const drag = await session.evaluate(`(async () => {
+    const card = document.querySelector('.lane[data-lane="todo"] .card');
+    if (!card) return 'no todo card';
+    const dt = new DataTransfer();
+    card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    await new Promise((r) => setTimeout(r, 200));
+    const dragging = document.querySelectorAll('.card.dragging').length;
+    const lane = document.querySelector('.lane[data-lane="backlog"]');
+    lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, clientY: lane.getBoundingClientRect().top + 40 }));
+    await new Promise((r) => setTimeout(r, 200));
+    const lines = document.querySelectorAll('.drop-line').length;
+    const okLane = document.querySelectorAll('.lane.drop-ok').length;
+    lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
+    await new Promise((r) => setTimeout(r, 400));
+    const optimistic = document.querySelectorAll('.lane[data-lane="backlog"] .card').length;
+    const modalOpen = !!document.querySelector('.modal');
+    const toasts = [...document.querySelectorAll('.toast')].map((t) => t.textContent).join('/');
+    return card.dataset.id + ' dragging=' + dragging + ' lines=' + lines + ' drop-ok=' + okLane +
+      ' optimistic=' + optimistic + ' modal=' + modalOpen + ' toasts=' + toasts + ' trace=' + (document.documentElement.dataset.kbDrop ?? 'none');
+  })()`);
+  let after = before;
+  for (let attempt = 0; attempt < 24 && after !== before + 1; attempt += 1) {
+    await sleep(250);
+    after = await session.evaluate(`document.querySelectorAll('.lane[data-lane="backlog"] .card').length`);
+  }
+  const toastText = await session.evaluate(`[...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ')`);
+  check(
+    "dragging todo → backlog moves the card",
+    after === before + 1,
+    `${before} → ${after} (dragged ${drag})${toastText ? ` · toasts: ${toastText}` : ""}`,
+  );
+
+  // 6. a move that needs a comment opens the modal
+  const modal = await session.evaluate(`(async () => {
+    const card = document.querySelector('.lane[data-lane="in_review"] .card');
+    if (!card) return 'no in_review card';
+    const dt = new DataTransfer();
+    card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    const lane = document.querySelector('.lane[data-lane="todo"]');
+    lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
+    lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
+    await new Promise((done) => setTimeout(done, 900));
+    const node = document.querySelector('.modal');
+    return node ? node.querySelector('.prompt')?.textContent ?? 'no prompt' : 'no modal';
+  })()`);
+  check("comment-required move shows the modal", typeof modal === "string" && !modal.startsWith("no "), String(modal));
+  await session.shot("k6-comment-dark-1440.png");
+  await session.evaluate(`document.querySelector('.dialog-head button').click()`);
+  await sleep(300);
+
+  // 7. new-task dialog
+  await session.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('New task')).click()`);
+  await sleep(600);
+  const dialog = await session.evaluate(`(() => {
+    const node = document.querySelector('.dialog');
+    return node ? node.querySelectorAll('input, textarea, select').length : 0;
+  })()`);
+  check("new-task dialog opens", dialog >= 5, `${dialog} fields`);
+  await session.shot("k6-newtask-dark-1440.png");
+  await session.evaluate(`document.querySelector('.dialog-head button').click()`);
+  await sleep(300);
+
+  // 8. theme toggle + light screenshots + 1920
+  const initialTheme = await session.evaluate(`document.documentElement.dataset.theme`);
+  await session.evaluate(`document.querySelector('[aria-label="Toggle theme"]').click()`);
+  await sleep(400);
+  const theme = await session.evaluate(`document.documentElement.dataset.theme`);
+  check("theme toggle flips the theme", theme !== initialTheme, `${initialTheme} → ${theme}`);
+  if (theme !== "light") {
+    await session.evaluate(`document.querySelector('[aria-label="Toggle theme"]').click()`);
+    await sleep(400);
+  }
+  await session.shot("k6-board-light-1440.png");
+  await session.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+  await sleep(500);
+  await session.shot("k6-board-light-1920.png");
+  await session.evaluate(`document.querySelector('[aria-label="Toggle theme"]').click()`);
+  await sleep(400);
+  await session.shot("k6-board-dark-1920.png");
+  await session.send("Emulation.setDeviceMetricsOverride", { width: 800, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(500);
+  await session.shot("k6-board-dark-800.png");
+
+  // 9. no page errors during the session
+  const errors = await session.evaluate(`window.__kbErrors ?? []`);
+  check("no uncaught page errors", errors.length === 0, errors.join(" · ") || "none");
+  const bodyText = await session.evaluate(`document.body.innerText.slice(0, 120)`);
+  console.log(`  page text: ${JSON.stringify(bodyText)}`);
+} catch (error) {
+  check("ui checks completed", false, error instanceof Error ? error.message : String(error));
+} finally {
+  chromium.kill();
+  cleanup();
+}
+
+console.log(failures === 0 ? "\n✓ all UI checks passed" : `\n✗ ${failures} UI check(s) failed`);
+process.exit(failures === 0 ? 1 * 0 : 1);

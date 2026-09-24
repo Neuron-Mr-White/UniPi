@@ -89,9 +89,12 @@ export function Board(props: BoardProps): JSX.Element {
       props.onNeedsComment(task, lane, hint);
       return;
     }
-    // Optimistic: move the card now, roll back if the server refuses.
-    upsertTask({ ...task, status: lane });
-    await applyDrop(task, lane, before);
+    // Snapshot the pre-move state FIRST: Solid's store proxies reflect later
+    // writes, so reading `task.status` after the optimistic update would already
+    // report the new lane and the move would look like a no-op.
+    const original: Task = { ...task, deps: [...(task.deps ?? [])], labels: [...(task.labels ?? [])] };
+    upsertTask({ ...original, status: lane });
+    await applyDrop(original, lane, before);
   }
 
   return (

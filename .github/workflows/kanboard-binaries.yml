@@ -62,6 +62,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # The UI is embedded in the binary, so it must exist before cargo runs
+      # (build.rs fails with instructions otherwise).
+      - name: Build the board UI
+        shell: bash
+        run: |
+          npm --prefix crates/kanboard/web ci --no-audit --no-fund
+          npm --prefix crates/kanboard/web run build
+
       # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV for the daemon).
       - name: Install Rust (1.98.1, as rust-toolchain.toml pins)
         uses: dtolnay/rust-toolchain@master

@@ -213,6 +213,64 @@ fn api_errors_are_4xx_with_the_rule_message() {
 }
 
 #[test]
+fn rules_endpoint_lists_the_transition_table_for_the_user_actor() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+
+    let response = http(daemon.port, "GET", "/api/rules", None).expect("rules");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let payload = response.json();
+
+    // in_review → todo is a user move that needs a comment (the rework note).
+    let allowed: Vec<&str> = payload["allowedMoves"]["in_review"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert!(allowed.contains(&"todo"), "{allowed:?}");
+    assert_eq!(
+        payload["commentRequired"]["in_review"]["todo"],
+        "rework note",
+        "{}",
+        payload
+    );
+
+    // todo → in_progress is system-only, so the user actor never sees it here.
+    let todo_moves: Vec<&str> = payload["allowedMoves"]["todo"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert!(!todo_moves.contains(&"in_progress"), "{todo_moves:?}");
+
+    assert_eq!(payload["final"], serde_json::json!(["done", "cancelled", "archived"]));
+}
+
+#[test]
+fn task_json_carries_allowed_moves_for_the_user_actor() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let slug = &fixture.project.slug;
+    let task = fixture.tasks().into_iter().next().unwrap();
+
+    let response = http(daemon.port, "GET", &format!("/api/tasks/{slug}/{}", task.id), None).expect("get");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let payload = response.json();
+    // The task starts in todo: backlog and cancelled are the user-reachable moves.
+    let moves: Vec<&str> = payload["allowedMoves"]
+        .as_array()
+        .expect("allowedMoves array")
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert!(moves.contains(&"backlog"), "{moves:?}");
+    assert!(moves.contains(&"cancelled"), "{moves:?}");
+    assert!(!moves.contains(&"in_progress"), "system-only move is absent: {moves:?}");
+}
+
+#[test]
 fn create_and_read_tasks_over_the_api() {
     let fixture = fixture_with_tasks();
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);

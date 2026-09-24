@@ -37,12 +37,23 @@ jobs:
         run: npm test
 
   kanboard-rust:
-    name: Kanboard crate (test + clippy)
+    name: Kanboard crate (web + test + clippy + UI checks)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # build.rs refuses to compile without web/dist, and the binary embeds it.
+      - name: Build the board UI
+        run: |
+          npm --prefix crates/kanboard/web ci --no-audit --no-fund
+          npm --prefix crates/kanboard/web run build
 
       # rust-toolchain.toml pins 1.98.1 (Topcoat's MSRV).
       - name: Install Rust
@@ -63,3 +74,11 @@ jobs:
       - name: Clippy
         working-directory: crates/kanboard
         run: cargo clippy --all-targets -- -D warnings
+
+      # Drives the real board in headless Chrome over CDP: lanes at the left
+      # edge, themed scrollbars, drag todo → backlog, the comment modal, the
+      # detail panel, the new-task dialog and the theme toggle.
+      - name: UI checks (headless chrome)
+        run: |
+          sudo apt-get update && sudo apt-get install -y chromium-browser || sudo snap install chromium
+          node crates/kanboard/tests/ui.mjs
