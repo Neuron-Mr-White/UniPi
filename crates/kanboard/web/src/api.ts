@@ -54,8 +54,11 @@ export interface ProjectSummary {
   prefix?: string;
   counts?: Record<string, number>;
   total?: number;
+  /** Tasks with a live run block. */
+  running?: number;
   problems?: Problem[];
-  updatedAt?: string;
+  /** Newest task change (RFC 3339), null for an empty project. */
+  updatedAt?: string | null;
 }
 
 export interface Rules {
@@ -88,6 +91,18 @@ export const LANES = [
 ] as const;
 
 export const PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
+export const PRIORITY_LABEL: Record<string, string> = {
+  none: "No priority",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};
+export const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+export function laneLabel(status: string): string {
+  return LANES.find((lane) => lane.id === status)?.label ?? status.replace("_", " ");
+}
 export const MUTED_LANES = new Set(["done", "cancelled", "archived"]);
 
 export class ApiError extends Error {
