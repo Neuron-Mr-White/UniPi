@@ -1,450 +1,579 @@
 /**
- * Task detail panel, the comment prompt for moves that need one, and the
- * "New task" dialog.
+ * Task detail drawer: editable title, markdown body with inline edit, activity
+ * timeline + auto-growing composer; a properties rail (status limited to allowed
+ * moves, priority, dependencies, labels, run block, file path).
  */
 
-import { For, Show, createEffect, createSignal, type JSX } from "solid-js";
-import { api, MUTED_LANES, PRIORITIES, canMove, needsComment, type Task } from "./api.js";
-import { Icon } from "./icons.js";
-import { renderMarkdown, relativeTime } from "./markdown.js";
-import { board, dismissToast, loadBoard, openTaskId, rules, toast, toasts, upsertTask } from "./state.js";
+import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js";
+import { Portal } from "solid-js/web";
+import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
+import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
+import { relativeTime, renderMarkdown } from "./markdown.js";
+import { hue } from "./paint.js";
+import {
+  board,
+  describe,
+  elapsed,
+  laneLabel,
+  loadBoard,
+  openTaskId,
+  rules,
+  setCommentRequest,
+  setOpenTaskId,
+  slug,
+  toast,
+  upsertTask,
+} from "./state.js";
+import { AutoTextarea, Avatar, Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
 
-export interface PanelProps {
-  slug: string;
-  onClose: () => void;
-}
-
-export function TaskPanel(props: PanelProps): JSX.Element {
+export function TaskPanel(): JSX.Element {
   const task = (): Task | undefined => board.tasks.find((candidate) => candidate.id === openTaskId());
-  const [title, setTitle] = createSignal("");
-  const [body, setBody] = createSignal("");
-  const [mode, setMode] = createSignal<"view" | "edit">("view");
-  const [comment, setComment] = createSignal("");
-  const [depQuery, setDepQuery] = createSignal("");
-  const [busy, setBusy] = createSignal(false);
-
-  createEffect(() => {
-    const current = task();
-    if (!current) return;
-    setTitle(current.title);
-    setBody(current.body ?? "");
-    setComment("");
-  });
-
-  const run = async (work: () => Promise<unknown>, message?: string): Promise<void> => {
-    setBusy(true);
-    try {
-      await work();
-      await loadBoard(props.slug);
-      if (message) toast(message, "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error");
-    } finally {
-      setBusy(false);
-    }
+  const close = (): void => {
+    setOpenTaskId(null);
   };
-
-  const statusOptions = (current: Task): string[] => {
-    const allowed = rules.allowedMoves[current.status];
-    const moves = Array.isArray(current.allowedMoves) && current.allowedMoves.length > 0 ? current.allowedMoves : allowed ?? [];
-    return [current.status, ...moves];
-  };
-
-  const depCandidates = (current: Task): Task[] => {
-    const needle = depQuery().trim().toLowerCase();
-    return board.tasks
-      .filter((candidate) => candidate.id !== current.id && !(current.deps ?? []).includes(candidate.id))
-      .filter((candidate) => needle.length === 0 || candidate.id.toLowerCase().includes(needle) || candidate.title.toLowerCase().includes(needle))
-      .slice(0, 6);
-  };
-
-  async function moveTo(current: Task, to: string): Promise<void> {
-    const hint = needsComment(rules, current.status, to);
-    if (hint && !window.confirm(`${to.replace("_", " ")} needs a comment (${hint}). Add one?`)) return;
-    const note = hint ? window.prompt(`${hint}:`) ?? undefined : undefined;
-    if (hint && note === undefined) return;
-    await run(async () => upsertTask(await api.move(props.slug, current.id, to, note)), `${current.id} → ${to.replace("_", " ")}`);
-  }
-
   return (
     <Show when={task()}>
       {(current) => (
-        <>
-          <div class="scrim" onClick={props.onClose} />
-          <aside class="panel" role="dialog" aria-label={`${current().id} details`} onKeyDown={(event) => event.key === "Escape" && props.onClose()}>
-            <header class="panel-head">
-              <span class="mono muted">{current().id}</span>
-              <span class={`dot ${current().status}`} aria-hidden="true" />
-              <span class="meta">{current().status.replace("_", " ")}</span>
-              <Show when={current().staleness && current().status === "in_progress" && current().staleness !== "running"}>
-                <span class="chip stale">stale run</span>
-              </Show>
-              <span class="spacer" />
-              <button class="ghost icon" aria-label="Close details" onClick={props.onClose}>
-                <Icon.close size={16} />
-              </button>
-            </header>
-
-            <div class="panel-body">
-              <div class="panel-main">
-                <input
-                  class="title-input"
-                  value={title()}
-                  aria-label="Task title"
-                  onInput={(event) => setTitle(event.currentTarget.value)}
-                  onBlur={() => title().trim() && title() !== current().title && void run(() => api.edit(props.slug, current().id, { title: title().trim() }), "Title saved")}
-                  onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
-                />
-
-                <section>
-                  <div class="row" style={{ "justify-content": "space-between", "margin-bottom": "8px" }}>
-                    <h3 class="section-title" style={{ margin: 0 }}>Description</h3>
-                    <div class="tabs" role="tablist">
-                      <button role="tab" aria-selected={mode() === "view"} onClick={() => setMode("view")}>Preview</button>
-                      <button role="tab" aria-selected={mode() === "edit"} onClick={() => setMode("edit")}>Edit</button>
-                    </div>
-                  </div>
-                  <Show
-                    when={mode() === "edit"}
-                    fallback={
-                      <div class="body-view" innerHTML={renderMarkdown(current().body) || '<p class="muted">No description.</p>'} />
-                    }
-                  >
-                    <textarea
-                      value={body()}
-                      aria-label="Task body (markdown)"
-                      onInput={(event) => setBody(event.currentTarget.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                          event.preventDefault();
-                          void run(() => api.edit(props.slug, current().id, { body: body() }), "Description saved");
-                        }
-                      }}
-                    />
-                    <div class="row" style={{ "margin-top": "8px" }}>
-                      <button class="primary" disabled={busy()} onClick={() => void run(() => api.edit(props.slug, current().id, { body: body() }), "Description saved")}>
-                        Save description
-                      </button>
-                      <span class="meta">⌘/Ctrl+Enter</span>
-                    </div>
-                  </Show>
-                </section>
-
-                <section>
-                  <h3 class="section-title">Comment</h3>
-                  <textarea
-                    value={comment()}
-                    placeholder="What changed, what you verified, what is blocked…"
-                    aria-label="Add a comment"
-                    onInput={(event) => setComment(event.currentTarget.value)}
-                  />
-                  <div class="row" style={{ "margin-top": "8px" }}>
-                    <button
-                      class="primary"
-                      disabled={busy() || comment().trim().length === 0}
-                      onClick={() => void run(async () => { await api.note(props.slug, current().id, comment().trim()); setComment(""); }, "Comment added")}
-                    >
-                      Add comment
-                    </button>
-                  </div>
-                </section>
-
-                <section>
-                  <h3 class="section-title">Activity</h3>
-                  <ul class="timeline">
-                    <For each={[...current().activity].reverse().slice(0, 30)}>
-                      {(entry) => (
-                        <li>
-                          <span class={`avatar ${entry.actor}`} aria-hidden="true">{entry.actor === "agent" ? "⌬" : entry.actor === "system" ? "⚙" : "◍"}</span>
-                          <div>
-                            <div class="row" style={{ gap: "6px" }}>
-                              <strong style={{ "font-size": "12px" }}>{entry.actor}</strong>
-                              <span class="meta">{relativeTime(entry.at)}</span>
-                            </div>
-                            <div class="dim" style={{ "white-space": "pre-wrap" }}>{entry.text}</div>
-                          </div>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </section>
-              </div>
-
-              <aside class="panel-side">
-                <div class="field">
-                  <label for="status">Status</label>
-                  <div class="select-wrap">
-                    <select
-                      id="status"
-                      value={current().status}
-                      disabled={busy()}
-                      onChange={(event) => void moveTo(current(), event.currentTarget.value)}
-                    >
-                      <For each={statusOptions(current())}>{(option) => <option value={option}>{option.replace("_", " ")}</option>}</For>
-                    </select>
-                    <Icon.chevron size={14} />
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label for="priority">Priority</label>
-                  <div class="select-wrap">
-                    <select
-                      id="priority"
-                      value={current().priority}
-                      disabled={busy()}
-                      onChange={(event) => void run(() => api.edit(props.slug, current().id, { priority: event.currentTarget.value }), "Priority saved")}
-                    >
-                      <For each={PRIORITIES}>{(option) => <option value={option}>{option}</option>}</For>
-                    </select>
-                    <Icon.chevron size={14} />
-                  </div>
-                </div>
-
-                <div class="field">
-                  <label>Dependencies</label>
-                  <ul class="stack" style={{ "list-style": "none", padding: 0, margin: "0 0 8px" }}>
-                    <For each={current().deps}>
-                      {(dep) => (
-                        <li class="row">
-                          <span class="mono">{dep}</span>
-                          <button class="ghost icon" aria-label={`Remove dependency ${dep}`} onClick={() => void run(() => api.unlink(props.slug, current().id, dep), "Dependency removed")}>
-                            <Icon.close size={12} />
-                          </button>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                  <input
-                    placeholder="Search an id…"
-                    value={depQuery()}
-                    aria-label="Search tasks to depend on"
-                    onInput={(event) => setDepQuery(event.currentTarget.value)}
-                  />
-                  <Show when={depQuery().trim().length > 0}>
-                    <ul class="stack" style={{ "list-style": "none", padding: 0, margin: "8px 0 0" }}>
-                      <For each={depCandidates(current())}>
-                        {(candidate) => (
-                          <li>
-                            <button
-                              class="ghost"
-                              style={{ width: "100%", "text-align": "left" }}
-                              onClick={() => void run(async () => { await api.link(props.slug, current().id, candidate.id); setDepQuery(""); }, `After ${candidate.id}`)}
-                            >
-                              <span class="mono">{candidate.id}</span> <span class="nowrap">{candidate.title}</span>
-                            </button>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                  </Show>
-                </div>
-
-                <div class="field stack" style={{ gap: "8px" }}>
-                  <Show when={!MUTED_LANES.has(current().status)}>
-                    <button class="secondary" disabled={busy()} onClick={() => void run(() => api.duplicate(props.slug, current().id), "Duplicated")}>
-                      Duplicate
-                    </button>
-                  </Show>
-                  <Show when={canMove(rules, current(), "cancelled")}>
-                    <button class="danger" disabled={busy()} onClick={() => void moveTo(current(), "cancelled")}>
-                      Cancel task
-                    </button>
-                  </Show>
-                </div>
-                <Show when={current().path}>
-                  <p class="meta mono" style={{ "word-break": "break-all" }}>{current().path}</p>
-                </Show>
-              </aside>
-            </div>
+        <Portal>
+          <div class="drawer-scrim" onClick={close} />
+          <aside class="drawer panel" role="dialog" aria-label={`${current().id} details`}>
+            <Drawer task={current()} onClose={close} />
           </aside>
-        </>
+        </Portal>
       )}
     </Show>
   );
 }
 
-/** Shown when a drop needs a comment before the server will accept it. */
-export function CommentModal(props: {
-  request: { task: Task; to: string; hint: string } | null;
-  slug: string;
-  onClose: () => void;
-}): JSX.Element {
-  const [text, setText] = createSignal("");
+function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
+  const [title, setTitle] = createSignal(props.task.title);
+  const [body, setBody] = createSignal(props.task.body ?? "");
+  const [editing, setEditing] = createSignal(false);
+  const [comment, setComment] = createSignal("");
+  const [labelDraft, setLabelDraft] = createSignal("");
   const [busy, setBusy] = createSignal(false);
 
-  createEffect(() => {
-    if (props.request) setText("");
-  });
-
-  async function submit(): Promise<void> {
-    const request = props.request;
-    if (!request) return;
-    setBusy(true);
-    try {
-      upsertTask(await api.move(props.slug, request.task.id, request.to, text().trim()));
-      if (request.to) await api.order(props.slug, request.task.id, { bottom: true });
-      await loadBoard(props.slug);
-      toast(`${request.task.id} → ${request.to.replace("_", " ")}`, "success");
-      props.onClose();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Show when={props.request}>
-      <div class="modal" role="dialog" aria-modal="true" aria-label="Comment required" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-        <div class="dialog" style={{ width: "min(520px, 96vw)" }}>
-          <header class="dialog-head">
-            <Icon.warn size={16} />
-            <strong>Comment required</strong>
-            <span class="spacer" />
-            <button class="ghost icon" aria-label="Cancel" onClick={props.onClose}>
-              <Icon.close size={14} />
-            </button>
-          </header>
-          <div class="dialog-body">
-            <p class="prompt">
-              {props.request!.task.id} → {props.request!.to.replace("_", " ")}: {props.request!.hint}
-            </p>
-            <textarea
-              autofocus
-              value={text()}
-              placeholder="This comment is what the next reader sees…"
-              aria-label="Comment"
-              onInput={(event) => setText(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  void submit();
-                }
-              }}
-            />
-          </div>
-          <footer class="dialog-foot">
-            <span class="meta spacer" style={{ "text-align": "left" }}>⌘/Ctrl+Enter</span>
-            <button onClick={props.onClose}>Cancel</button>
-            <button class="primary" disabled={busy() || text().trim().length === 0} onClick={() => void submit()}>
-              Save &amp; move
-            </button>
-          </footer>
-        </div>
-      </div>
-    </Show>
+  // Reset drafts when a different task opens (not on every live refresh).
+  createEffect(
+    on(
+      () => props.task.id,
+      () => {
+        setTitle(props.task.title);
+        setBody(props.task.body ?? "");
+        setEditing(false);
+        setComment("");
+      },
+    ),
   );
-}
+  createEffect(
+    on(
+      () => props.task.title,
+      (next) => {
+        if (document.activeElement?.classList.contains("title-edit")) return;
+        setTitle(next);
+      },
+    ),
+  );
 
-/** "New task" dialog: title, body, lane, priority, optional dependency. */
-export function NewTaskDialog(props: { slug: string; lane: string | null; onClose: () => void }): JSX.Element {
-  const [title, setTitle] = createSignal("");
-  const [body, setBody] = createSignal("");
-  const [lane, setLane] = createSignal("backlog");
-  const [priority, setPriority] = createSignal("none");
-  const [after, setAfter] = createSignal("");
-  const [busy, setBusy] = createSignal(false);
+  const target = (): string => slug() ?? "";
 
-  createEffect(() => {
-    if (props.lane) setLane(props.lane === "todo" ? "todo" : "backlog");
-    setTitle("");
-    setBody("");
-    setAfter("");
-    setPriority("none");
-  });
-
-  async function submit(): Promise<void> {
-    if (title().trim().length === 0) return;
+  const run = async (work: () => Promise<unknown>, message?: string): Promise<boolean> => {
     setBusy(true);
     try {
-      const created = await api.create(props.slug, {
-        title: title().trim(),
-        body: body().trim() || undefined,
-        status: lane(),
-        priority: priority(),
-        after: after().trim() ? [after().trim()] : undefined,
-      });
-      await loadBoard(props.slug);
-      toast(`${created.id} added`, "success");
-      props.onClose();
+      await work();
+      await loadBoard(target());
+      if (message) toast(message, "success");
+      return true;
     } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error");
+      toast(describe(error), "error");
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const moves = (): string[] => {
+    const current = props.task;
+    const explicit =
+      Array.isArray(current.allowedMoves) && current.allowedMoves.length > 0 ? current.allowedMoves : rules.allowedMoves[current.status] ?? [];
+    return explicit.filter((status) => status !== current.status && status !== "archived");
+  };
+
+  function moveTo(to: string): void {
+    const current = props.task;
+    const hint = needsComment(rules, current.status, to);
+    if (hint) {
+      setCommentRequest({ task: { ...current }, to, hint });
+      return;
+    }
+    void run(async () => upsertTask(await api.move(target(), current.id, to)), `Moved ${current.id} to ${laneLabel(to)}`);
   }
 
+  const saveTitle = (): void => {
+    const next = title().trim();
+    if (next && next !== props.task.title) void run(() => api.edit(target(), props.task.id, { title: next }));
+    else setTitle(props.task.title);
+  };
+
+  const saveBody = async (): Promise<void> => {
+    if (body() === (props.task.body ?? "")) {
+      setEditing(false);
+      return;
+    }
+    if (await run(() => api.edit(target(), props.task.id, { body: body() }), "Description saved")) setEditing(false);
+  };
+
+  const addComment = async (): Promise<void> => {
+    const text = comment().trim();
+    if (!text) return;
+    if (await run(() => api.note(target(), props.task.id, text))) setComment("");
+  };
+
+  const addLabel = (): void => {
+    const label = labelDraft().trim().replace(/,/g, "");
+    setLabelDraft("");
+    if (!label || (props.task.labels ?? []).includes(label)) return;
+    void run(() => api.edit(target(), props.task.id, { labels: [...(props.task.labels ?? []), label] }));
+  };
+
+  const copy = (text: string, what: string): void => {
+    void navigator.clipboard?.writeText(text).then(
+      () => toast(`Copied ${what}`, "success"),
+      () => toast(`Couldn't copy ${what}`, "error"),
+    );
+  };
+
+  const depTask = (id: string): Task | undefined => board.tasks.find((candidate) => candidate.id === id);
+
   return (
-    <Show when={props.lane !== null}>
-      <div class="modal" role="dialog" aria-modal="true" aria-label="New task" onClick={(event) => event.target === event.currentTarget && props.onClose()}>
-        <div class="dialog">
-          <header class="dialog-head">
-            <Icon.plus size={16} />
-            <strong>New task</strong>
-            <span class="spacer" />
-            <button class="ghost icon" aria-label="Cancel" onClick={props.onClose}>
-              <Icon.close size={14} />
+    <>
+      <header class="drawer-head panel-head">
+        <span class="crumb-pill">
+          <StatusGlyph status={props.task.status} />
+          {props.task.id}
+        </span>
+        <Show when={props.task.run}>
+          <span class="agent-chip">
+            <span class="pulse" />
+            agent · {props.task.run?.mode ?? "direct"} · {elapsed(props.task.run?.started)}
+          </span>
+        </Show>
+        <span class="spacer" />
+        <button class="icon-btn" aria-label="Copy task id" title="Copy id" onClick={() => copy(props.task.id, "id")}>
+          <Icon.copy />
+        </button>
+        <Popover
+          width={220}
+          align="end"
+          label="Task actions"
+          trigger={(api) => (
+            <button class="icon-btn" ref={api.ref} aria-label="Task actions" aria-expanded={api.open} onClick={api.toggle}>
+              <Icon.more />
             </button>
-          </header>
-          <div class="dialog-body">
-            <div class="field">
-              <label for="new-title">Title</label>
-              <input id="new-title" autofocus value={title()} onInput={(event) => setTitle(event.currentTarget.value)} onKeyDown={(event) => event.key === "Enter" && (event.metaKey || event.ctrlKey) && void submit()} />
-            </div>
-            <div class="field">
-              <label for="new-body">Description</label>
-              <textarea id="new-body" value={body()} onInput={(event) => setBody(event.currentTarget.value)} />
-            </div>
-            <div class="row" style={{ gap: "12px" }}>
-              <div class="field grow" style={{ margin: 0 }}>
-                <label for="new-lane">Lane</label>
-                <div class="select-wrap">
-                  <select id="new-lane" value={lane()} onChange={(event) => setLane(event.currentTarget.value)}>
-                    <option value="backlog">Backlog</option>
-                    <option value="todo">Todo</option>
-                  </select>
-                  <Icon.chevron size={14} />
+          )}
+        >
+          {(close) => (
+            <>
+              <MenuItem
+                icon={<Icon.duplicate size={14} />}
+                label="Duplicate"
+                onSelect={() => {
+                  close();
+                  void run(() => api.duplicate(target(), props.task.id), "Duplicated");
+                }}
+              />
+              <MenuItem
+                icon={<Icon.copy size={14} />}
+                label="Copy file path"
+                disabled={!props.task.path}
+                onSelect={() => {
+                  close();
+                  copy(props.task.path ?? "", "path");
+                }}
+              />
+              <Show when={props.task.status !== "archived" && canMove(rules, props.task, "archived")}>
+                <MenuItem
+                  icon={<Icon.archive size={14} />}
+                  label="Archive"
+                  onSelect={() => {
+                    close();
+                    moveTo("archived");
+                  }}
+                />
+              </Show>
+              <Show when={props.task.status !== "cancelled" && canMove(rules, props.task, "cancelled")}>
+                <MenuSeparator />
+                <MenuItem
+                  icon={<Icon.close size={14} />}
+                  label="Cancel task"
+                  danger
+                  onSelect={() => {
+                    close();
+                    moveTo("cancelled");
+                  }}
+                />
+              </Show>
+            </>
+          )}
+        </Popover>
+        <button class="icon-btn" aria-label="Close details" title="Close  Esc" onClick={props.onClose}>
+          <Icon.close />
+        </button>
+      </header>
+
+      <div class="drawer-body">
+        <div class="drawer-main">
+          <AutoTextarea
+            class="title-edit title-input"
+            rows={1}
+            value={title()}
+            aria-label="Task title"
+            onInput={(event) => setTitle(event.currentTarget.value)}
+            onBlur={saveTitle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                setTitle(props.task.title);
+                event.currentTarget.blur();
+                event.stopPropagation();
+              }
+            }}
+          />
+
+          <div class="section" style={{ "margin-top": "10px" }}>
+            <Show
+              when={editing()}
+              fallback={
+                <div
+                  class={`body-view${(props.task.body ?? "").trim() ? "" : " empty"}`}
+                  role="button"
+                  tabindex="0"
+                  title="Click to edit"
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("a")) return;
+                    setBody(props.task.body ?? "");
+                    setEditing(true);
+                  }}
+                  onKeyDown={(event) => event.key === "Enter" && setEditing(true)}
+                  innerHTML={renderMarkdown(props.task.body) || "Add a description…"}
+                />
+              }
+            >
+              <div class="body-editor">
+                <AutoTextarea
+                  value={body()}
+                  maxHeight={480}
+                  aria-label="Description (markdown)"
+                  autofocus
+                  onInput={(event) => setBody(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void saveBody();
+                    }
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setEditing(false);
+                    }
+                  }}
+                />
+                <div class="editor-foot">
+                  <button class="btn primary" disabled={busy()} onClick={() => void saveBody()}>
+                    Save
+                  </button>
+                  <button class="btn" onClick={() => setEditing(false)}>
+                    Cancel
+                  </button>
+                  <span class="hint">Markdown · {MOD}+Enter to save</span>
                 </div>
               </div>
-              <div class="field grow" style={{ margin: 0 }}>
-                <label for="new-priority">Priority</label>
-                <select id="new-priority" value={priority()} onChange={(event) => setPriority(event.currentTarget.value)}>
-                  <For each={PRIORITIES}>{(option) => <option value={option}>{option}</option>}</For>
-                </select>
-              </div>
-              <div class="field grow" style={{ margin: 0 }}>
-                <label for="new-after">After (id)</label>
-                <input id="new-after" placeholder="optional" value={after()} onInput={(event) => setAfter(event.currentTarget.value)} />
+            </Show>
+          </div>
+
+          <div class="section">
+            <div class="section-head">
+              Activity
+              <span class="spacer" />
+              <span class="muted num" style={{ "font-weight": 450 }}>
+                {props.task.activity.length}
+              </span>
+            </div>
+            <ul class="timeline">
+              <For each={[...props.task.activity].reverse().slice(0, 40)}>
+                {(entry) => (
+                  <li>
+                    <Avatar actor={entry.actor} />
+                    <div>
+                      <div class="who">
+                        <strong>{entry.actor}</strong>
+                        <time datetime={entry.at} title={entry.at}>
+                          {relativeTime(entry.at)}
+                        </time>
+                      </div>
+                      <div class={`what${entry.actor === "system" ? " system" : ""}`}>{entry.text}</div>
+                    </div>
+                  </li>
+                )}
+              </For>
+            </ul>
+            <div class="composer">
+              <AutoTextarea
+                value={comment()}
+                placeholder="Leave a note — what changed, what's verified, what's blocked…"
+                aria-label="Add a comment"
+                onInput={(event) => setComment(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    void addComment();
+                  }
+                }}
+              />
+              <div class="composer-foot">
+                <span class="hint">
+                  <Kbd keys={[MOD, "↵"]} />
+                </span>
+                <span class="spacer" />
+                <button class="btn primary" disabled={busy() || comment().trim().length === 0} onClick={() => void addComment()}>
+                  Comment
+                </button>
               </div>
             </div>
           </div>
-          <footer class="dialog-foot">
-            <button onClick={props.onClose}>Cancel</button>
-            <button class="primary" disabled={busy() || title().trim().length === 0} onClick={() => void submit()}>
-              Add task
-            </button>
-          </footer>
         </div>
+
+        <aside class="drawer-side">
+          <div class="prop">
+            <span class="prop-label">Status</span>
+            <Popover
+              width={220}
+              label="Change status"
+              trigger={(api) => (
+                <button class="prop-value" id="status" ref={api.ref} aria-expanded={api.open} disabled={busy() || !!props.task.run} onClick={api.toggle}>
+                  <StatusGlyph status={props.task.status} />
+                  {laneLabel(props.task.status)}
+                  <Icon.chevronDown size={12} class="caret" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  <MenuLabel>Move to</MenuLabel>
+                  <MenuItem role="option" icon={<StatusGlyph status={props.task.status} />} label={laneLabel(props.task.status)} checked onSelect={close} />
+                  <For each={moves()}>
+                    {(status) => (
+                      <MenuItem
+                        role="option"
+                        icon={<StatusGlyph status={status} />}
+                        label={laneLabel(status)}
+                        hint={needsComment(rules, props.task.status, status) ? "needs note" : undefined}
+                        checked={false}
+                        onSelect={() => {
+                          close();
+                          moveTo(status);
+                        }}
+                      />
+                    )}
+                  </For>
+                  <Show when={moves().length === 0}>
+                    <div class="menu-section">No moves from {laneLabel(props.task.status)}.</div>
+                  </Show>
+                </>
+              )}
+            </Popover>
+          </div>
+
+          <div class="prop">
+            <span class="prop-label">Priority</span>
+            <Popover
+              width={200}
+              label="Change priority"
+              trigger={(api) => (
+                <button
+                  class={`prop-value${props.task.priority === "none" ? " muted" : ""}`}
+                  id="priority"
+                  ref={api.ref}
+                  aria-expanded={api.open}
+                  disabled={busy()}
+                  onClick={api.toggle}
+                >
+                  <PriorityGlyph priority={props.task.priority} />
+                  {PRIORITY_LABEL[props.task.priority]}
+                  <Icon.chevronDown size={12} class="caret" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <For each={[...PRIORITIES].reverse()}>
+                  {(priority) => (
+                    <MenuItem
+                      role="option"
+                      icon={<PriorityGlyph priority={priority} />}
+                      label={PRIORITY_LABEL[priority]}
+                      checked={props.task.priority === priority}
+                      onSelect={() => {
+                        close();
+                        if (priority !== props.task.priority) void run(() => api.edit(target(), props.task.id, { priority }));
+                      }}
+                    />
+                  )}
+                </For>
+              )}
+            </Popover>
+          </div>
+
+          <div class="rail-sep" />
+          <div class="rail-title">Runs after</div>
+          <div class="dep-list">
+            <For each={props.task.deps}>
+              {(dep) => (
+                <div class="dep-item">
+                  <StatusGlyph status={depTask(dep)?.status ?? "backlog"} />
+                  <button class="dep-text" onClick={() => depTask(dep) && setOpenTaskId(dep)} title={depTask(dep)?.title}>
+                    <span class="mono">{dep}</span>
+                    {depTask(dep)?.title ?? "missing task"}
+                  </button>
+                  <button class="icon-btn sm" aria-label={`Remove dependency ${dep}`} onClick={() => void run(() => api.unlink(target(), props.task.id, dep))}>
+                    <Icon.close size={12} />
+                  </button>
+                </div>
+              )}
+            </For>
+            <DepPicker task={props.task} onPick={(id) => void run(() => api.link(target(), props.task.id, id), `Now runs after ${id}`)} />
+          </div>
+
+          <div class="rail-sep" />
+          <div class="rail-title">Labels</div>
+          <Show when={(props.task.labels ?? []).length > 0}>
+            <div class="label-list">
+              <For each={props.task.labels ?? []}>
+                {(label) => (
+                  <span class="tag label removable" style={{ "--label-hue": hue(label) }}>
+                    <span>{label}</span>
+                    <button
+                      aria-label={`Remove label ${label}`}
+                      onClick={() =>
+                        void run(() => api.edit(target(), props.task.id, { labels: (props.task.labels ?? []).filter((item) => item !== label) }))
+                      }
+                    >
+                      <Icon.close size={10} />
+                    </button>
+                  </span>
+                )}
+              </For>
+            </div>
+          </Show>
+          <input
+            class="label-input"
+            placeholder="+ Add label"
+            aria-label="Add label"
+            value={labelDraft()}
+            onInput={(event) => setLabelDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                addLabel();
+              }
+            }}
+            onBlur={addLabel}
+          />
+
+          <Show when={props.task.run}>
+            <div class="rail-sep" />
+            <div class="run-card">
+              <span class="agent-chip">
+                <span class="pulse" />
+                Agent running
+              </span>
+              <dl>
+                <dt>mode</dt>
+                <dd>{props.task.run?.mode ?? "direct"}</dd>
+                <dt>session</dt>
+                <dd>{props.task.run?.session ?? "—"}</dd>
+                <dt>host</dt>
+                <dd>{props.task.run?.host ?? "—"}</dd>
+                <dt>pid</dt>
+                <dd>{props.task.run?.pid ?? "—"}</dd>
+                <dt>started</dt>
+                <dd>{elapsed(props.task.run?.started) === "now" ? "just now" : `${elapsed(props.task.run?.started)} ago`}</dd>
+              </dl>
+            </div>
+          </Show>
+
+          <div class="rail-sep" />
+          <dl class="meta-lines">
+            <dt>Created</dt>
+            <dd title={props.task.created}>{relativeTime(props.task.created)}</dd>
+            <dt>Updated</dt>
+            <dd title={props.task.updated}>{relativeTime(props.task.updated)}</dd>
+          </dl>
+          <Show when={props.task.path}>
+            <div class="path-box" title={props.task.path}>
+              <span>{props.task.path}</span>
+              <button class="icon-btn sm" aria-label="Copy file path" onClick={() => copy(props.task.path ?? "", "path")}>
+                <Icon.copy size={12} />
+              </button>
+            </div>
+          </Show>
+        </aside>
       </div>
-    </Show>
+    </>
   );
 }
 
-/** Toasts (bottom-right, dismissible). */
-export function Toasts(): JSX.Element {
+function DepPicker(props: { task: Task; onPick: (id: string) => void }): JSX.Element {
+  const [needle, setNeedle] = createSignal("");
+  const candidates = (): Task[] => {
+    const text = needle().trim().toLowerCase();
+    return board.tasks
+      .filter((candidate) => candidate.id !== props.task.id && !(props.task.deps ?? []).includes(candidate.id))
+      .filter((candidate) => !["cancelled", "archived"].includes(candidate.status))
+      .filter((candidate) => !text || candidate.id.toLowerCase().includes(text) || candidate.title.toLowerCase().includes(text))
+      .slice(0, 8);
+  };
   return (
-    <div class="toasts" role="status" aria-live="polite">
-      <For each={toasts()}>
-        {(item) => (
-          <div class={`toast ${item.kind}`}>
-            <span class="grow">{item.message}</span>
-            <button class="ghost icon" aria-label="Dismiss" onClick={() => dismissToast(item.id)}>
-              <Icon.close size={12} />
-            </button>
+    <Popover
+      width={300}
+      label="Add dependency"
+      trigger={(api) => (
+        <button class="rail-add" ref={api.ref} aria-expanded={api.open} onClick={api.toggle}>
+          <Icon.plus size={13} />
+          Add dependency
+        </button>
+      )}
+    >
+      {(close) => (
+        <>
+          <div class="pop-search">
+            <Icon.search size={14} />
+            <input placeholder="Runs after…" aria-label="Search tasks to depend on" value={needle()} onInput={(event) => setNeedle(event.currentTarget.value)} />
           </div>
-        )}
-      </For>
-    </div>
+          <For each={candidates()} fallback={<div class="menu-section">No matching tasks.</div>}>
+            {(candidate) => (
+              <MenuItem
+                role="option"
+                icon={<StatusGlyph status={candidate.status} />}
+                label={
+                  <>
+                    <span class="mono muted" style={{ "margin-right": "6px" }}>
+                      {candidate.id}
+                    </span>
+                    {candidate.title}
+                  </>
+                }
+                onSelect={() => {
+                  close();
+                  setNeedle("");
+                  props.onPick(candidate.id);
+                }}
+              />
+            )}
+          </For>
+        </>
+      )}
+    </Popover>
   );
 }
