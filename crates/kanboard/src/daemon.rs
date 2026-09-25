@@ -140,8 +140,17 @@ pub fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
-        true
+        // `tasklist` prints the process as a CSV row when it exists and an
+        // "INFO: No tasks…" line otherwise; if it can't run, assume alive.
+        match std::process::Command::new("tasklist")
+            .arg("/FI")
+            .arg(format!("PID eq {pid}"))
+            .args(["/NH", "/FO", "CSV"])
+            .output()
+        {
+            Ok(out) => String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\"")),
+            Err(_) => true,
+        }
     }
 }
 

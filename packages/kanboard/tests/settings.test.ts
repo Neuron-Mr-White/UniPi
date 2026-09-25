@@ -101,7 +101,7 @@ describe("settings hub actions", () => {
     const argv = JSON.parse(piSet![3]!);
     assert.equal(argv[0], process.execPath);
     assert.ok(argv.length <= 2, "execPath + optional script");
-    if (argv.length === 2) assert.ok(argv[1].includes("pi"), argv[1]);
+    if (argv.length === 2) assert.equal(argv[1], process.argv[1]);
     assert.deepEqual(JSON.parse(modelsSet![3]!), ["anthropic/claude", "openai/gpt-5"]);
   });
 
