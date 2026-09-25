@@ -11,7 +11,7 @@ pi install npm:@pi-unipi/unipi
 
 ## Requirements
 
-- **Pi (`@earendil-works/pi-coding-agent`) `^0.86.0`** — Unipi 3.0.0-alpha tracks the Pi 0.86 SDK (JSON-strict `ToolCall.arguments` / `ToolResultMessage.details`, `TranscriptContext` custom-provider inputs, native prompt-cache warming, per-model compaction budgets, `ctx.modelRegistry.stream()`). Older Pi releases (0.80–0.85) still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<3.0.0` if you must stay on an older Pi.
+- **Pi (`@earendil-works/pi-coding-agent`) `^0.87.1`** — Unipi 3.0.0-alpha tracks the Pi 0.87 SDK (extension boundary events, `SessionManager`-canonical context, `TranscriptContext` custom-provider inputs, native prompt-cache warming). Older Pi releases still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<3.0.0` if you must stay on an older Pi.
 
 ## What You Get
 
@@ -19,7 +19,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Long-Horizon](./packages/long-horizon/)** — Mode-gated long-horizon execution: `/goal` (one objective until verifiably true, propose+verify), `/ralph` (task-file iteration loops), `/swarm` (independent fan-out + synthesis), `/graph` (dependent multi-step work). A TypeSafe jev prompt judge routes each turn; one automation owner per session with park/resume; runaway-guard steering; token/turn/stall budgets.
 
-**[Memory](./packages/memory/README.md)** — SQLite + vector search stores facts, preferences, and decisions. Project-scoped and global. The agent remembers what you told it last week.
+**[Memory](./packages/memory/README.md)** — Markdown files + [MemPalace](https://github.com/mempalace/mempalace) semantic search share a memory palace across pi, Devin, and zcode. Facts, preferences, and decisions persist across sessions; v2 data converts via `/unipi:memory migrate`.
 
 **[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, percentage auto-compaction, session recall, and sandbox execution.
 

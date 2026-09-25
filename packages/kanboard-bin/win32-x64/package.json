@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard-win32-x64",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "unipi kanboard binary for win32 x64 (MSVC) \u2014 installed by @pi-unipi/kanboard",
   "license": "MIT",
   "author": "Neuron Mr White",

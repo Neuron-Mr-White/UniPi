@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/watchdog",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "Jev watchdog for long-running tool calls and background tasks \u2014 judges stuck work via TypeSafe System One and kills or warns",
   "type": "module",
   "main": "index.ts",
@@ -32,12 +32,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/background-tasks": "3.0.0-alpha.0",
-    "@pi-unipi/core": "3.0.0-alpha.0"
+    "@pi-unipi/background-tasks": "3.0.0-alpha.1",
+    "@pi-unipi/core": "3.0.0-alpha.1"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.86.0",
-    "@earendil-works/pi-tui": "^0.86.0"
+    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

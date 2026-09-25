@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "3.0.0-alpha.0",
-  "description": "Persistent cross-session memory with MemPalace backend (auto-installed) and SQLite fallback for Pi coding agent",
+  "version": "3.0.0-alpha.1",
+  "description": "Persistent cross-session memory on MemPalace (auto-installed): daemon-routed writes, shared palace with other agents, for Pi coding agent",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -22,29 +22,32 @@
     "unipi",
     "memory",
     "mempalace",
-    "vector-search",
-    "sqlite-vec"
+    "vector-search"
   ],
   "files": [
-    "index.ts",
-    "storage.ts",
-    "embedding.ts",
+    "paths.ts",
+    "files.ts",
+    "session.ts",
+    "daemon.ts",
+    "reader.ts",
+    "pending.ts",
+    "convert.ts",
+    "mempalace.ts",
     "settings.ts",
     "tools.ts",
     "commands.ts",
-    "mempalace.ts",
-    "bridge/mempalace_bridge.py",
+    "index.ts",
     "tui/**/*",
     "skills/**/*",
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.0",
-    "@pi-unipi/info-screen": "3.0.0-alpha.0",
+    "@pi-unipi/core": "3.0.0-alpha.1",
+    "@pi-unipi/info-screen": "3.0.0-alpha.1",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.86.0",
+    "@earendil-works/pi-coding-agent": "^0.87.1",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

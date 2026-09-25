@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/subagents",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "Subagents for UniPi \u2014 parallel execution, file locking, workflow integration",
   "type": "module",
   "main": "src/index.ts",
@@ -9,16 +9,16 @@
     "test": "npx tsx --test src/__tests__/*.test.ts"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.0",
-    "@earendil-works/pi-agent-core": "^0.86.0",
+    "@pi-unipi/core": "3.0.0-alpha.1",
+    "@earendil-works/pi-agent-core": "^0.87.1",
     "acorn": "8.18.0"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.86.0",
-    "@earendil-works/pi-tui": "^0.86.0",
+    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1",
     "typebox": "^1.1.38"
   },
   "files": [

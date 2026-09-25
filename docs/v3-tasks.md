@@ -94,7 +94,7 @@ Removals and recreations are green-lit to start immediately.
 - [ ] Ok for now
 
 ### 14. `memory` — improve
-- [ ] More improvement: compatibility (backends, migration) and UX
+- [x] Rewritten onto upstream MemPalace 3.10: markdown files are the durable tier, daemon job-queue writes ("prefer" policy — direct CLI when no daemon), one warm read-only MCP reader, pending journal, `/unipi:memory migrate` explicit v2 conversion with backups, loose-file adoption, version gate (≥3.10 → markdown-only), v2 commands restored (shipped in 3.0.0-alpha.1)
 - [ ] Continue MemPalace compatibility work where gaps remain
 
 ### 15. `notify` — keep

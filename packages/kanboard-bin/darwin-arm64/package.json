@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard-darwin-arm64",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "unipi kanboard binary for darwin arm64 (Apple silicon) \u2014 installed by @pi-unipi/kanboard",
   "license": "MIT",
   "author": "Neuron Mr White",

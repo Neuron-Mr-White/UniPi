@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.1] — 2026-09-25
+
+### Breaking Changes
+
+- **BREAKING: `memory` is rebuilt on upstream MemPalace 3.10** — the Python bridge (`mempalace_bridge.py`), SQLite/embedding backends, and the direct-`upsert` write path are gone. **Migration path:** v2 data is never converted automatically — pi shows `v2 memories found — run /unipi:memory migrate` on the session card + footer, and `/unipi:memory migrate` prints a plan, asks to confirm, then converts with backups (`~/.mempalace/palace.bak-unipi-<ts>` + `~/.unipi/memory-v2-backup-<ts>`). Rollback instructions live in `packages/memory/README.md` ("Going back to v2").
+- **BREAKING: memory embedding settings removed** — `provider`, `model`, `baseUrl`, `dimensions`, `apiKey`, `suppressMigrationWarning`, the re-embed action, and `/unipi:memory-reembed` are gone; MemPalace embeds itself. Migration path: none needed — stale settings are ignored.
+- **BREAKING: `memory.autoStartDaemon` now defaults OFF** — v3 writes directly (`mempalace mine`, honoring the user's `write_routing`) unless a daemon is already running, so MemPalace MCP servers in other tools are unaffected. Turn it on in `/unipi:settings` → Memory if you want parallel pi sessions to never collide.
+- **BREAKING: pi SDK floor raised to `^0.87.1`** — all `@earendil-works/pi-*` pins moved to 0.87.1 (extension boundary events, `SessionManager`-canonical context). Older pi releases still load most extensions but npm flags the peer mismatch; pin `@pi-unipi/*@3.0.0-alpha.0` to stay on 0.86.
+- `core`: `~/.unipi/state/fusion` and `~/.unipi/trajectory` are **archived, never purged** — they move to `~/.unipi/v2-archive/<name>-<ts>/` on first v3 start (v2 may still write them on shared machines; delete the archive by hand when you're sure).
+
+### Added
+
+- **memory: the whole module rewritten onto MemPalace's native model.** Markdown files at `~/.unipi/memory/<project>/<type>/<id>.md` (type ∈ `preference | decision | pattern | summary`, wing = sanitized project name) are the durable tier; a per-project `mempalace.yaml` maps the type rooms and a `.gitignore` (`/*.md`) keeps whole-dir mines away from legacy flat files. Writes go through the MemPalace daemon's `/jobs` queue (`mine` jobs for store, `mempalace_delete_by_source` for delete); with no daemon pi writes directly via `mempalace mine` (upstream "prefer" routing) or a one-shot write-mode MCP server, and failures land in `.pending.json` (replayed at session start, after writes, and every 2 min). Reads go through one long-lived read-only `mempalace-mcp` stdio process (~33 ms per call) so search sees **every** drawer — pi, Devin, zcode, diaries.
+- **memory: `/unipi:memory migrate`** — explicit one-way v2 conversion: plan + confirm, palace + md-tree backups, dir normalization (collisions keep newer `updated`, losers → `.conflicts/`), typed layout, daemon-driven mining, per-record verification before any old drawer is deleted, resumable `.conversion.json` under a `.conversion.lock` single-runner guard, temp daemon auto-stopped at the end. Loose files added later are adopted in the background post-conversion.
+- **memory: version gate + markdown-only mode.** `MIN_MEMPALACE = 3.10.0`: older installs get a background `uv tool upgrade` attempt and fall back to local-mode (md files still work; search/list use term scoring and label hits `local`). No install + no uv → same local mode with an install hint on the session card.
+- **memory: v2 command surface restored** — `/unipi:memory-process`, `/unipi:memory-consolidate`, `/unipi:memory-search`, `/unipi:global-memory-search`, `/unipi:memory-forget`, `/unipi:global-memory-list`, plus `/unipi:memory status|recall|write|migrate` with arg completions.
+- **memory: tools + UI.** `memory_store/search/list/delete` (+`global_*` aliases) with rail-framed cards (score bars, per-source labels like `pi`/`devin`/`zcode`), a session card with the wake-up summary folded under it, badge-rendered recall/save reminders, footer stats (recall/write/pending/migration), and `MEMORY_STORED`/`MEMORY_DELETED` events. `recallAtStart`/`write`/`wakeUp`/`autoStartDaemon`/`mempalaceAutoUpdate` switches in the settings hub.
+
+
 ### Added
 
 - **kanboard: the v3 daemon and web UI** (`unipi-kanboard serve`). Single instance via `flock(daemon.lock)` (a second `serve` prints the running `daemon.json` and exits 0), binds `127.0.0.1` with `--port` or an OS-assigned port, writes `daemon.json` atomically, removes it on exit (SIGTERM/SIGINT/idle), and shuts down after `--idle-min` (default 10) with no SSE clients and no requests. A `notify` watcher on `projects/` bumps one revision per content change (access events ignored, bursts coalesced) and `GET /events?project=<slug>` streams it, so CLI and agent writes appear live. `status` reports the daemon + liveness, `stop` SIGTERMs it and waits ≤3s.

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/long-horizon",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "Long-horizon execution for Pi \u2014 mode-gated /goal /ralph /swarm /graph orchestration with a TypeSafe prompt judge",
   "type": "module",
   "main": "index.ts",
@@ -37,11 +37,11 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.0"
+    "@pi-unipi/core": "3.0.0-alpha.1"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.86.0",
-    "@earendil-works/pi-tui": "^0.86.0",
+    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1",
     "typebox": "^1.1.38"
   },
   "pi": {
