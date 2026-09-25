@@ -87,7 +87,7 @@ Removals and recreations are green-lit to start immediately.
 - [ ] Improve onboarding (discoverability of chords, first-run hints)
 
 ### 12. `kanboard` — rewrite
-- [ ] Full rewrite of the board/parsers/UI layer
+- [x] Full rewrite of the board/parsers/UI layer — Rust daemon + Solid UI, `/unipi:kanboard*` command set, write guard + session limits, pi-run summaries, cold storage (shipped in 3.0.0-alpha.0)
 - [ ] Decide relationship to workflow's deprecation (what document formats should v3 boards parse?)
 
 ### 13. `mcp` — keep
@@ -127,4 +127,4 @@ Removals and recreations are green-lit to start immediately.
 - [ ] Prefix-cache gap matrix re-audit after milestone removal + long-horizon creation (docs/prefix-cache-architecture.md)
 - [ ] pi 0.86 ownership audit: prompt-cache warming, transcript-aware prompt/tool updates, per-model compaction, deferred tool loading — delegate to pi vs keep owning
 - [ ] Update the full-release chore package inventory when milestone/trajectory/ralph leave and long-horizon arrives
-- [ ] Publish first `3.0.0-alpha.N` to npm under the `alpha` dist-tag when the immediate section lands
+- [x] Publish first `3.0.0-alpha.N` to npm under the `alpha` dist-tag — `3.0.0-alpha.0` published 2026-09-25 (all workspaces + root + 5 kanboard platform packages; `latest` stays 2.20.5)

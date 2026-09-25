@@ -724,6 +724,22 @@ export function SettingsDialog(): JSX.Element {
   const [instruction, setInstruction] = createSignal("");
   const [customInstruction, setCustomInstruction] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
+  const [modelsState, setModelsState] = createSignal<"loading" | "ok" | "error">("loading");
+  const [modelsError, setModelsError] = createSignal("");
+  const [modelList, setModelList] = createSignal<string[]>([]);
+
+  async function loadModels(refresh = false): Promise<void> {
+    setModelsState("loading");
+    try {
+      const payload = await api.models(refresh);
+      setModelList(payload.models);
+      setModelsError("");
+      setModelsState("ok");
+    } catch (error) {
+      setModelsError(describe(error));
+      setModelsState("error");
+    }
+  }
 
   createEffect(
     on(settingsOpen, (open) => {
@@ -731,6 +747,8 @@ export function SettingsDialog(): JSX.Element {
       setLoaded(null);
       setFilter("");
       setCustomInstruction(false);
+      setModelList([]);
+      setModelsState("loading");
       void api
         .settings()
         .then((settings) => {
@@ -740,6 +758,7 @@ export function SettingsDialog(): JSX.Element {
           setCustomInstruction(settings.summaryInstruction !== settings.defaultSummaryInstruction);
         })
         .catch((error) => toast(describe(error), "error"));
+      void loadModels();
     }),
   );
 
@@ -748,7 +767,7 @@ export function SettingsDialog(): JSX.Element {
   /** "provider/id" → grouped by provider, filterable. */
   const grouped = createMemo((): Array<[string, string[]]> => {
     const needle = filter().trim().toLowerCase();
-    const models = (loaded()?.models ?? []).filter((entry) => !needle || entry.toLowerCase().includes(needle));
+    const models = modelList().filter((entry) => !needle || entry.toLowerCase().includes(needle));
     const groups = new Map<string, string[]>();
     for (const entry of models) {
       const provider = entry.split("/")[0] ?? "other";
@@ -786,38 +805,54 @@ export function SettingsDialog(): JSX.Element {
       <div class="dialog-body settings-form">
         <Show when={loaded()} fallback={<div class="skeleton" style={{ height: "120px" }} />}>
           <div class="settings-heading">Summaries</div>
-          <label class="field">
-            <span class="field-label">Model</span>
-            <Show
-              when={(loaded()?.models.length ?? 0) > 0}
-              fallback={<span class="field-hint">Open the board from pi to load your models</span>}
-            >
-              <Show when={(loaded()?.models.length ?? 0) > 12}>
-                <input
-                  class="input"
-                  placeholder="Filter models…"
-                  aria-label="Filter models"
-                  value={filter()}
-                  onInput={(event) => setFilter(event.currentTarget.value)}
-                />
+          <div class="field">
+            <span class="field-label">
+              Model
+              <span class="spacer" />
+              <Show when={modelsState() !== "loading"}>
+                <button class="link-btn" onClick={() => void loadModels(true)}>
+                  Refresh
+                </button>
               </Show>
-              <select
-                class="input"
-                aria-label="Summary model"
-                value={model()}
-                onChange={(event) => setModel(event.currentTarget.value)}
-              >
-                <option value="">pi default</option>
-                <For each={grouped()}>
-                  {([provider, models]) => (
-                    <optgroup label={provider}>
-                      <For each={models}>{(entry) => <option value={entry}>{entry}</option>}</For>
-                    </optgroup>
-                  )}
-                </For>
-              </select>
+            </span>
+            <Show
+              when={modelsState() === "loading"}
+              fallback={
+                <>
+                  <Show when={modelList().length > 12}>
+                    <input
+                      class="input"
+                      placeholder="Filter models…"
+                      aria-label="Filter models"
+                      value={filter()}
+                      onInput={(event) => setFilter(event.currentTarget.value)}
+                      ref={(el) => queueMicrotask(() => el.focus({ preventScroll: true }))}
+                    />
+                  </Show>
+                  <select
+                    class="input"
+                    aria-label="Summary model"
+                    value={model()}
+                    onChange={(event) => setModel(event.currentTarget.value)}
+                  >
+                    <option value="">pi default</option>
+                    <For each={grouped()}>
+                      {([provider, models]) => (
+                        <optgroup label={provider}>
+                          <For each={models}>{(entry) => <option value={entry}>{entry}</option>}</For>
+                        </optgroup>
+                      )}
+                    </For>
+                  </select>
+                  <Show when={modelsState() === "error"}>
+                    <span class="field-hint" role="alert">{modelsError()}</span>
+                  </Show>
+                </>
+              }
+            >
+              <span class="field-hint">Loading your models…</span>
             </Show>
-          </label>
+          </div>
           <div class="field">
             <span class="field-label">
               Instruction

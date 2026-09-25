@@ -781,26 +781,23 @@ export async function runStopDaemon(deps: CommandDeps, ctx: ExtensionCommandCont
 
 /**
  * Tell the daemon how to run pi for summaries: `piCommand` (this process's
- * argv minus flags) and `models` (the user's available list, the whitelist the
- * Settings dialog may pick from). Runs on session start and on `open`.
+ * argv minus flags). The daemon owns the model catalog itself now — it runs
+ * `piCommand --list-models` with the same ambient runtime as the summarizer.
+ * Runs on session start and on `open`; skipped inside kanboard's own child
+ * sessions (UNIPI_KANBOARD_CHILD) so the summarizer never rewrites the file.
  */
 export async function syncPiRuntime(
   deps: CommandDeps,
   ctx: ExtensionCommandContext | ExtensionContext,
 ): Promise<void> {
   const client = deps.cli;
-  if (!client) return;
+  if (!client || process.env.UNIPI_KANBOARD_CHILD) return;
   // argv[1] is the pi script when node runs it; a compiled binary has none.
   // Keep it when it exists on disk (the coffee bin/pi shim has no extension).
   const script = process.argv[1];
   const argv = [process.execPath, ...(script && existsSync(script) ? [script] : [])];
-  const models =
-    (ctx as { modelRegistry?: { getAvailable?: () => Array<{ provider: string; id: string }> } })
-      .modelRegistry?.getAvailable?.()
-      .map((model) => `${model.provider}/${model.id}`) ?? [];
   try {
     await client.run<unknown>(["settings", "set", "pi-command", JSON.stringify(argv)], {});
-    await client.run<unknown>(["settings", "set", "models", JSON.stringify(models)], {});
   } catch (error) {
     deps.debug(`pi runtime sync failed: ${error instanceof Error ? error.message : String(error)}`);
   }

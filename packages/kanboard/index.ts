@@ -158,6 +158,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    // Kanboard's own ambient children (summaries, --list-models) get this env:
+    // they must not re-sync the runtime or spawn a daemon.
+    if (process.env.UNIPI_KANBOARD_CHILD) return;
     initUnipiDirs();
     if (attach(ctx as unknown as ExtensionContext)) {
       const deps = buildDeps();

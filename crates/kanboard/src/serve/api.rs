@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -598,6 +598,30 @@ mod phrasing_tests {
     use super::*;
 
     #[test]
+    fn parse_list_models_reads_the_table() {
+        let out = r#"provider    model                                                  context  max-out  thinking  images
+omniroute   antigravity/claude-opus-4-6-thinking                     1.0M     64K      yes       yes
+openrouter  anthropic/claude-haiku-4.5                               200K     64K      yes       yes
+"#;
+        assert_eq!(
+            super::parse_list_models(out),
+            [
+                "omniroute/antigravity/claude-opus-4-6-thinking",
+                "openrouter/anthropic/claude-haiku-4.5"
+            ]
+        );
+        // Noise lines and blanks are skipped, nothing is invented.
+        assert!(
+            super::parse_list_models(
+                "  
+not-a-table
+"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
     fn ui_messages_do_not_name_cli_flags() {
         let error = Error::rule("in_review → todo requires --comment (rework note)");
         assert_eq!(
@@ -650,10 +674,17 @@ pub async fn put_settings(
     let mut settings = super::settings::load(&state.layout);
     if let Some(model) = patch.summary_model {
         let model = model.trim().to_string();
-        if !model.is_empty() && !settings.models.iter().any(|known| known == &model) {
+        // The daemon's own catalog wins; the persisted copy is the fallback
+        // when list-models cannot run right now.
+        let whitelist = fetch_models(&state, false)
+            .await
+            .ok()
+            .filter(|list| !list.is_empty())
+            .unwrap_or_else(|| settings.models.clone());
+        if !model.is_empty() && !whitelist.iter().any(|known| known == &model) {
             return err(
                 StatusCode::BAD_REQUEST,
-                &Error::rule("summary model must be one of the models the extension reported"),
+                &Error::rule("summary model must be one of the models pi reports"),
             );
         }
         settings.summary_model = model;
@@ -666,6 +697,142 @@ pub async fn put_settings(
         Ok(()) => ok(settings_payload(&state)),
         Err(error) => err(StatusCode::INTERNAL_SERVER_ERROR, &error),
     }
+}
+
+// ─── model catalog ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct ModelsQuery {
+    /// Any presence counts (`?refresh`, `?refresh=1`, `?refresh=true`).
+    pub refresh: Option<serde_json::Value>,
+}
+
+/// `GET /api/models[?refresh=1]` — the pi runtime's own catalog
+/// (`piCommand --list-models`), cached in memory for 10 minutes and persisted
+/// to settings.json. The daemon owns this list now: it is the same runtime the
+/// summarizer uses, not whatever the last pi session happened to see.
+pub async fn models(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(query): axum::extract::Query<ModelsQuery>,
+) -> ApiResponse {
+    state.touch();
+    let settings = super::settings::load(&state.layout);
+    if settings.pi_command.is_empty() {
+        let mut response = ApiResponse::error(
+            StatusCode::CONFLICT,
+            &Error::rule(
+                "Open the board from pi once (/unipi:kanboard open) so it knows how to run pi",
+            ),
+        );
+        if let Value::Object(ref mut map) = response.body {
+            map.insert("needsAgent".into(), json!(true));
+        }
+        return response;
+    }
+    match fetch_models(&state, query.refresh.is_some()).await {
+        Ok(list) => ok(json!({ "models": list })),
+        Err((status, message)) => err(status, &Error::rule(message)),
+    }
+}
+
+const MODEL_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// The live model list. `force` bypasses the 10-minute cache; the single mutex
+/// means concurrent callers share one `pi --list-models` run.
+async fn fetch_models(
+    state: &Arc<AppState>,
+    force: bool,
+) -> std::result::Result<Vec<String>, (StatusCode, String)> {
+    let mut slot = state.model_cache.lock().await;
+    if !force
+        && let Some((at, list)) = slot.as_ref()
+        && at.elapsed() < MODEL_CACHE_TTL
+    {
+        return Ok(list.clone());
+    }
+    let settings = super::settings::load(&state.layout);
+    if settings.pi_command.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            "Open the board from pi once (/unipi:kanboard open) so it knows how to run pi"
+                .to_string(),
+        ));
+    }
+    let list = run_list_models(&settings).await?;
+    if !list.is_empty() {
+        // Persist what the runtime reported: the whitelist and offline reads
+        // use the same file.
+        let mut updated = super::settings::load(&state.layout);
+        updated.models = list.clone();
+        let _ = super::settings::save(&state.layout, &updated);
+    }
+    *slot = Some((Instant::now(), list.clone()));
+    Ok(list)
+}
+
+/// `piCommand --list-models` → `provider/id` rows. Output is a whitespace table
+/// (`provider  model  context  max-out  thinking  images`); only the first two
+/// columns matter.
+fn parse_list_models(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let provider = fields.next()?;
+            let model = fields.next()?;
+            if provider == "provider" || model == "model" {
+                return None; // header row
+            }
+            Some(format!("{provider}/{model}"))
+        })
+        .collect()
+}
+
+async fn run_list_models(
+    settings: &super::settings::PanelSettings,
+) -> std::result::Result<Vec<String>, (StatusCode, String)> {
+    let mut argv = settings.pi_command.clone();
+    argv.push("--list-models".into());
+    let display = argv.join(" ");
+    let child = tokio::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("could not start `{display}`: {error}"),
+            )
+        })?;
+    let output = match tokio::time::timeout(Duration::from_secs(60), child.wait_with_output()).await
+    {
+        Ok(result) => result.map_err(|error| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("`{display}` failed: {error}"),
+            )
+        })?,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                format!("`{display}` did not finish within 60 seconds"),
+            ));
+        }
+    };
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "`{display}` failed: {}",
+                stderr.trim().chars().take(400).collect::<String>()
+            ),
+        ));
+    }
+    Ok(parse_list_models(&String::from_utf8_lossy(&output.stdout)))
 }
 
 // ─── summarize & archive ────────────────────────────────────────────────────
@@ -757,8 +924,8 @@ pub async fn summarize(
     }
 }
 
-/// Spawn pi (`piCommand -p --no-session --no-tools --no-extensions --no-skills
-/// --no-context-files --no-prompt-templates [--model <summaryModel>]`), feed
+/// Spawn pi ambient (`piCommand -p --no-session --no-tools --no-skills
+/// --no-context-files --no-prompt-templates --no-themes [--model <summaryModel>]`), feed
 /// `prompt` to its stdin, collect stdout. Ten minutes is generous on purpose —
 /// a real model can think for a while; a hung one still gets killed.
 async fn run_agent(
@@ -769,15 +936,18 @@ async fn run_agent(
 ) -> std::result::Result<String, (StatusCode, String)> {
     use tokio::io::AsyncWriteExt;
 
+    // Ambient: the same runtime the user drives — extensions load so bridge
+    // providers (omniroute & co.) work for summaries too. The child env marks
+    // it as ours so the kanboard extension stays out of its way.
     let mut argv = settings.pi_command.clone();
     argv.extend([
         "-p".into(),
         "--no-session".into(),
         "--no-tools".into(),
-        "--no-extensions".into(),
         "--no-skills".into(),
         "--no-context-files".into(),
         "--no-prompt-templates".into(),
+        "--no-themes".into(),
     ]);
     if !settings.summary_model.trim().is_empty() {
         argv.push("--model".into());
@@ -792,6 +962,7 @@ async fn run_agent(
     };
     let mut builder = tokio::process::Command::new(&argv[0]);
     builder
+        .env("UNIPI_KANBOARD_CHILD", "1")
         .args(&argv[1..])
         .current_dir(cwd)
         .stdin(std::process::Stdio::piped())

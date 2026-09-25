@@ -89,20 +89,29 @@ describe("settings hub actions", () => {
     };
   }
 
-  it("syncPiRuntime writes piCommand argv and the models list", async () => {
+  it("syncPiRuntime writes piCommand argv only (the daemon owns models)", async () => {
     const calls: string[][] = [];
     const ctx = {
-      modelRegistry: { getAvailable: () => [{ provider: "anthropic", id: "claude" }, { provider: "openai", id: "gpt-5" }] },
+      modelRegistry: { getAvailable: () => [{ provider: "anthropic", id: "claude" }] },
       ui: { notify: () => undefined },
     };
     await syncPiRuntime(deps(calls), ctx as never);
     const piSet = calls.find((argv) => argv[2] === "pi-command");
-    const modelsSet = calls.find((argv) => argv[2] === "models");
-    const argv = JSON.parse(piSet![3]!);
-    assert.equal(argv[0], process.execPath);
-    assert.ok(argv.length <= 2, "execPath + optional script");
-    if (argv.length === 2) assert.equal(argv[1], process.argv[1]);
-    assert.deepEqual(JSON.parse(modelsSet![3]!), ["anthropic/claude", "openai/gpt-5"]);
+    assert.ok(piSet, "pi-command was written");
+    assert.equal(piSet[3], JSON.stringify([process.execPath, process.argv[1]]));
+    assert.ok(!calls.some((argv) => argv[2] === "models"), "no models write — the daemon owns the list");
+  });
+
+  it("syncPiRuntime is a no-op inside a kanboard child (UNIPI_KANBOARD_CHILD)", async () => {
+    process.env.UNIPI_KANBOARD_CHILD = "1";
+    try {
+      const calls: string[][] = [];
+      const ctx = { modelRegistry: { getAvailable: () => [] }, ui: { notify: () => undefined } };
+      await syncPiRuntime(deps(calls), ctx as never);
+      assert.equal(calls.length, 0, "nothing written from a child session");
+    } finally {
+      delete process.env.UNIPI_KANBOARD_CHILD;
+    }
   });
 
   it("rotate-token runs the command and tells the user to restart", async () => {

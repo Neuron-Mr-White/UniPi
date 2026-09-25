@@ -60,7 +60,10 @@ fn claim_next_takes_priority_first_then_order() {
 fn claim_next_skips_claimed_tasks_forever() {
     let fixture = Fixture::new();
     let task = fixture.add_with("only", Status::Todo, Priority::None, &[]);
-    assert_eq!(claimed_id(&fixture.claim_next("s1", common::alive_pid())).unwrap(), task.id);
+    assert_eq!(
+        claimed_id(&fixture.claim_next("s1", common::alive_pid())).unwrap(),
+        task.id
+    );
     assert!(claimed_id(&fixture.claim_next("s2", common::alive_pid())).is_none());
     // A second claim of the same task must not happen even if it is released to todo
     // and re-claimed: it is a fresh claim, so it works again.
@@ -74,7 +77,10 @@ fn claim_next_skips_claimed_tasks_forever() {
         fixture.common.now,
     )
     .expect("release");
-    assert_eq!(claimed_id(&fixture.claim_next("s3", common::alive_pid())).unwrap(), task.id);
+    assert_eq!(
+        claimed_id(&fixture.claim_next("s3", common::alive_pid())).unwrap(),
+        task.id
+    );
 }
 
 #[test]

@@ -10,7 +10,7 @@
  * the screenshot set (dark/light × 1440/1920 + panels).
  */
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,7 @@ const check = (label, ok, detail = "") => {
 let server = null;
 let home = null;
 let workspace = null;
+let piStub = null;
 let base = urlMode;
 let slug = flag("--project", null);
 
@@ -101,6 +102,21 @@ if (!urlMode) {
   kb("project", "archive", otherSlug);
   // No piCommand yet: the summarize flow must show the needsAgent banner first.
   writeFileSync(join(home, "settings.json"), JSON.stringify({ models: ["test/model-a", "test/model-b"] }));
+  // A pi stand-in: serves --list-models, echoes the prompt otherwise.
+  piStub = join(home, "pi-stub.sh");
+  writeFileSync(piStub, `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "--list-models" ]; then
+    printf 'provider model context max-out thinking images\n'
+    printf 'omni demo-a 1.0M 64K yes yes\n'
+    printf 'omni demo-b 1.0M 64K yes yes\n'
+    printf 'test model-c 1M 64K yes yes\n'
+    exit 0
+  fi
+done
+cat
+`);
+  chmodSync(piStub, 0o755);
   const port = 4399 + (process.pid % 100);
   server = spawn(binary, ["serve", "--port", String(port), "--idle-secs", "900"], { env, cwd: workspace, stdio: "ignore" });
   base = `http://127.0.0.1:${port}`;
@@ -823,29 +839,43 @@ try {
       const customize = [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Customize');
       return { options, collapsed, customize: !!customize, hint: dialog.innerText.includes('Default: changelog bullets') };
     })()`);
-    check("settings dialog shows the model select + collapsed instruction", dlg && dlg.options?.[0] === "" && dlg.options.includes("test/model-a") && dlg.collapsed && dlg.customize && dlg.hint, JSON.stringify(dlg));
+    check("settings dialog shows the model select + collapsed instruction", dlg && dlg.options?.[0] === "" && dlg.collapsed && dlg.customize && dlg.hint, JSON.stringify(dlg));
     await session.shot("k14-settings-light-1440.png");
-    // "Customize" expands the textarea; pick a model and save.
+    // Point piCommand at the stub (echoes the prompt, serves --list-models),
+    // then the dialog's Refresh link loads the daemon-owned catalog.
+    writeFileSync(join(home, "settings.json"), JSON.stringify({
+      piCommand: [piStub],
+      models: ["test/model-a", "test/model-b"],
+    }));
     const saved = await session.evaluate(`(async () => {
+      // The Refresh link only renders once the first load settles (ok or error).
+      for (let i = 0; i < 30; i += 1) {
+        if ([...document.querySelectorAll('.dialog button')].some((b) => b.textContent.trim() === 'Refresh')) break;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Refresh')?.click();
+      for (let i = 0; i < 30; i += 1) {
+        await new Promise((r) => setTimeout(r, 200));
+        const select = document.querySelector('.dialog [aria-label="Summary model"]');
+        if (select && [...select.options].some((o) => o.value === 'omni/demo-b')) break;
+      }
       [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Customize')?.click();
       await new Promise((r) => setTimeout(r, 150));
       const expanded = !!document.querySelector('.dialog [aria-label="Summary instruction"]');
       const select = document.querySelector('.dialog [aria-label="Summary model"]');
-      if (select) { select.value = 'test/model-b'; select.dispatchEvent(new Event('change', { bubbles: true })); }
+      const options = select ? [...select.options].map((o) => o.value) : [];
+      const snapshot = { bodyText: document.querySelector('.dialog-body')?.innerText?.slice(0, 400), btns: [...document.querySelectorAll('.dialog button')].map((b) => b.textContent.trim()) };
+      if (select) { select.value = 'omni/demo-b'; select.dispatchEvent(new Event('change', { bubbles: true })); }
       await new Promise((r) => setTimeout(r, 150));
       [...document.querySelectorAll('.dialog .btn.primary')].find((b) => /^Save$/.test(b.textContent.trim()))?.click();
       await new Promise((r) => setTimeout(r, 600));
       const settings = await fetch('/api/settings').then((r) => r.json());
-      return { expanded, model: settings.summaryModel, open: !!document.querySelector('.dialog') };
+      const catalog = await fetch('/api/models').then((r) => r.json());
+      return { expanded, options, model: settings.summaryModel, catalog: catalog.models, open: !!document.querySelector('.dialog'), snapshot };
     })()`);
-    check("settings saves the summary model", saved?.expanded && saved?.model === "test/model-b" && !saved.open, JSON.stringify(saved));
-    // Point piCommand at a stub that echoes the prompt (settings load per request).
-    await session.evaluate(`(async () => { await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' }); })()`);
-    writeFileSync(join(home, "settings.json"), JSON.stringify({
-      piCommand: ["sh", "-c", "cat"],
-      models: ["test/model-a", "test/model-b"],
-      summaryModel: "test/model-b",
-    }));
+    check("the daemon serves list-models itself", Array.isArray(saved?.catalog) && saved.catalog.includes("omni/demo-a") && saved.catalog.length === 3, JSON.stringify(saved?.catalog));
+    check("the dialog picks a model from the live list", saved?.options?.includes("omni/demo-b"), JSON.stringify(saved?.options));
+    check("settings saves the summary model", saved?.expanded && saved?.model === "omni/demo-b" && !saved.open, JSON.stringify(saved));
 
     // Step 1 with an agent configured: prefilled instruction, done count.
     const opened = await session.evaluate(`(async () => {

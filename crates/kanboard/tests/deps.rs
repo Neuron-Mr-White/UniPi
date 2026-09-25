@@ -25,7 +25,11 @@ fn backlog_tasks_are_never_ready() {
     let task = fixture.add("in backlog");
     let tasks = fixture.tasks();
     assert!(!deps::is_ready(&task, &by_id(&tasks), ChainGate::InReview));
-    assert!(!fixture.claim_next("s", common::alive_pid())["task"].as_object().is_some());
+    assert!(
+        !fixture.claim_next("s", common::alive_pid())["task"]
+            .as_object()
+            .is_some()
+    );
 }
 
 #[test]

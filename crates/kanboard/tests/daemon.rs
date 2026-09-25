@@ -450,7 +450,10 @@ fn sse_pushes_a_revision_when_home_is_a_symlink() {
         .filter(|line| line.starts_with("data:"))
         .filter_map(|line| line.trim_start_matches("data:").trim().parse::<u64>().ok())
         .any(|revision| revision >= 1);
-    assert!(bumped, "no bumped revision through a symlinked home: {lines:?}");
+    assert!(
+        bumped,
+        "no bumped revision through a symlinked home: {lines:?}"
+    );
 }
 
 #[test]

@@ -251,6 +251,9 @@ export const api = {
   duplicate: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/duplicate`, { method: "POST", body: "{}" }),
   settings: () => request<Settings>("/api/settings"),
+  /** The daemon-owned model catalog (pi --list-models); refresh bypasses the cache. */
+  models: (refresh = false) =>
+    request<{ models: string[] }>(`/api/models${refresh ? "?refresh=1" : ""}`),
   saveSettings: (patch: { summaryModel?: string; summaryInstruction?: string }) =>
     request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
   archiveLane: (slug: string, status: "done" | "in_review") =>

@@ -271,3 +271,127 @@ fn archive_summary_writes_the_file_and_archives_done_tasks() {
     let json: serde_json::Value = serde_json::from_slice(&show(&todo).stdout).unwrap();
     assert_eq!(json["status"], "todo");
 }
+
+/// A pi stub that answers `--list-models` and echoes the prompt otherwise.
+#[cfg(unix)]
+fn pi_stub_with_models(fixture: &Fixture, rows: &[&str]) -> String {
+    let table = rows
+        .iter()
+        .map(|row| format!("    printf '{row}\\n'\n"))
+        .collect::<String>();
+    pi_stub(
+        fixture,
+        &format!(
+            "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = \"--list-models\" ]; then\n    printf 'provider model context max-out thinking images\\n'\n{table}    exit 0\n  fi\ndone\ncat\n"
+        ),
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn api_models_serves_the_runtime_catalog_and_persists_it() {
+    let fixture = fixture();
+    let slug = &fixture.project.slug;
+    let stub = pi_stub_with_models(
+        &fixture,
+        &[
+            "omni demo-a 1.0M 64K yes yes",
+            "omni demo-b 1.0M 64K yes yes",
+            "test model-c 1M 64K yes yes",
+        ],
+    );
+    write_settings(
+        &fixture,
+        serde_json::json!({ "piCommand": [stub], "models": ["stale/old"] }),
+    );
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+
+    let response = http(daemon.port, "GET", "/api/models", None).unwrap();
+    assert_eq!(response.status, 200, "{}", response.body);
+    let models = response.json()["models"].as_array().unwrap().clone();
+    assert_eq!(
+        models,
+        serde_json::json!(["omni/demo-a", "omni/demo-b", "test/model-c"])
+            .as_array()
+            .unwrap()
+            .clone(),
+        "{}",
+        response.body
+    );
+
+    // The fetch persists the live list into settings.json (over the stale one).
+    let saved: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("settings.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        saved["models"],
+        serde_json::json!(["omni/demo-a", "omni/demo-b", "test/model-c"])
+    );
+
+    // The whitelist refreshes against the live catalog, not the stale file.
+    let patch = http(
+        daemon.port,
+        "PUT",
+        "/api/settings",
+        Some(r#"{"summaryModel":"omni/demo-b"}"#),
+    )
+    .unwrap();
+    assert_eq!(patch.status, 200, "{}", patch.body);
+    let refused = http(
+        daemon.port,
+        "PUT",
+        "/api/settings",
+        Some(r#"{"summaryModel":"stale/old"}"#),
+    )
+    .unwrap();
+    assert_eq!(refused.status, 400, "{}", refused.body);
+
+    let _ = slug;
+}
+
+#[cfg(unix)]
+#[test]
+fn api_models_without_pi_command_is_needs_agent() {
+    let fixture = fixture();
+    write_settings(&fixture, serde_json::json!({}));
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let response = http(daemon.port, "GET", "/api/models", None).unwrap();
+    assert_eq!(response.status, 409, "{}", response.body);
+    assert_eq!(response.json()["needsAgent"], serde_json::json!(true));
+}
+
+#[cfg(unix)]
+#[test]
+fn summarize_runs_ambient_and_marks_the_child() {
+    let fixture = fixture();
+    let slug = &fixture.project.slug;
+    // The stub records its argv + env marker so the ambient contract is provable.
+    let stub = pi_stub(
+        &fixture,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$UNIPI_KANBOARD_HOME/pi-argv.txt\"\nprintenv UNIPI_KANBOARD_CHILD > \"$UNIPI_KANBOARD_HOME/pi-env.txt\"\ncat\n",
+    );
+    write_settings(&fixture, serde_json::json!({ "piCommand": [stub] }));
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let response = http(
+        daemon.port,
+        "POST",
+        &format!("/api/projects/{slug}/summarize"),
+        Some("{}"),
+    )
+    .unwrap();
+    assert_eq!(response.status, 200, "{}", response.body);
+
+    let argv = std::fs::read_to_string(fixture.layout.home.join("pi-argv.txt")).unwrap();
+    assert!(argv.contains("-p"), "{argv}");
+    assert!(
+        !argv.contains("--no-extensions"),
+        "ambient run must load extensions: {argv}"
+    );
+    assert!(
+        argv.contains("--no-session") && argv.contains("--no-tools"),
+        "{argv}"
+    );
+    let env = std::fs::read_to_string(fixture.layout.home.join("pi-env.txt")).unwrap();
+    assert_eq!(env.trim(), "1", "the child must be marked");
+}

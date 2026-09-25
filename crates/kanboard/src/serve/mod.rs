@@ -42,6 +42,10 @@ pub struct AppState {
     /// Flips on shutdown so open SSE streams end — graceful shutdown waits for
     /// every connection, and an event stream never finishes by itself.
     pub closing: tokio::sync::watch::Sender<bool>,
+    /// The daemon-owned model catalog (`pi --list-models`), 10-minute TTL.
+    /// Holding the lock across a fetch also serializes refreshes — concurrent
+    /// callers share one in-flight run.
+    pub model_cache: tokio::sync::Mutex<Option<(Instant, Vec<String>)>>,
 }
 
 impl AppState {
@@ -57,6 +61,7 @@ impl AppState {
             senders: Mutex::new(HashMap::new()),
             watcher: Mutex::new(None),
             closing: tokio::sync::watch::channel(false).0,
+            model_cache: tokio::sync::Mutex::new(None),
         })
     }
 
@@ -278,6 +283,7 @@ fn router(state: Arc<AppState>) -> axum::Router {
             post(api::archive_summary),
         )
         .route("/api/projects/{slug}/archive-lane", post(api::archive_lane))
+        .route("/api/models", get(api::models))
         .route("/api/rules", get(api::rules))
         .route("/api/projects/{slug}/tasks", get(api::tasks))
         .route("/api/tasks/{slug}/{id}", get(api::task))
