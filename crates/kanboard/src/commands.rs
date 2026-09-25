@@ -1026,29 +1026,7 @@ pub fn hostname() -> String {
 }
 
 fn pid_alive(pid: u32) -> bool {
-    if pid == 0 {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        // kill(pid, 0): 0 = alive, EPERM = alive but not ours.
-        let result = unsafe { libc_kill(pid as i32) };
-        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(1)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-        true
-    }
-}
-
-#[cfg(unix)]
-unsafe fn libc_kill(pid: i32) -> i32 {
-    // Edition 2024 requires the unsafe marker on extern blocks.
-    unsafe extern "C" {
-        fn kill(pid: i32, sig: i32) -> i32;
-    }
-    unsafe { kill(pid, 0) }
+    crate::daemon::pid_alive(pid)
 }
 
 // ─── duplicate / archive / validate ─────────────────────────────────────────

@@ -422,6 +422,36 @@ fn sse_pushes_a_revision_after_a_cli_write() {
     );
 }
 
+/// The daemon must still push revisions when UNIPI_KANBOARD_HOME contains a
+/// symlink: watchers may report the watched spelling (Linux) or the canonical
+/// spelling (macOS /var → /private/var), so both must resolve to a slug.
+#[cfg(unix)]
+#[test]
+fn sse_pushes_a_revision_when_home_is_a_symlink() {
+    let fixture = fixture_with_tasks();
+    let link = fixture.layout.home.parent().unwrap().join("linked-home");
+    std::os::unix::fs::symlink(&fixture.layout.home, &link).unwrap();
+
+    let daemon = Daemon::start_with_home(&fixture, &["--idle-secs", "120"], &link);
+    let slug = fixture.project.slug.clone();
+    let port = daemon.port;
+
+    let reader = std::thread::spawn(move || read_sse(port, &format!("/events?project={slug}"), 4));
+    std::thread::sleep(Duration::from_millis(600));
+    let task = fixture.tasks().into_iter().next().unwrap();
+    // Write through the real (non-symlink) path — the event still has to land.
+    let note = cli(&fixture, &["note", &task.id, "through a symlinked home"]);
+    assert!(note.status.success());
+
+    let lines = reader.join().expect("sse reader");
+    let bumped = lines
+        .iter()
+        .filter(|line| line.starts_with("data:"))
+        .filter_map(|line| line.trim_start_matches("data:").trim().parse::<u64>().ok())
+        .any(|revision| revision >= 1);
+    assert!(bumped, "no bumped revision through a symlinked home: {lines:?}");
+}
+
 #[test]
 fn idle_shutdown_removes_daemon_json() {
     let fixture = fixture_with_tasks();

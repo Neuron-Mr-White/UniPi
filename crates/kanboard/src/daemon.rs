@@ -111,7 +111,32 @@ pub fn pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
         let result = unsafe { libc_kill(pid as i32, 0) };
-        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(1)
+        let alive = result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(1);
+        // kill(pid, 0) succeeds on zombies too. /proc does not exist off Linux
+        // (macOS), so fall back to `ps` state there: a `Z*` state (or no such
+        // process at all) means dead.
+        #[cfg(target_os = "linux")]
+        {
+            alive
+        }
+        #[cfg(all(unix, not(target_os = "linux")))]
+        {
+            if !alive {
+                return false;
+            }
+            match std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", &pid.to_string()])
+                .output()
+            {
+                Ok(out) => {
+                    let stat = String::from_utf8_lossy(&out.stdout);
+                    let stat = stat.trim();
+                    !(stat.is_empty() || stat.starts_with('Z'))
+                }
+                // `ps` missing or refused: trust kill(0).
+                Err(_) => true,
+            }
+        }
     }
     #[cfg(not(unix))]
     {

@@ -112,8 +112,11 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // notify (6 commands)
   "unipi:notify-event":     "notify",
 
-  // kanboard (2 commands)
+  // kanboard (4 commands)
   "unipi:kanboard":          "kanboard",
+  "unipi:kanboard-add":      "kanboard",
+  "unipi:kanboard-do":       "kanboard",
+  "unipi:kanboard-autowork": "kanboard",
 
   // footer (3 commands)
   "unipi:footer":            "footer",
@@ -161,6 +164,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:env":        "Show environment info",
   "unipi:doctor":     "Run diagnostics",
   "unipi:kanboard":        "Kanboard — capture tasks, run them, open the board",
+  "unipi:kanboard-add":    "Kanboard — capture a task into Backlog",
+  "unipi:kanboard-do":     "Kanboard — let the agent work the board for a turn",
+  "unipi:kanboard-autowork": "Kanboard — start or stop the queue runner",
 
   "unipi:settings": "Configure all unipi modules in one panel",
 

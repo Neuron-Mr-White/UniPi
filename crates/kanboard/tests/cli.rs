@@ -462,8 +462,17 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
 
     // Two long-lived processes stand in for the running sessions' pids, so the
     // first two claims are not reaped and the cap refuses the other six.
-    let mut sleep_a = Command::new("sleep").arg("60").spawn().expect("sleep");
-    let mut sleep_b = Command::new("sleep").arg("60").spawn().expect("sleep");
+    #[cfg(unix)]
+    let sleeper = || Command::new("sleep").arg("60").spawn().expect("sleep");
+    #[cfg(windows)]
+    let sleeper = || {
+        Command::new("cmd")
+            .args(["/c", "ping", "-n", "60", "127.0.0.1"])
+            .spawn()
+            .expect("ping")
+    };
+    let mut sleep_a = sleeper();
+    let mut sleep_b = sleeper();
     let live = [sleep_a.id(), sleep_b.id()];
 
     let mut children = Vec::new();

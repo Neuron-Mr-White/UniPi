@@ -9,6 +9,9 @@ name: Kanboard binaries
 on:
   push:
     tags: ["v*"]
+    # Branch pushes build binaries too — workflow_dispatch only fires from the
+    # default branch, and the file lives on v3 branches.
+    branches: ["v3.0.0-alpha"]
   pull_request:
     paths:
       - "crates/kanboard/**"
@@ -80,6 +83,7 @@ jobs:
         with:
           toolchain: 1.98.1
           targets: ${{ matrix.target }}
+          components: clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2

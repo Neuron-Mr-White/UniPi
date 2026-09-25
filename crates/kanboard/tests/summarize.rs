@@ -42,7 +42,9 @@ fn put_settings(port: u16, body: &str) -> common::HttpResponse {
 }
 
 /// Write a `pi` stand-in shell script into the fixture home and return its
-/// path for the piCommand setting.
+/// path for the piCommand setting. Unix only — on Windows the summarize test
+/// is skipped (a .cmd stub would need a different argv shape).
+#[cfg(unix)]
 fn pi_stub(fixture: &Fixture, body: &str) -> String {
     let path = fixture.layout.home.join("pi-stub.sh");
     std::fs::write(&path, body).unwrap();
@@ -166,6 +168,7 @@ fn summarize_needs_pi() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn summarize_runs_pi_and_reports_failures() {
     let fixture = fixture();

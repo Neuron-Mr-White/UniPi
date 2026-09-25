@@ -333,6 +333,10 @@ fn spawn_idle_monitor(
 fn spawn_watcher(state: Arc<AppState>) -> Result<notify::RecommendedWatcher> {
     let projects = state.layout.projects_root();
     std::fs::create_dir_all(&projects)?;
+    // Strip against the canonical root too: macOS reports FSEvents paths under
+    // /private/var while the layout root is the /var symlink (and Linux keeps
+    // the symlink), so accept either spelling of the watched directory.
+    let canonical_root = std::fs::canonicalize(&projects).unwrap_or_else(|_| projects.clone());
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<std::path::PathBuf>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let Ok(event) = event else { return };
@@ -354,7 +358,6 @@ fn spawn_watcher(state: Arc<AppState>) -> Result<notify::RecommendedWatcher> {
             crate::error::Error::Io(format!("cannot watch {}: {err}", projects.display()))
         })?;
 
-    let root = projects.clone();
     tokio::spawn(async move {
         // One write is often several events (tmp file, rename, close): coalesce.
         let mut last_bump: std::collections::HashMap<String, std::time::Instant> =
@@ -375,7 +378,8 @@ fn spawn_watcher(state: Arc<AppState>) -> Result<notify::RecommendedWatcher> {
                 eprintln!("watch event: {}", path.display());
             }
             let Some(slug) = path
-                .strip_prefix(&root)
+                .strip_prefix(&canonical_root)
+                .or_else(|_| path.strip_prefix(&projects))
                 .ok()
                 .and_then(|rest| rest.components().next())
                 .map(|first| first.as_os_str().to_string_lossy().to_string())

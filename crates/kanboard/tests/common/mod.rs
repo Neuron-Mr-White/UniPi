@@ -211,11 +211,17 @@ pub struct Daemon {
 impl Daemon {
     /// Spawn `serve` and wait until `/api/health` answers.
     pub fn start(fixture: &Fixture, extra: &[&str]) -> Daemon {
+        Self::start_with_home(fixture, extra, &fixture.layout.home)
+    }
+
+    /// `start` but with a different UNIPI_KANBOARD_HOME path (e.g. a symlink to
+    /// the fixture home — the watcher must still resolve event paths).
+    pub fn start_with_home(fixture: &Fixture, extra: &[&str], home: &std::path::Path) -> Daemon {
         let mut args = vec!["serve", "--port", "0"];
         args.extend_from_slice(extra);
         let child = Command::new(bin())
             .args(&args)
-            .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
+            .env("UNIPI_KANBOARD_HOME", home.as_os_str())
             .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
             .current_dir(fixture.root())
             .stdout(Stdio::piped())
