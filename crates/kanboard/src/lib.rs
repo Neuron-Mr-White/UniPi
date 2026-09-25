@@ -6,8 +6,8 @@
 pub mod attachments;
 pub mod board;
 pub mod cli;
-pub mod daemon;
 pub mod commands;
+pub mod daemon;
 pub mod deps;
 pub mod error;
 pub mod format;

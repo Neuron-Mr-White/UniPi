@@ -3,7 +3,7 @@
 
 use std::io::Read;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::cli::{Cli, Command, ProjectCommand};
 use crate::commands::{self, Common, EditArgs, OrderTarget};
@@ -20,7 +20,13 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             cli.gate
         ))
     })?;
-    let common = Common::new(actor, gate);
+    let mut common = Common::new(actor, gate);
+    common.session = cli
+        .session
+        .clone()
+        .or_else(|| std::env::var("UNIPI_KANBOARD_SESSION").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
     match &cli.command {
         Command::Project(ProjectCommand::Add(args)) => commands::project_add(
@@ -30,6 +36,17 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             args.prefix.as_deref(),
         ),
         Command::Project(ProjectCommand::List) => commands::project_list(&layout),
+        Command::Project(ProjectCommand::Archive { slug })
+        | Command::Project(ProjectCommand::Unarchive { slug }) => {
+            if common.actor == Actor::Agent {
+                return Err(Error::rule("project archive/unarchive is user only"));
+            }
+            let archived = matches!(
+                cli.command,
+                Command::Project(ProjectCommand::Archive { .. })
+            );
+            commands::project_set_archived(&layout, slug, archived)
+        }
         Command::Project(ProjectCommand::Show) => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             commands::project_show(&layout, &project)
@@ -38,6 +55,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         Command::Add {
             title,
             body,
+            body_file,
+            attach,
             status,
             priority,
             after,
@@ -52,7 +71,12 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 .map(crate::cli::parse_priority)
                 .transpose()?
                 .unwrap_or(Priority::None);
-            let body = read_body(body.as_deref())?;
+            let body = match body_file {
+                Some(file) => Some(std::fs::read_to_string(file).map_err(|err| {
+                    Error::usage(format!("cannot read {}: {err}", file.display()))
+                })?),
+                None => read_body(body.as_deref())?,
+            };
             commands::add(
                 &layout,
                 project,
@@ -62,6 +86,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 status,
                 priority,
                 after,
+                attach,
             )
         }
 
@@ -79,7 +104,11 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::show(&layout, project, id, gate)
         }
 
-        Command::Move { id, status, comment } => {
+        Command::Move {
+            id,
+            status,
+            comment,
+        } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let to = crate::cli::parse_status(status)?;
             commands::move_task(&layout, project, &common, id, to, comment.as_deref())
@@ -91,21 +120,41 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::note(&layout, project, &common, id, &text)
         }
 
-        Command::Attach { id, file, note, name } => {
+        Command::Attach {
+            id,
+            file,
+            note,
+            name,
+        } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let bytes = std::fs::read(file)
-                .map_err(|err| crate::error::Error::usage(format!("cannot read {}: {err}", file.display())))?;
+            let bytes = std::fs::read(file).map_err(|err| {
+                crate::error::Error::usage(format!("cannot read {}: {err}", file.display()))
+            })?;
             let original = name.clone().unwrap_or_else(|| {
-                file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into())
+                file.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".into())
             });
-            commands::attach(&layout, project, &common, id, &original, &bytes, note.as_deref())
+            commands::attach(
+                &layout,
+                project,
+                &common,
+                id,
+                &original,
+                &bytes,
+                note.as_deref(),
+            )
         }
 
         Command::Attachments { id } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let board = crate::board::Board::open(&layout, project)?;
             let task = board.get(id)?;
-            Ok(serde_json::json!(crate::attachments::list(&layout, &board.project.slug, &task.id)))
+            Ok(serde_json::json!(crate::attachments::list(
+                &layout,
+                &board.project.slug,
+                &task.id
+            )))
         }
 
         Command::Edit {
@@ -167,27 +216,69 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 _ => {
                     return Err(Error::usage(
                         "order needs exactly one of --before ID, --after-pos ID, --top, --bottom",
-                    ))
+                    ));
                 }
             };
             commands::order(&layout, project, &common, id, target)
         }
 
         Command::ClaimNext {
-            session,
+            id,
             pid,
             host,
             mode,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let mode: RunMode = crate::cli::parse_mode(mode)?;
+            let session = common.session.clone().ok_or_else(|| {
+                Error::usage(
+                    "claim-next needs a session: pass --session or set UNIPI_KANBOARD_SESSION",
+                )
+            })?;
             let args = commands::ClaimArgs {
-                session,
+                session: &session,
                 pid: *pid,
                 host,
                 mode,
+                id: id.as_deref(),
             };
             commands::claim_next(&layout, project, gate, &args, common.now)
+        }
+
+        Command::Next => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            commands::next(&layout, project, gate, common.now)
+        }
+
+        Command::Reap { dry_run } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            commands::reap(&layout, project, *dry_run, common.now)
+        }
+
+        Command::Queue { ids, list } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let session = require_session(&common, "queue")?;
+            if *list || ids.is_empty() {
+                commands::queue_list(&layout, &project, &session)
+            } else {
+                commands::queue_update(&layout, project, &session, ids, None)
+            }
+        }
+
+        Command::Unqueue { ids } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let session = require_session(&common, "unqueue")?;
+            commands::queue_update(&layout, project, &session, &[], Some(ids))
+        }
+
+        Command::Chain { id } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            commands::chain(&layout, project, gate, id)
+        }
+
+        Command::Search { text: needle, all } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            commands::search(&layout, project, gate, needle, *all)
         }
 
         Command::Release { id, to, comment } => {
@@ -199,7 +290,15 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         Command::SetRun { id, mode, goal } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let mode: RunMode = crate::cli::parse_mode(mode)?;
-            commands::set_run(&layout, project, id, mode, goal.as_deref(), gate, common.now)
+            commands::set_run(
+                &layout,
+                project,
+                id,
+                mode,
+                goal.as_deref(),
+                gate,
+                common.now,
+            )
         }
 
         Command::Duplicate { id } => {
@@ -207,7 +306,10 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::duplicate(&layout, project, &common, id)
         }
 
-        Command::ArchiveSweep { after_days } => {
+        Command::ArchiveSweep {
+            after_days,
+            retention_days,
+        } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let days = after_days
                 .or_else(|| {
@@ -216,7 +318,14 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                         .and_then(|value| value.trim().parse().ok())
                 })
                 .unwrap_or(0);
-            commands::archive_sweep(&layout, project, days, common.now)
+            let retention = retention_days
+                .or_else(|| {
+                    std::env::var("UNIPI_KANBOARD_RETENTION_DAYS")
+                        .ok()
+                        .and_then(|value| value.trim().parse().ok())
+                })
+                .unwrap_or(0);
+            commands::archive_sweep(&layout, project, days, retention, common.now)
         }
 
         Command::Serve {
@@ -224,10 +333,14 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             port,
             idle_min,
             idle_secs,
+            require_auth,
+            keep_token,
         } => {
             let options = crate::serve::ServeOptions {
                 host: host.clone(),
                 port: *port,
+                require_auth: *require_auth,
+                keep_token: *keep_token,
                 idle: match idle_secs {
                     Some(secs) => std::time::Duration::from_secs(*secs),
                     None => std::time::Duration::from_secs(
@@ -242,6 +355,13 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             runtime.block_on(crate::serve::serve(layout, options))
         }
 
+        Command::Settings { sub } => match sub {
+            crate::cli::SettingsSub::Show => commands::settings_show(&layout),
+            crate::cli::SettingsSub::Set { field, value } => {
+                commands::settings_set(&layout, &common, field, value)
+            }
+        },
+        Command::RotateToken => commands::rotate_token(&layout, &common),
         Command::Status => crate::daemon::status(&layout),
 
         Command::Stop { timeout } => {
@@ -279,6 +399,15 @@ pub fn resolve_actor(explicit: Option<&str>) -> Actor {
     Actor::User
 }
 
+/// Session-scoped commands fail loudly without one.
+fn require_session(common: &Common, command: &str) -> Result<String> {
+    common.session.clone().ok_or_else(|| {
+        Error::usage(format!(
+            "{command} needs a session: pass --session or set UNIPI_KANBOARD_SESSION"
+        ))
+    })
+}
+
 fn read_body(value: Option<&str>) -> Result<Option<String>> {
     match value {
         None => Ok(None),
@@ -303,6 +432,19 @@ fn text(value: &Value, key: &str) -> String {
         Value::Null => String::new(),
         other => other.to_string(),
     }
+}
+
+fn strings(value: &Value) -> String {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| item.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
 }
 
 fn ids(value: &Value) -> String {
@@ -340,6 +482,10 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 .map(|project| format!("{}  {}", text(project, "slug"), text(project, "root")))
                 .collect::<Vec<_>>()
                 .join("\n")
+        }
+        Command::Project(ProjectCommand::Archive { slug }) => format!("project {slug} archived"),
+        Command::Project(ProjectCommand::Unarchive { slug }) => {
+            format!("project {slug} unarchived")
         }
         Command::Project(ProjectCommand::Show) => {
             let counts = field(payload, "counts");
@@ -444,7 +590,14 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 .and_then(|value| value.as_array())
                 .cloned()
                 .unwrap_or_default();
-            for entry in activity.iter().rev().take(5).collect::<Vec<_>>().iter().rev() {
+            for entry in activity
+                .iter()
+                .rev()
+                .take(5)
+                .collect::<Vec<_>>()
+                .iter()
+                .rev()
+            {
                 out.push_str(&format!(
                     "\n  - {} [{}] {}",
                     text(entry, "at"),
@@ -469,7 +622,14 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             } else {
                 items
                     .iter()
-                    .map(|item| format!("{}  {}  ({} bytes)", text(item, "kind"), text(item, "path"), field(item, "size")))
+                    .map(|item| {
+                        format!(
+                            "{}  {}  ({} bytes)",
+                            text(item, "kind"),
+                            text(item, "path"),
+                            field(item, "size")
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n")
             }
@@ -511,12 +671,197 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 )
             }
         }
+        Command::Next => {
+            let task = field(payload, "task");
+            if task.is_null() {
+                let waiting = field(payload, "waiting")
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|item| {
+                        format!(
+                            "{} (waiting {})",
+                            text(item, "id"),
+                            ids(field(item, "waitingFor"))
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                if waiting.is_empty() {
+                    "no ready task".to_string()
+                } else {
+                    format!("no ready task; todo but waiting: {}", waiting.join(", "))
+                }
+            } else {
+                format!(
+                    "next: {} [{}] {}",
+                    text(task, "id"),
+                    text(task, "priority"),
+                    text(task, "title")
+                )
+            }
+        }
+        Command::Reap { dry_run } => {
+            let released = strings(field(payload, "released"));
+            let unknown = strings(field(payload, "unknown"));
+            let mut out = if released.is_empty() {
+                if *dry_run {
+                    "reap (dry-run): nothing to release".to_string()
+                } else {
+                    "reap: nothing to release".to_string()
+                }
+            } else {
+                format!(
+                    "{}{released}",
+                    if *dry_run {
+                        "would release: "
+                    } else {
+                        "released to todo: "
+                    }
+                )
+            };
+            if !unknown.is_empty() {
+                out.push_str(&format!(
+                    "\n  claimed on other hosts (untouched): {unknown}"
+                ));
+            }
+            out
+        }
+        Command::Queue { .. } | Command::Unqueue { .. } => {
+            let queue = strings(field(payload, "queue"));
+            let mut out = format!(
+                "queue ({}): {}",
+                text(payload, "session"),
+                if queue.is_empty() {
+                    "empty".to_string()
+                } else {
+                    queue
+                }
+            );
+            let left_out = field(payload, "leftOut")
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            if !left_out.is_empty() {
+                let ids: Vec<String> = left_out.iter().map(|entry| text(entry, "id")).collect();
+                let reason = left_out
+                    .first()
+                    .map(|entry| text(entry, "reason"))
+                    .unwrap_or_default();
+                out.push_str(&format!("; left out {} ({reason})", ids.join(" ")));
+            }
+            out
+        }
+        Command::Settings { .. } => {
+            if field(payload, "queueMax").is_null() {
+                let argv = field(payload, "piCommand")
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                let joined: Vec<String> = argv
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                format!("pi-command set to {:?}", joined.join(" "))
+            } else {
+                let argv = field(payload, "piCommand")
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                let joined: Vec<String> = argv
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+                format!(
+                    "pi-command: {}\nmodels: {} reported\nsummary model: {}\ncustom summary instruction: {}\nqueueMax: {} · maxSessions: {}",
+                    if joined.is_empty() {
+                        "(not set)".to_string()
+                    } else {
+                        joined.join(" ")
+                    },
+                    field(payload, "models")
+                        .as_array()
+                        .map(|m| m.len())
+                        .unwrap_or(0),
+                    {
+                        let m = text(payload, "summaryModel");
+                        if m.is_empty() {
+                            "pi default".to_string()
+                        } else {
+                            m
+                        }
+                    },
+                    field(payload, "summaryInstructionSet"),
+                    text(payload, "queueMax"),
+                    text(payload, "maxSessions")
+                )
+            }
+        }
+        Command::RotateToken => format!("rotate-token: {}", text(payload, "note")),
+        Command::Chain { id } => {
+            let upstream = field(payload, "upstream")
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let downstream = field(payload, "downstream")
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let row = |item: &Value| {
+                format!(
+                    "{} [{}] {}",
+                    text(item, "id"),
+                    text(item, "status"),
+                    text(item, "title")
+                )
+            };
+            let mut out = format!(
+                "{id} [{}] {}",
+                text(payload, "status"),
+                text(payload, "title")
+            );
+            if !upstream.is_empty() {
+                out.push_str("\n  upstream:");
+                for item in &upstream {
+                    out.push_str(&format!("\n    {}", row(item)));
+                }
+            }
+            if !downstream.is_empty() {
+                out.push_str("\n  downstream:");
+                for item in &downstream {
+                    out.push_str(&format!("\n    {}", row(item)));
+                }
+            }
+            out
+        }
+        Command::Search { .. } => {
+            let items = field(payload, "tasks")
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            if items.is_empty() {
+                return "no matches".to_string();
+            }
+            items
+                .iter()
+                .map(|task| {
+                    format!(
+                        "{}  [{}] {}",
+                        text(task, "id"),
+                        text(task, "status"),
+                        text(task, "title")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
         Command::Release { id, to, .. } => format!("{id} released to {to}"),
         Command::SetRun { id, mode, .. } => format!("{id} mode {mode}"),
         Command::Duplicate { .. } => format!("{} created (duplicate)", text(payload, "id")),
         Command::ArchiveSweep { .. } => {
             let archived = ids(field(payload, "archived"));
-            if archived.is_empty() {
+            let cold = ids(field(payload, "cold"));
+            let mut line = if archived.is_empty() {
                 format!(
                     "nothing archived{}",
                     payload
@@ -527,7 +872,11 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 )
             } else {
                 format!("archived: {archived}")
+            };
+            if !cold.is_empty() {
+                line.push_str(&format!(" · cold: {cold}"));
             }
+            line
         }
         Command::Serve { .. } => {
             if field(payload, "alreadyRunning").as_bool().unwrap_or(false) {

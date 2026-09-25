@@ -7,6 +7,7 @@
 import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
+import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { hasMarkup, relativeTime, renderMarkdown } from "./markdown.js";
 import { filesFrom, insertAtCursor, uploadAll } from "./attach.js";
@@ -16,6 +17,7 @@ import {
   board,
   describe,
   elapsed,
+  highlightTask,
   laneLabel,
   loadBoard,
   openTaskId,
@@ -59,6 +61,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   let commentArea: HTMLTextAreaElement | undefined;
   let bodyArea: HTMLTextAreaElement | undefined;
   let filePicker: HTMLInputElement | undefined;
+  let bodyPicker: HTMLInputElement | undefined;
 
   /** Upload files and drop their markdown into the comment or the description draft. */
   async function attach(files: File[], into: "comment" | "body"): Promise<void> {
@@ -264,6 +267,15 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
           <Icon.close />
         </button>
       </header>
+      <Show when={props.task.status === "blocked" && props.task.blockedReason?.text}>
+        <div class="blocked-banner" role="alert">
+          <Icon.blocked size={15} />
+          <div class="blocked-banner-text">
+            <strong>Blocked: {props.task.blockedReason!.text}</strong>
+            <span class="blocked-banner-hint">Reply below, then move it back to Todo.</span>
+          </div>
+        </div>
+      </Show>
 
       <div class="drawer-body">
         <div class="drawer-main">
@@ -302,6 +314,17 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                     setEditing(true);
                   }}
                   onKeyDown={(event) => event.key === "Enter" && setEditing(true)}
+                  onDragOver={(event) => {
+                    if (!event.dataTransfer?.types.includes("Files")) return;
+                    event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    if (!event.dataTransfer?.types.includes("Files")) return;
+                    event.preventDefault();
+                    setBody(props.task.body ?? "");
+                    setEditing(true);
+                    void attach(filesFrom(event), "body");
+                  }}
                   innerHTML={renderMarkdown(props.task.body) || "Add a description…"}
                 />
               }
@@ -326,12 +349,37 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   }}
                 />
                 <div class="editor-foot">
+                  <button
+                    class="icon-btn"
+                    aria-label="Attach files to description"
+                    title="Attach files (or paste / drop)"
+                    onClick={() => bodyPicker?.click()}
+                  >
+                    <Icon.paperclip />
+                  </button>
+                  <input
+                    ref={bodyPicker}
+                    type="file"
+                    multiple
+                    hidden
+                    aria-label="Choose files to attach to the description"
+                    onChange={(event) => {
+                      const files = [...(event.currentTarget.files ?? [])];
+                      event.currentTarget.value = "";
+                      void attach(files, "body");
+                    }}
+                  />
                   <button class="btn primary" disabled={busy()} onClick={() => void saveBody()}>
                     Save
                   </button>
                   <button class="btn" onClick={() => setEditing(false)}>
                     Cancel
                   </button>
+                  <Show when={uploading() > 0}>
+                    <span class="uploading">
+                      <span class="spinner" /> Uploading {uploading()}…
+                    </span>
+                  </Show>
                   <span class="hint">Markdown · paste or drop files · {MOD}+Enter to save</span>
                 </div>
               </div>
@@ -358,12 +406,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                           {relativeTime(entry.at)}
                         </time>
                       </div>
-                      <Show
-                        when={hasMarkup(entry.text)}
-                        fallback={<div class={`what${entry.actor === "system" ? " system" : ""}`}>{entry.text}</div>}
-                      >
-                        <div class={`what md${entry.actor === "system" ? " system" : ""}`} innerHTML={renderMarkdown(entry.text)} />
-                      </Show>
+                      <ActivityText text={entry.text} system={entry.actor === "system"} />
                     </div>
                   </li>
                 )}
@@ -505,7 +548,26 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
             <div class="lock-note">
               <Icon.lock size={12} />
               <span>
-                Locked — {(props.task.lockedBy ?? []).join(", ")} {(props.task.lockedBy ?? []).length === 1 ? "is" : "are"} still in Backlog.
+                Locked —{" "}
+                <For each={props.task.lockedBy ?? []}>
+                  {(dep, index) => (
+                    <>
+                      <Show when={index() > 0}>, </Show>
+                      <button
+                        class="dep-id"
+                        title={depTask(dep)?.title}
+                        onClick={() => {
+                          if (!depTask(dep)) return;
+                          setOpenTaskId(dep);
+                          highlightTask(dep);
+                        }}
+                      >
+                        {dep}
+                      </button>
+                    </>
+                  )}
+                </For>{" "}
+                {(props.task.lockedBy ?? []).length === 1 ? "is" : "are"} still in Backlog.
               </span>
               <button
                 class="btn"
@@ -525,7 +587,15 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
               {(dep) => (
                 <div class="dep-item">
                   <StatusGlyph status={depTask(dep)?.status ?? "backlog"} />
-                  <button class="dep-text" onClick={() => depTask(dep) && setOpenTaskId(dep)} title={depTask(dep)?.title}>
+                  <button
+                    class="dep-text"
+                    onClick={() => {
+                      if (!depTask(dep)) return;
+                      setOpenTaskId(dep);
+                      highlightTask(dep);
+                    }}
+                    title={depTask(dep)?.title}
+                  >
                     <span class="mono">{dep}</span>
                     {depTask(dep)?.title ?? "missing task"}
                   </button>
@@ -635,16 +705,30 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   );
 }
 
-function DepPicker(props: { task: Task; onPick: (id: string) => void }): JSX.Element {
-  const [needle, setNeedle] = createSignal("");
-  const candidates = (): Task[] => {
-    const text = needle().trim().toLowerCase();
-    return board.tasks
-      .filter((candidate) => candidate.id !== props.task.id && !(props.task.deps ?? []).includes(candidate.id))
-      .filter((candidate) => !["cancelled", "archived"].includes(candidate.status))
-      .filter((candidate) => !text || candidate.id.toLowerCase().includes(text) || candidate.title.toLowerCase().includes(text))
-      .slice(0, 8);
+/** One activity entry: markdown when it has markup, clamped to ~6 lines with "Show more". */
+function ActivityText(props: { text: string; system: boolean }): JSX.Element {
+  const [expanded, setExpanded] = createSignal(false);
+  const [overflows, setOverflows] = createSignal(false);
+  const markup = (): boolean => hasMarkup(props.text);
+  const measure = (el: HTMLDivElement): void => {
+    requestAnimationFrame(() => setOverflows(el.scrollHeight > el.clientHeight + 4));
   };
+  const cls = (): string => `what${markup() ? " md" : ""}${props.system ? " system" : ""}${expanded() ? "" : " clamped"}`;
+  return (
+    <>
+      <Show when={markup()} fallback={<div class={cls()} ref={measure}>{props.text}</div>}>
+        <div class={cls()} ref={measure} innerHTML={renderMarkdown(props.text)} />
+      </Show>
+      <Show when={overflows() || expanded()}>
+        <button class="show-more" onClick={() => setExpanded((open) => !open)}>
+          {expanded() ? "Show less" : "Show more"}
+        </button>
+      </Show>
+    </>
+  );
+}
+
+function DepPicker(props: { task: Task; onPick: (id: string) => void }): JSX.Element {
   return (
     <Popover
       width={300}
@@ -657,33 +741,7 @@ function DepPicker(props: { task: Task; onPick: (id: string) => void }): JSX.Ele
       )}
     >
       {(close) => (
-        <>
-          <div class="pop-search">
-            <Icon.search size={14} />
-            <input placeholder="Runs after…" aria-label="Search tasks to depend on" value={needle()} onInput={(event) => setNeedle(event.currentTarget.value)} />
-          </div>
-          <For each={candidates()} fallback={<div class="menu-section">No matching tasks.</div>}>
-            {(candidate) => (
-              <MenuItem
-                role="option"
-                icon={<StatusGlyph status={candidate.status} />}
-                label={
-                  <>
-                    <span class="mono muted" style={{ "margin-right": "6px" }}>
-                      {candidate.id}
-                    </span>
-                    {candidate.title}
-                  </>
-                }
-                onSelect={() => {
-                  close();
-                  setNeedle("");
-                  props.onPick(candidate.id);
-                }}
-              />
-            )}
-          </For>
-        </>
+        <DepList selfId={props.task.id} exclude={props.task.deps ?? []} onPick={props.onPick} close={close} />
       )}
     </Popover>
   );

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/unipi-logo.png" width="200" alt="UniPi"></p>
+
 # Unipi
 
 23 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.

@@ -1,8 +1,10 @@
 /** Dialogs: new task, comment-required move, ⌘K command palette, shortcuts, toasts. */
 
 import { For, Show, createEffect, createMemo, createSignal, on, type JSX } from "solid-js";
-import { api, PRIORITIES, type Task } from "./api.js";
+import { api, ApiError, PRIORITIES, type Settings } from "./api.js";
+import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
+import { renderMarkdown } from "./markdown.js";
 import { ProjectTile } from "./paint.js";
 import { offerToSchedule } from "./schedule.js";
 import { filesFrom, namedFile, uploadAll } from "./attach.js";
@@ -23,12 +25,16 @@ import {
   setOpenTaskId,
   setPaletteOpen,
   setSelectedId,
+  setSettingsOpen,
   setShortcutsOpen,
   setSidebarCollapsed,
+  setSummarizeOpen,
   setView,
+  settingsOpen,
   shortcutsOpen,
   sidebarCollapsed,
   slug,
+  summarizeOpen,
   toast,
   toasts,
   toggleTheme,
@@ -101,7 +107,6 @@ export function NewTaskDialog(): JSX.Element {
     }
   }
 
-  const depCandidates = (): Task[] => board.tasks.filter((task) => !["cancelled", "archived"].includes(task.status)).slice(0, 40);
 
   return (
     <Dialog open={newTaskLane() !== null} label="New task" onClose={close} width={640}>
@@ -223,25 +228,13 @@ export function NewTaskDialog(): JSX.Element {
             </button>
           )}
         >
-          {() => (
-            <For each={depCandidates()} fallback={<div class="menu-section">No tasks yet.</div>}>
-              {(task) => (
-                <MenuItem
-                  role="menuitemcheckbox"
-                  icon={<StatusGlyph status={task.status} />}
-                  label={
-                    <>
-                      <span class="mono muted" style={{ "margin-right": "6px" }}>
-                        {task.id}
-                      </span>
-                      {task.title}
-                    </>
-                  }
-                  checked={after().includes(task.id)}
-                  onSelect={() => setAfter((current) => (current.includes(task.id) ? current.filter((id) => id !== task.id) : [...current, task.id]))}
-                />
-              )}
-            </For>
+          {(close) => (
+            <DepList
+              keepOpen
+              picked={(id) => after().includes(id)}
+              onPick={(id) => setAfter((current) => (current.includes(id) ? current.filter((picked) => picked !== id) : [...current, id]))}
+              close={close}
+            />
           )}
         </Popover>
         <button class="prop-chip empty" aria-label="Attach files" onClick={() => picker?.click()}>
@@ -549,6 +542,335 @@ export function ShortcutsDialog(): JSX.Element {
   );
 }
 
+// ─── summarize & archive ────────────────────────────────────────────────────
+
+/**
+ * Two steps: pick the instruction and generate (the agent can take minutes),
+ * then review/edit the markdown before it is saved and the done tasks archived.
+ */
+export function SummarizeDialog(): JSX.Element {
+  const [step, setStep] = createSignal<"config" | "result">("config");
+  const [instruction, setInstruction] = createSignal("");
+  const [summary, setSummary] = createSignal("");
+  const [taskIds, setTaskIds] = createSignal<string[]>([]);
+  const [needsAgent, setNeedsAgent] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const [editing, setEditing] = createSignal(false);
+  const doneCount = (): number => board.tasks.filter((task) => task.status === "done").length;
+
+  createEffect(
+    on(summarizeOpen, (open) => {
+      if (!open) return;
+      setStep("config");
+      setSummary("");
+      setTaskIds([]);
+      setNeedsAgent(false);
+      void api
+        .settings()
+        .then((settings) => setInstruction(settings.summaryInstruction))
+        .catch((error) => toast(describe(error), "error"));
+    }),
+  );
+
+  const close = (): void => {
+    if (!busy()) setSummarizeOpen(false);
+  };
+
+  async function generate(): Promise<void> {
+    const target = slug();
+    if (!target || busy()) return;
+    setBusy(true);
+    setNeedsAgent(false);
+    try {
+      const result = await api.summarize(target, instruction());
+      setSummary(result.summary);
+      setTaskIds(result.taskIds);
+      setEditing(false);
+      setStep("result");
+    } catch (error) {
+      if (error instanceof ApiError && error.needsAgent) setNeedsAgent(true);
+      else toast(describe(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveAndArchive(): Promise<void> {
+    const target = slug();
+    if (!target || busy()) return;
+    setBusy(true);
+    try {
+      const result = await api.archiveSummary(target, { markdown: summary(), taskIds: taskIds() });
+      toast(`Archived ${result.archived.length} task${result.archived.length === 1 ? "" : "s"} · summary saved`, "success", {
+        label: "Copy path",
+        run: () => void navigator.clipboard?.writeText(result.path),
+      });
+      await loadBoard(target);
+      setSummarizeOpen(false);
+    } catch (error) {
+      toast(describe(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={summarizeOpen()} label="Summarize & archive" onClose={close} width={640} class="modal">
+      <header class="dialog-head">
+        <span class="crumb-pill">
+          <StatusGlyph status="done" size={13} />
+          Done
+        </span>
+        <span>Summarize & archive</span>
+        <span class="spacer" />
+        <button class="icon-btn" aria-label="Close" disabled={busy()} onClick={close}>
+          <Icon.close size={14} />
+        </button>
+      </header>
+      <div class="dialog-body">
+        <Show when={step() === "config"} fallback={
+          <Show when={editing()} fallback={<div class="summary-preview md" innerHTML={renderMarkdown(summary())} />}>
+            <AutoTextarea
+              class="dialog-body-input"
+              aria-label="Summary (markdown)"
+              value={summary()}
+              maxHeight={260}
+              style={{ "min-height": "140px" }}
+              onInput={(event) => setSummary(event.currentTarget.value)}
+            />
+          </Show>
+        }>
+          <p class="hint" style={{ margin: "0 0 10px" }}>
+            {doneCount()} done task{doneCount() === 1 ? "" : "s"} will be summarized by the configured agent, then archived.
+          </p>
+          <AutoTextarea
+            class="dialog-body-input"
+            aria-label="Summary instruction"
+            value={instruction()}
+            maxHeight={220}
+            style={{ "min-height": "110px" }}
+            onInput={(event) => setInstruction(event.currentTarget.value)}
+          />
+          <Show when={needsAgent()}>
+            <div class="banner" role="alert" style={{ "margin-top": "10px" }}>
+              <Icon.warn size={16} />
+              <div>
+                <strong>No agent configured.</strong> Set the command that writes the summary first.
+                <div style={{ "margin-top": "8px" }}>
+                  <button
+                    class="btn"
+                    onClick={() => {
+                      setSummarizeOpen(false);
+                      setSettingsOpen(true);
+                    }}
+                  >
+                    <Icon.gear size={14} />
+                    Configure an agent first
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Show>
+        </Show>
+      </div>
+      <footer class="dialog-foot">
+        <Show when={step() === "result"}>
+          <button class="btn" aria-pressed={editing()} onClick={() => setEditing(!editing())}>
+            {editing() ? "Preview" : "Edit"}
+          </button>
+          <button
+            class="btn"
+            onClick={() =>
+              void navigator.clipboard?.writeText(summary()).then(
+                () => toast("Copied summary", "success"),
+                () => toast("Couldn't copy the summary", "error"),
+              )
+            }
+          >
+            <Icon.copy size={14} />
+            Copy
+          </button>
+          <button class="btn" disabled={busy()} onClick={() => void generate()}>
+            Regenerate
+          </button>
+        </Show>
+        <span class="spacer" />
+        <Show
+          when={step() === "result"}
+          fallback={
+            <button class="btn primary" disabled={busy() || doneCount() === 0} onClick={() => void generate()}>
+              <Show when={busy()} fallback={<Icon.sparkle size={14} />}>
+                <span class="spinner" />
+              </Show>
+              {busy() ? "Summarizing…" : "Generate summary"}
+            </button>
+          }
+        >
+          <button class="btn primary" disabled={busy() || summary().trim().length === 0} onClick={() => void saveAndArchive()}>
+            Save & archive {taskIds().length} task{taskIds().length === 1 ? "" : "s"}
+          </button>
+        </Show>
+      </footer>
+    </Dialog>
+  );
+}
+
+// ─── settings ───────────────────────────────────────────────────────────────
+
+export function SettingsDialog(): JSX.Element {
+  const [loaded, setLoaded] = createSignal<Settings | null>(null);
+  const [model, setModel] = createSignal("");
+  const [filter, setFilter] = createSignal("");
+  const [instruction, setInstruction] = createSignal("");
+  const [customInstruction, setCustomInstruction] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+
+  createEffect(
+    on(settingsOpen, (open) => {
+      if (!open) return;
+      setLoaded(null);
+      setFilter("");
+      setCustomInstruction(false);
+      void api
+        .settings()
+        .then((settings) => {
+          setLoaded(settings);
+          setModel(settings.summaryModel);
+          setInstruction(settings.summaryInstruction);
+          setCustomInstruction(settings.summaryInstruction !== settings.defaultSummaryInstruction);
+        })
+        .catch((error) => toast(describe(error), "error"));
+    }),
+  );
+
+  const close = (): void => void setSettingsOpen(false);
+
+  /** "provider/id" → grouped by provider, filterable. */
+  const grouped = createMemo((): Array<[string, string[]]> => {
+    const needle = filter().trim().toLowerCase();
+    const models = (loaded()?.models ?? []).filter((entry) => !needle || entry.toLowerCase().includes(needle));
+    const groups = new Map<string, string[]>();
+    for (const entry of models) {
+      const provider = entry.split("/")[0] ?? "other";
+      groups.set(provider, [...(groups.get(provider) ?? []), entry]);
+    }
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  });
+
+  async function save(): Promise<void> {
+    setBusy(true);
+    try {
+      await api.saveSettings({
+        summaryModel: model().trim(),
+        summaryInstruction: customInstruction() ? instruction() : "",
+      });
+      toast("Settings saved", "success");
+      close();
+    } catch (error) {
+      toast(describe(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={settingsOpen()} label="Settings" onClose={close} width={520}>
+      <header class="dialog-head">
+        <Icon.gear size={14} />
+        <span style={{ color: "var(--text)", "font-weight": 600 }}>Settings</span>
+        <span class="spacer" />
+        <button class="icon-btn" aria-label="Close" onClick={close}>
+          <Icon.close size={14} />
+        </button>
+      </header>
+      <div class="dialog-body settings-form">
+        <Show when={loaded()} fallback={<div class="skeleton" style={{ height: "120px" }} />}>
+          <div class="settings-heading">Summaries</div>
+          <label class="field">
+            <span class="field-label">Model</span>
+            <Show
+              when={(loaded()?.models.length ?? 0) > 0}
+              fallback={<span class="field-hint">Open the board from pi to load your models</span>}
+            >
+              <Show when={(loaded()?.models.length ?? 0) > 12}>
+                <input
+                  class="input"
+                  placeholder="Filter models…"
+                  aria-label="Filter models"
+                  value={filter()}
+                  onInput={(event) => setFilter(event.currentTarget.value)}
+                />
+              </Show>
+              <select
+                class="input"
+                aria-label="Summary model"
+                value={model()}
+                onChange={(event) => setModel(event.currentTarget.value)}
+              >
+                <option value="">pi default</option>
+                <For each={grouped()}>
+                  {([provider, models]) => (
+                    <optgroup label={provider}>
+                      <For each={models}>{(entry) => <option value={entry}>{entry}</option>}</For>
+                    </optgroup>
+                  )}
+                </For>
+              </select>
+            </Show>
+          </label>
+          <div class="field">
+            <span class="field-label">
+              Instruction
+              <span class="spacer" />
+              <Show
+                when={customInstruction()}
+                fallback={
+                  <button class="link-btn" onClick={() => setCustomInstruction(true)}>
+                    Customize
+                  </button>
+                }
+              >
+                <button
+                  class="link-btn"
+                  onClick={() => {
+                    setInstruction(loaded()?.defaultSummaryInstruction ?? "");
+                    setCustomInstruction(false);
+                  }}
+                >
+                  Reset to default
+                </button>
+              </Show>
+            </span>
+            <Show
+              when={customInstruction()}
+              fallback={<span class="field-hint">Default: changelog bullets in Conventional Commit style</span>}
+            >
+              <AutoTextarea
+                class="dialog-body-input"
+                aria-label="Summary instruction"
+                value={instruction()}
+                maxHeight={200}
+                style={{ "min-height": "90px" }}
+                onInput={(event) => setInstruction(event.currentTarget.value)}
+              />
+            </Show>
+            <span class="field-hint">Plain-language style rules are always applied.</span>
+          </div>
+        </Show>
+      </div>
+      <footer class="dialog-foot">
+        <span class="spacer" />
+        <button class="btn" onClick={close}>
+          Cancel
+        </button>
+        <button class="btn primary" disabled={busy() || !loaded()} onClick={() => void save()}>
+          Save
+        </button>
+      </footer>
+    </Dialog>
+  );
+}
+
 // ─── toasts ─────────────────────────────────────────────────────────────────
 
 export function Toasts(): JSX.Element {
@@ -561,6 +883,9 @@ export function Toasts(): JSX.Element {
               {item.kind === "success" ? <Icon.check size={11} /> : item.kind === "error" ? <Icon.close size={10} /> : item.kind === "warning" ? "!" : "i"}
             </span>
             <span class="msg">{item.message}</span>
+            <Show when={(item.count ?? 1) > 1}>
+              <span class="toast-count" aria-label={`${item.count} times`}>×{item.count}</span>
+            </Show>
             <Show when={item.action}>
               <button
                 class="btn"

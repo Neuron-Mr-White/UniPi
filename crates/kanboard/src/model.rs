@@ -9,7 +9,10 @@ use std::str::FromStr;
 use crate::error::{Error, Result};
 
 /// JSON dates use the same second-precision form as the task files.
-pub(crate) fn serialize_iso<S: Serializer>(value: &DateTime<Utc>, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+pub(crate) fn serialize_iso<S: Serializer>(
+    value: &DateTime<Utc>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
     serializer.serialize_str(&value.to_rfc3339_opts(SecondsFormat::Secs, true))
 }
 
@@ -242,7 +245,11 @@ impl FromStr for RunMode {
         RunMode::ALL
             .into_iter()
             .find(|mode| mode.as_str() == value)
-            .ok_or_else(|| Error::usage(format!("unknown mode \"{value}\" (expected direct|plan|goal)")))
+            .ok_or_else(|| {
+                Error::usage(format!(
+                    "unknown mode \"{value}\" (expected direct|plan|goal)"
+                ))
+            })
     }
 }
 
@@ -267,8 +274,12 @@ impl ChainGate {
     /// Dependency statuses that satisfy the gate. Cancelled is deliberately absent.
     pub fn satisfied_by(self, status: Status) -> bool {
         match self {
-            ChainGate::InReview => matches!(status, Status::InReview | Status::Done),
-            ChainGate::Done => status == Status::Done,
+            // Archived counts: the task was accepted before archiving — and a
+            // cold-storage dep resolves with its frozen status.
+            ChainGate::InReview => {
+                matches!(status, Status::InReview | Status::Done | Status::Archived)
+            }
+            ChainGate::Done => matches!(status, Status::Done | Status::Archived),
         }
     }
 }
@@ -286,7 +297,11 @@ impl FromStr for ChainGate {
         ChainGate::ALL
             .into_iter()
             .find(|gate| gate.as_str() == value)
-            .ok_or_else(|| Error::usage(format!("unknown chain gate \"{value}\" (expected in_review|done)")))
+            .ok_or_else(|| {
+                Error::usage(format!(
+                    "unknown chain gate \"{value}\" (expected in_review|done)"
+                ))
+            })
     }
 }
 
@@ -330,6 +345,9 @@ pub struct ActivityEntry {
     #[serde(serialize_with = "serialize_iso")]
     pub at: DateTime<Utc>,
     pub actor: Actor,
+    /// The claiming session, recorded for agent writes (`[agent:<session>]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     pub text: String,
 }
 
@@ -357,7 +375,14 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(id: String, title: String, status: Status, priority: Priority, order: i64, now: DateTime<Utc>) -> Self {
+    pub fn new(
+        id: String,
+        title: String,
+        status: Status,
+        priority: Priority,
+        order: i64,
+        now: DateTime<Utc>,
+    ) -> Self {
         Task {
             id,
             title,
@@ -375,9 +400,24 @@ impl Task {
     }
 
     pub fn push_activity(&mut self, at: DateTime<Utc>, actor: Actor, text: impl Into<String>) {
+        self.push_activity_session(at, actor, None, text);
+    }
+
+    /// Same as `push_activity`, tagging the entry with the acting session.
+    /// The tag renders only for agents (`[agent:<session>]`).
+    pub fn push_activity_session(
+        &mut self,
+        at: DateTime<Utc>,
+        actor: Actor,
+        session: Option<&str>,
+        text: impl Into<String>,
+    ) {
         self.activity.push(ActivityEntry {
             at,
             actor,
+            session: session
+                .map(|value| value.to_string())
+                .filter(|value| !value.is_empty()),
             // Trailing whitespace/newlines would round-trip as blank
             // continuation lines; normalise on the way in.
             text: text.into().trim_end().to_string(),

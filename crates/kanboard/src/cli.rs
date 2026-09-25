@@ -21,6 +21,11 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "ACTOR")]
     pub actor: Option<String>,
 
+    /// Session identity for claims and the per-session queue
+    /// (defaults to $UNIPI_KANBOARD_SESSION).
+    #[arg(long, global = true, value_name = "ID")]
+    pub session: Option<String>,
+
     /// Chain gate for readiness: in_review | done.
     #[arg(long, global = true, value_name = "GATE", default_value = "in_review")]
     pub gate: String,
@@ -31,6 +36,22 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SettingsSub {
+    /// Print piCommand, the model list and effective limits.
+    Show,
+    /// Change a setting: `pi-command` (JSON argv), `models` (JSON array),
+    /// `summary-model` (provider/id, empty clears).
+    Set {
+        /// The field name.
+        #[arg(value_name = "FIELD")]
+        field: String,
+        /// The new value (empty string clears).
+        #[arg(value_name = "VALUE", default_value = "")]
+        value: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -46,6 +67,13 @@ pub enum Command {
         /// Body text, or `-` to read stdin.
         #[arg(long)]
         body: Option<String>,
+        /// Read the body from a file (overrides --body).
+        #[arg(long, value_name = "FILE")]
+        body_file: Option<PathBuf>,
+        /// Attach a file (may repeat); the file's path in the body is replaced
+        /// by its attachment markdown.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
         /// Landing lane.
         #[arg(long, value_name = "backlog|todo")]
         status: Option<String>,
@@ -139,16 +167,50 @@ pub enum Command {
         bottom: bool,
     },
 
-    /// Claim the next ready task (system).
+    /// Claim the next ready task (system; uses the global --session).
     ClaimNext {
-        #[arg(long)]
-        session: String,
+        /// Claim this specific task instead of the top of the queue.
+        #[arg(long, value_name = "ID")]
+        id: Option<String>,
         #[arg(long)]
         pid: u32,
         #[arg(long)]
         host: String,
         #[arg(long, value_name = "direct|plan|goal", default_value = "direct")]
         mode: String,
+    },
+
+    /// Show what claim-next would pick without claiming (read-only).
+    Next,
+
+    /// Release in-progress tasks whose session pid is gone (system).
+    Reap {
+        /// Report what would be released without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Append task ids to this session's work queue (at most 5).
+    Queue {
+        /// Task ids to enqueue; empty with --list shows the queue.
+        ids: Vec<String>,
+        /// Show the queue instead of appending.
+        #[arg(long)]
+        list: bool,
+    },
+
+    /// Remove task ids from this session's queue (no ids clears it).
+    Unqueue { ids: Vec<String> },
+
+    /// Show a task's dependency chain (upstream deps and downstream dependents).
+    Chain { id: String },
+
+    /// Case-insensitive search over id, title and body.
+    Search {
+        text: String,
+        /// Include archived tasks.
+        #[arg(long)]
+        all: bool,
     },
 
     /// Release a claimed task (system).
@@ -176,6 +238,9 @@ pub enum Command {
     ArchiveSweep {
         #[arg(long = "after-days", value_name = "N")]
         after_days: Option<i64>,
+        /// Move Archived/Cancelled tasks older than N days into cold storage.
+        #[arg(long = "retention-days", value_name = "N")]
+        retention_days: Option<i64>,
     },
 
     /// Start the daemon: UI + JSON API + SSE (single instance).
@@ -192,7 +257,22 @@ pub enum Command {
         /// Hidden: idle seconds instead of minutes (tests).
         #[arg(long = "idle-secs", value_name = "N", hide = true)]
         idle_secs: Option<u64>,
+        /// Require the access token on loopback binds too (remote always does).
+        #[arg(long = "require-auth")]
+        require_auth: bool,
+        /// Reuse the token stored in <home>/token so links survive restarts.
+        #[arg(long = "keep-token")]
+        keep_token: bool,
     },
+
+    /// Show or change board settings (agent command, effective limits).
+    Settings {
+        #[command(subcommand)]
+        sub: SettingsSub,
+    },
+
+    /// Drop the persistent access token (the next daemon start mints a fresh one).
+    RotateToken,
 
     /// Show the recorded daemon (pid, port, version) and whether it is alive.
     Status,
@@ -219,6 +299,10 @@ pub enum ProjectCommand {
     List,
     /// Show one project and its lane counts.
     Show,
+    /// Hide a project from the sidebar/overview (still reachable by URL).
+    Archive { slug: String },
+    /// Bring an archived project back.
+    Unarchive { slug: String },
 }
 
 #[derive(Debug, Args)]

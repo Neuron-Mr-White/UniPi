@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{cli, http, read_sse, Daemon, Fixture};
+use common::{Daemon, Fixture, cli, http, read_sse};
 use kanboard::model::{Priority, Status};
 use std::time::{Duration, Instant};
 
@@ -26,10 +26,15 @@ fn health_reports_ok_version_and_pid() {
     assert!(payload["pid"].as_u64().unwrap() > 0);
 
     // daemon.json mirrors it.
-    let info: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap()).unwrap();
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(info["port"].as_u64().unwrap() as u16, daemon.port);
-    assert_eq!(info["pid"].as_u64().unwrap() as u32, payload["pid"].as_u64().unwrap() as u32);
+    assert_eq!(
+        info["pid"].as_u64().unwrap() as u32,
+        payload["pid"].as_u64().unwrap() as u32
+    );
 }
 
 #[test]
@@ -41,10 +46,18 @@ fn a_second_serve_prints_the_existing_daemon_and_exits_zero() {
     assert_eq!(output.status.code(), Some(0), "second serve exits 0");
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
     assert_eq!(payload["alreadyRunning"], true);
-    let info: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap()).unwrap();
-    assert_eq!(payload["daemon"]["pid"], info["pid"], "prints the existing daemon.json");
-    assert_eq!(payload["daemon"]["port"].as_u64().unwrap() as u16, daemon.port);
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        payload["daemon"]["pid"], info["pid"],
+        "prints the existing daemon.json"
+    );
+    assert_eq!(
+        payload["daemon"]["port"].as_u64().unwrap() as u16,
+        daemon.port
+    );
     assert_eq!(payload["daemon"]["version"], env!("CARGO_PKG_VERSION"));
 
     // Human output names the port too.
@@ -73,8 +86,10 @@ fn a_stale_daemon_json_is_replaced_by_a_fresh_serve() {
 
     // No lock is held, so serve starts normally and overwrites daemon.json.
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
-    let info: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap()).unwrap();
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
     assert_ne!(info["pid"].as_u64().unwrap(), 0x7fff_fffe);
     assert_eq!(info["port"].as_u64().unwrap() as u16, daemon.port);
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
@@ -87,7 +102,10 @@ fn status_reports_the_daemon_and_liveness() {
     let output = cli(&fixture, &["status", "--json"]);
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
     assert_eq!(payload["alive"], true);
-    assert_eq!(payload["daemon"]["port"].as_u64().unwrap() as u16, daemon.port);
+    assert_eq!(
+        payload["daemon"]["port"].as_u64().unwrap() as u16,
+        daemon.port
+    );
 }
 
 #[test]
@@ -143,9 +161,21 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
         .expect("claimed task");
     let released = cli(
         &fixture,
-        &["release", &task.id, "--to", "in_review", "--comment", "done", "--json"],
+        &[
+            "release",
+            &task.id,
+            "--to",
+            "in_review",
+            "--comment",
+            "done",
+            "--json",
+        ],
     );
-    assert!(released.status.success(), "{}", String::from_utf8_lossy(&released.stderr));
+    assert!(
+        released.status.success(),
+        "{}",
+        String::from_utf8_lossy(&released.stderr)
+    );
 
     // in_review → todo needs a rework note: 409 + needsComment.
     let response = http(
@@ -176,12 +206,18 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
     assert_eq!(response.status, 200, "{}", response.body);
     assert_eq!(response.json()["status"], "todo");
 
-    let stored = fixture.tasks().into_iter().find(|candidate| candidate.id == task.id).unwrap();
+    let stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|candidate| candidate.id == task.id)
+        .unwrap();
     assert_eq!(stored.status, Status::Todo);
-    assert!(stored
-        .activity
-        .iter()
-        .any(|entry| entry.text == "rework: needs a reconnect test"));
+    assert!(
+        stored
+            .activity
+            .iter()
+            .any(|entry| entry.text == "rework: needs a reconnect test")
+    );
 }
 
 #[test]
@@ -191,9 +227,20 @@ fn api_errors_are_4xx_with_the_rule_message() {
     let slug = &fixture.project.slug;
 
     // Unknown task → 404.
-    let response = http(daemon.port, "GET", &format!("/api/tasks/{slug}/DEM-404"), None).expect("get");
+    let response = http(
+        daemon.port,
+        "GET",
+        &format!("/api/tasks/{slug}/DEM-404"),
+        None,
+    )
+    .expect("get");
     assert_eq!(response.status, 404);
-    assert!(response.json()["error"].as_str().unwrap().contains("not found"));
+    assert!(
+        response.json()["error"]
+            .as_str()
+            .unwrap()
+            .contains("not found")
+    );
 
     // A rule violation → 400 with the rule text.
     let task = fixture.tasks().into_iter().next().unwrap();
@@ -205,7 +252,12 @@ fn api_errors_are_4xx_with_the_rule_message() {
     )
     .expect("move");
     assert_eq!(response.status, 400);
-    assert!(response.json()["error"].as_str().unwrap().contains("system only"));
+    assert!(
+        response.json()["error"]
+            .as_str()
+            .unwrap()
+            .contains("system only")
+    );
 
     // Unknown project → 404.
     let response = http(daemon.port, "GET", "/api/projects/nope/tasks", None).expect("get");
@@ -230,8 +282,7 @@ fn rules_endpoint_lists_the_transition_table_for_the_user_actor() {
         .collect();
     assert!(allowed.contains(&"todo"), "{allowed:?}");
     assert_eq!(
-        payload["commentRequired"]["in_review"]["todo"],
-        "rework note",
+        payload["commentRequired"]["in_review"]["todo"], "rework note",
         "{}",
         payload
     );
@@ -245,7 +296,10 @@ fn rules_endpoint_lists_the_transition_table_for_the_user_actor() {
         .collect();
     assert!(!todo_moves.contains(&"in_progress"), "{todo_moves:?}");
 
-    assert_eq!(payload["final"], serde_json::json!(["done", "cancelled", "archived"]));
+    assert_eq!(
+        payload["final"],
+        serde_json::json!(["done", "cancelled", "archived"])
+    );
 }
 
 #[test]
@@ -255,7 +309,13 @@ fn task_json_carries_allowed_moves_for_the_user_actor() {
     let slug = &fixture.project.slug;
     let task = fixture.tasks().into_iter().next().unwrap();
 
-    let response = http(daemon.port, "GET", &format!("/api/tasks/{slug}/{}", task.id), None).expect("get");
+    let response = http(
+        daemon.port,
+        "GET",
+        &format!("/api/tasks/{slug}/{}", task.id),
+        None,
+    )
+    .expect("get");
     assert_eq!(response.status, 200, "{}", response.body);
     let payload = response.json();
     // The task starts in todo: backlog and cancelled are the user-reachable moves.
@@ -267,7 +327,10 @@ fn task_json_carries_allowed_moves_for_the_user_actor() {
         .collect();
     assert!(moves.contains(&"backlog"), "{moves:?}");
     assert!(moves.contains(&"cancelled"), "{moves:?}");
-    assert!(!moves.contains(&"in_progress"), "system-only move is absent: {moves:?}");
+    assert!(
+        !moves.contains(&"in_progress"),
+        "system-only move is absent: {moves:?}"
+    );
 }
 
 #[test]
@@ -292,15 +355,28 @@ fn create_and_read_tasks_over_the_api() {
     // It is on disk (the CLI sees it) and in the listing.
     let list = cli(&fixture, &["list", "--json"]);
     let payload: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
-    assert!(payload["tasks"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|task| task["title"] == "from the UI"));
+    assert!(
+        payload["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|task| task["title"] == "from the UI")
+    );
 
-    let listed = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("list");
+    let listed = http(
+        daemon.port,
+        "GET",
+        &format!("/api/projects/{slug}/tasks"),
+        None,
+    )
+    .expect("list");
     assert_eq!(listed.status, 200);
-    assert_eq!(listed.json()["tasks"].as_array().unwrap().len(), 3, "{}", listed.body);
+    assert_eq!(
+        listed.json()["tasks"].as_array().unwrap().len(),
+        3,
+        "{}",
+        listed.body
+    );
     assert!(listed.json()["problems"].as_array().unwrap().is_empty());
 
     // `ready` filtering works through the API too.
@@ -331,7 +407,10 @@ fn sse_pushes_a_revision_after_a_cli_write() {
     assert!(note.status.success());
 
     let lines = reader.join().expect("sse reader");
-    let events: Vec<&String> = lines.iter().filter(|line| line.starts_with("data:")).collect();
+    let events: Vec<&String> = lines
+        .iter()
+        .filter(|line| line.starts_with("data:"))
+        .collect();
     assert!(!events.is_empty(), "no SSE data lines: {lines:?}");
     let revisions: Vec<u64> = events
         .iter()
@@ -365,8 +444,14 @@ fn idle_shutdown_removes_daemon_json() {
     assert!(info_path.exists(), "daemon.json was written");
 
     let exited = child.wait().expect("wait");
-    assert!(exited.success(), "idle shutdown is a clean exit: {exited:?}");
-    assert!(!info_path.exists(), "daemon.json is removed on idle shutdown");
+    assert!(
+        exited.success(),
+        "idle shutdown is a clean exit: {exited:?}"
+    );
+    assert!(
+        !info_path.exists(),
+        "daemon.json is removed on idle shutdown"
+    );
 }
 
 #[test]
@@ -374,19 +459,32 @@ fn a_corrupt_task_file_shows_up_as_a_repair_banner_and_keeps_the_board_alive() {
     let fixture = fixture_with_tasks();
     let task = fixture.tasks().into_iter().next().unwrap();
     let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
-    let text = std::fs::read_to_string(&path).unwrap().replace("status: todo", "status: nonsense");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("status: todo", "status: nonsense");
     std::fs::write(&path, text).unwrap();
 
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let slug = &fixture.project.slug;
 
     // The API keeps serving the readable tasks and names the problem.
-    let listed = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("list");
+    let listed = http(
+        daemon.port,
+        "GET",
+        &format!("/api/projects/{slug}/tasks"),
+        None,
+    )
+    .expect("list");
     assert_eq!(listed.status, 200, "{}", listed.body);
     assert_eq!(listed.json()["tasks"].as_array().unwrap().len(), 1);
     let problem = &listed.json()["problems"][0];
     assert_eq!(problem["line"], 4);
-    assert!(problem["error"].as_str().unwrap().contains("unknown status"));
+    assert!(
+        problem["error"]
+            .as_str()
+            .unwrap()
+            .contains("unknown status")
+    );
 
     // The SPA shell is served for any board path (the repair banner is rendered
     // client-side from the same `problems` payload; tests/ui.mjs exercises it).
@@ -401,7 +499,9 @@ fn writing_to_a_corrupt_file_via_the_api_is_refused() {
     let fixture = fixture_with_tasks();
     let task = fixture.tasks().into_iter().next().unwrap();
     let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
-    let text = std::fs::read_to_string(&path).unwrap().replace("status: todo", "status: nonsense");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("status: todo", "status: nonsense");
     std::fs::write(&path, text).unwrap();
 
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
@@ -417,7 +517,10 @@ fn writing_to_a_corrupt_file_via_the_api_is_refused() {
     let error = response.json()["error"].as_str().unwrap().to_string();
     assert!(error.contains("is unreadable"), "{error}");
     assert!(error.contains("validate --fix"), "{error}");
-    assert!(!error.contains("--comment"), "UI messages keep CLI flags out");
+    assert!(
+        !error.contains("--comment"),
+        "UI messages keep CLI flags out"
+    );
 }
 
 #[test]
@@ -443,10 +546,19 @@ fn ui_pages_render_the_board_and_the_drawer() {
 
     let board = http(daemon.port, "GET", &format!("/p/{slug}"), None).expect("board");
     assert_eq!(board.status, 200);
-    assert!(board.body.contains("<!DOCTYPE html>"), "deep link serves the shell");
+    assert!(
+        board.body.contains("<!DOCTYPE html>"),
+        "deep link serves the shell"
+    );
 
     // Lane/panel behaviour is client-side: packages/../tests/ui.mjs drives it.
-    let tasks = http(daemon.port, "GET", &format!("/api/projects/{slug}/tasks"), None).expect("tasks");
+    let tasks = http(
+        daemon.port,
+        "GET",
+        &format!("/api/projects/{slug}/tasks"),
+        None,
+    )
+    .expect("tasks");
     assert_eq!(tasks.status, 200);
     assert!(!tasks.json()["tasks"].as_array().unwrap().is_empty());
 
@@ -454,15 +566,21 @@ fn ui_pages_render_the_board_and_the_drawer() {
     let css_href = picker
         .body
         .split("href=\"")
-        .nth(1)
-        .and_then(|rest| rest.split('"').next())
+        .filter_map(|rest| rest.split('"').next())
+        .find(|href| href.ends_with(".css"))
         .expect("the shell references its stylesheet");
     let css = http(daemon.port, "GET", css_href, None).expect("css");
     assert_eq!(css.status, 200, "stylesheet {css_href} is embedded");
     // The theme is applied by the app (data-theme + a matchMedia default in the
     // bundle) so both the manual toggle and prefers-color-scheme work.
-    assert!(css.body.contains("data-theme"), "the stylesheet themes both modes");
-    assert!(bundle_body.contains("prefers-color-scheme"), "prefers-color-scheme drives the default");
+    assert!(
+        css.body.contains("data-theme"),
+        "the stylesheet themes both modes"
+    );
+    assert!(
+        bundle_body.contains("prefers-color-scheme"),
+        "prefers-color-scheme drives the default"
+    );
 }
 
 #[test]
@@ -481,7 +599,11 @@ fn the_ui_never_claims_tasks() {
         Some("{}"),
     )
     .expect("claim attempt");
-    assert!(response.status >= 400, "no claim endpoint: {}", response.status);
+    assert!(
+        response.status >= 400,
+        "no claim endpoint: {}",
+        response.status
+    );
 
     // Nor can it set a run block.
     let response = http(
@@ -491,17 +613,28 @@ fn the_ui_never_claims_tasks() {
         Some(r#"{"mode":"direct"}"#),
     )
     .expect("set-run attempt");
-    assert!(response.status >= 400, "no set-run endpoint: {}", response.status);
+    assert!(
+        response.status >= 400,
+        "no set-run endpoint: {}",
+        response.status
+    );
 }
 
 // ─── remote access (token gate) ─────────────────────────────────────────────
 
 fn daemon_info(fixture: &Fixture) -> serde_json::Value {
-    serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap()).unwrap()
+    serde_json::from_str(&std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap())
+        .unwrap()
 }
 
 /// A request with an explicit extra header.
-fn http_with(port: u16, method: &str, path: &str, body: Option<&str>, extra: &[(&str, &str)]) -> common::HttpResponse {
+fn http_with(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    extra: &[(&str, &str)],
+) -> common::HttpResponse {
     common::http_with_headers(port, method, path, body, extra).expect("request")
 }
 
@@ -511,13 +644,20 @@ fn a_remote_bind_requires_the_token() {
     let daemon = Daemon::start(&fixture, &["--host", "0.0.0.0", "--idle-secs", "120"]);
     let info = daemon_info(&fixture);
     assert_eq!(info["host"], "0.0.0.0");
-    let token = info["token"].as_str().expect("a token for a remote bind").to_string();
+    let token = info["token"]
+        .as_str()
+        .expect("a token for a remote bind")
+        .to_string();
     assert!(token.len() >= 40, "long random token: {token}");
 
     // No token → 401 with the instruction page.
     let response = http(daemon.port, "GET", "/", None).expect("no token");
     assert_eq!(response.status, 401, "{}", response.body);
-    assert!(response.body.contains("unipi:kanboard open"), "{}", response.body);
+    assert!(
+        response.body.contains("unipi:kanboard open"),
+        "{}",
+        response.body
+    );
     let response = http(daemon.port, "GET", "/api/projects", None).expect("api without token");
     assert_eq!(response.status, 401);
 
@@ -547,7 +687,10 @@ fn a_remote_bind_requires_the_token() {
     assert_eq!(location, "/", "redirect strips the token");
     let cookie = common::response_header(&response, "set-cookie").unwrap_or_default();
     assert!(cookie.starts_with(&format!("kb_token={token}")), "{cookie}");
-    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"), "{cookie}");
+    assert!(
+        cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"),
+        "{cookie}"
+    );
 
     let response = http_with(daemon.port, "GET", "/", None, &[("cookie", &cookie)]);
     assert_eq!(response.status, 200, "cookie is enough");
@@ -559,7 +702,10 @@ fn a_loopback_bind_needs_no_token() {
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let info = daemon_info(&fixture);
     assert_eq!(info["host"], "127.0.0.1");
-    assert!(info.get("token").is_none() || info["token"].is_null(), "no token on loopback");
+    assert!(
+        info.get("token").is_none() || info["token"].is_null(),
+        "no token on loopback"
+    );
     let response = http(daemon.port, "GET", "/", None).expect("open board");
     assert_eq!(response.status, 200);
     let response = http(daemon.port, "GET", "/api/projects", None).expect("open api");
@@ -587,7 +733,11 @@ fn health_hides_the_pid_when_the_host_is_not_loopback() {
     )
     .json();
     assert!(payload["ok"].as_bool().unwrap());
-    assert_eq!(payload["pid"], serde_json::Value::Null, "no pid off-loopback");
+    assert_eq!(
+        payload["pid"],
+        serde_json::Value::Null,
+        "no pid off-loopback"
+    );
 }
 
 #[test]
@@ -600,9 +750,17 @@ fn a_cross_site_post_is_refused_in_both_modes() {
         let mut args = vec!["--idle-secs", "120"];
         args.extend(extra.iter().copied());
         let daemon = Daemon::start(&fixture, &args);
-        let token = daemon_info(&fixture)["token"].as_str().unwrap_or("").to_string();
-        let auth = if token.is_empty() { String::new() } else { format!("Bearer {token}") };
-        let mut headers: Vec<(&str, &str)> = vec![("origin", "http://evil.example"), ("host", "127.0.0.1")];
+        let token = daemon_info(&fixture)["token"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let auth = if token.is_empty() {
+            String::new()
+        } else {
+            format!("Bearer {token}")
+        };
+        let mut headers: Vec<(&str, &str)> =
+            vec![("origin", "http://evil.example"), ("host", "127.0.0.1")];
         if !auth.is_empty() {
             headers.push(("authorization", &auth));
         }
@@ -613,7 +771,11 @@ fn a_cross_site_post_is_refused_in_both_modes() {
             Some(r#"{"text":"csrf"}"#),
             &headers,
         );
-        assert_eq!(response.status, 403, "cross-site POST refused: {}", response.body);
+        assert_eq!(
+            response.status, 403,
+            "cross-site POST refused: {}",
+            response.body
+        );
 
         // A same-origin POST still works (the Origin matches our Host).
         let origin = format!("http://127.0.0.1:{}", daemon.port);
@@ -639,7 +801,10 @@ fn a_daemon_on_another_binding_reports_the_change() {
     let fixture = fixture_with_tasks();
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     // Asking for a different host/port while one runs → alreadyRunning + the flag.
-    let output = cli(&fixture, &["serve", "--host", "0.0.0.0", "--port", "37473", "--json"]);
+    let output = cli(
+        &fixture,
+        &["serve", "--host", "0.0.0.0", "--port", "37473", "--json"],
+    );
     assert_eq!(output.status.code(), Some(0));
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(payload["alreadyRunning"], true);
@@ -657,17 +822,38 @@ fn a_daemon_on_another_binding_reports_the_change() {
 fn project_summaries_carry_counts_running_and_updated_at() {
     let fixture = fixture_with_tasks();
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
-    let payload = http(daemon.port, "GET", "/api/projects", None).unwrap().json();
+    let payload = http(daemon.port, "GET", "/api/projects", None)
+        .unwrap()
+        .json();
     let project = &payload.as_array().expect("array")[0];
     assert_eq!(project["total"], 2);
     assert_eq!(project["counts"]["todo"], 2);
     assert_eq!(project["running"], 0, "no run blocks yet");
-    let updated = project["updatedAt"].as_str().expect("updatedAt is set when tasks exist");
-    assert!(chrono::DateTime::parse_from_rfc3339(updated).is_ok(), "{updated}");
+    let updated = project["updatedAt"]
+        .as_str()
+        .expect("updatedAt is set when tasks exist");
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(updated).is_ok(),
+        "{updated}"
+    );
 
-    let claimed = cli(&fixture, &["claim-next", "--session", "s1", "--pid", "1", "--host", "t", "--json"]);
+    let claimed = cli(
+        &fixture,
+        &[
+            "claim-next",
+            "--session",
+            "s1",
+            "--pid",
+            "1",
+            "--host",
+            "t",
+            "--json",
+        ],
+    );
     assert!(claimed.status.success());
-    let payload = http(daemon.port, "GET", "/api/projects", None).unwrap().json();
+    let payload = http(daemon.port, "GET", "/api/projects", None)
+        .unwrap()
+        .json();
     assert_eq!(payload[0]["running"], 1, "a claimed task counts as running");
 }
 
@@ -690,7 +876,151 @@ fn stop_is_not_held_up_by_an_open_event_stream() {
     let output = cli(&fixture, &["stop", "--timeout", "8", "--json"]);
     let payload: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
     assert_eq!(payload["stopped"], true, "{payload}");
-    assert!(started.elapsed() < Duration::from_secs(6), "stopped in {:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_secs(6),
+        "stopped in {:?}",
+        started.elapsed()
+    );
     let _ = daemon.child.wait();
     drop(stream);
+}
+
+#[test]
+fn require_auth_gates_a_loopback_bind() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120", "--require-auth"]);
+
+    // Without the token → 401 on every API route.
+    let response = http(daemon.port, "GET", "/api/projects", None).expect("get");
+    assert_eq!(response.status, 401);
+
+    // With the token from daemon.json → 200.
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
+    let token = info["token"]
+        .as_str()
+        .expect("token on loopback require-auth");
+    let auth = format!("Bearer {token}");
+    let response = common::http_with_headers(
+        daemon.port,
+        "GET",
+        "/api/projects",
+        None,
+        &[("authorization", auth.as_str())],
+    )
+    .expect("authed get");
+    assert_eq!(response.status, 200);
+}
+
+#[test]
+fn keep_token_survives_restarts_and_rotates() {
+    let fixture = fixture_with_tasks();
+    let daemon1 = Daemon::start(
+        &fixture,
+        &["--idle-secs", "120", "--keep-token", "--require-auth"],
+    );
+    let info1: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
+    let token1 = info1["token"].as_str().unwrap().to_string();
+    drop(daemon1);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let daemon2 = Daemon::start(
+        &fixture,
+        &["--idle-secs", "120", "--keep-token", "--require-auth"],
+    );
+    let info2: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        info2["token"].as_str().unwrap(),
+        token1,
+        "same token across restarts"
+    );
+    drop(daemon2);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    // rotate-token drops the file; the next start mints a fresh one.
+    let output = common::cli(&fixture, &["rotate-token", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!fixture.layout.home.join("token").exists());
+
+    let daemon3 = Daemon::start(
+        &fixture,
+        &["--idle-secs", "120", "--keep-token", "--require-auth"],
+    );
+    let info3: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.layout.home.join("daemon.json")).unwrap(),
+    )
+    .unwrap();
+    assert_ne!(
+        info3["token"].as_str().unwrap(),
+        token1,
+        "fresh token after rotate"
+    );
+    drop(daemon3);
+}
+
+#[test]
+fn settings_set_round_trip_and_agent_refusal() {
+    let fixture = fixture_with_tasks();
+
+    let output = common::cli(
+        &fixture,
+        &[
+            "settings",
+            "set",
+            "pi-command",
+            r#"["/usr/bin/pi"]"#,
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["piCommand"], serde_json::json!(["/usr/bin/pi"]));
+
+    let output = common::cli(&fixture, &["settings", "show", "--json"]);
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["piCommand"], serde_json::json!(["/usr/bin/pi"]));
+    assert_eq!(value["queueMax"], 10);
+    assert_eq!(value["maxSessions"], 2);
+
+    // The legacy agent-command key is refused outright.
+    let output = common::cli(
+        &fixture,
+        &["settings", "set", "agent-command", "unipi -p", "--json"],
+    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("pi-command"));
+
+    // Empty argv clears.
+    let output = common::cli(&fixture, &["settings", "set", "pi-command", "[]", "--json"]);
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["piCommand"], serde_json::json!([]));
+
+    // actor=agent cannot write settings or rotate the token.
+    let output = common::cli(
+        &fixture,
+        &["settings", "set", "pi-command", "[]", "--actor", "agent"],
+    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user/system only"));
+    let output = common::cli(&fixture, &["rotate-token", "--actor", "agent"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("user/system only"));
 }

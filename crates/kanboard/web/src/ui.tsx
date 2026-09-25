@@ -28,6 +28,12 @@ export function Popover(props: PopoverProps): JSX.Element {
   const place = (): void => {
     if (!anchor) return;
     const box = anchor.getBoundingClientRect();
+    // The anchor scrolled out of view (board/lane scrolling): a floating
+    // popover clamped to the viewport edge looks detached — close instead.
+    if (box.right < 0 || box.bottom < 0 || box.left > window.innerWidth || box.top > window.innerHeight) {
+      close();
+      return;
+    }
     const width = props.width ?? 240;
     const left = props.align === "end" ? box.right - width : box.left;
     setPos({ top: box.bottom + 6, left: Math.max(8, Math.min(left, window.innerWidth - width - 8)) });
@@ -50,17 +56,23 @@ export function Popover(props: PopoverProps): JSX.Element {
       if (event.key === "Escape") {
         event.stopPropagation();
         close();
-        anchor?.focus();
+        anchor?.focus({ preventScroll: true });
       }
     };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey, true);
-    window.addEventListener("resize", close);
-    queueMicrotask(() => panel?.querySelector<HTMLElement>("input, [role=menuitem], [role=option], button")?.focus());
+    // The anchor lives inside scrollable boards/lanes: keep the popover glued to
+    // it (scroll doesn't bubble — capture) instead of leaving it behind.
+    document.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    queueMicrotask(() =>
+      panel?.querySelector<HTMLElement>("input, [role=menuitem], [role=option], button")?.focus({ preventScroll: true }),
+    );
     onCleanup(() => {
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("resize", close);
+      document.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
     });
   });
 
@@ -96,7 +108,7 @@ function menuKeys(event: KeyboardEvent): void {
   event.preventDefault();
   const index = items.indexOf(document.activeElement as HTMLElement);
   const next = event.key === "ArrowDown" ? (index + 1) % items.length : (index - 1 + items.length) % items.length;
-  items[next]?.focus();
+  items[next]?.focus({ preventScroll: true });
 }
 
 export function MenuItem(props: {

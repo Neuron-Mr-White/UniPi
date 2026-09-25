@@ -1,5 +1,5 @@
 /**
- * @pi-unipi/kanboard — the runner (`/unipi:kanboard work`).
+ * @pi-unipi/kanboard — the runner (`/unipi:kanboard-autowork`).
  *
  * One job per session: claim the next ready task, let jev choose how to run it,
  * hand it to the agent, then write the lifecycle transition the agent is not
@@ -22,7 +22,7 @@ import {
   type KanboardClaim,
   type KanboardTask,
 } from "./shapes.js";
-import type { KanboardSettings } from "./settings.js";
+import { applyLimitEnv, type KanboardSettings } from "./settings.js";
 
 export const RUNNER_ENTRY = "unipi:kanboard-runner";
 
@@ -37,6 +37,8 @@ interface RunnerState {
   goalId: string | null;
   endsSinceSend: number;
   stopAfterCurrent: boolean;
+  /** Autowork: keep claiming ready tasks after each finish (queue first). */
+  autowork: boolean;
   settleTimer: NodeJS.Timeout | null;
   planOutcome: "approved" | "discarded" | null;
   /** Last assistant text seen on agent_end — the run summary source. */
@@ -58,13 +60,40 @@ export interface RunnerDeps {
 }
 
 export interface Runner {
+  /** Autowork start: the loop pulls the session queue first, then claim-next. */
   work(ctx: ExtensionContext): Promise<void>;
+  /** Drain this session's queue without touching the autowork flag. */
+  drain(ctx: ExtensionContext): Promise<void>;
   stop(ctx: ExtensionContext): void;
   status(): { taskId: string | null; mode: RunMode | null; phase: string };
   onAgentEnd(event: { messages?: unknown[] }, ctx: ExtensionContext): void;
   onSessionStart(ctx: ExtensionContext): Promise<void>;
   onSessionShutdown(ctx: ExtensionContext): Promise<void>;
   onPlanModeChanged(payload: unknown): void;
+}
+
+/**
+ * The askJev question the runner asks for mode choice, as a standalone export
+ * so probes and tests exercise exactly what chooseMode sends.
+ */
+export function modeQuestion(task: KanboardTask): {
+  state: string;
+  questions: { mode: { type: "choice"; instructions: string; criteria: Record<string, string> } };
+} {
+  return {
+    state: `${task.title}\n\n${(task.body ?? "").slice(0, 2000)}`,
+    questions: {
+      mode: {
+        type: "choice",
+        instructions: "How should this task be executed?",
+        criteria: {
+          direct: "A small, clear change — just do it",
+          plan: "Multi-file or design choices; needs a plan approved first",
+          goal: "A large multi-step objective that needs many turns and verification",
+        },
+      },
+    },
+  };
 }
 
 export function createRunner(deps: RunnerDeps): Runner {
@@ -77,6 +106,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     goalId: null,
     endsSinceSend: 0,
     stopAfterCurrent: false,
+    autowork: false,
     settleTimer: null,
     planOutcome: null,
     lastText: "",
@@ -108,7 +138,7 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   async function claimNext(): Promise<KanboardClaim> {
     const gate = deps.settings().chainGate;
-    const raw = await cli.run<unknown>(
+    const raw = await runCli<unknown>(
       [
         "claim-next",
         "--session",
@@ -125,8 +155,41 @@ export function createRunner(deps: RunnerDeps): Runner {
     return asClaimResult(raw);
   }
 
+  async function claimById(id: string): Promise<KanboardClaim> {
+    const gate = deps.settings().chainGate;
+    const raw = await runCli<unknown>(
+      ["claim-next", "--id", id, "--session", sessionId(), "--pid", String(process.pid), "--host", hostname(), "--gate", gate],
+      { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } },
+    );
+    return asClaimResult(raw);
+  }
+
+  async function queueList(): Promise<string[]> {
+    try {
+      const raw = (await runCli<unknown>(["queue", "--list"], {
+        extraEnv: { UNIPI_KANBOARD_PROJECT: project(), UNIPI_KANBOARD_SESSION: sessionId() },
+      })) as { queue?: string[] };
+      return Array.isArray(raw.queue) ? raw.queue : [];
+    } catch (error) {
+      deps.debug(`queue --list failed: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  async function unqueue(id: string): Promise<void> {
+    await cli
+      .run(["unqueue", id], { extraEnv: { UNIPI_KANBOARD_PROJECT: project(), UNIPI_KANBOARD_SESSION: sessionId() } })
+      .catch((error) => deps.debug(`unqueue ${id} failed: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
   function sessionId(): string {
     return process.env.UNIPI_KANBOARD_SESSION ?? `pi-${process.pid}`;
+  }
+
+  /** Every runner CLI call refreshes the env-carried limits first. */
+  async function runCli<T>(argv: string[], options: Parameters<KanboardCli["run"]>[1] = {}): Promise<T> {
+    applyLimitEnv(deps.settings());
+    return cli.run<T>(argv, options);
   }
 
   function hostname(): string {
@@ -146,7 +209,7 @@ export function createRunner(deps: RunnerDeps): Runner {
   async function countWaiting(): Promise<{ waiting: number; blocked: number }> {
     try {
       const { tasks } = asTaskList(
-        await cli.run<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+        await runCli<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
       );
       return {
         waiting: tasks.filter((task) => task.status === "todo").length,
@@ -161,23 +224,7 @@ export function createRunner(deps: RunnerDeps): Runner {
 
   async function chooseMode(task: KanboardTask): Promise<RunMode> {
     const settings = readJudgeJevSettings(cwd);
-    const state_text = `${task.title}\n\n${(task.body ?? "").slice(0, 2000)}`;
-    const answers = await askJev({
-      state: state_text,
-      questions: {
-        mode: {
-          type: "choice",
-          instructions: "How should this task be executed?",
-          criteria: {
-            direct: "A small, clear change — just do it",
-            plan: "Multi-file or design choices; needs a plan approved first",
-            goal: "A large multi-step objective that needs many turns and verification",
-          },
-        },
-      },
-      settings,
-      env: process.env,
-    });
+    const answers = await askJev({ ...modeQuestion(task), settings, env: process.env });
     const choice = answers?.mode?.choice;
     const mode: RunMode = choice === "plan" || choice === "goal" ? choice : "direct";
     deps.debug(`mode ${task.id}: jev answered ${JSON.stringify(choice ?? null)} → ${mode}`);
@@ -268,7 +315,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     state.phase = "releasing";
     try {
       const note = `runner error before handing the task over: ${detail}`.slice(0, 400);
-      await cli.run(["release", task.id, "--to", "todo", "--comment", note], {
+      await runCli(["release", task.id, "--to", "todo", "--comment", note], {
         extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
       });
       ctx.ui.notify(`kanboard: ${task.id} released to Todo — ${note}`, "error");
@@ -377,19 +424,19 @@ export function createRunner(deps: RunnerDeps): Runner {
     try {
       const value = asTask(
         "show",
-        await cli.run<unknown>(["show", task.id], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+        await runCli<unknown>(["show", task.id], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
       );
       if (value.status === "blocked") {
         const note = (value.activity ?? []).slice(-1)[0]?.text ?? "blocked";
         ctx.ui.notify(`▣ ${task.id} blocked: ${note}`, "warning");
       } else if (outcome === "in_review") {
-        await cli.run(["release", task.id, "--to", "in_review", "--comment", comment], {
+        await runCli(["release", task.id, "--to", "in_review", "--comment", comment], {
           extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
         });
         const first = comment.split("\n")[0]?.slice(0, 120) ?? "";
         ctx.ui.notify(`✓ ${task.id} → In Review: ${first}`, "info");
       } else {
-        await cli.run(["release", task.id, "--to", outcome, "--comment", comment], {
+        await runCli(["release", task.id, "--to", outcome, "--comment", comment], {
           extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
         });
         ctx.ui.notify(`↩ ${task.id} → ${outcome === "todo" ? "Todo" : "Blocked"}: ${comment.slice(0, 120)}`, "warning");
@@ -408,17 +455,99 @@ export function createRunner(deps: RunnerDeps): Runner {
     persist("idle");
     setStatus(ctx, state.stopAfterCurrent ? undefined : describe());
 
+    await continueLoop(ctx);
+  }
+
+  /**
+   * After a task — or when -do closes with a non-empty queue: stop wins, then
+   * the session queue (`claim-next --id`, skipping entries that went stale),
+   * then autowork's `claim-next`. Nothing ready stops autowork.
+   */
+  async function continueLoop(ctx: ExtensionContext): Promise<void> {
     if (state.stopAfterCurrent) {
       state.stopAfterCurrent = false;
+      state.autowork = false;
+      state.phase = "idle";
+      setStatus(ctx, undefined);
       ctx.ui.notify("kanboard: stopped", "info");
       return;
     }
-    if (deps.settings().continue) {
-      await startTask(ctx);
-    } else {
-      setStatus(ctx, undefined);
-      ctx.ui.notify("kanboard: queue done (continue is off)", "info");
+    const queued = await queueList();
+    if (queued.length > 0) {
+      // Scan the queue in order: drop entries that can never run (gone, final,
+      // no longer schedulable, or blocked by a cancelled dep), skip — but keep —
+      // entries that merely wait on dependencies, and claim the first ready one.
+      const { tasks } = asTaskList(
+        await runCli<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+      );
+      const byId = new Map(tasks.map((task) => [task.id, task]));
+      let waitingNote: string | null = null;
+      let claimed: KanboardTask | null = null;
+      for (const id of queued) {
+        const task = byId.get(id);
+        if (!task) {
+          await unqueue(id);
+          ctx.ui.notify(`kanboard: queued ${id} dropped — no longer on the board`, "warning");
+          continue;
+        }
+        if (task.status !== "todo" && task.status !== "backlog") {
+          await unqueue(id);
+          ctx.ui.notify(`kanboard: queued ${id} dropped — now ${task.status}`, "warning");
+          continue;
+        }
+        if (task.status !== "todo" || !task.ready) {
+          const waitingFor = (task.waitingFor ?? []).join(", ");
+          const cancelledDep = (task.waitingFor ?? []).find((dep) => byId.get(dep)?.status === "cancelled");
+          if (cancelledDep) {
+            await unqueue(id);
+            ctx.ui.notify(`kanboard: queued ${id} dropped — waits on cancelled ${cancelledDep}`, "warning");
+            continue;
+          }
+          waitingNote ??= task.status === "backlog"
+            ? `${id} is still in Backlog (move it to Todo)`
+            : waitingFor ? `${id} waits for ${waitingFor}` : `${id} is not ready`;
+          continue;
+        }
+        await unqueue(id);
+        let claim: KanboardClaim;
+        try {
+          claim = await claimById(id);
+        } catch (error) {
+          ctx.ui.notify(
+            `kanboard: queued ${id} skipped — ${error instanceof KanboardCliError ? error.message : String(error)}`,
+            "warning",
+          );
+          continue;
+        }
+        if (claim.task) {
+          claimed = claim.task;
+          break;
+        }
+      }
+      if (claimed) {
+        state.task = claimed;
+        state.endsSinceSend = 0;
+        state.planOutcome = null;
+        state.lastText = "";
+        try {
+          await runClaimedTask(ctx, claimed);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          deps.debug(`queued task ${claimed.id} failed before the agent ran: ${detail}`);
+          await releaseAfterFailure(ctx, claimed, detail);
+        }
+        return;
+      }
+      if (waitingNote) ctx.ui.notify(`kanboard: queue waiting: ${waitingNote}`, "info");
     }
+    if (state.autowork) {
+      const started = await startTask(ctx);
+      if (!started) state.autowork = false;
+      return;
+    }
+    state.phase = "idle";
+    setStatus(ctx, undefined);
+    if (queued.length === 0) ctx.ui.notify("kanboard: queue done", "info");
   }
 
   function lastAssistantText(messages: unknown[] | undefined): string {
@@ -451,16 +580,23 @@ export function createRunner(deps: RunnerDeps): Runner {
   return {
     async work(ctx: ExtensionContext): Promise<void> {
       if (state.phase !== "idle") {
-        ctx.ui.notify("kanboard: a task is already running", "warning");
+        state.autowork = true;
+        ctx.ui.notify("kanboard: a task is already running — autowork continues after it", "info");
         return;
       }
+      state.autowork = true;
       state.stopAfterCurrent = false;
-      await startTask(ctx);
+      await continueLoop(ctx);
+    },
+
+    async drain(ctx: ExtensionContext): Promise<void> {
+      if (state.phase !== "idle") return;
+      await continueLoop(ctx);
     },
 
     stop(ctx: ExtensionContext): void {
       if (state.phase === "idle") {
-        ctx.ui.notify("kanboard: nothing to stop", "info");
+        ctx.ui.notify("kanboard: not running", "info");
         return;
       }
       state.stopAfterCurrent = true;
@@ -532,7 +668,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       try {
         task = asTask(
           "show",
-          await cli.run<unknown>(["show", claimed.taskId], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+          await runCli<unknown>(["show", claimed.taskId], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
         );
       } catch {
         return;
@@ -557,7 +693,7 @@ export function createRunner(deps: RunnerDeps): Runner {
         );
         return;
       }
-      await cli.run(["release", task.id, "--to", "todo", "--comment", "session ended"], {
+      await runCli(["release", task.id, "--to", "todo", "--comment", "session ended"], {
         extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
       });
       persist("idle");
@@ -567,7 +703,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     async onSessionShutdown(ctx: ExtensionContext): Promise<void> {
       if (!state.task || state.phase === "idle") return;
       try {
-        await cli.run(["release", state.task.id, "--to", "todo", "--comment", "session ended"], {
+        await runCli(["release", state.task.id, "--to", "todo", "--comment", "session ended"], {
           extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
         });
       } catch (error) {

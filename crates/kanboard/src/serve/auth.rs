@@ -39,7 +39,15 @@ pub fn generate_token() -> String {
     if getrandom::fill(&mut bytes).is_err() {
         // Extremely unlikely; fall back to a time+pid mix so we never hand out
         // an empty token.
-        let seed = format!("{}:{}:{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0), bytes.len());
+        let seed = format!(
+            "{}:{}:{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            bytes.len()
+        );
         let digest = <sha2::Sha256 as sha2::Digest>::digest(seed.as_bytes());
         bytes.copy_from_slice(&digest[..32]);
     }
@@ -82,7 +90,11 @@ fn cookie_token(request: &Request) -> Option<String> {
 }
 
 fn header_token(request: &Request) -> Option<String> {
-    let raw = request.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
+    let raw = request
+        .headers()
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     raw.strip_prefix("Bearer ")
         .or_else(|| raw.strip_prefix("bearer "))
         .map(|token| token.trim().to_string())
@@ -115,7 +127,9 @@ fn url_without_token(uri: &axum::http::Uri) -> String {
         Some(query) => {
             let kept: Vec<&str> = query
                 .split('&')
-                .filter(|pair| !pair.starts_with(&format!("{TOKEN_PARAM}=")) && *pair != TOKEN_PARAM)
+                .filter(|pair| {
+                    !pair.starts_with(&format!("{TOKEN_PARAM}=")) && *pair != TOKEN_PARAM
+                })
                 .filter(|pair| !pair.is_empty())
                 .collect();
             if kept.is_empty() {
@@ -137,9 +151,10 @@ code{{background:#eee;padding:0 .3rem;border-radius:4px}}</style></head>\
     );
     let mut response = Response::new(Body::from(html));
     *response.status_mut() = status;
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
     response
 }
 
@@ -167,11 +182,18 @@ fn cross_site(origin: &str, host_header: Option<&str>) -> bool {
 
 /// The auth + CSRF layer. Wraps every route (including 404s).
 pub async fn guard(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
-    let host_header = request.headers().get(header::HOST).and_then(|value| value.to_str().ok()).map(str::to_string);
+    let host_header = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
 
     // 1. Cross-site POSTs are refused in both modes (drive-by CSRF).
     if request.method() == Method::POST
-        && let Some(origin) = request.headers().get(header::ORIGIN).and_then(|value| value.to_str().ok())
+        && let Some(origin) = request
+            .headers()
+            .get(header::ORIGIN)
+            .and_then(|value| value.to_str().ok())
         && cross_site(origin, host_header.as_deref())
     {
         return plain_page(

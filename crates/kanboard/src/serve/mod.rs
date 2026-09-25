@@ -5,6 +5,7 @@ pub mod api;
 pub mod assets;
 pub mod auth;
 pub mod events;
+pub mod settings;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,10 +13,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use chrono::Utc;
 use notify::{RecursiveMode, Watcher as _};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
@@ -109,6 +110,10 @@ pub struct ServeOptions {
     pub host: String,
     pub port: u16,
     pub idle: Duration,
+    /// Token-gate loopback binds too (remote binds always require it).
+    pub require_auth: bool,
+    /// Reuse the token in <home>/token so board links survive restarts.
+    pub keep_token: bool,
 }
 
 impl ServeOptions {
@@ -117,8 +122,34 @@ impl ServeOptions {
             host: host.into(),
             port,
             idle: Duration::from_secs(idle_min.max(1) * 60),
+            require_auth: false,
+            keep_token: false,
         }
     }
+}
+
+/// `<home>/token` — the persistent token --keep-token reads and --rotate-token drops.
+pub fn token_path(layout: &Layout) -> std::path::PathBuf {
+    layout.home.join("token")
+}
+
+/// Read the persistent token, creating it (mode 0600) on first use.
+fn persistent_token(layout: &Layout) -> Result<String> {
+    let path = token_path(layout);
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        let token = text.trim().to_string();
+        if !token.is_empty() {
+            return Ok(token);
+        }
+    }
+    let token = auth::generate_token();
+    crate::store::write_atomic(&path, &format!("{token}\n"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(token)
 }
 
 /// Run the daemon. Returns the JSON payload for the caller to print; when
@@ -130,7 +161,9 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
         // Binding changes need a restart; say so instead of silently ignoring.
         let binding_changed = running
             .as_ref()
-            .map(|info| info.host != options.host || (options.port != 0 && info.port != options.port))
+            .map(|info| {
+                info.host != options.host || (options.port != 0 && info.port != options.port)
+            })
             .unwrap_or(false);
         return Ok(json!({
             "alreadyRunning": true,
@@ -142,11 +175,24 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
 
     let listener = TcpListener::bind((options.host.as_str(), options.port))
         .await
-        .map_err(|err| crate::error::Error::Io(format!("cannot bind {}:{}: {err}", options.host, options.port)))?;
+        .map_err(|err| {
+            crate::error::Error::Io(format!(
+                "cannot bind {}:{}: {err}",
+                options.host, options.port
+            ))
+        })?;
     let port = listener.local_addr()?.port();
 
-    // Remote binds are token-gated; loopback stays open.
-    let token = if auth::is_loopback(&options.host) { None } else { Some(auth::generate_token()) };
+    // Remote binds are token-gated; loopback stays open unless --require-auth.
+    // --keep-token reuses <home>/token so links survive restarts.
+    let needs_token = options.require_auth || !auth::is_loopback(&options.host);
+    let token = if !needs_token {
+        None
+    } else if options.keep_token {
+        Some(persistent_token(&layout)?)
+    } else {
+        Some(auth::generate_token())
+    };
     let state = AppState::new(layout.clone(), options.host.clone(), token.clone());
 
     *state.watcher.lock().expect("watcher slot") = Some(spawn_watcher(state.clone())?);
@@ -221,6 +267,17 @@ fn router(state: Arc<AppState>) -> axum::Router {
     axum::Router::new()
         .route("/api/health", get(api::health))
         .route("/api/projects", get(api::projects))
+        .route("/api/projects/{slug}", put(api::update_project))
+        .route(
+            "/api/settings",
+            get(api::get_settings).put(api::put_settings),
+        )
+        .route("/api/projects/{slug}/summarize", post(api::summarize))
+        .route(
+            "/api/projects/{slug}/archive-summary",
+            post(api::archive_summary),
+        )
+        .route("/api/projects/{slug}/archive-lane", post(api::archive_lane))
         .route("/api/rules", get(api::rules))
         .route("/api/projects/{slug}/tasks", get(api::tasks))
         .route("/api/tasks/{slug}/{id}", get(api::task))
@@ -234,7 +291,9 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/api/tasks/{slug}/{id}/duplicate", post(api::duplicate))
         .route(
             "/api/tasks/{slug}/{id}/attachments",
-            post(api::upload).layer(axum::extract::DefaultBodyLimit::max(crate::attachments::MAX_BYTES + 1024)),
+            post(api::upload).layer(axum::extract::DefaultBodyLimit::max(
+                crate::attachments::MAX_BYTES + 1024,
+            )),
         )
         .route("/api/files/{slug}/{task}/{name}", get(api::file))
         .route("/events", get(events::events))
@@ -244,7 +303,11 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .with_state(state)
 }
 
-fn spawn_idle_monitor(state: Arc<AppState>, idle: Duration, shutdown: tokio::sync::mpsc::Sender<&'static str>) {
+fn spawn_idle_monitor(
+    state: Arc<AppState>,
+    idle: Duration,
+    shutdown: tokio::sync::mpsc::Sender<&'static str>,
+) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(1));
         loop {
@@ -282,10 +345,14 @@ fn spawn_watcher(state: Arc<AppState>) -> Result<notify::RecommendedWatcher> {
             let _ = tx.send(path);
         }
     })
-    .map_err(|err| crate::error::Error::Io(format!("cannot watch {}: {err}", projects.display())))?;
+    .map_err(|err| {
+        crate::error::Error::Io(format!("cannot watch {}: {err}", projects.display()))
+    })?;
     watcher
         .watch(&projects, RecursiveMode::Recursive)
-        .map_err(|err| crate::error::Error::Io(format!("cannot watch {}: {err}", projects.display())))?;
+        .map_err(|err| {
+            crate::error::Error::Io(format!("cannot watch {}: {err}", projects.display()))
+        })?;
 
     let root = projects.clone();
     tokio::spawn(async move {
@@ -294,7 +361,9 @@ fn spawn_watcher(state: Arc<AppState>) -> Result<notify::RecommendedWatcher> {
             std::collections::HashMap::new();
         while let Some(path) = rx.recv().await {
             // Ignore lock files and temp files: only real content changes count.
-            let name = path.file_name().map(|name| name.to_string_lossy().to_string());
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string());
             let relevant = match name.as_deref() {
                 Some(name) => name.ends_with(".md") || name == "project.json",
                 None => false,

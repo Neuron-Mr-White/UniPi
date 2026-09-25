@@ -4,8 +4,8 @@
  * faded, optimistic moves that roll back on refusal, and an undo toast.
  */
 
-import { For, Show, createSignal, type JSX } from "solid-js";
-import { api, canMove, needsComment, type Task } from "./api.js";
+import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "solid-js";
+import { api, canMove, needsComment, type Rules, type Task } from "./api.js";
 import { offerToSchedule } from "./schedule.js";
 import { Icon, StatusGlyph } from "./icons.js";
 import { AgentChip, DepTag, LabelTags, PriorityTag } from "./paint.js";
@@ -24,6 +24,7 @@ import {
   setNewTaskLane,
   setOpenTaskId,
   setSelectedId,
+  setSummarizeOpen,
   slug,
   toast,
   toggleLane,
@@ -35,6 +36,17 @@ import { MenuItem, Popover } from "./ui.js";
 /** Lanes whose header shows a solid status pill (the "active" part of the flow). */
 const PILL_LANES = new Set(["in_progress", "in_review", "blocked", "done"]);
 const FINAL = new Set(["done", "cancelled", "archived"]);
+
+const INFO: Record<string, (rules: Rules) => string> = {
+  backlog: () => "Ideas and later work. Never run automatically. Drag to Todo when a task is ready.",
+  todo: (rules) =>
+    `Ready to run. Autowork and queued work pick the next task by priority, then the order in this column (drag to reorder). A task waits until every task it runs after reaches ${rules.chainGate === "done" ? "Done" : "In Review"} — the chain-gate setting.`,
+  in_progress: (rules) =>
+    `Being worked by an agent session. One task per session, at most ${rules.maxSessions ?? 2} sessions per project. The agent moves it to In Review when its turn ends.`,
+  blocked: () => "The agent needs something from you. Read the reason on the card, reply with a comment, then drag it back to Todo.",
+  in_review: () => "The agent finished. Check the activity, then drag to Done, or back to Todo with a note on what to change.",
+  done: () => "Accepted by you. Summarize & archive, or archive without a summary, from the … menu.",
+};
 
 const EMPTY: Record<string, string> = {
   backlog: "Capture ideas here",
@@ -70,6 +82,85 @@ export function Board(): JSX.Element {
   }
 
   const allows = (task: Task, laneId: string): boolean => canMove(rules, task, laneId);
+
+  async function archiveLane(status: "done" | "in_review"): Promise<void> {
+    const target = slug();
+    if (!target) return;
+    const count = laneCount(status);
+    if (count === 0) return;
+    try {
+      const result = await api.archiveLane(target, status);
+      toast(`Archived ${result.archived.length} task${result.archived.length === 1 ? "" : "s"}`, "success");
+      await loadBoard(target);
+    } catch (error) {
+      toast(describe(error), "error");
+    }
+  }
+
+  // While dragging, scroll the horizontal strip when the pointer hugs an edge,
+  // and the hovered lane's card list vertically — speed grows toward the edge.
+  const EDGE = 80;
+  const MAX_STEP = 22;
+  let pointer: { x: number; y: number } | null = null;
+  createEffect(() => {
+    if (!dragging()) {
+      pointer = null;
+      return;
+    }
+    const track = (event: DragEvent): void => {
+      // Some browsers fire a final dragover with 0,0 — keep the last real point.
+      if (event.clientX !== 0 || event.clientY !== 0) pointer = { x: event.clientX, y: event.clientY };
+    };
+    const step = (): void => {
+      const at = pointer;
+      if (at) {
+        const wrap = document.querySelector<HTMLElement>(".board-wrap");
+        if (wrap) {
+          const box = wrap.getBoundingClientRect();
+          const into = (edge: number): number => Math.max(0, (EDGE - edge) / EDGE);
+          wrap.scrollLeft += (into(box.right - at.x) - into(at.x - box.left)) * MAX_STEP;
+        }
+        const lane = document.elementFromPoint(at.x, at.y)?.closest<HTMLElement>(".lane-body");
+        if (lane && lane.scrollHeight > lane.clientHeight) {
+          const box = lane.getBoundingClientRect();
+          const into = (edge: number): number => Math.max(0, (EDGE - edge) / EDGE);
+          lane.scrollTop += (into(box.bottom - at.y) - into(at.y - box.top)) * MAX_STEP;
+        }
+      }
+      frame = requestAnimationFrame(step);
+    };
+    let frame = requestAnimationFrame(step);
+    document.addEventListener("dragover", track);
+    onCleanup(() => {
+      document.removeEventListener("dragover", track);
+      cancelAnimationFrame(frame);
+    });
+  });
+
+  // Collapsed lanes shrink the wrap's width — keep the *source* lane's left
+  // edge pinned on screen during the transition (and back on expand) so the
+  // dragged card doesn't visually jump.
+  createEffect(() => {
+    dragging(); // subscribe both ways
+    const wrap = document.querySelector<HTMLElement>(".board-wrap");
+    const source = dragging()
+      ? document.querySelector<HTMLElement>(`.lane[data-lane="${CSS.escape(dragging()!.status)}"]`)
+      : null;
+    const anchor = source ?? document.querySelector<HTMLElement>(".lane");
+    if (!wrap || !anchor) return;
+    const left0 = anchor.getBoundingClientRect().left;
+    // Pin only while the width transition runs (~200ms); after that the
+    // autoscroll owns scrollLeft.
+    const stopAt = performance.now() + 400;
+    let frame = 0;
+    const step = (): void => {
+      const delta = anchor.getBoundingClientRect().left - left0;
+      if (Math.abs(delta) > 0.5) wrap.scrollLeft += delta;
+      if (performance.now() < stopAt) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    onCleanup(() => cancelAnimationFrame(frame));
+  });
 
   /** Midpoint test → the card the dragged one would land before (null = end). */
   function dropTargetFor(event: DragEvent, laneId: string): string | null {
@@ -173,7 +264,7 @@ export function Board(): JSX.Element {
         <For each={visibleLanes()}>
           {(lane) => (
             <section
-              class={`lane${dragging() && dragging()!.status !== lane.id && !allows(dragging()!, lane.id) ? " not-allowed" : ""}${
+              class={`lane${dragging() && dragging()!.status !== lane.id && !allows(dragging()!, lane.id) ? " not-allowed collapsed" : ""}${
                 dragging() && dropLane() === lane.id && dragging()!.status !== lane.id ? (allows(dragging()!, lane.id) ? " drop-ok" : " drop-bad") : ""
               }`}
               role="listitem"
@@ -196,9 +287,21 @@ export function Board(): JSX.Element {
                   {lane.label}
                 </span>
                 <span class="lane-count">{laneCount(lane.id)}</span>
+                <LaneInfo lane={lane.id} />
                 <span class="spacer" />
+                <Show when={lane.id === "done" && laneCount("done") > 0}>
+                  <button
+                    class="lane-summarize"
+                    aria-label="Summarize & archive"
+                    title="Summarize & archive"
+                    onClick={() => setSummarizeOpen(true)}
+                  >
+                    <Icon.sparkle size={12} />
+                    Summarize
+                  </button>
+                </Show>
                 <Popover
-                  width={200}
+                  width={232}
                   align="end"
                   label={`${lane.label} options`}
                   trigger={(api) => (
@@ -208,14 +311,47 @@ export function Board(): JSX.Element {
                   )}
                 >
                   {(close) => (
-                    <MenuItem
-                      icon={<Icon.close size={14} />}
-                      label="Hide column"
-                      onSelect={() => {
-                        close();
-                        toggleLane(lane.id);
-                      }}
-                    />
+                    <>
+                      <Show when={lane.id === "done"}>
+                        <MenuItem
+                          icon={<Icon.sparkle size={14} />}
+                          label="Summarize & archive…"
+                          disabled={laneCount("done") === 0}
+                          onSelect={() => {
+                            close();
+                            setSummarizeOpen(true);
+                          }}
+                        />
+                        <MenuItem
+                          icon={<Icon.archive size={14} />}
+                          label={`Archive all (${laneCount("done")}) without summary`}
+                          disabled={laneCount("done") === 0}
+                          onSelect={() => {
+                            close();
+                            void archiveLane("done");
+                          }}
+                        />
+                      </Show>
+                      <Show when={lane.id === "in_review"}>
+                        <MenuItem
+                          icon={<Icon.archive size={14} />}
+                          label={`Archive all (${laneCount("in_review")})`}
+                          disabled={laneCount("in_review") === 0}
+                          onSelect={() => {
+                            close();
+                            void archiveLane("in_review");
+                          }}
+                        />
+                      </Show>
+                      <MenuItem
+                        icon={<Icon.close size={14} />}
+                        label="Hide column"
+                        onSelect={() => {
+                          close();
+                          toggleLane(lane.id);
+                        }}
+                      />
+                    </>
                   )}
                 </Popover>
                 <Show when={lane.id === "backlog" || lane.id === "todo"}>
@@ -318,6 +454,11 @@ function Card(props: {
         </Show>
       </div>
       <div class="card-title title">{task().title}</div>
+      <Show when={task().status === "blocked" && task().blockedReason?.text}>
+        <div class="card-blocked" title={task().blockedReason?.text}>
+          {task().blockedReason!.text}
+        </div>
+      </Show>
       <Show when={display.excerpt && excerpt()}>
         <div class="card-excerpt">{excerpt()}</div>
       </Show>
@@ -327,5 +468,31 @@ function Card(props: {
         <LabelTags labels={task().labels ?? []} max={2} />
       </div>
     </article>
+  );
+}
+
+/** ⓘ popover explaining what a lane is for (live chain gate / limits). */
+function LaneInfo(props: { lane: string }): JSX.Element {
+  const text = INFO[props.lane];
+  if (!text) return <></>;
+  return (
+    <Popover
+      width={260}
+      align="end"
+      label={`About ${laneLabel(props.lane)}`}
+      trigger={(api) => (
+        <button
+          class={`icon-btn sm lane-info${api.open ? " on" : ""}`}
+          ref={api.ref}
+          aria-expanded={api.open}
+          aria-label={`About ${laneLabel(props.lane)}`}
+          onClick={api.toggle}
+        >
+          <Icon.info size={13} />
+        </button>
+      )}
+    >
+      {() => <div class="lane-info-pop">{text(rules)}</div>}
+    </Popover>
   );
 }

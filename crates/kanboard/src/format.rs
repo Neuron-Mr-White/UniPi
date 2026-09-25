@@ -36,7 +36,10 @@ pub fn render(task: &Task) -> String {
             out.push_str(&format!("  mode: {}\n", run.mode.as_str()));
             out.push_str(&format!(
                 "  goal: {}\n",
-                run.goal.as_deref().map(yaml_scalar).unwrap_or_else(|| "null".to_string())
+                run.goal
+                    .as_deref()
+                    .map(yaml_scalar)
+                    .unwrap_or_else(|| "null".to_string())
             ));
             out.push_str(&format!("  started: {}\n", iso(run.started)));
         }
@@ -57,12 +60,11 @@ pub fn render(task: &Task) -> String {
     for entry in &task.activity {
         let mut lines = entry.text.split('\n');
         let first = lines.next().unwrap_or("");
-        out.push_str(&format!(
-            "- {} [{}] {}\n",
-            iso(entry.at),
-            entry.actor.as_str(),
-            first
-        ));
+        let actor = match (&entry.actor, entry.session.as_deref()) {
+            (Actor::Agent, Some(session)) => format!("agent:{session}"),
+            _ => entry.actor.as_str().to_string(),
+        };
+        out.push_str(&format!("- {} [{}] {}\n", iso(entry.at), actor, first));
         for line in lines {
             // A blank continuation line would render as `  ` and make the file
             // permanently non-canonical (validate would refuse the board).
@@ -82,7 +84,11 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     let lines: Vec<&str> = text.lines().collect();
 
     if lines.first().map(|l| l.trim_end()) != Some("---") {
-        problems.push(Problem::new(file, 1, "missing frontmatter: expected a line with `---`"));
+        problems.push(Problem::new(
+            file,
+            1,
+            "missing frontmatter: expected a line with `---`",
+        ));
         return (None, problems);
     }
 
@@ -93,7 +99,11 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         .find(|(_, line)| line.trim_end() == "---")
         .map(|(index, _)| index);
     let Some(close) = close else {
-        problems.push(Problem::new(file, 1, "unterminated frontmatter: no closing `---`"));
+        problems.push(Problem::new(
+            file,
+            1,
+            "unterminated frontmatter: no closing `---`",
+        ));
         return (None, problems);
     };
 
@@ -110,7 +120,9 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         let indented = line.starts_with(' ') || line.starts_with('\t');
         if in_run && indented {
             match split_key_value(line.trim_start()) {
-                Some((key, value)) => run_fields.push((line_no, key.to_string(), value.to_string())),
+                Some((key, value)) => {
+                    run_fields.push((line_no, key.to_string(), value.to_string()))
+                }
                 None => problems.push(Problem::new(
                     file,
                     line_no,
@@ -170,7 +182,11 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
             String::new()
         }
         None => {
-            problems.push(Problem::new(file, 1, "missing required frontmatter key \"id\""));
+            problems.push(Problem::new(
+                file,
+                1,
+                "missing required frontmatter key \"id\"",
+            ));
             String::new()
         }
     };
@@ -183,7 +199,11 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "missing required frontmatter key \"title\""));
+            problems.push(Problem::new(
+                file,
+                1,
+                "missing required frontmatter key \"title\"",
+            ));
             String::new()
         }
     };
@@ -208,7 +228,11 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "missing required frontmatter key \"status\""));
+            problems.push(Problem::new(
+                file,
+                1,
+                "missing required frontmatter key \"status\"",
+            ));
             None
         }
     };
@@ -268,7 +292,10 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         // Unrecoverable structure problems: still return what we could read so
         // `validate` can print everything, but callers must treat it as invalid.
         return (
-            Some(build(id, title, status, priority, order, deps, labels, created, updated, run, body, activity)),
+            Some(build(
+                id, title, status, priority, order, deps, labels, created, updated, run, body,
+                activity,
+            )),
             problems,
         );
     }
@@ -278,18 +305,7 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     }
 
     let task = Some(build(
-        id,
-        title,
-        status,
-        priority,
-        order,
-        deps,
-        labels,
-        created,
-        updated,
-        run,
-        body,
-        activity,
+        id, title, status, priority, order, deps, labels, created, updated, run, body, activity,
     ));
     (task, problems)
 }
@@ -413,19 +429,32 @@ fn parse_body(
 
 fn parse_activity_line(rest: &str) -> Option<ActivityEntry> {
     let (stamp, tail) = rest.split_once(' ')?;
-    let at = DateTime::parse_from_rfc3339(stamp).ok()?.with_timezone(&Utc);
+    let at = DateTime::parse_from_rfc3339(stamp)
+        .ok()?
+        .with_timezone(&Utc);
     let tail = tail.trim_start();
     let (actor, text) = tail.split_once(' ')?;
     let actor = actor.strip_prefix('[')?.strip_suffix(']')?;
+    // `[agent:<session>]` tags the entry with its session; bare `[actor]`
+    // (the old format) has none.
+    let (actor, session) = match actor.split_once(':') {
+        Some((actor, session)) => (actor, Some(session.to_string())),
+        None => (actor, None),
+    };
     let actor: Actor = actor.parse().ok()?;
     Some(ActivityEntry {
         at,
         actor,
+        session,
         text: text.trim_start().to_string(),
     })
 }
 
-fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<Problem>) -> Option<Run> {
+fn parse_run(
+    file: &str,
+    fields: &[(usize, String, String)],
+    problems: &mut Vec<Problem>,
+) -> Option<Run> {
     let get = |key: &str| -> Option<&(usize, String, String)> {
         fields.iter().find(|(_, field, _)| field == key)
     };
@@ -434,7 +463,9 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
             problems.push(Problem::new(
                 file,
                 *line,
-                format!("unknown run field \"{key}\" (expected session, pid, host, mode, goal, started)"),
+                format!(
+                    "unknown run field \"{key}\" (expected session, pid, host, mode, goal, started)"
+                ),
             ));
         }
     }
@@ -448,7 +479,11 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "run is present but run.session is missing"));
+            problems.push(Problem::new(
+                file,
+                1,
+                "run is present but run.session is missing",
+            ));
             return None;
         }
     };
@@ -465,7 +500,11 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "run is present but run.pid is missing"));
+            problems.push(Problem::new(
+                file,
+                1,
+                "run is present but run.pid is missing",
+            ));
             return None;
         }
     };
@@ -475,7 +514,11 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
             String::new()
         }),
         None => {
-            problems.push(Problem::new(file, 1, "run is present but run.host is missing"));
+            problems.push(Problem::new(
+                file,
+                1,
+                "run is present but run.host is missing",
+            ));
             return None;
         }
     };
@@ -486,13 +529,20 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
                 problems.push(Problem::new(
                     file,
                     *line,
-                    format!("unknown run.mode \"{}\" (expected direct|plan|goal)", value.trim()),
+                    format!(
+                        "unknown run.mode \"{}\" (expected direct|plan|goal)",
+                        value.trim()
+                    ),
                 ));
                 return None;
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "run is present but run.mode is missing"));
+            problems.push(Problem::new(
+                file,
+                1,
+                "run is present but run.mode is missing",
+            ));
             return None;
         }
     };
@@ -511,13 +561,20 @@ fn parse_run(file: &str, fields: &[(usize, String, String)], problems: &mut Vec<
                 problems.push(Problem::new(
                     file,
                     *line,
-                    format!("run.started must be an ISO-8601 timestamp, got \"{}\"", value.trim()),
+                    format!(
+                        "run.started must be an ISO-8601 timestamp, got \"{}\"",
+                        value.trim()
+                    ),
                 ));
                 return None;
             }
         },
         None => {
-            problems.push(Problem::new(file, 1, "run is present but run.started is missing"));
+            problems.push(Problem::new(
+                file,
+                1,
+                "run is present but run.started is missing",
+            ));
             return None;
         }
     };
@@ -558,7 +615,9 @@ fn parse_list(
             problems.push(Problem::new(
                 file,
                 line,
-                format!("{name} must be a flow list like `[{name}: A, B]` or `[]`, got \"{trimmed}\""),
+                format!(
+                    "{name} must be a flow list like `[{name}: A, B]` or `[]`, got \"{trimmed}\""
+                ),
             ));
             Vec::new()
         }
@@ -578,7 +637,10 @@ fn parse_date(
                 problems.push(Problem::new(
                     file,
                     line,
-                    format!("{name} must be an ISO-8601 timestamp, got \"{}\"", value.trim()),
+                    format!(
+                        "{name} must be an ISO-8601 timestamp, got \"{}\"",
+                        value.trim()
+                    ),
                 ));
                 Utc::now()
             }
@@ -632,7 +694,22 @@ pub fn yaml_scalar(value: &str) -> String {
         || value.chars().any(|c| {
             matches!(
                 c,
-                ':' | '#' | '[' | ']' | '{' | '}' | ',' | '&' | '*' | '!' | '|' | '>' | '\'' | '"' | '%' | '@' | '`'
+                ':' | '#'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+                    | ','
+                    | '&'
+                    | '*'
+                    | '!'
+                    | '|'
+                    | '>'
+                    | '\''
+                    | '"'
+                    | '%'
+                    | '@'
+                    | '`'
             )
         })
         || value.starts_with('-')

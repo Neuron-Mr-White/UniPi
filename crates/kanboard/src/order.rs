@@ -44,7 +44,11 @@ pub fn bottom_of(lane: &[&Task]) -> i64 {
 /// Position for `--before ID`; `None` = no room left, rebalance first.
 pub fn before(lane: &[&Task], target: &str) -> Result<Option<i64>> {
     let index = index_of(lane, target)?;
-    let prev = if index == 0 { None } else { Some(lane[index - 1].order) };
+    let prev = if index == 0 {
+        None
+    } else {
+        Some(lane[index - 1].order)
+    };
     Ok(midpoint(prev, Some(lane[index].order)))
 }
 
@@ -58,6 +62,7 @@ pub fn after(lane: &[&Task], target: &str) -> Result<Option<i64>> {
 fn index_of(lane: &[&Task], target: &str) -> Result<usize> {
     lane.iter()
         .position(|task| task.id == target)
-        .ok_or_else(|| crate::error::Error::not_found(format!("task {target} not found in that lane")))
+        .ok_or_else(|| {
+            crate::error::Error::not_found(format!("task {target} not found in that lane"))
+        })
 }
-

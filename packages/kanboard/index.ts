@@ -1,10 +1,14 @@
 /**
  * @pi-unipi/kanboard — pi extension.
  *
- * Bridges the terminal to the board: `/unipi:kanboard` (open/onboard/add/work/
- * stop/status), the runner that owns claim → In Progress and run-end → In Review,
- * the hub settings, and the kanboard skill. The board itself is written by the
- * Rust binary (`crates/kanboard`); this extension never edits task files.
+ * Bridges the terminal to the board: `/unipi:kanboard` (open/close/onboard/
+ * status/doctor — bare lists the commands), `/unipi:kanboard-add`,
+ * `/unipi:kanboard-do` (opens the board-write window for one turn),
+ * `/unipi:kanboard-autowork` (the runner loop: queue first, then claim-next).
+ * The runner owns claim → In Progress and run-end → In Review. The board itself
+ * is written by the Rust binary (`crates/kanboard`); this extension never edits
+ * task files. Bash calls into the binary are gated by the write window
+ * (src/guard.ts): reads always pass, writes need a -do turn or a running task.
  */
 
 import { dirname } from "node:path";
@@ -21,9 +25,13 @@ import {
 } from "@pi-unipi/core";
 
 import { openCli, type KanboardCli } from "./src/bin.js";
+import { createWriteGuard } from "./src/guard.js";
 import {
-  registerKanboardCommand,
+  drainQueueAfterDo,
+  registerKanboardCommands,
   runOpen,
+  syncPiRuntime,
+  runRotateTokenAction,
   runStopDaemon,
   type CommandDeps,
 } from "./src/commands.js";
@@ -31,8 +39,10 @@ import { createDebugLog, createRunner, registerPlanEventListener, type Runner } 
 import {
   ACTION_OPEN,
   ACTION_STOP_DAEMON,
+  ACTION_ROTATE_TOKEN,
   readKanboardSettings,
   registerKanboardSettings,
+  applyLimitEnv,
 } from "./src/settings.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -42,12 +52,25 @@ export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
 export const KANBOARD_SKILL = "kanboard";
 
 export default function (pi: ExtensionAPI) {
+  // One session id shared by the runner and the agent's bash calls.
+  process.env.UNIPI_KANBOARD_SESSION ??= `pi-${process.pid}`;
+  // Limits travel through the environment; refresh on load and before every
+  // tool_call (see the guard registration in commands.ts).
+  applyLimitEnv(readKanboardSettings());
   const debug = createDebugLog();
   registerKanboardSettings();
 
   let cli: KanboardCli | null = null;
   let unavailable: string | null = null;
   let runner: Runner | null = null;
+  const guard = createWriteGuard(
+    () => {
+      const status = runner?.status();
+      return status?.phase === "running" ? status.taskId : null;
+    },
+    () => readKanboardSettings().turnAddLimit,
+  );
+  const sessionId = (): string => process.env.UNIPI_KANBOARD_SESSION ?? `pi-${process.pid}`;
 
   const projectSlug = (): string => {
     const fromEnv = process.env.UNIPI_KANBOARD_PROJECT?.trim();
@@ -73,7 +96,10 @@ export default function (pi: ExtensionAPI) {
       revealSkill,
       work: (ctx) => runner?.work(ctx) ?? Promise.resolve(),
       stop: (ctx) => runner?.stop(ctx),
+      drainQueue: (ctx) => runner?.drain(ctx) ?? Promise.resolve(),
       status: () => runner?.status() ?? { taskId: null, mode: null, phase: "idle" },
+      guard,
+      session: sessionId,
       debug,
     }) as CommandDeps;
 
@@ -107,7 +133,7 @@ export default function (pi: ExtensionAPI) {
     return true;
   };
 
-  registerKanboardCommand(pi, buildDeps());
+  registerKanboardCommands(pi, buildDeps());
 
   registerCommandRunner(ACTION_OPEN, async (ctx) => {
     const context = ctx as ExtensionContext | undefined;
@@ -125,8 +151,18 @@ export default function (pi: ExtensionAPI) {
     await runStopDaemon(buildDeps(), context);
   });
 
+  registerCommandRunner(ACTION_ROTATE_TOKEN, async (ctx) => {
+    const context = ctx as ExtensionContext | undefined;
+    if (!context?.ui) return;
+    await runRotateTokenAction(buildDeps(), context);
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     initUnipiDirs();
+    if (attach(ctx as unknown as ExtensionContext)) {
+      const deps = buildDeps();
+      if (deps.cli) void syncPiRuntime(deps, ctx as unknown as ExtensionContext);
+    }
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.KANBOARD,
       version: VERSION,
@@ -140,18 +176,36 @@ export default function (pi: ExtensionAPI) {
     }
     const client = cli!;
     const settings = readKanboardSettings(ctx.cwd);
-    if (settings.archiveAfterDays > 0) {
+    if (settings.archiveAfterDays > 0 || settings.retentionDays > 0) {
       // Fire and forget: sweeping must never delay startup.
       void client
-        .run(["archive-sweep", "--after-days", String(settings.archiveAfterDays)])
+        .run([
+          "archive-sweep",
+          "--after-days",
+          String(settings.archiveAfterDays),
+          "--retention-days",
+          String(settings.retentionDays),
+        ])
         .then((payload) => debug(`archive-sweep: ${JSON.stringify(payload)}`))
         .catch((error) => debug(`archive-sweep failed: ${error instanceof Error ? error.message : String(error)}`));
     }
     await runner?.onSessionStart(ctx as unknown as ExtensionContext);
   });
 
+  let drainPending = false;
   pi.on("agent_end", async (event, ctx) => {
     runner?.onAgentEnd(event as { messages?: unknown[] }, ctx as unknown as ExtensionContext);
+    // A -do window closes on the first real agent_end (the 150ms echo guard
+    // inside onAgentEnd skips the previous turn's late end). The drain itself
+    // runs at agent_settled: sending a task prompt while the turn is still
+    // finalizing would queue it as a follow-up that never gets delivered.
+    if (guard.onAgentEnd()) drainPending = true;
+  });
+
+  pi.on("agent_settled", async (_event, ctx) => {
+    if (!drainPending) return;
+    drainPending = false;
+    await drainQueueAfterDo(buildDeps(), ctx as unknown as ExtensionContext);
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {

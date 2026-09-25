@@ -59,7 +59,11 @@ pub async fn events(
     let first = {
         let state = state.clone();
         let slug = slug.clone();
-        async move { Ok(Event::default().event("revision").data(state.revision(&slug).to_string())) }
+        async move {
+            Ok(Event::default()
+                .event("revision")
+                .data(state.revision(&slug).to_string()))
+        }
     };
 
     let closing = state.closing.subscribe();
@@ -74,7 +78,9 @@ pub async fn events(
                 _ = closing.wait_for(|closing| *closing) => return None,
             };
             Some((
-                Ok(Event::default().event("revision").data(revision.to_string())),
+                Ok(Event::default()
+                    .event("revision")
+                    .data(revision.to_string())),
                 (rx, guard, closing),
             ))
         },

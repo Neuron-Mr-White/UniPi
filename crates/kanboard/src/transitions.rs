@@ -33,12 +33,32 @@ const SYSTEM: &[Actor] = &[S];
 /// Every row of the spec's table, in order.
 pub const RULES: &[Rule] = &[
     // backlog ↔ todo | user, agent | —
-    Rule { from: Status::Backlog, to: Status::Todo, actors: USER_AGENT, comment: Comment::NotNeeded },
-    Rule { from: Status::Todo, to: Status::Backlog, actors: USER_AGENT, comment: Comment::NotNeeded },
+    Rule {
+        from: Status::Backlog,
+        to: Status::Todo,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Todo,
+        to: Status::Backlog,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
     // todo → in_progress | system only (claim) | deps satisfied, not claimed
-    Rule { from: Status::Todo, to: Status::InProgress, actors: SYSTEM, comment: Comment::NotNeeded },
+    Rule {
+        from: Status::Todo,
+        to: Status::InProgress,
+        actors: SYSTEM,
+        comment: Comment::NotNeeded,
+    },
     // in_progress → in_review | system (run end) | summary note
-    Rule { from: Status::InProgress, to: Status::InReview, actors: SYSTEM, comment: Comment::Required("run summary") },
+    Rule {
+        from: Status::InProgress,
+        to: Status::InReview,
+        actors: SYSTEM,
+        comment: Comment::Required("run summary"),
+    },
     // in_progress → blocked | agent, system | comment required (what is needed)
     Rule {
         from: Status::InProgress,
@@ -61,7 +81,12 @@ pub const RULES: &[Rule] = &[
         comment: Comment::Required("why the stale run is being released"),
     },
     // in_review → done | user | —
-    Rule { from: Status::InReview, to: Status::Done, actors: USER, comment: Comment::NotNeeded },
+    Rule {
+        from: Status::InReview,
+        to: Status::Done,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
     // in_review → todo | user | comment required (rework note)
     Rule {
         from: Status::InReview,
@@ -84,12 +109,44 @@ pub const RULES: &[Rule] = &[
         comment: Comment::Required("the answer, shown to the agent on next claim"),
     },
     // backlog/todo/blocked → cancelled | user only | —
-    Rule { from: Status::Backlog, to: Status::Cancelled, actors: USER, comment: Comment::NotNeeded },
-    Rule { from: Status::Todo, to: Status::Cancelled, actors: USER, comment: Comment::NotNeeded },
-    Rule { from: Status::Blocked, to: Status::Cancelled, actors: USER, comment: Comment::NotNeeded },
+    Rule {
+        from: Status::Backlog,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Todo,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Blocked,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // in_review → archived | user (one-click archive without going through done)
+    Rule {
+        from: Status::InReview,
+        to: Status::Archived,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
     // done/cancelled → archived | user, or auto after archiveAfterDays
-    Rule { from: Status::Done, to: Status::Archived, actors: USER_SYSTEM, comment: Comment::NotNeeded },
-    Rule { from: Status::Cancelled, to: Status::Archived, actors: USER_SYSTEM, comment: Comment::NotNeeded },
+    Rule {
+        from: Status::Done,
+        to: Status::Archived,
+        actors: USER_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Cancelled,
+        to: Status::Archived,
+        actors: USER_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
 ];
 
 pub fn rule_for(from: Status, to: Status) -> Option<&'static Rule> {
@@ -97,7 +154,13 @@ pub fn rule_for(from: Status, to: Status) -> Option<&'static Rule> {
 }
 
 /// Check a move. `comment` is the trimmed `--comment` value (if any).
-pub fn check(from: Status, to: Status, actor: Actor, comment: Option<&str>, staleness: Staleness) -> Result<()> {
+pub fn check(
+    from: Status,
+    to: Status,
+    actor: Actor,
+    comment: Option<&str>,
+    staleness: Staleness,
+) -> Result<()> {
     if from == to {
         return Err(Error::rule(format!("task is already in {to}")));
     }
@@ -143,7 +206,8 @@ fn actor_denied(from: Status, to: Status, actor: Actor) -> String {
             "todo → in_progress is system only — claim it with `claim-next`".to_string()
         }
         (Status::InProgress, Status::InReview) => {
-            "in_progress → in_review is system only — the runner writes it when the run ends".to_string()
+            "in_progress → in_review is system only — the runner writes it when the run ends"
+                .to_string()
         }
         (_, Status::Done) if actor == Actor::Agent => {
             "agents cannot mark tasks done — release to in_review and let the user confirm \
@@ -188,15 +252,20 @@ fn not_allowed(from: Status, to: Status, actor: Actor, staleness: Staleness) -> 
     }
     if to == Status::Archived {
         return match from {
-            Status::Done | Status::Cancelled => "only done/cancelled tasks can be archived".to_string(),
-            _ => format!("only done/cancelled tasks can be archived ({from} is not finished)"),
+            Status::Done | Status::Cancelled | Status::InReview => {
+                "only done/cancelled/in_review tasks can be archived".to_string()
+            }
+            _ => format!(
+                "only done/cancelled/in_review tasks can be archived ({from} is not finished)"
+            ),
         };
     }
     if from == Status::InReview && to == Status::Cancelled {
         return "cancelling from in_review is not allowed — move it back to todo (with a rework note) first, or mark it done".to_string();
     }
     if from == Status::Blocked && to == Status::Backlog {
-        return "blocked → backlog is not allowed — unblock to todo with the answer as --comment".to_string();
+        return "blocked → backlog is not allowed — unblock to todo with the answer as --comment"
+            .to_string();
     }
     if from == Status::Todo && to == Status::Blocked {
         return "only a task in progress can be blocked — claim it first".to_string();
@@ -226,5 +295,8 @@ pub fn allowed_targets(from: Status, actor: Actor) -> Vec<Status> {
 
 /// Whether moving to `to` needs a comment.
 pub fn comment_required(from: Status, to: Status) -> bool {
-    matches!(rule_for(from, to).map(|rule| rule.comment), Some(Comment::Required(_)))
+    matches!(
+        rule_for(from, to).map(|rule| rule.comment),
+        Some(Comment::Required(_))
+    )
 }

@@ -8,10 +8,10 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
-use crate::store::{write_atomic, Layout};
+use crate::store::{Layout, write_atomic};
 
 pub const DEFAULT_IDLE_MIN: u64 = 10;
 /// How long `stop` waits for the daemon to exit before reporting failure.

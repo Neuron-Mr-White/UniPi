@@ -1,9 +1,9 @@
 /** App shell: sidebar + inset sheet (breadcrumb, toolbar, board/list), overlays, global keys. */
 
-import { For, Show, createMemo, onCleanup, onMount, type JSX } from "solid-js";
-import { LANES, PRIORITIES, type ProjectSummary } from "./api.js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { api, LANES, PRIORITIES, type ProjectSummary } from "./api.js";
 import { Board } from "./Board.js";
-import { CommandPalette, CommentDialog, NewTaskDialog, ShortcutsDialog, Toasts } from "./Dialogs.js";
+import { CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { ListView } from "./List.js";
 import { hue, ProjectTile } from "./paint.js";
@@ -15,6 +15,7 @@ import {
   clearFilters,
   conn,
   currentProject,
+  describe,
   display,
   elapsed,
   filterCount,
@@ -32,12 +33,14 @@ import {
   runningTasks,
   scope,
   selectedId,
+  setSelectedId,
   setDisplay,
   setFilters,
   setNewTaskLane,
   setOpenTaskId,
   setPaletteOpen,
   setQuery,
+  setSettingsOpen,
   setShortcutsOpen,
   setSidebarCollapsed,
   setView,
@@ -50,6 +53,10 @@ import {
   view,
 } from "./state.js";
 import { Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
+
+/** Active vs archived split — sidebar, switcher and overview all use it. */
+const activeProjects = createMemo(() => projects.items.filter((project) => !project.archived));
+const archivedProjects = createMemo(() => projects.items.filter((project) => project.archived));
 
 export function App(): JSX.Element {
   let searchInput: HTMLInputElement | undefined;
@@ -139,6 +146,7 @@ export function App(): JSX.Element {
 
       <main class={`sheet density-${display.density}`}>
         <header class="sheet-head">
+          <MobileMenu />
           <nav class="crumbs" aria-label="Breadcrumb">
             <Show when={sidebarCollapsed()}>
               <button class="icon-btn" aria-label="Expand sidebar" title="Expand sidebar  [" onClick={() => setSidebarCollapsed(false)}>
@@ -150,8 +158,19 @@ export function App(): JSX.Element {
                 Projects
               </button>
               <Icon.chevronRight size={14} />
-              <span class="crumb">{currentProject()?.name ?? slug()}</span>
-              <Icon.chevronRight size={14} />
+              <button
+                class="crumb crumb-link"
+                title="Back to the board"
+                onClick={() => {
+                  setOpenTaskId(null);
+                  setSelectedId(null);
+                  clearFilters();
+                  setView("board");
+                }}
+              >
+                {currentProject()?.name ?? slug()}
+              </button>
+              <Icon.chevronRight size={14} class="crumb-sep" />
               <span class="crumb here">
                 {scope() === "in_review" ? "Review queue" : scope() === "blocked" ? "Blocked" : view() === "list" ? "List" : "Board"}
               </span>
@@ -162,9 +181,9 @@ export function App(): JSX.Element {
             <span class="total num">
               {shown()} {shown() === 1 ? "task" : "tasks"}
             </span>
-            <button class="btn primary" onClick={() => setNewTaskLane("backlog")} title="New task  C">
+            <button class="btn primary" onClick={() => setNewTaskLane("backlog")} title="New task  C" aria-label="New task">
               <Icon.plus size={14} />
-              New task
+              <span class="label-txt">New task</span>
             </button>
           </Show>
         </header>
@@ -244,6 +263,8 @@ export function App(): JSX.Element {
       <TaskPanel />
       <CommentDialog />
       <NewTaskDialog />
+      <SummarizeDialog />
+      <SettingsDialog />
       <CommandPalette />
       <ShortcutsDialog />
       <Toasts />
@@ -279,7 +300,7 @@ function Sidebar(): JSX.Element {
           {(close) => (
             <>
               <MenuLabel>Projects</MenuLabel>
-              <For each={projects.items}>
+              <For each={activeProjects()}>
                 {(project) => (
                   <MenuItem
                     role="option"
@@ -355,9 +376,9 @@ function Sidebar(): JSX.Element {
 
         <div class="sb-section">
           Projects
-          <span class="count num">{projects.items.length}</span>
+          <span class="count num">{activeProjects().length}</span>
         </div>
-        <For each={projects.items}>
+        <For each={activeProjects()}>
           {(project) => (
             <button
               class="nav-item"
@@ -371,7 +392,7 @@ function Sidebar(): JSX.Element {
             </button>
           )}
         </For>
-        <Show when={projects.loaded && projects.items.length === 0}>
+        <Show when={projects.loaded && activeProjects().length === 0}>
           <div class="sb-empty">No projects registered.</div>
         </Show>
 
@@ -404,10 +425,14 @@ function Sidebar(): JSX.Element {
       </div>
 
       <div class="sb-foot">
+        <img class="sb-logo" src="/icon-32.png" width="18" height="18" alt="" />
         <div class="daemon" title={`Live updates: ${conn()}`}>
           <span class={`led ${slug() ? conn() : ""}`} />
           <span class="where">{location.host}</span>
         </div>
+        <button class="icon-btn keep" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}>
+          <Icon.gear />
+        </button>
         <button class="icon-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts  ?" onClick={() => setShortcutsOpen(true)}>
           <Icon.keyboard />
         </button>
@@ -546,7 +571,7 @@ function DisplayMenu(): JSX.Element {
 // ─── all projects ───────────────────────────────────────────────────────────
 
 function ProjectPicker(): JSX.Element {
-  const segments = ["backlog", "todo", "in_progress", "in_review", "blocked", "done"];
+  const segments = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"];
   return (
     <div class="picker">
       <h1>Projects</h1>
@@ -569,45 +594,190 @@ function ProjectPicker(): JSX.Element {
         </div>
       </Show>
       <div class="project-grid">
-        <For each={projects.items}>
-          {(project) => (
-            <button class="project-card" onClick={() => void openProject(project.slug)}>
-              <div class="pc-head">
-                <ProjectTile name={project.name} size={28} />
-                <div style={{ "min-width": 0 }}>
-                  <div class="pc-name">{project.name}</div>
-                  <div class="pc-path">{project.root ?? project.slug}</div>
-                </div>
-              </div>
-              <div class="stack-bar" aria-hidden="true">
-                <For each={segments}>
-                  {(status) => (
-                    <Show when={(project.counts?.[status] ?? 0) > 0}>
-                      <span style={{ flex: String(project.counts?.[status] ?? 0), background: `var(--s-${status})` }} />
-                    </Show>
-                  )}
-                </For>
-              </div>
-              <div class="pc-stats">
-                <For each={segments.filter((status) => (project.counts?.[status] ?? 0) > 0)}>
-                  {(status) => (
-                    <span>
-                      <StatusGlyph status={status} size={12} />
-                      <span class="num">{project.counts?.[status]}</span> {laneLabel(status)}
-                    </span>
-                  )}
-                </For>
-                <Show when={(project.total ?? 0) === 0}>
-                  <span>No tasks yet</span>
-                </Show>
-              </div>
-              <Show when={(project.problems ?? []).length > 0}>
-                <span class="tag stale">{(project.problems ?? []).length} file(s) need repair</span>
-              </Show>
-            </button>
-          )}
-        </For>
+        <For each={activeProjects()}>{(project) => <ProjectCard project={project} segments={segments} />}</For>
       </div>
+      <Show when={archivedProjects().length > 0}>
+        <ArchivedSection />
+      </Show>
+    </div>
+  );
+}
+
+function ProjectCard(props: { project: ProjectSummary; segments: string[]; archived?: boolean }): JSX.Element {
+  const project = props.project;
+  return (
+    <div class="project-card" role="group">
+      <button class="pc-open" onClick={() => void openProject(project.slug)}>
+        <div class="pc-head">
+          <ProjectTile name={project.name} size={28} />
+          <div style={{ "min-width": 0 }}>
+            <div class="pc-name">{project.name}</div>
+            <div class="pc-path">{project.root ?? project.slug}</div>
+          </div>
+        </div>
+        <div class="stack-bar" aria-hidden="true">
+          <For each={props.segments}>
+            {(status) => (
+              <Show when={(project.counts?.[status] ?? 0) > 0}>
+                <span style={{ flex: String(project.counts?.[status] ?? 0), background: `var(--s-${status})` }} />
+              </Show>
+            )}
+          </For>
+        </div>
+        <div class="pc-stats">
+          <For each={props.segments.filter((status) => (project.counts?.[status] ?? 0) > 0)}>
+            {(status) => (
+              <span>
+                <StatusGlyph status={status} size={12} />
+                <span class="num">{project.counts?.[status]}</span> {laneLabel(status)}
+              </span>
+            )}
+          </For>
+          <Show when={(project.total ?? 0) === 0}>
+            <span>No tasks yet</span>
+          </Show>
+        </div>
+        <Show when={(project.problems ?? []).length > 0}>
+          <span class="tag stale">{(project.problems ?? []).length} file(s) need repair</span>
+        </Show>
+      </button>
+      <Popover
+        width={180}
+        align="end"
+        label={`${project.name} options`}
+        trigger={(api) => (
+          <button class="icon-btn sm pc-menu" ref={api.ref} aria-expanded={api.open} aria-label={`${project.name} options`} onClick={api.toggle}>
+            <Icon.more size={14} />
+          </button>
+        )}
+      >
+        {(close) => (
+          <MenuItem
+            icon={<Icon.archive size={14} />}
+            label={props.archived ? "Unarchive" : "Archive"}
+            onSelect={() => {
+              close();
+              void api
+                .updateProject(project.slug, { archived: !props.archived })
+                .then(loadProjects)
+                .catch((error) => toast(describe(error), "error"));
+            }}
+          />
+        )}
+      </Popover>
+    </div>
+  );
+}
+
+function ArchivedSection(): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  const segments = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"];
+  return (
+    <div class="archived-section">
+      <button class="archived-head" aria-expanded={open()} onClick={() => setOpen(!open())}>
+        <Show when={open()} fallback={<Icon.chevronRight size={14} />}>
+          <Icon.chevronDown size={14} />
+        </Show>
+        Archived ({archivedProjects().length})
+      </button>
+      <Show when={open()}>
+        <div class="project-grid">
+          <For each={archivedProjects()}>{(project) => <ProjectCard project={project} segments={segments} archived />}</For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+
+/** ≤720px: the rail collapses into a logo button that opens this menu. */
+function MobileMenu(): JSX.Element {
+  const counts = (status: string): number => board.tasks.filter((task) => task.status === status).length;
+  return (
+    <div class="mobile-menu">
+      <Popover
+        width={280}
+        label="Menu"
+        trigger={(api) => (
+          <button class="mobile-logo" ref={api.ref} aria-expanded={api.open} aria-label="Menu" onClick={api.toggle}>
+            <img src="/icon-32.png" width="22" height="22" alt="UniPi" />
+            <span class={`led ${slug() ? conn() : ""}`} />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <MenuLabel>Projects</MenuLabel>
+            <For each={activeProjects()}>
+              {(project) => (
+                <MenuItem
+                  icon={<ProjectTile name={project.name} size={16} />}
+                  label={project.name}
+                  checked={project.slug === slug()}
+                  onSelect={() => {
+                    close();
+                    void openProject(project.slug);
+                  }}
+                />
+              )}
+            </For>
+            <MenuItem
+              icon={<Icon.folder size={14} />}
+              label="All projects"
+              onSelect={() => {
+                close();
+                void openProject(null);
+              }}
+            />
+            <MenuSeparator />
+            <Show when={slug()}>
+              <MenuItem
+                icon={<Icon.review size={14} />}
+                label={`Review queue${counts("in_review") > 0 ? ` (${counts("in_review")})` : ""}`}
+                onSelect={() => {
+                  close();
+                  setView("list", "in_review");
+                }}
+              />
+              <MenuItem
+                icon={<Icon.blocked size={14} />}
+                label={`Blocked${counts("blocked") > 0 ? ` (${counts("blocked")})` : ""}`}
+                onSelect={() => {
+                  close();
+                  setView("list", "blocked");
+                }}
+              />
+            </Show>
+            <MenuItem
+              icon={<Icon.search size={14} />}
+              label="Search…"
+              onSelect={() => {
+                close();
+                setPaletteOpen(true);
+              }}
+            />
+            <MenuSeparator />
+            <MenuItem
+              icon={<Icon.gear size={14} />}
+              label="Settings"
+              onSelect={() => {
+                close();
+                setSettingsOpen(true);
+              }}
+            />
+            <MenuItem
+              icon={theme() === "dark" ? <Icon.sun size={14} /> : <Icon.moon size={14} />}
+              label={theme() === "dark" ? "Light theme" : "Dark theme"}
+              onSelect={() => {
+                close();
+                toggleTheme();
+              }}
+            />
+            <MenuSeparator />
+            <MenuLabel>Live updates: {conn()}</MenuLabel>
+          </>
+        )}
+      </Popover>
     </div>
   );
 }

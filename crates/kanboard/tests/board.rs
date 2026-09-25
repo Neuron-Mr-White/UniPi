@@ -3,9 +3,9 @@
 
 mod common;
 
-use common::{claimed_id, Fixture};
+use common::{Fixture, claimed_id};
 use kanboard::commands::{self, OrderTarget};
-use kanboard::model::{ChainGate, Priority, RunMode, Status, Staleness};
+use kanboard::model::{ChainGate, Priority, RunMode, Staleness, Status};
 use std::sync::Arc;
 
 #[test]
@@ -16,12 +16,44 @@ fn claim_next_takes_priority_first_then_order() {
     let high_a = fixture.add_with("high a", Status::Todo, Priority::High, &[]);
     let high_b = fixture.add_with("high b", Status::Todo, Priority::High, &[]);
 
+    // One session claims, releases to in_review, claims the next — the
+    // one-claim-per-session and two-sessions-per-project rules make parallel
+    // claims the sessions test's job.
+    let release = |id: &String| {
+        commands::release(
+            &fixture.layout,
+            fixture.project.clone(),
+            id,
+            Status::InReview,
+            "done",
+            ChainGate::InReview,
+            fixture.common.now,
+        )
+        .expect("release");
+    };
+    let pid = std::process::id();
     // Within the same priority the earlier `order` wins.
-    assert_eq!(claimed_id(&fixture.claim_next("s1", 1)).unwrap(), urgent.id);
-    assert_eq!(claimed_id(&fixture.claim_next("s2", 2)).unwrap(), high_a.id);
-    assert_eq!(claimed_id(&fixture.claim_next("s3", 3)).unwrap(), high_b.id);
-    assert_eq!(claimed_id(&fixture.claim_next("s4", 4)).unwrap(), low.id);
-    assert!(claimed_id(&fixture.claim_next("s5", 5)).is_none(), "nothing left");
+    assert_eq!(
+        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
+        urgent.id
+    );
+    release(&urgent.id);
+    assert_eq!(
+        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
+        high_a.id
+    );
+    release(&high_a.id);
+    assert_eq!(
+        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
+        high_b.id
+    );
+    release(&high_b.id);
+    assert_eq!(claimed_id(&fixture.claim_next("s1", pid)).unwrap(), low.id);
+    release(&low.id);
+    assert!(
+        claimed_id(&fixture.claim_next("s1", pid)).is_none(),
+        "nothing left"
+    );
 }
 
 #[test]
@@ -58,7 +90,12 @@ fn claim_records_the_run_block_and_an_activity_line() {
     let activity = payload["activity"].as_array().unwrap();
     let last = activity.last().unwrap();
     assert_eq!(last["actor"], "system");
-    assert!(last["text"].as_str().unwrap().contains("claimed by session session-42"));
+    assert!(
+        last["text"]
+            .as_str()
+            .unwrap()
+            .contains("claimed by session session-42")
+    );
     assert_eq!(payload["id"], task.id.as_str());
 }
 
@@ -137,8 +174,14 @@ fn release_requires_a_comment_and_clears_the_run() {
         fixture.common.now,
     )
     .unwrap_err();
-    assert!(err.to_string().contains("not allowed for actor system"), "{err}");
-    assert!(err.to_string().contains("allowed: user"), "the message names who may: {err}");
+    assert!(
+        err.to_string().contains("not allowed for actor system"),
+        "{err}"
+    );
+    assert!(
+        err.to_string().contains("allowed: user"),
+        "the message names who may: {err}"
+    );
 }
 
 #[test]
@@ -174,12 +217,18 @@ fn releasing_to_todo_records_the_reason() {
         fixture.common.now,
     )
     .expect("release");
-    let stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     assert_eq!(stored.status, Status::Todo);
-    assert!(stored
-        .activity
-        .iter()
-        .any(|entry| entry.text == "released to todo: interrupted"));
+    assert!(
+        stored
+            .activity
+            .iter()
+            .any(|entry| entry.text == "released to todo: interrupted")
+    );
 }
 
 // ─── stale runs ─────────────────────────────────────────────────────────────
@@ -188,7 +237,11 @@ fn releasing_to_todo_records_the_reason() {
 fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
     let fixture = Fixture::new();
     let task = fixture.add_with("orphan", Status::Todo, Priority::None, &[]);
-    let mut stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let mut stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     // A pid that cannot exist.
     stored.status = Status::InProgress;
     stored.run = Some(kanboard::model::Run {
@@ -202,7 +255,11 @@ fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
     let board = kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     board.save(&stored).unwrap();
 
-    let reloaded = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let reloaded = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     assert_eq!(commands::staleness_of(&reloaded), Staleness::Stale);
 
     let value = commands::move_task(
@@ -224,7 +281,11 @@ fn a_live_pid_blocks_user_moves() {
     let task = fixture.add_with("running", Status::Todo, Priority::None, &[]);
     // Our own process is definitely alive.
     fixture.claim_next("s1", std::process::id());
-    let stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     assert_eq!(commands::staleness_of(&stored), Staleness::Running);
 
     let err = commands::move_task(
@@ -255,7 +316,11 @@ fn a_live_pid_blocks_user_moves() {
 fn a_run_claimed_on_another_host_is_unknown() {
     let fixture = Fixture::new();
     let task = fixture.add_with("remote", Status::Todo, Priority::None, &[]);
-    let mut stored = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let mut stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     stored.status = Status::InProgress;
     stored.run = Some(kanboard::model::Run {
         session: "elsewhere".into(),
@@ -270,7 +335,11 @@ fn a_run_claimed_on_another_host_is_unknown() {
         .save(&stored)
         .unwrap();
 
-    let reloaded = fixture.tasks().into_iter().find(|t| t.id == task.id).unwrap();
+    let reloaded = fixture
+        .tasks()
+        .into_iter()
+        .find(|t| t.id == task.id)
+        .unwrap();
     assert_eq!(commands::staleness_of(&reloaded), Staleness::Unknown);
     let err = commands::move_task(
         &fixture.layout,
@@ -294,14 +363,29 @@ fn order_moves_within_a_lane_and_rebalances() {
     let c = fixture.add("c");
     assert!(a.order < b.order && b.order < c.order);
 
-    let value = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &c.id, OrderTarget::Top)
-        .expect("top");
-    assert_eq!(value["order"], 0, "top of the lane is order 0 for a first move");
+    let value = commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &c.id,
+        OrderTarget::Top,
+    )
+    .expect("top");
+    assert_eq!(
+        value["order"], 0,
+        "top of the lane is order 0 for a first move"
+    );
     let lane = lane_order(&fixture);
     assert_eq!(lane, vec!["FIX-3", "FIX-1", "FIX-2"]);
 
-    let value = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &a.id, OrderTarget::Bottom)
-        .expect("bottom");
+    let value = commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &a.id,
+        OrderTarget::Bottom,
+    )
+    .expect("bottom");
     assert_eq!(value["rebalanced"], 0);
     let lane = lane_order(&fixture);
     assert_eq!(lane.last().unwrap(), "FIX-1");
@@ -314,8 +398,14 @@ fn order_before_and_after_pos_place_between_neighbours() {
     let b = fixture.add("b");
     let c = fixture.add("c");
 
-    commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &c.id, OrderTarget::Before(&b.id))
-        .expect("before");
+    commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &c.id,
+        OrderTarget::Before(&b.id),
+    )
+    .expect("before");
     assert_eq!(lane_order(&fixture), vec!["FIX-1", "FIX-3", "FIX-2"]);
 
     commands::order(
@@ -364,7 +454,11 @@ fn exhausted_gaps_trigger_a_rebalance() {
     unique.sort_unstable();
     unique.dedup();
     assert_eq!(unique.len(), 4, "no two tasks share an order: {orders:?}");
-    let moved = fixture.tasks().into_iter().find(|task| task.id == d.id).unwrap();
+    let moved = fixture
+        .tasks()
+        .into_iter()
+        .find(|task| task.id == d.id)
+        .unwrap();
     assert_eq!(moved.order, 1500, "midpoint between 1000 and 2000");
 }
 
@@ -372,7 +466,13 @@ fn exhausted_gaps_trigger_a_rebalance() {
 fn order_needs_exactly_one_target() {
     let fixture = Fixture::new();
     let a = fixture.add("a");
-    let err = commands::order(&fixture.layout, fixture.project.clone(), &fixture.common, &a.id, OrderTarget::Top);
+    let err = commands::order(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &a.id,
+        OrderTarget::Top,
+    );
     assert!(err.is_ok(), "one target is fine");
 }
 
@@ -409,10 +509,24 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
         )
         .expect("release");
     }
-    commands::move_task(&fixture.layout, fixture.project.clone(), &fixture.common, &fresh.id, Status::Done, None)
-        .expect("done");
-    commands::move_task(&fixture.layout, fixture.project.clone(), &fixture.common, &old.id, Status::Done, None)
-        .expect("done");
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &fresh.id,
+        Status::Done,
+        None,
+    )
+    .expect("done");
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &old.id,
+        Status::Done,
+        None,
+    )
+    .expect("done");
     // Cancelling is user-only and only from the open lanes (it is still todo).
     commands::move_task(
         &fixture.layout,
@@ -432,8 +546,14 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
         board.save(&task).unwrap();
     }
 
-    let value = commands::archive_sweep(&fixture.layout, fixture.project.clone(), 14, fixture.common.now)
-        .expect("sweep");
+    let value = commands::archive_sweep(
+        &fixture.layout,
+        fixture.project.clone(),
+        14,
+        0,
+        fixture.common.now,
+    )
+    .expect("sweep");
     let archived: Vec<String> = value["archived"]
         .as_array()
         .unwrap()
@@ -444,10 +564,20 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
     assert!(archived.contains(&old.id) && archived.contains(&old_cancelled.id));
 
     let tasks = fixture.tasks();
-    assert_eq!(tasks.iter().find(|t| t.id == fresh.id).unwrap().status, Status::Done);
-    assert_eq!(tasks.iter().find(|t| t.id == old.id).unwrap().status, Status::Archived);
     assert_eq!(
-        tasks.iter().find(|t| t.id == old_cancelled.id).unwrap().status,
+        tasks.iter().find(|t| t.id == fresh.id).unwrap().status,
+        Status::Done
+    );
+    assert_eq!(
+        tasks.iter().find(|t| t.id == old.id).unwrap().status,
+        Status::Archived
+    );
+    assert_eq!(
+        tasks
+            .iter()
+            .find(|t| t.id == old_cancelled.id)
+            .unwrap()
+            .status,
         Status::Archived
     );
 }
@@ -455,15 +585,25 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
 #[test]
 fn archive_sweep_is_off_when_days_is_zero() {
     let fixture = Fixture::new();
-    let value = commands::archive_sweep(&fixture.layout, fixture.project.clone(), 0, fixture.common.now).unwrap();
+    let value = commands::archive_sweep(
+        &fixture.layout,
+        fixture.project.clone(),
+        0,
+        0,
+        fixture.common.now,
+    )
+    .unwrap();
     assert!(value["archived"].as_array().unwrap().is_empty());
-    assert_eq!(value["skipped"], "archiveAfterDays is 0 (off)");
+    assert_eq!(
+        value["skipped"],
+        "archiveAfterDays and retentionDays are 0 (off)"
+    );
 }
 
 // ─── concurrency ────────────────────────────────────────────────────────────
 
 #[test]
-fn eight_threads_claiming_three_tasks_produce_exactly_three_claims() {
+fn eight_threads_race_but_the_two_session_cap_holds() {
     let fixture = Fixture::new();
     for title in ["one", "two", "three"] {
         fixture.add_with(title, Status::Todo, Priority::None, &[]);
@@ -478,30 +618,51 @@ fn eight_threads_claiming_three_tasks_produce_exactly_three_claims() {
         handles.push(std::thread::spawn(move || {
             let args = commands::ClaimArgs {
                 session: &format!("thread-{index}"),
-                pid: std::process::id() + index,
+                // The test process is alive, so nothing is reaped; the
+                // two-sessions-per-project cap is what the threads hit.
+                pid: std::process::id(),
                 host: "test-host",
                 mode: RunMode::Direct,
+                id: None,
             };
-            let value = commands::claim_next(&layout, project, ChainGate::InReview, &args, chrono::Utc::now())
-                .expect("claim");
-            claimed_id(&value)
+            commands::claim_next(
+                &layout,
+                project,
+                ChainGate::InReview,
+                &args,
+                chrono::Utc::now(),
+            )
+            .map(|value| claimed_id(&value))
         }));
     }
 
-    let mut claimed: Vec<String> = handles
-        .into_iter()
-        .filter_map(|handle| handle.join().expect("thread"))
-        .collect();
+    let mut claimed: Vec<String> = Vec::new();
+    let mut refused = 0;
+    for handle in handles {
+        match handle.join().expect("thread") {
+            Ok(Some(id)) => claimed.push(id),
+            Ok(None) => {}
+            Err(err) => {
+                refused += 1;
+                assert!(
+                    err.to_string().contains("already run")
+                        || err.to_string().contains("already runs"),
+                    "unexpected claim error: {err}"
+                );
+            }
+        }
+    }
     claimed.sort();
     claimed.dedup();
-    assert_eq!(claimed.len(), 3, "exactly three tasks were claimable: {claimed:?}");
+    assert_eq!(claimed.len(), 2, "the two-session cap: {claimed:?}");
+    assert_eq!(refused, 6, "the other six were refused");
 
     let in_progress = fixture
         .tasks()
         .into_iter()
         .filter(|task| task.status == Status::InProgress)
         .count();
-    assert_eq!(in_progress, 3, "no double claims, no lost writes");
+    assert_eq!(in_progress, 2, "no double claims, no lost writes");
 }
 
 #[test]
@@ -513,9 +674,13 @@ fn re_registering_a_project_never_reuses_ids() {
 
     // `project add` again (what a re-onboard does) must not reset the counter.
     let root = fixture.root();
-    let again = kanboard::commands::project_add(&fixture.layout, Some(&root), Some("Fixture"), Some("FIX"))
-        .expect("re-register");
-    assert_eq!(again["nextId"], first.id.trim_start_matches("FIX-").parse::<u64>().unwrap() + 1);
+    let again =
+        kanboard::commands::project_add(&fixture.layout, Some(&root), Some("Fixture"), Some("FIX"))
+            .expect("re-register");
+    assert_eq!(
+        again["nextId"],
+        first.id.trim_start_matches("FIX-").parse::<u64>().unwrap() + 1
+    );
 
     let second = fixture.add("second task");
     assert_ne!(second.id, first.id, "a fresh id, not the existing one");
@@ -529,11 +694,13 @@ fn reserve_id_skips_ids_that_already_exist_on_disk() {
     let fixture = Fixture::new();
     let task = fixture.add("existing");
     // Force the counter back to 1, as a stale/hand-edited project.json would.
-    let mut project = kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+    let mut project =
+        kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
     project.next_id = 1;
     project.save(&fixture.layout).unwrap();
 
-    let mut project = kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+    let mut project =
+        kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
     let reserved = project.reserve_id(&fixture.layout).unwrap();
     assert_ne!(reserved, task.id);
     assert_eq!(reserved, "FIX-2");
@@ -544,11 +711,18 @@ fn reserve_id_skips_ids_that_already_exist_on_disk() {
 fn a_corrupt_file_no_longer_blocks_the_board() {
     let fixture = Fixture::new();
     let good = fixture.add_with("readable task", Status::Todo, Priority::None, &[]);
-    let also_good = fixture.add_with("another readable task", Status::Backlog, Priority::None, &[]);
+    let also_good = fixture.add_with(
+        "another readable task",
+        Status::Backlog,
+        Priority::None,
+        &[],
+    );
     let broken = fixture.add("broken task");
     // Corrupt it the way a hand edit does: an unknown status.
     let path = fixture.layout.task_path(&fixture.project.slug, &broken.id);
-    let text = std::fs::read_to_string(&path).unwrap().replace("status: backlog", "status: nonsense");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("status: backlog", "status: nonsense");
     std::fs::write(&path, text).unwrap();
 
     // list still works and reports the problem.
@@ -564,10 +738,12 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
     assert_eq!(tasks.len(), 2, "the readable tasks are listed");
     assert_eq!(payload["problems"].as_array().unwrap().len(), 1);
     assert_eq!(payload["problems"][0]["line"], 4, "the bad status line");
-    assert!(payload["problems"][0]["error"]
-        .as_str()
-        .unwrap()
-        .contains("unknown status"));
+    assert!(
+        payload["problems"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("unknown status")
+    );
 
     // Writes to the corrupt file are refused with a repair pointer.
     let err = commands::move_task(
@@ -580,7 +756,10 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
     )
     .unwrap_err();
     let message = err.to_string();
-    assert!(message.starts_with(&format!("{} is unreadable:", broken.id)), "{message}");
+    assert!(
+        message.starts_with(&format!("{} is unreadable:", broken.id)),
+        "{message}"
+    );
     assert!(message.contains("line 4"), "{message}");
     assert!(message.contains("validate --fix"), "{message}");
 
@@ -596,7 +775,10 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
     )
     .expect("move works");
     let claimed = fixture.claim_next("s", 1);
-    assert!(claimed["task"].is_object(), "claim-next ignores the corrupt file");
+    assert!(
+        claimed["task"].is_object(),
+        "claim-next ignores the corrupt file"
+    );
     assert_eq!(claimed["task"]["id"], good.id.as_str());
 }
 
@@ -605,7 +787,9 @@ fn validate_still_reports_every_problem_and_can_fix_them() {
     let fixture = Fixture::new();
     let task = fixture.add("to be repaired");
     let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
-    let text = std::fs::read_to_string(&path).unwrap().replace("status: backlog", "status: nope");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("status: backlog", "status: nope");
     std::fs::write(&path, text).unwrap();
 
     let result = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();

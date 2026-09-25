@@ -58,13 +58,19 @@ pub fn safe_name(original: &str) -> String {
         }
     }
     let trimmed = out.trim_matches(|ch| ch == '-' || ch == '.').to_string();
-    let name = if trimmed.is_empty() { "file".to_string() } else { trimmed };
+    let name = if trimmed.is_empty() {
+        "file".to_string()
+    } else {
+        trimmed
+    };
     if name.len() <= 80 {
         return name;
     }
     // keep the extension when shortening
     match name.rsplit_once('.') {
-        Some((stem, ext)) if ext.len() <= 10 => format!("{}.{ext}", &stem[..stem.len().min(79 - ext.len())]),
+        Some((stem, ext)) if ext.len() <= 10 => {
+            format!("{}.{ext}", &stem[..stem.len().min(79 - ext.len())])
+        }
         _ => name[..80].to_string(),
     }
 }
@@ -79,11 +85,14 @@ pub fn kind_of(mime: &str, name: &str) -> &'static str {
         "audio"
     } else if mime == "application/pdf" {
         "pdf"
-    } else if (mime.starts_with("text/") && !matches!(mime, "text/html" | "text/xml" | "text/javascript"))
+    } else if (mime.starts_with("text/")
+        && !matches!(mime, "text/html" | "text/xml" | "text/javascript"))
         || mime == "application/json"
-        || [".log", ".md", ".txt", ".csv", ".json", ".yaml", ".yml", ".toml", ".diff", ".patch"]
-            .iter()
-            .any(|ext| lower.ends_with(ext))
+        || [
+            ".log", ".md", ".txt", ".csv", ".json", ".yaml", ".yml", ".toml", ".diff", ".patch",
+        ]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
     {
         "text"
     } else {
@@ -92,13 +101,20 @@ pub fn kind_of(mime: &str, name: &str) -> &'static str {
 }
 
 pub fn mime_of(name: &str) -> String {
-    mime_guess::from_path(name).first_or_octet_stream().essence_str().to_string()
+    mime_guess::from_path(name)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string()
 }
 
 fn describe(layout: &Layout, slug: &str, task_id: &str, name: &str) -> Result<Attachment> {
     let path = dir(layout, slug, task_id).join(name);
-    let meta = fs::metadata(&path).map_err(|_| Error::not_found(format!("attachment {task_id}/{name} not found")))?;
-    let original = name.split_once('-').map(|(_, rest)| rest.to_string()).unwrap_or_else(|| name.to_string());
+    let meta = fs::metadata(&path)
+        .map_err(|_| Error::not_found(format!("attachment {task_id}/{name} not found")))?;
+    let original = name
+        .split_once('-')
+        .map(|(_, rest)| rest.to_string())
+        .unwrap_or_else(|| name.to_string());
     let mime = mime_of(name);
     let kind = kind_of(&mime, name).to_string();
     let reference = format!("att:{task_id}/{name}");
@@ -121,7 +137,13 @@ fn describe(layout: &Layout, slug: &str, task_id: &str, name: &str) -> Result<At
 }
 
 /// Store bytes for a task. Identical content under the same name is stored once.
-pub fn store(layout: &Layout, slug: &str, task_id: &str, original: &str, bytes: &[u8]) -> Result<Attachment> {
+pub fn store(
+    layout: &Layout,
+    slug: &str,
+    task_id: &str,
+    original: &str,
+    bytes: &[u8],
+) -> Result<Attachment> {
     if bytes.is_empty() {
         return Err(Error::usage("attachment is empty"));
     }
@@ -133,7 +155,11 @@ pub fn store(layout: &Layout, slug: &str, task_id: &str, original: &str, bytes: 
         )));
     }
     let digest = Sha256::digest(bytes);
-    let hash: String = digest.iter().take(4).map(|byte| format!("{byte:02x}")).collect();
+    let hash: String = digest
+        .iter()
+        .take(4)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     let name = format!("{hash}-{}", safe_name(original));
     let folder = dir(layout, slug, task_id);
     fs::create_dir_all(&folder)?;
@@ -141,14 +167,17 @@ pub fn store(layout: &Layout, slug: &str, task_id: &str, original: &str, bytes: 
     if !path.exists() {
         let tmp = folder.join(format!(".{name}.tmp-{}", std::process::id()));
         fs::write(&tmp, bytes)?;
-        fs::rename(&tmp, &path).map_err(|err| Error::Io(format!("cannot store {}: {err}", path.display())))?;
+        fs::rename(&tmp, &path)
+            .map_err(|err| Error::Io(format!("cannot store {}: {err}", path.display())))?;
     }
     describe(layout, slug, task_id, &name)
 }
 
 /// Resolve a stored attachment, refusing anything that is not a plain file name.
 pub fn resolve(layout: &Layout, slug: &str, task_id: &str, name: &str) -> Result<Attachment> {
-    let plain = |part: &str| !part.is_empty() && !part.starts_with('.') && !part.contains(['/', '\\']) && part != "..";
+    let plain = |part: &str| {
+        !part.is_empty() && !part.starts_with('.') && !part.contains(['/', '\\']) && part != ".."
+    };
     if !plain(task_id) || !plain(name) {
         return Err(Error::usage("invalid attachment path"));
     }
@@ -178,7 +207,10 @@ mod tests {
 
     #[test]
     fn names_are_sanitised_and_bounded() {
-        assert_eq!(safe_name("Screen Shot 2026-09-24 at 10.00.png"), "Screen-Shot-2026-09-24-at-10.00.png");
+        assert_eq!(
+            safe_name("Screen Shot 2026-09-24 at 10.00.png"),
+            "Screen-Shot-2026-09-24-at-10.00.png"
+        );
         assert_eq!(safe_name("../../etc/passwd"), "passwd");
         assert_eq!(safe_name("日本語.txt"), "txt");
         assert_eq!(safe_name(""), "file");
@@ -190,11 +222,19 @@ mod tests {
     #[test]
     fn kinds() {
         assert_eq!(kind_of("image/png", "a.png"), "image");
-        assert_eq!(kind_of("image/svg+xml", "a.svg"), "file", "svg is never inlined");
+        assert_eq!(
+            kind_of("image/svg+xml", "a.svg"),
+            "file",
+            "svg is never inlined"
+        );
         assert_eq!(kind_of("video/mp4", "a.mp4"), "video");
         assert_eq!(kind_of("application/pdf", "a.pdf"), "pdf");
         assert_eq!(kind_of("application/octet-stream", "build.log"), "text");
         assert_eq!(kind_of("application/zip", "a.zip"), "file");
-        assert_eq!(kind_of("text/html", "a.html"), "file", "markup is downloaded, never previewed");
+        assert_eq!(
+            kind_of("text/html", "a.html"),
+            "file",
+            "markup is downloaded, never previewed"
+        );
     }
 }

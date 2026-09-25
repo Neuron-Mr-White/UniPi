@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createCli, exeSuffix, platformKey, platformPackagePath, resolveBinary, unavailableMessage, KanboardCliError } from "../src/bin.js";
+import { createWriteGuard } from "../src/guard.js";
 import { formatBoardUrls, isLoopbackHost, parseOpenArgs, reachableAddresses, readDaemonInfo, resolveHost } from "../src/commands.js";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
@@ -243,11 +244,11 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
       unavailable: null,
       settings: () => ({
         chainGate: "in_review" as const,
-        continue: false,
         idleMin: 10,
         host: "127.0.0.1",
         port: 0,
         archiveAfterDays: 0,
+        retentionDays: 90,
         openBrowser: false,
       }),
       revealSkill: () => undefined,
@@ -294,7 +295,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     const noted = notifications();
     const ctx = { cwd: workspace, ui: noted.ui } as never;
     await runAdd(deps as never, ctx, "write the onboarding guide");
-    assert.match(noted.lines.at(-1) ?? "", /^[A-Z]+-\d+ added to Backlog$/);
+    assert.match(noted.lines.at(-1) ?? "", /^✓ [A-Z]+-\d+ added to Backlog$/);
   });
 
   it("status reports daemon, project counts and the runner", async () => {
@@ -351,12 +352,16 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     let unavailable: string | null = null;
     const noted = notifications();
 
-    let handler!: (args: string, ctx: unknown) => Promise<void>;
+    const handlers = new Map<string, (args: string, ctx: unknown) => Promise<void>>();
     const pi = {
-      registerCommand: (_name: string, options: { handler: typeof handler }) => {
-        handler = options.handler;
+      registerCommand: (name: string, options: { handler: (args: string, ctx: unknown) => Promise<void> }) => {
+        handlers.set(name, options.handler);
       },
+      on: () => undefined,
+      sendMessage: () => undefined,
+      sendUserMessage: () => undefined,
     } as never;
+    const handler = (args: string, ctx: unknown) => handlers.get("unipi:kanboard")!(args, ctx);
 
     const lazyDeps = {
       get cli() {
@@ -365,11 +370,14 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
       get unavailable() {
         return unavailable;
       },
-      settings: () => ({ chainGate: "in_review", continue: false, idleMin: 10, host: "127.0.0.1", port: 0, archiveAfterDays: 0, openBrowser: false }),
+      settings: () => ({ chainGate: "in_review", idleMin: 10, host: "127.0.0.1", port: 0, archiveAfterDays: 0, retentionDays: 90, openBrowser: false }),
       revealSkill: () => undefined,
       work: async () => undefined,
       stop: () => undefined,
+      drainQueue: async () => undefined,
       status: () => ({ taskId: null, mode: null, phase: "idle" }),
+      guard: createWriteGuard(() => null),
+      session: () => "test-session",
       debug: () => undefined,
     };
     registerKanboardCommand(pi, lazyDeps as never);
@@ -380,11 +388,11 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     await handler("status", ctx);
     assert.deepEqual(noted.lines, ["kanboard: kanboard binary unavailable for linux-x64"]);
 
-    // After it resolves, the same registered handler works.
+    // After it resolves, the same registered handlers work.
     current = cli;
     unavailable = null;
-    await handler("add lazy capture", ctx);
-    assert.match(noted.lines.at(-1) ?? "", /^[A-Z]+-\d+ added to Backlog$/);
+    await handlers.get("unipi:kanboard-add")!("add lazy capture", ctx);
+    assert.match(noted.lines.at(-1) ?? "", /^✓ [A-Z]+-\d+ added to Backlog$/);
   });
 
   it("rebinds the daemon when the requested host differs, and prints the URLs", async () => {

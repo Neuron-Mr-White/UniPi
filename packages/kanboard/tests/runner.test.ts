@@ -1,6 +1,6 @@
 /**
  * Runner tests with a mock pi and the real binary: mode choice, the prompt
- * payload, completion → In Review, blocked respected, abort, continue=false,
+ * payload, completion → In Review, blocked respected, abort, autowork,
  * and the chain gate passed through.
  */
 
@@ -109,7 +109,7 @@ describe("runner", { skip: !hasBinary }, () => {
     const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
     execFileSync(debugBinary, ["project", "add", "--name", "Runner"], { env, cwd: workspace, encoding: "utf-8" });
     cli = createCli({ path: debugBinary, source: "dev-build" }, env);
-    settings = { ...DEFAULT_SETTINGS, continue: false, ...options };
+    settings = { ...DEFAULT_SETTINGS, ...options };
     gateSeen = null;
     kind = fakePi();
     build();
@@ -202,14 +202,13 @@ describe("runner", { skip: !hasBinary }, () => {
     setup();
     const first = add("Choose a license for the project");
     const second = add("Independent task");
-    settings = { ...settings, continue: true };
 
     const ctx = fakeCtx();
     await runner.work(ctx);
     // The agent blocks it with a question.
     execFileSync(
       debugBinary,
-      ["move", first, "blocked", "--comment", "which license?", "--actor", "agent", "--json"],
+      ["move", first, "blocked", "--comment", "which license?", "--actor", "agent", "--session", `pi-${process.pid}`, "--json"],
       { env: { ...process.env, UNIPI_KANBOARD_HOME: home }, cwd: workspace, encoding: "utf-8" },
     );
     kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "Blocked." }] }]);
@@ -222,7 +221,7 @@ describe("runner", { skip: !hasBinary }, () => {
   });
 
   it("a late agent_end from the previous task does not settle the next one", async () => {
-    setup({ continue: true });
+    setup();
     const first = add("First task");
     const second = add("Second task");
     runnerRef = null;
@@ -256,14 +255,50 @@ describe("runner", { skip: !hasBinary }, () => {
     assert.equal(runner.status().taskId, null);
   });
 
-  it("continue=false stops after one task", async () => {
+  it("autowork works the ready tasks in order", async () => {
+    setup();
+    const one = add("Task one");
+    const two = add("Task two");
+    await runner.work(fakeCtx());
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "one done" }] }]);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(kind.sent.length, 2, "autowork claimed the next task");
+    assert.match(kind.sent[1]!.message, new RegExp(`\\[kanboard ${two}\\]`));
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "two done" }] }]);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(show(one).status, "in_review");
+    assert.equal(show(two).status, "in_review");
+    assert.equal(runner.status().phase, "idle", "nothing ready → autowork stops");
+  });
+
+  it("autowork stop finishes the current task, then stops", async () => {
     setup();
     add("Task one");
     add("Task two");
-    settings = { ...settings, continue: false };
-    await run(fakeCtx());
-    assert.equal(kind.sent.length, 1, "only one task was handed over");
+    await runner.work(fakeCtx());
+    runner.stop(fakeCtx());
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "one done" }] }]);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(kind.sent.length, 1, "the second task was never claimed");
     assert.equal(runner.status().phase, "idle");
+  });
+
+  it("the session queue drains in order via claim-next --id", async () => {
+    setup();
+    const one = add("Queued one");
+    const two = add("Queued two");
+    const env = { ...process.env, UNIPI_KANBOARD_HOME: home, UNIPI_KANBOARD_SESSION: `pi-${process.pid}` };
+    execFileSync(debugBinary, ["queue", two, one, "--json"], { env, cwd: workspace, encoding: "utf-8" });
+    // drain() takes the queue head first — two, then one — without autowork.
+    await runner.drain(fakeCtx());
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "two done" }] }]);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.match(kind.sent[0]!.message, new RegExp(`\\[kanboard ${two}\\]`));
+    assert.match(kind.sent[1]!.message, new RegExp(`\\[kanboard ${one}\\]`));
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "one done" }] }]);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.equal(show(one).status, "in_review");
+    assert.equal(show(two).status, "in_review");
   });
 
   it("passes the configured chain gate to claim-next", async () => {
@@ -273,7 +308,7 @@ describe("runner", { skip: !hasBinary }, () => {
     // dep is todo → under the done gate the dependent is not claimable; under
     // in_review neither is. Claim the dependency, release it to in_review, then
     // only the in_review gate allows the dependent.
-    settings = { ...settings, chainGate: "in_review", continue: false };
+    settings = { ...settings, chainGate: "in_review" };
     await run(fakeCtx());
     assert.equal(show(dep).status, "in_review");
     gateSeen = settings.chainGate;
@@ -324,5 +359,70 @@ describe("runner", { skip: !hasBinary }, () => {
     kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "goal done" }] }]);
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(show(id).status, "in_review");
+  });
+});
+
+describe("queue drain order", { skip: !hasBinary }, () => {
+  let home: string;
+  let workspace: string;
+  let kind: ReturnType<typeof fakePi>;
+  let runner: ReturnType<typeof createRunner>;
+
+  function setup(): void {
+    home = mkdtempSync(join(tmpdir(), "kb-drain-"));
+    workspace = mkdtempSync(join(tmpdir(), "kb-drainws-"));
+    process.env.UNIPI_KANBOARD_HOME = home;
+    const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
+    execFileSync(debugBinary, ["project", "add", "--name", "Drain"], { env, cwd: workspace, encoding: "utf-8" });
+    kind = fakePi();
+    const cli = createCli({ path: debugBinary, source: "dev-build" }, env);
+    runner = createRunner({
+      pi: kind.pi,
+      cli,
+      cwd: workspace,
+      project: () =>
+        JSON.parse(execFileSync(debugBinary, ["project", "list", "--json"], { env, cwd: workspace, encoding: "utf-8" }))[0]
+          .slug as string,
+      settings: () => DEFAULT_SETTINGS,
+      debug: () => undefined,
+    });
+  }
+
+  after(() => {
+    delete process.env.UNIPI_KANBOARD_HOME;
+    if (home) rmSync(home, { recursive: true, force: true });
+    if (workspace) rmSync(workspace, { recursive: true, force: true });
+  });
+
+  it("claims the first ready entry and keeps not-ready ones queued", async () => {
+    setup();
+    const env = { ...process.env, UNIPI_KANBOARD_HOME: home, UNIPI_KANBOARD_SESSION: `pi-${process.pid}` };
+    const addT = (title: string, extra: string[] = []): string =>
+      JSON.parse(
+        execFileSync(debugBinary, ["add", title, "--status", "todo", ...extra, "--json"], { env, cwd: workspace, encoding: "utf-8" }),
+      ).id as string;
+    const dep = addT("Dep");
+    const waiting = addT("Waits on dep", ["--after", dep]);
+    const ready = addT("Ready");
+    execFileSync(debugBinary, ["queue", waiting, ready, "--json"], { env, cwd: workspace, encoding: "utf-8" });
+
+    const notes: string[] = [];
+    const ctx = fakeCtx({ notify: (m: string) => notes.push(m) });
+    await runner.drain(ctx as never);
+    assert.match(kind.sent[0]?.message ?? "", new RegExp(`\\[kanboard ${ready}\\]`), "ready task claimed first, waiting one skipped");
+
+    // The waiting entry is still queued.
+    const queue = JSON.parse(execFileSync(debugBinary, ["queue", "--list", "--json"], { env, cwd: workspace, encoding: "utf-8" }));
+    assert.deepEqual(queue.queue, [waiting]);
+
+    // After the run, the loop sees the queue again, finds nothing ready, and says why.
+    runner.onAgentEnd(
+      { messages: [{ role: "assistant", content: [{ type: "text", text: "ready done" }] }] },
+      ctx as never,
+    );
+    await new Promise((r) => setTimeout(r, 2500));
+    assert.ok(notes.some((m) => m.includes("queue waiting") && m.includes(waiting)), `waiting note: ${notes.join(" | ")}`);
+    const queue2 = JSON.parse(execFileSync(debugBinary, ["queue", "--list", "--json"], { env, cwd: workspace, encoding: "utf-8" }));
+    assert.deepEqual(queue2.queue, [waiting], "the not-ready entry stays queued");
   });
 });

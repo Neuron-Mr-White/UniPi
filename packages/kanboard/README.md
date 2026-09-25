@@ -10,21 +10,29 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 
 ## Commands
 
-`/unipi:kanboard [open|close|onboard|add|work|stop|status]` (with arg completions):
+`/unipi:kanboard [open|close|onboard|status|doctor]` — bare lists everything
+(display-only, never enters the LLM context):
 
 | Sub | What it does |
 |---|---|
-| *(none)* / `open` | Ensure the daemon (reuse a healthy one, else spawn `serve` detached) and print `http://127.0.0.1:<port>/p/<slug>`. The browser opens only when `openBrowser` is on. |
-| `onboard` | `project add` for this workspace, remembers the slug, reveals the skill, prints a 3-line how-to. Idempotent. |
-| `add <text>` | Quick capture into Backlog — no agent turn. |
-| `work` | Claim the next ready task and let the agent do it (below). |
-| `stop` | Finish the current task, then stop working (the board stays up). |
+| `open [--host H] [--port N]` | Ensure the daemon (reuse a healthy one, else spawn `serve` detached) and print `http://127.0.0.1:<port>/p/<slug>`. The browser opens only when `openBrowser` is on. |
+| `onboard` | `project add` for this workspace and remembers the slug. Idempotent. |
 | `close` | Shut down the board daemon — the web UI goes offline until the next `open`. Running tasks are unaffected. |
-| `status` | Daemon pid/port, project counts, and the runner's current task. |
+| `status` | Daemon pid/port, project counts, active claims (session/pid/host/staleness), this session's queue, and the runner's current task. |
+| `doctor` | ✓/✗ setup check (binary, daemon health, project, summary agent, bind, claims) as a display-only message. |
 
-Any other text (`/unipi:kanboard buy milk`) is treated as a quick capture.
+The other three commands are separate slash commands:
 
-## Runner (`work`)
+| Command | What it does |
+|---|---|
+| `/unipi:kanboard-add [-p 1-5] [--after ID] [--status backlog\|todo] <title>` | Capture a task — no agent turn. Lines below the title are the body; existing file paths pasted there are attached. `-p` maps 1 none · 2 low · 3 medium · 4 high · 5 urgent. |
+| `/unipi:kanboard-do <request>` | Reveal the skill and hand the request to the agent with board writes enabled for that turn. The agent may add/move/queue/note; it cannot run tasks — queued ids are drained by the runner when the turn ends. |
+| `/unipi:kanboard-autowork start\|stop` | `start` runs ready tasks one by one (queue order first, then `claim-next`); `stop` finishes the current task, then stops. |
+
+The old `add`/`work`/`stop` subcommands and bare-text capture now just point at
+these commands.
+
+## Runner (`/unipi:kanboard-autowork start`)
 
 One job per session. The **runner owns the lifecycle transitions** the agent is
 not allowed to write:
@@ -52,9 +60,10 @@ not allowed to write:
    ≤500 chars>`. `Esc` (aborted turn) → `release --to todo --comment "interrupted
    by user"` and the loop stops. Session shutdown → `release --to todo` with
    `session ended`.
-5. After each task: `✓ UNI-12 → In Review: <first line>`, then the next task is
-   claimed when `continue` is on (queued as a follow-up message; the event loop
-   is never blocked).
+5. After each task: `✓ UNI-12 → In Review: <first line>`, then the loop takes
+   the next id from the session **queue** (`claim-next --id`; entries that went
+   stale are dropped with a notice), falls back to `claim-next` while autowork
+   is on, and stops when nothing is ready. The event loop is never blocked.
 
 Footer: `▣ UNI-12 · direct` while a task runs. The claimed task is persisted with
 `pi.appendEntry("unipi:kanboard-runner", …)`, so `/reload` or a resume offers to
@@ -65,12 +74,20 @@ resume it or releases it to Todo.
 | Setting | Default | Notes |
 |---|---|---|
 | `chainGate` | `in_review` | `done` waits for a finished dependency |
-| `continue` | `true` | Claim the next task after each run |
 | `idleMin` | `10` | Passed to `serve --idle-min` |
 | `port` | `0` | Passed to `serve --port` (0 = OS-assigned) |
 | `archiveAfterDays` | `0` | > 0 → `archive-sweep --after-days N` on session start (fire and forget) |
 | `openBrowser` | `false` | Open the board in a browser on `open` |
-| *actions* | | `Open board…`, `Stop daemon` |
+| `requireAuth` | `false` | Also require the access token on 127.0.0.1 (remote always does) |
+| `keepToken` | `false` | Reuse `<home>/token` across daemon restarts |
+| `queueMax` | `10` | Tasks a session may queue (0 = unlimited); passed to the CLI as `UNIPI_KANBOARD_QUEUE_MAX` |
+| `maxSessions` | `2` | Distinct sessions running tasks per project (`UNIPI_KANBOARD_MAX_SESSIONS`) |
+| `turnAddLimit` | `20` | `add` calls allowed per -do turn or runner task (0 = unlimited) |
+| *actions* | | `Open board…`, `Stop daemon`, `Summary agent command…`, `Rotate access token` |
+
+`Summary agent command…` writes through `settings set agent-command` and
+`Rotate access token` runs `rotate-token` — both are **user-only** (actor=agent
+is refused), as are `settings set` calls generally. `settings show` is read-only.
 
 ## Binary resolution
 
@@ -91,7 +108,7 @@ would change tool schemas mid-session and break the prefix cache — spec princi
 
 `skills/kanboard/SKILL.md` describes the CLI, the lanes, who may move what, and
 the rules agents must follow. It is a normal pi skill (jev skill-judging can
-reveal it on intent), and `onboard`/`work` force-reveal it by emitting
+reveal it on intent), and `/unipi:kanboard-do` force-reveals it by emitting
 `unipi:skills:reveal`, which utility turns into the usual append-only reveal
 message — the system prompt is never touched.
 
@@ -172,7 +189,7 @@ daemon runs no jobs, so nothing is lost.
 ## Storage
 
 `~/.unipi/kanboard/` (`UNIPI_KANBOARD_HOME` overrides it): `daemon.json` +
-`daemon.lock` for the daemon, and `projects/<slug>/{project.json,board.lock,tasks/*.md}`.
+`daemon.lock` for the daemon, and `projects/<slug>/{project.json,board.lock,tasks/*.md,queues/<session>.json}`.
 The extension never edits those files — the binary owns them.
 
 ## Troubleshooting

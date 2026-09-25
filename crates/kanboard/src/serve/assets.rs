@@ -34,13 +34,13 @@ pub async fn index() -> Response {
     match Dist::get("index.html") {
         Some(file) => {
             let body = Body::from(file.data.into_owned());
-            (
-                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                body,
-            )
-                .into_response()
+            ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body).into_response()
         }
-        None => (StatusCode::INTERNAL_SERVER_ERROR, "index.html missing from embedded build").into_response(),
+        None => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "index.html missing from embedded build",
+        )
+            .into_response(),
     }
 }
 

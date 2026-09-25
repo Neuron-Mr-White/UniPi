@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::error::{Error, Problem, Result};
 use crate::format;
 use crate::model::Task;
-use crate::store::{write_atomic, Layout, Project};
+use crate::store::{Layout, Project, write_atomic};
 
 pub struct Board<'a> {
     pub layout: &'a Layout,
@@ -44,6 +44,32 @@ impl<'a> Board<'a> {
         self.scan()
     }
 
+    /// Cold-storage dir: frozen Archived/Cancelled tasks live here, out of
+    /// every scan but still readable for dependency lookups.
+    pub fn cold_dir(&self) -> PathBuf {
+        self.layout.project_dir(&self.project.slug).join("cold")
+    }
+
+    pub fn cold_path(&self, id: &str) -> PathBuf {
+        self.cold_dir().join(format!("{id}.md"))
+    }
+
+    /// Dep-aware lookup: live tasks first, then the cold file (the frozen
+    /// status still counts — archived-from-done satisfies a chain gate).
+    pub fn dep_lookup<'t>(&self, tasks: &'t [Task]) -> impl Fn(&str) -> Option<Task> + use<'_, 't> {
+        move |id| {
+            tasks
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .cloned()
+                .or_else(|| {
+                    let path = self.cold_path(id);
+                    let text = std::fs::read_to_string(&path).ok()?;
+                    format::parse(&path.to_string_lossy(), &text).0
+                })
+        }
+    }
+
     /// Parsed tasks plus per-file problems (used by `validate`).
     pub fn scan(&self) -> Result<(Vec<Task>, Vec<Problem>)> {
         let dir = self.tasks_dir();
@@ -71,7 +97,8 @@ impl<'a> Board<'a> {
             {
                 if format::render(&task) != text {
                     file_problems.push(
-                        Problem::new(&file, 1, "formatting differs from canonical form").fixable(true),
+                        Problem::new(&file, 1, "formatting differs from canonical form")
+                            .fixable(true),
                     );
                 }
                 tasks.push(task);
@@ -85,7 +112,11 @@ impl<'a> Board<'a> {
 
     pub fn get(&self, id: &str) -> Result<Task> {
         let path = self.task_path(id);
+        let cold = self.cold_path(id);
         let text = fs::read_to_string(&path).map_err(|_| {
+            if cold.exists() {
+                return Error::not_found(format!("{id} is in cold storage: {}", cold.display()));
+            }
             Error::not_found(format!("task {id} not found ({})", path.display()))
         })?;
         let file = path.to_string_lossy().to_string();

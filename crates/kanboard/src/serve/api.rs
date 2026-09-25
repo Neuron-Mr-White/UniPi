@@ -3,12 +3,15 @@
 
 use std::sync::Arc;
 
+use std::time::Duration;
+
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use chrono::Utc;
 use serde::Deserialize;
-use serde_json::{Map, json, Value};
+use serde_json::{Map, Value, json};
 
 use crate::commands::{self, ClaimArgs, Common, EditArgs, OrderTarget};
 use crate::error::Error;
@@ -25,7 +28,10 @@ pub struct ApiResponse {
 
 impl ApiResponse {
     pub fn ok(body: Value) -> Self {
-        ApiResponse { status: StatusCode::OK, body }
+        ApiResponse {
+            status: StatusCode::OK,
+            body,
+        }
     }
 
     pub fn error(status: StatusCode, error: &Error) -> Self {
@@ -62,7 +68,9 @@ pub fn err(status: StatusCode, error: &Error) -> ApiResponse {
 /// the flag a human must type, the UI/API says what is missing. Only the CLI
 /// may mention `--comment`.
 pub fn ui_message(error: &Error) -> String {
-    error.to_string().replace("requires --comment", "requires a comment")
+    error
+        .to_string()
+        .replace("requires --comment", "requires a comment")
 }
 
 /// Rule violations are client errors: 404 for missing things, 400 otherwise.
@@ -83,9 +91,12 @@ pub fn map_error(error: Error, needs_comment: bool) -> ApiResponse {
 }
 
 pub fn gate() -> ChainGate {
-    // The daemon always evaluates readiness with the spec default; the pi side
-    // passes `--gate done` explicitly when the setting says so.
-    ChainGate::InReview
+    // The extension sets UNIPI_KANBOARD_CHAIN_GATE when it spawns the daemon,
+    // so readiness here matches the configured chain gate (default in_review).
+    match std::env::var("UNIPI_KANBOARD_CHAIN_GATE").as_deref() {
+        Ok("done") => ChainGate::Done,
+        _ => ChainGate::InReview,
+    }
 }
 
 fn common() -> Common {
@@ -145,7 +156,12 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
         for status in Status::ALL {
             counts.insert(
                 status.as_str().to_string(),
-                json!(task_list.iter().filter(|item| item.status == status).count()),
+                json!(
+                    task_list
+                        .iter()
+                        .filter(|item| item.status == status)
+                        .count()
+                ),
             );
         }
     }
@@ -161,8 +177,38 @@ pub fn project_summary(state: &AppState, project: &Project) -> Value {
         // project list shows both without fetching every board.
         "running": running,
         "updatedAt": updated_at,
+        "archived": project.archived,
         "problems": commands::problems_json(&problems),
     })
+}
+
+/// `PUT /api/projects/{slug} {archived}` — archive/unarchive one project.
+#[derive(Deserialize)]
+pub struct ProjectPatch {
+    pub archived: Option<bool>,
+}
+
+pub async fn update_project(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(patch): Json<ProjectPatch>,
+) -> ApiResponse {
+    state.touch();
+    match project_by_slug(&state, &slug) {
+        Ok(mut project) => {
+            if let Some(archived) = patch.archived {
+                if let Err(error) =
+                    commands::project_set_archived(&state.layout, &project.slug, archived)
+                {
+                    return err(StatusCode::INTERNAL_SERVER_ERROR, &error);
+                }
+                project.archived = archived;
+                state.bump(&slug);
+            }
+            ok(project_summary(&state, &project))
+        }
+        Err(error) => err(StatusCode::NOT_FOUND, &error),
+    }
 }
 
 // ─── rules ──────────────────────────────────────────────────────────────────
@@ -178,7 +224,12 @@ pub async fn rules() -> ApiResponse {
         let targets = crate::transitions::allowed_targets(from, actor);
         allowed_moves.insert(
             from.as_str().to_string(),
-            json!(targets.iter().map(|status| status.as_str()).collect::<Vec<_>>()),
+            json!(
+                targets
+                    .iter()
+                    .map(|status| status.as_str())
+                    .collect::<Vec<_>>()
+            ),
         );
         let mut per_from = Map::new();
         for to in Status::ALL {
@@ -209,6 +260,10 @@ pub async fn rules() -> ApiResponse {
         "commentRequired": comment_required,
         "final": ["done", "cancelled", "archived"],
         "table": table,
+        // Tooltips render these live.
+        "chainGate": gate().as_str(),
+        "maxSessions": crate::commands::max_sessions(),
+        "queueMax": crate::commands::queue_max(),
     }))
 }
 
@@ -226,7 +281,10 @@ pub async fn tasks(
     Query(query): Query<TasksQuery>,
 ) -> ApiResponse {
     state.touch();
-    let status = query.status.as_deref().and_then(|value| value.parse::<Status>().ok());
+    let status = query
+        .status
+        .as_deref()
+        .and_then(|value| value.parse::<Status>().ok());
     let ready_only = query.ready.as_deref() == Some("true");
     let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
@@ -238,7 +296,10 @@ pub async fn tasks(
     }
 }
 
-pub async fn task(State(state): State<Arc<AppState>>, Path((slug, id)): Path<(String, String)>) -> ApiResponse {
+pub async fn task(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+) -> ApiResponse {
     state.touch();
     let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
@@ -270,11 +331,21 @@ pub async fn create(
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
-    let status = match request.status.as_deref().map(str::parse::<Status>).transpose() {
+    let status = match request
+        .status
+        .as_deref()
+        .map(str::parse::<Status>)
+        .transpose()
+    {
         Ok(status) => status,
         Err(error) => return map_error(error, false),
     };
-    let priority = match request.priority.as_deref().map(str::parse::<Priority>).transpose() {
+    let priority = match request
+        .priority
+        .as_deref()
+        .map(str::parse::<Priority>)
+        .transpose()
+    {
         Ok(priority) => priority.unwrap_or(Priority::None),
         Err(error) => return map_error(error, false),
     };
@@ -287,6 +358,7 @@ pub async fn create(
         status,
         priority,
         &request.after,
+        &[],
     );
     match result {
         Ok(value) => ok(value),
@@ -385,7 +457,12 @@ pub async fn edit(
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
-    let priority = match request.priority.as_deref().map(str::parse::<Priority>).transpose() {
+    let priority = match request
+        .priority
+        .as_deref()
+        .map(str::parse::<Priority>)
+        .transpose()
+    {
         Ok(priority) => priority,
         Err(error) => return map_error(error, false),
     };
@@ -489,7 +566,10 @@ pub async fn order(
     }
 }
 
-pub async fn duplicate(State(state): State<Arc<AppState>>, Path((slug, id)): Path<(String, String)>) -> ApiResponse {
+pub async fn duplicate(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+) -> ApiResponse {
     state.touch();
     let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
@@ -530,11 +610,385 @@ mod phrasing_tests {
     }
 }
 
+// ─── panel settings ─────────────────────────────────────────────────────────
+
+fn settings_payload(state: &AppState) -> Value {
+    let settings = super::settings::load(&state.layout);
+    json!({
+        "piCommand": settings.pi_command,
+        "models": settings.models,
+        "summaryModel": settings.summary_model,
+        "summaryInstruction": settings.effective_instruction(),
+        "defaultSummaryInstruction": super::settings::DEFAULT_SUMMARY_INSTRUCTION,
+    })
+}
+
+/// `GET /api/settings` — the effective settings plus the built-in defaults.
+pub async fn get_settings(State(state): State<Arc<AppState>>) -> ApiResponse {
+    state.touch();
+    ok(settings_payload(&state))
+}
+
+#[derive(Deserialize)]
+pub struct SettingsPatch {
+    /// Unknown/absent command fields are ignored — the daemon only ever runs
+    /// the piCommand argv the extension wrote.
+    #[serde(rename = "summaryModel")]
+    pub summary_model: Option<String>,
+    #[serde(rename = "summaryInstruction")]
+    pub summary_instruction: Option<String>,
+}
+
+/// `PUT /api/settings` — partial patch. `summaryModel` is whitelisted against
+/// the `models` the extension reported, so remote binds can only ever pick a
+/// model the user actually has.
+pub async fn put_settings(
+    State(state): State<Arc<AppState>>,
+    Json(patch): Json<SettingsPatch>,
+) -> ApiResponse {
+    state.touch();
+    let mut settings = super::settings::load(&state.layout);
+    if let Some(model) = patch.summary_model {
+        let model = model.trim().to_string();
+        if !model.is_empty() && !settings.models.iter().any(|known| known == &model) {
+            return err(
+                StatusCode::BAD_REQUEST,
+                &Error::rule("summary model must be one of the models the extension reported"),
+            );
+        }
+        settings.summary_model = model;
+    }
+    if let Some(instruction) = patch.summary_instruction {
+        // Blank means "use the default" — stored as written, resolved on read.
+        settings.summary_instruction = instruction;
+    }
+    match super::settings::save(&state.layout, &settings) {
+        Ok(()) => ok(settings_payload(&state)),
+        Err(error) => err(StatusCode::INTERNAL_SERVER_ERROR, &error),
+    }
+}
+
+// ─── summarize & archive ────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct SummarizeRequest {
+    pub instruction: Option<String>,
+}
+
+/// `POST /api/projects/{slug}/summarize` — run the configured agent over the
+/// done tasks: prompt on stdin, summary on stdout.
+pub async fn summarize(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(request): Json<SummarizeRequest>,
+) -> ApiResponse {
+    state.touch();
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    let settings = super::settings::load(&state.layout);
+    if settings.pi_command.is_empty() {
+        let mut response = ApiResponse::error(
+            StatusCode::CONFLICT,
+            &Error::rule(
+                "Open the board from pi once (/unipi:kanboard open) so it knows how to run pi",
+            ),
+        );
+        if let Value::Object(ref mut map) = response.body {
+            map.insert("needsAgent".into(), json!(true));
+        }
+        return response;
+    }
+
+    let done: Vec<crate::model::Task> =
+        match crate::board::Board::open(&state.layout, project.clone())
+            .and_then(|board| board.tasks())
+        {
+            Ok(tasks) => tasks
+                .into_iter()
+                .filter(|task| task.status == Status::Done)
+                .collect(),
+            Err(error) => return err(StatusCode::INTERNAL_SERVER_ERROR, &error),
+        };
+    if done.is_empty() {
+        return err(
+            StatusCode::BAD_REQUEST,
+            &Error::rule("no done tasks to summarize"),
+        );
+    }
+
+    let instruction = request
+        .instruction
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| settings.effective_instruction());
+    // The fixed style tail always applies — the editable part never carries it.
+    let mut prompt = format!(
+        "{}\n\n{}",
+        instruction.trim(),
+        super::settings::SUMMARY_STYLE
+    );
+    prompt.push_str("\n\n");
+    for task in &done {
+        prompt.push_str(&format!("## {} — {}\n\n", task.id, task.title));
+        if !task.body.trim().is_empty() {
+            prompt.push_str(task.body.trim());
+            prompt.push_str("\n\n");
+        }
+        for entry in &task.activity {
+            prompt.push_str(&format!(
+                "- {} [{}] {}\n",
+                entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                entry.actor.as_str(),
+                entry.text
+            ));
+        }
+        prompt.push('\n');
+    }
+
+    match run_agent(&settings, &prompt, &project, &state.layout).await {
+        Ok(summary) => ok(json!({
+            "summary": summary,
+            "taskIds": done.iter().map(|task| task.id.clone()).collect::<Vec<_>>(),
+        })),
+        Err((status, message)) => err(status, &Error::rule(message)),
+    }
+}
+
+/// Spawn pi (`piCommand -p --no-session --no-tools --no-extensions --no-skills
+/// --no-context-files --no-prompt-templates [--model <summaryModel>]`), feed
+/// `prompt` to its stdin, collect stdout. Ten minutes is generous on purpose —
+/// a real model can think for a while; a hung one still gets killed.
+async fn run_agent(
+    settings: &super::settings::PanelSettings,
+    prompt: &str,
+    project: &Project,
+    layout: &crate::store::Layout,
+) -> std::result::Result<String, (StatusCode, String)> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut argv = settings.pi_command.clone();
+    argv.extend([
+        "-p".into(),
+        "--no-session".into(),
+        "--no-tools".into(),
+        "--no-extensions".into(),
+        "--no-skills".into(),
+        "--no-context-files".into(),
+        "--no-prompt-templates".into(),
+    ]);
+    if !settings.summary_model.trim().is_empty() {
+        argv.push("--model".into());
+        argv.push(settings.summary_model.trim().to_string());
+    }
+    let display = argv.join(" ");
+
+    let cwd = if project.root.is_dir() {
+        project.root.clone()
+    } else {
+        layout.home.clone()
+    };
+    let mut builder = tokio::process::Command::new(&argv[0]);
+    builder
+        .args(&argv[1..])
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        // Dropping a timed-out future must kill the child, not orphan it.
+        .kill_on_drop(true);
+    let mut child = builder.spawn().map_err(|error| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("could not start `{display}`: {error}"),
+        )
+    })?;
+
+    // Write the prompt in the background: a big prompt could fill the pipe
+    // before the agent starts reading, and an early-exiting agent EPIPEs —
+    // neither should fail the request.
+    if let Some(mut stdin) = child.stdin.take() {
+        let bytes = prompt.as_bytes().to_vec();
+        tokio::spawn(async move {
+            let _ = stdin.write_all(&bytes).await;
+            let _ = stdin.shutdown().await;
+        });
+    }
+
+    let output =
+        match tokio::time::timeout(Duration::from_secs(600), child.wait_with_output()).await {
+            Ok(result) => result.map_err(|error| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("agent `{display}` failed: {error}"),
+                )
+            })?,
+            Err(_) => {
+                return Err((
+                    StatusCode::BAD_GATEWAY,
+                    format!("agent `{display}` did not finish within 10 minutes"),
+                ));
+            }
+        };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || stdout.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr
+            .trim()
+            .chars()
+            .rev()
+            .take(2000)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let detail = if tail.is_empty() {
+            format!("exit {}", output.status)
+        } else {
+            format!("exit {} — {}", output.status, tail)
+        };
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("agent `{display}` produced no summary ({detail})"),
+        ));
+    }
+    Ok(stdout)
+}
+
+#[derive(Deserialize)]
+pub struct ArchiveSummaryRequest {
+    pub markdown: String,
+    #[serde(rename = "taskIds", default)]
+    pub task_ids: Vec<String>,
+}
+
+/// `POST /api/projects/{slug}/archive-summary` — save the summary next to the
+/// project's tasks, then archive every listed task that is still done.
+pub async fn archive_summary(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(request): Json<ArchiveSummaryRequest>,
+) -> ApiResponse {
+    state.touch();
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    if request.markdown.trim().is_empty() {
+        return err(StatusCode::BAD_REQUEST, &Error::usage("markdown is empty"));
+    }
+
+    // Move first, write second: the file must name the tasks that were actually
+    // archived, not just the ones the client asked about.
+    let mut archived = Vec::new();
+    let mut skipped = Vec::new();
+    for id in &request.task_ids {
+        let still_done = commands::show(&state.layout, project.clone(), id, gate())
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("status")
+                    .and_then(|status| status.as_str())
+                    .map(str::to_string)
+            })
+            .as_deref()
+            == Some("done");
+        if !still_done {
+            skipped.push(id.clone());
+            continue;
+        }
+        match commands::move_task(
+            &state.layout,
+            project.clone(),
+            &common(),
+            id,
+            Status::Archived,
+            None,
+        ) {
+            Ok(_) => archived.push(id.clone()),
+            Err(_) => skipped.push(id.clone()),
+        }
+    }
+
+    let dir = state.layout.project_dir(&slug).join("summaries");
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &Error::Io(format!("cannot create {}: {error}", dir.display())),
+        );
+    }
+    let name = format!("{}.md", Utc::now().format("%Y-%m-%d-%H%M%S"));
+    let path = dir.join(&name);
+    let mut document = format!(
+        "# {} — done summary {}\n\nArchived tasks: {}\n",
+        project.name,
+        Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        archived.join(", "),
+    );
+    if !skipped.is_empty() {
+        document.push_str(&format!("Skipped (not done): {}\n", skipped.join(", ")));
+    }
+    document.push_str(&format!("\n{}\n", request.markdown.trim()));
+    if let Err(error) = crate::store::write_atomic(&path, &document) {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &error);
+    }
+    // The file watcher's .md bump covers the summary write and each task move;
+    // bump once more so clients refresh even if a coalesced event was dropped.
+    state.bump(&slug);
+
+    ok(json!({
+        "path": path.display().to_string(),
+        "archived": archived,
+        "skipped": skipped,
+    }))
+}
+
 // ─── attachments ────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub struct UploadQuery {
     pub name: Option<String>,
+}
+
+/// `POST /api/projects/{slug}/archive-lane {status}` — archive every task in
+/// the lane (done or in_review), one board lock.
+#[derive(Deserialize)]
+pub struct ArchiveLaneRequest {
+    pub status: String,
+}
+
+pub async fn archive_lane(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(request): Json<ArchiveLaneRequest>,
+) -> ApiResponse {
+    state.touch();
+    let status = match request.status.as_str() {
+        "done" => Status::Done,
+        "in_review" => Status::InReview,
+        other => {
+            return err(
+                StatusCode::BAD_REQUEST,
+                &Error::usage(format!(
+                    "archive-lane accepts done or in_review, not `{other}`"
+                )),
+            );
+        }
+    };
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    match commands::archive_lane(&state.layout, project, status, Utc::now()) {
+        Ok(payload) => {
+            state.bump(&slug);
+            ok(payload)
+        }
+        Err(error) => err(StatusCode::BAD_REQUEST, &error),
+    }
 }
 
 /// `POST /api/tasks/{slug}/{id}/attachments?name=<file>` — raw bytes in the body.
@@ -576,8 +1030,15 @@ pub async fn file(
     let Ok(bytes) = std::fs::read(&found.path) else {
         return not_found();
     };
-    let inline = matches!(found.kind.as_str(), "image" | "video" | "audio" | "pdf" | "text");
-    let content_type = if found.kind == "text" { "text/plain; charset=utf-8".to_string() } else { found.mime.clone() };
+    let inline = matches!(
+        found.kind.as_str(),
+        "image" | "video" | "audio" | "pdf" | "text"
+    );
+    let content_type = if found.kind == "text" {
+        "text/plain; charset=utf-8".to_string()
+    } else {
+        found.mime.clone()
+    };
     let disposition = format!(
         "{}; filename=\"{}\"",
         if inline { "inline" } else { "attachment" },

@@ -2,12 +2,12 @@
 
 mod common;
 
+use chrono::{TimeZone, Utc};
 use common::{Fixture, VALID_TASK};
+use kanboard::commands;
 use kanboard::error::Problem;
 use kanboard::format;
 use kanboard::model::{Actor, Priority, Run, RunMode, Status, Task};
-use kanboard::commands;
-use chrono::{TimeZone, Utc};
 
 fn sample() -> Task {
     let mut task = Task::new(
@@ -89,7 +89,14 @@ fn multi_line_activity_uses_indented_continuation() {
 
 #[test]
 fn quotes_titles_that_would_break_yaml() {
-    let mut task = Task::new("FIX-1".into(), "Fix: a, b [c]".into(), Status::Todo, Priority::None, 1000, Utc::now());
+    let mut task = Task::new(
+        "FIX-1".into(),
+        "Fix: a, b [c]".into(),
+        Status::Todo,
+        Priority::None,
+        1000,
+        Utc::now(),
+    );
     task.body = "x".into();
     let text = format::render(&task);
     assert!(text.contains("title: \"Fix: a, b [c]\"\n"), "{text}");
@@ -112,8 +119,14 @@ fn rejects_a_bad_status_with_the_line_number() {
     assert!(!problems.is_empty());
     let problem = &problems[0];
     assert_eq!(problem.line, 4, "status is on line 4: {problem}");
-    assert!(problem.message.contains("unknown status \"inprogress\""), "{problem}");
-    assert!(problem.message.contains("in_review"), "message lists the allowed set: {problem}");
+    assert!(
+        problem.message.contains("unknown status \"inprogress\""),
+        "{problem}"
+    );
+    assert!(
+        problem.message.contains("in_review"),
+        "message lists the allowed set: {problem}"
+    );
 }
 
 #[test]
@@ -121,7 +134,9 @@ fn rejects_a_missing_id() {
     let text = VALID_TASK.replace("id: FIX-900\n", "");
     let problems = problems_for(&text);
     assert!(
-        problems.iter().any(|problem| problem.message.contains("missing required frontmatter key \"id\"")),
+        problems.iter().any(|problem| problem
+            .message
+            .contains("missing required frontmatter key \"id\"")),
         "{problems:?}"
     );
 }
@@ -132,7 +147,11 @@ fn rejects_garbage_in_the_activity_section() {
     let problems = problems_for(&text);
     let problem = problems
         .iter()
-        .find(|problem| problem.message.contains("unexpected content after `## Activity`"))
+        .find(|problem| {
+            problem
+                .message
+                .contains("unexpected content after `## Activity`")
+        })
         .expect("garbage reported");
     assert_eq!(problem.line, 18);
 }
@@ -142,7 +161,9 @@ fn rejects_a_malformed_activity_entry() {
     let text = format!("{VALID_TASK}- not-a-date [user] hi\n");
     let problems = problems_for(&text);
     assert!(
-        problems.iter().any(|problem| problem.message.contains("malformed activity entry")),
+        problems
+            .iter()
+            .any(|problem| problem.message.contains("malformed activity entry")),
         "{problems:?}"
     );
 }
@@ -151,8 +172,18 @@ fn rejects_a_malformed_activity_entry() {
 fn rejects_unknown_frontmatter_keys_and_values() {
     let text = VALID_TASK.replace("order: 1000", "order: one-thousand\nsprint: 4");
     let problems = problems_for(&text);
-    assert!(problems.iter().any(|problem| problem.message.contains("order must be an integer")), "{problems:?}");
-    assert!(problems.iter().any(|problem| problem.message.contains("unknown frontmatter key \"sprint\"")), "{problems:?}");
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.message.contains("order must be an integer")),
+        "{problems:?}"
+    );
+    assert!(
+        problems.iter().any(|problem| problem
+            .message
+            .contains("unknown frontmatter key \"sprint\"")),
+        "{problems:?}"
+    );
 }
 
 #[test]
@@ -167,7 +198,12 @@ fn rejects_missing_frontmatter_and_unterminated_blocks() {
 fn rejects_a_broken_run_block() {
     let text = VALID_TASK.replace("run:\n", "run:\n  session: s1\n  pid: twelve\n  host: h\n  mode: direct\n  started: 2026-09-24T10:00:00Z\n");
     let problems = problems_for(&text);
-    assert!(problems.iter().any(|problem| problem.message.contains("run.pid must be a number")), "{problems:?}");
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.message.contains("run.pid must be a number")),
+        "{problems:?}"
+    );
 }
 
 // ─── validate --fix ─────────────────────────────────────────────────────────
@@ -176,19 +212,25 @@ fn rejects_a_broken_run_block() {
 fn validate_reports_problems_and_fixes_only_formatting() {
     let fixture = Fixture::new();
     // A valid but non-canonical file (extra blank lines, missing trailing newline).
-    let messy = VALID_TASK.replace("run:\n---", "run:\n\n---").trim_end().to_string();
+    let messy = VALID_TASK
+        .replace("run:\n---", "run:\n\n---")
+        .trim_end()
+        .to_string();
     common::write_task_file(&fixture, "FIX-900", &messy);
 
-    let result = commands::validate(&fixture.layout, fixture.project.clone(), false).expect("validate");
+    let result =
+        commands::validate(&fixture.layout, fixture.project.clone(), false).expect("validate");
     assert_eq!(result.problems.len(), 1);
     assert!(result.problems[0].message.contains("formatting differs"));
     assert!(result.problems[0].fixable);
 
-    let result = commands::validate(&fixture.layout, fixture.project.clone(), true).expect("validate --fix");
+    let result =
+        commands::validate(&fixture.layout, fixture.project.clone(), true).expect("validate --fix");
     assert!(result.problems.is_empty(), "{:?}", result.problems);
     assert_eq!(result.fixed, vec!["FIX-900".to_string()]);
 
-    let after = commands::validate(&fixture.layout, fixture.project.clone(), false).expect("validate again");
+    let after = commands::validate(&fixture.layout, fixture.project.clone(), false)
+        .expect("validate again");
     assert!(after.problems.is_empty(), "{:?}", after.problems);
 }
 
@@ -196,22 +238,52 @@ fn validate_reports_problems_and_fixes_only_formatting() {
 fn validate_reports_board_level_rules_without_fixing_them() {
     let fixture = Fixture::new();
     // dangling dependency + cycle + in_progress without a run
-    let with_dep = VALID_TASK.replace("id: FIX-900", "id: FIX-901").replace("deps: []", "deps: [FIX-999]");
+    let with_dep = VALID_TASK
+        .replace("id: FIX-900", "id: FIX-901")
+        .replace("deps: []", "deps: [FIX-999]");
     common::write_task_file(&fixture, "FIX-901", &with_dep);
-    let a = VALID_TASK.replace("id: FIX-900", "id: FIX-902").replace("deps: []", "deps: [FIX-903]");
-    let b = VALID_TASK.replace("id: FIX-900", "id: FIX-903").replace("deps: []", "deps: [FIX-902]");
+    let a = VALID_TASK
+        .replace("id: FIX-900", "id: FIX-902")
+        .replace("deps: []", "deps: [FIX-903]");
+    let b = VALID_TASK
+        .replace("id: FIX-900", "id: FIX-903")
+        .replace("deps: []", "deps: [FIX-902]");
     common::write_task_file(&fixture, "FIX-902", &a);
     common::write_task_file(&fixture, "FIX-903", &b);
-    let broken = VALID_TASK.replace("id: FIX-900", "id: FIX-904").replace("status: todo", "status: in_progress");
+    let broken = VALID_TASK
+        .replace("id: FIX-900", "id: FIX-904")
+        .replace("status: todo", "status: in_progress");
     common::write_task_file(&fixture, "FIX-904", &broken);
 
-    let result = commands::validate(&fixture.layout, fixture.project.clone(), true).expect("validate");
-    let messages: Vec<&str> = result.problems.iter().map(|problem| problem.message.as_str()).collect();
-    assert!(messages.iter().any(|m| m.contains("dependency FIX-999 does not exist")), "{messages:?}");
-    assert!(messages.iter().any(|m| m.contains("dependency cycle")), "{messages:?}");
-    assert!(messages.iter().any(|m| m.contains("in_progress without a run block")), "{messages:?}");
+    let result =
+        commands::validate(&fixture.layout, fixture.project.clone(), true).expect("validate");
+    let messages: Vec<&str> = result
+        .problems
+        .iter()
+        .map(|problem| problem.message.as_str())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("dependency FIX-999 does not exist")),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("dependency cycle")),
+        "{messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("in_progress without a run block")),
+        "{messages:?}"
+    );
     // The dangling dep line number points at `deps:`.
-    let dangling = result.problems.iter().find(|p| p.message.contains("FIX-999")).unwrap();
+    let dangling = result
+        .problems
+        .iter()
+        .find(|p| p.message.contains("FIX-999"))
+        .unwrap();
     assert_eq!(dangling.line, 7, "the `deps:` line: {dangling}");
     // Nothing was rewritten: the files are unchanged (no fixable problems here).
     assert!(result.fixed.is_empty());
@@ -222,9 +294,13 @@ fn duplicate_ids_are_reported() {
     let fixture = Fixture::new();
     common::write_task_file(&fixture, "FIX-950", VALID_TASK);
     common::write_task_file(&fixture, "copy", VALID_TASK);
-    let result = commands::validate(&fixture.layout, fixture.project.clone(), false).expect("validate");
+    let result =
+        commands::validate(&fixture.layout, fixture.project.clone(), false).expect("validate");
     assert!(
-        result.problems.iter().any(|problem| problem.message.contains("duplicate task id FIX-900")),
+        result
+            .problems
+            .iter()
+            .any(|problem| problem.message.contains("duplicate task id FIX-900")),
         "{:?}",
         result.problems
     );
@@ -238,7 +314,10 @@ fn activity_with_trailing_whitespace_stays_canonical() {
     // strict board refused to load it.
     task.push_activity(Utc::now(), Actor::Agent, "created the file\n");
     let text = format::render(&task);
-    assert!(!text.contains("\n  \n"), "no blank continuation line: {text:?}");
+    assert!(
+        !text.contains("\n  \n"),
+        "no blank continuation line: {text:?}"
+    );
     let (parsed, problems) = format::parse("x.md", &text);
     assert!(problems.is_empty(), "{problems:?}");
     let parsed = parsed.unwrap();
@@ -252,12 +331,19 @@ fn multi_line_notes_with_blank_lines_round_trip() {
     task.push_activity(Utc::now(), Actor::User, "line one\n\nline three\n\n");
     // Indented continuation lines are the case that used to break: the parser
     // trimmed them, so the file could never re-render canonically.
-    task.push_activity(Utc::now(), Actor::User, "parent\n  indented child\n    deeper");
+    task.push_activity(
+        Utc::now(),
+        Actor::User,
+        "parent\n  indented child\n    deeper",
+    );
     let text = format::render(&task);
     let (parsed, problems) = format::parse("x.md", &text);
     assert!(problems.is_empty(), "{problems:?}");
     let parsed = parsed.unwrap();
-    assert_eq!(parsed.activity.last().unwrap().text, "parent\n  indented child\n    deeper");
+    assert_eq!(
+        parsed.activity.last().unwrap().text,
+        "parent\n  indented child\n    deeper"
+    );
     assert_eq!(format::render(&parsed), text);
     // And an indented note written through the CLI validates.
     let round_tripped = format::render(&parsed);

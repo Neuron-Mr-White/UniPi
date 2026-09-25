@@ -102,7 +102,7 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     const tasks = asTaskList(cli(home, workspace, ["list"], env())).tasks;
     const allClaimed = tasks.filter((task) => task.status === "todo").length === 0;
     if (allClaimed) {
-      const again = asClaimResult(cli(home, workspace, ["claim-next", "--session", "contract", "--pid", "1", "--host", "test"], env()));
+      const again = asClaimResult(cli(home, workspace, ["claim-next", "--session", "contract2", "--pid", "1", "--host", "test"], env()));
       assert.equal(again.task, null);
       assert.ok(Array.isArray(again.waiting));
     }
@@ -151,7 +151,10 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     // Only an agent may block a running task.
     const moved = asTask(
       "move",
-      cli(home, workspace, ["move", id, "blocked", "--comment", "waiting"], { ...env(), UNIPI_KANBOARD_ACTOR: "agent" }),
+      cli(home, workspace, ["move", id, "blocked", "--comment", "waiting", "--session", "contract"], {
+        ...env(),
+        UNIPI_KANBOARD_ACTOR: "agent",
+      }),
     );
     assert.equal(moved.status, "blocked");
 

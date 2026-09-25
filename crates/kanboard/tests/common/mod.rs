@@ -24,7 +24,8 @@ impl Fixture {
         let home = TempDir::new().expect("home");
         let root = TempDir::new().expect("root");
         let layout = Layout::with_home(home.path());
-        let project = Project::create(&layout, root.path(), Some("Fixture"), Some("FIX")).expect("project");
+        let project =
+            Project::create(&layout, root.path(), Some("Fixture"), Some("FIX")).expect("project");
         Fixture {
             _home: home,
             _root: root,
@@ -42,7 +43,13 @@ impl Fixture {
         self.add_with(title, Status::Backlog, Priority::None, &[])
     }
 
-    pub fn add_with(&self, title: &str, status: Status, priority: Priority, after: &[String]) -> Task {
+    pub fn add_with(
+        &self,
+        title: &str,
+        status: Status,
+        priority: Priority,
+        after: &[String],
+    ) -> Task {
         let value = commands::add(
             &self.layout,
             self.project.clone(),
@@ -52,22 +59,39 @@ impl Fixture {
             Some(status),
             priority,
             after,
+            &[],
         )
         .expect("add");
         task_from(&value)
     }
 
     pub fn tasks(&self) -> Vec<Task> {
-        let board = kanboard::board::Board::open(&self.layout, self.project.clone()).expect("board");
+        let board =
+            kanboard::board::Board::open(&self.layout, self.project.clone()).expect("board");
         board.tasks().expect("tasks")
     }
 
     pub fn list_json(&self) -> Value {
-        commands::list(&self.layout, self.project.clone(), ChainGate::InReview, None, false).expect("list")
+        commands::list(
+            &self.layout,
+            self.project.clone(),
+            ChainGate::InReview,
+            None,
+            false,
+        )
+        .expect("list")
     }
 
     pub fn move_to(&self, id: &str, to: Status) -> Value {
-        commands::move_task(&self.layout, self.project.clone(), &self.common, id, to, None).expect("move")
+        commands::move_task(
+            &self.layout,
+            self.project.clone(),
+            &self.common,
+            id,
+            to,
+            None,
+        )
+        .expect("move")
     }
 
     pub fn claim_next(&self, session: &str, pid: u32) -> Value {
@@ -77,6 +101,7 @@ impl Fixture {
             pid,
             host: &host,
             mode: kanboard::model::RunMode::Direct,
+            id: None,
         };
         commands::claim_next(
             &self.layout,
@@ -159,6 +184,24 @@ pub fn cli(fixture: &Fixture, args: &[&str]) -> std::process::Output {
         .expect("run unipi-kanboard")
 }
 
+/// Like `cli` but with extra environment overrides (limits, session).
+pub fn cli_with_env(
+    fixture: &Fixture,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> std::process::Output {
+    let mut command = Command::new(bin());
+    command
+        .args(args)
+        .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .current_dir(fixture.root());
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    command.output().expect("run unipi-kanboard")
+}
+
 /// A `serve` child process pointed at this fixture's home.
 pub struct Daemon {
     pub child: Child,
@@ -190,10 +233,16 @@ impl Daemon {
             {
                 let port = port as u16;
                 // A remote bind is token-gated: the health probe needs it too.
-                let token = info.get("token").and_then(|token| token.as_str()).unwrap_or("");
+                let token = info
+                    .get("token")
+                    .and_then(|token| token.as_str())
+                    .unwrap_or("");
                 let auth = format!("Bearer {token}");
-                let extra: Vec<(&str, &str)> =
-                    if token.is_empty() { Vec::new() } else { vec![("authorization", &auth)] };
+                let extra: Vec<(&str, &str)> = if token.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![("authorization", &auth)]
+                };
                 if let Ok(response) = http_with_headers(port, "GET", "/api/health", None, &extra)
                     && response.status == 200
                 {
@@ -243,7 +292,12 @@ impl HttpResponse {
 }
 
 /// Minimal HTTP/1.1 client: one request, `Connection: close`, read to EOF.
-pub fn http(port: u16, method: &str, path: &str, body: Option<&str>) -> std::io::Result<HttpResponse> {
+pub fn http(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> std::io::Result<HttpResponse> {
     http_with_headers(port, method, path, body, &[])
 }
 
@@ -277,7 +331,10 @@ pub fn http_with_headers(
         .nth(1)
         .and_then(|code| code.parse::<u16>().ok())
         .unwrap_or(0);
-    let head = text.split_once("\r\n\r\n").map(|(head, _)| head).unwrap_or("");
+    let head = text
+        .split_once("\r\n\r\n")
+        .map(|(head, _)| head)
+        .unwrap_or("");
     let headers: Vec<(String, String)> = head
         .lines()
         .skip(1)
@@ -288,7 +345,11 @@ pub fn http_with_headers(
         .split_once("\r\n\r\n")
         .map(|(_, body)| body.to_string())
         .unwrap_or_default();
-    Ok(HttpResponse { status, body, headers })
+    Ok(HttpResponse {
+        status,
+        body,
+        headers,
+    })
 }
 
 /// Read SSE frames for `seconds`, returning the raw lines that arrived.
@@ -296,7 +357,9 @@ pub fn read_sse(port: u16, path: &str, seconds: u64) -> Vec<String> {
     let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) else {
         return Vec::new();
     };
-    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n");
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n"
+    );
     if stream.write_all(request.as_bytes()).is_err() {
         return Vec::new();
     }
@@ -326,7 +389,13 @@ pub fn read_sse(port: u16, path: &str, seconds: u64) -> Vec<String> {
 pub type RawResponse = (u16, Vec<(String, String)>, Vec<u8>);
 
 /// Raw-bytes request (uploads) returning status, headers and the raw body.
-pub fn http_bytes(port: u16, method: &str, path: &str, body: &[u8], extra: &[(&str, &str)]) -> std::io::Result<RawResponse> {
+pub fn http_bytes(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    extra: &[(&str, &str)],
+) -> std::io::Result<RawResponse> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     let mut headers = String::new();
@@ -343,15 +412,25 @@ pub fn http_bytes(port: u16, method: &str, path: &str, body: &[u8], extra: &[(&s
     let _ = stream.flush();
     let mut raw = Vec::new();
     let _ = stream.read_to_end(&mut raw);
-    let split = raw.windows(4).position(|window| window == b"\r\n\r\n").unwrap_or(raw.len());
+    let split = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .unwrap_or(raw.len());
     let head_text = String::from_utf8_lossy(&raw[..split]).to_string();
-    let status = head_text.split_whitespace().nth(1).and_then(|code| code.parse::<u16>().ok()).unwrap_or(0);
+    let status = head_text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse::<u16>().ok())
+        .unwrap_or(0);
     let headers = head_text
         .lines()
         .skip(1)
         .filter_map(|line| line.split_once(':'))
         .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
         .collect();
-    let body = raw.get(split + 4..).map(|rest| rest.to_vec()).unwrap_or_default();
+    let body = raw
+        .get(split + 4..)
+        .map(|rest| rest.to_vec())
+        .unwrap_or_default();
     Ok((status, headers, body))
 }

@@ -2,7 +2,7 @@
 import { For, Show, type JSX } from "solid-js";
 import type { Task } from "./api.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph } from "./icons.js";
-import { elapsed } from "./state.js";
+import { elapsed, highlightTask } from "./state.js";
 
 const HUES = [268, 295, 330, 20, 48, 75, 145, 175, 205, 235];
 
@@ -72,7 +72,24 @@ export function DepTag(props: { task: Task; drawnParents?: string[] }): JSX.Elem
           <Icon.lock size={11} />
         </Show>
         <span>
-          after {deps().join(", ")}
+          after{" "}
+          <For each={deps()}>
+            {(dep, index) => (
+              <>
+                <Show when={index() > 0}>, </Show>
+                <button
+                  class="dep-id"
+                  title={`Show ${dep}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    highlightTask(dep);
+                  }}
+                >
+                  {dep}
+                </button>
+              </>
+            )}
+          </For>
           <Show when={locked().length > 0}> · not scheduled</Show>
         </span>
       </span>

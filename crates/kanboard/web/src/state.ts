@@ -27,6 +27,8 @@ export interface ToastAction {
 
 export interface Toast {
   id: number;
+  /** How many identical toasts were folded into this one. */
+  count?: number;
   kind: "info" | "success" | "warning" | "error";
   message: string;
   action?: ToastAction;
@@ -71,6 +73,8 @@ export const [paletteOpen, setPaletteOpen] = createSignal(false);
 export const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
 export const [newTaskLane, setNewTaskLane] = createSignal<string | null>(null);
 export const [commentRequest, setCommentRequest] = createSignal<CommentRequest | null>(null);
+export const [settingsOpen, setSettingsOpen] = createSignal(false);
+export const [summarizeOpen, setSummarizeOpen] = createSignal(false);
 /** Ticks every 15s so elapsed times ("running 4m") stay current. */
 export const [now, setNow] = createSignal(Date.now());
 setInterval(() => setNow(Date.now()), 15_000);
@@ -170,14 +174,29 @@ function syncUrl(): void {
 
 let toastId = 0;
 
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+/** Visible toasts at most; identical ones fold into a "×N" count instead of stacking. */
+export const MAX_TOASTS = 3;
+
 export function toast(message: string, kind: Toast["kind"] = "info", action?: ToastAction): void {
-  const entry: Toast = { id: ++toastId, kind, message, action };
-  setToasts((current) => [...current.slice(-3), entry]);
   const ttl = action ? 8000 : kind === "error" ? 9000 : 4500;
-  setTimeout(() => dismissToast(entry.id), ttl);
+  const same = !action ? toasts().find((item) => !item.action && item.kind === kind && item.message === message) : undefined;
+  if (same) {
+    setToasts((current) =>
+      current.map((item) => (item.id === same.id ? { ...item, count: (item.count ?? 1) + 1 } : item)),
+    );
+    clearTimeout(toastTimers.get(same.id));
+    toastTimers.set(same.id, setTimeout(() => dismissToast(same.id), ttl));
+    return;
+  }
+  const entry: Toast = { id: ++toastId, kind, message, action };
+  setToasts((current) => [...current, entry].slice(-MAX_TOASTS));
+  toastTimers.set(entry.id, setTimeout(() => dismissToast(entry.id), ttl));
 }
 
 export function dismissToast(id: number): void {
+  clearTimeout(toastTimers.get(id));
+  toastTimers.delete(id);
   setToasts((current) => current.filter((item) => item.id !== id));
 }
 
@@ -427,6 +446,33 @@ export function moveSelection(delta: number): void {
 
 export function runningTasks(): Task[] {
   return board.tasks.filter((task) => !!task.run);
+}
+
+/**
+ * Point at a task on the board (or its list row): select it, scroll it into
+ * view and flash it. When it can't be shown — its lane is hidden or the
+ * filter excludes it — say so instead of silently doing nothing.
+ */
+export function highlightTask(id: string): void {
+  const task = taskById(id);
+  if (!task) {
+    toast(`${id} is not on this board`, "info");
+    return;
+  }
+  if (display.hidden.includes(task.status) || (scope() !== "all" && task.status !== scope())) {
+    toast(`${id} is in ${laneLabel(task.status)}, which is hidden`, "info");
+    return;
+  }
+  if (!matches(task)) {
+    toast(`${id} is hidden by the current filter`, "info");
+    return;
+  }
+  setSelectedId(id);
+  const element = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  element.classList.add("flash");
+  window.setTimeout(() => element.classList.remove("flash"), 1600);
 }
 
 /** "4m", "2h 5m", "3d" — compact elapsed time for the agent chip. */

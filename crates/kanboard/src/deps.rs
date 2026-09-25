@@ -30,7 +30,11 @@ impl Blocked {
 
 /// A task is ready when it is an unclaimed todo whose deps all reached the gate.
 /// Cancelled and missing deps block.
-pub fn blocked_by(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: ChainGate) -> Option<Blocked> {
+pub fn blocked_by(
+    task: &Task,
+    by_id: &dyn Fn(&str) -> Option<Task>,
+    gate: ChainGate,
+) -> Option<Blocked> {
     if task.status != Status::Todo || task.is_claimed() {
         return None;
     }
@@ -55,7 +59,11 @@ pub fn blocked_by(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: Chain
 /// Dependencies that cannot progress on their own: still in Backlog (the runner
 /// never claims Backlog) or missing. A task waiting on these is "locked" until a
 /// human schedules the dependency — distinct from waiting on work in flight.
-pub fn locked_by(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: ChainGate) -> Vec<String> {
+pub fn locked_by(
+    task: &Task,
+    by_id: &dyn Fn(&str) -> Option<Task>,
+    gate: ChainGate,
+) -> Vec<String> {
     match blocked_by(task, by_id, gate) {
         None => Vec::new(),
         Some(blocked) => blocked

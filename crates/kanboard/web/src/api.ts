@@ -23,6 +23,8 @@ export interface Run {
 export interface Activity {
   at: string;
   actor: string;
+  /** Claiming session for agent writes (rendered as [agent:<session>]). */
+  session?: string;
   text: string;
 }
 
@@ -48,6 +50,8 @@ export interface Task {
   staleness?: string;
   allowedMoves?: string[];
   path?: string;
+  /** Why the latest move into blocked happened (comment, actor, when). */
+  blockedReason?: { text: string; actor: string; at: string };
 }
 
 export interface Attachment {
@@ -63,6 +67,7 @@ export interface Attachment {
 
 export interface ProjectSummary {
   slug: string;
+  archived?: boolean;
   name: string;
   root?: string;
   prefix?: string;
@@ -77,6 +82,10 @@ export interface ProjectSummary {
 
 export interface Rules {
   statuses: string[];
+  /** Live chain gate + session/queue limits (tooltips read them). */
+  chainGate?: string;
+  maxSessions?: number;
+  queueMax?: number;
   allowedMoves: Record<string, string[]>;
   commentRequired: Record<string, Record<string, string>>;
   final: string[];
@@ -97,8 +106,8 @@ export const LANES = [
   { id: "backlog", label: "Backlog" },
   { id: "todo", label: "Todo" },
   { id: "in_progress", label: "In Progress" },
-  { id: "in_review", label: "In Review" },
   { id: "blocked", label: "Blocked" },
+  { id: "in_review", label: "In Review" },
   { id: "done", label: "Done" },
   { id: "cancelled", label: "Cancelled" },
   { id: "archived", label: "Archive" },
@@ -119,15 +128,40 @@ export function laneLabel(status: string): string {
 }
 export const MUTED_LANES = new Set(["done", "cancelled", "archived"]);
 
+export interface Settings {
+  /** argv the daemon spawns for summaries ([node, pi-script] or [pi]). */
+  piCommand: string[];
+  /** "provider/id" models the extension reported — the whitelist. */
+  models: string[];
+  /** "" = pi's default model. */
+  summaryModel: string;
+  /** The effective instruction — the custom one or the built-in default. */
+  summaryInstruction: string;
+  defaultSummaryInstruction: string;
+}
+
+export interface SummaryResult {
+  summary: string;
+  taskIds: string[];
+}
+
+export interface ArchiveResult {
+  path: string;
+  archived: string[];
+  skipped: string[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly needsComment: boolean;
+  readonly needsAgent: boolean;
 
-  constructor(message: string, status: number, needsComment = false) {
+  constructor(message: string, status: number, needsComment = false, needsAgent = false) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.needsComment = needsComment;
+    this.needsAgent = needsAgent;
   }
 }
 
@@ -145,8 +179,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     payload = null;
   }
   if (!response.ok) {
-    const record = (payload ?? {}) as { error?: string; needsComment?: boolean };
-    throw new ApiError(record.error ?? `request failed (${response.status})`, response.status, record.needsComment === true);
+    const record = (payload ?? {}) as { error?: string; needsComment?: boolean; needsAgent?: boolean };
+    throw new ApiError(
+      record.error ?? `request failed (${response.status})`,
+      response.status,
+      record.needsComment === true,
+      record.needsAgent === true,
+    );
   }
   return payload as T;
 }
@@ -211,6 +250,26 @@ export const api = {
   },
   duplicate: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/duplicate`, { method: "POST", body: "{}" }),
+  settings: () => request<Settings>("/api/settings"),
+  saveSettings: (patch: { summaryModel?: string; summaryInstruction?: string }) =>
+    request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
+  archiveLane: (slug: string, status: "done" | "in_review") =>
+    request<{ archived: string[]; skipped: string[] }>(`/api/projects/${encodeURIComponent(slug)}/archive-lane`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+  updateProject: (slug: string, patch: { archived?: boolean }) =>
+    request<ProjectSummary>(`/api/projects/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify(patch) }),
+  summarize: (slug: string, instruction?: string) =>
+    request<SummaryResult>(`/api/projects/${encodeURIComponent(slug)}/summarize`, {
+      method: "POST",
+      body: JSON.stringify(instruction ? { instruction } : {}),
+    }),
+  archiveSummary: (slug: string, body: { markdown: string; taskIds: string[] }) =>
+    request<ArchiveResult>(`/api/projects/${encodeURIComponent(slug)}/archive-summary`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 /** Fallback when `/api/rules` is unavailable: permissive, server still decides. */

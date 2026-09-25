@@ -144,6 +144,15 @@ export const Icon = {
       </>,
       props,
     ),
+  info: (props: IconProps = {}) =>
+    line(
+      <>
+        <circle cx="8" cy="8" r="5.5" />
+        <path d="M8 7.2v3.3" />
+        <circle cx="8" cy="4.9" r="0.6" fill="currentColor" stroke="none" />
+      </>,
+      props,
+    ),
   archive: (props: IconProps = {}) =>
     line(
       <>

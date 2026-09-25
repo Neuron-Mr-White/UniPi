@@ -140,10 +140,19 @@ pub struct Project {
     pub next_id: u64,
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
+    /// Hidden from the sidebar/projects overview until unarchived; still
+    /// reachable by URL. Serde default keeps old project.json files working.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 impl Project {
-    pub fn create(layout: &Layout, root: &Path, name: Option<&str>, prefix: Option<&str>) -> Result<Project> {
+    pub fn create(
+        layout: &Layout,
+        root: &Path,
+        name: Option<&str>,
+        prefix: Option<&str>,
+    ) -> Result<Project> {
         let root = canonical_root(root)?;
         let slug = slug_for(&root);
         let name = name
@@ -161,6 +170,7 @@ impl Project {
             prefix,
             next_id: 1,
             created_at: Utc::now(),
+            archived: false,
         };
         layout.ensure_project_dirs(&project.slug)?;
         project.save(layout)?;
@@ -229,7 +239,11 @@ pub fn slug_for(root: &Path) -> String {
     let mut hasher = Sha256::new();
     hasher.update(absolute.to_string_lossy().as_bytes());
     let digest = hasher.finalize();
-    let hex: String = digest.iter().take(3).map(|byte| format!("{byte:02x}")).collect();
+    let hex: String = digest
+        .iter()
+        .take(3)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     format!("{}-{hex}", basename(&absolute))
 }
 
@@ -241,7 +255,8 @@ fn basename(path: &Path) -> String {
 }
 
 pub fn canonical_root(root: &Path) -> Result<PathBuf> {
-    fs::canonicalize(root).map_err(|err| Error::usage(format!("cannot resolve {}: {err}", root.display())))
+    fs::canonicalize(root)
+        .map_err(|err| Error::usage(format!("cannot resolve {}: {err}", root.display())))
 }
 
 /// Up to three uppercase letters/digits from the name.
