@@ -50,12 +50,13 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:graph":          "long-horizon",
 
   // memory (7 commands)
-  "unipi:memory-process":     "memory",
-  "unipi:memory-search":      "memory",
-  "unipi:memory-consolidate": "memory",
-  "unipi:memory-forget":      "memory",
+  "unipi:memory":              "memory",
+  "unipi:memory-process":      "memory",
+  "unipi:memory-consolidate":  "memory",
+  "unipi:memory-search":       "memory",
   "unipi:global-memory-search": "memory",
-  "unipi:global-memory-list":   "memory",
+  "unipi:memory-forget":       "memory",
+  "unipi:global-memory-list":  "memory",
 
   // btw (6 commands)
   "unipi:btw":           "btw",
@@ -141,12 +142,13 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:swarm":          "Parallel fan-out + synthesis · complex decomposable · higher cost, high coverage",
   "unipi:graph":          "Dependent multi-step work · later steps need earlier results · highest cost",
 
-  "unipi:memory-process":     "Process and store conversation learnings",
-  "unipi:memory-search":      "Search project memory for past context",
-  "unipi:memory-consolidate": "Consolidate memory entries",
-  "unipi:memory-forget":      "Remove memory entries",
-  "unipi:global-memory-search": "Search across all project memories",
-  "unipi:global-memory-list":   "List all project memories",
+  "unipi:memory":             "Memory palace — status, migrate, recall/write toggles",
+  "unipi:memory-process":     "Analyze text and store extracted memories",
+  "unipi:memory-consolidate": "Consolidate the current session into memory",
+  "unipi:memory-search":      "Search project memories",
+  "unipi:global-memory-search": "Search memories across all projects",
+  "unipi:memory-forget":      "Delete a memory by title",
+  "unipi:global-memory-list": "List all memories across all projects",
 
   "unipi:btw":           "Run a parallel side conversation",
   "unipi:btw-tangent":   "Start a contextless BTW tangent thread",

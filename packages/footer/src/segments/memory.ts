@@ -35,6 +35,9 @@ interface InfoMemoryData {
   projectCount?: { value: string };
   totalCount?: { value: string };
   consolidations?: { value: string };
+  recall?: { value: string };
+  write?: { value: string };
+  pending?: { value: string };
   [key: string]: unknown;
 }
 
@@ -138,8 +141,28 @@ function renderConsolidationsSegment(ctx: FooterSegmentContext): RenderedSegment
   return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
 }
 
+/** recall/write state + pending count, from the memory info group's dataProvider. */
+function renderMemoryStateSegment(ctx: FooterSegmentContext): RenderedSegment {
+  const infoData = getInfoRegistryMemoryData();
+  const recall = infoData?.recall?.value;
+  const write = infoData?.write?.value;
+  const pending = infoData?.pending?.value;
+  if (recall === undefined && write === undefined && pending === undefined) {
+    return { content: "", visible: false };
+  }
+  const parts = [
+    recall !== undefined ? `r:${recall}` : null,
+    write !== undefined ? `w:${write}` : null,
+    pending !== undefined && pending !== "0" ? `+${pending}⧗` : null,
+  ].filter(Boolean).join(" ");
+  if (!parts) return { content: "", visible: false };
+  const content = withIcon("memoryState", parts);
+  return { content: applyColor("memory", content, ctx.theme, ctx.colors), visible: true };
+}
+
 export const MEMORY_SEGMENTS: FooterSegment[] = [
   { id: "project_count", label: "Project Memory", shortLabel: "MEM", description: "Memory entries for this project", zone: "center", render: renderProjectCountSegment, defaultShow: true },
   { id: "total_count", label: "Total Memory", shortLabel: "TOT", description: "Total memory entries across projects", zone: "center", render: renderTotalCountSegment, defaultShow: true },
+  { id: "memory_state", label: "Memory State", shortLabel: "MST", description: "Recall/write switches + pending ops", zone: "center", render: renderMemoryStateSegment, defaultShow: true },
   { id: "consolidations", label: "Consolidations", shortLabel: "CNS", description: "Number of memory consolidations", zone: "center", render: renderConsolidationsSegment, defaultShow: false },
 ];

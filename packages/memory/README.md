@@ -1,151 +1,121 @@
 # @pi-unipi/memory
 
-Persistent memory that survives across sessions. Stores facts, preferences, and decisions with semantic vector search, so the agent remembers what you told it last week.
+Persistent memory that survives across sessions, built on a shared
+[MemPalace](https://github.com/mempalace/mempalace) palace — the same palace
+Devin and zcode write into, so memories cross tools.
 
-**Backend: [MemPalace](https://github.com/mempalace/mempalace)** — auto-installed via `uv` on first load, with verified, resumable, incremental migration of existing markdown memories. Detection, ping, and migration run off the startup path, so loading the package never blocks the first prompt.
+**Architecture**
 
-Two storage tiers: MemPalace (or SQLite) for vector similarity search, markdown files for a durable human-readable copy you can edit by hand. Project-scoped memories stay separate per codebase, global memories are accessible everywhere.
+- **Durable tier**: markdown files at `~/.unipi/memory/<project>/<type>/<id>.md`
+  with YAML frontmatter (`id, title, tags, project, created, updated, type`;
+  type ∈ `preference | decision | pattern | summary`) plus a per-project
+  `mempalace.yaml` (`wing` + the 4 type rooms).
+- **Searchable tier**: the MemPalace palace — MemPalace embeds every mined
+  file itself; there is no embedding config here.
+- **Writes** go through the MemPalace daemon's job queue (`mine` jobs for
+  store, `mempalace_delete_by_source` for delete) — the daemon holds the
+  palace writer lease, so it's the only path that can't collide with it.
+  When no daemon is reachable and `autoStartDaemon` can't bring one up,
+  writes fall back to direct `mempalace mine` or land in `.pending.json`
+  and replay later.
+- **Reads** go through one long-lived `mempalace-mcp --read-only` stdio
+  process per session (~30ms per call, sees every drawer in the palace —
+  pi, Devin, zcode, diaries).
+- **Project = wing** = sanitized basename of cwd (the `agent_gate.py` rule).
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:memory-process <text>` | Analyze text and store extracted memories |
-| `/unipi:memory-search <term>` | Search project memories |
-| `/unipi:memory-consolidate` | Consolidate session into memory |
-| `/unipi:memory-forget <title>` | Delete a memory by title |
-| `/unipi:global-memory-process <text>` | Analyze text and store to global |
-| `/unipi:global-memory-search <term>` | Search global memories |
-| `/unipi:global-memory-list` | List all global memories |
+| `/unipi:memory status` | backend, daemon, reader, counts, switches, pending ops, conversion progress |
+| `/unipi:memory recall on\|off` | session-only recall override |
+| `/unipi:memory write on\|off` | session-only write override (toggles the tools) |
 
-## Special Triggers
+## Tools
 
-At session start, the agent sees memory titles injected into context. This gives it a summary of what it should remember without loading full memory content.
+| Tool | Description |
+|------|-------------|
+| `memory_store` | Write the md file and file it into the palace (filed ✓ / queued ⧗ / markdown only ⚠) |
+| `memory_search` | Semantic search across ALL projects + foreign drawers, chunks grouped by file |
+| `memory_list` | List the current project's memories |
+| `memory_delete` | Remove the md and its palace drawer(s) |
 
-During compaction (if `@pi-unipi/compactor` is installed), memories are auto-extracted from the conversation. The `memory-consolidate` command also triggers this manually.
+`global_memory_search`/`global_memory_list` remain registered as thin aliases
+but are not advertised.
 
-Memory registers with the info-screen dashboard, showing project memory count, total count, and consolidation count. The footer subscribes to `MEMORY_STORED`, `MEMORY_DELETED`, and `MEMORYCONSOLIDATED` events to display memory stats.
+## Switches (`/unipi:settings` → Memory)
 
-## Agent Tools
+- **Recall memory at start** — off = no first-turn reminder/titles/wake-up;
+  search and list stay callable with neutral wording.
+- **Write memory** — off = `memory_store`/`memory_delete` inactive and no
+  end-of-task save nudge.
+- **Wake-up summary at start** — fold `mempalace wake-up --wing <project>`
+  output into the reminder.
+- **Start a MemPalace daemon for pi** (default off) — off: use a daemon when
+  one is running, otherwise write directly (`mempalace mine`, honoring the
+  user's `write_routing`) — safe next to MemPalace in other tools. On: pi
+  starts a daemon so parallel pi sessions never collide, but MemPalace MCP
+  servers in other tools become read-only while it runs.
+- **MemPalace auto-update** — daily PyPI check + `uv tool upgrade`.
 
-| Tool | Scope | Description |
-|------|-------|-------------|
-| `memory_store` | Project | Store or update a memory |
-| `memory_search` | Project | Search memories by query |
-| `memory_delete` | Project | Delete memory by ID or title |
-| `memory_list` | Project | List all project memories |
-| `global_memory_store` | Global | Store or update global memory |
-| `global_memory_search` | Global | Search global memories |
-| `global_memory_list` | Global | List all global memories |
+`~/.config/mempalace/agent-hooks.json {enabled:false}` mutes the reminders.
 
-The agent uses `memory_store` when it learns something worth remembering — a user preference, a technical decision, a code pattern. `memory_search` is used to recall relevant context before answering questions.
+## Upgrading from v2
 
-## Memory Format
-
-Memories are markdown files with YAML frontmatter:
-
-```markdown
----
-title: auth_jwt_prefer_refresh_tokens
-tags: [auth, jwt, preferences]
-project: my-app
-created: 2026-04-26T10:00:00Z
-updated: 2026-04-26T15:30:00Z
-type: preference
----
-
-# Auth: Prefer Refresh Tokens
-
-User prefers short-lived access tokens (15min) with long-lived refresh tokens (30d).
-Always implement token rotation on refresh.
-```
-
-### Naming Convention
-
-Format: `<most_important>_<less_important>_<lesser>`
-
-Examples:
-- `auth_jwt_prefer_refresh_tokens`
-- `db_postgres_use_connection_pooling`
-- `style_typescript_strict_mode_always`
-
-## Configurables
-
-Memory has no configuration file. Storage paths are fixed:
+Migration is explicit, never automatic. When v2 data is detected (legacy
+marker files, flat `*.md` in project dirs, or non-lowercase project dirs)
+the session card and footer show a hint. Run:
 
 ```
-~/.unipi/memory/                 # UniPi memory root (markdown tier)
-├── .mempalace-install           # Cached MemPalace venv detection
-├── .mempalace-migrated          # Legacy migration marker (seeds the ledger once)
-├── .mempalace-ledger.json       # Record-level sync ledger (project/id -> content hash)
-├── .mempalace-ping-verified     # Recent-ping cache (skips the cold-start ping)
-├── global/
-│   └── *.md                   # Global memory files (durable, human-readable)
-└── <project_name>/
-    └── *.md                   # Project memory files (durable, human-readable)
-
-~/.mempalace/palace/             # MemPalace palace (vector backend)
+/unipi:memory migrate
 ```
 
-## MemPalace backend
+Pi prints the plan (file count, dir renames, rough duration, backup
+locations), asks for confirmation, then runs the conversion in the
+background — footer progress and a final notification. The conversion:
 
-MemPalace is the sole vector backend; the markdown files are the durable,
-human-readable tier and the migration source. On load, the memory package:
-1. Detects MemPalace; if missing and `uv` is available, runs
-   `uv tool install mempalace` once (caches the venv python path in
-   `~/.unipi/memory/.mempalace-install`).
-2. Marks the backend active immediately, then does everything else
-   **off the startup path** so time-to-first-input is never blocked: a
-   background task pings the bridge (skipped when recently ping-verified) and
-   runs an incremental catch-up.
-3. Catch-up is driven by a record-level ledger
-   (`~/.unipi/memory/.mempalace-ledger.json`) mapping `project/id` to the
-   sha256 of the markdown bytes last confirmed in the palace. Only records whose
-   bytes differ from the ledger are upserted, so an ordinary write never
-   triggers a full re-scan. `store()` updates the ledger only after a confirmed
-   upsert; a pre-existing `.mempalace-migrated` marker seeds the ledger once.
-   Legacy files are never deleted or mutated.
+1. Backs the palace up to `~/.mempalace/palace.bak-unipi-<ts>` AND the
+   memory tree to `~/.unipi/memory-v2-backup-<ts>`.
+2. Starts a temporary MemPalace daemon when none is running (stopped again
+   at the end unless "Start a MemPalace daemon for pi" is on).
+3. Collects flat `<project>/*.md` files and old bridge drawers
+   (`unipi_preference|decision|pattern|summary` rooms, full content hydrated
+   via `get_drawer` — never a preview).
+4. Normalizes project dirs to the sanitized name (collisions merge;
+   same-id duplicates keep the newer `updated`, losers go to `.conflicts/`).
+5. Moves files into `<type>/`, writes `mempalace.yaml`, mines each project.
+6. Verifies every record is findable, then deletes its old drawer by id —
+   an old drawer is never deleted before its native copy verifies.
 
-Records contended by a running MemPalace daemon's mine lock are recorded as
-**deferred** (never as failures) and retried with exponential backoff, so the
-catch-up always converges instead of re-running every boot. When a daemon is
-reachable and actively mining, the background catch-up stands down for the
-session rather than fighting the lock.
+Expected duration: roughly a few minutes per ~1000 files (see the estimate
+in the plan). Progress shows in the footer and `/unipi:memory status`.
+State is resumable (`~/.unipi/memory/.conversion.json`) — if a run is
+interrupted it continues on the next session.
 
-Memory operations invoke the packaged Python bridge
-(`bridge/mempalace_bridge.py`); startup-path work uses the async, non-blocking
-variant. Both the standalone memory package and the all-in-one umbrella tarball
-ship and resolve this bridge. The first MemPalace use on a machine also
-downloads the default ONNX embedding model (~80MB, cached at
-`~/.cache/chroma/onnx_models/`).
+v2 data stays usable before migrating: searches still find the old
+`unipi://` drawers labelled "pi", and flat files still count in lists.
 
-### Forcing re-detection / re-migration
+## Going back to v2
 
-```bash
-rm ~/.unipi/memory/.mempalace-install    # re-detect MemPalace next session
-rm ~/.unipi/memory/.mempalace-ledger.json  # force a full verified catch-up pass next session
-```
+1. Quit pi and stop any daemon (`mempalace daemon stop`).
+2. Restore the backups taken by the migration:
 
-### Backend override
+   ```
+   rm -rf ~/.mempalace/palace
+   cp -a ~/.mempalace/palace.bak-unipi-<ts> ~/.mempalace/palace
+   rm -rf ~/.unipi/memory
+   cp -a ~/.unipi/memory-v2-backup-<ts> ~/.unipi/memory
+   ```
 
-Set `UNIPI_MEMPALACE_BACKEND` to force a MemPalace backend
-(`sqlite_exact`, `qdrant`, `pgvector`, default `chroma`).
+3. Reinstall v2: `npm i @pi-unipi/unipi@2`.
 
-### Embedder identity
+## Session lifecycle
 
-MemPalace enforces embedder identity. If a palace was created with a
-different embedding model, writes are rejected — the package then falls
-back to SQLite for that session. Use `mempalace palace set-embedder`
-intentionally to realign, then remove the install cache to re-detect.
+- Start: warm reader spawned, pending journal replayed, conversion resumed
+  in the background, session card rendered once counts land.
+- First turn: recall reminder (memories + optional wake-up text).
+- Task end: save nudge if nothing was stored.
+- Shutdown: reader killed.
 
-## Dependencies
-
-- `mempalace` (Python, auto-installed via `uv`) — primary backend
-- `better-sqlite3` — SQLite fallback database
-- `sqlite-vec` — Vector search extension (fallback)
-- `js-yaml` — YAML frontmatter parsing
-- `@pi-unipi/core` — Shared utilities
-
-## License
-
-MIT
+Events emitted for the footer: `MEMORY_STORED`, `MEMORY_DELETED`,
+`UPDATE_APPLIED` (when the MemPalace install upgrades).

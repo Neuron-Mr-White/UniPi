@@ -95,9 +95,14 @@ describe("umbrella package pi manifest", () => {
       assert.ok(isPacked, `${resource.type} path ${resource.path} must be included in npm pack output`);
     }
 
+    // The v3 memory package is pure TS (no Python bridge) — assert the new
+    // native-MemPalace modules ship instead.
+    for (const file of ["packages/memory/daemon.ts", "packages/memory/reader.ts", "packages/memory/convert.ts"]) {
+      assert.ok(packedPaths.includes(file), `umbrella tarball must ship ${file}`);
+    }
     assert.ok(
-      packedPaths.includes("packages/memory/bridge/mempalace_bridge.py"),
-      "umbrella tarball must ship the MemPalace bridge used by bundled.js",
+      !packedPaths.includes("packages/memory/bridge/mempalace_bridge.py"),
+      "the removed Python bridge must not ship",
     );
   });
 });

@@ -1,173 +1,92 @@
 ---
 name: memory
 description: >
-  Persistent cross-session memory management. Store and retrieve user preferences,
-  project decisions, code patterns, and conversation summaries across sessions.
-  Use when you need to remember something important or recall past context.
+  Persistent cross-session memory on a shared MemPalace palace. Store and
+  retrieve user preferences, project decisions, code patterns, and summaries
+  across sessions — including memories written by other tools (Devin, zcode).
 allowed-tools:
   - memory_store
   - memory_search
   - memory_delete
   - memory_list
-  - global_memory_search
-  - global_memory_list
   - read
 ---
 
 # Memory
 
-Persistent cross-session memory for Pi coding agent. Memories survive session restarts, compaction, and context resets.
+Persistent cross-session memory backed by a shared MemPalace palace. The
+markdown files under `~/.unipi/memory/` are the durable tier; the palace is
+the searchable tier. Drawers written by other agents (Devin, zcode, diaries)
+are searchable alongside pi's own — every result carries its source.
 
-## When to Store Memory
+## Files
 
-Store memory when you encounter:
+Each memory is one markdown file:
 
-| Type | Examples | Title Format |
-|------|----------|--------------|
-| **Preference** | User likes tabs, prefers functional style | `style_typescript_prefer_tabs` |
-| **Decision** | Chose PostgreSQL over MySQL, JWT over sessions | `db_postgres_chosen_over_mysql` |
-| **Pattern** | How auth is structured, API naming conventions | `api_rest_versioning_v2` |
-| **Summary** | Key findings from debugging, research results | `perf_slow_query_root_cause` |
+```
+~/.unipi/memory/<project>/<type>/<id>.md
+```
+
+with YAML frontmatter (`id, title, tags, project, created, updated, type`)
+where `type` ∈ `preference | decision | pattern | summary`, and a per-project
+`mempalace.yaml` (wing + the 4 type rooms). `project` = sanitized basename of
+the session's cwd — the same rule other MemPalace agents use.
+
+## Tools
+
+| Tool | What it does |
+|------|--------------|
+| `memory_store` | Write/refresh the md file and file it into the palace via the daemon |
+| `memory_search` | Semantic search over the whole palace — pi + foreign drawers |
+| `memory_list` | List the current project's memories |
+| `memory_delete` | Remove the md and its palace drawer(s) |
+
+`memory_search` covers **all** drawers — results are labeled
+`wing › room · source` (`pi`, `devin`, `zcode`, `mempalace`, …) and chunks of
+the same file are grouped into one hit. Use `scope: "project"` to restrict to
+the current project's wing.
+
+## Store outcomes
+
+`memory_store` always writes the markdown file. The palace write is reported
+honestly:
+
+- `filed ✓` — the daemon mine job finished and the drawer exists
+- `queued ⧗` — the job was accepted but didn't finish in time (it still lands)
+- `markdown only ⚠` — no daemon reachable; journaled to `.pending.json` and
+  replayed when a daemon appears
+
+## Switches (`/unipi:settings` → Memory)
+
+| Switch | Off means |
+|--------|-----------|
+| Recall memory at start | No first-turn reminder / titles / wake-up; search tools stay available |
+| Write memory | `memory_store`/`memory_delete` inactive + no save nudge |
+| Wake-up summary at start | Skip the `mempalace wake-up` text in the reminder |
+| Auto-start daemon | Don't spawn `mempalace daemon start` when needed |
+| MemPalace auto-update | Skip the daily PyPI check + `uv` upgrade |
+
+`~/.config/mempalace/agent-hooks.json {enabled:false}` mutes both reminders.
+`/unipi:memory status` shows backend/daemon/reader/counts/pending and
+migration progress; `/unipi:memory migrate` converts v2 data after a
+confirmed plan; `recall on|off` / `write on|off` are session-only.
 
 ## Naming Convention
 
-**Format:** `<most_important>_<less_important>_<lesser>`
+**Format:** `<most_important>_<less_important>_<lesser>` — underscores,
+specific, <60 chars (`auth_jwt_prefer_refresh_tokens`, not `auth_tokens`).
 
-**Rules:**
-- Use underscores, not hyphens
-- Start with category (style, db, auth, api, arch, etc.)
-- Be specific: `auth_jwt_prefer_refresh_tokens` not `auth_tokens`
-- Keep under 60 characters
+| Type | Examples |
+|------|----------|
+| **Preference** | `style_typescript_prefer_tabs` |
+| **Decision** | `db_postgres_chosen_over_mysql` |
+| **Pattern** | `api_rest_versioning_v2` |
+| **Summary** | `perf_slow_query_root_cause` |
 
-**Good titles:**
-- `style_typescript_strict_mode_always`
-- `db_postgres_use_connection_pooling`
-- `arch_api_versioning_v2_breaking`
-- `perf_cache_redis_for_sessions`
+## Guardrails
 
-**Bad titles:**
-- `auth` (too vague)
-- `User prefers tabs` (not snake_case)
-- `auth-jwt-refresh` (hyphens, not underscores)
-
-## When to Search Memory
-
-Search memory when:
-
-1. **User references past work:** "Remember when we fixed the auth bug?"
-2. **Making similar decisions:** "What did we decide about database choice?"
-3. **Setting up new features:** "What's the user's coding style?"
-4. **Debugging recurring issues:** "Have we seen this error before?"
-
-## How to Use Tools
-
-### Store a memory:
-```
-memory_store(
-  title: "auth_jwt_prefer_refresh_tokens",
-  content: "User prefers short-lived access tokens (15min) with long-lived refresh tokens (30d). Always implement token rotation on refresh.",
-  tags: ["auth", "jwt", "preferences"],
-  type: "preference"
-)
-```
-
-### Search memories:
-```
-memory_search(query: "auth tokens")
-```
-
-### List all project memories:
-```
-memory_list()
-```
-
-### Delete a memory:
-```
-memory_delete(title: "auth_jwt_prefer_refresh_tokens")
-```
-
-## Search Scope
-
-`memory_search` searches ALL projects by default. Use `scope` param to narrow:
-
-| Action | Scope | Tool |
-|--------|-------|------|
-| **Store** | Always project-scoped | `memory_store` |
-| **Search all projects** | Cross-project (default) | `memory_search(query)` or `memory_search(query, scope="all")` |
-| **Search this project** | Current project only | `memory_search(query, scope="project")` |
-| **List all** | Cross-project | `global_memory_list` |
-
-**All memories are project-scoped.** When you store a memory, it belongs to the current project. `memory_search` searches everything by default — no need to call a separate global search.
-
-## Update-First Principle
-
-**Always check before creating.** Before storing a new memory:
-
-1. Search for similar memories
-2. If found and relevant → UPDATE the existing memory
-3. If not found → CREATE new memory
-
-This prevents memory duplication and keeps memory clean.
-
-## Vector Search (Embeddings)
-
-Memory supports vector similarity search via OpenRouter API.
-
-### Setup
-1. Open `/unipi:settings` (Memory group)
-2. Add your OpenRouter API key
-3. Select embedding model (default: `openai/text-embedding-3-small`)
-
-### How it works
-- Embeddings are generated when storing/searching memories
-- Search combines **vector similarity** + **fuzzy text matching** for best results
-- Vector search finds semantically similar memories even without exact keyword matches
-
-### Model compatibility
-⚠ **Different embedding models produce incompatible vectors.**
-If you switch models, existing embeddings won't match new searches.
-Use `/unipi:settings` (Memory) → "Re-embed all memories…" to fix.
-
-### No API key?
-Falls back to fuzzy text-only search. Still works, just less semantic.
-
-When the user runs `/unipi:memory-consolidate` or during compaction:
-
-1. Review the session for memory-worthy items
-2. For each item:
-   - Search for existing similar memory
-   - Update if found, create if not
-3. Report what was stored/updated
-
-## Reading Memory Files
-
-Memory files are stored in `~/.unipi/memory/` as markdown with YAML frontmatter:
-
-```markdown
----
-title: auth_jwt_prefer_refresh_tokens
-tags: [auth, jwt, preferences]
-project: my-app
-created: 2026-04-26T10:00:00Z
-updated: 2026-04-26T15:30:00Z
-type: preference
----
-
-# Auth: Prefer Refresh Tokens
-
-User prefers short-lived access tokens (15min) with long-lived refresh tokens (30d).
-Always implement token rotation on refresh.
-```
-
-You can read these files directly with the `read` tool for full context.
-
-## Anti-Patterns
-
-| Don't | Do Instead |
-|-------|------------|
-| Store everything | Only store decisions, preferences, patterns, summaries |
-| Create duplicate memories | Search first, update existing |
-| Use vague titles | Use specific `<category>_<detail>` format |
-| Store in wrong scope | Project-specific = project scope, universal = global |
-| Forget to update | When context changes, update the memory |
-| Switch embedding models without re-embedding | Re-embed or accept fuzzy-only fallback |
+- Read max 10 results per search.
+- Update existing memories — the store tool detects exact titles and lists
+  similar ones.
+- v2 leftovers are migrated by the user-initiated `/unipi:memory migrate`
+  (backups first); check progress via `/unipi:memory status`.

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateState, CURRENT_STATE_VERSION } from "../state-migration.js";
@@ -20,7 +20,7 @@ function seed(rel: string, file = "x"): void {
 }
 
 describe("state migration", () => {
-  it("relocates global dirs and purges ephemeral leaks, once", () => {
+  it("relocates global dirs and ARCHIVES v2 leftovers, once", () => {
     seed("db/compactor", "session.db");
     seed("images", "a.png");
     seed("analytics", "events.db");
@@ -37,9 +37,17 @@ describe("state migration", () => {
     assert.ok(existsSync(join(g("utility"), "analytics", "events.db")));
     assert.ok(existsSync(join(g("updater"), "check.json")));
 
-    // Ephemeral leaks gone.
+    // v2 leftovers archived — never deleted, land under .unipi/v2-archive/.
     assert.equal(existsSync(join(home, ".unipi", "state", "fusion")), false);
     assert.equal(existsSync(join(home, ".unipi", "trajectory")), false);
+    const archive = join(home, ".unipi", "v2-archive");
+    const dirs = readdirSync(archive);
+    const fusion = dirs.find((d) => d.startsWith("fusion-"));
+    const traj = dirs.find((d) => d.startsWith("trajectory-"));
+    assert.ok(fusion && traj, `archive dirs: ${dirs}`);
+    assert.ok(existsSync(join(archive, fusion, "sidekick", "old.jsonl")), "fusion data preserved");
+    assert.ok(existsSync(join(archive, traj, "dump.jsonl")), "trajectory data preserved");
+    assert.ok(res.log.some((e) => e.action === "archived"));
 
     // Version stamped.
     const marker = JSON.parse(readFileSync(join(home, ".unipi", "state-version.json"), "utf8"));

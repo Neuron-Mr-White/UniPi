@@ -77,8 +77,16 @@ describe("binary resolution", () => {
 
   it("falls back to the dev build in the repo", { skip: !hasBinary }, () => {
     const resolved = resolveBinary({} as NodeJS.ProcessEnv);
-    assert.equal(resolved?.source, "dev-build");
-    assert.match(resolved!.path, /crates\/kanboard\/target\/(release|debug)\/unipi-kanboard$/);
+    // When a platform package is installed in the repo's node_modules (e.g.
+    // after a real `npm install` pulled the published optional dep), it
+    // rightly wins — resolution order is env → platform → dev build.
+    const expected = platformPackagePath(join(process.cwd(), "index.js"))
+      ? "platform-package"
+      : "dev-build";
+    assert.equal(resolved?.source, expected);
+    if (expected === "dev-build") {
+      assert.match(resolved!.path, /crates\/kanboard\/target\/(release|debug)\/unipi-kanboard$/);
+    }
   });
 
   it("names the platform in the unavailable message", () => {

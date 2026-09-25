@@ -95,6 +95,30 @@ test("layout A: unipi.* keys move to module dirs and are stripped from pi settin
   restore(home, cwd);
 });
 
+test("layout D: v2 global flat module configs copy into the canonical shape", () => {
+  const { home, cwd } = sandbox();
+  const legacy = join(home, ".unipi", "memory", "config.json");
+  mkdirSync(dirname(legacy), { recursive: true });
+  writeFileSync(legacy, JSON.stringify({ mempalaceAutoUpdate: false, provider: "none" }));
+
+  const result = importGlobalScope();
+  assert.equal(result.ran, true);
+
+  // Copied into the canonical shape; the legacy file stays for v2 sessions.
+  assert.deepEqual(readJson(globalSettingsPath("memory")), { mempalaceAutoUpdate: false, provider: "none" });
+  assert.ok(existsSync(legacy), "legacy file left in place");
+  assert.ok(result.ledger.log.some((e) => e.action === "copied" && e.from.includes("memory")));
+
+  // Existing canonical config is never clobbered.
+  const { home: h2 } = sandbox();
+  mkdirSync(join(h2, ".unipi", "memory"), { recursive: true });
+  writeFileSync(join(h2, ".unipi", "memory", "config.json"), JSON.stringify({ mempalaceAutoUpdate: false }));
+  mkdirSync(join(h2, ".unipi", "config", "memory"), { recursive: true });
+  writeFileSync(globalSettingsPath("memory"), JSON.stringify({ mempalaceAutoUpdate: true }));
+  importGlobalScope();
+  assert.equal(readJson(globalSettingsPath("memory")).mempalaceAutoUpdate, true);
+});
+
 test("layout C: project override shapes unify into <module>/config.json", () => {
   const { home, cwd } = sandbox();
   mkdirSync(join(cwd, ".unipi", "config"), { recursive: true });

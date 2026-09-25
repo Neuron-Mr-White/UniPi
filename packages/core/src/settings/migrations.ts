@@ -66,6 +66,15 @@ const A_KEY_MODULES: ReadonlyArray<{ namespace: string; key: string }> = [
   { namespace: "long-horizon", key: "longHorizon" },
 ];
 
+/**
+ * Global flat config files outside the canonical <module>/config.json shape
+ * (layout D — e.g. v2 memory settings lived inside the memory dir itself).
+ * Copied, never removed (v2 still reads them).
+ */
+const D_GLOBAL_MOVES: ReadonlyArray<{ namespace: string; from: string }> = [
+  { namespace: "memory", from: join(".unipi", "memory", "config.json") },
+];
+
 /** Project override files that need shape unification (layout C). */
 const C_OVERRIDE_MOVES: ReadonlyArray<{ namespace: string; from: string }> = [
   { namespace: "compactor", from: join(".unipi", "config", "compactor.json") },
@@ -164,6 +173,12 @@ export function importGlobalScope(): MigrationResult {
 
   const log: MigrationLogEntry[] = [];
   let touched = false;
+
+  for (const { namespace, from } of D_GLOBAL_MOVES) {
+    if (copyWithSafety({ from: join(homedir(), from), to: globalSettingsPath(namespace) }, log)) {
+      touched = true;
+    }
+  }
 
   const piSettingsFile = piSettingsPath();
   if (existsSync(piSettingsFile)) {

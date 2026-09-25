@@ -11,9 +11,11 @@
  *     ~/.unipi/images/           → ~/.unipi/global/image/
  *     ~/.unipi/analytics/        → ~/.unipi/global/utility/analytics/
  *     ~/.unipi/cache/updater/    → ~/.unipi/global/updater/
- *   PURGE (ephemeral leak, safe to drop — sessions are dead):
- *     ~/.unipi/state/fusion/     (26 orphaned sidekick transcripts, 61 MB)
- *     ~/.unipi/trajectory/       (removed module; may already be gone)
+ *   ARCHIVE (dead in v3 but user data — never deleted):
+ *     ~/.unipi/state/fusion/     → ~/.unipi/v2-archive/fusion-<ts>/
+ *     ~/.unipi/trajectory/       → ~/.unipi/v2-archive/trajectory-<ts>/
+ *   (v2 may still be writing these on shared machines; the archive keeps
+ *   them intact and can be deleted by hand.)
  *
  * Identity-keyed moves (memory basename→uuid, long-horizon project state) are
  * intentionally NOT auto-remapped here: basename cannot be reversed to a
@@ -30,7 +32,7 @@ import { tryRead } from "../../utils.js";
 export const CURRENT_STATE_VERSION = "3.0.0";
 
 export interface StateMigrationLogEntry {
-  action: "moved" | "purged" | "skipped:missing" | "skipped:conflict" | "error";
+  action: "moved" | "archived" | "skipped:missing" | "skipped:conflict" | "error";
   from: string;
   to?: string;
   detail?: string;
@@ -98,14 +100,22 @@ function moveDir(from: string, to: string, log: StateMigrationLogEntry[]): void 
   }
 }
 
-function purgeDir(from: string, log: StateMigrationLogEntry[]): void {
+/**
+ * Archive a dir: instant same-filesystem rename into
+ * `~/.unipi/v2-archive/<name>-<ts>/` — the data stays on disk for the user
+ * to keep or delete by hand. Nothing is ever destroyed here.
+ */
+function archiveDir(from: string, root: string, name: string, ts: string, log: StateMigrationLogEntry[]): void {
   if (!existsSync(from)) {
     log.push({ action: "skipped:missing", from });
     return;
   }
   try {
-    rmSync(from, { recursive: true, force: true });
-    log.push({ action: "purged", from });
+    const archiveRoot = join(root, "v2-archive");
+    mkdirSync(archiveRoot, { recursive: true });
+    const to = join(archiveRoot, `${name}-${ts}`);
+    renameSync(from, to);
+    log.push({ action: "archived", from, to });
   } catch (err) {
     log.push({ action: "error", from, detail: err instanceof Error ? err.message : String(err) });
   }
@@ -121,6 +131,7 @@ export function migrateState(home: string = homedir()): StateMigrationResult {
     return { ran: false, version: CURRENT_STATE_VERSION, log: [] };
   }
   const log: StateMigrationLogEntry[] = [];
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const g = (m: string) => join(root, "global", m);
 
   // Global relocations.
@@ -129,9 +140,9 @@ export function migrateState(home: string = homedir()): StateMigrationResult {
   moveDir(join(root, "analytics"), join(g("utility"), "analytics"), log);
   moveDir(join(root, "cache", "updater"), g("updater"), log);
 
-  // Ephemeral leaks: dead sessions, removed module.
-  purgeDir(join(root, "state", "fusion"), log);
-  purgeDir(join(root, "trajectory"), log);
+  // v2 leftovers: dead to v3, kept under ~/.unipi/v2-archive/ forever.
+  archiveDir(join(root, "state", "fusion"), root, "fusion", ts, log);
+  archiveDir(join(root, "trajectory"), root, "trajectory", ts, log);
 
   // Stamp the version so we never run again.
   try {
