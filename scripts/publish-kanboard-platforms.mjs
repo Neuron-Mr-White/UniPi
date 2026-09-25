@@ -11,6 +11,7 @@
  *   node scripts/publish-kanboard-platforms.mjs --dry-run
  *   node scripts/publish-kanboard-platforms.mjs                 # all platforms
  *   node scripts/publish-kanboard-platforms.mjs linux-x64 …      # named ones
+ *   node scripts/publish-kanboard-platforms.mjs --tag alpha      # dist-tag
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -20,7 +21,10 @@ const root = resolve(import.meta.dirname, "..");
 const binRoot = join(root, "packages", "kanboard-bin");
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
-const wanted = args.filter((arg) => !arg.startsWith("--"));
+// `--tag <t>` passes straight through to npm publish (e.g. --tag alpha).
+const tagIndex = args.indexOf("--tag");
+const tag = tagIndex !== -1 ? args[tagIndex + 1] : undefined;
+const wanted = args.filter((arg, index) => !arg.startsWith("--") && index !== tagIndex + 1);
 
 if (!existsSync(binRoot)) {
   console.error(`✗ no platform packages at ${binRoot}`);
@@ -59,7 +63,7 @@ for (const slug of platforms.sort()) {
 
   console.log(`→ ${manifest.name}@${manifest.version} (${(size / 1024 / 1024).toFixed(1)} MB)`);
   if (dryRun) continue;
-  execFileSync("npm", ["publish", "--access", "public"], { cwd: directory, stdio: "inherit" });
+  execFileSync("npm", ["publish", "--access", "public", ...(tag ? ["--tag", tag] : [])], { cwd: directory, stdio: "inherit" });
   published += 1;
 }
 

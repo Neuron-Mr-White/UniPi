@@ -10,7 +10,6 @@ const removed = [
   "packages/subagents/src/prompts.ts",
   "packages/web-api/src/tui/progress.ts",
   "packages/web-api/src/tui/result.ts",
-  "packages/compactor/src/compaction/recall-scope.ts",
   "packages/compactor/src/display/bash-display.ts",
   "packages/compactor/src/display/diff-presentation.ts",
   "packages/compactor/src/display/pending-diff-preview.ts",

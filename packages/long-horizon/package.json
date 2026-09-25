@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/long-horizon",
   "version": "3.0.0-alpha.0",
-  "description": "Long-horizon execution for Pi — mode-gated /goal /ralph /swarm /graph orchestration with a TypeSafe prompt judge",
+  "description": "Long-horizon execution for Pi \u2014 mode-gated /goal /ralph /swarm /graph orchestration with a TypeSafe prompt judge",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -30,7 +30,8 @@
     "*.ts",
     "src/**/*",
     "skills/**/*",
-    "README.md"
+    "README.md",
+    "!src/**/__tests__/**"
   ],
   "publishConfig": {
     "access": "public"
