@@ -60,8 +60,8 @@ fn claim_next_takes_priority_first_then_order() {
 fn claim_next_skips_claimed_tasks_forever() {
     let fixture = Fixture::new();
     let task = fixture.add_with("only", Status::Todo, Priority::None, &[]);
-    assert_eq!(claimed_id(&fixture.claim_next("s1", 1)).unwrap(), task.id);
-    assert!(claimed_id(&fixture.claim_next("s2", 2)).is_none());
+    assert_eq!(claimed_id(&fixture.claim_next("s1", common::alive_pid())).unwrap(), task.id);
+    assert!(claimed_id(&fixture.claim_next("s2", common::alive_pid())).is_none());
     // A second claim of the same task must not happen even if it is released to todo
     // and re-claimed: it is a fresh claim, so it works again.
     commands::release(
@@ -74,18 +74,18 @@ fn claim_next_skips_claimed_tasks_forever() {
         fixture.common.now,
     )
     .expect("release");
-    assert_eq!(claimed_id(&fixture.claim_next("s3", 3)).unwrap(), task.id);
+    assert_eq!(claimed_id(&fixture.claim_next("s3", common::alive_pid())).unwrap(), task.id);
 }
 
 #[test]
 fn claim_records_the_run_block_and_an_activity_line() {
     let fixture = Fixture::new();
     let task = fixture.add_with("run me", Status::Todo, Priority::None, &[]);
-    let claimed = fixture.claim_next("session-42", 4242);
+    let claimed = fixture.claim_next("session-42", common::alive_pid());
     let payload = &claimed["task"];
     assert_eq!(payload["status"], "in_progress");
     assert_eq!(payload["run"]["session"], "session-42");
-    assert_eq!(payload["run"]["pid"], 4242);
+    assert_eq!(payload["run"]["pid"], common::alive_pid());
     assert_eq!(payload["run"]["mode"], "direct");
     let activity = payload["activity"].as_array().unwrap();
     let last = activity.last().unwrap();
@@ -103,7 +103,7 @@ fn claim_records_the_run_block_and_an_activity_line() {
 fn set_run_switches_mode_and_goal() {
     let fixture = Fixture::new();
     let task = fixture.add_with("goal task", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", 1);
+    fixture.claim_next("s1", common::alive_pid());
     let value = commands::set_run(
         &fixture.layout,
         fixture.project.clone(),
@@ -136,7 +136,7 @@ fn set_run_switches_mode_and_goal() {
 fn release_requires_a_comment_and_clears_the_run() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", 1);
+    fixture.claim_next("s1", common::alive_pid());
 
     let err = commands::release(
         &fixture.layout,
@@ -188,7 +188,7 @@ fn release_requires_a_comment_and_clears_the_run() {
 fn release_to_an_illegal_target_is_refused() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", 1);
+    fixture.claim_next("s1", common::alive_pid());
     let err = commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -206,7 +206,7 @@ fn release_to_an_illegal_target_is_refused() {
 fn releasing_to_todo_records_the_reason() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", 1);
+    fixture.claim_next("s1", common::alive_pid());
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -774,7 +774,7 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
         None,
     )
     .expect("move works");
-    let claimed = fixture.claim_next("s", 1);
+    let claimed = fixture.claim_next("s", common::alive_pid());
     assert!(
         claimed["task"].is_object(),
         "claim-next ignores the corrupt file"

@@ -25,7 +25,7 @@ fn backlog_tasks_are_never_ready() {
     let task = fixture.add("in backlog");
     let tasks = fixture.tasks();
     assert!(!deps::is_ready(&task, &by_id(&tasks), ChainGate::InReview));
-    assert!(!fixture.claim_next("s", 1)["task"].as_object().is_some());
+    assert!(!fixture.claim_next("s", common::alive_pid())["task"].as_object().is_some());
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn in_review_satisfies_the_default_gate_but_not_done() {
         ChainGate::Done,
         &commands::ClaimArgs {
             session: "s",
-            pid: 1,
+            pid: common::alive_pid(),
             host: "h",
             mode: kanboard::model::RunMode::Direct,
             id: None,
@@ -136,7 +136,7 @@ fn in_review_satisfies_the_default_gate_but_not_done() {
         ChainGate::InReview,
         &commands::ClaimArgs {
             session: "s",
-            pid: 1,
+            pid: common::alive_pid(),
             host: "h",
             mode: kanboard::model::RunMode::Direct,
             id: None,
@@ -441,7 +441,7 @@ fn a_dependency_still_in_backlog_locks_the_dependent() {
     assert_eq!(entry["lockedBy"], serde_json::json!([parked.id]));
 
     // claim-next's "waiting" explains the lock too.
-    let claim = fixture.claim_next("s", 1);
+    let claim = fixture.claim_next("s", common::alive_pid());
     // flowing parent is ready and gets claimed; the child still reports its lock.
     assert_eq!(claim["task"]["id"], flowing.id);
     let waiting = claim["waiting"].as_array().cloned().unwrap_or_default();
@@ -464,7 +464,7 @@ fn nothing_ready_reports_which_waits_are_locked() {
         Priority::None,
         std::slice::from_ref(&parked.id),
     );
-    let claim = fixture.claim_next("s", 1);
+    let claim = fixture.claim_next("s", common::alive_pid());
     assert!(claim["task"].is_null());
     let waiting = claim["waiting"].as_array().unwrap();
     let entry = waiting.iter().find(|w| w["id"] == child.id).unwrap();

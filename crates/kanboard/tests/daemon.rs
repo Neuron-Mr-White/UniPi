@@ -429,7 +429,8 @@ fn sse_pushes_a_revision_after_a_cli_write() {
 #[test]
 fn sse_pushes_a_revision_when_home_is_a_symlink() {
     let fixture = fixture_with_tasks();
-    let link = fixture.layout.home.parent().unwrap().join("linked-home");
+    // The link lives inside the fixture's own temp root — /tmp is shared.
+    let link = fixture.root().join("linked-home");
     std::os::unix::fs::symlink(&fixture.layout.home, &link).unwrap();
 
     let daemon = Daemon::start_with_home(&fixture, &["--idle-secs", "120"], &link);
@@ -874,7 +875,7 @@ fn project_summaries_carry_counts_running_and_updated_at() {
             "--session",
             "s1",
             "--pid",
-            "1",
+            &common::alive_pid().to_string(),
             "--host",
             "t",
             "--json",

@@ -208,6 +208,13 @@ pub struct Daemon {
     pub port: u16,
 }
 
+/// A pid that is definitely alive on this host — the test process itself.
+/// Literal pids like 1/4242 are init/system on unix but absent on Windows,
+/// where a "live claimer" would silently read as stale.
+pub fn alive_pid() -> u32 {
+    std::process::id()
+}
+
 impl Daemon {
     /// Spawn `serve` and wait until `/api/health` answers.
     pub fn start(fixture: &Fixture, extra: &[&str]) -> Daemon {
