@@ -162,6 +162,17 @@ export function unsetSettings(namespace: string, key: string, scope: SettingsSco
   writeJson(target, current);
 }
 
+/** One layer only (no defaults, no merge) — for layered fallback chains. */
+export function getSettingsScoped(
+  namespace: string,
+  scope: SettingsScope,
+  cwd: string,
+): Record<string, unknown> | undefined {
+  runGates(cwd);
+  const path = scope === "global" ? globalSettingsPath(namespace) : projectSettingsPath(cwd, namespace);
+  return readJson(path) ?? undefined;
+}
+
 /** Which layers currently exist for a namespace (hub status display). */
 export function settingsLayers(namespace: string, cwd: string): { global: boolean; project: boolean } {
   runGates(cwd);

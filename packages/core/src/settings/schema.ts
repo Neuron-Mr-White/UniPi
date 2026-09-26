@@ -11,8 +11,13 @@
  *   secret  → Input submenu, value masked in the list (API keys etc.)
  */
 
-export type SettingsField =
-  | { readonly key: string; readonly type: "boolean"; readonly label: string; readonly description?: string }
+export type SettingsField = (
+  | {
+      readonly key: string;
+      readonly type: "boolean";
+      readonly label: string;
+      readonly description?: string;
+    }
   | {
       readonly key: string;
       readonly type: "enum";
@@ -151,7 +156,11 @@ export type SettingsField =
       readonly description?: string;
       /** The full item universe in canonical order. */
       readonly items: () => readonly { readonly value: string; readonly label: string }[];
-    };
+    }  ) & {
+  /** Hub scopes this field appears in; absent = both (the default).
+   *  e.g. a project-override row hides in the global scope. */
+  readonly scopes?: ("global" | "project")[];
+};
 
 export interface SettingsSection {
   /** Section heading in the hub (e.g. "Judge", "Badge"). */

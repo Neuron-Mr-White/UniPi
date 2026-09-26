@@ -62,7 +62,7 @@ function vw(line: string): number {
 /** Row order: scope, header, then 7 fields (registration order). */
 function jumpTo(hub: SettingsHub, label: string): void {
   // navigate down until the rendered row contains the label
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 200; i++) {
     const here = (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows()[
       (hub as unknown as { cursor: number }).cursor
     ];
@@ -1199,5 +1199,121 @@ describe("regression: Utility badge section renders each row exactly once", () =
     assert.equal(c.get("Utility — Badge"), 1);
     assert.equal(c.get("Show name badge"), 1);
     assert.equal(c.get("Generate session name"), 1);
+  });
+});
+
+// ── duplicate-key rows + per-scope visibility (CP3.6 review) ──────────────
+const NS2 = "hubdup";
+
+function registerDupFixture(): void {
+  registerSettings({
+    namespace: NS2,
+    label: "Dup Test",
+    defaults: { mode: "auto", defaultMode: "auto" },
+    schema: [
+      {
+        title: "Modes",
+        fields: [
+          {
+            key: "mode",
+            type: "enum",
+            label: "Mode (this project)",
+            options: ["ask", "auto", "full"],
+            clearable: true,
+            scopes: ["project"],
+          },
+          {
+            key: "defaultMode",
+            type: "enum",
+            label: "Default mode (all projects)",
+            options: ["ask", "auto", "full"],
+            scope: "global",
+          },
+        ],
+      },
+    ],
+  });
+}
+
+describe("scope visibility + distinct keys", () => {
+  beforeEach(() => {
+    registerDupFixture();
+  });
+
+  const rowLabels = (hub: SettingsHub): string[] =>
+    (hub as unknown as { visibleRows: () => { label: string }[] }).visibleRows().map((r) => r.label);
+
+  it("global scope hides the project row; project scope shows both", () => {
+    const hub = makeHub();
+    assert.equal((hub as unknown as { scope: string }).scope, "global");
+    let labels = rowLabels(hub);
+    assert.ok(!labels.includes("Mode (this project)"), "project row hidden in global scope");
+    assert.ok(labels.includes("Default mode (all projects)"));
+    hub.handleInput("g"); // to project scope
+    labels = rowLabels(hub);
+    assert.ok(labels.includes("Mode (this project)"), "project row shown in project scope");
+    assert.ok(labels.includes("Default mode (all projects)"));
+    hub.handleInput("g");
+  });
+
+  it("one open picker at a time — Enter on either mode row shows one list", () => {
+    const hub = makeHub();
+    hub.handleInput("g"); // project scope
+    jumpTo(hub, "Mode (this project)");
+    hub.handleInput("\r");
+    let lines = hub.render(100);
+    // The picker footer appears once per rendered picker (ANSI-stripped).
+    const plain = (l: string) => l.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+    const pickerRows = (ls: string[]) =>
+      ls.filter((l) => plain(l).includes("enter/tab pick") && !plain(l).includes("↑↓")).length;
+    assert.equal(pickerRows(lines), 1, "one picker under the project row");
+    // …and "use default" (this row's extra option) exists exactly once.
+    assert.equal(lines.map(plain).filter((l) => l.includes("use default")).length, 1);
+    hub.handleInput("\x1b");
+    jumpTo(hub, "Default mode (all projects)");
+    hub.handleInput("\r");
+    lines = hub.render(100);
+    assert.equal(pickerRows(lines), 1, "one picker under the default row");
+    assert.equal(lines.map(plain).filter((l) => l.includes("use default")).length, 0, "global-pinned row has no use-default");
+    hub.handleInput("\x1b");
+  });
+
+  it("the default-mode picker writes the global layer; 'use default' clears the project key", () => {
+    const hub = makeHub();
+    hub.handleInput("g"); // project scope — both rows live here
+    // project write: pick "full" on the project row
+    const pickOption = (hub: SettingsHub, want: string): void => {
+      const plainLine = (l: string) => l.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+      let sel: string | undefined;
+      for (let i = 0; i < 12; i++) {
+        sel = hub.render(100).find((l) => {
+          const t = plainLine(l).replace(/[│╭╮╰╯]/g, "").trim();
+          return l.includes("\x1b[1m") && t === want;
+        });
+        if (sel) break;
+        hub.handleInput("\x1b[B");
+      }
+      if (!sel) throw new Error(`never selected ${want}:\n` + hub.render(100).join("\n"));
+      hub.handleInput("\r");
+    };
+    jumpTo(hub, "Mode (this project)");
+    hub.handleInput("\r");
+    pickOption(hub, "full");
+    const projFile = join(cwd, ".unipi", "config", NS2, "config.json");
+    assert.equal(JSON.parse(readFileSync(projFile, "utf8")).mode, "full");
+    // clear via "use default" (last option)
+    jumpTo(hub, "Mode (this project)");
+    hub.handleInput("\r");
+    pickOption(hub, "use default");
+    const projAfter = existsSync(projFile) ? JSON.parse(readFileSync(projFile, "utf8")) : {};
+    assert.equal(projAfter.mode, undefined, "project mode key deleted");
+    // global default: pick "ask" on the default row → lands in the global file
+    jumpTo(hub, "Default mode (all projects)");
+    hub.handleInput("\r");
+    pickOption(hub, "full");
+    const globFile = join(home, ".unipi", "config", NS2, "config.json");
+    const glob = JSON.parse(readFileSync(globFile, "utf8"));
+    assert.ok(glob.defaultMode !== undefined, "defaultMode written to global layer");
+    assert.equal(glob.mode, undefined, "no stray `mode` key in global");
   });
 });

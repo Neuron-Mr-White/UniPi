@@ -12,7 +12,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  settingsLayers,
+  getSettingsScoped,
   UNIPI_EVENTS,
   askJev,
   emitEvent,
@@ -174,9 +174,12 @@ export function registerPermissionModes(pi: ExtensionAPI, controller: Permission
       const requested = (args ?? "").trim().toLowerCase();
       if (!requested || requested === "status") {
         const current = controller.mode(ctx.cwd);
-        const layers = settingsLayers("permission", ctx.cwd);
+        const project = getSettingsScoped("permission", "project", ctx.cwd);
+        const global = getSettingsScoped("permission", "global", ctx.cwd);
+        const proj = typeof project?.mode === "string" ? project.mode : "-";
+        const glob = typeof global?.defaultMode === "string" ? global.defaultMode : typeof global?.mode === "string" ? global.mode : "-";
         ctx.ui.notify(
-          `Permission mode: ${current} (layers: ${[layers.project && "project", layers.global && "global"].filter(Boolean).join(" + ") || "defaults"})`,
+          `Permission mode: ${current} (project: ${proj} · default: ${glob})`,
           "info",
         );
         return;

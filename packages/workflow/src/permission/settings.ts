@@ -5,6 +5,7 @@
 
 import {
   getSettings,
+  getSettingsScoped,
   registerSettings,
   setSettings,
   settingsLayers,
@@ -16,6 +17,7 @@ export type PermissionMode = "ask" | "auto" | "full";
 
 export interface PermissionSettings {
   mode: PermissionMode;
+  defaultMode: PermissionMode;
   jevJudge: boolean;
   jevConfidence: number;
   rules: PermissionRule[];
@@ -23,6 +25,7 @@ export interface PermissionSettings {
 
 export const DEFAULT_SETTINGS = {
   mode: "auto",
+  defaultMode: "auto",
   jevJudge: true,
   jevConfidence: 0.7,
   rules: [] as PermissionRule[],
@@ -45,10 +48,11 @@ export const PERMISSION_SECTIONS: SettingsSection[] = [
         label: "Mode (this project)",
         options: MODE_OPTIONS.map((o) => ({ ...o })),
         clearable: true,
+        scopes: ["project"],
         description: "Alt+M cycles · use-default clears the project mode",
       },
       {
-        key: "mode",
+        key: "defaultMode",
         type: "enum",
         label: "Default mode (all projects)",
         scope: "global",
@@ -81,6 +85,14 @@ export const PERMISSION_SECTIONS: SettingsSection[] = [
 ];
 
 export function registerPermissionSettings(cwd?: string): void {
+  // One-time, idempotent migration: an existing global `mode` (pre-defaultMode
+  // installs) is copied to `defaultMode` so the hub shows it instead of "unset".
+  if (cwd) {
+    const global = getSettingsScoped("permission", "global", cwd);
+    if (global && typeof global.mode === "string" && global.defaultMode === undefined) {
+      setSettings("permission", { defaultMode: global.mode }, "global", cwd);
+    }
+  }
   const count = cwd ? readPermissionSettings(cwd).rules.length : 0;
   registerSettings({
     namespace: "permission",
@@ -104,7 +116,8 @@ function coerceMode(value: unknown): PermissionMode {
 export function readPermissionSettings(cwd: string): PermissionSettings {
   const raw = getSettings("permission", cwd);
   return {
-    mode: coerceMode(raw.mode),
+    mode: effectivePermissionMode(cwd),
+    defaultMode: coerceMode(raw.defaultMode),
     jevJudge: raw.jevJudge !== false,
     jevConfidence:
       typeof raw.jevConfidence === "number" && raw.jevConfidence >= 0 && raw.jevConfidence <= 1
@@ -112,6 +125,16 @@ export function readPermissionSettings(cwd: string): PermissionSettings {
         : DEFAULT_SETTINGS.jevConfidence,
     rules: normalizeRules(raw.rules),
   };
+}
+
+/** project `mode` → global `defaultMode` → legacy global `mode` → auto. */
+export function effectivePermissionMode(cwd: string): PermissionMode {
+  const project = getSettingsScoped("permission", "project", cwd);
+  if (project && typeof project.mode === "string") return coerceMode(project.mode);
+  const global = getSettingsScoped("permission", "global", cwd);
+  if (global && typeof global.defaultMode === "string") return coerceMode(global.defaultMode);
+  if (global && typeof global.mode === "string") return coerceMode(global.mode); // legacy installs
+  return "auto";
 }
 
 /** Written to the project scope: the mode is a property of the workspace. */

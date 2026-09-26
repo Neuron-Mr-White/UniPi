@@ -234,8 +234,9 @@ export class SettingsHub {
           namespace: def.namespace,
         });
         for (const field of section.fields) {
+          if (field.scopes && !field.scopes.includes(this.scope)) continue;
           rows.push({
-            kind: "field", id: `${def.namespace}::${field.key}`,
+            kind: "field", id: `${def.namespace}::${field.key}::${field.label}`,
             label: field.label, namespace: def.namespace, field,
             context: `${def.label} ${section.title}`,
           });
@@ -255,8 +256,9 @@ export class SettingsHub {
             advancedOf: def.namespace,
           });
           for (const field of section.fields) {
+            if (field.scopes && !field.scopes.includes(this.scope)) continue;
             rows.push({
-              kind: "field", id: `${def.namespace}::${field.key}`,
+              kind: "field", id: `${def.namespace}::${field.key}::${field.label}`,
               label: field.label, namespace: def.namespace, field,
               context: `${def.label} ${section.title}`,
               advancedOf: def.namespace,
@@ -397,8 +399,9 @@ export class SettingsHub {
         label: section.title, namespace,
       });
       for (const field of section.fields) {
+        if (field.scopes && !field.scopes.includes(this.scope)) continue;
         rows.push({
-          kind: "field", id: `${namespace}::${field.key}`,
+          kind: "field", id: `${namespace}::${field.key}::${field.label}`,
           label: field.label, namespace, field,
           context: section.title,
         });
@@ -456,6 +459,9 @@ export class SettingsHub {
     const projectAllowed = defs.some((d) => d.projectOverrides !== false);
     if (!projectAllowed && this.scope === "global") return;
     this.scope = this.scope === "global" ? "project" : "global";
+    this.buildRows();
+    this.cursor = Math.min(this.cursor, Math.max(0, this.rows.length - 1));
+    this.scroll = 0;
   }
 
   // ── key handling ────────────────────────────────────────────────────────
@@ -1007,7 +1013,7 @@ export class SettingsHub {
       out.push(this.exactRow(sel ? `  ${bold(label)}` : `  ${dim(label)}`, inner));
     }
     // Pad to exactly 5 rows so the panel never jumps.
-    for (let i = filtered.length - start; i < 5; i++) out.push(this.exactRow(`  ${dim("  ·")}`, inner));
+    for (let i = filtered.length - start; i < 5; i++) out.push(this.exactRow("  ", inner));
     out.push(this.exactRow(dim("  enter/tab pick · esc cancel"), inner));
     return out;
   }

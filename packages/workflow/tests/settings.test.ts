@@ -7,7 +7,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { SettingsHub, getSettingsDefinition, listSettingsDefinitions, resetSettingsGates } from "@pi-unipi/core";
 import {
   DEFAULT_SETTINGS,
@@ -48,6 +48,7 @@ describe("permission settings namespace", () => {
     assert.equal(definition!.label, "Permissions");
     assert.deepEqual(definition!.defaults, {
       mode: "auto",
+      defaultMode: "auto",
       jevJudge: true,
       jevConfidence: 0.7,
       rules: [],
@@ -58,8 +59,9 @@ describe("permission settings namespace", () => {
   it("exposes mode, jevJudge, jevConfidence and the clear-rules action", () => {
     const fields = PERMISSION_SECTIONS[0]!.fields;
     const keys = fields.map((field) => field.key);
-    // Two "mode" rows: project (clearable) + the all-projects default (global).
-    assert.deepEqual(keys, ["mode", "mode", "jevJudge", "jevConfidence", "rulesCount"]);
+    // Project override (clearable, project-scope only) + the all-projects
+    // default as a DISTINCT key (a shared `mode` key collided in the hub).
+    assert.deepEqual(keys, ["mode", "defaultMode", "jevJudge", "jevConfidence", "rulesCount"]);
 
     const mode = fields[0]!;
     assert.equal(mode.type, "enum");
@@ -145,5 +147,45 @@ describe("permission settings namespace", () => {
     assert.equal(clearPermissionRules(dir), 0);
     const raw = readPermissionSettings(dir);
     assert.equal(raw.mode, "auto");
+  });
+});
+
+describe("permission effective-mode chain", () => {
+  it("project mode → global defaultMode → legacy global mode → auto", async () => {
+    const { setSettings, getSettingsScoped } = await import("@pi-unipi/core");
+    const dir = cwd();
+    registerPermissionSettings(dir);
+    const { readPermissionSettings } = await import("../src/permission/settings.js");
+    // nothing set → auto
+    assert.equal(readPermissionSettings(dir).mode, "auto");
+    // legacy global `mode` still wins when no defaultMode
+    setSettings("permission", { mode: "full" }, "global", dir);
+    assert.equal(readPermissionSettings(dir).mode, "full", "legacy global mode");
+    // global defaultMode beats legacy mode
+    setSettings("permission", { defaultMode: "ask" }, "global", dir);
+    assert.equal(readPermissionSettings(dir).mode, "ask", "defaultMode wins over legacy mode");
+    // project mode beats everything
+    setSettings("permission", { mode: "auto" }, "project", dir);
+    assert.equal(readPermissionSettings(dir).mode, "auto", "project wins");
+  });
+});
+
+describe("defaultMode migration + hub display", () => {
+  it("copies a legacy global mode to defaultMode on register", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { globalSettingsPath, getSettingsScoped } = await import("@pi-unipi/core");
+    const dir = cwd();
+    const path = globalSettingsPath("permission");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ mode: "full" }));
+    registerPermissionSettings(dir);
+    const global = getSettingsScoped("permission", "global", dir);
+    assert.equal(global?.defaultMode, "full", "migrated");
+    assert.equal(global?.mode, "full", "legacy key kept");
+    // Idempotent: a second register leaves a manually-set defaultMode alone.
+    const { setSettings } = await import("@pi-unipi/core");
+    setSettings("permission", { defaultMode: "ask" }, "global", dir);
+    registerPermissionSettings(dir);
+    assert.equal(getSettingsScoped("permission", "global", dir)?.defaultMode, "ask");
   });
 });
