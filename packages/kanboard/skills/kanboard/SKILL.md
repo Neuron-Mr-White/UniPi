@@ -74,9 +74,10 @@ lists them — read the files there directly if you need one.
    your turn ends; claiming them yourself loses the summary and the review step.
 3. **Never cancel.** If a task should be dropped, block it with
    `move <ID> blocked --comment "suggest cancel: <why>"` and let the user decide.
-4. **To ask the user something, block the task and stop**: `move <ID> blocked
-   --comment "<exactly what you need>"`. The answer arrives as a comment the next
-   time the task is claimed.
+4. **Follow the blocking rule in your task prompt**: by default work
+   autonomously and record assumptions with `note <ID> "assumed: <what/why>"`;
+   block (with a comment saying exactly what you need) only when you truly
+   cannot continue — `move <ID> blocked --comment "<what you need>"`.
 5. **Work only on the task you were given.** Follow-up work goes to the board as
    a new task in Backlog (`add "<title>"`), optionally `link <new> --after <ID>`.
    A session holds one claim at a time, and at most `maxSessions` (default 2)

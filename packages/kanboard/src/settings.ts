@@ -31,6 +31,13 @@ export interface KanboardSettings {
   maxSessions: number;
   /** `add` calls allowed per -do/runner window (0 = unlimited). */
   turnAddLimit: number;
+  /** Strategy for unlabelled tasks ("auto" = jev decides). */
+  defaultStrategy: "auto" | "none" | "goal" | "ralph" | "swarm" | "graph";
+  /** Plan-first for unlabelled tasks (jev is never asked about plan). */
+  defaultPlan: boolean;
+  /** Whether a blocked-by-confusion task may ask the user (ask) or must
+   *  assume-and-note (avoid, the default). */
+  blocking: "avoid" | "ask";
 }
 
 export const DEFAULT_SETTINGS: KanboardSettings = {
@@ -46,6 +53,9 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   queueMax: 10,
   maxSessions: 2,
   turnAddLimit: 20,
+  defaultStrategy: "auto",
+  defaultPlan: false,
+  blocking: "avoid",
 };
 
 export const KANBOARD_NAMESPACE = "kanboard";
@@ -103,6 +113,48 @@ export function registerKanboardSettings(): void {
           { key: "queueMax", type: "number", label: "-do queue limit", min: 0, zeroLabel: "unlimited", description: "Tasks a session may queue for the runner" },
           { key: "maxSessions", type: "number", label: "Sessions working at once (per project)", min: 1, description: "Distinct sessions holding in_progress tasks" },
           { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per -do turn or runner task" },
+        ],
+      },
+      {
+        title: "Task defaults",
+        description: "What the runner does when a task carries no label",
+        fields: [
+          {
+            key: "defaultStrategy",
+            type: "enum",
+            label: "Default strategy",
+            options: [
+              { value: "auto", label: "Auto (jev decides)" },
+              { value: "none", label: "none (one-pass change)" },
+              { value: "goal", label: "goal (iterate until verifiably done)" },
+              { value: "ralph", label: "ralph (checklist of similar chores)" },
+              { value: "swarm", label: "swarm (parallel parts)" },
+              { value: "graph", label: "graph (dependent steps)" },
+            ],
+            description: "Strategy for tasks without a --strategy label",
+          },
+          {
+            key: "defaultPlan",
+            type: "boolean",
+            label: "Plan first by default",
+            description: "Unlabelled tasks get a plan+approval turn before work (jev is never asked)",
+          },
+          {
+            key: "blocking",
+            type: "enum",
+            label: "Blocking",
+            options: [
+              { value: "avoid", label: "Avoid — work autonomously, note assumptions" },
+              { value: "ask", label: "Ask — block the task to ask the user" },
+            ],
+            description: "What a confused runner task may do; avoid = assume-and-note, only block on true impossibles",
+          },
+        ],
+      },
+      {
+        title: "Board",
+        description: "Daemon, tokens and links",
+        fields: [
           { key: "open", type: "action", label: "Open board…", description: "Start the daemon and print the URL", command: ACTION_OPEN },
           { key: "stopDaemon", type: "action", label: "Stop daemon", description: "Terminate the running kanboard daemon", command: ACTION_STOP_DAEMON },
           { key: "rotateToken", type: "action", label: "Rotate access token", description: "Drop the persistent token; a fresh one mints on the next daemon start", command: ACTION_ROTATE_TOKEN },
@@ -130,6 +182,13 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
     queueMax: typeof raw.queueMax === "number" && raw.queueMax >= 0 ? raw.queueMax : DEFAULT_SETTINGS.queueMax,
     maxSessions: typeof raw.maxSessions === "number" && raw.maxSessions >= 1 ? raw.maxSessions : DEFAULT_SETTINGS.maxSessions,
     turnAddLimit: typeof raw.turnAddLimit === "number" && raw.turnAddLimit >= 0 ? raw.turnAddLimit : DEFAULT_SETTINGS.turnAddLimit,
+    defaultStrategy:
+      typeof raw.defaultStrategy === "string" &&
+      ["auto", "none", "goal", "ralph", "swarm", "graph"].includes(raw.defaultStrategy)
+        ? (raw.defaultStrategy as KanboardSettings["defaultStrategy"])
+        : DEFAULT_SETTINGS.defaultStrategy,
+    defaultPlan: raw.defaultPlan === true,
+    blocking: raw.blocking === "ask" ? "ask" : "avoid",
   };
 }
 

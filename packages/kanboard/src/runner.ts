@@ -93,11 +93,6 @@ const STRATEGY_CRITERIA: Record<Strategy, string> = {
   graph: "Dependent steps where later work needs earlier results.",
 };
 
-const PLAN_CRITERIA: Record<"yes" | "no", string> = {
-  yes: "Unclear approach or risky change that should be planned and approved first.",
-  no: "The approach is clear enough to start directly.",
-};
-
 type StrategyQuestion = { type: "choice"; instructions: string; criteria: Record<string, string> };
 
 /**
@@ -105,32 +100,19 @@ type StrategyQuestion = { type: "choice"; instructions: string; criteria: Record
  * the task left unset (`strategy`/`plan` labels win; `auto` = jev decides).
  * Exported so probes and tests exercise exactly what chooseStrategy sends.
  */
-export function strategyQuestion(
-  task: KanboardTask,
-  askStrategy: boolean,
-  askPlan: boolean,
-): {
+export function strategyQuestion(task: KanboardTask): {
   state: string;
-  questions: { strategy?: StrategyQuestion; plan?: StrategyQuestion };
+  questions: { strategy: StrategyQuestion };
 } {
-  const questions: { strategy?: StrategyQuestion; plan?: StrategyQuestion } = {};
-  if (askStrategy) {
-    questions.strategy = {
-      type: "choice",
-      instructions: "Which work strategy should run this task?",
-      criteria: { ...STRATEGY_CRITERIA },
-    };
-  }
-  if (askPlan) {
-    questions.plan = {
-      type: "choice",
-      instructions: "Should this task be planned and approved before work starts?",
-      criteria: { ...PLAN_CRITERIA },
-    };
-  }
   return {
     state: `${task.title}\n\n${(task.body ?? "").slice(0, 2000)}`,
-    questions,
+    questions: {
+      strategy: {
+        type: "choice",
+        instructions: "Which work strategy should run this task?",
+        criteria: { ...STRATEGY_CRITERIA },
+      },
+    },
   };
 }
 
@@ -265,19 +247,23 @@ export function createRunner(deps: RunnerDeps): Runner {
   // ── strategy choice (labels win; jev decides the unset) ───────────────────
 
   async function chooseStrategy(task: KanboardTask): Promise<{ strategy: Strategy; plan: boolean }> {
-    // A labelled task is authoritative — jev is only asked for what's unset.
+    // Labels win; the board defaults fill the gaps; jev only picks a strategy
+    // when both leave it on auto. Plan is never a jev question.
+    const board = deps.settings();
     const labelled = typeof task.strategy === "string" && (task.strategy as string) !== "auto" ? (task.strategy as Strategy) : undefined;
-    const planLabel = typeof task.plan === "boolean" ? task.plan : undefined;
-    const askStrategy = labelled === undefined;
-    const askPlan = planLabel === undefined;
-    if (!askStrategy && !askPlan) return { strategy: labelled!, plan: planLabel! };
-    const settings = readJudgeJevSettings(cwd);
-    const answers = await askJev({ ...strategyQuestion(task, askStrategy, askPlan), settings, env: process.env });
-    const sChoice = answers?.strategy?.choice;
-    const pChoice = answers?.plan?.choice;
-    const strategy: Strategy = labelled ?? (sChoice && sChoice in STRATEGY_CRITERIA ? (sChoice as Strategy) : "none");
-    const plan: boolean = planLabel ?? pChoice === "yes";
-    deps.debug(`strategy ${task.id}: label=${labelled ?? "-"} plan-label=${String(planLabel ?? "-")} jev answered ${JSON.stringify({ strategy: sChoice ?? null, plan: pChoice ?? null })} → ${strategy}${plan ? "+plan" : ""}`);
+    const plan: boolean = typeof task.plan === "boolean" ? task.plan : board.defaultPlan === true;
+    let strategy: Strategy | undefined = labelled;
+    if (strategy === undefined && board.defaultStrategy !== "auto") {
+      strategy = board.defaultStrategy as Strategy;
+    }
+    let jevAnswer: string | null = null;
+    if (strategy === undefined) {
+      const settings = readJudgeJevSettings(cwd);
+      const answers = await askJev({ ...strategyQuestion(task), settings, env: process.env });
+      jevAnswer = answers?.strategy?.choice ?? null;
+      strategy = jevAnswer !== null && jevAnswer in STRATEGY_CRITERIA ? (jevAnswer as Strategy) : "none";
+    }
+    deps.debug(`strategy ${task.id}: label=${labelled ?? "-"} board=${board.defaultStrategy}/${board.defaultPlan ? "plan" : "no-plan"} jev answered ${JSON.stringify(jevAnswer)} → ${strategy}${plan ? "+plan" : ""}`);
     return { strategy, plan };
   }
 
@@ -290,7 +276,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       .map((entry) => `- ${entry.at} [${entry.actor}] ${entry.text}`)
       .join("\n");
     const byId = new Map(all.map((candidate) => [candidate.id, candidate]));
-    const deps = (task.deps ?? [])
+    const depLines = (task.deps ?? [])
       .map((id) => {
         const dep = byId.get(id);
         if (!dep) return `- ${id}: (missing)`;
@@ -308,16 +294,25 @@ export function createRunner(deps: RunnerDeps): Runner {
       activity || "(none)",
       "",
       "## Dependencies",
-      deps || "(none)",
+      depLines || "(none)",
       "",
       ...attachmentSection(task),
       "## Rules",
       `Work only on this task (${task.id}).`,
       `Use the board CLI through its absolute path and always pass the actor and project:`,
       `  ${binary} --actor agent --project ${project()} <command>`,
-      `If you need information or a decision from the user, run:`,
-      `  ${binary} --actor agent --project ${project()} move ${task.id} blocked --comment "<what you need>"`,
-      "and stop — the runner will hand the task back when the user answers.",
+      ...(deps.settings().blocking === "ask"
+        ? [
+            `If you need information or a decision from the user, run:`,
+            `  ${binary} --actor agent --project ${project()} move ${task.id} blocked --comment "<what you need>"`,
+            "and stop — the runner will hand the task back when the user answers.",
+          ]
+        : [
+            "Work autonomously. If something is unclear, make the most reasonable assumption, record it with",
+            `  \`note ${task.id} "assumed: <what and why>"\`, and continue. Block only when you truly cannot continue —`,
+            "missing credentials or access, a destructive or irreversible decision, or a contradiction in the",
+            `  task — with \`${binary} --actor agent --project ${project()} move ${task.id} blocked --comment "<what you need>"\`, then stop.`,
+          ]),
       `Do not move the task to in_review or done and do not cancel it: the runner writes those when your turn ends.`,
       `You may add notes with \`note ${task.id} "<text>"\`, link follow-up work with \`add\`, and reorder with \`order\`.`,
       `To show evidence (a screenshot, a log, a report), attach it: \`attach ${task.id} <file> --note "<what it shows>"\`.`,

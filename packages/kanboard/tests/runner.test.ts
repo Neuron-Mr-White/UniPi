@@ -435,7 +435,7 @@ describe("strategy labels", { skip: !hasBinary }, () => {
   let kind: ReturnType<typeof fakePi>;
   let runner: ReturnType<typeof createRunner>;
 
-  function setup(): void {
+  function setup(overrides: Partial<KanboardSettings> = {}): void {
     home = mkdtempSync(join(tmpdir(), "kb-strat-"));
     workspace = mkdtempSync(join(tmpdir(), "kb-stratws-"));
     process.env.UNIPI_KANBOARD_HOME = home;
@@ -450,7 +450,7 @@ describe("strategy labels", { skip: !hasBinary }, () => {
       project: () =>
         JSON.parse(execFileSync(debugBinary, ["project", "show", "--json"], { env, cwd: workspace, encoding: "utf-8" })).project.slug,
       cwd: workspace,
-      settings: () => ({ ...DEFAULT_SETTINGS }),
+      settings: () => ({ ...DEFAULT_SETTINGS, ...overrides }),
       debug: () => undefined,
     });
   }
@@ -548,5 +548,23 @@ describe("strategy labels", { skip: !hasBinary }, () => {
       }),
     );
     assert.equal(shown.run.mode, "goal");
+  });
+  it("blocking=avoid tells the task to assume-and-note; blocking=ask keeps the old lines", async () => {
+    setup();
+    const id = addLabelled("Do the thing");
+    await runner.work(fakeCtx());
+    const avoidPrompt = kind.sent[0]!.message;
+    assert.match(avoidPrompt, /Work autonomously/);
+    assert.match(avoidPrompt, new RegExp(`note ${id} "assumed:`));
+    assert.doesNotMatch(avoidPrompt, /If you need information or a decision/);
+
+    setup({ blocking: "ask" });
+    addLabelled("Another thing");
+    kind.sent.length = 0;
+    await runner.work(fakeCtx());
+    const askPrompt = kind.sent[0]!.message;
+    assert.match(askPrompt, /If you need information or a decision from the user/);
+    assert.match(askPrompt, /move .* blocked --comment "<what you need>"/);
+    assert.doesNotMatch(askPrompt, /Work autonomously/);
   });
 });

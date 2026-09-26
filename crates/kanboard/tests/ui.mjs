@@ -833,13 +833,33 @@ try {
     const dlg = await session.evaluate(`(() => {
       const dialog = document.querySelector('.dialog');
       if (!dialog) return null;
-      const select = dialog.querySelector('[aria-label="Summary model"]');
-      const options = select ? [...select.options].map((o) => o.value) : null;
+      const trigger = dialog.querySelector('[aria-label="Summary model"]');
+      const cats = [...dialog.querySelectorAll('.settings-nav-item')].map((b) => b.textContent.trim());
       const collapsed = !dialog.querySelector('[aria-label="Summary instruction"]');
       const customize = [...dialog.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Customize');
-      return { options, collapsed, customize: !!customize, hint: dialog.innerText.includes('Default: changelog bullets') };
+      return { trigger: !!trigger && trigger.textContent.includes('pi default'), cats, collapsed, customize: !!customize, hint: dialog.innerText.includes('Default: changelog bullets'), gear: !!dialog.querySelector('.dialog-head svg') };
     })()`);
-    check("settings dialog shows the model select + collapsed instruction", dlg && dlg.options?.[0] === "" && dlg.collapsed && dlg.customize && dlg.hint, JSON.stringify(dlg));
+    check("settings dialog shows the categories nav + combobox + collapsed instruction",
+      dlg && dlg.trigger && dlg.cats.length === 4 && dlg.cats.includes("Summaries") && dlg.cats.includes("Task defaults") && dlg.cats.includes("Runner") && dlg.cats.includes("Archive") && dlg.collapsed && dlg.customize && dlg.hint,
+      JSON.stringify(dlg));
+    // Category nav switches panes.
+    const catCheck = await session.evaluate(`(async () => {
+      const click = (label) => [...document.querySelectorAll('.settings-nav-item')].find((b) => b.textContent.trim() === label)?.click();
+      click('Task defaults');
+      await new Promise((r) => setTimeout(r, 120));
+      const hasStrategy = !!document.querySelector('.dialog [aria-label="Default strategy"]');
+      const hasBlocking = !!document.querySelector('.dialog [aria-label="Blocking"]');
+      click('Runner');
+      await new Promise((r) => setTimeout(r, 120));
+      const hasQueue = !!document.querySelector('.dialog [aria-label="Queue limit"]');
+      click('Archive');
+      await new Promise((r) => setTimeout(r, 120));
+      const hasArchive = !!document.querySelector('.dialog [aria-label="Auto-archive after days"]');
+      click('Summaries');
+      await new Promise((r) => setTimeout(r, 120));
+      return { hasStrategy, hasBlocking, hasQueue, hasArchive };
+    })()`);
+    check("settings categories render their fields", catCheck.hasStrategy && catCheck.hasBlocking && catCheck.hasQueue && catCheck.hasArchive, JSON.stringify(catCheck));
     await session.shot("k14-settings-light-1440.png");
     // Point piCommand at the stub (echoes the prompt, serves --list-models),
     // then the dialog's Refresh link loads the daemon-owned catalog.
@@ -848,34 +868,43 @@ try {
       models: ["test/model-a", "test/model-b"],
     }));
     const saved = await session.evaluate(`(async () => {
-      // The Refresh link only renders once the first load settles (ok or error).
-      for (let i = 0; i < 30; i += 1) {
-        if ([...document.querySelectorAll('.dialog button')].some((b) => b.textContent.trim() === 'Refresh')) break;
-        await new Promise((r) => setTimeout(r, 150));
-      }
-      [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Refresh')?.click();
+      // Open the combobox and refresh the catalog inside it.
+      document.querySelector('.dialog [aria-label="Summary model"]')?.click();
+      await new Promise((r) => setTimeout(r, 250));
+      [...document.querySelectorAll('.combo-list button, .combo-list .link-btn')].find((b) => b.textContent.trim() === 'Refresh the model list')?.click();
       for (let i = 0; i < 30; i += 1) {
         await new Promise((r) => setTimeout(r, 200));
-        const select = document.querySelector('.dialog [aria-label="Summary model"]');
-        if (select && [...select.options].some((o) => o.value === 'omni/demo-b')) break;
+        if ([...document.querySelectorAll('.combo-list .dep-option')].some((b) => b.textContent.includes('omni/demo-b'))) break;
       }
+      const all = [...document.querySelectorAll('.combo-list .dep-option')].map((b) => b.textContent.trim());
+      // Filter keeps only matching rows (default row survives — it matches "").
+      const filter = document.querySelector('.combo-list input, .dep-picker input');
+      if (filter) { filter.value = 'demo-b'; filter.dispatchEvent(new Event('input', { bubbles: true })); }
+      await new Promise((r) => setTimeout(r, 150));
+      const filtered = [...document.querySelectorAll('.combo-list .dep-option')].map((b) => b.textContent.trim());
+      [...document.querySelectorAll('.combo-list .dep-option')].find((b) => b.textContent.includes('omni/demo-b'))?.click();
+      await new Promise((r) => setTimeout(r, 150));
       [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Customize')?.click();
       await new Promise((r) => setTimeout(r, 150));
       const expanded = !!document.querySelector('.dialog [aria-label="Summary instruction"]');
-      const select = document.querySelector('.dialog [aria-label="Summary model"]');
-      const options = select ? [...select.options].map((o) => o.value) : [];
-      const snapshot = { bodyText: document.querySelector('.dialog-body')?.innerText?.slice(0, 400), btns: [...document.querySelectorAll('.dialog button')].map((b) => b.textContent.trim()) };
-      if (select) { select.value = 'omni/demo-b'; select.dispatchEvent(new Event('change', { bubbles: true })); }
-      await new Promise((r) => setTimeout(r, 150));
       [...document.querySelectorAll('.dialog .btn.primary')].find((b) => /^Save$/.test(b.textContent.trim()))?.click();
       await new Promise((r) => setTimeout(r, 600));
       const settings = await fetch('/api/settings').then((r) => r.json());
       const catalog = await fetch('/api/models').then((r) => r.json());
-      return { expanded, options, model: settings.summaryModel, catalog: catalog.models, open: !!document.querySelector('.dialog'), snapshot };
+      return { all, filtered, expanded, model: settings.summaryModel, catalog: catalog.models, open: !!document.querySelector('.dialog'), taskDefaults: settings.taskDefaults };
     })()`);
     check("the daemon serves list-models itself", Array.isArray(saved?.catalog) && saved.catalog.includes("omni/demo-a") && saved.catalog.length === 3, JSON.stringify(saved?.catalog));
-    check("the dialog picks a model from the live list", saved?.options?.includes("omni/demo-b"), JSON.stringify(saved?.options));
+    check("the combobox filters and lists the live models", saved?.filtered?.includes("omni/demo-b") && !saved.filtered.some((t) => t.includes("demo-a")), JSON.stringify(saved?.filtered));
     check("settings saves the summary model", saved?.expanded && saved?.model === "omni/demo-b" && !saved.open, JSON.stringify(saved));
+    // Reopen → combobox closed + open shots.
+    await session.evaluate(`document.querySelector('[aria-label="Settings"]')?.click()`);
+    await sleep(500);
+    await session.shot("k14b-combobox-closed-1440.png");
+    await session.evaluate(`document.querySelector('.dialog [aria-label="Summary model"]')?.click()`);
+    await sleep(300);
+    await session.shot("k14c-combobox-open-1440.png");
+    await session.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.querySelector('.dialog [aria-label="Close"]')?.click()`);
+    await sleep(200);
 
     // Step 1 with an agent configured: prefilled instruction, done count.
     const opened = await session.evaluate(`(async () => {
@@ -1069,14 +1098,25 @@ try {
   })()`);
   check("the Done … menu offers summarize + archive-all", menus?.done.some((i) => /Summarize & archive/.test(i)) && menus?.done.some((i) => /Archive all \(\d+\) without summary/.test(i)), JSON.stringify(menus?.done));
   check("the In Review … menu offers archive-all", menus?.review.some((i) => /Archive all \(\d+\)/.test(i)), JSON.stringify(menus?.review));
-  // Screenshot each menu open.
-  await session.evaluate(`document.querySelector('.lane[data-lane="done"] [aria-label$="options"]')?.click()`);
-  await sleep(300);
+  // Screenshot each menu open — scroll the lane into view first so the
+  // popover's anchor rect is on-screen.
+  await session.evaluate(`(async () => {
+    const btn = document.querySelector('.lane[data-lane="done"] [aria-label$="options"]');
+    btn?.scrollIntoView({ block: 'center', inline: 'center' });
+    await new Promise((r) => setTimeout(r, 200));
+    btn?.click();
+    await new Promise((r) => setTimeout(r, 300));
+  })()`);
   await session.shot("k20a-done-menu-1440.png");
   await session.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await sleep(200);
-  await session.evaluate(`document.querySelector('.lane[data-lane="in_review"] [aria-label$="options"]')?.click()`);
-  await sleep(300);
+  await session.evaluate(`(async () => {
+    const btn = document.querySelector('.lane[data-lane="in_review"] [aria-label$="options"]');
+    btn?.scrollIntoView({ block: 'center', inline: 'center' });
+    await new Promise((r) => setTimeout(r, 200));
+    btn?.click();
+    await new Promise((r) => setTimeout(r, 300));
+  })()`);
   await session.shot("k20b-review-menu-1440.png");
   await session.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   await sleep(200);
@@ -1150,6 +1190,33 @@ try {
   await session.send("Emulation.setDeviceMetricsOverride", { width: 800, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(500);
   await session.shot("k7-board-dark-800.png");
+
+  // 8d. review lane "Done all" + the gear icon
+  const doneAll = await session.evaluate(`(async () => {
+    const lane = document.querySelector('.lane[data-lane="in_review"]');
+    if (!lane) return { error: "no lane" };
+    const before = lane.querySelectorAll('.card').length;
+    const btn = [...lane.querySelectorAll('.lane-head button')].find((b) => /Done all/i.test(b.textContent) || b.getAttribute('aria-label') === 'Move all in review to done');
+    if (!btn) return { error: "no done-all button", before };
+    btn.click();
+    for (let i = 0; i < 25; i += 1) {
+      await new Promise((r) => setTimeout(r, 160));
+      const now = document.querySelector('.lane[data-lane="in_review"]');
+      if (now && now.querySelectorAll('.card').length === 0) break;
+    }
+    const after = document.querySelector('.lane[data-lane="in_review"]')?.querySelectorAll('.card').length ?? -1;
+    const done = document.querySelector('.lane[data-lane="done"]')?.querySelectorAll('.card').length ?? 0;
+    return { before, after, done };
+  })()`);
+  check("Done all moves every in_review task to Done", doneAll.before > 0 && doneAll.after === 0 && doneAll.done >= doneAll.before, JSON.stringify(doneAll));
+  const gear = await session.evaluate(`(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => /settings/i.test(b.getAttribute('aria-label') ?? ''));
+    const svg = btn?.querySelector('svg');
+    const path = svg?.querySelector('path')?.getAttribute('d') ?? '';
+    // Lucide settings cog: a long toothed path + centre circle inside a scaled group.
+    return { found: !!btn, toothed: path.startsWith('M12.22') && !!svg?.querySelector('circle') && !!svg?.querySelector('g[transform]') };
+  })()`);
+  check("settings button shows the cog icon (toothed ring + centre hole)", gear.found && gear.toothed, JSON.stringify(gear));
 
   // 9. no page errors during the session
   const errors = await session.evaluate(`window.__kbErrors ?? []`);

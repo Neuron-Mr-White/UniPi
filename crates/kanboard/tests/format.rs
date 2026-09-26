@@ -391,3 +391,27 @@ fn strategy_edit_cli_parses_and_clears() {
     assert_eq!(kanboard::cli::parse_plan_edit("auto").unwrap(), None);
     assert!(kanboard::cli::parse_plan_flag("maybe").is_err());
 }
+
+#[test]
+fn pi_settings_patch_validates_and_preserves_other_keys() {
+    use kanboard::serve::settings::{load_pi_settings, patch_pi_settings, validate_pi_patch};
+    // Isolate HOME so the engine path lands in a temp dir.
+    let tmp = tempfile::tempdir().unwrap();
+    // SAFETY: test is single-threaded here.
+    unsafe { std::env::set_var("HOME", tmp.path()) };
+    // Pre-existing foreign key survives.
+    patch_pi_settings(&serde_json::json!({"otherKey": "keep", "queueMax": 5}).as_object().unwrap().clone()).unwrap();
+    let stored = load_pi_settings();
+    assert_eq!(stored["queueMax"], 5);
+    assert_eq!(stored["otherKey"], "keep");
+    // Valid patch validates.
+    let good = validate_pi_patch(
+        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "blocking": "ask", "chainGate": "done", "retentionDays": 30}).as_object().unwrap().clone(),
+    ).unwrap();
+    assert_eq!(good["defaultStrategy"], "swarm");
+    assert!(good["defaultPlan"].as_bool().unwrap());
+    // Invalid values are rejected.
+    assert!(validate_pi_patch(&serde_json::json!({"defaultStrategy": "bogus"}).as_object().unwrap().clone()).is_err());
+    assert!(validate_pi_patch(&serde_json::json!({"maxSessions": 0}).as_object().unwrap().clone()).is_err());
+    assert!(validate_pi_patch(&serde_json::json!({"nope": 1}).as_object().unwrap().clone()).is_err());
+}

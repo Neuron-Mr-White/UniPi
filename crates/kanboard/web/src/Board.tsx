@@ -83,6 +83,18 @@ export function Board(): JSX.Element {
 
   const allows = (task: Task, laneId: string): boolean => canMove(rules, task, laneId);
 
+  async function doneAll(): Promise<void> {
+    const target = slug();
+    if (!target || laneCount("in_review") === 0) return;
+    try {
+      const result = await api.doneLane(target);
+      toast(`Moved ${result.moved.length} to Done`, "success");
+      await loadBoard(target);
+    } catch (error) {
+      toast(describe(error), "error");
+    }
+  }
+
   async function archiveLane(status: "done" | "in_review"): Promise<void> {
     const target = slug();
     if (!target) return;
@@ -289,6 +301,17 @@ export function Board(): JSX.Element {
                 <span class="lane-count">{laneCount(lane.id)}</span>
                 <LaneInfo lane={lane.id} />
                 <span class="spacer" />
+                <Show when={lane.id === "in_review" && laneCount("in_review") > 0}>
+                  <button
+                    class="lane-summarize"
+                    aria-label="Move all in review to done"
+                    title="Done all"
+                    onClick={() => void doneAll()}
+                  >
+                    <Icon.check size={12} />
+                    Done all
+                  </button>
+                </Show>
                 <Show when={lane.id === "done" && laneCount("done") > 0}>
                   <button
                     class="lane-summarize"
@@ -333,6 +356,15 @@ export function Board(): JSX.Element {
                         />
                       </Show>
                       <Show when={lane.id === "in_review"}>
+                        <MenuItem
+                          icon={<Icon.check size={14} />}
+                          label={`Move all (${laneCount("in_review")}) to Done`}
+                          disabled={laneCount("in_review") === 0}
+                          onSelect={() => {
+                            close();
+                            void doneAll();
+                          }}
+                        />
                         <MenuItem
                           icon={<Icon.archive size={14} />}
                           label={`Archive all (${laneCount("in_review")})`}

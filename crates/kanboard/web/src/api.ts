@@ -138,6 +138,25 @@ export interface Settings {
   /** The effective instruction — the custom one or the built-in default. */
   summaryInstruction: string;
   defaultSummaryInstruction: string;
+  /** pi-side kanboard settings (the ~/.unipi/config/kanboard namespace). */
+  taskDefaults: { defaultStrategy: string; defaultPlan: boolean; blocking: string };
+  runner: { queueMax: number; maxSessions: number; turnAddLimit: number; chainGate: string };
+  archive: { archiveAfterDays: number; retentionDays: number };
+}
+
+/** Flat PUT patch: the pi-side keys the daemon validates + writes. */
+export interface SettingsPatch {
+  summaryModel?: string;
+  summaryInstruction?: string;
+  defaultStrategy?: string;
+  defaultPlan?: boolean;
+  blocking?: string;
+  queueMax?: number;
+  maxSessions?: number;
+  turnAddLimit?: number;
+  chainGate?: string;
+  archiveAfterDays?: number;
+  retentionDays?: number;
 }
 
 export interface SummaryResult {
@@ -219,6 +238,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ dep }),
     }),
+  doneLane: (slug: string) =>
+    request<{ moved: string[] }>(`/api/projects/${encodeURIComponent(slug)}/done-lane`, { method: "POST" }),
   unlink: (slug: string, id: string, dep: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/unlink`, {
       method: "POST",
@@ -254,7 +275,7 @@ export const api = {
   /** The daemon-owned model catalog (pi --list-models); refresh bypasses the cache. */
   models: (refresh = false) =>
     request<{ models: string[] }>(`/api/models${refresh ? "?refresh=1" : ""}`),
-  saveSettings: (patch: { summaryModel?: string; summaryInstruction?: string }) =>
+  saveSettings: (patch: SettingsPatch) =>
     request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
   archiveLane: (slug: string, status: "done" | "in_review") =>
     request<{ archived: string[]; skipped: string[] }>(`/api/projects/${encodeURIComponent(slug)}/archive-lane`, {

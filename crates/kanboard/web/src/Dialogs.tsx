@@ -236,7 +236,7 @@ export function NewTaskDialog(): JSX.Element {
           {(close) => (
             <For each={["auto", "none", "goal", "ralph", "swarm", "graph"]}>
               {(option) => (
-                <MenuItem role="option" label={option === "auto" ? "Auto (jev)" : option} checked={strategy() === option} onSelect={() => { setStrategy(option); close(); }} />
+                <MenuItem role="option" label={option === "auto" ? "Auto (jev decides)" : option} checked={strategy() === option} onSelect={() => { setStrategy(option); close(); }} />
               )}
             </For>
           )}
@@ -253,7 +253,7 @@ export function NewTaskDialog(): JSX.Element {
           {(close) => (
             <For each={["auto", "yes", "no"]}>
               {(option) => (
-                <MenuItem role="option" label={option === "auto" ? "Auto (jev)" : option === "yes" ? "Yes" : "No"} checked={plan() === option} onSelect={() => { setPlan(option); close(); }} />
+                <MenuItem role="option" label={option === "auto" ? "Default" : option === "yes" ? "Yes" : "No"} checked={plan() === option} onSelect={() => { setPlan(option); close(); }} />
               )}
             </For>
           )}
@@ -757,16 +757,126 @@ export function SummarizeDialog(): JSX.Element {
 
 // ─── settings ───────────────────────────────────────────────────────────────
 
+/** One searchable combobox for the summary model: button shows the pick,
+ *  opens a filterable list grouped by provider; "pi default" first. */
+function ModelCombobox(props: {
+  models: string[];
+  state: "loading" | "ok" | "error";
+  error: string;
+  value: string;
+  onChange: (value: string) => void;
+  onRefresh: () => void;
+}): JSX.Element {
+  const [needle, setNeedle] = createSignal("");
+  const [active, setActive] = createSignal(0);
+
+  /** Provider-grouped entries; "pi default" is always row 0 of the flat list. */
+  const entries = createMemo((): Array<{ value: string; label: string; provider?: string }> => {
+    const n = needle().trim().toLowerCase();
+    const flat: Array<{ value: string; label: string; provider?: string }> = [
+      { value: "", label: "pi default" },
+    ];
+    const groups = new Map<string, string[]>();
+    for (const entry of props.models) {
+      if (n && !entry.toLowerCase().includes(n)) continue;
+      const provider = entry.split("/")[0] ?? "other";
+      groups.set(provider, [...(groups.get(provider) ?? []), entry]);
+    }
+    for (const provider of [...groups.keys()].sort((a, b) => a.localeCompare(b))) {
+      for (const entry of groups.get(provider)!) flat.push({ value: entry, label: entry, provider });
+    }
+    return flat;
+  });
+
+  return (
+    <Popover
+      width={360}
+      label="Summary model"
+      trigger={(p) => (
+        <button class="input combo-trigger" ref={p.ref} aria-expanded={p.open} onClick={p.toggle} aria-label="Summary model">
+          <span class={`combo-value${props.value ? "" : " dim"}`}>{props.value || "pi default"}</span>
+          <Icon.chevronDown size={12} class="caret" />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div class="dep-picker">
+          <div class="pop-search">
+            <Icon.search size={14} />
+            <input
+              ref={(el) => queueMicrotask(() => el.focus({ preventScroll: true }))}
+              placeholder="Type to filter models…"
+              aria-label="Filter models"
+              value={needle()}
+              onInput={(event) => { setNeedle(event.currentTarget.value); setActive(0); }}
+              onKeyDown={(event) => {
+                const items = entries();
+                if (event.key === "ArrowDown") { event.preventDefault(); setActive((i) => Math.min(i + 1, items.length - 1)); }
+                else if (event.key === "ArrowUp") { event.preventDefault(); setActive((i) => Math.max(i - 1, 0)); }
+                else if (event.key === "Enter") {
+                  const item = items[active()];
+                  if (item) { event.preventDefault(); props.onChange(item.value); close(); }
+                } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+              }}
+            />
+          </div>
+          <div role="listbox" aria-label="Summary models" class="combo-list">
+            <Show when={props.state === "loading"}><div class="menu-section">Loading models…</div></Show>
+            <Show when={props.state === "error"}><div class="menu-section" role="alert">{props.error}</div></Show>
+            <For each={entries()}>
+              {(entry, index) => (
+                <>
+                  <Show when={entry.provider && (index() === 0 || entries()[index() - 1]?.provider !== entry.provider)}>
+                    <div class="menu-section">{entry.provider}</div>
+                  </Show>
+                  <button
+                    class={`dep-option${active() === index() ? " active" : ""}`}
+                    role="option"
+                    aria-selected={props.value === entry.value}
+                    onMouseEnter={() => setActive(index())}
+                    onClick={() => { props.onChange(entry.value); close(); }}
+                  >
+                    <Show when={props.value === entry.value}><Icon.check size={12} /></Show>
+                    <span class="dep-title">{entry.label}</span>
+                  </button>
+                </>
+              )}
+            </For>
+            <div class="menu-section"><button class="link-btn" onClick={() => props.onRefresh()}>Refresh the model list</button></div>
+          </div>
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+type SettingsCat = "summaries" | "defaults" | "runner" | "archive";
+const SETTINGS_CATS: Array<[SettingsCat, string]> = [
+  ["summaries", "Summaries"],
+  ["defaults", "Task defaults"],
+  ["runner", "Runner"],
+  ["archive", "Archive"],
+];
+
 export function SettingsDialog(): JSX.Element {
   const [loaded, setLoaded] = createSignal<Settings | null>(null);
   const [model, setModel] = createSignal("");
-  const [filter, setFilter] = createSignal("");
   const [instruction, setInstruction] = createSignal("");
   const [customInstruction, setCustomInstruction] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [modelsState, setModelsState] = createSignal<"loading" | "ok" | "error">("loading");
   const [modelsError, setModelsError] = createSignal("");
   const [modelList, setModelList] = createSignal<string[]>([]);
+  const [cat, setCat] = createSignal<SettingsCat>("summaries");
+  const [strategy, setStrategy] = createSignal("auto");
+  const [plan, setPlan] = createSignal(false);
+  const [blocking, setBlocking] = createSignal("avoid");
+  const [queueMax, setQueueMax] = createSignal(10);
+  const [maxSessions, setMaxSessions] = createSignal(2);
+  const [turnAddLimit, setTurnAddLimit] = createSignal(20);
+  const [chainGate, setChainGate] = createSignal("in_review");
+  const [archiveDays, setArchiveDays] = createSignal(0);
+  const [retentionDays, setRetentionDays] = createSignal(90);
 
   async function loadModels(refresh = false): Promise<void> {
     setModelsState("loading");
@@ -785,7 +895,6 @@ export function SettingsDialog(): JSX.Element {
     on(settingsOpen, (open) => {
       if (!open) return;
       setLoaded(null);
-      setFilter("");
       setCustomInstruction(false);
       setModelList([]);
       setModelsState("loading");
@@ -796,6 +905,16 @@ export function SettingsDialog(): JSX.Element {
           setModel(settings.summaryModel);
           setInstruction(settings.summaryInstruction);
           setCustomInstruction(settings.summaryInstruction !== settings.defaultSummaryInstruction);
+          setCat("summaries");
+          setStrategy(settings.taskDefaults?.defaultStrategy ?? "auto");
+          setPlan(settings.taskDefaults?.defaultPlan ?? false);
+          setBlocking(settings.taskDefaults?.blocking ?? "avoid");
+          setQueueMax(settings.runner?.queueMax ?? 10);
+          setMaxSessions(settings.runner?.maxSessions ?? 2);
+          setTurnAddLimit(settings.runner?.turnAddLimit ?? 20);
+          setChainGate(settings.runner?.chainGate ?? "in_review");
+          setArchiveDays(settings.archive?.archiveAfterDays ?? 0);
+          setRetentionDays(settings.archive?.retentionDays ?? 90);
         })
         .catch((error) => toast(describe(error), "error"));
       void loadModels();
@@ -805,23 +924,21 @@ export function SettingsDialog(): JSX.Element {
   const close = (): void => void setSettingsOpen(false);
 
   /** "provider/id" → grouped by provider, filterable. */
-  const grouped = createMemo((): Array<[string, string[]]> => {
-    const needle = filter().trim().toLowerCase();
-    const models = modelList().filter((entry) => !needle || entry.toLowerCase().includes(needle));
-    const groups = new Map<string, string[]>();
-    for (const entry of models) {
-      const provider = entry.split("/")[0] ?? "other";
-      groups.set(provider, [...(groups.get(provider) ?? []), entry]);
-    }
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  });
-
   async function save(): Promise<void> {
     setBusy(true);
     try {
       await api.saveSettings({
         summaryModel: model().trim(),
         summaryInstruction: customInstruction() ? instruction() : "",
+        defaultStrategy: strategy(),
+        defaultPlan: plan(),
+        blocking: blocking(),
+        queueMax: queueMax(),
+        maxSessions: maxSessions(),
+        turnAddLimit: turnAddLimit(),
+        chainGate: chainGate(),
+        archiveAfterDays: archiveDays(),
+        retentionDays: retentionDays(),
       });
       toast("Settings saved", "success");
       close();
@@ -842,56 +959,30 @@ export function SettingsDialog(): JSX.Element {
           <Icon.close size={14} />
         </button>
       </header>
-      <div class="dialog-body settings-form">
+      <div class="dialog-body settings-form settings-split">
+        <nav class="settings-nav" aria-label="Settings categories">
+          <For each={SETTINGS_CATS}>
+            {([key, label]) => (
+              <button class={`settings-nav-item${cat() === key ? " active" : ""}`} onClick={() => setCat(key)}>
+                {label}
+              </button>
+            )}
+          </For>
+        </nav>
+        <div class="settings-pane">
         <Show when={loaded()} fallback={<div class="skeleton" style={{ height: "120px" }} />}>
+          <Show when={cat() === "summaries"}>
           <div class="settings-heading">Summaries</div>
           <div class="field">
-            <span class="field-label">
-              Model
-              <span class="spacer" />
-              <Show when={modelsState() !== "loading"}>
-                <button class="link-btn" onClick={() => void loadModels(true)}>
-                  Refresh
-                </button>
-              </Show>
-            </span>
-            <Show
-              when={modelsState() === "loading"}
-              fallback={
-                <>
-                  <Show when={modelList().length > 12}>
-                    <input
-                      class="input"
-                      placeholder="Filter models…"
-                      aria-label="Filter models"
-                      value={filter()}
-                      onInput={(event) => setFilter(event.currentTarget.value)}
-                      ref={(el) => queueMicrotask(() => el.focus({ preventScroll: true }))}
-                    />
-                  </Show>
-                  <select
-                    class="input"
-                    aria-label="Summary model"
-                    value={model()}
-                    onChange={(event) => setModel(event.currentTarget.value)}
-                  >
-                    <option value="">pi default</option>
-                    <For each={grouped()}>
-                      {([provider, models]) => (
-                        <optgroup label={provider}>
-                          <For each={models}>{(entry) => <option value={entry}>{entry}</option>}</For>
-                        </optgroup>
-                      )}
-                    </For>
-                  </select>
-                  <Show when={modelsState() === "error"}>
-                    <span class="field-hint" role="alert">{modelsError()}</span>
-                  </Show>
-                </>
-              }
-            >
-              <span class="field-hint">Loading your models…</span>
-            </Show>
+            <span class="field-label">Model</span>
+            <ModelCombobox
+              models={modelList()}
+              state={modelsState()}
+              error={modelsError()}
+              value={model()}
+              onChange={setModel}
+              onRefresh={() => void loadModels(true)}
+            />
           </div>
           <div class="field">
             <span class="field-label">
@@ -931,7 +1022,82 @@ export function SettingsDialog(): JSX.Element {
             </Show>
             <span class="field-hint">Plain-language style rules are always applied.</span>
           </div>
+          </Show>
+
+          <Show when={cat() === "defaults"}>
+          <div class="settings-heading">Task defaults</div>
+          <div class="field">
+            <span class="field-label">Default strategy</span>
+            <select class="input" aria-label="Default strategy" value={strategy()} onChange={(e) => setStrategy(e.currentTarget.value)}>
+              <option value="auto">Auto (jev decides)</option>
+              <option value="none">none (one-pass change)</option>
+              <option value="goal">goal (iterate until done)</option>
+              <option value="ralph">ralph (checklist chores)</option>
+              <option value="swarm">swarm (parallel parts)</option>
+              <option value="graph">graph (dependent steps)</option>
+            </select>
+            <span class="field-hint">Strategy for tasks that carry no --strategy label.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Plan first by default</span>
+            <select class="input" aria-label="Plan first by default" value={plan() ? "yes" : "no"} onChange={(e) => setPlan(e.currentTarget.value === "yes")}>
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+            <span class="field-hint">A task label (--plan yes|no) always wins over this.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Blocking</span>
+            <select class="input" aria-label="Blocking" value={blocking()} onChange={(e) => setBlocking(e.currentTarget.value)}>
+              <option value="avoid">Avoid — work autonomously, note assumptions</option>
+              <option value="ask">Ask — block the task to ask the user</option>
+            </select>
+            <span class="field-hint">What a confused runner task may do.</span>
+          </div>
+          </Show>
+
+          <Show when={cat() === "runner"}>
+          <div class="settings-heading">Runner</div>
+          <div class="field">
+            <span class="field-label">Queue limit</span>
+            <input class="input" type="number" min="0" aria-label="Queue limit" value={queueMax()} onInput={(e) => setQueueMax(Math.max(0, Number(e.currentTarget.value) || 0))} />
+            <span class="field-hint">Tasks a session may queue — 0 = unlimited.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Sessions at once</span>
+            <input class="input" type="number" min="1" aria-label="Sessions at once" value={maxSessions()} onInput={(e) => setMaxSessions(Math.max(1, Number(e.currentTarget.value) || 1))} />
+            <span class="field-hint">Distinct sessions holding in_progress tasks per project.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">New tasks per turn</span>
+            <input class="input" type="number" min="0" aria-label="New tasks per turn" value={turnAddLimit()} onInput={(e) => setTurnAddLimit(Math.max(0, Number(e.currentTarget.value) || 0))} />
+            <span class="field-hint">`add` calls per -do turn or runner task — 0 = unlimited.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Chain gate</span>
+            <select class="input" aria-label="Chain gate" value={chainGate()} onChange={(e) => setChainGate(e.currentTarget.value)}>
+              <option value="in_review">in_review</option>
+              <option value="done">done</option>
+            </select>
+            <span class="field-hint">When a dependency counts as satisfied.</span>
+          </div>
+          </Show>
+
+          <Show when={cat() === "archive"}>
+          <div class="settings-heading">Archive</div>
+          <div class="field">
+            <span class="field-label">Auto-archive after (days)</span>
+            <input class="input" type="number" min="0" aria-label="Auto-archive after days" value={archiveDays()} onInput={(e) => setArchiveDays(Math.max(0, Number(e.currentTarget.value) || 0))} />
+            <span class="field-hint">Done/cancelled tasks leave the board — 0 = off.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Cold storage after (days)</span>
+            <input class="input" type="number" min="0" aria-label="Cold storage after days" value={retentionDays()} onInput={(e) => setRetentionDays(Math.max(0, Number(e.currentTarget.value) || 0))} />
+            <span class="field-hint">Archived tasks move to cold storage — 0 = off.</span>
+          </div>
+          </Show>
         </Show>
+        </div>
       </div>
       <footer class="dialog-foot">
         <span class="spacer" />

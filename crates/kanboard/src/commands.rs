@@ -1603,3 +1603,20 @@ pub fn archive_lane(
     drop(lock);
     Ok(json!({ "archived": archived, "skipped": skipped }))
 }
+
+/// Move every `in_review` task to `done` in one bulk pass (the review lane's
+/// "Done all" button). Actor `user` satisfies the transition table.
+pub fn review_done(layout: &Layout, project: Project, now: DateTime<Utc>) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    let mut moved = Vec::new();
+    for task in tasks.iter_mut().filter(|task| task.status == Status::InReview) {
+        task.status = Status::Done;
+        task.push_activity(now, Actor::User, "moved in_review → done (bulk)".to_string());
+        board.save(task)?;
+        moved.push(task.id.clone());
+    }
+    drop(lock);
+    Ok(json!({ "moved": moved }))
+}

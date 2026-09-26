@@ -283,6 +283,7 @@ fn router(state: Arc<AppState>) -> axum::Router {
             post(api::archive_summary),
         )
         .route("/api/projects/{slug}/archive-lane", post(api::archive_lane))
+        .route("/api/projects/{slug}/done-lane", post(api::done_lane))
         .route("/api/models", get(api::models))
         .route("/api/rules", get(api::rules))
         .route("/api/projects/{slug}/tasks", get(api::tasks))

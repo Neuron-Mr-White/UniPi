@@ -593,7 +593,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   disabled={busy()}
                   onClick={p.toggle}
                 >
-                  {props.task.plan === undefined ? "Auto (jev)" : props.task.plan ? "Yes" : "No"}
+                  {props.task.plan === undefined ? "Default" : props.task.plan ? "Yes" : "No"}
                   <Icon.chevronDown size={12} class="caret" />
                 </button>
               )}

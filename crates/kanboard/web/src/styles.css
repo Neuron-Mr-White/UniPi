@@ -2890,3 +2890,16 @@ button.prop-value:hover:not(:disabled) {
   padding-bottom: 4px;
   border-bottom: 1px solid var(--hairline);
 }
+
+/* settings categories + model combobox */
+.settings-split { display: flex; gap: 0; padding: 0; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; border-right: 1px solid var(--line); min-width: 118px; }
+.settings-nav-item { text-align: left; padding: 5px 9px; border-radius: 6px; font-size: 12px; color: var(--muted); background: none; border: none; cursor: pointer; }
+.settings-nav-item:hover { background: var(--hover, rgba(128,128,128,.12)); color: var(--text); }
+.settings-nav-item.active { background: var(--accent-soft, rgba(120,150,255,.14)); color: var(--text); font-weight: 600; }
+.settings-pane { flex: 1; padding: 12px; min-width: 0; }
+button.input.combo-trigger { display: flex; align-items: center; gap: 6px; width: 100%; justify-content: space-between; text-align: left; cursor: pointer; color: var(--text); font-weight: 400; }
+.combo-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-value.dim { color: var(--muted); }
+.combo-trigger .caret { flex: none; color: var(--muted); opacity: 1; }
+.combo-list { max-height: 260px; overflow-y: auto; }

@@ -66,3 +66,170 @@ pub fn save(layout: &Layout, settings: &PanelSettings) -> Result<()> {
         &format!("{}\n", serde_json::to_string_pretty(settings)?),
     )
 }
+
+// ── pi-side kanboard settings (the unipi "kanboard" namespace) ────────────
+//
+// The board's Task defaults / Runner / Archive keys live in the same file
+// unipi's settings engine uses for the global layer:
+// `$HOME/.unipi/config/kanboard/config.json` (a flat JSON object; other
+// modules' keys must be preserved on write).
+
+pub const PI_SETTING_KEYS: &[&str] = &[
+    "defaultStrategy",
+    "defaultPlan",
+    "blocking",
+    "queueMax",
+    "maxSessions",
+    "turnAddLimit",
+    "chainGate",
+    "archiveAfterDays",
+    "retentionDays",
+];
+
+pub const STRATEGIES: &[&str] = &["auto", "none", "goal", "ralph", "swarm", "graph"];
+pub const BLOCKING: &[&str] = &["avoid", "ask"];
+pub const CHAIN_GATES: &[&str] = &["in_review", "done"];
+
+/// `$HOME/.unipi/config/kanboard/config.json` (pi's global settings layer).
+/// UNIPI_KANBOARD_HOME is the data dir, not the config home — it is NOT used
+/// here so the file lands where the extension actually reads it.
+pub fn pi_settings_path() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| {
+        PathBuf::from(home)
+            .join(".unipi")
+            .join("config")
+            .join("kanboard")
+            .join("config.json")
+    })
+}
+
+/// Read the raw JSON object (absent/corrupt → empty object).
+pub fn load_pi_settings() -> serde_json::Map<String, serde_json::Value> {
+    pi_settings_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+/// Merge-write: only the keys the patch carries change; others survive.
+/// tmp+rename via the crate's write_atomic.
+pub fn patch_pi_settings(patch: &serde_json::Map<String, serde_json::Value>) -> Result<()> {
+    let path = pi_settings_path().ok_or_else(|| crate::error::Error::usage("HOME is not set"))?;
+    let mut merged = load_pi_settings();
+    for (key, value) in patch {
+        merged.insert(key.clone(), value.clone());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    write_atomic(&path, &format!("{}\n", serde_json::to_string_pretty(&merged)?))
+}
+
+/// Effective values = stored ⊕ defaults (what GET reports back).
+pub fn effective_pi_settings() -> serde_json::Map<String, serde_json::Value> {
+    let stored = load_pi_settings();
+    let mut out = serde_json::Map::new();
+    out.insert(
+        "defaultStrategy".to_string(),
+        stored
+            .get("defaultStrategy")
+            .cloned()
+            .filter(|v| v.as_str().is_some_and(|s| STRATEGIES.contains(&s)))
+            .unwrap_or_else(|| "auto".into()),
+    );
+    out.insert(
+        "defaultPlan".to_string(),
+        serde_json::Value::Bool(stored.get("defaultPlan").and_then(|v| v.as_bool()).unwrap_or(false)),
+    );
+    out.insert(
+        "blocking".to_string(),
+        stored
+            .get("blocking")
+            .cloned()
+            .filter(|v| v.as_str().is_some_and(|s| BLOCKING.contains(&s)))
+            .unwrap_or_else(|| "avoid".into()),
+    );
+    out.insert(
+        "queueMax".to_string(),
+        serde_json::Value::from(stored.get("queueMax").and_then(|v| v.as_u64()).unwrap_or(10)),
+    );
+    out.insert(
+        "maxSessions".to_string(),
+        serde_json::Value::from(stored.get("maxSessions").and_then(|v| v.as_u64()).unwrap_or(2).max(1)),
+    );
+    out.insert(
+        "turnAddLimit".to_string(),
+        serde_json::Value::from(stored.get("turnAddLimit").and_then(|v| v.as_u64()).unwrap_or(20)),
+    );
+    out.insert(
+        "chainGate".to_string(),
+        stored
+            .get("chainGate")
+            .cloned()
+            .filter(|v| v.as_str().is_some_and(|s| CHAIN_GATES.contains(&s)))
+            .unwrap_or_else(|| "in_review".into()),
+    );
+    out.insert(
+        "archiveAfterDays".to_string(),
+        serde_json::Value::from(stored.get("archiveAfterDays").and_then(|v| v.as_u64()).unwrap_or(0)),
+    );
+    out.insert(
+        "retentionDays".to_string(),
+        serde_json::Value::from(stored.get("retentionDays").and_then(|v| v.as_u64()).unwrap_or(90)),
+    );
+    out
+}
+
+/// Validate a PUT patch into the keys that may be written (enum/number ranges).
+pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> std::result::Result<serde_json::Map<String, serde_json::Value>, String> {
+    let mut out = serde_json::Map::new();
+    for (key, value) in patch {
+        match key.as_str() {
+            "defaultStrategy" => {
+                let v = value.as_str().ok_or("defaultStrategy must be a string")?;
+                if !STRATEGIES.contains(&v) {
+                    return Err(format!("unknown defaultStrategy {v:?}"));
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            "blocking" => {
+                let v = value.as_str().ok_or("blocking must be a string")?;
+                if !BLOCKING.contains(&v) {
+                    return Err(format!("unknown blocking {v:?}"));
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            "chainGate" => {
+                let v = value.as_str().ok_or("chainGate must be a string")?;
+                if !CHAIN_GATES.contains(&v) {
+                    return Err(format!("unknown chainGate {v:?}"));
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            "defaultPlan" => {
+                if !value.is_boolean() {
+                    return Err("defaultPlan must be a boolean".to_string());
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            "queueMax" | "turnAddLimit" | "archiveAfterDays" | "retentionDays" => {
+                if !value.is_u64() {
+                    return Err(format!("{key} must be a non-negative integer"));
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            "maxSessions" => {
+                let v = value.as_u64().ok_or("maxSessions must be a non-negative integer")?;
+                if v < 1 {
+                    return Err("maxSessions must be ≥ 1".to_string());
+                }
+                out.insert(key.clone(), value.clone());
+            }
+            // Legacy key written by older daemons — ignored, not rejected.
+            "agentCommand" => {}
+            other => return Err(format!("unknown settings key {other:?}")),
+        }
+    }
+    Ok(out)
+}

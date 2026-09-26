@@ -673,12 +673,28 @@ not-a-table
 
 fn settings_payload(state: &AppState) -> Value {
     let settings = super::settings::load(&state.layout);
+    let pi = super::settings::effective_pi_settings();
     json!({
         "piCommand": settings.pi_command,
         "models": settings.models,
         "summaryModel": settings.summary_model,
         "summaryInstruction": settings.effective_instruction(),
         "defaultSummaryInstruction": super::settings::DEFAULT_SUMMARY_INSTRUCTION,
+        "taskDefaults": {
+            "defaultStrategy": pi.get("defaultStrategy"),
+            "defaultPlan": pi.get("defaultPlan"),
+            "blocking": pi.get("blocking"),
+        },
+        "runner": {
+            "queueMax": pi.get("queueMax"),
+            "maxSessions": pi.get("maxSessions"),
+            "turnAddLimit": pi.get("turnAddLimit"),
+            "chainGate": pi.get("chainGate"),
+        },
+        "archive": {
+            "archiveAfterDays": pi.get("archiveAfterDays"),
+            "retentionDays": pi.get("retentionDays"),
+        },
     })
 }
 
@@ -696,6 +712,9 @@ pub struct SettingsPatch {
     pub summary_model: Option<String>,
     #[serde(rename = "summaryInstruction")]
     pub summary_instruction: Option<String>,
+    /// Flat patch of pi-side kanboard settings (validated per key).
+    #[serde(flatten)]
+    pub pi: serde_json::Map<String, serde_json::Value>,
 }
 
 /// `PUT /api/settings` — partial patch. `summaryModel` is whitelisted against
@@ -727,6 +746,15 @@ pub async fn put_settings(
     if let Some(instruction) = patch.summary_instruction {
         // Blank means "use the default" — stored as written, resolved on read.
         settings.summary_instruction = instruction;
+    }
+    let pi_patch = match super::settings::validate_pi_patch(&patch.pi) {
+        Ok(p) => p,
+        Err(message) => return err(StatusCode::BAD_REQUEST, &Error::usage(message)),
+    };
+    if !pi_patch.is_empty()
+        && let Err(error) = super::settings::patch_pi_settings(&pi_patch)
+    {
+        return err(StatusCode::INTERNAL_SERVER_ERROR, &error);
     }
     match super::settings::save(&state.layout, &settings) {
         Ok(()) => ok(settings_payload(&state)),
@@ -1189,6 +1217,25 @@ pub async fn archive_lane(
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
     match commands::archive_lane(&state.layout, project, status, Utc::now()) {
+        Ok(payload) => {
+            state.bump(&slug);
+            ok(payload)
+        }
+        Err(error) => err(StatusCode::BAD_REQUEST, &error),
+    }
+}
+
+/// `POST /api/projects/{slug}/done-lane` — one-click "Done all" on In Review.
+pub async fn done_lane(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+) -> ApiResponse {
+    state.touch();
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    match commands::review_done(&state.layout, project, Utc::now()) {
         Ok(payload) => {
             state.bump(&slug);
             ok(payload)
