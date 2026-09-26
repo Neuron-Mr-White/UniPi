@@ -1,6 +1,6 @@
 # v3 Tasks
 
-Planning reference for the v3 rework. Branch: `v3` · Version: `3.0.0-alpha.0` · Created: 2026-09-20.
+Planning reference for the v3 rework. Branch: `v3` · Version: `3.0.0-alpha.2` · Created: 2026-09-20.
 
 Base analysis: minimax-code harness comparison (loop machinery, goal continuation, provider wire fixes) + pi 0.86 SDK capabilities (cache warming, per-model compaction, deferred tool loading).
 
@@ -128,3 +128,4 @@ Removals and recreations are green-lit to start immediately.
 - [ ] pi 0.86 ownership audit: prompt-cache warming, transcript-aware prompt/tool updates, per-model compaction, deferred tool loading — delegate to pi vs keep owning
 - [ ] Update the full-release chore package inventory when milestone/trajectory/ralph leave and long-horizon arrives
 - [x] Publish first `3.0.0-alpha.N` to npm under the `alpha` dist-tag — `3.0.0-alpha.0` published 2026-09-25 (all workspaces + root + 5 kanboard platform packages; `latest` stays 2.20.5)
+- [x] `3.0.0-alpha.1` (memory rewrite, pi ^0.87.1, archive-not-purge state migration) and `3.0.0-alpha.2` (kanboard binary version, sandboxed tests, migration counter) published 2026-09-26 under `alpha`
