@@ -26,6 +26,8 @@ be on `PATH`):
 <binary> --actor agent --project <slug> attach <ID> <file> --note "<what it shows>"
 <binary> --actor agent --project <slug> attachments <ID>
 <binary> --actor agent --project <slug> edit <ID> --title|--body|--labels …   # only tasks you created, while in backlog/todo
+<binary> --actor agent --project <slug> edit <ID> --strategy none|goal|ralph|swarm|graph|auto  # how the runner works it (auto/unset = jev decides)
+<binary> --actor agent --project <slug> edit <ID> --plan yes|no|auto        # plan+approve first (auto/unset = jev decides)
 <binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>"
 <binary> --actor agent --project <slug> link <ID> --after <DEP>
 <binary> --actor agent --project <slug> unlink <ID> --after <DEP>
@@ -35,7 +37,10 @@ be on `PATH`):
 ```
 
 `--json` gives machine-readable output for every subcommand (task objects carry
-`ready`, `waitingFor`, `depsStatus` and `staleness`).
+`ready`, `waitingFor`, `depsStatus`, `staleness`, `strategy` and `plan`).
+
+`list`/`search` show a one-line body excerpt; read a task's full description with
+`show <ID>` before editing, linking or queueing it.
 
 `settings show` reads the pi runtime and effective limits; `settings set`
 and `rotate-token` are user-only — the agent is refused.

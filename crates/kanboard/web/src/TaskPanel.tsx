@@ -542,6 +542,80 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
             </Popover>
           </div>
 
+          <div class="prop">
+            <span class="prop-label">Strategy</span>
+            <Popover
+              width={200}
+              label="Work strategy"
+              trigger={(p) => (
+                <button
+                  class={`prop-value${!props.task.strategy ? " muted" : ""}`}
+                  id="strategy"
+                  ref={p.ref}
+                  aria-expanded={p.open}
+                  disabled={busy()}
+                  onClick={p.toggle}
+                >
+                  {props.task.strategy ?? "Auto (jev)"}
+                  <Icon.chevronDown size={12} class="caret" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <For each={["auto", "none", "goal", "ralph", "swarm", "graph"]}>
+                  {(strategy) => (
+                    <MenuItem
+                      role="option"
+                      label={strategy === "auto" ? "Auto (jev)" : strategy}
+                      checked={(props.task.strategy ?? "auto") === strategy}
+                      onSelect={() => {
+                        close();
+                        void run(() => api.edit(target(), props.task.id, { strategy }));
+                      }}
+                    />
+                  )}
+                </For>
+              )}
+            </Popover>
+          </div>
+
+          <div class="prop">
+            <span class="prop-label">Plan first</span>
+            <Popover
+              width={200}
+              label="Plan first"
+              trigger={(p) => (
+                <button
+                  class={`prop-value${props.task.plan === undefined ? " muted" : ""}`}
+                  id="plan"
+                  ref={p.ref}
+                  aria-expanded={p.open}
+                  disabled={busy()}
+                  onClick={p.toggle}
+                >
+                  {props.task.plan === undefined ? "Auto (jev)" : props.task.plan ? "Yes" : "No"}
+                  <Icon.chevronDown size={12} class="caret" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <For each={[["auto", "Auto (jev)"], ["yes", "Yes"], ["no", "No"]]}>
+                  {([value, label]) => (
+                    <MenuItem
+                      role="option"
+                      label={label}
+                      checked={(props.task.plan === undefined ? "auto" : props.task.plan ? "yes" : "no") === value}
+                      onSelect={() => {
+                        close();
+                        void run(() => api.edit(target(), props.task.id, { plan: value }));
+                      }}
+                    />
+                  )}
+                </For>
+              )}
+            </Popover>
+          </div>
+
           <div class="rail-sep" />
           <div class="rail-title">Runs after</div>
           <Show when={(props.task.lockedBy ?? []).length > 0}>

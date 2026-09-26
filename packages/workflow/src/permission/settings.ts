@@ -42,9 +42,18 @@ export const PERMISSION_SECTIONS: SettingsSection[] = [
       {
         key: "mode",
         type: "enum",
-        label: "Mode",
+        label: "Mode (this project)",
         options: MODE_OPTIONS.map((o) => ({ ...o })),
-        description: "Alt+M cycles · auto lets jev decide ambiguous bash",
+        clearable: true,
+        description: "Alt+M cycles · use-default clears the project mode",
+      },
+      {
+        key: "mode",
+        type: "enum",
+        label: "Default mode (all projects)",
+        scope: "global",
+        options: MODE_OPTIONS.map((o) => ({ ...o })),
+        description: "Fallback mode for projects that set none",
       },
       {
         key: "jevJudge",

@@ -351,3 +351,43 @@ fn multi_line_notes_with_blank_lines_round_trip() {
     assert!(problems.is_empty(), "{problems:?}");
     assert_eq!(format::render(&again.unwrap()), round_tripped);
 }
+
+#[test]
+fn strategy_and_plan_round_trip_and_back_compat() {
+    // New fields parse + render; files without them load as None.
+    let (task, problems) = kanboard::format::parse(
+        "T-1.md",
+        "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\nstrategy: swarm\nplan: true\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\n---\n\nBody line one\n",
+    );
+    let task = task.unwrap();
+    assert!(problems.is_empty());
+    assert_eq!(task.strategy, Some(kanboard::model::Strategy::Swarm));
+    assert_eq!(task.plan, Some(true));
+    let rendered = kanboard::format::render(&task);
+    assert!(rendered.contains("strategy: swarm"));
+    assert!(rendered.contains("plan: true"));
+
+    // Old file without the fields → None, no problems.
+    let (task, problems) = kanboard::format::parse(
+        "T-1.md",
+        "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\nrun:\n  session: s1\n  pid: 1\n  host: h\n  mode: direct\n  started: 2026-01-01T00:00:00Z\n---\n\nBody\n",
+    );
+    let task = task.unwrap();
+    assert_eq!(task.strategy, None);
+    assert_eq!(task.plan, None);
+    // run.mode "direct" parses via the alias → RunMode::None
+    assert_eq!(task.run.unwrap().mode.as_str(), "none");
+}
+
+#[test]
+fn strategy_edit_cli_parses_and_clears() {
+    assert_eq!(
+        kanboard::cli::parse_strategy_label("goal").unwrap(),
+        Some(kanboard::model::Strategy::Goal)
+    );
+    assert_eq!(kanboard::cli::parse_strategy_label("auto").unwrap(), None);
+    assert!(kanboard::cli::parse_strategy_label("bogus").is_err());
+    assert_eq!(kanboard::cli::parse_plan_flag("yes").unwrap(), Some(true));
+    assert_eq!(kanboard::cli::parse_plan_edit("auto").unwrap(), None);
+    assert!(kanboard::cli::parse_plan_flag("maybe").is_err());
+}

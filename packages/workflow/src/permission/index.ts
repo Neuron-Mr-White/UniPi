@@ -12,6 +12,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+  settingsLayers,
   UNIPI_EVENTS,
   askJev,
   emitEvent,
@@ -171,9 +172,13 @@ export function registerPermissionModes(pi: ExtensionAPI, controller: Permission
     },
     handler: async (args, ctx) => {
       const requested = (args ?? "").trim().toLowerCase();
-      if (!requested) {
+      if (!requested || requested === "status") {
         const current = controller.mode(ctx.cwd);
-        ctx.ui.notify(`Permission mode: ${current}`, "info");
+        const layers = settingsLayers("permission", ctx.cwd);
+        ctx.ui.notify(
+          `Permission mode: ${current} (layers: ${[layers.project && "project", layers.global && "global"].filter(Boolean).join(" + ") || "defaults"})`,
+          "info",
+        );
         return;
       }
       if (!MODES.includes(requested as PermissionMode)) {

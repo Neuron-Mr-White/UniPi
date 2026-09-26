@@ -17,7 +17,7 @@ fn claim(fixture: &Fixture, session: &str, pid: u32) -> Result<Value, kanboard::
         session,
         pid,
         host: &host,
-        mode: kanboard::model::RunMode::Direct,
+        mode: kanboard::model::RunMode::None,
         id: None,
     };
     commands::claim_next(
@@ -40,7 +40,7 @@ fn claim_id(
         session,
         pid,
         host: &host,
-        mode: kanboard::model::RunMode::Direct,
+        mode: kanboard::model::RunMode::None,
         id: Some(id),
     };
     commands::claim_next(
@@ -116,6 +116,8 @@ fn the_session_cap_is_per_project() {
         Priority::None,
         &[],
         &[],
+        None,
+        None,
     )
     .unwrap();
     let host = commands::hostname();
@@ -123,7 +125,7 @@ fn the_session_cap_is_per_project() {
         session: "s3",
         pid,
         host: &host,
-        mode: kanboard::model::RunMode::Direct,
+        mode: kanboard::model::RunMode::None,
         id: None,
     };
     let value = commands::claim_next(
@@ -151,7 +153,7 @@ fn claim_reaps_dead_sessions_and_leaves_foreign_hosts_alone() {
             session: "elsewhere",
             pid: 999_998,
             host: "not-this-host",
-            mode: kanboard::model::RunMode::Direct,
+            mode: kanboard::model::RunMode::None,
             id: Some(&foreign.id),
         },
         fixture.common.now,
@@ -325,6 +327,8 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &user_made.id,
         EditArgs {
+            strategy: None,
+            plan: None,
             title: Some("new title"),
             body: None,
             priority: None,
@@ -346,6 +350,8 @@ fn agents_edit_only_their_own_drafts() {
             Priority::None,
             &[],
             &[],
+            None,
+            None,
         )
         .unwrap(),
     );
@@ -355,6 +361,8 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &mine.id,
         EditArgs {
+            strategy: None,
+            plan: None,
             title: None,
             body: Some("revised"),
             priority: None,
@@ -376,6 +384,8 @@ fn agents_edit_only_their_own_drafts() {
             Priority::None,
             &[],
             &[],
+            None,
+            None,
         )
         .unwrap(),
     );
@@ -396,6 +406,8 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &reviewed.id,
         EditArgs {
+            strategy: None,
+            plan: None,
             title: Some("late edit"),
             body: None,
             priority: None,
@@ -478,6 +490,8 @@ fn activity_entries_carry_the_session_tag() {
         Priority::None,
         &[],
         &[],
+        None,
+        None,
     )
     .unwrap();
     let id = id_of(&value);
@@ -636,6 +650,8 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         &[shot.clone(), doc],
+        None,
+        None,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();
@@ -654,6 +670,8 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         std::slice::from_ref(&log),
+        None,
+        None,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();

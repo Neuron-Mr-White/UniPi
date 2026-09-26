@@ -90,12 +90,14 @@ test("filterPayloadTools preserves order and unknown shapes pass through", () =>
 
 test("fragment is deterministic and carries mode + owner status", () => {
   const { gate, owner, dir } = harness();
-  const state = { mode: "goal" as const, source: "default" as const };
+  const state = { mode: "none" as const, source: "default" as const };
   const a = renderModeFragment(state);
   const b = renderModeFragment(state);
   assert.equal(a, b);
-  assert.match(a, /<long-horizon mode="goal" source="default">/);
-  assert.match(a, /create_goal/);
+  assert.match(a, /<long-horizon mode="none" source="default">/);
+  // none lists no control tools; goal mode does.
+  assert.doesNotMatch(a, /create_goal/);
+  assert.match(renderModeFragment({ mode: "goal", source: "default" }), /create_goal/);
 
   owner.activate("goal", "all tests pass");
   owner.suspend("paused(superseded_by:swarm)");
@@ -119,7 +121,7 @@ test("explicit override beats owner, parks it, and is consumed once", async () =
   assert.deepEqual(first, { mode: "swarm", source: "explicit" });
   assert.equal(owner.getParked()?.kind, "goal"); // suspend-and-switch
   const second = await gate.resolveForTurn("another message");
-  assert.equal(second.mode, "goal"); // owner parked → default mode (judge off)
+  assert.equal(second.mode, "none"); // owner parked → default mode (judge off)
   assert.equal(second.source, "default");
   rmSync(dir, { recursive: true, force: true });
 });
@@ -154,10 +156,10 @@ test("badge prints on mode transitions only, not every turn", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   gate.register(pi as any);
 
-  await pi.fire("hi");        // default mode (goal): first badge → show once
+  await pi.fire("hi");        // default mode (none): first badge → show once
   assert.equal(appended.length, 1);
-  await pi.fire("still hi");  // same mode (goal) → silent
-  await pi.fire("more");      // same mode (goal) → silent
+  await pi.fire("still hi");  // same mode (none) → silent
+  await pi.fire("more");      // same mode (none) → silent
   assert.equal(appended.length, 1, "no reprint while mode is unchanged");
 
   // Transition to a different mode via an active swarm owner.

@@ -60,6 +60,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             status,
             priority,
             after,
+            strategy,
+            plan,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let status = status
@@ -77,6 +79,16 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 })?),
                 None => read_body(body.as_deref())?,
             };
+            let strategy = strategy
+                .as_deref()
+                .map(crate::cli::parse_strategy_label)
+                .transpose()?
+                .flatten();
+            let plan = plan
+                .as_deref()
+                .map(crate::cli::parse_plan_flag)
+                .transpose()?
+                .flatten();
             commands::add(
                 &layout,
                 project,
@@ -87,6 +99,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 priority,
                 after,
                 attach,
+                strategy,
+                plan,
             )
         }
 
@@ -163,6 +177,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             body,
             priority,
             labels,
+            strategy,
+            plan,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let body = read_body(body.as_deref())?;
@@ -176,6 +192,15 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     .filter(|item| !item.is_empty())
                     .collect::<Vec<String>>()
             });
+            // edit: "auto" clears; a value sets.
+            let strategy = strategy
+                .as_deref()
+                .map(crate::cli::parse_strategy_edit)
+                .transpose()?;
+            let plan = plan
+                .as_deref()
+                .map(crate::cli::parse_plan_edit)
+                .transpose()?;
             commands::edit(
                 &layout,
                 project,
@@ -186,6 +211,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     body: body.as_deref(),
                     priority,
                     labels,
+                    strategy,
+                    plan,
                 },
             )
         }
@@ -461,6 +488,36 @@ fn ids(value: &Value) -> String {
 }
 
 /// One-line (or few-line) human summary of a command's payload.
+fn indent_block(text: &str, indent: usize) -> String {
+    let pad = " ".repeat(indent);
+    text.lines().map(|l| format!("{pad}{l}")).collect::<Vec<_>>().join("\n")
+}
+
+/// `[strategy]`/`[plan]` tags for list/show text output (empty when unset).
+fn strategy_plan_tag(task: &Value) -> String {
+    let strategy = task.get("strategy").and_then(|v| v.as_str()).unwrap_or("");
+    let plan = task.get("plan").and_then(|v| v.as_bool());
+    let mut tag = String::new();
+    if !strategy.is_empty() {
+        tag.push_str(&format!(" [{strategy}]"));
+    }
+    if plan == Some(true) {
+        tag.push_str(" [plan]");
+    }
+    tag
+}
+
+/// First non-empty body line, ≤100 chars, indented — the `show` excerpt.
+fn body_excerpt(task: &Value) -> String {
+    let body = task.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    let line = body.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    if line.is_empty() {
+        return String::new();
+    }
+    let trimmed: String = line.chars().take(100).collect();
+    format!("\n    {}", trimmed)
+}
+
 pub fn human(cli: &Cli, payload: &Value) -> String {
     match &cli.command {
         Command::Project(ProjectCommand::Add(args)) => format!(
@@ -531,10 +588,11 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     let ready = field(task, "ready").as_bool().unwrap_or(false);
                     let waiting = ids(field(task, "waitingFor"));
                     format!(
-                        "{}  [{}] {}{}{}",
+                        "{}  [{}] {}{}{}{}{}",
                         text(task, "id"),
                         text(task, "status"),
                         text(task, "title"),
+                        strategy_plan_tag(task),
                         if field(task, "priority") == &json!("none") {
                             String::new()
                         } else {
@@ -544,7 +602,8 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                             format!("  waiting on {waiting}")
                         } else {
                             String::new()
-                        }
+                        },
+                        body_excerpt(task)
                     )
                 })
                 .collect::<Vec<_>>();
@@ -562,7 +621,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             let status = text(payload, "status");
             let deps = ids(field(payload, "deps"));
             let mut out = format!(
-                "{} [{}] {}\n  priority: {}  order: {}  created: {}{}",
+                "{} [{}] {}\n  priority: {}  order: {}  created: {}{}{}",
                 text(payload, "id"),
                 status,
                 text(payload, "title"),
@@ -573,8 +632,13 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     String::new()
                 } else {
                     format!("  deps: {deps}")
-                }
+                },
+                strategy_plan_tag(payload)
             );
+            let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if !body.is_empty() {
+                out.push_str(&format!("\n{}\n", indent_block(body, 2)));
+            }
             if let Some(run) = payload.get("run").filter(|value| !value.is_null()) {
                 out.push_str(&format!(
                     "\n  run: session {} pid {} on {} mode {} ({})",
@@ -846,10 +910,12 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 .iter()
                 .map(|task| {
                     format!(
-                        "{}  [{}] {}",
+                        "{}  [{}] {}{}{}",
                         text(task, "id"),
                         text(task, "status"),
-                        text(task, "title")
+                        text(task, "title"),
+                        strategy_plan_tag(task),
+                        body_excerpt(task)
                     )
                 })
                 .collect::<Vec<_>>()

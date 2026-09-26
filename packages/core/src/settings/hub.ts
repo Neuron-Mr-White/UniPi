@@ -66,6 +66,7 @@ import {
   getSettingsDefinition,
   listSettingsDefinitions,
   setSettings,
+  unsetSettings,
   settingsLayers,
   type SettingsScope,
 } from "./engine.js";
@@ -112,6 +113,20 @@ const bold = (t: string) => overlayTheme.bold(t);
  * Quick-cycle an enum to the NEXT LISTED option — `custom…` is never offered;
  * a custom (unlisted) value restarts at the first option.
  */
+/** Enum picker value for "use default" — clears the project key. */
+const USE_DEFAULT = "__unipi_use_default__";
+
+/** Enum options for the current scope: clearable fields add "use default" when
+ * writing the project scope. */
+function enumOptionsFor(field: SettingsField, projectScope: boolean): { value: string; label: string }[] {
+  if (field.type !== "enum") return [];
+  const opts = field.options.map(enumOption);
+  if (field.clearable === true && projectScope) {
+    opts.push({ value: USE_DEFAULT, label: "use default" });
+  }
+  return opts;
+}
+
 export function nextEnumValue(field: SettingsField, current: unknown): { value: unknown; label: string } | null {
   if (field.type !== "enum" || field.options.length === 0) return null;
   const opts = field.options.map(enumOption);
@@ -336,8 +351,10 @@ export class SettingsHub {
     const prev = getField(current, row.field.key);
     const next = setField(current, row.field.key, value);
     this.values.set(row.namespace, next);
-    setSettings(row.namespace, setField({}, row.field.key, value), this.scope, this.cwd);
-    this.history.push({ namespace: row.namespace, key: row.field.key, prev, scope: this.scope, label: row.label });
+    const scope = ("scope" in row.field ? row.field.scope : undefined) ?? this.scope;
+    if (value === USE_DEFAULT) unsetSettings(row.namespace, row.field.key, scope, this.cwd);
+    else setSettings(row.namespace, setField({}, row.field.key, value), scope, this.cwd);
+    this.history.push({ namespace: row.namespace, key: row.field.key, prev, scope, label: row.label });
     if (this.history.length > HISTORY_CAP) this.history.shift();
     this.onChanged?.(row.namespace);
   }
@@ -349,7 +366,8 @@ export class SettingsHub {
     if (!entry) return;
     const next = setField(this.valueOf(entry.namespace), entry.key, entry.prev);
     this.values.set(entry.namespace, next);
-    setSettings(entry.namespace, setField({}, entry.key, entry.prev), entry.scope, this.cwd);
+    if (entry.prev === undefined) unsetSettings(entry.namespace, entry.key, entry.scope, this.cwd);
+    else setSettings(entry.namespace, setField({}, entry.key, entry.prev), entry.scope, this.cwd);
     this.toast = `undo: ${entry.label}`;
     this.onChanged?.(entry.namespace);
   }
@@ -523,8 +541,13 @@ export class SettingsHub {
         // Quick action: boolean toggle + enum cycle only; everything else no-op.
         if (field.type === "boolean") this.applyChange(row, value !== true);
         else if (field.type === "enum") {
-          const next = nextEnumValue(field, value);
-          if (next) this.applyChange(row, next.value);
+          // For clearable fields in project scope, "use default" joins the cycle.
+          const opts = enumOptionsFor(field, this.scope === "project");
+          if (opts.length === 0) return;
+          const cur = String(value ?? "");
+          const idx = opts.findIndex((o) => o.value === cur);
+          const next = opts[idx === -1 ? 0 : (idx + 1) % opts.length]!;
+          this.applyChange(row, next.value);
         }
         return;
       }
@@ -662,7 +685,7 @@ export class SettingsHub {
   private openEnumList(row: Row): void {
     const field = row.field!;
     if (field.type !== "enum") return;
-    const opts = field.options.map(enumOption);
+    const opts = enumOptionsFor(field, this.scope === "project");
     const custom = field.allowCustom === true;
     const options = custom ? [...opts.map((o) => o.label), "custom…"] : opts.map((o) => o.label);
     const values: unknown[] = custom ? [...opts.map((o) => o.value), CUSTOM_VALUE] : opts.map((o) => o.value);

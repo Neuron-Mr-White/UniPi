@@ -66,7 +66,7 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
     timeoutMs: 0,
     apiKey: "",
   },
-  defaultMode: "goal",
+  defaultMode: "none",
   verifierModel: "",
 };
 

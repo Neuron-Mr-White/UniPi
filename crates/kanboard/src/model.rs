@@ -214,20 +214,84 @@ impl FromStr for Actor {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RunMode {
-    Direct,
-    Plan,
+pub enum Strategy {
+    None,
     Goal,
+    Ralph,
+    Swarm,
+    Graph,
 }
 
-impl RunMode {
-    pub const ALL: [RunMode; 3] = [RunMode::Direct, RunMode::Plan, RunMode::Goal];
+impl Strategy {
+    pub const ALL: [Strategy; 5] = [
+        Strategy::None,
+        Strategy::Goal,
+        Strategy::Ralph,
+        Strategy::Swarm,
+        Strategy::Graph,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            RunMode::Direct => "direct",
+            Strategy::None => "none",
+            Strategy::Goal => "goal",
+            Strategy::Ralph => "ralph",
+            Strategy::Swarm => "swarm",
+            Strategy::Graph => "graph",
+        }
+    }
+}
+
+impl fmt::Display for Strategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Strategy {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(Strategy::None),
+            "goal" => Ok(Strategy::Goal),
+            "ralph" => Ok(Strategy::Ralph),
+            "swarm" => Ok(Strategy::Swarm),
+            "graph" => Ok(Strategy::Graph),
+            other => Err(format!("unknown strategy {other:?} (none|goal|ralph|swarm|graph)")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunMode {
+    #[serde(alias = "direct")]
+    None,
+    Plan,
+    Goal,
+    Ralph,
+    Swarm,
+    Graph,
+}
+
+impl RunMode {
+    pub const ALL: [RunMode; 6] = [
+        RunMode::None,
+        RunMode::Plan,
+        RunMode::Goal,
+        RunMode::Ralph,
+        RunMode::Swarm,
+        RunMode::Graph,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RunMode::None => "none",
             RunMode::Plan => "plan",
             RunMode::Goal => "goal",
+            RunMode::Ralph => "ralph",
+            RunMode::Swarm => "swarm",
+            RunMode::Graph => "graph",
         }
     }
 }
@@ -242,12 +306,14 @@ impl FromStr for RunMode {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
+        // `direct` is the pre-CP3.5 name for `none` — kept for old files.
+        let value = if value == "direct" { "none" } else { value };
         RunMode::ALL
             .into_iter()
             .find(|mode| mode.as_str() == value)
             .ok_or_else(|| {
                 Error::usage(format!(
-                    "unknown mode \"{value}\" (expected direct|plan|goal)"
+                    "unknown mode \"{value}\" (expected none|plan|goal|ralph|swarm|graph)"
                 ))
             })
     }
@@ -365,6 +431,12 @@ pub struct Task {
     pub created: DateTime<Utc>,
     #[serde(serialize_with = "serialize_iso")]
     pub updated: DateTime<Utc>,
+    /// Labelled work strategy; unset = the runner's jev decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<Strategy>,
+    /// Labelled "plan first" flag; unset = the runner's jev decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Run>,
     /// Everything between the frontmatter and `## Activity`.
@@ -393,6 +465,8 @@ impl Task {
             labels: Vec::new(),
             created: now,
             updated: now,
+            strategy: None,
+            plan: None,
             run: None,
             body: String::new(),
             activity: Vec::new(),

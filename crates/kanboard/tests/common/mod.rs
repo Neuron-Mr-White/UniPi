@@ -60,6 +60,8 @@ impl Fixture {
             priority,
             after,
             &[],
+            None,
+            None,
         )
         .expect("add");
         task_from(&value)
@@ -100,7 +102,7 @@ impl Fixture {
             session,
             pid,
             host: &host,
-            mode: kanboard::model::RunMode::Direct,
+            mode: kanboard::model::RunMode::None,
             id: None,
         };
         commands::claim_next(

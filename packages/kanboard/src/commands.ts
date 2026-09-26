@@ -41,7 +41,7 @@ Priority -p: 1 none · 2 low · 3 medium · 4 high · 5 urgent`;
 
 export function doText(slug: string, cli: string, request: string, queueMax = 10): string {
   const limit = queueMax === 0 ? "Todo tasks" : `Todo tasks, at most ${queueMax}`;
-  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). Board writes are allowed until this turn ends. You can add tasks, move them between backlog and todo, link, order, note, and edit tasks you created. To have tasks worked, queue them in order with \`queue <IDs>\` (${limit}); the runner starts them one by one after this turn, so do not start the work yourself. If the request is unclear, ask me instead of guessing.
+  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). Board writes are allowed until this turn ends. You can add tasks, move them between backlog and todo, link, order, note, and edit tasks you created. To have tasks worked, queue them in order with \`queue <IDs>\` (${limit}); the runner starts them one by one after this turn, so do not start the work yourself. Read a task with \`show <ID>\` before editing, linking or queueing it — \`list\` only shows titles and a one-line excerpt. To choose how a task is worked, label it with \`edit <ID> --strategy none|goal|ralph|swarm|graph\` and \`--plan yes|no\`; leave it unset to let the runner decide. If the request is unclear, ask me instead of guessing.
 
 Request: ${request}`;
 }

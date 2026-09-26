@@ -333,7 +333,7 @@ describe("runner", { skip: !hasBinary }, () => {
     // Force goal mode by stubbing the jev answer through the mode chooser.
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ answers: { mode: { choice: "goal", confidence: 0.9 } } }), { status: 200 })) as never;
+      new Response(JSON.stringify({ answers: { strategy: { choice: "goal", confidence: 0.9 }, plan: { choice: "no", confidence: 0.9 } } }), { status: 200 })) as never;
     process.env.OPENROUTER_API_KEY = "test-key";
     process.env.UNIPI_KANBOARD_TEST_JE = "1";
     // long-horizon judge settings must look like a decisions model for askJev.
@@ -424,5 +424,129 @@ describe("queue drain order", { skip: !hasBinary }, () => {
     assert.ok(notes.some((m) => m.includes("queue waiting") && m.includes(waiting)), `waiting note: ${notes.join(" | ")}`);
     const queue2 = JSON.parse(execFileSync(debugBinary, ["queue", "--list", "--json"], { env, cwd: workspace, encoding: "utf-8" }));
     assert.deepEqual(queue2.queue, [waiting], "the not-ready entry stays queued");
+  });
+});
+
+// ── CP3.5: labelled strategies + plan ──────────────────────────────────────
+
+describe("strategy labels", { skip: !hasBinary }, () => {
+  let home: string;
+  let workspace: string;
+  let kind: ReturnType<typeof fakePi>;
+  let runner: ReturnType<typeof createRunner>;
+
+  function setup(): void {
+    home = mkdtempSync(join(tmpdir(), "kb-strat-"));
+    workspace = mkdtempSync(join(tmpdir(), "kb-stratws-"));
+    process.env.UNIPI_KANBOARD_HOME = home;
+    const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
+    execFileSync(debugBinary, ["project", "add", "--name", "Strat"], { env, cwd: workspace, encoding: "utf-8" });
+    resetCommandRunners();
+    kind = fakePi();
+    const cli = createCli({ path: debugBinary, source: "dev-build" }, env);
+    runner = createRunner({
+      pi: kind.pi as never,
+      cli,
+      project: () =>
+        JSON.parse(execFileSync(debugBinary, ["project", "show", "--json"], { env, cwd: workspace, encoding: "utf-8" })).project.slug,
+      cwd: workspace,
+      settings: () => ({ ...DEFAULT_SETTINGS }),
+      debug: () => undefined,
+    });
+  }
+
+  const addLabelled = (title: string, ...extra: string[]): string =>
+    JSON.parse(
+      execFileSync(debugBinary, ["add", title, "--status", "todo", ...extra, "--json"], {
+        env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+        cwd: workspace,
+        encoding: "utf-8",
+      }),
+    ).id as string;
+
+  after(() => {
+    for (const d of [home, workspace]) if (d) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("a goal-labelled task runs via unipi:goal-start with no jev call", async () => {
+    setup();
+    const calls: string[] = [];
+    registerCommandRunner("unipi:goal-start", (_c: never, args: unknown) => {
+      calls.push(`goal-start:${JSON.stringify(args)}`);
+      return { ok: true, goalId: "goal-9" };
+    });
+    registerCommandRunner("unipi:goal-status", () => ({ found: true, goalId: "goal-9", status: "complete" }));
+    let jevCalls = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => { jevCalls += 1; return new Response("{}"); }) as never;
+    process.env.OPENROUTER_API_KEY = "test-key";
+    try {
+      const id = addLabelled("Labelled goal task", "--strategy", "goal", "--plan", "no");
+      await runner.work(fakeCtx());
+      assert.equal(jevCalls, 0, "labelled task must not ask jev");
+      assert.ok(calls.some((c) => c.startsWith("goal-start:")), `goal-start not called: ${calls}`);
+      assert.equal(runner.status().mode, "goal");
+      const shown = JSON.parse(
+        execFileSync(debugBinary, ["show", id, "--json"], {
+          env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+          cwd: workspace,
+          encoding: "utf-8",
+        }),
+      );
+      assert.equal(shown.strategy, "goal");
+      assert.equal(shown.plan, false);
+      assert.equal(shown.run.mode, "goal");
+      assert.equal(shown.run.goal, "goal-9");
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  it("a swarm-labelled task resolves via unipi:lh-explicit", async () => {
+    setup();
+    const calls: string[] = [];
+    registerCommandRunner("unipi:lh-explicit", (_c: never, args: unknown) => {
+      calls.push(`lh:${JSON.stringify(args)}`);
+      return { ok: true, mode: "swarm" };
+    });
+    const id = addLabelled("Parallel work", "--strategy", "swarm");
+    await runner.work(fakeCtx());
+    assert.ok(calls.some((c) => c.includes('"mode":"swarm"')), `lh-explicit not called: ${calls}`);
+    const shown = JSON.parse(
+      execFileSync(debugBinary, ["show", id, "--json"], {
+        env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+        cwd: workspace,
+        encoding: "utf-8",
+      }),
+    );
+    assert.equal(shown.run.mode, "swarm");
+    assert.equal(runner.status().mode, "swarm");
+  });
+
+  it("a ralph task with no checklist falls back to goal then none", async () => {
+    setup();
+    const calls: string[] = [];
+    registerCommandRunner("unipi:ralph-start", () => {
+      calls.push("ralph");
+      return { ok: false, reason: "no checklist items" };
+    });
+    registerCommandRunner("unipi:goal-start", () => {
+      calls.push("goal");
+      return { ok: true, goalId: "goal-11" };
+    });
+    registerCommandRunner("unipi:goal-status", () => ({ found: true, goalId: "goal-11", status: "complete" }));
+    const id = addLabelled("Ralph without items", "--strategy", "ralph");
+    await runner.work(fakeCtx());
+    assert.deepEqual(calls, ["ralph", "goal"], `fallback order: ${calls}`);
+    assert.equal(runner.status().mode, "goal");
+    const shown = JSON.parse(
+      execFileSync(debugBinary, ["show", id, "--json"], {
+        env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+        cwd: workspace,
+        encoding: "utf-8",
+      }),
+    );
+    assert.equal(shown.run.mode, "goal");
   });
 });

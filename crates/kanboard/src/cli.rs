@@ -3,7 +3,7 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use crate::model::{ChainGate, Priority, RunMode, Status};
+use crate::model::{ChainGate, Priority, RunMode, Status, Strategy};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -83,6 +83,12 @@ pub enum Command {
         /// Dependency ids (may repeat).
         #[arg(long = "after", value_name = "ID")]
         after: Vec<String>,
+        /// Work strategy label: none|goal|ralph|swarm|graph (unset = jev decides).
+        #[arg(long, value_name = "STRATEGY|auto")]
+        strategy: Option<String>,
+        /// Plan-first flag: yes|no (unset/auto = jev decides).
+        #[arg(long, value_name = "yes|no|auto")]
+        plan: Option<String>,
     },
 
     /// List tasks.
@@ -138,6 +144,12 @@ pub enum Command {
         /// Comma-separated labels.
         #[arg(long, value_name = "A,B")]
         labels: Option<String>,
+        /// Work strategy label: none|goal|ralph|swarm|graph (auto = clear).
+        #[arg(long, value_name = "STRATEGY|auto")]
+        strategy: Option<String>,
+        /// Plan-first flag: yes|no|auto (auto = clear).
+        #[arg(long, value_name = "yes|no|auto")]
+        plan: Option<String>,
     },
 
     /// Add a dependency.
@@ -176,7 +188,7 @@ pub enum Command {
         pid: u32,
         #[arg(long)]
         host: String,
-        #[arg(long, value_name = "direct|plan|goal", default_value = "direct")]
+        #[arg(long, value_name = "none|plan|goal|ralph|swarm|graph", default_value = "none")]
         mode: String,
     },
 
@@ -225,7 +237,7 @@ pub enum Command {
     /// Record the mode/goal of a claimed task (system).
     SetRun {
         id: String,
-        #[arg(long, value_name = "direct|plan|goal")]
+        #[arg(long, value_name = "none|plan|goal|ralph|swarm|graph")]
         mode: String,
         #[arg(long)]
         goal: Option<String>,
@@ -343,4 +355,36 @@ pub fn parse_priority(value: &str) -> crate::error::Result<Priority> {
 
 pub fn parse_mode(value: &str) -> crate::error::Result<RunMode> {
     value.parse()
+}
+
+/// `none|goal|ralph|swarm|graph` labels; `auto` resolves to None (unset).
+pub fn parse_strategy_label(value: &str) -> crate::error::Result<Option<Strategy>> {
+    if value.eq_ignore_ascii_case("auto") {
+        return Ok(None);
+    }
+    value.parse::<Strategy>().map(Some).map_err(crate::error::Error::usage)
+}
+
+/// `edit --strategy` — `auto` clears.
+pub fn parse_strategy_edit(value: &str) -> crate::error::Result<Option<Strategy>> {
+    parse_strategy_label(value)
+}
+
+/// `yes|no|true|false` → bool; `auto` resolves to None (unset / clear).
+pub fn parse_plan_flag(value: &str) -> crate::error::Result<Option<bool>> {
+    if value.eq_ignore_ascii_case("auto") {
+        return Ok(None);
+    }
+    match value.to_lowercase().as_str() {
+        "yes" | "true" => Ok(Some(true)),
+        "no" | "false" => Ok(Some(false)),
+        other => Err(crate::error::Error::usage(format!(
+            "unknown plan {other:?} (yes|no|auto)"
+        ))),
+    }
+}
+
+/// `edit --plan` — `auto` clears.
+pub fn parse_plan_edit(value: &str) -> crate::error::Result<Option<bool>> {
+    parse_plan_flag(value)
 }

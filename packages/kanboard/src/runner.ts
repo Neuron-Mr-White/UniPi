@@ -26,7 +26,10 @@ import { applyLimitEnv, type KanboardSettings } from "./settings.js";
 
 export const RUNNER_ENTRY = "unipi:kanboard-runner";
 
-export type RunMode = "direct" | "plan" | "goal";
+export type RunMode = "none" | "plan" | "goal" | "ralph" | "swarm" | "graph";
+
+/** Work strategy = the long-horizon modes; `direct` maps to `none`. */
+export type Strategy = "none" | "goal" | "ralph" | "swarm" | "graph";
 
 export type { KanboardTask, KanboardActivity, KanboardRun };
 
@@ -35,6 +38,10 @@ interface RunnerState {
   task: KanboardTask | null;
   mode: RunMode;
   goalId: string | null;
+  /** Plan-first flag for the current task (requested by label or jev). */
+  planning: boolean;
+  /** Strategy held back until plan approval (set on planModeChanged). */
+  pendingStrategy: Strategy | null;
   endsSinceSend: number;
   stopAfterCurrent: boolean;
   /** Autowork: keep claiming ready tasks after each finish (queue first). */
@@ -47,6 +54,8 @@ interface RunnerState {
   consumedText: string;
   /** When the current task's prompt was sent (ms). */
   sentAt: number;
+  /** Last ctx seen — needed to apply a deferred strategy on plan approval. */
+  lastCtx: ExtensionContext | undefined;
 }
 
 export interface RunnerDeps {
@@ -74,25 +83,54 @@ export interface Runner {
 
 /**
  * The askJev question the runner asks for mode choice, as a standalone export
- * so probes and tests exercise exactly what chooseMode sends.
+ * so probes and tests exercise exactly what chooseStrategy sends.
  */
-export function modeQuestion(task: KanboardTask): {
+const STRATEGY_CRITERIA: Record<Strategy, string> = {
+  none: "A well-scoped change one pass can finish and check.",
+  goal: "One objective that needs iterating until it is verifiably done (tests, checks).",
+  ralph: "An enumerable checklist of similar chores worked item by item.",
+  swarm: "Several independent parts that can be worked in parallel, then combined.",
+  graph: "Dependent steps where later work needs earlier results.",
+};
+
+const PLAN_CRITERIA: Record<"yes" | "no", string> = {
+  yes: "Unclear approach or risky change that should be planned and approved first.",
+  no: "The approach is clear enough to start directly.",
+};
+
+type StrategyQuestion = { type: "choice"; instructions: string; criteria: Record<string, string> };
+
+/**
+ * The askJev questions the runner asks per claimed task — only for the fields
+ * the task left unset (`strategy`/`plan` labels win; `auto` = jev decides).
+ * Exported so probes and tests exercise exactly what chooseStrategy sends.
+ */
+export function strategyQuestion(
+  task: KanboardTask,
+  askStrategy: boolean,
+  askPlan: boolean,
+): {
   state: string;
-  questions: { mode: { type: "choice"; instructions: string; criteria: Record<string, string> } };
+  questions: { strategy?: StrategyQuestion; plan?: StrategyQuestion };
 } {
+  const questions: { strategy?: StrategyQuestion; plan?: StrategyQuestion } = {};
+  if (askStrategy) {
+    questions.strategy = {
+      type: "choice",
+      instructions: "Which work strategy should run this task?",
+      criteria: { ...STRATEGY_CRITERIA },
+    };
+  }
+  if (askPlan) {
+    questions.plan = {
+      type: "choice",
+      instructions: "Should this task be planned and approved before work starts?",
+      criteria: { ...PLAN_CRITERIA },
+    };
+  }
   return {
     state: `${task.title}\n\n${(task.body ?? "").slice(0, 2000)}`,
-    questions: {
-      mode: {
-        type: "choice",
-        instructions: "How should this task be executed?",
-        criteria: {
-          direct: "A small, clear change — just do it",
-          plan: "Multi-file or design choices; needs a plan approved first",
-          goal: "A large multi-step objective that needs many turns and verification",
-        },
-      },
-    },
+    questions,
   };
 }
 
@@ -102,8 +140,10 @@ export function createRunner(deps: RunnerDeps): Runner {
   const state: RunnerState = {
     phase: "idle",
     task: null,
-    mode: "direct",
+    mode: "none",
     goalId: null,
+    planning: false,
+    pendingStrategy: null,
     endsSinceSend: 0,
     stopAfterCurrent: false,
     autowork: false,
@@ -112,6 +152,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     lastText: "",
     consumedText: "",
     sentAt: 0,
+    lastCtx: undefined,
   };
 
   const setStatus = (ctx: ExtensionContext, text?: string): void => {
@@ -122,7 +163,8 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
   };
 
-  const describe = (): string => (state.task ? `▣ ${state.task.id} · ${state.mode}` : "▣ idle");
+  const describe = (): string =>
+    state.task ? `▣ ${state.task.id} · ${state.mode}${state.planning ? " +plan" : ""}` : "▣ idle";
 
   const persist = (phase: string): void => {
     pi.appendEntry(RUNNER_ENTRY, {
@@ -220,15 +262,23 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
   }
 
-  // ── mode choice (jev) ─────────────────────────────────────────────────────
+  // ── strategy choice (labels win; jev decides the unset) ───────────────────
 
-  async function chooseMode(task: KanboardTask): Promise<RunMode> {
+  async function chooseStrategy(task: KanboardTask): Promise<{ strategy: Strategy; plan: boolean }> {
+    // A labelled task is authoritative — jev is only asked for what's unset.
+    const labelled = typeof task.strategy === "string" && (task.strategy as string) !== "auto" ? (task.strategy as Strategy) : undefined;
+    const planLabel = typeof task.plan === "boolean" ? task.plan : undefined;
+    const askStrategy = labelled === undefined;
+    const askPlan = planLabel === undefined;
+    if (!askStrategy && !askPlan) return { strategy: labelled!, plan: planLabel! };
     const settings = readJudgeJevSettings(cwd);
-    const answers = await askJev({ ...modeQuestion(task), settings, env: process.env });
-    const choice = answers?.mode?.choice;
-    const mode: RunMode = choice === "plan" || choice === "goal" ? choice : "direct";
-    deps.debug(`mode ${task.id}: jev answered ${JSON.stringify(choice ?? null)} → ${mode}`);
-    return mode;
+    const answers = await askJev({ ...strategyQuestion(task, askStrategy, askPlan), settings, env: process.env });
+    const sChoice = answers?.strategy?.choice;
+    const pChoice = answers?.plan?.choice;
+    const strategy: Strategy = labelled ?? (sChoice && sChoice in STRATEGY_CRITERIA ? (sChoice as Strategy) : "none");
+    const plan: boolean = planLabel ?? pChoice === "yes";
+    deps.debug(`strategy ${task.id}: label=${labelled ?? "-"} plan-label=${String(planLabel ?? "-")} jev answered ${JSON.stringify({ strategy: sChoice ?? null, plan: pChoice ?? null })} → ${strategy}${plan ? "+plan" : ""}`);
+    return { strategy, plan };
   }
 
   // ── prompting ─────────────────────────────────────────────────────────────
@@ -277,6 +327,7 @@ export function createRunner(deps: RunnerDeps): Runner {
   // ── the loop ──────────────────────────────────────────────────────────────
 
   async function startTask(ctx: ExtensionContext): Promise<boolean> {
+    state.lastCtx = ctx;
     let claimed: KanboardTask | null;
     let claim: KanboardClaim;
     try {
@@ -298,6 +349,8 @@ export function createRunner(deps: RunnerDeps): Runner {
     state.task = claimed;
     state.endsSinceSend = 0;
     state.planOutcome = null;
+    state.planning = false;
+    state.pendingStrategy = null;
     state.lastText = "";
     try {
       return await runClaimedTask(ctx, claimed);
@@ -338,13 +391,16 @@ export function createRunner(deps: RunnerDeps): Runner {
     state.goalId = null;
     state.phase = "running";
 
-    let mode: RunMode = "direct";
+    let strategy: Strategy = "none";
+    let plan = false;
     try {
-      mode = await chooseMode(claimed);
+      ({ strategy, plan } = await chooseStrategy(claimed));
     } catch (error) {
-      deps.debug(`mode choice failed: ${error instanceof Error ? error.message : String(error)}`);
+      deps.debug(`strategy choice failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    state.mode = mode;
+    // mode = the strategy that actually runs the work turn (plan rides alongside).
+    state.mode = strategy;
+    state.planning = plan;
 
     const all = await cli
       .run<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
@@ -354,52 +410,115 @@ export function createRunner(deps: RunnerDeps): Runner {
         return [] as KanboardTask[];
       });
 
-    // Record the mode (and the goal id once it exists) on the task itself.
-    await cli
-      .run(["set-run", claimed.id, "--mode", mode], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } })
-      .catch((error) => deps.debug(`set-run failed: ${error instanceof Error ? error.message : String(error)}`));
-
-    if (mode === "plan") {
+    if (plan) {
       const started = await callCommandRunner<{ ok?: boolean; reason?: string }>("unipi:plan-enter", ctx);
       if (!started.found || !started.result?.ok) {
         ctx.ui.notify(
-          `kanboard: plan mode unavailable (${started.result?.reason ?? "workflow not loaded"}) — running direct`,
+          `kanboard: plan mode unavailable (${started.result?.reason ?? "workflow not loaded"}) — running without a plan`,
           "warning",
         );
-        state.mode = "direct";
+        state.planning = false;
       }
     }
-    if (state.mode === "goal") {
-      const started = await callCommandRunner<{ ok?: boolean; goalId?: string; reason?: string }>(
-        "unipi:goal-start",
-        ctx,
-        { objective: `${claimed.title} — ${(claimed.body ?? "").slice(0, 400)}`.trim() },
-      );
-      if (started.found && started.result?.ok && started.result.goalId) {
-        state.goalId = started.result.goalId;
-        await cli
-          .run(["set-run", claimed.id, "--mode", "goal", "--goal", state.goalId], {
-            extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
-          })
-          .catch(() => undefined);
-      } else {
-        ctx.ui.notify(
-          `kanboard: goal mode unavailable (${started.result?.reason ?? "long-horizon not loaded"}) — running direct`,
-          "warning",
-        );
-        state.mode = "direct";
-      }
+    if (state.planning) {
+      // The strategy applies to the WORK turn after approval — apply it on
+      // planModeChanged, not now (setExplicit would be consumed by the plan turn).
+      state.pendingStrategy = strategy;
+    } else {
+      await applyStrategy(ctx, claimed, strategy);
     }
 
     persist("running");
     setStatus(ctx, describe());
-    ctx.ui.notify(`▣ ${claimed.id} · ${state.mode} — ${claimed.title}`, "info");
+    ctx.ui.notify(`▣ ${claimed.id} · ${state.mode}${state.planning ? " +plan" : ""} — ${claimed.title}`, "info");
 
     const prompt = renderPrompt(claimed, all);
     const busy = typeof ctx.isIdle === "function" ? !ctx.isIdle() : false;
     state.sentAt = Date.now();
     pi.sendUserMessage(prompt, busy ? { deliverAs: "followUp" } : undefined);
     return true;
+  }
+
+  /** Wire the chosen strategy for the work turn; falls back toward "none". */
+  async function applyStrategy(ctx: ExtensionContext, task: KanboardTask, strategy: Strategy): Promise<void> {
+    const setRun = (mode: RunMode, goal?: string): void => {
+      void cli
+        .run(
+          ["set-run", task.id, "--mode", mode, ...(goal ? ["--goal", goal] : [])],
+          { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } },
+        )
+        .catch((error) => deps.debug(`set-run failed: ${error instanceof Error ? error.message : String(error)}`));
+    };
+    const goalStart = async (): Promise<boolean> => {
+      const started = await callCommandRunner<{ ok?: boolean; goalId?: string; reason?: string }>(
+        "unipi:goal-start",
+        ctx,
+        { objective: `${task.title} — ${(task.body ?? "").slice(0, 400)}`.trim() },
+      );
+      if (started.found && started.result?.ok && started.result.goalId) {
+        state.goalId = started.result.goalId;
+        state.mode = "goal";
+        setRun("goal", state.goalId);
+        return true;
+      }
+      return false;
+    };
+    switch (strategy) {
+      case "none":
+        state.mode = "none";
+        setRun("none");
+        return;
+      case "goal":
+        if (await goalStart()) return;
+        ctx.ui.notify(`kanboard: goal unavailable — running without a strategy`, "warning");
+        state.mode = "none";
+        setRun("none");
+        return;
+      case "swarm":
+      case "graph": {
+        const started = await callCommandRunner<{ ok?: boolean; reason?: string }>(
+          "unipi:lh-explicit",
+          ctx,
+          { mode: strategy },
+        );
+        if (started.found && started.result?.ok) {
+          state.mode = strategy;
+          setRun(strategy);
+          return;
+        }
+        ctx.ui.notify(
+          `kanboard: ${strategy} unavailable (${started.result?.reason ?? "long-horizon not loaded"}) — running without a strategy`,
+          "warning",
+        );
+        state.mode = "none";
+        setRun("none");
+        return;
+      }
+      case "ralph": {
+        const body = task.body ?? "";
+        const started = await callCommandRunner<{ ok?: boolean; reason?: string }>(
+          "unipi:ralph-start",
+          ctx,
+          { name: task.id, content: `${task.title}
+
+${body}`.trim() },
+        );
+        if (started.found && started.result?.ok) {
+          state.mode = "ralph";
+          setRun("ralph");
+          return;
+        }
+        ctx.ui.notify(
+          `kanboard: ralph unavailable (${started.result?.reason ?? "no checklist items"}) — falling back to goal`,
+          "warning",
+        );
+        if (await goalStart()) return;
+        ctx.ui.notify(`kanboard: goal unavailable — running without a strategy`, "warning");
+        state.mode = "none";
+        setRun("none");
+        return;
+      }
+    }
   }
 
   /** Ask the goal engine whether the goal reached a terminal state. */
@@ -414,7 +533,7 @@ export function createRunner(deps: RunnerDeps): Runner {
   }
 
   function planStillActive(): boolean {
-    return state.mode === "plan" && state.planOutcome === null;
+    return state.planning && state.planOutcome === null;
   }
 
   async function finishTask(ctx: ExtensionContext, outcome: "in_review" | "todo" | "blocked", comment: string): Promise<void> {
@@ -646,9 +765,14 @@ export function createRunner(deps: RunnerDeps): Runner {
     onPlanModeChanged(payload: unknown): void {
       const active = (payload as { active?: boolean } | undefined)?.active;
       const reason = (payload as { reason?: string } | undefined)?.reason;
-      if (active === false && state.mode === "plan") {
+      if (active === false && state.planning && state.planOutcome === null) {
         state.planOutcome = reason === "discarded" ? "discarded" : "approved";
         deps.debug(`plan mode left: ${state.planOutcome}`);
+        // Strategy applies to the work turn after approval.
+        if (state.planOutcome === "approved" && state.pendingStrategy && state.task && state.lastCtx) {
+          void applyStrategy(state.lastCtx, state.task, state.pendingStrategy);
+        }
+        state.pendingStrategy = null;
       }
     },
 
@@ -683,7 +807,9 @@ export function createRunner(deps: RunnerDeps): Runner {
       );
       if (resume) {
         state.task = task;
-        state.mode = claimed.mode ?? "direct";
+        // Old session entries may still say "direct" — it maps to "none".
+        const restored = (claimed.mode as string | undefined) === "direct" ? "none" : (claimed.mode ?? "none");
+        state.mode = restored;
         state.goalId = claimed.goalId ?? null;
         state.phase = "running";
         state.endsSinceSend = 0;
@@ -729,7 +855,7 @@ export function createRunner(deps: RunnerDeps): Runner {
       deps.debug("settle deferred: plan mode still active");
       return;
     }
-    if (state.mode === "plan" && state.planOutcome === "discarded") {
+    if (state.planning && state.planOutcome === "discarded") {
       await finishTask(ctx, "todo", "plan discarded");
       return;
     }

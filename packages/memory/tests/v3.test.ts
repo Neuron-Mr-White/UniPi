@@ -278,3 +278,16 @@ test("adoptLooseFiles exposes oldPath (+origPath for renamed dirs)", () => {
 
 import { ensureMempalaceYaml } from "../files.js";
 function await_import_files() { return { ensureMempalaceYaml }; }
+
+// ── retro reminder dedupe (CP3.5 §4) ──────────────────────────────────────
+
+test("retro reminder queues at most once across consecutive agent_end events", async () => {
+  const { retroReminderGuard } = await import("../index.js");
+  const retro = retroReminderGuard();
+  retro.queue();
+  assert.equal(retro.queued, true);
+  retro.queue(); // second agent_end before delivery → still one
+  assert.equal(retro.queued, true);
+  retro.clear(); // before_agent_start delivered the queued reminder
+  assert.equal(retro.queued, false);
+});

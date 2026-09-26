@@ -197,7 +197,7 @@ export const api = {
     request<{ tasks: Task[]; problems: Problem[] }>(`/api/projects/${encodeURIComponent(slug)}/tasks`),
   task: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`),
-  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[] }) =>
+  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[]; strategy?: string; plan?: string }) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/create`, { method: "POST", body: JSON.stringify(body) }),
   move: (slug: string, id: string, status: string, comment?: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/move`, {

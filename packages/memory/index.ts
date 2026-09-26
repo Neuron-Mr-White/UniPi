@@ -84,6 +84,23 @@ export function buildMemoryRecallReminder(input: {
   return lines.join("\n");
 }
 
+/** One-queued-reminder guard (exported for tests): queue() latches until the
+ * reminder lands (clear on before_agent_start). */
+export function retroReminderGuard(): { readonly queued: boolean; queue(): void; clear(): void } {
+  let queued = false;
+  return {
+    get queued() {
+      return queued;
+    },
+    queue() {
+      queued = true;
+    },
+    clear() {
+      queued = false;
+    },
+  };
+}
+
 export default function (pi: ExtensionAPI) {
   let backend: SessionBackend | null = null;
   let recallDone = false;
@@ -425,11 +442,21 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
+  // Two agent runs can end before the next user prompt (e.g. a background-task
+  // completion triggers a follow-up turn) — keep at most one queued reminder.
+  const retro = retroReminderGuard();
+
+  pi.on("before_agent_start", () => {
+    retro.clear();
+  });
+
   pi.on("agent_end", async (_event, _ctx) => {
     if (storeDone || !recallDone) return;
+    if (retro.queued) return;
     if (!readMemoryConfig().write || overrides.write === false) return;
     if (!agentHooksEnabled()) return;
     if (!pi.getActiveTools().includes(MEMORY_TOOLS.STORE)) return;
+    retro.queue();
     pi.sendMessage(
       {
         customType: RETRO_CUSTOM_TYPE,

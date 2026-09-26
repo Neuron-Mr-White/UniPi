@@ -76,7 +76,7 @@ test("invalid stored values are repaired to defaults", () => {
   const settings = loadSettings(true);
   assert.equal(settings.judge.threshold, 0.6);
   assert.equal(settings.judge.provider, "typesafe");
-  assert.equal(settings.defaultMode, "goal");
+  assert.equal(settings.defaultMode, "none");
   process.env.HOME = originalHome;
   resetSettingsCache();
   rmSync(dir, { recursive: true, force: true });

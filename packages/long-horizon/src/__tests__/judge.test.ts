@@ -178,7 +178,7 @@ test("ladder 3: low confidence abstains to default mode", async () => {
     env: { TYPESAFE_API_KEY: "k" },
   });
   assert.deepEqual(resolution, {
-    mode: "goal",
+    mode: "none",
     source: "judge_abstained_low_confidence",
     confidence: 0.3,
   });
@@ -193,7 +193,7 @@ test("ladder 4: judge disabled → default mode, no network", async () => {
     },
     env: {},
   });
-  assert.deepEqual(resolution, { mode: "goal", source: "default" });
+  assert.deepEqual(resolution, { mode: "none", source: "default" });
 });
 
 test("continuations (no prompt) skip the judge entirely", async () => {
@@ -204,7 +204,7 @@ test("continuations (no prompt) skip the judge entirely", async () => {
     },
     env: { TYPESAFE_API_KEY: "k" },
   });
-  assert.deepEqual(resolution, { mode: "goal", source: "default" });
+  assert.deepEqual(resolution, { mode: "none", source: "default" });
 });
 
 test("judge failure fails open to default", async () => {
@@ -215,7 +215,7 @@ test("judge failure fails open to default", async () => {
     fetchImpl: slow,
     env: { TYPESAFE_API_KEY: "k" },
   });
-  assert.deepEqual(resolution, { mode: "goal", source: "default" });
+  assert.deepEqual(resolution, { mode: "none", source: "default" });
 });
 
 test("cache: identical prompt within TTL does not hit the transport twice", async () => {

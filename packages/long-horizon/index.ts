@@ -198,6 +198,35 @@ export default function longHorizon(pi: ExtensionAPI): void {
     }
     return { found: true, goalId: goal.goalId, status: goal.status, objective: goal.objective };
   });
+
+  // kanboard strategy runners: swarm/graph set the explicit mode for the next
+  // turn; ralph starts the checklist loop (its own kickoff prompt ships via
+  // ralph.start's send — the runner's task prompt lands behind it).
+  registerCommandRunner("unipi:lh-explicit", async (_ctx, args) => {
+    const mode = String((args as { mode?: unknown } | undefined)?.mode ?? "");
+    if (mode !== "swarm" && mode !== "graph" && mode !== "goal" && mode !== "none") {
+      return { ok: false, reason: `unknown mode "${mode}"` };
+    }
+    if (mode !== "none" && owner.getActive() && owner.getActive()?.kind !== mode) {
+      return {
+        ok: false,
+        reason: `the session is owned by a ${owner.getActive()?.kind} owner — finish or suspend it first`,
+      };
+    }
+    gate.setExplicit(mode);
+    return { ok: true, mode };
+  });
+
+  registerCommandRunner("unipi:ralph-start", async (_ctx, args) => {
+    const a = (args ?? {}) as { name?: unknown; content?: unknown };
+    const name = String(a.name ?? "").trim();
+    const content = String(a.content ?? "");
+    if (!name || !content.trim()) {
+      return { ok: false, reason: "name and content are required" };
+    }
+    return ralph.start(name, content);
+  });
+
   registerLongHorizonCommands(pi, gate, owner, ralph);
 
   // Crash recovery: repair, don't resume — reload durable state so the gate

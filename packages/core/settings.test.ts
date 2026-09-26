@@ -16,6 +16,7 @@ import {
   registerSettings,
   resetSettingsGates,
   setSettings,
+  unsetSettings,
   settingsLayers,
 } from "./src/settings/engine.js";
 import { globalSettingsPath, projectSettingsPath, migrationLedgerPath } from "./src/settings/paths.js";
@@ -254,4 +255,17 @@ test("coexistence: v3 import does not disturb a v2 session's view (both on one P
   assert.equal(globalLedger.finalized, false);
   assert.equal(projectLedger.finalized, false);
   restore(home, cwd);
+});
+
+test("unsetSettings clears a scoped key so the layer below applies", () => {
+  const { cwd } = sandbox();
+  registerSettings({ namespace: "permission", label: "Permissions", defaults: { mode: "auto" } });
+  setSettings("permission", { mode: "ask" }, "global", cwd);
+  assert.equal(getSettings("permission", cwd).mode, "ask");
+  setSettings("permission", { mode: "full" }, "project", cwd);
+  assert.equal(getSettings("permission", cwd).mode, "full");
+  unsetSettings("permission", "mode", "project", cwd);
+  assert.equal(getSettings("permission", cwd).mode, "ask", "project cleared → global applies");
+  unsetSettings("permission", "mode", "global", cwd);
+  assert.equal(getSettings("permission", cwd).mode, "auto", "all clear → default");
 });

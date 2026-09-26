@@ -143,6 +143,25 @@ export function setSettings(
   writeJson(target, deepMerge(current, patch));
 }
 
+/** Delete a dot-path key from ONE scope — the "use default" / clear write. */
+export function unsetSettings(namespace: string, key: string, scope: SettingsScope, cwd: string): void {
+  runGates(cwd);
+  const definition = registry.get(namespace);
+  if (!definition) throw new Error(`unknown settings namespace: ${namespace}`);
+  const target = scope === "global" ? globalSettingsPath(namespace) : projectSettingsPath(cwd, namespace);
+  const current = readJson(target);
+  if (!current) return;
+  const segments = key.split(".");
+  let cursor: Record<string, unknown> = current;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const next = cursor[segments[i]!];
+    if (typeof next !== "object" || next === null) return;
+    cursor = next as Record<string, unknown>;
+  }
+  delete cursor[segments[segments.length - 1]!];
+  writeJson(target, current);
+}
+
 /** Which layers currently exist for a namespace (hub status display). */
 export function settingsLayers(namespace: string, cwd: string): { global: boolean; project: boolean } {
   runGates(cwd);

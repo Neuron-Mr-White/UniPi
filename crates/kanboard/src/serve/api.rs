@@ -319,6 +319,9 @@ pub struct CreateRequest {
     pub priority: Option<String>,
     #[serde(default)]
     pub after: Vec<String>,
+    /// Work strategy label (`none|goal|ralph|swarm|graph`, or `auto`/absent).
+    pub strategy: Option<String>,
+    pub plan: Option<bool>,
 }
 
 pub async fn create(
@@ -359,6 +362,16 @@ pub async fn create(
         priority,
         &request.after,
         &[],
+        match request
+            .strategy
+            .as_deref()
+            .map(crate::cli::parse_strategy_label)
+            .transpose()
+        {
+            Ok(v) => v.flatten(),
+            Err(e) => return map_error(e, false),
+        },
+        request.plan,
     );
     match result {
         Ok(value) => ok(value),
@@ -445,6 +458,10 @@ pub struct EditRequest {
     pub body: Option<String>,
     pub priority: Option<String>,
     pub labels: Option<Vec<String>>,
+    /// Work strategy label (`none|goal|ralph|swarm|graph`, or `auto` to clear).
+    pub strategy: Option<String>,
+    /// Plan-first flag (`yes|no|auto` — `auto` clears).
+    pub plan: Option<String>,
 }
 
 pub async fn edit(
@@ -471,6 +488,24 @@ pub async fn edit(
         body: request.body.as_deref(),
         priority,
         labels: request.labels,
+        strategy: match request
+            .strategy
+            .as_deref()
+            .map(crate::cli::parse_strategy_edit)
+            .transpose()
+        {
+            Ok(v) => v,
+            Err(e) => return map_error(e, false),
+        },
+        plan: match request
+            .plan
+            .as_deref()
+            .map(crate::cli::parse_plan_edit)
+            .transpose()
+        {
+            Ok(v) => v,
+            Err(e) => return map_error(e, false),
+        },
     };
     match commands::edit(&state.layout, project, &common(), &id, args) {
         Ok(value) => ok(value),

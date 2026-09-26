@@ -92,7 +92,7 @@ fn claim_records_the_run_block_and_an_activity_line() {
     assert_eq!(payload["status"], "in_progress");
     assert_eq!(payload["run"]["session"], "session-42");
     assert_eq!(payload["run"]["pid"], common::alive_pid());
-    assert_eq!(payload["run"]["mode"], "direct");
+    assert_eq!(payload["run"]["mode"], "none");
     let activity = payload["activity"].as_array().unwrap();
     let last = activity.last().unwrap();
     assert_eq!(last["actor"], "system");
@@ -254,7 +254,7 @@ fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
         session: "gone".into(),
         pid: 0x7fff_fffe,
         host: commands::hostname(),
-        mode: RunMode::Direct,
+        mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
     });
@@ -332,7 +332,7 @@ fn a_run_claimed_on_another_host_is_unknown() {
         session: "elsewhere".into(),
         pid: 1,
         host: "some-other-host".into(),
-        mode: RunMode::Direct,
+        mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
     });
@@ -628,7 +628,7 @@ fn eight_threads_race_but_the_two_session_cap_holds() {
                 // two-sessions-per-project cap is what the threads hit.
                 pid: std::process::id(),
                 host: "test-host",
-                mode: RunMode::Direct,
+                mode: RunMode::None,
                 id: None,
             };
             commands::claim_next(

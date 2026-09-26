@@ -39,20 +39,28 @@ not allowed to write:
 
 1. `claim-next --session <sid> --pid <ppid> --host <host> --gate <chainGate>` —
    nothing ready → `Nothing ready (N waiting on deps, M blocked)`.
-2. **jev picks the mode** (one `choice` call over title + body ≤2000 chars):
-   `direct` (small clear change) · `plan` (needs an approved plan) · `goal`
-   (multi-turn objective with verification). jev null → `direct`; the choice is
-   logged to `~/.unipi/logs/kanboard.log` with `UNIPI_DEBUG_KANBOARD=1`.
+2. **The task's labels decide how it runs** (`edit <ID> --strategy
+   none|goal|ralph|swarm|graph` and `--plan yes|no`; `auto`/unset = jev picks).
+   jev gets one `choice` call with only the unset questions (title + body
+   ≤2000 chars): strategy criteria none/goal/ralph/swarm/graph + plan yes/no.
+   jev null → `none` + no plan; the decision is logged to
+   `~/.unipi/logs/kanboard.log` with `UNIPI_DEBUG_KANBOARD=1`.
 3. `set-run --mode`, then the task goes to the agent as a user message: title,
    body, last 10 activity entries, each dependency with its status and last note,
    and the rules (block with a comment to ask a question; never write
    `in_review`/`done`/`cancelled`; work only on this task).
-   - **plan** → plan mode is entered through workflow's `unipi:plan-enter` runner
-     first; approval stays interactive; a discarded plan releases the task to Todo
-     with `plan discarded`.
+   - **plan=yes** → plan mode is entered through workflow's `unipi:plan-enter`
+     runner first; approval stays interactive; a discarded plan releases the
+     task to Todo with `plan discarded`. The chosen strategy applies to the
+     work turn after approval (deferred until `planModeChanged`).
    - **goal** → long-horizon's `unipi:goal-start` runner starts a goal with the
      task as the objective; the goal id is recorded with `set-run --goal` and
      completion is read back with `unipi:goal-status`.
+   - **swarm / graph** → long-horizon's `unipi:lh-explicit` runner sets the
+     explicit mode for the work turn.
+   - **ralph** → `unipi:ralph-start` starts the checklist loop (task title +
+     body as the checklist file); with no `- [ ]` items or a failed start it
+     falls back to goal, then none.
 4. Run end (a `/plan` settle after the last `agent_end`, once the agent reports
    idle with no queued messages): the task is re-read — if the agent blocked it,
    that is respected and reported (`▣ UNI-12 blocked: <comment>`) and the loop
@@ -65,7 +73,7 @@ not allowed to write:
    stale are dropped with a notice), falls back to `claim-next` while autowork
    is on, and stops when nothing is ready. The event loop is never blocked.
 
-Footer: `▣ UNI-12 · direct` while a task runs. The claimed task is persisted with
+Footer: `▣ UNI-12 · <strategy>[ +plan]` while a task runs. The claimed task is persisted with
 `pi.appendEntry("unipi:kanboard-runner", …)`, so `/reload` or a resume offers to
 resume it or releases it to Todo.
 

@@ -8,7 +8,7 @@ use crate::board::Board;
 use crate::deps;
 use crate::error::{Error, Result};
 use crate::format;
-use crate::model::{Actor, ChainGate, Priority, Run, RunMode, Staleness, Status, Task};
+use crate::model::{Actor, ChainGate, Priority, Run, RunMode, Staleness, Status, Strategy, Task};
 use crate::order;
 use crate::store::{self, Layout, Project};
 use crate::transitions;
@@ -188,6 +188,8 @@ pub fn add(
     priority: Priority,
     after: &[String],
     attach: &[std::path::PathBuf],
+    strategy: Option<Strategy>,
+    plan: Option<bool>,
 ) -> Result<Value> {
     let status = status.unwrap_or(Status::Backlog);
     if !matches!(status, Status::Backlog | Status::Todo) {
@@ -222,6 +224,8 @@ pub fn add(
         order::bottom_of(&lane),
         common.now,
     );
+    task.strategy = strategy;
+    task.plan = plan;
     let mut body = body.unwrap_or("").trim().to_string();
     for file in attach {
         let bytes = std::fs::read(file)
@@ -424,6 +428,10 @@ pub struct EditArgs<'a> {
     pub body: Option<&'a str>,
     pub priority: Option<Priority>,
     pub labels: Option<Vec<String>>,
+    /// Some(v) sets, Some(None) clears; outer None = untouched.
+    pub strategy: Option<Option<Strategy>>,
+    /// Some(v) sets, Some(None) clears; outer None = untouched.
+    pub plan: Option<Option<bool>>,
 }
 
 pub fn edit(
@@ -466,6 +474,14 @@ pub fn edit(
     if let Some(labels) = args.labels {
         task.labels = labels;
         changed.push("labels");
+    }
+    if let Some(strategy) = args.strategy {
+        task.strategy = strategy;
+        changed.push("strategy");
+    }
+    if let Some(plan) = args.plan {
+        task.plan = plan;
+        changed.push("plan");
     }
     if changed.is_empty() {
         return Err(Error::usage(
@@ -1048,6 +1064,8 @@ pub fn duplicate(layout: &Layout, project: Project, common: &Common, id: &str) -
         order::bottom_of(&lane),
         common.now,
     );
+    task.strategy = source.strategy;
+    task.plan = source.plan;
     task.body = source.body.clone();
     task.labels = source.labels.clone();
     task.deps = source.deps.clone();

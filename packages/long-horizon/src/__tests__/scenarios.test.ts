@@ -282,6 +282,6 @@ test("scenario 7: budget wrap-up delivered once, owner finished, next plain turn
   assert.equal(wrapUps.length, 1);
   // Next user message: no owner → default mode (judge off).
   await fire(w.pi, "before_agent_start", { prompt: "unrelated quick fix", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
-  assert.deepEqual(w.gate.current(), { mode: "goal", source: "default" });
+  assert.deepEqual(w.gate.current(), { mode: "none", source: "default" });
   rmSync(w.dir, { recursive: true, force: true });
 });

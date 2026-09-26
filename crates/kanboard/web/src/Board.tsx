@@ -8,7 +8,7 @@ import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "soli
 import { api, canMove, needsComment, type Rules, type Task } from "./api.js";
 import { offerToSchedule } from "./schedule.js";
 import { Icon, StatusGlyph } from "./icons.js";
-import { AgentChip, DepTag, LabelTags, PriorityTag } from "./paint.js";
+import { AgentChip, DepTag, LabelTags, PriorityTag, StrategyTag } from "./paint.js";
 import {
   board,
   describe,
@@ -464,6 +464,7 @@ function Card(props: {
       </Show>
       <div class="card-meta">
         <PriorityTag priority={task().priority} />
+        <StrategyTag task={task()} />
         <DepTag task={task()} drawnParents={props.parents} />
         <LabelTags labels={task().labels ?? []} max={2} />
       </div>

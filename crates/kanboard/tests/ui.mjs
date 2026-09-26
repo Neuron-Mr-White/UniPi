@@ -516,7 +516,7 @@ try {
     const node = document.querySelector('.dialog');
     return node ? { title: !!node.querySelector('.dialog-title-input'), body: !!node.querySelector('.dialog-body-input'), chips: node.querySelectorAll('.prop-chip').length } : null;
   })()`);
-  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 4, JSON.stringify(dialog));
+  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 6, JSON.stringify(dialog));
   await session.shot("k7-newtask-light-1440.png");
   await session.evaluate(`document.querySelector('.dialog [aria-label="Close"]').click()`);
   await sleep(300);

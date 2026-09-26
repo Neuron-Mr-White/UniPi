@@ -80,10 +80,12 @@ export function resolveBinary(env: NodeJS.ProcessEnv = process.env, from?: strin
   if (explicit) {
     return isRunnable(explicit) ? { path: explicit, source: "env" } : null;
   }
-  const packaged = platformPackagePath(from);
-  if (packaged && isRunnable(packaged)) return { path: packaged, source: "platform-package" };
+  // In a source checkout the dev build wins — the platform package can ship a
+  // stale prebuilt binary (seen on coffee: alpha.0 shadowed the debug build).
   const dev = devBuildPath();
   if (dev) return { path: dev, source: "dev-build" };
+  const packaged = platformPackagePath(from);
+  if (packaged && isRunnable(packaged)) return { path: packaged, source: "platform-package" };
   return null;
 }
 

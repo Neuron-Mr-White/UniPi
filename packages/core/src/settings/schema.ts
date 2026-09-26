@@ -30,6 +30,13 @@ export type SettingsField =
       readonly hint?: string;
       /** Gate custom input on submit; returns an error message or null. */
       readonly validate?: (raw: string) => string | null;
+      /** Pin the write to a scope (e.g. a "default" field that is global-only). */
+      readonly scope?: "global";
+      /**
+       * Show a trailing "use default" option when writing the project scope —
+       * selecting it deletes the project key so the global value applies.
+       */
+      readonly clearable?: boolean;
     }
   | {
       readonly key: string;

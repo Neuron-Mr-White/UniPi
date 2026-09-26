@@ -47,6 +47,24 @@ export function PriorityTag(props: { priority: string }): JSX.Element {
   );
 }
 
+/** Strategy / plan tags — tiny labels on cards when the task is labelled. */
+export function StrategyTag(props: { task: Task }): JSX.Element {
+  return (
+    <>
+      <Show when={props.task.strategy}>
+        <span class="tag" title={`Work strategy: ${props.task.strategy}`}>
+          <span>{props.task.strategy}</span>
+        </span>
+      </Show>
+      <Show when={props.task.plan === true}>
+        <span class="tag" title="Plan first">
+          <span>plan</span>
+        </span>
+      </Show>
+    </>
+  );
+}
+
 /**
  * Dependency tag. Three states:
  *  - locked:  a dep is still in Backlog — nothing moves until a human schedules it;

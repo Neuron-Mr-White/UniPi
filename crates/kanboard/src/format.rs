@@ -10,8 +10,8 @@ use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, Status, Task};
 
 pub const ACTIVITY_HEADING: &str = "## Activity";
 
-const FRONTMATTER_KEYS: [&str; 9] = [
-    "id", "title", "status", "priority", "order", "deps", "labels", "created", "updated",
+const FRONTMATTER_KEYS: [&str; 11] = [
+    "id", "title", "status", "priority", "order", "deps", "labels", "strategy", "plan", "created", "updated",
 ];
 
 /// Render a task to its canonical file text.
@@ -25,6 +25,12 @@ pub fn render(task: &Task) -> String {
     out.push_str(&format!("order: {}\n", task.order));
     out.push_str(&format!("deps: {}\n", flow_list(&task.deps)));
     out.push_str(&format!("labels: {}\n", flow_list(&task.labels)));
+    if let Some(strategy) = task.strategy {
+        out.push_str(&format!("strategy: {}\n", strategy.as_str()));
+    }
+    if let Some(plan) = task.plan {
+        out.push_str(&format!("plan: {}\n", plan));
+    }
     out.push_str(&format!("created: {}\n", iso(task.created)));
     out.push_str(&format!("updated: {}\n", iso(task.updated)));
     match &task.run {
@@ -277,6 +283,38 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     let created = parse_date(file, get("created"), "created", &mut problems);
     let updated = parse_date(file, get("updated"), "updated", &mut problems);
 
+    let strategy = match get("strategy") {
+        Some((line, value)) => match value.trim().parse::<crate::model::Strategy>() {
+            Ok(s) => Some(s),
+            Err(_) => {
+                problems.push(Problem::new(
+                    file,
+                    line,
+                    format!(
+                        "unknown strategy \"{}\" (expected none|goal|ralph|swarm|graph)",
+                        value.trim()
+                    ),
+                ));
+                None
+            }
+        },
+        None => None,
+    };
+    let plan = match get("plan") {
+        Some((line, value)) => match value.trim().parse::<bool>() {
+            Ok(v) => Some(v),
+            Err(_) => {
+                problems.push(Problem::new(
+                    file,
+                    line,
+                    format!("plan must be true or false, got \"{}\"", value.trim()),
+                ));
+                None
+            }
+        },
+        None => None,
+    };
+
     let run = if run_fields.is_empty() {
         None
     } else {
@@ -293,8 +331,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         // `validate` can print everything, but callers must treat it as invalid.
         return (
             Some(build(
-                id, title, status, priority, order, deps, labels, created, updated, run, body,
-                activity,
+                id, title, status, priority, order, deps, labels, created, updated, strategy,
+                plan, run, body, activity,
             )),
             problems,
         );
@@ -305,7 +343,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     }
 
     let task = Some(build(
-        id, title, status, priority, order, deps, labels, created, updated, run, body, activity,
+        id, title, status, priority, order, deps, labels, created, updated, strategy, plan, run,
+        body, activity,
     ));
     (task, problems)
 }
@@ -321,6 +360,8 @@ fn build(
     labels: Vec<String>,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
+    strategy: Option<crate::model::Strategy>,
+    plan: Option<bool>,
     run: Option<Run>,
     body: String,
     activity: Vec<ActivityEntry>,
@@ -335,6 +376,8 @@ fn build(
         labels,
         created,
         updated,
+        strategy,
+        plan,
         run,
         body,
         activity,
@@ -530,7 +573,7 @@ fn parse_run(
                     file,
                     *line,
                     format!(
-                        "unknown run.mode \"{}\" (expected direct|plan|goal)",
+                        "unknown run.mode \"{}\" (expected none|plan|goal|ralph|swarm|graph)",
                         value.trim()
                     ),
                 ));

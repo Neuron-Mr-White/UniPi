@@ -64,9 +64,11 @@ describe("binary resolution", () => {
     chmodSync(binary, 0o755);
 
     const resolved = resolveBinary({} as NodeJS.ProcessEnv, join(project, "index.js"));
-    assert.equal(resolved?.source, "platform-package", "the installed package wins");
-    assert.equal(resolved?.path, binary);
-    // …and the dev build is only a fallback.
+    // env → dev build → platform package: inside a source checkout the crate's
+    // own build wins; the package serves installs without a crates/ tree.
+    assert.equal(resolved?.source, "dev-build", "the dev build wins over the package");
+    assert.equal(platformPackagePath(join(project, "index.js")), binary);
+    // …and the packaged path is found (dev build wins when both exist).
     assert.equal(platformPackagePath(join(project, "index.js")), binary);
   });
 
@@ -77,12 +79,9 @@ describe("binary resolution", () => {
 
   it("falls back to the dev build in the repo", { skip: !hasBinary }, () => {
     const resolved = resolveBinary({} as NodeJS.ProcessEnv);
-    // When a platform package is installed in the repo's node_modules (e.g.
-    // after a real `npm install` pulled the published optional dep), it
-    // rightly wins — resolution order is env → platform → dev build.
-    const expected = platformPackagePath(join(process.cwd(), "index.js"))
-      ? "platform-package"
-      : "dev-build";
+    // Resolution order is env → dev build → platform package: in a source
+    // checkout the crate's own build always wins (packaged can go stale).
+    const expected = "dev-build";
     assert.equal(resolved?.source, expected);
     if (expected === "dev-build") {
       assert.match(resolved!.path, /crates\/kanboard\/target\/(release|debug)\/unipi-kanboard$/);

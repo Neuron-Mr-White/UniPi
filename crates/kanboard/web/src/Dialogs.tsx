@@ -50,6 +50,8 @@ export function NewTaskDialog(): JSX.Element {
   const [lane, setLane] = createSignal("backlog");
   const [priority, setPriority] = createSignal("none");
   const [after, setAfter] = createSignal<string[]>([]);
+  const [strategy, setStrategy] = createSignal("auto");
+  const [plan, setPlan] = createSignal("auto");
   const [more, setMore] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   /** Files picked/pasted before the task exists — uploaded right after creation. */
@@ -67,6 +69,8 @@ export function NewTaskDialog(): JSX.Element {
       setBody("");
       setAfter([]);
       setPriority("none");
+      setStrategy("auto");
+      setPlan("auto");
       setPending([]);
     }),
   );
@@ -84,6 +88,8 @@ export function NewTaskDialog(): JSX.Element {
         status: lane(),
         priority: priority(),
         after: after().length > 0 ? after() : undefined,
+        strategy: strategy() === "auto" ? undefined : strategy(),
+        plan: plan() === "auto" ? undefined : plan(),
       });
       if (pending().length > 0) {
         const uploaded = await uploadAll(created.id, pending());
@@ -214,6 +220,40 @@ export function NewTaskDialog(): JSX.Element {
             <For each={[...PRIORITIES].reverse()}>
               {(option) => (
                 <MenuItem role="option" icon={<PriorityGlyph priority={option} />} label={PRIORITY_LABEL[option]} checked={priority() === option} onSelect={() => { setPriority(option); close(); }} />
+              )}
+            </For>
+          )}
+        </Popover>
+        <Popover
+          width={180}
+          label="Strategy"
+          trigger={(api) => (
+            <button class={`prop-chip${strategy() === "auto" ? " empty" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle} aria-label="Strategy">
+              {strategy() === "auto" ? "Strategy" : strategy()}
+            </button>
+          )}
+        >
+          {(close) => (
+            <For each={["auto", "none", "goal", "ralph", "swarm", "graph"]}>
+              {(option) => (
+                <MenuItem role="option" label={option === "auto" ? "Auto (jev)" : option} checked={strategy() === option} onSelect={() => { setStrategy(option); close(); }} />
+              )}
+            </For>
+          )}
+        </Popover>
+        <Popover
+          width={160}
+          label="Plan first"
+          trigger={(api) => (
+            <button class={`prop-chip${plan() === "auto" ? " empty" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle} aria-label="Plan first">
+              {plan() === "auto" ? "Plan" : plan() === "yes" ? "Plan: yes" : "Plan: no"}
+            </button>
+          )}
+        >
+          {(close) => (
+            <For each={["auto", "yes", "no"]}>
+              {(option) => (
+                <MenuItem role="option" label={option === "auto" ? "Auto (jev)" : option === "yes" ? "Yes" : "No"} checked={plan() === option} onSelect={() => { setPlan(option); close(); }} />
               )}
             </For>
           )}

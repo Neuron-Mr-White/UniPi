@@ -58,7 +58,8 @@ describe("permission settings namespace", () => {
   it("exposes mode, jevJudge, jevConfidence and the clear-rules action", () => {
     const fields = PERMISSION_SECTIONS[0]!.fields;
     const keys = fields.map((field) => field.key);
-    assert.deepEqual(keys, ["mode", "jevJudge", "jevConfidence", "rulesCount"]);
+    // Two "mode" rows: project (clearable) + the all-projects default (global).
+    assert.deepEqual(keys, ["mode", "mode", "jevJudge", "jevConfidence", "rulesCount"]);
 
     const mode = fields[0]!;
     assert.equal(mode.type, "enum");
@@ -67,12 +68,18 @@ describe("permission settings namespace", () => {
       ["ask", "auto", "full"],
     );
 
-    const confidence = fields[2]!;
+    const defaultMode = fields[1]!;
+    assert.equal(defaultMode.type, "enum");
+    assert.equal(defaultMode.type === "enum" ? defaultMode.scope : undefined, "global");
+    const projectMode = fields[0]!;
+    assert.equal(projectMode.type === "enum" ? projectMode.clearable : undefined, true);
+
+    const confidence = fields[3]!;
     assert.equal(confidence.type, "number");
     assert.equal(confidence.type === "number" ? confidence.min : undefined, 0);
     assert.equal(confidence.type === "number" ? confidence.max : undefined, 1);
 
-    const action = fields[3]!;
+    const action = fields[4]!;
     assert.equal(action.type, "action");
     assert.equal(action.type === "action" ? action.command : undefined, "unipi:permission-clear-rules");
   });
