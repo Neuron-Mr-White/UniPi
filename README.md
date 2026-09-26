@@ -41,7 +41,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Now with the Glance footer: a framed input box with an animated rainbow brand, git branch title, and a live session strip (turns, wall/tool time, TTFT, tok/s, cache hit). Responsive layout, presets, per-segment toggling.
 
-**[BTW](./packages/btw/README.md)** — Side conversations that run in parallel. Ask questions without interrupting the main agent.
+**[BTW](./packages/btw/README.md)** — Inline side questions (`/unipi:btw`) answered by a fresh read-only session seeded from the current context — the main agent never sees them.
 
 **[Ask User](./packages/ask-user/README.md)** — Structured input for decision gates. Single-select, multi-select, freeform. The agent asks instead of guessing.
 
@@ -96,7 +96,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |
-| BTW | `/unipi:btw` | question, btw-new, btw-tangent, btw-inject, btw-summarize |
+| BTW | `/unipi:btw` | question |
 | Utility | `/unipi:` | env, doctor, status, cleanup, badge-name |
 | Kanboard | `/unipi:kanboard` | toggle, doctor |
 | Footer | `/unipi:footer` | toggle, settings |

@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { migrateState, sweepOrphanSessions } from "@pi-unipi/core";
+import { migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
 
 import workflow from "@pi-unipi/workflow";
 import longHorizon from "@pi-unipi/long-horizon";
@@ -35,6 +35,7 @@ import fusion from "@pi-unipi/fusion";
 import watchdog from "@pi-unipi/watchdog";
 
 export default function (pi: ExtensionAPI) {
+  const api = withCommandEcho(pi);
   // One-time v3 state relocation into ~/.unipi/{global,workspace}/, then reap
   // any dead-pid session dirs left by crashed sessions. Both are best-effort
   // and version/pid-gated, so they are cheap on every subsequent startup.
@@ -45,7 +46,7 @@ export default function (pi: ExtensionAPI) {
     // Never block startup on housekeeping.
   }
 
-  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(pi);
+  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(api);
 
   load("workflow", workflow);
   load("long-horizon", longHorizon);

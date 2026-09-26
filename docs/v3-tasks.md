@@ -62,7 +62,7 @@ Removals and recreations are green-lit to start immediately.
 - [ ] Improve wake-line / notification UX
 
 ### 4. `btw` — ux
-- [ ] Improve side-conversation UX (discovery, switching, context visibility)
+- [x] Rewritten to Devin-style inline panel (`/unipi:btw`): one-shot read-only sub-session seeded via `SessionManager.inMemory` from the main branch (fixes the pi 0.87 `agent.state.messages` breakage); page history in memory only, nothing reaches the main session
 
 ### 5. `compactor` — choices
 - [ ] Provide compaction choices (let the user pick strategy: zero-LLM vs LLM summary vs pi-native per-model budgets)

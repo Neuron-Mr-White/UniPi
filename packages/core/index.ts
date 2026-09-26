@@ -15,6 +15,7 @@ export * from "./spinner-line.js";
 export * from "./fusion-status.js";
 export * from "./long-horizon-status.js";
 export * from "./plan-permission-status.js";
+export * from "./command-echo.js";
 
 // v3 workspace identity + state layout (marker-file id, per-workspace roots)
 export * from "./src/workspace/identity.js";

@@ -1,66 +1,23 @@
 # @pi-unipi/btw
 
-Side conversations that run in parallel. Ask a question using `/unipi:btw` while the main agent keeps working — the answer streams into a modal overlay without interrupting the current task.
+`/unipi:btw [question]` opens an inline panel over the input area for a quick side question — the main agent keeps running and never sees any of it.
 
-BTW opens a real Pi sub-session with read-only file and search access. Use it to clarify something, explore an idea, or think through next steps without derailing the main turn. It cannot run commands or modify files; when you're ready, inject the thread back or summarize it.
+Each question runs in a fresh read-only pi session seeded from the main session's current branch (including in-progress tool calls). There is **no memory between btw questions** — earlier Q&As are not fed back. Page history lives only for the pi session and is cleared on new/resume/tree navigation. Nothing is written to the main session.
 
-Based on [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.
+## Panel
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `/unipi:btw [--save] <question>` | Ask a question in a side thread |
-| `/unipi:btw-new [question]` | Start a fresh thread with main-session context |
-| `/unipi:btw-tangent [--save] <question>` | Contextless tangent thread |
-| `/unipi:btw-clear` | Dismiss modal and clear thread |
-| `/unipi:btw-inject [instructions]` | Send full thread to main agent |
-| `/unipi:btw-summarize [instructions]` | Summarize thread and inject into main agent |
-
-### Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Alt+/` | Toggle focus between BTW and main editor |
-| `Ctrl+Alt+W` | Fallback focus toggle |
-| `Esc` | Dismiss BTW overlay |
-| `PgUp`/`PgDn` | Scroll transcript |
-
-### Examples
-
-```text
-/unipi:btw what file defines this route?
-/unipi:btw how would you refactor this parser?
-/unipi:btw --save summarize the last error in one sentence
-/unipi:btw-new let's start a fresh thread about auth
-/unipi:btw-tangent brainstorm from first principles without using the current chat context
-/unipi:btw-inject implement the plan we just discussed
-/unipi:btw-summarize turn that side thread into a short handoff
+```
+❭ <question>          your question
+… / ✓ tool lines      read-only tools only (read, grep, find, ls)
+Thinking..            while waiting
+answer                rendered as markdown
+❭ Ask a /btw…         input (locked while streaming)
 ```
 
-## Special Triggers
+- `Enter` ask · `↑`/`↓` (empty input) page earlier Q&As · `PgUp`/`PgDn` scroll long answers · `Ctrl+C` cancel the answer · `Esc` back to the chat (a streaming answer keeps running into history; reopen with `/unipi:btw`).
 
-BTW is a standalone package. It doesn't register with other packages or trigger coexists behavior.
+Read-only: `read`, `grep`, `find`, `ls` only — no commands, no file changes. If you want something changed, ask in the main conversation.
 
-The BTW overlay opens top-centered so the main session remains visible underneath. The modal uses Pi's TUI system for consistent styling.
+Without a UI (print mode), `/unipi:btw <question>` prints the answer via notify.
 
-## How It Works
-
-1. `/unipi:btw` creates or reuses a BTW sub-session
-2. Your question runs in a real Pi session with read/search tool access (`read`, `grep`, `find`, `ls`)
-3. The read-only answer streams into the BTW modal overlay
-4. The thread continues until you clear it or inject it back
-
-`/unipi:btw-inject` sends the full thread to the main agent as a user message. If Pi is busy, it queues as a follow-up. `/unipi:btw-summarize` does the same but summarizes first.
-
-`/unipi:btw-tangent` starts a separate thread that doesn't inherit the main session's conversation context. Use it for unrelated exploration.
-
-The `--save` flag saves that single exchange as a visible session note.
-
-## Configurables
-
-BTW has no configuration. Thread state is session-scoped and clears when you dismiss it.
-
-## License
-
-MIT
+Based on [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.

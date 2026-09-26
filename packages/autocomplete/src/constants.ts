@@ -58,13 +58,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:memory-forget":       "memory",
   "unipi:global-memory-list":  "memory",
 
-  // btw (6 commands)
+  // btw
   "unipi:btw":           "btw",
-  "unipi:btw-tangent":   "btw",
-  "unipi:btw-new":       "btw",
-  "unipi:btw-clear":     "btw",
-  "unipi:btw-inject":    "btw",
-  "unipi:btw-summarize": "btw",
 
   // mcp (5 commands)
   "unipi:mcp-status":   "mcp",
@@ -150,12 +145,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:memory-forget":      "Delete a memory by title",
   "unipi:global-memory-list": "List all memories across all projects",
 
-  "unipi:btw":           "Run a parallel side conversation",
-  "unipi:btw-tangent":   "Start a contextless BTW tangent thread",
-  "unipi:btw-new":       "Start a fresh BTW thread with session context",
-  "unipi:btw-clear":     "Dismiss and clear the BTW thread",
-  "unipi:btw-inject":    "Inject the BTW thread into the main agent",
-  "unipi:btw-summarize": "Summarize and inject the BTW thread",
+  "unipi:btw":           "Ask a side question in an inline panel (read-only)",
 
   "unipi:mcp-status":   "Show MCP server status",
 

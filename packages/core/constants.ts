@@ -245,11 +245,6 @@ export const NOTIFY_DIRS = {
 /** BTW command names */
 export const BTW_COMMANDS = {
   BTW: "btw",
-  TANGENT: "btw-tangent",
-  NEW: "btw-new",
-  CLEAR: "btw-clear",
-  INJECT: "btw-inject",
-  SUMMARIZE: "btw-summarize",
 } as const;
 
 /** Updater command names */
