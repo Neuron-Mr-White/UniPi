@@ -2,12 +2,12 @@
  * Swarm — Maka's fan-out prescription over unipi's delegation tools.
  *
  * The ledger is the durable schedule: declared items with reported outcomes.
- * The MODEL dispatches via spawn_helper/bg_delegate (full surface in swarm
+ * The MODEL dispatches via run_subagent (full surface in swarm
  * mode); swarm_report records outcomes idempotently; swarm_status projects
  * running | needs_attention | settled; swarm_yield ends the supervisor turn
  * (wakes arrive via background-task notifications — user-first by design).
  *
- * v1 seam honesty: spawn_helper dispatch is opaque to extensions, so
+ * v1 seam honesty: run_subagent dispatch is opaque to extensions, so
  * claim-before-dispatch is enforced by the orchestration prompt (one dispatch
  * per item) plus report idempotency (duplicate terminal reports refused
  * unless the item was failed and is being replaced). Harness-level claims
@@ -45,7 +45,7 @@ Swarm Mode is active. Treat parallel delegation as the preferred execution strat
 
 - Before acting, decide whether parallel delegation would materially improve speed, quality, coverage, or independent verification. If the work cannot be usefully divided into at least two meaningful independent items, continue directly.
 - Make every item bounded and self-contained: explicit scope, expected output, constraints. Avoid overlapping writes; prefer read-only investigation.
-- Dispatch each item exactly once with spawn_helper or bg_delegate (run_in_background). Do not re-dispatch an item unless you reported it failed and are replacing it.
+- Dispatch each item exactly once with run_subagent (is_background:true for parallel items). Do not re-dispatch an item unless you reported it failed and are replacing it.
 - After dispatching all items, call swarm_yield. Do not poll, sleep, watch task logs, or wait synchronously; background-task notifications will wake you when work settles.
 - On wake, call swarm_status for compact statuses. Read full results only for completed items you will synthesize or failed items you must diagnose.
 - Record every outcome with swarm_report. Replace failed work by re-dispatching a corrected item and reporting it under the same id.

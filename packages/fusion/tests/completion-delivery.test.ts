@@ -15,7 +15,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createCompletionDelivery, registerFusionTools } from "../src/tools.js";
+import { registerFusionTools } from "../src/tools.js";
+import { ensureReadSubagentTool, resetSubagentRegistry } from "@pi-unipi/core/child-agent.js";
+import { createCompletionDelivery } from "@pi-unipi/core/child-agent.js";
 import { SidekickRuntime, type HandoffReport } from "../src/sidekick-runtime.js";
 
 /** Replies to the runtime's settle handshake with a canned report. */
@@ -82,7 +84,9 @@ function setup(options: { delayMs: number; text: string }) {
     registerMessageRenderer: () => undefined,
     sendMessage: (message: any, options: any) => sent.push({ message, options }),
   };
+  resetSubagentRegistry();
   registerFusionTools(pi, { getRuntime: () => runtime, onReport: (_ctx, report) => reports.push(report) });
+  ensureReadSubagentTool(pi);
 
   const state = { pending: false };
   const ctx: any = { hasPendingMessages: () => state.pending };

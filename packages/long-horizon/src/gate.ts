@@ -48,12 +48,9 @@ export interface GateDeps {
 }
 
 /** Delegation tools governed by the exposure matrix (design §8). */
-export const DELEGATION_TOOLS: readonly string[] = [
-  "spawn_helper",
-  "get_helper_result",
-  "bg_delegate",
-  "bg_result",
-];
+// Devin-model subagents are first-class: run_subagent is available in every
+// mode. The delegation matrix mechanism is kept for future mode tools.
+export const DELEGATION_TOOLS: readonly string[] = [];
 
 /** Every mode-control tool name across modes (todowrite rides all four). */
 export const ALL_MODE_TOOLS: readonly string[] = [
@@ -122,7 +119,7 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
       `Available long-horizon tools: ${definition.controlTools.join(", ")}.` +
         (definition.delegation === "full"
           ? " Delegation tools are available for parallel work."
-          : " Delegation tools are hidden; finish here or ask the user to switch modes."),
+          : ""),
     );
   }
   const status = ownerPresenceLine(owner, parked);

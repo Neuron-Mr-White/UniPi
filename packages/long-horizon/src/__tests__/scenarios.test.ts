@@ -126,7 +126,7 @@ const goalPayload = {
     { type: "function", function: { name: "bash" } },
     { type: "function", function: { name: "create_goal" } },
     { type: "function", function: { name: "swarm_status" } },
-    { type: "function", function: { name: "spawn_helper" } },
+    { type: "function", function: { name: "run_subagent" } },
   ],
 };
 
@@ -145,7 +145,7 @@ test("scenario 1: judge ON routes a fan-out prompt to swarm and the payload surf
   const filtered = filterPayloadTools(goalPayload, "swarm");
   assert.deepEqual(
     (filtered.tools as Array<{ function?: { name?: string } }>).map((t) => t.function?.name),
-    ["bash", "swarm_status", "spawn_helper"], // goal tools hidden, delegation full
+    ["bash", "swarm_status", "run_subagent"], // goal tools hidden, delegation full
   );
   rmSync(w.dir, { recursive: true, force: true });
 });

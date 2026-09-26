@@ -41,6 +41,7 @@ import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
 import { duration, renderSidekickStep } from "./transcript.js";
 import { persistDefaultModel, piSettingsPath } from "./pi-settings.js";
+import { ensureReadSubagentTool, setReadSubagentDemand } from "@pi-unipi/core/child-agent.js";
 import { readFileSync } from "node:fs";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
@@ -186,7 +187,7 @@ export function createModelBoostProvider(current: AutocompleteProvider): Autocom
   };
 }
 
-export const FUSION_TOOLS = ["sidekick", "read_subagent"] as const;
+export const FUSION_TOOLS = ["sidekick"] as const;
 
 /**
  * Adds the fusion tools to pi's active set while Fusion is active, removes
@@ -227,7 +228,14 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   });
 
   const syncTools = makeFusionToolSync(pi);
-  const syncFusionTools = () => syncTools(active?.kind === "fusion");
+  // `read_subagent` presence is demand-driven across owners (core registry):
+  // fusion wants it only while a Fusion pair is active.
+  const syncFusionTools = () => {
+    const fusion = active?.kind === "fusion";
+    syncTools(fusion);
+    setReadSubagentDemand(pi, "fusion", fusion);
+  };
+  ensureReadSubagentTool(pi);
 
   function identity(ctx: ExtensionContext): FusionIdentity {
     const reg = registryOf(ctx);
@@ -258,6 +266,8 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       // the working lead lit, the sidekick muted.
       setSharedFusionStatus({
         leadName: names(active.lead),
+        leadKey: active.lead,
+        sidekickKey: active.sidekick,
         leadEffort: active.leadEffort ?? "",
         sidekickName: names(active.sidekick),
         sidekickEffort: active.sidekickEffort ?? "",

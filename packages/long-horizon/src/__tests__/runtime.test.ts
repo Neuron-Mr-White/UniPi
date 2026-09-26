@@ -18,7 +18,7 @@ test("classifyToolCall extracts commands and files", () => {
   assert.deepEqual(classifyToolCall("edit", { path: "src/a.ts" }), { file: "src/a.ts" });
   assert.deepEqual(classifyToolCall("write", { file_path: "b.ts" }), { file: "b.ts" });
   assert.deepEqual(classifyToolCall("read", {}), {});
-  assert.deepEqual(classifyToolCall("spawn_helper", { prompt: "x" }), {});
+  assert.deepEqual(classifyToolCall("run_subagent", { task: "x" }), {});
 });
 
 test("extractTail bounds roles/text and drops empties", () => {

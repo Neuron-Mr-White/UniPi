@@ -27,7 +27,6 @@ import {
   type BgTaskSnapshot,
   type JsonObject,
   type KillKind,
-  type StartDelegateTaskOptions,
   type StartTaskOptions,
   type TaskContextUsage,
   type TaskStatus,
@@ -637,31 +636,6 @@ function noopOnChange(): void {
   return undefined;
 }
 
-/**
- * Deliver the delegate prompt bytes over stdin.
- *
- * A failure to deliver the seed is loud: the caller terminates the task rather
- * than letting a child run without the context it was supposed to receive.
- */
-function writeDelegateStdin(
-  child: BackgroundTaskChildProcess,
-  bytes: Buffer,
-  onError: (error: Error) => void,
-): void {
-  const stdin = child.stdin;
-  if (stdin === undefined || stdin === null) {
-    onError(new Error('delegate child stdin pipe is unavailable'));
-    return;
-  }
-  stdin.once('error', onError);
-  stdin.write(bytes, (error?: Error | null) => {
-    if (error !== undefined && error !== null) {
-      onError(error);
-      return;
-    }
-    stdin.end();
-  });
-}
 
 export class BackgroundTaskRegistry {
   private readonly tasks = new Map<string, BgTask>();
@@ -918,145 +892,6 @@ export class BackgroundTaskRegistry {
       this.writeNotice(task, `\n[background task spawn exception: ${message}]\n`);
       await this.finalizeTask(task, 'failed', null, undefined, message);
       throw new Error(`Failed to start background task: ${message}`);
-    }
-  }
-
-  /**
-   * Start a prepared delegate child.
-   *
-   * The caller has already completed preflight, so by the time this runs the
-   * seed, budget plan, and artifact directory exist and the argv is fixed. The
-   * child is launched directly, never through a shell, and its terminal state
-   * flows through the same durable notification path as `bg_run`.
-   */
-  async startDelegateTask(
-    ctx: BackgroundTaskContext,
-    request: StartDelegateTaskOptions,
-  ): Promise<BgTask> {
-    if (this.shuttingDown)
-      throw new Error('Cannot start a delegate task while Pi is shutting down');
-
-    const launch = resolvePiLaunch({ platform: this.platform });
-    assertWindowsCommandLineWithinLimit(launch, request.argv, this.platform, 'bg-delegate');
-
-    const dir = await this.ensureRuntimeDir(ctx);
-    const id = request.facts.taskId;
-    const outputAbsPath = join(dir.abs, `${id}.output`);
-    const metadataAbsPath = join(dir.abs, `${id}.json`);
-    const outputPath = join(dir.display, `${id}.output`);
-
-    const task: BgTask = {
-      id,
-      name: normalizeTaskName(request.name) ?? 'Delegate task',
-      command: ['pi', ...request.argv].map(shellQuote).join(' '),
-      status: 'running',
-      outputPath,
-      outputAbsPath,
-      metadataAbsPath,
-      cwd: ctx.cwd,
-      startTime: this.now(),
-      exitCode: undefined,
-      pid: undefined,
-      bytesWritten: 0,
-      isAgent: true,
-      notified: false,
-      notifyOnCompletion: request.notifyOnCompletion,
-      triggerOnCompletion: request.triggerOnCompletion,
-      timeoutSeconds: request.timeoutSeconds,
-      model: request.facts.route.qualifiedId,
-      delegate: request.facts,
-      waiters: [],
-    };
-    this.tasks.set(id, task);
-
-    const stream = createWriteStream(outputAbsPath, { flags: 'a', encoding: 'utf8' });
-    task.stream = stream;
-    stream.on('error', (error) => {
-      task.error = `Output file write failed: ${error.message}`;
-    });
-
-    try {
-      const child = this.spawn(launch.executable, piLaunchArgv(launch, [...request.argv]), {
-        cwd: ctx.cwd,
-        detached: this.platform !== 'win32',
-        shell: false,
-        // The seed travels over stdin, never as a shell or positional argument,
-        // so the bytes the child reads are exactly the bytes that were persisted
-        // and hashed, with no quoting or command-line length limit in the path.
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: request.env,
-        windowsHide: true,
-      });
-      task.child = child;
-      task.pid = child.pid;
-      writeDelegateStdin(child, request.stdinBytes, (error) => {
-        this.writeNotice(task, `\n[delegate stdin write failed: ${error.message}]\n`);
-        if (task.status === 'running') {
-          task.killKind = 'user';
-          task.error = `Delegate seed could not be delivered: ${error.message}`;
-          try {
-            this.requestKill(task, 'SIGTERM');
-          } catch {
-            void this.finalizeTask(task, 'failed', null, undefined, task.error);
-          }
-        }
-      });
-
-      child.stdout?.on('data', (data) => {
-        this.appendChildOutput(task, data, 'stdout');
-      });
-      child.stderr?.on('data', (data) => {
-        this.appendChildOutput(task, data, 'stderr');
-      });
-      child.on('error', (error) => {
-        this.writeNotice(task, `\n[delegate spawn error: ${error.message}]\n`);
-        void this.finalizeTask(task, 'failed', null, undefined, error.message);
-      });
-      child.on('close', (code, signalName) => {
-        let status: TaskStatus;
-        let error: string | undefined;
-        if (task.killKind === 'user' || task.killKind === 'shutdown') {
-          status = 'killed';
-        } else if (task.killKind === 'timeout') {
-          status = 'failed';
-          error = task.error ?? `Timed out after ${String(request.timeoutSeconds ?? 0)}s`;
-        } else if ((code ?? 0) === 0) {
-          status = 'completed';
-        } else {
-          status = 'failed';
-          error = `Exited with code ${code === null ? 'null' : String(code)}${signalName ? ` (${signalName})` : ''}`;
-        }
-        void this.finalizeTask(task, status, code, signalName, error);
-      });
-
-      if (request.timeoutSeconds !== undefined) {
-        task.timeoutHandle = setTimeout(() => {
-          if (task.status !== 'running') return;
-          task.killKind = 'timeout';
-          task.error = `Timed out after ${String(request.timeoutSeconds)}s`;
-          this.writeNotice(task, `\n[delegate timeout: ${task.error}]\n`);
-          try {
-            this.requestKill(task, 'SIGTERM');
-          } catch (error) {
-            void this.finalizeTask(
-              task,
-              'failed',
-              null,
-              undefined,
-              `${task.error}; kill failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }, request.timeoutSeconds * 1000);
-      }
-
-      await this.writeMetadata(task);
-      this.onChange();
-      return task;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.writeNotice(task, `\n[delegate spawn exception: ${message}]\n`);
-      await this.finalizeTask(task, 'failed', null, undefined, message);
-      throw new Error(`Failed to start delegate task: ${message}`);
     }
   }
 
@@ -1816,12 +1651,7 @@ export class BackgroundTaskRegistry {
       task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
     const error = task.error ? `\n  <error>${escapeXml(task.error)}</error>` : '';
     const taskName = taskDisplayName(task);
-    const guidance =
-      task.delegate === undefined
-        ? 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.'
-        : task.status === 'completed'
-          ? `Delegate result is durably committed. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
-          : `Delegate ended ${task.status}. Inspect the preserved artifacts at ${task.delegate.artifactDir}; do not poll.`;
+    const guidance = 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.';
     const content = [
       '<background-task-notification>',
       `  <task-id>${task.id}</task-id>`,

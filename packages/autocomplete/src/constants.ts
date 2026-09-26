@@ -77,10 +77,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // utility (settings hub)
   "unipi:settings":         "utility",
 
-  // subagents (3 commands)
-  "unipi:subagents-fleet":  "subagents",
-  "unipi:subagents-doctor": "subagents",
-  "unipi:subagents-guide":  "subagents",
+  // subagents (no user commands — Devin model)
 
   // background-tasks (8 commands)
   "unipi:bg":          "background-tasks",
@@ -185,9 +182,6 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:bg-tasks":    "Open the background task manager UI",
   "unipi:model":         "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
   "unipi:fusion-stats":  "Estimated Fusion savings (sidekick tokens priced at lead rates)",
-  "unipi:subagents-fleet":  "Open the subagents fleet view",
-  "unipi:subagents-doctor": "Diagnose subagents configuration",
-  "unipi:subagents-guide":  "Show the subagents usage guide",
 };
 
 // ─── Package Display Names ───────────────────────────────────────────

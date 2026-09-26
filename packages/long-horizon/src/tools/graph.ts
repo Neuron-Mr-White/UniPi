@@ -51,7 +51,7 @@ export const GRAPH_ORCHESTRATION_PROMPT = `<long-horizon-graph>
 Graph Mode is active. You are the supervisor of a dependent work graph.
 
 - Declare the graph first with update_agent_graph: items with explicit dependsOn (an item's inputs are the COMMITTED results of its dependencies). Cycles are refused.
-- Dispatch every currently-ready item with spawn_helper or bg_delegate. Do not dispatch an item before its dependencies complete.
+- Dispatch every currently-ready item with run_subagent (is_background:true for parallel items). Do not dispatch an item before its dependencies complete.
 - After dispatching a wave, call swarm_yield. Do not poll; background notifications wake you.
 - On wake, record outcomes with graph_output. Recording a completion hands you the next ready items together with their input frontiers (the dependency summaries) — pass those inputs into the child instructions instead of restating conclusions.
 - A failed item can be re-dispatched after its failure is recorded; downstream items stay blocked until it completes or is aborted.

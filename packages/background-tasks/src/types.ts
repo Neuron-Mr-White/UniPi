@@ -68,26 +68,10 @@ export interface BgTaskSnapshot {
   toolUsage?: TaskToolUsage | undefined;
   model?: string | undefined;
   telemetryUnavailableReason?: string | undefined;
-  delegate?: DelegateTaskFacts | undefined;
   /** Last few non-empty output lines (bounded), for compact chat cards. */
   outputTail?: string[] | undefined;
 }
 
-/** Delegate-specific task facts surfaced through snapshots and `bg_result`. */
-export interface DelegateTaskFacts {
-  taskId: string;
-  launchNonce: string;
-  artifactDir: string;
-  artifactDirAbs: string;
-  seedSha256: string;
-  childSessionId: string;
-  route: { provider: string; model: string; qualifiedId: string };
-  budget: DelegateBudgetRouteSource;
-  extensionMode: DelegateExtensionMode;
-  autoDeliver: "never" | "when_small" | "always";
-  /** Set once the run reaches a terminal state and its result has been evaluated. */
-  outcome?: DelegateTaskOutcome | undefined;
-}
 
 export interface DelegateTaskOutcome {
   status: "committed" | "failed" | "cancelled";
@@ -98,9 +82,6 @@ export interface DelegateTaskOutcome {
   toolCalls?: number | undefined;
 }
 
-/** Forward declarations satisfied by ./delegate/types.js (kept here to avoid cycles). */
-export type DelegateBudgetRouteSource = import("./delegate/types.js").DelegateBudgetRouteSource;
-export type DelegateExtensionMode = import("./delegate/types.js").DelegateExtensionMode;
 
 export interface BgTask extends Omit<BgTaskSnapshot, "name"> {
   name: string;
@@ -129,7 +110,6 @@ export interface BgTask extends Omit<BgTaskSnapshot, "name"> {
   /** Partial trailing stdout line held between chunks while reconstructing wrapped-agent control lines. */
   agentStdoutBuffer?: string | undefined;
   telemetryUnavailableReason?: string | undefined;
-  delegate?: DelegateTaskFacts | undefined;
   outputTail?: string[] | undefined;
   metadataWriteChain?: Promise<void> | undefined;
   waiters: Array<() => void>;
@@ -227,17 +207,6 @@ export interface StartTaskOptions {
   terminalPublicationGate?: Promise<void> | undefined;
 }
 
-export interface StartDelegateTaskOptions {
-  name: string;
-  argv: readonly string[];
-  /** Prompt bytes delivered over stdin, never as a shell or positional argument. */
-  stdinBytes: Buffer;
-  env: NodeJS.ProcessEnv;
-  facts: DelegateTaskFacts;
-  notifyOnCompletion: boolean;
-  triggerOnCompletion: boolean;
-  timeoutSeconds?: number | undefined;
-}
 
 /** Default tool-output byte cap (mirrors pi's DEFAULT_MAX_BYTES). */
 export const DEFAULT_MAX_BYTES = 30 * 1024;
@@ -759,7 +728,6 @@ export function snapshot(task: BgTask): BgTaskSnapshot {
     toolUsage: task.toolUsage,
     model: task.model,
     telemetryUnavailableReason: task.telemetryUnavailableReason,
-    delegate: task.delegate,
     outputTail: task.outputTail === undefined ? undefined : [...task.outputTail],
   };
 }

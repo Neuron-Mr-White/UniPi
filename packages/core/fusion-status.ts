@@ -10,6 +10,10 @@
 export interface SharedFusionStatus {
   /** Display name of the lead (the session model). */
   leadName: string;
+  /** Lead model key provider/id (for child-model resolution). */
+  leadKey?: string;
+  /** Sidekick model key provider/id (for child-model resolution). */
+  sidekickKey?: string;
   /** Lead thinking level, e.g. "medium". */
   leadEffort: string;
   /** Display name of the sidekick. */

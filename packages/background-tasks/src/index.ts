@@ -18,7 +18,6 @@ import {
   type BackgroundTaskExtensionService,
 } from "./extension-api.js";
 import { registerToolsAndCommands } from "./tools.js";
-import { registerDelegateExtension } from "./delegate-extension.js";
 import { setSharedTaskRegistry, clearSharedTaskRegistry } from "./registry-shared.js";
 import { formatDuration, taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
 
@@ -205,11 +204,6 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
               return result;
             },
             rerunTask: async (task) => {
-              if (task.delegate !== undefined) {
-                throw new Error(
-                  "Only shell-command tasks can be rerun from the dock; relaunch this typed workflow through its owning tool.",
-                );
-              }
               const rerunOptions: StartTaskOptions = {
                 name: taskDisplayName(task),
                 isAgent: task.isAgent,
@@ -259,15 +253,6 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     startTask,
     openTaskManager,
     clearFinishedNotices,
-  });
-
-  registerDelegateExtension(pi, {
-    startDelegateTask: async (ctx, options) => {
-      currentCtx = ctx;
-      return registry.startDelegateTask(ctx, options);
-    },
-    snapshot: (task) => registry.snapshot(task),
-    resolveTask: (idOrPrefix) => registry.resolveTask(idOrPrefix),
   });
 
   pi.on("session_start", async (_event, ctx) => {

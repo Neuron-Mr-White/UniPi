@@ -25,7 +25,7 @@ import { extractText } from "./src/extract.js";
 const NEVER_WATCH = new Set([
   "read", "write", "edit", "grep", "find", "ls",
   "ask_user",
-  "bg_result", "bg_kill", "bg_tasks",
+  "read_subagent", "bg_kill", "bg_tasks",
   "set_session_name", "ctx_env",
 ]);
 
@@ -302,7 +302,7 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
       items.push({
         key: `bg:${task.id}`,
         kind: "bg",
-        toolName: task.delegate ? "bg_delegate" : "bg_run",
+        toolName: "bg_run",
         command: task.command.slice(0, 500),
         startedAt: task.startTime,
         // Filled in tick() from the per-key tail history.

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { registerFusionTools } from "../src/tools.js";
+import { ensureReadSubagentTool, resetSubagentRegistry } from "@pi-unipi/core/child-agent.js";
 import type { HandoffReport, HandoffProgress } from "../src/sidekick-runtime.js";
 
 const report: HandoffReport = {
@@ -22,7 +23,9 @@ function setup(runtime: any, pending = false, callbacks: any = {}) {
     sendMessage: (message: any, options: any) => sent.push({ message, options }),
   };
   const ctx: any = { hasPendingMessages: () => pending };
+  resetSubagentRegistry();
   registerFusionTools(pi, { getRuntime: () => runtime, ...callbacks });
+  ensureReadSubagentTool(pi);
   return { tools, renderers, sent, ctx };
 }
 

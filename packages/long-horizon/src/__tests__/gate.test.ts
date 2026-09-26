@@ -35,12 +35,11 @@ test("toolNameOf handles OpenAI and Anthropic shapes", () => {
   assert.equal(toolNameOf(null), null);
 });
 
-test("goal mode hides other modes' tools and defers delegation", () => {
+test("goal mode hides other modes' tools; delegation is never hidden", () => {
   const hidden = hiddenToolNames("goal");
   assert.equal(hidden.has("ralph_done"), true);
   assert.equal(hidden.has("swarm_status"), true);
-  assert.equal(hidden.has("spawn_helper"), true);
-  assert.equal(hidden.has("bg_delegate"), true);
+  assert.equal(hidden.has("run_subagent"), false, "run_subagent is first-class in every mode");
   assert.equal(hidden.has("create_goal"), false);
   assert.equal(hidden.has("todowrite"), false);
   assert.equal(hidden.has("bash"), false); // infrastructure untouched
@@ -48,7 +47,7 @@ test("goal mode hides other modes' tools and defers delegation", () => {
 
 test("swarm mode exposes delegation but hides goal tools", () => {
   const hidden = hiddenToolNames("swarm");
-  assert.equal(hidden.has("spawn_helper"), false);
+  assert.equal(hidden.has("run_subagent"), false);
   assert.equal(hidden.has("create_goal"), true);
   assert.equal(hidden.has("update_goal"), true);
   assert.equal(hidden.has("swarm_yield"), false);
@@ -71,13 +70,13 @@ test("filterPayloadTools preserves order and unknown shapes pass through", () =>
       { type: "function", function: { name: "bash" } },
       { type: "function", function: { name: "create_goal" } },
       { name: "ralph_done" },
-      { type: "function", function: { name: "spawn_helper" } },
+      { type: "function", function: { name: "run_subagent" } },
     ],
   };
   const filtered = filterPayloadTools(payload, "goal");
   assert.deepEqual(
     filtered.tools.map((t: unknown) => toolNameOf(t)),
-    ["bash", "create_goal"],
+    ["bash", "create_goal", "run_subagent"],
   );
   // Re-filtering an already-filtered payload is identity-stable (no further change).
   assert.equal(filterPayloadTools(filtered, "goal"), filtered);
@@ -125,13 +124,8 @@ test("explicit override beats owner, parks it, and is consumed once", async () =
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("delegation set matches the design matrix", () => {
-  assert.deepEqual([...DELEGATION_TOOLS].sort(), [
-    "bg_delegate",
-    "bg_result",
-    "get_helper_result",
-    "spawn_helper",
-  ]);
+test("delegation set is empty — subagents are first-class in every mode", () => {
+  assert.deepEqual([...DELEGATION_TOOLS], []);
 });
 
 // ── badge de-dup (UX: no ⟐ spam on steady-state turns) ─────────────────────

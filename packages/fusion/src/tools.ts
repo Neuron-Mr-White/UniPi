@@ -2,6 +2,7 @@ import { Text, type Component } from "@earendil-works/pi-tui";
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SidekickRuntime, HandoffProgress, HandoffReport } from "./sidekick-runtime.js";
+import { createCompletionDelivery, registerSubagentReader, type SubagentReader } from "@pi-unipi/core/child-agent.js";
 import { duration } from "./transcript.js";
 
 const SidekickParams = Type.Object({
@@ -20,46 +21,6 @@ export interface FusionToolDeps {
   onHandoffStart?: (ctx: ExtensionContext) => void;
   onAttach?: (ctx: ExtensionContext) => void;
   onDetach?: (ctx: ExtensionContext) => void;
-}
-
-/**
- * Exactly-once completion delivery for handoffs nobody is waiting on.
- *
- * `attach`/`detach` bracket every waiting period. The completion is sent only
- * if the report lands (or has already landed) while no waiter is attached, and
- * only once per handoff id.
- */
-export function createCompletionDelivery(send: (report: HandoffReport) => void): {
-  attach(id: string): void;
-  detach(id: string, done: Promise<HandoffReport>): void;
-  consume(id: string): void;
-} {
-  const waiting = new Set<string>();
-  const armed = new Set<string>();
-  const delivered = new Set<string>();
-
-  return {
-    attach(id) {
-      waiting.add(id);
-    },
-    detach(id, done) {
-      waiting.delete(id);
-      // One continuation per handoff, however many times a waiter gives up.
-      if (armed.has(id)) return;
-      armed.add(id);
-      void done
-        .then((report) => {
-          if (waiting.has(id) || delivered.has(id)) return;
-          delivered.add(id);
-          send(report);
-        })
-        .catch(() => undefined);
-    },
-    consume(id) {
-      waiting.delete(id);
-      delivered.add(id);
-    },
-  };
 }
 
 function firstLine(value: string): string {
@@ -183,7 +144,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
   pi.registerMessageRenderer("sidekick-completion", (message: { details?: HandoffReport }, _options, theme) => renderCompletionLine(theme as unknown as ThemeLike, message.details));
 
   // One delivery mechanism for every handoff nobody is waiting on.
-  const completion = createCompletionDelivery((report) => {
+  const completion = createCompletionDelivery<HandoffReport>((report) => {
     pi.sendMessage(completionMessage(report) as never, { deliverAs: "followUp", triggerTurn: true } as never);
   });
 
@@ -225,14 +186,19 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
     },
   });
 
-  pi.registerTool({
-    name: "read_subagent",
-    label: "Read Sidekick",
-    description: "Read a sidekick handoff report by agent_id (omit for the latest). block:true waits for completion (default timeout 2700s when omitted); block:false returns the current progress snapshot immediately.",
-    parameters: ReadSubagentParams,
-    renderCall: (args, theme) => new Text(`${theme.fg("toolTitle", theme.bold("◆ read_subagent"))} ${theme.fg("dim", args.block === false ? "· snapshot" : "· waiting")}`, 0, 0),
-    renderResult: (result, _options, theme) => renderToolStatus(result, theme as unknown as ThemeLike),
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+  // Fusion registers a READER for the shared `read_subagent` tool (core).
+  // Same semantics as before: consume completions, block:true waits with the
+  // shared timeout cap, interrupted waits detach to background.
+  const reader: SubagentReader = {
+    owns: (id, ctx) => runtime_reports_owns(deps, id, ctx ?? lastCtx),
+    latest: (ctx) => {
+      const ctx0 = ctx ?? lastCtx;
+      const rt = ctx0 === undefined ? undefined : deps.getRuntime(ctx0);
+      const latest = rt?.latest();
+      if (!latest || !rt) return undefined;
+      return { id: latest.id, startedAt: rt.progress(latest.id)?.startedAt ?? 0 };
+    },
+    read: async (params, signal, onUpdate, ctx) => {
       const runtime = deps.getRuntime(ctx);
       if (!runtime) return result("Fusion is not active — pick a Fusion pair with /unipi:model.", undefined, true);
       const latest = runtime.latest();
@@ -241,29 +207,43 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
       const selected = runtime.reports.get(id);
       if (selected) {
         completion.consume(id);
-        return result(reportText(selected), selected, selected.status !== "completed");
+        return result(reportText(selected), { ...selected, owner: "fusion" }, selected.status !== "completed");
       }
       if (id !== latest.id) return result(`No sidekick handoff found for ${id}.`, undefined, true);
-      if (params.block !== true) return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`, { progress: runtime.progress(id), id });
+      if (params.block !== true) return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`, { progress: runtime.progress(id), id, owner: "fusion" });
       deps.onAttach?.(ctx);
       runtime.attachUi?.(ctx.ui as never);
       completion.attach(id);
-      const timeoutMs = (params.timeout ?? 2700) * 1000;
-      const waited = await waitForReport(runtime, id, latest.done, signal, ctx, onUpdate ? (update) => onUpdate(update as never) : undefined, timeoutMs);
+      const timeoutMs = Math.min(600, params.timeout ?? 30) * 1000;
+      const waited = await waitForReport(runtime, id, latest.done, signal, ctx, onUpdate, timeoutMs);
       runtime.detachUi?.();
       if (waited.report) {
         completion.consume(id);
         deps.onReport?.(ctx, waited.report);
-        return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
+        return result(reportText(waited.report), { ...waited.report, owner: "fusion" }, waited.report.status !== "completed");
       }
       completion.detach(id, latest.done);
       deps.onDetach?.(ctx);
       if (waited.error) return result(`Handoff ${id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`Handoff ${id} aborted.`, undefined, true);
-      if (waited.interrupted) return result(`A user message arrived while the sidekick (agent_id ${id}) was working.\n${waited.interrupted}`, { progress: runtime.progress(id), id });
-      return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`, { progress: runtime.progress(id), id });
+      if (waited.interrupted) return result(`A user message arrived while the sidekick (agent_id ${id}) was working.\n${waited.interrupted}`, { progress: runtime.progress(id), id, owner: "fusion" });
+      return result(`Handoff ${id} is still running.\n${progressText(runtime, id)}`, { progress: runtime.progress(id), id, owner: "fusion" });
+    },
+  };
+  let lastCtx: ExtensionContext | undefined;
+  registerSubagentReader("fusion", {
+    owns: (id, ctx) => reader.owns(id, ctx),
+    latest: (ctx) => reader.latest(ctx),
+    read: (params, signal, onUpdate, ctx) => {
+      lastCtx = ctx;
+      return reader.read(params, signal, onUpdate, ctx);
     },
   });
+
+  function runtime_reports_owns(d: FusionToolDeps, id: string, ctx: ExtensionContext | undefined): boolean {
+    const rt = ctx === undefined ? undefined : d.getRuntime(ctx);
+    return rt !== undefined && (rt.reports.has(id) || rt.latest()?.id === id);
+  }
 
 }
 

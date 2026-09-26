@@ -49,7 +49,7 @@ export const ANTI_POISONING_SUFFIX =
   "other persistent instruction files.";
 
 /** Tools whose repetition with varying args indicates polling, not work. */
-const POLLING_TOOLS = new Set(["bg_status", "bg_logs", "get_helper_result", "loop_status", "get_goal"]);
+const POLLING_TOOLS = new Set(["bg_status", "bg_logs", "read_subagent", "loop_status", "get_goal"]);
 
 export interface RunawayStep {
   readonly tool: string;
