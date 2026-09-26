@@ -138,7 +138,7 @@ test("scenario 1: judge ON routes a fan-out prompt to swarm and the payload surf
       { status: 200 },
     ),
   );
-  await fire(w.pi, "before_agent_start", { prompt: "review these six packages in parallel", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "review these six packages in parallel", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   const state = w.gate.current();
   assert.deepEqual(state?.mode, "swarm");
   assert.equal(state?.source, "judge");
@@ -155,12 +155,12 @@ test("scenario 2: explicit /unipi:swarm mid-goal parks the goal; resume restores
   // Goal active.
   w.machine.create("migrate packages to esm");
   w.owner.activate("goal", "migrate packages to esm");
-  await fire(w.pi, "before_agent_start", { prompt: "start migrating", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "start migrating", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   assert.equal(w.gate.current()?.source, "owner");
 
   // Explicit swarm override parks the goal.
   w.gate.setExplicit("swarm");
-  await fire(w.pi, "before_agent_start", { prompt: "review auth modules", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "review auth modules", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   assert.equal(w.gate.current()?.mode, "swarm");
   assert.equal(w.owner.getParked()?.kind, "goal");
   assert.equal(w.machine.get()?.status, "paused");
@@ -168,7 +168,7 @@ test("scenario 2: explicit /unipi:swarm mid-goal parks the goal; resume restores
   // Resume: goal reactivates and owns the mode again.
   w.owner.resume();
   w.machine.resume();
-  await fire(w.pi, "before_agent_start", { prompt: "continue the migration", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "continue the migration", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   assert.deepEqual(w.gate.current(), { mode: "goal", source: "owner" });
   assert.equal(w.machine.get()?.status, "active");
   rmSync(w.dir, { recursive: true, force: true });
@@ -178,7 +178,7 @@ test("scenario 3: crash → fresh coordinators restore owner + goal; recovery ri
   const w = world();
   w.machine.create("survive crashes", { tokenBudget: null });
   w.owner.activate("goal", "survive crashes");
-  await fire(w.pi, "before_agent_start", { prompt: "go", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "go", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   await fire(w.pi, "agent_end", {
     messages: [{ role: "user", content: "go" }, { role: "assistant", content: "starting", usage: { totalTokens: 500 } }],
   });
@@ -281,7 +281,7 @@ test("scenario 7: budget wrap-up delivered once, owner finished, next plain turn
   const wrapUps = w.pi.sent.filter((message) => message.includes("budget limit"));
   assert.equal(wrapUps.length, 1);
   // Next user message: no owner → default mode (judge off).
-  await fire(w.pi, "before_agent_start", { prompt: "unrelated quick fix", systemPrompt: "BASE" });
+  await fire(w.pi, "before_agent_start", { prompt: "unrelated quick fix", systemPrompt: "BASE", systemPromptOptions: { sections: {} } });
   assert.deepEqual(w.gate.current(), { mode: "goal", source: "default" });
   rmSync(w.dir, { recursive: true, force: true });
 });

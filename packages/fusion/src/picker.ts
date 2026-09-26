@@ -33,7 +33,7 @@
  * preset lists.
  */
 
-import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { frameOverlay } from "@pi-unipi/core";
 import {
   effortLabel,
@@ -67,6 +67,8 @@ export interface PickerState {
   active: ActiveSelection | undefined;
   /** The session's current model — its row lights up with ✓. */
   currentModelKey: ModelKey | undefined;
+  /** pi's persisted startup model — its row gets a dim `default` tag. */
+  defaultModelKey: ModelKey | undefined;
   effort: Readonly<Record<ModelKey, EffortLevel>>;
   /** Effort used for a model with no remembered level. */
   fallbackEffort: EffortLevel;
@@ -98,6 +100,8 @@ export interface PickerOptions {
   state: PickerState;
   theme: PickerTheme;
   onDone: (result: PickerResult) => void;
+  /** ctrl+s: persist the highlighted row as the startup default. */
+  onSetDefault?: (result: PickerResult) => void;
   onRenderRequest?: (() => void) | undefined;
   /** Rows visible in the list window. */
   visibleRows?: number | undefined;
@@ -171,6 +175,7 @@ function pad(text: string, width: number): string {
 export class ModelPicker {
   private readonly theme: PickerTheme;
   private readonly onDone: (result: PickerResult) => void;
+  private readonly onSetDefault?: (result: PickerResult) => void;
   private readonly onRenderRequest: (() => void) | undefined;
   private readonly visibleRows: number;
   private readonly modelsByKey: Map<ModelKey, PickerModel>;
@@ -196,6 +201,7 @@ export class ModelPicker {
     this.state = options.state;
     this.theme = options.theme;
     this.onDone = options.onDone;
+    this.onSetDefault = options.onSetDefault;
     this.onRenderRequest = options.onRenderRequest;
     this.visibleRows = options.visibleRows ?? DEFAULT_VISIBLE_ROWS;
     this.modelsByKey = new Map(options.state.models.map((m) => [m.key, m]));
@@ -286,9 +292,20 @@ export class ModelPicker {
     return this.rows()[this.selected];
   }
 
-  private dropdownItems(): ModelKey[] {
+  /** Dropdown entries: curated keys first, a dim separator, then the rest of
+   *  the catalogue — or the whole catalogue when the list is empty (Fusion is
+   *  usable without curating presets). */
+  private dropdownEntries(): Array<ModelKey | "sep"> {
     const source = this.focus === "lead" ? this.state.fusionLeads : this.state.fusionSidekicks;
-    return source.filter((k) => this.modelsByKey.has(k));
+    const curated = source.filter((k) => this.modelsByKey.has(k) && this.matchesSearch(k));
+    const rest = this.state.models.map((m) => m.key).filter((k) => this.modelsByKey.has(k) && !curated.includes(k) && this.matchesSearch(k));
+    if (curated.length === 0) return rest;
+    if (rest.length === 0) return curated;
+    return [...curated, "sep", ...rest];
+  }
+
+  private dropdownItems(): ModelKey[] {
+    return this.dropdownEntries().filter((e): e is ModelKey => e !== "sep");
   }
 
   // ── Input ────────────────────────────────────────────────────────────────
@@ -371,6 +388,9 @@ export class ModelPicker {
         return;
       }
       return;
+    } else if (data === "\x13") {
+      this.setDefault(row);
+      return;
     } else if (matchesKey(data, Key.enter) || data === "\r") {
       this.confirm(row);
       return;
@@ -404,6 +424,31 @@ export class ModelPicker {
     if (pick === undefined) return;
     if (this.focus === "lead") this.lead = pick;
     else this.sidekick = pick;
+  }
+
+  private setDefault(row: Row | undefined): void {
+    if (row === undefined || this.onSetDefault === undefined) return;
+    const mark = row.kind === "fusion" ? this.lead : row.key;
+    if (mark !== undefined) this.state.defaultModelKey = mark;
+    this.changed();
+    if (row.kind === "fusion") {
+      if (this.lead === undefined || this.sidekick === undefined) return;
+      this.onSetDefault({
+        type: "fusion",
+        lead: this.lead,
+        sidekick: this.sidekick,
+        leadEffort: this.fusionLeadEffort,
+        sidekickEffort: this.fusionSidekickEffort,
+        effortMap: { ...this.effort },
+      });
+    } else if (row.key !== undefined) {
+      this.onSetDefault({
+        type: "single",
+        model: row.key,
+        effort: this.effortFor(row.key),
+        effortMap: { ...this.effort },
+      });
+    }
   }
 
   private confirm(row: Row | undefined): void {
@@ -507,7 +552,7 @@ export class ModelPicker {
           : highlighted
             ? t.fg("accent", nameRaw)
             : t.fg("text", nameRaw);
-    const name = `${providerPrefix}${styled}`;
+    const name = `${providerPrefix}${styled}${row.kind === "model" && row.key === this.state.defaultModelKey ? ` ${t.fg("dim", "default")}` : ""}`;
     const badge = model?.badge;
     const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
 
@@ -524,9 +569,7 @@ export class ModelPicker {
     let line = `${pointer} ${marker} ${pad(`${name}${badgeGlyph}`, nameCol)} ${left} ${this.bar(level, !disabledFusion && highlighted)} ${right} ${pad(label, 8)}`;
 
     if (row.kind === "fusion") {
-      if (disabledFusion) {
-        line += `   ${t.fg("dim", "not configured — open /unipi:settings → Fusion → Edit fusion presets…")}`;
-      } else {
+      if (!disabledFusion) {
         const leadName = this.nameOf(this.lead, 14);
         const sideName = this.nameOf(this.sidekick, 14);
         const leadFocused = highlighted && this.focus === "lead";
@@ -545,20 +588,27 @@ export class ModelPicker {
 
   private renderDropdown(width: number, nameCol: number): string[] {
     const t = this.theme;
+    const entries = this.dropdownEntries();
     const items = this.dropdownItems();
     const indent = " ".repeat(MARKER_COL + nameCol + 5);
     if (items.length === 0) {
-      return [`${indent}${t.fg("warning", `no ${this.focus} models in preset — open /unipi:settings → Fusion → "Edit fusion presets…"`)}`];
+      return [`${indent}${t.fg("warning", "no matching models")}`];
     }
+    // Selectable index ↔ entry index mapping (a "sep" row renders but can't be picked).
+    const selectableIdx = new Map<ModelKey, number>();
+    items.forEach((key, i) => selectableIdx.set(key, i));
+    const firstEntryOfSel = items.map((key) => entries.indexOf(key));
     const win = 6;
-    const start = Math.max(0, Math.min(this.dropdownIndex - Math.floor(win / 2), items.length - win));
-    const slice = items.slice(start, start + win);
-    return slice.map((key, i) => {
-      const idx = start + i;
-      const isCur = idx === this.dropdownIndex;
-      const isSet = key === (this.focus === "lead" ? this.lead : this.sidekick);
+    const selStart = Math.max(0, Math.min(this.dropdownIndex - Math.floor(win / 2), items.length - win));
+    const sliceStart = firstEntryOfSel[selStart] ?? 0;
+    const slice = entries.slice(sliceStart, sliceStart + win);
+    return slice.map((entry) => {
+      if (entry === "sep") return truncateToWidth(`${indent}${t.fg("dim", "── all models ──")}`, Math.max(1, width - 1));
+      const selIdx = selectableIdx.get(entry) ?? 0;
+      const isCur = selIdx === this.dropdownIndex;
+      const isSet = entry === (this.focus === "lead" ? this.lead : this.sidekick);
       const glyph = isCur ? t.fg("accent", "▸") : " ";
-      const label = isCur ? t.fg("accent", t.bold(this.nameOf(key, 28))) : t.fg("text", this.nameOf(key, 28));
+      const label = isCur ? t.fg("accent", t.bold(this.nameOf(entry, 28))) : t.fg("text", this.nameOf(entry, 28));
       const star = isSet ? t.fg("dim", " *") : "";
       return truncateToWidth(`${indent}${glyph} ${label}${star}`, Math.max(1, width - 1));
     });
@@ -625,7 +675,9 @@ export class ModelPicker {
       const keyText = keys.map((k) => t.fg("text", k)).join(t.fg("dim", " · "));
       out.push(truncateToWidth(`  ${t.fg("dim", "Model key")}  ${keyText}`, width - 1));
     }
-    out.push(truncateToWidth(`  ${description}`, width - 1));
+    for (const line of wrapTextWithAnsi(`  ${description}`, Math.max(1, width - 1)).slice(0, 3)) {
+      out.push(truncateToWidth(line, width - 1));
+    }
     return out;
   }
 
@@ -633,13 +685,13 @@ export class ModelPicker {
     const t = this.theme;
     const parts: string[] = [];
     if (row?.kind === "fusion" && !this.fusionAvailable()) {
-      parts.push("↑↓ select", "esc cancel");
+      parts.push("↑↓ select", "pick a lead and sidekick", "esc cancel");
     } else if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "esc collapse");
+      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "ctrl+s default", "esc collapse");
     } else {
       parts.push("↑↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←→ effort", "enter/tab confirm", "space set lead", "esc cancel");
+      parts.push("←→ effort", "enter/tab confirm", "ctrl+s default", "space set lead", "esc cancel");
     }
     return t.fg("dim", parts.join(" · "));
   }
@@ -675,6 +727,9 @@ export class ModelPicker {
         if (r === undefined) continue;
         const highlighted = i === this.selected;
         lines.push(this.renderRow(r, highlighted, width, nameCol));
+        if (r.kind === "fusion" && !this.fusionAvailable()) {
+          lines.push(truncateToWidth(`   ${t.fg("dim", "pick a lead and sidekick — the catalogue below works too (open /unipi:settings → Fusion → Edit fusion presets… to curate)")}`, Math.max(1, width - 1)));
+        }
         if (highlighted && r.kind === "fusion" && this.focus !== "effort") {
           lines.push(...this.renderDropdown(width, nameCol));
         }

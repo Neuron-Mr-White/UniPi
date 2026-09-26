@@ -39,7 +39,9 @@ import { estimateSavings } from "./savings.js";
 import { EDIT_NUDGE, bashNudge, leadPolicy, sidekickSystemPrompt, type FusionIdentity } from "./prompts.js";
 import { isTrivialShell, BASH_NUDGE_EVERY } from "./nudge.js";
 import { registerFusionTools } from "./tools.js";
-import { duration } from "./transcript.js";
+import { duration, renderSidekickStep } from "./transcript.js";
+import { persistDefaultModel, piSettingsPath } from "./pi-settings.js";
+import { readFileSync } from "node:fs";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 
@@ -292,6 +294,13 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         sessionFile: sidekickSessionPath(leadSessionId(ctx)),
         systemPrompt: sidekickSystemPrompt(identity(ctx)),
         onProgress: () => publishStatusLater(),
+        onStep: (step) => {
+          try {
+            pi.appendEntry("sidekick-step", step as unknown as Record<string, unknown>);
+          } catch {
+            /* entry rendering never affects the handoff */
+          }
+        },
       });
     }
     return runtime;
@@ -317,6 +326,9 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     return `Sidekick tokens: in ${String(runtime.usage.input)} · out ${String(runtime.usage.output)} · cached ${String(runtime.usage.cacheRead)} · cache write ${String(runtime.usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\nHandoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}${pricing}`;
   }
 
+  pi.registerEntryRenderer("sidekick-step", (entry: { data?: unknown }, options: { expanded?: boolean }, theme) =>
+    renderSidekickStep(entry.data as never, options.expanded === true, theme as never));
+
   registerFusionTools(pi, {
     getRuntime,
     onReport: (ctx) => publishStatusLater(ctx),
@@ -328,9 +340,18 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
     handler: async (_args, ctx) => ctx.ui.notify(savingsStats(ctx), "info"),
   });
+  // Lead policy rides as a named system-prompt SECTION so pi records the
+  // section diff in the transcript (docs/extensions.md prefers sections over
+  // replacing `systemPrompt`, which nukes the cached prefix). The section is
+  // present only while Fusion is active.
   pi.on("before_agent_start", (event, ctx) => {
     syncFusionTools(); // safety net: re-sync after any module re-juggled tools
-    return active?.kind === "fusion" ? { systemPrompt: `${event.systemPrompt}\n\n${leadPolicy(identity(ctx))}` } : undefined;
+    if (active?.kind === "fusion") {
+      event.systemPromptOptions.sections["fusion-lead-policy"] = leadPolicy(identity(ctx));
+    } else {
+      delete event.systemPromptOptions.sections["fusion-lead-policy"];
+    }
+    return undefined;
   });
   pi.on("turn_start", () => {
     editNudgedThisTurn = false;
@@ -438,6 +459,16 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         return;
       }
       const currentKey = ctx.model ? modelKey(ctx.model) : undefined;
+      // pi's persisted startup default (settings.json) marks the `default` row.
+      let defaultKey: string | undefined;
+      try {
+        const raw = JSON.parse(readFileSync(piSettingsPath(), "utf8")) as { defaultProvider?: string; defaultModel?: string };
+        if (typeof raw.defaultProvider === "string" && typeof raw.defaultModel === "string") {
+          defaultKey = `${raw.defaultProvider}/${raw.defaultModel}`;
+        }
+      } catch {
+        /* no settings file yet */
+      }
       // Session truth wins over persisted state: if the user switched via pi's
       // own /model since, show that as the pinned row.
       if (active === undefined && preset.active !== undefined) active = preset.active;
@@ -458,11 +489,39 @@ export default function fusionExtension(pi: ExtensionAPI): void {
               recent: preset.recent,
               active,
               currentModelKey: currentKey,
+              defaultModelKey: defaultKey,
               effort: preset.effort,
               fallbackEffort,
             },
             theme: { fg: (c, s) => theme.fg(c as never, s), bold: (s) => theme.bold(s) },
             onDone: done,
+            onSetDefault: (r) => {
+              if (r.type === "cancelled") return;
+              const saveDefault = (key: string, effort: string): boolean => {
+                const parts = splitModelKey(key);
+                if (parts === undefined) {
+                  ctx.ui.notify(`Could not save default: bad model key ${key}`, "error");
+                  return false;
+                }
+                try {
+                  persistDefaultModel({ provider: parts.provider, model: parts.id, thinkingLevel: effort });
+                  return true;
+                } catch (error) {
+                  ctx.ui.notify(`Could not save default: ${error instanceof Error ? error.message : String(error)}`, "error");
+                  return false;
+                }
+              };
+              if (r.type === "single") {
+                if (saveDefault(r.model, r.effort)) ctx.ui.notify(`Default: ${r.model} · ${r.effort}`, "info");
+              } else if (saveDefault(r.lead, r.leadEffort)) {
+                saveRuntimeState(loaded.globalPath, {
+                  effort: r.effortMap,
+                  recent: preset.recent,
+                  active: { kind: "fusion", lead: r.lead, sidekick: r.sidekick, leadEffort: r.leadEffort, sidekickEffort: r.sidekickEffort },
+                });
+                ctx.ui.notify(`Default: Fusion (${r.lead} + ${r.sidekick})`, "info");
+              }
+            },
             onRenderRequest: () => tui.requestRender(),
           }),
         HUB_PICKER_OVERLAY_OPTIONS,

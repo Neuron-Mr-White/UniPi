@@ -230,7 +230,15 @@ export class Gate {
         this.deps.owner.getActive(),
         this.deps.owner.getParked(),
       );
-      return { systemPrompt: `${event.systemPrompt}\n\n${fragment}` };
+      // A named section, not a systemPrompt replacement: a forced prompt is
+      // opaque to pi (forceSystemPrompt) and would drop sections other modules
+      // added — e.g. fusion's lead policy. renderModeFragment already emits
+      // the <long-horizon> wrapper; strip it, pi re-wraps the section.
+      const inner = fragment
+        .replace(/^<long-horizon[^>]*>\n?/, "")
+        .replace(/\n?<\/long-horizon>(\n|$)/, "$1");
+      event.systemPromptOptions.sections["long-horizon"] = inner;
+      return undefined;
     });
 
     pi.on("before_provider_request", (event) => {

@@ -145,13 +145,12 @@ test("disabled Fusion row cannot be confirmed or expanded", () => {
   }
 });
 
-test("disabled Fusion row renders setup hint", () => {
+test("disabled Fusion row renders setup hint on its own line", () => {
   const empty = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined, effort: {} });
   const text = run(empty, []).picker.render(160).join("\n");
-  assert.match(text, /not configured \u2014 open \/unipi:settings/);
-  assert.match(text, /Run \/unipi:settings \(Fusion\) to enable Fusion/);
+  assert.match(text, /pick a lead and sidekick/, "row hint becomes its own line");
+  assert.doesNotMatch(text, /not configured/);
   assert.doesNotMatch(text, /tab lead/);
-  assert.doesNotMatch(text, /↵ confirm/);
   assert.doesNotMatch(text, /no pricing data from provider/);
 });
 

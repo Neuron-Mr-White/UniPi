@@ -168,6 +168,7 @@ test("the extension re-evaluates the wake line on turn end and settle", () => {
     setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
+    registerEntryRenderer: () => undefined,
     registerShortcut: () => undefined,
     registerFlag: () => undefined,
     getThinkingLevel: () => "medium",

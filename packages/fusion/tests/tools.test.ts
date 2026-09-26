@@ -173,19 +173,11 @@ test("non-blocking sidekick sends a follow-up completion message", async () => {
   assert.equal(sent[0]?.options.triggerTurn, true);
 });
 
-test("a completion card bubbles the sidekick transcript onto the main surface", () => {
+test("a completion notification renders as one dim status line", () => {
   const run = setup({} as any);
-  const events = [
-    { kind: "tool", toolCallId: "1", name: "bash", args: { command: "npm test" }, output: "all green", isError: false, done: true, startedAt: 0 },
-    { kind: "text", text: "implemented", open: false },
-  ];
-  const card = run.renderers.get("sidekick-completion")({ details: { ...report, events } }, {}, theme).render(120).join("\n");
-  assert.match(card, /▍/, "sidekick-origin output is rail-marked");
-  assert.match(card, /sidekick completed/);
-  assert.match(card, /bash/);
-  assert.match(card, /all green/);
-  assert.match(card, /implemented/);
-  assert.doesNotMatch(card, /steps · expand/);
+  const card = run.renderers.get("sidekick-completion")({ details: report }, {}, theme).render(120).join("\n");
+  assert.match(card, /◆ sidekick finished · 2 steps/, "compact done line");
+  assert.doesNotMatch(card, /▍|npm test|implemented/, "the steps already streamed as entries");
 });
 
 const uuidId = "ecff5344-4e60-4892-8a86-1f8e962caf1b";
@@ -214,9 +206,7 @@ test("rendered sidekick output hides handoff ids and protocol text", async () =>
   const result = await tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, ctx);
   const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
   assert.doesNotMatch(rendered, PROTOCOL);
-  assert.match(rendered, /▍/);
-  assert.match(rendered, /sidekick completed/);
-  assert.match(rendered, /implemented/);
+  assert.match(rendered, /◆ sidekick done · 2 steps/, "compact status line; steps stream as entries");
 
   // The call and result renderers never echo the agent id.
   const call = tools.get("read_subagent").renderCall({ agent_id: uuidId, block: true }, theme).render(120).join("\n");
@@ -255,6 +245,6 @@ test("rendered fallback text strips ids and instructions", () => {
   return tools.get("sidekick").execute("call", { message: "work" }, undefined, undefined, ctx).then((result: any) => {
     const rendered = tools.get("sidekick").renderResult(result, {}, theme).render(120).join("\n");
     assert.doesNotMatch(rendered, PROTOCOL);
-    assert.match(rendered, /The handoff failed: boom/);
+    assert.match(rendered, /✗ sidekick failed/, "compact error status line");
   });
 });

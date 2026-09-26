@@ -5,6 +5,21 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getPiSpawnCommand } from "@pi-unipi/subagents/src/pi-spawn.js";
 import type { EffortLevel, ModelKey } from "./preset.js";
+import { primaryArg } from "./transcript.js";
+import { leadExtensionArgs } from "./child-args.js";
+
+/** A completed sidekick step, streamed to the lead chat as a UI-only
+ *  `sidekick-step` custom entry (never model-facing). */
+export type SidekickStep =
+  | { kind: "tool"; name: string; arg: string; output: string; isError: boolean; durationMs: number }
+  | { kind: "text"; text: string; thinking?: string };
+
+/** The subset of ExtensionUIContext the child's prompts get forwarded to. */
+export interface SidekickUIForwarder {
+  select?: (title: string, options: unknown[], opts?: unknown) => Promise<unknown>;
+  confirm?: (title: string, message: string, opts?: unknown) => Promise<unknown>;
+  input?: (title: string, placeholder?: string, opts?: unknown) => Promise<unknown>;
+}
 
 export interface SidekickSpawnConfig {
   cwd: string;
@@ -15,6 +30,10 @@ export interface SidekickSpawnConfig {
   spawn?: typeof defaultSpawn;
   command?: { command: string; args: string[] };
   onProgress?: () => void;
+  /** Fired once per completed sidekick step (tool end, or a text segment that
+   *  is not the final report). The final report text is never emitted — the
+   *  lead reports it itself. */
+  onStep?: (step: SidekickStep) => void;
   settleGraceMs?: number;
 }
 
@@ -78,6 +97,41 @@ export class SidekickRuntime {
   private responseError: ((error: Error) => void) | undefined;
   private stderrTail = "";
   private inputBuffer = "";
+  /** Buffered latest text segment — emitted only if it is NOT the terminal
+   *  report (the lead relays that itself). */
+  private bufferedText: { text: string; thinking: string } | undefined;
+  /** Attached lead UI for forwarding child approval prompts (blocking waits
+   *  only); undefined means background → prompts are refused. */
+  private forwardedUi: SidekickUIForwarder | undefined;
+
+  /** Attach the lead's UI for child prompt forwarding (blocking waits). */
+  attachUi(ui: SidekickUIForwarder): void {
+    this.forwardedUi = ui;
+  }
+
+  detachUi(): void {
+    this.forwardedUi = undefined;
+  }
+
+  private emitStep(step: SidekickStep): void {
+    try {
+      this.cfg.onStep?.(step);
+    } catch {
+      // Rendering must not affect the handoff.
+    }
+  }
+
+  /** Flush the buffered text segment as a step (it proved not to be the final
+   *  report — more work follows). */
+  private flushTextStep(): void {
+    const buffered = this.bufferedText;
+    if (buffered === undefined || buffered.text.trim().length === 0) {
+      this.bufferedText = undefined;
+      return;
+    }
+    this.emitStep({ kind: "text", text: buffered.text, thinking: buffered.thinking || undefined });
+    this.bufferedText = undefined;
+  }
   private abortRequested = false;
   private pendingError: string | undefined;
   readonly reports = new Map<string, HandoffReport>();
@@ -156,6 +210,7 @@ export class SidekickRuntime {
     this.promptPath = join(tmpdir(), `unipi-fusion-${randomUUID()}.txt`);
     writeFileSync(this.promptPath, this.cfg.systemPrompt, "utf8");
     const command = this.cfg.command ?? getPiSpawnCommand([
+      ...leadExtensionArgs(process.argv),
       "--mode", "rpc",
       "--session", this.cfg.sessionFile,
       "--model", this.cfg.model,
@@ -237,15 +292,37 @@ export class SidekickRuntime {
       return;
     }
     if (message.type === "extension_ui_request") {
-      const method = message.method;
-      if (method === "select" || method === "confirm" || method === "input" || method === "editor") {
-        this.send({ type: "extension_ui_response", id: message.id, cancelled: true });
+      const method = String(message.method ?? "");
+      const id = message.id;
+      const ui = this.forwardedUi;
+      // Devin rule: a sidekick approval prompt reaches the user only while a
+      // lead waiter is attached (blocking sidekick / read_subagent block:true).
+      // Background handoffs get an automatic refusal.
+      if (ui !== undefined && (method === "select" || method === "confirm" || method === "input")) {
+        const title = `Sidekick: ${String(message.title ?? "")}`;
+        void (async () => {
+          let value: unknown;
+          if (method === "select" && ui.select !== undefined) value = await ui.select(title, (message.options as unknown[]) ?? [], undefined);
+          else if (method === "confirm" && ui.confirm !== undefined) value = await ui.confirm(title, String(message.message ?? ""), undefined);
+          else if (method === "input" && ui.input !== undefined) value = await ui.input(title, typeof message.placeholder === "string" ? message.placeholder : undefined, undefined);
+          if (value === undefined || value === null) this.send({ type: "extension_ui_response", id, cancelled: true });
+          else this.send({ type: "extension_ui_response", id, value });
+        })().catch(() => {
+          try {
+            this.send({ type: "extension_ui_response", id, cancelled: true });
+          } catch { /* child gone */ }
+        });
+      } else {
+        try {
+          this.send({ type: "extension_ui_response", id, cancelled: true });
+        } catch { /* child gone */ }
       }
       return;
     }
     if (this.pending === undefined) return;
     if (message.type === "tool_execution_start") {
       this.closeOpenText();
+      this.flushTextStep();
       this.pending.progress.toolCalls += 1;
       const args = message.args !== undefined && typeof message.args === "object" && message.args !== null ? message.args as Record<string, unknown> : undefined;
       if (message.toolName === "bg_run" && args?.notifyOnCompletion !== false && args?.triggerOnCompletion !== false) this.pending.openBgTasks += 1;
@@ -263,6 +340,15 @@ export class SidekickRuntime {
         event.isError = message.isError === true;
         event.output = this.toolOutput(message.result);
         if (event.name === "bg_run" && event.isError) this.pending.openBgTasks = Math.max(0, this.pending.openBgTasks - 1);
+        const capLine = (l: string) => (l.length > 300 ? `${l.slice(0, 299)}…` : l);
+        this.emitStep({
+          kind: "tool",
+          name: event.name,
+          arg: event.args === undefined ? "" : primaryArg(event.name, event.args),
+          output: event.output.split("\n").slice(-40).map(capLine).join("\n"),
+          isError: event.isError,
+          durationMs: (event.endedAt ?? Date.now()) - event.startedAt,
+        });
       }
       this.notifyProgress();
     } else if (message.type === "message_update") {
@@ -273,7 +359,11 @@ export class SidekickRuntime {
         const last = this.pending.progress.events.at(-1);
         if (last?.kind === "text" && last.open) last.text += delta;
         else this.appendEvent({ kind: "text", text: delta, open: true });
+        (this.bufferedText ??= { text: "", thinking: "" }).text += delta;
         this.notifyProgress();
+      } else if (streamEvent.type === "thinking_delta") {
+        const delta = typeof streamEvent.delta === "string" ? streamEvent.delta : "";
+        (this.bufferedText ??= { text: "", thinking: "" }).thinking += delta;
       }
     } else if (message.type === "message_end") {
       const msg = message.message as Record<string, unknown> | undefined;
@@ -305,6 +395,8 @@ export class SidekickRuntime {
           });
         }
       }
+    } else if (message.type === "message_start") {
+      this.flushTextStep();
     } else if (message.type === "agent_start") {
       clearTimeout(this.pending.settleTimer);
       this.pending.settleTimer = undefined;
@@ -338,6 +430,7 @@ export class SidekickRuntime {
     this.pending = undefined;
     this.responseText = undefined;
     this.responseError = undefined;
+    this.bufferedText = undefined; // terminal report — never a step
     const report: HandoffReport = {
       id: current.id,
       status,

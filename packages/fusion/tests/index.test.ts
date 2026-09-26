@@ -21,6 +21,7 @@ function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
     setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
+    registerEntryRenderer: () => undefined,
     registerShortcut: () => undefined,
     registerFlag: () => undefined,
     setModel: async (value: Record<string, unknown>) => {

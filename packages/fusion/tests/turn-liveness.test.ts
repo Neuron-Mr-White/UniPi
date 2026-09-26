@@ -87,6 +87,7 @@ async function harness(): Promise<Harness> {
     setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
+    registerEntryRenderer: () => undefined,
     registerShortcut: () => undefined,
     registerFlag: () => undefined,
     setModel: async () => true,

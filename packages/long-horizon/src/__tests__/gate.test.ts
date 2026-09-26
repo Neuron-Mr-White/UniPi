@@ -148,7 +148,7 @@ function fakePi(appended: Array<{ mode: string; source: string }>) {
     // no-ops for the rest of register()'s wiring
     emit: () => {},
     async fire(prompt: string) {
-      await handlers["before_agent_start"]?.({ prompt, systemPrompt: "" });
+      await handlers["before_agent_start"]?.({ prompt, systemPrompt: "", systemPromptOptions: { sections: {} } });
     },
   };
 }
