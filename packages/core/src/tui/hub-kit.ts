@@ -62,6 +62,18 @@ export const HUB_WIDE_OVERLAY_OPTIONS: {
   overlayOptions: () => ({ anchor: "center", width: 120, minWidth: 100 }),
 };
 
+/**
+ * The /unipi:model picker's pre-hub sizing (faccc253): percentage width so
+ * model names, badges, and the price panel don't truncate at ~80 cols.
+ */
+export const HUB_PICKER_OVERLAY_OPTIONS: {
+  readonly overlay: true;
+  readonly overlayOptions: () => OverlayOptions;
+} = {
+  overlay: true,
+  overlayOptions: () => ({ anchor: "center", width: "88%", minWidth: 72, maxHeight: "80%" }),
+};
+
 const hubDim = (t: string): string => hubTheme.fg("textMuted", t);
 const hubBold = (t: string): string => hubTheme.bold(t);
 

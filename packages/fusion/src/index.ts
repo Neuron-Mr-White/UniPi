@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS } from "@pi-unipi/core";
+import { createSpinnerLine, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -184,6 +184,27 @@ export function createModelBoostProvider(current: AutocompleteProvider): Autocom
   };
 }
 
+export const FUSION_TOOLS = ["sidekick", "read_subagent"] as const;
+
+/**
+ * Adds the fusion tools to pi's active set while Fusion is active, removes
+ * them otherwise — touching ONLY `sidekick`/`read_subagent`, never another
+ * module's tools. Compares against the live active set (pi rebuilds it on
+ * session changes), and skips `setActiveTools` when nothing would change.
+ */
+export function makeFusionToolSync(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">): (want: boolean) => void {
+  return (want: boolean) => {
+    const current = pi.getActiveTools();
+    if (FUSION_TOOLS.every((tool) => current.includes(tool) === want)) return;
+    const set = new Set(current);
+    for (const tool of FUSION_TOOLS) {
+      if (want) set.add(tool);
+      else set.delete(tool);
+    }
+    pi.setActiveTools([...set]);
+  };
+}
+
 export default function fusionExtension(pi: ExtensionAPI): void {
   if (process.env.UNIPI_FUSION_CHILD === "1") return;
 
@@ -202,6 +223,9 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     // wake line makes.
     onHeld: (label) => setHerdrWorking(pi, "fusion-sidekick", label),
   });
+
+  const syncTools = makeFusionToolSync(pi);
+  const syncFusionTools = () => syncTools(active?.kind === "fusion");
 
   function identity(ctx: ExtensionContext): FusionIdentity {
     const reg = registryOf(ctx);
@@ -304,7 +328,10 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     description: "Estimated Fusion savings (sidekick tokens priced at lead rates)",
     handler: async (_args, ctx) => ctx.ui.notify(savingsStats(ctx), "info"),
   });
-  pi.on("before_agent_start", (event, ctx) => active?.kind === "fusion" ? { systemPrompt: `${event.systemPrompt}\n\n${leadPolicy(identity(ctx))}` } : undefined);
+  pi.on("before_agent_start", (event, ctx) => {
+    syncFusionTools(); // safety net: re-sync after any module re-juggled tools
+    return active?.kind === "fusion" ? { systemPrompt: `${event.systemPrompt}\n\n${leadPolicy(identity(ctx))}` } : undefined;
+  });
   pi.on("turn_start", () => {
     editNudgedThisTurn = false;
   });
@@ -382,6 +409,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       });
     }
     saveRuntimeState(loaded.globalPath, { effort: result.effortMap, recent, active });
+    syncFusionTools();
     publishStatus(ctx);
     const label =
       result.type === "single"
@@ -437,7 +465,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
             onDone: done,
             onRenderRequest: () => tui.requestRender(),
           }),
-        HUB_OVERLAY_OPTIONS,
+        HUB_PICKER_OVERLAY_OPTIONS,
       );
       await applyResult(ctx, result, preset, loaded);
     },
@@ -500,6 +528,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         if (ctx.hasUI) ctx.ui.notify(`Fusion lead ${leadKey} unavailable — Fusion off`, "warning");
       }
     }
+    syncFusionTools();
     publishStatus(ctx);
     if (ctx.hasUI) ctx.ui.addAutocompleteProvider(createModelBoostProvider);
   });
@@ -517,6 +546,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       active = { kind: "single", model: modelKey(event.model) };
       const loaded = loadPreset(ctx.cwd ?? process.cwd());
       saveRuntimeState(globalPresetPath(), { effort: loaded.preset.effort, recent: loaded.preset.recent, active });
+      syncFusionTools();
       publishStatus(ctx);
     }
   });

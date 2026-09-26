@@ -83,6 +83,8 @@ async function harness(): Promise<Harness> {
       },
     },
     registerTool: (tool: { name: string }) => tools.set(tool.name, tool),
+    getActiveTools: () => ["read", "bash", "sidekick", "read_subagent"],
+    setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
     registerShortcut: () => undefined,

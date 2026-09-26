@@ -164,6 +164,8 @@ test("the extension re-evaluates the wake line on turn end and settle", () => {
   const pi = {
     on: (name: string, handler: (event: unknown, ctx: unknown) => unknown) => handlers.set(name, handler),
     registerTool: () => undefined,
+    getActiveTools: () => ["read", "bash", "sidekick", "read_subagent"],
+    setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
     registerShortcut: () => undefined,

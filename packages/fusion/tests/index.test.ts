@@ -17,6 +17,8 @@ function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
   const pi = {
     on: (name: string, handler: (event: any, ctx: any) => unknown) => handlers.set(name, handler),
     registerTool: () => undefined,
+    getActiveTools: () => ["read", "bash", "sidekick", "read_subagent"],
+    setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
     registerShortcut: () => undefined,
