@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "3.0.0-alpha.1",
-  "description": "Context engine for Pi \u2014 zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
+  "version": "3.0.0-alpha.2",
+  "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -34,8 +34,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1",
-    "@pi-unipi/info-screen": "3.0.0-alpha.1",
+    "@pi-unipi/core": "3.0.0-alpha.2",
+    "@pi-unipi/info-screen": "3.0.0-alpha.2",
     "@earendil-works/pi-agent-core": "^0.87.1"
   },
   "peerDependencies": {

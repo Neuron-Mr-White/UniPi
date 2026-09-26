@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/skill-registry",
-  "version": "3.0.0-alpha.1",
-  "description": "Placeholder for the upcoming unipi skill registry \u2014 hosts the bundled workflow skills",
+  "version": "3.0.0-alpha.2",
+  "description": "Placeholder for the upcoming unipi skill registry — hosts the bundled workflow skills",
   "type": "module",
   "license": "MIT",
   "author": "Neuron Mr White",

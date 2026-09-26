@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/kanboard",
-  "version": "3.0.0-alpha.1",
-  "description": "Kanboard v3 \u2014 deferred-work board: CLI/daemon bridge, task runner and skill",
+  "version": "3.0.0-alpha.2",
+  "description": "Kanboard v3 — deferred-work board: CLI/daemon bridge, task runner and skill",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -31,7 +31,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1"
+    "@pi-unipi/core": "3.0.0-alpha.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",
@@ -48,10 +48,10 @@
     "themes": []
   },
   "optionalDependencies": {
-    "@pi-unipi/kanboard-linux-x64": "3.0.0-alpha.1",
-    "@pi-unipi/kanboard-linux-arm64": "3.0.0-alpha.1",
-    "@pi-unipi/kanboard-darwin-x64": "3.0.0-alpha.1",
-    "@pi-unipi/kanboard-darwin-arm64": "3.0.0-alpha.1",
-    "@pi-unipi/kanboard-win32-x64": "3.0.0-alpha.1"
+    "@pi-unipi/kanboard-linux-x64": "3.0.0-alpha.2",
+    "@pi-unipi/kanboard-linux-arm64": "3.0.0-alpha.2",
+    "@pi-unipi/kanboard-darwin-x64": "3.0.0-alpha.2",
+    "@pi-unipi/kanboard-darwin-arm64": "3.0.0-alpha.2",
+    "@pi-unipi/kanboard-win32-x64": "3.0.0-alpha.2"
   }
 }

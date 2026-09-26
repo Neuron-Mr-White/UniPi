@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/kanboard-linux-x64",
-  "version": "3.0.0-alpha.1",
-  "description": "unipi kanboard binary for linux x64 (static (musl)) \u2014 installed by @pi-unipi/kanboard",
+  "version": "3.0.0-alpha.2",
+  "description": "unipi kanboard binary for linux x64 (static (musl)) — installed by @pi-unipi/kanboard",
   "license": "MIT",
   "author": "Neuron Mr White",
   "os": [

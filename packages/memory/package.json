@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/memory",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
   "description": "Persistent cross-session memory on MemPalace (auto-installed): daemon-routed writes, shared palace with other agents, for Pi coding agent",
   "type": "module",
   "main": "index.ts",
@@ -42,8 +42,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1",
-    "@pi-unipi/info-screen": "3.0.0-alpha.1",
+    "@pi-unipi/core": "3.0.0-alpha.2",
+    "@pi-unipi/info-screen": "3.0.0-alpha.2",
     "js-yaml": "^4.1.0"
   },
   "peerDependencies": {

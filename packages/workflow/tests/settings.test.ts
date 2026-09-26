@@ -3,12 +3,12 @@
  * count in the clear action label, and the mode round-trip.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SettingsHub, getSettingsDefinition, listSettingsDefinitions } from "@pi-unipi/core";
+import { SettingsHub, getSettingsDefinition, listSettingsDefinitions, resetSettingsGates } from "@pi-unipi/core";
 import {
   DEFAULT_SETTINGS,
   PERMISSION_SECTIONS,
@@ -22,6 +22,23 @@ import {
 function cwd(): string {
   return mkdtempSync(join(tmpdir(), "perm-hub-"));
 }
+
+// getSettings layers the GLOBAL layer from HOME — a real user config would
+// leak values (e.g. jevConfidence) into these tests. Sandbox HOME per test.
+let home: string;
+let origHome: string | undefined;
+beforeEach(() => {
+  origHome = process.env.HOME;
+  home = mkdtempSync(join(tmpdir(), "perm-home-"));
+  mkdirSync(home, { recursive: true });
+  process.env.HOME = home;
+  resetSettingsGates();
+});
+afterEach(() => {
+  if (origHome === undefined) delete process.env.HOME;
+  else process.env.HOME = origHome;
+  rmSync(home, { recursive: true, force: true });
+});
 
 describe("permission settings namespace", () => {
   it("registers with the documented defaults", () => {

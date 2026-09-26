@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.2] — 2026-09-26
+
+### Fixed
+
+- **kanboard: the crate reports the right version.** `crates/kanboard/Cargo.toml` (and its `Cargo.lock`) stayed at alpha.0 through the alpha.1 bump, so `unipi-kanboard --version` lied. `scripts/sync-pins.mjs` is now the single bump entry point — one run sets every `version` field (root, workspaces, `packages/kanboard-bin/<platform>`) and the `[package] version =` line of every `crates/*/Cargo.toml`.
+- **memory: the migration counter now counts every finished record.** `/unipi:memory status` and the completion notify showed `done 4281/4288` on a clean run because records with no old drawer were finished without incrementing `done`. A clean migration now ends `4288/4288 · 0 failed` (failed units reported separately as `· N failed`).
+- **tests: no more real-HOME/env leakage.** The workflow permission-settings test and the utility skill-judge test now sandbox `HOME` and clear `OPENROUTER_API_KEY`/`TYPESAFE_API_KEY`, so `npm test` passes in a normal shell; the kanboard binary-resolution test honors the env → platform-package → dev-build precedence when a published platform package is installed.
+
+### Removed
+
+- `scripts/test-subagents-tarball.mjs` — stale v2-era script expecting a `dist/` build `@pi-unipi/subagents` never produces (the package ships `src/`); unreferenced by package.json, CI, or the release chore.
+
 ## [3.0.0-alpha.1] — 2026-09-25
 
 ### Breaking Changes

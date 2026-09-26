@@ -272,6 +272,14 @@ Expected: All package.json versions incremented.
 
 ### Step 10b: Republish Every Dependent of a Bumped Package
 
+`scripts/sync-pins.mjs <version>` is the single bump entry point: it updates
+every `version` field (root + workspaces + `packages/kanboard-bin/<platform>`),
+every `@pi-unipi/*` pin across dependencies/peerDependencies/optionalDependencies,
+AND the `[package] version =` line of every `crates/*/Cargo.toml`. After it
+runs, refresh each crate's lockfile (`cd crates/kanboard && cargo update`) so
+`--version` and `Cargo.lock` agree.
+
+
 **Bumping a package is not enough.** If package X is bumped, every package that
 *depends* on X must also be republished — otherwise npm resolves the old pin in
 their published tarballs and installs a **nested stale copy**, so the fix never

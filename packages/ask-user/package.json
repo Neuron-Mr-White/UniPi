@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/ask-user",
-  "version": "3.0.0-alpha.1",
-  "description": "Structured user input tool for Pi coding agent \u2014 single-select, multi-select, freeform",
+  "version": "3.0.0-alpha.2",
+  "description": "Structured user input tool for Pi coding agent — single-select, multi-select, freeform",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -40,7 +40,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1"
+    "@pi-unipi/core": "3.0.0-alpha.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",

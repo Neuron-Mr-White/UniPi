@@ -124,7 +124,7 @@ export function registerMemoryCommands(
         ];
         if (b?.installIssue) lines.push(`mode: ${b.installIssue}`);
         if (conv) {
-          lines.push(`migration: ${conv.phase} ${conv.done}/${conv.total} (${conv.errors.length} errors)`);
+          lines.push(`migration: ${conv.phase} ${conv.done}/${conv.total} · ${conv.failedUnits ?? 0} failed${conv.errors.length ? ` (${conv.errors.length} errors)` : ""}`);
           if (conv.backupPath) lines.push(`palace backup: ${conv.backupPath}`);
           if (conv.mdBackupPath) lines.push(`memory backup: ${conv.mdBackupPath}`);
         } else if (needsMigration()) {
@@ -187,7 +187,7 @@ export function registerMemoryCommands(
             : "";
           ctx.ui.notify(
             final?.phase === "done"
-              ? `Memory migration complete — ${final.done}/${final.total} records.${backups}`
+              ? `Memory migration complete — ${final.done}/${final.total} records${final.failedUnits ? ` · ${final.failedUnits} failed` : ""}.${backups}`
               : `Memory migration ${final?.phase ?? "failed"}${final?.errors.length ? ` — ${final.errors.length} errors` : ""}.${backups}`,
             final?.phase === "done" ? "info" : "warning",
           );

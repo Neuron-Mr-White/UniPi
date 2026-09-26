@@ -206,10 +206,19 @@ describe("registerSkillJudging hook", () => {
     fetchQueue.push(() => new Response(JSON.stringify(body), { status: 200 }));
   }
 
+  // askJev falls back to provider env keys when settings apiKey is empty —
+  // a real OPENROUTER_API_KEY in the shell would leak a live call into tests.
+  let origOrKey: string | undefined;
+  let origTsKey: string | undefined;
+
   beforeEach(async () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), "skill-judge-"));
     origHome = process.env.HOME;
     process.env.HOME = home;
+    origOrKey = process.env.OPENROUTER_API_KEY;
+    origTsKey = process.env.TYPESAFE_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
     sessionId = `sess-${Math.random().toString(36).slice(2)}`;
     resetSkillsSessionState(sessionId);
     fetchCalls = [];
@@ -239,6 +248,10 @@ describe("registerSkillJudging hook", () => {
     (globalThis as { fetch: unknown }).fetch = realFetch;
     if (origHome === undefined) delete process.env.HOME;
     else process.env.HOME = origHome;
+    if (origOrKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = origOrKey;
+    if (origTsKey === undefined) delete process.env.TYPESAFE_API_KEY;
+    else process.env.TYPESAFE_API_KEY = origTsKey;
     fs.rmSync(home, { recursive: true, force: true });
   });
 

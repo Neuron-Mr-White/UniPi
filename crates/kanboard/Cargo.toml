@@ -1,6 +1,6 @@
 [package]
 name = "kanboard"
-version = "3.0.0-alpha.0"
+version = "3.0.0-alpha.2"
 edition = "2024"
 description = "unipi kanboard v3 — task format, transition rules, dependency graph and CLI"
 license = "MIT"

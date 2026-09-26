@@ -336,7 +336,7 @@ export default function (pi: ExtensionAPI) {
             pending: { value: String(pendingCount()) },
             migrate: {
               value: conv && conv.phase !== "done"
-                ? `${conv.phase} ${conv.done}/${conv.total}`
+                ? `${conv.phase} ${conv.done}/${conv.total}${conv.failedUnits ? ` · ${conv.failedUnits} failed` : ""}`
                 : needsMigration() ? "needed" : "—",
             },
           };

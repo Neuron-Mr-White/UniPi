@@ -50,6 +50,8 @@ export interface ConversionState {
   deletedSources?: Record<string, string>;
   /** Unverified units already got their one re-mine. */
   remined?: boolean;
+  /** Units that finished with a failure (kept after the units file is gone). */
+  failedUnits?: number;
   /** ~/.unipi/memory tree backup (parallel to the palace backup). */
   mdBackupPath?: string;
   /** True when the conversion itself started the daemon — stopped on finish
@@ -741,6 +743,14 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
         u.deleted = true;
       }
     }
+    // `done` counts EVERY finished unit (deleted old drawer or not); failed
+    // units stay separate so a clean run ends at total/total.
+    const recount = (): void => {
+      const { done, failed } = countFinished(units);
+      state.done = done;
+      state.failedUnits = failed;
+    };
+    recount();
     const pending = units.filter((u) => u.verified && !u.deleted && !u.failed);
     // Bulk delete in ≤500-id jobs keyed by drawer id (each removes its chunk group).
     const idToUnit = new Map<string, UnitState>();
@@ -748,7 +758,6 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
       for (const id of u.drawerIds ?? []) idToUnit.set(id, u);
     }
     const batches = planDeleteBatches(pending);
-    let done = state.done;
     for (const batch of batches) {
       const res = await deleteDrawers(batch);
       if (res === "unsupported") break; // older MemPalace — per-source fallback below
@@ -758,13 +767,13 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
           if (u && !u.deleted) {
             u.deleted = true;
             if (u.oldSource) state.deletedSources![`${u.project}/${u.rec.id}`] = u.oldSource;
-            done += 1;
           }
         }
       } else {
         state.errors.push("bulk delete batch failed");
       }
       writeUnitsState(units);
+      recount();
       writeConversionState(state);
     }
     // Fallback 1: exact drawer ids collected at scan time, pipelined.
@@ -777,12 +786,12 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
       if (outs.every((o) => o === "deleted" || o === "absent")) {
         u.deleted = true;
         if (u.oldSource) state.deletedSources![`${u.project}/${u.rec.id}`] = u.oldSource;
-        done += 1;
       } else {
         state.errors.push(`delete drawers of ${u.project}/${u.rec.id} failed`);
       }
     }
     writeUnitsState(units);
+    recount();
     writeConversionState(state);
     // Fallback 2 (units with no known drawer ids): delete_by_source on the
     // stamped source, then the synthesized legacy URI.
@@ -802,17 +811,17 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
         if (n !== null && n > 0) {
           u.deleted = true;
           if (u.oldSource) state.deletedSources![`${u.project}/${u.rec.id}`] = u.oldSource;
-          done += 1;
         }
       });
       remaining = remaining.filter((u) => !u.deleted);
       writeUnitsState(units);
+      recount();
       writeConversionState(state);
     }
     // Nothing matched any candidate but a job succeeded: the old drawer is
     // already gone — done. Units whose every job failed stay for a later run.
     for (const u of remaining) {
-      if (anyOk.has(u)) { u.deleted = true; done += 1; }
+      if (anyOk.has(u)) u.deleted = true;
     }
     // Orphaned flat-path drawers: any earlier direct `mempalace mine <dir>`
     // indexed the flat file under its old absolute path — now orphaned.
@@ -840,7 +849,7 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
       if (failed) state.errors.push(`flat-path delete_by_source: ${failed}/${flatSrcs.length} jobs failed`);
     }
     writeUnitsState(units);
-    state.done = done;
+    recount();
     state.phase = units.every((u) => u.deleted || u.failed) ? "done" : "delete";
     writeConversionState(state);
   }
@@ -855,6 +864,16 @@ async function runConversionInner(deps: ConversionDeps): Promise<ConversionState
     }
   }
   return state;
+}
+
+/** Finished-unit counters for the delete phase: `done` = every unit that
+ *  reached `deleted` (whether or not it had an old drawer to remove);
+ *  `failed` = units that errored. Exported for tests. */
+export function countFinished(units: Array<{ deleted?: boolean; failed?: boolean }>): { done: number; failed: number } {
+  return {
+    done: units.filter((u) => u.deleted && !u.failed).length,
+    failed: units.filter((u) => u.failed).length,
+  };
 }
 
 /** Drop the legacy state markers once conversion is fully done. */

@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "3.0.0-alpha.1",
-  "description": "Dashboard and module registry for Unipi \u2014 configurable info overlay with tabbed groups",
+  "version": "3.0.0-alpha.2",
+  "description": "Dashboard and module registry for Unipi — configurable info overlay with tabbed groups",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1"
+    "@pi-unipi/core": "3.0.0-alpha.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",

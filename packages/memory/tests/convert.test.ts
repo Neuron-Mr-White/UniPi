@@ -6,6 +6,7 @@ import * as path from "node:path";
 import {
   acquireConversionLock,
   bodyInvariantOk,
+  countFinished,
   planDeleteBatches,
   releaseConversionLock,
 } from "../convert.js";
@@ -57,4 +58,15 @@ test("planDeleteBatches chunks ids at ≤500 and preserves order", () => {
   assert.equal(batches[0][0], "a");
   assert.equal(batches[0][1], "b");
   assert.equal(batches[2].at(-1), "z");
+});
+
+test("countFinished: every finished unit counts toward done; failures are separate", () => {
+  const units = [
+    { deleted: true },                 // had an old drawer, deleted
+    { deleted: true },                 // no old drawer — finished outright
+    { deleted: true, failed: true },   // failed units never count as done
+    { failed: true },                  // verify-failed, never deleted
+    {},                                // still pending
+  ];
+  assert.deepEqual(countFinished(units), { done: 2, failed: 2 });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/fusion",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
   "description": "Devin-style model picker, fusion presets (lead + sidekick), and Local Fusion runtime for UniPi",
   "type": "module",
   "main": "src/index.ts",
@@ -32,8 +32,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.1",
-    "@pi-unipi/subagents": "3.0.0-alpha.1"
+    "@pi-unipi/core": "3.0.0-alpha.2",
+    "@pi-unipi/subagents": "3.0.0-alpha.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.87.1",
