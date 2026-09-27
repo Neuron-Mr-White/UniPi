@@ -19,13 +19,14 @@ It is rebuilt from the **full** session history on every compaction, never merge
 1. **Active Work**: the goal, ralph loop or kanboard task in flight, supplied by those modules from their own state.
 2. **Your Requests**: the user's own messages and answers to agent questions (`ask_user`: "question → answer"). Text that extensions send with the user role (loop prompts, nudges, notifications) is excluded.
 3. **Latest State**: the most recent step and the last full progress report.
-4. **Decisions & Constraints**: the user's instructions ("keep the orange theme") and earlier answers to agent questions. Bug reports, pasted text and code blocks are left out.
+4. **Decisions & Constraints**: the user's instructions ("keep the orange theme"), corrections ("I did not ask for this"), and answers to agent questions. Half the room goes to the most recent ones, the rest to standing rules from anywhere in the session ("always…", "never…", "by default…"). Bug reports, pasted text and code blocks are left out.
 5. **Files**: modified, created and read files, as relative paths.
-6. **Commits**: hash and subject.
-7. **Open Errors**: recent failures that were not followed by a success.
-8. **Recent Transcript**: a ranked slice of recent work.
+6. **Project Knowledge**: what the agent learned that no message states: project notes it wrote or read (SKILL.md, AGENTS.md, DESIGN.md, docs), build/test/deploy commands it ran more than once, and the hosts it worked against. Switched with the Files section.
+7. **Commits**: hash and subject.
+8. **Open Errors**: recent failures that were not followed by a success.
+9. **Recent Transcript**: a ranked slice of recent work.
 
-Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling with session size). Credentials the user typed (passwords, API keys, tokens) are redacted; `session_recall` still has them. A closing line points the model to `session_recall`.
+Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling with session size). Credentials (typed passwords, API keys, bearer tokens) are redacted before anything is clipped; `session_recall` still has them. A closing line points the model to `session_recall`.
 
 ## When it compacts
 

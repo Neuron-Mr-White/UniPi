@@ -186,15 +186,35 @@ export function selectDecisions(
       pushedFromThis = found.length - 1;
     }
   }
-  // Most recent decisions win when the budget is tight; keep chronological order.
-  const kept: string[] = [];
+  return pickDecisions(found, maxChars);
+}
+
+/** A rule for the whole session, not one task: these outlive recency. */
+const STANDING_RE =
+  /\b(?:always|never|every|all (?:the )?\w+|by default|default|from now on|going forward|in general|globally|whenever|each time|unless|any time)\b/i;
+
+/**
+ * Half the budget goes to the most recent decisions (the current work); the
+ * rest to standing rules from anywhere in the session, oldest first, so an
+ * early "never do X" is not pushed out by a flurry of recent task details.
+ * Output stays chronological.
+ */
+function pickDecisions(found: string[], maxChars: number): string[] {
+  const chosen = new Set<number>();
   let used = 0;
-  for (let i = found.length - 1; i >= 0 && kept.length < 10; i--) {
-    if (used + found[i].length + 3 > maxChars) break;
-    kept.unshift(found[i]);
-    used += found[i].length + 3;
+  const take = (i: number) => {
+    const cost = found[i].length + 3;
+    if (chosen.has(i) || used + cost > maxChars) return false;
+    chosen.add(i);
+    used += cost;
+    return true;
+  };
+  for (let i = found.length - 1; i >= 0 && used < maxChars / 2; i--) take(i);
+  for (let i = 0; i < found.length; i++) {
+    if (STANDING_RE.test(found[i]) || CORRECTION_RE.test(found[i])) take(i);
   }
-  return kept;
+  for (let i = found.length - 1; i >= 0; i--) take(i);
+  return [...chosen].sort((a, b) => a - b).map((i) => found[i]);
 }
 
 // ── Latest State ─────────────────────────────────────────
@@ -262,6 +282,70 @@ export function selectFiles(blocks: NormalizedBlock[], cwd: string | undefined, 
     list("Created", [...created], 0.3),
     list("Read", [...read].reverse(), 0.2),
   ].filter(Boolean);
+}
+
+// ── Project Knowledge ───────────────────────────────────
+// What the agent learned about the project that no user message states:
+// the notes it wrote (where deploy steps and conventions live), the commands
+// it ran repeatedly, and the hosts it worked against.
+
+const NOTE_RE = /(?:^|\/)(?:AGENTS?|CLAUDE|DESIGN|README|SKILL|CONTRIBUTING|RUNBOOK|NOTES)\.md$|(?:^|\/)docs\/.+\.md$|\.agents\/skills\/.+\.md$/i;
+const TOOLING_RE = /^(?:npm|npx|pnpm|yarn|bun|bunx|cargo|mise|make|just|go|pytest|uv|python3? -m|docker|docker-compose|kubectl|helm|rsync|scp|ssh|git push|gh|tea|systemctl|terraform|deno|flutter|xcodebuild)\b/;
+
+/** The first meaningful command of a shell line: no `cd x &&`, pipes, redirects or env prefixes. */
+function commandCore(command: string): string {
+  const first = command.split("\n").find((l) => l.trim() && !l.trim().startsWith("#")) ?? "";
+  const segments = first.split(/\s*(?:&&|;)\s*/).map((x) => x.trim()).filter(Boolean);
+  const main = segments.find((x) => !/^(?:cd|export|source|set|echo)\b/.test(x)) ?? "";
+  return main
+    .replace(/^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+/, "")
+    .replace(/\s*(?:\||2>&1|>\s*\S+|>>\s*\S+).*$/, "")
+    .trim();
+}
+
+export function selectKnowledge(blocks: NormalizedBlock[], cwd: string | undefined, maxChars: number): string[] {
+  const rel = (p: string) => {
+    if (!cwd || !isAbsolute(p)) return p;
+    const r = relative(cwd, p);
+    return r && !r.startsWith("..") ? r : p;
+  };
+  const edited = new Set<string>();
+  const read = new Set<string>();
+  const commands = new Map<string, { text: string; n: number }>();
+  const hosts = new Map<string, number>();
+  const addHost = (h: string) => hosts.set(h, (hosts.get(h) ?? 0) + 1);
+  for (const b of blocks) {
+    if (b.kind !== "tool_call") continue;
+    const path = extractPath(b.args);
+    if (path && NOTE_RE.test(path)) (EDIT_TOOLS.test(b.name) || WRITE_TOOLS.test(b.name) ? edited : read).add(rel(path));
+    const command = typeof b.args.command === "string" ? b.args.command : "";
+    if (!command) continue;
+    let core = commandCore(command);
+    // ssh: the connection is the reusable part, not the remote script.
+    if (/^ssh\b/.test(core)) core = core.split(/\s['"]/)[0].trim();
+    if (TOOLING_RE.test(core) && core.length <= 160 && !/<<|\\$/.test(core) && (core.match(/['"]/g)?.length ?? 0) % 2 === 0) {
+      const key = core.split(/\s+/).slice(0, 3).join(" ");
+      const prev = commands.get(key);
+      commands.set(key, { text: core, n: (prev?.n ?? 0) + 1 });
+    }
+    for (const m of command.matchAll(/https?:\/\/([\w.-]+(?::\d+)?)/g)) addHost(m[1]);
+    for (const m of command.matchAll(/\b(?:ssh|scp|rsync)\b[^\n]*?\b([\w.-]+@[\w.-]+)/g)) addHost(m[1]);
+  }
+  for (const p of edited) read.delete(p);
+  const lines: string[] = [];
+  const cap = (label: string, items: string[], share: number) => {
+    if (items.length === 0) return;
+    const fitted = fitItems(items, Math.floor(maxChars * share));
+    const more = items.length - fitted.length;
+    if (fitted.length) lines.push(`${label}: ${fitted.join(", ")}${more > 0 ? ` (+${more} more)` : ""}`);
+  };
+  cap("Notes written", [...edited], 0.2);
+  cap("Notes read", [...read].slice(-8), 0.15);
+  const repeated = [...commands.values()].filter((c) => c.n >= 2).sort((a, b) => b.n - a.n).map((c) => `\`${c.text}\` ×${c.n}`);
+  cap("Repeated commands", repeated.slice(0, 8), 0.45);
+  const topHosts = [...hosts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).map(([h]) => h);
+  cap("Hosts", topHosts.slice(0, 6), 0.2);
+  return lines;
 }
 
 // ── Commits ──────────────────────────────────────────────
@@ -402,7 +486,10 @@ export function pruneState(input: LosslessSummaryInput): string {
 
 const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\b(password|passwd|passphrase|pwd|token|secret|api[_ -]?key)(\s*(?:is|=|:)\s*)(['"`]?)([^\s'"`]{4,})\3/gi, "$1$2[redacted]"],
+  // "use password 'x'", "token `x`": a quoted value right after the word.
+  [/\b(password|passwd|passphrase|pwd|token|secret|api[_ -]?key)(\s+)(['"`])([^'"`\n]{4,}?)\3/gi, "$1$2[redacted]"],
   [/\bsk-[A-Za-z0-9_-]{16,}/g, "[redacted]"],
+  [/\b(Bearer|X-API-KEY:?|Authorization:)\s+[A-Za-z0-9._~+\/=-]{12,}/gi, "$1 [redacted]"],
   [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, "[redacted]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[redacted]"],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, "[redacted]"],
@@ -421,14 +508,21 @@ const SHARES = {
   activeWork: 0.16,
   requests: 0.16,
   state: 0.14,
-  decisions: 0.1,
-  files: 0.1,
+  decisions: 0.16,
+  files: 0.07,
+  knowledge: 0.07,
   commits: 0.05,
   errors: 0.06,
 } as const;
 
 export function buildLosslessSummary(input: LosslessSummaryInput): LosslessSummary {
-  const { source } = input;
+  // Redact before any clipping can cut a secret's closing quote.
+  const source: SummarySource = {
+    ...input.source,
+    requests: input.source.requests.map(redactSecrets),
+    reports: input.source.reports.map(redactSecrets),
+    blocks: input.source.blocks.map((b) => ("text" in b && typeof b.text === "string" ? { ...b, text: redactSecrets(b.text) } : b)),
+  };
   const on = { ...DEFAULT_SECTIONS, ...input.sections };
   const budget = Math.max(2000, Math.round(input.budgetChars));
   const cap = (share: number) => Math.floor(budget * share);
@@ -445,6 +539,7 @@ export function buildLosslessSummary(input: LosslessSummaryInput): LosslessSumma
   if (on.state) parts.push(["Latest State", section("Latest State", selectState(source.reports, cap(SHARES.state), drop.has(REPORT_KEY)))]);
   if (on.decisions) parts.push(["Decisions & Constraints", section("Decisions & Constraints", selectDecisions(source.requests, cap(SHARES.decisions), requestSel.shown, drop))]);
   if (on.files) parts.push(["Files", section("Files", selectFiles(source.blocks, input.cwd, cap(SHARES.files)))]);
+  if (on.files) parts.push(["Project Knowledge", section("Project Knowledge", selectKnowledge(source.blocks, input.cwd, cap(SHARES.knowledge)))]);
   if (on.commits) parts.push(["Commits", section("Commits", selectCommits(source.blocks, cap(SHARES.commits)))]);
   if (on.errors) parts.push(["Open Errors", section("Open Errors", selectOpenErrors(source.blocks, cap(SHARES.errors), drop))]);
 

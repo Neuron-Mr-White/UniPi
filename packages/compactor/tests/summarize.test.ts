@@ -172,6 +172,8 @@ describe("user answers, pruning inputs and redaction", () => {
     expect(text).not.toContain("9801(*)!Pi");
     expect(text).not.toContain("sk-abcdefghijklmnopqrstuvwx");
     expect(text).toContain("password is [redacted]");
+    const quoted = build([user("Sudo needs a terminal → Use password '9801(*)!Pi' for it")]).text;
+    expect(quoted).not.toContain("9801");
   });
 
   it("jev candidates: middle requests, answers as decisions, never the first or latest request", () => {
@@ -191,5 +193,42 @@ describe("user corrections", () => {
   it("a correction of the agent's work is kept, attached to its instruction", () => {
     const lines = selectDecisions(["Also, restore the brown pink like background just now. Currently it turns to other colors already. I did not request for this change."], 1000);
     expect(lines).toEqual(["Also, restore the brown pink like background just now. I did not request for this change."]);
+  });
+});
+
+describe("redaction before clipping", () => {
+  it("a long answer with a quoted password is redacted even when clipped", () => {
+    const q = "Tauri Linux build needs system deps (dbus, webkit2gtk, gtk3, appindicator, rsvg — the standard Tauri Linux prereqs). Sudo needs a terminal. OK?";
+    const branch = [
+      user("start"),
+      { id: "a1", type: "message", message: { role: "toolResult", toolName: "ask_user", toolCallId: "x", content: [{ type: "text", text: "User wrote: Use password '9801(*)!Pi' for sudo" }], details: { question: q }, isError: false } },
+      user("latest"),
+    ];
+    expect(build(branch).text).not.toContain("9801");
+  });
+});
+
+describe("project knowledge", () => {
+  const call = (command: string, i: number) => ({ id: `c${i}`, type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: `t${i}`, name: "bash", arguments: { command } }] } });
+  it("keeps notes the agent wrote, repeated tooling commands and hosts", () => {
+    const branch = [
+      user("deploy it"),
+      { id: "w", type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "tw", name: "write", arguments: { path: ".agents/skills/app-deploy/SKILL.md", content: "x" } }] } },
+      call("cd app && pnpm typecheck 2>&1 | tail -5", 1),
+      call("pnpm typecheck", 2),
+      call("ssh -i keys/white root@1.2.3.4 'systemctl restart app'", 3),
+      call("ssh -i keys/white root@1.2.3.4 'journalctl -n 5'", 4),
+      call("curl -s https://app.example.com/health", 5),
+      call("curl -s https://app.example.com/ready", 6),
+      call("ls", 7),
+      user("latest"),
+    ];
+    const text = build(branch).text;
+    expect(text).toContain("[Project Knowledge]");
+    expect(text).toContain("Notes written: .agents/skills/app-deploy/SKILL.md");
+    expect(text).toContain("`pnpm typecheck` ×2");
+    expect(text).toContain("`ssh -i keys/white root@1.2.3.4` ×2");
+    expect(text).toContain("app.example.com");
+    expect(text).not.toContain("`ls`");
   });
 });
