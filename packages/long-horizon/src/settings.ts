@@ -52,6 +52,14 @@ export interface LongHorizonSettings {
   defaultMode: LhMode;
   /** Model used for goal-completion verification (empty = session model). */
   verifierModel: string;
+  /**
+   * User-only goal progress estimate (a one-off model call, never in context):
+   * "loop" = after every goal turn and on /unipi:goal status; "status" = only
+   * on status; "off" = never.
+   */
+  goalProgress: "loop" | "status" | "off";
+  /** Model for the estimate (empty = verifier model, else session model). */
+  progressModel: string;
 }
 
 export const DEFAULT_SETTINGS: LongHorizonSettings = {
@@ -68,6 +76,8 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
   },
   defaultMode: "none",
   verifierModel: "",
+  goalProgress: "loop",
+  progressModel: "",
 };
 
 const settingsPath = (): string => join(homedir(), ".pi", "agent", "settings.json");
@@ -134,6 +144,8 @@ function mergeSettings(stored: unknown): LongHorizonSettings {
       ? (stored.defaultMode as LhMode)
       : DEFAULT_SETTINGS.defaultMode,
     verifierModel: typeof stored.verifierModel === "string" ? stored.verifierModel : "",
+    goalProgress: stored.goalProgress === "status" || stored.goalProgress === "off" ? stored.goalProgress : "loop",
+    progressModel: typeof stored.progressModel === "string" ? stored.progressModel : "",
   };
 }
 
@@ -200,6 +212,24 @@ registerSettings({
           description: "Used when judge is off/abstains",
         },
         { key: "verifierModel", type: "model", label: "Verifier model", description: "Goal completion verification", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
+      ],
+    },
+    {
+      title: "Progress",
+      description: "Progress bars shown only to you — never sent to the model",
+      fields: [
+        {
+          key: "goalProgress",
+          type: "enum",
+          label: "Goal progress estimate",
+          options: [
+            { value: "loop", label: "every loop + /goal status" },
+            { value: "status", label: "only on /goal status" },
+            { value: "off", label: "off" },
+          ],
+          description: "A one-off side call estimates % done and summarizes the work so far",
+        },
+        { key: "progressModel", type: "model", label: "Estimate model", description: "Cheaper is fine; runs once per goal turn", emptyLabel: "inherit (verifier → session model)", capability: "text", emptyOption: "inherit (verifier → session model)" },
       ],
     },
   ],

@@ -72,8 +72,9 @@ export function resetSubagentRegistry(): void {
 
 // ── The shared read_subagent tool (registered once, dispatches by owner) ────
 
-import { Text, type Component } from "@earendil-works/pi-tui";
+import { Box, Text, type Component } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { badge, leader, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, type KitTheme, type RunState } from "../tui/kit.js";
 
 const ReadSubagentParams = Type.Object({
   agent_id: Type.Optional(Type.String({ description: "Subagent or sidekick id; omit for the most recent" })),
@@ -83,15 +84,94 @@ const ReadSubagentParams = Type.Object({
 
 let toolOwner: ExtensionAPI | undefined;
 
-function renderReadResult(result: { details?: unknown; isError?: boolean }, theme: { fg: (c: string, s: string) => string; bold: (s: string) => string }): Component {
-  const details = result.details as { owner?: string; title?: string; status?: string } | undefined;
-  const mark = result.isError === true ? theme.fg("error", "✗") : theme.fg("accent", "●");
-  if (details?.owner === "subagents") {
-    return new Text(`${mark} ${theme.fg("dim", `Checked on subagent ${details.title ?? ""} └ ${details.status ?? ""}`)}`, 0, 0);
+interface ReadDetails {
+  owner?: string;
+  title?: string;
+  profile?: string;
+  status?: string;
+  toolCalls?: number;
+}
+
+/** Shared state for one read_subagent row (call + result renderers). */
+interface ReadState {
+  owner?: string;
+  title?: string;
+  final?: boolean;
+  startedAt?: number;
+  timer?: ReturnType<typeof setInterval>;
+}
+
+interface ReadContext {
+  state: ReadState;
+  invalidate(): void;
+}
+
+const lines = (render: (w: number) => string[]): Component => ({ invalidate() {}, render });
+const secs = (ms: number) => `${String(Math.max(0, Math.floor(ms / 1000)))}s`;
+
+/**
+ * Subagent reads are background work → badge lines:
+ *   WAIT  Map auth flow ······················· ⢎⡱ 12s
+ *   GOT   Map auth flow ······················· completed · 5 tool calls
+ * The call line shows while waiting; the result line replaces it.
+ */
+/**
+ * Sidekick reads keep pi's tinted tool box (fusion's choice): the tool renders
+ * itself (renderShell "self") so subagent reads can go boxless, and this
+ * repaints the standard box for everyone else.
+ */
+function toolBox(theme: KitTheme, bg: "toolPendingBg" | "toolSuccessBg" | "toolErrorBg", text: string): Component {
+  const paint = (theme as KitTheme & { bg?: (c: string, s: string) => string }).bg;
+  const box = new Box(1, 1, paint ? (s: string) => paint(bg, s) : undefined);
+  box.addChild(new Text(text, 0, 0));
+  return box;
+}
+
+const noContext = (): ReadContext => ({ state: {}, invalidate() {} });
+
+function renderReadCall(args: SubagentReadParams, theme: KitTheme, context: ReadContext = noContext()): Component {
+  const st = context.state;
+  st.owner ??= readerFor(args.agent_id)?.owner;
+  st.startedAt ??= Date.now();
+  if (st.owner !== "subagents") {
+    if (st.final) return lines(() => []);
+    return toolBox(theme, "toolPendingBg", `${theme.fg("toolTitle", theme.bold("● read_subagent"))} ${theme.fg("dim", args.block === true ? "· waiting" : "· snapshot")}`);
   }
-  // Sidekick/fusion reads keep the compact ◆ status line.
-  const status = details?.status ?? "done";
-  return new Text(`${theme.fg(result.isError === true ? "error" : "accent", result.isError === true ? "✗" : "◆")} ${theme.fg("toolTitle", theme.bold(`read_subagent ${status}`))}`, 0, 0);
+  if (args.block === true && !st.final && st.timer === undefined) {
+    st.timer = setInterval(() => context.invalidate(), SPINNER_MS);
+    st.timer.unref?.();
+  }
+  return lines((w) => {
+    if (st.final) return [];
+    const who = st.title ?? args.agent_id ?? "latest subagent";
+    const right = args.block === true ? `${spinner(theme)} ${theme.fg("dim", secs(Date.now() - (st.startedAt ?? Date.now())))}` : theme.fg("dim", "checking…");
+    return [leader(theme, `${badge(theme, "accent", args.block === true ? "WAIT" : "READ")} ${who}`, right, w)];
+  });
+}
+
+function renderReadResult(result: { details?: unknown; isError?: boolean }, opts: { isPartial?: boolean }, theme: KitTheme, context: ReadContext = noContext()): Component {
+  const d = result.details as ReadDetails | undefined;
+  const st = context.state;
+  if (d?.owner) st.owner = d.owner;
+  if (d?.title) st.title = d.title;
+  if (st.owner === "subagents") {
+    if (opts.isPartial) return lines(() => []);
+    if (st.timer) clearInterval(st.timer);
+    st.timer = undefined;
+    st.final = true;
+    const status = d?.status ?? (result.isError === true ? "failed" : "completed");
+    const state = (status in STATE_COLOR ? status : "failed") as RunState;
+    const label = state === "running" ? "READ" : state === "completed" ? "GOT " : STATE_BADGE[state];
+    const chip = badge(theme, STATE_COLOR[state], label);
+    const bits = [state === "running" ? "still running" : status, d?.toolCalls !== undefined ? `${String(d.toolCalls)} tool call${d.toolCalls === 1 ? "" : "s"}` : ""].filter(Boolean);
+    return lines((w) => [leader(theme, `${chip} ${d?.title ?? st.title ?? "subagent"}`, theme.fg("dim", bits.join(" · ")), w)]);
+  }
+  // Sidekick/fusion reads keep the compact ◆ status line in a tool box; the
+  // call box above is dropped once the result box replaces it.
+  if (!opts.isPartial) st.final = true;
+  const status = d?.status ?? "done";
+  const err = result.isError === true;
+  return toolBox(theme, opts.isPartial ? "toolPendingBg" : err ? "toolErrorBg" : "toolSuccessBg", `${theme.fg(err ? "error" : "accent", err ? "✗" : "◆")} ${theme.fg("toolTitle", theme.bold(`read_subagent ${status}`))}`);
 }
 
 /**
@@ -107,9 +187,9 @@ export function ensureReadSubagentTool(pi: ExtensionAPI): void {
     description:
       "Read a subagent's or the sidekick's result by agent_id (omit for the most recent). block:true waits for completion up to timeout seconds (default 30, max 600); block:false returns the current status immediately.",
     parameters: ReadSubagentParams,
-    renderCall: (args: { agent_id?: string; block?: boolean }, theme) =>
-      new Text(`${theme.fg("toolTitle", theme.bold("● read_subagent"))} ${theme.fg("dim", args.block === true ? "· waiting" : "· snapshot")}`, 0, 0),
-    renderResult: (result, _options, theme) => renderReadResult(result as never, theme as never),
+    renderShell: "self",
+    renderCall: (args: SubagentReadParams, theme, context) => renderReadCall(args, theme, context as unknown as ReadContext),
+    renderResult: (result, options, theme, context) => renderReadResult(result as never, options, theme, context as unknown as ReadContext),
     async execute(_toolCallId, params: SubagentReadParams, signal, onUpdate, ctx) {
       const reader = readerFor(params.agent_id, ctx);
       if (!reader) {

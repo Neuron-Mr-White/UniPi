@@ -13,13 +13,20 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, emitEvent, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
 import type { LhMode } from "./modes.js";
 import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
 import type { OwnerCoordinator } from "./owner.js";
 import type { RalphLoop } from "./engine/ralph.js";
 import { loadSettings } from "./settings.js";
+
+/** Progress-bar hooks (all output is user-only; see src/progress.ts). */
+export interface ProgressHooks {
+  ralphBar(): ProgressData | undefined;
+  estimateGoal(ctx: ExtensionCommandContext): Promise<"ok" | "none" | "failed">;
+  goalEstimateOn(): boolean;
+}
 
 export interface LongHorizonCommandDeps {
   readonly gate: Gate;
@@ -98,6 +105,7 @@ export function registerLongHorizonCommands(
   gate: Gate,
   owner: OwnerCoordinator,
   ralph?: RalphLoop,
+  progressHooks?: ProgressHooks,
 ): void {
   const modeHandler = (mode: LhMode) => async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
     const definition = MODE_REGISTRY[mode];
@@ -146,6 +154,8 @@ export function registerLongHorizonCommands(
           ? `Loop "${loopState.name}": iteration ${loopState.iteration}, ${progress.checked}/${progress.total} items checked.\nNext: ${progress.next.slice(0, 3).join(" · ") || "(all checked)"}\n${ownerSnapshotText(owner)}`
           : ownerSnapshotText(owner),
       );
+      const bar = progress.total > 0 ? progressHooks?.ralphBar() : undefined;
+      if (bar) appendProgress(pi, bar);
       return;
     }
 
@@ -158,6 +168,13 @@ export function registerLongHorizonCommands(
           `\nJudge: ${settings.judge.enabled ? `${settings.judge.provider}/${settings.judge.model} (threshold ${settings.judge.threshold})` : "off"} — default mode: ${settings.defaultMode}` +
           `\nSettings: ~/.pi/agent/settings.json → unipi.longHorizon`,
       );
+      // /goal status: estimate progress + summary in a side call (user-only).
+      if (mode === "goal" && progressHooks?.goalEstimateOn()) {
+        ctx.ui.setStatus?.("lh-progress", "◎ estimating goal progress…");
+        const outcome = await progressHooks.estimateGoal(ctx);
+        ctx.ui.setStatus?.("lh-progress", undefined);
+        if (outcome === "failed") notify(ctx, "Goal progress estimate failed (model unavailable or unparseable reply).");
+      }
       return;
     }
 

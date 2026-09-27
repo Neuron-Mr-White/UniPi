@@ -14,6 +14,7 @@ import { matchesKey, ProcessTerminal, TuiMainScreen, truncateToWidth, visibleWid
 import { CAPABILITIES, type Variant } from "./capabilities.ts";
 import { FAMILIES, SURFACES, wholeLook } from "./families.ts";
 import { type Ctx, fit, type Th } from "./kit.ts";
+import { badge, DEFAULT_SPINNER, leader, progressBar, SPINNER_MS, SPINNER_STYLES, spinnerCells, spinnerFrame, settledGlyph, type KitTheme } from "../../packages/core/src/tui/kit.ts";
 
 // ── Pi theme loading (same resolver Pi uses, including custom themes) ──────
 const piIndex = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
@@ -62,6 +63,57 @@ const glyphVariants: Variant[] = GLYPHS.map(([id, note, g]) => ({
   },
 }));
 
+// The real crafted spinners from @pi-unipi/core (what UniPi ships).
+const SPINNER_NOTES: Record<string, string> = {
+  orbit: "A dot circling a 2-cell braille grid with a fading tail.",
+  comet: "A comet bouncing across 3 cells, trail fading behind it.",
+  scanner: "◆ sweeping over 3 cells with ◇ neighbours. Matches the ◆ strip icon.",
+  helix: "A sine wave scrolling through 2 braille cells.",
+  diamond: "Single cell ◇ ◈ ◆ with a brightness pulse. Most compact.",
+  bars: "Three bars breathing out of phase, equalizer-like.",
+  quad: "A quarter block rotating. Simple, blocky.",
+};
+const spinnerVariants: Variant[] = SPINNER_STYLES.map((style) => ({
+  id: style,
+  name: `${style}${style === DEFAULT_SPINNER ? "  (current default)" : ""}`,
+  note: `${SPINNER_NOTES[style] ?? ""} ${String(spinnerCells(style))} cell${spinnerCells(style) === 1 ? "" : "s"}.`,
+  animated: true,
+  render: ({ t, width, frame }) => {
+    const k = t as unknown as KitTheme;
+    // The gallery ticks every 80ms; step the spinner at its own speed.
+    const n = Math.floor((frame * 80) / SPINNER_MS);
+    const s = spinnerFrame(k, style, n);
+    const pad = " ".repeat(Math.max(0, 3 - spinnerCells(style)));
+    return [
+      `${s}${pad}  ${t.fg("dim", "frames:")} ${Array.from({ length: 8 }, (_, i) => spinnerFrame(k, style, i)).join(t.fg("dim", " "))}`,
+      "",
+      `${s} ${t.bold("General subagent")} Run root scripts report`,
+      `  ${t.fg("dim", "└ Running · 7s · 2 tool calls · ctrl+b background · esc cancel")}`,
+      `${t.fg("success", settledGlyph("✓", style))} ${t.bold("General subagent")} Run root scripts report`,
+      `  ${t.fg("dim", "└ ")}${t.fg("success", "Completed")}${t.fg("dim", " · 10s · 3 tool calls")}`,
+      leader(k, `${badge(k, "accent", "WAIT")} Subagent UX smoke artifact`, `${s} ${t.fg("dim", "12s")}`, width),
+    ];
+  },
+}));
+
+const progressVariants: Variant[] = [
+  {
+    id: "bars",
+    name: "Progress bars",
+    note: "Solid = done, shade = in progress, light = left. Posted once per update, only you see them.",
+    render: ({ t }) => {
+      const k = t as unknown as KitTheme;
+      return [
+        `${t.fg("accent", "↻")} ${t.bold("Ralph · docs-cleanup")}  ${progressBar(k, 4, 2, 10)}  4/10 items  ${t.fg("dim", "iteration 3/20")}`,
+        `  ${t.fg("muted", "next: fix README links · drop old badges")}`,
+        `${t.fg("accent", "◎")} ${t.bold("Goal")}  ${progressBar(k, 55, 10, 100)}  ~55%  ${t.fg("dim", "turn 4/30")}`,
+        `  ${t.fg("muted", "Parser and CLI flags done; tests for the error paths are left.")}`,
+        `${t.fg("success", "▣")} ${t.bold("Board · unipi")}  ${progressBar(k, 5, 1, 10, 20, "success")}  5/10 tasks  ${t.fg("dim", "1 blocked")}`,
+      ];
+    },
+  },
+];
+
 const familyNote = (id: string) => FAMILIES.find((f) => f.id === id)!.note;
 const SECTIONS: Section[] = [
   {
@@ -78,6 +130,8 @@ const SECTIONS: Section[] = [
     note: s.note,
     variants: FAMILIES.map((f) => ({ id: f.id, name: f.name, note: familyNote(f.id), animated: true, render: f.render[s.id] })),
   })),
+  { id: "spinner", group: "Details", title: "Spinner lab", note: "Crafted spinners from @pi-unipi/core — pick one with space and tell me; the default switches everywhere at once.", variants: spinnerVariants },
+  { id: "progress", group: "Details", title: "Progress bars", note: "Ralph, goal (estimated) and board bars.", variants: progressVariants },
   { id: "glyphs", group: "Details", title: "Status glyphs", note: "One glyph per state, used by strip, dock, cards.", variants: glyphVariants },
   { id: "caps", group: "What a terminal can do", title: "Capabilities & limits", note: "Reference, not a choice. Each demo says where it breaks.", variants: CAPABILITIES },
 ];

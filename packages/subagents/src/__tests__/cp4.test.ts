@@ -14,6 +14,7 @@ import { SubagentDock, stripText, renderItems, profileLabel, elapsed } from "../
 import { agentMarkdown, validateName, agentFile } from "../agents.js";
 import { loadProfiles } from "../profiles.js";
 import { cardOutcome } from "../index.js";
+import { renderCompletion, renderRunCall, renderRunResult } from "../cards.js";
 import { ChildAgentRuntime, DENY_WITH_NOTE, BACKGROUND_DENY_NOTE } from "@pi-unipi/core/child-agent.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "sa4-"));
@@ -184,10 +185,38 @@ const rec = (over: Record<string, unknown> = {}) => ({
   background: false, startedAt: Date.now() - 7000, endedAt: Date.now(), toolCalls: 1, lastActivity: 0, sessionFile: "/nope", depth: 1, ...over,
 }) as never;
 
-test("strip: Devin wording, running count only while running, hidden when empty", () => {
+test("strip: cleaned style, running count only while running, hidden when empty", () => {
   assert.equal(stripText([], theme), undefined);
-  assert.equal(stripText([rec(), rec({ status: "running" })], theme), "2 subagents (1 running) · ↓ select");
-  assert.equal(stripText([rec()], theme), "1 subagent · ↓ select");
+  assert.equal(stripText([rec(), rec({ status: "running" })], theme), "◆ 2 subagents (1 running) · ↓ select");
+  assert.equal(stripText([rec()], theme), "◆ 1 subagent · ↓ select");
+});
+
+test("foreground card: one head line, glyph settles in place (spinner → ✓), no tinted box", () => {
+  const context = { state: {} as never, invalidate() {} };
+  const args = { title: "Map auth", profile: "subagent_explore" };
+  const call = renderRunCall(args, theme, context);
+  const running = call.render(80)[0]!;
+  assert.match(running, /^[\u2800-\u28ff ]{2} Explore subagent Map auth$/u, "two-cell crafted spinner");
+  const hooks = { tail: () => ["  ● read src/a.ts"], toolCalls: () => 1, startedAt: () => Date.now() - 3000 };
+  const partial = renderRunResult({ details: { owner: "subagents", id: "x", status: "running" } }, { isPartial: true, expanded: false }, theme, context, args, hooks).render(80);
+  assert.deepEqual(partial[0], "  ● read src/a.ts");
+  assert.match(partial[1]!, /└ Running · 3s · 1 tool call · ctrl\+b background · esc cancel/);
+  const done = renderRunResult({ details: { owner: "subagents", id: "x", phase: "done", status: "completed", durationMs: 9000, toolCalls: 3 } }, { isPartial: false, expanded: false }, theme, context, args, hooks).render(80);
+  assert.equal(call.render(80)[0], "✓  Explore subagent Map auth", "same line, settled glyph padded to the spinner width");
+  assert.equal(done[0], "  └ Completed · 9s · 3 tool calls");
+  assert.equal((context.state as { timer?: unknown }).timer, undefined, "spinner timer stops");
+});
+
+test("background spawn + completion render as badge lines", () => {
+  const context = { state: {} as never, invalidate() {} };
+  const args = { title: "Map auth", profile: "subagent_explore", is_background: true };
+  const call = renderRunCall(args, theme, context);
+  renderRunResult({ details: { owner: "subagents", id: "x", status: "running", phase: "started" } }, { isPartial: false, expanded: false }, theme, context, args, { tail: () => [], toolCalls: () => 0, startedAt: () => 0 });
+  assert.match(call.render(70)[0]!, /^\x1b\[7m BG   \x1b\[27m Explore Map auth ·+ started · ↓ to watch$/);
+  const notice = renderCompletion({ owner: "subagents", title: "Map auth", profile: "subagent_explore", status: "completed", durationMs: 50_000, toolCalls: 2 }, false, theme).render(70)[0]!;
+  assert.match(notice, /^\x1b\[7m DONE \x1b\[27m Explore Map auth ·+ 50s · 2 tool calls$/);
+  const stopped = renderCompletion({ owner: "subagents", title: "t", status: "cancelled", cancelledBy: "user" }, false, theme).render(60)[0]!;
+  assert.match(stopped, / STOP .* cancelled by you$/);
 });
 
 test("labels + durations", () => {

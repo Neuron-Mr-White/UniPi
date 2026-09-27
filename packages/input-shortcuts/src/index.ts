@@ -20,6 +20,7 @@ import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
 import { loadConfig } from "./settings.ts";
 import { copyToClipboard } from "./clipboard.ts";
 import { THINKING_CYCLE } from "./types.ts";
+import { installClearedInput } from "./cleared-input.ts";
 
 // ─── Status feedback ────────────────────────────────────────────────────────
 
@@ -325,6 +326,9 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       ctx.ui.setEditorText(text + "\t");
     },
   });
+
+  // ─── Ctrl+C keeps the cleared text (struck through, ↑ restores) ────────
+  installClearedInput(pi);
 
   // ─── Session lifecycle ─────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, registerCommandRunner, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { appendProgress, emitEvent, getPackageVersion, registerCommandRunner, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
@@ -24,6 +24,7 @@ import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
 import { GraphLedger, registerGraphTools } from "./src/tools/graph.js";
 import { TodoStore, registerTodoTool } from "./src/tools/todo.js";
 import { wireRuntime } from "./src/runtime.js";
+import { ralphProgressData } from "./src/progress.js";
 
 export * from "./src/modes.js";
 export * from "./src/owner.js";
@@ -156,6 +157,9 @@ export default function longHorizon(pi: ExtensionAPI): void {
       } else if (event.type === "loop_end") {
         emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_END, { name: event.name, reason: event.reason, iterations: event.iterations });
       }
+      // User-only progress bar on every loop update.
+      const bar = ralphProgressData(ralph);
+      if (bar) appendProgress(pi, bar);
     },
   });
   registerRalphTools(pi, ralph);
@@ -163,7 +167,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
   registerSwarmTools(pi, { ledger: swarm, owner });
   const graph = new GraphLedger(owner);
   registerGraphTools(pi, { ledger: graph });
-  wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
+  const runtime = wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
 
   // Cross-module entry points: another module (kanboard's runner) can start a
   // goal and read its status without importing this package. Mirrors what the
@@ -233,7 +237,11 @@ export default function longHorizon(pi: ExtensionAPI): void {
     return ralph.start(name, content);
   });
 
-  registerLongHorizonCommands(pi, gate, owner, ralph);
+  registerLongHorizonCommands(pi, gate, owner, ralph, {
+    ralphBar: () => ralphProgressData(ralph),
+    estimateGoal: (ctx) => runtime.estimateGoal(ctx),
+    goalEstimateOn: () => loadSettings().goalProgress !== "off",
+  });
 
   // Crash recovery: repair, don't resume — reload durable state so the gate
   // reattaches the owner's tool surface; the continuation arms a recovery

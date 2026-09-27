@@ -10,16 +10,16 @@ import * as fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import {
   UNIPI_EVENTS,
   MODULES,
   emitEvent,
   getPackageVersion,
+  type KitTheme,
 } from "@pi-unipi/core";
 
 import { createSessionBackend, type SessionBackend } from "./session.js";
-import { registerMemoryTools, MEMORY_TOOLS, memoryCard } from "./tools.js";
+import { registerMemoryTools, MEMORY_TOOLS, memoryCard, type RailRow } from "./tools.js";
 import { registerMemoryCommands, type SessionOverrides } from "./commands.js";
 import { readMemoryConfig, agentHooksEnabled } from "./settings.js";
 import { replayPending, pendingCount, type PendingOp } from "./pending.js";
@@ -138,15 +138,14 @@ export default function (pi: ExtensionAPI) {
 
   // Render the recall/end reminders as small badges (UI-only).
   try {
-    const badge = (icon: string, label: string) =>
-      (message: { content?: unknown }, _options: unknown, theme: { bg?: (c: string, t: string) => string; fg?: (c: string, t: string) => string; bold?: (t: string) => string }) => {
-        const text = String(message.content ?? "").split("\n")[0] ?? label;
-        const inner = theme.fg?.("syntaxKeyword", theme.bold?.(` ${icon} ${label} `) ?? ` ${icon} ${label} `) ?? ` ${label} `;
-        const b = theme.bg?.("customMessageBg", inner) ?? inner;
-        return new Text(`${b} ${theme.fg?.("dim", text.replace(/[*#🧠]/gu, "").trim()) ?? text}`, 0, 0);
+    // Same rail as every memory surface: `▌ Memory recall  <first line>`.
+    const reminder = (label: string) =>
+      (message: { content?: unknown }, _options: unknown, theme: KitTheme) => {
+        const text = (String(message.content ?? "").split("\n")[0] ?? "").replace(/[*#🧠]/gu, "").trim();
+        return memoryCard(theme, [`${theme.bold(label)} ${theme.fg("dim", text)}`]);
       };
-    pi.registerMessageRenderer?.(RECALL_CUSTOM_TYPE, badge("◈", "memory recall") as never);
-    pi.registerMessageRenderer?.(RETRO_CUSTOM_TYPE, badge("◈", "memory save?") as never);
+    pi.registerMessageRenderer?.(RECALL_CUSTOM_TYPE, reminder("Memory recall") as never);
+    pi.registerMessageRenderer?.(RETRO_CUSTOM_TYPE, reminder("Memory save?") as never);
   } catch { /* renderer registration is UI-dependent */ }
 
   // Session card (UI-only entry + renderer).
@@ -159,16 +158,17 @@ export default function (pi: ExtensionAPI) {
         const cfg = readMemoryConfig();
         const recall = cfg.recallAtStart && overrides.recall !== false ? "on" : "off";
         const write = cfg.write && overrides.write !== false ? "on" : "off";
-        const lines = [
-          `◈ memory palace · ${d.project}`,
-          `${d.count} memories · recall ${recall} · write ${write}${d.wakeUp ? " · wake-up ready (expand)" : ""}`,
-          ...(d.issue ? [d.issue] : []),
-          ...(d.needsMigrate ? ["v2 memories found — run /unipi:memory migrate"] : []),
+        const t = theme as unknown as KitTheme;
+        const rows: RailRow[] = [
+          { left: `${t.bold("Memory palace")} ${d.project}`, right: t.fg("dim", `${String(d.count)} ${d.count === 1 ? "memory" : "memories"}`) },
+          t.fg("dim", `recall ${recall} · write ${write}${d.wakeUp ? " · wake-up ready (expand)" : ""}`),
+          ...(d.issue ? [t.fg("warning", d.issue)] : []),
+          ...(d.needsMigrate ? [t.fg("warning", "v2 memories found — run /unipi:memory migrate")] : []),
         ];
         if ((_options as { expanded?: boolean } | undefined)?.expanded && d.wakeUp) {
-          lines.push("", ...d.wakeUp.split("\n"));
+          rows.push("", ...d.wakeUp.split("\n").map((l) => t.fg("muted", l)));
         }
-        return memoryCard(theme as never, lines);
+        return memoryCard(t, rows, d.issue ? "warning" : "memory");
       },
     );
   } catch { /* UI-dependent */ }

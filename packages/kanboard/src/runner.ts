@@ -7,6 +7,8 @@
  * (spec principle 2).
  */
 
+import { appendProgress } from "@pi-unipi/core";
+import { boardProgressData } from "./progress.js";
 import { hostname as osHostname } from "node:os";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { callCommandRunner, readJudgeJevSettings, askJev, UNIPI_EVENTS } from "@pi-unipi/core";
@@ -516,6 +518,17 @@ ${body}`.trim() },
     }
   }
 
+  /** User-only board bar after each finished task. Best-effort. */
+  async function postBoardProgress(): Promise<void> {
+    try {
+      const { tasks } = asTaskList(await runCli<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }));
+      const bar = boardProgressData(tasks, project());
+      if (bar) appendProgress(pi, bar);
+    } catch (error) {
+      deps.debug(`board progress failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /** Ask the goal engine whether the goal reached a terminal state. */
   async function goalStatus(): Promise<{ status: string; objective?: string } | null> {
     const looked = await callCommandRunner<{ found?: boolean; status?: string; objective?: string }>(
@@ -568,6 +581,7 @@ ${body}`.trim() },
     state.phase = "idle";
     persist("idle");
     setStatus(ctx, state.stopAfterCurrent ? undefined : describe());
+    await postBoardProgress();
 
     await continueLoop(ctx);
   }

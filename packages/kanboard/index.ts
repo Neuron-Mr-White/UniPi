@@ -22,6 +22,8 @@ import {
   initUnipiDirs,
   registerCommandRunner,
   getSettings,
+  appendProgress,
+  registerProgressRenderer,
 } from "@pi-unipi/core";
 
 import { openCli, type KanboardCli } from "./src/bin.js";
@@ -101,6 +103,7 @@ export default function (pi: ExtensionAPI) {
       guard,
       session: sessionId,
       debug,
+      progress: (data) => appendProgress(pi, data),
     }) as CommandDeps;
 
   const revealSkill = (ctx: ExtensionContext | { cwd?: string }): void => {
@@ -133,6 +136,7 @@ export default function (pi: ExtensionAPI) {
     return true;
   };
 
+  registerProgressRenderer(pi);
   registerKanboardCommands(pi, buildDeps());
 
   registerCommandRunner(ACTION_OPEN, async (ctx) => {

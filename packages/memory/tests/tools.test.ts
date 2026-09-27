@@ -1,28 +1,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderSearchLines, renderStoreLine, MEMORY_TOOLS } from "../tools.js";
+import { memoryCard, searchRows, storeRows, MEMORY_TOOLS } from "../tools.js";
 
-test("renderStoreLine shows outcome states", () => {
-  const rec = { id: "m", title: "t", content: "c", tags: [], project: "conc", type: "decision" as const, created: "", updated: "" };
-  const filed = renderStoreLine({ outcome: "filed", record: rec });
-  assert.match(filed, /remembered t/);
-  assert.match(filed, /conc › decision · filed ✓/);
-  const queued = renderStoreLine({ outcome: "queued", record: rec });
-  assert.match(queued, /queued ⧗/);
-  const md = renderStoreLine({ outcome: "markdown-only", record: rec });
-  assert.match(md, /markdown only ⚠/);
-  const withSimilar = renderStoreLine({ outcome: "filed", record: rec }, ['"other" (80%)']);
-  assert.match(withSimilar, /~ similar: "other" \(80%\)/);
+const plain = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+const render = (rows: Parameters<typeof memoryCard>[1], w = 100) => memoryCard(plain, rows).render(w);
+
+test("store card: rail, title left, outcome + place right", () => {
+  const [filed] = render(storeRows(plain, { action: "created", title: "t", project: "conc", type: "decision", outcome: "filed" }));
+  assert.match(filed!, /^▌ Memory t\s+✓ filed conc › decision$/);
+  assert.match(render(storeRows(plain, { title: "t", outcome: "queued" }))[0]!, /⧗ queued/);
+  assert.match(render(storeRows(plain, { title: "t", outcome: "markdown-only" }))[0]!, /⚠ markdown only/);
+  assert.match(render(storeRows(plain, { title: "t", outcome: "filed", action: "updated" }))[0]!, /Memory updated t/);
+  const similar = render(storeRows(plain, { title: "t", outcome: "filed", similar: ['"other" (80%)'] }));
+  assert.equal(similar[1], '▌ ~ similar: "other" (80%)');
 });
 
-test("renderSearchLines groups + bars", () => {
-  const lines = renderSearchLines("vim", [
+test("search card: head with counts, one meter row per hit", () => {
+  const lines = render(searchRows(plain, "vim", [
     { title: "a", wing: "w1", room: "preference", score: 0.75, snippet: "x", sourceLabel: "pi", isPiMemory: true },
     { title: "b", wing: "w2", room: "general", score: 0.4, snippet: "y", sourceLabel: "devin-cli", isPiMemory: false },
-  ]);
-  assert.match(lines[0], /recalled "vim" · 2 memories · 2 projects/);
-  assert.match(lines[1], /▰▰▰▰▱ a  w1 › preference · pi/);
-  assert.match(lines[2], /▰▰▱▱▱ b  w2 › general · devin/);
+  ]));
+  assert.match(lines[0]!, /^▌ Memory "vim"\s+2 hits · 2 projects$/);
+  assert.match(lines[1]!, /^▌ ██████░░ a\s+w1 › preference · pi$/);
+  assert.match(lines[2]!, /^▌ ███▎░░░░ b\s+w2 › general · devin$/);
+  for (const l of lines) assert.equal(l.length, 100, "right side is aligned to the width");
 });
 
 test("tool names", () => {

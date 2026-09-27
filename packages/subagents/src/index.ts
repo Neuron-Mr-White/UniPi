@@ -15,10 +15,9 @@
 
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Key, Markdown, Text, matchesKey, truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
-import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import {
-  UNIPI_EVENTS, emitEvent, getSettings, registerSettings, getSharedFusionStatus,
+  UNIPI_EVENTS, emitEvent, getSettings, registerSettings, getSharedFusionStatus, SPINNER_MS,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -34,6 +33,9 @@ import {
   SubagentDock, SubagentStrip, elapsed, plural, profileLabel, statusColor, statusGlyph, tailLines, STATUS_LABEL, type ThemeLike,
 } from "./ui.js";
 import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
+import {
+  cardOutcome, renderCompletion, renderRunCall, renderRunResult, type CardContext, type CardDetails, type RunArgs,
+} from "./cards.js";
 import { badgeHandler } from "./badge.js";
 
 export interface SubagentsConfig {
@@ -109,20 +111,6 @@ const STRIP_KEY = "subagents-strip";
 const FG_KEY = "subagents-foreground";
 const WORKING = "Subagent running · Ctrl+B to run in background";
 
-type Phase = "started" | "moved" | "done";
-interface CardDetails {
-  owner: "subagents";
-  id?: string;
-  title?: string;
-  profile?: string;
-  status?: SubagentStatus;
-  phase?: Phase;
-  toolCalls?: number;
-  durationMs?: number;
-  error?: string;
-  cancelledBy?: string;
-  startedAt?: number;
-}
 
 function leadSessionId(ctx: ExtensionContext): string {
   const m = ctx.sessionManager as { getSessionId?: () => string | undefined } | undefined;
@@ -157,26 +145,7 @@ export function resolveSubagentThinking(
   return profile.thinking ?? own ?? ctx.thinkingLevel ?? "medium";
 }
 
-function meta(durationMs: number | undefined, toolCalls: number | undefined): string {
-  return [durationMs !== undefined ? elapsed(durationMs) : undefined, toolCalls !== undefined ? plural(toolCalls, "tool call") : undefined].filter(Boolean).join(" · ");
-}
-
-/** `└ …` line under a finished run_subagent card. */
-export function cardOutcome(d: CardDetails | undefined, theme: ThemeLike): string {
-  const m = meta(d?.durationMs, d?.toolCalls);
-  const tail = m ? theme.fg("dim", ` · ${m}`) : "";
-  if (d?.phase === "started") return theme.fg("dim", "└ Background subagent started.");
-  if (d?.phase === "moved") return theme.fg("dim", "└ Moved to background — keeps working.");
-  const status = d?.status ?? "completed";
-  if (status === "running") return theme.fg("dim", "└ Still running in the background.");
-  const label = status === "cancelled" && d?.cancelledBy === "user" ? "Cancelled by you" : STATUS_LABEL[status];
-  const err = status === "failed" && d?.error ? theme.fg("error", `: ${d.error}`) : "";
-  return `${theme.fg("dim", "└ ")}${theme.fg(statusColor(status), label)}${err}${tail}`;
-}
-
-function lines(texts: string[]): Component {
-  return { invalidate() {}, render: (w: number) => texts.map((t) => truncateToWidth(t, w)) };
-}
+export { cardOutcome };
 
 export default function subagents(pi: ExtensionAPI): void {
   const manager = new SubagentManager();
@@ -289,7 +258,7 @@ export default function subagents(pi: ExtensionAPI): void {
       if (wantFg && !fgInstalled) {
         fgInstalled = true;
         ctx.ui.setWidget(FG_KEY, (tui, theme) => {
-          const timer = setInterval(() => tui.requestRender(), 300);
+          const timer = setInterval(() => tui.requestRender(), SPINNER_MS);
           timer.unref?.();
           return { invalidate() {}, render: (w: number) => renderWatched(w, theme), dispose: () => clearInterval(timer) };
         }, { placement: "aboveEditor" });
@@ -313,8 +282,10 @@ export default function subagents(pi: ExtensionAPI): void {
     for (const id of watched) {
       const rec = manager.record(id);
       if (rec === undefined) continue;
-      const head = `${statusGlyph(rec.status, theme, Math.floor(Date.now() / 150))} ${theme.fg("muted", profileLabel(rec.profile))} ${theme.fg("dim", "›")} ${theme.bold(rec.title)} ${theme.fg("dim", `· ${elapsed(Date.now() - rec.startedAt)} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background`)}`;
-      out.push(truncateToWidth(head, width), ...tailLines(liveItems(id), width, theme, 4));
+      // Same Devin card as a foreground run_subagent.
+      const head = `${statusGlyph(rec.status, theme)} ${theme.bold(`${profileLabel(rec.profile)} subagent`)} ${rec.title}`;
+      const foot = theme.fg("dim", `└ Running · ${elapsed(Date.now() - rec.startedAt)} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background`);
+      out.push(truncateToWidth(head, width), ...tailLines(liveItems(id), width, theme, 4), truncateToWidth(`  ${foot}`, width));
     }
     return out;
   }
@@ -397,33 +368,14 @@ export default function subagents(pi: ExtensionAPI): void {
         ...RunSubagentParams.properties,
         profile: Type.String({ description: `Profile name. Available: ${profileParam}. Custom agents added later are listed in the Subagents section of the system prompt.` }),
       }),
-      renderCall: (args: { title?: string; profile?: string; resume?: string; is_background?: boolean }, theme) => {
-        const what = args.resume ? "Resume subagent" : `${profileLabel(args.profile ?? "subagent")} subagent`;
-        const bg = args.is_background === true && !args.resume ? theme.fg("dim", " · background") : "";
-        return new Text(`${theme.fg("toolTitle", theme.bold(`● ${what}`))} ${theme.fg("accent", args.title ?? "")}${bg}`, 0, 0);
-      },
-      renderResult: (result, opts, theme) => {
-        const r = result as unknown as { details?: CardDetails; content?: Array<{ text?: string }> };
-        const d = r.details;
-        if (opts.isPartial && d?.id !== undefined) {
-          const id = d.id;
-          return {
-            invalidate() {},
-            render: (w: number) => {
-              const rec = manager.record(id);
-              const status = `${statusGlyph("running", theme, Math.floor(Date.now() / 150))} ${theme.fg("dim", `${elapsed(Date.now() - (rec?.startedAt ?? Date.now()))} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background · esc cancel`)}`;
-              return [...tailLines(liveItems(id), w, theme, 4), truncateToWidth(`  ${status}`, w)];
-            },
-          };
-        }
-        const outcome = cardOutcome(d, theme);
-        if (!opts.expanded || d?.phase !== "done") return lines([`  ${outcome}`]);
-        const text = (r.content?.[0]?.text ?? "").replace(/\n\n--- subagent [\s\S]*$/u, "");
-        return {
-          invalidate() {},
-          render: (w: number) => [truncateToWidth(`  ${outcome}`, w), ...new Markdown(text, 2, 0, getMarkdownTheme()).render(w)],
-        };
-      },
+      renderShell: "self",
+      renderCall: (args: RunArgs, theme, context) => renderRunCall(args, theme, context as unknown as CardContext),
+      renderResult: (result, opts, theme, context) =>
+        renderRunResult(result as never, opts, theme, context as unknown as CardContext, (context as { args?: RunArgs }).args ?? {}, {
+          tail: (id, w) => tailLines(liveItems(id), w, theme, 4),
+          toolCalls: (id) => manager.toolCalls(id),
+          startedAt: (id) => manager.record(id)?.startedAt,
+        }),
       execute: runSubagent as never,
     });
   }
@@ -601,18 +553,9 @@ export default function subagents(pi: ExtensionAPI): void {
   });
   ensureReadSubagentTool(pi);
 
-  // Completion line — Devin: `● Subagent "title" completed └ 7s · 1 tool call`.
-  pi.registerMessageRenderer("subagent-completion", (message: { details?: CardDetails & { report?: string } }, opts: { expanded?: boolean }, theme) => {
-    const d = message.details;
-    const status: SubagentStatus = d?.status === ("aborted" as never) || d?.status === ("interrupted" as never) ? "cancelled" : d?.status ?? "completed";
-    const label = status === "cancelled" && d?.cancelledBy === "user" ? "cancelled by you" : STATUS_LABEL[status].toLowerCase();
-    const head = `${theme.fg(statusColor(status), "●")} ${theme.fg("text", `Subagent "${d?.title ?? ""}"`)} ${theme.fg(statusColor(status), label)}`;
-    const m = meta(d?.durationMs, d?.toolCalls);
-    const rows = [head, ...(m ? [theme.fg("dim", `  └ ${m}`)] : [])];
-    if (!opts.expanded || !d?.report) return lines(rows);
-    const report = d.report;
-    return { invalidate() {}, render: (w: number) => [...rows.map((r) => truncateToWidth(r, w)), ...new Markdown(report, 2, 0, getMarkdownTheme()).render(w)] };
-  });
+  // Background completion notice — badge: `DONE Explore title ···· 7s · 1 tool call`.
+  pi.registerMessageRenderer("subagent-completion", (message: { details?: CardDetails & { report?: string } }, opts: { expanded?: boolean }, theme) =>
+    renderCompletion(message.details, opts.expanded === true, theme));
 
   // ── Prompt section (only while enabled) ───────────────────────────────────
   pi.on("before_agent_start", (event, ctx) => {

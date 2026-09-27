@@ -3,6 +3,7 @@
  * `/unipi:kanboard-add`, `/unipi:kanboard-do`, `/unipi:kanboard-autowork`.
  */
 
+import { boardProgressData } from "./progress.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname as osHostname, networkInterfaces, tmpdir, type NetworkInterfaceInfo } from "node:os";
@@ -196,6 +197,8 @@ export interface CommandDeps {
   /** This session's id (UNIPI_KANBOARD_SESSION / pi-<pid>). */
   session: () => string;
   debug: (line: string) => void;
+  /** Post a user-only progress bar (optional: absent in tests). */
+  progress?: (data: import("@pi-unipi/core").ProgressData) => void;
 }
 
 export interface DaemonInfo {
@@ -628,6 +631,8 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
       if (problems && problems.length > 0) {
         lines.push(`⚠ ${problems.length} task file(s) need repair — unipi-kanboard validate --fix`);
       }
+      const bar = boardProgressData(tasks, slug);
+      if (bar) deps.progress?.(bar);
       // Active claims and this session's queue.
       const running = tasks.filter((task) => task.status === "in_progress");
       if (running.length > 0) {

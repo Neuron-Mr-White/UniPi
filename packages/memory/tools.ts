@@ -8,10 +8,10 @@
  */
 
 import { Type } from "typebox";
-import { Box, Text, type Component } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
+import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { UNIPI_EVENTS, emitEvent, meter, rail, type KitTheme } from "@pi-unipi/core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { SessionBackend, SearchHit, StoreResult } from "./session.js";
+import type { SessionBackend, SearchHit } from "./session.js";
 import { findByTitle, findSimilar } from "./files.js";
 import { MEMORY_TYPES, type MemoryType } from "./paths.js";
 
@@ -31,58 +31,52 @@ export interface ToolActivity {
   onWriteDone?: () => void;
 }
 
-interface ThemeLike {
-  fg: (color: string, text: string) => string;
-  bold: (text: string) => string;
-  bg?: (color: string, text: string) => string;
-}
+type ThemeLike = KitTheme;
 
-/** Memory's own colour: sidekick owns accent/success/error for its rail. */
-const MEMORY_COLOR = "syntaxKeyword";
-const MEMORY_GLYPH = "◈";
+/** Memory's own colour (purple) — the rail that marks every memory surface. */
+const MEMORY_COLOR = "customMessageLabel";
 
 export type CardTone = "memory" | "success" | "warning" | "error";
 
-class RailComponent implements Component {
-  constructor(private readonly inner: Component, private readonly rail: string) {}
-  render(width: number): string[] {
-    return this.inner.render(Math.max(1, width - 2)).map((line) => `${this.rail} ${line}`);
-  }
-  invalidate(): void {
-    this.inner.invalidate?.();
-  }
+/** One rail row: left text, optional right-aligned text. */
+export type RailRow = string | { left: string; right?: string };
+
+/**
+ * Rail card (no tinted box):
+ *   ▌ Memory "subagent test UX"                     5 hits · 1 project
+ *   ▌ ██████▌░ pi_test_kanboard_sanity   pi_test › summary · pi
+ * `tone` recolours the rail for warning/error outcomes.
+ */
+export function memoryCard(theme: ThemeLike, rows: RailRow[], tone: CardTone = "memory"): Component {
+  const color = tone === "warning" || tone === "error" ? tone : MEMORY_COLOR;
+  return {
+    invalidate() {},
+    render: (w: number) => rows.map((r) => truncateToWidth(typeof r === "string" ? rail(theme, color, r, "", w) : rail(theme, color, r.left, r.right ?? "", w), w)),
+  };
 }
 
-/** Shaded card with a memory-coloured rail (same shape as the sidekick frame).
- *  The first line is the header; `tone` recolours the rail for outcomes. */
-export function memoryCard(theme: ThemeLike, lines: string[], tone: CardTone = "memory"): Component {
-  const [head = "", ...rest] = lines;
-  const body = [theme.fg(MEMORY_COLOR, theme.bold(head)), ...rest.map((l) => theme.fg("muted", l))].join("\n");
-  const rail = theme.fg(tone === "memory" ? MEMORY_COLOR : tone, "▍");
-  const box = new Box(1, 0, (text: string) => (theme.bg ? theme.bg("customMessageBg", text) : text));
-  box.addChild(new RailComponent(new Text(body, 0, 0), rail));
-  return box;
-}
+const EMPTY: Component = { invalidate() {}, render: () => [] };
 
-function frame(theme: ThemeLike, lines: string[], tone: CardTone = "memory"): Component {
-  return memoryCard(theme, lines, tone);
+/** Pending call line; disappears once the result card takes over. */
+function pendingLine(theme: ThemeLike, context: unknown, text: string): Component {
+  if ((context as { isPartial?: boolean } | undefined)?.isPartial === false) return EMPTY;
+  return memoryCard(theme, [`${theme.bold("Memory")} ${theme.fg("dim", text)}`]);
 }
 
 function outcomeTone(outcome: unknown): CardTone {
   return outcome === "filed" ? "success" : outcome === "queued" ? "warning" : outcome ? "error" : "memory";
 }
 
-function scoreBar(score: number): string {
-  const filled = Math.max(0, Math.min(5, Math.round(score * 5)));
-  return "▰".repeat(filled) + "▱".repeat(5 - filled);
-}
-
 function outcomeLabel(outcome: string): string {
   switch (outcome) {
-    case "filed": return "filed ✓";
-    case "queued": return "queued ⧗";
-    default: return "markdown only ⚠";
+    case "filed": return "✓ filed";
+    case "queued": return "⧗ queued";
+    default: return "⚠ markdown only";
   }
+}
+
+function outcomeColor(outcome: string): "success" | "warning" | "error" {
+  return outcome === "filed" ? "success" : outcome === "queued" ? "warning" : "error";
 }
 
 function sourceLabel(raw: string): string {
@@ -95,23 +89,54 @@ function sourceLabel(raw: string): string {
   }
 }
 
-/** Text-only mirror of the renderers, for tests + headless output. */
-export function renderStoreLine(res: StoreResult, similar: string[] = []): string {
-  const lines = [
-    `${MEMORY_GLYPH} remembered ${res.record.title}`,
-    `${res.record.project} › ${res.record.type} · ${outcomeLabel(res.outcome)}`,
+const plural = (n: number, word: string) => `${String(n)} ${word}${n === 1 ? "" : "s"}`;
+
+/** `▌ Memory title                      ✓ filed  project › type` (+ similar rows). */
+export function storeRows(
+  t: ThemeLike,
+  d: { action?: string; title?: string; project?: string; type?: string; outcome?: string; similar?: string[] },
+): RailRow[] {
+  const outcome = d.outcome ?? "filed";
+  return [
+    {
+      left: `${t.bold("Memory")} ${d.action === "updated" ? t.fg("dim", "updated ") : ""}${d.title ?? ""}`,
+      right: `${t.fg(outcomeColor(outcome), outcomeLabel(outcome))} ${t.fg("dim", `${d.project ?? ""} › ${d.type ?? ""}`)}`,
+    },
+    ...(d.similar ?? []).map((s) => t.fg("dim", `~ similar: ${s}`)),
   ];
-  for (const s of similar) lines.push(`~ similar: ${s}`);
-  return lines.join("\n");
 }
 
-export function renderSearchLines(query: string, hits: SearchHit[], shown = hits.length): string[] {
+/** Head `Memory "query" … N hits · P projects`, then one meter row per hit. */
+export function searchRows(t: ThemeLike, query: string, hits: SearchHit[], shown = hits.length): RailRow[] {
   const projects = new Set(hits.map((h) => h.wing)).size;
-  const lines = [`${MEMORY_GLYPH} recalled "${query}" · ${hits.length} memories · ${projects} projects`];
-  for (const h of hits.slice(0, shown)) {
-    lines.push(`${scoreBar(h.score)} ${h.title}  ${h.wing} › ${h.room} · ${sourceLabel(h.sourceLabel)}`);
-  }
-  return lines;
+  return [
+    { left: `${t.bold("Memory")} "${query}"`, right: t.fg("dim", `${plural(hits.length, "hit")} · ${plural(projects, "project")}`) },
+    ...hits.slice(0, shown).map((h) => ({
+      left: `${meter(t, h.score, 8, MEMORY_COLOR)} ${h.title}`,
+      right: t.fg("dim", `${h.wing} › ${h.room} · ${sourceLabel(h.sourceLabel)}`),
+    })),
+  ];
+}
+
+/** Search result card (also used by the global alias). */
+function searchCard(t: ThemeLike, details: unknown, expanded: boolean): Component {
+  const d = details as { query?: string; hits?: SearchHit[] } | undefined;
+  const hits = d?.hits ?? [];
+  if (hits.length === 0) return memoryCard(t, [{ left: `${t.bold("Memory")} "${d?.query ?? ""}"`, right: t.fg("dim", "no matches") }]);
+  const shown = expanded ? hits.length : Math.min(5, hits.length);
+  const rows = searchRows(t, d?.query ?? "", hits, shown);
+  if (hits.length > shown) rows.push(t.fg("dim", `… ${String(hits.length - shown)} more`));
+  return memoryCard(t, rows);
+}
+
+/** `Memory 12 stored` + one row per memory (title … type / project). */
+function listCard(t: ThemeLike, details: unknown, expanded: boolean, global: boolean): Component {
+  const mems = (details as { memories?: Array<{ title: string; type: string; project?: string }> } | undefined)?.memories ?? [];
+  const shown = expanded ? mems : mems.slice(0, 8);
+  const rows: RailRow[] = [{ left: `${t.bold("Memory")} ${String(mems.length)} ${mems.length === 1 ? "memory" : "memories"}`, right: t.fg("dim", global ? "all projects" : "this project") }];
+  for (const m of shown) rows.push({ left: m.title, right: t.fg("dim", global ? `${m.project ?? ""} › ${m.type}` : m.type) });
+  if (mems.length > shown.length) rows.push(t.fg("dim", `… ${String(mems.length - shown.length)} more`));
+  return memoryCard(t, rows);
 }
 
 export function registerMemoryTools(
@@ -218,17 +243,13 @@ export function registerMemoryTools(
       tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization" })),
       type: Type.Optional(Type.String({ description: "Memory type", enum: [...MEMORY_TYPES] })),
     }),
-    renderCall: (args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", `remembering ${String(args.title ?? "").slice(0, 60)}…`)}`, 0, 0),
+    renderShell: "self",
+    renderCall: (args, theme, context) => pendingLine(theme, context, `remembering ${String(args.title ?? "").slice(0, 60)}…`),
     renderResult: (result, _o, theme) => {
       const d = result.details as { action?: string; outcome?: string; similar?: string[]; title?: string; project?: string; type?: string } | undefined;
       const text = result.content?.map((c) => ("text" in c ? c.text : "")).join("\n") ?? "";
-      if (!d?.outcome) return frame(theme as ThemeLike, [`${MEMORY_GLYPH} ${text.split("\n")[0] ?? "memory"}`]);
-      const lines = [
-        `${MEMORY_GLYPH} ${d.action === "updated" ? "updated" : "remembered"} ${d.title ?? ""}`,
-        `${d.project ?? ""} › ${d.type ?? ""} · ${outcomeLabel(d.outcome)}`,
-        ...(d.similar ?? []).map((s) => `~ similar: ${s}`),
-      ];
-      return frame(theme as ThemeLike, lines, outcomeTone(d.outcome));
+      if (!d?.outcome) return memoryCard(theme, [`${theme.bold("Memory")} ${theme.fg("warning", text.split("\n")[0] ?? "")}`], "warning");
+      return memoryCard(theme, storeRows(theme, d), outcomeTone(d.outcome));
     },
     async execute(_id, params, _s, _o, ctx) {
       return storeExecute(params, ctx);
@@ -252,7 +273,7 @@ export function registerMemoryTools(
     if (hits.length === 0) {
       return {
         content: [{ type: "text" as const, text: `No memories found for: "${params.query}"` }],
-        details: { results: [] },
+        details: { query: params.query, hits: [] },
       };
     }
     const output = hits
@@ -291,15 +312,9 @@ export function registerMemoryTools(
       limit: Type.Optional(Type.Number({ description: "Max results (default 10)", default: 10 })),
       scope: Type.Optional(Type.String({ description: "'all' (default) or 'project'", enum: ["all", "project"], default: "all" })),
     }),
-    renderCall: (args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", `searching "${String(args.query).slice(0, 60)}"`)}`, 0, 0),
-    renderResult: (result, options, theme) => {
-      const d = result.details as { query?: string; hits?: SearchHit[] } | undefined;
-      const hits = d?.hits ?? [];
-      const shown = options.expanded ? hits.length : Math.min(5, hits.length);
-      const lines = renderSearchLines(d?.query ?? "", hits, shown);
-      if (hits.length > shown) lines.push(`… ${hits.length - shown} more`);
-      return frame(theme as ThemeLike, lines);
-    },
+    renderShell: "self",
+    renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
+    renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
     async execute(_id, params, _s, _o, _ctx) {
       return searchExecute(params);
     },
@@ -314,15 +329,9 @@ export function registerMemoryTools(
       query: Type.String({ description: "Search query" }),
       limit: Type.Optional(Type.Number({ default: 10 })),
     }),
-    renderCall: (args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", `searching "${String(args.query).slice(0, 60)}"`)}`, 0, 0),
-    renderResult: (result, options, theme) => {
-      const d = result.details as { query?: string; hits?: SearchHit[] } | undefined;
-      const hits = d?.hits ?? [];
-      const shown = options.expanded ? hits.length : Math.min(5, hits.length);
-      const lines = renderSearchLines(d?.query ?? "", hits, shown);
-      if (hits.length > shown) lines.push(`… ${hits.length - shown} more`);
-      return frame(theme as ThemeLike, lines);
-    },
+    renderShell: "self",
+    renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
+    renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
     async execute(_id, params, _s, _o, _ctx) {
       activity?.onRecall?.();
       return searchExecute({ query: params.query, limit: params.limit, scope: "all" });
@@ -338,14 +347,13 @@ export function registerMemoryTools(
       title: Type.Optional(Type.String({ description: "Memory title to delete" })),
       id: Type.Optional(Type.String({ description: "Memory ID to delete" })),
     }),
-    renderCall: (_args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", "forgetting…")}`, 0, 0),
+    renderShell: "self",
+    renderCall: (_args, theme, context) => pendingLine(theme, context, "forgetting…"),
     renderResult: (result, _o, theme) => {
       const d = result.details as Record<string, unknown> | undefined;
-      const lines = [
-        `${MEMORY_GLYPH} forgot ${String(d?.title ?? d?.id ?? "memory")}`,
-        String(d?.deleted ? outcomeLabel(String(d.outcome ?? "filed")) : "not found"),
-      ];
-      return frame(theme as ThemeLike, lines, d?.deleted ? outcomeTone(d.outcome ?? "filed") : "warning");
+      const outcome = String(d?.outcome ?? "filed");
+      const right = d?.deleted ? theme.fg(outcomeColor(outcome), outcomeLabel(outcome)) : theme.fg("warning", "not found");
+      return memoryCard(theme, [{ left: `${theme.bold("Memory")} ${theme.fg("dim", "forgot")} ${String(d?.title ?? d?.id ?? "memory")}`, right }], d?.deleted ? outcomeTone(outcome) : "warning");
     },
     async execute(_id, params, _s, _o, _ctx) {
       activity?.onStore?.();
@@ -375,16 +383,9 @@ export function registerMemoryTools(
     description: "List all memories for the current project.",
     promptSnippet: "List all project memories.",
     parameters: Type.Object({}),
-    renderCall: (_args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", "listing")}`, 0, 0),
-    renderResult: (result, options, theme) => {
-      const d = result.details as { memories?: Array<{ title: string; type: string }> } | undefined;
-      const mems = d?.memories ?? [];
-      const shown = options.expanded ? mems : mems.slice(0, 8);
-      const lines = [`${MEMORY_GLYPH} memories · ${mems.length} stored`];
-      for (const m of shown) lines.push(`${m.title} · ${m.type}`);
-      if (!options.expanded && mems.length > shown.length) lines.push(`… ${mems.length - shown.length} more`);
-      return frame(theme as ThemeLike, lines);
-    },
+    renderShell: "self",
+    renderCall: (_args, theme, context) => pendingLine(theme, context, "listing…"),
+    renderResult: (result, options, theme) => listCard(theme, result.details, options.expanded, false),
     async execute(_id, _p, _s, _o, _ctx) {
       activity?.onRecall?.();
       const b = W();
@@ -405,16 +406,9 @@ export function registerMemoryTools(
     label: "List All Project Memories",
     description: "List all memories across all projects with project names.",
     parameters: Type.Object({}),
-    renderCall: (_args, theme) => new Text(`${theme.fg(MEMORY_COLOR, theme.bold(`${MEMORY_GLYPH} memory`))} ${theme.fg("dim", "listing")}`, 0, 0),
-    renderResult: (result, options, theme) => {
-      const d = result.details as { memories?: Array<{ title: string; project: string; type: string }> } | undefined;
-      const mems = d?.memories ?? [];
-      const shown = options.expanded ? mems : mems.slice(0, 8);
-      const lines = [`${MEMORY_GLYPH} memories · ${mems.length} stored across projects`];
-      for (const m of shown) lines.push(`[${m.project}] ${m.title} · ${m.type}`);
-      if (!options.expanded && mems.length > shown.length) lines.push(`… ${mems.length - shown.length} more`);
-      return frame(theme as ThemeLike, lines);
-    },
+    renderShell: "self",
+    renderCall: (_args, theme, context) => pendingLine(theme, context, "listing…"),
+    renderResult: (result, options, theme) => listCard(theme, result.details, options.expanded, true),
     async execute(_id, _p, _s, _o, _ctx) {
       activity?.onRecall?.();
       const b = W();

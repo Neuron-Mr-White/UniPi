@@ -2,8 +2,8 @@
  * @pi-unipi/subagents — TUI: strip, dock (list + transcript view), live tail.
  *
  * Devin layout, UniPi styling:
- *   strip (below editor)  `2 subagents (1 running) · ↓ select`
- *   dock (replaces editor) `── Subagents ──` rows `❭ ✓ Explore › title  7s · 1 tool · Completed · model`
+ *   strip (below editor)  `◆ 2 subagents (1 running) · ↓ select`
+ *   dock (replaces editor) `── Subagents ──` rows `❭ DONE Explore title ····· 7s · 1 tool · model`
  *                          keys `↑↓ navigate · ↵ view · f foreground · x cancel · esc close`
  *   view                  `── ◔ Explore › title ── 2m49s · 8 tools ──`, model line, task, live steps
  */
@@ -11,13 +11,13 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
+import { badge, leader, settledGlyph, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, stateGlyph } from "@pi-unipi/core";
 import type { SubagentRecord, SubagentStatus } from "./manager.js";
 import type { TranscriptItem } from "./transcript.js";
 
 export type ThemeLike = Pick<Theme, "fg" | "bold">;
 
-export const SPINNER = ["◐", "◓", "◑", "◒"] as const;
-const SPIN_MS = 150;
+const SPIN_MS = SPINNER_MS;
 
 export function elapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -44,38 +44,35 @@ export const STATUS_LABEL: Record<SubagentStatus, string> = {
   cancelled: "Cancelled",
 };
 
-export function statusGlyph(status: SubagentStatus, theme: ThemeLike, frame = 0): string {
-  switch (status) {
-    case "running":
-      return theme.fg("accent", SPINNER[frame % SPINNER.length]!);
-    case "completed":
-      return theme.fg("success", "✓");
-    case "failed":
-      return theme.fg("error", "✗");
-    case "cancelled":
-      return theme.fg("warning", "⊘");
-  }
+/** Crafted spinner while running, else ✓ ✗ ⊘ padded to the spinner's width. */
+export function statusGlyph(status: SubagentStatus, theme: ThemeLike, now = Date.now()): string {
+  return stateGlyph(theme, status, now);
 }
 
 export function statusColor(status: SubagentStatus): ThemeColor {
-  return status === "completed" ? "success" : status === "failed" ? "error" : status === "cancelled" ? "warning" : "accent";
+  return STATE_COLOR[status];
+}
+
+/** Inverse chip for a state: RUN / DONE / FAIL / STOP. */
+export function statusBadge(status: SubagentStatus, theme: ThemeLike): string {
+  return badge(theme, STATE_COLOR[status], STATE_BADGE[status]);
 }
 
 function durationOf(rec: SubagentRecord, now = Date.now()): number {
   return (rec.endedAt ?? now) - rec.startedAt;
 }
 
-/** `2 subagents (1 running) · ↓ select` — undefined when there are none. */
+/** `◆ 2 subagents (1 running) · ↓ select` — undefined when there are none. */
 export function stripText(records: readonly SubagentRecord[], theme: ThemeLike): string | undefined {
   if (records.length === 0) return undefined;
   const running = records.filter((r) => r.status === "running").length;
   const count = plural(records.length, "subagent");
   const run = running > 0 ? ` ${theme.fg("accent", `(${String(running)} running)`)}` : "";
-  return `${theme.fg("dim", count)}${run}${theme.fg("dim", " · ↓ select")}`;
+  return `${theme.fg(running > 0 ? "accent" : "muted", "◆")} ${theme.fg("muted", count)}${run}${theme.fg("dim", " · ↓ select")}`;
 }
 
 function spinFrame(): number {
-  return Math.floor(Date.now() / SPIN_MS);
+  return Date.now();
 }
 
 /** Persistent strip under the editor. Re-renders on registry changes and
@@ -108,7 +105,7 @@ export function renderItems(items: readonly TranscriptItem[], width: number, the
       const md = new Markdown(item.text, 0, 0, getMarkdownTheme()).render(w);
       out.push(...md, "");
     } else {
-      const glyph = item.running ? theme.fg("accent", SPINNER[(opts.frame ?? 0) % SPINNER.length]!) : item.isError ? theme.fg("error", "✗") : theme.fg("accent", "●");
+      const glyph = item.running ? spinner(theme, undefined, opts.frame) : theme.fg(item.isError ? "error" : "accent", settledGlyph(item.isError ? "✗" : "●"));
       const dur = item.durationMs !== undefined && item.durationMs >= 1000 ? theme.fg("dim", ` ${elapsed(item.durationMs)}`) : "";
       out.push(truncateToWidth(`${glyph} ${theme.fg("toolTitle", theme.bold(item.name))}${item.arg ? ` ${theme.fg("accent", item.arg)}` : ""}${dur}`, w));
       const lines = item.output.replace(/\s+$/u, "").split("\n").filter((l, i, a) => l.length > 0 || i < a.length - 1);
@@ -130,7 +127,7 @@ export function tailLines(items: readonly TranscriptItem[], width: number, theme
   return steps.flatMap((item) => {
     if (item.kind === "text") return [truncateToWidth(`  ${theme.fg("dim", item.text.replace(/\s+/gu, " ").trim())}`, width)];
     if (item.kind !== "tool") return [];
-    const glyph = item.running ? theme.fg("accent", SPINNER[frame % SPINNER.length]!) : item.isError ? theme.fg("error", "✗") : theme.fg("dim", "●");
+    const glyph = item.running ? spinner(theme, undefined, frame) : theme.fg(item.isError ? "error" : "dim", settledGlyph(item.isError ? "✗" : "●"));
     const row = truncateToWidth(`  ${glyph} ${theme.fg("muted", item.name)}${item.arg ? ` ${theme.fg("dim", item.arg)}` : ""}`, width);
     // A running tool shows its newest output line (bash streams).
     const latest = item.running ? item.output.trimEnd().split("\n").at(-1) : undefined;
@@ -227,15 +224,14 @@ export class SubagentDock implements Component {
       const rec = recs[i]!;
       const sel = i === this.selected;
       const calls = this.actions.toolCalls(rec);
-      const left = `${sel ? t.fg("accent", "❭") : " "} ${statusGlyph(rec.status, t, frame)} ${t.fg("muted", profileLabel(rec.profile))} ${t.fg("dim", "›")} ${sel ? t.bold(rec.title) : rec.title}`;
-      const tags = [elapsed(durationOf(rec)), plural(calls, "tool"), t.fg(statusColor(rec.status), STATUS_LABEL[rec.status])];
+      // Badge row: `❭ RUN  General title ········ ⢎⡱ 7s · 2 tools · bg · model`
+      const left = `${sel ? t.fg("accent", "❭") : " "} ${statusBadge(rec.status, t)} ${t.bold(profileLabel(rec.profile))} ${sel ? t.fg("accent", rec.title) : rec.title}`;
+      const tags = [elapsed(durationOf(rec)), plural(calls, "tool")];
       if (rec.status === "running" && rec.background) tags.push("bg");
       tags.push(rec.model);
-      const right = t.fg("dim", tags.join(" · "));
-      const room = w - visibleWidth(right) - 2;
-      const leftFit = room > 12 ? truncateToWidth(left, room) : truncateToWidth(left, w);
-      const gap = Math.max(1, w - visibleWidth(leftFit) - visibleWidth(right));
-      out.push(room > 12 ? `${leftFit}${" ".repeat(gap)}${right}` : leftFit);
+      const live = rec.status === "running" ? `${spinner(t, undefined, frame)} ` : "";
+      const right = `${live}${t.fg("dim", tags.join(" · "))}`;
+      out.push(visibleWidth(right) + 16 < w ? leader(t, truncateToWidth(left, w - visibleWidth(right) - 4), right, w) : truncateToWidth(left, w));
     }
     const below = recs.length - (this.listTop + MAX_LIST_ROWS);
     if (below > 0) out.push(t.fg("dim", `  ↓ ${String(below)} more`));

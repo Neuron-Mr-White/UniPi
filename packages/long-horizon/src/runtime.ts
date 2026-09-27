@@ -24,6 +24,9 @@ import type { RalphLoop } from "./engine/ralph.js";
 import type { LongHorizonSettings } from "./settings.js";
 import { loadSettings } from "./settings.js";
 import { RunawayGuard } from "./engine/runaway.js";
+import { appendProgress, registerProgressRenderer } from "@pi-unipi/core";
+import { goalEstimatePrompt, goalProgressData, parseEstimate, type GoalEvidence } from "./progress.js";
+import { TERMINAL_GOAL_STATUSES } from "./engine/goal-state.js";
 
 /** Extract command/file signals from a tool call for the activity record. */
 export function classifyToolCall(
@@ -126,8 +129,14 @@ interface EvalContext {
   model: ExtensionContext["model"];
 }
 
-export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
+export interface RuntimeHandle {
+  /** Estimate goal progress now and post it (user-only). */
+  estimateGoal(ctx?: ExtensionContext): Promise<"ok" | "none" | "failed">;
+}
+
+export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle {
   const settings = deps.loadSettings ?? loadSettings;
+  registerProgressRenderer(pi);
 
   // ── per-turn activity accumulator ───────────────────────────────────
   let toolCalls = 0;
@@ -203,20 +212,58 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
     // Only update when this turn actually reported usage — a usage-less turn
     // keeps the last known counter (and never erases an injected one).
     if (tokens !== undefined) deps.continuation.setTokenCounter(() => tokens);
+    if (deps.machine.get()) lastEvidence = activity;
     await deps.continuation.onTurnEnd(activity);
+    // Per-loop goal progress: fire-and-forget, never delays the next turn.
+    if (settings().goalProgress === "loop") void estimateGoal(ctx, true);
     } catch {
       // Settlement failures must never surface as turn aborts.
     }
   });
 
-  // ── verifier evaluate → modelRegistry.complete ──────────────────────
-  const evaluate: VerifierEvaluate = async (prompt, signal) => {
-    const context = evalContext;
+  // ── goal progress estimate (one-off side call, never in context) ─────
+  let lastEvidence: GoalEvidence | undefined;
+  let lastPercent: number | undefined;
+  let lastGoalKey: string | undefined;
+  let estimating = false;
+
+  async function estimateGoal(ctx?: ExtensionContext, fromLoop = false): Promise<"ok" | "none" | "failed"> {
+    try {
+      const goal = deps.machine.get();
+      if (!goal || deps.ralph?.get()?.status === "active") return "none"; // ralph has its own bar
+      const key = `${goal.goalId}:${goal.status}`;
+      const terminal = TERMINAL_GOAL_STATUSES.has(goal.status);
+      // A loop posts once per goal turn; a finished goal posts its last bar once.
+      if (fromLoop && (goal.status === "paused" || (terminal && key === lastGoalKey))) return "none";
+      if (goal.goalId !== lastGoalKey?.split(":")[0]) lastPercent = undefined;
+      lastGoalKey = key;
+      if (goal.status === "complete") {
+        appendProgress(pi, goalProgressData(goal, 100, "Objective met."));
+        return "ok";
+      }
+      if (estimating) return "ok";
+      estimating = true;
+      const s = settings();
+      const text = await complete(s.progressModel || s.verifierModel, goalEstimatePrompt(goal, lastEvidence, lastPercent), undefined, ctx);
+      const est = parseEstimate(text);
+      if (!est) return "failed";
+      lastPercent = est.percent;
+      appendProgress(pi, goalProgressData(deps.machine.get() ?? goal, est.percent, est.summary));
+      return "ok";
+    } catch {
+      return "failed";
+    } finally {
+      estimating = false;
+    }
+  }
+
+  // ── one-shot completions (verifier, progress) → modelRegistry.complete ─
+  async function complete(configured: string, prompt: string, signal?: AbortSignal, ctx?: ExtensionContext): Promise<string> {
+    const context = ctx ? { registry: ctx.modelRegistry, model: ctx.model } : evalContext;
     if (!context?.model || !context.registry) {
       throw new Error("verifier: no model context available yet");
     }
     let model = context.model;
-    const configured = settings().verifierModel;
     if (configured) {
       const slash = configured.indexOf("/");
       if (slash > 0) {
@@ -243,7 +290,8 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
           : "";
     if (!text) throw new Error("verifier: empty completion");
     return text;
-  };
+  }
+  const evaluate: VerifierEvaluate = (prompt, signal) => complete(settings().verifierModel, prompt, signal);
   deps.continuation.setEvaluate(evaluate);
   if (deps.ralph) deps.ralph.setEvaluate(evaluate);
 
@@ -251,4 +299,6 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): void {
   pi.on("session_compact", () => {
     deps.continuation.armRecovery();
   });
+
+  return { estimateGoal: (ctx) => estimateGoal(ctx) };
 }

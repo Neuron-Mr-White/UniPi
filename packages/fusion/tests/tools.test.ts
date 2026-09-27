@@ -231,9 +231,13 @@ test("fusion tools use the default render shell so pi paints the standard tool b
   const { tools } = setup(runtime);
   // "self" bypasses ToolExecutionComponent's toolPendingBg/toolSuccessBg box,
   // which leaves sidekick blocks unhighlighted next to ordinary tool activity.
-  for (const name of ["sidekick", "read_subagent"]) {
-    assert.notEqual(tools.get(name).renderShell, "self");
-  }
+  assert.notEqual(tools.get("sidekick").renderShell, "self");
+  // read_subagent renders itself (subagent reads are boxless badges) but
+  // repaints the same tool box for sidekick reads.
+  const painted: string[] = [];
+  const bgTheme = { ...theme, bg: (c: string, s: string) => { painted.push(c); return s; } };
+  tools.get("read_subagent").renderResult({ details: { owner: "fusion", status: "done" } }, {}, bgTheme).render(80);
+  assert.ok(painted.includes("toolSuccessBg"), "sidekick read keeps the standard success box");
 });
 
 test("rendered fallback text strips ids and instructions", () => {
