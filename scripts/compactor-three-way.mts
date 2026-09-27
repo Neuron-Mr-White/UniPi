@@ -43,10 +43,10 @@ for (const [provider, p] of Object.entries<any>(registry.providers ?? {})) {
     break;
   }
 }
-if (!model) throw new Error(`model ${modelId} not in models.json`);
+// A missing model is only an error when a reference has to be generated.
 // The omniroute bridge keeps the live key in its own config.
 const bridgeConfig = join(homedir(), ".pi", "agent", "omniroute-bridge", "config.json");
-if (model.provider === "omniroute" && existsSync(bridgeConfig)) {
+if (model?.provider === "omniroute" && existsSync(bridgeConfig)) {
   const bridge = JSON.parse(readFileSync(bridgeConfig, "utf8"));
   apiKey = bridge.apiKey ?? bridge.key ?? apiKey;
 }
@@ -73,6 +73,7 @@ const flat = (s: string, n: number) => {
 };
 
 async function llmSummary(messages: any[]): Promise<{ text: string; calls: number; chars: number }> {
+  if (!model) throw new Error(`model ${modelId} not in models.json`);
   // Chunk at message boundaries by serialized size, then chain like Pi's
   // repeated compactions (previousSummary → update prompt).
   const chunks: any[][] = [];
@@ -92,7 +93,8 @@ async function llmSummary(messages: any[]): Promise<{ text: string; calls: numbe
   }
   if (cur.length) chunks.push(cur);
   let summary: string | undefined;
-  for (const chunk of chunks) {
+  for (const [i, chunk] of chunks.entries()) {
+    console.error(`  llm chunk ${i + 1}/${chunks.length} (${chunk.length} messages)`);
     const r = await withRetry(() => generateSummaryWithUsage(chunk, model, Number(process.env.RESERVE_TOKENS ?? 32768), apiKey, undefined, undefined, undefined, summary));
     summary = r.text;
   }

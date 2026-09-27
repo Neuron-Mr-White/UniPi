@@ -40,8 +40,8 @@ async function ask(prompt: string, attempt = 1): Promise<any> {
   const res: any = await completeSimple(
     model,
     { systemPrompt: "You are a meticulous evaluator. Reply with a single JSON object and nothing else.", messages: [{ role: "user", content: prompt, timestamp: Date.now() }] } as any,
-    { apiKey, maxTokens: 16000 } as any,
-  );
+    { apiKey, maxTokens: 16000, signal: AbortSignal.timeout(300_000) } as any,
+  ).catch((err: unknown) => ({ content: [], stopReason: "error", errorMessage: String(err) }));
   const text = (res.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("");
   try {
     return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
