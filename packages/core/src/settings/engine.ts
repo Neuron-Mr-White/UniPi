@@ -27,6 +27,20 @@ export interface SettingsDefinition {
   readonly projectOverrides?: boolean;
   /** Field schema — sections/fields the hub renders automatically. */
   readonly schema?: readonly SettingsSection[];
+  /**
+   * Called after every write to one layer (set or unset) with that layer's
+   * new content — for settings that mirror into another program's config
+   * (e.g. fusion's startup model → pi's settings.json). Errors are swallowed.
+   */
+  readonly onSet?: (layer: Record<string, unknown>, scope: SettingsScope, cwd: string) => void;
+}
+
+function notifySet(definition: SettingsDefinition, layer: Record<string, unknown>, scope: SettingsScope, cwd: string): void {
+  try {
+    definition.onSet?.(layer, scope, cwd);
+  } catch {
+    /* a mirror failure must not fail the settings write */
+  }
 }
 
 const registry = new Map<string, SettingsDefinition>();
@@ -139,8 +153,9 @@ export function setSettings(
   }
   const target =
     scope === "global" ? globalSettingsPath(namespace) : projectSettingsPath(cwd, namespace);
-  const current = readJson(target) ?? {};
-  writeJson(target, deepMerge(current, patch));
+  const next = deepMerge(readJson(target) ?? {}, patch);
+  writeJson(target, next);
+  notifySet(definition, next, scope, cwd);
 }
 
 /** Delete a dot-path key from ONE scope — the "use default" / clear write. */
@@ -160,6 +175,7 @@ export function unsetSettings(namespace: string, key: string, scope: SettingsSco
   }
   delete cursor[segments[segments.length - 1]!];
   writeJson(target, current);
+  notifySet(definition, current, scope, cwd);
 }
 
 /** One layer only (no defaults, no merge) — for layered fallback chains. */

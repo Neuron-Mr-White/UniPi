@@ -100,7 +100,7 @@ export interface PickerOptions {
   state: PickerState;
   theme: PickerTheme;
   onDone: (result: PickerResult) => void;
-  /** ctrl+s: persist the highlighted row as the startup default. */
+  /** alt+enter: persist the highlighted row as the startup default (then apply). */
   onSetDefault?: (result: PickerResult) => void;
   onRenderRequest?: (() => void) | undefined;
   /** Rows visible in the list window. */
@@ -332,6 +332,7 @@ export class ModelPicker {
         matchesKey(data, Key.left) ||
         matchesKey(data, Key.right) ||
         matchesKey(data, Key.enter) ||
+        matchesKey(data, "alt+enter") ||
         data === "\r")
     ) {
       return;
@@ -346,6 +347,12 @@ export class ModelPicker {
       } else if (matchesKey(data, Key.tab)) {
         this.applyDropdown(items);
         this.cycleFocus(matchesKey(data, "shift+tab"));
+      } else if (matchesKey(data, "alt+enter")) {
+        this.applyDropdown(items);
+        this.focus = "effort";
+        this.setDefault(row);
+        this.confirm(row);
+        return;
       } else if (matchesKey(data, Key.enter) || data === "\r") {
         this.applyDropdown(items);
         this.focus = "effort";
@@ -388,8 +395,10 @@ export class ModelPicker {
         return;
       }
       return;
-    } else if (data === "\x13") {
+    } else if (matchesKey(data, "alt+enter")) {
+      // Alt+Enter = apply AND keep it as the startup default.
       this.setDefault(row);
+      this.confirm(row);
       return;
     } else if (matchesKey(data, Key.enter) || data === "\r") {
       this.confirm(row);
@@ -687,11 +696,11 @@ export class ModelPicker {
     if (row?.kind === "fusion" && !this.fusionAvailable()) {
       parts.push("↑↓ select", "pick a lead and sidekick", "esc cancel");
     } else if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "ctrl+s default", "esc collapse");
+      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "alt+enter set default", "esc collapse");
     } else {
       parts.push("↑↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←→ effort", "enter/tab confirm", "ctrl+s default", "space set lead", "esc cancel");
+      parts.push("←→ effort", "enter/tab confirm", "alt+enter set default", "space set lead", "esc cancel");
     }
     return t.fg("dim", parts.join(" · "));
   }

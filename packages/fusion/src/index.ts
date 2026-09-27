@@ -23,6 +23,7 @@ import {
   globalPresetPath,
   isEffortLevel,
   loadPreset,
+  mirrorStartupFromPi,
   modelKey,
   pushRecent,
   saveCuration,
@@ -127,6 +128,15 @@ export function createSidekickWakeLine(deps: {
 }
 
 type Registry = { getAvailable(): Model<Api>[]; find(provider: string, id: string): Model<Api> | undefined };
+
+/** Keep /unipi:settings → Fusion → Startup showing pi's real default. */
+function mirrorStartup(cwd: string): void {
+  try {
+    mirrorStartupFromPi(cwd);
+  } catch {
+    /* display mirror only */
+  }
+}
 
 function registryOf(ctx: ExtensionContext): Registry | undefined {
   const r = (ctx as unknown as { modelRegistry?: Registry }).modelRegistry;
@@ -523,7 +533,9 @@ export default function fusionExtension(pi: ExtensionAPI): void {
               };
               if (r.type === "single") {
                 if (saveDefault(r.model, r.effort)) ctx.ui.notify(`Default: ${r.model} · ${r.effort}`, "info");
+                mirrorStartup(cwd);
               } else if (saveDefault(r.lead, r.leadEffort)) {
+                mirrorStartup(cwd);
                 saveRuntimeState(loaded.globalPath, {
                   effort: r.effortMap,
                   recent: preset.recent,
@@ -582,6 +594,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     bashStreak = 0;
     modelBykey.clear();
     active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
+    mirrorStartup(ctx.cwd ?? process.cwd());
     if (active?.kind === "fusion" && (!ctx.model || modelKey(ctx.model) !== active.lead)) {
       const leadKey = active.lead;
       const lead = findModel(registryOf(ctx), leadKey);

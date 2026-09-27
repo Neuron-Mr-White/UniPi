@@ -26,6 +26,18 @@ export function mergeDefaultModel(
   return settings;
 }
 
+/** pi's saved startup model (`provider/id`) and thinking level, if any. */
+export function readDefaultModel(deps: { readFile?: (p: string) => string; env?: NodeJS.ProcessEnv } = {}): { key?: string; thinking?: string } {
+  try {
+    const path = piSettingsPath(deps.env);
+    const raw = JSON.parse(deps.readFile !== undefined ? deps.readFile(path) : readFileSync(path, "utf8")) as Record<string, unknown>;
+    const key = typeof raw.defaultProvider === "string" && typeof raw.defaultModel === "string" ? `${raw.defaultProvider}/${raw.defaultModel}` : undefined;
+    return { key, thinking: typeof raw.defaultThinkingLevel === "string" ? raw.defaultThinkingLevel : undefined };
+  } catch {
+    return {};
+  }
+}
+
 export function persistDefaultModel(
   patch: { provider: string; model: string; thinkingLevel?: string },
   deps: { readFile?: (p: string) => string; env?: NodeJS.ProcessEnv } = {},

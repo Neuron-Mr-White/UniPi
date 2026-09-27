@@ -17,7 +17,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+import { getSettings, getSettingsScoped, registerSettings, setSettings } from "@pi-unipi/core";
+import { persistDefaultModel, readDefaultModel } from "./pi-settings.js";
 
 export const PRESET_SCHEMA_VERSION = 1;
 
@@ -206,6 +207,48 @@ export interface LoadedPreset {
   hasProjectLayer: boolean;
 }
 
+const STARTUP_THINKING = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+
+/**
+ * Hub → pi: a global write of `startup.*` becomes pi's own startup default
+ * (settings.json defaultProvider/defaultModel/defaultThinkingLevel — what
+ * pi's /model ctrl+s and the picker's alt+enter write). A single startup
+ * model also stops a remembered Fusion pair from overriding it at startup.
+ * Exported for tests.
+ */
+export function applyStartupSettings(layer: Record<string, unknown>, home = homedir()): boolean {
+  const startup = layer.startup as { model?: unknown; thinking?: unknown } | undefined;
+  const model = typeof startup?.model === "string" ? startup.model.trim() : "";
+  const thinking = typeof startup?.thinking === "string" && (STARTUP_THINKING as readonly string[]).includes(startup.thinking) ? startup.thinking : undefined;
+  const parts = model ? splitModelKey(model) : undefined;
+  const current = readDefaultModel();
+  if (parts === undefined && thinking === undefined) return false;
+  const nextKey = parts ? model : current.key;
+  if (nextKey === current.key && (thinking === undefined || thinking === current.thinking)) return false; // mirror echo
+  const target = nextKey ? splitModelKey(nextKey) : undefined;
+  if (target === undefined) return false;
+  persistDefaultModel({ provider: target.provider, model: target.id, thinkingLevel: thinking });
+  if (parts !== undefined) {
+    const path = globalPresetPath(home);
+    const existing = mergePresets(emptyPreset(), parsePreset(readJson(path)));
+    if (existing.active?.kind === "fusion" && existing.active.lead !== model) {
+      saveRuntimeState(path, { effort: existing.effort, recent: existing.recent, active: { kind: "single", model } });
+    }
+  }
+  return true;
+}
+
+/** pi → hub: show pi's real startup default in /unipi:settings (it also
+ *  changes through pi's /model ctrl+s and the picker's alt+enter). */
+export function mirrorStartupFromPi(cwd: string): void {
+  const { key, thinking } = readDefaultModel();
+  const shown = (getSettingsScoped("fusion", "global", cwd)?.startup ?? {}) as { model?: string; thinking?: string };
+  const patch: Record<string, string> = {};
+  if (key !== undefined && shown.model !== key) patch.model = key;
+  if (thinking !== undefined && shown.thinking !== thinking && (STARTUP_THINKING as readonly string[]).includes(thinking)) patch.thinking = thinking;
+  if (Object.keys(patch).length > 0) setSettings("fusion", { startup: patch }, "global", cwd);
+}
+
 // Registered with the unified settings hub: the DEFAULT PAIR is editable
 // there (model pickers, engine-layered). The curated arrays, effort, recent,
 // badges and prices remain in the preset files — the hub action "Edit fusion presets…" owns
@@ -213,8 +256,19 @@ export interface LoadedPreset {
 registerSettings({
   namespace: "fusion",
   label: "Fusion",
-  defaults: { default: { lead: "", sidekick: "" } },
+  defaults: { default: { lead: "", sidekick: "" }, startup: { model: "" } },
+  onSet: (layer, scope) => {
+    if (scope === "global") applyStartupSettings(layer);
+  },
   schema: [
+    {
+      title: "Startup",
+      description: "The model pi opens with. /unipi:model → alt+enter sets the same thing (on the Fusion row it starts in Fusion).",
+      fields: [
+        { key: "startup.model", type: "model", label: "Startup model", capability: "text", emptyLabel: "pi default", scopes: ["global"] },
+        { key: "startup.thinking", type: "enum", label: "Startup thinking level", options: [...STARTUP_THINKING], scopes: ["global"] },
+      ],
+    },
     {
       title: "Default pair",
       description: "Used when the Fusion row is confirmed without editing",
