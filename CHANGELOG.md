@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **BREAKING: compactor reworked.** Session continuity (the SQLite event log and the snapshot restored after compaction) is removed: it logged every session under one shared ID, so restored snapshots mixed projects and reached ~60k tokens. Also removed: the sandbox tools (`sandbox`, `sandbox_file`, `sandbox_batch`), the `compact` tool (it never compacted), the `compactor_stats`/`compactor_doctor` tools, presets, and the strategy modes that had no effect. **Migration path:** `/unipi:compact` and `/unipi:lossless-compact` still work but are deprecated. Use `/unipi:compact-vcc`, `/unipi:compact-jev` or `/unipi:compact-by-llm`. Old configs are translated: `overrideDefaultCompaction: false` becomes Method = model summary, and `autoCompaction.enabled` becomes When = at a percentage. `~/.unipi/db/compactor` is no longer used and can be deleted.
+
+### Added
+
+- `compactor`: the lossless summary is rebuilt from the full session history on every compaction, so it can no longer grow from one compaction to the next (a real session went 15k → 236k → 248k characters). It puts the current state first: Active Work, Your Requests, Latest State, Decisions & Constraints, Files, Commits, Open Errors, Recent Transcript. Each section has a hard budget.
+  - Text that extensions inject with the user role (loop prompts, nudges, notifications) is recognised and left out of Your Requests; extension-sent messages are also marked when they are sent.
+  - `ask_user` answers are kept as "question → answer" decisions.
+  - Typed credentials are redacted.
+- `compactor`: **lossless + jev** method (`/unipi:compact-jev`). jev, the Decision model, drops items that are no longer in force, such as finished one-off requests, reversed decisions and fixed errors, at per-kind confidence thresholds. If jev is unavailable, the plain lossless summary is used.
+- `compactor`: the settings screen shows 5 main settings (Method, Pi's /compact, When, Percentage, Notifications); everything else is under **Advanced compaction**.
+- `core`: `registerCompactionContext()`. long-horizon (goal, ralph) and kanboard register their live state, and every compaction summary leads with it.
+- `scripts/compactor-eval.mts` replays the compactor at real compaction points of recorded sessions and shows what happened next, for review.
+
+### Fixed
+
+- `compactor`: the percentage trigger compacts at the `turn_end` boundary instead of calling `ctx.compact()`, which aborted the run and left goal, ralph and kanboard loops waiting. The "auto-continue" message is removed; Pi 0.87 continues after automatic compaction on its own, so it only added empty extra turns.
+- `compactor`: stats come from the session's own compaction entries instead of a fixed "12% kept" guess (also in the footer segments).
+- `kanboard` tests wrote a fake judge key (`"k"`) into the real `~/.unipi/config/long-horizon/config.json`, which silently disabled the jev judge. They now use project scope.
+
 ## [3.0.0-alpha.3] — 2026-09-27
 
 ### Breaking Changes

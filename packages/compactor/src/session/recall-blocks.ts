@@ -19,7 +19,7 @@ function block(kind: "user" | "assistant", text: string, sourceIndex?: number): 
   return clean ? [{ kind, text: clean, sourceIndex }] : [];
 }
 
-function normalizeAgentMessage(message: AgentMessage, sourceIndex: number): NormalizedBlock[] {
+export function normalizeAgentMessage(message: AgentMessage, sourceIndex: number): NormalizedBlock[] {
   const role = (message as { role?: string }).role;
 
   // Standard LLM message roles are handled by the existing normalizer.

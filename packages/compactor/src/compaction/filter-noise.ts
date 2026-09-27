@@ -38,7 +38,7 @@ export const filterNoise = (blocks: NormalizedBlock[], extraPatterns?: string[])
       if (isNoiseUserBlock(b.text, extraPatterns)) continue;
       const cleaned = cleanUserText(b.text);
       if (!cleaned) continue;
-      out.push({ kind: "user", text: cleaned });
+      out.push({ ...b, text: cleaned });
       continue;
     }
     out.push(b);

@@ -5,7 +5,6 @@ import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { renderModeFragment } from "../packages/long-horizon/src/gate.ts";
 import { buildMemoryRecallReminder } from "../packages/memory/index.ts";
 import { planReminder } from "../packages/workflow/src/plan/index.ts";
-import { buildResumeSnapshot } from "../packages/compactor/src/session/snapshot.ts";
 
 const MODEL = {
   id: "prefix-test",
@@ -107,20 +106,6 @@ describe("provider-native prefix structure", () => {
   });
 
   it("serializes every concrete UniPi injector as an appended provider user message", async () => {
-    const event = {
-      id: 1,
-      session_id: "prefix-session",
-      type: "decision",
-      category: "decision",
-      priority: 1,
-      data: "Preserve prior request bytes",
-      project_dir: "/workspace",
-      attribution_source: "test",
-      attribution_confidence: 1,
-      source_hook: "test",
-      created_at: "2026-08-14T00:00:00.000Z",
-      data_hash: "stable-hash",
-    };
     const snapshots = [
       ["long-horizon", renderModeFragment({ mode: "ralph", source: "owner" })],
       ["memory", buildMemoryRecallReminder({
@@ -130,7 +115,6 @@ describe("provider-native prefix structure", () => {
         canStore: true,
       })],
       ["workflow plan mode", planReminder("docs/plans/2026-09-24-abcd1234.md")],
-      ["compactor resume", buildResumeSnapshot([event], { compactCount: 2 })],
     ];
 
     const base = {

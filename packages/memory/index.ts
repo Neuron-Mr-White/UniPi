@@ -474,6 +474,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_compact", async () => {
     recallDone = false;
   });
+  // Boundary compactions (compactor's percentage trigger) skip session_compact.
+  pi.events?.on?.(UNIPI_EVENTS.COMPACTOR_COMPACTED, () => {
+    recallDone = false;
+  });
 
   pi.on("session_shutdown", async () => {
     if (pendingTimer) { clearInterval(pendingTimer); pendingTimer = null; }

@@ -1,79 +1,78 @@
 /**
- * Config manager — load, save, migrate compactor settings
+ * Config manager — load and save compactor settings
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { getSettings, registerSettings, setSettings, type SettingsField } from "@pi-unipi/core";
+import { join } from "node:path";
+import { getSettingsScoped, registerSettings, setSettings } from "@pi-unipi/core";
 import type { CompactorConfig } from "../types.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
-// Registered with the unified settings hub. Canonical paths match this
-// module's existing layout exactly (global ~/.unipi/config/compactor/config.json,
-// project .unipi/config/compactor/config.json after the v3 migration move).
-//
-// Absorbs the deleted legacy settings overlay: per-strategy modes,
-// the % auto-compaction trigger, pipeline toggles, and preset actions.
-const STRATEGY_MODES: ReadonlyArray<SettingsField> = [
-  { key: "sessionGoals.mode", type: "enum", label: "Session goals mode", options: ["full", "brief", "off"] },
-  { key: "filesAndChanges.mode", type: "enum", label: "Files & changes mode", options: ["all", "modified-only", "off"] },
-  { key: "commits.mode", type: "enum", label: "Commits mode", options: ["full", "brief", "off"] },
-  { key: "outstandingContext.mode", type: "enum", label: "Outstanding context mode", options: ["full", "critical-only", "off"] },
-  { key: "userPreferences.mode", type: "enum", label: "User preferences mode", options: ["all", "recent-only", "off"] },
-  { key: "briefTranscript.mode", type: "enum", label: "Brief transcript mode", options: ["full", "compact", "minimal", "off"] },
-  { key: "sessionContinuity.mode", type: "enum", label: "Session continuity mode", options: ["full", "off"] },
-  { key: "sandboxExecution.mode", type: "enum", label: "Sandbox execution mode", options: ["all", "off"] },
-];
+const METHOD_OPTIONS = [
+  { value: "vcc", label: "lossless (no model)" },
+  { value: "jev", label: "lossless + jev pruning" },
+  { value: "llm", label: "model summary" },
+] as const;
 
+// Registered with the unified settings hub. Canonical paths:
+// global ~/.unipi/config/compactor/config.json,
+// project .unipi/config/compactor/config.json.
 registerSettings({
   namespace: "compactor",
   label: "Compactor",
   defaults: DEFAULT_COMPACTOR_CONFIG as unknown as Record<string, unknown>,
   schema: [
     {
-      title: "Strategies",
-      description: "What the lossless summarizer extracts",
+      title: "Compaction",
+      description: "How the context is shrunk when it fills up",
       fields: [
-        { key: "sessionGoals.enabled", type: "boolean", label: "Session goals" },
-        { key: "filesAndChanges.enabled", type: "boolean", label: "Files and changes" },
-        { key: "commits.enabled", type: "boolean", label: "Commits" },
-        { key: "outstandingContext.enabled", type: "boolean", label: "Outstanding context" },
-        { key: "userPreferences.enabled", type: "boolean", label: "User preferences" },
-        { key: "briefTranscript.enabled", type: "boolean", label: "Brief transcript" },
-        { key: "sessionContinuity.enabled", type: "boolean", label: "Session continuity" },
-        { key: "sandboxExecution.enabled", type: "boolean", label: "Sandbox execution" },
-        ...STRATEGY_MODES,
+        {
+          key: "method",
+          type: "enum",
+          label: "Method",
+          description: "Lossless: instant structured summary, full history stays searchable. + jev pruning: jev (the Decision model) drops items no longer in force — done requests, reversed decisions, fixed errors (~1s, fractions of a cent). Model summary: Pi's model-written summary (costs a model call).",
+          options: METHOD_OPTIONS,
+        },
+        {
+          key: "piCompact",
+          type: "enum",
+          label: "Pi's /compact",
+          description: "What Pi's built-in /compact command does",
+          options: [{ value: "follow", label: "same as Method" }, ...METHOD_OPTIONS],
+        },
+        {
+          key: "trigger",
+          type: "enum",
+          label: "When",
+          description: "Pi's limit: compact when the context nears the model's window (Pi's compaction settings). Percentage: compact at a set % of the window.",
+          options: [
+            { value: "pi", label: "Pi's context limit" },
+            { value: "percent", label: "at a percentage" },
+          ],
+        },
+        { key: "thresholdPercent", type: "number", label: "Percentage", min: 30, max: 95, description: "Used when When = at a percentage" },
+        { key: "notify", type: "boolean", label: "Notifications", description: "Show a notice when compaction runs or fails" },
       ],
     },
     {
-      title: "Auto",
-      description: "UniPi-managed %-of-context auto-compaction",
+      title: "Advanced compaction",
+      description: "Tuned defaults — rarely worth changing",
+      advanced: true,
       fields: [
-        { key: "autoCompaction.enabled", type: "boolean", label: "Percentage trigger", description: "Compact when Pi reports context usage at or above the threshold" },
-        { key: "autoCompaction.thresholdPercent", type: "number", label: "Threshold %", min: 50, max: 99 },
-        { key: "autoCompaction.cooldownMs", type: "number", label: "Cooldown ms", min: 0, zeroLabel: "0s none", description: "Minimum delay between auto-compaction attempts" },
-        { key: "autoCompaction.repeatMinGrowthTokens", type: "number", label: "Repeat growth tokens", min: 0, zeroLabel: "off", description: "New tokens required to re-compact above threshold" },
-        { key: "autoCompaction.notify", type: "boolean", label: "Notifications", description: "Notify when auto-compaction triggers or fails" },
-      ],
-    },
-    {
-      title: "Pipeline",
-      fields: [
-        { key: "pipeline.autoInjection", type: "boolean", label: "Auto injection", description: "Inject behavioral state after compaction" },
-        { key: "smartKeepTail", type: "boolean", label: "Smart keep tail", description: "Grow keep:N tail to ≥5k tokens when it would be tiny" },
-        { key: "continueAfterThresholdCompact", type: "boolean", label: "Auto-continue", description: "Resume the agent after threshold/overflow compaction" },
+        { key: "smartKeepTail", type: "boolean", label: "Smart keep tail", description: "Keep more recent turns when the kept tail would be tiny (≤5k tokens, up to 25k)" },
+        { key: "summaryBudgetTokens", type: "number", label: "Summary budget", min: 0, max: 20000, zeroLabel: "auto", description: "Lossless summary size in tokens (auto scales 1.5k–4k with session size)" },
+        { key: "sections.activeWork", type: "boolean", label: "Section: active work", description: "Goal, ralph and kanboard state from those modules" },
+        { key: "sections.requests", type: "boolean", label: "Section: your requests" },
+        { key: "sections.state", type: "boolean", label: "Section: latest state", description: "The agent's most recent progress reports" },
+        { key: "sections.decisions", type: "boolean", label: "Section: decisions & constraints" },
+        { key: "sections.files", type: "boolean", label: "Section: files" },
+        { key: "sections.commits", type: "boolean", label: "Section: commits" },
+        { key: "sections.errors", type: "boolean", label: "Section: open errors" },
+        { key: "sections.transcript", type: "boolean", label: "Section: recent transcript" },
+        { key: "cooldownMs", type: "number", label: "Percentage cooldown ms", min: 0, zeroLabel: "none", description: "Minimum delay between percentage-triggered compactions" },
+        { key: "repeatMinGrowthTokens", type: "number", label: "Percentage repeat growth", min: 0, zeroLabel: "off", description: "New tokens needed to compact again while still above the percentage" },
+        { key: "llmInstructions", type: "string", label: "Model summary instructions", emptyLabel: "none", description: "Extra instructions passed to model-written summaries" },
         { key: "debug", type: "boolean", label: "Debug output", description: "Write compaction diagnostics to /tmp/compactor-debug.json" },
-      ],
-    },
-    {
-      title: "Presets",
-      description: "One-key bundles of strategy + auto settings",
-      fields: [
-        { key: "preset.precise", type: "action", label: "Apply preset: precise", description: "Maximum fidelity — everything on, full modes", command: "unipi:compact-apply-precise" },
-        { key: "preset.balanced", type: "action", label: "Apply preset: balanced", description: "Default mix", command: "unipi:compact-apply-balanced" },
-        { key: "preset.thorough", type: "action", label: "Apply preset: thorough", description: "Deep extraction, heavier output", command: "unipi:compact-apply-thorough" },
-        { key: "preset.lean", type: "action", label: "Apply preset: lean", description: "Minimal footprint", command: "unipi:compact-apply-lean" },
       ],
     },
   ],
@@ -81,97 +80,96 @@ registerSettings({
 
 export const COMPACTOR_CONFIG_PATH = join(homedir(), ".unipi", "config", "compactor", "config.json");
 
-/** Return the per-project config path for a given project directory. */
-export function projectConfigPath(cwd: string): string {
-  return join(cwd, ".unipi", "config", "compactor.json");
-}
+type Raw = Record<string, unknown>;
 
-const readJson = (path: string): Record<string, unknown> | null => {
-  try {
-    return JSON.parse(readFileSync(path, "utf-8"));
-  } catch {
-    return null;
+const isRecord = (value: unknown): value is Raw =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Translate a pre-rework config (overrideDefaultCompaction / autoCompaction.*)
+ * into the current keys. Only fills keys the scope does not already set.
+ */
+export function translateLegacyConfig(raw: Raw): Raw {
+  const out: Raw = {};
+  for (const key of Object.keys(DEFAULT_COMPACTOR_CONFIG)) {
+    if (key in raw) out[key] = raw[key];
   }
-};
-
-/** Deep merge project overrides into global config. */
-function deepMerge<T extends Record<string, any>>(base: T, override: Partial<T>): T {
-  const result = { ...base };
-  for (const key of Object.keys(override) as (keyof T)[]) {
-    const baseVal = result[key];
-    const overrideVal = override[key];
-    if (
-      overrideVal !== undefined &&
-      typeof overrideVal === "object" &&
-      !Array.isArray(overrideVal) &&
-      overrideVal !== null &&
-      typeof baseVal === "object" &&
-      !Array.isArray(baseVal) &&
-      baseVal !== null
-    ) {
-      (result as any)[key] = deepMerge(baseVal as any, overrideVal as any);
-    } else if (overrideVal !== undefined) {
-      (result as any)[key] = overrideVal;
+  if (!("method" in raw) && raw.overrideDefaultCompaction === false) out.method = "llm";
+  const auto = raw.autoCompaction;
+  if (isRecord(auto)) {
+    if (!("trigger" in raw) && auto.enabled === true) out.trigger = "percent";
+    const carry: Array<[keyof CompactorConfig, string]> = [
+      ["thresholdPercent", "thresholdPercent"],
+      ["cooldownMs", "cooldownMs"],
+      ["repeatMinGrowthTokens", "repeatMinGrowthTokens"],
+      ["notify", "notify"],
+    ];
+    for (const [to, from] of carry) {
+      if (!(to in raw) && auto[from] !== undefined) out[to] = auto[from];
     }
   }
-  return result;
+  return out;
 }
 
-/**
- * Load compactor config from disk with defaults fallback.
- * Supports per-project overrides at <cwd>/.unipi/config/compactor.json.
- */
-export function loadConfig(cwd?: string): CompactorConfig {
-  const raw = getSettings("compactor", cwd ?? process.cwd());
-  let config: CompactorConfig;
-  if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) {
-    config = structuredClone(DEFAULT_COMPACTOR_CONFIG);
-  } else {
-    config = migrateConfig(raw as Partial<CompactorConfig>);
+function deepMerge<T extends Raw>(base: T, override: Raw): T {
+  const result: Raw = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) continue;
+    result[key] = isRecord(value) && isRecord(result[key]) ? deepMerge(result[key] as Raw, value) : value;
   }
+  return result as T;
+}
 
-
-  return config;
+/** Load the effective config: defaults ← global ← project (legacy keys translated per scope). */
+export function loadConfig(cwd: string = process.cwd()): CompactorConfig {
+  let config: Raw = structuredClone(DEFAULT_COMPACTOR_CONFIG) as unknown as Raw;
+  for (const scope of ["global", "project"] as const) {
+    let raw: Raw | undefined;
+    try {
+      raw = getSettingsScoped("compactor", scope, cwd);
+    } catch {
+      raw = undefined;
+    }
+    if (raw) config = deepMerge(config, translateLegacyConfig(raw));
+  }
+  return config as unknown as CompactorConfig;
 }
 
 /**
- * Save config to disk with schema validation.
- * If perProject is true, saves to <cwd>/.unipi/config/compactor.json instead of global.
+ * Write translated legacy keys into each scope's file once, so the settings
+ * hub shows the effective values. Additive only: old keys stay, untouched.
  */
-export function saveConfig(config: CompactorConfig, opts?: { perProject?: boolean; cwd?: string }): { success: boolean; error?: string } {
+export function migrateLegacyConfigFiles(cwd: string = process.cwd()): void {
+  for (const scope of ["global", "project"] as const) {
+    try {
+      const raw = getSettingsScoped("compactor", scope, cwd);
+      if (!raw || (!("overrideDefaultCompaction" in raw) && !("autoCompaction" in raw))) continue;
+      const translated = translateLegacyConfig(raw);
+      const patch: Raw = {};
+      for (const key of ["method", "trigger", "thresholdPercent", "cooldownMs", "repeatMinGrowthTokens", "notify"]) {
+        if (!(key in raw) && key in translated) patch[key] = translated[key];
+      }
+      if (Object.keys(patch).length > 0) setSettings("compactor", patch, scope, cwd);
+    } catch {
+      // Unreadable scope: loadConfig still translates on read.
+    }
+  }
+}
+
+/** Save a config patch (global by default). */
+export function saveConfig(
+  patch: Partial<CompactorConfig>,
+  opts?: { perProject?: boolean; cwd?: string },
+): { success: boolean; error?: string } {
   try {
     setSettings(
       "compactor",
-      config as unknown as Record<string, unknown>,
+      patch as unknown as Raw,
       opts?.perProject ? "project" : "global",
       opts?.cwd ?? process.cwd(),
     );
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
-  }
-}
-
-/**
- * Migrate partial config to full schema, filling missing keys from defaults.
- * Uses deepMerge so nested strategy objects merge recursively.
- */
-export function migrateConfig(partial: Partial<CompactorConfig>): CompactorConfig {
-  const defaults = structuredClone(DEFAULT_COMPACTOR_CONFIG);
-  return deepMerge(defaults, partial);
-}
-
-/**
- * Scaffold config file on first run.
- */
-export function scaffoldConfig(): void {
-  try {
-    const dir = dirname(COMPACTOR_CONFIG_PATH);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    if (!existsSync(COMPACTOR_CONFIG_PATH)) {
-      writeFileSync(COMPACTOR_CONFIG_PATH, `${JSON.stringify(DEFAULT_COMPACTOR_CONFIG, null, 2)}\n`);
-    }
-  } catch {
-    // best-effort
   }
 }

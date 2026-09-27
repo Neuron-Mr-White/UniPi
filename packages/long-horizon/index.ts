@@ -10,7 +10,8 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, getPackageVersion, registerCommandRunner, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { appendProgress, emitEvent, getPackageVersion, registerCommandRunner, registerCompactionContext, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
 import { registerLongHorizonCommands } from "./src/commands.js";
@@ -168,6 +169,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
   const graph = new GraphLedger(owner);
   registerGraphTools(pi, { ledger: graph });
   const runtime = wireRuntime(pi, { machine, toolset, continuation, gate, loadSettings, ralph });
+  // Compaction summaries lead with the live goal / ralph state.
+  registerCompactionContext("long-horizon", () =>
+    longHorizonCompactionBrief(machine.getActive(), ralph.get(), join(stateDir("long-horizon", "state"), "ralph")),
+  );
 
   // Cross-module entry points: another module (kanboard's runner) can start a
   // goal and read its status without importing this package. Mirrors what the

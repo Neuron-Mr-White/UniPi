@@ -2,56 +2,39 @@
  * Compactor configuration schema with defaults
  */
 
-import type { CompactorConfig, CompactorStrategyConfig } from "../types.js";
-
-const strategy = (enabled: boolean, mode: string): CompactorStrategyConfig => ({
-  enabled,
-  mode,
-});
+import type { AutoCompactionConfig, CompactorConfig } from "../types.js";
 
 export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
-  sessionGoals: { ...strategy(true, "full"), mode: "full" },
-  filesAndChanges: { ...strategy(true, "all"), mode: "all", maxPerCategory: 10 },
-  commits: { ...strategy(true, "full"), mode: "full", maxCommits: 8 },
-  outstandingContext: { ...strategy(true, "full"), mode: "full", maxItems: 5 },
-  userPreferences: { ...strategy(true, "all"), mode: "all", maxPreferences: 10 },
-  briefTranscript: {
-    ...strategy(true, "full"),
-    mode: "full",
-    userTokenLimit: 256,
-    assistantTokenLimit: 200,
-    toolCallLimit: 8,
-  },
-  sessionContinuity: {
-    ...strategy(true, "full"),
-    mode: "full",
-    eventCategories: [],
-  },
-  fts5Index: {
-    ...strategy(true, "manual"),
-    mode: "manual",
-    chunkSize: 4096,
-    cacheTtlHours: 24,
-  },
-  sandboxExecution: {
-    ...strategy(true, "all"),
-    mode: "all",
-    allowedLanguages: ["javascript", "typescript", "python", "shell"],
-    outputLimit: 100 * 1024 * 1024,
-  },
-  pipeline: {
-    autoInjection: false,
-    customNoisePatterns: [],
-  },
-  autoCompaction: {
-    enabled: false,
-    thresholdPercent: 80,
-    cooldownMs: 60_000,
-    repeatMinGrowthTokens: 4_000,
-    notify: true,
-  },
-  overrideDefaultCompaction: true,
+  method: "vcc",
+  piCompact: "follow",
+  trigger: "pi",
+  thresholdPercent: 80,
+  notify: true,
   smartKeepTail: true,
-  continueAfterThresholdCompact: true,
+  summaryBudgetTokens: 0,
+  sections: {
+    activeWork: true,
+    requests: true,
+    state: true,
+    decisions: true,
+    files: true,
+    commits: true,
+    errors: true,
+    transcript: true,
+  },
+  cooldownMs: 60_000,
+  repeatMinGrowthTokens: 4_000,
+  llmInstructions: "",
   debug: false,
 };
+
+/** The percentage-trigger view of a config (input to decideAutoCompaction). */
+export function autoCompactionOf(config: CompactorConfig): AutoCompactionConfig {
+  return {
+    enabled: config.trigger === "percent",
+    thresholdPercent: config.thresholdPercent,
+    cooldownMs: config.cooldownMs,
+    repeatMinGrowthTokens: config.repeatMinGrowthTokens,
+    notify: config.notify,
+  };
+}

@@ -21,7 +21,7 @@ pi install npm:@pi-unipi/unipi
 
 **[Memory](./packages/memory/README.md)** — Markdown files + [MemPalace](https://github.com/mempalace/mempalace) semantic search share a memory palace across pi, Devin, and zcode. Facts, preferences, and decisions persist across sessions; v2 data converts via `/unipi:memory migrate`.
 
-**[Compactor](./packages/compactor/README.md)** — Zero-LLM context engine. 6-stage pipeline hits 95%+ token reduction at zero API cost. Session continuity, percentage auto-compaction, session recall, and sandbox execution.
+**[Compactor](./packages/compactor/README.md)** — Compaction that keeps work going. Lossless zero-LLM summaries (or Pi's model summary), rebuilt from the full session history, led by the live goal/ralph/kanboard state; the full history stays searchable with session recall.
 
 **[Prefix-cache architecture](./docs/prefix-cache-architecture.md)** — Append-only request discipline, explicit cache epochs, deterministic tools, privacy-safe diagnostics, provider limitations, and bounded cold-epoch output.
 
@@ -92,7 +92,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | Kanboard | `/unipi:` | kanboard (board: capture, work runner, web UI) |
 | Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
 | Memory | `/unipi:memory-` | process, search, consolidate, forget |
-| Compactor | `/unipi:` | lossless-compact, session-recall, compact-stats, compact-preset, compact-help |
+| Compactor | `/unipi:` | compact-vcc, compact-by-llm, session-recall, compact-stats, compact-doctor, compact-help |
 | Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
 | MCP | `/unipi:mcp-` | add, settings, sync, status |
 | Web | `/unipi:web-` | settings, cache-clear |
@@ -121,7 +121,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `sidekick` / `read_subagent` | fusion | Delegate to the persistent sidekick and collect its report |
 | `bg_run` / `bg_status` / `bg_logs` / `bg_kill` / `bg_delegate` / `bg_result` | background-tasks | Long-running commands and background delegate agents |
 | `ask_user` | ask-user | User input |
-| `compact` / `session_recall` / `sandbox` | compactor | Context management |
+| `session_recall` / `context_budget` | compactor | Context management |
 | `ctx_env` | utility | Environment info |
 | `set_session_name` | utility | Session name for badge |
 

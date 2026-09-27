@@ -180,18 +180,18 @@ export const COMPACTOR_INSTRUCTION = "__compactor__" as const;
 
 /** Compactor tool names */
 export const COMPACTOR_TOOLS = {
-  COMPACT: "compact",
-  VCC_RECALL: "vcc_recall",
-  CTX_EXECUTE: "ctx_execute",
-  CTX_EXECUTE_FILE: "ctx_execute_file",
-  CTX_BATCH_EXECUTE: "ctx_batch_execute",
-  CTX_STATS: "ctx_stats",
-  CTX_DOCTOR: "ctx_doctor",
+  SESSION_RECALL: "session_recall",
+  CONTEXT_BUDGET: "context_budget",
 } as const;
 
 /** Compactor command names */
 export const COMPACTOR_COMMANDS = {
+  COMPACT_VCC: "compact-vcc",
+  COMPACT_JEV: "compact-jev",
+  COMPACT_BY_LLM: "compact-by-llm",
+  /** @deprecated use COMPACT_VCC */
   LOSSLESS_COMPACT: "lossless-compact",
+  /** @deprecated use COMPACT_VCC */
   COMPACT: "compact",
   SESSION_RECALL: "session-recall",
   COMPACT_RECALL: "compact-recall",

@@ -1,29 +1,22 @@
 ---
 name: compactor
-description: Context management — compact session, recall history, run code, search content.
+description: Session recall and compaction — use when earlier parts of this session are missing from context, or after a compaction summary.
 ---
 
-# Compactor — Context Management
+# Compactor
 
-## When Context Is Tight
-- `context_budget` → check % full. `compact` → free tokens (zero-LLM, 98%+ reduction).
-  Compact BEFORE complex work. `compact(dryRun: true)` to preview without compacting.
-- `compactor_stats` → check savings. `compactor_doctor` → diagnose.
+Compaction is automatic: when the context fills, it is replaced by a summary and the work carries on. Keep working through it.
 
-## Finding Past Work
-- `session_recall(query)` → search this session (BM25 or regex), including raw messages that may no longer be in live context after compaction.
-- For project/file search, use `read`/`bash` (rg) directly; content indexing is not part of compactor.
+## After a compaction
 
-## Running Code
-- `sandbox(lang, code)` → single script. `sandbox_batch(items)` → atomic.
-  `sandbox_file(lang, path)` → run file. Only stdout enters context.
+The summary opens with **Active Work** (the goal, ralph loop or kanboard task in flight) — treat it as authoritative and continue that work. Then come the user's requests, the latest state, decisions, files, commits and open errors.
 
-## Complex Multi-Step Tasks
-⚠ When the task spans many operations, PREFER Ralph loops
-   (`the implementation step`, `ralph_start`) if available — they manage
-   context pressure better than monolithic runs.
+## Recall
 
-## Critical Rules
-- Compact BEFORE starting, not when full.
-- `session_recall` instead of scrolling history.
-- Index project files early if you'll search often.
+The full session history is kept. Reach for `session_recall` whenever a detail is missing:
+
+- `session_recall(query: "redis cache decision")` — plain keywords work best.
+- `#123`-style refs in the summary are entry indices: `session_recall(expand: [123])` returns the full content.
+- `mode: "touched"` lists the files worked on; `scope: "all"` also covers edited or retried turns.
+
+`context_budget` reports how full the context is.

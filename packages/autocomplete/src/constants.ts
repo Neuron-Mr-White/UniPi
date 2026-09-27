@@ -97,6 +97,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // web-api (2 commands)
 
   // compact (9 commands)
+  "unipi:compact-vcc":      "compact",
+  "unipi:compact-jev":      "compact",
+  "unipi:compact-by-llm":   "compact",
   "unipi:lossless-compact": "compact",
   "unipi:compact":         "compact",
   "unipi:session-recall":  "compact",
@@ -169,12 +172,15 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:info":          "Show system information",
 
 
-  "unipi:lossless-compact": "Immediate zero-LLM compaction",
-  "unipi:compact":          "(DEPRECATED) Use /unipi:lossless-compact instead",
+  "unipi:compact-vcc":      "Lossless compaction now — no model call (keep:N)",
+  "unipi:compact-jev":      "Lossless compaction, pruned by jev of what is no longer in force",
+  "unipi:compact-by-llm":   "Compact now with a model-written summary",
+  "unipi:lossless-compact": "(DEPRECATED) Use /unipi:compact-vcc instead",
+  "unipi:compact":          "(DEPRECATED) Use /unipi:compact-vcc instead",
   "unipi:session-recall":   "Search session history, including compacted-away messages",
   "unipi:compact-recall":   "(DEPRECATED) Use /unipi:session-recall instead",
-  "unipi:compact-stats":    "Show compaction statistics",
-  "unipi:compact-doctor":   "Diagnose compaction issues",
+  "unipi:compact-stats":    "Show this session's compaction savings",
+  "unipi:compact-doctor":   "Check compaction settings",
   "unipi:compact-help":     "Show compactor command help",
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 

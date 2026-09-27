@@ -2,7 +2,7 @@
  * @pi-unipi/footer — Compactor segments
  *
  * Segment renderers for the compactor group: session_events, compactions,
- * tokens_saved, compression_ratio, sandbox_runs, search_queries.
+ * tokens_saved, compression_ratio, search_queries.
  *
  * Data sourced from piContext.sessionManager (live session data).
  * Segments without a reliable data source are hidden (visible: false)
@@ -24,6 +24,17 @@ function formatTokens(n: number): string {
   if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
   if (n < 1000000) return `${Math.round(n / 1000)}k`;
   return `${(n / 1000000).toFixed(1)}M`;
+}
+
+/**
+ * Tokens left after a compaction: the compactor records its estimate in
+ * details.tokensAfter; otherwise estimate from the summary size.
+ */
+function tokensAfterOf(entry: any, before: number): number {
+  const recorded = Number(entry?.details?.tokensAfter ?? 0);
+  if (recorded > 0) return Math.min(recorded, before);
+  const summaryChars = typeof entry?.summary === "string" ? entry.summary.length : 0;
+  return Math.min(before, Math.ceil(summaryChars / 4));
 }
 
 /** Hidden segment — no reliable data source available */
@@ -86,7 +97,6 @@ function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
 function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
   // Sum tokens saved from compaction entries.
   // Pi's CompactionEntry has tokensBefore (total tokens before compaction).
-  // Compaction keeps ~10-15% of context, so tokens saved ≈ tokensBefore × 0.85.
   const events = getSessionEvents(ctx);
   let tokensSaved = 0;
   let hasCompaction = false;
@@ -95,9 +105,7 @@ function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
     if (e.type === "compaction") {
       hasCompaction = true;
       const tokensBefore = Number(e.tokensBefore ?? 0);
-      // Estimate tokens kept at ~12% (compaction summary + recent messages)
-      const tokensAfter = Math.round(tokensBefore * 0.12);
-      tokensSaved += Math.max(0, tokensBefore - tokensAfter);
+      tokensSaved += Math.max(0, tokensBefore - tokensAfterOf(e, tokensBefore));
     }
   }
   if (!hasCompaction || tokensSaved === 0) return hidden();
@@ -108,7 +116,6 @@ function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
 
 function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegment {
   // Calculate compression ratio from Pi's CompactionEntry.tokensBefore.
-  // Compaction keeps ~12% of context, giving ~8:1 compression.
   const events = getSessionEvents(ctx);
   let totalBefore = 0;
   let totalAfter = 0;
@@ -118,7 +125,7 @@ function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegme
       const before = Number(e.tokensBefore ?? 0);
       if (before > 0) {
         totalBefore += before;
-        totalAfter += Math.round(before * 0.12);
+        totalAfter += tokensAfterOf(e, before);
       }
     }
   }
@@ -126,24 +133,6 @@ function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegme
 
   const ratio = totalBefore / totalAfter;
   const content = withIcon("compressionRatio", `${ratio.toFixed(1)}x`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
-}
-
-function renderSandboxRunsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Count sandbox events from session manager branch
-  const events = getSessionEvents(ctx);
-  let sandboxCount = 0;
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    // Count tool calls that are sandbox/execute tools
-    const name = String((e as any).name ?? "").toLowerCase();
-    if (name.includes("sandbox") || name.includes("ctx_execute") || name === "execute") {
-      sandboxCount++;
-    }
-  }
-  if (sandboxCount === 0) return hidden();
-
-  const content = withIcon("sandboxRuns", `${sandboxCount}`);
   return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
 }
 
@@ -169,6 +158,5 @@ export const COMPACTOR_SEGMENTS: FooterSegment[] = [
   { id: "compactions", label: "Compactions", shortLabel: "CMP", description: "Number of context compactions", zone: "center", render: renderCompactionsSegment, defaultShow: true },
   { id: "tokens_saved", label: "Tokens Saved", shortLabel: "SVD", description: "Tokens saved by compaction", zone: "center", render: renderTokensSavedSegment, defaultShow: true },
   { id: "compression_ratio", label: "Compression Ratio", shortLabel: "RAT", description: "Last compaction compression ratio", zone: "center", render: renderCompressionRatioSegment, defaultShow: false },
-  { id: "sandbox_runs", label: "Sandbox Runs", shortLabel: "SBX", description: "Number of sandbox code runs", zone: "center", render: renderSandboxRunsSegment, defaultShow: false },
   { id: "search_queries", label: "Search Queries", shortLabel: "QRY", description: "Number of search queries", zone: "center", render: renderSearchQueriesSegment, defaultShow: false },
 ];

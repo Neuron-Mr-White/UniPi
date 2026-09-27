@@ -11,7 +11,7 @@ import { appendProgress } from "@pi-unipi/core";
 import { boardProgressData } from "./progress.js";
 import { hostname as osHostname } from "node:os";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { callCommandRunner, readJudgeJevSettings, askJev, UNIPI_EVENTS } from "@pi-unipi/core";
+import { callCommandRunner, readJudgeJevSettings, askJev, registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
 import {
@@ -705,6 +705,14 @@ ${body}`.trim() },
     return false;
   }
 
+  // Compaction summaries lead with the task in flight, so the agent keeps its
+  // task id and rules even when the original task prompt is summarized away.
+  registerCompactionContext("kanboard", () =>
+    state.phase === "running" && state.task
+      ? kanboardCompactionBrief(state.task, state.mode, cli.binary.path, project(), deps.settings().blocking)
+      : null,
+  );
+
   return {
     async work(ctx: ExtensionContext): Promise<void> {
       if (state.phase !== "idle") {
@@ -911,6 +919,27 @@ export function createDebugLog(env: NodeJS.ProcessEnv = process.env): (line: str
       // best-effort
     }
   };
+}
+
+/** Active-work text for compaction summaries (see core registerCompactionContext). */
+export function kanboardCompactionBrief(
+  task: KanboardTask,
+  mode: string | null,
+  binary: string,
+  project: string,
+  blocking: string,
+): string {
+  const body = (task.body ?? "").replace(/\s+/g, " ").trim();
+  const cli = `${binary} --actor agent --project ${project}`;
+  return [
+    `Kanboard task ${task.id} "${task.title}" is in progress${mode && mode !== "none" ? ` (strategy: ${mode})` : ""} — work only on this task.`,
+    body ? `Task: ${body.length > 600 ? `${body.slice(0, 599)}…` : body}` : "",
+    `Board CLI: ${cli} <command>  (e.g. \`show ${task.id}\` for the full task, \`note ${task.id} "<text>"\`).`,
+    blocking === "ask"
+      ? `If you need the user: \`${cli} move ${task.id} blocked --comment "<what you need>"\`, then stop.`
+      : `Work autonomously; block (\`move ${task.id} blocked --comment "…"\`) only when you truly cannot continue.`,
+    "Do not move the task to in_review or done — the runner does that when your turn ends.",
+  ].filter(Boolean).join("\n");
 }
 
 export function registerPlanEventListener(pi: ExtensionAPI, runner: Runner): void {

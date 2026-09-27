@@ -2,8 +2,6 @@
  * @pi-unipi/compactor — Shared TypeScript types
  */
 
-import type { Message } from "@earendil-works/pi-ai";
-
 // ─────────────────────────────────────────────────────────
 // Normalized blocks (from pi-vcc)
 // ─────────────────────────────────────────────────────────
@@ -23,31 +21,8 @@ export interface FileOps {
 }
 
 // ─────────────────────────────────────────────────────────
-// Section data (from pi-vcc)
+// Compaction stats
 // ─────────────────────────────────────────────────────────
-
-export interface SectionData {
-  sessionGoal: string[];
-  filesAndChanges: string[];
-  commits: string[];
-  outstandingContext: string[];
-  userPreferences: string[];
-  briefTranscript: string;
-}
-
-export interface BriefLine {
-  header: string;
-  lines: string[];
-}
-
-// ─────────────────────────────────────────────────────────
-// Compaction input / output
-// ─────────────────────────────────────────────────────────
-
-export interface CompileInput {
-  messages: Message[];
-  previousSummary?: string;
-}
 
 export interface CompactionStats {
   summarized: number;
@@ -55,7 +30,7 @@ export interface CompactionStats {
   totalMessages?: number;
   /** Actual token count from Pi's preparation */
   tokensBefore?: number;
-  /** Estimated tokens after compaction (proportional from kept/total chars) */
+  /** Estimated tokens after compaction: summary + kept tail. */
   tokensAfterEst?: number;
   keptUserTurns: number;
   totalUserTurns: number;
@@ -73,37 +48,58 @@ export interface CompactionStats {
 
 export type BudgetCutKind = "no_anchor" | "oversized_tail";
 
-export type OwnCutCancelReason =
-  | "no_live_messages"
-  | "too_few_live_messages";
-
-export type OwnCutResult =
-  | {
-      ok: true;
-      messages: Message[];
-      firstKeptEntryId: string;
-      compactAll: boolean;
-      keptUserTurns: number;
-      totalUserTurns: number;
-      requestedKeepUserTurns: number;
-      keepFallbackToCompactAll: boolean;
-      budgetCut?: BudgetCutKind;
-    }
-  | { ok: false; reason: OwnCutCancelReason };
-
 // ─────────────────────────────────────────────────────────
 // Configuration
 // ─────────────────────────────────────────────────────────
 
-export interface CompactorStrategyConfig {
-  enabled: boolean;
-  mode: string;
-  autoDetect?: "git" | null;
+/**
+ * vcc = UniPi's lossless zero-LLM summary; jev = lossless, then pruned of
+ * items jev judges no longer in force; llm = a model-written summary.
+ */
+export type CompactionMethod = "vcc" | "jev" | "llm";
+
+/** Summary sections that can be switched off (Advanced). */
+export interface SummarySections {
+  activeWork: boolean;
+  requests: boolean;
+  state: boolean;
+  decisions: boolean;
+  files: boolean;
+  commits: boolean;
+  errors: boolean;
+  transcript: boolean;
 }
 
-/** UniPi-managed percentage auto-compaction trigger settings. */
+export interface CompactorConfig {
+  /** How automatic compactions are summarized. */
+  method: CompactionMethod;
+  /** What Pi's own /compact does: follow `method`, or force one. */
+  piCompact: "follow" | CompactionMethod;
+  /** When to compact: Pi's own context limit, or a percentage of the window. */
+  trigger: "pi" | "percent";
+  /** Context % that triggers compaction when trigger = "percent". */
+  thresholdPercent: number;
+  /** Notices when compaction runs or fails. */
+  notify: boolean;
+
+  // ── Advanced ──
+  /** Grow the kept tail when it would be tiny (≤5k tok, capped 25k). */
+  smartKeepTail: boolean;
+  /** Lossless summary budget in tokens; 0 = auto (scales with session size). */
+  summaryBudgetTokens: number;
+  sections: SummarySections;
+  /** Percentage trigger: minimum delay between compactions. */
+  cooldownMs: number;
+  /** Percentage trigger: new tokens needed to compact again while still above threshold. */
+  repeatMinGrowthTokens: number;
+  /** Extra instructions for model-written summaries. */
+  llmInstructions: string;
+  /** Write compaction diagnostics to /tmp/compactor-debug.json. */
+  debug: boolean;
+}
+
+/** Percentage auto-compaction trigger settings (decision input). */
 export interface AutoCompactionConfig {
-  /** Enable the extension-managed percentage trigger. Disabled by default for backward compatibility. */
   enabled: boolean;
   /** Trigger when Pi reports context usage at or above this percent (0-100 scale). */
   thresholdPercent: number;
@@ -115,142 +111,7 @@ export interface AutoCompactionConfig {
   notify: boolean;
 }
 
-export interface CompactorConfig {
-  // Compaction strategies
-  sessionGoals: CompactorStrategyConfig & { mode: "full" | "brief" | "off" };
-  filesAndChanges: CompactorStrategyConfig & { mode: "all" | "modified-only" | "off"; maxPerCategory: number };
-  commits: CompactorStrategyConfig & { mode: "full" | "brief" | "off"; maxCommits: number };
-  outstandingContext: CompactorStrategyConfig & { mode: "full" | "critical-only" | "off"; maxItems: number };
-  userPreferences: CompactorStrategyConfig & { mode: "all" | "recent-only" | "off"; maxPreferences: number };
-  briefTranscript: CompactorStrategyConfig & { mode: "full" | "compact" | "minimal" | "off"; userTokenLimit: number; assistantTokenLimit: number; toolCallLimit: number };
-  sessionContinuity: CompactorStrategyConfig & {
-    mode: "full" | "essential-only" | "off";
-    /** @deprecated Category filtering was never implemented; ignored by runtime. */
-    eventCategories: string[];
-  };
-  /** @deprecated Retained for config compatibility. */
-  fts5Index: CompactorStrategyConfig & { mode: "auto" | "manual" | "off"; chunkSize: number; cacheTtlHours: number };
-  sandboxExecution: CompactorStrategyConfig & { mode: "all" | "safe-only" | "off"; allowedLanguages: Language[]; outputLimit: number };
-
-  // Pipeline features
-  pipeline: {
-    autoInjection: boolean;
-    customNoisePatterns: string[];
-  };
-
-  // Auto compaction trigger
-  autoCompaction: AutoCompactionConfig;
-
-  // Global settings
-  overrideDefaultCompaction: boolean;
-  /** Boost default keep:1 to a larger tail when it is small (≤5k tok, capped 25k). Explicit keep:N always respected. */
-  smartKeepTail: boolean;
-  /** Ask the agent to continue after automatic (threshold/overflow) compaction. */
-  continueAfterThresholdCompact: boolean;
-  /** Write detailed compaction diagnostics to /tmp/compactor-debug.json. */
-  debug: boolean;
-}
-
-export type CompactorPreset = "precise" | "balanced" | "thorough" | "lean" | "opencode" | "verbose" | "minimal" | "custom";
-
-// ─────────────────────────────────────────────────────────
-// Session events (from context-mode)
-// ─────────────────────────────────────────────────────────
-
-export interface SessionEvent {
-  type: string;
-  category: string;
-  data: string;
-  priority: number;
-  data_hash: string;
-  project_dir?: string;
-  attribution_source?: string;
-  attribution_confidence?: number;
-}
-
-export interface StoredEvent {
-  id: number;
-  session_id: string;
-  type: string;
-  category: string;
-  priority: number;
-  data: string;
-  project_dir: string;
-  attribution_source: string;
-  attribution_confidence: number;
-  source_hook: string;
-  created_at: string;
-  data_hash: string;
-}
-
-export interface SessionMeta {
-  session_id: string;
-  project_dir: string;
-  started_at: string;
-  last_event_at: string | null;
-  event_count: number;
-  compact_count: number;
-}
-
-export interface ResumeRow {
-  snapshot: string;
-  event_count: number;
-  consumed: number;
-}
-
-export interface ResumeSnapshot {
-  generatedAt: string;
-  summary: string;
-  events: SessionEvent[];
-}
-
-// ─────────────────────────────────────────────────────────
-// Execution (from context-mode)
-// ─────────────────────────────────────────────────────────
-
-export interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
-  backgrounded?: boolean;
-}
-
-export type Language =
-  | "javascript"
-  | "typescript"
-  | "python"
-  | "shell"
-  | "ruby"
-  | "go"
-  | "rust"
-  | "php"
-  | "perl"
-  | "r"
-  | "elixir";
-
-// ─────────────────────────────────────────────────────────
-// Content store — REMOVED
-// SearchResult, IndexResult, StoreStats types no longer needed.
-// ─────────────────────────────────────────────────────────
-
 export interface RuntimeCounters {
-  sandboxRuns: number;
-  searchQueries: number;
   recallQueries: number;
   compactions: number;
-  totalTokensCompacted: number;
-}
-
-// ─────────────────────────────────────────────────────────
-// Info-screen integration
-// ─────────────────────────────────────────────────────────
-
-export interface CompactorInfoData {
-  tokensSaved: { value: string; detail: string };
-  costSaved: { value: string; detail: string };
-  pctReduction: { value: string; detail: string };
-  topTools: { value: string; detail: string };
-  compactions: { value: string; detail: string };
-  toolCalls: { value: string; detail: string };
 }

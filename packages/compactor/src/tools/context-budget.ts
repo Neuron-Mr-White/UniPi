@@ -2,7 +2,7 @@
  * context_budget tool — estimate remaining context window
  */
 
-import type { AutoCompactionConfig } from "../types.js";
+import type { CompactorConfig } from "../types.js";
 
 export interface ContextBudgetResult {
   percentFull: number;
@@ -13,54 +13,37 @@ export interface ContextBudgetResult {
 }
 
 export function estimateContextBudget(
-  tokensBefore?: number,
+  tokensUsed?: number,
   contextWindowSize?: number,
-  autoCompaction?: Pick<AutoCompactionConfig, "enabled" | "thresholdPercent">,
+  config?: Pick<CompactorConfig, "trigger" | "thresholdPercent">,
 ): ContextBudgetResult | null {
-  const windowSize = contextWindowSize ?? 200000; // Default 200K context
-  const used = tokensBefore ?? 0;
-
-  if (used <= 0 && tokensBefore === undefined) return null;
-
+  if (tokensUsed === undefined) return null;
+  const windowSize = contextWindowSize ?? 200000;
+  const used = Math.max(0, tokensUsed);
   const remaining = Math.max(0, windowSize - used);
   const percentFull = windowSize > 0 ? Math.round((used / windowSize) * 100) : 0;
 
   let advice: string;
-  if (percentFull >= 90) {
-    advice = "CRITICAL: Compact immediately. Very little room for complex tasks.";
-  } else if (percentFull >= 75) {
-    advice = "Context is filling up. Compact before starting complex work.";
-  } else if (percentFull >= 50) {
-    advice = "Moderate context usage. Compact before large multi-step tasks.";
+  if (config?.trigger === "percent") {
+    advice = percentFull >= config.thresholdPercent
+      ? `Context will be compacted automatically at the next turn boundary (threshold ${config.thresholdPercent}%). Keep working.`
+      : `Context compacts automatically at ${config.thresholdPercent}%. Keep working.`;
   } else {
-    advice = "Context has plenty of room. No compaction needed yet.";
-  }
-
-  if (autoCompaction?.enabled) {
-    const threshold = autoCompaction.thresholdPercent;
-    if (percentFull >= threshold) {
-      advice += ` UniPi percentage auto-compaction is enabled at ${threshold}% and usage is above that threshold, subject to cooldown/repeat safeguards.`;
-    } else {
-      advice += ` UniPi percentage auto-compaction is enabled at ${threshold}%.`;
-    }
+    advice = percentFull >= 85
+      ? "Context is nearly full; Pi compacts automatically near the limit and the work continues. Keep working."
+      : "Plenty of room. Pi compacts automatically near the limit.";
   }
 
   const message = `Context: ~${percentFull}% full (estimated ${remaining.toLocaleString()} tokens remaining)`;
-
   return { percentFull, remainingTokens: remaining, totalTokens: windowSize, message, advice };
 }
 
-/**
- * The context_budget tool handler.
- * Called from the tool registration — receives tokensBefore from Pi context.
- */
 export function contextBudgetTool(
-  tokensBefore?: number,
+  tokensUsed?: number,
   contextWindowSize?: number,
-  autoCompaction?: Pick<AutoCompactionConfig, "enabled" | "thresholdPercent">,
+  config?: Pick<CompactorConfig, "trigger" | "thresholdPercent">,
 ): string {
-  const budget = estimateContextBudget(tokensBefore, contextWindowSize, autoCompaction);
-  if (!budget) return "Context budget: Unknown (no token data available from session).";
-
+  const budget = estimateContextBudget(tokensUsed, contextWindowSize, config);
+  if (!budget) return "Context budget: unknown (no token data available yet).";
   return `${budget.message}\nAdvice: ${budget.advice}`;
 }

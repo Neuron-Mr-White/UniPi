@@ -24,7 +24,7 @@ import type { RalphLoop } from "./engine/ralph.js";
 import type { LongHorizonSettings } from "./settings.js";
 import { loadSettings } from "./settings.js";
 import { RunawayGuard } from "./engine/runaway.js";
-import { appendProgress, registerProgressRenderer } from "@pi-unipi/core";
+import { appendProgress, registerProgressRenderer, UNIPI_EVENTS } from "@pi-unipi/core";
 import { goalEstimatePrompt, goalProgressData, parseEstimate, type GoalEvidence } from "./progress.js";
 import { TERMINAL_GOAL_STATUSES } from "./engine/goal-state.js";
 
@@ -297,6 +297,11 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
 
   // ── compaction → recovery fragment on the next continuation ─────────
   pi.on("session_compact", () => {
+    deps.continuation.armRecovery();
+  });
+  // Boundary compactions (compactor's percentage trigger) don't fire
+  // session_compact; the compactor announces them on the event bus.
+  pi.events?.on?.(UNIPI_EVENTS.COMPACTOR_COMPACTED, () => {
     deps.continuation.armRecovery();
   });
 

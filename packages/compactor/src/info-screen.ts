@@ -1,20 +1,12 @@
 import { formatTokens } from "@pi-unipi/core";
 /**
- * Info-screen integration for @pi-unipi/compactor
- *
- * Stats driven by COMPACTION SAVINGS (the compactor's actual value),
- * not sandbox/index diversion bytes.
- *
- * Data sources (in priority order):
- * 1. Runtime counters (in-memory, current session only)
- * 2. DB compaction stats (total_chars_before/kept in session_meta)
- * 3. Session event counts (session_events table, always reliable)
+ * Info-screen integration for @pi-unipi/compactor — this session's
+ * compaction savings, read from the session branch.
  */
 
-import type { SessionDB } from "./session/db.js";
-import { getLastCompactionStats, formatCompactionStats } from "./compaction/hooks.js";
 import { parseUsageStatsAsync } from "@pi-unipi/info-screen/usage-parser.js";
-import type { RuntimeCounters } from "./types.js";
+import { getLastCompactionStats, formatCompactionStats } from "./compaction/hooks.js";
+import { sessionCompactionStats } from "./stats.js";
 
 export interface CompactorInfoData {
   tokensSaved: { value: string; detail: string };
@@ -25,37 +17,22 @@ export interface CompactorInfoData {
   toolCalls: { value: string; detail: string };
 }
 
-/** Format token count for display (e.g., "12.4k", "1.2M"). */
-/** Format cost for display (e.g., "$0.34", "<$0.01"). */
 function formatCost(n: number): string {
   if (n === 0) return "$0.00";
   if (n < 0.01) return "<$0.01";
-  if (n < 1) return `$${n.toFixed(2)}`;
   return `$${n.toFixed(2)}`;
 }
 
-/** Estimate cost per token for the most-used model in the current session. */
+/** Estimate cost per token for the most-used model (today, else all-time). */
 async function estimateCostPerToken(): Promise<number | null> {
   try {
     const usage = await parseUsageStatsAsync();
-    // Use today's most-used model if available, otherwise all-time
-    const models = usage.byModelToday;
-    const todayKeys = Object.keys(models);
-    if (todayKeys.length > 0) {
-      const topModel = todayKeys.reduce((a, b) => models[a].tokens > models[b].tokens ? a : b);
-      const entry = models[topModel];
-      if (entry.tokens > 0 && entry.cost > 0) {
-        return entry.cost / entry.tokens;
-      }
-    }
-    // Fall back to all-time model data
-    const allKeys = Object.keys(usage.byModel);
-    if (allKeys.length > 0) {
-      const topModel = allKeys.reduce((a, b) => usage.byModel[a].tokens > usage.byModel[b].tokens ? a : b);
-      const entry = usage.byModel[topModel];
-      if (entry.tokens > 0 && entry.cost > 0) {
-        return entry.cost / entry.tokens;
-      }
+    for (const models of [usage.byModelToday, usage.byModel]) {
+      const keys = Object.keys(models);
+      if (keys.length === 0) continue;
+      const top = keys.reduce((a, b) => (models[a].tokens > models[b].tokens ? a : b));
+      const entry = models[top];
+      if (entry.tokens > 0 && entry.cost > 0) return entry.cost / entry.tokens;
     }
     return null;
   } catch {
@@ -63,139 +40,55 @@ async function estimateCostPerToken(): Promise<number | null> {
   }
 }
 
-export async function getInfoScreenData(
-  sessionDB: SessionDB,
-  sessionId: string,
-  counters?: RuntimeCounters,
-): Promise<CompactorInfoData> {
+const EMPTY: CompactorInfoData = {
+  tokensSaved: { value: "0", detail: "No data" },
+  costSaved: { value: "N/A", detail: "No data" },
+  pctReduction: { value: "0%", detail: "No data" },
+  topTools: { value: "N/A", detail: "No data" },
+  compactions: { value: "0", detail: "No data" },
+  toolCalls: { value: "0", detail: "No data" },
+};
+
+export async function getInfoScreenData(branch: readonly any[]): Promise<CompactorInfoData> {
   try {
-    // ── Compaction savings (the compactor's actual value) ──
-    // Priority: in-memory counter → DB per-session stats → DB all-time stats
-    let tokensSaved = counters?.totalTokensCompacted ?? 0;
-    let charsBefore = 0;
-    let charsKept = 0;
-
-    if (tokensSaved === 0) {
-      // Try DB per-session stats
-      const sessionStats = sessionDB.getSessionStats(sessionId);
-      if (sessionStats) {
-        charsBefore = (sessionStats as any).total_chars_before ?? 0;
-        charsKept = (sessionStats as any).total_chars_kept ?? 0;
-        tokensSaved = Math.round((charsBefore - charsKept) / 4);
-      }
-    }
-
-    if (tokensSaved === 0) {
-      // Try DB all-time stats
-      const allTime = sessionDB.getAllTimeStats();
-      charsBefore = allTime.allCharsBefore;
-      charsKept = allTime.allCharsKept;
-      tokensSaved = Math.round((charsBefore - charsKept) / 4);
-    }
-
-    // ── Compaction count ──
-    let compactionCount = counters?.compactions ?? 0;
-    if (compactionCount === 0) {
-      const allTime = sessionDB.getAllTimeStats();
-      compactionCount = allTime.allCompactions;
-    }
-
-    // ── Compression ratio / pct reduction ──
-    let pctReduction = 0;
-    if (charsBefore > 0) {
-      pctReduction = Math.round((1 - charsKept / charsBefore) * 100);
-    }
-
-    // ── Tool call counts from session_events (always reliable) ──
-    // The session_events table captures every tool_result event, so this
-    // is an accurate count regardless of runtimeStats state.
-    interface ToolCountRow { category: string; cnt: number }
-    let toolCountRows: ToolCountRow[] = [];
-    let totalToolCalls = 0;
-    try {
-      const db = sessionDB.getDb();
-      if (db) {
-        toolCountRows = db.prepare(
-          "SELECT category, COUNT(*) as cnt FROM session_events WHERE session_id = ? GROUP BY category",
-        ).all(sessionId) as ToolCountRow[];
-        for (const row of toolCountRows) {
-          totalToolCalls += row.cnt;
-        }
-      }
-    } catch {
-      // Non-fatal: DB query failed, show zero
-    }
-
-    // Build per-tool breakdown for display
-    const toolBreakdown = toolCountRows.length > 0
-      ? toolCountRows
-          .sort((a, b) => b.cnt - a.cnt)
-          .map(r => `  ${r.category.padEnd(20)} ${String(r.cnt).padStart(5)} events`)
-          .join("\n")
-      : "No tool calls yet";
-
-    const topCategory = toolCountRows.length > 0
-      ? toolCountRows.reduce((a, b) => a.cnt > b.cnt ? a : b)
-      : null;
-
-    const top5Detail = toolCountRows.length > 0
-      ? toolCountRows
-          .sort((a, b) => b.cnt - a.cnt)
-          .slice(0, 5)
-          .map(r => `${r.category}: ${r.cnt} events`)
-          .join("\n")
-      : "No tool calls yet";
-
-    // ── Cost saved estimate ──
+    const stats = sessionCompactionStats(branch);
+    const pct = stats.tokensBefore > 0 ? Math.round((1 - stats.tokensAfter / stats.tokensBefore) * 100) : 0;
     const costPerToken = await estimateCostPerToken();
-    const costSaved = costPerToken !== null ? tokensSaved * costPerToken : null;
-
-    // ── Last compaction details ──
-    const compactStats = getLastCompactionStats();
-
+    const costSaved = costPerToken !== null ? stats.tokensSaved * costPerToken : null;
+    const tools = [...stats.toolCalls.entries()].sort((a, b) => b[1] - a[1]);
+    const last = getLastCompactionStats();
+    const count = stats.compactions.length;
     return {
       tokensSaved: {
-        value: formatTokens(tokensSaved),
-        detail: toolBreakdown,
+        value: formatTokens(stats.tokensSaved),
+        detail: count > 0 ? `${count} compaction(s) this session` : "No compactions this session",
       },
       costSaved: {
         value: costSaved !== null ? formatCost(costSaved) : "N/A",
         detail: costSaved !== null
-          ? `~${formatTokens(tokensSaved)} tokens × $${(costPerToken! * 1_000_000).toFixed(2)}/M tokens`
+          ? `~${formatTokens(stats.tokensSaved)} tokens × $${(costPerToken! * 1_000_000).toFixed(2)}/M tokens`
           : "Cost data unavailable for current model",
       },
       pctReduction: {
-        value: `${pctReduction}%`,
-        detail: charsBefore > 0
-          ? `${formatTokens(Math.round(charsBefore / 4))} before → ${formatTokens(Math.round(charsKept / 4))} after compaction`
+        value: `${pct}%`,
+        detail: stats.tokensBefore > 0
+          ? `${formatTokens(stats.tokensBefore)} before → ${formatTokens(stats.tokensAfter)} after`
           : "No compaction data yet",
       },
       topTools: {
-        value: topCategory ? `${topCategory.category}: ${topCategory.cnt}` : "N/A",
-        detail: top5Detail,
+        value: tools[0] ? `${tools[0][0]}: ${tools[0][1]}` : "N/A",
+        detail: tools.length > 0 ? tools.slice(0, 5).map(([n, c]) => `${n}: ${c}`).join("\n") : "No tool calls yet",
       },
       compactions: {
-        value: String(compactionCount),
-        detail: compactStats
-          ? `Last: ${formatCompactionStats(compactStats)}`
-          : compactionCount > 0
-            ? `${compactionCount} compaction(s) across all sessions`
-            : "No compactions yet",
+        value: String(count),
+        detail: last ? `Last: ${formatCompactionStats(last)}` : count > 0 ? `${count} this session` : "No compactions yet",
       },
       toolCalls: {
-        value: String(totalToolCalls),
-        detail: `${totalToolCalls} events across ${toolCountRows.length} categor${toolCountRows.length !== 1 ? "ies" : "y"}`,
+        value: String(stats.totalToolCalls),
+        detail: `${stats.totalToolCalls} calls across ${tools.length} tool${tools.length === 1 ? "" : "s"}`,
       },
     };
   } catch {
-    // Never throw from dataProvider — return zeroed stats
-    return {
-      tokensSaved: { value: "0", detail: "No data" },
-      costSaved: { value: "N/A", detail: "No data" },
-      pctReduction: { value: "0%", detail: "No data" },
-      topTools: { value: "N/A", detail: "No data" },
-      compactions: { value: "0", detail: "No data" },
-      toolCalls: { value: "0", detail: "No data" },
-    };
+    return EMPTY;
   }
 }

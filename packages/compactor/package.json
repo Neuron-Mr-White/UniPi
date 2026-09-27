@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/compactor",
   "version": "3.0.0-alpha.3",
-  "description": "Context engine for Pi — zero-LLM compaction, session continuity, sandbox execution, and tool display optimization",
+  "description": "Compaction for Pi — lossless zero-LLM or model summaries, rebuilt from full history, with session recall",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
@@ -18,8 +18,7 @@
     "unipi",
     "compactor",
     "context",
-    "sandbox",
-    "fts5"
+    "compaction"
   ],
   "scripts": {
     "test": "npx bun test tests"
@@ -46,9 +45,6 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "typescript": "^6.0.0"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": ">=11.0.0"
   },
   "pi": {
     "extensions": [

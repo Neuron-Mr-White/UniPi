@@ -65,9 +65,11 @@ export const parseCompactionInstructions = (
     return { isCompactor: true, keepUserTurns: 1, keepUserTurnsExplicit: false, followUpPrompt: null };
   }
 
-  const keepPrefix = `${COMPACTOR_INSTRUCTION} `;
-  if (trimmed?.startsWith(keepPrefix)) {
-    const parsed = parseKeepAndPrompt(trimmed.slice(keepPrefix.length));
+  // Marker + anything after whitespace (space or newline, e.g. ask-user's
+  // handoff text) is ours; only a keep:N is honored — the caller delivers
+  // its own follow-up, so no prompt is replayed from here.
+  if (trimmed?.startsWith(COMPACTOR_INSTRUCTION) && /^\s/.test(trimmed.slice(COMPACTOR_INSTRUCTION.length))) {
+    const parsed = parseKeepAndPrompt(trimmed.slice(COMPACTOR_INSTRUCTION.length).trim().split(/\n/)[0]);
     return {
       isCompactor: true,
       keepUserTurns: parsed.keepUserTurns ?? 1,

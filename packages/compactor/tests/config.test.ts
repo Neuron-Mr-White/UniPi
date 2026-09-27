@@ -1,85 +1,30 @@
 import { describe, it, expect } from "bun:test";
-import { migrateConfig, loadConfig, saveConfig } from "../src/config/manager.js";
-import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
-import { detectPreset, applyPreset } from "../src/config/presets.js";
+import { DEFAULT_COMPACTOR_CONFIG, autoCompactionOf } from "../src/config/schema.js";
+import { getSettingsDefinition } from "@pi-unipi/core";
+import "../src/config/manager.js";
 
-describe("config", () => {
-  it("keeps the extra percentage compaction boundary disabled by default", () => {
-    expect(DEFAULT_COMPACTOR_CONFIG.autoCompaction).toMatchObject({
-      enabled: false,
-      thresholdPercent: 80,
+describe("config schema", () => {
+  it("the percentage trigger is off unless When = at a percentage", () => {
+    expect(autoCompactionOf(DEFAULT_COMPACTOR_CONFIG).enabled).toBe(false);
+    expect(autoCompactionOf({ ...DEFAULT_COMPACTOR_CONFIG, trigger: "percent", thresholdPercent: 70 })).toMatchObject({
+      enabled: true,
+      thresholdPercent: 70,
       cooldownMs: 60_000,
       repeatMinGrowthTokens: 4_000,
     });
   });
 
-  it("migrateConfig fills missing keys", () => {
-    const partial = { debug: true } as any;
-    const config = migrateConfig(partial);
-    expect(config.debug).toBe(true);
-    expect(config.sessionGoals).toBeDefined();
-    expect(config.sessionGoals.enabled).toBe(true);
-    expect(config.autoCompaction).toEqual(DEFAULT_COMPACTOR_CONFIG.autoCompaction);
-  });
-
-  it("migrateConfig merges partial auto-compaction settings", () => {
-    const config = migrateConfig({
-      autoCompaction: { enabled: true, thresholdPercent: 85 } as any,
-    });
-
-    expect(config.autoCompaction.enabled).toBe(true);
-    expect(config.autoCompaction.thresholdPercent).toBe(85);
-    expect(config.autoCompaction.cooldownMs).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.cooldownMs);
-    expect(config.autoCompaction.repeatMinGrowthTokens).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.repeatMinGrowthTokens);
-    expect(config.autoCompaction.notify).toBe(DEFAULT_COMPACTOR_CONFIG.autoCompaction.notify);
-  });
-
-  it("detectPreset returns custom for modified config", () => {
-    const config = { ...DEFAULT_COMPACTOR_CONFIG, debug: true };
-    const preset = detectPreset(config);
-    expect(preset).toBe("custom");
-  });
-
-  it("applyPreset returns valid config", () => {
-    const config = applyPreset("minimal");
-    expect(config.commits.enabled).toBe(false);
-    expect(config.briefTranscript.mode).toBe("minimal");
-  });
-
-  it("presets configure only the implemented pipeline feature", () => {
-    expect(applyPreset("precise").pipeline).toMatchObject({
-      autoInjection: false,
-      customNoisePatterns: [],
-    });
-    expect(applyPreset("balanced").pipeline).toMatchObject({
-      autoInjection: true,
-      customNoisePatterns: [],
-    });
-    expect(applyPreset("thorough").pipeline).toEqual(applyPreset("balanced").pipeline);
-    expect(applyPreset("lean").pipeline).toMatchObject({
-      autoInjection: false,
-      customNoisePatterns: [],
-    });
-  });
-
-  it("presets leave deprecated display compatibility fields at defaults", () => {
-    for (const name of ["precise", "balanced", "thorough", "lean"] as const) {
-      expect(applyPreset(name).toolDisplay).toEqual(DEFAULT_COMPACTOR_CONFIG.toolDisplay);
-      expect(applyPreset(name).showTruncationHints).toBe(DEFAULT_COMPACTOR_CONFIG.showTruncationHints);
+  it("the settings screen shows a few main settings and hides the rest under Advanced", () => {
+    const schema = getSettingsDefinition("compactor")!.schema!;
+    const main = schema.filter((s) => !s.advanced).flatMap((s) => s.fields.map((f) => f.key));
+    expect(main).toEqual(["method", "piCompact", "trigger", "thresholdPercent", "notify"]);
+    const advanced = schema.filter((s) => s.advanced).flatMap((s) => s.fields.map((f) => f.key));
+    expect(advanced).toContain("sections.transcript");
+    expect(advanced).toContain("smartKeepTail");
+    // Every field maps to a real config key.
+    for (const key of [...main, ...advanced]) {
+      const value = key.split(".").reduce<any>((o, k) => o?.[k], DEFAULT_COMPACTOR_CONFIG);
+      expect(value).not.toBeUndefined();
     }
-  });
-
-  it("new and legacy preset aliases produce matching pipeline settings", () => {
-    expect(applyPreset("opencode").pipeline).toEqual(applyPreset("precise").pipeline);
-    expect(applyPreset("verbose").pipeline).toEqual(applyPreset("thorough").pipeline);
-    expect(applyPreset("minimal").pipeline).toEqual(applyPreset("lean").pipeline);
-  });
-
-  it("loadConfig returns defaults when no file", () => {
-    const config = loadConfig();
-    expect(config).toBeDefined();
-    expect(config.overrideDefaultCompaction).toBe(true);
-    expect(config.autoCompaction.enabled).toBe(false);
-    expect(config.autoCompaction.thresholdPercent).toBe(80);
   });
 });
