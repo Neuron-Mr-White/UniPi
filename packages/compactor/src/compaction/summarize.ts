@@ -131,9 +131,11 @@ export const selectRequests = (requests: string[], maxChars: number): string[] =
 
 /** An instruction opens with an imperative or carries a modal; "X don't work" is a bug report. */
 const IMPERATIVE_START_RE =
-  /^(?:(?:please|also|and|then|but|so)[, ]+)?(?:don'?t|do not|never|always|keep|avoid|make sure|ensure|use|prefer|remember|only use|stop|no need)\b/i;
+  /^(?:(?:please|also|and|then|but|so)[, ]+)?(?:don'?t|do not|never|always|keep|avoid|make sure|ensure|use|prefer|remember|only use|stop|no need|restore|revert|undo|preserve|stick to|stay with|go back to)\b/i;
 const MODAL_RE = /\b(?:should(?:n'?t)?|must|prefer|instead of|instead|rather than|required|important|no need)\b/i;
-const DECISION_RE = { test: (piece: string) => IMPERATIVE_START_RE.test(piece) || MODAL_RE.test(piece) };
+/** The user rejecting something the agent did: a correction that must stick. */
+const CORRECTION_RE = /\bI (?:did not|didn't|never) (?:ask|request|want|say)\b|\bnot what I (?:asked|wanted|meant)\b|\bwhy (?:did|do) you (?:change|remove|delete)\b/i;
+const DECISION_RE = { test: (piece: string) => IMPERATIVE_START_RE.test(piece) || MODAL_RE.test(piece) || CORRECTION_RE.test(piece) };
 
 const PASTED_AI_RE = /\bI(?:'m| am) an AI\b|\bas an AI\b|\bI can help (?:with|you)\b|\bif you'd like, I\b|\bI can'?t do that\b|\*\*[^*\n]+\*\*/i;
 
@@ -165,8 +167,14 @@ export function selectDecisions(
       .flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z0-9"'`])/))
       .map((p) => p.replace(/^\s*(?:[-*+>]|\d+[.)])\s+/, "").trim())
       .filter((p) => p.length >= 24 && p.length <= 400);
+    let pushedFromThis = -1;
     for (const piece of pieces) {
       if (!DECISION_RE.test(piece)) continue;
+      // "I did not request this" belongs to the instruction right before it.
+      if (pushedFromThis >= 0 && CORRECTION_RE.test(piece) && !IMPERATIVE_START_RE.test(piece) && !MODAL_RE.test(piece)) {
+        found[pushedFromThis] = clip(`${found[pushedFromThis]} ${oneLine(piece)}`, 260);
+        continue;
+      }
       if (/\?["')\]]*$/.test(piece)) continue; // a question, not a decision
       if (PASTED_AI_RE.test(piece)) continue; // pasted assistant output
       if (/^(?:it|this|that|these|those)\b/i.test(piece) && piece.length < 60) continue; // needs context it lacks
@@ -175,6 +183,7 @@ export function selectDecisions(
       if (seen.has(key) || drop.has(itemKey(piece))) continue;
       seen.add(key);
       found.push(clip(oneLine(piece), 220));
+      pushedFromThis = found.length - 1;
     }
   }
   // Most recent decisions win when the budget is tight; keep chronological order.

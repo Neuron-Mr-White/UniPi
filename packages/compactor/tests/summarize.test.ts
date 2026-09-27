@@ -186,3 +186,10 @@ describe("user answers, pruning inputs and redaction", () => {
     expect(pruned).toContain("latest request here");
   });
 });
+
+describe("user corrections", () => {
+  it("a correction of the agent's work is kept, attached to its instruction", () => {
+    const lines = selectDecisions(["Also, restore the brown pink like background just now. Currently it turns to other colors already. I did not request for this change."], 1000);
+    expect(lines).toEqual(["Also, restore the brown pink like background just now. I did not request for this change."]);
+  });
+});
