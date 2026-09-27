@@ -189,6 +189,46 @@ test("rejected claim feeds missing[] back into the next hint", async () => {
   rmSync(r.dir, { recursive: true, force: true });
 });
 
+function proposeCompletion(r: Rig, summary: string): void {
+  const goal = r.machine.getActive()!;
+  (r.toolset as unknown as { pending: unknown }).pending = {
+    kind: "completion",
+    goalId: goal.goalId,
+    revision: goal.revision,
+    summary,
+    proposedAt: new Date().toISOString(),
+  };
+}
+
+test("batch work + early claim every turn keeps going with the verifier's feedback", async () => {
+  const r = rig([{ verdict: "not_met", reason: "only part done", missing: ["next batch"] }]);
+  await startGoal(r);
+  for (let batch = 1; batch <= 12; batch += 1) {
+    proposeCompletion(r, `batch ${batch} done`);
+    const decision = await r.continuation.onTurnEnd(activity({ changedFiles: [`src/batch${batch}.ts`] }));
+    assert.equal(decision.action, "continue", `batch ${batch}`);
+    assert.equal((decision as { via: string }).via === "hint" || (decision as { via: string }).via === "terminal-audit", true);
+    assert.equal(r.machine.get()?.status, "active");
+  }
+  assert.equal(r.machine.get()?.noProgressStreak, 0);
+  assert.match(r.sent.at(-1) ?? "", /only part done|audit/i);
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("re-claiming without changing anything still stalls", async () => {
+  const r = rig([{ verdict: "not_met", reason: "nothing new", missing: ["x"] }]);
+  await startGoal(r);
+  let decision;
+  for (let i = 0; i < 12; i += 1) {
+    proposeCompletion(r, "done again");
+    decision = await r.continuation.onTurnEnd(activity({ changedFiles: [] }));
+    if (decision.action === "stopped") break;
+  }
+  assert.equal(decision?.action, "stopped");
+  assert.equal(r.machine.get()?.status, "paused");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
 test("waiting via turn signal schedules a backoff wake that continues the goal", async () => {
   const r = rig();
   await startGoal(r);

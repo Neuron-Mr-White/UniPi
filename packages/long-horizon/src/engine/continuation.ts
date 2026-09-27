@@ -162,9 +162,10 @@ export class GoalContinuation {
         revision: goal.revision,
         completionClaim: { ...(proposal.summary !== undefined ? { summary: proposal.summary } : {}) },
         verifier: { verdict: verdict.verdict, ...(verdict.missing.length > 0 ? { missing: verdict.missing } : {}) },
-        // A rejected claim is no progress; a met claim completed above; an
-        // inconclusive/failed verifier is neutral (undefined).
-        madeProgress: verdict.verdict === "not_met" ? false : undefined,
+        // A rejected claim is no progress unless the turn also changed files
+        // (work done, claimed early — common in batched goals); a met claim
+        // completed above; an inconclusive/failed verifier is neutral.
+        madeProgress: verdict.verdict === "not_met" ? activity.changedFiles.length > 0 : undefined,
         ...(tokensNow !== undefined ? { tokensNow } : {}),
       });
     } else if (proposal?.kind === "blocked") {

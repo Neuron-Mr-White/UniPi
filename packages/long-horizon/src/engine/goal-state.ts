@@ -16,7 +16,8 @@
  *     can neither fake progress nor trip the stall detector)
  *   - worker completion proposals never complete directly: only verifier met
  *     or user request does (propose + verify). A rejected claim counts as
- *     no-progress for that turn and feeds notMetStreak.
+ *     no-progress for that turn (unless the turn changed files) and feeds
+ *     notMetStreak.
  *   - blocked requires 3 consecutive blocked proposals (mcode threshold);
  *     safety/policy refusals are immediate
  *   - every settlement carries {goalId, revision} — CAS; stale settlements
