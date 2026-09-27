@@ -5,14 +5,18 @@
  * reader registration for the shared core `read_subagent` tool.
  * Profiles: built-ins `subagent_explore` / `subagent_general` plus custom
  * markdown agents from ~/.unipi/config/agents and <workspace>/.unipi/config/agents.
- * Config `subagents`: enabled (default true), defaultModel, defaultThinking.
+ * Config `subagents`: enabled, defaultModel, defaultThinking, maxConcurrent —
+ * re-read every turn, so settings and agent files apply without a restart.
+ *
+ * TUI (Devin parity): spawn card with a live tail, `Subagent "…" completed`
+ * lines, the `N subagents (k running) · ↓ select` strip, the dock (↵ view,
+ * f foreground, x cancel), Ctrl+B to background a foreground subagent.
  */
 
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Text } from "@earendil-works/pi-tui";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { Key, Markdown, Text, matchesKey, truncateToWidth, type Component, type TUI } from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS, emitEvent, getSettings, registerSettings, getSharedFusionStatus,
 } from "@pi-unipi/core";
@@ -20,17 +24,27 @@ import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
   createCompletionDelivery, type HandoffReport,
 } from "@pi-unipi/core/child-agent.js";
-import { SubagentManager, canSpawn, currentDepth, MAX_DEPTH_ENV } from "./manager.js";
+import {
+  SubagentManager, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
+  MAX_CONCURRENT, type SubagentRecord, type SubagentRun, type SubagentStatus,
+} from "./manager.js";
 import { loadProfiles, type AgentProfile } from "./profiles.js";
+import { buildTranscript, itemsFromEvents } from "./transcript.js";
+import {
+  SubagentDock, SubagentStrip, elapsed, plural, profileLabel, statusColor, statusGlyph, tailLines, STATUS_LABEL, type ThemeLike,
+} from "./ui.js";
+import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
 import { badgeHandler } from "./badge.js";
 
 export interface SubagentsConfig {
   enabled: boolean;
   defaultModel?: string;
   defaultThinking?: string;
+  maxConcurrent?: number;
 }
 
-const DEFAULT_CONFIG: SubagentsConfig = { enabled: true };
+const DEFAULT_CONFIG: SubagentsConfig = { enabled: true, defaultThinking: "inherit", maxConcurrent: MAX_CONCURRENT };
+const AUTO_MODEL = "auto (Fusion sidekick → your model)";
 
 registerSettings({
   namespace: "subagents",
@@ -40,20 +54,41 @@ registerSettings({
     {
       title: "Subagents",
       fields: [
-        { key: "enabled", type: "boolean", label: "Enabled" },
-        { key: "defaultModel", type: "string", label: "Default model (provider/id)" },
-        { key: "defaultThinking", type: "string", label: "Default thinking level" },
+        { key: "enabled", type: "boolean", label: "Enabled", description: "Offer run_subagent / read_subagent to the agent. Applies from the next turn." },
+        {
+          key: "defaultModel", type: "model", label: "Default subagent model", capability: "text",
+          description: "Model for subagent_explore and custom agents without a model: line. subagent_general always runs on your model.",
+          emptyLabel: AUTO_MODEL, emptyOption: AUTO_MODEL,
+        },
+        {
+          key: "defaultThinking", type: "enum", label: "Default thinking level",
+          description: "For subagent_explore and custom agents without thinking:. subagent_general uses yours.",
+          options: [{ value: "inherit", label: "inherit (your level)" }, "off", "minimal", "low", "medium", "high", "xhigh"],
+        },
+        { key: "maxConcurrent", type: "number", label: "Max running at once", min: 1, max: 16, description: "Further run_subagent calls are refused until one finishes." },
+      ],
+    },
+    {
+      title: "Agents",
+      fields: [
+        { key: "manageAgents", type: "action", label: "Manage agents…", description: "List, create, edit, copy or delete custom agents (global or this project).", command: AGENTS_COMMAND },
       ],
     },
   ],
 });
 
-function loadConfig(cwd: string): SubagentsConfig {
+export function loadConfig(cwd: string): SubagentsConfig {
   try {
-    const merged = getSettings("subagents", cwd) as unknown as SubagentsConfig;
-    return { enabled: merged.enabled !== false, defaultModel: merged.defaultModel, defaultThinking: merged.defaultThinking };
+    const m = getSettings("subagents", cwd) as unknown as SubagentsConfig;
+    const n = Number(m.maxConcurrent);
+    return {
+      enabled: m.enabled !== false,
+      defaultModel: typeof m.defaultModel === "string" && m.defaultModel.trim() ? m.defaultModel.trim() : undefined,
+      defaultThinking: typeof m.defaultThinking === "string" && m.defaultThinking !== "inherit" && m.defaultThinking ? m.defaultThinking : undefined,
+      maxConcurrent: Number.isFinite(n) && n >= 1 ? Math.floor(n) : MAX_CONCURRENT,
+    };
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return { enabled: true, maxConcurrent: MAX_CONCURRENT };
   }
 }
 
@@ -62,7 +97,7 @@ const RunSubagentParams = Type.Object({
   task: Type.String({
     description: "Complete, self-contained instructions. The subagent does not see this conversation: include the goal, relevant paths, constraints, and what to report back.",
   }),
-  profile: Type.String({ description: "" }), // rebuilt per load: every available profile as `name — description`
+  profile: Type.String({ description: "" }), // rebuilt at load: profile list
   is_background: Type.Optional(Type.Boolean({ description: "Run without waiting; report arrives via notification (default false)" })),
   resume: Type.Optional(Type.String({ description: "agent_id of an earlier subagent to continue (keeps its context); always runs in the foreground" })),
 });
@@ -70,10 +105,23 @@ const RunSubagentParams = Type.Object({
 const RUN_DESCRIPTION =
   "Launch an independent subagent for a self-contained task. It has its own context and does not see this conversation, so put everything it needs in `task`. Foreground (default) waits and returns the subagent's report. With is_background:true it returns immediately and you receive a <subagent_completion_notification> when it finishes; use read_subagent to wait for it — never poll in a loop. Background subagents cannot ask for approval: tool calls that would need approval are denied. Use resume:<agent_id> to continue an earlier subagent with a follow-up task.";
 
-interface RunState {
-  record: import("./manager.js").SubagentRecord;
-  runtime: import("@pi-unipi/core/child-agent.js").ChildAgentRuntime;
-  done: Promise<HandoffReport>;
+const STRIP_KEY = "subagents-strip";
+const FG_KEY = "subagents-foreground";
+const WORKING = "Subagent running · Ctrl+B to run in background";
+
+type Phase = "started" | "moved" | "done";
+interface CardDetails {
+  owner: "subagents";
+  id?: string;
+  title?: string;
+  profile?: string;
+  status?: SubagentStatus;
+  phase?: Phase;
+  toolCalls?: number;
+  durationMs?: number;
+  error?: string;
+  cancelledBy?: string;
+  startedAt?: number;
 }
 
 function leadSessionId(ctx: ExtensionContext): string {
@@ -109,90 +157,337 @@ export function resolveSubagentThinking(
   return profile.thinking ?? own ?? ctx.thinkingLevel ?? "medium";
 }
 
+function meta(durationMs: number | undefined, toolCalls: number | undefined): string {
+  return [durationMs !== undefined ? elapsed(durationMs) : undefined, toolCalls !== undefined ? plural(toolCalls, "tool call") : undefined].filter(Boolean).join(" · ");
+}
+
+/** `└ …` line under a finished run_subagent card. */
+export function cardOutcome(d: CardDetails | undefined, theme: ThemeLike): string {
+  const m = meta(d?.durationMs, d?.toolCalls);
+  const tail = m ? theme.fg("dim", ` · ${m}`) : "";
+  if (d?.phase === "started") return theme.fg("dim", "└ Background subagent started.");
+  if (d?.phase === "moved") return theme.fg("dim", "└ Moved to background — keeps working.");
+  const status = d?.status ?? "completed";
+  if (status === "running") return theme.fg("dim", "└ Still running in the background.");
+  const label = status === "cancelled" && d?.cancelledBy === "user" ? "Cancelled by you" : STATUS_LABEL[status];
+  const err = status === "failed" && d?.error ? theme.fg("error", `: ${d.error}`) : "";
+  return `${theme.fg("dim", "└ ")}${theme.fg(statusColor(status), label)}${err}${tail}`;
+}
+
+function lines(texts: string[]): Component {
+  return { invalidate() {}, render: (w: number) => texts.map((t) => truncateToWidth(t, w)) };
+}
+
 export default function subagents(pi: ExtensionAPI): void {
   const manager = new SubagentManager();
-  const delivery = createCompletionDelivery<HandoffReport>((report) => {
-    const rec = report && managerRecordOf(report);
-    pi.sendMessage(
-      {
-        customType: "subagent-completion",
-        content: `<subagent_completion_notification agent_id="${report.id}" status="${report.status}">\n${report.text}\n</subagent_completion_notification>`,
-        display: true,
-        details: { owner: "subagents", title: rec?.title ?? report.id, status: report.status, toolCalls: report.toolCalls, durationMs: report.durationMs },
-      } as never,
-      { deliverAs: "followUp", triggerTurn: true } as never,
-    );
-  });
-  const reportRecords = new Map<string, { title: string }>();
-  const managerRecordOf = (report: HandoffReport) => manager.record(report.id) ?? reportRecords.get(report.id);
+  const delivery = createCompletionDelivery<HandoffReport>((report) => deliverCompletion(report));
 
   let profiles: AgentProfile[] = [];
   let config: SubagentsConfig = { ...DEFAULT_CONFIG };
   let enabled = false;
-  let lastCtx: ExtensionContext | undefined;
+  let uiCtx: ExtensionContext | undefined;
   const warned = new Set<string>();
 
-  function refreshFiles(cwd: string): void {
-    config = loadConfig(cwd);
-    enabled = config.enabled;
-    profiles = loadProfiles(cwd).profiles;
+  // UI state
+  let stripTui: TUI | undefined;
+  let stripInstalled = false;
+  let fgInstalled = false;
+  let dockOpen = false;
+  let workingShown = false;
+  let unsubInput: (() => void) | undefined;
+  /** Foreground waiters (run_subagent / read_subagent block) → move to bg. */
+  const fgWaits = new Map<string, () => void>();
+  /** Background agents the user foregrounded from the dock (f). */
+  const watched = new Set<string>();
+
+  function deliverCompletion(report: HandoffReport): void {
+    const rec = manager.record(report.id);
+    if (rec?.cancelledBy === "session") return; // the session is gone
+    const status = rec?.status ?? recordStatusFor(report);
+    const head = status === "cancelled"
+      ? rec?.cancelledBy === "user" ? "Cancelled by the user." : "Cancelled."
+      : status === "failed" ? `Failed${report.error ? `: ${report.error}` : "."}` : "";
+    const body = [head, report.text].filter((s) => s && s.trim()).join("\n\n");
+    try {
+      pi.sendMessage(
+        {
+          customType: "subagent-completion",
+          content: `<subagent_completion_notification agent_id="${report.id}" status="${status}">\n${body}\n</subagent_completion_notification>`,
+          display: true,
+          details: {
+            owner: "subagents", id: report.id, title: rec?.title ?? report.id, profile: rec?.profile, status,
+            cancelledBy: rec?.cancelledBy, toolCalls: report.toolCalls, durationMs: report.durationMs, report: report.text.slice(0, 20_000),
+          },
+        } as never,
+        { deliverAs: "followUp", triggerTurn: true } as never,
+      );
+    } catch {
+      /* session replaced while it finished */
+    }
   }
 
-  function refresh(cwd: string, ctx?: ExtensionContext): void {
+  /** Re-read config + agent files; returns the load warnings. Safe at load. */
+  function reload(cwd: string): string[] {
     config = loadConfig(cwd);
     enabled = config.enabled;
     const loaded = loadProfiles(cwd);
     profiles = loaded.profiles;
-    // Warnings surface once per distinct message per process — not as
-    // persisted chat entries that pile up across sessions.
-    for (const w of loaded.warnings) {
+    return loaded.warnings;
+  }
+
+  /** reload + tool sync + warnings (runtime only — not during loading). */
+  function refresh(cwd: string, ctx?: ExtensionContext): void {
+    // Warnings surface once per distinct message per process.
+    for (const w of reload(cwd)) {
       if (warned.has(w)) continue;
       warned.add(w);
-      (ctx?.ui ?? lastCtx?.ui)?.notify?.(`subagents: ${w}`, "warning");
+      (ctx ?? uiCtx)?.ui?.notify?.(`subagents: ${w}`, "warning");
     }
     setReadSubagentDemand(pi, "subagents", enabled);
-    syncRunSubagent(pi);
+    syncRunSubagent();
+  }
+
+  function syncRunSubagent(): void {
+    const want = enabled && canSpawn();
+    const current = pi.getActiveTools();
+    const has = current.includes("run_subagent");
+    if (has !== want) pi.setActiveTools(want ? [...current, "run_subagent"] : current.filter((t) => t !== "run_subagent"));
   }
 
   // Profiles load before registration so the tool schema's profile list is
-  // complete (load cwd global+project dirs; pi re-registration isn't used —
-  // custom agents added mid-process appear on the next session_start).
-  refreshFiles(process.cwd());
+  // complete; later additions reach the model through the prompt section.
+  reload(process.cwd());
 
-  // run_subagent is registered at load when the depth guard allows spawning
-  // (children see it only below UNIPI_SUBAGENT_MAX_DEPTH); its presence in the
-  // active set then follows `enabled` via session_start sync.
+  const transcriptOf = (rec: SubagentRecord) =>
+    buildTranscript({ sessionFile: rec.sessionFile, task: rec.task, running: rec.status === "running", events: manager.events(rec.id) });
+  const liveItems = (id: string) => itemsFromEvents(manager.events(id) ?? []);
+
+  // ── UI sync ───────────────────────────────────────────────────────────────
+
+  function syncUi(): void {
+    const ctx = uiCtx;
+    if (!ctx?.hasUI) return;
+    try {
+      for (const id of watched) {
+        if (manager.run(id) === undefined) watched.delete(id);
+      }
+      const wantStrip = getSharedSubagents().length > 0;
+      if (wantStrip && !stripInstalled) {
+        stripInstalled = true;
+        ctx.ui.setWidget(STRIP_KEY, (tui, theme) => {
+          stripTui = tui;
+          return new SubagentStrip(theme, getSharedSubagents);
+        }, { placement: "belowEditor" });
+      } else if (!wantStrip && stripInstalled) {
+        stripInstalled = false;
+        stripTui = undefined;
+        ctx.ui.setWidget(STRIP_KEY, undefined);
+      } else {
+        stripTui?.requestRender();
+      }
+      const wantFg = watched.size > 0;
+      if (wantFg && !fgInstalled) {
+        fgInstalled = true;
+        ctx.ui.setWidget(FG_KEY, (tui, theme) => {
+          const timer = setInterval(() => tui.requestRender(), 300);
+          timer.unref?.();
+          return { invalidate() {}, render: (w: number) => renderWatched(w, theme), dispose: () => clearInterval(timer) };
+        }, { placement: "aboveEditor" });
+      } else if (!wantFg && fgInstalled) {
+        fgInstalled = false;
+        ctx.ui.setWidget(FG_KEY, undefined);
+      }
+      const wantWorking = fgWaits.size > 0 || watched.size > 0;
+      if (wantWorking !== workingShown) {
+        workingShown = wantWorking;
+        ctx.ui.setWorkingMessage(wantWorking ? WORKING : undefined);
+      }
+    } catch {
+      /* UI is best-effort; the runs are unaffected */
+    }
+  }
+  const unsubRegistry = subscribeSubagents(syncUi);
+
+  function renderWatched(width: number, theme: ThemeLike): string[] {
+    const out: string[] = [];
+    for (const id of watched) {
+      const rec = manager.record(id);
+      if (rec === undefined) continue;
+      const head = `${statusGlyph(rec.status, theme, Math.floor(Date.now() / 150))} ${theme.fg("muted", profileLabel(rec.profile))} ${theme.fg("dim", "›")} ${theme.bold(rec.title)} ${theme.fg("dim", `· ${elapsed(Date.now() - rec.startedAt)} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background`)}`;
+      out.push(truncateToWidth(head, width), ...tailLines(liveItems(id), width, theme, 4));
+    }
+    return out;
+  }
+
+  function foregroundAgent(id: string): string | undefined {
+    const run = manager.run(id);
+    if (run === undefined) return "Already finished — ask the agent to resume it.";
+    if (fgWaits.has(id) || watched.has(id)) return undefined;
+    if (uiCtx) run.runtime.attachUi(uiCtx.ui as never);
+    manager.setBackground(id, false);
+    watched.add(id);
+    syncUi();
+    return undefined;
+  }
+
+  /** Ctrl+B: every foreground subagent goes to the background. */
+  function backgroundAll(): boolean {
+    let any = false;
+    for (const move of [...fgWaits.values()]) {
+      move();
+      any = true;
+    }
+    for (const id of watched) {
+      manager.run(id)?.runtime.detachUi();
+      manager.setBackground(id, true);
+      any = true;
+    }
+    watched.clear();
+    syncUi();
+    return any;
+  }
+
+  function cancelAgent(id: string): string | undefined {
+    return manager.cancel(id, "user") ? undefined : "Not running.";
+  }
+
+  async function openDock(ctx: ExtensionContext, initialId?: string): Promise<void> {
+    if (dockOpen || !ctx.hasUI) return;
+    dockOpen = true;
+    try {
+      await ctx.ui.custom<void>((tui, theme, _kb, done) => new SubagentDock(tui, theme, {
+        records: getSharedSubagents,
+        transcript: transcriptOf,
+        toolCalls: (rec) => manager.toolCalls(rec.id),
+        subscribe: subscribeSubagents,
+        foreground: foregroundAgent,
+        cancel: cancelAgent,
+      }, () => done(), initialId));
+    } finally {
+      dockOpen = false;
+    }
+  }
+
+  /** The editor is focused, empty and not autocompleting (↓ may open the dock). */
+  function editorIdle(): boolean {
+    const tui = stripTui as { getFocusedComponent?: () => unknown } | undefined;
+    const f = tui?.getFocusedComponent?.() as { getText?: () => string; isShowingAutocomplete?: () => boolean } | null | undefined;
+    if (!f || typeof f.getText !== "function" || typeof f.isShowingAutocomplete !== "function") return false;
+    return f.getText() === "" && !f.isShowingAutocomplete();
+  }
+
+  function onTerminalInput(data: string): { consume?: boolean } | undefined {
+    if (matchesKey(data, "ctrl+b")) return backgroundAll() ? { consume: true } : undefined;
+    if (matchesKey(data, Key.down) && !dockOpen && stripInstalled && uiCtx && editorIdle()) {
+      void openDock(uiCtx);
+      return { consume: true };
+    }
+    return undefined;
+  }
+
+  // ── run_subagent ──────────────────────────────────────────────────────────
+
   if (canSpawn()) {
     const profileParam = profiles.map((p) => `${p.id} — ${p.description}`).join("; ");
     pi.registerTool({
       name: "run_subagent",
       label: "Run Subagent",
       description: RUN_DESCRIPTION,
-      parameters: Type.Object({ ...RunSubagentParams.properties, profile: Type.String({ description: `Available profiles: ${profileParam}` }) }),
-      renderCall: (args: { title?: string }, theme) => new Text(`${theme.fg("toolTitle", theme.bold("● run_subagent"))} ${theme.fg("dim", args.title ?? "")}`, 0, 0),
-      renderResult: (result, _o, theme) => {
-        const r = result as unknown as { details?: { title?: string; status?: string }; isError?: boolean };
+      parameters: Type.Object({
+        ...RunSubagentParams.properties,
+        profile: Type.String({ description: `Profile name. Available: ${profileParam}. Custom agents added later are listed in the Subagents section of the system prompt.` }),
+      }),
+      renderCall: (args: { title?: string; profile?: string; resume?: string; is_background?: boolean }, theme) => {
+        const what = args.resume ? "Resume subagent" : `${profileLabel(args.profile ?? "subagent")} subagent`;
+        const bg = args.is_background === true && !args.resume ? theme.fg("dim", " · background") : "";
+        return new Text(`${theme.fg("toolTitle", theme.bold(`● ${what}`))} ${theme.fg("accent", args.title ?? "")}${bg}`, 0, 0);
+      },
+      renderResult: (result, opts, theme) => {
+        const r = result as unknown as { details?: CardDetails; content?: Array<{ text?: string }> };
         const d = r.details;
-        return new Text(`${theme.fg(r.isError === true ? "error" : "accent", r.isError === true ? "✗" : "●")} ${theme.fg("dim", `Subagent "${d?.title ?? ""}" ${d?.status ?? "done"}`)}`, 0, 0);
+        if (opts.isPartial && d?.id !== undefined) {
+          const id = d.id;
+          return {
+            invalidate() {},
+            render: (w: number) => {
+              const rec = manager.record(id);
+              const status = `${statusGlyph("running", theme, Math.floor(Date.now() / 150))} ${theme.fg("dim", `${elapsed(Date.now() - (rec?.startedAt ?? Date.now()))} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background · esc cancel`)}`;
+              return [...tailLines(liveItems(id), w, theme, 4), truncateToWidth(`  ${status}`, w)];
+            },
+          };
+        }
+        const outcome = cardOutcome(d, theme);
+        if (!opts.expanded || d?.phase !== "done") return lines([`  ${outcome}`]);
+        const text = (r.content?.[0]?.text ?? "").replace(/\n\n--- subagent [\s\S]*$/u, "");
+        return {
+          invalidate() {},
+          render: (w: number) => [truncateToWidth(`  ${outcome}`, w), ...new Markdown(text, 2, 0, getMarkdownTheme()).render(w)],
+        };
       },
       execute: runSubagent as never,
     });
   }
 
-  function syncRunSubagent(api: ExtensionAPI): void {
-    const want = enabled && canSpawn();
-    const current = api.getActiveTools();
-    const has = current.includes("run_subagent");
-    if (has !== want) api.setActiveTools(want ? [...current, "run_subagent"] : current.filter((t) => t !== "run_subagent"));
+  function textResult(text: string, details: CardDetails, isError = false) {
+    return { content: [{ type: "text" as const, text }], details, isError };
   }
 
-  const resolveModelKey = (profile: AgentProfile, ctx: ExtensionContext) =>
-    resolveSubagentModel(profile, ctx, config);
-  const resolveThinking = (profile: AgentProfile, ctx: ExtensionContext) =>
-    resolveSubagentThinking(profile, ctx, config);
+  function doneDetails(rec: SubagentRecord, report: HandoffReport): CardDetails {
+    return {
+      owner: "subagents", id: rec.id, title: rec.title, profile: rec.profile, phase: "done",
+      status: rec.status === "running" ? recordStatusFor(report, rec.cancelledBy) : rec.status,
+      toolCalls: report.toolCalls, durationMs: report.durationMs, error: report.error, cancelledBy: rec.cancelledBy,
+    };
+  }
 
-  function completionDetails(record: import("./manager.js").SubagentRecord, report: HandoffReport) {
-    return { owner: "subagents", title: record.title, status: report.status, toolCalls: report.toolCalls, durationMs: report.durationMs };
+  function reportText(rec: SubagentRecord, report: HandoffReport, status: SubagentStatus): string {
+    const head = status === "cancelled" ? `Subagent ${rec.id} was cancelled${rec.cancelledBy === "user" ? " by the user" : ""}. Partial output:\n\n` : "";
+    return `${head}${report.text}\n\n--- subagent ${rec.id} · ${status} · ${plural(report.toolCalls, "tool call")} · ${(report.durationMs / 1000).toFixed(1)}s`;
+  }
+
+  /**
+   * Wait for a run while the lead's UI can answer its approvals. Ends on the
+   * report, Esc (aborted), Ctrl+B (moved), a pending user message
+   * (interrupted) or the timeout.
+   */
+  async function waitForeground(
+    run: SubagentRun,
+    signal: AbortSignal | undefined,
+    ctx: ExtensionContext,
+    onUpdate: ((u: unknown) => void) | undefined,
+    timeoutMs: number,
+  ): Promise<{ report?: HandoffReport; interrupted?: boolean; aborted?: boolean; moved?: boolean; error?: string }> {
+    const id = run.record.id;
+    let move!: () => void;
+    const moved = new Promise<"moved">((r) => {
+      move = () => r("moved");
+    });
+    run.runtime.attachUi(ctx.ui as never);
+    delivery.attach(id);
+    fgWaits.set(id, move);
+    manager.setBackground(id, false);
+    syncUi();
+    const started = Date.now();
+    try {
+      while (true) {
+        if (signal?.aborted) return { aborted: true };
+        if (ctx.hasPendingMessages?.()) return { interrupted: true };
+        const remaining = timeoutMs - (Date.now() - started);
+        if (remaining <= 0) return {};
+        const tick = new Promise<undefined>((r) => setTimeout(() => r(undefined), Math.min(400, remaining)));
+        const outcome = await Promise.race([run.done.then((r) => ({ report: r }), (e) => ({ error: String(e) })), moved, tick]);
+        if (outcome === "moved") return { moved: true };
+        if (outcome !== undefined) return outcome;
+        onUpdate?.({
+          content: [{ type: "text" as const, text: `Subagent "${run.record.title}" working · ${plural(manager.toolCalls(id), "tool call")}` }],
+          details: { owner: "subagents", id, title: run.record.title, profile: run.record.profile, status: "running", startedAt: run.record.startedAt } satisfies CardDetails,
+        });
+      }
+    } finally {
+      fgWaits.delete(id);
+      run.runtime.detachUi();
+      syncUi();
+    }
   }
 
   async function runSubagent(
@@ -201,103 +496,70 @@ export default function subagents(pi: ExtensionAPI): void {
     signal: AbortSignal | undefined,
     onUpdate: ((u: unknown) => void) | undefined,
     ctx: ExtensionContext,
-  ): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown; isError: boolean }> {
-    const result = (text: string, details?: unknown, isError = false) => ({ content: [{ type: "text" as const, text }], details: details ?? {}, isError });
+  ) {
     const cwd = ctx.cwd ?? process.cwd();
     const resumeId = params.resume?.trim() || undefined;
     const profileName = resumeId !== undefined ? (manager.record(resumeId)?.profile ?? params.profile) : params.profile;
-    const profile = profiles.find((p) => p.id === profileName) ?? profiles.find((p) => p.id === "subagent_general");
-    if (!profile) return result(`Unknown profile ${params.profile}. Available: ${profiles.map((p) => p.id).join(", ")}`, undefined, true);
+    const profile = profiles.find((p) => p.id === profileName);
+    if (!profile) {
+      return textResult(`Unknown profile "${params.profile}". Available: ${profiles.map((p) => p.id).join(", ")}`, { owner: "subagents", status: "failed", title: params.title }, true);
+    }
 
     const start = manager.start({
       title: params.title,
       task: params.task,
       profile,
-      model: resolveModelKey(profile, ctx),
-      thinking: resolveThinking(profile, ctx),
+      model: resolveSubagentModel(profile, ctx, config),
+      thinking: resolveSubagentThinking(profile, ctx, config),
       cwd,
       leadSessionId: leadSessionId(ctx),
       background: resumeId === undefined && params.is_background === true,
       resume: resumeId,
-      onDone: (run, report) => {
-        reportRecords.set(report.id, { title: run.record.title });
-        // Deliver the completion unless a waiter is attached (exactly-once).
-      },
+      maxConcurrent: config.maxConcurrent,
     });
-    if ("error" in start) return result(start.error, undefined, true);
+    if ("error" in start) return textResult(start.error, { owner: "subagents", status: "failed", title: params.title, error: start.error }, true);
     const { run } = start;
-    const id = run.record.id;
+    const rec = run.record;
+    const id = rec.id;
+    const base: CardDetails = { owner: "subagents", id, title: rec.title, profile: rec.profile };
 
-    if (run.record.background) {
+    if (rec.background) {
       delivery.detach(id, run.done);
-      return result(
+      return textResult(
         `Subagent ${id} started in the background. You will receive a <subagent_completion_notification agent_id="${id}"> when it finishes; use read_subagent to wait.`,
-        { owner: "subagents", title: run.record.title, status: "running", id, background: true },
+        { ...base, status: "running", phase: "started" },
       );
     }
 
-    // Foreground: attach lead UI for approval forwarding; detach on pending
-    // user message exactly like fusion's interrupted handoff.
-    run.runtime.attachUi?.(ctx.ui as never);
-    delivery.attach(id);
-    const waited = await waitRun(run, signal, ctx, onUpdate);
-    run.runtime.detachUi?.();
+    const waited = await waitForeground(run, signal, ctx, onUpdate, 2_700_000);
     if (waited.report) {
       delivery.consume(id);
-      const report = waited.report;
-      reportRecords.set(id, { title: run.record.title });
-      const text = `${report.text}\n\n--- subagent ${id} · ${report.status} · ${String(report.toolCalls)} tool calls · ${(report.durationMs / 1000).toFixed(1)}s`;
-      return result(text, { owner: "subagents", title: run.record.title, status: report.status, id }, report.status !== "completed");
+      const details = doneDetails(rec, waited.report);
+      return textResult(reportText(rec, waited.report, details.status!), details, details.status !== "completed");
+    }
+    if (waited.aborted) {
+      // Esc stopped the turn: the tool result reports the cancel; a completion
+      // notice would wake the lead right after the user stopped it.
+      delivery.consume(id);
+      manager.cancel(id, "user");
+      return textResult(`The user cancelled subagent "${rec.title}" (${id}). Don't restart it unless asked; it can be resumed with resume:${id}.`, { ...base, status: "cancelled", phase: "done", cancelledBy: "user", toolCalls: manager.toolCalls(id), durationMs: Date.now() - rec.startedAt }, true);
     }
     delivery.detach(id, run.done);
-    if (waited.aborted) {
-      return result(`Subagent ${id} aborted — resume it later with resume:${id}.`, { owner: "subagents", title: run.record.title, status: "cancelled", id }, true);
-    }
-    if (waited.interrupted) {
-      return result(
-        `A user message arrived while subagent "${run.record.title}" (${id}) was working. It continues in the background. Act on the user's message first, then call read_subagent({agent_id:"${id}", block:true}) to collect the report.\n${waited.interrupted}`,
-        { owner: "subagents", title: run.record.title, status: "running", id },
+    manager.setBackground(id, true);
+    if (waited.moved) {
+      return textResult(
+        `The user moved subagent "${rec.title}" (${id}) to the background so you don't wait for it. It keeps working; you will receive a <subagent_completion_notification agent_id="${id}"> when it finishes. Do not wait for it with read_subagent — continue with other work, or end your turn and let the notification wake you.`,
+        { ...base, status: "running", phase: "moved" },
       );
     }
-    if (waited.error) return result(`Subagent ${id} failed: ${waited.error}`, { owner: "subagents", title: run.record.title, status: "failed", id }, true);
-    return result(`Subagent ${id} is still running.`, { owner: "subagents", title: run.record.title, status: "running", id });
-  }
-
-  async function waitRun(
-    run: RunState,
-    signal: AbortSignal | undefined,
-    ctx: ExtensionContext,
-    onUpdate?: (u: unknown) => void,
-    timeoutMs = 2_700_000,
-  ): Promise<{ report?: HandoffReport; interrupted?: string; aborted?: boolean; error?: string }> {
-    const started = Date.now();
-    let lastKey = "";
-    while (true) {
-      if (signal?.aborted) {
-        await run.runtime.abort();
-        return { aborted: true };
-      }
-      if (ctx.hasPendingMessages?.()) return { interrupted: progressLine(run) };
-      const remaining = timeoutMs - (Date.now() - started);
-      if (remaining <= 0) return {};
-      const timer = new Promise<undefined>((r) => setTimeout(() => r(undefined), Math.min(500, remaining)));
-      const outcome = await Promise.race([run.done.then((r) => ({ report: r }), (e) => ({ error: String(e) })), timer]);
-      if (outcome !== undefined) {
-        if ("error" in outcome) return { error: outcome.error };
-        return { report: outcome.report };
-      }
-      const line = progressLine(run);
-      if (line !== lastKey) {
-        lastKey = line;
-        onUpdate?.({ content: [{ type: "text" as const, text: line }], details: { owner: "subagents", title: run.record.title, status: "running" } });
-      }
+    if (waited.interrupted) {
+      return textResult(
+        `A user message arrived while subagent "${rec.title}" (${id}) was working. It continues in the background. Act on the user's message first; its completion notification will arrive when it finishes (or call read_subagent({agent_id:"${id}", block:true})).`,
+        { ...base, status: "running", phase: "moved" },
+      );
     }
-  }
-
-  function progressLine(run: RunState): string {
-    const r = run.record;
-    const calls = run.runtime.progress(r.id)?.toolCalls ?? r.toolCalls;
-    return `● Subagent "${r.title}" working · ${String(calls)} tool calls · ${((Date.now() - r.startedAt) / 1000).toFixed(1)}s`;
+    if (waited.error) return textResult(`Subagent ${id} failed: ${waited.error}`, { ...base, status: "failed", phase: "done", error: waited.error }, true);
+    return textResult(`Subagent ${id} is still running in the background; its completion notification will arrive when it finishes.`, { ...base, status: "running", phase: "moved" });
   }
 
   // ── Reader registration for the shared read_subagent tool ────────────────
@@ -305,55 +567,62 @@ export default function subagents(pi: ExtensionAPI): void {
     owns: (id) => manager.record(id) !== undefined || manager.run(id) !== undefined,
     latest: () => manager.latest(),
     read: async (params, signal, onUpdate, ctx) => {
-      const result = (text: string, details?: unknown, isError = false) => ({ content: [{ type: "text" as const, text }], details: details ?? {}, isError });
-      const rec = params.agent_id !== undefined ? manager.record(params.agent_id) : undefined;
-      const run = params.agent_id !== undefined ? manager.run(params.agent_id) : undefined;
       const id = params.agent_id ?? manager.latest()?.id;
-      if (id === undefined || (rec === undefined && run === undefined)) {
-        return result(params.agent_id !== undefined ? `No subagent found for ${params.agent_id}.` : "No subagent has run yet.", undefined, true);
+      const record = id !== undefined ? manager.record(id) : undefined;
+      if (id === undefined || record === undefined) {
+        return textResult(params.agent_id !== undefined ? `No subagent found for ${params.agent_id}.` : "No subagent has run yet.", { owner: "subagents" }, true);
       }
-      const record = manager.record(id)!;
-      const done = run?.done;
-      if (record.status !== "running" || run === undefined || done === undefined) {
+      const base: CardDetails = { owner: "subagents", id, title: record.title, profile: record.profile };
+      const run = manager.run(id);
+      if (record.status !== "running" || run === undefined) {
         const text = record.report !== undefined
-          ? `${record.report}\n\n--- subagent ${id} · ${record.status} · ${String(record.toolCalls)} tool calls`
+          ? `${record.status === "cancelled" ? `Cancelled${record.cancelledBy === "user" ? " by the user" : ""}. Partial output:\n\n` : ""}${record.report}\n\n--- subagent ${id} · ${record.status} · ${plural(record.toolCalls, "tool call")}`
           : `Subagent ${id} ${record.status}${record.error !== undefined ? `: ${record.error}` : ""}`;
-        return result(text, { owner: "subagents", title: record.title, status: record.status, id }, record.status !== "completed");
+        return textResult(text, { ...base, status: record.status, phase: "done", toolCalls: record.toolCalls, cancelledBy: record.cancelledBy }, record.status !== "completed");
       }
       if (params.block !== true) {
-        return result(`Subagent "${record.title}" (${id}) is running — ${String(record.toolCalls)} tool calls so far.`, { owner: "subagents", title: record.title, status: "running", id });
+        return textResult(`Subagent "${record.title}" (${id}) is running — ${plural(manager.toolCalls(id), "tool call")} so far.`, { ...base, status: "running" });
       }
-      run.runtime.attachUi?.(ctx.ui as never);
-      delivery.attach(id);
-      const waited = await waitRun(run, signal, ctx, onUpdate, Math.min(600, params.timeout ?? 30) * 1000);
-      run.runtime.detachUi?.();
+      const wasBackground = record.background;
+      const waited = await waitForeground(run, signal, ctx, onUpdate, Math.min(600, params.timeout ?? 30) * 1000);
       if (waited.report) {
         delivery.consume(id);
-        const report = waited.report;
-        return result(`${report.text}\n\n--- subagent ${id} · ${report.status} · ${String(report.toolCalls)} tool calls`, { owner: "subagents", title: record.title, status: report.status, id }, report.status !== "completed");
+        const details = doneDetails(record, waited.report);
+        return textResult(reportText(record, waited.report, details.status!), details, details.status !== "completed");
       }
-      delivery.detach(id, done);
-      if (waited.error) return result(`Subagent ${id} failed: ${waited.error}`, { owner: "subagents", title: record.title, status: "failed", id }, true);
-      if (waited.aborted) return result(`Subagent ${id} aborted.`, { owner: "subagents", title: record.title, status: "cancelled", id }, true);
-      if (waited.interrupted) return result(`A user message arrived while subagent "${record.title}" (${id}) was working.\n${waited.interrupted}`, { owner: "subagents", title: record.title, status: "running", id });
-      return result(`Subagent ${id} is still running.`, { owner: "subagents", title: record.title, status: "running", id });
+      delivery.detach(id, run.done);
+      if (wasBackground) manager.setBackground(id, true);
+      if (waited.error) return textResult(`Subagent ${id} failed: ${waited.error}`, { ...base, status: "failed", error: waited.error }, true);
+      if (waited.aborted) return textResult(`Stopped waiting for subagent ${id}; it keeps running in the background.`, { ...base, status: "running" });
+      if (waited.moved) return textResult(`The user moved subagent ${id} to the background; stop waiting and continue — its completion notification will arrive.`, { ...base, status: "running" });
+      if (waited.interrupted) return textResult(`A user message arrived while waiting for subagent "${record.title}" (${id}); it keeps running. Act on the message first.`, { ...base, status: "running" });
+      return textResult(`Subagent ${id} is still running.`, { ...base, status: "running" });
     },
   });
   ensureReadSubagentTool(pi);
 
-  // Completion renderer — one dim line, Devin-style.
-  pi.registerMessageRenderer("subagent-completion", (message: { details?: { title?: string; status?: string; toolCalls?: number; durationMs?: number } }, _o, theme) =>
-    new Text(`${theme.fg("accent", "●")} ${theme.fg("dim", `Subagent "${message.details?.title ?? ""}" ${message.details?.status ?? ""} └ ${message.details?.durationMs !== undefined ? (message.details.durationMs / 1000).toFixed(1) + "s" : ""} · ${String(message.details?.toolCalls ?? 0)} tool calls`)}`, 0, 0));
+  // Completion line — Devin: `● Subagent "title" completed └ 7s · 1 tool call`.
+  pi.registerMessageRenderer("subagent-completion", (message: { details?: CardDetails & { report?: string } }, opts: { expanded?: boolean }, theme) => {
+    const d = message.details;
+    const status: SubagentStatus = d?.status === ("aborted" as never) || d?.status === ("interrupted" as never) ? "cancelled" : d?.status ?? "completed";
+    const label = status === "cancelled" && d?.cancelledBy === "user" ? "cancelled by you" : STATUS_LABEL[status].toLowerCase();
+    const head = `${theme.fg(statusColor(status), "●")} ${theme.fg("text", `Subagent "${d?.title ?? ""}"`)} ${theme.fg(statusColor(status), label)}`;
+    const m = meta(d?.durationMs, d?.toolCalls);
+    const rows = [head, ...(m ? [theme.fg("dim", `  └ ${m}`)] : [])];
+    if (!opts.expanded || !d?.report) return lines(rows);
+    const report = d.report;
+    return { invalidate() {}, render: (w: number) => [...rows.map((r) => truncateToWidth(r, w)), ...new Markdown(report, 2, 0, getMarkdownTheme()).render(w)] };
+  });
 
   // ── Prompt section (only while enabled) ───────────────────────────────────
   pi.on("before_agent_start", (event, ctx) => {
+    refresh(ctx.cwd ?? process.cwd(), ctx);
     if (!enabled) {
       delete event.systemPromptOptions.sections["subagents"];
       return undefined;
     }
-    // The shared status exists only while a Fusion pair is active.
     const fusionActive = getSharedFusionStatus() !== undefined;
-    const lines = [
+    const out = [
       "You can delegate self-contained subtasks to subagents with `run_subagent`. A subagent is an independent agent with its own context: it does not see this conversation, so put everything it needs in `task` — the goal, relevant paths, constraints, and exactly what to report back.",
       "",
       "Profiles:",
@@ -364,28 +633,50 @@ export default function subagents(pi: ExtensionAPI): void {
       "- Launch independent subagents in the same response so they run in parallel, and keep their work disjoint.",
       "- Foreground (the default) waits and returns the report. Set is_background:true only when you have other work to do meanwhile; you will receive a <subagent_completion_notification> when it finishes. Don't poll read_subagent in a loop.",
       "- Background subagents cannot ask for approval: tool calls that would need approval are denied. Run approval-needing work in the foreground.",
+      "- The user can move a foreground subagent to the background (Ctrl+B) or cancel any subagent. When that happens, continue accordingly; don't restart a cancelled subagent unless asked.",
       "- Resume a finished, failed, or cancelled subagent with resume:<agent_id> and a follow-up task; it keeps its context.",
       "- The user does not see subagent output directly: summarize what matters from the report, and verify anything critical before relying on it.",
     ];
-    if (fusionActive) {
-      lines.push("While Fusion is active, do not use subagents other than the sidekick unless the user explicitly asks you to.");
-    }
-    event.systemPromptOptions.sections["subagents"] = lines.join("\n");
+    if (fusionActive) out.push("While Fusion is active, do not use subagents other than the sidekick unless the user explicitly asks you to.");
+    event.systemPromptOptions.sections["subagents"] = out.join("\n");
     return undefined;
   });
 
+  // ── Commands ──────────────────────────────────────────────────────────────
+  pi.registerCommand("unipi:subagents", {
+    description: "Open the subagent panel (also ↓ from an empty input)",
+    handler: async (_args, ctx) => {
+      if (getSharedSubagents().length === 0) {
+        ctx.ui.notify("No subagents in this session yet.", "info");
+        return;
+      }
+      await openDock(ctx);
+    },
+  });
+  registerAgentsCommand(pi, { onChange: (cwd) => refresh(cwd) });
+
   pi.on("session_start", (_event, ctx) => {
-    lastCtx = ctx;
+    uiCtx = ctx;
+    stripInstalled = false;
+    fgInstalled = false;
+    workingShown = false;
     manager.restore(ctx.cwd ?? process.cwd(), leadSessionId(ctx));
     refresh(ctx.cwd ?? process.cwd(), ctx);
+    unsubInput?.();
+    unsubInput = ctx.hasUI ? ctx.ui.onTerminalInput(onTerminalInput) : undefined;
+    syncUi();
   });
   pi.on("session_shutdown", () => {
-    manager.abortAll();
+    manager.shutdown();
+    unsubInput?.();
+    unsubInput = undefined;
+    unsubRegistry();
+    uiCtx = undefined;
   });
 
   // Badge naming — in-process one-shot (no child pi).
   pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (data) => {
-    await badgeHandler(pi, data as never, lastCtx);
+    await badgeHandler(pi, data as never, uiCtx);
   });
 
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { module: "subagents" });

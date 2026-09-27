@@ -60,6 +60,11 @@ export type SidekickEvent =
   | { kind: "text"; text: string; open: boolean }
   | { kind: "tool"; toolCallId: string; name: string; args: Record<string, unknown> | undefined; output: string; isError: boolean; done: boolean; startedAt: number; endedAt?: number };
 
+/** The permission gate's "deny with a reason" option (workflow prompt.ts). */
+export const DENY_WITH_NOTE = "Deny with note…";
+export const BACKGROUND_DENY_NOTE =
+  "Permission denied for this tool: this agent is running in the background, where tools that would require approval are automatically denied. Do not retry variants of this call; finish what you can without it and say in your report what needs approval.";
+
 export const MAX_EVENTS = 300;
 export const MAX_TOOL_OUTPUT = 4000;
 
@@ -151,6 +156,29 @@ export class ChildAgentRuntime {
     }
     this.emitStep({ kind: "text", text: buffered.text, thinking: buffered.thinking || undefined });
     this.bufferedText = undefined;
+  }
+  /** Set after answering a background approval prompt with "Deny with note…":
+   *  the follow-up note input gets BACKGROUND_DENY_NOTE. */
+  private denyNotePending = false;
+
+  /**
+   * No lead waiter → refuse. When the prompt is the permission gate's (it
+   * offers "Deny with note…"), deny WITH a reason so the child stops retrying
+   * variants; anything else is cancelled (which also denies).
+   */
+  private refuseInBackground(method: string, id: unknown, message: Record<string, unknown>): void {
+    let reply: Record<string, unknown> = { type: "extension_ui_response", id, cancelled: true };
+    const options = Array.isArray(message.options) ? message.options : [];
+    if (method === "select" && options.includes(DENY_WITH_NOTE)) {
+      this.denyNotePending = true;
+      reply = { type: "extension_ui_response", id, value: DENY_WITH_NOTE };
+    } else if (method === "input" && this.denyNotePending) {
+      this.denyNotePending = false;
+      reply = { type: "extension_ui_response", id, value: BACKGROUND_DENY_NOTE };
+    }
+    try {
+      this.send(reply);
+    } catch { /* child gone */ }
   }
   private abortRequested = false;
   private pendingError: string | undefined;
@@ -334,9 +362,7 @@ export class ChildAgentRuntime {
           } catch { /* child gone */ }
         });
       } else {
-        try {
-          this.send({ type: "extension_ui_response", id, cancelled: true });
-        } catch { /* child gone */ }
+        this.refuseInBackground(method, id, message);
       }
       return;
     }
@@ -352,6 +378,14 @@ export class ChildAgentRuntime {
       this.pending.progress.recentTools = [...this.pending.progress.recentTools, summary].slice(-6);
       this.appendEvent({ kind: "tool", toolCallId: String(message.toolCallId ?? ""), name: String(message.toolName ?? "tool"), args, output: "", isError: false, done: false, startedAt: Date.now() });
       this.notifyProgress();
+    } else if (message.type === "tool_execution_update") {
+      // Partial output of a running tool (bash streams) — live views only.
+      const toolCallId = String(message.toolCallId ?? "");
+      const event = [...this.pending.progress.events].reverse().find((entry): entry is Extract<SidekickEvent, { kind: "tool" }> => entry.kind === "tool" && entry.toolCallId === toolCallId);
+      if (event && !event.done && message.partialResult !== undefined) {
+        event.output = this.toolOutput(message.partialResult);
+        this.notifyProgress();
+      }
     } else if (message.type === "tool_execution_end") {
       const toolCallId = String(message.toolCallId ?? "");
       const event = [...this.pending.progress.events].reverse().find((entry): entry is Extract<SidekickEvent, { kind: "tool" }> => entry.kind === "tool" && entry.toolCallId === toolCallId);

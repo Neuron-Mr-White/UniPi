@@ -4,21 +4,25 @@
  * One `ChildAgentRuntime` (shared core) per run: foreground waits with lead-UI
  * approval forwarding; background gets auto-denied prompts; abort → cancelled
  * (resumable from the session file); detach on pending user message (exactly
- * once completion delivery). Max 8 concurrent; process killed at run end.
- * Index persisted to <sessionDir>/index.json on every status change.
+ * once completion delivery). Concurrency capped; process killed at run end.
+ * Index persisted to <state>/subagents/sessions/<leadSessionId>/index.json on
+ * every status change — keyed by the lead's session id (not the process), so
+ * the panel survives a restart + resume.
  */
 
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport } from "@pi-unipi/core/child-agent.js";
+import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport, type SidekickEvent } from "@pi-unipi/core/child-agent.js";
 import { stateDir } from "@pi-unipi/core";
 import type { AgentProfile } from "./profiles.js";
 
 export const MAX_CONCURRENT = 8;
 export const DEPTH_ENV = "UNIPI_SUBAGENT_DEPTH";
 export const MAX_DEPTH_ENV = "UNIPI_SUBAGENT_MAX_DEPTH";
+/** A cancel the child doesn't honour within this window is forced (kill). */
+export const CANCEL_GRACE_MS = 5000;
+const MAX_TASK_CHARS = 20_000;
 
 export type SubagentStatus = "running" | "completed" | "failed" | "cancelled";
 
@@ -27,14 +31,19 @@ export interface SubagentRecord {
   title: string;
   profile: string;
   model: string;
+  thinking?: string;
   status: SubagentStatus;
   background: boolean;
   startedAt: number;
   endedAt?: number;
   toolCalls: number;
   lastActivity: number;
+  /** The task prompt of the latest run (shown in the transcript view). */
+  task?: string;
   report?: string;
   error?: string;
+  /** Who cancelled it — "user" (dock x / Esc) or "session" (shutdown). */
+  cancelledBy?: "user" | "session";
   sessionFile: string;
   depth: number;
 }
@@ -45,12 +54,12 @@ export interface SubagentRun {
   done: Promise<HandoffReport>;
 }
 
-// Shared holder for CP4's panel/footer (same pattern as fusion-status).
+// Shared holder for the panel/strip (same pattern as fusion-status).
 const records = new Map<string, SubagentRecord>();
 const listeners = new Set<() => void>();
 
 export function getSharedSubagents(): readonly SubagentRecord[] {
-  return [...records.values()];
+  return [...records.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
 
 export function subscribeSubagents(listener: () => void): () => void {
@@ -59,7 +68,13 @@ export function subscribeSubagents(listener: () => void): () => void {
 }
 
 function publish(): void {
-  for (const l of listeners) l();
+  for (const l of listeners) {
+    try {
+      l();
+    } catch {
+      /* a broken listener must not break the run */
+    }
+  }
 }
 
 export function currentDepth(env: NodeJS.ProcessEnv = process.env): number {
@@ -76,9 +91,19 @@ function newAgentId(): string {
   return randomBytes(4).toString("hex");
 }
 
+/** Report status → record status. A user/session cancel wins over the
+ *  "error" a forced kill produces. */
+export function recordStatusFor(report: Pick<HandoffReport, "status">, cancelledBy?: SubagentRecord["cancelledBy"]): SubagentStatus {
+  if (report.status === "completed") return "completed";
+  if (report.status === "aborted" || report.status === "interrupted" || cancelledBy !== undefined) return "cancelled";
+  return "failed";
+}
+
 export class SubagentManager {
   private readonly runs = new Map<string, SubagentRun>();
-  private readonly dirs = new Map<string, string>();
+  /** Finished runs' events for this process (the view falls back to the
+   *  session file after a restart). */
+  private readonly finishedEvents = new Map<string, SidekickEvent[]>();
   private activeDir: string | undefined;
   private lastPublishAt = 0;
   private publishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -89,12 +114,8 @@ export class SubagentManager {
   }
 
   sessionDir(cwd: string, leadSessionId: string): string {
-    let dir = this.dirs.get(leadSessionId);
-    if (dir === undefined) {
-      dir = join(stateDir("subagents", "session", cwd), leadSessionId);
-      mkdirSync(dir, { recursive: true });
-      this.dirs.set(leadSessionId, dir);
-    }
+    const dir = join(stateDir("subagents", "state", cwd), "sessions", leadSessionId);
+    mkdirSync(dir, { recursive: true });
     this.activeDir = dir;
     return dir;
   }
@@ -102,36 +123,43 @@ export class SubagentManager {
   /** Load persisted records on session_start; running entries → failed. */
   restore(cwd: string, leadSessionId: string): void {
     records.clear();
+    this.finishedEvents.clear();
     const dir = this.sessionDir(cwd, leadSessionId);
     const indexPath = join(dir, "index.json");
-    if (!existsSync(indexPath)) return;
+    if (!existsSync(indexPath)) {
+      publish();
+      return;
+    }
     try {
       const list = JSON.parse(readFileSync(indexPath, "utf8")) as SubagentRecord[];
       for (const rec of list) {
-        if (rec.status === "running") {
-          records.set(rec.id, { ...rec, status: "failed", error: "interrupted by reload", endedAt: Date.now() });
-        } else {
-          records.set(rec.id, rec);
-        }
+        records.set(rec.id, rec.status === "running"
+          ? { ...rec, status: "failed", error: "interrupted — pi exited while it ran", endedAt: rec.lastActivity }
+          : rec);
       }
       this.persist();
-      publish();
     } catch {
       /* corrupt index — start fresh */
     }
+    publish();
   }
 
   private persist(): void {
     if (this.activeDir === undefined) return;
-    const indexPath = join(this.activeDir, "index.json");
-    const tmp = `${indexPath}.tmp-${String(process.pid)}`;
-    writeFileSync(tmp, JSON.stringify([...records.values()], null, 2), "utf8");
-    renameSync(tmp, indexPath);
+    try {
+      const indexPath = join(this.activeDir, "index.json");
+      const tmp = `${indexPath}.tmp-${String(process.pid)}`;
+      writeFileSync(tmp, JSON.stringify([...records.values()], null, 2), "utf8");
+      renameSync(tmp, indexPath);
+    } catch {
+      /* the in-memory panel stays correct; next write retries */
+    }
   }
 
   /** Status-changing update: record, persist index.json, publish now. */
   private set(record: SubagentRecord, patch: Partial<SubagentRecord>): void {
     Object.assign(record, patch, { lastActivity: Date.now() });
+    if (records.get(record.id) !== record) return; // a stale run from a previous session
     this.persist();
     this.publishNow();
   }
@@ -176,9 +204,23 @@ export class SubagentManager {
     return this.runs.get(id);
   }
 
-  /** Resolve a report without waiting (snapshot for read_subagent block:false). */
-  report(id: string): HandoffReport | undefined {
-    return this.runs.get(id)?.runtime.reports.get(id);
+  /** Live events of a running agent, or this process's events of a finished one. */
+  events(id: string): SidekickEvent[] | undefined {
+    const run = this.runs.get(id);
+    if (run !== undefined) return run.runtime.progress()?.events;
+    return this.finishedEvents.get(id);
+  }
+
+  /** Live tool-call count (running) or the recorded one. */
+  toolCalls(id: string): number {
+    const run = this.runs.get(id);
+    return run?.runtime.progress()?.toolCalls ?? records.get(id)?.toolCalls ?? 0;
+  }
+
+  /** Mark a run foreground/background (UI + approval routing done by caller). */
+  setBackground(id: string, background: boolean): void {
+    const rec = records.get(id);
+    if (rec !== undefined && rec.background !== background) this.set(rec, { background });
   }
 
   private spawnRuntime(opts: {
@@ -191,7 +233,7 @@ export class SubagentManager {
     title: string;
     depth: number;
     maxDepth: number;
-    onStep?: () => void;
+    onProgress?: () => void;
   }): ChildAgentRuntime {
     if (this.runtimeFactory !== undefined) return this.runtimeFactory(opts);
     return new ChildAgentRuntime({
@@ -206,15 +248,13 @@ export class SubagentManager {
         [MAX_DEPTH_ENV]: String(opts.maxDepth),
       },
       promptPrefix: `Subagent "${opts.title}": `,
-      onProgress: opts.onStep,
-      onStep: opts.onStep,
+      onProgress: opts.onProgress,
     });
   }
 
-
   /**
-   * Start a run. `existing` (resume) reuses the old session file so the child
-   * keeps its context; a fresh run gets a new file and record.
+   * Start a run. `resume` reuses the old session file so the child keeps its
+   * context; a fresh run gets a new file and record.
    */
   start(opts: {
     title: string;
@@ -226,34 +266,36 @@ export class SubagentManager {
     leadSessionId: string;
     background: boolean;
     resume?: string;
+    maxConcurrent?: number;
     onDone?: (run: SubagentRun, report: HandoffReport) => void;
   }): { run: SubagentRun } | { error: string } {
+    const max = opts.maxConcurrent ?? MAX_CONCURRENT;
     if (opts.resume !== undefined && this.runs.has(opts.resume)) {
       return { error: `Subagent ${opts.resume} is still running — use read_subagent to wait for it.` };
     }
-    if (opts.resume === undefined && this.runs.size >= MAX_CONCURRENT) {
-      return { error: `Maximum ${String(MAX_CONCURRENT)} concurrent subagents running — wait for one to finish or read_subagent first.` };
+    if (this.runs.size >= max) {
+      return { error: `Maximum ${String(max)} concurrent subagents running — wait for one to finish (read_subagent) before starting another.` };
     }
-    const parentDepth = currentDepth();
+    const prev = opts.resume === undefined ? undefined : records.get(opts.resume);
+    if (opts.resume !== undefined && prev === undefined) {
+      return { error: `No subagent found for ${opts.resume} — can't resume.` };
+    }
     const id = opts.resume ?? newAgentId();
     const record: SubagentRecord = {
       id,
-      title: opts.title,
+      title: opts.title || prev?.title || id,
       profile: opts.profile.id,
       model: opts.model,
+      thinking: opts.thinking,
       status: "running",
       background: opts.background,
       startedAt: Date.now(),
       toolCalls: 0,
       lastActivity: Date.now(),
-      sessionFile: join(this.sessionDir(opts.cwd, opts.leadSessionId), `${id}.jsonl`),
-      depth: parentDepth + 1,
+      task: opts.task.length > MAX_TASK_CHARS ? `${opts.task.slice(0, MAX_TASK_CHARS)}…` : opts.task,
+      sessionFile: prev?.sessionFile ?? join(this.sessionDir(opts.cwd, opts.leadSessionId), `${id}.jsonl`),
+      depth: prev?.depth ?? currentDepth() + 1,
     };
-    const prev = opts.resume === undefined ? undefined : records.get(opts.resume);
-    if (opts.resume !== undefined && prev === undefined) {
-      return { error: `No subagent found for ${opts.resume} — can't resume.` };
-    }
-    if (prev !== undefined) record.depth = prev.depth;
 
     const runtime = this.spawnRuntime({
       sessionFile: record.sessionFile,
@@ -264,56 +306,93 @@ export class SubagentManager {
       extraArgs: opts.profile.tools !== undefined
         ? ["--tools", opts.profile.tools.join(",")]
         : ["--exclude-tools", "sidekick,read_subagent,run_subagent"],
-      title: opts.title,
+      title: record.title,
       depth: record.depth,
       // Default: no nesting (child's DEPTH >= MAX_DEPTH → no run_subagent).
       // A custom profile's max-nesting grants exactly that many levels.
       maxDepth: Math.max(1, record.depth + (opts.profile.maxNesting ?? 0)),
-      onStep: () => {
+      onProgress: () => {
         const r = records.get(id);
         if (r === undefined) return;
-        // toolCalls comes from the runtime's own counter (steps, not deltas);
-        // activity bumps are memory-only — index.json writes on status changes.
-        this.touch(r, { toolCalls: runtime.progress(id)?.toolCalls ?? r.toolCalls });
+        // Activity bumps are memory-only — index.json writes on status changes.
+        this.touch(r, { toolCalls: runtime.progress()?.toolCalls ?? r.toolCalls });
       },
     });
     const handoff = runtime.handoff(opts.task);
-    const run: SubagentRun = { record, runtime, done: handoff.done };
+    // Reports carry the subagent id, not the runtime's per-handoff id — every
+    // consumer (completion notice, read_subagent, resume) speaks agent ids.
+    const done = handoff.done.then((report) => ({ ...report, id }));
+    const run: SubagentRun = { record, runtime, done };
     this.runs.set(id, run);
+    this.finishedEvents.delete(id);
     records.set(id, record);
     this.persist();
-    publish();
+    this.publishNow();
 
-    handoff.done
+    const settle = (patch: Partial<SubagentRecord>, events: SidekickEvent[] | undefined) => {
+      if (this.runs.get(id) === run) this.runs.delete(id);
+      if (events !== undefined) this.finishedEvents.set(id, events);
+      this.set(record, { endedAt: Date.now(), ...patch });
+      runtime.kill(); // respawns on resume from the session file
+    };
+    done
       .then((report) => {
-        this.set(record, {
-          status: report.status === "completed" ? "completed" : report.status === "aborted" || report.status === "interrupted" ? "cancelled" : "failed",
-          endedAt: Date.now(),
+        settle({
+          status: recordStatusFor(report, record.cancelledBy),
           toolCalls: report.toolCalls,
           report: report.text,
           error: report.error,
-        });
-        this.runs.delete(id);
-        runtime.kill(); // respawns on resume from the session file
+        }, report.events);
         opts.onDone?.(run, report);
       })
       .catch((error) => {
-        this.set(record, { status: "failed", endedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
-        this.runs.delete(id);
-        runtime.kill();
+        settle({ status: record.cancelledBy !== undefined ? "cancelled" : "failed", error: error instanceof Error ? error.message : String(error) }, undefined);
       });
     return { run };
   }
 
-  abort(id: string): void {
+  /**
+   * Cancel a running agent. The child gets an abort; if it hasn't settled
+   * within CANCEL_GRACE_MS the process is killed (the run then settles as
+   * cancelled, not failed). Returns false when it isn't running.
+   */
+  cancel(id: string, by: "user" | "session" = "user"): boolean {
     const run = this.runs.get(id);
-    if (run) void run.runtime.abort();
+    if (run === undefined) return false;
+    run.record.cancelledBy = by;
+    this.publishNow();
+    void run.runtime.abort().catch(() => undefined);
+    const timer = setTimeout(() => {
+      if (this.runs.get(id) === run) run.runtime.kill();
+    }, CANCEL_GRACE_MS);
+    timer.unref?.();
+    return true;
   }
 
-  abortAll(): void {
-    for (const run of this.runs.values()) void run.runtime.abort();
-    for (const run of this.runs.values()) run.runtime.kill();
+  /** Back-compat alias used by the foreground Esc path. */
+  abort(id: string): void {
+    this.cancel(id, "user");
+  }
+
+  /** Session end: running agents are recorded as cancelled (persisted before
+   *  the processes go), then killed. */
+  shutdown(): void {
+    for (const run of this.runs.values()) {
+      Object.assign(run.record, { status: "cancelled", cancelledBy: "session", endedAt: Date.now(), error: "session ended while it ran" });
+    }
+    this.persist();
+    const live = [...this.runs.values()];
     this.runs.clear();
+    for (const run of live) {
+      void run.runtime.abort().catch(() => undefined);
+      run.runtime.kill();
+    }
+    this.publishNow();
+  }
+
+  /** @deprecated use shutdown() */
+  abortAll(): void {
+    this.shutdown();
   }
 }
 

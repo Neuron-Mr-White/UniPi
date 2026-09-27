@@ -39,7 +39,7 @@ test("defaults: enabled true, notify+wake on, 20MiB cap", () => {
   assert.equal(DEFAULT_CONFIG.notifyOnCompletion, true);
   assert.equal(DEFAULT_CONFIG.triggerOnCompletion, true);
   assert.equal(DEFAULT_CONFIG.maxOutputBytes, 20 * 1024 * 1024);
-  assert.equal(DEFAULT_CONFIG.delegate.extensionMode, "isolated");
+  assert.equal("delegate" in DEFAULT_CONFIG, false, "bg_delegate retired — no delegate settings");
 });
 
 test("first run yields defaults (engine writes lazily on first change)", () => {
@@ -92,7 +92,7 @@ test("validation rejects bad values with visible messages", () => {
   });
   assert.ok(problems.some((p) => p.includes("enabled")));
   assert.ok(problems.some((p) => p.includes("maxOutputBytes")));
-  assert.ok(problems.some((p) => p.includes("extensionMode")));
+  assert.ok(!problems.some((p) => p.includes("extensionMode")), "leftover delegate keys are ignored, not flagged");
 });
 
 test("validation accepts a full valid config", () => {
@@ -119,7 +119,6 @@ test("invalid values sanitize to defaults instead of crashing the loader", () =>
     const { config, warnings } = loadBackgroundTasksConfig("");
     assert.equal(config.enabled, true);
     assert.equal(config.maxFinishedTasks, DEFAULT_CONFIG.maxFinishedTasks);
-    assert.equal(config.delegate.extensionMode, "isolated");
     assert.ok(warnings.length >= 1);
   });
 });

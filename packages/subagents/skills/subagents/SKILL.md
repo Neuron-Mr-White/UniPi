@@ -5,7 +5,9 @@ description: Delegating work to independent subagents (run_subagent/read_subagen
 
 # Subagents
 
-`/unipi:` has no subagent commands — the model drives delegation through tools.
+The model drives delegation through tools. For the user: `/unipi:subagents` (or ↓ from an empty
+input) opens the subagent panel; `/unipi:agents` manages custom agents; Ctrl+B moves a foreground
+subagent to the background.
 
 - `run_subagent({title, task, profile, is_background?, resume?})` launches an independent agent
   with its own context. It does not see this conversation — put everything it needs in `task`.

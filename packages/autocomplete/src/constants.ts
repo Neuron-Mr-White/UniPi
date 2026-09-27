@@ -61,6 +61,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // btw
   "unipi:btw":           "btw",
 
+  // subagents
+  "unipi:subagents":     "subagents",
+  "unipi:agents":        "subagents",
+
   // mcp (5 commands)
   "unipi:mcp-status":   "mcp",
 
@@ -143,6 +147,9 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:global-memory-list": "List all memories across all projects",
 
   "unipi:btw":           "Ask a side question in an inline panel (read-only)",
+
+  "unipi:subagents":     "Open the subagent panel (also ↓ from an empty input)",
+  "unipi:agents":        "Manage subagent profiles — create, edit, copy, delete custom agents",
 
   "unipi:mcp-status":   "Show MCP server status",
 

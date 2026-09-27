@@ -27,14 +27,6 @@ export interface BackgroundTasksConfig {
   maxFinishedTasks: number;
   /** Output cap in bytes before a task is killed+failed (default 20 MiB). */
   maxOutputBytes: number;
-  /** Delegate defaults. */
-  delegate: {
-    extensionMode: "isolated" | "ambient";
-    autoDeliver: "never" | "when_small" | "always";
-    maxTurns: number;
-    maxToolCalls: number;
-    timeoutSeconds: number;
-  };
 }
 
 export const DEFAULT_CONFIG: BackgroundTasksConfig = {
@@ -44,13 +36,6 @@ export const DEFAULT_CONFIG: BackgroundTasksConfig = {
   defaultTimeoutSeconds: 0,
   maxFinishedTasks: 30,
   maxOutputBytes: 20 * 1024 * 1024,
-  delegate: {
-    extensionMode: "isolated",
-    autoDeliver: "when_small",
-    maxTurns: 40,
-    maxToolCalls: 120,
-    timeoutSeconds: 900,
-  },
 };
 
 function getGlobalConfigPath(): string {
@@ -144,32 +129,6 @@ export function validateBackgroundTasksConfig(config: unknown): string[] {
       problems.push("maxOutputBytes must be an integer >= 1024");
     }
   }
-  if (c.delegate !== undefined) {
-    if (typeof c.delegate !== "object" || c.delegate === null) {
-      problems.push("delegate must be an object");
-    } else {
-      const d = c.delegate as Record<string, unknown>;
-      if (d.extensionMode !== undefined && d.extensionMode !== "isolated" && d.extensionMode !== "ambient") {
-        problems.push('delegate.extensionMode must be "isolated" or "ambient"');
-      }
-      if (
-        d.autoDeliver !== undefined &&
-        d.autoDeliver !== "never" &&
-        d.autoDeliver !== "when_small" &&
-        d.autoDeliver !== "always"
-      ) {
-        problems.push('delegate.autoDeliver must be "never", "when_small", or "always"');
-      }
-      for (const key of ["maxTurns", "maxToolCalls"] as const) {
-        if (d[key] !== undefined && (typeof d[key] !== "number" || !Number.isInteger(d[key]) || (d[key] as number) < 1)) {
-          problems.push(`delegate.${key} must be a positive integer`);
-        }
-      }
-      if (d.timeoutSeconds !== undefined && (typeof d.timeoutSeconds !== "number" || !Number.isFinite(d.timeoutSeconds) || (d.timeoutSeconds as number) <= 0)) {
-        problems.push("delegate.timeoutSeconds must be a positive number");
-      }
-    }
-  }
   return problems;
 }
 
@@ -201,29 +160,6 @@ registerSettings({
         { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0, zeroLabel: "∞ none" },
         { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1 },
         { key: "maxOutputBytes", type: "number", label: "Output cap bytes", min: 1024, description: "Kill+fail a task past this output size" },
-      ],
-    },
-    {
-      title: "Delegate",
-      fields: [
-        {
-          key: "delegate.extensionMode",
-          type: "enum",
-          label: "Extension mode",
-          options: [
-            { value: "isolated", label: "isolated" },
-            { value: "ambient", label: "ambient (weakens isolation)" },
-          ],
-        },
-        {
-          key: "delegate.autoDeliver",
-          type: "enum",
-          label: "Auto deliver",
-          options: ["when_small", "always", "never"],
-        },
-        { key: "delegate.maxTurns", type: "number", label: "Max turns", min: 1 },
-        { key: "delegate.maxToolCalls", type: "number", label: "Max tool calls", min: 1 },
-        { key: "delegate.timeoutSeconds", type: "number", label: "Timeout s", min: 1 },
       ],
     },
   ],
@@ -278,15 +214,6 @@ export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksCon
       typeof merged.maxOutputBytes === "number" && Number.isInteger(merged.maxOutputBytes) && merged.maxOutputBytes >= 1024
         ? merged.maxOutputBytes
         : DEFAULT_CONFIG.maxOutputBytes,
-    delegate: {
-      ...DEFAULT_CONFIG.delegate,
-      ...merged.delegate,
-      extensionMode: merged.delegate?.extensionMode === "ambient" ? "ambient" : "isolated",
-      autoDeliver:
-        merged.delegate?.autoDeliver === "never" || merged.delegate?.autoDeliver === "always"
-          ? merged.delegate.autoDeliver
-          : "when_small",
-    },
   };
   return { config, warnings };
 }

@@ -132,7 +132,7 @@ test("index.json persists; restore marks running → failed", () => {
   m2.restore(cwd, "s1");
   const rec = m2.record((r as { run: { record: { id: string } } }).run.record.id);
   assert.equal(rec?.status, "failed");
-  assert.match(rec?.error ?? "", /interrupted by reload/);
+  assert.match(rec?.error ?? "", /interrupted/);
   rmSync(cwd, { recursive: true, force: true });
 });
 
