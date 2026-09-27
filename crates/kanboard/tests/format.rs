@@ -372,6 +372,7 @@ fn strategy_and_plan_round_trip_and_back_compat() {
         "T-1.md",
         "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\nrun:\n  session: s1\n  pid: 1\n  host: h\n  mode: direct\n  started: 2026-01-01T00:00:00Z\n---\n\nBody\n",
     );
+    assert!(problems.is_empty(), "{problems:?}");
     let task = task.unwrap();
     assert_eq!(task.strategy, None);
     assert_eq!(task.plan, None);

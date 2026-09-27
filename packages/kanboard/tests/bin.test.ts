@@ -65,8 +65,12 @@ describe("binary resolution", () => {
 
     const resolved = resolveBinary({} as NodeJS.ProcessEnv, join(project, "index.js"));
     // env → dev build → platform package: inside a source checkout the crate's
-    // own build wins; the package serves installs without a crates/ tree.
-    assert.equal(resolved?.source, "dev-build", "the dev build wins over the package");
+    // own build wins; the package serves installs without a crates/ tree (and
+    // checkouts that never built the crate, like the JS CI job).
+    const devBuilt = ["release", "debug"].some((profile) =>
+      existsSync(join(repoRoot, "crates", "kanboard", "target", profile, `unipi-kanboard${exeSuffix()}`)),
+    );
+    assert.equal(resolved?.source, devBuilt ? "dev-build" : "platform-package", "the dev build wins over the package");
     assert.equal(platformPackagePath(join(project, "index.js")), binary);
     // …and the packaged path is found (dev build wins when both exist).
     assert.equal(platformPackagePath(join(project, "index.js")), binary);
