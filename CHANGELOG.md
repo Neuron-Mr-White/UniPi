@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.3] — 2026-09-27
+
+### Breaking Changes
+
+- **BREAKING: `subagents` rebuilt on Devin's model.** `spawn_helper`/`get_helper_result` and `bg_delegate`/`bg_result` are gone, along with workflow scripts, missions, schedules, budgets, acceptance gates, agent memory, worktrees, prompt templates and the bundled agents. **Migration path:** use `run_subagent` (foreground / background / resume) with `subagent_explore` or `subagent_general`, or a custom markdown agent in `~/.unipi/config/agents` / `<project>/.unipi/config/agents` (`/unipi:agents` creates them). `read_subagent` replaces the old result tools. Saved `backgroundTasks.delegate.*` settings are ignored, not deleted.
+- **BREAKING: `btw` is an inline panel.** `/unipi:btw-new`, `-tangent`, `-clear`, `-inject`, `-summarize` and `--save` are removed; each `/unipi:btw` question runs in a fresh read-only session seeded from the main branch. Old btw notes still render.
+- **BREAKING: `/unipi:model` saves the default with Alt+Enter**, not Ctrl+S (which clashed with terminals, VS Code, Zellij and XOFF). The startup model and thinking level are also in `/unipi:settings → Fusion → Startup`.
+- `long-horizon`: default mode is now `none` (the judge still routes); set `longHorizon.defaultMode` to keep the old behaviour.
+- `workflow`: the all-projects permission mode moved to its own `permission.defaultMode` key (migrated once from a legacy global `mode`).
+
+### Added
+
+- **subagents: Devin-parity screens.** Live foreground card, `N subagents (k running) · ↓ select` strip, ↓ opens a dock (view transcript, `f` foreground, `x` cancel), Ctrl+B backgrounds and Esc cancels a foreground run, state survives resume. Settings hub: default model, thinking, max running, "Manage agents…".
+- **fusion: Devin-parity sidekick.** Steps stream into the chat, blocking handoffs forward approvals to you, background handoffs deny them; the sidekick runs the lead's extensions. Fusion's lead policy and long-horizon's mode block are named system-prompt sections (long-horizon used to drop the lead policy).
+- **kanboard:** task strategies (none/goal/ralph/swarm/graph) and plan-first labels, board default strategy `auto` (jev picks), blocking policy `avoid` (agents note assumptions instead of blocking), grouped board settings dialog written through to the extension settings, Review lane "Done all".
+- **TUI:** one visual language from a shared kit in `@pi-unipi/core` — crafted spinner, badges, rails, progress bars. Subagent cards settle to ✓/✗ in place; background notices, `read_subagent` and the dock are badges; memory cards are rails.
+- **Progress bars** for ralph (checklist), kanboard (board) and goal (a user-only side estimate + summary per loop and on `/unipi:goal status`, configurable in Long-Horizon → Progress).
+- **input-shortcuts:** Ctrl+C keeps the cleared input struck through in the transcript (never sent to the model); ↑ restores it.
+- `core`: every unipi command echoes `❭ /cmd args` in the transcript; the settings engine has an optional `onSet` hook.
+- `npm run tui:gallery` — standalone preview of UniPi's TUI designs, spinners and terminal capabilities.
+
+### Fixed
+
+- **long-horizon: goal and ralph loops no longer stop after the first turn.** The next-turn message was sent while pi still counted the turn as running and was rejected (`Agent is already processing`); it is now queued as a follow-up.
+- **long-horizon: batched goals no longer stall.** A turn that changed files and then claimed completion counted as no progress when the verifier said not met, so goals that claim after every batch got a generic nudge instead of the verifier's feedback and paused after eight claims.
+- **fusion:** the Fusion row can always be applied — the model cache refreshes on a miss (bridge-registered models were "not available"), stale saved lead/sidekick keys are dropped, and Enter/Tab opens the dropdown for a missing half. Sidekick tools only appear while Fusion is active; the picker is wide again.
+- **settings:** the permission project and default rows no longer open two pickers at once.
+- **kanboard:** the binary lookup prefers a source checkout's dev build over a stale platform package.
+- **memory:** at most one queued save reminder.
+
 ## [3.0.0-alpha.2] — 2026-09-26
 
 ### Fixed

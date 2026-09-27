@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/skill-registry",
-  "version": "3.0.0-alpha.2",
+  "version": "3.0.0-alpha.3",
   "description": "Placeholder for the upcoming unipi skill registry — hosts the bundled workflow skills",
   "type": "module",
   "license": "MIT",
