@@ -29,6 +29,7 @@
     "publish:all": "npm publish --workspaces --access public",
     "test": "npx tsx --test tests/*.test.js packages/memory/tests/*.test.ts && npm test --workspaces --if-present",
     "typecheck": "npx tsc --noEmit --skipLibCheck",
+    "tui:gallery": "npx tsx scripts/tui-gallery/index.ts",
     "publish:kanboard": "node scripts/publish-kanboard-platforms.mjs"
   },
   "files": [
