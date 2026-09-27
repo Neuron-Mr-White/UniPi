@@ -130,8 +130,11 @@ export default function longHorizon(pi: ExtensionAPI): void {
     toolset,
     owner,
     verifier: { evaluate: async () => { throw new Error("verifier unbound"); } },
+    // Sent from agent_end, while pi still counts the run as streaming: a plain
+    // send is rejected ("Agent is already processing") and the loop stalls.
+    // followUp queues it for the next turn (and is ignored when idle).
     send: (message) => {
-      void pi.sendUserMessage(message);
+      void pi.sendUserMessage(message, { deliverAs: "followUp" });
     },
   });
   // Ralph loop rides the same goal machine + verifier; footer events preserved.
@@ -139,8 +142,11 @@ export default function longHorizon(pi: ExtensionAPI): void {
     machine,
     owner,
     ralphDir: () => join(stateDir("long-horizon", "state"), "ralph"),
+    // Sent from agent_end, while pi still counts the run as streaming: a plain
+    // send is rejected ("Agent is already processing") and the loop stalls.
+    // followUp queues it for the next turn (and is ignored when idle).
     send: (message) => {
-      void pi.sendUserMessage(message);
+      void pi.sendUserMessage(message, { deliverAs: "followUp" });
     },
     onEvent: (event) => {
       if (event.type === "loop_start") {
