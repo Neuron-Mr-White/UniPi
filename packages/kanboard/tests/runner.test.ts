@@ -339,10 +339,12 @@ describe("runner", { skip: !hasBinary }, () => {
     // long-horizon judge settings must look like a decisions model for askJev.
     const { registerSettings, setSettings } = await import("@pi-unipi/core");
     registerSettings({ namespace: "long-horizon", label: "LH", defaults: { judge: {} } });
+    // Project scope (the temp workspace) — "global" is the real ~/.unipi config
+    // and once overwrote users' judge key with this fake one.
     setSettings(
       "long-horizon",
       { judge: { provider: "openrouter", model: "typesafe/jev-1.13", apiKey: "k", baseUrl: "" } },
-      "global",
+      "project",
       workspace,
     );
     try {
