@@ -10,8 +10,10 @@ import { askJev, type JevSettings } from "@pi-unipi/core";
 
 export interface PruneCandidate {
   key: string;
-  kind: "request" | "decision" | "error" | "report";
+  kind: "request" | "decision" | "error" | "report" | "lesson" | "supersede";
   text: string;
+  /** supersede: the earlier item; dropping means dropping it (its key). */
+  earlier?: string;
 }
 
 /**
@@ -24,7 +26,13 @@ export const DROP_PROBABILITY: Record<PruneCandidate["kind"], number> = {
   request: 0.8,
   error: 0.75,
   report: 0.7,
+  lesson: 0.8,
+  supersede: 0.8,
 };
+
+/** Kinds judged on the item alone — jev sees no session state, only the question. */
+const LOCAL_KINDS = new Set<PruneCandidate["kind"]>(["lesson", "supersede"]);
+const LOCAL_STATE = "Items taken from a coding agent's session history. Judge each on its own text.";
 const BATCH = 20;
 const STATE_CHARS = 6000;
 
@@ -33,9 +41,31 @@ const KIND_LABEL: Record<PruneCandidate["kind"], string> = {
   decision: "Earlier user decision or constraint",
   error: "Tool error seen earlier",
   report: "Earlier progress report",
+  lesson: "Note the agent wrote during the session",
+  supersede: "",
 };
 
 function question(candidate: PruneCandidate) {
+  if (candidate.kind === "lesson") {
+    return {
+      type: "choice",
+      instructions: `${KIND_LABEL.lesson}: ${candidate.text}\nIs this a durable lesson about the project or its tools — something that would prevent a future mistake?`,
+      criteria: {
+        keep: "A reusable fact: how a tool, API, config or system behaves; a pitfall and its fix; a rule to follow.",
+        drop: "A one-off status or progress note, a guess that was not confirmed, or a step-by-step narration.",
+      },
+    };
+  }
+  if (candidate.kind === "supersede") {
+    return {
+      type: "choice",
+      instructions: `EARLIER: ${candidate.earlier}\nLATER: ${candidate.text}\nDoes LATER replace, reverse, or make EARLIER outdated?`,
+      criteria: {
+        drop: "Yes: LATER changes, reverts, corrects or supersedes what EARLIER says, so EARLIER is no longer true.",
+        keep: "No: they are about different things, or LATER adds to EARLIER without contradicting it.",
+      },
+    };
+  }
   return {
     type: "choice",
     instructions:
@@ -61,12 +91,15 @@ export async function pruneWithJev(
   const ask = opts.ask ?? askJev;
   const clippedState = state.length > STATE_CHARS ? state.slice(state.length - STATE_CHARS) : state;
   let answered = 0;
-  const batches: PruneCandidate[][] = [];
-  for (let i = 0; i < candidates.length; i += BATCH) batches.push(candidates.slice(i, i + BATCH));
+  const batches: Array<{ state: string; items: PruneCandidate[] }> = [];
+  for (const local of [false, true]) {
+    const group = candidates.filter((c) => LOCAL_KINDS.has(c.kind) === local);
+    for (let i = 0; i < group.length; i += BATCH) batches.push({ state: local ? LOCAL_STATE : clippedState, items: group.slice(i, i + BATCH) });
+  }
   await Promise.all(
-    batches.map(async (batch) => {
+    batches.map(async ({ state: batchState, items: batch }) => {
       const questions = Object.fromEntries(batch.map((c, i) => [`q${i}`, question(c)]));
-      const answers = await ask({ state: clippedState, questions, settings: { ...settings, timeoutMs: settings.timeoutMs || 15_000 }, signal: opts.signal });
+      const answers = await ask({ state: batchState, questions, settings: { ...settings, timeoutMs: settings.timeoutMs || 15_000 }, signal: opts.signal });
       if (!answers) return;
       batch.forEach((c, i) => {
         const a = answers[`q${i}`] as { choice?: string; probabilities?: Record<string, number> } | undefined;

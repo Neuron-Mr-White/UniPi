@@ -78,6 +78,8 @@ export interface SummarySource {
   requests: string[];
   /** Assistant prose per message, raw text, oldest first. */
   reports: string[];
+  /** Blocks of the kept tail (after the cut): newer truth, used only to spot what it replaces. */
+  tail?: NormalizedBlock[];
 }
 
 /** Origin marks recorded anywhere on the branch. */
@@ -148,5 +150,10 @@ export function collectSummarySource(
     blocks.push(...normalizeAgentMessage(message, i));
   }
 
-  return { blocks: filterNoise(blocks), requests, reports };
+  const tail: NormalizedBlock[] = [];
+  for (let i = end; i < branchEntries.length; i++) {
+    const entry = branchEntries[i];
+    if (entry?.type === "message" && entry.message && entry.message.role !== "custom") tail.push(...normalizeAgentMessage(entry.message, i));
+  }
+  return { blocks: filterNoise(blocks), requests, reports, tail: filterNoise(tail) };
 }

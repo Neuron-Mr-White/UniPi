@@ -68,6 +68,7 @@ registerSettings({
         { key: "sections.files", type: "boolean", label: "Section: files" },
         { key: "sections.commits", type: "boolean", label: "Section: commits" },
         { key: "sections.errors", type: "boolean", label: "Section: open errors" },
+        { key: "sections.lessons", type: "boolean", label: "Section: lessons", description: "Lessons the agent wrote down: memory notes, # comments, diagnoses" },
         { key: "sections.transcript", type: "boolean", label: "Section: recent transcript" },
         { key: "cooldownMs", type: "number", label: "Percentage cooldown ms", min: 0, zeroLabel: "none", description: "Minimum delay between percentage-triggered compactions" },
         { key: "repeatMinGrowthTokens", type: "number", label: "Percentage repeat growth", min: 0, zeroLabel: "off", description: "New tokens needed to compact again while still above the percentage" },

@@ -34,6 +34,9 @@ import type { BudgetCutKind, CompactionMethod, CompactionStats, CompactorConfig,
 
 export const COMPACTOR_ID = "@pi-unipi/compactor";
 const SUMMARY_CHARS_PER_TOKEN = 4;
+/** Kept-tail sizing against the model window: recut above LIMIT, down to SHARE. */
+const TAIL_WINDOW_LIMIT = 0.4;
+const TAIL_WINDOW_SHARE = 0.25;
 
 /** Custom types from the pre-rework compactor, still present in old sessions. */
 const LEGACY_HIDDEN_TYPES = new Set(["compactor-auto-continue", "unipi-compactor-resume"]);
@@ -90,6 +93,8 @@ export interface LosslessPlanInput {
   fileOps?: FileOps;
   keepUserTurns?: number | null;
   keepExplicit?: boolean;
+  /** The model's context window; the kept tail is sized to fit it. */
+  contextWindow?: number;
   config: CompactorConfig;
   cwd?: string;
   reason?: string;
@@ -126,6 +131,15 @@ export function planLosslessCompaction(input: LosslessPlanInput): LosslessPlan {
   });
   let cut = buildOwnCut(branch, smartKeep.keepUserTurns);
   if (cut.ok && !explicit) cut = applyTailBudget(branch, cut, { charsPerToken: cpt });
+  // Whatever keep asked for, the tail must leave room for the system prompt,
+  // the summary and the next turns: recut above 40% of the window (to 25%).
+  if (cut.ok && input.contextWindow && input.contextWindow > 0) {
+    cut = applyTailBudget(branch, cut, {
+      charsPerToken: cpt,
+      maxTokens: Math.floor(input.contextWindow * TAIL_WINDOW_SHARE),
+      oversizedFactor: TAIL_WINDOW_LIMIT / TAIL_WINDOW_SHARE,
+    });
+  }
   if (!cut.ok) return { ok: false, reason: cut.reason };
 
   const keptIdx = cut.firstKeptEntryId ? branch.findIndex((e) => e.id === cut.firstKeptEntryId) : -1;
@@ -136,7 +150,9 @@ export function planLosslessCompaction(input: LosslessPlanInput): LosslessPlan {
   const keptTokens = estimateTokensFromChars(keptChars, cpt);
 
   const source = collectSummarySource(branch, endIdx);
-  const budgetTokens = config.summaryBudgetTokens > 0 ? config.summaryBudgetTokens : autoBudgetTokens(source.blocks.length);
+  const wanted = config.summaryBudgetTokens > 0 ? config.summaryBudgetTokens : autoBudgetTokens(source.blocks.length);
+  // Small-context models: the summary may not crowd out the work (≤8% of the window).
+  const budgetTokens = input.contextWindow && input.contextWindow > 0 ? Math.min(wanted, Math.max(800, Math.floor(input.contextWindow * 0.08))) : wanted;
   const summaryInput: LosslessSummaryInput = {
     source,
     activeWork: config.sections.activeWork ? collectCompactionContext() : [],
@@ -209,7 +225,7 @@ export async function planJevCompaction(
   return withMethod(plan, "jev", {
     asked: result.asked,
     dropped: result.drop.size,
-    droppedItems: candidates.filter((c) => result.drop.has(c.key)).map((c) => `${c.kind}: ${c.text.slice(0, 120)}`),
+    droppedItems: candidates.filter((c) => result.drop.has(c.key)).map((c) => `${c.kind}: ${(c.earlier ?? c.text).slice(0, 120)}`),
   });
 }
 
@@ -364,6 +380,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
       config,
       cwd,
       reason,
+      contextWindow: ctx?.model?.contextWindow,
     };
     const plan = method === "jev"
       ? await planJevCompaction(planInput, jevPruner(cwd, event.signal))
@@ -442,7 +459,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     try {
       const draft = config.method === "llm"
         ? await boundaryLlmDraft(pi, ctx, branch, config)
-        : await boundaryLosslessDraft(branch, config, cwd, decision.usage?.tokens);
+        : await boundaryLosslessDraft(branch, config, cwd, decision.usage?.tokens, ctx.model?.contextWindow);
       if (!draft) {
         autoState = markAutoCompactionError(autoState, Date.now());
         return;
@@ -467,8 +484,8 @@ type BoundaryDraft = {
   stats: CompactionStats | null;
 };
 
-async function boundaryLosslessDraft(branch: any[], config: CompactorConfig, cwd: string, tokensBefore?: number): Promise<BoundaryDraft | null> {
-  const input: LosslessPlanInput = { branchEntries: branch, tokensBefore, config, cwd, reason: "percent" };
+async function boundaryLosslessDraft(branch: any[], config: CompactorConfig, cwd: string, tokensBefore?: number, contextWindow?: number): Promise<BoundaryDraft | null> {
+  const input: LosslessPlanInput = { branchEntries: branch, tokensBefore, config, cwd, reason: "percent", contextWindow };
   const plan = config.method === "jev" ? await planJevCompaction(input, jevPruner(cwd)) : planLosslessCompaction(input);
   if (!plan.ok) return null;
   lastStats = plan.stats;

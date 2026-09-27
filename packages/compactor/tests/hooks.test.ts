@@ -3,11 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
-import { planJevCompaction, registerCompactionHooks, setPendingCompaction } from "../src/compaction/hooks.js";
+import { planJevCompaction, planLosslessCompaction, registerCompactionHooks, setPendingCompaction } from "../src/compaction/hooks.js";
 import { loadConfig, translateLegacyConfig } from "../src/config/manager.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
 import { originKey } from "../src/compaction/source.js";
-import { workingSession } from "./fixtures.js";
+import { assistant, user, workingSession } from "./fixtures.js";
 
 // Bun caches homedir(), so tests pin every value in the PROJECT scope (under a
 // temp cwd), which overrides whatever the machine's global config says.
@@ -198,5 +198,30 @@ describe("jev method", () => {
     const plan = await planJevCompaction(input(), async (c) => ({ drop: new Set(), asked: c.length, answered: 0 }));
     expect(plan.ok && (plan.details.jev as any).jev).toBe("unavailable");
     expect(plan.ok && plan.summary).toContain("[Your Requests]");
+  });
+});
+
+describe("fits the model window", () => {
+  // 12 turns of ~4k tokens each (16k chars): ~48k tokens of history.
+  const big = () => {
+    const out: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      out.push(user(`turn ${i}: please continue the work`));
+      out.push(assistant(`working on step ${i} ` + "x".repeat(16_000)));
+    }
+    return out;
+  };
+
+  it("an explicit keep that would overflow a 32k window is recut to fit", () => {
+    const plan = planLosslessCompaction({ branchEntries: big(), tokensBefore: 48_000, config: { ...DEFAULT_COMPACTOR_CONFIG }, cwd, keepUserTurns: 10, keepExplicit: true, contextWindow: 32_000 });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.stats.keptTokensEst).toBeLessThanOrEqual(32_000 * 0.4);
+    expect(plan.summary.length / 4).toBeLessThanOrEqual(32_000 * 0.08 + 50);
+  });
+
+  it("a large window keeps the requested tail", () => {
+    const plan = planLosslessCompaction({ branchEntries: big(), tokensBefore: 48_000, config: { ...DEFAULT_COMPACTOR_CONFIG }, cwd, keepUserTurns: 3, keepExplicit: true, contextWindow: 1_000_000 });
+    expect(plan.ok && plan.stats.keptUserTurns).toBe(3);
   });
 });

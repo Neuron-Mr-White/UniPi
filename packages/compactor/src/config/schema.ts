@@ -20,6 +20,7 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     files: true,
     commits: true,
     errors: true,
+    lessons: true,
     transcript: true,
   },
   cooldownMs: 60_000,

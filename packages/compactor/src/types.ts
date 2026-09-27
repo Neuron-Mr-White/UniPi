@@ -67,6 +67,7 @@ export interface SummarySections {
   files: boolean;
   commits: boolean;
   errors: boolean;
+  lessons: boolean;
   transcript: boolean;
 }
 

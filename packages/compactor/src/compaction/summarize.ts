@@ -29,6 +29,7 @@ export const DEFAULT_SECTIONS: SummarySections = {
   files: true,
   commits: true,
   errors: true,
+  lessons: true,
   transcript: true,
 };
 
@@ -284,6 +285,89 @@ export function selectFiles(blocks: NormalizedBlock[], cwd: string | undefined, 
   ].filter(Boolean);
 }
 
+// ── Lessons ─────────────────────────────────────────────
+// Failures turn into knowledge only if someone writes the lesson down. The
+// agent usually does, in its own words: memory_store notes, "# Confirmed: …"
+// comments in the commands it runs, and diagnosis sentences ("root cause…",
+// "…silently ignores…"). Keep those verbatim instead of generating anything.
+
+const MEMORY_TOOL_RE = /^(?:memory_store|memory_save|memory_add|save_memory|remember)$/i;
+/** Marks a learned fact, not a status update. */
+const LESSON_MARK_RE =
+  /\b(?:root cause|turns out|found it|confirmed|gotcha|caveat|silently|no-?ops?|doesn'?t (?:support|work|accept)|not supported|only works|rejects?|ignores?|the fix (?:is|was)|workaround|breaks? (?:when|if)|must (?:use|be|run)|requires?|instead of|never|always)\b/i;
+/** Diagnosis sentences need a stronger mark than comments (prose is chattier). */
+const DIAGNOSIS_RE =
+  /\b(?:root cause|turns out|gotcha|caveat|silently|no-?ops?|doesn'?t (?:support|accept)|not supported|only works|rejects?|ignores?|the (?:real )?(?:issue|problem|bug|cause) (?:is|was)|the fix (?:is|was)|workaround)\b/i;
+
+/** Debug narration ("my DBG print never fired") is the hunt, not the finding. */
+const DEBUG_RE = /\b(?:DBG|debug(?:ging)? (?:print|log|output)|print(?:ed)? (?:never|didn'?t)|never (?:fired|printed)|let me|I'?ll (?:check|look|try))\b/i;
+
+export interface LessonCandidate {
+  text: string;
+  source: "memory" | "comment" | "diagnosis";
+  /** Block index (session order). */
+  at: number;
+}
+
+/** Agent-written lessons in session order (later duplicates win). */
+export function lessonCandidates(blocks: NormalizedBlock[]): LessonCandidate[] {
+  const out = new Map<string, LessonCandidate>();
+  let at = 0;
+  const add = (text: string, source: LessonCandidate["source"]) => {
+    const t = oneLine(text);
+    if (t.length < 30) return;
+    const key = itemKey(t);
+    out.delete(key);
+    out.set(key, { text: clip(t, 320), source, at });
+  };
+  for (const [i, b] of blocks.entries()) {
+    at = i;
+    if (b.kind === "tool_call" && MEMORY_TOOL_RE.test(b.name)) {
+      const raw = [b.args.content, b.args.text, b.args.memory, b.args.note].find((v) => typeof v === "string") as string | undefined;
+      // Past a bare header ("ROOT CAUSES CONFIRMED:"): lines until there is substance.
+      if (raw) {
+        const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+        let text = "";
+        for (const l of lines) {
+          text = text ? `${text} ${l}` : l;
+          if (text.length >= 160) break;
+        }
+        add(text, "memory");
+      }
+    } else if (b.kind === "tool_call" && typeof b.args.command === "string") {
+      for (const line of b.args.command.split("\n")) {
+        const m = line.match(/^\s*#+\s*(.+)$/);
+        // A comment ending in ":" introduces the next command; it is not a finding.
+        if (m && m[1].length <= 300 && !/:\s*$/.test(m[1]) && !DEBUG_RE.test(m[1]) && (DIAGNOSIS_RE.test(m[1]) || /\b(?:confirmed|found it)\b/i.test(m[1])) && LESSON_MARK_RE.test(m[1])) add(m[1], "comment");
+      }
+    } else if (b.kind === "assistant") {
+      for (const sentence of b.text.replace(/```[\s\S]*?```/g, " ").split(/(?<=[.!?])\s+|\n+/)) {
+        const t = sentence.trim();
+        if (t.length >= 50 && t.length <= 320 && !t.endsWith("?") && !DEBUG_RE.test(t) && DIAGNOSIS_RE.test(t)) add(t, "diagnosis");
+      }
+    }
+  }
+  return [...out.values()];
+}
+
+const LESSON_PRIORITY: Record<LessonCandidate["source"], number> = { memory: 0, comment: 1, diagnosis: 2 };
+
+/** Memory notes first, then comments, then diagnoses; newest first within each; chronological output. */
+export function selectLessons(blocks: NormalizedBlock[], maxChars: number, drop: ReadonlySet<string> = NO_DROP): string[] {
+  const all = lessonCandidates(blocks)
+    .map((c, i) => ({ ...c, i }))
+    .filter((c) => !drop.has(itemKey(c.text)));
+  const ranked = [...all].sort((a, b) => LESSON_PRIORITY[a.source] - LESSON_PRIORITY[b.source] || b.i - a.i);
+  const chosen: typeof all = [];
+  let used = 0;
+  for (const c of ranked) {
+    if (used + c.text.length + 3 > maxChars) continue;
+    chosen.push(c);
+    used += c.text.length + 3;
+  }
+  return chosen.sort((a, b) => a.i - b.i).map((c) => c.text);
+}
+
 // ── Project Knowledge ───────────────────────────────────
 // What the agent learned about the project that no user message states:
 // the notes it wrote (where deploy steps and conventions live), the commands
@@ -349,6 +433,16 @@ export function selectKnowledge(blocks: NormalizedBlock[], cwd: string | undefin
 }
 
 // ── Commits ──────────────────────────────────────────────
+
+/** Commit subjects in session order, for supersede pairing. */
+function commitTimeline(blocks: NormalizedBlock[]): Array<{ text: string; at: number }> {
+  const out: Array<{ text: string; at: number }> = [];
+  for (const [i, b] of blocks.entries()) {
+    if (b.kind !== "tool_result" || b.isError) continue;
+    for (const m of b.text.matchAll(COMMIT_LINE_RE)) out.push({ text: `commit ${m[2].slice(0, 8)}: ${clip(m[3].trim(), 160)}`, at: i });
+  }
+  return out;
+}
 
 const COMMIT_LINE_RE = /\[([\w./@-]+)(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+?)(?= \d+ files? changed|$)/g;
 /** `git commit -m "msg"` / `-qm 'msg'` — for quiet commits that print no summary line. */
@@ -446,8 +540,46 @@ export const REPORT_KEY = "__last_full_report__";
 
 export interface SummaryCandidate {
   key: string;
-  kind: "request" | "decision" | "error" | "report";
+  kind: "request" | "decision" | "error" | "report" | "lesson" | "supersede";
   text: string;
+  /** supersede: the earlier item that `text` may replace (key is the earlier item's). */
+  earlier?: string;
+}
+
+const STOP = new Set("the and for that this with from have will should would could into your about there their them then than when what which while also just like only more some such very been being were they those these after before does done make made need needs want wants user agent".split(" "));
+const contentWords = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9_.\-/]{4,}|\d+(?:\.\d+)?x?/g) ?? []).filter((w) => !STOP.has(w)));
+
+/**
+ * Pairs (earlier, later) about the same thing — shared distinctive words —
+ * so jev can answer a local question: does the later one replace the earlier?
+ */
+export function supersedePairs(
+  items: string[],
+  maxPairs = 30,
+  canBeEarlier: (i: number) => boolean = () => true,
+  perLater = 3,
+): Array<{ earlier: string; later: string }> {
+  const words = items.map(contentWords);
+  const pairs: Array<{ earlier: string; later: string }> = [];
+  for (let j = items.length - 1; j > 0 && pairs.length < maxPairs; j--) {
+    const matches: Array<{ i: number; score: number }> = [];
+    for (let i = 0; i < j; i++) {
+      if (!canBeEarlier(i)) continue;
+      let shared = 0;
+      for (const w of words[j]) if (words[i].has(w)) shared++;
+      const union = words[i].size + words[j].size - shared;
+      const jaccard = union ? shared / union : 0;
+      // Overlap vs the shorter item: long notes about one subject share few
+      // words relative to their union. Jaccard ≥0.6 is the same statement twice.
+      const score = shared / Math.max(1, Math.min(words[i].size, words[j].size));
+      if (shared >= 3 && score >= 0.3 && jaccard < 0.6) matches.push({ i, score });
+    }
+    // One later item (a reversal) can replace several earlier ones.
+    for (const m of matches.sort((a, b) => b.score - a.score).slice(0, perLater)) {
+      if (pairs.length < maxPairs) pairs.push({ earlier: items[m.i], later: items[j] });
+    }
+  }
+  return pairs;
 }
 
 /** Items jev may prune: earlier requests, decisions, open errors, an older report. */
@@ -464,8 +596,26 @@ export function summaryCandidates(input: LosslessSummaryInput): SummaryCandidate
   const state = selectState(source.reports, budget);
   const report = state.find((l) => l.startsWith("Last full report"));
   if (report) out.push({ key: REPORT_KEY, kind: "report", text: clip(report, 700) });
+  // Local questions (no session state needed): is this a durable lesson, and
+  // does a later item replace an earlier one on the same subject?
+  const lessons = lessonCandidates(source.blocks);
+  for (const l of lessons.slice(-40)) out.push({ key: itemKey(l.text), kind: "lesson", text: l.text });
+  const ordered = [...requests.slice(1, -1).map((r) => clip(r, 300)), ...selectDecisions(source.requests, 1e9)];
+  // Agent-side timeline: a lesson may be replaced by a later lesson or commit.
+  const commits = commitTimeline(source.blocks);
+  // The kept tail is newer than everything summarized: its lessons and commits can only be LATER.
+  const tailBlocks = source.tail ?? [];
+  const tailItems = [...lessonCandidates(tailBlocks).map((l) => l.text), ...commitTimeline(tailBlocks).map((c) => c.text)];
+  const timeline = [
+    ...[...lessons.map((l) => ({ text: l.text, at: l.at, lesson: true })), ...commits.map((c) => ({ ...c, lesson: false }))].sort((a, b) => a.at - b.at),
+    ...tailItems.map((text) => ({ text, at: Number.MAX_SAFE_INTEGER, lesson: false })),
+  ];
+  const agentPairs = supersedePairs(timeline.map((t) => t.text), 30, (i) => timeline[i].lesson);
+  for (const p of [...supersedePairs(ordered, 12), ...agentPairs]) {
+    out.push({ key: itemKey(p.earlier), kind: "supersede", text: p.later, earlier: p.earlier });
+  }
   const seen = new Set<string>();
-  return out.filter((c) => (seen.has(c.key) ? false : (seen.add(c.key), true)));
+  return out.filter((c) => (seen.has(`${c.kind}:${c.key}`) ? false : (seen.add(`${c.kind}:${c.key}`), true)));
 }
 
 /** What jev judges against: active work, the latest requests and steps, recent commits and transcript. */
@@ -506,8 +656,9 @@ export function redactSecrets(text: string): string {
 
 const SHARES = {
   activeWork: 0.16,
-  requests: 0.16,
-  state: 0.14,
+  requests: 0.14,
+  state: 0.12,
+  lessons: 0.1,
   decisions: 0.16,
   files: 0.07,
   knowledge: 0.07,
@@ -539,6 +690,7 @@ export function buildLosslessSummary(input: LosslessSummaryInput): LosslessSumma
   if (on.state) parts.push(["Latest State", section("Latest State", selectState(source.reports, cap(SHARES.state), drop.has(REPORT_KEY)))]);
   if (on.decisions) parts.push(["Decisions & Constraints", section("Decisions & Constraints", selectDecisions(source.requests, cap(SHARES.decisions), requestSel.shown, drop))]);
   if (on.files) parts.push(["Files", section("Files", selectFiles(source.blocks, input.cwd, cap(SHARES.files)))]);
+  if (on.lessons) parts.push(["Lessons", section("Lessons", selectLessons(source.blocks, cap(SHARES.lessons), drop))]);
   if (on.files) parts.push(["Project Knowledge", section("Project Knowledge", selectKnowledge(source.blocks, input.cwd, cap(SHARES.knowledge)))]);
   if (on.commits) parts.push(["Commits", section("Commits", selectCommits(source.blocks, cap(SHARES.commits)))]);
   if (on.errors) parts.push(["Open Errors", section("Open Errors", selectOpenErrors(source.blocks, cap(SHARES.errors), drop))]);
