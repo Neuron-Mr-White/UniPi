@@ -23,7 +23,6 @@ const STATUS_DISPLAY: Record<string, { short: string; segmentId: string }> = {
   workflow: { short: "WF", segmentId: "currentCommand" },
   ralph: { short: "RL", segmentId: "activeLoops" },
   memory: { short: "MEM", segmentId: "projectCount" },
-  compactor: { short: "CMP", segmentId: "compactions" },
   mcp: { short: "MCP", segmentId: "serversTotal" },
   notify: { short: "NTF", segmentId: "platformsEnabled" },
   kanboard: { short: "KB", segmentId: "docsCount" },

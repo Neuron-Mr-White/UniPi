@@ -28,6 +28,12 @@ It is rebuilt from the **full** session history on every compaction, never merge
 
 Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling with session size). Credentials (typed passwords, API keys, bearer tokens) are redacted before anything is clipped; `session_recall` still has them. A closing line points the model to `session_recall`.
 
+## In the TUI
+
+- **Compaction card:** one line under Pi's own `[compaction]` block, e.g. `▌ Compacted 7.9k → 2.2k tokens · lossless + jev · 1 stale dropped · at 3%`. ctrl+o expands it: method, trigger, what was kept verbatim, summary sections, what jev dropped. It is a custom entry: shown, never sent to the model.
+- **Footer strip** (under the input): `5 compactions · 47k→15k · just now`, hidden until the first compaction. With the glance frame off, the `compactions` segment shows the same (`cmp 5× 47k→15k · 1m`).
+- **Info screen** (`/unipi:info` → Compactor): method and trigger settings, compactions by method, tokens before → after, the last compaction.
+
 ## When it compacts
 
 - **Pi's context limit** (default): Pi decides when, using its own compaction settings (`compaction.reserveTokens`, per-model overrides). The compactor decides what the summary contains. Pi continues the run after compacting.
@@ -43,7 +49,7 @@ Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling
 | Pi's /compact | same as Method | What Pi's built-in `/compact` does |
 | When | Pi's context limit | Or: at a percentage |
 | Percentage | 80 | Used when When = at a percentage |
-| Notifications | on | A notice when compaction runs or fails |
+| Notifications | on | The compaction card after automatic compactions (commands always show it); failures still notify |
 
 **Advanced compaction** (collapsed): smart keep tail, summary budget, per-section toggles, percentage cooldown and repeat growth, extra instructions for model summaries, debug output.
 

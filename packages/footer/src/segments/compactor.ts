@@ -1,23 +1,16 @@
 /**
- * @pi-unipi/footer — Compactor segments
+ * @pi-unipi/footer — Compactor segment
  *
- * Segment renderers for the compactor group: session_events, compactions,
- * tokens_saved, compression_ratio, search_queries.
+ * One dense, icon-free segment, shown once the session has compacted:
  *
- * Data sourced from piContext.sessionManager (live session data).
- * Segments without a reliable data source are hidden (visible: false)
- * rather than showing a placeholder like "—".
+ *   cmp 4× 39k→13k · 3m
+ *
+ * count, tokens before → after across all compactions, time since the last.
+ * Read from the session branch (Pi's compaction entries).
  */
 
 import type { FooterSegment, FooterSegmentContext, RenderedSegment } from "../types.js";
-import { applyColor, mutedPlaceholder } from "../rendering/theme.js";
-import { getIcon } from "../rendering/icons.js";
-import { isSegmentEnabled } from "../config.js";
-
-function withIcon(segmentId: string, text: string): string {
-  const icon = getIcon(segmentId);
-  return icon ? `${icon} ${text}` : text;
-}
+import { applyColor } from "../rendering/theme.js";
 
 function formatTokens(n: number): string {
   if (n < 1000) return n.toString();
@@ -26,10 +19,15 @@ function formatTokens(n: number): string {
   return `${(n / 1000000).toFixed(1)}M`;
 }
 
-/**
- * Tokens left after a compaction: the compactor records its estimate in
- * details.tokensAfter; otherwise estimate from the summary size.
- */
+function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+/** Tokens left after a compaction: our recorded estimate, else the summary size. */
 function tokensAfterOf(entry: any, before: number): number {
   const recorded = Number(entry?.details?.tokensAfter ?? 0);
   if (recorded > 0) return Math.min(recorded, before);
@@ -37,126 +35,50 @@ function tokensAfterOf(entry: any, before: number): number {
   return Math.min(before, Math.ceil(summaryChars / 4));
 }
 
-/** Hidden segment — no reliable data source available */
-function hidden(): RenderedSegment {
-  return { content: "", visible: false };
-}
-
-/** Safely extract sessionManager from piContext */
-function getSessionManager(ctx: FooterSegmentContext): any {
-  const piCtx = ctx.piContext as Record<string, unknown> | undefined;
-  return piCtx?.sessionManager as any | undefined;
-}
-
-/** Get all session events from sessionManager branch */
-function getSessionEvents(ctx: FooterSegmentContext): any[] {
-  const sm = getSessionManager(ctx);
-  if (!sm || typeof sm.getBranch !== "function") return [];
+function branchOf(ctx: FooterSegmentContext): any[] {
+  const sm = (ctx.piContext as Record<string, unknown> | undefined)?.sessionManager as any;
   try {
-    return sm.getBranch() ?? [];
+    return typeof sm?.getBranch === "function" ? (sm.getBranch() ?? []) : [];
   } catch {
     return [];
   }
 }
 
-function renderSessionEventsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  const events = getSessionEvents(ctx);
-  const count = events.length;
-  if (count === 0) {
-    if (isSegmentEnabled("compactor", "session_events")) {
-      return { content: mutedPlaceholder(withIcon("sessionEvents", "0")), visible: true };
-    }
-    return hidden();
+export function compactionSummary(branch: readonly any[], now = Date.now()): { count: number; before: number; after: number; lastAt?: number } {
+  let count = 0;
+  let before = 0;
+  let after = 0;
+  let lastAt: number | undefined;
+  for (const e of branch) {
+    if (e?.type !== "compaction") continue;
+    count++;
+    const b = Number(e.tokensBefore ?? 0);
+    before += b;
+    after += tokensAfterOf(e, b);
+    const at = Date.parse(e.timestamp ?? "");
+    if (Number.isFinite(at) && at <= now) lastAt = at;
   }
-
-  const content = withIcon("sessionEvents", `${count}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
+  return { count, before, after, ...(lastAt != null ? { lastAt } : {}) };
 }
 
 function renderCompactionsSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Count compaction entries in the session events
-  const events = getSessionEvents(ctx);
-  let compactionCount = 0;
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    if (e.type === "compaction" || e.type === "compacted") {
-      compactionCount++;
-    }
-  }
-  if (compactionCount === 0) {
-    if (isSegmentEnabled("compactor", "compactions")) {
-      return { content: mutedPlaceholder(withIcon("compactions", "0")), visible: true };
-    }
-    return hidden();
-  }
-
-  const content = withIcon("compactions", `${compactionCount}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
-}
-
-function renderTokensSavedSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Sum tokens saved from compaction entries.
-  // Pi's CompactionEntry has tokensBefore (total tokens before compaction).
-  const events = getSessionEvents(ctx);
-  let tokensSaved = 0;
-  let hasCompaction = false;
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    if (e.type === "compaction") {
-      hasCompaction = true;
-      const tokensBefore = Number(e.tokensBefore ?? 0);
-      tokensSaved += Math.max(0, tokensBefore - tokensAfterOf(e, tokensBefore));
-    }
-  }
-  if (!hasCompaction || tokensSaved === 0) return hidden();
-
-  const content = withIcon("tokensSaved", formatTokens(tokensSaved));
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
-}
-
-function renderCompressionRatioSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Calculate compression ratio from Pi's CompactionEntry.tokensBefore.
-  const events = getSessionEvents(ctx);
-  let totalBefore = 0;
-  let totalAfter = 0;
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    if (e.type === "compaction") {
-      const before = Number(e.tokensBefore ?? 0);
-      if (before > 0) {
-        totalBefore += before;
-        totalAfter += tokensAfterOf(e, before);
-      }
-    }
-  }
-  if (totalBefore === 0 || totalAfter === 0) return hidden();
-
-  const ratio = totalBefore / totalAfter;
-  const content = withIcon("compressionRatio", `${ratio.toFixed(1)}x`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
-}
-
-function renderSearchQueriesSegment(ctx: FooterSegmentContext): RenderedSegment {
-  // Count search events from session manager branch
-  const events = getSessionEvents(ctx);
-  let searchCount = 0;
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    const name = String((e as any).name ?? "").toLowerCase();
-    if (name.includes("search") || name.includes("ctx_search")) {
-      searchCount++;
-    }
-  }
-  if (searchCount === 0) return hidden();
-
-  const content = withIcon("searchQueries", `${searchCount}`);
-  return { content: applyColor("compactor", content, ctx.theme, ctx.colors), visible: true };
+  const s = compactionSummary(branchOf(ctx));
+  if (s.count === 0) return { content: "", visible: false };
+  const dim = (t: string) => `\x1b[2m${t}\x1b[22m`;
+  const sizes = s.before > 0 ? ` ${formatTokens(s.before)}→${formatTokens(s.after)}` : "";
+  const age = s.lastAt != null ? dim(` · ${ago(Date.now() - s.lastAt)}`) : "";
+  const content = `${dim("cmp")} ${applyColor("compactor", `${s.count}×${sizes}`, ctx.theme, ctx.colors)}${age}`;
+  return { content, visible: true };
 }
 
 export const COMPACTOR_SEGMENTS: FooterSegment[] = [
-  { id: "session_events", label: "Session Events", shortLabel: "EVT", description: "Number of session events", zone: "center", render: renderSessionEventsSegment, defaultShow: true },
-  { id: "compactions", label: "Compactions", shortLabel: "CMP", description: "Number of context compactions", zone: "center", render: renderCompactionsSegment, defaultShow: true },
-  { id: "tokens_saved", label: "Tokens Saved", shortLabel: "SVD", description: "Tokens saved by compaction", zone: "center", render: renderTokensSavedSegment, defaultShow: true },
-  { id: "compression_ratio", label: "Compression Ratio", shortLabel: "RAT", description: "Last compaction compression ratio", zone: "center", render: renderCompressionRatioSegment, defaultShow: false },
-  { id: "search_queries", label: "Search Queries", shortLabel: "QRY", description: "Number of search queries", zone: "center", render: renderSearchQueriesSegment, defaultShow: false },
+  {
+    id: "compactions",
+    label: "Compactions",
+    shortLabel: "CMP",
+    description: "Compactions this session: count, tokens before → after, time since the last (hidden until the first)",
+    zone: "center",
+    render: renderCompactionsSegment,
+    defaultShow: true,
+  },
 ];

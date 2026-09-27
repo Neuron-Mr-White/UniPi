@@ -18,7 +18,7 @@ import { GlanceEditor } from "./glance-editor.js";
 
 // Import segment groups
 import { CORE_SEGMENTS } from "./segments/core.js";
-import { COMPACTOR_SEGMENTS } from "./segments/compactor.js";
+import { COMPACTOR_SEGMENTS, compactionSummary } from "./segments/compactor.js";
 import { MEMORY_SEGMENTS } from "./segments/memory.js";
 import { MCP_SEGMENTS } from "./segments/mcp.js";
 import { RALPH_SEGMENTS } from "./segments/ralph.js";
@@ -546,14 +546,30 @@ const STRIP_COLOR = {
 	psMid: "\x1b[97m", // white — in between
 	cacheHit: "\x1b[92m", // green — high hit
 	cacheWarn: "\x1b[93m", // amber — lowish hit
+	compact: "\x1b[94m", // blue — compactions
 	reset: "\x1b[39m",
 } as const;
 
 const c = (code: string, text: string) => `${code}${text}${STRIP_COLOR.reset}`;
 
+function fmtTokensShort(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1000000) return `${Math.round(n / 1000)}k`;
+  return `${(n / 1000000).toFixed(1)}M`;
+}
+
+function agoShort(ms: number): string {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  if (sec < 60) return "just now";
+  if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.round(sec / 3600)}h ago`;
+  return `${Math.round(sec / 86400)}d ago`;
+}
+
 /**
  * Glance-style centered stats strip under the input:
- *   n Turn · n Steps | wall · tool wall | avg TTFT · n tok/s | cache n%
+ *   n Turn · n Steps | wall · tool wall | avg TTFT · n tok/s | n compactions · 39k→13k · 3m ago | cache n%
  */
 function renderSessionStrip(piContext: unknown): string | null {
   const parts: string[] = [];
@@ -586,6 +602,21 @@ function renderSessionStrip(piContext: unknown): string | null {
       steps > 0 ? c(tpsColor, `${avgTpsLabel} tok/s`) : null,
     ].filter(Boolean).join(" \u00b7 ");
     if (seg) parts.push(seg);
+  }
+
+  // Compactions: hidden until the first one.
+  const branch = (() => {
+    try {
+      return ((piContext as any)?.sessionManager?.getBranch?.() ?? []) as unknown[];
+    } catch {
+      return [];
+    }
+  })();
+  const cmp = compactionSummary(branch);
+  if (cmp.count > 0) {
+    const sizes = cmp.before > 0 ? ` \u00b7 ${c(STRIP_COLOR.compact, `${fmtTokensShort(cmp.before)}\u2192${fmtTokensShort(cmp.after)}`)}` : "";
+    const age = cmp.lastAt != null ? ` \u00b7 ${agoShort(Date.now() - cmp.lastAt)}` : "";
+    parts.push(`${c(STRIP_COLOR.compact, String(cmp.count))} compaction${cmp.count === 1 ? "" : "s"}${sizes}${age}`);
   }
 
   const hit = cacheHitPct(piContext);

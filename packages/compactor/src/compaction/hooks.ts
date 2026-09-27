@@ -23,6 +23,7 @@ import { calibrateCharsPerToken, estimateMessageContentChars, estimateTokensFrom
 import { collectSummarySource, ORIGIN_ENTRY_TYPE, originKey } from "./source.js";
 import { autoBudgetTokens, buildLosslessSummary, pruneState, summaryCandidates, type LosslessSummaryInput, type SummaryCandidate } from "./summarize.js";
 import { pruneWithJev } from "./jev-prune.js";
+import { CARD_TYPE, type CompactionCardData, type CompactionTrigger } from "../card.js";
 import {
   createAutoCompactionState,
   decideAutoCompaction,
@@ -42,7 +43,14 @@ const TAIL_WINDOW_SHARE = 0.25;
 const LEGACY_HIDDEN_TYPES = new Set(["compactor-auto-continue", "unipi-compactor-resume"]);
 
 let lastStats: CompactionStats | null = null;
+/** Details of our last plan (sections, jev outcome) for the compaction card. */
+let lastDetails: Record<string, unknown> | null = null;
 let pendingMethod: CompactionMethod | null = null;
+/** The command that started the next compaction, for the card. */
+let pendingCommand: string | null = null;
+let lastCommand: string | null = null;
+/** Why Pi compacted (manual / threshold / overflow), captured before compaction. */
+let lastReason: "manual" | "threshold" | "overflow" | undefined;
 let pendingFollowUpPrompt: string | null = null;
 /** Set when a compaction was started by a UniPi command (it shows its own notice). */
 let commandCompaction = false;
@@ -50,9 +58,42 @@ let commandCompaction = false;
 export const getLastCompactionStats = () => lastStats;
 
 /** Route the next compaction to a method (used by /unipi:compact-vcc and -by-llm). */
-export function setPendingCompaction(method: CompactionMethod | null, fromCommand = true): void {
+export function setPendingCompaction(method: CompactionMethod | null, fromCommand = true, command?: string): void {
   pendingMethod = method;
   commandCompaction = method !== null && fromCommand;
+  pendingCommand = method !== null ? (command ?? null) : null;
+}
+
+/** Card data for a compaction we (or Pi) just made. */
+export function buildCardData(opts: {
+  method: CompactionMethod;
+  trigger: CompactionTrigger;
+  tokensBefore: number;
+  stats: CompactionStats | null;
+  details: Record<string, unknown> | null;
+  summary?: string;
+  command?: string | null;
+  percent?: number;
+  threshold?: number;
+}): CompactionCardData {
+  const { stats, details } = opts;
+  const jev = details?.jev as { asked?: number; dropped?: number; droppedItems?: string[]; jev?: string } | undefined;
+  const summaryChars = typeof opts.summary === "string" ? opts.summary.length : 0;
+  return {
+    method: opts.method,
+    trigger: opts.trigger,
+    ...(opts.command ? { command: opts.command } : {}),
+    tokensBefore: opts.tokensBefore,
+    ...(stats?.tokensAfterEst != null ? { tokensAfter: stats.tokensAfterEst } : {}),
+    ...(summaryChars ? { summaryTokens: Math.ceil(summaryChars / SUMMARY_CHARS_PER_TOKEN) } : {}),
+    ...(stats ? { keptTurns: stats.keptUserTurns, totalTurns: stats.totalUserTurns, keptTokens: stats.keptTokensEst } : {}),
+    ...(Array.isArray(details?.sections) ? { sections: details!.sections as string[] } : {}),
+    ...(opts.method === "jev" && jev
+      ? { jev: { asked: jev.asked ?? 0, dropped: jev.dropped ?? 0, items: (jev.droppedItems ?? []).map((i) => i.replace(/^\w+: /, "")), ...(jev.jev === "unavailable" ? { unavailable: true } : {}) } }
+      : {}),
+    ...(opts.percent != null ? { percent: opts.percent } : {}),
+    ...(opts.threshold != null ? { threshold: opts.threshold } : {}),
+  };
 }
 
 export const formatCompactionStats = (stats: CompactionStats): string => {
@@ -348,7 +389,11 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
           ? config.piCompact
           : config.method);
     const fromCommand = pendingMethod !== null && commandCompaction;
+    lastReason = reason;
+    lastCommand = fromCommand ? pendingCommand : null;
+    lastDetails = null;
     pendingMethod = null;
+    pendingCommand = null;
     pendingFollowUpPrompt = null;
 
     if (method === "llm") {
@@ -399,6 +444,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     }
 
     lastStats = plan.stats;
+    lastDetails = plan.details;
     if (!parsed.isCompactor && parsed.followUpPrompt && reason === "manual") pendingFollowUpPrompt = parsed.followUpPrompt;
     dbg(config.debug, { method: "vcc", reason, stats: plan.stats, details: plan.details, summaryPreview: plan.summary.slice(0, 800) });
     return {
@@ -421,13 +467,24 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     commandCompaction = false;
     const followUp = pendingFollowUpPrompt;
     pendingFollowUpPrompt = null;
-    if (!wasCommand && loadConfig(ctx?.cwd ?? process.cwd()).notify && ours && lastStats) {
-      const stats = lastStats;
-      setTimeout(() => {
-        try {
-          ctx?.ui?.notify?.(formatCompactionStats(stats), "info");
-        } catch {}
-      }, 300);
+    // One line in the transcript (details on ctrl+o) instead of a toast.
+    // Commands always show it; automatic compactions follow Notifications.
+    if (wasCommand || loadConfig(ctx?.cwd ?? process.cwd()).notify) {
+      const entry = event.compactionEntry as { tokensBefore?: number; summary?: string } | undefined;
+      try {
+        pi.appendEntry(
+          CARD_TYPE,
+          buildCardData({
+            method,
+            trigger: lastReason === "threshold" || lastReason === "overflow" ? lastReason : "manual",
+            tokensBefore: Number(entry?.tokensBefore ?? lastStats?.tokensBefore ?? 0),
+            stats: ours ? lastStats : null,
+            details: ours ? lastDetails : null,
+            summary: entry?.summary,
+            command: wasCommand ? lastCommand : null,
+          }),
+        );
+      } catch {}
     }
     if (followUp) {
       setTimeout(() => {
@@ -466,11 +523,24 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
       }
       autoState = markAutoCompactionComplete(autoState);
       afterCompaction(draft.stats, config.method);
-      if (config.notify && decision.usage) {
-        const tail = draft.stats ? ` ${formatCompactionStats(draft.stats)}` : "";
-        ctx.ui.notify(`Compacted at ${decision.usage.percent.toFixed(0)}% of context (threshold ${decision.thresholdPercent}%).${tail}`, "info");
-      }
-      return { entries: [draft.entry] };
+      // Boundary compactions skip session_compact: the card rides in the same draft, after the compaction.
+      const card = config.notify
+        ? [{
+            type: "custom" as const,
+            customType: CARD_TYPE,
+            data: buildCardData({
+              method: config.method,
+              trigger: "percent",
+              tokensBefore: Number(draft.entry.usage?.tokensBefore ?? decision.usage?.tokens ?? draft.stats?.tokensBefore ?? 0),
+              stats: draft.stats,
+              details: (draft.entry.details as Record<string, unknown> | undefined) ?? null,
+              summary: draft.entry.summary,
+              percent: decision.usage?.percent,
+              threshold: decision.thresholdPercent,
+            }),
+          }]
+        : [];
+      return { entries: [draft.entry, ...card] };
     } catch (err) {
       autoState = markAutoCompactionError(autoState, Date.now());
       if (config.notify) ctx.ui.notify(`Auto-compaction failed: ${err instanceof Error ? err.message : String(err)}`, "warning");

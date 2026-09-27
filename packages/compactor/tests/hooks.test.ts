@@ -111,13 +111,21 @@ describe("percentage trigger", () => {
       sessionManager: { getBranch: () => workingSession() },
     });
 
+  it("with Notifications off, the boundary draft carries no card", async () => {
+    writeConfig({ trigger: "percent", thresholdPercent: 70, notify: false });
+    const result = await harness().fire("turn_end", turnEnd, ctx(85));
+    expect(result.entries).toHaveLength(1);
+  });
+
   it("compacts at the turn boundary with a draft instead of aborting the run", async () => {
     writeConfig({ trigger: "percent", thresholdPercent: 70 });
     const h = harness();
     const result = await h.fire("turn_end", turnEnd, ctx(85));
-    expect(result.entries).toHaveLength(1);
+    // The compaction, then its card (a custom entry: shown, never sent to the model).
+    expect(result.entries).toHaveLength(2);
     expect(result.entries[0].type).toBe("compaction");
     expect(result.entries[0].details.reason).toBe("percent");
+    expect(result.entries[1]).toMatchObject({ type: "custom", customType: "unipi-compaction", data: { trigger: "percent", percent: 85, threshold: 70 } });
     expect(h.events.some((e) => e.name === UNIPI_EVENTS.COMPACTOR_COMPACTED)).toBe(true);
     expect(h.sent).toEqual([]);
   });

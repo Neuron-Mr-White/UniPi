@@ -40,7 +40,19 @@ describe("Segment files", () => {
   it("compactor segments reference compactor data", () => {
     const content = fs.readFileSync(path.join(SEGMENTS_DIR, "compactor.ts"), "utf-8");
     assert.ok(content.includes("compactions"), "compactor.ts should have compactions segment");
-    assert.ok(content.includes("tokens_saved"), "compactor.ts should have tokens_saved segment");
+    assert.ok(!content.includes("getIcon"), "the compactor segment is icon-free");
+  });
+
+  it("compaction summary: count, before → after, last time", async () => {
+    const { compactionSummary } = await import("../src/segments/compactor.ts");
+    const now = Date.parse("2026-09-28T10:00:00Z");
+    const branch = [
+      { type: "message" },
+      { type: "compaction", tokensBefore: 20000, details: { tokensAfter: 5000 }, timestamp: "2026-09-28T09:00:00Z" },
+      { type: "compaction", tokensBefore: 19000, summary: "x".repeat(4000), timestamp: "2026-09-28T09:57:00Z" },
+    ];
+    assert.deepEqual(compactionSummary(branch, now), { count: 2, before: 39000, after: 6000, lastAt: Date.parse("2026-09-28T09:57:00Z") });
+    assert.deepEqual(compactionSummary([], now), { count: 0, before: 0, after: 0 });
   });
 
   it("memory segments reference memory data", () => {

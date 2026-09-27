@@ -6,11 +6,16 @@
  */
 
 import { estimateMessageContentChars } from "./compaction/token-estimate.js";
+import type { CompactionMethod } from "./types.js";
 
 export interface CompactionRecord {
   tokensBefore: number;
   tokensAfter: number;
-  method: "vcc" | "llm";
+  method: CompactionMethod;
+  /** Epoch ms, when the entry records it. */
+  at?: number;
+  /** Items jev dropped (jev method only). */
+  jevDropped?: number;
 }
 
 export interface SessionCompactionStats {
@@ -18,27 +23,19 @@ export interface SessionCompactionStats {
   tokensSaved: number;
   tokensBefore: number;
   tokensAfter: number;
-  toolCalls: Map<string, number>;
-  totalToolCalls: number;
 }
 
 const CHARS_PER_TOKEN = 4;
 
+function methodOf(details: any): CompactionMethod {
+  if (details?.compactor !== "@pi-unipi/compactor") return "llm";
+  return details.method === "llm" || details.method === "jev" ? details.method : "vcc";
+}
+
 export function sessionCompactionStats(branch: readonly any[]): SessionCompactionStats {
   const compactions: CompactionRecord[] = [];
-  const toolCalls = new Map<string, number>();
-  let totalToolCalls = 0;
-
   for (let i = 0; i < branch.length; i++) {
     const entry = branch[i];
-    if (entry?.type === "message" && entry.message?.role === "assistant" && Array.isArray(entry.message.content)) {
-      for (const part of entry.message.content) {
-        if (part?.type !== "toolCall" || typeof part.name !== "string") continue;
-        toolCalls.set(part.name, (toolCalls.get(part.name) ?? 0) + 1);
-        totalToolCalls++;
-      }
-      continue;
-    }
     if (entry?.type !== "compaction") continue;
     const before = Number(entry.tokensBefore ?? 0);
     const details = entry.details ?? {};
@@ -53,21 +50,27 @@ export function sessionCompactionStats(branch: readonly any[]): SessionCompactio
       }
       after = Math.ceil(chars / CHARS_PER_TOKEN);
     }
+    const at = Date.parse(entry.timestamp ?? "");
+    const method = methodOf(details);
     compactions.push({
       tokensBefore: before,
       tokensAfter: after,
-      method: details.compactor === "@pi-unipi/compactor" && details.method !== "llm" ? "vcc" : "llm",
+      method,
+      ...(Number.isFinite(at) ? { at } : {}),
+      ...(method === "jev" && typeof details.jev?.dropped === "number" ? { jevDropped: details.jev.dropped } : {}),
     });
   }
 
   const tokensBefore = compactions.reduce((s, c) => s + c.tokensBefore, 0);
   const tokensAfter = compactions.reduce((s, c) => s + Math.min(c.tokensAfter, c.tokensBefore || c.tokensAfter), 0);
-  return {
-    compactions,
-    tokensBefore,
-    tokensAfter,
-    tokensSaved: Math.max(0, tokensBefore - tokensAfter),
-    toolCalls,
-    totalToolCalls,
-  };
+  return { compactions, tokensBefore, tokensAfter, tokensSaved: Math.max(0, tokensBefore - tokensAfter) };
+}
+
+const METHOD_WORD: Record<CompactionMethod, string> = { vcc: "lossless", jev: "jev", llm: "model" };
+
+/** "3 lossless, 1 jev" — only the methods that occurred. */
+export function methodBreakdown(stats: SessionCompactionStats): string {
+  const counts = new Map<CompactionMethod, number>();
+  for (const c of stats.compactions) counts.set(c.method, (counts.get(c.method) ?? 0) + 1);
+  return [...counts.entries()].map(([m, n]) => `${n} ${METHOD_WORD[m]}`).join(", ");
 }

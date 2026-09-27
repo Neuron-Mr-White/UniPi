@@ -37,7 +37,7 @@ Footer subscribes to events from every Unipi package:
 | Group | Events | Segments |
 |-------|--------|----------|
 | core | Pi SDK | model, thinking, path, git, context_pct, cost, tokens, session |
-| compactor | Pi session data + `COMPACTOR_COMPACTED` | session_events, compactions, tokens_saved, compression_ratio |
+| compactor | Pi session data | compactions — `cmp 4× 39k→13k · 3m` (count, tokens before → after, time since the last; hidden until the first) |
 | memory | `MEMORY_STORED`/`DELETED`/`CONSOLIDATED` | project_count, total_count, consolidations |
 | mcp | `MCP_SERVER_STARTED`/`STOPPED`/`ERROR` | servers_total, servers_active, tools_total |
 | ralph | `RALPH_LOOP_START`/`END`/`ITERATION_DONE` | active_loops, total_iterations, loop_status |
@@ -90,9 +90,7 @@ Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
         "compactor": {
           "show": true,
           "segments": {
-            "session_events": true,
-            "compactions": true,
-            "tokens_saved": true
+            "compactions": true
           }
         }
       }
@@ -137,11 +135,11 @@ When `iconStyle` is not set, footer auto-detects Nerd Font support and defaults 
 
 ```
 Wide terminal (>120 cols):
-  model | thinking | path | git | context | cost | compactions | tokens_saved | project_count
+  model | thinking | path | git | context | compactions | cost | project_count
 
 Narrow terminal (<120 cols):
   Row 1: model | thinking | path | git | context | cost
-  Row 2: compactions | tokens_saved | project_count | ralph | workflow
+  Row 2: compactions | project_count | ralph | workflow
 ```
 
 ## License

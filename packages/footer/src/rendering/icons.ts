@@ -35,13 +35,8 @@ export interface IconSet {
   directory: string;
 
   // Compactor segments
-  sessionEvents: string;
-  compactions: string;
-  tokensSaved: string;
-  compressionRatio: string;
   indexedDocs: string;
   sandboxRuns: string;
-  searchQueries: string;
 
   // Memory segments
   projectCount: string;
@@ -106,13 +101,8 @@ export const NERD_ICONS: IconSet = {
   thinkingLevel:   "\uF400", // 
 
   // Compactor
-  sessionEvents:   "\uEA86", // 
-  compactions:     "\u{F0C8F}", // 󰲏
-  tokensSaved:     "\uF155", //  (kept — missing from customization)
-  compressionRatio:"\u{F0C8F}", // 󰲏
   indexedDocs:     "\u{F0219}", // 󰈙
   sandboxRuns:     "\uF233", // 
-  searchQueries:   "\uF002", // 
 
   // Memory
   projectCount:    "\uEE9C", // 
@@ -177,13 +167,8 @@ export const EMOJI_ICONS: IconSet = {
   directory:       "📁",
 
   // Compactor
-  sessionEvents:   "📈",
-  compactions:     "🗜️",
-  tokensSaved:     "💲",
-  compressionRatio:"📐",
   indexedDocs:     "📑",
   sandboxRuns:     "▶️",
-  searchQueries:   "🔍",
 
   // Memory
   projectCount:    "🧠",
@@ -248,13 +233,8 @@ export const TEXT_ICONS: IconSet = {
   directory:       "DIR",
 
   // Compactor
-  sessionEvents:   "EVT",
-  compactions:     "CMP",
-  tokensSaved:     "SVD",
-  compressionRatio:"RAT",
   indexedDocs:     "IDX",
   sandboxRuns:     "SBX",
-  searchQueries:   "QRY",
 
   // Memory
   projectCount:    "MEM",

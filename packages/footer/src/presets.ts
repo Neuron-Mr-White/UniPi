@@ -18,7 +18,7 @@ const DEFAULT_PRESET: PresetDef = {
     "uni", "lh_mode", "model", "thinking_level", "directory", "git",
   ],
   rightSegments: [
-    "context_pct", "tokens_total",
+    "context_pct", "compactions", "tokens_total",
     "tps", "cost",
     "clock", "duration",
   ],
@@ -33,7 +33,7 @@ const CLASSIC_PRESET: PresetDef = {
   ],
   rightSegments: [
     "tps", "context_pct", "cost",
-    "compactions", "tokens_saved", "project_count",
+    "compactions", "project_count",
     "current_command", "loop_status", "extension_statuses",
     "clock", "duration",
   ],
@@ -76,7 +76,7 @@ const FULL_PRESET: PresetDef = {
   ],
   rightSegments: [
     "tps", "context_pct", "cost", "tokens_total",
-    "session_events", "compactions", "tokens_saved",
+    "compactions",
     "project_count", "total_count",
     "servers_total", "servers_active", "tools_total",
     "active_loops", "loop_status",
@@ -87,7 +87,6 @@ const FULL_PRESET: PresetDef = {
   secondarySegments: [
     "hostname",
     "tokens_in", "tokens_out",
-    "compression_ratio",
     "platforms_enabled", "last_sent",
     "thinking_level",
   ],

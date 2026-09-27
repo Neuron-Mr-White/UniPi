@@ -9,6 +9,8 @@ import { registerCompactionHooks } from "./compaction/hooks.js";
 import { registerCommands } from "./commands/index.js";
 import { registerCompactorTools } from "./tools/register.js";
 import type { RuntimeCounters } from "./types.js";
+import { CARD_TYPE, renderCompactionCard, type CompactionCardData } from "./card.js";
+import type { KitTheme } from "@pi-unipi/core";
 
 export default function compactorExtension(pi: ExtensionAPI): void {
   const counters: RuntimeCounters = { recallQueries: 0, compactions: 0 };
@@ -18,8 +20,17 @@ export default function compactorExtension(pi: ExtensionAPI): void {
   registerCompactorTools(pi, { counters });
   registerCommands(pi);
 
+  try {
+    pi.registerEntryRenderer?.<CompactionCardData>(CARD_TYPE, (entry, options, theme) =>
+      entry.data ? renderCompactionCard(entry.data, Boolean(options?.expanded), theme as unknown as KitTheme) : undefined,
+    );
+  } catch {
+    // UI-less modes.
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     migrateLegacyConfigFiles(ctx.cwd);
+    const cwd = ctx.cwd;
     getBranch = () => {
       try {
         return ctx.sessionManager.getBranch();
@@ -38,18 +49,16 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         config: {
           showByDefault: true,
           stats: [
-            { id: "tokensSaved", label: "Tokens saved", show: true },
-            { id: "costSaved", label: "Cost saved", show: true },
-            { id: "pctReduction", label: "% Reduction", show: true },
-            { id: "topTools", label: "Top tools", show: true },
+            { id: "settings", label: "Method", show: true },
             { id: "compactions", label: "Compactions", show: true },
-            { id: "toolCalls", label: "Tool calls", show: true },
+            { id: "tokens", label: "Tokens", show: true },
+            { id: "last", label: "Last", show: true },
           ],
         },
         dataProvider: async () => {
           try {
             const { getInfoScreenData } = await import("./info-screen.js");
-            return { ...(await getInfoScreenData(getBranch())) };
+            return { ...getInfoScreenData(getBranch(), cwd) };
           } catch {
             return {};
           }

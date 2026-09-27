@@ -13,34 +13,28 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
-import { getLastCompactionStats, formatCompactionStats, setPendingCompaction } from "../compaction/hooks.js";
+import { setPendingCompaction } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
 import { ctxDoctor } from "../tools/ctx-doctor.js";
 import { recallBlocksFromContext } from "../session/recall-blocks.js";
 import { filterNoise } from "../compaction/filter-noise.js";
 import { parseRecallScope } from "../compaction/recall-scope.js";
-import { sessionCompactionStats } from "../stats.js";
+import { methodBreakdown, sessionCompactionStats } from "../stats.js";
 import type { CompactionMethod } from "../types.js";
 
-const METHOD_LABEL: Record<CompactionMethod, string> = { vcc: "Lossless compaction", jev: "Lossless + jev compaction", llm: "Model-summary compaction" };
-
-function runCompaction(ctx: ExtensionCommandContext, method: CompactionMethod, args: string): void {
+function runCompaction(ctx: ExtensionCommandContext, method: CompactionMethod, args: string, command: string): void {
   const trimmed = args.trim();
-  setPendingCompaction(method);
+  setPendingCompaction(method, true, command);
   ctx.compact({
     customInstructions: method === "llm" ? trimmed || undefined : trimmed ? `${COMPACTOR_INSTRUCTION} ${trimmed}` : COMPACTOR_INSTRUCTION,
-    onComplete: () => {
-      setPendingCompaction(null);
-      const stats = method !== "llm" ? getLastCompactionStats() : null;
-      ctx.ui.notify(stats ? formatCompactionStats(stats) : `${METHOD_LABEL[method]} done.`, "info");
-    },
+    // Success shows as the compaction card in the transcript.
+    onComplete: () => setPendingCompaction(null),
     onError: (err: Error) => {
       setPendingCompaction(null);
-      if (err.message === "Compaction cancelled" || err.message === "Already compacted" || /too small/i.test(err.message)) {
-        ctx.ui.notify("Nothing to compact.", "info");
-      } else {
-        ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
-      }
+      // Pi already reports "Nothing to compact (session too small)".
+      if (/too small/i.test(err.message)) return;
+      if (err.message === "Compaction cancelled" || err.message === "Already compacted") ctx.ui.notify("Nothing to compact.", "info");
+      else ctx.ui.notify(`Compaction failed: ${err.message}`, "error");
     },
   });
 }
@@ -48,21 +42,21 @@ function runCompaction(ctx: ExtensionCommandContext, method: CompactionMethod, a
 export function registerCommands(pi: ExtensionAPI): void {
   pi.registerCommand("unipi:compact-vcc", {
     description: "Lossless compaction now — instant structured summary, no model call (keep:N keeps N recent turns)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "vcc", args),
+    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "vcc", args, "unipi:compact-vcc"),
   });
   pi.registerCommand("unipi:compact-jev", {
     description: "Lossless compaction, then jev drops items no longer in force (done requests, reversed decisions, fixed errors)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "jev", args),
+    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "jev", args, "unipi:compact-jev"),
   });
   pi.registerCommand("unipi:compact-by-llm", {
     description: "Compact now with a model-written summary (optional text focuses the summary)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "llm", args),
+    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "llm", args, "unipi:compact-by-llm"),
   });
   const deprecated = (name: string) => ({
     description: "(DEPRECATED) Use /unipi:compact-vcc",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       ctx.ui.notify(`/${name} is deprecated — use /unipi:compact-vcc (or /unipi:compact-by-llm).`, "warning");
-      runCompaction(ctx, "vcc", args);
+      runCompaction(ctx, "vcc", args, "unipi:compact-vcc");
     },
   });
   pi.registerCommand("unipi:compact", deprecated("unipi:compact"));
@@ -108,10 +102,9 @@ export function registerCommands(pi: ExtensionAPI): void {
       const usage = ctx.getContextUsage?.();
       const lines = [
         "Compactor — this session",
-        `Compactions: ${stats.compactions.length}${stats.compactions.length ? ` (${stats.compactions.filter((c) => c.method === "vcc").length} lossless, ${stats.compactions.filter((c) => c.method === "llm").length} model)` : ""}`,
-        `Tokens saved: ~${formatTokens(stats.tokensSaved)}${stats.tokensBefore ? ` (${formatTokens(stats.tokensBefore)} → ${formatTokens(stats.tokensAfter)})` : ""}`,
+        `Compactions: ${stats.compactions.length}${stats.compactions.length ? ` (${methodBreakdown(stats)})` : ""}`,
+        `Tokens: ${stats.tokensBefore ? `${formatTokens(stats.tokensBefore)} → ${formatTokens(stats.tokensAfter)} (−${formatTokens(stats.tokensSaved)})` : "nothing compacted yet"}`,
         usage?.tokens != null && usage.contextWindow ? `Context now: ~${formatTokens(usage.tokens)} / ${formatTokens(usage.contextWindow)}` : "",
-        `Tool calls: ${stats.totalToolCalls}`,
       ].filter(Boolean);
       ctx.ui.notify(lines.join("\n"), "info");
     },
