@@ -14,7 +14,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import * as os from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { askJev, readJudgeJevSettings } from "@pi-unipi/core";
+import { askJev, resolveDecisionModel } from "@pi-unipi/core";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
 import { loadWatchdogSettings, registerWatchdogSettings, type WatchdogSettings } from "./src/config.js";
 import { evaluateTick } from "./src/decide.js";
@@ -352,7 +352,7 @@ async function tick(enabled: boolean): Promise<void> {
     else ctx.ui.setStatus("watchdog", undefined);
 
     // One jevSettings read for the entire tick.
-    const jevSettings = readJudgeJevSettings(ctx.cwd);
+    const jevSettings = resolveDecisionModel(ctx.cwd, "watchdog");
 
     for (const item of items) {
       // At most once per intervalMin per item.

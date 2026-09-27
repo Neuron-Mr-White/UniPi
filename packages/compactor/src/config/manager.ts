@@ -4,7 +4,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getSettingsScoped, registerSettings, setSettings } from "@pi-unipi/core";
+import { getSettingsScoped, registerSettings, setSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 import type { CompactorConfig } from "../types.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
@@ -20,7 +20,7 @@ const METHOD_OPTIONS = [
 registerSettings({
   namespace: "compactor",
   label: "Compactor",
-  defaults: DEFAULT_COMPACTOR_CONFIG as unknown as Record<string, unknown>,
+  defaults: { ...DEFAULT_COMPACTOR_CONFIG, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
   schema: [
     {
       title: "Compaction",
@@ -75,6 +75,7 @@ registerSettings({
         { key: "debug", type: "boolean", label: "Debug output", description: "Write compaction diagnostics to /tmp/compactor-debug.json" },
       ],
     },
+    decisionModelSection({ title: "jev pruning — Decision model" }),
   ],
 });
 

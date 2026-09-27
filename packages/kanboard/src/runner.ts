@@ -11,7 +11,7 @@ import { appendProgress } from "@pi-unipi/core";
 import { boardProgressData } from "./progress.js";
 import { hostname as osHostname } from "node:os";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { callCommandRunner, readJudgeJevSettings, askJev, registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
+import { callCommandRunner, resolveDecisionModel, askJev, registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
 import {
@@ -260,7 +260,7 @@ export function createRunner(deps: RunnerDeps): Runner {
     }
     let jevAnswer: string | null = null;
     if (strategy === undefined) {
-      const settings = readJudgeJevSettings(cwd);
+      const settings = resolveDecisionModel(cwd, "kanboard");
       const answers = await askJev({ ...strategyQuestion(task), settings, env: process.env });
       jevAnswer = answers?.strategy?.choice ?? null;
       strategy = jevAnswer !== null && jevAnswer in STRATEGY_CRITERIA ? (jevAnswer as Strategy) : "none";

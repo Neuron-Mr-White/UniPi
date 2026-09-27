@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `compactor`: **lossless + jev** method (`/unipi:compact-jev`). jev, the Decision model, drops items that are no longer in force, such as finished one-off requests, reversed decisions and fixed errors, at per-kind confidence thresholds. If jev is unavailable, the plain lossless summary is used.
 - `compactor`: the settings screen shows 5 main settings (Method, Pi's /compact, When, Percentage, Notifications); everything else is under **Advanced compaction**.
 - `core`: `registerCompactionContext()`. long-horizon (goal, ralph) and kanboard register their live state, and every compaction summary leads with it.
-- `scripts/compactor-eval.mts` replays the compactor at real compaction points of recorded sessions and shows what happened next, for review.
+- `scripts/compactor-eval.mts` replays the compactor at real compaction points of recorded sessions and shows what happened next, for review. `scripts/compactor-continue.mts` writes resumable A/B session files (old vs new compaction) for a blind "continue from here" test with `pi --fork … -nt -p`.
+- **Decision Model settings** (`/unipi:settings → Decision Model`): the jev provider, model, base URL, key and timeout now live in one shared `decision-model` namespace instead of long-horizon's judge. Every module that uses it (long-horizon routing, permission auto mode, skill exposure, watchdog, kanboard strategy, compactor pruning) has a **Decision model** block that inherits the shared model by default or switches to a custom one; empty custom fields fall back to the shared value. Existing `long-horizon.judge.*` transport settings are migrated once.
+- `compactor`: user corrections ("restore the background… I did not request this change") are kept as decisions.
 
 ### Fixed
 

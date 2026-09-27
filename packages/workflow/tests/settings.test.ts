@@ -52,6 +52,7 @@ describe("permission settings namespace", () => {
       jevJudge: true,
       jevConfidence: 0.7,
       rules: [],
+      decisionModel: { source: "inherit", provider: "openrouter", model: "", baseUrl: "", apiKey: "", timeoutMs: 0 },
     });
     assert.equal(DEFAULT_SETTINGS.mode, "auto");
   });

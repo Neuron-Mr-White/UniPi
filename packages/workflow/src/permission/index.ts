@@ -16,7 +16,7 @@ import {
   UNIPI_EVENTS,
   askJev,
   emitEvent,
-  readJudgeJevSettings,
+  resolveDecisionModel,
   registerCommandRunner,
   runCommandByName,
   setSharedPermissionMode,
@@ -63,7 +63,7 @@ function debugLog(line: string): void {
 
 /** One jev risk question; null (fail-open → prompt) on error, timeout or no key. */
 export async function askJevRisk(cwd: string, state: string): Promise<JevRisk | null> {
-  const settings = readJudgeJevSettings(cwd);
+  const settings = resolveDecisionModel(cwd, "permission");
   const answers = await askJev({
     state,
     questions: {

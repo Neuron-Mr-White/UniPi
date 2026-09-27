@@ -10,6 +10,8 @@ import {
   setSettings,
   settingsLayers,
   type SettingsSection,
+  decisionModelSection,
+  DEFAULT_DECISION_OVERRIDE,
 } from "@pi-unipi/core";
 import { normalizeRules, type PermissionRule } from "./rules.js";
 
@@ -82,6 +84,7 @@ export const PERMISSION_SECTIONS: SettingsSection[] = [
       },
     ],
   },
+  decisionModelSection({ title: "Auto mode — Decision model" }),
 ];
 
 export function registerPermissionSettings(cwd?: string): void {
@@ -97,7 +100,7 @@ export function registerPermissionSettings(cwd?: string): void {
   registerSettings({
     namespace: "permission",
     label: "Permissions",
-    defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+    defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
     schema: PERMISSION_SECTIONS.map((section) => ({
       ...section,
       fields: section.fields.map((field) =>

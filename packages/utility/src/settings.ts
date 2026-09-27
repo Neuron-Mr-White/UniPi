@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getSettings, globalSettingsPath, projectSettingsPath, registerSettings, setSettings, settingsLayers } from "@pi-unipi/core";
+import { getSettings, globalSettingsPath, projectSettingsPath, registerSettings, setSettings, settingsLayers, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 
 /** Badge settings */
 export interface BadgeSettingsSection {
@@ -107,7 +107,7 @@ function atomicWrite(filePath: string, data: string): void {
 registerSettings({
   namespace: "utility",
   label: "Utility",
-  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
   schema: [
     {
       title: "Badge",
@@ -142,6 +142,7 @@ registerSettings({
         { key: "skills.recheck", type: "boolean", label: "Suggest newly relevant skills on later prompts" },
       ],
     },
+    decisionModelSection({ title: "Skills — Decision model" }),
   ],
 });
 

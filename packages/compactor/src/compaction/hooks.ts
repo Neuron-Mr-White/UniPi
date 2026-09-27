@@ -14,7 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { compact as piCompact, generateSummaryWithUsage, DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
-import { collectCompactionContext, emitEvent, formatTokens, readJudgeJevSettings, UNIPI_EVENTS } from "@pi-unipi/core";
+import { collectCompactionContext, emitEvent, formatTokens, resolveDecisionModel, UNIPI_EVENTS } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { autoCompactionOf } from "../config/schema.js";
 import { buildOwnCut, resolveSmartKeepUserTurns, applyTailBudget, MAX_SMART_TAIL_TOKENS } from "./cut.js";
@@ -217,15 +217,9 @@ function withMethod(plan: LosslessPlan, method: CompactionMethod, extra: Record<
   return plan.ok ? { ...plan, details: { ...plan.details, method, jev: extra } } : plan;
 }
 
-/** jev pruning with the Decision-model settings (long-horizon judge). */
-export const jevPruner = (cwd: string, signal?: AbortSignal) => (candidates: SummaryCandidate[], state: string) => {
-  const settings = readJudgeJevSettings(cwd);
-  // No Decision model configured (or long-horizon not loaded): jev on OpenRouter.
-  const effective = settings.model.trim() ? settings : { ...settings, provider: "openrouter" as const, model: DEFAULT_JEV_MODEL };
-  return pruneWithJev(candidates, state, effective, { signal });
-};
-
-const DEFAULT_JEV_MODEL = "typesafe/jev-1.13";
+/** jev pruning with the Decision Model (shared, or the compactor's custom override). */
+export const jevPruner = (cwd: string, signal?: AbortSignal) => (candidates: SummaryCandidate[], state: string) =>
+  pruneWithJev(candidates, state, resolveDecisionModel(cwd, "compactor"), { signal });
 
 // ── model summary ────────────────────────────────────────
 

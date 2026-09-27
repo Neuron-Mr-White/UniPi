@@ -5,7 +5,7 @@
  * edited via /unipi:settings (Watchdog group).
  */
 
-import { getSettings, registerSettings } from "@pi-unipi/core";
+import { getSettings, registerSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 
 export type WatchdogAction = "kill" | "warn";
 export type OtherToolsMode = "off" | "warn" | "abort-turn";
@@ -80,7 +80,7 @@ export function registerWatchdogSettings(cwd: string): void {
   registerSettings({
     namespace: "watchdog",
     label: "Watchdog",
-    defaults: { ...DEFAULT_WATCHDOG_SETTINGS } as unknown as Record<string, unknown>,
+    defaults: { ...DEFAULT_WATCHDOG_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
     schema: [
       {
         title: "Watchdog",
@@ -115,6 +115,7 @@ export function registerWatchdogSettings(cwd: string): void {
           },
         ],
       },
+      decisionModelSection({ title: "Watchdog — Decision model" }),
     ],
   });
 }

@@ -70,12 +70,19 @@ test("saveSettings writes the engine file and never touches sibling modules", ()
   rmSync(dir, { recursive: true, force: true });
 });
 
+function writeDecisionModel(dir: string, data: unknown): void {
+  const path = join(dir, ".unipi", "config", "decision-model", "config.json");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(data));
+}
+
 test("invalid stored values are repaired to defaults", () => {
   const dir = sandboxHome();
   writeSettings(dir, { unipi: { longHorizon: { judge: { threshold: 5, provider: "bogus" }, defaultMode: "weird" } } });
   const settings = loadSettings(true);
   assert.equal(settings.judge.threshold, 0.6);
-  assert.equal(settings.judge.provider, "typesafe");
+  // An unknown provider falls back to the Decision Model default transport.
+  assert.equal(settings.judge.provider, "openrouter");
   assert.equal(settings.defaultMode, "none");
   process.env.HOME = originalHome;
   resetSettingsCache();
@@ -94,15 +101,13 @@ test("stored provider \"auto\" migrates to \"openrouter\" (its effective transpo
 
 test("empty model defaults per provider: jev-latest native, hosted id for gateways", () => {
   const dir = sandboxHome();
-  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "typesafe", model: "" } } } });
+  writeDecisionModel(dir, { provider: "typesafe", model: "" });
   assert.equal(loadSettings(true).judge.model, "jev-latest", "native typesafe speaks bare ids");
-  process.env.HOME = originalHome;
   resetSettingsCache();
-  writeSettings(dir, { unipi: { longHorizon: { judge: { provider: "custom", model: "" } } } });
+  writeDecisionModel(dir, { provider: "custom", model: "" });
   assert.equal(loadSettings(true).judge.model, "typesafe/jev-1.13", "gateways use the hosted jev id");
-  process.env.HOME = originalHome;
   resetSettingsCache();
-  writeSettings(dir, { unipi: { longHorizon: {} } });
+  writeDecisionModel(dir, {});
   assert.equal(loadSettings(true).judge.model, "typesafe/jev-1.13", "runtime default (openrouter) uses the hosted id");
   process.env.HOME = originalHome;
   resetSettingsCache();
@@ -115,6 +120,24 @@ test("provider \"custom\" is accepted and round-trips", () => {
   const settings = loadSettings(true);
   assert.equal(settings.judge.provider, "custom");
   assert.equal(settings.judge.baseUrl, "https://gw.example/v1");
+  process.env.HOME = originalHome;
+  resetSettingsCache();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the judge transport comes from the shared Decision Model unless long-horizon sets a custom one", () => {
+  const dir = sandboxHome();
+  writeDecisionModel(dir, { provider: "typesafe", model: "jev-latest", apiKey: "shared" });
+  let settings = loadSettings(true);
+  assert.equal(settings.judge.provider, "typesafe");
+  assert.equal(settings.judge.apiKey, "shared");
+  resetSettingsCache();
+  const lh = join(dir, ".unipi", "config", "long-horizon", "config.json");
+  mkdirSync(dirname(lh), { recursive: true });
+  writeFileSync(lh, JSON.stringify({ decisionModel: { source: "custom", provider: "openrouter", model: "typesafe/jev-1.13" } }));
+  settings = loadSettings(true);
+  assert.equal(settings.judge.provider, "openrouter");
+  assert.equal(settings.judge.apiKey, "shared", "empty custom fields fall back to the shared value");
   process.env.HOME = originalHome;
   resetSettingsCache();
   rmSync(dir, { recursive: true, force: true });

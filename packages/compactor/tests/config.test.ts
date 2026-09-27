@@ -21,9 +21,11 @@ describe("config schema", () => {
     const advanced = schema.filter((s) => s.advanced).flatMap((s) => s.fields.map((f) => f.key));
     expect(advanced).toContain("sections.transcript");
     expect(advanced).toContain("smartKeepTail");
-    // Every field maps to a real config key.
+    expect(advanced).toContain("decisionModel.source");
+    // Every field maps to a real key in the registered defaults.
+    const defaults = getSettingsDefinition("compactor")!.defaults;
     for (const key of [...main, ...advanced]) {
-      const value = key.split(".").reduce<any>((o, k) => o?.[k], DEFAULT_COMPACTOR_CONFIG);
+      const value = key.split(".").reduce<any>((o, k) => o?.[k], defaults);
       expect(value).not.toBeUndefined();
     }
   });

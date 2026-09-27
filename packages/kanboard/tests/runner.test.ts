@@ -21,6 +21,11 @@ let runnerRef: { onAgentEnd: (event: { messages?: unknown[] }, ctx: never) => vo
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const debugBinary = join(repoRoot, "crates", "kanboard", "target", "debug", "unipi-kanboard");
 const hasBinary = existsSync(debugBinary);
+// No real network: the shared Decision Model (jev) would otherwise be called
+// with the developer's key for every mode choice. Tests that exercise jev
+// stub fetch and set their own key.
+delete process.env.OPENROUTER_API_KEY;
+delete process.env.TYPESAFE_API_KEY;
 
 interface Sent {
   message: string;

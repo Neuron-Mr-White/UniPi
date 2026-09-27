@@ -2,7 +2,7 @@
  * @pi-unipi/kanboard — settings (hub section "Kanboard").
  */
 
-import { getSettings, registerCommandRunner, registerSettings, setSettings } from "@pi-unipi/core";
+import { getSettings, registerCommandRunner, registerSettings, setSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 
 export type ChainGate = "in_review" | "done";
 
@@ -69,7 +69,7 @@ export function registerKanboardSettings(): void {
   registerSettings({
     namespace: KANBOARD_NAMESPACE,
     label: "Kanboard",
-    defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+    defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
     schema: [
       {
         title: "Kanboard",
@@ -160,6 +160,7 @@ export function registerKanboardSettings(): void {
           { key: "rotateToken", type: "action", label: "Rotate access token", description: "Drop the persistent token; a fresh one mints on the next daemon start", command: ACTION_ROTATE_TOKEN },
         ],
       },
+      decisionModelSection({ title: "Strategy — Decision model" }),
     ],
   });
 }

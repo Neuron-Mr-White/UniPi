@@ -10,7 +10,7 @@ Compaction for Pi that keeps work going. When the context fills up, the compacto
 | **Lossless + jev** | The lossless summary, then jev (the Decision model, TypeSafe jev) drops items no longer in force: completed one-off requests, reversed decisions, fixed errors, an outdated report. Their room goes to other items. | ~0.5–2 s, fractions of a cent |
 | **Model summary** | Pi's own model-written summary, with the active-work block added on top. | One model call |
 
-jev only drops what it is confident about: decisions (including your answers to agent questions) need ≥92% certainty, one-off requests ≥80%, errors ≥75%. Your first and latest requests are never dropped. With no jev key or on timeout it falls back to the plain lossless summary. It uses the Decision-model settings (`/unipi:settings → Long-Horizon → Judge`).
+jev only drops what it is confident about: decisions (including your answers to agent questions) need ≥92% certainty, one-off requests ≥80%, errors ≥75%. Your first and latest requests are never dropped. With no jev key or on timeout it falls back to the plain lossless summary. It uses the shared Decision Model (`/unipi:settings → Decision Model`); `Compactor → jev pruning — Decision model` can switch it to a custom one for the compactor only.
 
 ### The lossless summary
 

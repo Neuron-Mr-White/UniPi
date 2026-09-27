@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
+import { decisionModelSection, DEFAULT_DECISION_OVERRIDE, getSettings, registerSettings, resolveDecisionModel, setSettings } from "@pi-unipi/core";
 import type { LhMode } from "./modes.js";
 
 export interface JudgeSettings {
@@ -157,50 +157,18 @@ let cache: LongHorizonSettings | null = null;
 registerSettings({
   namespace: "long-horizon",
   label: "Long-Horizon",
-  defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
+  defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
   projectOverrides: true,
   schema: [
     {
       title: "Judge",
-      description: "Prompt → mode routing — the transport derives from the model",
+      description: "Prompt → mode routing with the Decision Model (shared settings: /unipi:settings → Decision Model)",
       fields: [
         { key: "judge.enabled", type: "boolean", label: "Judge enabled", description: "Route new prompts automatically; off = always defaultMode" },
-        {
-          key: "judge.provider",
-          type: "enum",
-          label: "Provider",
-          options: [
-            { value: "typesafe", label: "typesafe (native systemone)" },
-            { value: "openrouter", label: "openrouter (decisions endpoint)" },
-            { value: "custom", label: "custom (Base URL + API key)" },
-          ],
-          description: "typesafe = native systemone · openrouter = decisions/chat · custom = your own gateway",
-        },
-        { key: "judge.baseUrl", type: "string", label: "Base URL", description: "required when provider=custom · oino proxy = https://router.oino.dev/v1", emptyLabel: "provider default" },
-        { key: "judge.apiKey", type: "secret", label: "API key", description: "Stored key wins over env (works in tmux/ssh-c/systemd)", emptyLabel: "env / bridge fallback" },
-        {
-          key: "judge.model",
-          type: "model",
-          label: "Decision model",
-          description: "decision (classifier) model — jev; custom… for others",
-          providerKey: "judge.provider",
-          presetsByProvider: {
-            typesafe: ["jev-latest"],
-            openrouter: ["typesafe/jev-1.13"],
-            custom: ["typesafe/jev-1.13"],
-          },
-        },
         { key: "judge.threshold", type: "number", label: "Confidence threshold", description: "Below this the judge abstains (0-1)", min: 0.01, max: 1 },
       ],
     },
-    {
-      title: "Judge — Advanced",
-      advanced: true,
-      description: "Rarely needed — zero means the provider default",
-      fields: [
-        { key: "judge.timeoutMs", type: "number", label: "Timeout ms", min: 0, zeroLabel: "auto (1s native / 6s chat)" },
-      ],
-    },
+    decisionModelSection({ title: "Judge — Decision model" }),
     {
       title: "Modes",
       fields: [
@@ -239,8 +207,25 @@ export function loadSettings(force = false): LongHorizonSettings {
   if (cache && !force) return cache;
   const raw = getSettings("long-horizon", process.cwd());
   // The engine stores validated shapes; re-validate defensively anyway.
-  cache = mergeSettings(raw);
+  cache = withDecisionModel(mergeSettings(raw), process.cwd());
   return cache;
+}
+
+/**
+ * The judge's transport (provider/model/baseUrl/key/timeout) is the Decision
+ * Model — shared, or this module's custom override. `enabled` and
+ * `threshold` stay long-horizon's own.
+ */
+function withDecisionModel(settings: LongHorizonSettings, cwd: string): LongHorizonSettings {
+  try {
+    const dm = resolveDecisionModel(cwd, "long-horizon");
+    return {
+      ...settings,
+      judge: { ...settings.judge, provider: dm.provider, model: dm.model, baseUrl: dm.baseUrl, apiKey: dm.apiKey, timeoutMs: dm.timeoutMs ?? 0 },
+    };
+  } catch {
+    return settings;
+  }
 }
 
 export function saveSettings(update: Partial<LongHorizonSettings>): LongHorizonSettings {
