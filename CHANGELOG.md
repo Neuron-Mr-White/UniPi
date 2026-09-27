@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.4] — 2026-09-28
+
 ### Breaking Changes
 
 - **BREAKING: compactor reworked.** Session continuity (the SQLite event log and the snapshot restored after compaction) is removed: it logged every session under one shared ID, so restored snapshots mixed projects and reached ~60k tokens. Also removed: the sandbox tools (`sandbox`, `sandbox_file`, `sandbox_batch`), the `compact` tool (it never compacted), the `compactor_stats`/`compactor_doctor` tools, presets, and the strategy modes that had no effect. **Migration path:** `/unipi:compact` and `/unipi:lossless-compact` still work but are deprecated. Use `/unipi:compact-vcc`, `/unipi:compact-jev` or `/unipi:compact-by-llm`. Old configs are translated: `overrideDefaultCompaction: false` becomes Method = model summary, and `autoCompaction.enabled` becomes When = at a percentage. `~/.unipi/db/compactor` is no longer used and can be deleted.
@@ -22,11 +24,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/compactor-eval.mts` replays the compactor at real compaction points of recorded sessions and shows what happened next, for review. `scripts/compactor-continue.mts` writes resumable A/B session files (old vs new compaction) for a blind "continue from here" test with `pi --fork … -nt -p`.
 - **Decision Model settings** (`/unipi:settings → Decision Model`): the jev provider, model, base URL, key and timeout now live in one shared `decision-model` namespace instead of long-horizon's judge. Every module that uses it (long-horizon routing, permission auto mode, skill exposure, watchdog, kanboard strategy, compactor pruning) has a **Decision model** block that inherits the shared model by default or switches to a custom one; empty custom fields fall back to the shared value. Existing `long-horizon.judge.*` transport settings are migrated once.
 - `compactor`: user corrections ("restore the background… I did not request this change") are kept as decisions.
+- `compactor`: **Lessons** section: lessons the agent wrote down itself (memory notes, `# Confirmed: …` comments in its commands, diagnosis sentences), kept verbatim. **Project Knowledge** section: notes it wrote or read, repeated build/test/deploy commands, hosts. Decisions keep early standing rules ("always…", "never…") instead of only the most recent ones.
+- `compactor`: jev asks short, local questions it can answer precisely: "durable lesson or one-off note?" and "does this later item replace that earlier one?" on items about the same subject. A reversal in the recent messages removes the stale lesson it replaces.
+- `compactor`: **compaction card** in the transcript under Pi's `[compaction]` block: one line (`Compacted 7.9k → 2.2k tokens · lossless + jev · 1 stale dropped · at 3%`), ctrl+o for method, trigger, kept tail, sections and jev drops. Never sent to the model; replaces the compaction toasts.
+- `footer`: the stats strip under the input shows `5 compactions · 47k→15k · just now` once the session has compacted. The five compactor segments are now one icon-free `compactions` segment.
+- `compactor`: the info-screen Compactor tab shows the method and trigger settings, compactions by method, tokens before → after, and the last compaction.
 
 ### Fixed
 
 - `compactor`: the percentage trigger compacts at the `turn_end` boundary instead of calling `ctx.compact()`, which aborted the run and left goal, ralph and kanboard loops waiting. The "auto-continue" message is removed; Pi 0.87 continues after automatic compaction on its own, so it only added empty extra turns.
 - `compactor`: stats come from the session's own compaction entries instead of a fixed "12% kept" guess (also in the footer segments).
+- `compactor`: the kept tail is sized to the model's context window (recut above 40%, `keep:N` included) and the summary is capped at 8% of it, so compaction can no longer overflow small-context models.
+- `compactor`: secrets are redacted before summary items are clipped (a clipped quote could leak a password).
+- `compactor`: `/unipi:compact-doctor` no longer calls the jev method "model summary"; `/unipi:compact-stats` counts jev separately; a manual compaction with nothing to compact no longer repeats Pi's error.
 - `kanboard` tests wrote a fake judge key (`"k"`) into the real `~/.unipi/config/long-horizon/config.json`, which silently disabled the jev judge. They now use project scope.
 
 ## [3.0.0-alpha.3] — 2026-09-27
