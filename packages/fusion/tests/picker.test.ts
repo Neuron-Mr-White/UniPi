@@ -130,13 +130,13 @@ test("empty preset still shows a disabled Fusion row before the catalogue", () =
   assert.deepEqual(picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), ["fusion", "a/opus", "b/glm", "c/mini"]);
 });
 
-test("disabled Fusion row cannot be confirmed or expanded", () => {
+test("incomplete Fusion row never applies; Enter/Tab open the lead dropdown instead", () => {
   const empty = state({ fusionLeads: [], fusionSidekicks: [], fusionDefault: {}, recent: [], active: undefined, effort: {} });
   assert.equal(run(empty, [ENTER]).result, undefined);
   const tabbed = run(empty, [TAB]);
   const tabbedText = tabbed.picker.render(140).join("\n");
   assert.doesNotMatch(tabbedText, /no lead models in preset/);
-  assert.doesNotMatch(tabbedText, /▸/);
+  assert.match(tabbedText, /▸ Opus/, "the whole catalogue is offered as leads");
   const selected = run(empty, [RIGHT, DOWN, ENTER]).result;
   assert.equal(selected?.type, "single");
   if (selected?.type === "single") {

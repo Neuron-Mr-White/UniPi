@@ -215,14 +215,21 @@ export class ModelPicker {
     this.priceRange = { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 };
     this.effort = { ...options.state.effort };
     const active = options.state.active;
-    this.lead =
-      (active?.kind === "fusion" ? active.lead : undefined) ??
-      options.state.fusionDefault.lead ??
-      options.state.fusionLeads[0];
-    this.sidekick =
-      (active?.kind === "fusion" ? active.sidekick : undefined) ??
-      options.state.fusionDefault.sidekick ??
-      options.state.fusionSidekicks[0];
+    // Saved keys can go stale (provider renamed a model, logged out); only
+    // accept ones still in the catalogue, else the Fusion row looks ready but
+    // cannot be applied.
+    const known = (...keys: (ModelKey | undefined)[]): ModelKey | undefined =>
+      keys.find((k) => k !== undefined && this.modelsByKey.has(k));
+    this.lead = known(
+      active?.kind === "fusion" ? active.lead : undefined,
+      options.state.fusionDefault.lead,
+      ...options.state.fusionLeads,
+    );
+    this.sidekick = known(
+      active?.kind === "fusion" ? active.sidekick : undefined,
+      options.state.fusionDefault.sidekick,
+      ...options.state.fusionSidekicks,
+    );
     this.fusionLeadEffort =
       (active?.kind === "fusion" ? active.leadEffort : undefined) ??
       (this.lead !== undefined ? this.effort[this.lead] : undefined) ??
@@ -326,16 +333,14 @@ export class ModelPicker {
     }
 
     const disabledFusion = row?.kind === "fusion" && !this.fusionAvailable();
-    if (
-      disabledFusion &&
-      (matchesKey(data, Key.tab) ||
-        matchesKey(data, Key.left) ||
-        matchesKey(data, Key.right) ||
-        matchesKey(data, Key.enter) ||
-        matchesKey(data, "alt+enter") ||
-        data === "\r")
-    ) {
-      return;
+    if (disabledFusion && !inDropdown) {
+      // Incomplete pair: Enter/Tab open the dropdown for the missing half.
+      if (matchesKey(data, Key.tab) || matchesKey(data, Key.enter) || data === "\r") {
+        this.openMissing();
+        this.changed();
+        return;
+      }
+      if (matchesKey(data, Key.left) || matchesKey(data, Key.right) || matchesKey(data, "alt+enter")) return;
     }
 
     if (inDropdown) {
@@ -349,13 +354,17 @@ export class ModelPicker {
         this.cycleFocus(matchesKey(data, "shift+tab"));
       } else if (matchesKey(data, "alt+enter")) {
         this.applyDropdown(items);
-        this.focus = "effort";
-        this.setDefault(row);
-        this.confirm(row);
-        return;
+        if (!this.fusionAvailable()) this.openMissing();
+        else {
+          this.focus = "effort";
+          this.setDefault(row);
+          this.confirm(row);
+          return;
+        }
       } else if (matchesKey(data, Key.enter) || data === "\r") {
         this.applyDropdown(items);
-        this.focus = "effort";
+        if (this.fusionAvailable()) this.focus = "effort";
+        else this.openMissing();
       } else {
         return;
       }
@@ -426,6 +435,12 @@ export class ModelPicker {
       const idx = current === undefined ? -1 : items.indexOf(current);
       this.dropdownIndex = idx >= 0 ? idx : 0;
     }
+  }
+
+  /** Open the lead (or, if the lead is set, the sidekick) dropdown. */
+  private openMissing(): void {
+    this.focus = this.lead === undefined ? "effort" : "lead"; // cycleFocus steps one past this
+    this.cycleFocus();
   }
 
   private applyDropdown(items: ModelKey[]): void {
@@ -694,7 +709,7 @@ export class ModelPicker {
     const t = this.theme;
     const parts: string[] = [];
     if (row?.kind === "fusion" && !this.fusionAvailable()) {
-      parts.push("↑↓ select", "pick a lead and sidekick", "esc cancel");
+      parts.push("↑↓ select", `enter pick ${this.lead === undefined ? "lead" : "sidekick"}`, "esc cancel");
     } else if (row?.kind === "fusion" && this.focus !== "effort") {
       parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "alt+enter set default", "esc collapse");
     } else {

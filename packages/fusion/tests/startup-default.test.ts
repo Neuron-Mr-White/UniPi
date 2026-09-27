@@ -59,6 +59,39 @@ test("hint line advertises alt+enter, not ctrl+s", () => {
   assert.doesNotMatch(text, /ctrl\+s/);
 });
 
+test("a stale preset default lead is skipped for the next curated lead that still exists", () => {
+  const s = state();
+  s.models.push({ key: "a/sonnet", name: "Sonnet", provider: "a", reasoning: true });
+  s.fusionLeads = ["gone/gemini", "a/sonnet"];
+  s.fusionDefault = { lead: "gone/gemini", sidekick: "b/glm" };
+  let done: PickerResult | undefined;
+  const picker = new ModelPicker({ state: s, theme, onDone: (r) => (done = r) });
+  picker.handleInput("\x1b[B"); // down to the Fusion row
+  picker.handleInput("\r");
+  assert.equal(done?.type, "fusion");
+  assert.equal((done as { lead: string }).lead, "a/sonnet");
+});
+
+test("with both saved keys stale, Enter walks through lead → sidekick → apply", () => {
+  const s = state();
+  s.fusionLeads = ["gone/gemini"];
+  s.fusionSidekicks = ["gone/flash"];
+  s.fusionDefault = { lead: "gone/gemini", sidekick: "gone/flash" };
+  let done: PickerResult | undefined;
+  const picker = new ModelPicker({ state: s, theme, onDone: (r) => (done = r) });
+  picker.handleInput("\x1b[B"); // Fusion row
+  assert.match(picker.render(120).join("\n"), /enter pick lead/);
+  picker.handleInput("\r"); // opens the lead dropdown
+  picker.handleInput("\r"); // takes its first entry, opens the sidekick dropdown
+  assert.equal(done, undefined);
+  picker.handleInput("\x1b[B");
+  picker.handleInput("\r"); // sidekick picked: pair complete
+  picker.handleInput("\r"); // apply
+  assert.equal(done?.type, "fusion");
+  const r = done as { lead: string; sidekick: string };
+  assert.ok(s.models.some((m) => m.key === r.lead) && s.models.some((m) => m.key === r.sidekick), "only catalogue keys are applied");
+});
+
 test("engine onSet hook fires after set and unset with the layer content", () => {
   const seen: Array<{ layer: Record<string, unknown>; scope: string }> = [];
   registerSettings({ namespace: "onset-probe", label: "probe", defaults: {}, onSet: (layer, scope) => seen.push({ layer, scope }) });

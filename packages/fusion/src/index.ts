@@ -146,7 +146,11 @@ function registryOf(ctx: ExtensionContext): Registry | undefined {
 /** Key-based lookup (provider ids can contain slashes, so splitModelKey+find is unreliable). */
 const modelBykey = new Map<string, Model<Api>>();
 function findModel(reg: Registry | undefined, key: string): Model<Api> | undefined {
-  if (modelBykey.size === 0 && reg) for (const m of reg.getAvailable()) modelBykey.set(modelKey(m), m);
+  // Refill on a miss too: providers (e.g. bridges) can register models after the first lookup.
+  if (!modelBykey.has(key) && reg) {
+    modelBykey.clear();
+    for (const m of reg.getAvailable()) modelBykey.set(modelKey(m), m);
+  }
   return modelBykey.get(key);
 }
 
