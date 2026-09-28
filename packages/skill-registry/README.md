@@ -10,15 +10,15 @@ Decides which skills the agent sees: per-project on/off, a vault of extra skills
 
 ## Managing skills
 
-Every skill pi loaded is a row in the settings hub, grouped by where it lives: project, user, vault, UniPi, packages. Each row is one choice:
+Every skill pi loaded is a row in the settings hub, grouped by where it lives (project, user, vault, UniPi, packages), showing its current state: `on · listed`, `on · unlisted`, `on · must show` or `off`. Enter opens the skill's own page:
 
-| Value | Meaning |
-|-------|---------|
-| `on · listed` | In the system prompt and runnable (default, except vault skills) |
-| `on · unlisted` | Left out of the system prompt; still runs with `/skill:name` |
-| `off` | Removed from the session, `/skill:name` included (default for vault skills) |
+| Option | Meaning |
+|--------|---------|
+| **Enabled** | In the session at all. Off also blocks `/skill:name`. Default on, except vault skills |
+| **Discoverable** | Listed in the system prompt. Off = only runs with `/skill:name` |
+| **Must show** | Always listed, even when exposure judging would hide it (and even with exposure `off`) |
 
-It's the ordinary hub: ↑↓ to move, Space cycles the value, Enter opens the list, `g` switches between the global and the project scope (a project can override the global choice; `d` goes back to inheriting), `/` edits the search, Esc clears the search and a second Esc closes.
+Each option is stored on its own, so a project can override just one of them: `g` switches between the global and the project scope, `d` resets the option to what it inherits. Esc goes back to the list with your search intact; Esc again clears the search, and once more closes.
 
 ## Skill proxy
 

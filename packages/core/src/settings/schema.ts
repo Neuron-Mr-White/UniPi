@@ -124,6 +124,8 @@ export type SettingsField = (
        * driven pages (info groups, footer segments) stay live.
        */
       readonly sections: readonly SettingsSection[] | (() => readonly SettingsSection[]);
+      /** Value shown on the row instead of "› open" (e.g. "on · listed"). */
+      readonly summary?: (values: Record<string, unknown>) => string;
     }
   | {
       /** Runs a named command (registered via core registerCommandRunner). */

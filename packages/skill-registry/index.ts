@@ -150,11 +150,13 @@ export default function skillRegistry(pi: ExtensionAPI) {
 
       const vault = vaultDir();
       let pool = catalog;
+      let mustShow = new Set<string>();
       disabled = new Set();
       if (settings.proxy) {
         const result = applyRegistry(catalog, settings.states, cwd, vault);
         pool = result.listed;
         disabled = result.disabled;
+        mustShow = result.mustShow;
       } else {
         pool = catalog.filter((s) => {
           const inVault = isUnderDir(skillDir(s), vault);
@@ -167,7 +169,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
         options.skills = list as unknown as typeof options.skills;
       };
       if (settings.exposure.mode !== "judged") {
-        setSkills(settings.exposure.mode === "off" ? pool.filter((s) => !isBundledSkillLocation(skillDir(s))) : pool);
+        setSkills(settings.exposure.mode === "off" ? pool.filter((s) => mustShow.has(s.name) || !isBundledSkillLocation(skillDir(s))) : pool);
         delete options.sections[HIDDEN_SECTION];
         return undefined;
       }
@@ -178,6 +180,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
         settings: settings.exposure,
         cwd,
         state: sessionState(ctx),
+        mustShow,
       });
       setSkills(pool.filter((s) => out.listed.has(s.name)));
       if (out.index) options.sections[HIDDEN_SECTION] = out.index;

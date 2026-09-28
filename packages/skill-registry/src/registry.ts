@@ -51,14 +51,19 @@ export function skillSource(s: CatalogSkill, cwd: string, vault: string): SkillS
 export interface EffectiveState {
   enabled: boolean;
   discoverable: boolean;
+  mustShow: boolean;
 }
 
 export function effectiveState(state: SkillState | undefined, source: SkillSource): EffectiveState {
-  const s = state ?? (source === "vault" ? "off" : "on");
-  return { enabled: s !== "off", discoverable: s === "on" };
+  const enabled = state?.enabled ?? source !== "vault";
+  const mustShow = enabled && state?.mustShow === true;
+  // Must show implies listed; an off skill is never listed.
+  return { enabled, discoverable: enabled && (mustShow || (state?.discoverable ?? true)), mustShow };
 }
 
 export interface RegistryResult<T> {
+  /** Listed skills the user pinned ("Must show"): exposure never hides them. */
+  mustShow: Set<string>;
   /** Skills listed for the model. */
   listed: T[];
   /** Names removed from the session entirely (/skill:name is blocked too). */
@@ -76,13 +81,15 @@ export function applyRegistry<T extends CatalogSkill>(
   const listed: T[] = [];
   const unlisted: T[] = [];
   const disabled = new Set<string>();
+  const mustShow = new Set<string>();
   for (const skill of catalog) {
     const eff = effectiveState(states[skill.name], skillSource(skill, cwd, vault));
+    if (eff.mustShow) mustShow.add(skill.name);
     if (!eff.enabled) disabled.add(skill.name);
     else if (!eff.discoverable) unlisted.push(skill);
     else listed.push(skill);
   }
-  return { listed, disabled, unlisted };
+  return { listed, disabled, unlisted, mustShow };
 }
 
 /** `/skill:name args` → name, else undefined. */

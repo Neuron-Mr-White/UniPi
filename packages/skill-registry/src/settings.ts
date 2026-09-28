@@ -4,10 +4,10 @@
  *   proxy          — off (default): pi's skills pass through untouched (only
  *                    exposure judging applies) and vault skills stay hidden.
  *                    on: the per-skill states below apply, vault included.
- *   states.<name>  — "on" | "unlisted" | "off" per skill, one hub row each
- *                    (listed by where the skill lives). The engine merges
- *                    global + project layers, so a project can turn a vault
- *                    skill on (or a global skill off) just for that repo.
+ *   states.<name>  — { enabled, discoverable, mustShow } per skill: one hub
+ *                    page each (grouped by where the skill lives). The engine
+ *                    merges global + project layers per option, so a project
+ *                    can turn a vault skill on (or pin a skill) just for itself.
  *   exposure       — judged | all | off, threshold, maxSkills, recheck.
  *
  * Migrates the pre-registry `utility.skills` block into `skills.exposure`.
@@ -40,12 +40,14 @@ export interface ExposureSettings {
   recheck: boolean;
 }
 
-/**
- *   on       — listed for the model and runnable
- *   unlisted — not in the system prompt; /skill:name still works
- *   off      — removed from the session entirely (/skill:name blocked too)
- */
-export type SkillState = "on" | "unlisted" | "off";
+export interface SkillState {
+  /** false = removed from the session entirely (catalog and /skill:name). */
+  enabled?: boolean;
+  /** false = not listed in the system prompt; /skill:name still works. */
+  discoverable?: boolean;
+  /** true = always listed, even when exposure judging would hide it. */
+  mustShow?: boolean;
+}
 
 export interface SkillsSettings {
   proxy: boolean;
@@ -92,12 +94,6 @@ const STATIC_SECTIONS: SettingsSection[] = [
   },
 ];
 
-const STATE_OPTIONS = [
-  { value: "on", label: "on · listed" },
-  { value: "unlisted", label: "on · unlisted" },
-  { value: "off", label: "off" },
-];
-
 const SOURCE_TITLE: Record<SkillSource, string> = {
   vault: "Vault (off until turned on)",
   project: "Project skills",
@@ -112,24 +108,57 @@ const SOURCE_TITLE: Record<SkillSource, string> = {
  * hub always lists the current skills. Defaults encode the source rule
  * (vault off, everything else on), so "d default" in the hub does the right thing.
  */
+export function skillSummary(state: SkillState | undefined): string {
+  if (state?.enabled === false) return "off";
+  if (state?.mustShow) return "on · must show";
+  return state?.discoverable === false ? "on · unlisted" : "on · listed";
+}
+
+function skillPage(skill: CatalogSkill, source: SkillSource): SettingsField {
+  const k = `states.${skill.name}`;
+  const where = SOURCE_TITLE[source].replace(/ \(.*\)$/, "").replace(/ skills$/, "").toLowerCase();
+  return {
+    key: k,
+    type: "page",
+    label: skill.name,
+    description: skill.description.replace(/\s+/g, " ").slice(0, 160),
+    summary: (values) => skillSummary(normalizeStates((values as { states?: unknown }).states)[skill.name]),
+    sections: [
+      {
+        title: skill.name,
+        description: `${where} skill · ${skill.description.replace(/\s+/g, " ").slice(0, 200)}`,
+        fields: [
+          { key: `${k}.enabled`, type: "boolean", label: "Enabled", description: "In the session at all; off also blocks /skill:name" },
+          { key: `${k}.discoverable`, type: "boolean", label: "Discoverable", description: "Listed in the system prompt; off = only /skill:name" },
+          { key: `${k}.mustShow`, type: "boolean", label: "Must show", description: "Always listed, even when exposure judging would hide it" },
+        ],
+      },
+      {
+        title: "Scope",
+        description: "g global ↔ project · d inherit · needs the skill proxy on",
+        fields: [],
+      },
+    ],
+  };
+}
+
+/**
+ * (Re)register the namespace with one page per known skill, grouped by where
+ * it lives. Called at session start and whenever the catalog changes, so the
+ * hub always lists the current skills. Defaults encode the source rule
+ * (vault off, everything else on), so "d" in the hub does the right thing.
+ */
 export function registerSkillsSettings(skills: readonly CatalogSkill[] = [], cwd = process.cwd(), vault = ""): void {
   const bySource = new Map<SkillSource, SettingsField[]>();
-  const defaults: Record<string, SkillState> = {};
+  const defaults: Record<string, Required<SkillState>> = {};
   const seen = new Set<string>();
   for (const skill of [...skills].sort((a, b) => a.name.localeCompare(b.name))) {
     if (!skill.name || skill.name.includes(".") || seen.has(skill.name)) continue;
     seen.add(skill.name);
     const source = skillSource(skill, cwd, vault);
-    defaults[skill.name] = source === "vault" ? "off" : "on";
+    defaults[skill.name] = { enabled: source !== "vault", discoverable: true, mustShow: false };
     const fields = bySource.get(source) ?? [];
-    fields.push({
-      key: `states.${skill.name}`,
-      type: "enum",
-      label: skill.name,
-      options: STATE_OPTIONS,
-      clearable: true,
-      description: skill.description.replace(/\s+/g, " ").slice(0, 160),
-    });
+    fields.push(skillPage(skill, source));
     bySource.set(source, fields);
   }
   const lists: SettingsSection[] = (["project", "user", "vault", "unipi", "package"] as SkillSource[])
@@ -222,17 +251,21 @@ export function normalizeExposure(raw: unknown): ExposureSettings {
   };
 }
 
-/** Per-skill states; accepts the earlier { enabled, discoverable } shape. */
+/** Per-skill states; also reads the short-lived "on" | "unlisted" | "off" form. */
 export function normalizeStates(raw: unknown): Record<string, SkillState> {
   const out: Record<string, SkillState> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (value === "on" || value === "unlisted" || value === "off") out[name] = value;
+    if (value === "off") out[name] = { enabled: false };
+    else if (value === "unlisted") out[name] = { enabled: true, discoverable: false };
+    else if (value === "on") out[name] = { enabled: true, discoverable: true };
     else if (value && typeof value === "object") {
-      const v = value as { enabled?: unknown; discoverable?: unknown };
-      if (v.enabled === false) out[name] = "off";
-      else if (v.discoverable === false) out[name] = "unlisted";
-      else if (v.enabled === true) out[name] = "on";
+      const v = value as Record<string, unknown>;
+      const state: SkillState = {};
+      if (typeof v.enabled === "boolean") state.enabled = v.enabled;
+      if (typeof v.discoverable === "boolean") state.discoverable = v.discoverable;
+      if (typeof v.mustShow === "boolean") state.mustShow = v.mustShow;
+      out[name] = state;
     }
   }
   return out;

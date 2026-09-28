@@ -91,7 +91,8 @@ export interface SettingsHubDeps {
 type Mode = "list" | "search" | "input" | "model";
 
 interface Row {
-  readonly kind: "header" | "field" | "toggle";
+  /** "note" = a page section's description line (non-selectable, like headers). */
+  readonly kind: "header" | "field" | "toggle" | "note";
   readonly id: string;
   readonly label: string;
   readonly namespace?: string;
@@ -104,6 +105,8 @@ interface Row {
 }
 
 const PAGE_ROWS = 10;
+/** Header bands and section notes are not selectable. */
+const isBand = (r: Row | undefined): boolean => r?.kind === "header" || r?.kind === "note";
 /** Picked value meaning "open the inline editor with the raw text". */
 const CUSTOM_VALUE = Symbol("custom");
 const HISTORY_CAP = 50;
@@ -190,6 +193,8 @@ export class SettingsHub {
     rows: Row[];
     cursor: number;
     scroll: number;
+    /** The parent's search filter, restored on pop. */
+    filter: string;
   }> = [];
   private readonly runActionFn?: (command: string) => void | Promise<void>;
   private readonly terminalRowsFn: () => number;
@@ -305,7 +310,7 @@ export class SettingsHub {
     let currentHeader: Row | undefined;
     let headerPushed = false;
     for (const r of pageRows) {
-      if (r.kind === "toggle") continue; // no toggle rows while searching
+      if (r.kind === "toggle" || r.kind === "note") continue; // no toggle/note rows while searching
       if (r.kind === "header") {
         currentHeader = r;
         headerPushed = false;
@@ -330,20 +335,20 @@ export class SettingsHub {
 
   /** First selectable (non-header) row index at or after `from` (or -1). */
   private nextSelectable(visible: Row[], from: number): number {
-    for (let i = from; i < visible.length; i++) if (visible[i]!.kind !== "header") return i;
+    for (let i = from; i < visible.length; i++) if (!isBand(visible[i])) return i;
     return -1;
   }
 
   /** Previous selectable row index at or before `from` (or -1). */
   private prevSelectable(visible: Row[], from: number): number {
-    for (let i = from; i >= 0; i--) if (visible[i]!.kind !== "header") return i;
+    for (let i = from; i >= 0; i--) if (!isBand(visible[i])) return i;
     return -1;
   }
 
   /** Normalize cursor onto a selectable row (headers never hold the cursor). */
   private normalizeCursor(): void {
     const visible = this.visibleRows();
-    if (visible[this.cursor]?.kind === "header" || this.cursor >= visible.length) {
+    if (isBand(visible[this.cursor]) || this.cursor >= visible.length) {
       const i = this.nextSelectable(visible, this.cursor);
       this.cursor = i >= 0 ? i : Math.max(0, this.prevSelectable(visible, this.cursor - 1));
     }
@@ -405,6 +410,9 @@ export class SettingsHub {
         kind: "header", id: `${namespace}::page::${section.title}`,
         label: section.title, namespace,
       });
+      if (section.description) {
+        rows.push({ kind: "note", id: `${namespace}::page::${section.title}::note`, label: section.description, namespace });
+      }
       for (const field of section.fields) {
         if (field.scopes && !field.scopes.includes(this.scope)) continue;
         rows.push({
@@ -421,7 +429,9 @@ export class SettingsHub {
     if (row.kind !== "field" || !row.namespace || row.field?.type !== "page") return;
     // Dynamic pages resolve their sections at open time (live registries).
     const sections = typeof row.field.sections === "function" ? row.field.sections() : row.field.sections;
-    // A page is a fresh context — a root-level filter must not bleed into it.
+    // A page is a fresh context — a root-level filter must not bleed into it
+    // (it comes back on Esc).
+    const parentFilter = this.filter;
     this.filter = "";
     this.searchInput = null;
     this.pageStack.push({
@@ -430,6 +440,7 @@ export class SettingsHub {
       rows: this.pageRows(row.namespace, sections),
       cursor: this.cursor, // parent's return position
       scroll: this.scroll,
+      filter: parentFilter,
     });
     this.cursor = 0;
     this.scroll = 0;
@@ -439,6 +450,7 @@ export class SettingsHub {
   private popPage(): void {
     const top = this.pageStack.pop();
     if (!top) return;
+    this.filter = top.filter;
     this.cursor = top.cursor;
     this.scroll = top.scroll;
     this.toast = `back: ${top.label}`;
@@ -965,6 +977,9 @@ export class SettingsHub {
       const label = open ? "▾ Advanced" : "▸ Advanced";
       return this.exactRow(this.rowColumns(cursor, label, "enter/tab/space", inner, selected, row.namespace), inner);
     }
+    if (row.kind === "note") {
+      return this.exactRow(dim(`  ${row.label}`), inner);
+    }
     if (row.kind === "header") {
       const tag = row.layerTag ? ` [${row.layerTag}]` : "";
       // Distinct full-width band (bg wrap is width-safe — measures on plain);
@@ -973,7 +988,13 @@ export class SettingsHub {
     }
     const field = row.field!;
     if (field.type === "page") {
-      return this.exactRow(this.rowColumns(cursor, row.label, "› open", inner, selected, row.namespace), inner);
+      let summary = "";
+      try {
+        summary = field.summary ? field.summary(this.valueOf(row.namespace!)) : "";
+      } catch {
+        summary = "";
+      }
+      return this.exactRow(this.rowColumns(cursor, row.label, summary ? `${summary} ›` : "› open", inner, selected, row.namespace), inner);
     }
     if (field.type === "action") {
       return this.exactRow(this.rowColumns(cursor, row.label, "⏎ run", inner, selected, row.namespace), inner);

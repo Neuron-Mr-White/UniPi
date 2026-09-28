@@ -94,6 +94,31 @@ const engineFile = () => join(home, ".unipi", "config", NS, "config.json");
 const readEngine = () => JSON.parse(readFileSync(engineFile(), "utf8"));
 
 describe("hub interactions (instant apply)", () => {
+  it("page rows show a summary; pages show their section note; Esc restores the root filter", () => {
+    registerSettings({
+      namespace: "hubtestpages",
+      label: "Pages",
+      defaults: { s: { alpha: { on: true } } },
+      schema: [{ title: "List", fields: [{
+        key: "s.alpha", type: "page", label: "alpha",
+        summary: (v) => ((v as { s: { alpha: { on: boolean } } }).s.alpha.on ? "enabled" : "disabled"),
+        sections: [{ title: "alpha", description: "what alpha does", fields: [{ key: "s.alpha.on", type: "boolean", label: "Enabled" }] }],
+      }] }],
+    });
+    const hub = new SettingsHub({ cwd, modelCatalog: () => CATALOG, initialFilter: "alpha" });
+    hub.onClose = () => {};
+    const plain = (): string => hub.render(100).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+    assert.match(plain(), /alpha\s+enabled ›/);
+    hub.handleInput("\r"); // open the page
+    const page = plain();
+    assert.match(page, /what alpha does/);
+    hub.handleInput(" "); // cursor skips the note → toggles Enabled
+    hub.handleInput("\x1b"); // back
+    const root = plain();
+    assert.match(root, /\/ alpha/, "filter restored");
+    assert.match(root, /alpha\s+disabled ›/);
+  });
+
   it("opens with an initial filter; first Esc clears it, second closes", () => {
     closed = 0;
     const hub = new SettingsHub({ cwd, modelCatalog: () => CATALOG, initialFilter: "count" });
@@ -985,8 +1010,7 @@ describe("dynamic pages (function sections)", () => {
     let flat = hub.render(100).join("\n");
     assert.ok(flat.includes("First"), "first resolution shown");
     assert.equal(calls, 1, "sections resolved once at open");
-    hub.handleInput("\x1b"); // pop the page
-    hub.handleInput("/"); hub.handleInput("live page"); hub.handleInput("\r");
+    hub.handleInput("\x1b"); // pop the page — the "live page" filter comes back
     hub.handleInput("\r"); // open again — the getter re-runs
     flat = hub.render(100).join("\n");
     assert.ok(flat.includes("Second"), "second resolution reflects live state");

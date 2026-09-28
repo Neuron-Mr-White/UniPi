@@ -19,7 +19,7 @@ import {
   type Entry,
 } from "../src/judge.ts";
 import { applyRegistry, effectiveState, skillCommandName } from "../src/registry.ts";
-import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeStates, registerSkillsSettings } from "../src/settings.ts";
+import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeStates, registerSkillsSettings, skillSummary } from "../src/settings.ts";
 import { getSettingsDefinition, getSettings } from "@pi-unipi/core";
 import { listVaultSkills, parseFrontmatter } from "../src/vault.ts";
 
@@ -146,19 +146,21 @@ describe("registry", () => {
   ];
 
   it("keeps vault skills off by default and applies explicit states", () => {
-    const r = applyRegistry(cat, { quiet: "unlisted" }, "/repo", vault);
+    const r = applyRegistry(cat, { quiet: { discoverable: false } }, "/repo", vault);
     assert.deepEqual(r.listed.map((s) => s.name), ["global-one"]);
     assert.deepEqual([...r.disabled], ["vaulted"]);
     assert.deepEqual(r.unlisted.map((s) => s.name), ["quiet"]);
-    const on = applyRegistry(cat, { vaulted: "on", "global-one": "off" }, "/repo", vault);
+    const on = applyRegistry(cat, { vaulted: { enabled: true, mustShow: true }, "global-one": { enabled: false }, quiet: { discoverable: false, mustShow: true } }, "/repo", vault);
     assert.deepEqual(on.listed.map((s) => s.name).sort(), ["quiet", "vaulted"]);
     assert.deepEqual([...on.disabled], ["global-one"]);
+    assert.deepEqual([...on.mustShow].sort(), ["quiet", "vaulted"], "must show wins over unlisted");
   });
 
   it("resolves defaults per source", () => {
-    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, discoverable: false });
-    assert.deepEqual(effectiveState("unlisted", "user"), { enabled: true, discoverable: false });
-    assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, discoverable: true });
+    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, discoverable: false, mustShow: false });
+    assert.deepEqual(effectiveState({ discoverable: false }, "user"), { enabled: true, discoverable: false, mustShow: false });
+    assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, discoverable: true, mustShow: false });
+    assert.deepEqual(effectiveState({ enabled: false, mustShow: true }, "user"), { enabled: false, discoverable: false, mustShow: false }, "off wins");
   });
 
   it("parses /skill:name commands", () => {
@@ -179,7 +181,7 @@ describe("settings", () => {
     assert.deepEqual(JSON.parse(readFileSync(projectSettingsPath(cwd, "skills"), "utf8")).exposure, { mode: "off", maxSkills: 8 });
   });
 
-  it("lists every skill as a hub row grouped by source, vault defaulting to off", () => {
+  it("gives every skill a second-layer page (Enabled / Discoverable / Must show), grouped by source", () => {
     const cwd = mkdtempSync(join(tmpdir(), "unipi-skills-rows-"));
     registerSkillsSettings([
       { name: "aws-deploy", description: "Deploy to AWS", baseDir: "/v/aws-deploy" },
@@ -189,16 +191,21 @@ describe("settings", () => {
     const def = getSettingsDefinition("skills")!;
     const titles = def.schema!.map((sec) => sec.title);
     assert.ok(titles.includes("Project skills") && titles.includes("Vault (off until turned on)") && titles.includes("Package skills"));
-    const row = def.schema!.flatMap((sec) => sec.fields).find((f) => f.key === "states.aws-deploy");
-    assert.equal(row?.type, "enum");
-    const states = (getSettings("skills", cwd) as { states: Record<string, string> }).states;
-    assert.equal(states["aws-deploy"], "off");
-    assert.equal(states["local-one"], "on");
+    const page = def.schema!.flatMap((sec) => sec.fields).find((f) => f.key === "states.aws-deploy");
+    assert.equal(page?.type, "page");
+    if (page?.type !== "page" || typeof page.sections === "function") throw new Error("expected a static page");
+    assert.deepEqual(page.sections[0]!.fields.map((f) => f.label), ["Enabled", "Discoverable", "Must show"]);
+    const values = getSettings("skills", cwd) as { states: Record<string, { enabled: boolean }> };
+    assert.equal(values.states["aws-deploy"]!.enabled, false);
+    assert.equal(values.states["local-one"]!.enabled, true);
+    assert.equal(page.summary?.(values), "off");
     registerSkillsSettings();
   });
 
-  it("reads the earlier { enabled, discoverable } shape", () => {
-    assert.deepEqual(normalizeStates({ a: { enabled: false }, b: { discoverable: false }, c: "unlisted", d: { enabled: true }, e: 3 }), { a: "off", b: "unlisted", c: "unlisted", d: "on" });
+  it("summarises and normalizes states (and reads the short-lived string form)", () => {
+    assert.equal(skillSummary({ enabled: true, mustShow: true }), "on · must show");
+    assert.equal(skillSummary({ discoverable: false }), "on · unlisted");
+    assert.deepEqual(normalizeStates({ a: "off", b: "unlisted", c: { mustShow: true, x: 1 }, e: 3 }), { a: { enabled: false }, b: { enabled: true, discoverable: false }, c: { mustShow: true } });
   });
 
   it("normalizes exposure values", () => {
@@ -215,5 +222,17 @@ describe("vault", () => {
     writeFileSync(join(dir, "no-desc", "SKILL.md"), "---\nname: no-desc\n---\n");
     assert.deepEqual(listVaultSkills(dir).map((s) => [s.name, s.description]), [["deploy-aws", "Deploy to AWS. Use for releases."]]);
     assert.deepEqual(parseFrontmatter("---\nname: a\ndescription: \"quoted\"\n---"), { name: "a", description: "quoted" });
+  });
+});
+
+describe("must show", () => {
+  it("keeps a pinned skill through judging and adds one pinned after the freeze", async () => {
+    const catalog = Array.from({ length: 14 }, (_, i) => ({ name: `skill-${i}`, description: `does thing ${i}`, location: `/s/${i}` }));
+    const low = async () => Object.fromEntries(catalog.map((_, i) => [`s${i}`, { noul: 0.05 }])) as never;
+    const state = { judged: false, kept: [], hidden: [], index: "", revealed: new Set<string>() } as never;
+    const first = await decideTurn({ prompt: "refactor the parser module please", catalog, settings: { ...DEFAULT_EXPOSURE }, cwd: "/r", state, mustShow: new Set(["skill-3"]), ask: low });
+    assert.ok(first.listed.has("skill-3"));
+    const later = await decideTurn({ prompt: "now fix the tests", catalog, settings: { ...DEFAULT_EXPOSURE, recheck: false }, cwd: "/r", state, mustShow: new Set(["skill-3", "skill-9"]), ask: low });
+    assert.ok(later.listed.has("skill-9"));
   });
 });

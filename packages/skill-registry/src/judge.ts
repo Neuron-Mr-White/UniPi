@@ -215,6 +215,8 @@ export interface TurnInput {
   settings: ExposureSettings;
   cwd: string;
   state: SessionSkillsState;
+  /** Skills the user marked "Must show": always listed, never judged away. */
+  mustShow?: ReadonlySet<string>;
   /** jev transport; injected in tests. */
   ask?: (req: { state: string; questions: Record<string, unknown> }) => Promise<Record<string, JevAnswer> | null>;
 }
@@ -239,7 +241,7 @@ export async function decideTurn(input: TurnInput): Promise<TurnOutput> {
   if (!state.judged) {
     if (catalog.length <= settings.maxSkills) return { listed: all, index: "", reveal: [] };
     if (isChatter(prompt)) return { listed: all, index: "", reveal: [], status: "skills: waiting for a real request" };
-    const pins = pinnedSkills(catalog, prompt);
+    const pins = new Set([...pinnedSkills(catalog, prompt), ...(input.mustShow ?? [])]);
     const answers = await ask(judgeRequest(catalog, prompt, basename(input.cwd)));
     const failOpen = answers === null;
     const { kept, hidden } = failOpen ? { kept: [...catalog], hidden: [] } : applyJudgement(catalog, answers, settings, pins);
@@ -259,7 +261,9 @@ export async function decideTurn(input: TurnInput): Promise<TurnOutput> {
 
   // Frozen: re-apply the same set and the same index; announcements only.
   const listed = new Set(state.kept.filter((n) => all.has(n)));
-  const candidates = state.hidden.filter((h) => all.has(h.name) && !state.revealed.has(h.name));
+  // A skill pinned after the freeze is listed from now on (a deliberate change).
+  for (const n of input.mustShow ?? []) if (all.has(n)) listed.add(n);
+  const candidates = state.hidden.filter((h) => all.has(h.name) && !state.revealed.has(h.name) && !listed.has(h.name));
   const reveal: Entry[] = [];
   if (candidates.length > 0 && !isChatter(prompt)) {
     const pins = pinnedSkills(candidates, prompt);
