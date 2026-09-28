@@ -4,7 +4,6 @@
  * - /unipi:settings — the unified settings hub
  * - /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor
  * - Automatic session naming (jev gate + isolated one-tool session) + Herdr sync
- * - Skill exposure (judged | all | off)
  * - The shared model cache (~/.unipi/config/models-cache.json)
  */
 
@@ -24,7 +23,6 @@ import {
   writeModelCache,
 } from "@pi-unipi/core";
 import { registerUtilityCommands } from "./commands.js";
-import { registerSkillJudging } from "./skill-discovery.js";
 import { registerAutoRename } from "./rename/index.js";
 import "./settings.js";
 
@@ -71,7 +69,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  registerSkillJudging(pi);
   registerUtilityCommands(pi);
   registerAutoRename(pi);
 

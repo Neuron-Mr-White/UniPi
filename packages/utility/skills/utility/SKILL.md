@@ -4,7 +4,7 @@ scope: agent
 description: |
   What the @pi-unipi/utility extension does for the user: the /unipi:settings
   hub, /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor,
-  automatic session naming and skill exposure. It gives the agent no tools.
+  and automatic session naming. It gives the agent no tools.
 ---
 
 # @pi-unipi/utility

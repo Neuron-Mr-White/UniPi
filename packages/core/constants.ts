@@ -39,6 +39,7 @@ export const MODULES = {
   INPUT_SHORTCUTS: "@pi-unipi/input-shortcuts",
   IMAGE: "@pi-unipi/image",
   WATCHDOG: "@pi-unipi/watchdog",
+  SKILL_REGISTRY: "@pi-unipi/skill-registry",
 } as const;
 
 /** Workflow command names — plan mode + permission modes */

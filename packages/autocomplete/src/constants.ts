@@ -19,6 +19,7 @@ export const PACKAGE_ORDER: string[] = [
   "btw",
   "mcp",
   "utility",
+  "skill-registry",
   "ask-user",
   "info",
   "web-api",
@@ -71,6 +72,9 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:retry":      "utility",
   "unipi:cleanup":    "utility",
   "unipi:doctor":     "utility",
+
+  // skill-registry
+  "unipi:skills":     "skill-registry",
 
   // ask-user (1 command)
 
@@ -155,6 +159,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:retry":      "Retry the last turn (alias of /unipi:continue)",
   "unipi:cleanup":    "Remove stale UniPi temp files and leftovers (preview first)",
   "unipi:doctor":     "Check UniPi's runtime: config, model cache, Decision Model, skills",
+  "unipi:skills":     "Manage skills — on/off per project, listed or not, the skill vault",
 
   "unipi:kanboard":        "Kanboard — capture tasks, run them, open the board",
   "unipi:kanboard-add":    "Kanboard — capture a task into Backlog",
@@ -201,6 +206,7 @@ export const PACKAGE_LABELS: Record<string, string> = {
   btw:       "btw",
   mcp:       "mcp",
   utility:   "utility",
+  "skill-registry": "skills",
   "ask-user": "ask-user",
   info:      "info",
   "web-api": "web-api",

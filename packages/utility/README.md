@@ -1,6 +1,6 @@
 # @pi-unipi/utility
 
-The settings hub, automatic session naming, skill exposure, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
+The settings hub, automatic session naming, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
 
 ## Commands
 
@@ -10,6 +10,8 @@ The settings hub, automatic session naming, skill exposure, and a few maintenanc
 | `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
 | `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
 | `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
+
+Skill exposure and the skill manager live in `@pi-unipi/skill-registry` (`/unipi:skills`).
 
 The main agent gets no tools from this package.
 
@@ -26,16 +28,6 @@ A name you set yourself with pi's `/name` is never overwritten. Without a Decisi
 Inside Herdr, the name is also shown as the pane title and, while the tab still has its default number, the tab label.
 
 Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, naming model (defaults to the session model), Herdr sync, and a **Rename now** action.
-
-## Skill exposure
-
-Controls which discovered skills are listed in the agent's system prompt (Utility → Skills):
-
-- **judged** (default) — on the session's first prompt, if more than `maxSkills` skills are installed, jev scores each skill against the prompt and only the relevant ones stay listed. The choice is frozen for the session so the system prompt stays byte-identical (prefix cache intact). With `recheck`, later prompts can announce newly relevant hidden skills in a message.
-- **all** — every skill stays listed.
-- **off** — UniPi's bundled skills are removed from the list.
-
-Skills stay loadable in every mode via `/skill:name` or by reading their SKILL.md.
 
 ## Model cache
 

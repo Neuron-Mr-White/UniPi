@@ -225,15 +225,15 @@ const unipiRuntimePlugin: DiagnosticPlugin = {
       suggestion: hasKey ? undefined : "Set a key in /unipi:settings → Decision Model, or export OPENROUTER_API_KEY",
       durationMs: 0,
     });
-    const mode = (getSettings("utility", process.cwd()) as { skills?: { mode?: string } }).skills?.mode ?? "judged";
+    const mode = (getSettings("skills", process.cwd()) as { exposure?: { mode?: string } }).exposure?.mode ?? "judged";
     checks.push({
       name: "skill_exposure",
-      module: "@pi-unipi/utility",
+      module: "@pi-unipi/skill-registry",
       status: mode === "off" ? "warning" : "healthy",
       message: mode === "off"
         ? "Skill exposure is off: UniPi's bundled skills are hidden from the model in this project"
         : `Skill exposure: ${mode}`,
-      suggestion: mode === "off" ? "Switch Utility → Skills → Skill exposure to judged or all in /unipi:settings" : undefined,
+      suggestion: mode === "off" ? "Switch Skills → Exposure → Skill exposure to judged or all in /unipi:settings" : undefined,
       durationMs: 0,
     });
     return checks;

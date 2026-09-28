@@ -21,6 +21,7 @@ import backgroundTasks from "@pi-unipi/background-tasks";
 import btw from "@pi-unipi/btw/extensions/btw.js";
 import webApi from "@pi-unipi/web-api";
 import utility from "@pi-unipi/utility";
+import skillRegistry from "@pi-unipi/skill-registry";
 import askUser from "@pi-unipi/ask-user";
 import mcp from "@pi-unipi/mcp";
 import notify from "@pi-unipi/notify";
@@ -51,12 +52,8 @@ export default function (pi: ExtensionAPI) {
   load("workflow", workflow);
   load("long-horizon", longHorizon);
   load("memory", memory);
-  // Utility loads BEFORE info-screen: the name badge overlay must be pushed
-  // to the BOTTOM of the overlay stack. hideOverlay() pops the topmost entry,
-  // and a capturing overlay's done() callback is one-shot — if the badge were
-  // stacked above the boot info-screen, the info-screen's auto-close would pop
-  // the badge (spending its done()) and strand the dashboard uncloseable.
   load("utility", utility);
+  load("skill-registry", skillRegistry);
   load("info-screen", infoScreen);
   load("subagents", subagents);
   load("background-tasks", backgroundTasks);

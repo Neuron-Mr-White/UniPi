@@ -41,6 +41,7 @@ export const PACKAGE_COLORS: Record<string, string> = {
   "background-tasks": `${ESC}[91m`, // Bright Red
   fusion:    `${ESC}[96m`, // Bright Cyan
   watchdog:  `${ESC}[90m`, // Bright Black (gray)
+  "skill-registry": `${ESC}[92m`, // Bright Green
 };
 
 /** Hub namespace → PACKAGE_COLORS key (others use the namespace identity). */
@@ -48,6 +49,7 @@ const NAMESPACE_COLOR_KEYS: Record<string, string> = {
   "command-enchantment": "autocomplete",
   "info-screen": "info",
   compactor: "compact",
+  skills: "skill-registry",
 };
 
 /** ANSI color for a settings namespace ("" when unknown — no color). */
