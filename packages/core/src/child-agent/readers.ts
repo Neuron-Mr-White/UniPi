@@ -122,7 +122,8 @@ const secs = (ms: number) => `${String(Math.max(0, Math.floor(ms / 1000)))}s`;
  */
 function toolBox(theme: KitTheme, bg: "toolPendingBg" | "toolSuccessBg" | "toolErrorBg", text: string): Component {
   const paint = (theme as KitTheme & { bg?: (c: string, s: string) => string }).bg;
-  const box = new Box(1, 1, paint ? (s: string) => paint(bg, s) : undefined);
+  // Call as a method: pi's Theme.bg reads this.bgColors, so a detached call crashes the TUI.
+  const box = new Box(1, 1, paint ? (s: string) => paint.call(theme, bg, s) : undefined);
   box.addChild(new Text(text, 0, 0));
   return box;
 }

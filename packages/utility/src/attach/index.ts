@@ -140,6 +140,27 @@ export function registerAttachments(pi: ExtensionAPI): void {
     if (!ui || !readUtilSettings(ctx.cwd).attachments.enabled) return;
     ui.setWidget(WIDGET, undefined);
     unsub = ui.onTerminalInput((data) => {
+      if (data === "\x7f" || data === "\b") {
+        // Token-aware backspace: if the cursor is at the end of a token
+        // (the common case right after a paste), delete the whole [Image #N]
+        // / [File #N] atomically instead of just the closing bracket. The
+        // editor API exposes no cursor position, so we only fire when the
+        // text ends with a token — mid-text edits fall through untouched.
+        const ed = ui;
+        if (ed) {
+          try {
+            const text = ed.getEditorText();
+            const m = /\[(?:Image|File) #\d+\] ?$/.exec(text);
+            if (m) {
+              ed.setEditorText(text.slice(0, text.length - m[0].length));
+              later(sync, 0);
+              return { consume: true };
+            }
+          } catch {
+            // editor unavailable — fall through
+          }
+        }
+      }
       if (isPaste(data)) for (const ms of SCAN_AFTER_PASTE_MS) later(scan, ms);
       else if (attachments.length > 0) later(sync, 60);
       return undefined;
