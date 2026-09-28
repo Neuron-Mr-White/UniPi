@@ -1,13 +1,18 @@
 /**
  * @pi-unipi/utility — "simple" render style: MiniMax Code (mcode) transcript.
  *
- * mcode collapses every tool call to ONE line — `• Ran  git log … · 10 output lines`,
- * `• Read (package.json)` — with a dim `└ ` tree gutter and a bold verb. This module
- * wraps ANY tool definition so its collapsed view matches that look while Ctrl+O
- * (expanded) falls back to the tool's own renderer.
+ * mcode collapses tool calls into tight one-line rows with a dim `├`/`└` tree
+ * gutter, and re-renders runs of read-like calls into a single summary row
+ * ("Read 3 files", "Explored 4 operations"). This module reproduces that:
+ *
+ *   - every tool is wrapped so its collapsed view is an mcode row (Ctrl+O
+ *     falls back to the tool's own renderer; execute/schema untouched);
+ *   - consecutive read-like calls between two pieces of assistant text form a
+ *     group that collapses to the mcode summary while/after it runs;
+ *   - the latest live call is the only row that shows running state.
  *
  * mcode reference: minimax-code packages/tui/src/tui/transcript/{view,tool-definitions}.ts
- * (verbs, `├`/`└` connectors, `(target)` parentheticals, `· N output lines`).
+ * (verbs, connectors, read-group rules at view.ts:1171-1223, "· N output lines").
  */
 
 import { homedir } from "node:os";
@@ -18,13 +23,13 @@ import type {
   ToolDefinition,
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
-
-
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
 
 type AnyTool = ToolDefinition<any, any, any>;
 
-/** [running, completed, failed] verb triple per tool name (mcode tool-definitions.ts). */
+// ─── verbs (mcode tool-definitions.ts) ────────────────────────────────────
+
+/** [running, completed, failed] verb triple per tool name. */
 const VERBS: Record<string, [string, string, string]> = {
   bash: ["Running", "Ran", "Command failed"],
   powershell: ["Running", "Ran", "Command failed"],
@@ -58,6 +63,8 @@ function verbsFor(name: string): [string, string, string] {
   return VERBS[name.trim().toLowerCase()] ?? [titleCaseTool(name), titleCaseTool(name), `${titleCaseTool(name)} failed`];
 }
 
+// ─── target / meta (pure) ─────────────────────────────────────────────────
+
 function shortPath(p: string, cwd: string): string {
   if (!p) return "";
   const abs = isAbsolute(p) ? p : `${cwd}/${p}`;
@@ -70,14 +77,7 @@ function shortPath(p: string, cwd: string): string {
 /** Args keys whose string value is a filesystem path (gets ~ / ./ shortening). */
 const PATH_KEYS = ["path", "file_path", "file", "cwd", "dir", "directory", "notebook_path"];
 
-/** The single argument mcode would show in the parenthetical. */
-export function targetArg(name: string, args: Record<string, unknown>, cwd: string): string {
-  // Rows are one line: keep the first non-empty line of whatever we pick.
-  const raw = rawTargetArg(name, args, cwd);
-  const first = raw.split("\n").find((l) => l.trim()) ?? "";
-  return first.trim() + (raw.trim().includes("\n") ? " …" : "");
-}
-
+/** The raw argument mcode would show in the parenthetical. */
 function rawTargetArg(name: string, args: Record<string, unknown>, cwd: string): string {
   if (name === "bash" || name === "powershell") return String(args.command ?? args.script ?? "");
   if (name === "grep") {
@@ -100,91 +100,222 @@ function rawTargetArg(name: string, args: Record<string, unknown>, cwd: string):
   return "";
 }
 
-function textOfResult(result: AgentToolResult<any> | undefined): string {
-  return (result?.content ?? [])
+/** The single argument mcode would show in the parenthetical (always one line). */
+export function targetArg(name: string, args: Record<string, unknown>, cwd: string): string {
+  const raw = rawTargetArg(name, args, cwd);
+  const first = raw.split("\n").find((l) => l.trim()) ?? "";
+  return first.trim() + (raw.trim().includes("\n") ? " …" : "");
+}
+
+export function outputMeta(result: AgentToolResult<any> | undefined): string {
+  const text = (result?.content ?? [])
     .filter((c: any) => c.type === "text")
     .map((c: any) => c.text ?? "")
     .join("\n");
-}
-
-function outputMeta(result: AgentToolResult<any> | undefined): string {
-  const text = textOfResult(result);
   if (!text) return "";
   const n = text.split("\n").length;
   return ` · ${n} output line${n === 1 ? "" : "s"}`;
 }
 
-/** One mcode tool row: dim `└ • ` + bold verb + muted `(target)` + meta. */
+// ─── group registry (module-level shared state) ───────────────────────────
+
+interface CallRec {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  cwd: string;
+  running: boolean;
+  done: boolean;
+  failed: boolean;
+  meta: string;
+  group: CallRec[];
+  invalidate?: () => void;
+  invalidating?: boolean;
+}
+
+const byId = new Map<string, CallRec>();
+let currentGroup: CallRec[] = [];
+let textBreakPending = false;
+
+/** Assistant text (or a new user turn) breaks the current tool group (mcode rule). */
+export function noteGroupBreak(): void {
+  textBreakPending = true;
+}
+
+/**
+ * Wire the group-break signal to pi events: assistant text between tool calls
+ * and new user turns both start a fresh group (mcode groups consecutive tool
+ * cells; any text row breaks the run).
+ */
+export function installSimpleGroupEvents(pi: {
+  on: (event: any, handler: (event: any) => void) => void;
+}): void {
+  try {
+    pi.on("message_end", (event: any) => {
+      const msg = event?.message;
+      if (!msg) return;
+      if (msg.role === "user") {
+        noteGroupBreak();
+        return;
+      }
+      if (msg.role === "assistant" && (msg.content ?? []).some((c: any) => c.type === "text" && c.text?.trim())) {
+        noteGroupBreak();
+      }
+    });
+  } catch {
+    // grouping is cosmetic; never block load
+  }
+}
+
+function touch(rec: CallRec): void {
+  if (rec.invalidating) return;
+  rec.invalidating = true;
+  // Async: invalidate() synchronously re-enters updateDisplay → renderers;
+  // doing that from inside a renderer recurses to stack overflow.
+  queueMicrotask(() => {
+    rec.invalidating = false;
+    try {
+      rec.invalidate?.();
+    } catch {}
+  });
+}
+
+// ─── pure group planner (mcode view.ts:373-497, 1171-1223) ────────────────
+
+export interface GroupCall {
+  id: string;
+  name: string;
+  target: string;
+  meta: string;
+  failed: boolean;
+  running: boolean;
+}
+
+type Category = "read" | "search" | "list";
+
+function categoryOf(name: string): Category {
+  const n = name.trim().toLowerCase();
+  if (n === "grep" || n === "search") return "search";
+  if (n === "glob" || n === "list" || n === "list_files" || n === "ls" || n === "find") return "list";
+  return "read";
+}
+
+/** mcode's read-like tools (view.ts:1171 isReadToolCell), plus our ls/find aliases. */
+export function isReadLike(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return n === "read" || n === "read_file" || n === "readfile" || n === "grep" || n === "search" ||
+    n === "glob" || n === "list" || n === "list_files" || n === "ls" || n === "find";
+}
+
+export interface RowFnArgs {
+  connector: "├" | "└";
+  running: boolean;
+  failed: boolean;
+}
+export type RowFn = (call: GroupCall, opts: RowFnArgs) => string;
+export type SummaryFn = (args: {
+  connector: "├" | "└";
+  running: boolean;
+  failedCount: number;
+  total: number;
+  opCount: number;
+  actionRunning: string;
+  actionDone: string;
+  noun: string;
+}) => string;
+
+/**
+ * mcode collapse rules (view.ts renderReadGroup/groupNoun/renderGroupAction):
+ *  - consecutive read-like calls (≥2) collapse to one summary row:
+ *    "Read N files" / "Searched N searches" / "Listed N paths"; mixed
+ *    categories → "Explored N operations"; ` · N failed` on partial failure;
+ *  - while the group is running, the summary shows finished calls so far and
+ *    the live latest call keeps its own row below it;
+ *  - every other call (bash, edits, failures of non-read tools…) is its own row;
+ *  - connectors: `├` for every row except the group's last, which gets `└`.
+ * Returns one entry per call; `row: null` = render nothing (hidden inside the summary).
+ */
+export function planGroupRows(calls: GroupCall[], row: RowFn, summary: SummaryFn): Array<{ id: string; row: string | null }> {
+  const units: GroupCall[][] = [];
+  let run: GroupCall[] = [];
+  for (const c of calls) {
+    if (isReadLike(c.name)) {
+      run.push(c);
+      continue;
+    }
+    if (run.length >= 2) units.push(run);
+    else if (run.length === 1) units.push([run[0]!]);
+    run = [];
+    units.push([c]);
+  }
+  if (run.length >= 2) units.push(run);
+  else if (run.length === 1) units.push([run[0]!]);
+
+  const out: Array<{ id: string; row: string | null }> = [];
+  units.forEach((unit, i) => {
+    const anyRunning = unit.some((c) => c.running);
+    const isLast = i === units.length - 1;
+    const collapsed = unit.length >= 2;
+    // a running group appends the live row after its summary, so the summary
+    // is never the visually-last row while the group is active
+    const connector: "├" | "└" = isLast && !(collapsed && anyRunning) ? "└" : "├";
+    if (unit.length < 2) {
+      out.push({ id: unit[0]!.id, row: row(unit[0]!, { connector, running: unit[0]!.running, failed: unit[0]!.failed }) });
+      return;
+    }
+    const failedCount = unit.filter((c) => c.failed).length;
+    const cats = new Set(unit.map((c) => categoryOf(c.name)));
+    const opKeys = new Set(unit.map((c) => `${c.name}\u0000${c.target}`));
+    const opCount = opKeys.size;
+    const noun = cats.size > 1 ? "operations" : cats.has("search") ? "searches" : cats.has("list") ? "paths" : "files";
+    const actionRunning = cats.size > 1 ? "Exploring" : cats.has("search") ? "Searching" : cats.has("list") ? "Listing" : "Reading";
+    const actionDone = cats.size > 1 ? "Explored" : cats.has("search") ? "Searched" : cats.has("list") ? "Listed" : "Read";
+    out.push({
+      id: unit[0]!.id,
+      row: summary({
+        connector,
+        running: anyRunning,
+        failedCount,
+        total: unit.length,
+        opCount,
+        actionRunning,
+        actionDone,
+        noun,
+      }),
+    });
+    const hiddenCount = anyRunning ? unit.length - 1 : unit.length - 1;
+    for (const hidden of unit.slice(1, anyRunning ? -1 : undefined)) out.push({ id: hidden.id, row: null });
+    void hiddenCount;
+    if (anyRunning) {
+      const live = unit[unit.length - 1]!;
+      out.push({ id: live.id, row: row(live, { connector: "└", running: true, failed: false }) });
+    }
+  });
+  return out;
+}
+
+// ─── row painters ─────────────────────────────────────────────────────────
+
+function marker(theme: Theme, running: boolean, failed: boolean): string {
+  return theme.fg(failed ? "error" : running ? "accent" : "success", failed ? "×" : "•");
+}
+
 export function simpleToolLine(
   theme: Theme,
   name: string,
-  args: Record<string, unknown>,
-  opts: { running: boolean; failed?: boolean; result?: AgentToolResult<any>; cwd: string; width: number },
+  target: string,
+  opts: { running: boolean; failed?: boolean; meta?: string; connector?: "├" | "└"; width: number },
 ): string {
   const [runningVerb, doneVerb, failedVerb] = verbsFor(name);
   const verb = opts.failed ? failedVerb : opts.running ? runningVerb : doneVerb;
-  const marker = theme.fg(
-    opts.failed ? "error" : opts.running ? "accent" : "success",
-    opts.failed ? "×" : "•",
-  );
-  const target = targetArg(name, args, opts.cwd);
+  const connector = theme.fg("borderMuted", `${opts.connector ?? "└"} `);
   const isShell = name === "bash" || name === "powershell";
-  const tail = opts.running
-    ? theme.fg("muted", " …")
-    : opts.result
-      ? theme.fg(opts.failed ? "error" : "muted", outputMeta(opts.result))
-      : "";
+  const tail = opts.running ? theme.fg("muted", " …") : opts.meta ? theme.fg(opts.failed ? "error" : "muted", opts.meta) : "";
   let line: string;
-  if (!target) line = `${marker} ${theme.bold(verb)}`;
-  else if (isShell) line = `${marker} ${theme.bold(verb)}  ${target}`;
-  else line = `${marker} ${theme.bold(verb)} ${theme.fg("muted", `(${target})`)}`;
-  return truncateToWidth(`${theme.fg("borderMuted", "└ ")}${line}${tail}`, Math.max(0, opts.width), theme.fg("muted", "…"));
-}
-
-/** Definitions already wearing the mcode wrapper (double-wrap guard). */
-export const simpleWrapped = new WeakSet<object>();
-
-/**
- * Re-wrap a tool definition so the collapsed view is the mcode one-liner and
- * Ctrl+O falls back to the tool's own renderer. Execute/schema are untouched —
- * the model sees exactly the same tool.
- */
-export function simpleWrapTool(def: AnyTool): AnyTool {
-  // pi renders call + result rows stacked (tool-execution.js updateDisplay),
-  // so exactly ONE of them draws the mcode row: the call row while running,
-  // the call row again once state.result exists (read lazily at render time),
-  // and the result row is empty. state is shared across both renderers.
-  const renderCall = (args: any, theme: Theme, ctx: any) => {
-    if (ctx.expanded && def.renderCall) return def.renderCall(args, theme, ctx);
-    return new SimpleLine((width: number) => {
-      const st = ctx.state as { result?: AgentToolResult<any>; partial?: boolean };
-      if (!st.result || st.partial) {
-        return [simpleToolLine(theme, def.name, args ?? {}, { running: true, cwd: ctx.cwd, width })];
-      }
-      return [simpleToolLine(theme, def.name, args ?? {}, { running: false, failed: ctx.isError, result: st.result, cwd: ctx.cwd, width })];
-    });
-  };
-  const renderResult = (
-    result: AgentToolResult<any>,
-    options: ToolRenderResultOptions,
-    theme: Theme,
-    ctx: any,
-  ) => {
-    try {
-      if (options.expanded && def.renderResult) return def.renderResult(result, options, theme, ctx);
-      (ctx.state as { result?: AgentToolResult<any>; partial?: boolean }).result = result;
-      (ctx.state as { partial?: boolean }).partial = options.isPartial;
-      if (!options.isPartial) ctx.invalidate();
-      return new SimpleLine(() => []);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error(`[unipi-simple] renderResult threw: ${e}`);
-      throw e;
-    }
-  };
-  const wrapped = { ...def, renderShell: "self" as const, renderCall, renderResult };
-  simpleWrapped.add(wrapped);
-  return wrapped;
+  if (!target) line = `${marker(theme, opts.running, !!opts.failed)} ${theme.bold(verb)}`;
+  else if (isShell) line = `${marker(theme, opts.running, !!opts.failed)} ${theme.bold(verb)}  ${target}`;
+  else line = `${marker(theme, opts.running, !!opts.failed)} ${theme.bold(verb)} ${theme.fg("muted", `(${target})`)}`;
+  return truncateToWidth(`${connector}${line}${tail}`, Math.max(0, opts.width), theme.fg("muted", "…"));
 }
 
 /** One-line component (mcode rows never wrap; they truncate). */
@@ -194,4 +325,86 @@ class SimpleLine implements Component {
     return this.build(width).map((l) => truncateToWidth(l, Math.max(0, width), "…"));
   }
   invalidate(): void {}
+}
+
+/** Definitions already wearing the mcode wrapper (double-wrap guard). */
+export const simpleWrapped = new WeakSet<object>();
+
+/** Test hook: clear the module-level group registry. */
+export function resetSimpleGroups(): void {
+  byId.clear();
+  currentGroup = [];
+  textBreakPending = false;
+}
+
+// ─── the wrapper ──────────────────────────────────────────────────────────
+
+function toGroupCall(rec: CallRec): GroupCall {
+  return { id: rec.id, name: rec.name, target: targetArg(rec.name, rec.args, rec.cwd), meta: rec.meta, failed: rec.failed, running: rec.running };
+}
+
+export function simpleWrapTool(def: AnyTool): AnyTool {
+  const renderCall = (args: any, theme: Theme, ctx: any) => {
+    if (ctx.expanded && def.renderCall) return def.renderCall(args, theme, ctx);
+    let rec = byId.get(ctx.toolCallId);
+    if (!rec) {
+      if (textBreakPending) {
+        currentGroup = [];
+        textBreakPending = false;
+      }
+      rec = { id: ctx.toolCallId, name: def.name, args: args ?? {}, cwd: ctx.cwd, running: true, done: false, failed: false, meta: "", group: currentGroup };
+      byId.set(ctx.toolCallId, rec);
+      currentGroup.push(rec);
+      rec.invalidate = () => ctx.invalidate();
+      for (const r of currentGroup) touch(r);
+    }
+    rec.args = args ?? rec.args;
+    const group = rec.group;
+    const paint = (width: number): string[] => {
+      const rows = planGroupRows(
+        group.map(toGroupCall),
+        (call, o) =>
+          simpleToolLine(theme, call.name, call.target, { running: o.running, failed: o.failed, meta: call.meta, connector: o.connector, width }),
+        (s) => {
+          const label = theme.bold(`${s.running ? s.actionRunning : s.actionDone} ${s.opCount} ${s.noun}`);
+          const failure = s.failedCount === s.total ? theme.fg("error", " · failed") : s.failedCount > 0 ? theme.fg("error", ` · ${s.failedCount} failed`) : "";
+          const attempts = s.total > s.opCount ? theme.fg("muted", ` · ${s.total} calls`) : "";
+          return `${theme.fg("borderMuted", `${s.connector} `)}${marker(theme, s.running, s.failedCount === s.total)} ${label}${failure}${attempts}`;
+        },
+      );
+      const mine = rows.find((r) => r.id === rec!.id);
+      return mine?.row ? [mine.row] : [];
+    };
+    return new SimpleLine(paint);
+  };
+
+  const renderResult = (
+    result: AgentToolResult<any>,
+    options: ToolRenderResultOptions,
+    theme: Theme,
+    ctx: any,
+  ) => {
+    try {
+      if (options.expanded && def.renderResult) return def.renderResult(result, options, theme, ctx);
+      const rec = byId.get(ctx.toolCallId);
+      if (rec) {
+        rec.invalidate = () => ctx.invalidate();
+        const meta = outputMeta(result);
+        const changed = !rec.done || rec.meta !== meta || rec.failed !== ctx.isError;
+        rec.meta = meta;
+        rec.failed = !!ctx.isError;
+        rec.running = !!options.isPartial;
+        if (!options.isPartial) rec.done = true;
+        if (changed && !options.isPartial) for (const r of rec.group) touch(r);
+      }
+      return new SimpleLine(() => []);
+    } catch {
+      // fall through to pi's generic result rendering rather than crash the row
+      return new SimpleLine(() => []);
+    }
+  };
+
+  const wrapped = { ...def, renderShell: "self" as const, renderCall, renderResult };
+  simpleWrapped.add(wrapped);
+  return wrapped;
 }

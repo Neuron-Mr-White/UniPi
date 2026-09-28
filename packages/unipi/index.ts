@@ -11,7 +11,7 @@
 
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
-import { readUtilSettings, simpleWrapTool, simpleWrapped } from "@pi-unipi/utility";
+import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "@pi-unipi/utility";
 
 import workflow from "@pi-unipi/workflow";
 import longHorizon from "@pi-unipi/long-horizon";
@@ -91,6 +91,7 @@ export default function (pi: ExtensionAPI) {
   // After all modules registered: apply the mcode-style wrapper. Re-register
   // with the RAW register (not the capturing proxy) to avoid double-capture.
   if (readUtilSettings().render.style === "simple") {
+    installSimpleGroupEvents(api);
     for (const def of captured.values()) {
       if (simpleWrapped.has(def)) continue;
       try {
