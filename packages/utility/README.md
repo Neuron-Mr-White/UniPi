@@ -71,6 +71,25 @@ How a model is called depends on its provider:
 
 Defaults are FLUX.2 [klein] 4B on OpenRouter for both generation and editing, which is cheap and fast. Images are returned inline and saved to `~/.unipi/images/`. When a call fails, the tool reports it as a failure with the missing key or setting spelled out.
 
+## Response formatting
+
+Settings → Utility → Response formatting → Style changes how pi's built-in `read`, `bash`, `edit` and `write` calls look in the transcript. The model sees exactly the same tools either way; only the drawing changes. It applies after `/reload` or in a new session.
+
+- **simple** — one line per tool, output collapsed:
+  ```
+  ▪ Read   ./demo/app.py · 5 lines
+  ▪ Edited ./demo/app.py · +1 -1
+  ▪ Ran    cd demo && ls -la && python3 app.py · 7 output lines
+  ```
+- **regular** (default) — pi's own rendering, untouched.
+- **advanced** —
+  - Commands are syntax-highlighted. Code embedded in a command is highlighted in its own language: heredoc bodies (`python - <<'PY'`, `cat > x.ts <<EOF`) and `python -c` / `node -e` strings.
+  - Output shows its last 10 lines. Whole-output JSON is pretty-printed, test-run summaries (node:test, vitest, cargo, pytest) get a ✓/✗ line, and an exit line shows the code and time.
+  - Edits show as a diff with line numbers, syntax colouring by file type, and tinted added/removed lines.
+  - Writes and reads are highlighted by file type.
+
+Ctrl+O expands anything collapsed in every style.
+
 ## Model cache
 
 On every session start, utility writes pi's live model list (models with credentials) to `~/.unipi/config/models-cache.json`, with each model's input and output modalities. The settings hub pickers and kanboard read it; `readModelCache()` / `filterModels()` in `@pi-unipi/core` give the same list to any module.

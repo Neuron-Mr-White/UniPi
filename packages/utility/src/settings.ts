@@ -39,10 +39,16 @@ export interface AttachmentSettings {
   preview: boolean;
 }
 
+/** How pi's built-in read/bash/edit/write results are drawn. */
+export interface RenderSettings {
+  style: "simple" | "regular" | "advanced";
+}
+
 export interface UtilSettings {
   rename: RenameSettings;
   answer: AnswerSettings;
   attachments: AttachmentSettings;
+  render: RenderSettings;
 }
 
 export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
@@ -56,10 +62,13 @@ export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "editor", port:
 
 export const DEFAULT_ATTACHMENT_SETTINGS: AttachmentSettings = { enabled: true, preview: true };
 
+export const DEFAULT_RENDER_SETTINGS: RenderSettings = { style: "regular" };
+
 const DEFAULT_SETTINGS: UtilSettings = {
   rename: { ...DEFAULT_RENAME_SETTINGS },
   answer: { ...DEFAULT_ANSWER_SETTINGS },
   attachments: { ...DEFAULT_ATTACHMENT_SETTINGS },
+  render: { ...DEFAULT_RENDER_SETTINGS },
 };
 
 const UTIL_SETTINGS_FILE = ".unipi/config/util-settings.json";
@@ -95,6 +104,23 @@ registerSettings({
           description: "/unipi:answer editor|web overrides it per use",
         },
         { key: "answer.port", type: "number", label: "Web form port", min: 0, max: 65535, zeroLabel: "any free port (47321 over SSH)", description: "Fix it to keep one ssh -L forward working" },
+      ],
+    },
+    {
+      title: "Response formatting",
+      description: "How tool calls look in the transcript (applies after /reload or a new session)",
+      fields: [
+        {
+          key: "render.style",
+          type: "enum",
+          label: "Style",
+          options: [
+            { value: "simple", label: "simple (one collapsed line per tool)" },
+            { value: "regular", label: "regular (pi's own)" },
+            { value: "advanced", label: "advanced (highlighted commands, diffs, test summaries)" },
+          ],
+          description: "Ctrl+O expands collapsed output in every style",
+        },
       ],
     },
     {
@@ -164,6 +190,7 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
   const p = (parsed ?? {}) as { rename?: Record<string, unknown>; badge?: Record<string, unknown>; answer?: Record<string, unknown> };
   const answer = p.answer ?? {};
   const att = (p as { attachments?: Record<string, unknown> }).attachments ?? {};
+  const render = (p as { render?: Record<string, unknown> }).render ?? {};
   const rename = p.rename ?? {};
   const badge = p.badge ?? {};
   const bool = (v: unknown, legacy: unknown, d: boolean) => typeof v === "boolean" ? v : typeof legacy === "boolean" ? legacy : d;
@@ -182,6 +209,9 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
     attachments: {
       enabled: typeof att.enabled === "boolean" ? att.enabled : DEFAULT_ATTACHMENT_SETTINGS.enabled,
       preview: typeof att.preview === "boolean" ? att.preview : DEFAULT_ATTACHMENT_SETTINGS.preview,
+    },
+    render: {
+      style: render.style === "simple" || render.style === "advanced" ? render.style : "regular",
     },
   };
 }

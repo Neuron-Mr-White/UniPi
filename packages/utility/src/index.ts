@@ -6,6 +6,7 @@
  * - Automatic session naming (jev gate + isolated one-tool session) + Herdr sync
  * - Pasted images/files → [Image #N] / [File #N] attachments
  * - Image tools: image_generate, image_edit, image_recognize
+ * - Response formatting: simple | regular | advanced tool rendering
  * - The shared model cache (~/.unipi/config/models-cache.json)
  */
 
@@ -29,7 +30,8 @@ import { registerAutoRename } from "./rename/index.js";
 import { registerAnswerCommand } from "./answer/index.js";
 import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
-import "./settings.js";
+import { registerToolRenderers } from "./render/tools.js";
+import { readUtilSettings } from "./settings.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
@@ -80,6 +82,7 @@ export default function (pi: ExtensionAPI) {
   registerAnswerCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
+  registerToolRenderers(pi, readUtilSettings().render.style);
 
   pi.on("session_start", async (_event, ctx) => {
     try {
