@@ -71,6 +71,14 @@ describe("umbrella package pi manifest", () => {
         .filter((file) => existsSync(file));
       for (const file of files) {
         const source = readFileSync(file, "utf8");
+        if (dir === "skill-registry") {
+          // The registry mounts the USER's skill vault (~/.unipi/skill-vault),
+          // never its own bundled skills — those still ship via pi.skills.
+          const handler = source.slice(source.indexOf('pi.on("resources_discover"'));
+          assert.match(handler.slice(0, 400), /vaultDir\(\)/, `${file} may only mount the skill vault`);
+          assert.doesNotMatch(handler.slice(0, 400), /["']\.\/skills["']|packages\/skill-registry\/skills/, `${file} must not mount its bundled skills`);
+          continue;
+        }
         assert.ok(
           !source.includes('pi.on("resources_discover"'),
           `${file} must not return skillPaths; root @pi-unipi/unipi pi.skills is the only skill source`,

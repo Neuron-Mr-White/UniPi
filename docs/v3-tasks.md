@@ -77,8 +77,11 @@ Removals and recreations are green-lit to start immediately.
 ### 8. `fusion` — ux
 - [ ] Improve pairing/picker/runtime UX
 
-### 9. `image` — improve + fix
-- [ ] Improve functionality; fix broken paths (model list, generation, vision analysis)
+### 9. `image` — improve + fix ✅ (2026-09-28, merged into utility)
+- [x] Package removed; image tools live in `packages/utility/src/image/` (namespace `image` unchanged)
+- [x] Generation fixed: own transports (OpenRouter chat+modalities, fal.run, OpenAI images), key per provider, custom endpoints; failures throw (pi ignores `isError`)
+- [x] `image_edit` tool; pickers filtered by modality (image-output / image-edit / image-input) from the shared model cache
+- [x] Verified live on coffee: FLUX.2 klein 4B generate + edit on OpenRouter and fal
 
 ### 10. `info-screen` — ux
 - [ ] Improve dashboard UX
@@ -107,7 +110,14 @@ Removals and recreations are green-lit to start immediately.
 - [ ] Ok for now; optional UX polish later
 
 ### 18. `utility` — ux + settings hub
-- [ ] UX improvements
+- [x] UX overhaul (2026-09-28): removed reload/status/env/prefix-cache, all agent tools, the top badge overlay, analytics, lifecycle signal handlers, dead events; `/unipi:retry` alias; allowlisted cleanup with preview+confirm; doctor checks model cache / Decision Model / skills
+- [x] Auto-rename: jev gate (real request? topic changed?) → isolated one-tool rename session; respects `/name`; Herdr sync
+- [x] Shared model cache with input/output modalities (settings hub + kanboard read it)
+- [x] `/unipi:answer` (editor Q/A template or local web form; SSH port-forward hint)
+- [x] Pasted/dropped files → `[Image #N]` / `[File #N]` attachments with chips + inline previews
+- [x] Response formatting: simple / regular / advanced tool rendering
+- [x] Skill judging + registry moved to `skill-registry` (name pins, hidden-skill index, greeting skip, generic cap; `/unipi:skills`, vault, per-scope on/off)
+- [ ] Summary card (`<summary>`-style) — design pending
 - [x] Add centralized settings that can configure ALL unipi modules — `/unipi:settings` hub shipped (bc85981): core schema+hub, utility command; long-horizon (incl. judge.apiKey secret, env-free), footer, compactor, ask-user, notify, autocomplete, utility-badge adopted onto the engine
 - [ ] Add a startup hint that shuffles every session (fun)
 
