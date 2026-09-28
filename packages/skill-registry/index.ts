@@ -6,18 +6,19 @@
  *      ones; the vault is mounted via resources_discover and stays off until
  *      a scope turns a skill on.
  *   2. exposure: off (bundled stripped) | all | judged (see src/judge.ts).
- * Plus /unipi:skills — the settings hub opened on the Skills rows (one row per
- * skill, kept current from the live catalog) — and the reveal event kanboard
- * uses to surface a skill mid-session.
+ * Plus /unipi:skills (the hub opened on Skills), the "Skill settings…" overlay
+ * (per-skill Enabled / Discoverable / Must show, src/editor.ts), and the
+ * reveal event kanboard uses to surface a skill mid-session.
  */
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, MODULES, openSettingsHub, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyRegistry, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, type CatalogSkill } from "./src/registry.js";
-import { readSkillsSettings, registerSkillsSettings } from "./src/settings.js";
+import { applyRegistry, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
+import { readSkillsSettings, readStateLayers, writeStateLayers } from "./src/settings.js";
+import { SkillEditor, type EditorResult } from "./src/editor.js";
 import { listVaultSkills, vaultDir } from "./src/vault.js";
 import {
   decideTurn,
@@ -66,26 +67,51 @@ export default function skillRegistry(pi: ExtensionAPI) {
     return [...byName.values()];
   };
 
-  /** Keep the hub's per-skill rows in step with what pi actually loaded. */
-  let registeredNames = "";
-  const refreshSkillRows = (cwd: string) => {
-    const skills = allSkills();
-    const names = skills.map((sk) => sk.name).sort().join(",");
-    if (names === registeredNames) return;
-    registeredNames = names;
-    registerSkillsSettings(skills, cwd, vaultDir());
+  const invalidateJudgement = () => {
+    if (state) state.judged = false;
   };
 
+  /** "Skill settings…" — the per-skill E/D/M overlay. */
+  const openEditor = async (ctx: ExtensionContext) => {
+    if (!ctx.hasUI) return;
+    const cwd = ctx.cwd ?? process.cwd();
+    const vault = vaultDir();
+    const skills = allSkills()
+      .map((sk) => ({ name: sk.name, description: sk.description, source: skillSource(sk, cwd, vault) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const before = readStateLayers(cwd);
+    const settings = readSkillsSettings(cwd);
+    const hasProject = Object.keys(before.project).length > 0;
+    const result = await ctx.ui.custom<EditorResult>(
+      (tui, theme, _kb, done) =>
+        new SkillEditor({
+          skills,
+          layers: before,
+          proxy: settings.proxy,
+          initialScope: hasProject ? "project" : "global",
+          theme: { fg: (c, text) => theme.fg(c as never, text), bold: (text) => theme.bold(text) },
+          onDone: done,
+          onRenderRequest: () => tui.requestRender(),
+        }),
+      HUB_OVERLAY_OPTIONS,
+    );
+    if (result.type !== "saved") return;
+    const writes = writeStateLayers(cwd, before, result.layers);
+    if (result.proxy !== settings.proxy) setSettings("skills", { proxy: result.proxy }, "global", cwd);
+    if (writes > 0 || result.proxy !== settings.proxy) {
+      invalidateJudgement();
+      ctx.ui.notify(`Skill settings saved (${writes} change${writes === 1 ? "" : "s"}${result.proxy !== settings.proxy ? `, proxy ${result.proxy ? "on" : "off"}` : ""}) — applies from the next prompt`, "info");
+    }
+  };
+  registerCommandRunner("unipi:skills-editor", async (raw: unknown) => openEditor(raw as ExtensionContext));
+
   pi.registerCommand("unipi:skills", {
-    description: "Manage skills — on/off per global or project scope, listed or not, and the skill vault (opens /unipi:settings on Skills)",
+    description: "Skill settings — proxy, exposure, and per-skill Enabled / Discoverable / Must show (opens /unipi:settings on Skills)",
     handler: async (_args, ctx) => {
-      refreshSkillRows(ctx.cwd ?? process.cwd());
       await openSettingsHub(ctx, {
         filter: "skills",
-        // An explicit change re-judges on the next prompt (one deliberate
-        // prefix change instead of a stale frozen set).
         onChanged: (ns) => {
-          if (ns === "skills" && state) state.judged = false;
+          if (ns === "skills") invalidateJudgement();
         },
       });
     },
@@ -105,7 +131,6 @@ export default function skillRegistry(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     try {
       state = restoreState(ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());
-      refreshSkillRows(ctx.cwd ?? process.cwd());
       emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { name: MODULES.SKILL_REGISTRY, version: VERSION, commands: ["unipi:skills"], tools: [] });
     } catch {
       // never block startup
@@ -145,7 +170,6 @@ export default function skillRegistry(pi: ExtensionAPI) {
       const options = event.systemPromptOptions;
       const catalog = (options.skills ?? []) as unknown as CatalogSkill[];
       lastCatalog = catalog;
-      refreshSkillRows(cwd);
       const settings = readSkillsSettings(cwd);
 
       const vault = vaultDir();

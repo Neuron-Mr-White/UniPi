@@ -79,3 +79,25 @@ describe("utility settings migration", () => {
     assert.deepEqual(out, { skills: { mode: "judged" }, rename: { auto: false } });
   });
 });
+
+describe("rounds, not just prompts", () => {
+  it("a vague opener that turned into real work can name the session", async () => {
+    const { decide, isIdleRound, gateRequest } = await import("../src/rename/gate.ts");
+    const input = { prompt: "Hi, lets discuss about what we have", currentName: null, earlier: [], reply: "Here's the full picture of pi-test: a sandbox project…", toolCalls: 6 };
+    assert.equal(isIdleRound(input), false);
+    assert.match(gateRequest(input).state, /Assistant's reply this round \(6 tool calls\)/);
+    assert.equal(decide(input, { request: { choice: "task", confidence: 0.8 } } as never).rename, true);
+    assert.equal(isIdleRound({ prompt: "hi", currentName: null, earlier: [], toolCalls: 0 }), true);
+    assert.equal(decide({ ...input, prompt: "hi" }, null).rename, true, "jev down: tool work still counts");
+  });
+  it("extracts the last reply and counts tool calls", async () => {
+    const { lastReplyText, countToolCalls } = await import("../src/rename/index.ts");
+    const msgs = [
+      { role: "assistant", content: [{ type: "toolCall" }, { type: "toolCall" }] },
+      { role: "toolResult", content: [] },
+      { role: "assistant", content: [{ type: "text", text: "<summary>\nDone: overview\n</summary>" }] },
+    ];
+    assert.equal(lastReplyText(msgs), "Done: overview");
+    assert.equal(countToolCalls(msgs), 2);
+  });
+});

@@ -4,8 +4,8 @@
  *   proxy          — off (default): pi's skills pass through untouched (only
  *                    exposure judging applies) and vault skills stay hidden.
  *                    on: the per-skill states below apply, vault included.
- *   states.<name>  — { enabled, discoverable, mustShow } per skill: one hub
- *                    page each (grouped by where the skill lives). The engine
+ *   states.<name>  — { enabled, discoverable, mustShow } per skill, edited in
+ *                    the "Skill settings…" overlay (src/editor.ts). The engine
  *                    merges global + project layers per option, so a project
  *                    can turn a vault skill on (or pin a skill) just for itself.
  *   exposure       — judged | all | off, threshold, maxSkills, recheck.
@@ -22,11 +22,12 @@ import {
   getSettings,
   globalSettingsPath,
   projectSettingsPath,
+  getSettingsScoped,
   registerSettings,
-  type SettingsField,
+  setSettings,
+  unsetSettings,
   type SettingsSection,
 } from "@pi-unipi/core";
-import { skillSource, type CatalogSkill, type SkillSource } from "./registry.js";
 
 export type ExposureMode = "judged" | "all" | "off";
 
@@ -94,90 +95,59 @@ const STATIC_SECTIONS: SettingsSection[] = [
   },
 ];
 
-const SOURCE_TITLE: Record<SkillSource, string> = {
-  vault: "Vault (off until turned on)",
-  project: "Project skills",
-  user: "User skills",
-  unipi: "UniPi skills",
-  package: "Package skills",
-};
-
-/**
- * (Re)register the namespace with one row per known skill, grouped by where
- * it lives. Called at session start and whenever the catalog changes, so the
- * hub always lists the current skills. Defaults encode the source rule
- * (vault off, everything else on), so "d default" in the hub does the right thing.
- */
-export function skillSummary(state: SkillState | undefined): string {
-  if (state?.enabled === false) return "off";
-  if (state?.mustShow) return "on · must show";
-  return state?.discoverable === false ? "on · unlisted" : "on · listed";
-}
-
-function skillPage(skill: CatalogSkill, source: SkillSource): SettingsField {
-  const k = `states.${skill.name}`;
-  const where = SOURCE_TITLE[source].replace(/ \(.*\)$/, "").replace(/ skills$/, "").toLowerCase();
-  return {
-    key: k,
-    type: "page",
-    label: skill.name,
-    description: skill.description.replace(/\s+/g, " ").slice(0, 160),
-    summary: (values) => skillSummary(normalizeStates((values as { states?: unknown }).states)[skill.name]),
-    sections: [
-      {
-        title: skill.name,
-        description: `${where} skill · ${skill.description.replace(/\s+/g, " ").slice(0, 200)}`,
-        fields: [
-          { key: `${k}.enabled`, type: "boolean", label: "Enabled", description: "In the session at all; off also blocks /skill:name" },
-          { key: `${k}.discoverable`, type: "boolean", label: "Discoverable", description: "Listed in the system prompt; off = only /skill:name" },
-          { key: `${k}.mustShow`, type: "boolean", label: "Must show", description: "Always listed, even when exposure judging would hide it" },
-        ],
-      },
-      {
-        title: "Scope",
-        description: "g global ↔ project · d inherit · needs the skill proxy on",
-        fields: [],
-      },
-    ],
-  };
-}
-
-/**
- * (Re)register the namespace with one page per known skill, grouped by where
- * it lives. Called at session start and whenever the catalog changes, so the
- * hub always lists the current skills. Defaults encode the source rule
- * (vault off, everything else on), so "d" in the hub does the right thing.
- */
-export function registerSkillsSettings(skills: readonly CatalogSkill[] = [], cwd = process.cwd(), vault = ""): void {
-  const bySource = new Map<SkillSource, SettingsField[]>();
-  const defaults: Record<string, Required<SkillState>> = {};
-  const seen = new Set<string>();
-  for (const skill of [...skills].sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!skill.name || skill.name.includes(".") || seen.has(skill.name)) continue;
-    seen.add(skill.name);
-    const source = skillSource(skill, cwd, vault);
-    defaults[skill.name] = { enabled: source !== "vault", discoverable: true, mustShow: false };
-    const fields = bySource.get(source) ?? [];
-    fields.push(skillPage(skill, source));
-    bySource.set(source, fields);
-  }
-  const lists: SettingsSection[] = (["project", "user", "vault", "unipi", "package"] as SkillSource[])
-    .filter((src) => bySource.has(src))
-    .map((src) => ({ title: SOURCE_TITLE[src], description: "Applies while the skill proxy is on", fields: bySource.get(src)! }));
-  registerSettings({
-    namespace: NAMESPACE,
-    label: "Skills",
-    defaults: {
-      proxy: false,
-      states: defaults,
-      exposure: { ...DEFAULT_EXPOSURE },
-      decisionModel: DEFAULT_DECISION_OVERRIDE,
+registerSettings({
+  namespace: NAMESPACE,
+  label: "Skills",
+  defaults: {
+    proxy: false,
+    states: {},
+    exposure: { ...DEFAULT_EXPOSURE },
+    decisionModel: DEFAULT_DECISION_OVERRIDE,
+  },
+  schema: [
+    {
+      ...STATIC_SECTIONS[0]!,
+      fields: [
+        ...STATIC_SECTIONS[0]!.fields,
+        { key: "states", type: "action", label: "Skill settings…", description: "Per skill: Enabled / Discoverable / Must show, per global or project scope", command: "unipi:skills-editor" },
+      ],
     },
-    schema: [...STATIC_SECTIONS, ...lists, decisionModelSection({ title: "Skills — Decision model" })],
-  });
+    ...STATIC_SECTIONS.slice(1),
+    decisionModelSection({ title: "Skills — Decision model" }),
+  ],
+});
+
+type Layer = Record<string, SkillState>;
+
+/** The raw per-skill states of each layer (what the editor starts from). */
+export function readStateLayers(cwd: string): { global: Layer; project: Layer } {
+  const layer = (scope: "global" | "project") => normalizeStates((getSettingsScoped(NAMESPACE, scope, cwd) ?? {}).states);
+  return { global: layer("global"), project: layer("project") };
 }
 
-registerSkillsSettings();
+const OPTIONS = ["enabled", "discoverable", "mustShow"] as const;
+
+/**
+ * Write only what changed: a set option becomes `states.<name>.<opt>`, a
+ * cleared one is unset (inherits again). Returns the number of cells written.
+ */
+export function writeStateLayers(cwd: string, before: { global: Layer; project: Layer }, after: { global: Layer; project: Layer }): number {
+  let writes = 0;
+  for (const scope of ["global", "project"] as const) {
+    const names = new Set([...Object.keys(before[scope]), ...Object.keys(after[scope])]);
+    for (const name of names) {
+      for (const opt of OPTIONS) {
+        const was = before[scope][name]?.[opt];
+        const now = after[scope][name]?.[opt];
+        if (was === now) continue;
+        if (now === undefined) unsetSettings(NAMESPACE, `states.${name}.${opt}`, scope, cwd);
+        else setSettings(NAMESPACE, { states: { [name]: { [opt]: now } } }, scope, cwd);
+        writes++;
+      }
+    }
+  }
+  return writes;
+}
 
 function readJson(file: string): Record<string, unknown> | null {
   try {

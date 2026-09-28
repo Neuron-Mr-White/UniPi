@@ -1,12 +1,16 @@
 /**
  * @pi-unipi/utility — Auto-rename gate
  *
- * Decides, after a confirmed round, whether the session deserves a (new) name:
- *   1. Cheap prefilter: greetings, thanks, "ok", "continue" never rename.
- *   2. jev, two local questions with no session history:
- *        request — is this a real request with its own subject matter?
- *        topic   — (only when named) does it leave the current name's topic?
- *   3. jev unavailable → rename only an unnamed session on a ≥4-word prompt.
+ * Decides, after a confirmed round, whether the session deserves a (new) name.
+ * It judges the ROUND — the user's message AND what the agent did with it — so
+ * a vague opener ("hi, let's look at what we have") that turns into real work
+ * still names the session:
+ *   1. Cheap prefilter: a bare greeting/thanks/"ok" round with no tool work never renames.
+ *   2. jev, two local questions:
+ *        request — did the round establish a subject a title could describe?
+ *        topic   — (only when named) did it move to a different task?
+ *   3. jev unavailable → rename only an unnamed session after a round with
+ *      real work (tool calls) or a ≥4-word prompt.
  */
 
 import { isChatter, type JevAnswer } from "@pi-unipi/core";
@@ -21,29 +25,37 @@ export interface GateInput {
   prompt: string;
   currentName: string | null;
   earlier: readonly string[];
+  /** The agent's final reply this round (trimmed). */
+  reply?: string;
+  /** Tool calls the agent made this round. */
+  toolCalls?: number;
 }
+
+/** A round with this many tool calls did real work, whatever the prompt said. */
+export const WORK_TOOL_CALLS = 2;
 
 export function gateRequest(input: GateInput): { state: string; questions: Record<string, unknown> } {
   const earlier = input.earlier.filter((e) => e !== input.prompt).slice(-3);
   const state = [
     `Latest user message:\n${input.prompt.slice(0, 1500)}`,
     earlier.length ? `Earlier user messages:\n${earlier.map((e) => `- ${e.slice(0, 200)}`).join("\n")}` : "",
+    input.reply ? `Assistant's reply this round (${input.toolCalls ?? 0} tool calls):\n${input.reply.slice(0, 1200)}` : "",
     input.currentName ? `Current session title: "${input.currentName}"` : "The session has no title yet.",
   ].filter(Boolean).join("\n\n");
   const questions: Record<string, unknown> = {
     request: {
       type: "choice",
-      instructions: "Does the latest user message carry a task or subject of its own that a session title could describe?",
+      instructions: "Did this round (the latest user message together with the assistant's reply) establish a task or subject that a session title could describe?",
       criteria: {
-        task: "It asks for work, a change, an answer or an investigation and names what it is about.",
-        chatter: "A greeting, thanks, acknowledgement, approval (yes / ok / go on), or a bare 'continue' with no subject of its own.",
+        task: "The user asked for work, a change, an answer, a review or an investigation — or opened loosely and the assistant's reply shows real work on a definite subject.",
+        chatter: "Only small talk: a greeting, thanks, acknowledgement, approval (yes / ok / go on) or a bare 'continue', and the reply adds no subject of its own.",
       },
     },
   };
   if (input.currentName) {
     questions.topic = {
       type: "choice",
-      instructions: `Does the latest user message move to a different task than the current title "${input.currentName}"?`,
+      instructions: `Does this round move to a different task than the current title "${input.currentName}"?`,
       criteria: {
         same: "Same task or area: a follow-up, refinement, fix or next step of what the title describes.",
         new: "A different task, feature or subject that the current title no longer describes.",
@@ -58,12 +70,17 @@ export const TOPIC_CONFIDENCE = 0.7;
 
 export type GateDecision = { rename: true; reason: string } | { rename: false; reason: string };
 
+/** Rounds that can never name a session, decided without jev. */
+export function isIdleRound(input: GateInput): boolean {
+  return isChatter(input.prompt) && (input.toolCalls ?? 0) < WORK_TOOL_CALLS;
+}
+
 export function decide(input: GateInput, answers: Record<string, JevAnswer> | null): GateDecision {
-  if (isChatter(input.prompt)) return { rename: false, reason: "chatter" };
+  if (isIdleRound(input)) return { rename: false, reason: "chatter" };
   if (!answers) {
     if (input.currentName) return { rename: false, reason: "jev unavailable; keeping current name" };
-    return wordCount(input.prompt) >= 4
-      ? { rename: true, reason: "jev unavailable; first substantive prompt" }
+    return wordCount(input.prompt) >= 4 || (input.toolCalls ?? 0) >= WORK_TOOL_CALLS
+      ? { rename: true, reason: "jev unavailable; first substantive round" }
       : { rename: false, reason: "jev unavailable; prompt too short" };
   }
   const req = answers.request;

@@ -19,8 +19,8 @@ import {
   type Entry,
 } from "../src/judge.ts";
 import { applyRegistry, effectiveState, skillCommandName } from "../src/registry.ts";
-import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeStates, registerSkillsSettings, skillSummary } from "../src/settings.ts";
-import { getSettingsDefinition, getSettings } from "@pi-unipi/core";
+import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeStates, readStateLayers, writeStateLayers } from "../src/settings.ts";
+import { SkillEditor, cellValue, type EditorResult } from "../src/editor.ts";
 import { listVaultSkills, parseFrontmatter } from "../src/vault.ts";
 
 const WF = "/repo/packages/skill-registry/skills";
@@ -181,31 +181,16 @@ describe("settings", () => {
     assert.deepEqual(JSON.parse(readFileSync(projectSettingsPath(cwd, "skills"), "utf8")).exposure, { mode: "off", maxSkills: 8 });
   });
 
-  it("gives every skill a second-layer page (Enabled / Discoverable / Must show), grouped by source", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "unipi-skills-rows-"));
-    registerSkillsSettings([
-      { name: "aws-deploy", description: "Deploy to AWS", baseDir: "/v/aws-deploy" },
-      { name: "grill-me", description: "Grill the design", baseDir: "/home/u/.agents/skills/grill-me" },
-      { name: "local-one", description: "Project skill", baseDir: `${cwd}/.agents/skills/local-one` },
-    ], cwd, "/v");
-    const def = getSettingsDefinition("skills")!;
-    const titles = def.schema!.map((sec) => sec.title);
-    assert.ok(titles.includes("Project skills") && titles.includes("Vault (off until turned on)") && titles.includes("Package skills"));
-    const page = def.schema!.flatMap((sec) => sec.fields).find((f) => f.key === "states.aws-deploy");
-    assert.equal(page?.type, "page");
-    if (page?.type !== "page" || typeof page.sections === "function") throw new Error("expected a static page");
-    assert.deepEqual(page.sections[0]!.fields.map((f) => f.label), ["Enabled", "Discoverable", "Must show"]);
-    const values = getSettings("skills", cwd) as { states: Record<string, { enabled: boolean }> };
-    assert.equal(values.states["aws-deploy"]!.enabled, false);
-    assert.equal(values.states["local-one"]!.enabled, true);
-    assert.equal(page.summary?.(values), "off");
-    registerSkillsSettings();
+  it("reads the short-lived string form", () => {
+    assert.deepEqual(normalizeStates({ a: "off", b: "unlisted", c: { mustShow: true, x: 1 }, e: 3 }), { a: { enabled: false }, b: { enabled: true, discoverable: false }, c: { mustShow: true } });
   });
 
-  it("summarises and normalizes states (and reads the short-lived string form)", () => {
-    assert.equal(skillSummary({ enabled: true, mustShow: true }), "on · must show");
-    assert.equal(skillSummary({ discoverable: false }), "on · unlisted");
-    assert.deepEqual(normalizeStates({ a: "off", b: "unlisted", c: { mustShow: true, x: 1 }, e: 3 }), { a: { enabled: false }, b: { enabled: true, discoverable: false }, c: { mustShow: true } });
+  it("saves only the cells that changed, unsetting cleared ones", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "unipi-skills-write-"));
+    const before = { global: {}, project: { "sql-review": { enabled: false } } };
+    const after = { global: { "aws-deploy": { enabled: true } }, project: { "sql-review": { mustShow: true } } };
+    assert.equal(writeStateLayers(cwd, before, after), 3);
+    assert.deepEqual(readStateLayers(cwd).project, { "sql-review": { mustShow: true } });
   });
 
   it("normalizes exposure values", () => {
@@ -234,5 +219,50 @@ describe("must show", () => {
     assert.ok(first.listed.has("skill-3"));
     const later = await decideTurn({ prompt: "now fix the tests", catalog, settings: { ...DEFAULT_EXPOSURE, recheck: false }, cwd: "/r", state, mustShow: new Set(["skill-3", "skill-9"]), ask: low });
     assert.ok(later.listed.has("skill-9"));
+  });
+});
+
+describe("skill settings overlay", () => {
+  const skills = [
+    { name: "aws-deploy", description: "Deploy to AWS", source: "vault" as const },
+    { name: "sql-review", description: "Review SQL", source: "user" as const },
+  ];
+  const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+  const make = (layers = { global: {}, project: {} }) => {
+    let result: EditorResult | undefined;
+    const ed = new SkillEditor({ skills, layers, proxy: true, initialScope: "project", theme, onDone: (r) => (result = r), visibleRows: 10 });
+    return { ed, get result() { return result; } };
+  };
+
+  it("shows effective values with a legend and moves between E/D/M with ←/→", () => {
+    const h = make({ global: { "sql-review": { discoverable: false } }, project: {} });
+    const text = h.ed.render(140).join("\n");
+    assert.match(text, /E\s+D\s+M/);
+    assert.match(text, /\[ \] \[x\] \[ \]\s+aws-deploy/, "vault skill is off by default");
+    assert.match(text, /\[x\] \[ \] \[ \]\s+sql-review/, "inherited global value");
+    assert.match(text, /E enabled/);
+    assert.match(text, /M must show/);
+    h.ed.handleInput("\x1b[B"); // sql-review
+    h.ed.handleInput("\x1b[C"); h.ed.handleInput("\x1b[C"); // → M
+    h.ed.handleInput(" ");
+    h.ed.handleInput("\x1b[D"); h.ed.handleInput("\x1b[D"); // ← E
+    h.ed.handleInput(" "); // disable (project)
+    h.ed.handleInput("\r");
+    assert.equal(h.result?.type, "saved");
+    assert.deepEqual(h.result?.layers.project, { "sql-review": { mustShow: true, enabled: false } });
+    assert.deepEqual(h.result?.layers.global, { "sql-review": { discoverable: false } });
+  });
+
+  it("d clears the edited layer's value; g switches scope; esc cancels", () => {
+    const h = make({ global: {}, project: { "aws-deploy": { enabled: true } } });
+    assert.equal(cellValue({ global: {}, project: { "aws-deploy": { enabled: true } } }, skills[0]!, "enabled").from, "project");
+    h.ed.handleInput("d");
+    h.ed.handleInput("g"); // now editing global
+    h.ed.handleInput(" "); // aws-deploy enabled at global
+    h.ed.handleInput("\r");
+    assert.deepEqual(h.result?.layers, { global: { "aws-deploy": { enabled: true } }, project: {} });
+    const c = make();
+    c.ed.handleInput("\x1b");
+    assert.equal(c.result?.type, "cancelled");
   });
 });

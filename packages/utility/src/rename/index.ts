@@ -15,7 +15,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { askJev, registerCommandRunner, resolveDecisionModel } from "@pi-unipi/core";
 import { readRenameSettings } from "../settings.js";
 import { detectHerdr, syncPaneTitle, type HerdrEnv } from "../herdr-sync.js";
-import { decide, gateRequest, isChatter } from "./gate.js";
+import { decide, gateRequest, isIdleRound } from "./gate.js";
 import { runRenameSession } from "./session.js";
 
 /** Custom entry recording names auto-rename set (so resume can tell them from /name). */
@@ -36,8 +36,31 @@ function debugLog(line: string): void {
   }
 }
 
+/** Text of the last assistant message of a round (what the agent concluded). */
+export function lastReplyText(messages: readonly unknown[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as { role?: string; content?: unknown };
+    if (m.role !== "assistant") continue;
+    const text = typeof m.content === "string"
+      ? m.content
+      : Array.isArray(m.content) ? m.content.filter((c: { type?: string }) => c?.type === "text").map((c: { text?: string }) => c.text ?? "").join("\n") : "";
+    if (text.trim()) return text.replace(/<\/?summary>/g, "").trim().slice(0, 1500);
+  }
+  return "";
+}
+
+export function countToolCalls(messages: readonly unknown[]): number {
+  let n = 0;
+  for (const m of messages as Array<{ role?: string; content?: unknown }>) {
+    if (m.role === "assistant" && Array.isArray(m.content)) n += m.content.filter((c: { type?: string }) => c?.type === "toolCall").length;
+  }
+  return n;
+}
+
 export function registerAutoRename(pi: ExtensionAPI): void {
   let requests: string[] = [];
+  /** The round that triggered the current rename (the name should describe it). */
+  let lastRound: { reply: string; toolCalls: number } = { reply: "", toolCalls: 0 };
   let pending: string | null = null;
   let lastAutoName: string | null = null;
   let roundsSinceRename = Number.POSITIVE_INFINITY;
@@ -74,7 +97,7 @@ export function registerAutoRename(pi: ExtensionAPI): void {
     inFlight = true;
     try {
       const settings = readRenameSettings(ctx.cwd);
-      const name = await runRenameSession(ctx, { currentName: currentName(), requests, model: settings.model, topicChanged }, debugLog);
+      const name = await runRenameSession(ctx, { currentName: currentName(), requests, model: settings.model, topicChanged, reply: lastRound.reply }, debugLog);
       debugLog(`rename session → ${name === undefined ? "(no name)" : JSON.stringify(name)}`);
       if (name && (force || name !== currentName())) apply(name);
       return name;
@@ -140,8 +163,11 @@ export function registerAutoRename(pi: ExtensionAPI): void {
       const name = currentName();
       if (name && name !== lastAutoName) return skip("user-set name"); // user-set name wins
       if (name && roundsSinceRename < MIN_ROUNDS_BETWEEN) return skip("renamed recently");
-      if (isChatter(prompt)) return skip("chatter");
-      const input = { prompt, currentName: name, earlier: requests };
+      const reply = lastReplyText(event.messages ?? []);
+      const toolCalls = countToolCalls(event.messages ?? []);
+      const input = { prompt, currentName: name, earlier: requests, reply, toolCalls };
+      if (isIdleRound(input)) return skip("chatter");
+      lastRound = { reply, toolCalls };
       // Detached: the next prompt never waits on naming.
       void (async () => {
         try {

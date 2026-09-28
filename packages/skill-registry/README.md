@@ -6,19 +6,36 @@ Decides which skills the agent sees: per-project on/off, a vault of extra skills
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:skills` | Opens `/unipi:settings` filtered to the Skills rows |
+| `/unipi:skills` | Opens `/unipi:settings` on Skills (proxy, exposure, and the **Skill settings…** row) |
 
-## Managing skills
+## Skill settings
 
-Every skill pi loaded is a row in the settings hub, grouped by where it lives (project, user, vault, UniPi, packages), showing its current state: `on · listed`, `on · unlisted`, `on · must show` or `off`. Enter opens the skill's own page:
+`/unipi:settings` → Skills → **Skill settings…** opens a grid of every skill pi loaded, like Fusion's preset editor:
 
-| Option | Meaning |
-|--------|---------|
-| **Enabled** | In the session at all. Off also blocks `/skill:name`. Default on, except vault skills |
-| **Discoverable** | Listed in the system prompt. Off = only runs with `/skill:name` |
-| **Must show** | Always listed, even when exposure judging would hide it (and even with exposure `off`) |
+```
+Skill settings · 42 skills · editing global · proxy on
+    E   D   M    skill                source  description
+ › [x] [x] [ ]   api-contract         user    Check REST/JSON API changes ...
+   [ ] [x] [ ]   aws-deploy           vault   Deploy services to AWS with ...
 
-Each option is stored on its own, so a project can override just one of them: `g` switches between the global and the project scope, `d` resets the option to what it inherits. Esc goes back to the list with your search intact; Esc again clears the search, and once more closes.
+E enabled — in the session; off blocks /skill:name
+D discoverable — listed in the system prompt
+M must show — always listed, even when judging would hide it
+bright = set in global · dim = inherited
+```
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Move between skills (PgUp/PgDn page) |
+| `←` `→` | Move between the E / D / M columns |
+| `space` | Toggle the cell |
+| `d` | Clear the cell in the edited scope (inherit again) |
+| `g` | Edit the global or the project scope |
+| `p` | Skill proxy on/off |
+| type | Filter by name, source or description (Esc clears) |
+| `enter` / `esc` | Save / cancel |
+
+Cells show the effective value: project over global over the default (vault skills off, everything else on and discoverable). Only the cells you changed are written, each option on its own, so a project can override just one.
 
 ## Skill proxy
 

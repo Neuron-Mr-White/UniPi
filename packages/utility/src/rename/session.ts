@@ -41,6 +41,8 @@ export interface RenameRequest {
   model: string;
   /** The gate found the latest request leaves the current title's topic. */
   topicChanged?: boolean;
+  /** The agent's reply in the triggering round — often the clearest subject. */
+  reply?: string;
 }
 
 function resourceLoader(): ResourceLoader {
@@ -79,6 +81,7 @@ export function renamePrompt(req: RenameRequest): string {
       "",
       "The user has moved on to a different task, so the current title no longer fits. Name the NEW task:",
       `- ${clip(latest)}`,
+      ...(req.reply ? ["", `What the assistant did about it:\n${clip(req.reply)}`] : []),
     ].join("\n");
   }
   const recent = req.requests.slice(-4).map((r) => `- ${clip(r)}`).join("\n");
@@ -87,6 +90,7 @@ export function renamePrompt(req: RenameRequest): string {
     "",
     "Recent user requests (oldest first; the last one is the current task):",
     recent || "- (none)",
+    ...(req.reply ? ["", `The assistant's latest reply (use it when the request itself is vague):\n${clip(req.reply)}`] : []),
   ].join("\n");
 }
 
