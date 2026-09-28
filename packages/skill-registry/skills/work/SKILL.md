@@ -167,18 +167,21 @@ When all tasks are `completed:`:
 If `ask_user` is available, offer an automatic handoff:
 ```ts
 ask_user({
-  question: "Review this work now?",
-  options: [
-    {
-      label: "Proceed to the review step",
-      description: "Review before merge",
-      value: "review",
-      action: "new_session",
-      prefill: "the review step plan:<plan-path>",
-    },
-    { label: "Done for now", value: "done", action: "end_turn" },
-  ],
-  allowFreeform: false,
+  questions: [{
+    header: "Review",
+    question: "Review this work now?",
+    options: [
+      {
+        label: "Proceed to the review step",
+        description: "Review before merge",
+        value: "review",
+        action: "new_session",
+        prefill: "the review step plan:<plan-path>",
+      },
+      { label: "Done for now", value: "done", action: "end_turn" },
+    ],
+    other: false,
+  }],
 })
 ```
 Copyable fallback:

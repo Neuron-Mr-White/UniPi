@@ -34,6 +34,7 @@ export * from "./src/settings/engine.js";
 export * from "./src/settings/schema.js";
 export { SettingsHub, type SettingsHubDeps } from "./src/settings/hub.js";
 export { openSettingsHub } from "./src/settings/open.js";
+export * from "./src/attach/detect.js";
 export * from "./src/settings/catalog.js";
 export * from "./command-runner.js";
 export * from "./compaction-context.js";

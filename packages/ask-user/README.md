@@ -1,124 +1,62 @@
 # @pi-unipi/ask-user
 
-Structured user input for decision gates. When the agent needs you to pick between options — which database, which approach, which files to change — it calls `ask_user` instead of guessing.
+The `ask_user` tool: when the agent needs a decision from you, it asks 1–4 multiple-choice questions in one dialog and waits. Modelled on Devin's question UI.
 
-Three input modes: single-select (pick one), multi-select (toggle several), freeform (type your own). The agent presents the question, you answer, it continues.
+```
+── Planet ✓ · Foods 2 · Last book ─────────────────────────────────────
+  What was the last book you read?
+    Can't remember
+    Don't read books
+  ❭ Other (type your own)
+    └ Dune, cover: [Image #1]
+      [Image #1] red-cube.png · 570 KB
+───────────────────────────────────────────────────────────────────────
+↑↓ navigate · ↵ select · ctrl+v image · ←→ switch question · esc cancel
+? Not ready to answer, help me out!
+```
 
-## Commands
+## Answering
 
-Ask-user has no user commands. It's an agent tool package — the agent calls it when it needs input.
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Move between options |
+| `1`–`9` | Pick that option (single choice: picks and moves on; multi-select: toggles) |
+| `space` | Toggle (multi-select) |
+| `enter` | Select and go to the next question; on the last one, send everything |
+| `←` `→`, `tab` | Switch question (in a non-empty "Other" they move the text cursor) |
+| type | On "Other", just type — no Enter needed. The option numbers hide so digits are text |
+| paste / drop / `ctrl+v` | In "Other": a pasted or dropped image/file path, or a clipboard image (Ctrl+V), becomes `[Image #N]` / `[File #N]`; images are sent to the model with your answer |
+| `?` | Not ready to answer: the agent is told you want to clarify first |
+| `esc` | Cancel and stop the agent's turn |
 
-## Special Triggers
+Questions you leave unanswered are sent as **skipped** — skipping never blocks. The header chips show progress: `✓` answered, a number for multi-select picks.
 
-All workflow skills detect ask-user and use it for decision gates. Instead of the agent deciding on its own, it presents options and waits for your input. This happens naturally during brainstorm, plan, work, and other skills when the agent faces ambiguity.
+In the transcript the answers stay as a short tree (`● Asked user 3 questions` / `│ Planet: Mars` / `└ Last book: Dune`).
 
-For workflow handoffs, options can use `action: "new_session"` with a `prefill`. Selecting one opens a launcher where **Compact & run** queues the prefill after compaction (or a short fallback) and **Run directly** queues it immediately. If automatic queuing fails, the prefill is placed in the editor for you to submit manually.
+## For the agent
 
-The bundled skill guides the agent to use `ask_user` for high-stakes decisions — architecture choices, database selection, naming decisions, anything with lasting impact.
-
-## Agent Tool
-
-| Tool | Description |
-|------|-------------|
-| `ask_user` | Structured user input with options |
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `question` | string | required | The question to ask |
-| `context` | string? | — | Additional context shown before question |
-| `options` | array? | [] | Multiple-choice options |
-| `allowMultiple` | boolean? | false | Enable multi-select mode |
-| `allowFreeform` | boolean? | true | Allow freeform text input |
-| `timeout` | number? | — | Auto-dismiss after N ms |
-
-### Example
-
-```typescript
+```ts
 ask_user({
-  question: "Which database should we use?",
-  options: [
-    { label: "PostgreSQL", description: "Reliable, feature-rich" },
-    { label: "SQLite", description: "Simple, serverless" },
-  ],
+  questions: [{
+    header: "Database",                       // ≤16 chars, shown as a chip
+    question: "Which database should the service use?",
+    options: [                                // 2–4; "Other" is added automatically
+      { label: "Postgres", description: "JSON columns, full-text search" },
+      { label: "SQLite", description: "Zero setup; single writer" },
+    ],
+    multi_select: false,                      // optional
+    other: true,                              // optional; false removes "Other"
+  }],
 })
 ```
 
-### `new_session` Handoffs
+The result is `User answered your questions:` followed by a JSON object keyed by question: `{ "selected": [...], "custom_text": "...", "skipped": false }`. Attached images follow as image content.
 
-```typescript
-ask_user({
-  question: "Continue with implementation?",
-  options: [
-    {
-      label: "Proceed to work",
-      value: "work",
-      action: "new_session",
-      prefill: "the implementation step specs:2026-05-06-feature-plan.md",
-    },
-    { label: "Done for now", value: "done", action: "end_turn" },
-  ],
-  allowFreeform: false,
-})
-```
+- Tool calls from one message run one at a time, so several `ask_user` calls can never hide each other (they used to: only the last dialog was answerable and the turn hung).
+- Options can carry `action: "end_turn"` or `action: "new_session"` with a `prefill` — the workflow skills use these for handoffs; a launcher offers **Compact & run** or **Run directly**.
+- The older single-question form (`question`, `context`, `options`, `allowMultiple`, `allowFreeform`) is still accepted; `timeout` is ignored — you answer in your own time.
+- Inside a subagent the tool fails with instructions to report the question to the lead instead.
 
-When the user chooses a `new_session` option:
+## Settings
 
-| Launcher choice | Behavior |
-|-----------------|----------|
-| 🧹 Compact & run | Starts context compaction, returns immediately, then queues/submits the prefill as a follow-up message from the compaction callback or a short fallback timer |
-| ▶ Run directly | Queues/submits the prefill immediately as a follow-up message |
-| ✕ Cancel | Cancels the handoff; no message is queued |
-
-The tool result is rendered as `queued compact → ...` or `queued direct → ...`. If automatic delivery fails, ask-user falls back to editor prefill and warns you to press Enter.
-
-### History Expansion
-
-Completed `ask_user` calls stay readable in chat history. The collapsed result shows the selected answer; press Ctrl+O on the tool result to expand the original question, context, and options that were presented.
-
-### Keyboard Controls
-
-| Mode | Keys |
-|------|------|
-| Single-select | Up/Down navigate, Enter select, Esc cancel |
-| Multi-select | Up/Down navigate, Space toggle, Enter submit, Esc cancel |
-| Freeform | Type text, Enter submit, Esc back |
-
-### TUI Display
-
-**Single-select:**
-```
-─────────────────────────────
- Which approach should we use?
-─────────────────────────────
- > Option A
-   Option B
-   Option C
-   Type something...
-
- Up/Down navigate, Enter select, Esc cancel
-─────────────────────────────
-```
-
-**Multi-select:**
-```
-─────────────────────────────
- Which features to enable?
-─────────────────────────────
- > [x] Logging
-   [ ] Metrics
-   [x] Tracing
-   [ ] Type something...
-
- Up/Down navigate, Space toggle, Enter submit, Esc cancel
-─────────────────────────────
-```
-
-## Configurables
-
-Ask-user has no configuration. Input mode is determined by the `allowMultiple` and `allowFreeform` parameters the agent passes.
-
-## License
-
-MIT
+`/unipi:settings` → Ask User: turn the tool off, and whether a notification is sent when the agent asks.

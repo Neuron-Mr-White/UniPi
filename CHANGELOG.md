@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `ask-user`: **rebuilt after Devin's question UI.** One `ask_user` call carries 1–4 questions (`questions: [{ header, question, options, multi_select }]`) with an automatic "Other" choice. Header chips show progress; digits pick; typing on "Other" needs no Enter and the text stays editable; ←→ switch questions; Enter moves on and submits on the last; unanswered questions are sent as skipped; `?` tells the agent you want to clarify first; Esc stops the turn. Pasted/dropped paths and Ctrl+V images in "Other" become `[Image #N]` / `[File #N]` and images reach the model. The transcript shows a short answer tree. The older single-question form is still accepted (`timeout` is ignored); the "allowed formats" settings are gone.
+
+### Fixed
+
+- `ask-user`: several `ask_user` calls in one message opened their dialogs at the same time, so only the last was answerable and the turn hung forever; the tool now runs one call at a time.
+- `compactor`: answers from multi-question `ask_user` results are kept as "question → answer" decisions.
+
 ## [3.0.0-alpha.5] — 2026-09-28
 
 ### Breaking Changes

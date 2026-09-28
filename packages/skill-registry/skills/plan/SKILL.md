@@ -186,26 +186,29 @@ Present plan summary to user. Then ask what to do next. If `ask_user` is availab
 
 ```ts
 ask_user({
-  question: "What would you like to do next?",
-  options: [
-    {
-      label: "Proceed to the implementation step",
-      description: "Start implementing the plan",
-      value: "work",
-      action: "new_session",
-      prefill: "<work-command>",
-    },
-    {
-      label: "Proceed to the full pipeline",
-      description: "Run full pipeline (work → review → merge)",
-      value: "auto",
-      action: "new_session",
-      prefill: "the full pipeline plan:YYYY-MM-DD-<topic>-plan.md",
-    },
-    { label: "Revise plan", description: "Adjust tasks or scope", value: "revise" },
-    { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
-  ],
-  allowFreeform: false,
+  questions: [{
+    header: "Next step",
+    question: "What would you like to do next?",
+    options: [
+      {
+        label: "Proceed to the implementation step",
+        description: "Start implementing the plan",
+        value: "work",
+        action: "new_session",
+        prefill: "<work-command>",
+      },
+      {
+        label: "Proceed to the full pipeline",
+        description: "Run full pipeline (work → review → merge)",
+        value: "auto",
+        action: "new_session",
+        prefill: "the full pipeline plan:YYYY-MM-DD-<topic>-plan.md",
+      },
+      { label: "Revise plan", description: "Adjust tasks or scope", value: "revise" },
+      { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
+    ],
+    other: false,
+  }],
 })
 ```
 

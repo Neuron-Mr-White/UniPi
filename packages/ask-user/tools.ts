@@ -1,475 +1,208 @@
 /**
- * @pi-unipi/ask-user — Tool registration
+ * @pi-unipi/ask-user — the ask_user tool
  *
- * Registers ask_user tool for structured user input.
+ * One call asks 1–4 questions (Devin's shape). Runs sequentially: pi runs a
+ * message's tool calls in parallel by default, and several dialogs at once
+ * used to hide all but the last — the rest could never be answered and the
+ * turn hung. One dialog at a time, every question in one call.
  */
 
+import { readFileSync } from "node:fs";
 import { Type } from "typebox";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  ASK_USER_TOOLS,
-  COMPACTOR_INSTRUCTION,
-  UNIPI_EVENTS,
-  emitEvent,
-  withHerdrBlocked,
-} from "@pi-unipi/core";
-import type { NormalizedOption, AskUserResponse, SessionLauncherResult } from "./types.js";
-import { renderAskUI, createRenderCall, createRenderResult } from "./ask-ui.js";
-import { renderLauncherUI } from "./launcher-ui.js";
+import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, emitEvent, UNIPI_EVENTS, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
+import { AskPanel, type PanelResult } from "./ask-ui.js";
 import { getAskUserSettings } from "./config.js";
 import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
+import { renderLauncherUI } from "./launcher-ui.js";
+import { answerSummary, answersText, clarifyText, HEADER_MAX, MAX_QUESTIONS, prepareArgs, type AskParams, type AskQuestion, type QuestionAnswer } from "./questions.js";
+import type { SessionLauncherResult } from "./types.js";
 
-/**
- * Whether this process is a subagent child (subagents package or fusion sidekick).
- * Subagent children never talk to the user directly — their lead owns ambiguity.
- */
+/** Subagent children never talk to the user directly — their lead owns ambiguity. */
 export function isSubagentChild(env: Record<string, string | undefined> = process.env): boolean {
   return env.UNIPI_SUBAGENT_CHILD === "1";
 }
 
-/**
- * Register ask-user tools.
- */
+export interface AskDetails {
+  questions: AskQuestion[];
+  answers?: QuestionAnswer[];
+  outcome: "answered" | "clarify" | "cancelled" | "action" | "unavailable";
+  /** Legacy single-question fields, kept for older consumers (compactor, notify). */
+  question?: string;
+  attachments?: Array<Pick<Attachment, "id" | "kind" | "path" | "name">>;
+}
+
+const OPTION = Type.Object({
+  label: Type.String({ description: "Display text (1–5 words)" }),
+  description: Type.Optional(Type.String({ description: "What this option means or its trade-offs" })),
+  value: Type.Optional(Type.String({ description: "Returned instead of the label when set" })),
+  action: Type.Optional(Type.Union([Type.Literal("end_turn"), Type.Literal("new_session")], {
+    description: "end_turn: stop the turn when picked · new_session: hand off to `prefill` (compact & run / run directly)",
+  })),
+  prefill: Type.Optional(Type.String({ description: "Message or /command queued by a new_session option" })),
+});
+
+const QUESTION = Type.Object({
+  question: Type.String({ description: "The full question" }),
+  header: Type.String({ description: `Short chip label, e.g. "Database" (≤${HEADER_MAX} chars)` }),
+  options: Type.Array(OPTION, { description: "2–4 choices. An \"Other\" free-text choice is added automatically." }),
+  multi_select: Type.Optional(Type.Boolean({ description: "Let the user pick several (default false)" })),
+  other: Type.Optional(Type.Boolean({ description: "Offer \"Other (type your own)\" (default true)" })),
+});
+
+function unavailable(questions: AskQuestion[], text: string) {
+  return { content: [{ type: "text" as const, text }], details: { questions, outcome: "unavailable" } as AskDetails };
+}
+
+function imageParts(attachments: readonly Attachment[]) {
+  const parts: Array<{ type: "image"; data: string; mimeType: string }> = [];
+  for (const a of attachments) {
+    if (a.kind !== "image") continue;
+    try {
+      parts.push({ type: "image", data: readFileSync(a.path).toString("base64"), mimeType: a.mimeType ?? "image/png" });
+    } catch {
+      // unreadable: the token stays in the text
+    }
+  }
+  return parts;
+}
+
+/** "[File #2]" → "[File #2: /path]" so the agent can open documents. */
+function expandFileTokens(answers: QuestionAnswer[], attachments: readonly Attachment[]): QuestionAnswer[] {
+  const files = attachments.filter((a) => a.kind === "file");
+  if (!files.length) return answers;
+  return answers.map((a) => (a.custom_text ? { ...a, custom_text: files.reduce((t, f) => t.split(`[File #${f.id}]`).join(`[File #${f.id}: ${f.path}]`), a.custom_text) } : a));
+}
+
 export function registerAskUserTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: ASK_USER_TOOLS.ASK,
     label: "Ask User",
     description:
-      "Ask the user a question with structured options. Supports single-select, " +
-      "multi-select, and freeform text input. Use for decisions, preferences, " +
-      "and clarifications that require explicit user input.",
-    promptSnippet: "Ask the user a structured question with options.",
+      `Ask the user 1–${MAX_QUESTIONS} multiple-choice questions in one dialog and wait for the answers. ` +
+      "Each question has a short header, 2–4 options (label + description) and optional multi-select; " +
+      "an \"Other\" free-text choice is always added. The user may skip questions.",
+    promptSnippet: "Ask the user multiple-choice questions and wait for the answers.",
     promptGuidelines: [
-      "Use ask_user when you need explicit user input before proceeding.",
-      "Good for: architectural trade-offs, ambiguous requirements, user preferences, confirming destructive operations.",
-      "Provide clear options with labels and optional descriptions.",
-      "Use allowMultiple for multi-select scenarios (e.g., choosing features to enable).",
-      "Use allowFreeform: false to restrict to predefined options only.",
-      "Use action: 'input' on an option to let the user add custom text before submitting.",
-      "Use action: 'end_turn' on an option to let the user signal end of turn.",
-      "Use action: 'new_session' with prefill to let the user hand off to a queued follow-up message or slash command."
+      "Use ask_user when a decision, preference or clarification needs the user before you continue.",
+      `Put every question you need right now in ONE call (1–${MAX_QUESTIONS} questions) — never several ask_user calls at once.`,
+      "Give each question a short header (≤16 chars) and 2–4 options with a clear description; don't add an 'Other' option yourself.",
+      "Use multi_select when several answers can apply.",
+      "Skipped questions come back as skipped: respect that, don't ask them again unless you must.",
+      "If the user says they're not ready, ask what they want to clarify instead of re-asking.",
+      "Options can carry action: 'end_turn' or action: 'new_session' with a prefill for workflow handoffs.",
     ],
     parameters: Type.Object({
-      question: Type.String({
-        description: "The question to ask the user",
-      }),
-      context: Type.Optional(
-        Type.String({
-          description: "Additional context shown before the question",
-        }),
-      ),
-      options: Type.Optional(
-        Type.Array(
-          Type.Object({
-            label: Type.String({ description: "Display label" }),
-            description: Type.Optional(
-              Type.String({ description: "Optional description shown below label" }),
-            ),
-            value: Type.Optional(
-              Type.String({
-                description: "Value returned when selected (defaults to label)",
-              }),
-            ),
-            allowCustom: Type.Optional(
-              Type.Boolean({
-                description:
-                  "When true, selecting this option enters text input mode " +
-                  "so the user can add a custom comment before submitting.",
-              }),
-            ),
-            action: Type.Optional(
-              Type.Union(
-                [
-                  Type.Literal("select"),
-                  Type.Literal("input"),
-                  Type.Literal("end_turn"),
-                  Type.Literal("new_session"),
-                ],
-                {
-                  description:
-                    "Special action: 'select' (default), 'input' (text input), " +
-                    "'end_turn' (signal end of turn), 'new_session' (queue handoff with prefill).",
-                },
-              ),
-            ),
-            prefill: Type.Optional(
-              Type.String({
-                description: "Prefill message for new_session action.",
-              }),
-            ),
-          }),
-          {
-            description:
-              "Multiple-choice options. Omit for freeform-only input.",
-          },
-        ),
-      ),
-      allowMultiple: Type.Optional(
-        Type.Boolean({
-          description: "Enable multi-select mode (default: false)",
-        }),
-      ),
-      allowFreeform: Type.Optional(
-        Type.Boolean({
-          description: "Allow freeform text input (default: true)",
-        }),
-      ),
-      timeout: Type.Optional(
-        Type.Number({
-          description: "Auto-dismiss after N milliseconds",
-        }),
-      ),
+      questions: Type.Array(QUESTION, { description: `1–${MAX_QUESTIONS} questions` }),
     }),
+    // Older calls ({ question, context, options, allowMultiple, allowFreeform, timeout }) still work.
+    prepareArguments: (args: unknown) => prepareArgs(args) as never,
+    executionMode: "sequential",
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {
-      const {
-        question,
-        context,
-        options: rawOptions,
-        allowMultiple = false,
-        allowFreeform = true,
-        timeout,
-      } = params as {
-        question: string;
-        context?: string;
-        options?: { label: string; description?: string; value?: string; allowCustom?: boolean; action?: string; prefill?: string }[];
-        allowMultiple?: boolean;
-        allowFreeform?: boolean;
-        timeout?: number;
-      };
-
-      // Subagent children have no user to talk to. Refuse loudly so the
-      // subagent surfaces the question to its lead instead of guessing.
+      const { questions } = prepareArgs(params) as AskParams;
       if (isSubagentChild()) {
-        return {
-          content: [
-            {
-              type: "text",
-              text:
-                "ask_user is not available inside a subagent. You cannot talk to the user directly — only your lead can. Do not guess or assume an answer. Stop and state the question, the options you considered, and your recommendation in your report so your lead can decide.",
-            },
-          ],
-          isError: true,
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "ask_user is not available inside a subagent",
-            } as AskUserResponse,
-          },
-        };
+        throw new Error(
+          "ask_user is not available inside a subagent. You cannot talk to the user directly — only your lead can. Do not guess an answer: state the question, the options you considered and your recommendation in your report.",
+        );
       }
+      if (!getAskUserSettings().enabled) return unavailable(questions, "ask_user is turned off in settings — ask in your reply instead.");
+      if (!ctx.hasUI) return unavailable(questions, "No interactive UI (non-interactive mode) — ask in your reply instead.");
+      if (questions.length === 0) throw new Error("ask_user needs at least one question with a question text.");
 
-      // Check settings
-      const settings = getAskUserSettings();
-      if (!settings.enabled) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: ask_user tool is disabled in settings.",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "Tool disabled",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      // Validate requested format against allowed formats
-      if (allowMultiple && !settings.allowedFormats.multiSelect) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: Multi-select questions are disabled in settings.",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "Multi-select disabled",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      if (!allowMultiple && !settings.allowedFormats.singleSelect) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: Single-select questions are disabled in settings.",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "Single-select disabled",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      if (allowFreeform && !settings.allowedFormats.freeform) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: Freeform questions are disabled in settings.",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "Freeform disabled",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      // Validate: need UI
-      if (!ctx.hasUI) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: UI not available (running in non-interactive mode)",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "No UI available",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      // Validate: need options or freeform
-      const options = rawOptions || [];
-      if (options.length === 0 && !allowFreeform) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No options provided and allowFreeform is false. Provide options or enable freeform.",
-            },
-          ],
-          details: {
-            question,
-            response: {
-              kind: "cancelled",
-              comment: "No options and no freeform",
-            } as AskUserResponse,
-          },
-        };
-      }
-
-      // Normalize options — resolve value (defaults to label)
-      const normalizedOptions: NormalizedOption[] = options.map((opt) => ({
-        label: opt.label,
-        description: opt.description,
-        value: opt.value ?? opt.label,
-        allowCustom: opt.allowCustom ?? false,
-        action: (opt.action as NormalizedOption["action"]) ?? "select",
-        prefill: opt.prefill,
-      }));
-      const detailsBase = {
-        question,
-        context,
-        options: normalizedOptions,
-        allowMultiple,
-        allowFreeform,
-      };
-
-      // Emit ASK_USER_PROMPT event if notifyOnAsk is enabled
-      if (settings.notifyOnAsk) {
+      if (getAskUserSettings().notifyOnAsk) {
         emitEvent(pi, UNIPI_EVENTS.ASK_USER_PROMPT, {
-          question,
-          context,
-          optionCount: normalizedOptions.length,
-          allowMultiple,
-          allowFreeform,
+          question: questions.map((q) => q.question).join(" · "),
+          optionCount: questions.reduce((n, q) => n + q.options.length, 0),
+          allowMultiple: questions.some((q) => q.multi_select),
+          allowFreeform: questions.some((q) => q.other !== false),
         });
       }
 
-      // Render interactive UI
-      const result = await withHerdrBlocked(
-        pi,
-        "ask_user",
-        () => ctx.ui.custom<{ response: AskUserResponse } | null>(
-          renderAskUI({
-            question,
-            context,
-            options: normalizedOptions,
-            allowMultiple,
-            allowFreeform,
-            timeout,
-          }),
-        ),
+      const result = await withHerdrBlocked(pi, "ask_user", () =>
+        ctx.ui.custom<PanelResult>((tui, theme, _kb, done) => new AskPanel(tui, theme, questions, done)),
       );
+      const legacy = questions.length === 1 ? { question: questions[0]!.question } : {};
 
-      // Handle cancel
-      if (!result) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "User cancelled the selection",
-            },
-          ],
-          details: {
-            ...detailsBase,
-            response: {
-              kind: "cancelled",
-            } as AskUserResponse,
-          },
-        };
+      if (!result || result.type === "cancel") {
+        ctx.abort(); // Esc stops the turn, like Devin's "Canceled due to user interrupt"
+        return { content: [{ type: "text" as const, text: "The user cancelled the questions and stopped the turn." }], details: { questions, outcome: "cancelled", ...legacy } as AskDetails };
+      }
+      if (result.type === "clarify") {
+        return { content: [{ type: "text" as const, text: clarifyText(questions, result.answers) }], details: { questions, answers: result.answers, outcome: "clarify", ...legacy } as AskDetails };
+      }
+      if (result.type === "action") {
+        return runAction(pi, ctx, questions, result, legacy);
       }
 
-      // Build response content
-      const response = result.response;
-      let contentText: string;
-
-      switch (response.kind) {
-        case "selection": {
-          const selections = response.selections || [];
-          contentText =
-            selections.length === 1
-              ? `User selected: ${selections[0]}`
-              : `User selected: ${selections.join(", ")}`;
-          break;
-        }
-        case "freeform":
-          contentText = `User wrote: ${response.text}`;
-          break;
-        case "combined": {
-          const selections = response.selections || [];
-          const selText = selections.length === 1
-            ? selections[0]
-            : selections.join(", ");
-          contentText = `User selected: ${selText} and wrote: ${response.text}`;
-          break;
-        }
-        case "end_turn":
-          // Abort the agent immediately — no LLM follow-up, no wasted tokens.
-          // The tool result is still recorded in session history.
-          ctx.abort();
-          contentText = "User chose to end the turn.";
-          break;
-        case "new_session":
-          contentText = response.prefill
-            ? `User chose to hand off to: ${response.prefill}`
-            : "User chose a handoff without a prefill.";
-          break;
-        case "timed_out":
-          contentText = "User did not respond (timed out)";
-          break;
-        default:
-          contentText = "No response";
-      }
-
-      // Session launcher intercept: when user selects new_session, offer compact/direct/cancel
-      if (response.kind === "new_session") {
-        const prefill = response.prefill || "";
-        const launcherResult = await withHerdrBlocked(
-          pi,
-          "ask_user: launch",
-          () => ctx.ui.custom<SessionLauncherResult | null>(
-            renderLauncherUI({ prefill }),
-          ),
-        );
-
-        if (!launcherResult || launcherResult.action === "cancel") {
-          return {
-            content: [{ type: "text", text: "User cancelled the session launch" }],
-            details: {
-              ...detailsBase,
-              response: {
-                kind: "cancelled",
-                comment: "Session launcher cancelled",
-              } as AskUserResponse,
-            },
-          };
-        }
-
-        const handoff = launcherResult.action === "compact"
-          ? queueCompactHandoff({
-              pi,
-              ctx,
-              prefill,
-              // Use the compactor sentinel so @pi-unipi/compactor's zero-LLM
-              // pipeline intercepts. If compactor is not installed, Pi's built-in
-              // LLM-based compaction runs instead.
-              customInstructions: `${COMPACTOR_INSTRUCTION}\nPreparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}`,
-            })
-          : queueDirectHandoff(pi, ctx, prefill);
-
-        if (handoff.status === "cancelled") {
-          return {
-            content: [{ type: "text", text: "Session launch cancelled: no prefill message was provided." }],
-            details: {
-              ...detailsBase,
-              response: {
-                kind: "cancelled",
-                comment: "Session launcher had no prefill to queue",
-                launchStatus: handoff.status,
-                launchReason: handoff.reason,
-              } as AskUserResponse,
-            },
-          };
-        }
-
-        if (handoff.status !== "failed") {
-          // Handoff is scheduled/queued or recoverably editor-prefilled; abort the
-          // current turn so the queued command can run without LLM follow-up.
-          ctx.abort();
-        }
-
-        const launchLabel = launcherResult.action === "compact" ? "compact" : "direct";
-        if (handoff.status === "editor_prefill") {
-          contentText = `Queued ${launchLabel} handoff fell back to editor prefill: ${handoff.prefill}`;
-        } else if (handoff.status === "failed") {
-          contentText = `Failed to queue ${launchLabel} handoff: ${handoff.prefill ?? prefill}`;
-        } else {
-          contentText = `Queued ${launchLabel} handoff: ${handoff.prefill ?? prefill}`;
-        }
-
-        return {
-          content: [{ type: "text", text: contentText }],
-          details: {
-            ...detailsBase,
-            response: {
-              ...response,
-              prefill: handoff.prefill ?? prefill,
-              launchedWith: launcherResult.action,
-              launchStatus: handoff.status,
-              launchReason: handoff.reason,
-              launchError: handoff.error,
-            },
-          },
-        };
-      }
-
+      const answers = expandFileTokens(result.answers, result.attachments);
+      const images = imageParts(result.attachments);
+      const names = result.attachments.map((a) => (a.kind === "image" ? `[Image #${a.id}]` : `[File #${a.id}]`));
       return {
-        content: [{ type: "text", text: contentText }],
+        content: [{ type: "text" as const, text: answersText(questions, answers, images.length ? names : []) }, ...images],
         details: {
-          ...detailsBase,
-          response,
-        },
+          questions,
+          answers,
+          outcome: "answered",
+          ...legacy,
+          ...(result.attachments.length ? { attachments: result.attachments.map(({ id, kind, path, name }) => ({ id, kind, path, name })) } : {}),
+        } as AskDetails,
       };
     },
 
-    renderCall: createRenderCall(),
-    renderResult: createRenderResult(),
+    renderCall: () => new Text("", 0, 0),
+    renderResult: (result, _options, theme, _context) => renderAskResult(result.details as AskDetails | undefined, theme as Theme),
+    renderShell: "self",
   });
+}
+
+/** end_turn / new_session options (workflow handoffs). */
+async function runAction(pi: ExtensionAPI, ctx: ExtensionContext, questions: AskQuestion[], result: Extract<PanelResult, { type: "action" }>, legacy: Record<string, unknown>) {
+  const opt = result.option;
+  const details = { questions, answers: result.answers, outcome: "action", ...legacy } as AskDetails;
+  if (opt.action === "end_turn") {
+    ctx.abort();
+    return { content: [{ type: "text" as const, text: `User chose "${opt.label}" and ended the turn.` }], details };
+  }
+  const prefill = opt.prefill ?? "";
+  const launch = await withHerdrBlocked(pi, "ask_user: launch", () => ctx.ui.custom<SessionLauncherResult | null>(renderLauncherUI({ prefill })));
+  if (!launch || launch.action === "cancel") {
+    return { content: [{ type: "text" as const, text: `User picked "${opt.label}" but cancelled the handoff.` }], details };
+  }
+  const handoff = launch.action === "compact"
+    ? queueCompactHandoff({ pi, ctx, prefill, customInstructions: `${COMPACTOR_INSTRUCTION}\nPreparing for new task. Summarize previous work concisely, preserving only what's essential for: ${prefill}` })
+    : queueDirectHandoff(pi, ctx, prefill);
+  if (handoff.status !== "failed" && handoff.status !== "cancelled") ctx.abort();
+  const text = handoff.status === "failed" ? `Failed to queue the ${launch.action} handoff: ${prefill}` : `Queued ${launch.action} handoff: ${handoff.prefill ?? prefill}`;
+  return { content: [{ type: "text" as const, text }], details };
+}
+
+/**
+ *   ● Asked user 3 questions          ● Asked user Coffee or tea?
+ *   │ Planet: Jupiter moon            └ Tea
+ *   └ Last book: Dune
+ */
+export function renderAskResult(details: AskDetails | undefined, theme: Theme): Text {
+  const t = theme;
+  const questions = details?.questions ?? [];
+  if (!questions.length) return new Text("", 0, 0);
+  const single = questions.length === 1;
+  const title = single ? questions[0]!.question.replace(/\s+/g, " ") : `${t.fg("dim", String(questions.length))} questions`;
+  const failed = details!.outcome === "cancelled" || details!.outcome === "clarify" || details!.outcome === "unavailable";
+  const bullet = failed ? t.fg("error", "●") : t.fg("success", "●");
+  const lines = [` ${bullet} Asked user ${title}`];
+  const rows: string[] = [];
+  if (details!.outcome === "cancelled") rows.push(t.fg("error", "Canceled by the user"));
+  else if (details!.outcome === "clarify") rows.push(t.fg("warning", "Not ready to answer — wants to clarify first"));
+  else if (details!.outcome === "unavailable") rows.push(t.fg("dim", "not shown (no interactive UI or turned off)"));
+  else {
+    questions.forEach((q, i) => {
+      const a = details!.answers?.[i];
+      const text = answerSummary(q, a);
+      rows.push(single ? t.fg("muted", text) : t.fg("muted", `${q.header}: ${text}`));
+    });
+  }
+  rows.forEach((r, i) => lines.push(` ${t.fg("borderMuted", i === rows.length - 1 ? "└" : "│")} ${r}`));
+  return new Text(lines.join("\n"), 0, 0);
 }

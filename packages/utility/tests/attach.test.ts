@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { expandForSubmit, findPaths, stillReferenced, tokenize } from "../src/attach/detect.ts";
+import { expandForSubmit, findPaths, stillReferenced, tokenize } from "../../core/src/attach/detect.ts";
 
 const yes = () => true;
 

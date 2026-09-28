@@ -183,19 +183,22 @@ Ask user what to do next. If `ask_user` is available, prefer structured options 
 
 ```ts
 ask_user({
-  question: "What would you like to do next?",
-  options: [
-    {
-      label: "Proceed to plan mode",
-      description: "Turn decisions into an implementation plan",
-      value: "plan",
-      action: "new_session",
-      prefill: "/unipi:plan",
-    },
-    { label: "Keep exploring", description: "Refine questions or decisions", value: "explore" },
-    { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
-  ],
-  allowFreeform: false,
+  questions: [{
+    header: "Next step",
+    question: "What would you like to do next?",
+    options: [
+      {
+        label: "Proceed to plan mode",
+        description: "Turn decisions into an implementation plan",
+        value: "plan",
+        action: "new_session",
+        prefill: "/unipi:plan",
+      },
+      { label: "Keep exploring", description: "Refine questions or decisions", value: "explore" },
+      { label: "Done for now", description: "Return later", value: "done", action: "end_turn" },
+    ],
+    other: false,
+  }],
 })
 ```
 

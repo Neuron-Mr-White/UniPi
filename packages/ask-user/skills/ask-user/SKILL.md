@@ -1,164 +1,90 @@
 ---
 name: ask-user
 description: >
-  Interactive decision-gating tool for structured user input.
-  Use ask_user when you need user confirmation, preferences, or decisions
-  before proceeding with high-impact or ambiguous choices.
+  Ask the user multiple-choice questions with the ask_user tool (1–4 questions
+  in one dialog, an "Other" free-text choice always included). Use when a
+  decision, preference or clarification needs the user before you continue.
 allowed-tools:
   - ask_user
 ---
 
 # Ask User
 
-Use the `ask_user` tool to collect structured input from the user.
+`ask_user` shows one dialog with 1–4 questions and waits for the answers.
 
-## When to use ask_user
+## When to ask
 
-- Architectural trade-offs with high impact
-- Requirements are ambiguous or conflicting
-- Assumptions would materially change implementation
-- User preferences needed (style, approach, priority)
-- Confirming before destructive operations
+- A choice with lasting impact (architecture, data model, naming, destructive steps)
+- Requirements that are ambiguous or conflict
+- A preference only the user can state
 
-## Decision Handshake Flow
+Ordinary engineering detail is not a reason to ask — decide and verify.
 
-1. Gather evidence and summarize context
-2. Ask ONE focused question via `ask_user`
-3. Wait for explicit user choice
-4. Confirm the decision, then proceed
+## How to ask
 
-## Parameters
+- **One call, every question you need now.** Never several `ask_user` calls at once.
+- Each question: a full `question`, a short `header` (≤16 chars, shown as a chip), 2–4 `options` with a `label` (1–5 words) and a `description` (what it means or costs).
+- Don't add an "Other" option — one is added automatically (`other: false` removes it when free text makes no sense).
+- `multi_select: true` when several answers can apply.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `question` | string | required | The question to ask |
-| `context` | string? | — | Additional context shown before question |
-| `options` | array? | [] | Multiple-choice options with labels, descriptions, values |
-| `allowMultiple` | boolean? | false | Enable multi-select |
-| `allowFreeform` | boolean? | true | Add "Custom response" checkable option |
-| `timeout` | number? | — | Auto-dismiss after N ms |
-
-### Option Properties
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `label` | string | required | Display label |
-| `description` | string? | — | Description shown below label |
-| `value` | string? | label | Value returned when selected |
-| `allowCustom` | boolean? | false | Allow user to add custom text for this option (shorthand for `action: "input"`) |
-| `action` | string? | "select" | Special action: `"select"`, `"input"`, `"end_turn"`, `"new_session"` |
-| `prefill` | string? | — | Prefill message for `"new_session"` action |
-
-### Action Types
-
-| Action | Behavior |
-|--------|----------|
-| `"select"` | Normal selection (default). Returns immediately. |
-| `"input"` | Enters text input mode. Returns `combined` response with selection + text. |
-| `"end_turn"` | Signals end of agent turn. Returns `end_turn` response kind. |
-| `"new_session"` | Starts a handoff. Returns `new_session` response kind with optional `prefill`. Shows a launcher overlay offering **Compact & run** (compact first, then queue/submit the prefill) or **Run directly** (queue/submit immediately). The current LLM follow-up is aborted after a successful queue or editor fallback. |
-
-## Examples
-
-Single choice:
-```
+```ts
 ask_user({
-  question: "Which database should we use?",
-  options: [
-    { label: "PostgreSQL", description: "Reliable, feature-rich" },
-    { label: "SQLite", description: "Simple, serverless" }
-  ]
-})
-```
-
-Multi-select:
-```
-ask_user({
-  question: "Which features to implement?",
-  options: [
-    { label: "Auth", value: "auth" },
-    { label: "Cache", value: "cache" },
-    { label: "Logging", value: "logging" }
+  questions: [
+    {
+      header: "Database",
+      question: "Which database should the service use?",
+      options: [
+        { label: "Postgres", description: "JSON columns, full-text search, one more service to run" },
+        { label: "SQLite", description: "Zero setup; single writer" },
+      ],
+    },
+    {
+      header: "Features",
+      question: "Which features ship in v1?",
+      multi_select: true,
+      options: [
+        { label: "Search", description: "Full-text over notes" },
+        { label: "Sharing", description: "Read-only links" },
+        { label: "Export", description: "Markdown and JSON" },
+      ],
+    },
   ],
-  allowMultiple: true
 })
 ```
 
-With context:
+## What comes back
+
 ```
+User answered your questions:
+{
+  "Which database should the service use?": { "selected": ["Postgres"], "skipped": false },
+  "Which features ship in v1?": { "selected": ["Search"], "custom_text": "and tags", "skipped": false }
+}
+```
+
+- `custom_text` is what the user typed under "Other". It may reference attached files as `[Image #N]` (the image follows in the result) or `[File #N: /path]`.
+- `skipped: true` — the user chose not to answer. Respect it; don't ask again unless you must.
+- "Not ready to answer" — the user wants to talk first. Ask what they want to clarify; don't re-send the same questions.
+- Cancelled — the user stopped the turn. Wait for their next message.
+
+## Workflow handoffs
+
+An option can carry `action: "end_turn"` (picking it stops the turn) or `action: "new_session"` with a `prefill` (a message or `/command`). Picking a `new_session` option opens a launcher: **Compact & run** or **Run directly**.
+
+```ts
 ask_user({
-  question: "Which approach?",
-  context: "Current bottleneck: network I/O. Goal: reduce latency.",
-  options: [
-    { label: "Cache-first" },
-    { label: "DB-first" }
-  ]
+  questions: [{
+    header: "Next step",
+    question: "What would you like to do next?",
+    options: [
+      { label: "Implement the plan", description: "Start work in a fresh session", action: "new_session", prefill: "/unipi:work specs:2026-09-28-auth-plan" },
+      { label: "Done for now", description: "Return later", action: "end_turn" },
+    ],
+    other: false,
+  }],
 })
 ```
 
-Freeform only:
-```
-ask_user({
-  question: "What should we name this module?",
-  options: [],
-  allowFreeform: true
-})
-```
+## Without a UI
 
-Combined (multi-select + freeform):
-```
-ask_user({
-  question: "Which features and what custom feature?",
-  options: [
-    { label: "Auth", value: "auth" },
-    { label: "Cache", value: "cache" }
-  ],
-  allowMultiple: true,
-  allowFreeform: true
-})
-```
-User can check "Auth", "Cache", and "Custom response" to type additional features.
-
-With per-option custom text:
-```
-ask_user({
-  question: "Does this look right?",
-  options: [
-    { label: "Yes", value: "yes" },
-    { label: "Partially", value: "partial", allowCustom: true },
-    { label: "No", value: "no", allowCustom: true }
-  ],
-  allowFreeform: false
-})
-```
-Selecting "Partially" or "No" enters text input so the user can explain what needs to change.
-
-With end_turn and new_session actions:
-```
-ask_user({
-  question: "How would you like to proceed?",
-  options: [
-    { label: "Looks good, proceed", value: "proceed" },
-    { label: "I want changes", value: "changes", action: "input" },
-    { label: "Done for now", value: "done", action: "end_turn" },
-    { label: "Start fresh", value: "new", action: "new_session", prefill: "Let's redesign the..." }
-  ],
-  allowFreeform: false
-})
-```
-- "Looks good" returns immediately with selection
-- "I want changes" enters text input mode for the user to explain
-- "Done for now" signals the agent to end its turn
-- "Start fresh" opens the launcher; **Compact & run** or **Run directly** queues the prefill message automatically
-
-## Session Launcher
-
-When a user selects a `new_session` option, a secondary launcher overlay appears with three choices:
-
-| Choice | Behavior |
-|--------|----------|
-| 🧹 Compact & run | Starts `ctx.compact()` without waiting in the tool spinner, then queues/submits the prefill as a follow-up message after compaction or a short fallback timer |
-| ▶ Run directly | Queues/submits the prefill immediately as a follow-up message, without compaction |
-| ✕ Cancel | Cancels the session launch; no prefill is queued |
-
-The prefill can be a slash command (for example `the implementation step specs:...`) or any non-empty message. If automatic delivery fails, ask_user places the prefill in the editor and warns the user to press Enter. This two-step flow lets the user manage context window usage before starting a new task while avoiding unnecessary LLM follow-up in the old session.
+In non-interactive runs, or when the tool is turned off, `ask_user` returns a notice instead of a dialog — ask in your reply. Inside a subagent it fails: put the question, the options and your recommendation in your report for the lead.

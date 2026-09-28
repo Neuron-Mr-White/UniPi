@@ -85,11 +85,8 @@ describe("ask_user subagent guard", () => {
     const tool = getAskTool();
     const { ctx, state } = createCtx(true);
 
-    const result = await tool.execute("call-1", PARAMS, undefined, undefined, ctx);
-
-    assert.equal(result.isError, true);
-    assert.equal(result.content.length, 1);
-    assert.match(result.content[0]!.text, /ask_user is not available inside a subagent/);
+    // Failures throw — pi only marks a tool result failed when execute() throws.
+    await assert.rejects(tool.execute("call-1", PARAMS, undefined, undefined, ctx), /ask_user is not available inside a subagent/);
     assert.equal(state.customCalls, 0);
   });
 
@@ -101,7 +98,7 @@ describe("ask_user subagent guard", () => {
     const result = await tool.execute("call-1", PARAMS, undefined, undefined, ctx);
 
     assert.doesNotMatch(result.content[0]!.text, /not available inside a subagent/);
-    assert.match(result.content[0]!.text, /UI not available|disabled in settings/);
+    assert.match(result.content[0]!.text, /No interactive UI|turned off in settings/);
     assert.equal(state.customCalls, 0);
   });
 });
@@ -109,5 +106,9 @@ describe("ask_user subagent guard", () => {
 describe("ask_user tool registration", () => {
   it("registers the ASK tool", () => {
     assert.equal(getAskTool().name, ASK_USER_TOOLS.ASK);
+  });
+
+  it("runs sequentially, so parallel calls in one message can't hide each other's dialog", () => {
+    assert.equal((getAskTool() as unknown as { executionMode?: string }).executionMode, "sequential");
   });
 });

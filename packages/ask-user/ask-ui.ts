@@ -1,757 +1,318 @@
 /**
- * @pi-unipi/ask-user — TUI Components
+ * @pi-unipi/ask-user — the question panel (Devin-style)
  *
- * Interactive UI for single-select, multi-select, and freeform input.
- * Uses ctx.ui.custom() callback pattern following question.ts/questionnaire.ts.
+ *   ── Planet ✓ · Foods 3 · Last book ─────────────────────────────
+ *     Which planet would you most like to visit?
+ *     ❭ 1 Mars
+ *         The red planet, dusty and cold
+ *       2 Saturn
+ *         Famous for its rings
+ *         Other (type your own)
+ *   ────────────────────────────────────────────────────────────────
+ *   ↑↓ navigate · ↵ select · ←→ switch question · ? help me out · esc cancel
+ *   ? Not ready to answer, help me out!
+ *
+ * Replaces the input area (no overlay; pi restores the editor on close).
+ *   ↑↓        move · digits pick (single: pick + next; multi: toggle)
+ *   ␣         toggle (multi)
+ *   ↵         select and go to the next question; submits on the last one
+ *   ←→ / tab  switch question (on a non-empty "Other" ←→ move the text cursor)
+ *   Other     just type — no Enter needed; paste / drop a file path or Ctrl+V
+ *             an image to attach it as [Image #N]
+ *   ?         "not ready — help me out" (ends the call; the agent asks what to clarify)
+ *   esc       cancel (the agent's turn stops)
+ * Unanswered questions are submitted as skipped — never blocking.
  */
 
-import { Editor, type EditorTheme, Key, matchesKey, Text, truncateToWidth, type TUI, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { Theme, AgentToolResult } from "@earendil-works/pi-coding-agent";
-import { adaptiveInnerWidth, contentWidth, normalizeWidth, safeRepeat, shouldRenderBorder, WidthKeyedCache } from "@pi-unipi/core";
-import type { NormalizedOption, AskUserResponse } from "./types.js";
+import { Input, Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import { formatBytes, stillReferenced, tokenFor, tokenize, type Attachment } from "@pi-unipi/core";
+import { readClipboardImageFile } from "./clipboard.js";
+import { isAnswered, optionValue, type AskOption, type AskQuestion, type QuestionAnswer } from "./questions.js";
 
-/** Result returned by the ask UI */
-export interface AskUIResult {
-  response: AskUserResponse;
+export type PanelResult =
+  | { type: "answered"; answers: QuestionAnswer[]; attachments: Attachment[] }
+  | { type: "clarify"; answers: QuestionAnswer[] }
+  | { type: "action"; question: number; option: AskOption; answers: QuestionAnswer[] }
+  | { type: "cancel" };
+
+interface QState {
+  cursor: number;
+  picked: Set<string>;
+  input: Input;
 }
 
-/**
- * Render the ask_user interactive UI.
- *
- * Supports:
- * - Single-select: arrow keys + Enter
- * - Multi-select: Space to toggle, Enter to submit
- * - Freeform: text input via Editor
- * - Timeout: auto-dismiss after N ms
- * - Cancel: Escape key
- */
-export function renderAskUI(params: {
-  question: string;
-  context?: string;
-  options: NormalizedOption[];
-  allowMultiple: boolean;
-  allowFreeform: boolean;
-  timeout?: number;
-}): (
-  tui: TUI,
-  theme: Theme,
-  kb: import("@earendil-works/pi-coding-agent").KeybindingsManager,
-  done: (result: AskUIResult | null) => void,
-) => {
-  render: (width: number) => string[];
-  invalidate: () => void;
-  handleInput: (data: string) => void;
-} {
-  return (tui, theme, _kb, done) => {
-    const { question, context, options, allowMultiple, allowFreeform, timeout } = params;
+const OTHER_LABEL = "Other (type your own)";
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
 
-    // Build display options — add "Custom response" if allowFreeform
-    const displayOptions: (NormalizedOption & { isFreeform?: boolean })[] = [
-      ...options,
-    ];
-    if (allowFreeform) {
-      displayOptions.push({
-        label: "Custom response",
-        value: "__freeform__",
-        isFreeform: true,
-      });
+export class AskPanel implements Component, Focusable {
+  private q = 0;
+  private readonly states: QState[];
+  private attachments: Attachment[] = [];
+  private paste: string | null = null;
+  private note: string | null = null;
+  private finished = false;
+  private _focused = false;
+
+  constructor(
+    private readonly tui: TUI,
+    private readonly theme: Theme,
+    private readonly questions: readonly AskQuestion[],
+    private readonly done: (result: PanelResult) => void,
+    private readonly readClipboard: () => string | undefined = () => readClipboardImageFile(),
+  ) {
+    this.states = questions.map(() => ({ cursor: 0, picked: new Set<string>(), input: new Input({ prompt: "" }) }));
+  }
+
+  get focused(): boolean {
+    return this._focused;
+  }
+  set focused(v: boolean) {
+    this._focused = v;
+    this.syncFocus();
+  }
+
+  // ── state helpers ──────────────────────────────────────────────────────
+  private get question(): AskQuestion {
+    return this.questions[this.q]!;
+  }
+  private get state(): QState {
+    return this.states[this.q]!;
+  }
+  private hasOther(q = this.q): boolean {
+    return this.questions[q]!.other !== false;
+  }
+  private otherIndex(q = this.q): number {
+    return this.hasOther(q) ? this.questions[q]!.options.length : -1;
+  }
+  private rowCount(q = this.q): number {
+    return this.questions[q]!.options.length + (this.hasOther(q) ? 1 : 0);
+  }
+  private onOther(): boolean {
+    return this.state.cursor === this.otherIndex();
+  }
+  private otherText(q = this.q): string {
+    return this.states[q]!.input.getValue();
+  }
+  private syncFocus(): void {
+    this.states.forEach((s, i) => (s.input.focused = this._focused && i === this.q && s.cursor === this.otherIndex(i)));
+  }
+
+  answers(): QuestionAnswer[] {
+    return this.questions.map((_, i) => {
+      const s = this.states[i]!;
+      const text = s.input.getValue().trim();
+      const a: QuestionAnswer = { selected: [...s.picked], skipped: false, ...(text ? { custom_text: text } : {}) };
+      a.skipped = !isAnswered(a);
+      return a;
+    });
+  }
+
+  private finish(result: PanelResult): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.done(result);
+  }
+
+  private submit(): void {
+    const text = this.states.map((s) => s.input.getValue()).join("\n");
+    this.finish({ type: "answered", answers: this.answers(), attachments: stillReferenced(text, this.attachments) });
+  }
+
+  /** Enter / pick: go to the next question, or submit from the last. */
+  private advance(): void {
+    if (this.q < this.questions.length - 1) {
+      this.q++;
+      this.syncFocus();
+    } else this.submit();
+  }
+
+  private switchTo(delta: number): void {
+    const next = Math.max(0, Math.min(this.questions.length - 1, this.q + delta));
+    if (next !== this.q) {
+      this.q = next;
+      this.syncFocus();
+    }
+  }
+
+  private pick(index: number): void {
+    const opt = this.question.options[index];
+    if (!opt) return;
+    const s = this.state;
+    if (this.question.multi_select) {
+      const v = optionValue(opt);
+      if (s.picked.has(v)) s.picked.delete(v);
+      else s.picked.add(v);
+      return;
+    }
+    s.picked = new Set([optionValue(opt)]);
+    s.input.setValue(""); // single choice: the last action wins
+    if (opt.action) {
+      this.finish({ type: "action", question: this.q, option: opt, answers: this.answers() });
+      return;
+    }
+    this.advance();
+  }
+
+  /** Text into "Other": file paths become [Image #N] / [File #N] tokens. */
+  private insertText(text: string): void {
+    if (!this.hasOther()) return;
+    if (!this.onOther()) {
+      this.state.cursor = this.otherIndex();
+      this.syncFocus();
+    }
+    const { text: tokens, added } = tokenize(text, this.attachments);
+    this.attachments.push(...added);
+    this.state.input.handleInput(`${PASTE_START}${tokens}${PASTE_END}`);
+    if (!this.question.multi_select && this.otherText().trim()) this.state.picked.clear();
+  }
+
+  private attachClipboardImage(): void {
+    const file = this.readClipboard();
+    if (!file) {
+      this.note = "No image on the clipboard (over SSH, paste a file path instead)";
+      return;
+    }
+    this.insertText(`${this.otherText() && !/\s$/.test(this.otherText()) ? " " : ""}${file} `);
+  }
+
+  // ── input ──────────────────────────────────────────────────────────────
+  handleInput(data: string): void {
+    if (this.finished) return;
+    this.note = null;
+    // Bracketed paste may arrive in pieces: collect it whole, then tokenize.
+    if (this.paste !== null || data.includes(PASTE_START)) {
+      this.paste = (this.paste ?? "") + data;
+      const end = this.paste.indexOf(PASTE_END);
+      if (end < 0) return;
+      const body = this.paste.slice(this.paste.indexOf(PASTE_START) + PASTE_START.length, end);
+      this.paste = null;
+      this.insertText(body);
+      return this.tui.requestRender();
     }
 
-    // State
-    let optionIndex = 0;
-    let editMode = false;
-    let editTarget: "freeform" | number = "freeform"; // which option is being edited
-    // Width-keyed so a terminal resize can never serve stale, over-wide lines.
-    const lineCache = new WidthKeyedCache();
-    const selected = new Set<string>();
-    let customText: string | null = null; // Store custom text (global freeform)
-    const optionCustomTexts = new Map<string, string>(); // Per-option custom text for allowCustom
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let remainingMs = timeout;
+    const s = this.state;
+    const other = this.onOther();
+    const multi = this.question.multi_select === true;
 
-    // Editor for freeform input
-    const editorTheme: EditorTheme = {
-      borderColor: (s: any) => theme.fg("accent", s),
-      selectList: {
-        selectedPrefix: (t: any) => theme.fg("accent", t),
-        selectedText: (t: any) => theme.fg("accent", t),
-        description: (t: any) => theme.fg("muted", t),
-        scrollInfo: (t: any) => theme.fg("dim", t),
-        noMatch: (t: any) => theme.fg("warning", t),
-      },
-    };
-    const editor = new Editor(tui, editorTheme);
-
-    function getOptionCustomText(optIndex: number): string | null {
-      const opt = displayOptions[optIndex];
-      return optionCustomTexts.get(opt.value) ?? null;
+    if (matchesKey(data, Key.escape)) return this.finish({ type: "cancel" });
+    if (matchesKey(data, Key.up)) {
+      s.cursor = Math.max(0, s.cursor - 1);
+    } else if (matchesKey(data, Key.down)) {
+      s.cursor = Math.min(this.rowCount() - 1, s.cursor + 1);
+    } else if (matchesKey(data, Key.tab)) {
+      this.switchTo(1);
+    } else if (matchesKey(data, "shift+tab")) {
+      this.switchTo(-1);
+    } else if ((matchesKey(data, Key.left) || matchesKey(data, Key.right)) && !(other && this.otherText())) {
+      this.switchTo(matchesKey(data, Key.left) ? -1 : 1);
+    } else if (matchesKey(data, Key.enter) || data === "\r") {
+      if (other) {
+        if (!multi && this.otherText().trim()) s.picked.clear();
+        this.advance();
+      } else if (multi) {
+        const opt = this.question.options[s.cursor];
+        if (s.picked.size === 0 && opt) s.picked.add(optionValue(opt));
+        this.advance();
+      } else this.pick(s.cursor);
+    } else if (matchesKey(data, Key.ctrl("v")) || matchesKey(data, Key.alt("v"))) {
+      if (this.hasOther()) this.attachClipboardImage();
+    } else if (other) {
+      s.input.handleInput(data);
+      if (!multi && this.otherText().trim()) s.picked.clear();
+    } else if (data === " " && multi) {
+      this.pick(s.cursor);
+    } else if (/^[1-9]$/.test(data)) {
+      const i = Number(data) - 1;
+      if (i < this.question.options.length) {
+        s.cursor = i;
+        this.pick(i);
+      } else if (i === this.otherIndex()) s.cursor = i;
+    } else if (data === "?") {
+      return this.finish({ type: "clarify", answers: this.answers() });
+    } else {
+      return; // typing is for "Other" — ignored elsewhere, like Devin
     }
+    this.syncFocus();
+    this.tui.requestRender();
+  }
 
-    function setOptionCustomText(optIndex: number, text: string | null) {
-      const opt = displayOptions[optIndex];
-      if (text) {
-        optionCustomTexts.set(opt.value, text);
-      } else {
-        optionCustomTexts.delete(opt.value);
-      }
-    }
+  // ── render ─────────────────────────────────────────────────────────────
+  invalidate(): void {}
 
-    /** Get effective action for an option (allowCustom maps to input) */
-    function getAction(opt: NormalizedOption & { isFreeform?: boolean }): string {
-      if (opt.isFreeform) return "freeform";
-      if (opt.action && opt.action !== "select") return opt.action;
-      if (opt.allowCustom) return "input";
-      return "select";
-    }
+  private chip(i: number): string {
+    const t = this.theme;
+    const q = this.questions[i]!;
+    const s = this.states[i]!;
+    const active = i === this.q;
+    const label = active ? t.fg("accent", q.header) : t.fg("dim", q.header);
+    let mark = "";
+    if (q.multi_select && s.picked.size > 0) mark = ` ${active ? t.fg("accent", String(s.picked.size + (s.input.getValue().trim() ? 1 : 0))) : t.fg("dim", String(s.picked.size))}`;
+    else if (s.picked.size > 0 || s.input.getValue().trim()) mark = ` ${t.fg("dim", "✓")}`;
+    return label + mark;
+  }
 
-    editor.onSubmit = (value: string) => {
-      const trimmed = value.trim();
-      if (editTarget === "freeform") {
-        // Global freeform input
-        if (trimmed) {
-          customText = trimmed;
-          editMode = false;
-          editor.setText("");
-          refresh();
-        } else {
-          // If empty and no previous custom text, uncheck freeform option
-          if (!customText) {
-            selected.delete("__freeform__");
-          }
-          editMode = false;
-          editor.setText("");
-          refresh();
-        }
-      } else {
-        // Per-option custom input (allowCustom)
-        if (trimmed) {
-          setOptionCustomText(editTarget, trimmed);
-          editMode = false;
-          editor.setText("");
-          // Auto-submit in single-select mode
-          if (!allowMultiple) {
-            cleanup();
-            const opt = displayOptions[editTarget];
-            done({
-              response: {
-                kind: "combined",
-                selections: [opt.value],
-                text: trimmed,
-              },
-            });
-            return;
-          }
-          refresh();
-        } else {
-          // Empty: cancel edit mode, keep option selected but without custom text
-          editMode = false;
-          editor.setText("");
-          refresh();
-        }
-      }
-    };
-
-    function cleanup() {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = undefined;
-      }
-    }
-
-    function refresh() {
-      lineCache.clear();
-      tui.requestRender();
-    }
-
-    // Setup timeout if specified
-    if (timeout && timeout > 0) {
-      remainingMs = timeout;
-      const startTime = Date.now();
-      const tickInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        remainingMs = Math.max(0, timeout - elapsed);
-        refresh();
-        if (remainingMs <= 0) {
-          clearInterval(tickInterval);
-        }
-      }, 1000);
-
-      timeoutId = setTimeout(() => {
-        clearInterval(tickInterval);
-        cleanup();
-        done({
-          response: {
-            kind: "timed_out",
-            comment: `Timed out after ${timeout}ms`,
-          },
-        });
-      }, timeout);
-    }
-
-    function handleInput(data: string) {
-      // Edit mode: route to editor
-      if (editMode) {
-        if (matchesKey(data, Key.escape)) {
-          // Cancel text input
-          if (editTarget === "freeform") {
-            // Global freeform: uncheck if no previous text
-            if (!customText) {
-              selected.delete("__freeform__");
-            }
-          }
-          // For per-option: just cancel edit, keep option selected
-          editMode = false;
-          editor.setText("");
-          refresh();
-          return;
-        }
-        editor.handleInput(data);
-        refresh();
-        return;
-      }
-
-      // Navigation
-      if (matchesKey(data, Key.up)) {
-        optionIndex = Math.max(0, optionIndex - 1);
-        refresh();
-        return;
-      }
-      if (matchesKey(data, Key.down)) {
-        optionIndex = Math.min(displayOptions.length - 1, optionIndex + 1);
-        refresh();
-        return;
-      }
-
-      // Multi-select: Space to toggle
-      if (allowMultiple && matchesKey(data, Key.space)) {
-        const opt = displayOptions[optionIndex];
-        const val = opt.value;
-        const action = getAction(opt);
-
-        if (action === "freeform") {
-          // Freeform option: toggle and enter edit mode if checking
-          if (selected.has(val)) {
-            selected.delete(val);
-            customText = null;
-          } else {
-            selected.add(val);
-            if (!customText) {
-              editMode = true;
-              editTarget = "freeform";
-              editor.setText("");
-            }
-          }
-        } else if (action === "end_turn") {
-          // End turn: immediate
-          cleanup();
-          done({ response: { kind: "end_turn", selections: [val] } });
-          return;
-        } else if (action === "new_session") {
-          // New session: immediate
-          cleanup();
-          done({ response: { kind: "new_session", selections: [val], prefill: opt.prefill } });
-          return;
-        } else if (action === "input") {
-          // Input action: toggle and enter edit mode if checking
-          if (selected.has(val)) {
-            selected.delete(val);
-            optionCustomTexts.delete(val);
-          } else {
-            selected.add(val);
-            if (!getOptionCustomText(optionIndex)) {
-              editMode = true;
-              editTarget = optionIndex;
-              editor.setText("");
-            }
-          }
-        } else {
-          // Regular option: toggle
-          if (selected.has(val)) {
-            selected.delete(val);
-          } else {
-            selected.add(val);
-          }
-        }
-        refresh();
-        return;
-      }
-
-      // Enter: select or submit
-      if (matchesKey(data, Key.enter)) {
-        const opt = displayOptions[optionIndex];
-        const action = getAction(opt);
-
-        if (action === "freeform") {
-          // Freeform option: if already checked with text, submit; otherwise enter edit mode
-          if (selected.has(opt.value) && customText) {
-            cleanup();
-            const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
-            if (regularSelections.length > 0) {
-              done({ response: { kind: "combined", selections: regularSelections, text: customText } });
-            } else {
-              done({ response: { kind: "freeform", text: customText } });
-            }
-          } else {
-            selected.add(opt.value);
-            editMode = true;
-            editTarget = "freeform";
-            editor.setText("");
-          }
-          refresh();
-          return;
-        }
-
-        if (action === "end_turn") {
-          cleanup();
-          done({ response: { kind: "end_turn", selections: [opt.value] } });
-          return;
-        }
-
-        if (action === "new_session") {
-          cleanup();
-          done({ response: { kind: "new_session", selections: [opt.value], prefill: opt.prefill } });
-          return;
-        }
-
-        if (allowMultiple) {
-          // In multi-select, Enter submits current selection
-          if (selected.size > 0) {
-            cleanup();
-            if (customText && selected.has("__freeform__")) {
-              const regularSelections = Array.from(selected).filter(v => v !== "__freeform__");
-              done({ response: { kind: "combined", selections: regularSelections, text: customText } });
-            } else {
-              const selections = Array.from(selected);
-              const combinedTexts: string[] = [];
-              for (const sel of selections) {
-                const txt = optionCustomTexts.get(sel);
-                if (txt) combinedTexts.push(`${sel}: ${txt}`);
-              }
-              if (combinedTexts.length > 0) {
-                done({ response: { kind: "combined", selections, text: combinedTexts.join("\n") } });
-              } else {
-                done({ response: { kind: "selection", selections } });
-              }
-            }
-          }
-          return;
-        }
-
-        // Single-select: check if option has input action
-        if (action === "input") {
-          const existing = getOptionCustomText(optionIndex);
-          if (existing) {
-            cleanup();
-            done({ response: { kind: "combined", selections: [opt.value], text: existing } });
-          } else {
-            editMode = true;
-            editTarget = optionIndex;
-            editor.setText("");
-            refresh();
-          }
-          return;
-        }
-
-        // Single-select without special action: return immediately
-        cleanup();
-        done({ response: { kind: "selection", selections: [opt.value] } });
-        return;
-      }
-
-      // Escape: cancel
-      if (matchesKey(data, Key.escape)) {
-        cleanup();
-        done(null);
-      }
-    }
-
-    function render(rawWidth: number): string[] {
-      const width = normalizeWidth(rawWidth);
-      const cached = lineCache.get(width);
-      if (cached) return cached;
-
-      const lines: string[] = [];
-      // Never exceed the terminal width — pi-tui throws on over-wide lines.
-      // On very narrow terminals the box border is dropped so the little
-      // width available all goes to content.
-      const innerWidth = adaptiveInnerWidth(width);
-      const bordered = shouldRenderBorder(width);
-      const border = (s: string) => theme.fg("accent", s);
-
-      function padVisible(content: string, targetWidth: number): string {
-        const vw = visibleWidth(content);
-        return content + safeRepeat(" ", targetWidth - vw);
-      }
-
-      const frame = (content: string) => {
-        const body = padVisible(truncateToWidth(content, innerWidth), innerWidth);
-        return bordered ? border("│") + body + border("│") : body;
-      };
-
-      const add = (s: string) => lines.push(frame(s));
-      const addWrapped = (s: string) => {
-        for (const line of wrapTextWithAnsi(s, innerWidth)) {
-          lines.push(frame(line));
-        }
-      };
-      const addEmpty = () => lines.push(frame(""));
-
-      // Top border
-      if (bordered) lines.push(border(`╭${safeRepeat("─", innerWidth)}╮`));
-
-      // Context
-      if (context) {
-        addWrapped(theme.fg("muted", ` ${context}`));
-        addEmpty();
-      }
-
-      // Question
-      addWrapped(theme.fg("text", ` ${question}`));
-      addEmpty();
-
-      // Options (editor is now inline with freeform option)
-      renderOptions(lines, add, theme, innerWidth);
-
-      // Timeout countdown
-      if (timeout && remainingMs !== undefined && remainingMs > 0) {
-        addEmpty();
-        const secs = Math.ceil(remainingMs / 1000);
-        add(theme.fg("dim", ` ⏱ ${secs}s remaining`));
-      }
-
-      addEmpty();
-      if (editMode) {
-        add(theme.fg("dim", " Enter to confirm text • Esc to cancel text input"));
-      } else if (allowMultiple) {
-        const currentOpt = displayOptions[optionIndex];
-        const action = currentOpt ? getAction(currentOpt) : "select";
-        const base = " ↑↓ navigate • Space toggle • Enter submit • Esc cancel";
-        let hint = "";
-        if (action === "input" && !optionCustomTexts.get(currentOpt.value)) {
-          hint = " • Space to add note";
-        } else if (action === "end_turn") {
-          hint = " • Space to end turn";
-        } else if (action === "new_session") {
-          hint = " • Space to start new session";
-        }
-        add(theme.fg("dim", base + hint));
-      } else {
-        const currentOpt = displayOptions[optionIndex];
-        const action = currentOpt ? getAction(currentOpt) : "select";
-        if (action === "input" && !optionCustomTexts.get(currentOpt.value)) {
-          add(theme.fg("dim", " ↑↓ navigate • Enter to add note • Esc cancel"));
-        } else if (action === "end_turn") {
-          add(theme.fg("dim", " ↑↓ navigate • Enter to end turn • Esc cancel"));
-        } else if (action === "new_session") {
-          add(theme.fg("dim", " ↑↓ navigate • Enter to start new session • Esc cancel"));
-        } else {
-          add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
-        }
-      }
-
-      // Bottom border
-      if (bordered) lines.push(border(`╰${safeRepeat("─", innerWidth)}╯`));
-
-      return lineCache.set(width, lines);
-    }
-
-    function renderOptions(
-      lines: string[],
-      add: (s: string) => void,
-      theme: Theme,
-      width: number,
-    ) {
-      const addWrappedOptionLine = (prefix: string, content: string) => {
-        const prefixWidth = visibleWidth(prefix);
-        const wrapWidth = contentWidth(width, prefixWidth);
-        const continuationPrefix = safeRepeat(" ", prefixWidth);
-        const wrapped = wrapTextWithAnsi(content, wrapWidth);
-        for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
-          add((lineIndex === 0 ? prefix : continuationPrefix) + wrapped[lineIndex]);
-        }
-      };
-
-      // Indent descriptions under the option label, but give up the indent
-      // entirely when the terminal is too narrow to afford it.
-      const descriptionIndent = safeRepeat(" ", width > 10 ? 5 : 0);
-      const addWrappedDescription = (description: string) => {
-        addWrappedOptionLine(descriptionIndent, theme.fg("muted", description));
-      };
-
-      // Inline editor, inset by 3 columns where there is room for it.
-      const editorIndent = safeRepeat(" ", width > 8 ? 3 : 0);
-      const addInlineEditor = () => {
-        add(`${editorIndent}${theme.fg("muted", "Type your response:")}`);
-        for (const line of editor.render(contentWidth(width, visibleWidth(editorIndent) + 1))) {
-          add(`${editorIndent}${line}`);
-        }
-      };
-
-      for (let i = 0; i < displayOptions.length; i++) {
-        const opt = displayOptions[i];
-        const isSelected = i === optionIndex;
-        const prefix = isSelected ? theme.fg("accent", "> ") : "  ";
-
-        if (opt.isFreeform) {
-          // Freeform option: show checkbox like regular option
-          const checked = selected.has(opt.value);
-          const box = checked ? "✓" : " ";
-          const color = checked ? "success" : isSelected ? "accent" : "text";
-          
-          let label = opt.label;
-          if (checked && customText) {
-            // Show custom text next to label
-            label = `${opt.label}: "${customText}"`;
-          }
-          
-          addWrappedOptionLine(
-            prefix + theme.fg(color, `[${box}]`) + " ",
-            theme.fg(isSelected ? "accent" : "text", label),
-          );
-          
-          // Show edit indicator if in edit mode for this option
-          if (editMode && editTarget === "freeform" && isSelected) {
-            addInlineEditor();
-          }
-        } else if (allowMultiple) {
-          // Multi-select: show checkbox
-          const checked = selected.has(opt.value);
-          const box = checked ? "✓" : " ";
-          const color = checked ? "success" : isSelected ? "accent" : "text";
-          
-          let label = opt.label;
-          const optCustom = optionCustomTexts.get(opt.value);
-          if (optCustom) {
-            label = `${opt.label}: "${optCustom}"`;
-          }
-          
-          addWrappedOptionLine(
-            prefix + theme.fg(color, `[${box}]`) + " ",
-            theme.fg(isSelected ? "accent" : "text", label),
-          );
-          
-          // Show edit indicator if in edit mode for this option
-          if (editMode && editTarget === i && isSelected) {
-            addInlineEditor();
-          }
-        } else {
-          // Single-select: option
-          let label = opt.label;
-          const optCustom = optionCustomTexts.get(opt.value);
-          if (optCustom) {
-            label = `${opt.label}: "${optCustom}"`;
-          }
-          
-          // Show action indicator
-          const action = getAction(opt);
-          if (action === "input" && !optCustom) {
-            label += theme.fg("dim", " (add note)");
-          } else if (action === "end_turn") {
-            label += theme.fg("dim", " ↵");
-          } else if (action === "new_session") {
-            label += theme.fg("dim", " ↗");
-          }
-          
-          addWrappedOptionLine(
-            prefix,
-            isSelected
-              ? theme.fg("accent", label)
-              : theme.fg("text", label),
-          );
-          
-          // Show edit indicator if in edit mode for this option
-          if (editMode && editTarget === i && isSelected) {
-            addInlineEditor();
-          }
-        }
-
-        // Description
-        if (opt.description) {
-          addWrappedDescription(opt.description);
-        }
-      }
-    }
-
-    return {
-      render,
-      invalidate: () => {
-        lineCache.clear();
-      },
-      handleInput,
-    };
-  };
-}
-
-/**
- * Create a renderCall function for the ask_user tool.
- */
-export function createRenderCall() {
-  return (args: Record<string, unknown>, theme: Theme, _context: unknown) => {
-    const question = (args.question as string) || "";
-    const context = (args.context as string | undefined) || "";
-    const options = Array.isArray(args.options)
-      ? (args.options as Array<Record<string, unknown>>)
-      : [];
-    const mode = args.allowMultiple ? "multi-select" : "single-select";
-    const allowFreeform = args.allowFreeform !== false;
-    const count = options.length;
-
+  render(width: number): string[] {
+    // Never wider than the terminal (pi-tui throws on over-wide lines).
+    const w = Number.isFinite(width) ? Math.max(1, Math.floor(width)) : 1;
+    const t = this.theme;
+    const fit = (line: string) => truncateToWidth(line, w, "");
     const lines: string[] = [];
-    lines.push(
-      theme.fg("toolTitle", theme.bold("ask_user")) +
-        theme.fg("dim", ` (${count} option${count !== 1 ? "s" : ""}, ${mode}${allowFreeform ? ", freeform" : ""})`),
-    );
-    if (context) {
-      lines.push(theme.fg("muted", "Context: ") + theme.fg("text", context));
-    }
-    lines.push(theme.fg("muted", "Question: ") + theme.fg("text", question));
 
-    if (count > 0) {
-      lines.push(theme.fg("muted", "Options:"));
-      options.forEach((option, index) => {
-        const label = String(option.label ?? option.value ?? `Option ${index + 1}`);
-        const action = typeof option.action === "string" && option.action !== "select"
-          ? theme.fg("dim", ` [${option.action}]`)
-          : "";
-        lines.push(
-          theme.fg("dim", `  ${index + 1}. `) +
-            theme.fg("text", label) +
-            action,
-        );
-        if (typeof option.description === "string" && option.description.trim()) {
-          lines.push(theme.fg("muted", `     ${option.description}`));
-        }
-        if (typeof option.prefill === "string" && option.prefill.trim()) {
-          lines.push(theme.fg("dim", `     prefill: ${option.prefill}`));
-        }
-      });
-    }
+    const chips = this.questions.map((_, i) => this.chip(i)).join(t.fg("dim", " · "));
+    const head = `${t.fg("borderMuted", "──")} ${chips} `;
+    lines.push(fit(head + t.fg("borderMuted", "─".repeat(Math.max(0, w - visibleWidth(head))))));
 
-    return new Text(lines.join("\n"), 0, 0);
-  };
-}
+    for (const l of wrapTextWithAnsi(this.question.question, Math.max(1, w - 4))) lines.push(fit(`  ${l}`));
 
-/**
- * Create a renderResult function for the ask_user tool.
- */
-export function createRenderResult() {
-  return (result: AgentToolResult<unknown>, options: unknown, theme: Theme, _context: unknown) => {
-    const details = result.details as Record<string, unknown> | undefined;
-    if (!details) {
-      const content = result.content as unknown as Array<Record<string, unknown>> | undefined;
-      const text = content?.[0];
-      return new Text(text?.type === "text" ? (text.text as string) : "", 0, 0);
-    }
-
-    const response = (details as { response: AskUserResponse }).response;
-    if (!response) {
-      return new Text(theme.fg("warning", "No response"), 0, 0);
-    }
-
-    const renderOptionSummary = (): string[] => {
-      const rawOptions = (details as { options?: unknown }).options;
-      if (!Array.isArray(rawOptions) || rawOptions.length === 0) return [];
-      return rawOptions.map((opt, index) => {
-        if (typeof opt === "string") {
-          return theme.fg("dim", `  ${index + 1}. `) + theme.fg("text", opt);
+    const s = this.state;
+    const other = this.onOther();
+    const multi = this.question.multi_select === true;
+    const hl = (text: string) => t.bg("selectedBg", text);
+    this.question.options.forEach((opt, i) => {
+      const at = s.cursor === i;
+      const picked = s.picked.has(optionValue(opt));
+      const marker = multi
+        ? picked ? t.fg("accent", "■") : t.fg("dim", "□")
+        : at ? t.bold(t.fg("accent", "❭")) : " ";
+      const num = other ? "" : `${t.fg("dim", String(i + 1))} `;
+      const label = at ? t.bold(t.fg("accent", opt.label)) : picked ? t.bold(opt.label) : opt.label;
+      const row = `  ${marker} ${num}${label}`;
+      lines.push(fit(at ? hl(row) : row));
+      if (opt.description) {
+        const indent = other ? "    " : "      ";
+        for (const d of wrapTextWithAnsi(opt.description, Math.max(1, w - indent.length - 1))) {
+          const desc = `${indent}${t.fg("muted", d)}`;
+          lines.push(fit(at ? hl(desc) : desc));
         }
-        const record = opt as Record<string, unknown>;
-        const label = String(record.label ?? record.value ?? `Option ${index + 1}`);
-        const value = typeof record.value === "string" && record.value !== label
-          ? theme.fg("dim", ` (${record.value})`)
-          : "";
-        const action = typeof record.action === "string" && record.action !== "select"
-          ? theme.fg("dim", ` [${record.action}]`)
-          : "";
-        const description = typeof record.description === "string" && record.description.trim()
-          ? `\n${theme.fg("muted", `     ${record.description}`)}`
-          : "";
-        return theme.fg("dim", `  ${index + 1}. `) + theme.fg("text", label) + value + action + description;
-      });
-    };
-
-    const answerText = (() => {
-      switch (response.kind) {
-        case "cancelled":
-          return theme.fg("warning", "Cancelled");
-        case "timed_out":
-          return theme.fg("warning", "Timed out");
-        case "freeform":
-          return theme.fg("success", "✓ ") +
-            theme.fg("muted", "(wrote) ") +
-            theme.fg("accent", response.text || "");
-        case "selection": {
-          const selections = response.selections || [];
-          const display = selections.length === 1 ? selections[0] : selections.join(", ");
-          return theme.fg("success", "✓ ") + theme.fg("accent", display);
-        }
-        case "combined": {
-          const selections = response.selections || [];
-          const selDisplay = selections.length === 1
-            ? selections[0]
-            : selections.join(", ");
-          return theme.fg("success", "✓ ") +
-            theme.fg("accent", selDisplay) +
-            theme.fg("muted", " and wrote ") +
-            theme.fg("accent", response.text || "");
-        }
-        case "end_turn":
-          return theme.fg("success", "✓ ") + theme.fg("muted", "end turn");
-        case "new_session": {
-          const prefill = response.prefill || "";
-          if (response.launchStatus === "editor_prefill") {
-            const label = response.launchedWith === "compact"
-              ? "⚠ compact editor prefill → "
-              : "⚠ direct editor prefill → ";
-            return theme.fg("warning", label) + theme.fg("accent", prefill);
-          }
-          if (response.launchStatus === "failed") {
-            const label = response.launchedWith === "compact"
-              ? "handoff failed (compact) → "
-              : "handoff failed (direct) → ";
-            return theme.fg("error", label) + theme.fg("accent", prefill);
-          }
-          if (response.launchedWith === "compact") {
-            return theme.fg("success", "✓ queued compact → ") + theme.fg("accent", prefill);
-          }
-          if (response.launchedWith === "direct") {
-            return theme.fg("success", "✓ queued direct → ") + theme.fg("accent", prefill);
-          }
-          return theme.fg("success", "✓ ") +
-            theme.fg("muted", "new session") +
-            (prefill ? theme.fg("accent", `: ${prefill}`) : "");
-        }
-        default:
-          return theme.fg("text", JSON.stringify(response));
       }
-    })();
+    });
 
-    const expanded = typeof options === "object" && options !== null && "expanded" in options
-      ? Boolean((options as { expanded?: boolean }).expanded)
-      : false;
-    if (!expanded) {
-      const question = typeof (details as { question?: unknown }).question === "string"
-        ? (details as { question: string }).question
-        : "";
-      const expandHint = question
-        ? theme.fg("dim", "  · Ctrl+O question/options")
-        : "";
-      return new Text(answerText + expandHint, 0, 0);
+    if (this.hasOther()) {
+      const text = this.otherText();
+      const n = this.otherIndex() + 1;
+      if (other) {
+        lines.push(fit(hl(`  ${t.bold(t.fg("accent", "❭"))} ${t.bold(t.fg("accent", OTHER_LABEL))}`)));
+        const field = s.input.render(Math.max(4, w - 6))[0] ?? "";
+        lines.push(fit(`    ${t.fg("accent", "└")} ${field}`));
+      } else if (text) {
+        lines.push(fit(`  ${multi ? t.fg("accent", "■") : " "} ${t.fg("dim", String(n))} ${OTHER_LABEL}`));
+        lines.push(fit(`      ${t.fg("dim", "└")} ${t.fg("muted", text)}`));
+      } else {
+        lines.push(fit(`  ${multi ? t.fg("dim", "□") : " "}   ${OTHER_LABEL}`));
+      }
+      const used = stillReferenced(text, this.attachments);
+      for (const a of used) lines.push(fit(`      ${t.fg("accent", tokenFor(a))} ${t.fg("dim", `${a.name} · ${formatBytes(a.bytes)}`)}`));
     }
 
-    const lines = [answerText];
-    const question = (details as { question?: unknown }).question;
-    const context = (details as { context?: unknown }).context;
-    if (typeof question === "string" && question.trim()) {
-      lines.push(theme.fg("muted", "Question: ") + theme.fg("text", question));
-    }
-    if (typeof context === "string" && context.trim()) {
-      lines.push(theme.fg("muted", "Context: ") + theme.fg("text", context));
-    }
-    const optionLines = renderOptionSummary();
-    if (optionLines.length > 0) {
-      lines.push(theme.fg("muted", "Options:"), ...optionLines);
-    }
-    return new Text(lines.join("\n"), 0, 0);
-  };
+    lines.push(t.fg("borderMuted", "─".repeat(w)));
+    if (this.note) lines.push(fit(t.fg("warning", this.note)));
+    const keys = ["↑↓ navigate", ...(multi && !other ? ["␣ toggle"] : []), "↵ select", ...(other ? ["ctrl+v image"] : []), ...(this.questions.length > 1 ? ["←→ switch question"] : []), ...(other ? [] : ["? help me out"]), "esc cancel"];
+    lines.push(fit(t.fg("dim", keys.join(" · "))));
+    lines.push(fit(t.fg("warning", "? Not ready to answer, help me out!")));
+    return lines;
+  }
+
+  dispose(): void {}
 }

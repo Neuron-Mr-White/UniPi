@@ -110,14 +110,16 @@ If the user already specified whether to save (e.g., "save findings to memory" o
 
 ```
 ask_user({
-  question: "Save this context?",
-  context: "Context gathered from {N} files across {areas}. Summary includes structure, patterns, prior art, and recommendations.",
-  options: [
-    { label: "Save to memory", description: "Store findings in .unipi/memory/ for future sessions", value: "save" },
-    { label: "Save to file", description: "Write findings to docs/research/<topic>.md", value: "file" },
-    { label: "Don't save", description: "Discard — context was just for this session", value: "discard" }
-  ],
-  allowFreeform: false
+  questions: [{
+    header: "Save context",
+    question: "Context gathered from {N} files across {areas}. Summary includes structure, patterns, prior art, and recommendations. Save this context?",
+    options: [
+      { label: "Save to memory", description: "Store findings in .unipi/memory/ for future sessions", value: "save" },
+      { label: "Save to file", description: "Write findings to docs/research/<topic>.md", value: "file" },
+      { label: "Don't save", description: "Discard — context was just for this session", value: "discard" }
+    ],
+    other: false,
+  }],
 })
 ```
 

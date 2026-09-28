@@ -1,5 +1,5 @@
 /**
- * @pi-unipi/utility — attachments: path detection and tokens (pure + fs reads)
+ * @pi-unipi/core — attachments: path detection and tokens (pure + fs reads)
  *
  * A pasted / dropped / Ctrl+V'd file path in the editor becomes a token:
  *   images    → [Image #N]  (sent as real image content on submit)

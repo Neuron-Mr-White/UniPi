@@ -127,13 +127,16 @@ Based on review results, use `ask_user` `new_session` options when available so 
 Offer:
 ```ts
 ask_user({
-  question: "Merge this worktree now?",
-  options: [
-    { label: "Proceed to the implementation steptree-merge", value: "merge", action: "new_session", prefill: "the implementation steptree-merge" },
-    { label: "Consolidate learnings", value: "consolidate", action: "new_session", prefill: "the consolidate step" },
-    { label: "Done for now", value: "done", action: "end_turn" },
-  ],
-  allowFreeform: false,
+  questions: [{
+    header: "Merge",
+    question: "Merge this worktree now?",
+    options: [
+      { label: "Proceed to the implementation steptree-merge", value: "merge", action: "new_session", prefill: "the implementation steptree-merge" },
+      { label: "Consolidate learnings", value: "consolidate", action: "new_session", prefill: "the consolidate step" },
+      { label: "Done for now", value: "done", action: "end_turn" },
+    ],
+    other: false,
+  }],
 })
 ```
 Copyable fallback:

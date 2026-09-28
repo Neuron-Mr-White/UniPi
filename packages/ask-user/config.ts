@@ -62,14 +62,6 @@ registerSettings({
         { key: "notifyOnAsk", type: "boolean", label: "Notify on ask", description: "Send a notification when the agent pauses to ask" },
       ],
     },
-    {
-      title: "Allowed formats",
-      fields: [
-        { key: "allowedFormats.singleSelect", type: "boolean", label: "Single-select", description: "Questions with one correct answer" },
-        { key: "allowedFormats.multiSelect", type: "boolean", label: "Multi-select", description: "Questions with several answers" },
-        { key: "allowedFormats.freeform", type: "boolean", label: "Freeform", description: "Plain text input" },
-      ],
-    },
   ],
 });
 

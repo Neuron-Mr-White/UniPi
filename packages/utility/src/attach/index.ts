@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCapabilities, Image, Key, matchesKey, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { readUtilSettings } from "../settings.js";
-import { expandForSubmit, formatBytes, stillReferenced, tokenFor, tokenize, type Attachment } from "./detect.js";
+import { expandForSubmit, formatBytes, stillReferenced, tokenFor, tokenize, type Attachment } from "@pi-unipi/core";
 
 export const ATTACHMENTS_ENTRY = "unipi:attachments";
 const WIDGET = "unipi-attachments";

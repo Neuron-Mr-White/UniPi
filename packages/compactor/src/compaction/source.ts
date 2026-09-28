@@ -59,16 +59,36 @@ const PROGRESS_TOOLS = /^(?:ralph_done|update_goal)$/;
 /** Tools that ask the user a question; their results carry the user's answer. */
 const ASK_TOOLS = /^(?:ask_user|ask_user_question|askuserquestion|ask)$/i;
 
-/** "Q → A" from an ask tool result ("User wrote: …" / "User selected: …"), or null when unanswered. */
-function askAnswer(message: any): string | null {
+const shortQuestion = (q: string): string => {
+  const one = q.replace(/\s+/g, " ").trim();
+  return one.length > 140 ? `${one.slice(0, 139).trimEnd()}…` : one;
+};
+
+/**
+ * "Q → A" lines from an ask tool result, one per answered question (skipped
+ * ones are not decisions). Reads the multi-question details first, then the
+ * older single-question "User wrote/selected: …" text.
+ */
+export function askAnswers(message: any): string[] {
+  const d = message.details;
+  if (Array.isArray(d?.questions) && Array.isArray(d?.answers)) {
+    const out: string[] = [];
+    d.questions.forEach((q: any, i: number) => {
+      const a = d.answers[i];
+      if (!a || a.skipped) return;
+      const labels = (Array.isArray(a.selected) ? a.selected : []).map((v: string) => q.options?.find((o: any) => (o.value ?? o.label) === v)?.label ?? v);
+      const answer = [...labels, ...(typeof a.custom_text === "string" && a.custom_text.trim() ? [a.custom_text.trim()] : [])].join(", ");
+      if (answer) out.push(`${shortQuestion(String(q.question ?? ""))} → ${answer}`);
+    });
+    return out;
+  }
   const text = textOf(message.content).trim();
   const m = text.match(/^User (?:wrote|selected|answered|chose)[^:]*:\s*([\s\S]+)$/i);
-  if (!m) return null;
-  const rawQuestion = typeof message.details?.question === "string" ? message.details.question.replace(/\s+/g, " ").trim() : "";
+  if (!m) return [];
   // The answer is the user's words: keep it whole, shorten the agent's question.
-  const question = rawQuestion.length > 140 ? `${rawQuestion.slice(0, 139).trimEnd()}…` : rawQuestion;
+  const question = typeof d?.question === "string" ? shortQuestion(d.question) : "";
   const answer = m[1].trim();
-  return question ? `${question} → ${answer}` : answer;
+  return [question ? `${question} → ${answer}` : answer];
 }
 
 export interface SummarySource {
@@ -138,8 +158,7 @@ export function collectSummarySource(
       if (prose) reports.push(prose);
     } else if (message.role === "toolResult" && ASK_TOOLS.test(String((message as any).toolName ?? ""))) {
       // The user's answer to an agent question is the user's own decision.
-      const answer = askAnswer(message);
-      if (answer) requests.push(answer);
+      requests.push(...askAnswers(message));
     } else if (message.role === "toolResult" && PROGRESS_TOOLS.test(String((message as any).toolName ?? ""))) {
       // Loop progress reports (ralph iteration summaries, goal updates).
       const text = textOf((message as any).content).trim();
