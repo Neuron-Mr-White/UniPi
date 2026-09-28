@@ -1,347 +1,152 @@
 /**
- * @pi-unipi/utility — Stale Cleanup Utility
+ * @pi-unipi/utility — Stale cleanup (allowlist only)
  *
- * Cleans stale DBs, temp files, old sessions across all unipi modules.
+ * Only the targets listed in TARGETS can ever be removed. Everything else
+ * under ~/.unipi — memory, v2 backups, kanboard boards, config, workspace
+ * state — is out of reach by construction, not by pattern luck. Callers
+ * preview first (`dryRun`) and delete only after the user confirms.
  */
 
-import { existsSync, statSync, readdirSync, unlinkSync, rmSync } from "node:fs";
-import { join, resolve, basename } from "node:path";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import type { CleanupReport, CleanupResult, CleanupOptions } from "../types.js";
+import { join } from "node:path";
 
-/** Default options */
-const DEFAULTS: Required<CleanupOptions> = {
-  dbMaxAgeDays: 14,
-  tempMaxAgeDays: 7,
-  sessionMaxAgeDays: 30,
-  dryRun: false,
-};
-
-/** Expand ~ to home directory */
-function expandHome(path: string): string {
-  if (path.startsWith("~/")) {
-    return join(homedir(), path.slice(2));
-  }
-  return path;
+export interface CleanupTarget {
+  id: string;
+  label: string;
+  /** Directory scanned (non-recursive). */
+  dir: () => string;
+  /** Entry names that belong to this target. */
+  match: RegExp;
+  /** Minimum age in days; 0 = any age (the feature that wrote it is gone). */
+  minAgeDays: number;
+  /** Entry kind to consider. */
+  kind: "file" | "dir" | "any";
 }
 
-/** Check if a file is older than maxAgeDays */
-function isStale(path: string, maxAgeDays: number): boolean {
+const unipi = (...parts: string[]) => join(homedir(), ".unipi", ...parts);
+
+export const TARGETS: readonly CleanupTarget[] = [
+  {
+    id: "tool-results",
+    label: "Saved tool outputs older than 7 days",
+    dir: () => unipi("tool-results"),
+    match: /^(?:tool-result|mcp-[a-zA-Z0-9_-]+|helper)-[a-f0-9-]+\.txt$/,
+    minAgeDays: 7,
+    kind: "file",
+  },
+  {
+    id: "temp",
+    label: "UniPi temp files older than 7 days",
+    dir: () => tmpdir(),
+    match: /^unipi-/,
+    minAgeDays: 7,
+    kind: "file",
+  },
+  {
+    id: "compactor-db",
+    label: "Old compactor continuity database (no longer used)",
+    dir: () => unipi("db"),
+    match: /^compactor$/,
+    minAgeDays: 0,
+    kind: "dir",
+  },
+  {
+    id: "compactor-db-global",
+    label: "Old compactor continuity database (no longer used)",
+    dir: () => unipi("global"),
+    match: /^compactor$/,
+    minAgeDays: 0,
+    kind: "dir",
+  },
+];
+
+export interface CleanupItem {
+  target: string;
+  path: string;
+  bytes: number;
+}
+
+export interface CleanupResult {
+  items: CleanupItem[];
+  removed: number;
+  bytes: number;
+  failed: string[];
+}
+
+function sizeOf(path: string): number {
   try {
-    const stats = statSync(path);
-    const ageMs = Date.now() - stats.mtime.getTime();
-    return ageMs > maxAgeDays * 24 * 60 * 60 * 1000;
+    const st = statSync(path);
+    if (!st.isDirectory()) return st.size;
+    return readdirSync(path).reduce((sum, name) => sum + sizeOf(join(path, name)), 0);
   } catch {
-    return false;
+    return 0;
   }
 }
 
-/** Try to detect if a DB file has a zombie WAL lock */
-function hasWalLock(dbPath: string): boolean {
-  const walPath = dbPath + "-wal";
-  const shmPath = dbPath + "-shm";
-  // If WAL exists but journal mode isn't WAL, or WAL is very old, it's stale
-  if (existsSync(walPath)) {
+/** Everything the allowlist would remove right now. Never deletes. */
+export function findCleanupItems(targets: readonly CleanupTarget[] = TARGETS, now = Date.now()): CleanupItem[] {
+  const items: CleanupItem[] = [];
+  for (const target of targets) {
+    const dir = target.dir();
+    if (!existsSync(dir)) continue;
+    let names: string[];
     try {
-      const walStats = statSync(walPath);
-      const ageMs = Date.now() - walStats.mtime.getTime();
-      return ageMs > 5 * 60 * 1000; // 5 min = stale WAL
+      names = readdirSync(dir);
     } catch {
-      return false;
+      continue;
     }
-  }
-  return false;
-}
-
-/** Clean stale database files in ~/.unipi/ */
-function cleanDbs(options: Required<CleanupOptions>): CleanupResult {
-  const result: CleanupResult = {
-    category: "db",
-    removed: 0,
-    bytesFreed: 0,
-    paths: [],
-  };
-
-  const unipiDir = expandHome("~/.unipi");
-  if (!existsSync(unipiDir)) return result;
-
-  const scanDir = (dir: string) => {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = join(dir, entry);
+    for (const name of names) {
+      if (!target.match.test(name)) continue;
+      const path = join(dir, name);
       try {
-        const stats = statSync(fullPath);
-        if (stats.isDirectory()) {
-          scanDir(fullPath);
-          continue;
-        }
-
-        // Match SQLite DB files
-        if (
-          entry.endsWith(".db") ||
-          entry.endsWith(".sqlite") ||
-          entry.endsWith(".sqlite3")
-        ) {
-          if (isStale(fullPath, options.dbMaxAgeDays) || hasWalLock(fullPath)) {
-            result.bytesFreed += stats.size;
-            result.paths.push(fullPath);
-            if (!options.dryRun) {
-              try {
-                unlinkSync(fullPath);
-                // Also clean WAL/SHM companions
-                for (const suffix of ["-wal", "-shm", "-journal"]) {
-                  const companion = fullPath + suffix;
-                  if (existsSync(companion)) {
-                    unlinkSync(companion);
-                    result.bytesFreed += statSync(companion).size;
-                  }
-                }
-                result.removed++;
-              } catch {
-                // Best effort
-              }
-            } else {
-              result.removed++;
-            }
-          }
-        }
+        const st = statSync(path);
+        if (target.kind === "file" && !st.isFile()) continue;
+        if (target.kind === "dir" && !st.isDirectory()) continue;
+        if (target.minAgeDays > 0 && now - st.mtimeMs < target.minAgeDays * 86_400_000) continue;
+        items.push({ target: target.id, path, bytes: sizeOf(path) });
       } catch {
-        // Skip unreadable entries
+        // Unreadable entry — skip.
       }
     }
-  };
-
-  scanDir(unipiDir);
-  return result;
+  }
+  return items;
 }
 
-/** Clean private tool-result artifacts after the configured temp retention. */
-function cleanToolResults(options: Required<CleanupOptions>): CleanupResult {
-  const result: CleanupResult = {
-    category: "tool-results",
-    removed: 0,
-    bytesFreed: 0,
-    paths: [],
-  };
-  const dir = expandHome("~/.unipi/tool-results");
-  if (!existsSync(dir)) return result;
-
-  let entries: string[];
-  try { entries = readdirSync(dir); } catch { return result; }
-  for (const entry of entries) {
-    if (!/^(?:tool-result|mcp-[a-zA-Z0-9_-]+|helper)-[a-f0-9-]+\.txt$/.test(entry)) continue;
-    const path = join(dir, entry);
+/** Delete exactly the previewed items (re-validated against the allowlist). */
+export function removeCleanupItems(items: readonly CleanupItem[], targets: readonly CleanupTarget[] = TARGETS): CleanupResult {
+  const allowed = new Set(findCleanupItems(targets).map((i) => i.path));
+  const result: CleanupResult = { items: [...items], removed: 0, bytes: 0, failed: [] };
+  for (const item of items) {
+    if (!allowed.has(item.path)) continue;
     try {
-      const stats = statSync(path);
-      if (!stats.isFile() || !isStale(path, options.tempMaxAgeDays)) continue;
-      result.paths.push(path);
-      result.bytesFreed += stats.size;
-      if (!options.dryRun) unlinkSync(path);
+      rmSync(item.path, { recursive: true, force: true });
       result.removed++;
-    } catch { /* best effort */ }
-  }
-  return result;
-}
-
-/** Clean temp files matching unipi patterns */
-function cleanTemps(options: Required<CleanupOptions>): CleanupResult {
-  const result: CleanupResult = {
-    category: "temp",
-    removed: 0,
-    bytesFreed: 0,
-    paths: [],
-  };
-
-  const patterns = [/^unipi-/, /^pi-/, /\.unipi\./];
-  const tmpDir = tmpdir();
-
-  let entries: string[];
-  try {
-    entries = readdirSync(tmpDir);
-  } catch {
-    return result;
-  }
-
-  for (const entry of entries) {
-    if (!patterns.some((p) => p.test(entry))) continue;
-
-    const fullPath = join(tmpDir, entry);
-    try {
-      const stats = statSync(fullPath);
-      if (!stats.isFile()) continue;
-
-      if (isStale(fullPath, options.tempMaxAgeDays)) {
-        result.bytesFreed += stats.size;
-        result.paths.push(fullPath);
-        if (!options.dryRun) {
-          try {
-            unlinkSync(fullPath);
-            result.removed++;
-          } catch {
-            // Best effort
-          }
-        } else {
-          result.removed++;
-        }
-      }
+      result.bytes += item.bytes;
     } catch {
-      // Skip unreadable
+      result.failed.push(item.path);
     }
   }
-
   return result;
 }
 
-/** Clean stale session directories */
-function cleanSessions(options: Required<CleanupOptions>): CleanupResult {
-  const result: CleanupResult = {
-    category: "session",
-    removed: 0,
-    bytesFreed: 0,
-    paths: [],
-  };
-
-  const unipiDir = expandHome("~/.unipi");
-  const sessionsDir = join(unipiDir, "sessions");
-  if (!existsSync(sessionsDir)) return result;
-
-  let entries: string[];
-  try {
-    entries = readdirSync(sessionsDir);
-  } catch {
-    return result;
-  }
-
-  for (const entry of entries) {
-    const fullPath = join(sessionsDir, entry);
-    try {
-      const stats = statSync(fullPath);
-      if (!stats.isDirectory()) continue;
-
-      if (isStale(fullPath, options.sessionMaxAgeDays)) {
-        result.bytesFreed += stats.size;
-        result.paths.push(fullPath);
-        if (!options.dryRun) {
-          try {
-            rmSync(fullPath, { recursive: true, force: true });
-            result.removed++;
-          } catch {
-            // Best effort
-          }
-        } else {
-          result.removed++;
-        }
-      }
-    } catch {
-      // Skip unreadable
-    }
-  }
-
-  return result;
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** Clean stale cache files */
-function cleanCache(options: Required<CleanupOptions>): CleanupResult {
-  const result: CleanupResult = {
-    category: "cache",
-    removed: 0,
-    bytesFreed: 0,
-    paths: [],
-  };
-
-  const cacheDir = expandHome("~/.unipi/cache");
-  if (!existsSync(cacheDir)) return result;
-
-  let entries: string[];
-  try {
-    entries = readdirSync(cacheDir);
-  } catch {
-    return result;
+/** Preview grouped by target — what the confirm dialog and dry run show. */
+export function formatCleanupPreview(items: readonly CleanupItem[], targets: readonly CleanupTarget[] = TARGETS): string {
+  if (items.length === 0) return "Nothing to clean.";
+  const total = items.reduce((sum, i) => sum + i.bytes, 0);
+  const lines = [`${items.length} item(s), ${formatBytes(total)}:`];
+  for (const target of targets) {
+    const mine = items.filter((i) => i.target === target.id);
+    if (mine.length === 0) continue;
+    lines.push(`- ${target.label}: ${mine.length} (${formatBytes(mine.reduce((s, i) => s + i.bytes, 0))})`);
+    for (const item of mine.slice(0, 5)) lines.push(`    ${item.path}`);
+    if (mine.length > 5) lines.push(`    … and ${mine.length - 5} more`);
   }
-
-  for (const entry of entries) {
-    const fullPath = join(cacheDir, entry);
-    try {
-      const stats = statSync(fullPath);
-      if (!stats.isFile()) continue;
-
-      if (isStale(fullPath, options.tempMaxAgeDays)) {
-        result.bytesFreed += stats.size;
-        result.paths.push(fullPath);
-        if (!options.dryRun) {
-          try {
-            unlinkSync(fullPath);
-            result.removed++;
-          } catch {
-            // Best effort
-          }
-        } else {
-          result.removed++;
-        }
-      }
-    } catch {
-      // Skip unreadable
-    }
-  }
-
-  return result;
-}
-
-/**
- * Run full cleanup of stale files across all unipi modules.
- */
-export function cleanupStale(options: CleanupOptions = {}): CleanupReport {
-  const opts: Required<CleanupOptions> = { ...DEFAULTS, ...options };
-
-  const results: CleanupResult[] = [
-    cleanDbs(opts),
-    cleanTemps(opts),
-    cleanToolResults(opts),
-    cleanSessions(opts),
-    cleanCache(opts),
-  ];
-
-  return {
-    timestamp: Date.now(),
-    results,
-    totalRemoved: results.reduce((sum, r) => sum + r.removed, 0),
-    totalBytesFreed: results.reduce((sum, r) => sum + r.bytesFreed, 0),
-  };
-}
-
-/** Format a cleanup report as markdown */
-export function formatCleanupReport(report: CleanupReport): string {
-  const lines = [
-    "## 🧹 Cleanup Report",
-    "",
-    `**Total removed:** ${report.totalRemoved} items`,
-    `**Space freed:** ${(report.totalBytesFreed / 1024 / 1024).toFixed(2)} MB`,
-    `**Timestamp:** ${new Date(report.timestamp).toISOString()}`,
-    "",
-  ];
-
-  for (const result of report.results) {
-    if (result.removed === 0) continue;
-    lines.push(
-      `### ${result.category.toUpperCase()}`,
-      `- Removed: ${result.removed}`,
-      `- Freed: ${(result.bytesFreed / 1024).toFixed(1)} KB`,
-      "",
-    );
-    for (const path of result.paths.slice(0, 10)) {
-      lines.push(`- \`${path}\``);
-    }
-    if (result.paths.length > 10) {
-      lines.push(`- ... and ${result.paths.length - 10} more`);
-    }
-    lines.push("");
-  }
-
   return lines.join("\n");
 }

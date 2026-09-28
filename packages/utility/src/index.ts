@@ -1,118 +1,44 @@
 /**
  * @pi-unipi/utility — Extension entry
  *
- * Comprehensive utilities suite for Pi coding agent:
- * - Commands: continue, reload, status, cleanup, env, doctor, badge
- * - Tools: ctx_env, set_session_name
- * - Lifecycle: process management, stale cleanup
- * - Analytics: lightweight event collection
- * - Diagnostics: cross-module health checks
- * - Prefix-cache observability: privacy-safe provider cache stats
- * - TUI: util settings, name badge (incl. Herdr pane title sync)
+ * - /unipi:settings — the unified settings hub
+ * - /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor
+ * - Automatic session naming (jev gate + isolated one-tool session) + Herdr sync
+ * - Skill exposure (judged | all | off)
+ * - The shared model cache (~/.unipi/config/models-cache.json)
  */
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionCommandContext, InputEvent, AgentEndEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
   UTILITY_COMMANDS,
-  UTILITY_TOOLS,
   emitEvent,
   getPackageVersion,
   runCommandByName,
-  registerCommandRunner,
   SettingsHub,
   HUB_OVERLAY_OPTIONS,
-  type UnipiBadgeGenerateRequestEvent,
+  chatModelsToCache,
+  writeModelCache,
 } from "@pi-unipi/core";
 import { registerUtilityCommands } from "./commands.js";
 import { registerSkillJudging } from "./skill-discovery.js";
-import { NameBadgeState } from "./tui/name-badge-state.js";
-import { readBadgeSettings, readUtilSettings } from "./settings.js";
-import { getLifecycle } from "./lifecycle/process.js";
-import { getAnalyticsCollector } from "./analytics/collector.js";
-import { registerInfoScreen } from "./info-screen.js";
-import { PrefixCacheTracker, formatPrefixCacheStats } from "./prefix-cache.js";
+import { registerAutoRename } from "./rename/index.js";
+import "./settings.js";
 
-/** Re-export readBadgeSettings for cross-package use */
-export { readBadgeSettings } from "./settings.js";
-
-/** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
-/** Whether we've seen the first user message (for auto badge generation) */
-let firstMessageSeen = false;
-
-/** Stored user text from first input, used to build conversation summary after agent responds */
-let firstUserText = "";
-
-/** Stored UI context from first input, used to show badge overlay after agent responds */
-let firstInputCtx: import("@earendil-works/pi-coding-agent").ExtensionContext | null = null;
-
-/** All commands registered by this module */
 const ALL_COMMANDS = [
   UTILITY_COMMANDS.CONTINUE,
-  UTILITY_COMMANDS.RELOAD,
-  UTILITY_COMMANDS.STATUS,
+  UTILITY_COMMANDS.RETRY,
   UTILITY_COMMANDS.CLEANUP,
-  UTILITY_COMMANDS.ENV,
   UTILITY_COMMANDS.DOCTOR,
-  UTILITY_COMMANDS.PREFIX_CACHE,
+  "settings",
 ].map((cmd) => `unipi:${cmd}`);
 
-/** All tools registered by this module */
-const ALL_TOOLS = [UTILITY_TOOLS.BATCH, UTILITY_TOOLS.ENV, UTILITY_TOOLS.SET_SESSION_NAME];
-
 export default function (pi: ExtensionAPI) {
-  // Initialize lifecycle manager
-  const lifecycle = getLifecycle();
-
-  // Initialize analytics collector
-  const analytics = getAnalyticsCollector();
-
-  // Session-local provider prefix observability. The random HMAC key and all
-  // payload-derived fingerprints remain in memory and are discarded on reload.
-  const prefixCache = new PrefixCacheTracker();
-  pi.registerCommand(`unipi:${UTILITY_COMMANDS.PREFIX_CACHE}`, {
-    description: "Show privacy-safe provider prefix-cache diagnostics",
-    handler: async (_args, ctx) => {
-      const report = formatPrefixCacheStats(prefixCache.getSnapshot());
-      if (ctx.hasUI) {
-        ctx.ui.notify(report, "info");
-      } else {
-        pi.sendMessage({ customType: "unipi-response", content: report, display: true }, { deliverAs: "followUp" });
-      }
-    },
-  });
-
-  // Badge actions — "Set session name…" / "Generate session name" rows in
-  // /unipi:settings (Utility group). The old badge slash commands are
-  // gone; the hub field is the same persisted setting.
-  registerCommandRunner("unipi:badge-set-name", async (rawCtx: unknown) => {
-    const ctx = rawCtx as ExtensionCommandContext;
-    if (!ctx.hasUI) {
-      ctx.ui.notify("Setting the session name requires an interactive UI.", "warning");
-      return;
-    }
-    const current = nameBadgeState.isVisible() ? undefined : "";
-    const name = await ctx.ui.input("Session name", current ?? "");
-    if (!name || !name.trim()) return;
-    nameBadgeState.setSessionName(pi, name.trim());
-    ctx.ui.notify(`Session name set to "${name.trim()}"`, "info");
-  });
-  registerCommandRunner("unipi:badge-generate", async (rawCtx: unknown) => {
-    const ctx = rawCtx as ExtensionCommandContext;
-    if (!ctx.hasUI) {
-      ctx.ui.notify("Badge generation requires an interactive UI.", "warning");
-      return;
-    }
-    await nameBadgeState.generate(pi, ctx);
-    ctx.ui.notify("Generating session name...", "info");
-  });
-
-  // The unified settings hub — every registered module in one panel.
   pi.registerCommand("unipi:settings", {
     description: "Configure all unipi modules in one panel (global + project scopes)",
     handler: async (_args, ctx) => {
@@ -121,17 +47,6 @@ export default function (pi: ExtensionAPI) {
         (tui, _theme, _keybindings, done) => {
           const hub = new SettingsHub({
             cwd: ctx.cwd ?? process.cwd(),
-            onChanged: (namespace) => {
-              // Preserve the old overlay's live side-effect: the badge reacts
-              // immediately when "Show name badge" is toggled in the hub.
-              if (namespace !== "utility" || !ctx.hasUI) return;
-              try {
-                if (readUtilSettings().badge.badgeEnabled) void nameBadgeState.show(pi, ctx);
-                else nameBadgeState.hide();
-              } catch {
-                // Best effort — settings UI must never crash the panel.
-              }
-            },
             runAction: async (command) => {
               const ran = await runCommandByName(command, ctx);
               if (!ran) ctx.ui.notify(`no handler registered for ${command}`, "warning");
@@ -156,268 +71,26 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.on("session_start", () => {
-    // A replacement/reloaded session has a distinct provider prefix lineage.
-    // The extension factory is normally recreated, but reset explicitly so
-    // custom hosts that reuse one factory cannot leak counts across sessions.
-    prefixCache.reset();
-  });
-
-  pi.on("before_provider_request", (event, ctx) => {
-    prefixCache.observeRequest(event.payload, ctx.model);
-    // Observe only: never replace or mutate provider payloads.
-  });
-
-  pi.on("agent_end", (event) => {
-    prefixCache.observeMessages(event.messages);
-  });
-
-  pi.on("model_select", (event) => {
-    if (event.previousModel && (
-      event.previousModel.provider !== event.model.provider ||
-      event.previousModel.id !== event.model.id ||
-      event.previousModel.api !== event.model.api
-    )) {
-      prefixCache.markBoundary("envelope_changed");
-    }
-  });
-  pi.on("thinking_level_select", (event) => {
-    if (event.previousLevel !== event.level) prefixCache.markBoundary("envelope_changed");
-  });
-  pi.on("session_compact", () => prefixCache.markBoundary("history_rewritten"));
-  pi.on("session_tree", () => prefixCache.markBoundary("history_rewritten"));
-
-  // Register cleanup on shutdown
-  lifecycle.registerCleanup(async () => {
-    analytics.disable();
-  });
-
-  // Initialize name badge state
-  const nameBadgeState = new NameBadgeState();
-
-  // Capture session context for cross-event use (not needed if BADGE_GENERATE_REQUEST removed)
-
-  // Skill startup discovery gate — when disabled (unipi.skills.discovery: false),
-  // Unipi's bundled skills are removed from the <available_skills> catalog so
-  // they never populate agent context; the user's own skills (global, project,
-  // settings-mounted, third-party packages) stay cataloged. /skill:name
-  // invocation is unaffected either way: pi expands those commands by reading
-  // SKILL.md directly. Applied consistently per turn, so the provider prefix
-  // cache stays intact.
-  // Skill exposure pipeline: bundled strip → jev freeze → recheck reveals.
   registerSkillJudging(pi);
-
-  // Register commands
   registerUtilityCommands(pi);
+  registerAutoRename(pi);
 
-  // Register tools
-  registerUtilityTools(pi, nameBadgeState);
-
-  // Register info-screen group
-  registerInfoScreen(pi);
-
-  // Session lifecycle — announce module + restore badge
   pi.on("session_start", async (_event, ctx) => {
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
-      name: MODULES.UTILITY,
-      version: VERSION,
-      commands: ALL_COMMANDS,
-      tools: ALL_TOOLS,
-    });
-
-    analytics.recordModuleLoad(MODULES.UTILITY, VERSION);
-
-    // Restore name badge if it was visible in previous session
-    await nameBadgeState.restore(pi, ctx);
-
-    // Auto-show badge on session start if enabled in settings and UI is available.
-    // The badge shows "Set a name" placeholder until a name is generated.
-    // Previously the badge only showed after the first agent_end, which meant it
-    // was absent on restart until the user sent a message.
-    if (ctx?.hasUI && !nameBadgeState.isVisible()) {
-      const badgeSettings = readBadgeSettings();
-      if (badgeSettings.badgeEnabled) {
-        await nameBadgeState.show(pi, ctx);
-      }
-    }
-
-    // Write model cache for TUI components
-    if ((ctx as any).modelRegistry) {
-      const { writeModelCache } = await import("@pi-unipi/core");
-      const registry = (ctx as any).modelRegistry;
-      const models = (registry.getAvailable?.() ?? registry.getAll())
-        .map((m: any) => ({ provider: m.provider, id: m.id, name: m.name }));
-      writeModelCache(models);
+    try {
+      emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+        name: MODULES.UTILITY,
+        version: VERSION,
+        commands: ALL_COMMANDS,
+        tools: [],
+      });
+      // Refresh the shared model cache from pi's live registry (models with
+      // credentials first; the full registry when nothing is authenticated).
+      const registry = ctx.modelRegistry as unknown as { getAvailable?: () => unknown[]; getAll?: () => unknown[] } | undefined;
+      const available = registry?.getAvailable?.() ?? [];
+      const models = available.length > 0 ? available : registry?.getAll?.() ?? [];
+      if (models.length > 0) writeModelCache(chatModelsToCache(models));
+    } catch {
+      // Best effort — never block session start.
     }
   });
-
-  // First-message hook: capture user text for deferred badge generation
-  pi.on("input", async (_event, ctx) => {
-    // Only trigger on first user message
-    if (firstMessageSeen) return;
-    firstMessageSeen = true;
-
-    // Check if auto generation is enabled
-    const settings = readBadgeSettings();
-    if (!settings.autoGen) return;
-
-    // Skip if badge already has a name
-    const sessionName = pi.getSessionName?.();
-    if (sessionName) return;
-
-    // Store first message text for later use in agent_end
-    // Note: InputEvent.text is the documented property; content may exist at runtime
-    const content = (_event as unknown as Record<string, unknown>).content;
-    firstUserText = typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? (content as Array<Record<string, unknown>>)
-            .filter((c) => c.type === "text")
-            .map((c) => String(c.text))
-            .join(" ")
-        : "";
-
-    // Store ctx for badge overlay show after agent responds
-    firstInputCtx = ctx;
-  });
-
-  // After agent completes first response, generate badge name with full conversation context
-  pi.on("agent_end", async (event, _ctx) => {
-    // Only act if we captured a first input and are waiting for badge generation
-    if (!firstInputCtx) return;
-    const ctx = firstInputCtx;
-    firstInputCtx = null; // consume — only trigger once
-
-    // Check if a name was already set (e.g. manually) in the meantime
-    const sessionName = pi.getSessionName?.();
-    if (sessionName) return;
-
-    // Show badge overlay if UI available
-    if (ctx?.hasUI && !nameBadgeState.isVisible()) {
-      await nameBadgeState.show(pi, ctx);
-    }
-
-    // Build conversation summary from full message history (user + assistant)
-    const messages = event.messages;
-    const summaryParts: string[] = [];
-
-    // Include the user's first message
-    if (firstUserText) {
-      summaryParts.push(`User: ${firstUserText}`);
-    }
-
-    // Include assistant's response text
-    const assistantMsgs = messages.filter((m) => m.role === "assistant");
-    for (const msg of assistantMsgs) {
-      const content = msg.content;
-      if (Array.isArray(content)) {
-        const textParts = content
-          .filter((c): c is { type: "text"; text: string } => "text" in c && c.type === "text")
-          .map((c) => c.text)
-          .join(" ");
-        if (textParts) summaryParts.push(`Assistant: ${textParts}`);
-      } else if (typeof content === "string" && content) {
-        summaryParts.push(`Assistant: ${content}`);
-      }
-    }
-
-    // Truncate to reasonable size
-    const conversationSummary = summaryParts.join("\n").slice(0, 800);
-
-    // Emit event for subagents to spawn background agent
-    emitEvent(pi, UNIPI_EVENTS.BADGE_GENERATE_REQUEST, {
-      source: "input-hook",
-      conversationSummary,
-    });
-  });
-
-  // Track command usage
-  pi.on("tool_call", async (event) => {
-    if (event.toolName.startsWith("unipi:")) {
-      analytics.recordCommand(event.toolName, MODULES.UTILITY, 0, true);
-    }
-  });
-
-  // Session shutdown cleanup
-  pi.on("session_shutdown", async () => {
-    nameBadgeState.hide();
-    firstMessageSeen = false;
-    firstUserText = "";
-    firstInputCtx = null;
-    await lifecycle.shutdown("session_shutdown");
-  });
-}
-
-/**
- * Register utility tools.
- */
-function registerUtilityTools(pi: ExtensionAPI, nameBadgeState: NameBadgeState): void {
-  // ctx_env — environment info
-  pi.registerTool({
-    name: UTILITY_TOOLS.ENV,
-    label: "Environment Info",
-    description: "Show environment information: Node version, Pi version, OS, unipi modules, config paths.",
-    promptSnippet: "Get environment details for debugging.",
-    parameters: {
-      type: "object",
-      properties: {},
-    },
-    async execute() {
-      const { getEnvironmentInfo, formatEnvironmentInfo } = await import("./tools/env.js");
-      const info = getEnvironmentInfo();
-      return {
-        content: [{ type: "text", text: formatEnvironmentInfo(info) }],
-        details: info,
-      };
-    },
-  });
-
-  // set_session_name — set the session name for badge display
-  const badgeSettings = readBadgeSettings();
-  if (badgeSettings.agentTool) {
-    pi.registerTool({
-      name: UTILITY_TOOLS.SET_SESSION_NAME,
-      label: "Set Session Name",
-      description:
-        "Set the session name that appears in the badge overlay and session selector. " +
-        "Use this to give the current session a descriptive title. " +
-        "Name should be concise (max 5 words recommended).",
-      promptSnippet: "Set a name/title for the current session.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: {
-            type: "string",
-            description: "The session name to set (max 5 words recommended).",
-          },
-        },
-        required: ["name"],
-      },
-      async execute(_toolCallId, params) {
-        const { name } = params as { name: string };
-        if (!name || typeof name !== "string") {
-          return {
-            content: [{ type: "text", text: "Error: name parameter is required and must be a string." }],
-            details: undefined,
-          };
-        }
-
-        const trimmed = name.trim();
-        if (trimmed.length === 0) {
-          return {
-            content: [{ type: "text", text: "Error: name cannot be empty." }],
-            details: undefined,
-          };
-        }
-
-        // Set the session name
-        nameBadgeState.setSessionName(pi, trimmed);
-
-        return {
-          content: [{ type: "text", text: `Session name set to: "${trimmed}"` }],
-          details: { name: trimmed },
-        };
-      },
-    });
-  }
 }

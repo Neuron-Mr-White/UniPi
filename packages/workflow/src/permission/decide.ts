@@ -21,7 +21,7 @@ export const READ_ONLY_TOOLS = new Set([
   "memory_search", "memory_list", "global_memory_search", "global_memory_list",
   "web_search", "multi_web_content_read", "web_llm_summarize",
   "bg_status", "bg_logs", "read_subagent",
-  "compactor_stats", "compactor_doctor", "context_budget", "ctx_env", "ctx_budget",
+  "compactor_stats", "compactor_doctor", "context_budget", "ctx_budget",
   "omniroute_status", "loop_status", "swarm_status", "view_agent_graph", "get_goal",
 ]);
 

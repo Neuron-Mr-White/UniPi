@@ -92,10 +92,12 @@ export type SettingsField = (
       /** Shown when "" (e.g. "inherit (session model)"). */
       readonly emptyLabel?: string;
       /**
-       * Filter the registry catalog by the model's declared `input` array:
-       * "text" → must include "text"; "image-input" → must include "image".
+       * Filter the catalog by declared modalities:
+       * "text" → text output (chat models); "image-input" → image in, text out
+       * (vision); "image-output" → image out (generation); "image-edit" →
+       * image in + image out.
        */
-      readonly capability?: "text" | "image-input";
+      readonly capability?: "text" | "image-input" | "image-output" | "image-edit";
       /** When set, the picker lists ONLY these ids (+ custom…), not the catalog. */
       readonly presets?: readonly string[];
       /**
@@ -109,7 +111,7 @@ export type SettingsField = (
       /** Sibling key (same namespace) whose value selects a presetsByProvider list. */
       readonly providerKey?: string;
       /** Extra catalog filter (e.g. image's looksLikeImageGenerator); no presets. */
-      readonly filter?: (entry: { readonly id: string; readonly input: string[] }) => boolean;
+      readonly filter?: (entry: { readonly id: string; readonly input: string[]; readonly output?: string[] }) => boolean;
     }
   | {
       /** Nested config page (Enter/Tab opens; Esc pops). Fields use FULL keys. */

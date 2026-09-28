@@ -1,180 +1,71 @@
 /**
- * @pi-unipi/utility — Command registration
+ * @pi-unipi/utility — Commands
  *
- * Registers all utility commands:
- * - /unipi:continue — existing, preserved
- * - /unipi:reload — reload all extensions
- * - /unipi:status — show module status
- * - /unipi:cleanup — clean stale files
- * - /unipi:env — show environment
- * - /unipi:doctor — run diagnostics
+ *   /unipi:continue (/unipi:retry) — take another turn without adding user text
+ *   /unipi:cleanup [--dry-run|--yes] — allowlisted stale files, preview + confirm
+ *   /unipi:doctor                     — runtime diagnostics
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  UNIPI_PREFIX,
-  UTILITY_COMMANDS,
-  UNIPI_EVENTS,
-  emitEvent,
-} from "@pi-unipi/core";
-import { cleanupStale, formatCleanupReport } from "./lifecycle/cleanup.js";
+import { UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
+import { findCleanupItems, formatBytes, formatCleanupPreview, removeCleanupItems } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
-import { getEnvironmentInfo, formatEnvironmentInfo } from "./tools/env.js";
-import type { NameBadgeState } from "./tui/name-badge-state.js";
-import { isSkillDiscoveryEnabled } from "./skill-discovery.js";
 
 /** Send a markdown response via pi.sendMessage */
 function sendResponse(pi: ExtensionAPI, markdown: string): void {
   pi.sendMessage(
-    {
-      customType: "unipi-response",
-      content: markdown,
-      display: true,
-    },
+    { customType: "unipi-response", content: markdown, display: true },
     { deliverAs: "followUp" },
   );
 }
 
-/**
- * Register all utility commands.
- */
+function busy(ctx: ExtensionContext): boolean {
+  if (ctx.isIdle()) return false;
+  if (ctx.hasUI) ctx.ui.notify("Agent is busy. Press ESC to interrupt, then try again.", "warning");
+  return true;
+}
+
 export function registerUtilityCommands(pi: ExtensionAPI): void {
-  // ─── /unipi:continue — preserved ─────────────────────────────────────────
+  const continueHandler = async (_args: string, ctx: ExtensionContext) => {
+    if (busy(ctx)) return;
+    pi.sendMessage({ customType: "unipi-continue", content: "", display: false }, { triggerTurn: true });
+  };
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.CONTINUE}`, {
-    description: "Continue the agent from where it left off without adding user context",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify(
-            "Agent is busy. Press ESC to interrupt, then try again.",
-            "warning",
-          );
-        }
-        return;
-      }
-
-      pi.sendMessage(
-        {
-          customType: "unipi-continue",
-          content: "",
-          display: false,
-        },
-        { triggerTurn: true },
-      );
-    },
+    description: "Continue the agent from where it left off, without adding text (/unipi:retry)",
+    handler: continueHandler,
+  });
+  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.RETRY}`, {
+    description: "Retry the last turn — alias of /unipi:continue",
+    handler: continueHandler,
   });
 
-  // ─── /unipi:reload ───────────────────────────────────────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.RELOAD}`, {
-    description: "Reload all Pi extensions without restarting",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify("Agent is busy. Press ESC to interrupt first.", "warning");
-        }
-        return;
-      }
-
-      sendResponse(
-        pi,
-        "## 🔄 Reload Extensions\n\n" +
-          "To reload all extensions:\n" +
-          "1. Press **Ctrl+C** to exit Pi\n" +
-          "2. Run `pi` again to restart with fresh extensions\n\n" +
-          "*Note: Pi does not support hot-reloading of extensions.*",
-      );
-    },
-  });
-
-  // ─── /unipi:status ───────────────────────────────────────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.STATUS}`, {
-    description: "Show all unipi modules status",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify("Agent is busy. Press ESC to interrupt first.", "warning");
-        }
-        return;
-      }
-
-      sendResponse(
-        pi,
-        "## 📊 Module Status\n\n" +
-          "Use `/unipi:info` for the live module and tool dashboard.\n" +
-          "Use `/unipi:doctor` to run configuration and runtime diagnostics.",
-      );
-    },
-  });
-
-  // ─── /unipi:cleanup ──────────────────────────────────────────────────────
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.CLEANUP}`, {
-    description: "Clean temp files, stale DBs, old sessions",
+    description: "Remove stale UniPi temp files and leftovers (preview first)",
     handler: async (args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify("Agent is busy. Press ESC to interrupt first.", "warning");
-        }
+      if (busy(ctx)) return;
+      const items = findCleanupItems();
+      const preview = formatCleanupPreview(items);
+      if (items.length === 0 || args.includes("--dry-run")) {
+        sendResponse(pi, `## Cleanup${args.includes("--dry-run") ? " (dry run)" : ""}\n\n\`\`\`\n${preview}\n\`\`\``);
         return;
       }
-
-      const dryRun = args.includes("--dry-run");
-      const report = cleanupStale({ dryRun });
-
-      emitEvent(pi, UNIPI_EVENTS.UTILITY_CLEANUP_DONE, {
-        dryRun,
-        categories: ["db", "temp", "session", "cache"],
-        results: report.results.map((r) => ({
-          category: r.category,
-          removed: r.removed,
-          bytesFreed: r.bytesFreed,
-        })),
-      });
-
-      sendResponse(pi, formatCleanupReport(report));
+      const confirmed = args.includes("--yes")
+        || (ctx.hasUI && await ctx.ui.confirm("Remove these files?", preview));
+      if (!confirmed) {
+        sendResponse(pi, `## Cleanup cancelled\n\n\`\`\`\n${preview}\n\`\`\`${ctx.hasUI ? "" : "\n\nRun `/unipi:cleanup --yes` to remove them."}`);
+        return;
+      }
+      const result = removeCleanupItems(items);
+      const failed = result.failed.length ? `\n\nCould not remove:\n${result.failed.map((p) => `- \`${p}\``).join("\n")}` : "";
+      sendResponse(pi, `## Cleanup\n\nRemoved ${result.removed} item(s), ${formatBytes(result.bytes)}.${failed}`);
     },
   });
 
-  // ─── /unipi:env ──────────────────────────────────────────────────────────
-  pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.ENV}`, {
-    description: "Show environment info (versions, paths)",
-    handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify("Agent is busy. Press ESC to interrupt first.", "warning");
-        }
-        return;
-      }
-
-      const info = getEnvironmentInfo();
-      sendResponse(pi, formatEnvironmentInfo(info));
-    },
-  });
-
-  // ─── /unipi:doctor ───────────────────────────────────────────────────────
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.DOCTOR}`, {
-    description: "Run diagnostics across all unipi modules",
+    description: "Check UniPi's runtime: folders, config, model cache, Decision Model, skills",
     handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!ctx.isIdle()) {
-        if (ctx.hasUI) {
-          ctx.ui.notify("Agent is busy. Press ESC to interrupt first.", "warning");
-        }
-        return;
-      }
-
-      emitEvent(pi, UNIPI_EVENTS.UTILITY_DIAGNOSTICS_START, {
-        overall: "unknown",
-        checkCount: 0,
-      });
-
-      const report = await runDiagnostics();
-
-      emitEvent(pi, UNIPI_EVENTS.UTILITY_DIAGNOSTICS_DONE, {
-        overall: report.overall,
-        checkCount: report.checks.length,
-        report,
-      });
-
-      sendResponse(pi, formatDiagnosticsReport(report));
+      if (busy(ctx)) return;
+      sendResponse(pi, formatDiagnosticsReport(await runDiagnostics()));
     },
   });
 }

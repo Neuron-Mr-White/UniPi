@@ -26,7 +26,6 @@ const NEVER_WATCH = new Set([
   "read", "write", "edit", "grep", "find", "ls",
   "ask_user",
   "read_subagent", "bg_kill", "bg_tasks",
-  "set_session_name", "ctx_env",
 ]);
 
 interface TrackedCall {

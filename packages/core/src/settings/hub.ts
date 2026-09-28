@@ -50,7 +50,7 @@ import {
   HubSearch,
   type HubKey,
 } from "../tui/hub-kit.js";
-import { loadModelCatalogEntries, type ModelCatalogEntry } from "./catalog.js";
+import { loadModelCatalogEntries, matchesCapability, type ModelCatalogEntry } from "./catalog.js";
 import { loadModelCatalog } from "./catalog.js";
 import {
   enumOption,
@@ -645,8 +645,7 @@ export class SettingsHub {
       } else {
         const entries = this.entries();
         if (field.capability) {
-          const want = field.capability === "image-input" ? "image" : field.capability;
-          options = entries.filter((e) => e.input.includes(want)).map((e) => e.id);
+          options = entries.filter((e) => matchesCapability(e, field.capability!)).map((e) => e.id);
           header = `${field.capability} models · ${options.length}`;
         } else if (field.filter) {
           const matches = field.filter;

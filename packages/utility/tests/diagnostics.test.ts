@@ -40,7 +40,7 @@ describe("formatDiagnosticsReport", () => {
   it("formats as markdown", async () => {
     const report = await runDiagnostics();
     const markdown = formatDiagnosticsReport(report);
-    assert.ok(markdown.includes("Diagnostics Report"));
+    assert.ok(markdown.includes("## Diagnostics"));
     assert.ok(markdown.includes(report.overall.toUpperCase()));
   });
 });

@@ -1,8 +1,14 @@
 /**
- * @pi-unipi/utility — Settings Manager
+ * @pi-unipi/utility — Settings
  *
- * Manages badge settings in `.unipi/config/util-settings.json`.
- * Migrates from legacy `badge.json` on first read.
+ * Namespace `utility` in the settings hub. Sections:
+ *   rename — automatic session naming (jev-gated, isolated one-tool session)
+ *   skills — skill exposure (judged | all | off)
+ *   decisionModel — inherit | custom Decision Model override
+ *
+ * Legacy inputs migrated on read: `badge.*` (v2/v3-alpha badge overlay),
+ * `<cwd>/.unipi/config/util-settings.json`, `.unipi/config/badge.json`, and
+ * pi settings.json `unipi.skills.discovery`.
  */
 
 import * as fs from "node:fs";
@@ -10,27 +16,27 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getSettings, globalSettingsPath, projectSettingsPath, registerSettings, setSettings, settingsLayers, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 
-/** Badge settings */
-export interface BadgeSettingsSection {
-  autoGen: boolean;
-  badgeEnabled: boolean;
-  agentTool: boolean;
-  generationModel: string;
-  /** Sync session name to herdr pane title + tab label (when running inside herdr). */
+/** Automatic session naming. */
+export interface RenameSettings {
+  /** Rename after confirmed rounds that start or change the topic. */
+  auto: boolean;
+  /** Model for the rename session; "" / "inherit" = the session model. */
+  model: string;
+  /** Mirror the session name to the Herdr pane title / tab label. */
   herdrSync: boolean;
 }
 
 /**
  * Skill exposure (migrated from the unipi.skills.discovery boolean):
- *   judged \u2014 jev decides which skills stay in the system-prompt catalog
- *   all    \u2014 every discovered skill stays (no judging)
- *   off    \u2014 old "false" behavior (bundled skills stripped)
+ *   judged — jev decides which skills stay in the system-prompt catalog
+ *   all    — every discovered skill stays (no judging)
+ *   off    — old "false" behavior (bundled skills stripped)
  */
 export type SkillExposureMode = "judged" | "all" | "off";
 
 export interface SkillDiscoverySection {
   mode: SkillExposureMode;
-  /** Minimum jev relevance (noul 0\u20131) for a skill to stay exposed. */
+  /** Minimum jev relevance (noul 0–1) for a skill to stay exposed. */
   threshold: number;
   /** Hard cap on exposed skills; above this the catalog gets judged. */
   maxSkills: number;
@@ -38,22 +44,17 @@ export interface SkillDiscoverySection {
   recheck: boolean;
 }
 
-/** Unified utility settings */
 export interface UtilSettings {
-  badge: BadgeSettingsSection;
+  rename: RenameSettings;
   skills: SkillDiscoverySection;
 }
 
-/** Default badge settings */
-const DEFAULT_BADGE_SETTINGS: BadgeSettingsSection = {
-  autoGen: true,
-  badgeEnabled: true,
-  agentTool: true,
-  generationModel: "inherit",
+export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
+  auto: true,
+  model: "",
   herdrSync: true,
 };
 
-/** Default skill discovery settings */
 const DEFAULT_SKILL_DISCOVERY: SkillDiscoverySection = {
   mode: "judged",
   threshold: 0.3,
@@ -61,65 +62,27 @@ const DEFAULT_SKILL_DISCOVERY: SkillDiscoverySection = {
   recheck: true,
 };
 
-/** Default unified settings */
 const DEFAULT_SETTINGS: UtilSettings = {
-  badge: { ...DEFAULT_BADGE_SETTINGS },
+  rename: { ...DEFAULT_RENAME_SETTINGS },
   skills: { ...DEFAULT_SKILL_DISCOVERY },
 };
 
-/** Config file paths */
 const UTIL_SETTINGS_FILE = ".unipi/config/util-settings.json";
 const BADGE_CONFIG_FILE = ".unipi/config/badge.json";
 
-function getConfigPath(file: string): string {
-  return path.resolve(process.cwd(), file);
-}
-
-/**
- * Read badge.json for migration purposes.
- * Returns null if file doesn't exist or is malformed.
- */
-function readLegacyBadgeSettings(): BadgeSettingsSection | null {
-  try {
-    const configPath = getConfigPath(BADGE_CONFIG_FILE);
-    if (!fs.existsSync(configPath)) return null;
-    const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return {
-      autoGen: typeof parsed.autoGen === "boolean" ? parsed.autoGen : DEFAULT_BADGE_SETTINGS.autoGen,
-      badgeEnabled: typeof parsed.badgeEnabled === "boolean" ? parsed.badgeEnabled : DEFAULT_BADGE_SETTINGS.badgeEnabled,
-      agentTool: typeof parsed.agentTool === "boolean" ? parsed.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
-      generationModel: typeof parsed.generationModel === "string" ? parsed.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
-      herdrSync: typeof parsed.herdrSync === "boolean" ? parsed.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function atomicWrite(filePath: string, data: string): void {
-  const tmpPath = filePath + ".tmp";
-  fs.writeFileSync(tmpPath, data, "utf-8");
-  fs.renameSync(tmpPath, filePath);
-}
-
-// Registered with the unified settings hub. Badge settings are project-scoped
-// (they live with the repo), so the hub's project scope is the primary target.
 registerSettings({
   namespace: "utility",
   label: "Utility",
   defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
   schema: [
     {
-      title: "Badge",
-      description: "Session name badge",
+      title: "Session name",
+      description: "Automatic naming after rounds that start or change the topic",
       fields: [
-        { key: "badge.badgeEnabled", type: "boolean", label: "Show name badge", description: "Show the session-name badge overlay" },
-        { key: "badge.autoGen", type: "boolean", label: "Auto-generate name", description: "Generate a session name on demand" },
-        { key: "badge.agentTool", type: "boolean", label: "Agent tool", description: "Expose the badge tool to the agent" },
-        { key: "badge.herdrSync", type: "boolean", label: "Herdr sync", description: "Sync session name to herdr pane title" },
-        { key: "badge.generationModel", type: "model", label: "Generation model", emptyLabel: "inherit (session model)", capability: "text", emptyOption: "inherit (session model)" },
-        { key: "badge.setName", type: "action", label: "Set session name…", description: "Prompt for a name and show the badge", command: "unipi:badge-set-name" },
-        { key: "badge.generate", type: "action", label: "Generate session name", description: "Invent a name via the generation model", command: "unipi:badge-generate" },
+        { key: "rename.auto", type: "boolean", label: "Auto-rename", description: "Name the session when a real request starts or changes the topic (greetings and short replies are skipped)" },
+        { key: "rename.model", type: "model", label: "Naming model", capability: "text", emptyLabel: "inherit (session model)", emptyOption: "inherit (session model)" },
+        { key: "rename.herdrSync", type: "boolean", label: "Herdr sync", description: "Show the session name as the Herdr pane title and tab label" },
+        { key: "rename.now", type: "action", label: "Rename now", description: "Name the session from the recent requests", command: "unipi:rename-now" },
       ],
     },
     {
@@ -142,9 +105,24 @@ registerSettings({
         { key: "skills.recheck", type: "boolean", label: "Suggest newly relevant skills on later prompts" },
       ],
     },
-    decisionModelSection({ title: "Skills — Decision model" }),
+    decisionModelSection({ title: "Decision model (naming + skills)" }),
   ],
 });
+
+function atomicWrite(filePath: string, data: string): void {
+  const tmpPath = filePath + ".tmp";
+  fs.writeFileSync(tmpPath, data, "utf-8");
+  fs.renameSync(tmpPath, filePath);
+}
+
+function readJson(file: string): Record<string, unknown> | null {
+  try {
+    if (!fs.existsSync(file)) return null;
+    return JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * One-time import of `unipi.skills.discovery` from pi's settings.json into the
@@ -153,9 +131,7 @@ registerSettings({
 function importLegacySkillDiscovery(): void {
   try {
     const agentDir = process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
-    const raw = JSON.parse(fs.readFileSync(path.join(agentDir, "settings.json"), "utf-8")) as {
-      unipi?: { skills?: { discovery?: unknown } };
-    };
+    const raw = readJson(path.join(agentDir, "settings.json")) as { unipi?: { skills?: { discovery?: unknown } } } | null;
     const discovery = raw?.unipi?.skills?.discovery;
     if (typeof discovery !== "boolean") return;
     if (settingsLayers("utility", process.cwd()).global) return; // engine value wins
@@ -167,20 +143,14 @@ function importLegacySkillDiscovery(): void {
 
 /**
  * One-time in-file migration: stored `skills.discovery` boolean → `skills.mode`
- * (false → "off", true/absent → "judged"). Runs per layer before reads so the
- * merged settings never carry an ambiguous pair.
+ * (false → "off", true/absent → "judged").
  */
 export function migrateSkillsDiscovery(cwd: string): void {
   for (const file of [globalSettingsPath("utility"), projectSettingsPath(cwd, "utility")]) {
     try {
-      if (!fs.existsSync(file)) continue;
-      const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as {
-        skills?: Record<string, unknown>;
-      };
+      const raw = readJson(file) as { skills?: Record<string, unknown> } | null;
       const skills = raw?.skills;
-      if (!skills || typeof skills !== "object" || skills.mode !== undefined || skills.discovery === undefined) {
-        continue;
-      }
+      if (!skills || typeof skills !== "object" || skills.mode !== undefined || skills.discovery === undefined) continue;
       const mode = skills.discovery === false ? "off" : "judged";
       const { discovery: _dropped, ...rest } = skills;
       atomicWrite(file, JSON.stringify({ ...raw, skills: { ...rest, mode } }, null, 2));
@@ -190,117 +160,82 @@ export function migrateSkillsDiscovery(cwd: string): void {
   }
 }
 
-/** One-time import from the legacy <cwd>/.unipi/config/util-settings.json. */
+/**
+ * One-time in-file migration: `badge.*` (removed badge overlay) → `rename.*`
+ * per layer, so an explicit old choice (e.g. autoGen: false) survives the new
+ * defaults merge. badgeEnabled/agentTool have no successor and are dropped.
+ */
+export function migrateBadgeToRename(cwd: string): void {
+  for (const file of [globalSettingsPath("utility"), projectSettingsPath(cwd, "utility")]) {
+    try {
+      const raw = readJson(file) as { badge?: Record<string, unknown>; rename?: unknown } | null;
+      if (!raw?.badge || typeof raw.badge !== "object") continue;
+      const { badge, ...rest } = raw;
+      const rename: Record<string, unknown> = { ...(typeof raw.rename === "object" && raw.rename ? raw.rename as Record<string, unknown> : {}) };
+      if (rename.auto === undefined && typeof badge.autoGen === "boolean") rename.auto = badge.autoGen;
+      if (rename.herdrSync === undefined && typeof badge.herdrSync === "boolean") rename.herdrSync = badge.herdrSync;
+      if (rename.model === undefined && typeof badge.generationModel === "string" && badge.generationModel !== "inherit") rename.model = badge.generationModel;
+      atomicWrite(file, JSON.stringify(Object.keys(rename).length ? { ...rest, rename } : rest, null, 2));
+    } catch {
+      // Corrupt layer — defaults apply.
+    }
+  }
+}
+
+/** One-time import from the legacy in-repo util-settings.json / badge.json. */
 function importLegacyUtilSettings(): void {
   const layers = settingsLayers("utility", process.cwd());
   if (layers.global || layers.project) return;
-  const legacy = (() => {
-    try {
-      const configPath = getConfigPath(UTIL_SETTINGS_FILE);
-      if (!fs.existsSync(configPath)) return null;
-      return normalizeSettings(JSON.parse(fs.readFileSync(configPath, "utf-8")));
-    } catch {
-      return null;
-    }
-  })();
-  if (legacy) {
-    setSettings("utility", legacy as unknown as Record<string, unknown>, "project", process.cwd());
-    return;
-  }
-  const legacyBadge = readLegacyBadgeSettings();
-  if (legacyBadge) {
-    setSettings("utility", { badge: legacyBadge } as unknown as Record<string, unknown>, "project", process.cwd());
-  }
+  const legacy = readJson(path.resolve(process.cwd(), UTIL_SETTINGS_FILE))
+    ?? (() => {
+      const badge = readJson(path.resolve(process.cwd(), BADGE_CONFIG_FILE));
+      return badge ? { badge } : null;
+    })();
+  if (legacy) setSettings("utility", normalizeSettings(legacy) as unknown as Record<string, unknown>, "project", process.cwd());
 }
 
-export function readUtilSettings(): UtilSettings {
-  try {
-    importLegacyUtilSettings();
-    importLegacySkillDiscovery();
-    const raw = getSettings("utility", process.cwd());
-    const normalized = normalizeSettings(raw);
-    if (normalized) return normalized;
-    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
-  } catch {
-    return { ...DEFAULT_SETTINGS, badge: { ...DEFAULT_BADGE_SETTINGS } };
-  }
-}
-
-export function writeUtilSettings(settings: UtilSettings): void {
-  try {
-    // Badge settings are project-scoped — they travel with the repo.
-    setSettings("utility", settings as unknown as Record<string, unknown>, "project", process.cwd());
-  } catch {
-    // Best effort
-  }
-}
-
-function normalizeSettings(parsed: any): UtilSettings {
+/** Pure normalizer; maps legacy `badge.*` onto `rename.*` when rename is unset. */
+export function normalizeSettings(parsed: unknown): UtilSettings {
+  const p = (parsed ?? {}) as { rename?: Record<string, unknown>; badge?: Record<string, unknown>; skills?: Record<string, unknown> };
+  const rename = p.rename ?? {};
+  const badge = p.badge ?? {};
+  const bool = (v: unknown, legacy: unknown, d: boolean) => typeof v === "boolean" ? v : typeof legacy === "boolean" ? legacy : d;
+  const legacyModel = typeof badge.generationModel === "string" && badge.generationModel !== "inherit" ? badge.generationModel : undefined;
+  const model = typeof rename.model === "string" ? rename.model : legacyModel ?? DEFAULT_RENAME_SETTINGS.model;
+  const skills = p.skills ?? {};
   return {
-    badge: {
-      autoGen: typeof parsed?.badge?.autoGen === "boolean" ? parsed.badge.autoGen : DEFAULT_BADGE_SETTINGS.autoGen,
-      badgeEnabled: typeof parsed?.badge?.badgeEnabled === "boolean" ? parsed.badge.badgeEnabled : DEFAULT_BADGE_SETTINGS.badgeEnabled,
-      agentTool: typeof parsed?.badge?.agentTool === "boolean" ? parsed.badge.agentTool : DEFAULT_BADGE_SETTINGS.agentTool,
-      generationModel: typeof parsed?.badge?.generationModel === "string" ? parsed.badge.generationModel : DEFAULT_BADGE_SETTINGS.generationModel,
-      herdrSync: typeof parsed?.badge?.herdrSync === "boolean" ? parsed.badge.herdrSync : DEFAULT_BADGE_SETTINGS.herdrSync,
+    rename: {
+      auto: bool(rename.auto, badge.autoGen, DEFAULT_RENAME_SETTINGS.auto),
+      model: model === "inherit" ? "" : model,
+      herdrSync: bool(rename.herdrSync, badge.herdrSync, DEFAULT_RENAME_SETTINGS.herdrSync),
     },
     skills: {
       mode:
-        parsed?.skills?.mode === "judged" || parsed?.skills?.mode === "all" || parsed?.skills?.mode === "off"
-          ? parsed.skills.mode
-          : parsed?.skills?.discovery === false
-            ? "off"
-            : "judged",
+        skills.mode === "judged" || skills.mode === "all" || skills.mode === "off"
+          ? skills.mode
+          : skills.discovery === false ? "off" : "judged",
       threshold:
-        typeof parsed?.skills?.threshold === "number" && parsed.skills.threshold >= 0 && parsed.skills.threshold <= 1
-          ? parsed.skills.threshold
+        typeof skills.threshold === "number" && skills.threshold >= 0 && skills.threshold <= 1
+          ? skills.threshold
           : DEFAULT_SKILL_DISCOVERY.threshold,
       maxSkills:
-        typeof parsed?.skills?.maxSkills === "number" && parsed.skills.maxSkills >= 1
-          ? parsed.skills.maxSkills
-          : DEFAULT_SKILL_DISCOVERY.maxSkills,
-      recheck: typeof parsed?.skills?.recheck === "boolean" ? parsed.skills.recheck : DEFAULT_SKILL_DISCOVERY.recheck,
+        typeof skills.maxSkills === "number" && skills.maxSkills >= 1 ? skills.maxSkills : DEFAULT_SKILL_DISCOVERY.maxSkills,
+      recheck: typeof skills.recheck === "boolean" ? skills.recheck : DEFAULT_SKILL_DISCOVERY.recheck,
     },
   };
 }
 
-/** Read only the badge settings section. */
-export function readBadgeSettings(): BadgeSettingsSection {
-  return readUtilSettings().badge;
+export function readUtilSettings(cwd: string = process.cwd()): UtilSettings {
+  try {
+    importLegacyUtilSettings();
+    importLegacySkillDiscovery();
+    migrateBadgeToRename(cwd);
+    return normalizeSettings(getSettings("utility", cwd));
+  } catch {
+    return normalizeSettings({});
+  }
 }
 
-/** Write partial badge settings (merged with existing). */
-export function writeBadgeSettings(partial: Partial<BadgeSettingsSection>): void {
-  const settings = readUtilSettings();
-  settings.badge = { ...settings.badge, ...partial };
-  writeUtilSettings(settings);
-}
-
-/** Update a single badge setting. */
-export function updateBadgeSetting<K extends keyof BadgeSettingsSection>(
-  key: K,
-  value: BadgeSettingsSection[K],
-): BadgeSettingsSection {
-  const settings = readBadgeSettings();
-  settings[key] = value;
-  writeBadgeSettings(settings);
-  return settings;
-}
-
-/** Format badge settings for display. */
-export function formatBadgeSettings(settings: BadgeSettingsSection): string {
-  const toggle = (v: boolean) => (v ? "✓ enabled" : "✗ disabled");
-  return [
-    "## Badge Settings",
-    "",
-    `| Setting | Status | Description |`,
-    `|---------|--------|-------------|`,
-    `| Auto Generate | ${toggle(settings.autoGen)} | Generate name on first message |`,
-    `| Badge Enabled | ${toggle(settings.badgeEnabled)} | Show badge overlay |`,
-    `| Agent Tool | ${toggle(settings.agentTool)} | Allow agents to call set_session_name |`,
-    `| Herdr Sync | ${toggle(settings.herdrSync)} | Sync session name to herdr tab/pane title |`,
-    `| Generation Model | ${settings.generationModel} | Model for badge name generation |`,
-    "",
-    `Config: .unipi/config/util-settings.json`,
-  ].join("\n");
+export function readRenameSettings(cwd: string = process.cwd()): RenameSettings {
+  return readUtilSettings(cwd).rename;
 }

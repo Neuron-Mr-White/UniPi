@@ -1,105 +1,49 @@
 # @pi-unipi/utility
 
-Environment info, diagnostics, cleanup, and the session name badge. The grab-bag package for maintaining your development environment and keeping an eye on provider cache behavior.
+The settings hub, automatic session naming, skill exposure, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:env` | Show environment info (Node, Pi, OS, paths) |
-| `/unipi:doctor` | Run diagnostics across all modules |
-| `/unipi:status` | Show immediate guidance to the live `/unipi:info` dashboard and `/unipi:doctor` diagnostics |
-| `/unipi:cleanup` | Clean stale DBs, temp files, old sessions |
-| `/unipi:reload` | Explain how to reload extensions |
-| `/unipi:name-badge` | Toggle name badge overlay |
-| `/unipi:settings` | Badge field + "Set/Generate session name" actions (Utility group) |
-| `/unipi:settings` | Hub — badge behavior (Utility group) |
-| `/unipi:prefix-cache` | Show privacy-safe request-prefix transitions and provider cache token counters |
+| `/unipi:settings` | Configure every UniPi module in one panel (global + project scopes) |
+| `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
+| `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
+| `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
 
-### Examples
+The main agent gets no tools from this package.
 
-```
-/unipi:env                 # Show environment
-/unipi:doctor              # Run diagnostics
-/unipi:cleanup             # Clean stale files
-/unipi:cleanup --dry-run   # Preview what would be cleaned
-/unipi:name-badge          # Toggle the session name badge
-/unipi:settings            # → Utility → "Generate session name"
-```
+## Automatic session naming
 
-## Special Triggers
+After each round that finished normally, if you typed the prompt:
 
-Utility registers with the info-screen dashboard, showing module status and diagnostic results. The footer subscribes to utility events for its extension status segment. When Herdr is present, the badge module syncs the session name to the pane title.
+1. Greetings, thanks, "ok", "continue" and slash commands are skipped outright.
+2. jev (the Decision Model) answers two short questions: is this a real request with its own subject, and — if the session already has a name — does it move to a different task? Only a confident "yes" renames.
+3. The name is written by a separate throwaway session whose only tool is `rename_session`. It sees the current name and your last few requests, nothing else, and never touches the main session.
 
-## Provider prefix-cache diagnostics
+A name you set yourself with pi's `/name` is never overwritten. Without a Decision Model key, only an unnamed session gets named, on its first prompt of four words or more.
 
-`/unipi:prefix-cache` observes Pi's provider-native request payloads without modifying them. It reports session-local cache epochs, exact structural prefix extensions, retries, request-envelope/history boundaries, and provider-reported `cacheRead`/`cacheWrite` token totals.
+Inside Herdr, the name is also shown as the pane title and, while the tab still has its default number, the tab label.
 
-The fingerprints are keyed HMAC-SHA-256 values using a random in-memory key that is discarded on reload. Raw prompts, messages, tool arguments, tool schemas, and provider payloads are never retained or logged by this diagnostic. Fingerprints therefore cannot be compared across process lifetimes. A reported prefix extension means the request is structurally eligible for reuse; provider TTL, routing, and cache policy still decide whether a hit occurs.
+Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, naming model (defaults to the session model), Herdr sync, and a **Rename now** action.
 
-`/unipi:cleanup` includes private `~/.unipi/tool-results/` artifacts in the normal temporary-file retention policy (7 days by default). Use dry-run mode to review candidates before deletion.
+## Skill exposure
 
-## Agent Tools
+Controls which discovered skills are listed in the agent's system prompt (Utility → Skills):
 
-| Tool | Description |
-|------|-------------|
-| `ctx_env` | Environment inspection for debugging |
-| `set_session_name` | Set the session name for badge display (when badge agent-tool is enabled) |
+- **judged** (default) — on the session's first prompt, if more than `maxSkills` skills are installed, jev scores each skill against the prompt and only the relevant ones stay listed. The choice is frozen for the session so the system prompt stays byte-identical (prefix cache intact). With `recheck`, later prompts can announce newly relevant hidden skills in a message.
+- **all** — every skill stays listed.
+- **off** — UniPi's bundled skills are removed from the list.
 
-## Configurables
+Skills stay loadable in every mode via `/skill:name` or by reading their SKILL.md.
 
-### Name Badge
+## Model cache
 
-```
-/unipi:settings              # Badge + skills discovery (Utility group)
-```
+On every session start, utility writes pi's live model list (models with credentials) to `~/.unipi/config/models-cache.json`, with each model's input and output modalities. The settings hub pickers and kanboard read it; `readModelCache()` / `filterModels()` in `@pi-unipi/core` give the same list to any module.
 
-Or edit `.unipi/config/util-settings.json` directly (migrated automatically from the legacy `.unipi/config/badge.json` on first read):
+## Cleanup safety
 
-```json
-{
-  "badge": {
-    "badgeEnabled": true
-  }
-}
-```
-
-The badge is a persistent HUD overlay in the top-right corner showing the current session name. It auto-restores visibility on session restart.
-
-### Skill Exposure (jev-judged)
-
-Controls which discovered skills are cataloged in the agent's system prompt. Configure via `/unipi:settings` (Skills group) or the engine file (`skills` subtree):
-
-- **mode: `judged`** (default) — on the session's first prompt, if more than `maxSkills` skills are discovered, ONE jev (TypeSafe System One) request scores every skill's relevance to your prompt; only relevant ones stay cataloged, sorted by relevance and capped. The set is frozen per session and persisted, so the system prompt is byte-identical on every later turn (provider prefix cache stays intact).
-- **mode: `all`** — no judging; every skill stays.
-- **mode: `off`** — Unipi's bundled skills are stripped from the catalog (old `discovery: false` behavior).
-
-Extra knobs: `threshold` (min jev relevance, default 0.3), `maxSkills` (cap, default 12), `recheck` (default on — later prompts on new topics get a "newly relevant skills" message revealing up to 5 hidden skills; revealed skills are never announced twice, and the system prompt itself never changes after the freeze).
-
-Skills stay invocable in every mode via `/skill:name` or by reading their SKILL.md directly. The judged set reuses the long-horizon **Decision model** (jev) — provider, model, key and base URL come from the Judge settings; missing key, timeout, or any failure exposes ALL skills (fail-open).
-
-```json
-{
-  "skills": { "mode": "judged", "threshold": 0.3, "maxSkills": 12, "recheck": true }
-}
-```
-
-## Programmatic API
-
-| Module | Path | Description |
-|--------|------|-------------|
-| ProcessLifecycle | `lifecycle/process` | Parent PID polling, orphan detection, signal handlers |
-| cleanupStale | `lifecycle/cleanup` | Stale DB/temp/session cleanup with dry-run |
-| AnalyticsCollector | `analytics/collector` | Privacy-respecting event collection with daily rollup |
-| runDiagnostics | `diagnostics/engine` | Cross-module health checks with plugin architecture |
-
-## Privacy
-
-The analytics collector is privacy-respecting:
-- No file contents recorded
-- No sensitive data (API keys, tokens, passwords) — redacted automatically
-- Strings truncated to 500 characters
-- All data stays local
+`/unipi:cleanup` can only remove what its allowlist names: saved tool outputs and `unipi-*` temp files older than 7 days, and the old compactor continuity database. Memory, v2 backups, kanboard boards, config and workspace state are never candidates.
 
 ## License
 

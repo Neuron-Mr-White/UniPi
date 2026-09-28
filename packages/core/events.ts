@@ -35,8 +35,6 @@ export const UNIPI_EVENTS = {
   LONG_HORIZON_TODO_UPDATED: "unipi:long-horizon:todo:updated",
 
 
-  /** Info screen group registered */
-  INFO_GROUP_REGISTERED: "unipi:info:group:registered",
   /** Info screen data updated */
   INFO_DATA_UPDATED: "unipi:info:data:updated",
 
@@ -64,18 +62,9 @@ export const UNIPI_EVENTS = {
   COMPACTOR_COMPACTED: "unipi:compactor:compacted",
   /** @deprecated Footer reads live Pi session data; retained for compatibility. */
   COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
-  /** Utility module cleanup completed */
-  UTILITY_CLEANUP_DONE: "unipi:utility:cleanup:done",
-  /** Utility diagnostics started */
-  UTILITY_DIAGNOSTICS_START: "unipi:utility:diagnostics:start",
-  /** Utility diagnostics completed */
-  UTILITY_DIAGNOSTICS_DONE: "unipi:utility:diagnostics:done",
 
   /** Notification sent */
   NOTIFICATION_SENT: "unipi:notify:sent",
-
-  /** Badge generation requested (from kanboard or other module) */
-  BADGE_GENERATE_REQUEST: "unipi:badge:generate:request",
 
   /** Agent asked user a question (ask_user tool invoked) */
   ASK_USER_PROMPT: "unipi:ask-user:prompt",
@@ -178,15 +167,6 @@ export interface UnipiMemoryConsolidatedEvent {
   projectName: string;
 }
 
-/** Payload for INFO_GROUP_REGISTERED */
-export interface UnipiInfoGroupEvent {
-  /** Group id */
-  groupId: string;
-  /** Group display name */
-  groupName: string;
-  /** Module that registered the group */
-  module: string;
-}
 
 /** Payload for INFO_DATA_UPDATED */
 export interface UnipiInfoDataEvent {
@@ -252,38 +232,9 @@ export interface UnipiCompactorStatsEvent {
   searchQueries: number;
 }
 
-/** Payload for UTILITY_CLEANUP_START / UTILITY_CLEANUP_DONE */
-export interface UnipiUtilityCleanupEvent {
-  /** Whether this is a dry run */
-  dryRun: boolean;
-  /** Categories being cleaned */
-  categories: string[];
-  /** Results (present on DONE) */
-  results?: Array<{
-    category: string;
-    removed: number;
-    bytesFreed: number;
-  }>;
-}
-
-/** Payload for UTILITY_DIAGNOSTICS_START / UTILITY_DIAGNOSTICS_DONE */
-export interface UnipiUtilityDiagnosticsEvent {
-  /** Overall health status */
-  overall: "healthy" | "warning" | "error" | "unknown";
-  /** Number of checks run */
-  checkCount: number;
-  /** Report (present on DONE) */
-  report?: unknown;
-}
 
 
-/** Payload for BADGE_GENERATE_REQUEST */
-export interface UnipiBadgeGenerateRequestEvent {
-  /** Source of the request (e.g., "kanboard", "input-hook") */
-  source: string;
-  /** First user message for context (optional) */
-  conversationSummary?: string;
-}
+
 
 /** Payload for ASK_USER_PROMPT */
 export interface UnipiAskUserPromptEvent {
@@ -361,17 +312,13 @@ export type UnipiEventPayload =
   | UnipiMemoryStoredEvent
   | UnipiMemoryDeletedEvent
   | UnipiMemoryConsolidatedEvent
-  | UnipiInfoGroupEvent
   | UnipiInfoDataEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
   | UnipiMcpCatalogSyncedEvent
   | UnipiCompactionEvent
   | UnipiCompactorStatsEvent
-  | UnipiUtilityCleanupEvent
-  | UnipiUtilityDiagnosticsEvent
   | UnipiNotificationSentEvent
-  | UnipiBadgeGenerateRequestEvent
   | UnipiAskUserPromptEvent
   | UnipiUpdateCheckEvent
   | UnipiUpdateAvailableEvent

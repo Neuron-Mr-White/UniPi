@@ -51,9 +51,7 @@ const coreDirectoriesPlugin: DiagnosticPlugin = {
   async run(): Promise<DiagnosticCheck[]> {
     const dirs = [
       { path: "~/.unipi", required: true },
-      { path: "~/.unipi/memory", required: false },
-      { path: "~/.unipi/cache", required: false },
-      { path: "~/.unipi/analytics", required: false },
+      { path: "~/.unipi/config", required: false },
     ];
 
     const checks: DiagnosticCheck[] = [];
@@ -196,6 +194,52 @@ const nodeEnvironmentPlugin: DiagnosticPlugin = {
   },
 };
 
+/** Model cache, Decision Model key and skill exposure — what other modules depend on. */
+const unipiRuntimePlugin: DiagnosticPlugin = {
+  name: "unipi_runtime",
+  module: "@pi-unipi/utility",
+  async run(): Promise<DiagnosticCheck[]> {
+    const { readModelCache, resolveDecisionModel, jevApiKey, getSettings } = await import("@pi-unipi/core");
+    const checks: DiagnosticCheck[] = [];
+    const models = readModelCache();
+    const images = models.filter((m) => m.output?.includes("image")).length;
+    checks.push({
+      name: "model_cache",
+      module: "@pi-unipi/core",
+      status: models.length > 0 ? "healthy" : "warning",
+      message: models.length > 0
+        ? `Model cache: ${models.length} models (${images} image generators)`
+        : "Model cache is empty — pickers fall back to ~/.pi/agent/models.json",
+      suggestion: models.length > 0 ? undefined : "Start a pi session once; utility refreshes the cache on session start",
+      durationMs: 0,
+    });
+    const dm = resolveDecisionModel(process.cwd(), "utility");
+    const hasKey = Boolean(jevApiKey(dm, process.env));
+    checks.push({
+      name: "decision_model",
+      module: "@pi-unipi/core",
+      status: hasKey ? "healthy" : "warning",
+      message: hasKey
+        ? `Decision Model: ${dm.provider}/${dm.model}`
+        : `Decision Model ${dm.provider}/${dm.model} has no API key — auto-rename and skill judging fall back`,
+      suggestion: hasKey ? undefined : "Set a key in /unipi:settings → Decision Model, or export OPENROUTER_API_KEY",
+      durationMs: 0,
+    });
+    const mode = (getSettings("utility", process.cwd()) as { skills?: { mode?: string } }).skills?.mode ?? "judged";
+    checks.push({
+      name: "skill_exposure",
+      module: "@pi-unipi/utility",
+      status: mode === "off" ? "warning" : "healthy",
+      message: mode === "off"
+        ? "Skill exposure is off: UniPi's bundled skills are hidden from the model in this project"
+        : `Skill exposure: ${mode}`,
+      suggestion: mode === "off" ? "Switch Utility → Skills → Skill exposure to judged or all in /unipi:settings" : undefined,
+      durationMs: 0,
+    });
+    return checks;
+  },
+};
+
 // ─── Diagnostics Engine ──────────────────────────────────────────────────────
 
 /** Registry of diagnostic plugins */
@@ -203,6 +247,7 @@ const plugins: DiagnosticPlugin[] = [
   coreDirectoriesPlugin,
   configFilesPlugin,
   nodeEnvironmentPlugin,
+  unipiRuntimePlugin,
 ];
 
 /** Register a custom diagnostic plugin */
@@ -259,7 +304,7 @@ export async function runDiagnostics(): Promise<DiagnosticsReport> {
 /** Format a diagnostics report as markdown */
 export function formatDiagnosticsReport(report: DiagnosticsReport): string {
   const lines = [
-    "## 🔍 Diagnostics Report",
+    "## Diagnostics",
     "",
     `**Overall:** ${report.overall.toUpperCase()}`,
     `**Checks:** ${report.summary.healthy} healthy, ${report.summary.warning} warning, ${report.summary.error} error, ${report.summary.unknown} unknown`,
@@ -282,7 +327,7 @@ export function formatDiagnosticsReport(report: DiagnosticsReport): string {
       lines.push(`- **${check.name}** (${check.module})`);
       lines.push(`  ${check.message}`);
       if (check.suggestion) {
-        lines.push(`  💡 ${check.suggestion}`);
+        lines.push(`  → ${check.suggestion}`);
       }
       lines.push("");
     }

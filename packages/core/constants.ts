@@ -104,30 +104,10 @@ export const RALPH_STATUS_ICONS = {
 /** Utility command names */
 export const UTILITY_COMMANDS = {
   CONTINUE: "continue",
-  RELOAD: "reload",
-  STATUS: "status",
+  RETRY: "retry",
   CLEANUP: "cleanup",
-  ENV: "env",
   DOCTOR: "doctor",
-  PREFIX_CACHE: "prefix-cache",
-} as const;
-
-/** Utility tool names */
-export const UTILITY_TOOLS = {
-  CONTINUE: "continue_task",
-  BATCH: "ctx_batch",
-  ENV: "ctx_env",
-  SET_SESSION_NAME: "set_session_name",
-} as const;
-
-/** Badge config path */
-export const BADGE_CONFIG_FILE = ".unipi/config/badge.json" as const;
-
-/** Utility directory paths */
-export const UTILITY_DIRS = {
-  CACHE: "~/.unipi/cache",
-  ANALYTICS: "~/.unipi/analytics",
-  TEMP: "/tmp/unipi",
+  ANSWER: "answer",
 } as const;
 
 /** Ask-user tool names */

@@ -122,8 +122,6 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `bg_run` / `bg_status` / `bg_logs` / `bg_kill` / `bg_delegate` / `bg_result` | background-tasks | Long-running commands and background delegate agents |
 | `ask_user` | ask-user | User input |
 | `session_recall` / `context_budget` | compactor | Context management |
-| `ctx_env` | utility | Environment info |
-| `set_session_name` | utility | Session name for badge |
 
 ## Development
 

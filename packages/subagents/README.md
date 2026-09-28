@@ -12,7 +12,6 @@ agents (`pi --mode rpc`) that run alongside it.
   `subagent_general` (all tools minus nesting, parent's model), and custom markdown agents from
   `~/.unipi/config/agents/` + `<workspace>/.unipi/config/agents/` (project wins).
 - Nesting: children spawn only below `UNIPI_SUBAGENT_MAX_DEPTH` (default 1 = no nesting).
-- Badge naming: `BADGE_GENERATE_REQUEST` runs an in-process one-shot (no child pi).
 
 ## Screen
 

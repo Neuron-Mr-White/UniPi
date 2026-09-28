@@ -657,6 +657,21 @@ not-a-table
     }
 
     #[test]
+    fn unipi_model_cache_lists_chat_models_only() {
+        let raw = r#"{"updatedAt":"x","models":[
+            {"provider":"openrouter","id":"deepseek/v4-flash","kind":"chat"},
+            {"provider":"openrouter","id":"black-forest-labs/flux.2-klein","kind":"images","output":["image"]},
+            {"provider":"omniroute","id":"legacy-entry-without-kind"}
+        ]}"#;
+        assert_eq!(
+            super::parse_unipi_model_cache(raw).unwrap(),
+            ["openrouter/deepseek/v4-flash", "omniroute/legacy-entry-without-kind"]
+        );
+        assert!(super::parse_unipi_model_cache(r#"{"models":[]}"#).is_none());
+        assert!(super::parse_unipi_model_cache("not json").is_none());
+    }
+
+    #[test]
     fn ui_messages_do_not_name_cli_flags() {
         let error = Error::rule("in_review → todo requires --comment (rework note)");
         assert_eq!(
@@ -813,6 +828,15 @@ async fn fetch_models(
     {
         return Ok(list.clone());
     }
+    // The shared unipi model cache (written by utility on every pi session
+    // start) answers instantly; `pi --list-models` is the fallback and the
+    // explicit refresh.
+    if !force
+        && let Some(list) = read_unipi_model_cache()
+    {
+        *slot = Some((Instant::now(), list.clone()));
+        return Ok(list);
+    }
     let settings = super::settings::load(&state.layout);
     if settings.pi_command.is_empty() {
         return Err((
@@ -831,6 +855,30 @@ async fn fetch_models(
     }
     *slot = Some((Instant::now(), list.clone()));
     Ok(list)
+}
+
+/// `~/.unipi/config/models-cache.json` → chat-model `provider/id` rows.
+/// `None` when the file is missing, unreadable or lists no chat models.
+fn read_unipi_model_cache() -> Option<Vec<String>> {
+    let home = std::env::var_os("HOME")?;
+    let path = std::path::Path::new(&home).join(".unipi/config/models-cache.json");
+    parse_unipi_model_cache(&std::fs::read_to_string(path).ok()?)
+}
+
+pub(crate) fn parse_unipi_model_cache(raw: &str) -> Option<Vec<String>> {
+    let parsed: Value = serde_json::from_str(raw).ok()?;
+    let list: Vec<String> = parsed
+        .get("models")?
+        .as_array()?
+        .iter()
+        .filter(|m| m.get("kind").and_then(Value::as_str) != Some("images"))
+        .filter_map(|m| {
+            let provider = m.get("provider")?.as_str()?;
+            let id = m.get("id")?.as_str()?;
+            Some(format!("{provider}/{id}"))
+        })
+        .collect();
+    (!list.is_empty()).then_some(list)
 }
 
 /// `piCommand --list-models` → `provider/id` rows. Output is a whitespace table

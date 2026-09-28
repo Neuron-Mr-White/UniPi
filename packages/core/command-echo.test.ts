@@ -56,12 +56,12 @@ test("appendEntry failure never blocks the command", async () => {
   });
   const api = withCommandEcho(pi as never);
   let ran = false;
-  api.registerCommand("unipi:status", {
+  api.registerCommand("unipi:doctor", {
     handler: async () => {
       ran = true;
     },
   });
-  await (pi.commands.get("unipi:status") as any).handler("", {});
+  await (pi.commands.get("unipi:doctor") as any).handler("", {});
   assert.equal(ran, true);
 });
 

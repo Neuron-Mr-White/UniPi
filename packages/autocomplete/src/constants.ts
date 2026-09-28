@@ -41,8 +41,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:plan":           "workflow",
   "unipi:permission":     "workflow",
 
-  "unipi:prefix-cache":   "utility",
-
   // long-horizon (4 commands)
   "unipi:goal":           "long-horizon",
   "unipi:ralph":          "long-horizon",
@@ -68,12 +66,10 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   // mcp (5 commands)
   "unipi:mcp-status":   "mcp",
 
-  // utility (11 commands)
+  // utility
   "unipi:continue":   "utility",
-  "unipi:reload":     "utility",
-  "unipi:status":     "utility",
+  "unipi:retry":      "utility",
   "unipi:cleanup":    "utility",
-  "unipi:env":        "utility",
   "unipi:doctor":     "utility",
 
   // ask-user (1 command)
@@ -134,7 +130,6 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:plan":           "Plan mode — investigate read-only, then approve a plan",
   "unipi:permission":     "Permission mode — ask · auto (jev-judged) · full",
-  "unipi:prefix-cache":   "Show privacy-safe provider prefix-cache diagnostics",
 
   "unipi:goal":           "One objective until verifiably true · medium complexity · pareto cost/success",
   "unipi:ralph":          "Checklist grind over iterations · enumerable chores · low cost, solid success",
@@ -156,12 +151,11 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:mcp-status":   "Show MCP server status",
 
-  "unipi:continue":   "Continue the last conversation",
-  "unipi:reload":     "Reload extensions and settings",
-  "unipi:status":     "Show system status",
-  "unipi:cleanup":    "Clean up old sessions and cache",
-  "unipi:env":        "Show environment info",
-  "unipi:doctor":     "Run diagnostics",
+  "unipi:continue":   "Continue from where the agent stopped (/unipi:retry)",
+  "unipi:retry":      "Retry the last turn (alias of /unipi:continue)",
+  "unipi:cleanup":    "Remove stale UniPi temp files and leftovers (preview first)",
+  "unipi:doctor":     "Check UniPi's runtime: config, model cache, Decision Model, skills",
+
   "unipi:kanboard":        "Kanboard — capture tasks, run them, open the board",
   "unipi:kanboard-add":    "Kanboard — capture a task into Backlog",
   "unipi:kanboard-do":     "Kanboard — let the agent work the board for a turn",

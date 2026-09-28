@@ -36,7 +36,6 @@ import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
 import {
   cardOutcome, renderCompletion, renderRunCall, renderRunResult, type CardContext, type CardDetails, type RunArgs,
 } from "./cards.js";
-import { badgeHandler } from "./badge.js";
 
 export interface SubagentsConfig {
   enabled: boolean;
@@ -615,11 +614,6 @@ export default function subagents(pi: ExtensionAPI): void {
     unsubInput = undefined;
     unsubRegistry();
     uiCtx = undefined;
-  });
-
-  // Badge naming — in-process one-shot (no child pi).
-  pi.events.on(UNIPI_EVENTS.BADGE_GENERATE_REQUEST, async (data) => {
-    await badgeHandler(pi, data as never, uiCtx);
   });
 
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { module: "subagents" });
