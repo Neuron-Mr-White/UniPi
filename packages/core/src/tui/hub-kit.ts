@@ -129,19 +129,20 @@ export function hubExactRow(content: string, inner: number): string {
   return content + " ".repeat(inner - w);
 }
 
-/** Plain-text group-mark cell: `▌` for colored namespaces, else a space. */
-export function hubMarkChar(namespace: string | undefined): string {
-  return namespaceColor(namespace ?? "") ? "▌" : " ";
+/** Plain-text group-mark cell: always the `▌` left border. */
+export function hubMarkChar(_namespace: string | undefined): string {
+  return "▌";
 }
 
 /**
- * Styled `▌` group mark — bold + the namespace's ANSI color. Closes with
+ * Styled `▌` group mark — bold + the namespace's ANSI color (dim when the
+ * namespace has no package color). Closes with
  * targeted-off codes ([22m[39m), never [0m: a full reset mid-line would kill
  * an enclosing background paint.
  */
 export function hubMarkSpan(namespace: string | undefined): string {
   const color = namespaceColor(namespace ?? "");
-  return color ? `${color}${hubBold("▌")}\x1b[39m` : " ";
+  return color ? `${color}${hubBold("▌")}\x1b[39m` : hubDim(hubBold("▌"));
 }
 
 export interface HubRowOptions {

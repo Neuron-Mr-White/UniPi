@@ -777,12 +777,35 @@ describe("group colors (namespace ▌)", () => {
     for (const line of lines) assert.equal(vw(line), 100, "exact width kept");
   });
 
-  it("unknown namespaces keep the plain two-space indent (no ▌)", () => {
+  it("unknown namespaces still draw the ▌ left border (dim, no color)", () => {
     const hub = makeHub();
     const strip = (l: string): string => l.replace(/\x1b\[[0-9;]*m/g, "");
-    const field = hub.render(100).find((l) => strip(l).includes("Flag"));
-    assert.ok(field);
-    assert.ok(!strip(field!).includes("▌"), "uncolored namespace has no marker");
+    const field = hub.render(100).find((l) => strip(l).includes("▌ Flag"));
+    assert.ok(field, "field row found");
+    assert.ok(!field!.includes(PACKAGE_COLORS.utility), "uncolored namespace carries no package color");
+    assert.ok(field!.includes("▌"), "uncolored namespace still draws the ▌ border");
+  });
+
+  it("every group (header + field rows) emits the ▌ left border, colored or not", () => {
+    registerSettings({
+      namespace: "info-screen",
+      label: "Info Screen",
+      defaults: { show: true },
+      schema: [{ title: "Display", fields: [{ key: "show", type: "boolean", label: "Show" }] }],
+    });
+    registerFixture(); // uncolored fixture namespace (hubtest)
+    const hub = makeHub();
+    const strip = (l: string): string => l.replace(/\x1b\[[0-9;]*m/g, "");
+    const seen: string[] = [];
+    for (const line of hub.render(100)) {
+      const plain = strip(line);
+      const isBand = plain.startsWith("│") && / — /.test(plain);
+      const isField = /▌ (Flag|Show)/.test(plain);
+      if (isBand || isField) seen.push(plain);
+      if (isBand) assert.ok(plain.includes("▌ "), `band draws ▌: ${plain}`);
+      else if (isField) assert.ok(plain.includes("▌ "), `field draws ▌: ${plain}`);
+    }
+    assert.ok(seen.length >= 4, `checked both groups' bands and fields (got ${seen.length})`);
   });
 });
 

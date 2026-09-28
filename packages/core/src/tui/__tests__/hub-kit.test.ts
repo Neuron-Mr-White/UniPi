@@ -145,8 +145,8 @@ describe("exact-width primitives", () => {
       assert.ok(vw(band.replace(/^.*?▌/, "▌")) === width);
       assert.ok(band.startsWith("│") === false && band.includes("▌"));
     }
-    const unmarked = hubHeaderBand({ inner: 40, text: "no color" });
-    assert.ok(!unmarked.includes("▌"), "unknown namespace renders no mark");
+    const uncolored = hubHeaderBand({ inner: 40, text: "no color" });
+    assert.ok(uncolored.includes("▌"), "unknown namespace still draws the dim ▌ border");
   });
 
   it("frame title joins base, crumbs and tail", () => {
