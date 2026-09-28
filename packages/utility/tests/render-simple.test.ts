@@ -115,3 +115,31 @@ describe("simpleWrapTool", () => {
     assert.equal((expanded as { render: (w: number) => string[] }).render(120)[0], "ORIGINAL");
   });
 });
+
+describe("targetArg multi-line flattening", () => {
+  it("keeps the first non-empty line and marks the elision", () => {
+    assert.equal(targetArg("memory_store", { content: "---\nid: x\nbody" }, "/tmp"), "--- …");
+  });
+  it("prefers title over multi-line content", () => {
+    assert.equal(targetArg("memory_store", { title: "my_title", content: "a\nb" }, "/tmp"), "my_title");
+  });
+  it("flattens multi-line shell commands", () => {
+    assert.equal(targetArg("bash", { command: "echo a\necho b" }, "/tmp"), "echo a …");
+  });
+  it("single-line values are untouched", () => {
+    assert.equal(targetArg("bash", { command: "ls -la" }, "/tmp"), "ls -la");
+    assert.equal(targetArg("read", { file_path: "/repo/pkg.json" }, "/repo"), "./pkg.json");
+  });
+  it("the assembled row never contains a newline", () => {
+    const res = { content: [{ type: "text", text: "out" }] } as never;
+    for (const args of [
+      { command: "echo a\necho b" },
+      { title: "t\nu", content: "c\nd" },
+      { query: "x\ny" },
+      { path: "/a\nb" },
+    ]) {
+      const line = simpleToolLine(theme, "memory_store", args, { running: false, result: res, cwd: "/repo", width: 200 });
+      assert.ok(!line.includes("\n"), JSON.stringify(line));
+    }
+  });
+});

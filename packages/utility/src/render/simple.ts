@@ -72,6 +72,13 @@ const PATH_KEYS = ["path", "file_path", "file", "cwd", "dir", "directory", "note
 
 /** The single argument mcode would show in the parenthetical. */
 export function targetArg(name: string, args: Record<string, unknown>, cwd: string): string {
+  // Rows are one line: keep the first non-empty line of whatever we pick.
+  const raw = rawTargetArg(name, args, cwd);
+  const first = raw.split("\n").find((l) => l.trim()) ?? "";
+  return first.trim() + (raw.trim().includes("\n") ? " …" : "");
+}
+
+function rawTargetArg(name: string, args: Record<string, unknown>, cwd: string): string {
   if (name === "bash" || name === "powershell") return String(args.command ?? args.script ?? "");
   if (name === "grep") {
     const pattern = String(args.pattern ?? args.query ?? "");
@@ -82,7 +89,7 @@ export function targetArg(name: string, args: Record<string, unknown>, cwd: stri
     const v = args[key];
     if (typeof v === "string" && v) return shortPath(v, cwd);
   }
-  for (const key of ["query", "pattern", "url", "skill", "command", "name", "id", "title", "question"]) {
+  for (const key of ["query", "pattern", "url", "skill", "command", "title", "name", "id", "question"]) {
     const v = args[key];
     if (typeof v === "string" && v) return v;
   }
