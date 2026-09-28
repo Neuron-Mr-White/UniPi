@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.5] — 2026-09-28
+
+### Breaking Changes
+
+- **BREAKING: `@pi-unipi/image` removed.** Image generation, editing and recognition now live in `@pi-unipi/utility` (same `image` settings namespace, so existing configs keep working). **Migration path:** nothing to do with the umbrella package; if you installed `@pi-unipi/image` on its own, remove it and use `@pi-unipi/utility`.
+- **BREAKING: utility slimmed.** Removed `/unipi:reload` (use pi's `/reload`), `/unipi:status`, `/unipi:env`, `/unipi:prefix-cache`, the agent tools `ctx_env` and `set_session_name`, the top name-badge bar, the analytics collector and the process-lifecycle signal handlers. **Migration path:** `/unipi:doctor` covers the health checks; sessions are named automatically (below) or with pi's `/name`. Old `badge.*` settings carry over to `rename.*`.
+- **BREAKING: skill exposure moved** from `utility.skills` to the new `skills` namespace (`@pi-unipi/skill-registry`). Migrated automatically on first read.
+
+### Added
+
+- `utility`: `/unipi:retry`, an alias of `/unipi:continue`.
+- `utility`: **automatic session naming.** After each round, jev checks whether the round (your message plus what the agent did) established a subject and, for a named session, whether it moved to a different task; a throwaway session with a single `rename_session` tool writes the name. Greetings never rename; names set with `/name` are never overwritten; Herdr pane/tab sync kept.
+- `utility`: **`/unipi:answer`** — answer the last reply without scrolling: `reply` (default: the reply scrolls above a fixed input box, like `/unipi:btw`), `questions` (one answer per question, Q/A template) or `web` (local form; over SSH it prints the `ssh -L` forward). A hint above the editor says when a reply asks questions.
+- `utility`: **pasted images and files** become `[Image #N]` / `[File #N]` attachments with a chip row above the editor and inline previews in Kitty, Ghostty, iTerm2 and WezTerm; images are sent to the model as images.
+- `utility`: **image tools** `image_generate`, `image_edit` (new) and `image_recognize`, with OpenRouter, fal and custom-endpoint routes, a key per provider, and model pickers filtered by input/output modality. Default model FLUX.2 [klein] 4B.
+- `utility`: **response formatting** — Settings → Utility → Response formatting: `simple` (one line per tool), `regular` (pi's own) or `advanced` (highlighted commands incl. embedded heredoc/`-c` code, tinted syntax-highlighted diffs, test summaries, exit lines).
+- `utility`: `/unipi:settings <search>` opens the hub filtered; typing `/settings` lists `/unipi:settings` first.
+- `skill-registry`: now a real extension. **Skill settings…** grid (`/unipi:skills` → Skill settings…): per skill Enabled / Discoverable / Must show, per global or project scope, plus a skill vault at `~/.unipi/skill-vault` whose skills stay off until a scope turns them on (skill proxy, off by default).
+- `core`: the shared model cache (`~/.unipi/config/models-cache.json`) records input/output modalities; the settings hub pickers and kanboard read it.
+
+### Changed
+
+- `skill-registry`: skill judging keeps skills named in the request, lists hidden skills by name in the system prompt, waits for the first real request instead of freezing on a greeting, and caps generic workflow skills.
+- `fusion`: `/unipi:model` lists only your preset lead/sidekick models; typing searches the whole catalogue (also inside the lead/sidekick dropdowns).
+- `utility`: `/unipi:cleanup` only removes files on an explicit list, previews them and asks first; v2 memory backups can never be removed. `/unipi:doctor` checks the model cache, the Decision Model key and skill exposure.
+
+### Fixed
+
+- `image`: generation failed for most users (only a pi-ai OpenRouter route with a key pi often couldn't see) and failures were reported to the agent as successes.
+- `core`: capability-filtered model pickers hide entries with no declared input again.
+
 ## [3.0.0-alpha.4] — 2026-09-28
 
 ### Breaking Changes
