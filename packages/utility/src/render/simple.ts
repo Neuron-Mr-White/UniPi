@@ -366,10 +366,14 @@ export function simpleToolLine(
 }
 
 /** One-line component (mcode rows never wrap; they truncate). */
+/** pi pads assistant prose by 1 column (outputPad); mcode aligns tool rails with the `●` anchor. */
+const ROW_INDENT = " ";
+
 class SimpleLine implements Component {
   constructor(private readonly build: (width: number) => string[]) {}
   render(width: number): string[] {
-    return this.build(width).map((l) => truncateToWidth(l, Math.max(0, width), "…"));
+    const inner = Math.max(0, width - ROW_INDENT.length);
+    return this.build(inner).map((l) => `${ROW_INDENT}${truncateToWidth(l, inner, "…")}`);
   }
   invalidate(): void {}
 }

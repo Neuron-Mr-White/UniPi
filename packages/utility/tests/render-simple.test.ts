@@ -261,17 +261,17 @@ describe("simpleWrapTool", () => {
     const res = (n: number) => ({ isError: false, content: [{ type: "text", text: "x\n".repeat(n) }] }) as never;
     // both running: summary so far + live latest row
     const mid = (c2 as { render: (w: number) => string[] }).render(160);
-    assert.deepEqual(mid, ["└ • Reading (./f2) …"]);
+    assert.deepEqual(mid, [" └ • Reading (./f2) …"]);
     wrapped.renderResult!(res(1), { expanded: false, isPartial: true } as never, theme, mk("1"));
     wrapped.renderResult!(res(1), { expanded: false, isPartial: false } as never, theme, mk("1"));
     // one done, one still running: c1 shows the ├ summary, c2 the └ live row
     const during1 = (c1 as { render: (w: number) => string[] }).render(160);
     const during2 = (c2 as { render: (w: number) => string[] }).render(160);
-    assert.deepEqual(during1, ["├ • Reading 2 files"]);
-    assert.deepEqual(during2, ["└ • Reading (./f2) …"]);
+    assert.deepEqual(during1, [" ├ • Reading 2 files"]);
+    assert.deepEqual(during2, [" └ • Reading (./f2) …"]);
     wrapped.renderResult!(res(1), { expanded: false, isPartial: false } as never, theme, mk("2"));
     // both done: single packed summary row
-    assert.deepEqual((c1 as { render: (w: number) => string[] }).render(160), ["└ • Read 2 files"]);
+    assert.deepEqual((c1 as { render: (w: number) => string[] }).render(160), [" └ • Read 2 files"]);
     assert.deepEqual((c2 as { render: (w: number) => string[] }).render(160), []);
   });
 
@@ -337,14 +337,14 @@ describe("installSimpleGroupEvents (simple mode)", () => {
     pi.emit("message_end", { message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall" }] } });
     const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
     done(w, "2");
-    assert.deepEqual((c1 as any).render(160), ["└ • Read 2 files"]);
+    assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
     assert.deepEqual((c2 as any).render(160), []);
     // visible text streams in: next call starts a fresh group
     pi.emit("message_update", { assistantMessageEvent: { type: "text_delta", delta: "Reading one more." } });
     const c3 = w.renderCall!({ file_path: "/repo/f3" } as never, theme, mk("3"));
     done(w, "3");
-    assert.deepEqual((c1 as any).render(160), ["└ • Read 2 files"]);
-    assert.match((c3 as any).render(160)[0], /^└ • Read \(\.\/f3\)/);
+    assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
+    assert.match((c3 as any).render(160)[0], /^ └ • Read \(\.\/f3\)/);
   });
 
   it("a new user message breaks the group", () => {
@@ -356,8 +356,8 @@ describe("installSimpleGroupEvents (simple mode)", () => {
     pi.emit("message_start", { message: { role: "user", content: "next" } });
     const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
     done(w, "2");
-    assert.match((c1 as any).render(160)[0], /^└ • Read \(\.\/f1\)/);
-    assert.match((c2 as any).render(160)[0], /^└ • Read \(\.\/f2\)/);
+    assert.match((c1 as any).render(160)[0], /^ └ • Read \(\.\/f1\)/);
+    assert.match((c2 as any).render(160)[0], /^ └ • Read \(\.\/f2\)/);
   });
 });
 
@@ -372,5 +372,18 @@ describe("anchorAssistant (mcode ● prefix)", () => {
     for (const md of ["# Title", "- item", "1. one", "> quote", "| a | b |", "```ts\nx\n```", "---"]) {
       assert.equal(anchorAssistant(md), md);
     }
+  });
+});
+
+describe("row alignment", () => {
+  beforeEach(() => resetSimpleGroups());
+  it("rows are indented 1 column to align with pi's padded assistant text (mcode rail under ●)", () => {
+    const w = simpleWrapTool({ ...base, name: "read" } as never) as typeof base;
+    const ctx = { expanded: false, cwd: "/repo", args: { file_path: "/repo/a" }, toolCallId: "z" } as never;
+    const c = w.renderCall!({ file_path: "/repo/a" } as never, theme, ctx);
+    w.renderResult!({ isError: false, content: [{ type: "text", text: "a" }] } as never, { expanded: false, isPartial: false } as never, theme, ctx);
+    const [line] = (c as any).render(40);
+    assert.ok(line.startsWith(" └ • Read"));
+    assert.ok(line.length <= 40);
   });
 });
