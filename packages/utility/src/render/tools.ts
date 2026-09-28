@@ -19,6 +19,9 @@ import { isAbsolute, relative } from "node:path";
 import {
   createBashToolDefinition,
   createEditToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
   getLanguageFromPath,
@@ -29,6 +32,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { asJson, diffStats, exitCode, parseDiff, splitCommand, stripStatus, testSummary } from "./parse.js";
+import { simpleWrapTool } from "./simple.js";
 import { readPiToolOptions } from "./pi-settings.js";
 
 export type RenderStyle = "simple" | "regular" | "advanced";
@@ -309,6 +313,22 @@ function renderers(name: string, style: RenderStyle, def: (cwd: string) => AnyDe
 export function registerToolRenderers(pi: ExtensionAPI, style: RenderStyle): void {
   if (style === "regular") return;
   const opts = readPiToolOptions(process.cwd());
+  if (style === "simple") {
+    // mcode look: every tool is wrapped to a collapsed one-liner by the unipi
+    // entry (see simple.ts); register the core search/list tools unipi does
+    // not already own here. read/bash/edit/write are handled there too.
+    const cwd = process.cwd();
+    for (const make of [createGrepToolDefinition, createFindToolDefinition, createLsToolDefinition]) {
+      pi.registerTool(simpleWrapTool(make(cwd) as AnyDef));
+    }
+    // read/edit/write keep their (advanced) expanded renderers via withDefinition;
+    // the collapsed row is overridden by the mcode wrapper in the unipi entry.
+    pi.registerTool(simpleWrapTool(withDefinition("read", (c) => createReadToolDefinition(c, opts.read) as AnyDef, "advanced")));
+    pi.registerTool(simpleWrapTool(withDefinition("bash", (c) => createBashToolDefinition(c, opts.bash) as AnyDef, "advanced")));
+    pi.registerTool(simpleWrapTool(withDefinition("edit", (c) => createEditToolDefinition(c) as AnyDef, "advanced")));
+    pi.registerTool(simpleWrapTool(withDefinition("write", (c) => createWriteToolDefinition(c) as AnyDef, "advanced")));
+    return;
+  }
   pi.registerTool(withDefinition("read", (cwd) => createReadToolDefinition(cwd, opts.read) as AnyDef, style));
   pi.registerTool(withDefinition("bash", (cwd) => createBashToolDefinition(cwd, opts.bash) as AnyDef, style));
   pi.registerTool(withDefinition("edit", (cwd) => createEditToolDefinition(cwd) as AnyDef, style));

@@ -9,8 +9,9 @@
  *   mise run unipi
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { readUtilSettings, simpleWrapTool, simpleWrapped } from "@pi-unipi/utility";
 
 import workflow from "@pi-unipi/workflow";
 import longHorizon from "@pi-unipi/long-horizon";
@@ -36,6 +37,23 @@ import watchdog from "@pi-unipi/watchdog";
 
 export default function (pi: ExtensionAPI) {
   const api = withCommandEcho(pi);
+  // "simple" render style = mcode transcript: every tool registered by any
+  // unipi module is captured here and, after all modules load, re-registered
+  // with the collapsed one-liner wrapper (execute/schema untouched; Ctrl+O
+  // falls back to the tool's own renderer). best-effort, never blocks load.
+  const captured = new Map<string, ToolDefinition<any, any, any>>();
+  const rawRegister = api.registerTool.bind(api);
+  const registering = new Proxy(api, {
+    get(target, prop, receiver) {
+      if (prop === "registerTool") {
+        return (tool: ToolDefinition<any, any, any>) => {
+          captured.set(tool.name, tool);
+          return rawRegister(tool);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
   // One-time v3 state relocation into ~/.unipi/{global,workspace}/, then reap
   // any dead-pid session dirs left by crashed sessions. Both are best-effort
   // and version/pid-gated, so they are cheap on every subsequent startup.
@@ -46,7 +64,7 @@ export default function (pi: ExtensionAPI) {
     // Never block startup on housekeeping.
   }
 
-  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(api);
+  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(registering);
 
   load("workflow", workflow);
   load("long-horizon", longHorizon);
@@ -69,4 +87,17 @@ export default function (pi: ExtensionAPI) {
   load("input-shortcuts", inputShortcuts);
   load("fusion", fusion);
   load("watchdog", watchdog);
+
+  // After all modules registered: apply the mcode-style wrapper. Re-register
+  // with the RAW register (not the capturing proxy) to avoid double-capture.
+  if (readUtilSettings().render.style === "simple") {
+    for (const def of captured.values()) {
+      if (simpleWrapped.has(def)) continue;
+      try {
+        rawRegister(simpleWrapTool(def));
+      } catch {
+        // keep the original tool on any failure
+      }
+    }
+  }
 }

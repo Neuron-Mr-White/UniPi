@@ -31,6 +31,9 @@ import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerI
 import { registerToolRenderers } from "./render/tools.js";
 import { readUtilSettings } from "./settings.js";
 
+export { readUtilSettings } from "./settings.js";
+export { simpleWrapTool, simpleWrapped } from "./render/simple.js";
+
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 const ALL_COMMANDS = [
