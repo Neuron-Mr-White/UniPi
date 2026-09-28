@@ -19,9 +19,7 @@ import {
   UTILITY_COMMANDS,
   emitEvent,
   getPackageVersion,
-  runCommandByName,
-  SettingsHub,
-  HUB_OVERLAY_OPTIONS,
+  openSettingsHub,
   chatModelsToCache,
   writeModelCache,
 } from "@pi-unipi/core";
@@ -46,35 +44,8 @@ const ALL_COMMANDS = [
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("unipi:settings", {
-    description: "Configure all unipi modules in one panel (global + project scopes)",
-    handler: async (_args, ctx) => {
-      if (!ctx.hasUI) throw new Error("/unipi:settings needs the interactive TUI");
-      await ctx.ui.custom<void>(
-        (tui, _theme, _keybindings, done) => {
-          const hub = new SettingsHub({
-            cwd: ctx.cwd ?? process.cwd(),
-            runAction: async (command) => {
-              const ran = await runCommandByName(command, ctx);
-              if (!ran) ctx.ui.notify(`no handler registered for ${command}`, "warning");
-            },
-          });
-          hub.onClose = () => done();
-          return {
-            focused: true,
-            invalidate: () => hub.invalidate(),
-            render: (width: number) => hub.render(width),
-            handleInput: (data: string) => {
-              hub.handleInput(data);
-              tui.requestRender();
-            },
-            dispose: () => {},
-          };
-        },
-        HUB_OVERLAY_OPTIONS,
-      ).catch(() => {
-        // Overlay errors are non-blocking.
-      });
-    },
+    description: "Configure all unipi modules in one panel (global + project scopes); /unipi:settings <search> opens it filtered",
+    handler: async (args, ctx) => openSettingsHub(ctx, { filter: args.trim() }),
   });
 
   registerUtilityCommands(pi);

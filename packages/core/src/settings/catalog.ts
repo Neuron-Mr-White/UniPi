@@ -34,10 +34,12 @@ export type ModelCapability = "text" | "image-input" | "image-output" | "image-e
 
 /** Capability filter shared by every model picker. */
 export function matchesCapability(entry: ModelCatalogEntry, capability: ModelCapability): boolean {
-  const input = entry.input.length ? entry.input : ["text"];
+  // No declared input = unknown → hidden from capability pickers (custom… still
+  // accepts any id). Output defaults to text: chat catalogs rarely declare it.
+  const input = entry.input;
   const output = entry.output?.length ? entry.output : ["text"];
   switch (capability) {
-    case "text": return output.includes("text");
+    case "text": return input.includes("text") && output.includes("text");
     case "image-input": return input.includes("image") && output.includes("text");
     case "image-output": return output.includes("image");
     case "image-edit": return input.includes("image") && output.includes("image");

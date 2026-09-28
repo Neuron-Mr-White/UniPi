@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { globalSettingsPath, projectSettingsPath } from "@pi-unipi/core";
+import { projectSettingsPath } from "@pi-unipi/core";
 import {
   applyJudgement,
   decideTurn,
@@ -19,8 +19,8 @@ import {
   type Entry,
 } from "../src/judge.ts";
 import { applyRegistry, effectiveState, skillCommandName } from "../src/registry.ts";
-import { cycle } from "../src/panel.ts";
-import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, writeSkillState, readLayerStates } from "../src/settings.ts";
+import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeStates, registerSkillsSettings } from "../src/settings.ts";
+import { getSettingsDefinition, getSettings } from "@pi-unipi/core";
 import { listVaultSkills, parseFrontmatter } from "../src/vault.ts";
 
 const WF = "/repo/packages/skill-registry/skills";
@@ -146,17 +146,18 @@ describe("registry", () => {
   ];
 
   it("keeps vault skills off by default and applies explicit states", () => {
-    const r = applyRegistry(cat, { quiet: { discoverable: false } }, "/repo", vault);
+    const r = applyRegistry(cat, { quiet: "unlisted" }, "/repo", vault);
     assert.deepEqual(r.listed.map((s) => s.name), ["global-one"]);
     assert.deepEqual([...r.disabled], ["vaulted"]);
     assert.deepEqual(r.unlisted.map((s) => s.name), ["quiet"]);
-    const on = applyRegistry(cat, { vaulted: { enabled: true }, "global-one": { enabled: false } }, "/repo", vault);
+    const on = applyRegistry(cat, { vaulted: "on", "global-one": "off" }, "/repo", vault);
     assert.deepEqual(on.listed.map((s) => s.name).sort(), ["quiet", "vaulted"]);
     assert.deepEqual([...on.disabled], ["global-one"]);
   });
 
   it("resolves defaults per source", () => {
-    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, discoverable: true });
+    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, discoverable: false });
+    assert.deepEqual(effectiveState("unlisted", "user"), { enabled: true, discoverable: false });
     assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, discoverable: true });
   });
 
@@ -165,11 +166,6 @@ describe("registry", () => {
     assert.equal(skillCommandName("hello"), undefined);
   });
 
-  it("cycles a layer: unset → set → opposite → unset", () => {
-    assert.equal(cycle(undefined, true), true);
-    assert.equal(cycle(true, true), false);
-    assert.equal(cycle(false, true), undefined);
-  });
 });
 
 describe("settings", () => {
@@ -183,15 +179,26 @@ describe("settings", () => {
     assert.deepEqual(JSON.parse(readFileSync(projectSettingsPath(cwd, "skills"), "utf8")).exposure, { mode: "off", maxSkills: 8 });
   });
 
-  it("writes one field at one scope without touching the rest", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "unipi-skills-state-"));
-    writeSkillState(cwd, "project", "coffee-sandbox", "enabled", true);
-    writeSkillState(cwd, "project", "coffee-sandbox", "discoverable", false);
-    assert.deepEqual(readLayerStates(cwd).project, { "coffee-sandbox": { enabled: true, discoverable: false } });
-    writeSkillState(cwd, "project", "coffee-sandbox", "enabled", undefined);
-    writeSkillState(cwd, "project", "coffee-sandbox", "discoverable", undefined);
-    assert.deepEqual(readLayerStates(cwd).project, {});
-    assert.ok(!globalSettingsPath("skills").startsWith(cwd));
+  it("lists every skill as a hub row grouped by source, vault defaulting to off", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "unipi-skills-rows-"));
+    registerSkillsSettings([
+      { name: "aws-deploy", description: "Deploy to AWS", baseDir: "/v/aws-deploy" },
+      { name: "grill-me", description: "Grill the design", baseDir: "/home/u/.agents/skills/grill-me" },
+      { name: "local-one", description: "Project skill", baseDir: `${cwd}/.agents/skills/local-one` },
+    ], cwd, "/v");
+    const def = getSettingsDefinition("skills")!;
+    const titles = def.schema!.map((sec) => sec.title);
+    assert.ok(titles.includes("Project skills") && titles.includes("Vault (off until turned on)") && titles.includes("Package skills"));
+    const row = def.schema!.flatMap((sec) => sec.fields).find((f) => f.key === "states.aws-deploy");
+    assert.equal(row?.type, "enum");
+    const states = (getSettings("skills", cwd) as { states: Record<string, string> }).states;
+    assert.equal(states["aws-deploy"], "off");
+    assert.equal(states["local-one"], "on");
+    registerSkillsSettings();
+  });
+
+  it("reads the earlier { enabled, discoverable } shape", () => {
+    assert.deepEqual(normalizeStates({ a: { enabled: false }, b: { discoverable: false }, c: "unlisted", d: { enabled: true }, e: 3 }), { a: "off", b: "unlisted", c: "unlisted", d: "on" });
   });
 
   it("normalizes exposure values", () => {

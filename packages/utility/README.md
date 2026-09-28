@@ -6,7 +6,7 @@ The settings hub, automatic session naming, image tools, pasted-file attachments
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:settings` | Configure every UniPi module in one panel (global + project scopes) |
+| `/unipi:settings [search]` | Configure every UniPi module in one panel (global + project scopes); a search term opens it filtered (`/unipi:settings image`). Typing `/settings` lists it before pi's own `/settings` |
 | `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
 | `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
 | `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
@@ -34,7 +34,7 @@ Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, n
 
 `/unipi:answer` collects every question in the agent's last reply (lines with a `?`, outside code blocks) and opens one of two answer screens. Settings → Utility → Answer picks the default; `/unipi:answer editor` or `/unipi:answer web` overrides it once.
 
-- **editor** — pi's editor, pre-filled with `Q1. … / A1:` pairs. The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends.
+- **editor** — pi's editor holding only `Q1. … / A1:` pairs (empty when the reply has no questions). The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends.
 - **web** — a local page with the full reply on the left and one box per question on the right (plus a free-text note). It listens on 127.0.0.1 behind a random URL. Over SSH it doesn't open a browser; it shows the `ssh -L` command to forward the port (47321 unless you set one) and the URL to open on your own machine.
 
 Either way, one message is sent that quotes each question above its answer; empty answers are listed as not answered.

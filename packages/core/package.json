@@ -41,6 +41,6 @@
     "themes": []
   },
   "scripts": {
-    "test": "npx tsx --test *.test.ts"
+    "test": "npx tsx --test *.test.ts src/*/__tests__/*.test.ts"
   }
 }

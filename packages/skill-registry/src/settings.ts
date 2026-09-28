@@ -4,7 +4,8 @@
  *   proxy          — off (default): pi's skills pass through untouched (only
  *                    exposure judging applies) and vault skills stay hidden.
  *                    on: the per-skill states below apply, vault included.
- *   states.<name>  — { enabled?, discoverable? } per skill. The engine merges
+ *   states.<name>  — "on" | "unlisted" | "off" per skill, one hub row each
+ *                    (listed by where the skill lives). The engine merges
  *                    global + project layers, so a project can turn a vault
  *                    skill on (or a global skill off) just for that repo.
  *   exposure       — judged | all | off, threshold, maxSkills, recheck.
@@ -22,7 +23,10 @@ import {
   globalSettingsPath,
   projectSettingsPath,
   registerSettings,
+  type SettingsField,
+  type SettingsSection,
 } from "@pi-unipi/core";
+import { skillSource, type CatalogSkill, type SkillSource } from "./registry.js";
 
 export type ExposureMode = "judged" | "all" | "off";
 
@@ -36,12 +40,12 @@ export interface ExposureSettings {
   recheck: boolean;
 }
 
-export interface SkillState {
-  /** false = removed from the session entirely (catalog and /skill:name). */
-  enabled?: boolean;
-  /** false = not listed for the model; /skill:name still works. */
-  discoverable?: boolean;
-}
+/**
+ *   on       — listed for the model and runnable
+ *   unlisted — not in the system prompt; /skill:name still works
+ *   off      — removed from the session entirely (/skill:name blocked too)
+ */
+export type SkillState = "on" | "unlisted" | "off";
 
 export interface SkillsSettings {
   proxy: boolean;
@@ -58,47 +62,93 @@ export const DEFAULT_EXPOSURE: ExposureSettings = {
 
 export const NAMESPACE = "skills";
 
-registerSettings({
-  namespace: NAMESPACE,
-  label: "Skills",
-  defaults: {
-    proxy: false,
-    states: {},
-    exposure: { ...DEFAULT_EXPOSURE },
-    decisionModel: DEFAULT_DECISION_OVERRIDE,
+const STATIC_SECTIONS: SettingsSection[] = [
+  {
+    title: "Skill registry",
+    description: "Turn skills on or off per project, and keep a vault of extra skills",
+    fields: [
+      { key: "proxy", type: "boolean", label: "Skill proxy", description: "Apply the per-skill choices below and include ~/.unipi/skill-vault (off = pi's skills as-is, vault hidden)" },
+    ],
   },
-  schema: [
-    {
-      title: "Skill registry",
-      description: "Turn skills on or off per project, and keep a vault of extra skills",
-      fields: [
-        { key: "proxy", type: "boolean", label: "Skill proxy", description: "Apply per-skill on/off and listing choices, and mount ~/.unipi/skill-vault" },
-        { key: "manage", type: "action", label: "Manage skills…", description: "Open the skill manager (/unipi:skills)", command: "unipi:skills-manage" },
-      ],
+  {
+    title: "Exposure",
+    description: "Which skills are listed in the system prompt",
+    fields: [
+      {
+        key: "exposure.mode",
+        type: "enum",
+        label: "Skill exposure",
+        options: [
+          { value: "judged", label: "judged (jev decides)" },
+          { value: "all", label: "all (no judging)" },
+          { value: "off", label: "off (bundled stripped)" },
+        ],
+        description: "judged = jev picks the skills listed for the session",
+      },
+      { key: "exposure.threshold", type: "number", label: "Relevance threshold", min: 0, max: 1, description: "Minimum jev relevance for a skill to stay listed" },
+      { key: "exposure.maxSkills", type: "number", label: "Max skills listed", min: 1 },
+      { key: "exposure.recheck", type: "boolean", label: "Announce newly relevant skills on later prompts" },
+    ],
+  },
+];
+
+const STATE_OPTIONS = [
+  { value: "on", label: "on · listed" },
+  { value: "unlisted", label: "on · unlisted" },
+  { value: "off", label: "off" },
+];
+
+const SOURCE_TITLE: Record<SkillSource, string> = {
+  vault: "Vault (off until turned on)",
+  project: "Project skills",
+  user: "User skills",
+  unipi: "UniPi skills",
+  package: "Package skills",
+};
+
+/**
+ * (Re)register the namespace with one row per known skill, grouped by where
+ * it lives. Called at session start and whenever the catalog changes, so the
+ * hub always lists the current skills. Defaults encode the source rule
+ * (vault off, everything else on), so "d default" in the hub does the right thing.
+ */
+export function registerSkillsSettings(skills: readonly CatalogSkill[] = [], cwd = process.cwd(), vault = ""): void {
+  const bySource = new Map<SkillSource, SettingsField[]>();
+  const defaults: Record<string, SkillState> = {};
+  const seen = new Set<string>();
+  for (const skill of [...skills].sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!skill.name || skill.name.includes(".") || seen.has(skill.name)) continue;
+    seen.add(skill.name);
+    const source = skillSource(skill, cwd, vault);
+    defaults[skill.name] = source === "vault" ? "off" : "on";
+    const fields = bySource.get(source) ?? [];
+    fields.push({
+      key: `states.${skill.name}`,
+      type: "enum",
+      label: skill.name,
+      options: STATE_OPTIONS,
+      clearable: true,
+      description: skill.description.replace(/\s+/g, " ").slice(0, 160),
+    });
+    bySource.set(source, fields);
+  }
+  const lists: SettingsSection[] = (["project", "user", "vault", "unipi", "package"] as SkillSource[])
+    .filter((src) => bySource.has(src))
+    .map((src) => ({ title: SOURCE_TITLE[src], description: "Applies while the skill proxy is on", fields: bySource.get(src)! }));
+  registerSettings({
+    namespace: NAMESPACE,
+    label: "Skills",
+    defaults: {
+      proxy: false,
+      states: defaults,
+      exposure: { ...DEFAULT_EXPOSURE },
+      decisionModel: DEFAULT_DECISION_OVERRIDE,
     },
-    {
-      title: "Exposure",
-      description: "Which skills are listed in the system prompt",
-      fields: [
-        {
-          key: "exposure.mode",
-          type: "enum",
-          label: "Skill exposure",
-          options: [
-            { value: "judged", label: "judged (jev decides)" },
-            { value: "all", label: "all (no judging)" },
-            { value: "off", label: "off (bundled stripped)" },
-          ],
-          description: "judged = jev picks the skills listed for the session",
-        },
-        { key: "exposure.threshold", type: "number", label: "Relevance threshold", min: 0, max: 1, description: "Minimum jev relevance for a skill to stay listed" },
-        { key: "exposure.maxSkills", type: "number", label: "Max skills listed", min: 1 },
-        { key: "exposure.recheck", type: "boolean", label: "Announce newly relevant skills on later prompts" },
-      ],
-    },
-    decisionModelSection({ title: "Skills — Decision model" }),
-  ],
-});
+    schema: [...STATIC_SECTIONS, ...lists, decisionModelSection({ title: "Skills — Decision model" })],
+  });
+}
+
+registerSkillsSettings();
 
 function readJson(file: string): Record<string, unknown> | null {
   try {
@@ -172,16 +222,18 @@ export function normalizeExposure(raw: unknown): ExposureSettings {
   };
 }
 
+/** Per-skill states; accepts the earlier { enabled, discoverable } shape. */
 export function normalizeStates(raw: unknown): Record<string, SkillState> {
   const out: Record<string, SkillState> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!value || typeof value !== "object") continue;
-    const v = value as Record<string, unknown>;
-    const state: SkillState = {};
-    if (typeof v.enabled === "boolean") state.enabled = v.enabled;
-    if (typeof v.discoverable === "boolean") state.discoverable = v.discoverable;
-    out[name] = state;
+    if (value === "on" || value === "unlisted" || value === "off") out[name] = value;
+    else if (value && typeof value === "object") {
+      const v = value as { enabled?: unknown; discoverable?: unknown };
+      if (v.enabled === false) out[name] = "off";
+      else if (v.discoverable === false) out[name] = "unlisted";
+      else if (v.enabled === true) out[name] = "on";
+    }
   }
   return out;
 }
@@ -201,31 +253,3 @@ export function readSkillsSettings(cwd: string = process.cwd()): SkillsSettings 
   }
 }
 
-/** The raw per-layer states (for the manager's global/project columns). */
-export function readLayerStates(cwd: string): { global: Record<string, SkillState>; project: Record<string, SkillState> } {
-  const g = readJson(globalSettingsPath(NAMESPACE));
-  const p = readJson(projectSettingsPath(cwd, NAMESPACE));
-  return { global: normalizeStates(g?.states), project: normalizeStates(p?.states) };
-}
-
-/**
- * Set (or clear with `undefined`) one field of one skill at one scope, leaving
- * every other key in that layer file untouched.
- */
-export function writeSkillState(
-  cwd: string,
-  scope: "global" | "project",
-  name: string,
-  field: keyof SkillState,
-  value: boolean | undefined,
-): void {
-  const file = scope === "global" ? globalSettingsPath(NAMESPACE) : projectSettingsPath(cwd, NAMESPACE);
-  const layer = readJson(file) ?? {};
-  const states = normalizeStates(layer.states);
-  const next: SkillState = { ...(states[name] ?? {}) };
-  if (value === undefined) delete next[field];
-  else next[field] = value;
-  if (Object.keys(next).length === 0) delete states[name];
-  else states[name] = next;
-  writeJson(file, { ...layer, states });
-}

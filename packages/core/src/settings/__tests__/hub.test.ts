@@ -94,6 +94,20 @@ const engineFile = () => join(home, ".unipi", "config", NS, "config.json");
 const readEngine = () => JSON.parse(readFileSync(engineFile(), "utf8"));
 
 describe("hub interactions (instant apply)", () => {
+  it("opens with an initial filter; first Esc clears it, second closes", () => {
+    closed = 0;
+    const hub = new SettingsHub({ cwd, modelCatalog: () => CATALOG, initialFilter: "count" });
+    hub.onClose = () => { closed++; };
+    const labels = () => (hub as unknown as { visibleRows: () => { kind: string; label: string }[] }).visibleRows().filter((r) => r.kind === "field").map((r) => r.label);
+    assert.deepEqual(labels(), ["Count"]);
+    assert.match(hub.render(100).join("\n"), /\/ count/);
+    hub.handleInput("\x1b");
+    assert.ok(labels().length > 1, "filter cleared");
+    assert.equal(closed, 0);
+    hub.handleInput("\x1b");
+    assert.equal(closed, 1);
+  });
+
   it("space toggles a boolean instantly and writes the engine file", () => {
     const hub = makeHub();
     jumpTo(hub, "Flag");
@@ -1188,11 +1202,10 @@ describe("regression: Utility badge section renders each row exactly once", () =
     }
   });
 
-  it("same after scrolling through the section (no search filter)", () => {
+  it("same after scrolling through the filtered section", () => {
     registerBadgeSection();
     const hub = makeHub();
     hub.handleInput("/"); hub.handleInput("badge"); hub.handleInput("\r");
-    hub.handleInput("\x1b"); // apply empty search → full list
     for (let i = 0; i < 12; i++) hub.handleInput("\x1b[B"); // scroll deep
     for (let i = 0; i < 14; i++) hub.handleInput("\x1b[A"); // scroll back
     const c = counts(hub, 78);

@@ -17,6 +17,12 @@ export interface TaggedItem {
 // ─── 4-tier priority ─────────────────────────────────────────────────
 
 /**
+ * UniPi commands that supersede a same-named pi built-in: typing the bare
+ * name ranks the unipi command FIRST (`/settings` → `/unipi:settings`).
+ */
+export const PREFERRED_OVER_BUILTIN = new Set(["settings"]);
+
+/**
  * Compute the match-quality tier for an autocomplete item.
  *
  *   Tier 0 — Base command exact match: full `item.value` equals the query.
@@ -38,6 +44,8 @@ export function crossItemPriority(
 
   const q = query.toLowerCase();
 
+  // Tier -1: a unipi command that supersedes the same-named built-in
+  if (isUnipi && short === q && PREFERRED_OVER_BUILTIN.has(q)) return -1;
   // Tier 0: exact full-value match
   if (full === q) return 0;
   // Tier 1: unipi short-name exact match

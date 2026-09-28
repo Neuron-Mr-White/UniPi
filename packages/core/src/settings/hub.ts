@@ -84,6 +84,8 @@ export interface SettingsHubDeps {
   readonly runAction?: (command: string) => void | Promise<void>;
   /** Terminal rows for viewport sizing (tests inject; default stdout.rows). */
   readonly terminalRows?: () => number;
+  /** Open with this search filter applied (`/unipi:settings skills`). */
+  readonly initialFilter?: string;
 }
 
 type Mode = "list" | "search" | "input" | "model";
@@ -205,6 +207,11 @@ export class SettingsHub {
     this.runActionFn = deps.runAction;
     this.terminalRowsFn = deps.terminalRows ?? (() => process.stdout.rows ?? 40);
     this.buildRows();
+    if (deps.initialFilter?.trim()) {
+      this.filter = deps.initialFilter.trim();
+      this.cursor = 0;
+      this.normalizeCursor();
+    }
   }
 
   private valueOf(namespace: string): Record<string, unknown> {
@@ -510,6 +517,10 @@ export class SettingsHub {
     if (key === "search") {
       this.mode = "search";
       this.searchInput = new HubSearch("/");
+      if (this.filter) {
+        this.searchInput.input.setValue(this.filter);
+        this.searchInput.filter = this.filter;
+      }
       return;
     }
     // Recovery keys (omp principle: defaults are always one key away).
@@ -526,6 +537,7 @@ export class SettingsHub {
     }
     if (key === "back") {
       if (this.pageStack.length > 0) this.popPage();
+      else if (this.filter) this.exitSearch(); // first Esc clears an applied filter
       else this.onClose();
       return;
     }
@@ -1072,6 +1084,8 @@ export class SettingsHub {
 
     if (this.mode === "search" && this.searchInput) {
       for (const l of this.searchInput.input.render(Math.max(8, inner - 2))) body.push(this.exactRow(` ${l}`, inner));
+    } else if (this.filter) {
+      body.push(this.exactRow(dim(` / ${this.filter}  · / edit · esc clear`), inner));
     }
 
     const visible = this.visibleRows();

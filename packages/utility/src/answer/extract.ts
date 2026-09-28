@@ -44,20 +44,19 @@ export function extractQuestions(text: string): string[] {
   return out;
 }
 
-export const TEMPLATE_HEADER = "# Write each answer after its A<n>: line (multi-line is fine). Empty = skip. Lines starting with # are ignored.";
-
+/** Q/A pairs, nothing else in the buffer; no questions → an empty buffer. */
 export function buildTemplate(questions: readonly string[]): string {
-  if (questions.length === 0) return `${TEMPLATE_HEADER}\n\nA1: `;
-  return [TEMPLATE_HEADER, "", ...questions.flatMap((q, i) => [`Q${i + 1}. ${q}`, `A${i + 1}: `, ""])].join("\n").trimEnd() + " ";
+  if (questions.length === 0) return "";
+  return questions.flatMap((q, i) => [`Q${i + 1}. ${q}`, `A${i + 1}: `, ""]).join("\n").trimEnd() + " ";
 }
 
 /** Answers by question index (0-based); missing/empty → "". */
 export function parseTemplate(text: string, count: number): string[] {
-  const answers: string[] = Array.from({ length: Math.max(count, 1) }, () => "");
+  if (count === 0) return [text.trim()];
+  const answers: string[] = Array.from({ length: count }, () => "");
   let current = -1;
   const buf: string[][] = answers.map(() => []);
   for (const line of text.split("\n")) {
-    if (line.startsWith("#")) continue;
     if (/^Q\d+\.\s/.test(line)) {
       current = -1;
       continue;

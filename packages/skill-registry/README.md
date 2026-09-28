@@ -6,28 +6,19 @@ Decides which skills the agent sees: per-project on/off, a vault of extra skills
 
 | Command | Description |
 |---------|-------------|
-| `/unipi:skills` | The skill manager (also `/unipi:settings` → Skills → Manage skills…) |
+| `/unipi:skills` | Opens `/unipi:settings` filtered to the Skills rows |
 
-## The skill manager
+## Managing skills
 
-One row per skill, grouped by where it lives: vault, project, user, UniPi, packages. Each row shows what applies and which layer set it:
+Every skill pi loaded is a row in the settings hub, grouped by where it lives: project, user, vault, UniPi, packages. Each row is one choice:
 
-```
-● coffee-sandbox        on · listed     g:–  p:on
-◐ ponytail-audit        on · unlisted   g:on/unl  p:–
-○ aws-deploy            off             g:–  p:–
-```
+| Value | Meaning |
+|-------|---------|
+| `on · listed` | In the system prompt and runnable (default, except vault skills) |
+| `on · unlisted` | Left out of the system prompt; still runs with `/skill:name` |
+| `off` | Removed from the session, `/skill:name` included (default for vault skills) |
 
-| Key | Action |
-|-----|--------|
-| `space` | Turn the skill on/off at the scope you're editing |
-| `d` | Listed ↔ unlisted (unlisted skills still work with `/skill:name`) |
-| `g` | Switch the edited scope: project ↔ global |
-| `p` | Turn the skill proxy on/off |
-| `enter` | Show the description and path |
-| `/` | Search |
-
-Both toggles cycle the edited layer: *unset → set → opposite → unset*, so a project can override the global choice or go back to inheriting it.
+It's the ordinary hub: ↑↓ to move, Space cycles the value, Enter opens the list, `g` switches between the global and the project scope (a project can override the global choice; `d` goes back to inheriting), `/` edits the search, Esc clears the search and a second Esc closes.
 
 ## Skill proxy
 

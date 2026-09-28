@@ -34,13 +34,12 @@ describe("extractQuestions", () => {
 });
 
 describe("template round-trip", () => {
-  it("parses multi-line answers and ignores comment lines", () => {
+  it("is only Q/A pairs, and parses multi-line answers (a # line is kept as text)", () => {
     const qs = ["Start?", "Change mode?", "Where?"];
-    const t = buildTemplate(qs)
-      .replace("A1: ", "A1: yes, go\nand commit per phase")
-      .replace("A3: ", "A3: # ignored\n");
-    const answers = parseTemplate(t.replace("A3: # ignored", "A3: in the dva model"), 3);
-    assert.deepEqual(answers, ["yes, go\nand commit per phase", "", "in the dva model"]);
+    const t = buildTemplate(qs);
+    assert.equal(t, "Q1. Start?\nA1: \n\nQ2. Change mode?\nA2: \n\nQ3. Where?\nA3: ");
+    const filled = t.replace("A1: ", "A1: yes, go\n# and commit per phase").replace("A3: ", "A3: in the dva model");
+    assert.deepEqual(parseTemplate(filled, 3), ["yes, go\n# and commit per phase", "", "in the dva model"]);
   });
 
   it("composes quoted answers and lists the skipped ones", () => {
@@ -50,7 +49,8 @@ describe("template round-trip", () => {
   });
 
   it("handles a reply with no questions as free text", () => {
-    assert.equal(parseTemplate(buildTemplate([]).replace("A1: ", "A1: just do it"), 0)[0], "just do it");
+    assert.equal(buildTemplate([]), "");
+    assert.equal(parseTemplate("just do it\n", 0)[0], "just do it");
     assert.equal(composeAnswers([], ["just do it"]), "just do it");
   });
 });

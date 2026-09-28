@@ -6,17 +6,18 @@
  *      ones; the vault is mounted via resources_discover and stays off until
  *      a scope turns a skill on.
  *   2. exposure: off (bundled stripped) | all | judged (see src/judge.ts).
- * Plus /unipi:skills — the manager overlay — and the reveal event kanboard
+ * Plus /unipi:skills — the settings hub opened on the Skills rows (one row per
+ * skill, kept current from the live catalog) — and the reveal event kanboard
  * uses to surface a skill mid-session.
  */
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, HUB_OVERLAY_OPTIONS, MODULES, registerCommandRunner, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, MODULES, openSettingsHub, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRegistry, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, type CatalogSkill } from "./src/registry.js";
-import { readSkillsSettings } from "./src/settings.js";
+import { readSkillsSettings, registerSkillsSettings } from "./src/settings.js";
 import { listVaultSkills, vaultDir } from "./src/vault.js";
 import {
   decideTurn,
@@ -29,7 +30,6 @@ import {
   toEntry,
   type SessionSkillsState,
 } from "./src/judge.js";
-import { renderSkillsPanel } from "./src/panel.js";
 
 export { SKILLS_JUDGED_ENTRY, SKILLS_REVEALED_ENTRY } from "./src/judge.js";
 
@@ -66,32 +66,30 @@ export default function skillRegistry(pi: ExtensionAPI) {
     return [...byName.values()];
   };
 
-  const openManager = async (ctx: ExtensionContext) => {
-    if (!ctx.hasUI) {
-      ctx.ui?.notify?.("/unipi:skills needs the interactive TUI", "warning");
-      return;
-    }
-    await ctx.ui.custom<null>(
-      renderSkillsPanel({
-        cwd: ctx.cwd ?? process.cwd(),
-        vault: vaultDir(),
-        skills: allSkills,
-        terminalRows: process.stdout.rows,
-        // An explicit change re-judges on the next prompt (one deliberate
-        // prefix change instead of a stale frozen set).
-        onChange: () => {
-          if (state) state.judged = false;
-        },
-      }),
-      HUB_OVERLAY_OPTIONS,
-    ).catch(() => undefined);
+  /** Keep the hub's per-skill rows in step with what pi actually loaded. */
+  let registeredNames = "";
+  const refreshSkillRows = (cwd: string) => {
+    const skills = allSkills();
+    const names = skills.map((sk) => sk.name).sort().join(",");
+    if (names === registeredNames) return;
+    registeredNames = names;
+    registerSkillsSettings(skills, cwd, vaultDir());
   };
 
   pi.registerCommand("unipi:skills", {
-    description: "Manage skills — on/off per global or project scope, listed or not, and the skill vault",
-    handler: async (_args, ctx) => openManager(ctx),
+    description: "Manage skills — on/off per global or project scope, listed or not, and the skill vault (opens /unipi:settings on Skills)",
+    handler: async (_args, ctx) => {
+      refreshSkillRows(ctx.cwd ?? process.cwd());
+      await openSettingsHub(ctx, {
+        filter: "skills",
+        // An explicit change re-judges on the next prompt (one deliberate
+        // prefix change instead of a stale frozen set).
+        onChanged: (ns) => {
+          if (ns === "skills" && state) state.judged = false;
+        },
+      });
+    },
   });
-  registerCommandRunner("unipi:skills-manage", async (raw: unknown) => openManager(raw as ExtensionContext));
 
   // The vault is always mounted so toggles apply without /reload; while the
   // proxy is off, vault skills are filtered out below (and /skill:name blocked).
@@ -107,6 +105,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     try {
       state = restoreState(ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());
+      refreshSkillRows(ctx.cwd ?? process.cwd());
       emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { name: MODULES.SKILL_REGISTRY, version: VERSION, commands: ["unipi:skills"], tools: [] });
     } catch {
       // never block startup
@@ -146,6 +145,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
       const options = event.systemPromptOptions;
       const catalog = (options.skills ?? []) as unknown as CatalogSkill[];
       lastCatalog = catalog;
+      refreshSkillRows(cwd);
       const settings = readSkillsSettings(cwd);
 
       const vault = vaultDir();

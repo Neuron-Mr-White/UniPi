@@ -421,3 +421,14 @@ describe("edge cases", () => {
     expect(values(sorted)).toEqual(["unipi:brainstorm", "work"]);
   });
 });
+
+describe("unipi commands that supersede a built-in", () => {
+  it("/settings lists /unipi:settings before pi's own /settings", () => {
+    const sorted = sortTaggedItems([tagged("settings", false), tagged("unipi:settings", true)], "settings");
+    expect(values(sorted)).toEqual(["unipi:settings", "settings"]);
+  });
+  it("other exact built-ins still come first", () => {
+    const sorted = sortTaggedItems([tagged("model", false), tagged("unipi:model", true)], "model");
+    expect(values(sorted)).toEqual(["model", "unipi:model"]);
+  });
+});

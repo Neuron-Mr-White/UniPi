@@ -124,7 +124,7 @@ export function registerAnswerCommand(pi: ExtensionAPI): void {
       if (method === "editor") {
         const title = questions.length
           ? `Answer ${questions.length} question${questions.length === 1 ? "" : "s"} — Tab next answer · Ctrl+G your editor`
-          : "No questions found — write your reply (Ctrl+G opens your editor)";
+          : "Reply to the last message (no questions found) — Ctrl+G your editor";
         const text = await answerEditor(ctx, title, buildTemplate(questions));
         if (text === undefined) return;
         message = composeAnswers(questions, parseTemplate(text, questions.length));

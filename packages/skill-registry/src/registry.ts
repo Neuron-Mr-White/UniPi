@@ -54,10 +54,8 @@ export interface EffectiveState {
 }
 
 export function effectiveState(state: SkillState | undefined, source: SkillSource): EffectiveState {
-  return {
-    enabled: state?.enabled ?? source !== "vault",
-    discoverable: state?.discoverable ?? true,
-  };
+  const s = state ?? (source === "vault" ? "off" : "on");
+  return { enabled: s !== "off", discoverable: s === "on" };
 }
 
 export interface RegistryResult<T> {
