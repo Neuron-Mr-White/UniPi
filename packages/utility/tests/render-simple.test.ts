@@ -16,6 +16,7 @@ import {
   noteGroupBreak,
   installSimpleGroupEvents,
   anchorAssistant,
+  applyMessageOrder,
   type GroupCall,
   type RowFn,
   type SummaryFn,
@@ -332,15 +333,14 @@ describe("installSimpleGroupEvents (simple mode)", () => {
     const c1 = w.renderCall!({ file_path: "/repo/f1" } as never, theme, mk("1"));
     done(w, "1");
     // a message that only thinks, then calls another tool: same group
-    pi.emit("message_update", { assistantMessageEvent: { type: "thinking_delta", delta: "hmm" } });
-    pi.emit("message_update", { assistantMessageEvent: { type: "text_delta", delta: "  " } });
+    pi.emit("message_update", { message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }, { type: "text", text: "  " }] } });
     pi.emit("message_end", { message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall" }] } });
     const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
     done(w, "2");
     assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
     assert.deepEqual((c2 as any).render(160), []);
     // visible text streams in: next call starts a fresh group
-    pi.emit("message_update", { assistantMessageEvent: { type: "text_delta", delta: "Reading one more." } });
+    pi.emit("message_end", { message: { role: "assistant", content: [{ type: "text", text: "Reading one more." }] } });
     const c3 = w.renderCall!({ file_path: "/repo/f3" } as never, theme, mk("3"));
     done(w, "3");
     assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
@@ -385,5 +385,33 @@ describe("row alignment", () => {
     const [line] = (c as any).render(40);
     assert.ok(line.startsWith(" └ • Read"));
     assert.ok(line.length <= 40);
+  });
+});
+
+describe("applyMessageOrder (text before a call opens a group)", () => {
+  beforeEach(() => resetSimpleGroups());
+  const w = () => simpleWrapTool({ ...base, name: "read" } as never) as typeof base;
+  const mk = (id: string) => ({ expanded: false, cwd: "/repo", args: { file_path: `/repo/${id}` }, toolCallId: id }) as never;
+  const done = (wr: any, id: string) =>
+    wr.renderResult!({ isError: false, content: [{ type: "text", text: "a" }] } as never, { expanded: false, isPartial: false } as never, theme, mk(id));
+
+  it("text + call in the SAME message splits even when the event lands after the row rendered", () => {
+    const wr = w();
+    const a = wr.renderCall!({ file_path: "/repo/a" } as never, theme, mk("a")); done(wr, "a");
+    const b = wr.renderCall!({ file_path: "/repo/b" } as never, theme, mk("b")); done(wr, "b");
+    // live case: pi already rendered b in a's group, then the message_update arrives
+    applyMessageOrder({ content: [{ type: "text", text: "Now searching." }, { type: "toolCall", id: "b" }] });
+    assert.match((a as any).render(160)[0], /^ └ • Read \(\.\/a\)/);
+    assert.match((b as any).render(160)[0], /^ └ • Read \(\.\/b\)/);
+    // later calls without text stay with b
+    const c = wr.renderCall!({ file_path: "/repo/c" } as never, theme, mk("c")); done(wr, "c");
+    assert.deepEqual((b as any).render(160), [" └ • Read 2 files"]);
+    assert.deepEqual((c as any).render(160), []);
+  });
+
+  it("thinking-only / whitespace text never splits; ending text breaks the next call", () => {
+    assert.equal(applyMessageOrder({ content: [{ type: "thinking", thinking: "x" }, { type: "toolCall", id: "q" }] }), false);
+    assert.equal(applyMessageOrder({ content: [{ type: "text", text: "  " }, { type: "toolCall", id: "r" }] }), false);
+    assert.equal(applyMessageOrder({ content: [{ type: "toolCall", id: "s" }, { type: "text", text: "done" }] }), true);
   });
 });

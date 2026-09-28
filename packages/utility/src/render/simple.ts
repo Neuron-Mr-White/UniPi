@@ -152,12 +152,17 @@ export function installSimpleGroupEvents(pi: {
   registerMarkdownTransformer?: (fn: (markdown: string, context: { messageType: string }) => string) => void;
 }): void {
   try {
-    // Break the group the moment visible assistant text streams in — message_end
-    // fires only after that message's tool rows rendered (one group too late).
-    // Thinking deltas and tool-call-only messages never break a group.
+    // Groups follow the message's own block order: visible text before a tool
+    // call starts a new group at that call; thinking and tool-only messages
+    // never break. Extension events can land after pi already rendered the
+    // row, so a late signal re-splits the group (markBreakBefore).
     pi.on("message_update", (event: any) => {
-      const e = event?.assistantMessageEvent;
-      if (e?.type === "text_delta" && typeof e.delta === "string" && e.delta.trim()) noteGroupBreak();
+      const msg = event?.message ?? event?.assistantMessageEvent?.partial;
+      if (msg?.role === "assistant") applyMessageOrder(msg);
+    });
+    pi.on("message_end", (event: any) => {
+      const msg = event?.message;
+      if (msg?.role === "assistant" && applyMessageOrder(msg)) noteGroupBreak();
     });
     pi.on("message_start", (event: any) => {
       if (event?.message?.role === "user") noteGroupBreak();
@@ -180,6 +185,42 @@ export function anchorAssistant(markdown: string): string {
   if (!body || body.startsWith("● ")) return markdown;
   if (/^(#{1,6}\s|[-*+]\s|>|\||```|~~~|\d+[.)]\s|<|---|\*\*\*|___)/.test(body)) return markdown;
   return `${lead}● ${body}`;
+}
+
+/** Tool calls that must open a new group (text came right before them). */
+const breakBefore = new Set<string>();
+
+/**
+ * Walk an assistant message in block order; every tool call preceded by
+ * visible text opens a new group. Returns true when the message ends with
+ * visible text (the next tool call, in a later message, opens a new group).
+ */
+export function applyMessageOrder(msg: { content?: unknown }): boolean {
+  let sawText = false;
+  for (const c of Array.isArray(msg.content) ? msg.content : []) {
+    if (c?.type === "text" && typeof c.text === "string" && c.text.trim()) sawText = true;
+    else if (c?.type === "toolCall" && typeof c.id === "string") {
+      if (sawText) markBreakBefore(c.id);
+      sawText = false;
+    }
+  }
+  return sawText;
+}
+
+/** Start a new group at `id`; if its row already joined an older group, split it off. */
+export function markBreakBefore(id: string): void {
+  if (breakBefore.has(id)) return;
+  breakBefore.add(id);
+  const rec = byId.get(id);
+  if (!rec) return;
+  const old = rec.group;
+  const at = old.indexOf(rec);
+  if (at <= 0) return;
+  const moved = old.splice(at);
+  for (const r of moved) r.group = moved;
+  if (currentGroup === old) currentGroup = moved;
+  for (const r of old) touch(r);
+  for (const r of moved) touch(r);
 }
 
 /** Visible assistant text (whitespace-only text blocks don't count). */
@@ -384,6 +425,7 @@ export const simpleWrapped = new WeakSet<object>();
 /** Test hook: clear the module-level group registry. */
 export function resetSimpleGroups(): void {
   byId.clear();
+  breakBefore.clear();
   currentGroup = [];
   textBreakPending = false;
 }
@@ -399,7 +441,7 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
     if (ctx.expanded && def.renderCall) return def.renderCall(args, theme, ctx);
     let rec = byId.get(ctx.toolCallId);
     if (!rec) {
-      if (textBreakPending) {
+      if (textBreakPending || (breakBefore.has(ctx.toolCallId) && currentGroup.length > 0)) {
         currentGroup = [];
         textBreakPending = false;
       }
@@ -410,10 +452,10 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       for (const r of currentGroup) touch(r);
     }
     rec.args = args ?? rec.args;
-    const group = rec.group;
     const paint = (width: number): string[] => {
+      // Read the group live: a late text signal can move this row to a new group.
       const rows = planGroupRows(
-        group.map(toGroupCall),
+        rec!.group.map(toGroupCall),
         (call, o) =>
           simpleToolLine(theme, call.name, call.target, { running: o.running, failed: o.failed, meta: call.meta, connector: o.connector, width }),
         (s) => {
