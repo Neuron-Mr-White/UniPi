@@ -39,6 +39,17 @@ Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, n
 
 Either way, one message is sent that quotes each question above its answer; empty answers are listed as not answered.
 
+## Pasted images and files
+
+Paste a screenshot (Ctrl+V), drag a file into the terminal, or paste a path, and the path in the editor becomes a token: `[Image #1]` for PNG/JPEG/GIF/WebP, `[File #2]` for documents (PDF, text, office files, archives, media). A chip row above the editor lists what's attached, with small previews in terminals that can draw images (Kitty, Ghostty, iTerm2, WezTerm).
+
+When you send:
+- Images go to the model as real images, in the order their tokens appear.
+- File tokens become `[File #2: /path/to/file]` so the agent can read them.
+- A line under your message in the transcript shows what was attached; the model doesn't see it.
+
+Delete a token to drop its attachment. Only paths that arrive by paste, drop or Ctrl+V are converted; a path you type stays text. Settings → Utility → Attachments turns this or the previews off.
+
 ## Model cache
 
 On every session start, utility writes pi's live model list (models with credentials) to `~/.unipi/config/models-cache.json`, with each model's input and output modalities. The settings hub pickers and kanboard read it; `readModelCache()` / `filterModels()` in `@pi-unipi/core` give the same list to any module.

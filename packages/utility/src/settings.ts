@@ -31,9 +31,18 @@ export interface AnswerSettings {
   port: number;
 }
 
+/** Pasted / dropped file handling. */
+export interface AttachmentSettings {
+  /** Turn pasted image/file paths into [Image #N] / [File #N] attachments. */
+  enabled: boolean;
+  /** Small inline previews where the terminal can draw images. */
+  preview: boolean;
+}
+
 export interface UtilSettings {
   rename: RenameSettings;
   answer: AnswerSettings;
+  attachments: AttachmentSettings;
 }
 
 export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
@@ -45,9 +54,12 @@ export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
 
 export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "editor", port: 0 };
 
+export const DEFAULT_ATTACHMENT_SETTINGS: AttachmentSettings = { enabled: true, preview: true };
+
 const DEFAULT_SETTINGS: UtilSettings = {
   rename: { ...DEFAULT_RENAME_SETTINGS },
   answer: { ...DEFAULT_ANSWER_SETTINGS },
+  attachments: { ...DEFAULT_ATTACHMENT_SETTINGS },
 };
 
 const UTIL_SETTINGS_FILE = ".unipi/config/util-settings.json";
@@ -83,6 +95,14 @@ registerSettings({
           description: "/unipi:answer editor|web overrides it per use",
         },
         { key: "answer.port", type: "number", label: "Web form port", min: 0, max: 65535, zeroLabel: "any free port (47321 over SSH)", description: "Fix it to keep one ssh -L forward working" },
+      ],
+    },
+    {
+      title: "Attachments",
+      description: "Pasted, dropped or Ctrl+V'd files",
+      fields: [
+        { key: "attachments.enabled", type: "boolean", label: "Attach pasted files", description: "Turn pasted image/file paths into [Image #N] / [File #N]; images are sent as images" },
+        { key: "attachments.preview", type: "boolean", label: "Inline previews", description: "Small previews above the editor and in the transcript (Kitty, Ghostty, iTerm2, WezTerm)" },
       ],
     },
     decisionModelSection({ title: "Session name — Decision model" }),
@@ -143,6 +163,7 @@ function importLegacyUtilSettings(): void {
 export function normalizeSettings(parsed: unknown): UtilSettings {
   const p = (parsed ?? {}) as { rename?: Record<string, unknown>; badge?: Record<string, unknown>; answer?: Record<string, unknown> };
   const answer = p.answer ?? {};
+  const att = (p as { attachments?: Record<string, unknown> }).attachments ?? {};
   const rename = p.rename ?? {};
   const badge = p.badge ?? {};
   const bool = (v: unknown, legacy: unknown, d: boolean) => typeof v === "boolean" ? v : typeof legacy === "boolean" ? legacy : d;
@@ -157,6 +178,10 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
     answer: {
       method: answer.method === "web" ? "web" : "editor",
       port: typeof answer.port === "number" && answer.port >= 0 && answer.port <= 65535 ? Math.floor(answer.port) : DEFAULT_ANSWER_SETTINGS.port,
+    },
+    attachments: {
+      enabled: typeof att.enabled === "boolean" ? att.enabled : DEFAULT_ATTACHMENT_SETTINGS.enabled,
+      preview: typeof att.preview === "boolean" ? att.preview : DEFAULT_ATTACHMENT_SETTINGS.preview,
     },
   };
 }

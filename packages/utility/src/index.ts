@@ -4,6 +4,7 @@
  * - /unipi:settings — the unified settings hub
  * - /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor, /unipi:answer
  * - Automatic session naming (jev gate + isolated one-tool session) + Herdr sync
+ * - Pasted images/files → [Image #N] / [File #N] attachments
  * - The shared model cache (~/.unipi/config/models-cache.json)
  */
 
@@ -25,6 +26,7 @@ import {
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerAnswerCommand } from "./answer/index.js";
+import { registerAttachments } from "./attach/index.js";
 import "./settings.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -74,6 +76,7 @@ export default function (pi: ExtensionAPI) {
   registerUtilityCommands(pi);
   registerAutoRename(pi);
   registerAnswerCommand(pi);
+  registerAttachments(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     try {
