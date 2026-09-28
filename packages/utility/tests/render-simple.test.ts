@@ -262,18 +262,18 @@ describe("simpleWrapTool", () => {
     const res = (n: number) => ({ isError: false, content: [{ type: "text", text: "x\n".repeat(n) }] }) as never;
     // both running: summary so far + live latest row
     const mid = (c2 as { render: (w: number) => string[] }).render(160);
-    assert.deepEqual(mid, [" └ • Reading (./f2) …"]);
+    assert.deepEqual(mid, [" ├ • Reading 2 files", " └ • Reading (./f2) …"]);
     wrapped.renderResult!(res(1), { expanded: false, isPartial: true } as never, theme, mk("1"));
     wrapped.renderResult!(res(1), { expanded: false, isPartial: false } as never, theme, mk("1"));
     // one done, one still running: c1 shows the ├ summary, c2 the └ live row
     const during1 = (c1 as { render: (w: number) => string[] }).render(160);
     const during2 = (c2 as { render: (w: number) => string[] }).render(160);
-    assert.deepEqual(during1, [" ├ • Reading 2 files"]);
-    assert.deepEqual(during2, [" └ • Reading (./f2) …"]);
+    assert.deepEqual(during1, []);
+    assert.deepEqual(during2, [" ├ • Reading 2 files", " └ • Reading (./f2) …"]);
     wrapped.renderResult!(res(1), { expanded: false, isPartial: false } as never, theme, mk("2"));
     // both done: single packed summary row
-    assert.deepEqual((c1 as { render: (w: number) => string[] }).render(160), [" └ • Read 2 files"]);
-    assert.deepEqual((c2 as { render: (w: number) => string[] }).render(160), []);
+    assert.deepEqual((c1 as { render: (w: number) => string[] }).render(160), []);
+    assert.deepEqual((c2 as { render: (w: number) => string[] }).render(160), [" └ • Read 2 files"]);
   });
 
   it("assistant text breaks the group (noteGroupBreak)", () => {
@@ -337,13 +337,13 @@ describe("installSimpleGroupEvents (simple mode)", () => {
     pi.emit("message_end", { message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall" }] } });
     const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
     done(w, "2");
-    assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
-    assert.deepEqual((c2 as any).render(160), []);
+    assert.deepEqual((c1 as any).render(160), []);
+    assert.deepEqual((c2 as any).render(160), [" └ • Read 2 files"]);
     // visible text streams in: next call starts a fresh group
     pi.emit("message_end", { message: { role: "assistant", content: [{ type: "text", text: "Reading one more." }] } });
     const c3 = w.renderCall!({ file_path: "/repo/f3" } as never, theme, mk("3"));
     done(w, "3");
-    assert.deepEqual((c1 as any).render(160), [" └ • Read 2 files"]);
+    assert.deepEqual((c2 as any).render(160), [" └ • Read 2 files"]);
     assert.match((c3 as any).render(160)[0], /^ └ • Read \(\.\/f3\)/);
   });
 
@@ -405,13 +405,30 @@ describe("applyMessageOrder (text before a call opens a group)", () => {
     assert.match((b as any).render(160)[0], /^ └ • Read \(\.\/b\)/);
     // later calls without text stay with b
     const c = wr.renderCall!({ file_path: "/repo/c" } as never, theme, mk("c")); done(wr, "c");
-    assert.deepEqual((b as any).render(160), [" └ • Read 2 files"]);
-    assert.deepEqual((c as any).render(160), []);
+    assert.deepEqual((b as any).render(160), []);
+    assert.deepEqual((c as any).render(160), [" └ • Read 2 files"]);
   });
 
   it("thinking-only / whitespace text never splits; ending text breaks the next call", () => {
     assert.equal(applyMessageOrder({ content: [{ type: "thinking", thinking: "x" }, { type: "toolCall", id: "q" }] }), false);
     assert.equal(applyMessageOrder({ content: [{ type: "text", text: "  " }, { type: "toolCall", id: "r" }] }), false);
     assert.equal(applyMessageOrder({ content: [{ type: "toolCall", id: "s" }, { type: "text", text: "done" }] }), true);
+  });
+});
+
+describe("group painted in one component (no pi blank line between rows)", () => {
+  beforeEach(() => resetSimpleGroups());
+  it("a bash row after reads: earlier components render nothing, the last paints ├ summary + └ row contiguously", () => {
+    const rd = simpleWrapTool({ ...base, name: "read" } as never) as typeof base;
+    const sh = simpleWrapTool({ ...base, name: "bash" } as never) as typeof base;
+    const mk = (id: string, args: object) => ({ expanded: false, cwd: "/repo", args, toolCallId: id }) as never;
+    const ok = (w: any, id: string, args: object, n = 1) =>
+      w.renderResult!({ isError: false, content: [{ type: "text", text: Array(n).fill("x").join("\n") }] } as never, { expanded: false, isPartial: false } as never, theme, mk(id, args));
+    const a = rd.renderCall!({ file_path: "/repo/a" } as never, theme, mk("a", { file_path: "/repo/a" })); ok(rd, "a", { file_path: "/repo/a" });
+    const b = rd.renderCall!({ file_path: "/repo/b" } as never, theme, mk("b", { file_path: "/repo/b" })); ok(rd, "b", { file_path: "/repo/b" });
+    const c = sh.renderCall!({ command: "ls -la" } as never, theme, mk("c", { command: "ls -la" })); ok(sh, "c", { command: "ls -la" }, 9);
+    assert.deepEqual((a as any).render(160), []);
+    assert.deepEqual((b as any).render(160), []);
+    assert.deepEqual((c as any).render(160), [" ├ • Read 2 files", " └ • Ran  ls -la · 9 output lines"]);
   });
 });

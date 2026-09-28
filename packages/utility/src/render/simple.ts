@@ -465,8 +465,13 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
           return `${theme.fg("borderMuted", `${s.connector} `)}${marker(theme, s.running, s.failedCount === s.total)} ${label}${failure}${attempts}`;
         },
       );
-      const mine = rows.find((r) => r.id === rec!.id);
-      return mine?.row ? [mine.row] : [];
+      // pi prefixes every non-empty self-rendered tool with a blank line
+      // (tool-execution.js render: lines.push("")), so one row per component
+      // leaves gaps inside a group. Paint the whole group in its LAST component;
+      // earlier ones render [] (pi skips the blank for empty components).
+      const g = rec!.group;
+      if (g[g.length - 1] !== rec) return [];
+      return rows.map((r) => r.row).filter((r): r is string => !!r);
     };
     return new SimpleLine(paint);
   };
