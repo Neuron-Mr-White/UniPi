@@ -10,7 +10,7 @@ The settings hub, automatic session naming, image tools, pasted-file attachments
 | `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
 | `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
 | `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
-| `/unipi:answer` (`editor`\|`web`) | Answer the questions in the agent's last reply without scrolling |
+| `/unipi:answer` (`reply`\|`questions`\|`web`) | Answer the agent's last reply without scrolling back and forth |
 
 Skill exposure and the skill manager live in `@pi-unipi/skill-registry` (`/unipi:skills`).
 
@@ -30,14 +30,15 @@ Inside Herdr, the name is also shown as the pane title and, while the tab still 
 
 Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, naming model (defaults to the session model), Herdr sync, and a **Rename now** action.
 
-## Answering questions
+## Answering the last reply
 
-`/unipi:answer` collects every question in the agent's last reply (lines with a `?`, outside code blocks) and opens one of two answer screens. Settings → Utility → Answer picks the default; `/unipi:answer editor` or `/unipi:answer web` overrides it once.
+`/unipi:answer` opens one of three screens (Settings → Utility → Answer picks the default; `/unipi:answer reply|questions|web` overrides it once, with suggestions as you type):
 
-- **editor** — pi's editor holding only `Q1. … / A1:` pairs (empty when the reply has no questions). The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends.
-- **web** — a local page with the full reply on the left and one box per question on the right (plus a free-text note). It listens on 127.0.0.1 behind a random URL. Over SSH it doesn't open a browser; it shows the `ssh -L` command to forward the port (47321 unless you set one) and the URL to open on your own machine.
+- **reply** (default) — like `/unipi:btw`, it takes the place of the input area: the agent's last reply in a scrollable view on top, a fixed input box below. ↑↓ scroll the reply (while your answer is one line), PgUp/PgDn page, Shift+Enter adds a line, Enter sends it as your next message, Esc goes back to the normal editor with your draft. If the reply asks questions, Tab switches to **questions**.
+- **questions** — pi's editor holding only `Q1. … / A1:` pairs for every question in the reply (lines with a `?`, outside code blocks). The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends one message that quotes each question above its answer; empty answers are listed as not answered.
+- **web** — a local page with the full reply on the left and one box per question on the right (plus a free-text note), on 127.0.0.1 behind a random URL. Over SSH (detected from `SSH_CONNECTION`/`SSH_TTY`) it doesn't open a browser: it shows the `ssh -L` command, built from this machine's hostname and the port (47321 unless you set one), and the URL to open on your own machine.
 
-Either way, one message is sent that quotes each question above its answer; empty answers are listed as not answered.
+When a reply asks questions, a line above the editor says so (`2 questions in the reply — /unipi:answer questions …`) until you send anything. Settings → Utility → Answer → Questions hint turns it off.
 
 ## Pasted images and files
 

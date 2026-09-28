@@ -26,7 +26,10 @@ export interface RenameSettings {
 
 /** /unipi:answer defaults. */
 export interface AnswerSettings {
-  method: "editor" | "web";
+  /** reply = fixed input under the scrollable reply; questions = Q/A template; web = browser form. */
+  method: "reply" | "questions" | "web";
+  /** Show "N questions in the reply — /unipi:answer questions…" above the editor. */
+  hint: boolean;
   /** Web form port; 0 = any free port (47321 is tried first over SSH). */
   port: number;
 }
@@ -58,7 +61,7 @@ export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
 };
 
 
-export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "editor", port: 0 };
+export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "reply", hint: true, port: 0 };
 
 export const DEFAULT_ATTACHMENT_SETTINGS: AttachmentSettings = { enabled: true, preview: true };
 
@@ -98,11 +101,13 @@ registerSettings({
           type: "enum",
           label: "Default method",
           options: [
-            { value: "editor", label: "editor (Q/A template)" },
+            { value: "reply", label: "reply (fixed input under the scrollable reply)" },
+            { value: "questions", label: "questions (one answer per question)" },
             { value: "web", label: "web form (browser)" },
           ],
-          description: "/unipi:answer editor|web overrides it per use",
+          description: "/unipi:answer reply|questions|web overrides it per use",
         },
+        { key: "answer.hint", type: "boolean", label: "Questions hint", description: "After a reply that asks questions, show a hint above the editor" },
         { key: "answer.port", type: "number", label: "Web form port", min: 0, max: 65535, zeroLabel: "any free port (47321 over SSH)", description: "Fix it to keep one ssh -L forward working" },
       ],
     },
@@ -203,7 +208,9 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
       herdrSync: bool(rename.herdrSync, badge.herdrSync, DEFAULT_RENAME_SETTINGS.herdrSync),
     },
     answer: {
-      method: answer.method === "web" ? "web" : "editor",
+      // "editor" was the old name of the questions template.
+      method: answer.method === "web" ? "web" : answer.method === "questions" || answer.method === "editor" ? "questions" : "reply",
+      hint: typeof answer.hint === "boolean" ? answer.hint : DEFAULT_ANSWER_SETTINGS.hint,
       port: typeof answer.port === "number" && answer.port >= 0 && answer.port <= 65535 ? Math.floor(answer.port) : DEFAULT_ANSWER_SETTINGS.port,
     },
     attachments: {

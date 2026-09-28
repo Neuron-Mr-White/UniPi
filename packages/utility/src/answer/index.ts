@@ -13,6 +13,7 @@ import { hostname } from "node:os";
 import { ExtensionEditorComponent, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { boxInnerWidth, frameOverlay, HUB_OVERLAY_OPTIONS, hubBoldText as bold, hubDimText as dim, hubExactRow, hubTheme, setHubTheme, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
 import { readUtilSettings } from "../settings.js";
+import { ReplyPanel, type ReplyPanelResult } from "./reply.js";
 import { buildTemplate, composeAnswers, extractQuestions, messageText, parseTemplate } from "./extract.js";
 import { startWebForm, type WebAnswer } from "./web.js";
 
@@ -102,9 +103,54 @@ function waitForWeb(ctx: ExtensionContext, lines: string[], result: Promise<WebA
   }, HUB_OVERLAY_OPTIONS);
 }
 
+const METHODS = [
+  { value: "reply", label: "reply", description: "The reply above a fixed input box — scroll it while you type" },
+  { value: "questions", label: "questions", description: "One answer per detected question (Q/A template)" },
+  { value: "web", label: "web", description: "Answer the questions in a browser form (works over SSH)" },
+];
+
+/** Reply panel in place of the input area (no overlay: pi restores the editor). */
+function replyPanel(ctx: ExtensionContext, reply: string, questions: number): Promise<ReplyPanelResult> {
+  return ctx.ui.custom<ReplyPanelResult>((tui, theme, _kb, done) => new ReplyPanel(tui, theme, reply, questions, done));
+}
+
+const HINT_WIDGET = "unipi-answer-hint";
+
 export function registerAnswerCommand(pi: ExtensionAPI): void {
+  // "N questions detected" hint above the editor after a reply that asks some;
+  // cleared as soon as the user sends anything.
+  let hinted = false;
+  pi.on("agent_end", (_event, ctx) => {
+    try {
+      if (!ctx.hasUI || !readUtilSettings(ctx.cwd).answer.hint) return;
+      const n = extractQuestions(lastAssistantText(ctx)).length;
+      if (n === 0) return;
+      ctx.ui.setWidget(HINT_WIDGET, [dim(`  ${n} question${n === 1 ? "" : "s"} in the reply — /unipi:answer questions to answer them one by one`)], { placement: "aboveEditor" });
+      hinted = true;
+    } catch {
+      // hint is cosmetic
+    }
+  });
+  const clearHint = (ctx: ExtensionContext) => {
+    if (!hinted) return;
+    hinted = false;
+    try {
+      ctx.ui.setWidget(HINT_WIDGET, undefined);
+    } catch {
+      // ignore
+    }
+  };
+  // Any new turn (typed, /unipi:answer, or an extension message) clears it.
+  pi.on("input", (_event, ctx) => clearHint(ctx));
+  pi.on("before_agent_start", (_event, ctx) => clearHint(ctx));
+
   pi.registerCommand(`${UNIPI_PREFIX}${UTILITY_COMMANDS.ANSWER}`, {
-    description: "Answer the questions in the last reply — editor template or web form (/unipi:answer editor|web)",
+    description: "Answer the last reply — a fixed input box under the scrollable reply (reply), per question (questions), or a browser form (web)",
+    getArgumentCompletions: (prefix: string) => {
+      const needle = (prefix ?? "").trim().toLowerCase();
+      const matches = METHODS.filter((m) => m.value.startsWith(needle));
+      return matches.length > 0 ? matches : null;
+    },
     handler: async (args: string, ctx: ExtensionContext) => {
       if (!ctx.hasUI) {
         ctx.ui?.notify?.("/unipi:answer needs the interactive TUI", "warning");
@@ -118,17 +164,25 @@ export function registerAnswerCommand(pi: ExtensionAPI): void {
       const questions = extractQuestions(reply);
       const settings = readUtilSettings(ctx.cwd).answer;
       const arg = args.trim().toLowerCase();
-      const method = arg === "web" || arg === "editor" ? arg : settings.method;
+      let method: "reply" | "questions" | "web" =
+        arg === "web" ? "web" : arg === "questions" || arg === "editor" ? "questions" : arg === "reply" ? "reply" : settings.method;
+      if (method !== "reply" && questions.length === 0 && method === "web") method = "reply";
 
       let message: string | undefined;
-      if (method === "editor") {
+      if (method === "reply") {
+        const result = await replyPanel(ctx, reply, questions.length);
+        if (result.type === "cancel") return;
+        if (result.type === "send") message = result.text;
+        else method = "questions";
+      }
+      if (method === "questions") {
         const title = questions.length
           ? `Answer ${questions.length} question${questions.length === 1 ? "" : "s"} — Tab next answer · Ctrl+G your editor`
           : "Reply to the last message (no questions found) — Ctrl+G your editor";
         const text = await answerEditor(ctx, title, buildTemplate(questions));
         if (text === undefined) return;
         message = composeAnswers(questions, parseTemplate(text, questions.length));
-      } else {
+      } else if (method === "web") {
         const ssh = isSsh();
         const port = settings.port > 0 ? settings.port : ssh ? SSH_DEFAULT_PORT : 0;
         const form = await startWebForm(reply, questions, port).catch(() => startWebForm(reply, questions, 0));

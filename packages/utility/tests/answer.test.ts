@@ -83,3 +83,32 @@ describe("web form", () => {
     assert.equal(isSsh({}), false);
   });
 });
+
+describe("reply panel", () => {
+  it("keeps the input fixed while ↑/↓ scroll the reply; Enter sends; Tab switches to questions", async () => {
+    const { ReplyPanel } = await import("../src/answer/reply.ts");
+    const { initTheme } = await import("@earendil-works/pi-coding-agent");
+    initTheme("dark");
+    const { Theme } = await import("@earendil-works/pi-coding-agent");
+    void Theme;
+    const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as never;
+    const tui = { requestRender: () => {}, terminal: { rows: 40, columns: 80 } } as never;
+    const reply = Array.from({ length: 80 }, (_, i) => `line ${i + 1}`).join("\n\n") + "\n\nWhich port?";
+    let result: unknown;
+    const panel = new ReplyPanel(tui, theme, reply, 1, (r) => (result = r));
+    const plain = () => panel.render(80).map((l) => l.replace(/\x1b\[[0-9;_]*[a-zA-Z]/g, ""));
+    const first = plain();
+    assert.match(first.join("\n"), /Which port\?/, "starts at the end of the reply");
+    const inputRow = first.findIndex((l) => /─{5,}.*lines/.test(l));
+    for (let i = 0; i < 30; i++) panel.handleInput("\x1b[A");
+    const scrolled = plain();
+    assert.doesNotMatch(scrolled.join("\n"), /Which port\?/, "scrolled up");
+    assert.equal(scrolled.findIndex((l) => /─{5,}.*lines/.test(l)), inputRow, "input box did not move");
+    for (const ch of "8080") panel.handleInput(ch);
+    panel.handleInput("\r");
+    assert.deepEqual(result, { type: "send", text: "8080" });
+    const p2 = new ReplyPanel(tui, theme, reply, 1, (r) => (result = r));
+    p2.handleInput("\t");
+    assert.deepEqual(result, { type: "questions", draft: "" });
+  });
+});
