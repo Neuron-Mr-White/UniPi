@@ -38,7 +38,7 @@ function run(s: PickerState, keys: string[]): { result: PickerResult | undefined
   return { result, picker };
 }
 
-test("row order: active pinned, Fusion, recent, preset, then the rest of the catalogue", () => {
+test("row order: active pinned, Fusion, recent, then the preset", () => {
   const { picker } = run(state(), []);
   assert.deepEqual(picker.rows(), [
     { kind: "model", key: "b/glm" },
@@ -48,11 +48,30 @@ test("row order: active pinned, Fusion, recent, preset, then the rest of the cat
   ]);
 });
 
-test("every catalogue model is listed even with a preset", () => {
-  const { picker } = run(state({ models: [...state().models, { key: "d/other", name: "Other", provider: "d", reasoning: false }] }), []);
-  assert.deepEqual(picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), [
-    "b/glm", "fusion", "c/mini", "a/opus", "d/other",
+test("with a preset, models outside it are listed only while searching", () => {
+  const withOther = state({ models: [...state().models, { key: "d/other", name: "Other", provider: "d", reasoning: false }] });
+  assert.deepEqual(run(withOther, []).picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), [
+    "b/glm", "fusion", "c/mini", "a/opus",
   ]);
+  assert.deepEqual(run(withOther, ["o", "t", "h"]).picker.rows().map((r) => (r.kind === "model" ? r.key : "fusion")), [
+    "b/glm", "fusion", "d/other",
+  ]);
+});
+
+test("lead/sidekick dropdowns offer only their preset list; typing searches the catalogue", () => {
+  const withOther = state({
+    models: [...state().models, { key: "d/other", name: "Other", provider: "d", reasoning: false }],
+    active: { kind: "fusion", lead: "a/opus", sidekick: "b/glm" },
+  });
+  const lead = run(withOther, [TAB]).picker.render(140).join("\n");
+  assert.match(lead, /▸ Opus/);
+  assert.doesNotMatch(lead, /Other|── all models ──/, "only the curated lead list");
+  const side = run(withOther, [TAB, TAB]).picker.render(140).join("\n");
+  assert.match(side, /GLM Flash/);
+  assert.match(side, /Mini/);
+  assert.doesNotMatch(side, /Other/);
+  const searched = run(withOther, [TAB, "o", "t", "h", ENTER, ENTER]);
+  assert.equal(searched.result?.type === "fusion" && searched.result.lead, "d/other");
 });
 
 test("active fusion pins the Fusion row first", () => {
@@ -200,9 +219,10 @@ test("ambiguous names get a provider prefix; unique names do not", () => {
   ];
   const s = state({
     models,
-    fusionLeads: ["zai/glm-5.3"],
-    fusionSidekicks: ["zai/glm-5.3"],
-    fusionDefault: { lead: "zai/glm-5.3", sidekick: "zai/glm-5.3" },
+    // No preset → the whole catalogue is listed, which is what this checks.
+    fusionLeads: [],
+    fusionSidekicks: [],
+    fusionDefault: {},
     recent: [],
     active: undefined,
     currentModelKey: undefined,

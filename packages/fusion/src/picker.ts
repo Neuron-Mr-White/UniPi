@@ -279,8 +279,9 @@ export class ModelPicker {
       ...this.state.fusionLeads,
       ...this.state.fusionSidekicks,
     ];
-    // The whole catalogue always follows; the preset only controls ordering.
-    ordered.push(...this.state.models.map((m) => m.key));
+    // The preset IS the list; the rest of the catalogue appears only while
+    // searching (or when nothing is curated yet, so Fusion stays usable).
+    if (this.search.length > 0 || !this.hasPreset()) ordered.push(...this.state.models.map((m) => m.key));
     for (const key of ordered) {
       if (seen.has(key) || !this.modelsByKey.has(key)) continue;
       if (!this.matchesSearch(key)) continue;
@@ -299,13 +300,20 @@ export class ModelPicker {
     return this.rows()[this.selected];
   }
 
-  /** Dropdown entries: curated keys first, a dim separator, then the rest of
-   *  the catalogue — or the whole catalogue when the list is empty (Fusion is
-   *  usable without curating presets). */
+  /** Whether any lead/sidekick is curated (and still in the catalogue). */
+  private hasPreset(): boolean {
+    return [...this.state.fusionLeads, ...this.state.fusionSidekicks].some((k) => this.modelsByKey.has(k));
+  }
+
+  /** Dropdown entries: only the curated list for this side. Typing searches
+   *  the whole catalogue (curated matches first, a dim separator, the rest);
+   *  an empty list offers the whole catalogue (Fusion works uncurated). */
   private dropdownEntries(): Array<ModelKey | "sep"> {
     const source = this.focus === "lead" ? this.state.fusionLeads : this.state.fusionSidekicks;
-    const curated = source.filter((k) => this.modelsByKey.has(k) && this.matchesSearch(k));
-    const rest = this.state.models.map((m) => m.key).filter((k) => this.modelsByKey.has(k) && !curated.includes(k) && this.matchesSearch(k));
+    const listed = source.filter((k) => this.modelsByKey.has(k));
+    const curated = listed.filter((k) => this.matchesSearch(k));
+    if (listed.length > 0 && this.search.length === 0) return curated;
+    const rest = this.state.models.map((m) => m.key).filter((k) => !curated.includes(k) && this.matchesSearch(k));
     if (curated.length === 0) return rest;
     if (rest.length === 0) return curated;
     return [...curated, "sep", ...rest];
@@ -325,6 +333,7 @@ export class ModelPicker {
     if (matchesKey(data, Key.escape)) {
       if (inDropdown) {
         this.focus = "effort";
+        this.search = "";
         this.changed();
         return;
       }
@@ -363,10 +372,18 @@ export class ModelPicker {
         }
       } else if (matchesKey(data, Key.enter) || data === "\r") {
         this.applyDropdown(items);
+        this.search = "";
         if (this.fusionAvailable()) this.focus = "effort";
         else this.openMissing();
+      } else if (matchesKey(data, Key.backspace) || data === "\x7f") {
+        // Typing in a dropdown searches the whole catalogue.
+        this.search = this.search.slice(0, -1);
+        this.dropdownIndex = 0;
       } else {
-        return;
+        const ch = printable(data);
+        if (ch === undefined || ch === " ") return;
+        this.search += ch;
+        this.dropdownIndex = 0;
       }
       this.changed();
       return;
@@ -622,11 +639,16 @@ export class ModelPicker {
     const selectableIdx = new Map<ModelKey, number>();
     items.forEach((key, i) => selectableIdx.set(key, i));
     const firstEntryOfSel = items.map((key) => entries.indexOf(key));
-    const win = 6;
+    const win = 8;
     const selStart = Math.max(0, Math.min(this.dropdownIndex - Math.floor(win / 2), items.length - win));
     const sliceStart = firstEntryOfSel[selStart] ?? 0;
     const slice = entries.slice(sliceStart, sliceStart + win);
-    return slice.map((entry) => {
+    const above = sliceStart;
+    const below = Math.max(0, entries.length - (sliceStart + slice.length));
+    const more = (n: number, dir: string) => truncateToWidth(`${indent}${t.fg("dim", `${dir} ${String(n)} more`)}`, Math.max(1, width - 1));
+    return [
+      ...(above > 0 ? [more(above, "↑")] : []),
+      ...slice.map((entry) => {
       if (entry === "sep") return truncateToWidth(`${indent}${t.fg("dim", "── all models ──")}`, Math.max(1, width - 1));
       const selIdx = selectableIdx.get(entry) ?? 0;
       const isCur = selIdx === this.dropdownIndex;
@@ -635,7 +657,9 @@ export class ModelPicker {
       const label = isCur ? t.fg("accent", t.bold(this.nameOf(entry, 28))) : t.fg("text", this.nameOf(entry, 28));
       const star = isSet ? t.fg("dim", " *") : "";
       return truncateToWidth(`${indent}${glyph} ${label}${star}`, Math.max(1, width - 1));
-    });
+      }),
+      ...(below > 0 ? [more(below, "↓")] : []),
+    ];
   }
 
   private renderPricePanel(row: Row | undefined, width: number): string[] {
@@ -711,7 +735,7 @@ export class ModelPicker {
     if (row?.kind === "fusion" && !this.fusionAvailable()) {
       parts.push("↑↓ select", `enter pick ${this.lead === undefined ? "lead" : "sidekick"}`, "esc cancel");
     } else if (row?.kind === "fusion" && this.focus !== "effort") {
-      parts.push("↑↓ select", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "alt+enter set default", "esc collapse");
+      parts.push("↑↓ select", "type to search all models", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "alt+enter set default", "esc collapse");
     } else {
       parts.push("↑↓ select");
       if (row?.kind === "fusion") parts.push("tab lead");
