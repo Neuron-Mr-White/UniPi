@@ -1,7 +1,7 @@
 /**
  * @pi-unipi/ask-user — settings (namespace `ask-user`, /unipi:settings → Ask User)
  *
- *   enabled        — give the agent the ask_user tool
+ *   enabled        — give the agent the ask_user tool (OFF by default)
  *   notifyOnAsk    — notification when the agent stops to ask
  *   escape         — stop: Esc stops the agent's turn (Devin)
  *                    send: Esc sends what's answered, the rest as skipped
@@ -27,7 +27,7 @@ export interface AskUserSettings {
 }
 
 export const DEFAULT_SETTINGS: AskUserSettings = {
-  enabled: true,
+  enabled: false,
   notifyOnAsk: true,
   escape: "stop",
   digitAdvance: true,

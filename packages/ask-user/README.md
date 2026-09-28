@@ -1,6 +1,6 @@
 # @pi-unipi/ask-user
 
-The `ask_user` tool: when the agent needs a decision from you, it asks 1–4 multiple-choice questions in one dialog and waits. Modelled on Devin's question UI.
+The `ask_user` tool (off by default — enable it in `/unipi:settings` → Ask User): when the agent needs a decision from you, it asks 1–4 multiple-choice questions in one dialog and waits. Modelled on Devin's question UI.
 
 ```
 ── Planet ✓ · Foods 2 · Last book ─────────────────────────────────────
@@ -63,7 +63,7 @@ The result is `User answered your questions:` followed by a JSON object keyed by
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| Enable ask_user | on | Give the agent the tool |
+| Enable ask_user | **off** | Give the agent the tool; when off, the agent is told to ask in its reply instead |
 | Notify when asked | on | Send a notification while the agent waits for you |
 | Questions per call | 4 | How many questions one dialog may hold (1–4; the tool description updates in new sessions) |
 | Esc | stop the agent's turn | Or: send what's answered, the rest as skipped |

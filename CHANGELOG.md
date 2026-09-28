@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.7] — 2026-09-28
+
+### Changed
+
+- `ask-user`: `ask_user` is **off by default** (Settings → Ask User). When off, the agent is told to ask in its reply instead.
+
 ## [3.0.0-alpha.6] — 2026-09-28
 
 ### Changed
 
-- `ask-user`: **rebuilt after Devin's question UI.** One `ask_user` call carries 1–4 questions (`questions: [{ header, question, options, multi_select }]`) with an automatic "Other" choice. Header chips show progress; digits pick; typing on "Other" needs no Enter and the text stays editable; ←→ switch questions; Enter moves on and submits on the last; unanswered questions are sent as skipped; `?` tells the agent you want to clarify first; Esc stops the turn. Pasted/dropped paths and Ctrl+V images in "Other" become `[Image #N]` / `[File #N]` and images reach the model. The transcript shows a short answer tree. The older single-question form is still accepted (`timeout` is ignored). Settings (/unipi:settings → Ask User): questions per call, what Esc does (stop the turn or send what's answered), whether number keys move on, "Other" agent-decided / always / never, and the "not ready" line — the old "allowed formats" switches are gone. Esc and `end_turn` options stop the turn cleanly instead of aborting it.
+- `ask-user`: **rebuilt after Devin's question UI**. One `ask_user` call carries 1–4 questions (`questions: [{ header, question, options, multi_select }]`) with an automatic "Other" choice. Header chips show progress; digits pick; typing on "Other" needs no Enter and the text stays editable; ←→ switch questions; Enter moves on and submits on the last; unanswered questions are sent as skipped; `?` tells the agent you want to clarify first; Esc stops the turn. Pasted/dropped paths and Ctrl+V images in "Other" become `[Image #N]` / `[File #N]` and images reach the model. The transcript shows a short answer tree. The older single-question form is still accepted (`timeout` is ignored). Settings (/unipi:settings → Ask User): questions per call, what Esc does (stop the turn or send what's answered), whether number keys move on, "Other" agent-decided / always / never, and the "not ready" line — the old "allowed formats" switches are gone. Esc and `end_turn` options stop the turn cleanly instead of aborting it.
 
 ### Fixed
 

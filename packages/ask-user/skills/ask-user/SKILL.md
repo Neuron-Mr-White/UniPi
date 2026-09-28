@@ -10,7 +10,7 @@ allowed-tools:
 
 # Ask User
 
-`ask_user` shows one dialog with 1–4 questions and waits for the answers.
+`ask_user` shows one dialog with 1–4 questions and waits for the answers. If the tool call says it's turned off, ask in your reply — don't retry it.
 
 ## When to ask
 
