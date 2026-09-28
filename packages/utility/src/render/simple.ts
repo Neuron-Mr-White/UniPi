@@ -148,23 +148,70 @@ export function noteGroupBreak(): void {
  * cells; any text row breaks the run).
  */
 export function installSimpleGroupEvents(pi: {
-  on: (event: any, handler: (event: any) => void) => void;
+  on: (event: any, handler: (event: any, ctx?: any) => void) => void;
+  registerMarkdownTransformer?: (fn: (markdown: string, context: { messageType: string }) => string) => void;
 }): void {
   try {
-    pi.on("message_end", (event: any) => {
-      const msg = event?.message;
-      if (!msg) return;
-      if (msg.role === "user") {
-        noteGroupBreak();
-        return;
-      }
-      if (msg.role === "assistant" && (msg.content ?? []).some((c: any) => c.type === "text" && c.text?.trim())) {
-        noteGroupBreak();
-      }
+    // Break the group the moment visible assistant text streams in — message_end
+    // fires only after that message's tool rows rendered (one group too late).
+    // Thinking deltas and tool-call-only messages never break a group.
+    pi.on("message_update", (event: any) => {
+      const e = event?.assistantMessageEvent;
+      if (e?.type === "text_delta" && typeof e.delta === "string" && e.delta.trim()) noteGroupBreak();
+    });
+    pi.on("message_start", (event: any) => {
+      if (event?.message?.role === "user") noteGroupBreak();
     });
   } catch {
     // grouping is cosmetic; never block load
   }
+  hideThinking(pi);
+}
+
+/**
+ * mcode anchors assistant prose with `● ` (view.ts:736 anchorAssistantLines).
+ * Through the markdown transformer we can only prefix the first line, and only
+ * when it's a plain paragraph — a heading/list/quote/table/fence would stop
+ * being markdown if we prefixed it, so those are left alone.
+ */
+export function anchorAssistant(markdown: string): string {
+  const lead = markdown.match(/^\s*/)?.[0] ?? "";
+  const body = markdown.slice(lead.length);
+  if (!body || body.startsWith("● ")) return markdown;
+  if (/^(#{1,6}\s|[-*+]\s|>|\||```|~~~|\d+[.)]\s|<|---|\*\*\*|___)/.test(body)) return markdown;
+  return `${lead}● ${body}`;
+}
+
+/** Visible assistant text (whitespace-only text blocks don't count). */
+export function messageHasText(msg: { content?: unknown }): boolean {
+  return Array.isArray(msg.content) && msg.content.some((c: any) => c?.type === "text" && typeof c.text === "string" && c.text.trim());
+}
+
+/**
+ * Simple mode shows no thinking at all, via public API only:
+ *  - collapsed thinking (pi `hideThinkingBlock`, Ctrl+T) renders its label as a
+ *    Text — an empty label renders zero lines (pi-tui Text.render);
+ *  - expanded thinking goes through the "assistant-thinking" markdown
+ *    transform — returning "" makes the Markdown render zero lines.
+ */
+function hideThinking(pi: {
+  on: (event: any, handler: (event: any, ctx?: any) => void) => void;
+  registerMarkdownTransformer?: (fn: (markdown: string, context: { messageType: string }) => string) => void;
+}): void {
+  try {
+    pi.registerMarkdownTransformer?.((markdown, context) => {
+      if (context?.messageType === "assistant-thinking") return "";
+      if (context?.messageType === "assistant") return anchorAssistant(markdown);
+      return markdown;
+    });
+  } catch {}
+  try {
+    pi.on("session_start", (_event: any, ctx: any) => {
+      try {
+        ctx?.ui?.setHiddenThinkingLabel?.("");
+      } catch {}
+    });
+  } catch {}
 }
 
 function touch(rec: CallRec): void {

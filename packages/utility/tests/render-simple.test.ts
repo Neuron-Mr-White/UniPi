@@ -14,6 +14,8 @@ import {
   planGroupRows,
   resetSimpleGroups,
   noteGroupBreak,
+  installSimpleGroupEvents,
+  anchorAssistant,
   type GroupCall,
   type RowFn,
   type SummaryFn,
@@ -286,5 +288,89 @@ describe("simpleWrapTool", () => {
     const l2 = (c2 as { render: (w: number) => string[] }).render(160)[0];
     assert.match(l1!, /└ • Read/);
     assert.match(l2!, /└ • Read/);
+  });
+});
+
+describe("installSimpleGroupEvents (simple mode)", () => {
+  beforeEach(() => resetSimpleGroups());
+
+  function fakePi() {
+    const handlers = new Map<string, Array<(e: any, ctx?: any) => void>>();
+    const transformers: Array<(md: string, c: { messageType: string }) => string> = [];
+    return {
+      handlers,
+      transformers,
+      on: (ev: string, h: (e: any, ctx?: any) => void) => handlers.set(ev, [...(handlers.get(ev) ?? []), h]),
+      registerMarkdownTransformer: (fn: (md: string, c: { messageType: string }) => string) => transformers.push(fn),
+      emit(ev: string, e: any, ctx?: any) {
+        for (const h of handlers.get(ev) ?? []) h(e, ctx);
+      },
+    };
+  }
+
+  const readDef = { ...base, name: "read" } as never;
+  const mk = (id: string) => ({ expanded: false, cwd: "/repo", args: { file_path: `/repo/f${id}` }, toolCallId: id }) as never;
+  const done = (w: any, id: string) =>
+    w.renderResult!({ isError: false, content: [{ type: "text", text: "a" }] } as never, { expanded: false, isPartial: false } as never, theme, mk(id));
+
+  it("hides thinking: empty hidden-thinking label + thinking markdown transformed to nothing", () => {
+    const pi = fakePi();
+    installSimpleGroupEvents(pi);
+    let label: string | undefined = "Thinking...";
+    pi.emit("session_start", {}, { ui: { setHiddenThinkingLabel: (l?: string) => { label = l; } } });
+    assert.equal(label, "");
+    assert.equal(pi.transformers.length, 1);
+    assert.equal(pi.transformers[0]!("deep thoughts", { messageType: "assistant-thinking" }), "");
+    assert.equal(pi.transformers[0]!("hello", { messageType: "assistant" }), "● hello");
+    assert.equal(pi.transformers[0]!("hi", { messageType: "user" }), "hi");
+  });
+
+  it("thinking-only / tool-only messages do not break the group; streamed text does", () => {
+    const pi = fakePi();
+    installSimpleGroupEvents(pi);
+    const w = simpleWrapTool(readDef) as typeof base;
+    const c1 = w.renderCall!({ file_path: "/repo/f1" } as never, theme, mk("1"));
+    done(w, "1");
+    // a message that only thinks, then calls another tool: same group
+    pi.emit("message_update", { assistantMessageEvent: { type: "thinking_delta", delta: "hmm" } });
+    pi.emit("message_update", { assistantMessageEvent: { type: "text_delta", delta: "  " } });
+    pi.emit("message_end", { message: { role: "assistant", content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall" }] } });
+    const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
+    done(w, "2");
+    assert.deepEqual((c1 as any).render(160), ["└ • Read 2 files"]);
+    assert.deepEqual((c2 as any).render(160), []);
+    // visible text streams in: next call starts a fresh group
+    pi.emit("message_update", { assistantMessageEvent: { type: "text_delta", delta: "Reading one more." } });
+    const c3 = w.renderCall!({ file_path: "/repo/f3" } as never, theme, mk("3"));
+    done(w, "3");
+    assert.deepEqual((c1 as any).render(160), ["└ • Read 2 files"]);
+    assert.match((c3 as any).render(160)[0], /^└ • Read \(\.\/f3\)/);
+  });
+
+  it("a new user message breaks the group", () => {
+    const pi = fakePi();
+    installSimpleGroupEvents(pi);
+    const w = simpleWrapTool(readDef) as typeof base;
+    const c1 = w.renderCall!({ file_path: "/repo/f1" } as never, theme, mk("1"));
+    done(w, "1");
+    pi.emit("message_start", { message: { role: "user", content: "next" } });
+    const c2 = w.renderCall!({ file_path: "/repo/f2" } as never, theme, mk("2"));
+    done(w, "2");
+    assert.match((c1 as any).render(160)[0], /^└ • Read \(\.\/f1\)/);
+    assert.match((c2 as any).render(160)[0], /^└ • Read \(\.\/f2\)/);
+  });
+});
+
+describe("anchorAssistant (mcode ● prefix)", () => {
+  it("prefixes a plain first paragraph once", () => {
+    assert.equal(anchorAssistant("I'll look.\n\nMore."), "● I'll look.\n\nMore.");
+    assert.equal(anchorAssistant("\nHi"), "\n● Hi");
+    assert.equal(anchorAssistant("● already"), "● already");
+    assert.equal(anchorAssistant(""), "");
+  });
+  it("leaves block syntax alone", () => {
+    for (const md of ["# Title", "- item", "1. one", "> quote", "| a | b |", "```ts\nx\n```", "---"]) {
+      assert.equal(anchorAssistant(md), md);
+    }
   });
 });
