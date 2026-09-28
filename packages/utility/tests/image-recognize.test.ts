@@ -9,8 +9,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { recognizeImage, type RecognizeOptions } from "../src/recognize.ts";
-import type { LoadedImage } from "../src/image-source.ts";
+import { recognizeImage, type RecognizeOptions } from "../src/image/recognize.ts";
+import type { LoadedImage } from "../src/image/source.ts";
 
 const IMAGE: LoadedImage = {
   data: "QUJD",

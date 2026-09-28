@@ -5,6 +5,7 @@
  * - /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor, /unipi:answer
  * - Automatic session naming (jev gate + isolated one-tool session) + Herdr sync
  * - Pasted images/files → [Image #N] / [File #N] attachments
+ * - Image tools: image_generate, image_edit, image_recognize
  * - The shared model cache (~/.unipi/config/models-cache.json)
  */
 
@@ -27,6 +28,7 @@ import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerAnswerCommand } from "./answer/index.js";
 import { registerAttachments } from "./attach/index.js";
+import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import "./settings.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -77,6 +79,7 @@ export default function (pi: ExtensionAPI) {
   registerAutoRename(pi);
   registerAnswerCommand(pi);
   registerAttachments(pi);
+  registerImage(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     try {
@@ -86,12 +89,17 @@ export default function (pi: ExtensionAPI) {
         commands: ALL_COMMANDS,
         tools: [],
       });
-      // Refresh the shared model cache from pi's live registry (models with
-      // credentials first; the full registry when nothing is authenticated).
+      // Refresh the shared model cache: image models first (their real
+      // modalities win over the chat registry's text-only view), then pi's
+      // live chat registry (models with credentials, else the full registry).
       const registry = ctx.modelRegistry as unknown as { getAvailable?: () => unknown[]; getAll?: () => unknown[] } | undefined;
       const available = registry?.getAvailable?.() ?? [];
-      const models = available.length > 0 ? available : registry?.getAll?.() ?? [];
-      if (models.length > 0) writeModelCache(chatModelsToCache(models));
+      const chat = chatModelsToCache(available.length > 0 ? available : registry?.getAll?.() ?? []);
+      const write = () => writeModelCache([...imageCatalogEntries(loadImageConfig(ctx.cwd)), ...chat]);
+      if (chat.length > 0) write();
+      void refreshImageModelCache().then((changed) => {
+        if (changed && chat.length > 0) write();
+      });
     } catch {
       // Best effort — never block session start.
     }

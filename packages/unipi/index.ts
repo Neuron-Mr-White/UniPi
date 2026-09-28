@@ -31,7 +31,6 @@ import compactor from "@pi-unipi/compactor";
 import footer from "@pi-unipi/footer";
 import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
-import image from "@pi-unipi/image";
 import fusion from "@pi-unipi/fusion";
 import watchdog from "@pi-unipi/watchdog";
 
@@ -68,7 +67,6 @@ export default function (pi: ExtensionAPI) {
   load("footer", footer);
   load("updater", updater);
   load("input-shortcuts", inputShortcuts);
-  load("image", image);
   load("fusion", fusion);
   load("watchdog", watchdog);
 }

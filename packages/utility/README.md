@@ -1,6 +1,6 @@
 # @pi-unipi/utility
 
-The settings hub, automatic session naming, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
+The settings hub, automatic session naming, image tools, pasted-file attachments, `/unipi:answer`, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
 
 ## Commands
 
@@ -14,7 +14,7 @@ The settings hub, automatic session naming, and a few maintenance commands. Also
 
 Skill exposure and the skill manager live in `@pi-unipi/skill-registry` (`/unipi:skills`).
 
-The main agent gets no tools from this package.
+The agent gets the three image tools (below) and nothing else from this package.
 
 ## Automatic session naming
 
@@ -49,6 +49,27 @@ When you send:
 - A line under your message in the transcript shows what was attached; the model doesn't see it.
 
 Delete a token to drop its attachment. Only paths that arrive by paste, drop or Ctrl+V are converted; a path you type stays text. Settings → Utility → Attachments turns this or the previews off.
+
+## Image tools
+
+| Tool | What it does |
+|------|--------------|
+| `image_generate` | Text → image |
+| `image_edit` | Image + text → image |
+| `image_recognize` | Image → text with a vision model; only offered while the session model can't see images itself |
+
+Settings → Image has one section per tool. Each model picker only lists models that fit: generation shows models whose output includes images, editing shows models that take an image and output one, recognition shows vision models. The list comes from the shared model cache: pi's registry, OpenRouter's image models (refreshed daily), and a few fal models when a fal key is set.
+
+How a model is called depends on its provider:
+
+| Model | Sent to | Key |
+|-------|---------|-----|
+| `openrouter/…` | OpenRouter (chat with image output) | Settings → Image → Keys, else pi's `/login`, else `OPENROUTER_API_KEY` |
+| `fal/…` | fal.run | Settings → Image → Keys, else `FAL_KEY` / `FAL_API_KEY` |
+| any other pi provider | that provider's endpoint (OpenAI images format) | pi's key for that provider |
+| anything, with a **custom endpoint** set | your base URL, model id sent as typed, format of your choice (OpenAI images, OpenRouter-style, fal) | the endpoint's own key |
+
+Defaults are FLUX.2 [klein] 4B on OpenRouter for both generation and editing, which is cheap and fast. Images are returned inline and saved to `~/.unipi/images/`. When a call fails, the tool reports it as a failure with the missing key or setting spelled out.
 
 ## Model cache
 

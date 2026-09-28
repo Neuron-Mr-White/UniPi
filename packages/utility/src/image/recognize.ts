@@ -1,12 +1,12 @@
 /**
- * @pi-unipi/image — Image recognition
+ * @pi-unipi/utility — image: Image recognition
  *
  * Sends an image plus a question to a vision-capable chat model. Providers
  * differ in how image parts are encoded, so the request is built per API
  * family (mirroring `packages/notify/summarize.ts`).
  */
 
-import type { LoadedImage } from "./image-source.js";
+import type { LoadedImage } from "./source.js";
 
 /** How long to wait for a vision response. Images are slow. */
 const DEFAULT_TIMEOUT_MS = 120_000;

@@ -33,7 +33,6 @@ pi install npm:@pi-unipi/unipi
 
 **[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Defaults to [wigolo](https://github.com/KnockOutEZ/wigolo), a local-first engine with multi-engine search and on-device reranking — $0/query, no API key. Plus a smart-fetch engine with browser-grade TLS fingerprinting. Paid providers as fallbacks, and auto-selection falls through when a provider is unavailable.
 
-**[Image](./packages/image/README.md)** — Generate images from a text prompt and analyze existing ones. 34 image models, plus vision analysis on any model that accepts image input, with a customizable system prompt.
 
 **[MCP](./packages/mcp/README.md)** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
 
@@ -116,7 +115,7 @@ Coexists triggers enhance behavior when packages are installed together. Workflo
 | `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
 | `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
 | `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
-| `image_generate` / `image_recognize` | image | Image generation and vision (recognize auto-hides while the session model has vision) |
+| `image_generate` / `image_edit` / `image_recognize` | utility | Image generation, editing and vision (recognize hides while the session model has vision) |
 | `notify_user` | notify | Push notifications |
 | `sidekick` / `read_subagent` | fusion | Delegate to the persistent sidekick and collect its report |
 | `bg_run` / `bg_status` / `bg_logs` / `bg_kill` / `bg_delegate` / `bg_result` | background-tasks | Long-running commands and background delegate agents |

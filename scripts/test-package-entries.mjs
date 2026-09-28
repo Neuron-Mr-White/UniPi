@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const packages = ["autocomplete", "footer", "image", "input-shortcuts", "mcp", "updater", "utility"];
+const packages = ["autocomplete", "footer", "input-shortcuts", "mcp", "updater", "utility"];
 const barrels = new Set(["footer", "updater"]);
 
 for (const name of packages) {

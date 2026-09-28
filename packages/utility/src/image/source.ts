@@ -1,5 +1,5 @@
 /**
- * @pi-unipi/image — Image input handling
+ * @pi-unipi/utility — image: Image input handling
  *
  * Accepts a local file path, a data: URL, or a raw base64 string and
  * normalizes it to the `{ data, mimeType }` shape pi-ai expects.

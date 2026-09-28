@@ -16,7 +16,7 @@ import {
   looksLikeBase64,
   mimeTypeFromExtension,
   parseDataUrl,
-} from "../src/image-source.ts";
+} from "../src/image/source.ts";
 
 /** Smallest valid PNG (1x1 transparent). */
 const PNG_BASE64 =
