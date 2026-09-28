@@ -25,7 +25,7 @@ describe("extractQuestions", () => {
     assert.deepEqual(extractQuestions(REPLY), [
       "Should I start Phase 1?",
       "Do you want your global skills mode changed now?",
-      "Where did you see the tag? A screenshot helps.",
+      "Where did you see the tag?",
     ]);
   });
   it("reads assistant content arrays", () => {
@@ -99,16 +99,33 @@ describe("reply panel", () => {
     const plain = () => panel.render(80).map((l) => l.replace(/\x1b\[[0-9;_]*[a-zA-Z]/g, ""));
     const first = plain();
     assert.match(first.join("\n"), /Which port\?/, "starts at the end of the reply");
-    const inputRow = first.findIndex((l) => /─{5,}.*lines/.test(l));
+    const inputRow = first.findIndex((l) => /send · shift/.test(l));
+    assert.ok(inputRow > 0);
+    assert.equal(first.filter((l) => /^─{20,}$/.test(l.trim())).length, 2, "only the input box's own two borders");
     for (let i = 0; i < 30; i++) panel.handleInput("\x1b[A");
     const scrolled = plain();
     assert.doesNotMatch(scrolled.join("\n"), /Which port\?/, "scrolled up");
-    assert.equal(scrolled.findIndex((l) => /─{5,}.*lines/.test(l)), inputRow, "input box did not move");
+    assert.equal(scrolled.findIndex((l) => /send · shift/.test(l)), inputRow, "input box did not move");
     for (const ch of "8080") panel.handleInput(ch);
+    panel.handleInput("\x1b[13;2u"); // shift+enter → newline
+    for (const ch of "tls") panel.handleInput(ch);
+    const before = plain().join("\n");
+    panel.handleInput("\x1b[A"); // typed text: ↑ moves the cursor, not the reply
+    assert.equal(plain().join("\n").includes("lines 1"), before.includes("lines 1"));
+    panel.handleInput("\x1b[1;3A"); // alt+↑ still scrolls
     panel.handleInput("\r");
-    assert.deepEqual(result, { type: "send", text: "8080" });
+    assert.deepEqual(result, { type: "send", text: "8080\ntls" });
     const p2 = new ReplyPanel(tui, theme, reply, 1, (r) => (result = r));
     p2.handleInput("\t");
     assert.deepEqual(result, { type: "questions", draft: "" });
+  });
+});
+
+describe("long questions", () => {
+  it("keeps a question that wraps over several lines whole, and splits sentences", () => {
+    const reply = "Some context first.\n\nIf you could look back from ten years in the future, what is the one thing\nyou hope you will understand about yourself, and that no amount of advice\nfrom anyone else could have handed to you?\n\n- Which port? And should I use TLS?\n\nSee https://x.dev/a?b=1 for details.";
+    const qs = extractQuestions(reply);
+    assert.equal(qs[0], "If you could look back from ten years in the future, what is the one thing you hope you will understand about yourself, and that no amount of advice from anyone else could have handed to you?");
+    assert.deepEqual(qs.slice(1), ["Which port?", "And should I use TLS?"]);
   });
 });

@@ -7,13 +7,15 @@
  * can read any part of a long reply while typing — nothing scrolls away.
  *
  *   ── /unipi:answer · reply ───────────── 3 questions · tab answers them one by one ──
- *   …the reply, markdown, scrolled with ↑↓ / PgUp PgDn…
- *   ─────────────────────────────────────────────────────── lines 12–40 of 88 ──
- *   ❭ your answer (multi-line: shift+enter)
- *   ↵ send · ↑↓ scroll · pgup/pgdn page · tab questions · esc back
+ *   …the reply, markdown…
+ *   ──────────────────────────────────────────────  (the input box's own top border)
+ *   your answer (multi-line: shift+enter)
+ *   ──────────────────────────────────────────────
+ *   ↵ send · ↑↓ scroll · alt+↑↓ / pgup pgdn scroll while typing · … · lines 12–40 of 88
  *
- * ↑/↓ scroll the reply while the input is one line; in a multi-line answer
- * they move the cursor (PgUp/PgDn still scroll).
+ * ↑/↓ scroll the reply while the input is EMPTY; once you type they belong to
+ * the input (cursor movement in a multi-line answer). Alt+↑/↓ and PgUp/PgDn
+ * always scroll.
  */
 
 import { Editor, Key, Markdown, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
@@ -84,15 +86,15 @@ export class ReplyPanel implements Component, Focusable {
     const title = " /unipi:answer · reply ";
     const qs = this.questionCount > 0 ? ` ${this.questionCount} question${this.questionCount === 1 ? "" : "s"} · tab answers them one by one ` : "";
     const top = `${t.fg("borderMuted", "──")}${t.fg("accent", title)}${t.fg("borderMuted", "─".repeat(Math.max(0, w - 2 - visibleWidth(title) - visibleWidth(qs))))}${t.fg("dim", qs)}`;
-    const pos = body.length > view ? ` lines ${this.scroll + 1}–${this.scroll + shown.length} of ${body.length} ` : "";
-    const mid = `${t.fg("borderMuted", "─".repeat(Math.max(0, w - visibleWidth(pos))))}${t.fg("dim", pos)}`;
-    const hint = t.fg("dim", `↵ send · shift+↵ newline · ↑↓ scroll · pgup/pgdn page${this.questionCount > 0 ? " · tab questions" : ""} · esc back`);
+    const pos = body.length > view ? ` · lines ${this.scroll + 1}–${this.scroll + shown.length} of ${body.length}` : "";
+    const scrollKeys = this.editor.getText() === "" ? "↑↓ scroll" : "alt+↑↓ scroll";
+    const hint = t.fg("dim", `↵ send · shift+↵ newline · ${scrollKeys} · pgup/pgdn page${this.questionCount > 0 ? " · tab questions" : ""} · esc back${pos}`);
 
+    // The input box draws its own top/bottom border — no extra rule above it.
     return [
       truncateToWidth(top, w, ""),
       ...shown.map((l) => truncateToWidth(l, w, "")),
       ...Array.from({ length: Math.max(0, view - shown.length) }, () => ""),
-      truncateToWidth(mid, w, ""),
       ...this.editor.render(w),
       truncateToWidth(hint, w, ""),
     ];
@@ -117,9 +119,12 @@ export class ReplyPanel implements Component, Focusable {
     const page = Math.max(1, this.viewport() - 2);
     if (matchesKey(data, Key.pageUp)) return this.scrollBy(-page);
     if (matchesKey(data, Key.pageDown)) return this.scrollBy(page);
-    const singleLine = this.editor.getLines().length <= 1;
-    if (singleLine && matchesKey(data, Key.up)) return this.scrollBy(-1);
-    if (singleLine && matchesKey(data, Key.down)) return this.scrollBy(1);
+    if (matchesKey(data, "alt+up")) return this.scrollBy(-1);
+    if (matchesKey(data, "alt+down")) return this.scrollBy(1);
+    // Plain ↑/↓ scroll only while nothing is typed; after that they are the input's.
+    const empty = this.editor.getText() === "";
+    if (empty && matchesKey(data, Key.up)) return this.scrollBy(-1);
+    if (empty && matchesKey(data, Key.down)) return this.scrollBy(1);
     this.editor.handleInput(data);
     this.tui.requestRender();
   }

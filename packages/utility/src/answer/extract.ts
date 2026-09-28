@@ -18,7 +18,7 @@ export function messageText(content: unknown): string {
     .join("\n");
 }
 
-function clean(line: string): string {
+function cleanLine(line: string): string {
   return line
     .replace(/^\s*(?:[-*+]|\d+[.)]|#{1,6}|>)\s+/, "")
     .replace(/\*\*|__|`/g, "")
@@ -26,20 +26,51 @@ function clean(line: string): string {
     .trim();
 }
 
+/**
+ * Questions in a reply. Lines are first joined into paragraphs (a question
+ * that wraps over several source lines stays whole), list items and headings
+ * each start their own paragraph, code blocks are skipped, and every sentence
+ * ending in "?" becomes one question — in full, never truncated.
+ */
 export function extractQuestions(text: string): string[] {
-  const out: string[] = [];
+  const paragraphs: string[] = [];
+  let current: string[] = [];
   let fenced = false;
+  const flush = () => {
+    if (current.length) paragraphs.push(current.join(" "));
+    current = [];
+  };
   for (const raw of text.split("\n")) {
     if (/^\s*(```|~~~)/.test(raw)) {
+      flush();
       fenced = !fenced;
       continue;
     }
-    if (fenced || !raw.includes("?")) continue;
-    if (/https?:\/\/\S*\?/.test(raw) && !/\?\s*$/.test(raw.replace(/https?:\/\/\S+/g, ""))) continue;
-    const q = clean(raw);
-    if (q.length < 4 || out.includes(q)) continue;
-    out.push(q.length > 400 ? `${q.slice(0, 399)}…` : q);
-    if (out.length >= MAX_QUESTIONS) break;
+    if (fenced) continue;
+    if (!raw.trim()) {
+      flush();
+      continue;
+    }
+    // A new list item / heading / quote starts a new paragraph.
+    if (/^\s*(?:[-*+]|\d+[.)]|#{1,6}|>)\s+/.test(raw)) flush();
+    current.push(raw);
+  }
+  flush();
+
+  const out: string[] = [];
+  for (const para of paragraphs) {
+    const clean = cleanLine(para);
+    if (!clean.includes("?")) continue;
+    // A "?" inside a URL (query string) is not a question: park URLs as tokens.
+    const urls: string[] = [];
+    const masked = clean.replace(/https?:\/\/\S+/g, (u) => `\u0000${urls.push(u) - 1}\u0000`);
+    if (!masked.includes("?")) continue;
+    for (const sentence of masked.match(/[^.!?]*(?:[.!](?!\s|$)[^.!?]*)*\?+/g) ?? []) {
+      const q = sentence.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => urls[Number(i)] ?? "").trim();
+      if (q.length < 4 || out.includes(q)) continue;
+      out.push(q);
+      if (out.length >= MAX_QUESTIONS) return out;
+    }
   }
   return out;
 }

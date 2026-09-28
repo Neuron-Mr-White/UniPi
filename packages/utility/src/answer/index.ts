@@ -11,6 +11,7 @@
 import { spawn } from "node:child_process";
 import { hostname } from "node:os";
 import { ExtensionEditorComponent, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { boxInnerWidth, frameOverlay, HUB_OVERLAY_OPTIONS, hubBoldText as bold, hubDimText as dim, hubExactRow, hubTheme, setHubTheme, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
 import { readUtilSettings } from "../settings.js";
 import { ReplyPanel, type ReplyPanelResult } from "./reply.js";
@@ -85,6 +86,7 @@ function waitForWeb(ctx: ExtensionContext, lines: string[], result: Promise<WebA
     setHubTheme(theme);
     void result.then((r) => done(r));
     return {
+      focused: true,
       render: (width: number) => {
         const inner = boxInnerWidth(width);
         return frameOverlay([...lines.map((l) => hubExactRow(`  ${l}`, inner)), hubExactRow(dim("  Waiting for your answers… esc cancels"), inner)], width, {
@@ -94,7 +96,8 @@ function waitForWeb(ctx: ExtensionContext, lines: string[], result: Promise<WebA
       },
       invalidate: () => tui.requestRender(),
       handleInput: (data: string) => {
-        if (data === "\x1b") {
+        // matchesKey: kitty-protocol terminals send Esc as a CSI sequence, not a bare \x1b.
+        if (matchesKey(data, Key.escape) || data === "\x1b" || data === "\x03") {
           cancel();
           done(null);
         }
