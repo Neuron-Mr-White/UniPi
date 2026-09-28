@@ -10,6 +10,7 @@ The settings hub, automatic session naming, and a few maintenance commands. Also
 | `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
 | `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
 | `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
+| `/unipi:answer` (`editor`\|`web`) | Answer the questions in the agent's last reply without scrolling |
 
 Skill exposure and the skill manager live in `@pi-unipi/skill-registry` (`/unipi:skills`).
 
@@ -28,6 +29,15 @@ A name you set yourself with pi's `/name` is never overwritten. Without a Decisi
 Inside Herdr, the name is also shown as the pane title and, while the tab still has its default number, the tab label.
 
 Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, naming model (defaults to the session model), Herdr sync, and a **Rename now** action.
+
+## Answering questions
+
+`/unipi:answer` collects every question in the agent's last reply (lines with a `?`, outside code blocks) and opens one of two answer screens. Settings → Utility → Answer picks the default; `/unipi:answer editor` or `/unipi:answer web` overrides it once.
+
+- **editor** — pi's editor, pre-filled with `Q1. … / A1:` pairs. The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends.
+- **web** — a local page with the full reply on the left and one box per question on the right (plus a free-text note). It listens on 127.0.0.1 behind a random URL. Over SSH it doesn't open a browser; it shows the `ssh -L` command to forward the port (47321 unless you set one) and the URL to open on your own machine.
+
+Either way, one message is sent that quotes each question above its answer; empty answers are listed as not answered.
 
 ## Model cache
 

@@ -24,8 +24,16 @@ export interface RenameSettings {
   herdrSync: boolean;
 }
 
+/** /unipi:answer defaults. */
+export interface AnswerSettings {
+  method: "editor" | "web";
+  /** Web form port; 0 = any free port (47321 is tried first over SSH). */
+  port: number;
+}
+
 export interface UtilSettings {
   rename: RenameSettings;
+  answer: AnswerSettings;
 }
 
 export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
@@ -35,8 +43,11 @@ export const DEFAULT_RENAME_SETTINGS: RenameSettings = {
 };
 
 
+export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "editor", port: 0 };
+
 const DEFAULT_SETTINGS: UtilSettings = {
   rename: { ...DEFAULT_RENAME_SETTINGS },
+  answer: { ...DEFAULT_ANSWER_SETTINGS },
 };
 
 const UTIL_SETTINGS_FILE = ".unipi/config/util-settings.json";
@@ -55,6 +66,23 @@ registerSettings({
         { key: "rename.model", type: "model", label: "Naming model", capability: "text", emptyLabel: "inherit (session model)", emptyOption: "inherit (session model)" },
         { key: "rename.herdrSync", type: "boolean", label: "Herdr sync", description: "Show the session name as the Herdr pane title and tab label" },
         { key: "rename.now", type: "action", label: "Rename now", description: "Name the session from the recent requests", command: "unipi:rename-now" },
+      ],
+    },
+    {
+      title: "Answer",
+      description: "/unipi:answer — answer the last reply's questions without scrolling",
+      fields: [
+        {
+          key: "answer.method",
+          type: "enum",
+          label: "Default method",
+          options: [
+            { value: "editor", label: "editor (Q/A template)" },
+            { value: "web", label: "web form (browser)" },
+          ],
+          description: "/unipi:answer editor|web overrides it per use",
+        },
+        { key: "answer.port", type: "number", label: "Web form port", min: 0, max: 65535, zeroLabel: "any free port (47321 over SSH)", description: "Fix it to keep one ssh -L forward working" },
       ],
     },
     decisionModelSection({ title: "Session name — Decision model" }),
@@ -113,7 +141,8 @@ function importLegacyUtilSettings(): void {
 
 /** Pure normalizer; maps legacy `badge.*` onto `rename.*` when rename is unset. */
 export function normalizeSettings(parsed: unknown): UtilSettings {
-  const p = (parsed ?? {}) as { rename?: Record<string, unknown>; badge?: Record<string, unknown> };
+  const p = (parsed ?? {}) as { rename?: Record<string, unknown>; badge?: Record<string, unknown>; answer?: Record<string, unknown> };
+  const answer = p.answer ?? {};
   const rename = p.rename ?? {};
   const badge = p.badge ?? {};
   const bool = (v: unknown, legacy: unknown, d: boolean) => typeof v === "boolean" ? v : typeof legacy === "boolean" ? legacy : d;
@@ -124,6 +153,10 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
       auto: bool(rename.auto, badge.autoGen, DEFAULT_RENAME_SETTINGS.auto),
       model: model === "inherit" ? "" : model,
       herdrSync: bool(rename.herdrSync, badge.herdrSync, DEFAULT_RENAME_SETTINGS.herdrSync),
+    },
+    answer: {
+      method: answer.method === "web" ? "web" : "editor",
+      port: typeof answer.port === "number" && answer.port >= 0 && answer.port <= 65535 ? Math.floor(answer.port) : DEFAULT_ANSWER_SETTINGS.port,
     },
   };
 }
