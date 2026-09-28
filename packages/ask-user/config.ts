@@ -1,55 +1,41 @@
 /**
- * @pi-unipi/ask-user — Config system
+ * @pi-unipi/ask-user — settings (namespace `ask-user`, /unipi:settings → Ask User)
  *
- * Reads/writes ask-user settings in ~/.pi/agent/settings.json
- * under the "unipi.askUser" key.
+ *   enabled        — give the agent the ask_user tool
+ *   notifyOnAsk    — notification when the agent stops to ask
+ *   escape         — stop: Esc stops the agent's turn (Devin)
+ *                    send: Esc sends what's answered, the rest as skipped
+ *   digitAdvance   — a number key in a single-choice question also moves on
+ *   helpLine       — show "? Not ready to answer, help me out!"
+ *   other          — agent: the agent decides (on unless it sets other:false)
+ *                    always / never: override the agent
+ *   maxQuestions   — questions per call the agent may ask (1–4)
+ *
+ * Read fresh on every call, so changes in the hub apply to the next question.
  */
 
 import { getSettings, registerSettings, setSettings } from "@pi-unipi/core";
 
-/** Ask-user settings */
 export interface AskUserSettings {
-  /** Whether the ask_user tool is enabled */
   enabled: boolean;
-  /** Allowed question formats */
-  allowedFormats: {
-    /** Allow single-select questions */
-    singleSelect: boolean;
-    /** Allow multi-select questions */
-    multiSelect: boolean;
-    /** Allow freeform text input */
-    freeform: boolean;
-  };
-  /** Send notification when agent pauses to ask a question */
   notifyOnAsk: boolean;
+  escape: "stop" | "send";
+  digitAdvance: boolean;
+  helpLine: boolean;
+  other: "agent" | "always" | "never";
+  maxQuestions: number;
 }
 
-/** Default settings */
 export const DEFAULT_SETTINGS: AskUserSettings = {
   enabled: true,
-  allowedFormats: {
-    singleSelect: true,
-    multiSelect: true,
-    freeform: true,
-  },
   notifyOnAsk: true,
+  escape: "stop",
+  digitAdvance: true,
+  helpLine: true,
+  other: "agent",
+  maxQuestions: 4,
 };
 
-
-let cachedSettings: AskUserSettings | null = null;
-
-/**
- * Check if value is a plain object.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Get ask-user settings from settings.json.
- */
-// Registered with the unified settings hub. The engine's migration imports
-// the legacy ~/.pi/agent/settings.json unipi.askUser block once automatically.
 registerSettings({
   namespace: "ask-user",
   label: "Ask User",
@@ -58,50 +44,68 @@ registerSettings({
     {
       title: "Tool",
       fields: [
-        { key: "enabled", type: "boolean", label: "Enable ask_user tool", description: "Allow the agent to ask structured questions" },
-        { key: "notifyOnAsk", type: "boolean", label: "Notify on ask", description: "Send a notification when the agent pauses to ask" },
+        { key: "enabled", type: "boolean", label: "Enable ask_user", description: "Let the agent stop and ask you multiple-choice questions" },
+        { key: "notifyOnAsk", type: "boolean", label: "Notify when asked", description: "Send a notification when the agent is waiting for your answer" },
+        { key: "maxQuestions", type: "number", label: "Questions per call", min: 1, max: 4, description: "How many questions one dialog may hold (applies to new sessions)" },
+      ],
+    },
+    {
+      title: "Dialog",
+      description: "How the question dialog behaves",
+      fields: [
+        {
+          key: "escape",
+          type: "enum",
+          label: "Esc",
+          options: [
+            { value: "stop", label: "stop the agent's turn" },
+            { value: "send", label: "send what's answered (rest skipped)" },
+          ],
+          description: "What Esc does in the dialog",
+        },
+        { key: "digitAdvance", type: "boolean", label: "Number keys move on", description: "In a single-choice question, picking with 1–9 also goes to the next question" },
+        {
+          key: "other",
+          type: "enum",
+          label: "\"Other\" choice",
+          options: [
+            { value: "agent", label: "agent decides (default on)" },
+            { value: "always", label: "always offer it" },
+            { value: "never", label: "never offer it" },
+          ],
+          description: "The free-text \"Other (type your own)\" row",
+        },
+        { key: "helpLine", type: "boolean", label: "\"Not ready\" line", description: "Show \"? Not ready to answer, help me out!\" under the dialog" },
       ],
     },
   ],
 });
 
-export function getAskUserSettings(): AskUserSettings {
-  if (cachedSettings) return cachedSettings;
-  const askUser = getSettings("ask-user", process.cwd()) as Record<string, unknown>;
-  if (!isRecord(askUser)) {
-    cachedSettings = { ...DEFAULT_SETTINGS };
-    return cachedSettings;
-  }
-
-  const enabled = typeof askUser.enabled === "boolean" ? askUser.enabled : DEFAULT_SETTINGS.enabled;
-
-  let allowedFormats = DEFAULT_SETTINGS.allowedFormats;
-  if (isRecord(askUser.allowedFormats)) {
-    const fmt = askUser.allowedFormats;
-    allowedFormats = {
-      singleSelect: typeof fmt.singleSelect === "boolean" ? fmt.singleSelect : DEFAULT_SETTINGS.allowedFormats.singleSelect,
-      multiSelect: typeof fmt.multiSelect === "boolean" ? fmt.multiSelect : DEFAULT_SETTINGS.allowedFormats.multiSelect,
-      freeform: typeof fmt.freeform === "boolean" ? fmt.freeform : DEFAULT_SETTINGS.allowedFormats.freeform,
-    };
-  }
-
-  const notifyOnAsk = typeof askUser.notifyOnAsk === "boolean" ? askUser.notifyOnAsk : DEFAULT_SETTINGS.notifyOnAsk;
-
-  cachedSettings = { enabled, allowedFormats, notifyOnAsk };
-  return cachedSettings;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Save ask-user settings to settings.json.
- */
-export function saveAskUserSettings(settings: AskUserSettings): void {
-  setSettings("ask-user", settings as unknown as Record<string, unknown>, "global", process.cwd());
-  cachedSettings = settings;
+export function getAskUserSettings(cwd: string = process.cwd()): AskUserSettings {
+  let raw: Record<string, unknown> = {};
+  try {
+    const s = getSettings("ask-user", cwd);
+    if (isRecord(s)) raw = s;
+  } catch {
+    // defaults
+  }
+  const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  const max = typeof raw.maxQuestions === "number" ? Math.min(4, Math.max(1, Math.floor(raw.maxQuestions))) : DEFAULT_SETTINGS.maxQuestions;
+  return {
+    enabled: bool(raw.enabled, DEFAULT_SETTINGS.enabled),
+    notifyOnAsk: bool(raw.notifyOnAsk, DEFAULT_SETTINGS.notifyOnAsk),
+    escape: raw.escape === "send" ? "send" : "stop",
+    digitAdvance: bool(raw.digitAdvance, DEFAULT_SETTINGS.digitAdvance),
+    helpLine: bool(raw.helpLine, DEFAULT_SETTINGS.helpLine),
+    other: raw.other === "always" || raw.other === "never" ? raw.other : "agent",
+    maxQuestions: max,
+  };
 }
 
-/**
- * Clear cached settings (for testing or reload).
- */
-export function clearSettingsCache(): void {
-  cachedSettings = null;
+export function saveAskUserSettings(settings: Partial<AskUserSettings>, cwd: string = process.cwd()): void {
+  setSettings("ask-user", settings as Record<string, unknown>, "global", cwd);
 }

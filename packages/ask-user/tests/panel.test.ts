@@ -134,3 +134,35 @@ describe("questions", () => {
     assert.match(text.replace(/ +\n/g, "\n"), /● Asked user 3 questions\n │ Planet: Mars\n │ Foods: \(skipped\)\n └ Last book: Dune/);
   });
 });
+
+describe("settings", () => {
+  it("Esc = send submits what's answered; digits can pick without moving on; the help line can be hidden", () => {
+    let result: PanelResult | undefined;
+    const p = new AskPanel(tui, theme, QS, (r) => (result = r), () => undefined, { escape: "send", digitAdvance: false, helpLine: false });
+    const text = () => p.render(100).join("\n");
+    assert.doesNotMatch(text(), /Not ready to answer/);
+    assert.match(text(), /esc send/);
+    p.handleInput("2"); // Saturn picked, still on Planet
+    assert.match(text(), /Which planet\?/);
+    p.handleInput("\x1b");
+    assert.equal(result?.type, "answered");
+    if (result?.type === "answered") {
+      assert.deepEqual(result.answers[0], { selected: ["Saturn"], skipped: false });
+      assert.equal(result.answers[1]!.skipped, true);
+    }
+  });
+
+  it("the user's Other and max-questions settings win over the agent", async () => {
+    const { applySettings } = await import("../tools.ts");
+    const { DEFAULT_SETTINGS } = await import("../config.ts");
+    const qs = prepareArgs({ questions: [
+      { question: "a?", header: "A", options: [{ label: "x" }], other: false },
+      { question: "b?", header: "B", options: [{ label: "y" }] },
+      { question: "c?", header: "C", options: [] },
+    ] }).questions;
+    assert.equal(applySettings(qs, { ...DEFAULT_SETTINGS, other: "always" })[0]!.other, undefined);
+    assert.equal(applySettings(qs, { ...DEFAULT_SETTINGS, other: "never" })[1]!.other, false);
+    assert.equal(applySettings(qs, { ...DEFAULT_SETTINGS, other: "never" })[2]!.other, undefined, "a question with no options keeps Other");
+    assert.equal(applySettings(qs, { ...DEFAULT_SETTINGS, maxQuestions: 2 }).length, 2);
+  });
+});

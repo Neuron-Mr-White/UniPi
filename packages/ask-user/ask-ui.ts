@@ -36,6 +36,17 @@ export type PanelResult =
   | { type: "action"; question: number; option: AskOption; answers: QuestionAnswer[] }
   | { type: "cancel" };
 
+export interface PanelOptions {
+  /** stop: Esc cancels the turn · send: Esc sends what's answered (rest skipped). */
+  escape: "stop" | "send";
+  /** A digit in a single-choice question also moves on. */
+  digitAdvance: boolean;
+  /** Show "? Not ready to answer, help me out!". */
+  helpLine: boolean;
+}
+
+export const DEFAULT_PANEL_OPTIONS: PanelOptions = { escape: "stop", digitAdvance: true, helpLine: true };
+
 interface QState {
   cursor: number;
   picked: Set<string>;
@@ -61,6 +72,7 @@ export class AskPanel implements Component, Focusable {
     private readonly questions: readonly AskQuestion[],
     private readonly done: (result: PanelResult) => void,
     private readonly readClipboard: () => string | undefined = () => readClipboardImageFile(),
+    private readonly options: PanelOptions = DEFAULT_PANEL_OPTIONS,
   ) {
     this.states = questions.map(() => ({ cursor: 0, picked: new Set<string>(), input: new Input({ prompt: "" }) }));
   }
@@ -136,7 +148,7 @@ export class AskPanel implements Component, Focusable {
     }
   }
 
-  private pick(index: number): void {
+  private pick(index: number, move = true): void {
     const opt = this.question.options[index];
     if (!opt) return;
     const s = this.state;
@@ -152,7 +164,7 @@ export class AskPanel implements Component, Focusable {
       this.finish({ type: "action", question: this.q, option: opt, answers: this.answers() });
       return;
     }
-    this.advance();
+    if (move) this.advance();
   }
 
   /** Text into "Other": file paths become [Image #N] / [File #N] tokens. */
@@ -196,7 +208,7 @@ export class AskPanel implements Component, Focusable {
     const other = this.onOther();
     const multi = this.question.multi_select === true;
 
-    if (matchesKey(data, Key.escape)) return this.finish({ type: "cancel" });
+    if (matchesKey(data, Key.escape)) return this.options.escape === "send" ? this.submit() : this.finish({ type: "cancel" });
     if (matchesKey(data, Key.up)) {
       s.cursor = Math.max(0, s.cursor - 1);
     } else if (matchesKey(data, Key.down)) {
@@ -227,7 +239,7 @@ export class AskPanel implements Component, Focusable {
       const i = Number(data) - 1;
       if (i < this.question.options.length) {
         s.cursor = i;
-        this.pick(i);
+        this.pick(i, this.options.digitAdvance);
       } else if (i === this.otherIndex()) s.cursor = i;
     } else if (data === "?") {
       return this.finish({ type: "clarify", answers: this.answers() });
@@ -308,9 +320,10 @@ export class AskPanel implements Component, Focusable {
 
     lines.push(t.fg("borderMuted", "─".repeat(w)));
     if (this.note) lines.push(fit(t.fg("warning", this.note)));
-    const keys = ["↑↓ navigate", ...(multi && !other ? ["␣ toggle"] : []), "↵ select", ...(other ? ["ctrl+v image"] : []), ...(this.questions.length > 1 ? ["←→ switch question"] : []), ...(other ? [] : ["? help me out"]), "esc cancel"];
+    const esc = this.options.escape === "send" ? "esc send" : "esc cancel";
+    const keys = ["↑↓ navigate", ...(multi && !other ? ["␣ toggle"] : []), "↵ select", ...(other ? ["ctrl+v image"] : []), ...(this.questions.length > 1 ? ["←→ switch question"] : []), ...(other ? [] : ["? help me out"]), esc];
     lines.push(fit(t.fg("dim", keys.join(" · "))));
-    lines.push(fit(t.fg("warning", "? Not ready to answer, help me out!")));
+    if (this.options.helpLine) lines.push(fit(t.fg("warning", "? Not ready to answer, help me out!")));
     return lines;
   }
 

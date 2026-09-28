@@ -27,7 +27,7 @@ The `ask_user` tool: when the agent needs a decision from you, it asks 1–4 mul
 | type | On "Other", just type — no Enter needed. The option numbers hide so digits are text |
 | paste / drop / `ctrl+v` | In "Other": a pasted or dropped image/file path, or a clipboard image (Ctrl+V), becomes `[Image #N]` / `[File #N]`; images are sent to the model with your answer |
 | `?` | Not ready to answer: the agent is told you want to clarify first |
-| `esc` | Cancel and stop the agent's turn |
+| `esc` | Cancel and stop the agent's turn (or send what's answered — see Settings) |
 
 Questions you leave unanswered are sent as **skipped** — skipping never blocks. The header chips show progress: `✓` answered, a number for multi-select picks.
 
@@ -59,4 +59,14 @@ The result is `User answered your questions:` followed by a JSON object keyed by
 
 ## Settings
 
-`/unipi:settings` → Ask User: turn the tool off, and whether a notification is sent when the agent asks.
+`/unipi:settings` → Ask User (changes apply to the next question, no restart):
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| Enable ask_user | on | Give the agent the tool |
+| Notify when asked | on | Send a notification while the agent waits for you |
+| Questions per call | 4 | How many questions one dialog may hold (1–4; the tool description updates in new sessions) |
+| Esc | stop the agent's turn | Or: send what's answered, the rest as skipped |
+| Number keys move on | on | In a single-choice question, 1–9 also goes to the next question |
+| "Other" choice | agent decides | Or: always / never offer "Other (type your own)", whatever the agent asked for |
+| "Not ready" line | on | Show "? Not ready to answer, help me out!" (the `?` key works either way) |

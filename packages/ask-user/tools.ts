@@ -13,10 +13,10 @@ import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, emitEvent, UNIPI_EVENTS, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
 import { AskPanel, type PanelResult } from "./ask-ui.js";
-import { getAskUserSettings } from "./config.js";
+import { getAskUserSettings, type AskUserSettings } from "./config.js";
 import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
 import { renderLauncherUI } from "./launcher-ui.js";
-import { answerSummary, answersText, clarifyText, HEADER_MAX, MAX_QUESTIONS, prepareArgs, type AskParams, type AskQuestion, type QuestionAnswer } from "./questions.js";
+import { answerSummary, answersText, clarifyText, HEADER_MAX, prepareArgs, type AskParams, type AskQuestion, type QuestionAnswer } from "./questions.js";
 import type { SessionLauncherResult } from "./types.js";
 
 /** Subagent children never talk to the user directly — their lead owns ambiguity. */
@@ -75,18 +75,30 @@ function expandFileTokens(answers: QuestionAnswer[], attachments: readonly Attac
   return answers.map((a) => (a.custom_text ? { ...a, custom_text: files.reduce((t, f) => t.split(`[File #${f.id}]`).join(`[File #${f.id}: ${f.path}]`), a.custom_text) } : a));
 }
 
+/** The user's settings win over what the agent asked for. */
+export function applySettings(questions: AskQuestion[], settings: AskUserSettings): AskQuestion[] {
+  return questions.slice(0, settings.maxQuestions).map((q) => {
+    if (settings.other === "always" || q.options.length === 0) {
+      const { other: _drop, ...rest } = q;
+      return rest;
+    }
+    return settings.other === "never" ? { ...q, other: false } : q;
+  });
+}
+
 export function registerAskUserTools(pi: ExtensionAPI): void {
+  const max = getAskUserSettings().maxQuestions;
   pi.registerTool({
     name: ASK_USER_TOOLS.ASK,
     label: "Ask User",
     description:
-      `Ask the user 1–${MAX_QUESTIONS} multiple-choice questions in one dialog and wait for the answers. ` +
+      `Ask the user 1–${max} multiple-choice question${max === 1 ? "" : "s"} in one dialog and wait for the answers. ` +
       "Each question has a short header, 2–4 options (label + description) and optional multi-select; " +
       "an \"Other\" free-text choice is always added. The user may skip questions.",
     promptSnippet: "Ask the user multiple-choice questions and wait for the answers.",
     promptGuidelines: [
       "Use ask_user when a decision, preference or clarification needs the user before you continue.",
-      `Put every question you need right now in ONE call (1–${MAX_QUESTIONS} questions) — never several ask_user calls at once.`,
+      `Put every question you need right now in ONE call (1–${max} question${max === 1 ? "" : "s"}) — never several ask_user calls at once.`,
       "Give each question a short header (≤16 chars) and 2–4 options with a clear description; don't add an 'Other' option yourself.",
       "Use multi_select when several answers can apply.",
       "Skipped questions come back as skipped: respect that, don't ask them again unless you must.",
@@ -94,24 +106,25 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       "Options can carry action: 'end_turn' or action: 'new_session' with a prefill for workflow handoffs.",
     ],
     parameters: Type.Object({
-      questions: Type.Array(QUESTION, { description: `1–${MAX_QUESTIONS} questions` }),
+      questions: Type.Array(QUESTION, { description: `1–${max} question${max === 1 ? "" : "s"}` }),
     }),
     // Older calls ({ question, context, options, allowMultiple, allowFreeform, timeout }) still work.
     prepareArguments: (args: unknown) => prepareArgs(args) as never,
     executionMode: "sequential",
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {
-      const { questions } = prepareArgs(params) as AskParams;
+      const settings = getAskUserSettings(ctx.cwd);
+      const questions = applySettings((prepareArgs(params) as AskParams).questions, settings);
       if (isSubagentChild()) {
         throw new Error(
           "ask_user is not available inside a subagent. You cannot talk to the user directly — only your lead can. Do not guess an answer: state the question, the options you considered and your recommendation in your report.",
         );
       }
-      if (!getAskUserSettings().enabled) return unavailable(questions, "ask_user is turned off in settings — ask in your reply instead.");
+      if (!settings.enabled) return unavailable(questions, "ask_user is turned off in settings — ask in your reply instead.");
       if (!ctx.hasUI) return unavailable(questions, "No interactive UI (non-interactive mode) — ask in your reply instead.");
       if (questions.length === 0) throw new Error("ask_user needs at least one question with a question text.");
 
-      if (getAskUserSettings().notifyOnAsk) {
+      if (settings.notifyOnAsk) {
         emitEvent(pi, UNIPI_EVENTS.ASK_USER_PROMPT, {
           question: questions.map((q) => q.question).join(" · "),
           optionCount: questions.reduce((n, q) => n + q.options.length, 0),
@@ -121,13 +134,15 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       }
 
       const result = await withHerdrBlocked(pi, "ask_user", () =>
-        ctx.ui.custom<PanelResult>((tui, theme, _kb, done) => new AskPanel(tui, theme, questions, done)),
+        ctx.ui.custom<PanelResult>((tui, theme, _kb, done) =>
+          new AskPanel(tui, theme, questions, done, undefined, { escape: settings.escape, digitAdvance: settings.digitAdvance, helpLine: settings.helpLine })),
       );
       const legacy = questions.length === 1 ? { question: questions[0]!.question } : {};
 
       if (!result || result.type === "cancel") {
-        ctx.abort(); // Esc stops the turn, like Devin's "Canceled due to user interrupt"
-        return { content: [{ type: "text" as const, text: "The user cancelled the questions and stopped the turn." }], details: { questions, outcome: "cancelled", ...legacy } as AskDetails };
+        // Esc stops the turn, like Devin's "Canceled due to user interrupt" —
+        // `terminate` ends it after this call, cleanly (no abort error line).
+        return { content: [{ type: "text" as const, text: "The user cancelled the questions and stopped the turn. Wait for their next message." }], details: { questions, outcome: "cancelled", ...legacy } as AskDetails, terminate: true };
       }
       if (result.type === "clarify") {
         return { content: [{ type: "text" as const, text: clarifyText(questions, result.answers) }], details: { questions, answers: result.answers, outcome: "clarify", ...legacy } as AskDetails };
@@ -162,8 +177,7 @@ async function runAction(pi: ExtensionAPI, ctx: ExtensionContext, questions: Ask
   const opt = result.option;
   const details = { questions, answers: result.answers, outcome: "action", ...legacy } as AskDetails;
   if (opt.action === "end_turn") {
-    ctx.abort();
-    return { content: [{ type: "text" as const, text: `User chose "${opt.label}" and ended the turn.` }], details };
+    return { content: [{ type: "text" as const, text: `User chose "${opt.label}" and ended the turn.` }], details, terminate: true };
   }
   const prefill = opt.prefill ?? "";
   const launch = await withHerdrBlocked(pi, "ask_user: launch", () => ctx.ui.custom<SessionLauncherResult | null>(renderLauncherUI({ prefill })));
