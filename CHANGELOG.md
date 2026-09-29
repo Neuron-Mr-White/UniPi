@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.10] — 2026-09-29
+
+### Changed
+- `kanboard`: **jev routing off for new boards** — `defaultStrategy` now defaults to `none` (one-pass) instead of `auto`; set it back to Auto (Settings → Kanboard → Task defaults) to let jev decide again. Existing stored settings keep their value.
+- `kanboard`: Auto strategy answers are now confidence-gated — jev's choice only applies at or above the new `jevThreshold` setting (default 0.8); a missing or low-confidence answer runs the task `none` instead. The strategy debug log shows `confidence=X/threshold`.
+- `long-horizon`: judge confidence threshold default 0.6 → 0.8 for new installs (below it the judge abstains to the default mode); existing stored settings keep their value. `judge.enabled` still defaults to off and `defaultMode` to `none`.
+
 ## [3.0.0-alpha.9] — 2026-09-29
 
 ### Added
