@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.14] — 2026-09-30
+
+### Added
+- `utility` (simple render style): the turn's final reply is painted on its own panel — the darkest possible background (true black) framed by an orange heavy rule reading `summary` above and a matching unlabelled rule below, opening with one blank row of breathing space. Light themes lift the reply text to bright white so it stays readable on black. The panel is cached per component by width + message + colour, so a keystroke re-render is a lookup, not a repaint.
+
 ### Fixed
+- `utility` (simple render style): a step with no visible text (thinking and/or tool calls only) no longer renders rows — pi still adds a leading spacer for such a step, so each one left a blank row and the gap above a tool group grew with every thinking-only step.
 - `kanboard` guard: read-only commands that merely mention the binary (`which unipi-kanboard`, `find -name "unipi-kanboard"`, `ls …/bin/unipi-kanboard`, `pip show pi-unipi-kanboard`) are no longer blocked as "credits used up" — a token counts as an invocation only in command position (first word of its segment after `&&`/`||`/`;`/`|`/newline splits with quotes masked, past leading `VAR=value` assignments and `exec`/`command`/`env` wrappers).
 - `kanboard` guard: an invalid subcommand no longer poisons a whole compound call — `start KB-2; done KB-1` passes the guard and the binary itself reports the typo (`done` is not a subcommand). Subcommands the guard does not recognize are never charged or blocked.
 - `kanboard` guard: the refusal text now ends with "(board reads, `start` and `finish` are always free)" so a blocked agent does not conclude the CLI is unusable.

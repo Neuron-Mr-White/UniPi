@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/skill-registry",
-  "version": "3.0.0-alpha.13",
+  "version": "3.0.0-alpha.14",
   "description": "Skill registry for pi — per-project skill on/off, a skill vault, and jev-judged skill exposure",
   "type": "module",
   "license": "MIT",
@@ -33,7 +33,7 @@
   },
   "main": "index.ts",
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.13"
+    "@pi-unipi/core": "3.0.0-alpha.14"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",
