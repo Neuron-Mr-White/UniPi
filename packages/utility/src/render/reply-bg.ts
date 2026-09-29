@@ -89,6 +89,14 @@ export function paintLine(line: string, width: number, bg: string): string {
   return `${bg}${body}${" ".repeat(pad)}\x1b[49m`;
 }
 
+/** A step with no visible text (thinking and/or tool calls only) that ended normally. */
+export function isBlankStep(msg: unknown): boolean {
+  const m = msg as { content?: unknown; stopReason?: string } | undefined;
+  if (!m || !Array.isArray(m.content)) return false;
+  if (m.stopReason === "error" || m.stopReason === "aborted" || m.stopReason === "length") return false;
+  return !m.content.some((c: any) => c?.type === "text" && typeof c.text === "string" && c.text.trim());
+}
+
 /**
  * Wrap the component class's render once. `getBg` is read per render so a
  * theme switch takes effect; `enabled` lets the caller turn it off.
@@ -99,6 +107,10 @@ export function patchAssistantRender(proto: AssistantLike, getBg: () => string):
   const original = proto.render;
   const cache = new WeakMap<object, { width: number; msg: unknown; bg: string; streaming: boolean; lines: string[] }>();
   proto.render = function (this: AssistantLike, width: number): string[] {
+    // Simple mode hides thinking, but pi still adds a leading Spacer for a
+    // thinking-only step (and a hidden label line), so every tool step left
+    // blank rows — a growing gap above tool groups. No visible text → no rows.
+    if (isBlankStep(this.lastMessage)) return [];
     const lines = original.call(this, width);
     // Only the reply: finished, no tool calls, something visible.
     if (this.hasToolCalls || this.isStreaming || lines.length === 0) return lines;
@@ -152,6 +164,7 @@ export function installReplyBackground(pi: {
         setTimeout(tryPatch, 0);
       } catch {}
     });
+    pi.on("message_start", () => setTimeout(tryPatch, 0));
     pi.on("message_end", () => setTimeout(tryPatch, 0));
     pi.on("agent_end", () => setTimeout(tryPatch, 0));
   } catch {

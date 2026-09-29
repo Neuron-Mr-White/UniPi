@@ -45,6 +45,27 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
   assert.ok(calls >= 3);
 });
 
+test("thinking/tool-only steps render no rows; errors still show", () => {
+  class Step {
+    hasToolCalls = true;
+    isStreaming = false;
+    lastMessage: unknown;
+    contentContainer = {};
+    updateContent() {}
+    render(_w: number): string[] {
+      return ["", ""];
+    }
+  }
+  patchAssistantRender(Step.prototype as never, () => "\x1b[48;5;236m");
+  const s = new Step();
+  s.lastMessage = { content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall", id: "1" }], stopReason: "toolUse" };
+  assert.deepEqual(s.render(10), []);
+  s.lastMessage = { content: [{ type: "thinking", thinking: "hmm" }], stopReason: "error" };
+  assert.deepEqual(s.render(10), ["", ""]);
+  s.lastMessage = { content: [{ type: "text", text: "hi" }, { type: "toolCall", id: "1" }], stopReason: "toolUse" };
+  assert.deepEqual(s.render(10), ["", ""]);
+});
+
 test("findAssistant walks the TUI tree", () => {
   const a = { contentContainer: {}, hasToolCalls: false, updateContent() {} };
   const tree = { children: [{ children: [{}, { children: [a] }] }] };
