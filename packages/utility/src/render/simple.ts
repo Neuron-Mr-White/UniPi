@@ -24,6 +24,7 @@ import type {
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { installReplyBackground } from "./reply-bg.js";
 
 type AnyTool = ToolDefinition<any, any, any>;
 
@@ -173,6 +174,7 @@ export function installSimpleGroupEvents(pi: {
     // grouping is cosmetic; never block load
   }
   hideThinking(pi);
+  installReplyBackground(pi);
 }
 
 /**
