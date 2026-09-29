@@ -5,12 +5,14 @@
  * subclass CustomEditor, use super.render() ONLY to obtain editor content
  * lines, then compose our own rounded frame. Layout per the v3 design:
  *
- *   ╭─UNIPI │ feat/footer-default-v2 │ ─────────────────────╮
- *   │ Type your prompt here...                              │
+ *   ╭─UNIPI │ feat/footer-default-v2 ─────────────────────╮
+ *     Type your prompt here...
  *   ╰─ unipi ────────── 42%/1.0M │ Claude Opus 4.5 │ thinking:high ╯
  *
  * Top border carries the UNIPI brand + git branch. Bottom border right side
  * carries workspace · context%/window · model · thinking level; left filler.
+ * The body is open-sided: no vertical rails — the rounded corners are the
+ * only frame marks (content keeps its column via a one-space indent).
  * All keybindings/autocomplete/history/paste behavior inherited.
  */
 
@@ -296,10 +298,10 @@ export class GlanceEditor extends CustomEditor {
 			topCluster +
 			border(BORDER.topRight);
 
-		// ── Body rows: │ content │ ──
-		const bodyRows = contentLines.map(row =>
-			border(BORDER.vertical) + padLine(row, inner) + border(BORDER.vertical),
-		);
+		// ── Body rows: open sides — the corner curves are the only frame marks.
+		// One-space indent keeps content in the column it had between the old
+		// rails; no trailing padding (rows may end short of the frame width).
+		const bodyRows = contentLines.map(row => " " + truncateToWidth(row, inner, ""));
 
 		// ── Bottom frame: ╰─ unipi ─────── [RIGHT CLUSTER] ─╯ ──
 		// Right cluster: workspace · pct%/window │ model │ thinking:level

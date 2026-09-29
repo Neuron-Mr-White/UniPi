@@ -113,7 +113,7 @@ registerSettings({
     },
     {
       title: "Response formatting",
-      description: "How tool calls look in the transcript (applies after /reload or a new session)",
+      description: "How tool calls look in the transcript (applies after /reload)",
       fields: [
         {
           key: "render.style",
