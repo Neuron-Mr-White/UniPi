@@ -3,9 +3,9 @@
  *
  * In a long transcript of collapsed tool rows the actual answer is easy to
  * miss. An assistant message with no tool calls (the turn's reply) is painted
- * on the darkest possible panel (true black), framed by a heavy rule labelled
- * "summary" above and a matching unlabelled rule below, with one blank row of
- * breathing space before the top rule. On light themes the text is lifted to
+ * on the darkest possible panel (true black), framed by an orange heavy rule
+ * labelled "summary" above and a matching unlabelled rule below, with one blank
+ * row of breathing space before the top rule. On light themes the text is lifted to
  * bright white so it stays readable on the black panel.
  *
  * pi has no hook for assistant-message rendering, and extensions get a
@@ -81,26 +81,29 @@ export function replyFg(theme: { getBgAnsi?: (k: string) => string } | undefined
   }
 }
 
+/** The rule colour: orange, truecolor on capable terminals, 256-colour fallback. */
+export function ruleFg(theme: { getColorMode?: () => string } | undefined): string {
+  let mode = "truecolor";
+  try {
+    mode = theme?.getColorMode?.() ?? "truecolor";
+  } catch {}
+  return mode === "truecolor" ? "\x1b[38;2;255;135;0m" : "\x1b[38;5;208m";
+}
+
 /**
  * The heavy rule that frames the panel. With a label the word sits centred
  * between two runs of rule ("━━━━━ summary ━━━━━"); without one the rule
- * spans the full width (the closing edge under the panel). Painted in the
- * theme's horizontal-rule colour (brighter than a border) with a bold label.
+ * spans the full width (the closing edge under the panel). Painted in orange
+ * with a bold label.
  */
 export function dividerLine(
-  theme: { fg?: (k: string, t: string) => string; bold?: (t: string) => string } | undefined,
+  theme: { getColorMode?: () => string; bold?: (t: string) => string } | undefined,
   label: string,
   width: number,
 ): string {
   const w = Math.max(0, width);
   const rule = "━";
-  const color = (t: string) => {
-    try {
-      return theme?.fg?.("mdHr", t) ?? `\x1b[90m${t}\x1b[39m`;
-    } catch {
-      return `\x1b[90m${t}\x1b[39m`;
-    }
-  };
+  const color = (t: string) => `${ruleFg(theme)}${t}\x1b[39m`;
   const bold = (t: string) => {
     try {
       return theme?.bold?.(t) ?? `\x1b[1m${t}\x1b[22m`;

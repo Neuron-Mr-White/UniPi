@@ -11,10 +11,12 @@ test("reply background is true black; light themes lift the text fg", () => {
 
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-test("divider is a centred heavy rule; unlabelled it spans the width", () => {
-  const t = { fg: (_k: string, s2: string) => `\x1b[90m${s2}\x1b[39m`, bold: (s2: string) => `\x1b[1m${s2}\x1b[22m` };
+test("divider is a centred orange heavy rule; unlabelled it spans the width", () => {
+  const t = { bold: (s2: string) => `\x1b[1m${s2}\x1b[22m` };
   const d = dividerLine(t, "summary", 40);
   assert.ok(d.includes(" summary "));
+  assert.ok(d.includes("\x1b[38;2;255;135;0m")); // orange
+  assert.ok(d.includes("\x1b[1m")); // bold label
   assert.equal(strip(d).length, 40);
   assert.equal(strip(d).indexOf(" summary "), 15);
   assert.equal(strip(d)[0], "━");
@@ -22,6 +24,7 @@ test("divider is a centred heavy rule; unlabelled it spans the width", () => {
   const plain = dividerLine(t, "", 12);
   assert.equal(strip(plain), "━".repeat(12));
   assert.ok(!plain.includes("\x1b[1m"));
+  assert.equal(dividerLine({ getColorMode: () => "256color" }, "", 3), "\x1b[38;5;208m━━━\x1b[39m");
 });
 
 test("paintLine pads to width and re-opens the background after resets", () => {
