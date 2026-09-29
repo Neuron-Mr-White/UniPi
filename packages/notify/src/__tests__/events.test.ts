@@ -103,9 +103,9 @@ async function invokeLifecycle(
   payload?: unknown,
   ctx?: unknown,
 ): Promise<void> {
-  const handler = h.lifecycle.get(event)?.[0];
-  assert.ok(handler, `no lifecycle handler registered for ${event}`);
-  await handler(payload, ctx);
+  const handlers = h.lifecycle.get(event) ?? [];
+  assert.ok(handlers.length > 0, `no lifecycle handler registered for ${event}`);
+  for (const handler of handlers) await handler(payload, ctx);
 }
 
 async function invokeBus(
@@ -455,10 +455,13 @@ describe("notify — Pi ui_prompt_start", () => {
     });
   });
 
-  it("does not listen to ui_prompt_start when ui_prompt is disabled", () => {
+  it("does not dispatch ui_prompt when ui_prompt is disabled", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
     const h = harness(fakeConfig(["ask_user_prompt"]));
 
-    assert.equal(h.lifecycle.get("ui_prompt_start"), undefined);
+    await invokeLifecycle(h, "ui_prompt_start", promptStart("Which model?"), BUSY);
+
+    assert.equal(h.calls.length, 0);
   });
 
   const busAlerts: Array<{
@@ -557,13 +560,16 @@ describe("notify — Pi ui_prompt_start", () => {
     });
   }
 
-  it("does not listen to ui_prompt_start in a subagent child", () => {
+  it("does not dispatch ui_prompt in a subagent child", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
     const previous = process.env.UNIPI_SUBAGENT_CHILD;
     process.env.UNIPI_SUBAGENT_CHILD = "1";
     try {
       const h = harness(fakeConfig(["ui_prompt"]));
 
-      assert.equal(h.lifecycle.get("ui_prompt_start"), undefined);
+      await invokeLifecycle(h, "ui_prompt_start", promptStart("Which model?"), BUSY);
+
+      assert.equal(h.calls.length, 0);
     } finally {
       if (previous === undefined) delete process.env.UNIPI_SUBAGENT_CHILD;
       else process.env.UNIPI_SUBAGENT_CHILD = previous;
@@ -593,16 +599,31 @@ describe("notify — Pi ui_prompt_start", () => {
     assert.equal(h.calls[1]?.priority, "high");
   });
 
-  it("runs the ui_prompt_start handler synchronously", (t) => {
+  it("runs the ui_prompt_start handlers synchronously", (t) => {
     t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
     const h = harness(fakeConfig(["ui_prompt"]));
-    const handler = h.lifecycle.get("ui_prompt_start")?.[0];
-    assert.ok(handler, "no lifecycle handler registered for ui_prompt_start");
+    const handlers = h.lifecycle.get("ui_prompt_start") ?? [];
+    assert.ok(handlers.length > 0, "no lifecycle handler registered for ui_prompt_start");
 
-    const returned = handler(promptStart("Which model?"), BUSY);
-
-    assert.equal(returned, undefined, "handler must not return a promise");
+    for (const handler of handlers) {
+      assert.equal(handler(promptStart("Which model?"), BUSY), undefined, "handler must not return a promise");
+    }
     assert.equal(h.calls.length, 1, "dispatch should be observable without awaiting");
+  });
+
+  it("notifies a second prompt that opens soon after an earlier ui_prompt alert", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
+    const h = harness(fakeConfig(["ui_prompt"]));
+
+    await invokeLifecycle(h, "ui_prompt_start", promptStart("First?"), BUSY);
+    await invokeLifecycle(h, "ui_prompt_end", promptEnd());
+    t.mock.timers.tick(500);
+    await invokeLifecycle(h, "ui_prompt_start", promptStart("Second?"), BUSY);
+
+    assert.deepEqual(
+      h.calls.map((call) => call.message),
+      ["Pi is waiting for your input: First?", "Pi is waiting for your input: Second?"],
+    );
   });
 });
 
@@ -616,6 +637,25 @@ describe("notify — Pi ui_prompt_end", () => {
     t.mock.timers.tick(RENOTIFY_INTERVAL);
 
     assert.equal(h.calls.length, 1);
+  });
+
+  it("ignores a late end of an earlier prompt while the next one is open", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setInterval"], now: NOW });
+    const h = harness(fakeConfig(["ui_prompt"]));
+
+    // Pi emits each event in its own microtask, so B's start can arrive before A's end.
+    await invokeLifecycle(h, "ui_prompt_start", promptStart("First?"), BUSY);
+    await invokeLifecycle(h, "ui_prompt_start", promptStart("Second?"), BUSY);
+    await invokeLifecycle(h, "ui_prompt_end", promptEnd());
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+
+    assert.equal(h.calls.length, 3, "two alerts + the reminder of the open prompt");
+    assert.equal(h.calls[2]?.message, "Pi is waiting for your input: Second?");
+
+    await invokeLifecycle(h, "ui_prompt_end", promptEnd());
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+
+    assert.equal(h.calls.length, 3, "the last end disarms");
   });
 
   it("disarms a bus-armed reminder even when ui_prompt is disabled", async (t) => {

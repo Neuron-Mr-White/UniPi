@@ -20,7 +20,7 @@ export interface UIPromptEventPayload {
   title?: string;
 }
 
-/** Longest prompt title kept in a notification, in characters. */
+/** Longest prompt title kept in a notification, in code points. */
 export const UI_PROMPT_TITLE_MAX = 200;
 
 const FALLBACK = "Pi is waiting for your input.";
@@ -38,8 +38,10 @@ function cleanTitle(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const cleaned = value.replace(CONTROL_OR_SPACE, " ").trim();
   if (cleaned.length === 0) return undefined;
-  return cleaned.length > UI_PROMPT_TITLE_MAX
-    ? `${cleaned.slice(0, UI_PROMPT_TITLE_MAX - 1)}…`
+  // Count code points, not UTF-16 units, so a cut never splits a surrogate pair.
+  const chars = Array.from(cleaned);
+  return chars.length > UI_PROMPT_TITLE_MAX
+    ? `${chars.slice(0, UI_PROMPT_TITLE_MAX - 1).join("")}…`
     : cleaned;
 }
 

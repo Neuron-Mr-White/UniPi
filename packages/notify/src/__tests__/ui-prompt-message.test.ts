@@ -68,6 +68,21 @@ describe("buildUIPromptMessage", () => {
     assert.equal(buildUIPromptMessage({ kind: "select", title }), `Pi is waiting for your input: ${title}`);
   });
 
+  it("truncates by code points, never inside a surrogate pair", () => {
+    const title = `${"x".repeat(UI_PROMPT_TITLE_MAX - 2)}😀😀 and more`;
+
+    const message = buildUIPromptMessage({ kind: "select", title });
+
+    assert.equal(message, `Pi is waiting for your input: ${"x".repeat(UI_PROMPT_TITLE_MAX - 2)}😀…`);
+    assert.ok(message.isWellFormed(), "no lone surrogate");
+  });
+
+  it("counts an emoji as one character for the maximum length", () => {
+    const title = `${"y".repeat(UI_PROMPT_TITLE_MAX - 1)}😀`;
+
+    assert.equal(buildUIPromptMessage({ kind: "select", title }), `Pi is waiting for your input: ${title}`);
+  });
+
   it("falls back for a non-string title", () => {
     assert.equal(buildUIPromptMessage({ kind: "select", title: 42 }), "Pi is waiting for your input.");
   });

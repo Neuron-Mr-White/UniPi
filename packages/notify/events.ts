@@ -85,8 +85,15 @@ const unsubs: Array<() => void> = [];
 /** Pending re-notify interval for an unanswered blocking prompt. */
 let renotifyTimer: ReturnType<typeof setInterval> | undefined;
 
-/** When the last blocking alert was sent. Written only by notifyBlocking(). */
+/** When the last bus-driven blocking alert (ask-user, permission) was sent. */
 let lastBlockingAlertAt = 0;
+
+/**
+ * Pi prompts that started but have not ended yet. Pi emits each start and end
+ * in its own microtask and awaits handlers in turn, so the end of one prompt
+ * can arrive after the start of the next; reminders stop only at zero.
+ */
+let openUIPrompts = 0;
 
 /** Cancel any pending re-notify timer. Safe to call at any time. */
 export function disarmRenotify(): void {
@@ -144,7 +151,7 @@ function armRenotify(
 /**
  * Send a human-blocking prompt notification (always `high`) and arm its
  * reminder. Every blocking alert goes through here, so the `ui_prompt` de-dup
- * stamp can never be missed by a new blocking source.
+ * stamp can never be missed by a new bus-driven blocking source.
  */
 function notifyBlocking(
   pi: ExtensionAPI,
@@ -159,7 +166,9 @@ function notifyBlocking(
   dispatch(pi, title, message, platforms, eventKey, config, cwd, "high").catch(() => {
     // Silently ignore — background notification failure is non-blocking.
   });
-  lastBlockingAlertAt = Date.now();
+  // Only bus alerts precede their own ui_prompt_start; a ui_prompt alert is
+  // the prompt itself, so it must not hide the next, independent prompt.
+  if (eventKey !== "ui_prompt") lastBlockingAlertAt = Date.now();
   armRenotify(pi, title, message, platforms, eventKey, config, cwd, dispatch);
 }
 
@@ -167,6 +176,7 @@ function notifyBlocking(
 function unregisterAll(): void {
   disarmRenotify();
   lastBlockingAlertAt = 0;
+  openUIPrompts = 0;
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -279,11 +289,15 @@ export function registerEventListeners(
     disarmRenotify();
   });
   // Pi's own signal that the blocking prompt closed (answered or cancelled).
-  // Pi awaits handlers in turn, so with many ui_prompt_end listeners ahead of
-  // this one, a back-to-back prompt's start could in theory arrive first; this
-  // late end would then disarm the new prompt's reminder.
+  // Pi emits only the outer prompt, so starts and ends pair up; a late end of
+  // an earlier prompt must not disarm the reminder of the one still open.
+  (pi as any).on("ui_prompt_start", () => {
+    openUIPrompts += 1;
+  });
   (pi as any).on("ui_prompt_end", () => {
-    disarmRenotify();
+    // An end with no seen start (e.g. notify loaded mid-prompt) still disarms.
+    openUIPrompts = Math.max(0, openUIPrompts - 1);
+    if (openUIPrompts === 0) disarmRenotify();
   });
 
   registerAgentNotification(pi, "agent_end", config, cwd, dispatch);
