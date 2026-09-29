@@ -19,6 +19,13 @@ export const ADD_CAP_REASON = addCapReason(ADD_CAP);
 /** Subcommands that never write to the board. */
 const READONLY = new Set(["list", "show", "attachments", "next", "chain", "search", "status"]);
 
+/**
+ * Writes that cost nothing and need no -do window: `start`/`finish` only touch
+ * tasks the session claims itself (the binary enforces ownership), and the
+ * board should always show what is being worked.
+ */
+const FREE_WRITES = new Set(["start", "finish"]);
+
 /** Global flags that take a value; `--json` is the only valueless one. */
 const GLOBAL_VALUE_FLAGS = new Set(["--actor", "--project", "--gate", "--session"]);
 
@@ -60,6 +67,11 @@ export function kanboardInvocations(command: string): KanboardInvocation[] {
   return out;
 }
 
+/** A write that is free and allowed without a -do window (`start`, `finish`). */
+export function isFreeWrite(invocation: KanboardInvocation): boolean {
+  return FREE_WRITES.has(invocation.sub);
+}
+
 /** Read-only means: no writes, and the board does not change. */
 export function isReadonly(invocation: KanboardInvocation): boolean {
   if (READONLY.has(invocation.sub)) return true;
@@ -96,7 +108,7 @@ export interface WriteGuard {
 
 /**
  * Writes cost session credits (one per write subcommand in the command line);
- * reads are free and never blocked. A runner task keeps unlimited access
+ * reads and `start`/`finish` are free and never blocked. A runner task keeps unlimited access
  * (still add-capped). Credits persist across turns and follow-up questions
  * until spent; /unipi:kanboard-do tops up to N without stacking past N.
  */
@@ -149,7 +161,7 @@ export function createWriteGuard(
         lastTask = task;
       }
       for (const invocation of invocations) {
-        if (isReadonly(invocation)) continue;
+        if (isReadonly(invocation) || isFreeWrite(invocation)) continue;
         if (task !== null) {
           const cap = countAdd(invocation);
           if (cap) return cap;

@@ -133,12 +133,24 @@ export function LabelTags(props: { labels: string[]; max?: number }): JSX.Elemen
   );
 }
 
+/** "agent" for a hand-started task, else the runner's mode ("direct", "goal", …). */
+export function runLabel(run: { owner?: string; mode?: string } | null | undefined): string {
+  return run?.owner === "agent" ? "agent" : run?.mode ?? "direct";
+}
+
 export function AgentChip(props: { task: Task }): JSX.Element {
   return (
     <Show when={props.task.run}>
-      <span class="agent-chip" title={`Agent session ${props.task.run?.session ?? "?"} · ${props.task.run?.mode ?? "direct"} mode`}>
+      <span
+        class="agent-chip"
+        title={
+          props.task.run?.owner === "agent"
+            ? `Started by the agent in session ${props.task.run?.session ?? "?"} — it moves the task to In Review with \`finish\``
+            : `Runner session ${props.task.run?.session ?? "?"} · ${props.task.run?.mode ?? "direct"} mode — moves to In Review when the turn ends`
+        }
+      >
         <span class="pulse" aria-hidden="true" />
-        {props.task.run?.mode ?? "direct"}
+        {runLabel(props.task.run)}
         <span class="time">{elapsed(props.task.run?.started)}</span>
       </span>
     </Show>

@@ -272,6 +272,25 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::claim_next(&layout, project, gate, &args, common.now)
         }
 
+        Command::Start { id, pid } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let session = require_session(&common, "start")?;
+            let pid = owner_pid(*pid)?;
+            let host = commands::hostname();
+            let args = commands::StartArgs {
+                session: &session,
+                pid,
+                host: &host,
+            };
+            commands::start(&layout, project, gate, id, &args, common.now)
+        }
+
+        Command::Finish { id, comment } => {
+            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let session = require_session(&common, "finish")?;
+            commands::finish(&layout, project, gate, id, &session, comment, common.now)
+        }
+
         Command::Next => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             commands::next(&layout, project, gate, common.now)
@@ -424,6 +443,32 @@ pub fn resolve_actor(explicit: Option<&str>) -> Actor {
         return actor;
     }
     Actor::User
+}
+
+/// The pid that owns a `start` claim: `--pid`, else `$UNIPI_KANBOARD_PID`
+/// (the pi extension exports its own pid), else the parent process — the
+/// shell that ran the CLI, which outlives this short-lived process.
+fn owner_pid(explicit: Option<u32>) -> Result<u32> {
+    if let Some(pid) = explicit.filter(|pid| *pid > 0) {
+        return Ok(pid);
+    }
+    if let Some(pid) = std::env::var("UNIPI_KANBOARD_PID")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|pid| *pid > 0)
+    {
+        return Ok(pid);
+    }
+    #[cfg(unix)]
+    {
+        Ok(std::os::unix::process::parent_id())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(Error::usage(
+            "start needs the owning process: pass --pid or set UNIPI_KANBOARD_PID",
+        ))
+    }
 }
 
 /// Session-scoped commands fail loudly without one.
@@ -673,6 +718,8 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
         }
 
         Command::Move { id, .. } => format!("{id} → {}", text(payload, "status")),
+        Command::Start { id, .. } => format!("{id} started (in_progress, claimed by this session)"),
+        Command::Finish { id, .. } => format!("{id} finished → in_review"),
         Command::Note { id, .. } => format!("{id}: note added"),
         Command::Attach { id, .. } => format!(
             "{id}: attached {}\n  {}",

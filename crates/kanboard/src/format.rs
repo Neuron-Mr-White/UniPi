@@ -6,7 +6,7 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::error::{Problem, Result};
-use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, Status, Task};
+use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, RunOwner, Status, Task};
 
 pub const ACTIVITY_HEADING: &str = "## Activity";
 
@@ -48,6 +48,10 @@ pub fn render(task: &Task) -> String {
                     .unwrap_or_else(|| "null".to_string())
             ));
             out.push_str(&format!("  started: {}\n", iso(run.started)));
+            // Runner claims keep the historical shape; only agent claims say so.
+            if run.owner == RunOwner::Agent {
+                out.push_str("  owner: agent\n");
+            }
         }
         None => out.push_str("run:\n"),
     }
@@ -502,12 +506,12 @@ fn parse_run(
         fields.iter().find(|(_, field, _)| field == key)
     };
     for (line, key, _) in fields {
-        if !["session", "pid", "host", "mode", "goal", "started"].contains(&key.as_str()) {
+        if !["session", "pid", "host", "mode", "goal", "started", "owner"].contains(&key.as_str()) {
             problems.push(Problem::new(
                 file,
                 *line,
                 format!(
-                    "unknown run field \"{key}\" (expected session, pid, host, mode, goal, started)"
+                    "unknown run field \"{key}\" (expected session, pid, host, mode, goal, started, owner)"
                 ),
             ));
         }
@@ -622,6 +626,22 @@ fn parse_run(
         }
     };
 
+    let owner = match get("owner") {
+        None => RunOwner::System,
+        Some((line, _, value)) => match value.trim() {
+            "" | "system" => RunOwner::System,
+            "agent" => RunOwner::Agent,
+            other => {
+                problems.push(Problem::new(
+                    file,
+                    *line,
+                    format!("unknown run.owner \"{other}\" (expected system|agent)"),
+                ));
+                return None;
+            }
+        },
+    };
+
     Some(Run {
         session,
         pid,
@@ -629,6 +649,7 @@ fn parse_run(
         mode,
         goal,
         started,
+        owner,
     })
 }
 

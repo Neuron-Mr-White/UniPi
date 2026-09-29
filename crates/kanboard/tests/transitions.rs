@@ -133,7 +133,7 @@ fn unblocking_requires_the_answer() {
 }
 
 #[test]
-fn claim_and_run_end_are_system_only() {
+fn claim_and_run_end_are_system_and_agent_only() {
     assert!(!allowed(
         Status::Todo,
         Status::InProgress,
@@ -141,9 +141,26 @@ fn claim_and_run_end_are_system_only() {
         None,
         Staleness::Running
     ));
-    assert!(!allowed(
+    // The agent self-claims with `start` (the table row; `start` enforces the
+    // claim rules, `move` refuses it).
+    assert!(allowed(
         Status::Todo,
         Status::InProgress,
+        Actor::Agent,
+        None,
+        Staleness::Running
+    ));
+    // …and hands its own claim to review with `finish` (summary required).
+    assert!(allowed(
+        Status::InProgress,
+        Status::InReview,
+        Actor::Agent,
+        REASON,
+        Staleness::Running
+    ));
+    assert!(!allowed(
+        Status::InProgress,
+        Status::InReview,
         Actor::Agent,
         None,
         Staleness::Running

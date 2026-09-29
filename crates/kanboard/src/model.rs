@@ -382,6 +382,30 @@ pub struct Run {
     pub goal: Option<String>,
     #[serde(serialize_with = "serialize_iso")]
     pub started: DateTime<Utc>,
+    /// Who holds the claim: the runner (`claim-next`, the default) or the
+    /// agent itself (`start`). Only agent claims can be `finish`ed.
+    #[serde(default)]
+    pub owner: RunOwner,
+}
+
+/// Who took a claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOwner {
+    /// The runner claimed it (`claim-next`); the run end releases it.
+    #[default]
+    System,
+    /// The agent self-claimed it (`start`); it moves it on with `finish`.
+    Agent,
+}
+
+impl RunOwner {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RunOwner::System => "system",
+            RunOwner::Agent => "agent",
+        }
+    }
 }
 
 /// How a claimed task's process looks from here.

@@ -42,6 +42,9 @@ export interface KanboardSettings {
   /** Whether a blocked-by-confusion task may ask the user (ask) or must
    *  assume-and-note (avoid, the default). */
   blocking: "avoid" | "ask";
+  /** Progress reminders when the agent works board tasks by hand: `start`
+   *  before the first edit, `finish` (or block) before the turn ends. */
+  reminders: boolean;
 }
 
 export const DEFAULT_SETTINGS: KanboardSettings = {
@@ -62,6 +65,7 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   jevThreshold: 0.8,
   defaultPlan: false,
   blocking: "avoid",
+  reminders: true,
 };
 
 export const KANBOARD_NAMESPACE = "kanboard";
@@ -119,6 +123,12 @@ export function registerKanboardSettings(): void {
           { key: "queueMax", type: "number", label: "-do queue limit", min: 0, zeroLabel: "unlimited", description: "Tasks a session may queue for the runner" },
           { key: "maxSessions", type: "number", label: "Sessions working at once (per project)", min: 1, description: "Distinct sessions holding in_progress tasks" },
           { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per -do turn or runner task" },
+          {
+            key: "reminders",
+            type: "boolean",
+            label: "Progress reminders",
+            description: "Remind the agent to `start` a mentioned Todo task before editing and to `finish` it before the turn ends (text only, never blocks; off in runner runs)",
+          },
           { key: "doCredits", type: "number", label: "-do write credits", min: 0, zeroLabel: "off", description: "Write credits a /unipi:kanboard-do grants; each board write costs 1, reads are free" },
         ],
       },
@@ -210,6 +220,7 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
         : DEFAULT_SETTINGS.jevThreshold,
     defaultPlan: raw.defaultPlan === true,
     blocking: raw.blocking === "ask" ? "ask" : "avoid",
+    reminders: raw.reminders !== false,
   };
 }
 

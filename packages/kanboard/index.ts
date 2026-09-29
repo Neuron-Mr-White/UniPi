@@ -5,7 +5,9 @@
  * status/doctor — bare lists the commands), `/unipi:kanboard-add`,
  * `/unipi:kanboard-do` (opens the board-write window for one turn),
  * `/unipi:kanboard-autowork` (the runner loop: queue first, then claim-next).
- * The runner owns claim → In Progress and run-end → In Review. The board itself
+ * The runner owns claim → In Progress and run-end → In Review for queued work;
+ * an agent working a task by hand uses `start`/`finish` (free), nudged by the
+ * progress reminders (src/reminders.ts). The board itself
  * is written by the Rust binary (`crates/kanboard`); this extension never edits
  * task files. Bash calls into the binary are gated by the write window
  * (src/guard.ts): reads always pass, writes need a -do turn or a running task.
@@ -38,6 +40,8 @@ import {
   type CommandDeps,
 } from "./src/commands.js";
 import { createDebugLog, createRunner, registerPlanEventListener, type Runner } from "./src/runner.js";
+import { createProgressTracker, registerProgressReminders, sendReminder } from "./src/reminders.js";
+import { asTaskList } from "./src/shapes.js";
 import {
   ACTION_OPEN,
   ACTION_STOP_DAEMON,
@@ -56,6 +60,9 @@ export const KANBOARD_SKILL = "kanboard";
 export default function (pi: ExtensionAPI) {
   // One session id shared by the runner and the agent's bash calls.
   process.env.UNIPI_KANBOARD_SESSION ??= `pi-${process.pid}`;
+  // `start` claims belong to this pi process: the stale-claim reaper releases
+  // them to Todo when it dies (the agent's bash inherits the env).
+  process.env.UNIPI_KANBOARD_PID ??= String(process.pid);
   // Limits travel through the environment; refresh on load and before every
   // tool_call (see the guard registration in commands.ts).
   applyLimitEnv(readKanboardSettings());
@@ -140,6 +147,26 @@ export default function (pi: ExtensionAPI) {
   registerProgressRenderer(pi);
   registerKanboardCommands(pi, buildDeps());
 
+  // R1/R2 progress reminders for hand-worked tasks (silent in runner runs).
+  const reminders = registerProgressReminders(
+    pi,
+    createProgressTracker({
+      enabled: () => readKanboardSettings().reminders,
+      runnerOwned: () => (runner?.status().phase ?? "idle") !== "idle",
+      session: sessionId,
+      list: async () => {
+        const slug = projectSlug();
+        if (!cli || !slug) return [];
+        return asTaskList(await cli.run<unknown>(["list"], { extraEnv: { UNIPI_KANBOARD_PROJECT: slug } })).tasks;
+      },
+      cliPrefix: () => {
+        const slug = projectSlug();
+        return cli && slug ? `${cli.binary.path} --actor agent --project ${slug}` : null;
+      },
+      debug,
+    }),
+  );
+
   registerCommandRunner(ACTION_OPEN, async (ctx) => {
     const context = ctx as ExtensionContext | undefined;
     if (!context?.ui) return;
@@ -211,9 +238,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
-    if (!drainPending) return;
-    drainPending = false;
-    await drainQueueAfterDo(buildDeps(), ctx as unknown as ExtensionContext);
+    const reminder = reminders.takePending();
+    if (drainPending) {
+      drainPending = false;
+      await drainQueueAfterDo(buildDeps(), ctx as unknown as ExtensionContext);
+    }
+    // A drained queue hands the session to the runner: the reminder is moot.
+    if (reminder && (runner?.status().phase ?? "idle") === "idle") sendReminder(pi, reminder);
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {

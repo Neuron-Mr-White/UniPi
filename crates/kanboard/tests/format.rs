@@ -28,6 +28,7 @@ fn sample() -> Task {
         mode: RunMode::Goal,
         goal: Some("goal-7".into()),
         started: Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),
+        owner: kanboard::model::RunOwner::System,
     });
     task.push_activity(
         Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),

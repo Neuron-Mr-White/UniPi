@@ -32,6 +32,8 @@ export interface KanboardRun {
   mode?: string;
   goal?: string | null;
   started?: string;
+  /** "system" (runner claim) or "agent" (`start` self-claim). */
+  owner?: string;
 }
 
 export interface KanboardActivity {

@@ -192,6 +192,26 @@ pub enum Command {
         mode: String,
     },
 
+    /// Start working a todo task yourself: todo → in_progress, claimed for
+    /// this session (uses the global --session). Free for agents.
+    Start {
+        id: String,
+        /// The long-lived process that owns the claim (defaults to
+        /// $UNIPI_KANBOARD_PID, else the parent process). The stale-claim
+        /// reaper releases the task when it dies.
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+
+    /// Hand a task you started to review: in_progress → in_review. Only the
+    /// session that started it; the summary is required.
+    Finish {
+        id: String,
+        /// What you did (the reviewer reads it).
+        #[arg(long)]
+        comment: String,
+    },
+
     /// Show what claim-next would pick without claiming (read-only).
     Next,
 

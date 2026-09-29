@@ -42,7 +42,7 @@ const INFO: Record<string, (rules: Rules) => string> = {
   todo: (rules) =>
     `Ready to run. Autowork and queued work pick the next task by priority, then the order in this column (drag to reorder). A task waits until every task it runs after reaches ${rules.chainGate === "done" ? "Done" : "In Review"} — the chain-gate setting.`,
   in_progress: (rules) =>
-    `Being worked by an agent session. One task per session, at most ${rules.maxSessions ?? 2} sessions per project. The agent moves it to In Review when its turn ends.`,
+    `Being worked by an agent session. One task per session, at most ${rules.maxSessions ?? 2} sessions per project. Queued tasks are claimed by the runner and moved to In Review when the turn ends; a task the agent picks up by hand is claimed with "start" and moved with "finish". Locked to its session while it runs.`,
   blocked: () => "The agent needs something from you. Read the reason on the card, reply with a comment, then drag it back to Todo.",
   in_review: () => "The agent finished. Check the activity, then drag to Done, or back to Todo with a note on what to change.",
   done: () => "Accepted by you. Summarize & archive, or archive without a summary, from the … menu.",
@@ -73,7 +73,7 @@ export function Board(): JSX.Element {
   function onDragStart(event: DragEvent, task: Task): void {
     if (task.run) {
       event.preventDefault();
-      toast(`${task.id} is running — the agent owns it until its turn ends`, "warning");
+      toast(`${task.id} is claimed by session ${task.run.session ?? "?"} — it moves to In Review when the agent finishes`, "warning");
       return;
     }
     setDragging(task);

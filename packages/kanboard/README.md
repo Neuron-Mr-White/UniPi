@@ -91,6 +91,7 @@ resume it or releases it to Todo.
 | `queueMax` | `10` | Tasks a session may queue (0 = unlimited); passed to the CLI as `UNIPI_KANBOARD_QUEUE_MAX` |
 | `maxSessions` | `2` | Distinct sessions running tasks per project (`UNIPI_KANBOARD_MAX_SESSIONS`) |
 | `turnAddLimit` | `20` | `add` calls allowed per -do turn or runner task (0 = unlimited) |
+| `reminders` | `true` | Progress reminders for hand-worked tasks: a steer on the first file-changing call while a mentioned task is still Todo (R1), and a follow-up at turn end while a started task is still In Progress (R2, max 2 per task). Text only, silent in runner runs |
 | *actions* | | `Open board…`, `Stop daemon`, `Summary agent command…`, `Rotate access token` |
 
 `Summary agent command…` writes through `settings set agent-command` and

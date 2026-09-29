@@ -28,7 +28,6 @@ const USER: &[Actor] = &[U];
 const USER_AGENT: &[Actor] = &[U, A];
 const USER_SYSTEM: &[Actor] = &[U, S];
 const AGENT_SYSTEM: &[Actor] = &[A, S];
-const SYSTEM: &[Actor] = &[S];
 
 /// Every row of the spec's table, in order.
 pub const RULES: &[Rule] = &[
@@ -45,18 +44,20 @@ pub const RULES: &[Rule] = &[
         actors: USER_AGENT,
         comment: Comment::NotNeeded,
     },
-    // todo → in_progress | system only (claim) | deps satisfied, not claimed
+    // todo → in_progress | system (runner claim) + agent (`start`, self-claim)
+    // | deps satisfied, not claimed — enforced by claim-next / start, not `move`
     Rule {
         from: Status::Todo,
         to: Status::InProgress,
-        actors: SYSTEM,
+        actors: AGENT_SYSTEM,
         comment: Comment::NotNeeded,
     },
-    // in_progress → in_review | system (run end) | summary note
+    // in_progress → in_review | system (run end) + agent (`finish`, own claim)
+    // | summary note
     Rule {
         from: Status::InProgress,
         to: Status::InReview,
-        actors: SYSTEM,
+        actors: AGENT_SYSTEM,
         comment: Comment::Required("run summary"),
     },
     // in_progress → blocked | agent, system | comment required (what is needed)
@@ -203,10 +204,13 @@ pub fn check(
 fn actor_denied(from: Status, to: Status, actor: Actor) -> String {
     match (from, to) {
         (Status::Todo, Status::InProgress) => {
-            "todo → in_progress is system only — claim it with `claim-next`".to_string()
+            "todo → in_progress is system only for users — the runner claims with `claim-next`, \
+             an agent self-claims with `start <ID>`"
+                .to_string()
         }
         (Status::InProgress, Status::InReview) => {
-            "in_progress → in_review is system only — the runner writes it when the run ends"
+            "in_progress → in_review is system only for users — the runner writes it when the run ends, \
+             an agent that `start`ed the task uses `finish <ID> --comment`"
                 .to_string()
         }
         (_, Status::Done) if actor == Actor::Agent => {

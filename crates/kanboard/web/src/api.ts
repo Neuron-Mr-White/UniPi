@@ -16,6 +16,8 @@ export interface Run {
   pid?: number;
   host?: string;
   mode?: string;
+  /** "agent" when the session claimed it with `start`; runner otherwise. */
+  owner?: "runner" | "agent";
   goal?: string | null;
   started?: string;
 }

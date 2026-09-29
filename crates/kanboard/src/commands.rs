@@ -8,7 +8,9 @@ use crate::board::Board;
 use crate::deps;
 use crate::error::{Error, Result};
 use crate::format;
-use crate::model::{Actor, ChainGate, Priority, Run, RunMode, Staleness, Status, Strategy, Task};
+use crate::model::{
+    Actor, ChainGate, Priority, Run, RunMode, RunOwner, Staleness, Status, Strategy, Task,
+};
 use crate::order;
 use crate::store::{self, Layout, Project};
 use crate::transitions;
@@ -641,17 +643,27 @@ pub struct ClaimArgs<'a> {
     pub id: Option<&'a str>,
 }
 
-/// One claim per session, at most two sessions per project.
+/// One runner claim per session, at most `max_sessions()` sessions per project.
+/// Tasks the agent `start`ed itself don't count toward the one-claim rule (a
+/// session may have several started), but they do occupy a session slot.
 fn claim_guard(tasks: &[Task], session: &str) -> Result<()> {
     if let Some(running) = tasks.iter().find(|task| {
         task.status == Status::InProgress
-            && task.run.as_ref().map(|run| run.session.as_str()) == Some(session)
+            && task
+                .run
+                .as_ref()
+                .is_some_and(|run| run.session == session && run.owner == RunOwner::System)
     }) {
         return Err(Error::rule(format!(
             "session {session} already runs {} — release it before claiming another",
             running.id
         )));
     }
+    session_cap(tasks, session)
+}
+
+/// At most `max_sessions()` distinct sessions hold in_progress tasks.
+fn session_cap(tasks: &[Task], session: &str) -> Result<()> {
     let mut others: Vec<&str> = Vec::new();
     for task in tasks {
         if task.status != Status::InProgress {
@@ -829,6 +841,7 @@ pub fn claim_next(
         mode: args.mode,
         goal: None,
         started: now,
+        owner: RunOwner::System,
     });
     task.push_activity(
         now,
@@ -847,6 +860,181 @@ pub fn claim_next(
         map.insert("handoffNotes".into(), json!(task.handoff_notes()));
     }
     Ok(json!({ "task": value, "waiting": [] }))
+}
+
+pub struct StartArgs<'a> {
+    pub session: &'a str,
+    /// The long-lived process that owns the claim (the pi process, not the
+    /// short-lived CLI) — the stale-claim reaper checks it.
+    pub pid: u32,
+    pub host: &'a str,
+}
+
+/// `start <ID>`: the agent self-claims a todo task for its session
+/// (todo → in_progress, actor agent). Same readiness rules as `claim-next
+/// --id` — deps satisfied, not already claimed, the per-project session cap —
+/// but a session may hold several started tasks.
+pub fn start(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    id: &str,
+    args: &StartArgs<'_>,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    // Dead sessions give their tasks back first (same as claim-next).
+    reap_dead(&board, &mut tasks, now, false);
+    let by_id = board.dep_lookup(&tasks);
+    let task = tasks
+        .iter()
+        .find(|task| task.id == id)
+        .ok_or_else(|| Error::not_found(format!("start {id}: no such task")))?;
+    if task.status == Status::InProgress {
+        let owner = task.run.as_ref();
+        if owner.is_some_and(|run| run.session == args.session) {
+            return Err(Error::rule(format!(
+                "start {id}: already in progress for this session — `finish {id} --comment \"…\"` when done"
+            )));
+        }
+        return Err(Error::rule(format!(
+            "start {id}: already claimed by {} {}",
+            owner.map(|run| run.owner.as_str()).unwrap_or("nobody"),
+            owner.map(|run| run.session.as_str()).unwrap_or("?"),
+        )));
+    }
+    if task.status != Status::Todo {
+        return Err(Error::rule(format!(
+            "start {id}: the task is {}, not todo{}",
+            task.status,
+            if task.status == Status::Backlog {
+                " — move it to todo first"
+            } else {
+                ""
+            }
+        )));
+    }
+    if task.is_claimed() {
+        return Err(Error::rule(format!(
+            "start {id}: the task is already claimed"
+        )));
+    }
+    if let Some(blocked) = deps::blocked_by(task, &by_id, gate) {
+        return Err(Error::rule(format!(
+            "start {id}: {}",
+            blocked.describe(gate)
+        )));
+    }
+    session_cap(&tasks, args.session)?;
+    transitions::check(
+        Status::Todo,
+        Status::InProgress,
+        Actor::Agent,
+        None,
+        Staleness::Running,
+    )?;
+
+    let mut task = task.clone();
+    task.status = Status::InProgress;
+    task.run = Some(Run {
+        session: args.session.to_string(),
+        pid: args.pid,
+        host: args.host.to_string(),
+        mode: RunMode::None,
+        goal: None,
+        started: now,
+        owner: RunOwner::Agent,
+    });
+    task.push_activity_session(
+        now,
+        Actor::Agent,
+        Some(args.session),
+        format!("started (pid {} on {})", args.pid, args.host),
+    );
+    board.save(&task)?;
+    drop(lock);
+
+    let tasks = board.tasks()?;
+    let mut value = task_json(&board, &task, &tasks, gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("handoffNotes".into(), json!(task.handoff_notes()));
+    }
+    Ok(value)
+}
+
+/// `finish <ID> --comment "…"`: the agent hands a task it `start`ed to review
+/// (in_progress → in_review, actor agent). Refused for another session's claim
+/// and for runner claims (the run end releases those).
+pub fn finish(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    id: &str,
+    session: &str,
+    comment: &str,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let summary = comment.trim();
+    if summary.is_empty() {
+        return Err(Error::rule(format!(
+            "finish {id} requires --comment (a summary of what you did — the reviewer reads it)"
+        )));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    if task.status != Status::InProgress {
+        return Err(Error::rule(format!(
+            "finish {id}: the task is {}, not in_progress{}",
+            task.status,
+            if task.status == Status::Todo {
+                format!(" — `start {id}` first")
+            } else {
+                String::new()
+            }
+        )));
+    }
+    match task.run.as_ref() {
+        None => {
+            return Err(Error::rule(format!(
+                "finish {id}: the task has no claim (run `validate`)"
+            )));
+        }
+        Some(run) if run.owner != RunOwner::Agent => {
+            return Err(Error::rule(format!(
+                "finish {id}: claimed by the runner (session {}) — the runner moves it to in_review when the run ends",
+                run.session
+            )));
+        }
+        Some(run) if run.session != session => {
+            return Err(Error::rule(format!(
+                "finish {id}: started by session {}, not this one ({session}) — only the session that started it can finish it",
+                run.session
+            )));
+        }
+        Some(_) => {}
+    }
+    transitions::check(
+        Status::InProgress,
+        Status::InReview,
+        Actor::Agent,
+        Some(summary),
+        Staleness::Running,
+    )?;
+    task.status = Status::InReview;
+    task.run = None;
+    task.push_activity_session(
+        now,
+        Actor::Agent,
+        Some(session),
+        format!("finished: {summary}"),
+    );
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, gate))
 }
 
 pub fn release(
@@ -934,6 +1122,23 @@ pub fn move_task(
     let mut task = board.get(id)?;
     let from = task.status;
     let staleness = staleness_of(&task);
+    // The self-claim moves have their own commands: `move` would skip the
+    // claim bookkeeping (run block, ownership, summary).
+    if common.actor == Actor::Agent {
+        match (from, to) {
+            (Status::Todo, Status::InProgress) => {
+                return Err(Error::rule(format!(
+                    "use `start {id}` to begin a task (it claims it for your session)"
+                )));
+            }
+            (Status::InProgress, Status::InReview) => {
+                return Err(Error::rule(format!(
+                    "use `finish {id} --comment \"<summary>\"` to hand a task you started to review"
+                )));
+            }
+            _ => {}
+        }
+    }
     transitions::check(from, to, common.actor, comment, staleness)?;
 
     // An agent may block only the task its own session is running.
