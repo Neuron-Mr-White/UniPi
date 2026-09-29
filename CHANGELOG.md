@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.11] — 2026-09-29
+
 ### Removed
 - `skill-registry`: the ~20 bundled workflow skills (`brainstorm`, `plan`, `work`, `debug`, `quick-fix`, `worktree-*`, …) are deleted and no longer ship — the package is now registry/exposure only (`isWorkflowSkill` and the generic-skill cap are gone with them).
 

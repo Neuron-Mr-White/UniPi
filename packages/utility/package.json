@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/utility",
-  "version": "3.0.0-alpha.10",
+  "version": "3.0.0-alpha.11",
   "description": "Utility commands and tools for Pi coding agent — lifecycle, diagnostics, cache, analytics, display, batch execution",
   "type": "module",
   "main": "src/index.ts",
@@ -36,7 +36,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.10"
+    "@pi-unipi/core": "3.0.0-alpha.11"
   },
   "devDependencies": {},
   "peerDependencies": {
