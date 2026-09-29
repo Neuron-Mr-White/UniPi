@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.9] — 2026-09-29
+
+### Added
+- `long-horizon`: `/unipi:goal|swarm|graph stop` — terminally ends the active owner (goal → `complete(user_requested)`; pending proposal discarded; no further continuation follow-up). `/unipi:clear` on an active owner now points at stop instead of silently doing nothing.
+- `long-horizon`: `/unipi:regular` — stops any active owner (incl. ralph loops) and pins the session to plain mode; an explicit mode command unlatches it.
+- `long-horizon`: command runners `unipi:goal-pause` / `unipi:goal-resume` / `unipi:goal-stop` for cross-module callers.
+- `kanboard`: `/unipi:kanboard-do` grants session **write credits** (setting `kanboard.doCredits`, default 10) instead of a turn-scoped window — credits persist across turns, each board write costs 1, reads stay free, runner tasks keep unlimited access, `off` revokes.
+
+### Changed
+- `long-horizon`: verifier resilience — evaluator failures retry once, then pause `paused(verifier_unavailable)`; two consecutive inconclusive verdicts pause `paused(verifier_inconclusive)`; five consecutive `not_met` claims pause unconditionally (stall-cap coupling removed). Paused goals park the owner so `/unipi:goal resume` works.
+- `long-horizon`: tokens — provider usage now read in both pi shapes (`{input, output, …}` and `{inputTokens, outputTokens}`); usage-less turns estimate tokens (chars/4) and flag `tokens_estimated` in `get_goal` and the continuation hint.
+- `long-horizon`: no-progress guard keys "identical arguments" on real tool arguments (captured per `toolCallId`), exempts search no-matches, `get_goal`/`update_goal`, and kanboard reads — no more false "ran 3 times with identical arguments" after three different commands.
+- `kanboard`: an interrupted/released task parks its goal (id recorded in the release note) and resumes it on re-claim; a user-stopped goal releases the task to Todo ("goal stopped by user") instead of In Review; a task cancelled outside the runner stops its goal.
+- `kanboard`: `-do` suggestions only for task-id-like tokens (no more task rows under free prose).
 ## [3.0.0-alpha.7] — 2026-09-28
 
 ### Changed
