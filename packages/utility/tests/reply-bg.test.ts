@@ -1,14 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bgLuminance, findAssistant, paintLine, patchAssistantRender, replyBg } from "../src/render/reply-bg.ts";
+import { bgLuminance, dividerLine, findAssistant, paintLine, patchAssistantRender, replyBg, replyFg } from "../src/render/reply-bg.ts";
 
-test("light vs dark theme picks the reply background from the user-message bg", () => {
-  const dark = { getBgAnsi: () => "\x1b[48;2;52;53;65m", getColorMode: () => "truecolor" };
-  const light = { getBgAnsi: () => "\x1b[48;2;232;232;232m", getColorMode: () => "truecolor" };
-  assert.equal(replyBg(dark), "\x1b[48;2;46;40;28m");
-  assert.equal(replyBg(light), "\x1b[48;2;253;246;214m");
-  assert.equal(replyBg({ getBgAnsi: () => "\x1b[48;5;254m", getColorMode: () => "256color" }), "\x1b[48;5;230m");
+test("reply background is true black; light themes lift the text fg", () => {
+  assert.equal(replyBg(), "\x1b[48;2;0;0;0m");
+  assert.equal(replyFg({ getBgAnsi: () => "\x1b[48;2;232;232;232m" }), "\x1b[97m");
+  assert.equal(replyFg({ getBgAnsi: () => "\x1b[48;2;52;53;65m" }), null);
   assert.ok((bgLuminance("\x1b[48;5;236m") ?? 1) < 0.5);
+});
+
+test("divider line labels the panel and fills the width", () => {
+  const t = { fg: (_k: string, s2: string) => `\x1b[90m${s2}\x1b[39m` };
+  const d = dividerLine(t, "summary", 20);
+  assert.ok(d.includes(" summary "));
+  assert.equal(d.length, 20 + "\x1b[90m".length + "\x1b[39m".length);
 });
 
 test("paintLine pads to width and re-opens the background after resets", () => {
@@ -30,11 +35,12 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
       return ["hello"];
     }
   }
-  patchAssistantRender(Fake.prototype as never, () => "\x1b[48;5;236m");
+  patchAssistantRender(Fake.prototype as never, () => ({ bg: "\x1b[48;5;236m", fg: null, dividerFor: (w: number) => `─ summary ${"─".repeat(Math.max(0, w - 10))}` }));
   const reply = new Fake();
   const first = reply.render(10);
-  assert.equal(first.length, 2); // text + bottom pad row
-  assert.ok(first[0]!.startsWith("\x1b[48;5;236m"));
+  assert.equal(first.length, 3); // divider + text + bottom pad row
+  assert.equal(first[0], "─ summary ────────");
+  assert.ok(first[1]!.startsWith("\x1b[48;5;236m"));
   assert.strictEqual(reply.render(10), first); // cached array
   const withTools = new Fake();
   withTools.hasToolCalls = true;

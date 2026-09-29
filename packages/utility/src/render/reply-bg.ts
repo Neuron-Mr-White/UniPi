@@ -3,8 +3,9 @@
  *
  * In a long transcript of collapsed tool rows the actual answer is easy to
  * miss. An assistant message with no tool calls (the turn's reply) is painted
- * on a pale yellow panel — light yellow on light themes, a dark warm brown on
- * dark themes (picked from the theme's own user-message background).
+ * on the darkest possible panel (true black), introduced by a thin divider
+ * line labelled "summary". On light themes the text is lifted to bright white
+ * so it stays readable on the black panel.
  *
  * pi has no hook for assistant-message rendering, and extensions get a
  * different module instance of AssistantMessageComponent than the one pi
@@ -64,18 +65,36 @@ export function bgLuminance(ansi: string): number | undefined {
   return undefined;
 }
 
-/** The reply background: pale yellow on light themes, dark warm brown on dark ones. */
-export function replyBg(theme: { getBgAnsi?: (k: string) => string; getColorMode?: () => string } | undefined): string {
-  let light = false;
+/** The reply background: the darkest possible (true black). */
+export function replyBg(_theme?: unknown): string {
+  return "\x1b[48;2;0;0;0m";
+}
+
+/** Bright white fg re-opened after resets when the theme is light (black panel). */
+export function replyFg(theme: { getBgAnsi?: (k: string) => string } | undefined): string | null {
   try {
     const lum = bgLuminance(theme?.getBgAnsi?.("userMessageBg") ?? "");
-    light = lum !== undefined && lum > 0.5;
+    return lum !== undefined && lum > 0.5 ? "\x1b[97m" : null;
   } catch {
-    /* unknown theme key — assume dark */
+    return null;
   }
-  const truecolor = (theme?.getColorMode?.() ?? "truecolor") === "truecolor";
-  if (light) return truecolor ? "\x1b[48;2;253;246;214m" : "\x1b[48;5;230m";
-  return truecolor ? "\x1b[48;2;46;40;28m" : "\x1b[48;5;236m";
+}
+
+/** The divider introducing the panel: "─ summary ─────…". */
+export function dividerLine(theme: { fg?: (k: string, t: string) => string } | undefined, label: string, width: number): string {
+  const dash = (n: number) => "─".repeat(Math.max(0, n));
+  const text = ` ${label} `;
+  const line = `\u2500${text}${dash(width - 1 - visibleWidth(text))}`;
+  const fg = (t: string) => {
+    try {
+      return theme?.fg?.("borderMuted", t) ?? `\x1b[90m${t}\x1b[39m`;
+    } catch {
+      return `\x1b[90m${t}\x1b[39m`;
+    }
+  };
+  // truncate by visible width; the theme wrapper is zero-width
+  const visible = line.length;
+  return visible <= width ? fg(line) : fg(line.slice(0, Math.max(0, width)));
 }
 
 /**
@@ -83,10 +102,11 @@ export function replyBg(theme: { getBgAnsi?: (k: string) => string; getColorMode
  * `\x1b[49m`) would end the background mid-line, so the background is
  * re-opened right after each of them.
  */
-export function paintLine(line: string, width: number, bg: string): string {
+export function paintLine(line: string, width: number, bg: string, fg: string | null = null): string {
   const pad = Math.max(0, width - visibleWidth(line));
-  const body = line.replace(/\x1b\[(?:0|49)?m/g, (m) => m + bg);
-  return `${bg}${body}${" ".repeat(pad)}\x1b[49m`;
+  const reopen = (m: string) => m + bg + (fg ?? "");
+  const body = line.replace(/\x1b\[(?:0|39|49)m/g, reopen);
+  return `${bg}${fg ?? ""}${body}${" ".repeat(pad)}\x1b[49m${fg ? "\x1b[39m" : ""}`;
 }
 
 /** A step with no visible text (thinking and/or tool calls only) that ended normally. */
@@ -101,7 +121,10 @@ export function isBlankStep(msg: unknown): boolean {
  * Wrap the component class's render once. `getBg` is read per render so a
  * theme switch takes effect; `enabled` lets the caller turn it off.
  */
-export function patchAssistantRender(proto: AssistantLike, getBg: () => string): void {
+export function patchAssistantRender(
+  proto: AssistantLike,
+  getPanel: () => { bg: string; fg: string | null; dividerFor: (width: number) => string },
+): void {
   const p = proto as unknown as Record<PropertyKey, unknown>;
   if (p[PATCHED]) return;
   const original = proto.render;
@@ -114,11 +137,10 @@ export function patchAssistantRender(proto: AssistantLike, getBg: () => string):
     const lines = original.call(this, width);
     // Only the reply: finished, no tool calls, something visible.
     if (this.hasToolCalls || this.isStreaming || lines.length === 0) return lines;
-    const bg = getBg();
-    if (!bg) return lines;
+    const { bg, fg, dividerFor } = getPanel();
     const hit = cache.get(this);
     if (hit && hit.width === width && hit.msg === this.lastMessage && hit.bg === bg && hit.streaming === this.isStreaming) return hit.lines;
-    const painted = lines.map((l) => paintLine(l, width, bg));
+    const painted = [dividerFor(width), ...lines.map((l) => paintLine(l, width, bg, fg))];
     // A bottom pad row so the panel doesn't end flush on the last text line.
     painted.push(paintLine("", width, bg));
     cache.set(this, { width, msg: this.lastMessage, bg, streaming: this.isStreaming, lines: painted });
@@ -141,7 +163,11 @@ export function installReplyBackground(pi: {
     if (done || !tui) return;
     const hit = findAssistant(tui);
     if (!hit) return;
-    patchAssistantRender(Object.getPrototypeOf(hit) as AssistantLike, () => replyBg(theme));
+    patchAssistantRender(Object.getPrototypeOf(hit) as AssistantLike, () => ({
+      bg: replyBg(),
+      fg: replyFg(theme),
+      dividerFor: (width: number) => dividerLine(theme, "summary", width),
+    }));
     done = true;
     try {
       (tui as { requestRender?: (force?: boolean) => void }).requestRender?.(true);
