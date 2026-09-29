@@ -15,8 +15,9 @@ import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
+import { buildUIPromptMessage } from "./ui-prompt-message.js";
 import { summarizeLastMessage } from "./summarize.js";
-import { filterPlatformsAfterInput, isBlockingEvent } from "./activity.js";
+import { filterPlatformsAfterInput, hasRecentInput, isBlockingEvent } from "./activity.js";
 
 // Event emitted by @juicesharp/rpiv-ask-user-question before showing its UI.
 // Keep this as a local string until that package publishes an importable
@@ -29,6 +30,15 @@ const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
 // Kept as a local string (like the rpiv event above) because it belongs to a
 // third-party package rather than the unipi event contract.
 const PERMISSION_UI_PROMPT_EVENT = "permissions:ui_prompt" as const;
+
+/**
+ * How close two signals must be to belong to the same `ui_prompt_start`: a
+ * blocking alert sent this soon before it (ask-user and permission producers
+ * emit on the bus right before they open their UI), or, while the agent is
+ * idle, a keypress this soon before it (the user opened it, e.g. a settings
+ * overlay). Either way, no notification is needed.
+ */
+export const PROMPT_CORRELATION_MS = 2000;
 
 /** Minimal shape of the background-tasks shared registry (optional sibling package). */
 type SharedTaskRegistryLike = {
@@ -74,6 +84,9 @@ const unsubs: Array<() => void> = [];
 
 /** Pending re-notify interval for an unanswered blocking prompt. */
 let renotifyTimer: ReturnType<typeof setInterval> | undefined;
+
+/** When the last blocking alert was sent. Written only by notifyBlocking(). */
+let lastBlockingAlertAt = 0;
 
 /** Cancel any pending re-notify timer. Safe to call at any time. */
 export function disarmRenotify(): void {
@@ -128,9 +141,32 @@ function armRenotify(
   renotifyTimer = timer;
 }
 
+/**
+ * Send a human-blocking prompt notification (always `high`) and arm its
+ * reminder. Every blocking alert goes through here, so the `ui_prompt` de-dup
+ * stamp can never be missed by a new blocking source.
+ */
+function notifyBlocking(
+  pi: ExtensionAPI,
+  eventKey: string,
+  message: string,
+  platforms: NotifyPlatform[],
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  const title = `Pi — ${BUILTIN_EVENTS[eventKey]?.label ?? eventKey}`;
+  dispatch(pi, title, message, platforms, eventKey, config, cwd, "high").catch(() => {
+    // Silently ignore — background notification failure is non-blocking.
+  });
+  lastBlockingAlertAt = Date.now();
+  armRenotify(pi, title, message, platforms, eventKey, config, cwd, dispatch);
+}
+
 /** Unregister all previously registered pi.events.on() listeners. */
 function unregisterAll(): void {
   disarmRenotify();
+  lastBlockingAlertAt = 0;
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -161,6 +197,7 @@ export const BUILTIN_EVENTS: Record<
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
   ask_user_prompt: { hook: UNIPI_EVENTS.ASK_USER_PROMPT, label: "Question Asked" },
   permission_request: { hook: PERMISSION_UI_PROMPT_EVENT, label: "Permission Request" },
+  ui_prompt: { hook: "ui_prompt_start", label: "Input Needed" },
 };
 
 /**
@@ -185,17 +222,21 @@ export function registerEventListeners(
   // Register built-in events (except agent lifecycle notifications which have custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
     if (isAgentNotificationEvent(eventKey)) continue; // handled separately below
+    if (eventKey === "ui_prompt") continue; // handled separately below
 
     const eventConfig = config.events[eventKey];
     if (!eventConfig?.enabled) continue;
 
     const handler = (payload: unknown) => {
-      const title = `Pi — ${def.label}`;
       const message = buildEventMessage(eventKey, payload);
+      if (isBlockingEvent(eventKey)) {
+        notifyBlocking(pi, eventKey, message, eventConfig.platforms, config, cwd, dispatch);
+        return;
+      }
       // Fire-and-forget: don't block the event emitter
       dispatch(
         pi,
-        title,
+        `Pi — ${def.label}`,
         message,
         eventConfig.platforms,
         eventKey,
@@ -205,9 +246,6 @@ export function registerEventListeners(
       ).catch(() => {
         // Silently ignore — background notification failure is non-blocking.
       });
-      if (isBlockingEvent(eventKey)) {
-        armRenotify(pi, title, message, eventConfig.platforms, eventKey, config, cwd, dispatch);
-      }
     };
 
     // Pi lifecycle events are dispatched via ExtensionRunner — must use
@@ -225,16 +263,12 @@ export function registerEventListeners(
   const askUserConfig = config.events["ask_user_prompt"];
   if (askUserConfig?.enabled) {
     unsubs.push(pi.events.on(ASK_USER_PROMPT_EVENT, (payload: unknown) => {
-      const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
       const message = buildAskUserPromptMessage(payload);
-      dispatch(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, "high").catch(
-        () => {
-          // Silently ignore — background notification failure is non-blocking.
-        }
-      );
-      armRenotify(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, dispatch);
+      notifyBlocking(pi, "ask_user_prompt", message, askUserConfig.platforms, config, cwd, dispatch);
     }));
   }
+
+  registerUIPromptNotification(pi, config, cwd, dispatch);
 
   // A reminder loop must never outlive the prompt it is nagging about: any of
   // these signals means the human acted or the agent moved on.
@@ -242,6 +276,13 @@ export function registerEventListeners(
     if ((payload as { active?: unknown } | null)?.active === false) disarmRenotify();
   }));
   (pi as any).on("agent_start", () => {
+    disarmRenotify();
+  });
+  // Pi's own signal that the blocking prompt closed (answered or cancelled).
+  // Pi awaits handlers in turn, so with many ui_prompt_end listeners ahead of
+  // this one, a back-to-back prompt's start could in theory arrive first; this
+  // late end would then disarm the new prompt's reminder.
+  (pi as any).on("ui_prompt_end", () => {
     disarmRenotify();
   });
 
@@ -504,6 +545,50 @@ function registerAgentNotification(
   };
 
   (pi as any).on(eventKey, handler);
+}
+
+/**
+ * Notify on Pi's own `ui_prompt_start` (Pi 0.84.4+), which fires for every
+ * blocking `ctx.ui` prompt, whichever extension opens it. The pinned Pi types
+ * predate the event, hence `(pi as any).on` like the other lifecycle hooks.
+ */
+function registerUIPromptNotification(
+  pi: ExtensionAPI,
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  const eventConfig = config.events.ui_prompt;
+  // A subagent child's prompts are answered or cancelled by its lead, never the user.
+  if (!eventConfig?.enabled || isSubagentChild()) return;
+
+  (pi as any).on("ui_prompt_start", (payload: unknown, ctx?: ExtensionContext) => {
+    const now = Date.now();
+    // The ask-user or permission alert for this very prompt already went out.
+    if (now - lastBlockingAlertAt < PROMPT_CORRELATION_MS) return;
+    // The user just opened it themselves (e.g. a settings overlay).
+    if (hasRecentInput(PROMPT_CORRELATION_MS, now) && isAgentIdle(ctx)) return;
+
+    const message = buildUIPromptMessage(payload);
+    notifyBlocking(pi, "ui_prompt", message, eventConfig.platforms, config, cwd, dispatch);
+  });
+}
+
+/** Whether the agent is idle. Unknown (no context, or a failing check) counts as busy. */
+function isAgentIdle(ctx: ExtensionContext | undefined): boolean {
+  try {
+    return ctx?.isIdle() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether this process is a subagent child (subagents package or fusion
+ * sidekick). Mirrors `isSubagentChild` in @pi-unipi/ask-user.
+ */
+export function isSubagentChild(env: Record<string, string | undefined> = process.env): boolean {
+  return env.UNIPI_SUBAGENT_CHILD === "1";
 }
 
 /** Whether an event key is an agent lifecycle notification with custom handling. */

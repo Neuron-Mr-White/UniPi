@@ -38,7 +38,8 @@ Help users configure the `@pi-unipi/notify` notification system.
     "memory_consolidated": { "enabled": false, "platforms": [] },
     "session_shutdown": { "enabled": false, "platforms": [] },
     "ask_user_prompt": { "enabled": false, "platforms": [] },
-    "permission_request": { "enabled": false, "platforms": [] }
+    "permission_request": { "enabled": false, "platforms": [] },
+    "ui_prompt": { "enabled": false, "platforms": [] }
   },
   "native": {
     "enabled": true,
@@ -102,7 +103,7 @@ TUI: `/unipi:notify-settings` → Platforms → Quiet after activity (Space), �
 
 ### Re-notify unanswered prompts (default: enabled)
 
-When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered, notify re-sends the same notification every `intervalMs`, title suffixed `(still waiting)`, priority `high`, up to `maxRepeats` times.
+When a blocking prompt (`ask_user_prompt`, `permission_request`, `ui_prompt`) is not answered, notify re-sends the same notification every `intervalMs`, title suffixed `(still waiting)`, priority `high`, up to `maxRepeats` times.
 
 ```json
 "renotify": {
@@ -116,7 +117,7 @@ When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered
 - `intervalMs` — delay between reminders in milliseconds, minimum 10000 (default: 120000 = 2 min)
 - `maxRepeats` — reminders after the first notification, 0 sends none (default: 3)
 
-Reminders stop as soon as the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn, or the session ends. Arming a new prompt replaces any existing reminder (only one can be outstanding). Reminders bypass `silenceAfterInput` since blocking events are exempt.
+Reminders stop as soon as the user presses a key, Pi reports the prompt closed (`ui_prompt_end`), herdr reports `herdr:blocked` `active: false`, the agent starts a new turn, or the session ends. Arming a new prompt replaces any existing reminder (only one can be outstanding). Reminders bypass `silenceAfterInput` since blocking events are exempt.
 
 TUI: `/unipi:notify-settings` → Re-notify → Space toggles enabled, +/− adjusts interval (30s steps) and max repeats.
 
@@ -207,10 +208,11 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 | `session_shutdown` | Off | Session ends |
 | `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
 | `permission_request` | Off | A permission prompt is about to be shown |
+| `ui_prompt` | Off | Pi is waiting on any blocking extension prompt (requires Pi 0.84.4+) |
 
 Each event can override `platforms` — empty array means use `defaultPlatforms`.
 
-`ask_user_prompt` and `permission_request` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see the Re-notify unanswered prompts section under Platforms).
+`ask_user_prompt`, `permission_request`, and `ui_prompt` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see the Re-notify unanswered prompts section under Platforms).
 
 ### `permission_request`
 
@@ -234,6 +236,32 @@ Current agent requested bash 'npm test'. Allow this command?
 Enable it when you run Pi in a background pane and don't want to miss a
 permission prompt. If the permission system is not installed the event simply
 never fires.
+
+### `ui_prompt`
+
+Fires on Pi's own `ui_prompt_start` event (Pi 0.84.4+), which Pi emits
+whenever an extension's `ctx.ui.select`, `confirm`, `input`, `editor`, or
+`custom` starts waiting on the user. It covers any `ask_user` tool that opens
+its UI through `ctx.ui`, including ones that emit no event of their own, and
+any other blocking dialog. Pi's `ui_prompt_end` stops the reminders. Subagent
+children (`UNIPI_SUBAGENT_CHILD=1`) never send it.
+
+It skips a prompt that opens within 2s of an `ask_user_prompt` or
+`permission_request` notification (the same prompt), and a prompt that opens
+while the agent is idle within 2s of a keypress (the user opened it). The
+title comes from the prompt, with control characters removed:
+
+```text
+Pi — Input Needed
+Pi is waiting for your input: Which model?
+```
+
+`custom` prompts (most `ask_user` tools) have no title, so they show
+`Pi is waiting for your input.`
+
+Enable it when an `ask_user` tool you use does not trigger `ask_user_prompt`,
+or when you want a notification for every blocking dialog. On Pi older than
+0.84.4 the event never fires.
 
 ## Agent workflow
 

@@ -30,6 +30,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     session_shutdown: { enabled: false, platforms: [] },
     ask_user_prompt: { enabled: false, platforms: [] },
     permission_request: { enabled: false, platforms: [] },
+    ui_prompt: { enabled: false, platforms: [] },
   },
   native: {
     enabled: true,
