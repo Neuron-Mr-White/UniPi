@@ -15,7 +15,7 @@ pi install npm:@pi-unipi/unipi
 
 ## What You Get
 
-**[Workflow](./packages/workflow/README.md)** — **plan mode** (`/unipi:plan`, `Alt+P`) and **permission modes** (`ask` · `auto` · `full`). Plan mode makes a session read-only except for its plan file; auto mode lets jev judge ambiguous bash before it runs. The twenty workflow skills moved to [@pi-unipi/skill-registry](./packages/skill-registry/README.md).
+**[Workflow](./packages/workflow/README.md)** — **plan mode** (`/unipi:plan`, `Alt+P`) and **permission modes** (`ask` · `auto` · `full`). Plan mode makes a session read-only except for its plan file; auto mode lets jev judge ambiguous bash before it runs.
 
 **[Long-Horizon](./packages/long-horizon/)** — Mode-gated long-horizon execution: `/goal` (one objective until verifiably true, propose+verify), `/ralph` (task-file iteration loops), `/swarm` (independent fan-out + synthesis), `/graph` (dependent multi-step work). A TypeSafe jev prompt judge routes each turn; one automation owner per session with park/resume; runaway-guard steering; token/turn/stall budgets.
 
@@ -138,7 +138,7 @@ unipi/
 ├── packages/
 │   ├── core/           # Shared constants, events, utilities
 │   ├── workflow/       # plan mode + permission modes
-│   ├── skill-registry/  # bundled workflow skills (no code yet)
+│   ├── skill-registry/  # per-project skill on/off + jev-judged exposure
 │   ├── long-horizon/  # /goal /ralph /swarm /graph mode-gated execution
 │   ├── memory/         # SQLite + vector search
 │   ├── compactor/      # Context engine

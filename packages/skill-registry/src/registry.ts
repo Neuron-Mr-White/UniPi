@@ -33,11 +33,6 @@ export function isBundledSkillLocation(location: string): boolean {
   return location.includes("/@pi-unipi/") || /\/unipi\/packages\//.test(location);
 }
 
-/** The generic workflow skills shipped in this package (brainstorm, work, …). */
-export function isWorkflowSkill(location: string): boolean {
-  return /\/(?:@pi-unipi|packages)\/skill-registry\/skills\//.test(location);
-}
-
 export function skillSource(s: CatalogSkill, cwd: string, vault: string): SkillSource {
   const dir = skillDir(s);
   if (isUnderDir(dir, vault)) return "vault";

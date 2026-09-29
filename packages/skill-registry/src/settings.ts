@@ -56,7 +56,7 @@ export interface SkillsSettings {
 
 export const DEFAULT_EXPOSURE: ExposureSettings = {
   mode: "judged",
-  threshold: 0.3,
+  threshold: 0.8,
   maxSkills: 12,
   recheck: true,
 };

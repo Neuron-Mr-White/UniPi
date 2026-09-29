@@ -9,8 +9,6 @@
  *     judging ambiguous bash in auto mode;
  *   - plan mode (/unipi:plan, Alt+P) makes a session read-only except for its
  *     plan file.
- *
- * The bundled skills moved to @pi-unipi/skill-registry.
  */
 
 import { dirname } from "node:path";

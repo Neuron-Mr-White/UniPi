@@ -12,14 +12,12 @@
   },
   "keywords": [
     "pi-package",
-    "pi-skills",
     "unipi",
     "skill-registry"
   ],
   "files": [
     "index.ts",
     "src/**/*.ts",
-    "skills/**/*",
     "README.md",
     "!src/**/*.test.ts"
   ],
@@ -29,9 +27,6 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ],
-    "skills": [
-      "./skills"
     ],
     "prompts": [],
     "themes": []

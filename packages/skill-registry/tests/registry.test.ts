@@ -23,14 +23,13 @@ import { DEFAULT_EXPOSURE, migrateUtilitySkills, normalizeExposure, normalizeSta
 import { SkillEditor, cellValue, type EditorResult } from "../src/editor.ts";
 import { listVaultSkills, parseFrontmatter } from "../src/vault.ts";
 
-const WF = "/repo/packages/skill-registry/skills";
 const e = (name: string, location = `/home/u/.agents/skills/${name}`, description = `${name} skill`): Entry => ({ name, description, location });
 
 const CATALOG: Entry[] = [
   e("coffee-sandbox"), e("unipi-v3-development"), e("agent-browser"), e("browser-automation"),
   e("mempalace"), e("mempalace-recall"), e("mempalace-task"), e("grill-me"),
-  e("work", `${WF}/work`), e("plan", `${WF}/plan`), e("research", `${WF}/research`), e("gather-context", `${WF}/gather-context`),
-  e("quick-work", `${WF}/quick-work`), e("brainstorm", `${WF}/brainstorm`), e("debug", `${WF}/debug`),
+  e("work"), e("plan"), e("research"), e("gather-context"),
+  e("quick-work"), e("brainstorm"), e("debug"),
 ];
 
 describe("pins", () => {
@@ -50,6 +49,13 @@ describe("pins", () => {
     assert.equal(pinnedSkills(CATALOG, "search mempalace").has("mempalace"), true);
     assert.equal(pinnedSkills(CATALOG, "search mempalace").has("mempalace-task"), false); // 'mempalace' is in 3 names
   });
+
+  it("ignores pi's image placeholders when pinning; a plain mention still pins", () => {
+    const withImage = [...CATALOG, e("image")];
+    const placeholders = "[Image #1]\n\nLook at this. [Image #2] [Image #3] [Image #4] [Image #5] [Image #6] [Image #7]";
+    assert.equal(pinnedSkills(withImage, placeholders).has("image"), false);
+    assert.ok(pinnedSkills(withImage, "generate an image of a cup").has("image"));
+  });
 });
 
 describe("applyJudgement", () => {
@@ -61,14 +67,6 @@ describe("applyJudgement", () => {
     assert.deepEqual(kept.map((k) => k.name), ["coffee-sandbox", "work"]);
   });
 
-  it("caps generic workflow skills at 4 so they cannot crowd the list", () => {
-    const high = Object.fromEntries(CATALOG.map((c) => [c.name, c.location.startsWith(WF) ? 0.9 : 0.5]));
-    const { kept } = applyJudgement(CATALOG, score(high), { threshold: 0.3, maxSkills: 12 });
-    const generic = kept.filter((k) => k.location.startsWith(WF));
-    assert.equal(generic.length, 4);
-    assert.ok(kept.some((k) => k.name === "coffee-sandbox"));
-  });
-
   it("respects threshold and the total cap", () => {
     const { kept, hidden } = applyJudgement(CATALOG, score({ "agent-browser": 0.95, "browser-automation": 0.8, mempalace: 0.2 }), { threshold: 0.3, maxSkills: 1 });
     assert.deepEqual(kept.map((k) => k.name), ["agent-browser"]);
@@ -78,9 +76,8 @@ describe("applyJudgement", () => {
 
 describe("hidden index", () => {
   it("names every hidden skill grouped by folder", () => {
-    const text = hiddenIndex([e("coffee-sandbox", "/x/skills/coffee-sandbox"), e("plan", `${WF}/plan`), e("odd", "/y/other-dir")]);
-    assert.match(text, /- \/x\/skills\/: coffee-sandbox/);
-    assert.match(text, /packages\/skill-registry\/skills\/: plan/);
+    const text = hiddenIndex([e("coffee-sandbox", "/x/skills/coffee-sandbox"), e("plan", "/x/skills/plan"), e("odd", "/y/other-dir")]);
+    assert.match(text, /- \/x\/skills\/: coffee-sandbox, plan/);
     assert.match(text, /odd \(\/y\/other-dir\/SKILL\.md\)/);
     assert.equal(hiddenIndex([]), "");
   });

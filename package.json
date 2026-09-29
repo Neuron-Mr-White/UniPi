@@ -60,7 +60,6 @@
       "packages/unipi/bundled.js"
     ],
     "skills": [
-      "packages/skill-registry/skills",
       "packages/memory/skills",
       "packages/btw/skills",
       "packages/ask-user/skills",

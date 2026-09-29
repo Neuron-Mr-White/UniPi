@@ -10,7 +10,7 @@
  *   1. Pins — a skill whose name, or a distinctive word of it, appears in the
  *      prompt is always kept. No model needed ("ssh into coffee" → coffee-sandbox).
  *   2. jev scores every remaining skill against the prompt; ≥ threshold stay,
- *      best first, at most GENERIC_CAP of the generic workflow skills.
+ *      best first, at most maxSkills in total.
  *   3. Everything else is hidden — but NAMED in a static "other installed
  *      skills" section with where each lives, so the model knows it exists.
  * Later prompts: pinned or (with recheck) jev-relevant hidden skills are
@@ -20,7 +20,7 @@
 import { basename, dirname } from "node:path";
 import { homedir } from "node:os";
 import { askJev, isChatter, resolveDecisionModel, type JevAnswer } from "@pi-unipi/core";
-import { isWorkflowSkill, skillDir, type CatalogSkill } from "./registry.js";
+import { skillDir, type CatalogSkill } from "./registry.js";
 import type { ExposureSettings } from "./settings.js";
 
 /** Session-persisted entry types (pi.appendEntry custom entries). */
@@ -28,8 +28,6 @@ export const SKILLS_JUDGED_ENTRY = "unipi:skills-judged";
 export const SKILLS_REVEALED_ENTRY = "unipi:skills-revealed";
 /** System-prompt section naming the hidden skills. */
 export const HIDDEN_SECTION = "unipi-skills-hidden";
-/** At most this many generic workflow skills (brainstorm, work, …) by score. */
-export const GENERIC_CAP = 4;
 /** At most this many skills announced per later prompt. */
 export const REVEAL_CAP = 5;
 
@@ -67,8 +65,11 @@ export function nameTokens(name: string): string[] {
  * name, not a common word ("coffee" → coffee-sandbox, "kanboard").
  */
 export function pinnedSkills(entries: readonly Entry[], prompt: string): Set<string> {
-  const lower = ` ${prompt.toLowerCase().replace(/\s+/g, " ")} `;
-  const promptWords = words(prompt);
+  // pi's image attachments render as "[Image #1]" placeholders in the prompt;
+  // they must not read as mentions of a skill named "image".
+  const clean = prompt.replace(/\[Image #\d+\]/gi, " ");
+  const lower = ` ${clean.toLowerCase().replace(/\s+/g, " ")} `;
+  const promptWords = words(clean);
   const freq = new Map<string, number>();
   for (const e of entries) for (const t of new Set(nameTokens(e.name))) freq.set(t, (freq.get(t) ?? 0) + 1);
   const pins = new Set<string>();
@@ -110,9 +111,9 @@ export function judgeRequest(
 }
 
 /**
- * Pins always stay; others need ≥ threshold, best first, generic workflow
- * skills capped at GENERIC_CAP, total capped at maxSkills (pins may exceed
- * it — they were asked for by name). Kept set returned in catalog order.
+ * Pins always stay; others need ≥ threshold, best first, total capped at
+ * maxSkills (pins may exceed it — they were asked for by name). Kept set
+ * returned in catalog order.
  */
 export function applyJudgement(
   entries: readonly Entry[],
@@ -125,13 +126,8 @@ export function applyJudgement(
     score: typeof answers?.[`s${i}`]?.noul === "number" ? (answers[`s${i}`]!.noul as number) : 0,
   }));
   const keep = new Set<Entry>(entries.filter((e) => pins.has(e.name)));
-  let generic = [...keep].filter((e) => isWorkflowSkill(e.location)).length;
   for (const { entry, score } of scored.filter((s) => !keep.has(s.entry) && s.score >= settings.threshold).sort((a, b) => b.score - a.score)) {
     if (keep.size >= Math.max(1, settings.maxSkills)) break;
-    if (isWorkflowSkill(entry.location)) {
-      if (generic >= GENERIC_CAP) continue;
-      generic++;
-    }
     keep.add(entry);
   }
   return { kept: entries.filter((e) => keep.has(e)), hidden: entries.filter((e) => !keep.has(e)) };
@@ -274,7 +270,7 @@ export async function decideTurn(input: TurnInput): Promise<TurnOutput> {
       if (answers) {
         rest.forEach((c, i) => {
           const score = answers[`s${i}`]?.noul;
-          if (typeof score === "number" && score >= Math.max(settings.threshold, 0.6)) reveal.push(c);
+          if (typeof score === "number" && score >= settings.threshold) reveal.push(c);
         });
       }
     }

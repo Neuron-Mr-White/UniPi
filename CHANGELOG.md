@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+- `skill-registry`: the ~20 bundled workflow skills (`brainstorm`, `plan`, `work`, `debug`, `quick-fix`, `worktree-*`, …) are deleted and no longer ship — the package is now registry/exposure only (`isWorkflowSkill` and the generic-skill cap are gone with them).
+
 ### Changed
+- `skill-registry`: skill exposure `threshold` default 0.3 → 0.8, and the later-prompt reveal now uses the same threshold (was hard-floored at 0.6) — one number governs the first-prompt keep and later reveals.
+- `skill-registry`: skill-name pinning ignores pi's `[Image #N]` placeholders, so attached images no longer pin a skill named `image` (a plain "generate an image" still does).
 - `skill-registry`: skill states reduced to **Enabled + Must show** — the "discoverable" (unlisted) middle state is gone. Off still removes a skill from the session entirely (not listed, never revealed, `/skill:name` blocked); must show implies enabled and is always listed. Stored `discoverable: false` states and the legacy `"unlisted"` value migrate to off on read (a `mustShow: true` wins). The Skill settings… grid now has two columns, E and M.
 
 ## [3.0.0-alpha.10] — 2026-09-29
