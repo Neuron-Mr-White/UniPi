@@ -39,7 +39,7 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
   const reply = new Fake();
   const first = reply.render(10);
   assert.equal(first.length, 3); // divider + text + bottom pad row
-  assert.equal(first[0], "─ summary ────────");
+  assert.equal(first[0], "─ summary ");
   assert.ok(first[1]!.startsWith("\x1b[48;5;236m"));
   assert.strictEqual(reply.render(10), first); // cached array
   const withTools = new Fake();
