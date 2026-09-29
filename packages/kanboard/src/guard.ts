@@ -10,7 +10,8 @@
 import { tokenizeArgs } from "./commands.js";
 
 export const DEFAULT_DO_CREDITS = 10;
-export const WRITE_CREDITS_USED_UP = "kanboard write credits used up — run /unipi:kanboard-do to reload";
+export const WRITE_CREDITS_USED_UP =
+  "kanboard write credits used up — run /unipi:kanboard-do to reload (board reads, `start` and `finish` are always free)";
 export const addCapReason = (limit: number): string => `at most ${limit} new tasks per turn`;
 /** @deprecated tests should read the limit through the guard's getter instead. */
 export const ADD_CAP = 20;
@@ -29,6 +30,45 @@ const FREE_WRITES = new Set(["start", "finish"]);
 /** Global flags that take a value; `--json` is the only valueless one. */
 const GLOBAL_VALUE_FLAGS = new Set(["--actor", "--project", "--gate", "--session"]);
 
+/** Quoted spans (single or double quotes), masked before splitting segments. */
+const QUOTED_SPAN = /(["'])(?:\\.|(?!\1).)*\1/g;
+
+/**
+ * Split a command line into shell segments on `&&`, `||`, `;`, `|` and
+ * newlines — ignoring separators inside quoted spans (the mask keeps the
+ * original length, so the cut positions map back onto the input exactly).
+ */
+export function shellSegments(command: string): string[] {
+  const masked = command.replace(QUOTED_SPAN, (span) => " ".repeat(span.length));
+  const out: string[] = [];
+  let at = 0;
+  for (const match of masked.matchAll(/&&|\|\||[;|\n]/g)) {
+    out.push(command.slice(at, match.index));
+    at = match.index + match[0].length;
+  }
+  out.push(command.slice(at));
+  return out;
+}
+
+/** `VAR=value` prefixes that may sit in front of the command word. */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+/** Wrappers that keep the wrapped word in command position. */
+const COMMAND_PREFIXES = new Set(["exec", "command", "env"]);
+
+/**
+ * Every subcommand the CLI understands (crates/kanboard/src/cli.rs `Command`,
+ * kebab-case as clap spells it). Anything else — a typo like `done`, a bare
+ * binary with no subcommand — is the binary's own usage error; the guard
+ * neither charges nor blocks it.
+ */
+export const KNOWN_SUBCOMMANDS = new Set([
+  "project", "add", "list", "show", "move", "note", "attach", "attachments",
+  "edit", "link", "unlink", "order", "claim-next", "start", "finish", "next",
+  "reap", "queue", "unqueue", "chain", "search", "release", "set-run",
+  "duplicate", "archive-sweep", "serve", "settings", "rotate-token", "status",
+  "stop", "validate",
+]);
+
 export interface KanboardInvocation {
   /** First positional after the binary name ("" when absent). */
   sub: string;
@@ -36,15 +76,25 @@ export interface KanboardInvocation {
   args: string[];
 }
 
-/** Every `unipi-kanboard` invocation inside a shell command line. */
+/**
+ * Every `unipi-kanboard` invocation inside a shell command line. A token
+ * counts only when it is positioned like a command: the first word of its
+ * segment (segments split on `&&`/`||`/`;`/`|`/newlines, quotes masked),
+ * past leading `VAR=value` assignments and the `exec`/`command`/`env`
+ * wrappers. `which unipi-kanboard` or `find -name "unipi-kanboard"` merely
+ * mention the binary and are not invocations.
+ */
 export function kanboardInvocations(command: string): KanboardInvocation[] {
-  const tokens = tokenizeArgs(command);
   const out: KanboardInvocation[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index]!;
+  for (const segment of shellSegments(command)) {
+    const tokens = tokenizeArgs(segment);
+    let head = 0;
+    while (head < tokens.length && (ASSIGNMENT.test(tokens[head]!) || COMMAND_PREFIXES.has(tokens[head]!))) {
+      head += 1;
+    }
     // The binary may be a bare name or an absolute path (and .exe on Windows).
-    if (!/unipi-kanboard(\.exe)?$/.test(token)) continue;
-    const rest = tokens.slice(index + 1);
+    if (head >= tokens.length || !/unipi-kanboard(\.exe)?$/.test(tokens[head]!)) continue;
+    const rest = tokens.slice(head + 1);
     let cursor = 0;
     while (cursor < rest.length) {
       const arg = rest[cursor]!;
@@ -108,9 +158,12 @@ export interface WriteGuard {
 
 /**
  * Writes cost session credits (one per write subcommand in the command line);
- * reads and `start`/`finish` are free and never blocked. A runner task keeps unlimited access
- * (still add-capped). Credits persist across turns and follow-up questions
- * until spent; /unipi:kanboard-do tops up to N without stacking past N.
+ * reads and `start`/`finish` are free and never blocked. Invocations whose
+ * subcommand does not exist are skipped: the binary itself rejects them with
+ * a usage error, and one typo must not block the rest of a compound call. A
+ * runner task keeps unlimited access (still add-capped). Credits persist
+ * across turns and follow-up questions until spent; /unipi:kanboard-do tops
+ * up to N without stacking past N.
  */
 export function createWriteGuard(
   runnerTask: () => string | null,
@@ -161,6 +214,9 @@ export function createWriteGuard(
         lastTask = task;
       }
       for (const invocation of invocations) {
+        // An unknown subcommand (a typo, a bare binary) is the binary's own
+        // usage error — never a reason to block or charge the whole call.
+        if (!KNOWN_SUBCOMMANDS.has(invocation.sub)) continue;
         if (isReadonly(invocation) || isFreeWrite(invocation)) continue;
         if (task !== null) {
           const cap = countAdd(invocation);

@@ -94,6 +94,17 @@ describe("detection helpers", () => {
     for (const cmd of ["npm test", "echo x > a.txt", "sed -i s/a/b/ f", "git commit -m x", "rm -rf build", "cat a >> b", "python3 fix.py"]) {
       assert.ok(shellChangesFiles(cmd), cmd);
     }
+    // F4: separators inside quotes do not split segments.
+    for (const cmd of ['grep -c "a;b" file', 'grep -E "kb-b|kb_b" .', 'echo "x && y"', 'sed "s/a;b/c/" f']) {
+      assert.ok(!shellChangesFiles(cmd), cmd);
+    }
+    // F5: harmless node-project arms (version checks, sort without -o).
+    for (const cmd of ["node --version", "node -v", "npx tsx --version", "npm --version", "npm -v", "python3 --version", "python3 -V", "find . | sort"]) {
+      assert.ok(!shellChangesFiles(cmd), cmd);
+    }
+    for (const cmd of ["npm install", "node build.js", "npx tsx src/cli.ts", "sort -o out.txt in.txt", "sort -ro out.txt in.txt"]) {
+      assert.ok(shellChangesFiles(cmd), cmd);
+    }
     // Board calls are not file changes (reads and writes alike).
     assert.ok(!shellChangesFiles(`${BIN} --actor agent start UNI-5`));
     assert.ok(!shellChangesFiles(`${BIN} show UNI-5 --json`));
@@ -123,14 +134,41 @@ describe("R1: steer on the first file-changing call", () => {
     assert.equal(board.lists, lists);
   });
 
-  it("is silent once the session started a task", async () => {
+  it("F7: keeps nudging the un-started task once another is started", async () => {
     const board = fakeBoard({ "UNI-5": "todo", "UNI-8": "todo" });
     const t = tracker(board);
     t.onPrompt("do UNI-5 and UNI-8");
     t.onTurnStart();
     board.start("UNI-5");
     await t.onToolResult(bash(`${BIN} --actor agent --project p start UNI-5`));
-    assert.equal(await t.onToolResult(edit), undefined, "UNI-8 still todo, but a task is started");
+    const text = textOf(await t.onToolResult(edit));
+    assert.match(text, /UNI-8 is still Todo/);
+    assert.doesNotMatch(text, /UNI-5/, "the started task is no longer named");
+  });
+
+  it("F7: a two-task sequence nudges the second task when its work begins", async () => {
+    const board = fakeBoard({ "UNI-5": "todo", "UNI-8": "todo" });
+    const t = tracker(board);
+    t.onPrompt("do UNI-5 and UNI-8");
+    t.onTurnStart();
+    // First mutation: one reminder names both tasks, once.
+    assert.match(textOf(await t.onToolResult(edit)), /UNI-5, UNI-8 are still Todo/);
+    assert.equal(await t.onToolResult(edit), undefined, "no repeat within the turn");
+    // Start and work UNI-5: its files are silent (no longer Todo).
+    board.start("UNI-5");
+    await t.onToolResult(bash(`${BIN} --actor agent --project p start UNI-5`));
+    assert.equal(await t.onToolResult(edit), undefined);
+    // Finish it; nothing is left In Progress, so no R2.
+    board.finish("UNI-5");
+    await t.onToolResult(bash(`${BIN} --actor agent --project p finish UNI-5 --comment done`));
+    assert.equal(await t.onAgentEnd({ messages: [] }), null);
+    // A later turn touching UNI-8's files names UNI-8 only (cap: 2 per task).
+    t.onTurnStart();
+    const late = textOf(await t.onToolResult(edit));
+    assert.match(late, /UNI-8 is still Todo/);
+    assert.doesNotMatch(late, /UNI-5/);
+    assert.equal(await t.onToolResult(edit), undefined, "and again no repeat within that turn");
+    assert.deepEqual(t.state().r1, { "UNI-5": 1, "UNI-8": 2 });
   });
 
   it("counts another session's or the runner's claim as not started", async () => {
@@ -372,7 +410,9 @@ describe("start/finish against the real binary", { skip: !existsSync(binary) }, 
     assert.equal((started.run as { owner?: string }).owner, "agent");
     await t.onToolResult(bash(`unipi-kanboard --actor agent start ${a.id}`));
     t.onTurnStart();
-    assert.equal(await t.onToolResult(edit), undefined, "silent after start");
+    const nudged = textOf(await t.onToolResult(edit));
+    assert.match(nudged, new RegExp(`${b.id} is still Todo`), "the un-started task is nudged");
+    assert.doesNotMatch(nudged, new RegExp(`${a.id}\\b`), "the started task is not named");
     assert.match((await t.onAgentEnd({ messages: [] })) ?? "", new RegExp(`${a.id} is still In Progress`));
 
     // Another session can't finish it; this one can.

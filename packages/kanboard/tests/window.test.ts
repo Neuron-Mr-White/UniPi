@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createWriteGuard, isReadonly, kanboardInvocations, WRITE_CREDITS_USED_UP, ADD_CAP_REASON } from "../src/guard.js";
+import { createWriteGuard, isReadonly, kanboardInvocations, KNOWN_SUBCOMMANDS, WRITE_CREDITS_USED_UP, ADD_CAP_REASON } from "../src/guard.js";
 import { registerKanboardCommands, HELP_CUSTOM_TYPE, DOCTOR_CUSTOM_TYPE, doText, drainQueueAfterDo, kanboardCompletions, kanboardAddCompletions, kanboardDoCompletions, renderShowPlain, showRenderer } from "../src/commands.js";
 import type { CommandDeps } from "../src/commands.js";
 
@@ -70,6 +70,63 @@ describe("the write window", () => {
     ]);
     assert.deepEqual(kanboardInvocations("unipi-kanboard"), [{ sub: "", args: [] }]);
     assert.deepEqual(kanboardInvocations("ls -la"), []);
+  });
+
+  it("F1: only command-position tokens are invocations", () => {
+    // Commands that merely mention the binary never parse as invocations.
+    for (const cmd of [
+      "which unipi-kanboard",
+      "type unipi-kanboard",
+      'find / -name "unipi-kanboard"',
+      "ls -l /abs/bin/unipi-kanboard",
+      "pip show pi-unipi-kanboard",
+      "grep unipi-kanboard notes.txt",
+      'echo "unipi-kanboard; echo done"',
+    ]) {
+      assert.deepEqual(kanboardInvocations(cmd), [], cmd);
+    }
+    // Command position: bare, path, .exe, past assignments and wrappers.
+    assert.deepEqual(kanboardInvocations("KANBOARD_HOME=/x bin/unipi-kanboard list"), [{ sub: "list", args: [] }]);
+    assert.deepEqual(kanboardInvocations("cd x && /abs/path/unipi-kanboard --actor agent show KB-1"), [
+      { sub: "show", args: ["KB-1"] },
+    ]);
+    assert.deepEqual(kanboardInvocations("exec unipi-kanboard list"), [{ sub: "list", args: [] }]);
+    assert.deepEqual(kanboardInvocations("env FOO=1 unipi-kanboard status"), [{ sub: "status", args: [] }]);
+    assert.deepEqual(kanboardInvocations("command unipi-kanboard.exe list"), [{ sub: "list", args: [] }]);
+    assert.deepEqual(kanboardInvocations("unipi-kanboard list --json | jq ."), [{ sub: "list", args: ["--json"] }]);
+  });
+
+  it("F2: an unknown subcommand is the binary's error, not a block", () => {
+    const guard = createWriteGuard(() => null);
+    // `done` does not exist; the free `start` in the same compound call survives.
+    assert.equal(guard.check("unipi-kanboard start KB-2; unipi-kanboard done KB-1"), null);
+    assert.equal(guard.check("unipi-kanboard done KB-1"), null, "alone it errors in the binary, not the guard");
+    assert.equal(guard.check("unipi-kanboard"), null, "bare binary prints help");
+    assert.equal(guard.check("unipi-kanboard move KB-1 done"), WRITE_CREDITS_USED_UP, "known writes still gated");
+    guard.open();
+    assert.equal(guard.check("unipi-kanboard bogus-sub KB-9"), null);
+    assert.equal(guard.remaining(), 10, "unknown subs never spend credits");
+  });
+
+  it("F3: the refusal text says what is always free", () => {
+    assert.ok(
+      WRITE_CREDITS_USED_UP.endsWith(" (board reads, `start` and `finish` are always free)"),
+      WRITE_CREDITS_USED_UP,
+    );
+  });
+
+  it("KNOWN_SUBCOMMANDS matches the CLI (crates/kanboard/src/cli.rs)", () => {
+    assert.deepEqual([...KNOWN_SUBCOMMANDS].sort(), [
+      "add", "archive-sweep", "attach", "attachments", "chain", "claim-next", "duplicate",
+      "edit", "finish", "link", "list", "move", "next", "note", "order", "project", "queue",
+      "reap", "release", "rotate-token", "search", "serve", "set-run", "settings", "show",
+      "start", "status", "stop", "unlink", "unqueue", "validate",
+    ]);
+    // Everything the guard classifies must be a real subcommand.
+    for (const cmd of ["list", "show x", "attachments x", "next", "chain x", "search q", "status", "start x", "finish x"]) {
+      const [inv] = kanboardInvocations(`unipi-kanboard ${cmd}`);
+      assert.ok(KNOWN_SUBCOMMANDS.has(inv!.sub), cmd);
+    }
   });
 
   it("classifies reads and writes", () => {

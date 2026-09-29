@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `kanboard` guard: read-only commands that merely mention the binary (`which unipi-kanboard`, `find -name "unipi-kanboard"`, `ls …/bin/unipi-kanboard`, `pip show pi-unipi-kanboard`) are no longer blocked as "credits used up" — a token counts as an invocation only in command position (first word of its segment after `&&`/`||`/`;`/`|`/newline splits with quotes masked, past leading `VAR=value` assignments and `exec`/`command`/`env` wrappers).
+- `kanboard` guard: an invalid subcommand no longer poisons a whole compound call — `start KB-2; done KB-1` passes the guard and the binary itself reports the typo (`done` is not a subcommand). Subcommands the guard does not recognize are never charged or blocked.
+- `kanboard` guard: the refusal text now ends with "(board reads, `start` and `finish` are always free)" so a blocked agent does not conclude the CLI is unusable.
+- `kanboard` reminders (R1): now per-task instead of once-per-turn — starting one task no longer silences the reminder for the other, and when the agent moves to a second task's files (in a later turn) it is nudged again; each task is reminded at most once per turn and twice in total.
+- `kanboard` reminders: shell detection masks quoted spans before splitting segments (`grep -c "a;b" f` is no longer "file-changing"), and harmless node-project arms count as reads (`node`/`npm`/`npx`/`python3` version checks, `sort` without `-o`).
+
 ## [3.0.0-alpha.13] — 2026-09-29
 
 ### Fixed

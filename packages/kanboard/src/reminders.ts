@@ -6,9 +6,9 @@
  * `finish <ID> --comment` hands it to In Review. Two text-only reminders keep
  * that honest:
  *
- *   R1  the first file-changing tool call of an agent turn, while a mentioned
- *       task is still Todo and this session has nothing started → a steer is
- *       appended to that tool result (once per turn, at most twice per task).
+ *   R1  every file-changing tool call of an agent turn, for each mentioned
+ *       task that is still Todo and has not been reminded this turn (one
+ *       steer per task per turn, at most twice per task).
  *   R2  agent_end with a task this session started still In Progress → one
  *       follow-up message (at most twice per task).
  *
@@ -20,7 +20,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { kanboardInvocations } from "./guard.js";
+import { kanboardInvocations, shellSegments } from "./guard.js";
 import type { KanboardTask } from "./shapes.js";
 
 export const REMINDER_CUSTOM_TYPE = "unipi:kanboard-reminder";
@@ -47,6 +47,9 @@ const READ_COMMANDS = new Set([
   "more", "true", "false", "test", "[", "diff", "cmp", "jq", "realpath", "dirname", "basename", "uname",
   "hostname", "id", "ps", "cd",
 ]);
+/** Interpreters/package managers whose version-check arms never write. */
+const VERSION_CHECKED = new Set(["node", "npm", "npx", "python", "python3"]);
+const isVersionFlag = (word: string): boolean => word === "--version" || word === "-v" || word === "-V";
 const GIT_READS = new Set(["status", "log", "diff", "show", "branch", "remote", "rev-parse", "blame", "ls-files", "describe", "tag"]);
 
 export function taskIdsIn(text: string): string[] {
@@ -56,14 +59,16 @@ export function taskIdsIn(text: string): string[] {
 /**
  * Whether a shell command may change files. Conservative toward "yes": any
  * segment that is not a known read (or a kanboard CLI call) counts, and so
- * does an output redirection.
+ * does an output redirection. Quoted spans are masked before both the
+ * redirect test and the segment split, so `grep -c "a;b" f` stays one
+ * read-only segment.
  */
 export function shellChangesFiles(command: string): boolean {
   const trimmed = command.trim();
   if (!trimmed) return false;
   // `>`/`>>` into a file (but not `2>&1` / `>/dev/null`).
   if (/(^|[^0-9&>])>{1,2}\s*(?!&|\/dev\/null)[^\s|;&]/.test(trimmed.replace(/(["'])(?:\\.|(?!\1).)*\1/g, '""'))) return true;
-  const segments = trimmed.split(/&&|\|\||[;|\n]/).map((part) => part.trim()).filter(Boolean);
+  const segments = shellSegments(trimmed).map((part) => part.trim()).filter(Boolean);
   return segments.some((segment) => {
     const words = segment.split(/\s+/).filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
     const first = (words[0] ?? "").replace(/^.*\//, "");
@@ -73,6 +78,11 @@ export function shellChangesFiles(command: string): boolean {
     if (READ_COMMANDS.has(first)) return false;
     if (first === "git") return !GIT_READS.has(words[1] ?? "");
     if (first === "sed") return words.includes("-i") || words.some((word) => word.startsWith("-i"));
+    // `sort` writes only through -o/--output (a `>` redirect is caught above).
+    if (first === "sort") return words.some((word) => /^-[^-]*o/.test(word) || word.startsWith("--output"));
+    // node/npm/npx/python are reads only as version checks (`node --version`,
+    // `npx tsx --version`); scripts, installs and builds still count.
+    if (VERSION_CHECKED.has(first)) return !words.slice(1).some(isVersionFlag);
     return true;
   });
 }
@@ -160,7 +170,8 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
   const started = new Set<string>();
   const r1Count = new Map<string, number>();
   const r2Count = new Map<string, number>();
-  let checkedThisTurn = false;
+  /** Task ids already reminded this turn (per-task re-arm, not one shot). */
+  const remindedThisTurn = new Set<string>();
   const debug = (message: string): void => deps.debug?.(`reminders: ${message}`);
   const silent = (): boolean => !deps.enabled() || deps.runnerOwned() || Boolean(process.env.UNIPI_KANBOARD_CHILD);
 
@@ -183,7 +194,7 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
     },
 
     onTurnStart() {
-      checkedThisTurn = false;
+      remindedThisTurn.clear();
     },
 
     async onToolResult(event) {
@@ -196,20 +207,24 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
           if (invocation.sub === "start" && !event.isError) started.add(id);
         }
       }
-      if (checkedThisTurn || !isFileChangingCall(toolName, event.input)) return undefined;
-      // Only the first file-changing call of the turn is considered.
-      checkedThisTurn = true;
+      if (!isFileChangingCall(toolName, event.input)) return undefined;
       if (silent() || mentioned.size === 0) return undefined;
-      const candidates = [...mentioned].filter((id) => (r1Count.get(id) ?? 0) < MAX_REMINDERS_PER_TASK);
+      // Per task, at most once per turn: candidates are mentioned ids not yet
+      // reminded this turn and under the per-task cap (a started task leaves
+      // Todo and is never re-reminded).
+      const candidates = [...mentioned].filter(
+        (id) => !remindedThisTurn.has(id) && (r1Count.get(id) ?? 0) < MAX_REMINDERS_PER_TASK,
+      );
       if (candidates.length === 0) return undefined;
       const tasks = await safeList();
       if (!tasks) return undefined;
-      const session = deps.session();
-      if (tasks.some((task) => ownedStart(task, session))) return undefined;
       const byId = new Map(tasks.map((task) => [task.id, task]));
       const todo = candidates.filter((id) => byId.get(id)?.status === "todo");
       if (todo.length === 0) return undefined;
-      for (const id of todo) r1Count.set(id, (r1Count.get(id) ?? 0) + 1);
+      for (const id of todo) {
+        remindedThisTurn.add(id);
+        r1Count.set(id, (r1Count.get(id) ?? 0) + 1);
+      }
       debug(`R1 for ${todo.join(", ")}`);
       return { content: [...(event.content ?? []), { type: "text", text: `\n\n${r1Text(todo, deps.cliPrefix())}` }] };
     },
