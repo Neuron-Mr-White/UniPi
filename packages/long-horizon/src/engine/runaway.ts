@@ -51,6 +51,9 @@ export const ANTI_POISONING_SUFFIX =
 /** Tools whose repetition with varying args indicates polling, not work. */
 const POLLING_TOOLS = new Set(["bg_status", "bg_logs", "read_subagent", "loop_status", "get_goal"]);
 
+/** Goal bookkeeping tools: always exempt from repetition reminders. */
+const EXEMPT_TOOLS = new Set(["get_goal", "update_goal"]);
+
 export interface RunawayStep {
   readonly tool: string;
   readonly input: unknown;
@@ -64,15 +67,60 @@ export interface RunawayGuardDeps {
   remindAfter?: number;
 }
 
+/** Stable JSON: object keys sorted so equal args hash equal regardless of order. */
+export function stableStringify(value: unknown): string {
+  if (value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+      .join(",")}}`;
+  }
+  try {
+    return JSON.stringify(value) ?? "null";
+  } catch {
+    return String(value);
+  }
+}
+
 function fingerprint(value: unknown): string {
-  const json = (() => {
-    try {
-      return JSON.stringify(value ?? null);
-    } catch {
-      return String(value);
-    }
-  })();
-  return createHash("sha256").update(json).digest("hex").slice(0, 16);
+  return createHash("sha256").update(stableStringify(value)).digest("hex").slice(0, 16);
+}
+
+function commandOf(input: unknown): string {
+  if (typeof input === "string") return input;
+  if (typeof input !== "object" || input === null) return "";
+  const record = input as Record<string, unknown>;
+  for (const key of ["command", "cmd", "script"]) {
+    if (typeof record[key] === "string" && record[key].length > 0) return record[key] as string;
+  }
+  return "";
+}
+
+/** bash rg/grep that found nothing (exit 1) is expected work, not a loop. */
+export function isExpectedShellSearchNoMatch(input: unknown, isError: boolean, resultText: string): boolean {
+  if (!isError) return false;
+  const command = commandOf(input);
+  if (!/\b(?:rg|grep|findstr)\b/.test(command)) return false;
+  return /exit (?:code |status )?1\b|^no matches|^no match|^$/i.test(resultText.trim()) || resultText.trim() === "";
+}
+
+/** kanboard read subcommands via bash never count as repeated work. */
+function isKanboardRead(command: string): boolean {
+  return /(?:^|[\s/"'])unipi-kanboard(?:\.exe)?\s+(?:--\S+\s+)*(?:list|show|search|next|chain|attachments|status)\b/.test(command);
+}
+
+/** Steps that reflect legitimate state inspection, not loops. */
+export function isExemptStep(step: RunawayStep): boolean {
+  if (EXEMPT_TOOLS.has(step.tool)) return true;
+  if (step.tool === "bash" || step.tool === "powershell") {
+    const command = commandOf(step.input);
+    if (isKanboardRead(command)) return true;
+    if (isExpectedShellSearchNoMatch(step.input, step.isError, step.resultText)) return true;
+  }
+  return false;
 }
 
 /** Errors normalize to their family: first line, digits and paths removed. */
@@ -93,13 +141,22 @@ export interface RunawayObservation {
 
 /** Pure detector: returns the highest-priority qualifying signal, if any. */
 export function detectRunaway(
-  steps: readonly RunawayStep[],
+  allSteps: readonly RunawayStep[],
   remindAfter: number = DEFAULT_REMIND_AFTER,
 ): RunawayObservation | null {
+  // Exempt steps (goal bookkeeping, search no-matches, kanboard reads) never
+  // count toward any repeat.
+  const steps = allSteps.filter((step) => !isExemptStep(step));
   if (steps.length < remindAfter) return null;
 
+  // Action identity = tool + stable-sorted args: "identical arguments" must
+  // mean actually identical arguments.
   const actionKeys = steps.map((step) => `${step.tool}:${fingerprint(step.input)}`);
-  const resultKeys = steps.map((step) => fingerprint(step.resultText.slice(0, 400)));
+  // Result identity is bound to the action: identical output under different
+  // args is not a repeat (e.g. two different reads returning empty).
+  const resultKeys = steps.map(
+    (step) => `${step.tool}:${fingerprint(step.input)}:${fingerprint(step.resultText.slice(0, 400))}`,
+  );
   const errorKeys = steps.map((step) => (step.isError ? errorFamily(step.resultText) : null));
 
   const count = (keys: readonly string[]): { key: string; count: number } => {

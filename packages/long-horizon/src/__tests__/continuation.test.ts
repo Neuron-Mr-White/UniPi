@@ -37,6 +37,7 @@ interface Rig {
   owner: OwnerCoordinator;
   toolset: GoalToolset;
   sent: string[];
+  notifications: Array<{ text: string; level: string }>;
   timers: Array<{ delayMs: number; fire: () => void }>;
   continuation: GoalContinuation;
   dir: string;
@@ -49,6 +50,7 @@ function rig(verdicts: Array<{ verdict: string; reason: string; missing?: string
   const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
   const toolset = new GoalToolset({ machine, owner });
   const sent: string[] = [];
+  const notifications: Array<{ text: string; level: string }> = [];
   const timers: Array<{ delayMs: number; fire: () => void }> = [];
   let call = 0;
   const verifierResults = verdicts;
@@ -64,9 +66,10 @@ function rig(verdicts: Array<{ verdict: string; reason: string; missing?: string
       },
     },
     send: (message) => sent.push(message),
+    notify: (text, level) => notifications.push({ text, level: level ?? "warning" }),
     schedule: (fire, delayMs) => timers.push({ delayMs, fire }),
   });
-  return { machine, owner, toolset, sent, timers, continuation, dir, verifierResults };
+  return { machine, owner, toolset, sent, notifications, timers, continuation, dir, verifierResults };
 }
 
 async function startGoal(r: Rig, options: { maxTurns?: number; tokenBudget?: number } = {}) {
@@ -200,18 +203,24 @@ function proposeCompletion(r: Rig, summary: string): void {
   };
 }
 
-test("batch work + early claim every turn keeps going with the verifier's feedback", async () => {
+test("batch work + early claim keeps going until the unconditional not_met cap", async () => {
   const r = rig([{ verdict: "not_met", reason: "only part done", missing: ["next batch"] }]);
   await startGoal(r);
-  for (let batch = 1; batch <= 12; batch += 1) {
+  for (let batch = 1; batch <= 4; batch += 1) {
     proposeCompletion(r, `batch ${batch} done`);
     const decision = await r.continuation.onTurnEnd(activity({ changedFiles: [`src/batch${batch}.ts`] }));
     assert.equal(decision.action, "continue", `batch ${batch}`);
     assert.equal((decision as { via: string }).via === "hint" || (decision as { via: string }).via === "terminal-audit", true);
     assert.equal(r.machine.get()?.status, "active");
   }
-  assert.equal(r.machine.get()?.noProgressStreak, 0);
-  assert.match(r.sent.at(-1) ?? "", /only part done|audit/i);
+  // 5th consecutive rejection pauses unconditionally — even with files changing.
+  proposeCompletion(r, "batch 5 done");
+  const decision = await r.continuation.onTurnEnd(activity({ changedFiles: ["src/batch5.ts"] }));
+  assert.equal(decision.action, "stopped");
+  assert.equal(r.machine.get()?.status, "paused");
+  assert.equal(r.machine.get()?.reason, "paused(no_progress_after_completion_claim)");
+  assert.match(r.notifications.at(-1)?.text ?? "", /rejected 5 times/);
+  assert.match(r.notifications.at(-1)?.text ?? "", /next batch/);
   rmSync(r.dir, { recursive: true, force: true });
 });
 
@@ -301,5 +310,88 @@ test("scheduled terminal audit fires every 5 turns", async () => {
   assert.equal(decision.action, "continue");
   assert.equal((decision as { via: string }).via, "terminal-audit");
   assert.match(r.sent.at(-1) ?? "", new RegExp(TERMINAL_AUDIT.slice(0, 18)));
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+// ── verifier resilience (FIX 2) ──────────────────────────────────────────
+
+test("evaluator failure retries once, then pauses verifier_unavailable and parks the owner", async () => {
+  // Two consecutive unparseable evaluator replies → both attempts fail.
+  const r = rig([{}, {}] as never);
+  await startGoal(r);
+  proposeCompletion(r, "done");
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "stopped");
+  assert.equal(r.machine.get()?.status, "paused");
+  assert.equal(r.machine.get()?.reason, "paused(verifier_unavailable)");
+  assert.match(r.notifications[0]?.text ?? "", /unavailable twice/);
+  assert.equal(r.sent.length, 1, "kickoff only — no continuation follow-up after the pause");
+  // The goal is parked and resumable (FIX 2e).
+  assert.notEqual(r.owner.getParked(), undefined);
+  assert.notEqual(r.machine.resume(), undefined);
+  assert.notEqual(r.owner.resume(), undefined);
+  assert.equal(r.machine.get()?.status, "active");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("a single evaluator failure retries and recovers inside the same settlement", async () => {
+  const r = rig([{}, { verdict: "met", reason: "evidence ok" }] as never);
+  await startGoal(r);
+  proposeCompletion(r, "done");
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "stopped");
+  assert.equal(r.machine.get()?.status, "complete");
+  assert.equal(r.machine.get()?.reason, "complete(verifier_met)");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("two inconclusive verdicts pause with the verifier's reason", async () => {
+  const r = rig([
+    { verdict: "inconclusive", reason: "evidence too weak" },
+    { verdict: "inconclusive", reason: "still too weak" },
+  ]);
+  await startGoal(r);
+  proposeCompletion(r, "done");
+  await r.continuation.onTurnEnd(activity());
+  assert.equal(r.machine.get()?.status, "active");
+  proposeCompletion(r, "done again");
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "stopped");
+  assert.equal(r.machine.get()?.reason, "paused(verifier_inconclusive)");
+  assert.match(r.notifications.at(-1)?.text ?? "", /inconclusive twice.*still too weak/s);
+  assert.notEqual(r.owner.getParked(), undefined);
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("a pending proposal never survives the kickoff turn (FIX 2d)", async () => {
+  const r = rig();
+  const goal = r.machine.create("instant claim").kind === "created" ? r.machine.getActive()! : null;
+  assert.ok(goal);
+  r.owner.activate("goal", goal.objective);
+  (r.toolset as unknown as { pending: unknown }).pending = {
+    kind: "completion",
+    goalId: goal.goalId,
+    revision: goal.revision,
+    summary: "too early",
+    proposedAt: new Date().toISOString(),
+  };
+  const kickoff = await r.continuation.onTurnEnd(activity());
+  assert.deepEqual(kickoff, { action: "none", reason: "kickoff-delivered" });
+  assert.equal(r.toolset.peekProposal(), null, "pending discarded with the kickoff");
+  // And the next turn settles normally instead of tripping over stale state.
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "continue");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("a pending proposal is discarded when no drivable goal remains (FIX 2d)", async () => {
+  const r = rig();
+  await startGoal(r);
+  proposeCompletion(r, "done");
+  r.machine.clear(); // user stop outside the settlement
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "none");
+  assert.equal(r.toolset.peekProposal(), null);
+  assert.equal(r.sent.length, 1, "kickoff only");
   rmSync(r.dir, { recursive: true, force: true });
 });

@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createWriteGuard, isReadonly, kanboardInvocations, WRITE_BLOCK_REASON, ADD_CAP_REASON } from "../src/guard.js";
+import { createWriteGuard, isReadonly, kanboardInvocations, WRITE_CREDITS_USED_UP, ADD_CAP_REASON } from "../src/guard.js";
 import { registerKanboardCommands, HELP_CUSTOM_TYPE, DOCTOR_CUSTOM_TYPE, doText, drainQueueAfterDo, kanboardCompletions, kanboardAddCompletions, kanboardDoCompletions, renderShowPlain, showRenderer } from "../src/commands.js";
 import type { CommandDeps } from "../src/commands.js";
 
@@ -94,21 +94,46 @@ describe("the write window", () => {
     }
   });
 
-  it("blocks writes outside a window and allows them inside", () => {
+  it("reads are free; writes need credits; runner tasks are unlimited", () => {
     let running = false;
-    const guard = createWriteGuard(() => (running ? "T-1" : null));
-    assert.equal(guard.check("unipi-kanboard list --json"), null, "reads always pass");
-    assert.equal(guard.check("cd x && unipi-kanboard add t --json"), WRITE_BLOCK_REASON);
+    const guard = createWriteGuard(() => (running ? "T-1" : null), () => 20, () => 10);
+    assert.equal(guard.remaining(), 0);
+    assert.equal(guard.check("unipi-kanboard list --json"), null, "reads always pass, even at 0 credits");
+    assert.equal(guard.check("cd x && unipi-kanboard add t --json"), WRITE_CREDITS_USED_UP, "no credits, no write");
     assert.equal(guard.check("echo nothing"), null);
-    // A running runner task opens the window.
+    // A running runner task keeps unlimited access (no credits consumed).
     running = true;
     assert.equal(guard.check("unipi-kanboard note A-1 hi"), null);
+    assert.equal(guard.remaining(), 0, "runner writes are free");
     running = false;
-    // A -do turn opens it too.
+    // /unipi:kanboard-do grants credits; each write costs 1.
     guard.open();
+    assert.equal(guard.remaining(), 10);
     assert.equal(guard.check("unipi-kanboard add t"), null);
+    assert.equal(guard.check("unipi-kanboard move A-1 todo"), null);
+    assert.equal(guard.remaining(), 8);
+  });
+
+  it("credits persist across turns and top up to N without stacking", () => {
+    const guard = createWriteGuard(() => null, () => 20, () => 10);
+    guard.open();
+    for (let i = 0; i < 9; i += 1) assert.equal(guard.check("unipi-kanboard note A-1 x"), null, `write ${i + 1}`);
+    assert.equal(guard.remaining(), 1);
+    // agent_end closes the -do window label but NOT the credits.
+    guard.noteSent();
     guard.onAgentEnd();
-    assert.equal(guard.check("unipi-kanboard add t"), WRITE_BLOCK_REASON, "closed after agent_end");
+    assert.equal(guard.check("unipi-kanboard edit A-1 x"), null, "credits outlive the turn");
+    assert.equal(guard.remaining(), 0);
+    assert.equal(guard.check("unipi-kanboard move A-1 done"), WRITE_CREDITS_USED_UP);
+    // Re-running -do tops up to 10 — it does not stack.
+    guard.open();
+    assert.equal(guard.remaining(), 10);
+    guard.open();
+    assert.equal(guard.remaining(), 10);
+    // off revokes.
+    guard.revoke();
+    assert.equal(guard.remaining(), 0);
+    assert.equal(guard.check("unipi-kanboard move A-1 done"), WRITE_CREDITS_USED_UP);
   });
 
   it("closes only after the send (the 150ms echo guard)", async () => {
@@ -129,9 +154,9 @@ describe("the write window", () => {
     const guard = createWriteGuard(() => task);
     for (let i = 0; i < 20; i += 1) assert.equal(guard.check("unipi-kanboard add t"), null, `task A add ${i + 1}`);
     assert.equal(guard.check("unipi-kanboard add t"), ADD_CAP_REASON, "task A hits the cap");
-    // Between tasks the window is closed…
+    // Between tasks the runner is idle (and this guard has no credits)…
     task = null;
-    assert.equal(guard.check("unipi-kanboard add t"), WRITE_BLOCK_REASON);
+    assert.equal(guard.check("unipi-kanboard add t"), WRITE_CREDITS_USED_UP);
     // …and task B gets a fresh 20.
     task = "T-B";
     assert.equal(guard.check("unipi-kanboard add t"), null, "task B starts over");
@@ -141,7 +166,7 @@ describe("the write window", () => {
   });
 
   it("caps add at 20 per window and resets on open", () => {
-    const guard = createWriteGuard(() => null);
+    const guard = createWriteGuard(() => null, () => 20, () => 100);
     guard.open();
     for (let i = 0; i < 20; i += 1) assert.equal(guard.check("unipi-kanboard add t"), null, `add ${i + 1}`);
     assert.equal(guard.check("unipi-kanboard add t"), ADD_CAP_REASON);
@@ -163,7 +188,7 @@ describe("/unipi:kanboard-do", () => {
     assert.match(notifications.at(-1) ?? "", /needs a request/);
   });
 
-  it("reveals the skill, opens the window and sends the DO_TEXT", async () => {
+  it("reveals the skill, grants credits and sends the DO_TEXT", async () => {
     const kind = fakePi();
     let revealed = false;
     process.env.UNIPI_KANBOARD_PROJECT = "test-proj";
@@ -175,17 +200,33 @@ describe("/unipi:kanboard-do", () => {
       assert.equal(kind.sent.length, 1);
       assert.match(kind.sent[0]!.message, /project test-proj/);
       assert.match(kind.sent[0]!.message, /Request: triage the board/);
-      // The window is open: writes pass.
+      assert.match(kind.sent[0]!.message, /10 write credits remaining this session/);
+      assert.doesNotMatch(kind.sent[0]!.message, /until this turn ends/);
+      // Credits persist past agent_end — the window label closes, not the grant.
       assert.equal(deps.guard.check("unipi-kanboard add x"), null);
-      // agent_end closes it — an immediate one is the previous turn's echo
-      // (noteSent arms a 150ms guard); the next one closes the window.
       assert.equal(deps.guard.onAgentEnd(), false, "the echo end is ignored");
       await new Promise((r) => setTimeout(r, 200));
-      assert.equal(deps.guard.onAgentEnd(), true, "the turn's end closes it");
-      assert.equal(deps.guard.check("unipi-kanboard add x"), WRITE_BLOCK_REASON);
+      assert.equal(deps.guard.onAgentEnd(), true, "the turn's end closes the window label");
+      assert.equal(deps.guard.check("unipi-kanboard add x"), null, "credits survive the turn");
+      assert.equal(deps.guard.remaining(), 8);
     } finally {
       delete process.env.UNIPI_KANBOARD_PROJECT;
     }
+  });
+
+  it("'off' revokes the credits", async () => {
+    const kind = fakePi();
+    const notifications: string[] = [];
+    const deps = depsWith();
+    registerKanboardCommands(kind.pi, deps);
+    deps.guard.open();
+    assert.equal(deps.guard.remaining(), 10);
+    const c = { cwd: process.cwd(), ui: { notify: (m: string) => notifications.push(m) } } as never;
+    await kind.handlers.get("unipi:kanboard-do")!("off", c);
+    assert.match(notifications.at(-1) ?? "", /revoked/);
+    assert.equal(deps.guard.remaining(), 0);
+    assert.equal(deps.guard.check("unipi-kanboard move A-1 done"), WRITE_CREDITS_USED_UP);
+    assert.equal(deps.guard.check("unipi-kanboard show A-1"), null, "reads stay free");
   });
 });
 
@@ -333,14 +374,14 @@ describe("doctor: summarize-via-pi check", () => {
 
 describe("add cap via turnAddLimit", () => {
   it("blocks past the configured limit and 0 is unlimited", () => {
-    const guard = createWriteGuard(() => null, () => 3);
+    const guard = createWriteGuard(() => null, () => 3, () => 100);
     guard.open();
     assert.equal(guard.check("unipi-kanboard add a"), null);
     assert.equal(guard.check("unipi-kanboard add b"), null);
     assert.equal(guard.check("unipi-kanboard add c"), null);
     assert.equal(guard.check("unipi-kanboard add d"), "at most 3 new tasks per turn");
 
-    const unlimited = createWriteGuard(() => null, () => 0);
+    const unlimited = createWriteGuard(() => null, () => 0, () => 100);
     unlimited.open();
     for (let index = 0; index < 50; index += 1) {
       assert.equal(unlimited.check(`unipi-kanboard add t${index}`), null);

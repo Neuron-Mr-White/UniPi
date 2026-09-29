@@ -30,6 +30,8 @@ export interface GateState {
   readonly mode: LhMode;
   readonly source: ResolutionSource;
   readonly confidence?: number;
+  /** Resolved from the sticky session mode (/unipi:regular, goal stop), not a one-shot. */
+  readonly sticky?: boolean;
 }
 
 export interface GateDeps {
@@ -134,6 +136,8 @@ export function renderModeFragment(state: GateState, owner?: OwnerState, parked?
 export class Gate {
   private turn: GateState | null = null;
   private pendingExplicit: LhMode | null = null;
+  /** Sticky per-session mode (/unipi:regular): judge/default skip until an explicit command clears it. */
+  private sessionOverride: LhMode | null = null;
   /** Mode of the last badge shown, so only mode TRANSITIONS reprint. */
   private lastBadge: LhMode | null = null;
   private readonly deps: GateDeps;
@@ -142,9 +146,17 @@ export class Gate {
     this.deps = deps;
   }
 
-  /** Commands call this before sendUserMessage to force next-turn mode. */
+  /** Commands call this before sendUserMessage to force next-turn mode (one-shot;
+   *  an explicit command also escapes a sticky session mode). */
   setExplicit(mode: LhMode): void {
     this.pendingExplicit = mode;
+    this.sessionOverride = null;
+  }
+
+  /** Pin the session to a mode (/unipi:regular, goal stop): every later turn resolves to it. */
+  setSessionMode(mode: LhMode): void {
+    this.sessionOverride = mode;
+    this.pendingExplicit = null;
   }
 
   current(): GateState | null {
@@ -155,7 +167,7 @@ export class Gate {
     const settings = this.deps.loadSettings?.() ?? loadSettings();
     // Explicit switch away from an active owner suspends it first (max-1
     // park slot; a held slot refuses the override and the owner keeps mode).
-    let explicit = this.pendingExplicit;
+    let explicit = this.sessionOverride ?? this.pendingExplicit;
     if (explicit) {
       const active = this.deps.owner.getActive();
       if (active && modeForOwnerKind(active.kind) !== explicit) {
@@ -181,6 +193,7 @@ export class Gate {
       mode: resolution.mode,
       source: resolution.source,
       ...(resolution.confidence !== undefined ? { confidence: resolution.confidence } : {}),
+      ...(this.sessionOverride !== null && explicit === this.sessionOverride ? { sticky: true } : {}),
     };
     return this.turn;
   }
@@ -209,7 +222,7 @@ export class Gate {
       //   - mode changed from last     → worth showing
       //   - same mode as last shown    → silent (footer already reflects it)
       const showBadge =
-        state.source === "explicit" || this.lastBadge !== state.mode;
+        (state.source === "explicit" && !state.sticky) || this.lastBadge !== state.mode;
       this.lastBadge = state.mode;
       if (showBadge) {
         try {

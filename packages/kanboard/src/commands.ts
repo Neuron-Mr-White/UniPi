@@ -40,9 +40,9 @@ export const HELP = `Kanboard commands
   /unipi:kanboard-autowork start|stop   work ready tasks chain by chain; stop finishes the current one first
 Priority -p: 1 none · 2 low · 3 medium · 4 high · 5 urgent`;
 
-export function doText(slug: string, cli: string, request: string, queueMax = 10): string {
+export function doText(slug: string, cli: string, request: string, queueMax = 10, credits = 0): string {
   const limit = queueMax === 0 ? "Todo tasks" : `Todo tasks, at most ${queueMax}`;
-  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). Board writes are allowed until this turn ends. You can add tasks, move them between backlog and todo, link, order, note, and edit tasks you created. To have tasks worked, queue them in order with \`queue <IDs>\` (${limit}); the runner starts them one by one after this turn, so do not start the work yourself. Read a task with \`show <ID>\` before editing, linking or queueing it — \`list\` only shows titles and a one-line excerpt. To choose how a task is worked, label it with \`edit <ID> --strategy none|goal|ralph|swarm|graph\` and \`--plan yes|no\`; leave it unset to let the runner decide. If the request is unclear, ask me instead of guessing.
+  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). You have ${credits} write credit${credits === 1 ? "" : "s"} remaining this session — each board write (add, move, edit, note, link, order, queue) costs 1, reads are free; /unipi:kanboard-do tops the credits back up. You can add tasks, move them between backlog and todo, link, order, note, and edit tasks you created. To have tasks worked, queue them in order with \`queue <IDs>\` (${limit}); the runner starts them one by one after this turn, so do not start the work yourself. Read a task with \`show <ID>\` before editing, linking or queueing it — \`list\` only shows titles and a one-line excerpt. To choose how a task is worked, label it with \`edit <ID> --strategy none|goal|ralph|swarm|graph\` and \`--plan yes|no\`; leave it unset to let the runner decide. If the request is unclear, ask me instead of guessing.
 
 Request: ${request}`;
 }
@@ -1093,7 +1093,21 @@ export function kanboardCompletions(prefix: string): CompletionItem[] | null {
 /** Live task list for `--after` / `-do` completions, cached ~5s per client. */
 const taskCache = new WeakMap<KanboardCli, { at: number; tasks: ShowTask[] }>();
 
-export async function taskCompletions(deps: CommandDeps, prefix: string, before: string): Promise<CompletionItem[] | null> {
+export interface TaskCompletionOptions {
+  /** Also match task TITLES (default true); false = id prefixes only. */
+  titleSearch?: boolean;
+  /** Row style: "status" = label id, description "<status> — <title>";
+   *  "id-title" = label "<id>  <title>", description "<status>". */
+  rowStyle?: "status" | "id-title";
+}
+
+export async function taskCompletions(
+  deps: CommandDeps,
+  prefix: string,
+  before: string,
+  opts: TaskCompletionOptions = {},
+): Promise<CompletionItem[] | null> {
+  const { titleSearch = true, rowStyle = "status" } = opts;
   const client = deps.cli;
   if (!client) return null;
   let cache = taskCache.get(client);
@@ -1109,13 +1123,21 @@ export async function taskCompletions(deps: CommandDeps, prefix: string, before:
   const needle = prefix.toLowerCase();
   const items = cache.tasks
     .filter((task) => !["cancelled", "archived"].includes(task.status))
-    .filter((task) => task.id.toLowerCase().startsWith(needle) || task.title.toLowerCase().includes(needle))
+    .filter((task) => task.id.toLowerCase().startsWith(needle) || (titleSearch && task.title.toLowerCase().includes(needle)))
     .slice(0, 12)
-    .map((task) => ({
-      value: fullArgs(before, task.id),
-      label: task.id,
-      description: `${task.status} — ${task.title}`,
-    }));
+    .map((task) =>
+      rowStyle === "id-title"
+        ? {
+            value: fullArgs(before, task.id),
+            label: `${task.id}  ${task.title.slice(0, 64)}`,
+            description: task.status,
+          }
+        : {
+            value: fullArgs(before, task.id),
+            label: task.id,
+            description: `${task.status} — ${task.title}`,
+          },
+    );
   return items.length > 0 ? items : null;
 }
 
@@ -1191,15 +1213,19 @@ export async function kanboardAddCompletions(deps: CommandDeps, prefix: string):
   return null;
 }
 
-/** /unipi:kanboard-do … — complete a trailing task-id prefix. */
+/** /unipi:kanboard-do … — complete a trailing task-id token; plain prose never matches. */
 export async function kanboardDoCompletions(deps: CommandDeps, prefix: string): Promise<CompletionItem[] | null> {
   const raw = prefix ?? "";
-  const match = /^(.*?)(\S*)$/.exec(raw)!;
-  const before = match[1]!;
-  const token = match[2]!;
-  // Only when the last token looks like a task id prefix (ABC-…).
-  if (!/^[A-Za-z]{2,6}-?[0-9]*$/.test(token) || token.length < 2) return null;
-  return taskCompletions(deps, token, before);
+  const at = raw.lastIndexOf(" ");
+  const before = at === -1 ? "" : raw.slice(0, at + 1);
+  const token = raw.slice(at + 1);
+  // Only a task-id-like tail ("UNI-1", "uni", "UNI-") completes; words that
+  // match no id shape or prefix ("note", "set") yield nothing.
+  if (!/^[A-Za-z]{2,10}-?\d*$/.test(token)) return null;
+  // Title search only when the token looks like a real id prefix (has a digit
+  // or ends with the dash); otherwise id prefixes only.
+  const idLike = /\d/.test(token) || token.endsWith("-");
+  return taskCompletions(deps, token, before, { titleSearch: idLike, rowStyle: "id-title" });
 }
 
 export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): void {
@@ -1308,10 +1334,15 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
   });
 
   pi.registerCommand("unipi:kanboard-do", {
-    description: "Let the agent use the kanboard for this turn — writes are allowed until the turn ends",
+    description: "Grant kanboard write credits to the agent (/unipi:kanboard-do <request>; off revokes)",
     getArgumentCompletions: (prefix: string) => kanboardDoCompletions(deps, prefix ?? ""),
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const request = (args ?? "").trim();
+      if (request.toLowerCase() === "off") {
+        deps.guard.revoke();
+        ctx.ui.notify("kanboard: write credits revoked — reads stay free", "info");
+        return;
+      }
       if (!request) {
         ctx.ui.notify("kanboard: -do needs a request — /unipi:kanboard-do <what the agent may do on the board>", "warning");
         return;
@@ -1328,9 +1359,12 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
       const busy = typeof (ctx as unknown as { isIdle?: () => boolean }).isIdle === "function"
         ? !(ctx as unknown as { isIdle: () => boolean }).isIdle!()
         : false;
-      pi.sendUserMessage(doText(slug, client.binary.path, request, deps.settings().queueMax), busy ? { deliverAs: "followUp" } : undefined);
+      pi.sendUserMessage(
+        doText(slug, client.binary.path, request, deps.settings().queueMax, deps.guard.remaining()),
+        busy ? { deliverAs: "followUp" } : undefined,
+      );
       deps.guard.noteSent();
-      deps.debug(`do window open (${slug})`);
+      deps.debug(`do credits open (${slug}): ${deps.guard.remaining()} remaining`);
     },
   });
 

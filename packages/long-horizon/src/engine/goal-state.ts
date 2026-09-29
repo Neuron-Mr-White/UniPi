@@ -56,6 +56,7 @@ export const GOAL_STATUS_REASONS = [
   "paused(user_requested)",
   "paused(superseded)",
   "paused(verifier_unavailable)",
+  "paused(verifier_inconclusive)",
   "paused(no_progress)",
   "paused(no_progress_after_completion_claim)",
   "blocked(threshold_3turns)",
@@ -77,7 +78,9 @@ export const STALL_CAP_CEILING = 50;
 export const TOKEN_BUDGET_MINIMUM = 1_000;
 export const BLOCKED_PROPOSAL_THRESHOLD = 3;
 /** mcode: a verifier that keeps saying not_met this many times after claims parks the goal. */
-export const NOT_MET_STREAK_CAP = 3;
+export const NOT_MET_STREAK_CAP = 5;
+/** Consecutive inconclusive verdicts before the goal pauses for a human call. */
+export const INCONCLUSIVE_STREAK_CAP = 2;
 
 export const GOAL_CONDITION_LIMIT = { codeUnits: 500, utf8Bytes: 1_500 } as const;
 
@@ -97,6 +100,8 @@ export interface GoalState {
   readonly tokenBudget: number | null;
   /** Written at the first settlement that observes tokensNow. */
   readonly tokensBaselinePending: boolean;
+  /** True when the current tokens figure was estimated (no provider usage). */
+  readonly tokensEstimated?: boolean;
   readonly tokensAtStart: number;
   readonly tokensNow: number;
   readonly turn: number;
@@ -105,6 +110,8 @@ export interface GoalState {
   readonly stallCap: number;
   /** Consecutive verifier not_met verdicts on completion claims. */
   readonly notMetStreak: number;
+  /** Consecutive inconclusive verdicts (weak evidence — neither met nor not_met). */
+  readonly inconclusiveStreak: number;
   /** Consecutive blocked proposals (blocked needs 3 in a row). */
   readonly blockedProposalStreak: number;
   readonly lease: GoalLease;
@@ -134,6 +141,10 @@ export interface GoalSettlement {
   readonly blockedProposal?: boolean;
   /** Safety/policy refusal — immediately terminal. */
   readonly safetyRefusal?: boolean;
+  /** The evaluator itself failed twice (error/timeout/unparseable) — pause, don't guess. */
+  readonly verifierUnavailable?: boolean;
+  /** tokensNow was estimated from message sizes, not read from provider usage. */
+  readonly tokensEstimated?: boolean;
 }
 
 export interface GoalCreateOptions {
@@ -234,11 +245,13 @@ export class GoalMachine {
       tokensBaselinePending: true,
       tokensAtStart: 0,
       tokensNow: 0,
+      tokensEstimated: false,
       turn: 0,
       maxTurns: Math.min(options.maxTurns ?? DEFAULT_MAX_TURNS, MAX_TURNS_CEILING),
       noProgressStreak: 0,
       stallCap: Math.min(options.stallCap ?? DEFAULT_STALL_CAP, STALL_CAP_CEILING),
       notMetStreak: 0,
+      inconclusiveStreak: 0,
       blockedProposalStreak: 0,
       lease: Object.freeze({ goalId, generation: 0 }),
       revision: 0,
@@ -339,33 +352,68 @@ export class GoalMachine {
     let turn = goal.turn;
     let noProgressStreak = goal.noProgressStreak;
     let notMetStreak = goal.notMetStreak;
+    let inconclusiveStreak = goal.inconclusiveStreak ?? 0;
     let blockedProposalStreak = goal.blockedProposalStreak;
 
     // 1. Verification of a completion claim decides completion.
     if (input.completionClaim && input.verifier) {
-      if (input.verifier.verdict === "met") {
-        const next = this.withGoal(goal, { status: "complete", reason: "complete(verifier_met)" });
-        this.goal = next;
-        this.commit(next, goal.status);
-        return next;
-      }
-      if (input.verifier.verdict === "impossible") {
-        const next = this.withGoal(goal, { status: "blocked", reason: "blocked(verifier_impossible)" });
-        this.goal = next;
-        this.commit(next, goal.status);
-        return next;
-      }
-      // not_met / inconclusive: the claim failed. Count it.
-      notMetStreak = input.verifier.verdict === "not_met" ? notMetStreak + 1 : notMetStreak;
-      if (notMetStreak >= NOT_MET_STREAK_CAP && noProgressStreak + 1 >= goal.stallCap) {
+      // 1a. The evaluator itself failed twice in this settlement: pause — an
+      // unproven verdict must never advance (or stall) the goal.
+      if (input.verifierUnavailable) {
         const next = this.withGoal(goal, {
           status: "paused",
-          reason: "paused(no_progress_after_completion_claim)",
+          reason: "paused(verifier_unavailable)",
+          inconclusiveStreak: 0,
+          ...(input.tokensEstimated !== undefined ? { tokensEstimated: input.tokensEstimated } : {}),
         });
         this.goal = next;
         this.commit(next, goal.status);
         return next;
       }
+      if (input.verifier.verdict === "met") {
+        const next = this.withGoal(goal, { status: "complete", reason: "complete(verifier_met)", inconclusiveStreak: 0 });
+        this.goal = next;
+        this.commit(next, goal.status);
+        return next;
+      }
+      if (input.verifier.verdict === "impossible") {
+        const next = this.withGoal(goal, { status: "blocked", reason: "blocked(verifier_impossible)", inconclusiveStreak: 0 });
+        this.goal = next;
+        this.commit(next, goal.status);
+        return next;
+      }
+      // not_met: the claim failed. Count it; the cap parks unconditionally.
+      if (input.verifier.verdict === "not_met") {
+        notMetStreak = notMetStreak + 1;
+        inconclusiveStreak = 0;
+        if (notMetStreak >= NOT_MET_STREAK_CAP) {
+          const next = this.withGoal(goal, {
+            status: "paused",
+            reason: "paused(no_progress_after_completion_claim)",
+            notMetStreak,
+            inconclusiveStreak,
+          });
+          this.goal = next;
+          this.commit(next, goal.status);
+          return next;
+        }
+      }
+      // inconclusive: evidence too weak either way; twice in a row = human call.
+      if (input.verifier.verdict === "inconclusive") {
+        inconclusiveStreak = inconclusiveStreak + 1;
+        if (inconclusiveStreak >= INCONCLUSIVE_STREAK_CAP) {
+          const next = this.withGoal(goal, {
+            status: "paused",
+            reason: "paused(verifier_inconclusive)",
+            inconclusiveStreak,
+          });
+          this.goal = next;
+          this.commit(next, goal.status);
+          return next;
+        }
+      }
+    } else {
+      inconclusiveStreak = 0;
     }
 
     // 2. Safety refusal is immediately terminal.
@@ -458,9 +506,11 @@ export class GoalMachine {
       tokensAtStart,
       tokensNow,
       tokensBaselinePending,
+      ...(input.tokensEstimated !== undefined ? { tokensEstimated: input.tokensEstimated } : {}),
       turn,
       noProgressStreak,
       notMetStreak,
+      inconclusiveStreak,
       blockedProposalStreak,
     });
     this.goal = next;

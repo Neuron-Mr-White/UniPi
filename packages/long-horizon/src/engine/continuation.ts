@@ -57,6 +57,8 @@ export interface ContinuationDeps {
   readonly verifier: VerifierDeps;
   /** Deliver a continuation/kickoff/wrap-up message (tail message). */
   send(message: string): void;
+  /** User-only notification (wired to ctx.ui.notify at agent_end; optional in tests). */
+  notify?(text: string, level?: "info" | "warning" | "error"): void;
   getTokenCount?(): number | undefined;
   now?(): number;
   schedule?(callback: () => void, delayMs: number): void;
@@ -108,6 +110,23 @@ export class GoalContinuation {
     this.evaluateOverride = evaluate;
   }
 
+  private tokensEstimated = false;
+  private notifyOverride?: NonNullable<ContinuationDeps["notify"]>;
+
+  /** Late-bound: the last turn's tokens were estimated, not read from usage. */
+  setTokensEstimated(estimated: boolean): void {
+    this.tokensEstimated = estimated;
+  }
+
+  /** Late-bound user notification (ctx.ui.notify at agent_end). */
+  setNotify(notify: NonNullable<ContinuationDeps["notify"]>): void {
+    this.notifyOverride = notify;
+  }
+
+  private inform(text: string, level: "info" | "warning" | "error" = "warning"): void {
+    (this.notifyOverride ?? this.deps.notify)?.(text, level);
+  }
+
   /** Crash/interrupt marker: the next continuation carries the recovery fragment. */
   armRecovery(): void {
     this.recoveryArmed = true;
@@ -128,11 +147,19 @@ export class GoalContinuation {
   async onTurnEnd(activity: TurnActivity): Promise<ContinuationDecision> {
     const machine = this.deps.machine;
     const goal = machine.getActive();
-    if (!goal) return { action: "none", reason: "no-active-goal" };
+    if (!goal) {
+      // No drivable goal: a pending proposal could never be settled — drop it
+      // so get_goal stops advertising "verification pending" forever.
+      this.deps.toolset.discardProposal();
+      return { action: "none", reason: "no-active-goal" };
+    }
 
     // Kickoff not yet delivered (e.g., goal created mid-turn): contract first.
+    // The kickoff turn never settles — a proposal made beside creation is
+    // stale by definition; discard it instead of letting it outlive the turn.
     if (!goal.kickoffDelivered) {
       this.deliverKickoff(goal);
+      this.deps.toolset.discardProposal();
       return { action: "none", reason: "kickoff-delivered" };
     }
 
@@ -149,11 +176,16 @@ export class GoalContinuation {
         commands: activity.commands,
         recentTail: activity.recentTail,
       });
-      const verdict = await verifyCompletion(
-        { ...this.deps.verifier, ...(this.evaluateOverride ? { evaluate: this.evaluateOverride } : {}) },
-        goal.objective,
-        brief,
-      );
+      const verify = () =>
+        verifyCompletion(
+          { ...this.deps.verifier, ...(this.evaluateOverride ? { evaluate: this.evaluateOverride } : {}) },
+          goal.objective,
+          brief,
+        );
+      // One transient evaluator failure gets a retry inside the same
+      // settlement; a second failure is `verifierUnavailable`, never a verdict.
+      let verdict = await verify();
+      if (verdict.evaluatorFailed) verdict = await verify();
       this.lastVerifierReason = verdict.evaluatorFailed
         ? undefined
         : `${verdict.reason}${verdict.missing.length > 0 ? ` (missing: ${verdict.missing.join("; ")})` : ""}`;
@@ -162,12 +194,27 @@ export class GoalContinuation {
         revision: goal.revision,
         completionClaim: { ...(proposal.summary !== undefined ? { summary: proposal.summary } : {}) },
         verifier: { verdict: verdict.verdict, ...(verdict.missing.length > 0 ? { missing: verdict.missing } : {}) },
+        ...(verdict.evaluatorFailed ? { verifierUnavailable: true } : {}),
         // A rejected claim is no progress unless the turn also changed files
         // (work done, claimed early — common in batched goals); a met claim
         // completed above; an inconclusive/failed verifier is neutral.
         madeProgress: verdict.verdict === "not_met" ? activity.changedFiles.length > 0 : undefined,
         ...(tokensNow !== undefined ? { tokensNow } : {}),
+        ...(tokensNow !== undefined ? { tokensEstimated: this.tokensEstimated } : {}),
       });
+      this.tokensEstimated = false;
+      if (settled?.status === "paused") {
+        if (settled.reason === "paused(verifier_unavailable)") {
+          this.inform(`Goal verifier unavailable twice (${verdict.reason}) — goal paused. /unipi:goal resume to retry.`);
+        } else if (settled.reason === "paused(verifier_inconclusive)") {
+          this.inform(
+            `Goal verifier returned inconclusive twice — goal paused. Last evaluation: ${verdict.reason}. /unipi:goal resume.`,
+          );
+        } else if (settled.reason === "paused(no_progress_after_completion_claim)") {
+          const missing = verdict.missing.length > 0 ? ` Missing: ${verdict.missing.join("; ")}.` : "";
+          this.inform(`Completion claim rejected ${settled.notMetStreak} times — goal paused.${missing} /unipi:goal resume.`);
+        }
+      }
     } else if (proposal?.kind === "blocked") {
       settled = machine.settleTurn({
         goalId: goal.goalId,
@@ -185,7 +232,9 @@ export class GoalContinuation {
         madeProgress: activity.toolCalls > 0 ? true : undefined,
         ...(activity.waiting ? { waiting: true } : {}),
         ...(tokensNow !== undefined ? { tokensNow } : {}),
+        ...(tokensNow !== undefined ? { tokensEstimated: this.tokensEstimated } : {}),
       });
+      this.tokensEstimated = false;
     }
 
     if (!settled) {
@@ -193,12 +242,19 @@ export class GoalContinuation {
       return { action: "none", reason: "no-active-goal" };
     }
 
-    // Terminal / paused → stop the owner; budget_limited adds a wrap-up turn.
+    // Terminal → stop the owner; PAUSED → park it (resumable via
+    // /unipi:goal resume); budget_limited adds a wrap-up turn.
     if (settled.status !== "active" && settled.status !== "waiting") {
       const terminal = settled.reason ?? settled.status;
       const wrapUp = settled.status === "budget_limited" && !machine.isWrapUpDelivered(settled);
       if (wrapUp) machine.markWrapUpDelivered(settled.goalId, settled.revision);
-      this.deps.owner.finish(terminal);
+      if (settled.status === "paused") {
+        // Park (resume keeps the same goal); fall back to finish if the
+        // single park slot is held — the loop must still stop.
+        if (!this.deps.owner.suspend(terminal)) this.deps.owner.finish(terminal);
+      } else {
+        this.deps.owner.finish(terminal);
+      }
       if (wrapUp) this.deps.send(WRAP_UP_PROMPT);
       return { action: "stopped", terminal, wrapUp };
     }

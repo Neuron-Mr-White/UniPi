@@ -42,11 +42,12 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:plan":           "workflow",
   "unipi:permission":     "workflow",
 
-  // long-horizon (4 commands)
+  // long-horizon (5 commands)
   "unipi:goal":           "long-horizon",
   "unipi:ralph":          "long-horizon",
   "unipi:swarm":          "long-horizon",
   "unipi:graph":          "long-horizon",
+  "unipi:regular":        "long-horizon",
 
   // memory (7 commands)
   "unipi:memory":              "memory",
@@ -140,6 +141,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:ralph":          "Checklist grind over iterations · enumerable chores · low cost, solid success",
   "unipi:swarm":          "Parallel fan-out + synthesis · complex decomposable · higher cost, high coverage",
   "unipi:graph":          "Dependent multi-step work · later steps need earlier results · highest cost",
+  "unipi:regular":        "Regular mode — stop the active owner and run prompts without long-horizon routing",
 
   "unipi:memory":             "Memory palace — status, migrate, recall/write toggles",
   "unipi:memory-process":     "Analyze text and store extracted memories",

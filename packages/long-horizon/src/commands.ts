@@ -2,9 +2,12 @@
  * Long-horizon commands — the explicit mode triggers.
  *
  *   /unipi:goal|ralph|swarm|graph <prompt>   turn override + prompt
+ *   /unipi:goal|swarm|graph stop             END the active owner (terminal)
+ *   /unipi:ralph stop                        park the active loop
  *   /unipi:goal|ralph|swarm|graph status     owner + mode snapshot
  *   /unipi:goal|ralph|swarm|graph resume     reactivate the parked owner
  *   /unipi:goal|ralph|swarm|graph clear      drop the parked owner
+ *   /unipi:regular                           stop any owner, pin regular mode
  *   /unipi:continue                          resume the parked owner
  *
  * Switching while an owner is active suspends it (max-1 park slot; the
@@ -14,11 +17,13 @@
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { appendProgress, emitEvent, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
-import type { LhMode } from "./modes.js";
+import type { LhMode, OwnerKind } from "./modes.js";
 import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
 import type { OwnerCoordinator } from "./owner.js";
 import type { RalphLoop } from "./engine/ralph.js";
+import type { GoalMachine } from "./engine/goal-state.js";
+import type { GoalToolset } from "./tools/goal.js";
 import { loadSettings } from "./settings.js";
 
 /** Progress-bar hooks (all output is user-only; see src/progress.ts). */
@@ -37,6 +42,37 @@ export interface LongHorizonCommandDeps {
 
 function notify(ctx: ExtensionCommandContext, text: string): void {
   if (ctx.hasUI) ctx.ui.notify(text, "info");
+}
+
+/**
+ * Terminally end the active owner (optionally only one kind): goal marked
+ * complete(user_requested), pending proposal dropped, owner → history, session
+ * pinned to regular mode. Returns the stopped owner id, undefined when nothing
+ * (of that kind) is active. Shared by /unipi:<mode> stop, /unipi:regular, and
+ * the unipi:goal-stop runner.
+ */
+export function stopActiveOwner(
+  pi: ExtensionAPI,
+  gate: Gate,
+  owner: OwnerCoordinator,
+  machine?: GoalMachine,
+  toolset?: GoalToolset,
+  kind?: OwnerKind,
+): string | undefined {
+  const active = owner.getActive();
+  if (!active || (kind !== undefined && active.kind !== kind)) return undefined;
+  if (active.kind === "goal") {
+    machine?.clear();
+    toolset?.discardProposal();
+  }
+  const finished = owner.finish("stopped(user_requested)");
+  emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+    event: "stopped",
+    kind: active.kind,
+    ...(finished ? { ownerId: finished.ownerId } : {}),
+  });
+  gate.setSessionMode("none");
+  return finished?.ownerId ?? active.ownerId;
 }
 
 function ownerSnapshotText(owner: OwnerCoordinator): string {
@@ -62,10 +98,10 @@ function ownerSnapshotText(owner: OwnerCoordinator): string {
 
 /** Short user-facing mode descriptions: use case + cost/success (design §2 rubric). */
 const MODE_DESCRIPTIONS = {
-  goal: "One objective until verifiably true. Use: medium-complex single deliverables. Cost/success: pareto per success. (<prompt> | status | resume | clear)",
+  goal: "One objective until verifiably true. Use: medium-complex single deliverables. Cost/success: pareto per success. (<prompt> | status | stop | resume | clear)",
   ralph: "Checklist grind over iterations. Use: enumerable chores, repo-scale plans. Cost/success: low cost, solid success. (start <name> | stop | status | resume | clear | <prompt>)",
-  swarm: "Parallel fan-out + one synthesis. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | resume | clear)",
-  graph: "Dependent multi-step work. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | resume | clear)",
+  swarm: "Parallel fan-out + one synthesis. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | stop | resume | clear)",
+  graph: "Dependent multi-step work. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | stop | resume | clear)",
 } as const;
 
 interface CompletionItem {
@@ -78,6 +114,7 @@ interface CompletionItem {
 const goalCompletions = (prefix: string): CompletionItem[] => {
   const subs: CompletionItem[] = [
     { value: "status", label: "status", description: "show owner + mode snapshot" },
+    { value: "stop", label: "stop", description: "end the active owner (terminal)" },
     { value: "resume", label: "resume", description: "reactivate the parked owner" },
     { value: "clear", label: "clear", description: "drop the parked owner" },
   ];
@@ -106,7 +143,12 @@ export function registerLongHorizonCommands(
   owner: OwnerCoordinator,
   ralph?: RalphLoop,
   progressHooks?: ProgressHooks,
+  machine?: GoalMachine,
+  toolset?: GoalToolset,
 ): void {
+  /** Kept for the modeHandler closure — see exported stopActiveOwner. */
+  const stopActiveOwnerFor = (kind?: OwnerKind): string | undefined =>
+    stopActiveOwner(pi, gate, owner, machine, toolset, kind);
   const modeHandler = (mode: LhMode) => async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
     const definition = MODE_REGISTRY[mode];
     const parts = args.trim().split(/\s+/);
@@ -159,6 +201,20 @@ export function registerLongHorizonCommands(
       return;
     }
 
+    // stop — terminally END the active owner (goal/swarm/graph; ralph's stop
+    // stays park). A subcommand, never a prompt: it must not fall through to
+    // the <prompt> branch below.
+    if (mode !== "ralph" && sub === "stop") {
+      const stopped = stopActiveOwnerFor(mode as OwnerKind);
+      notify(
+        ctx,
+        stopped !== undefined
+          ? `${definition.label} stopped.`
+          : `No active ${definition.label.toLowerCase()}.`,
+      );
+      return;
+    }
+
     if (sub === "status" || (sub === "" && parts.length <= 1)) {
       const current = gate.current();
       const settings = loadSettings();
@@ -196,12 +252,23 @@ export function registerLongHorizonCommands(
     }
 
     if (sub === "clear") {
+      const active = owner.getActive();
+      if (active) {
+        const noun = active.kind === "ralph-loop" ? "ralph loop" : active.kind;
+        notify(
+          ctx,
+          active.kind === "ralph-loop"
+            ? "A ralph loop is running — /unipi:ralph stop parks it, or /unipi:regular ends it."
+            : `A ${noun} is running — use /unipi:${noun} stop to end it.`,
+        );
+        return;
+      }
       const cleared = owner.clearParked();
       notify(
         ctx,
         cleared
           ? `Cleared parked ${cleared.kind} "${cleared.label}".`
-          : "Nothing parked to clear.",
+          : "Nothing to clear.",
       );
       if (cleared) {
         emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "cleared", ownerId: cleared.ownerId });
@@ -238,5 +305,13 @@ export function registerLongHorizonCommands(
   pi.registerCommand("unipi:ralph", { description: MODE_DESCRIPTIONS.ralph, getArgumentCompletions: ralphCompletions, handler: modeHandler("ralph") });
   pi.registerCommand("unipi:swarm", { description: MODE_DESCRIPTIONS.swarm, getArgumentCompletions: goalCompletions, handler: modeHandler("swarm") });
   pi.registerCommand("unipi:graph", { description: MODE_DESCRIPTIONS.graph, getArgumentCompletions: goalCompletions, handler: modeHandler("graph") });
+  pi.registerCommand("unipi:regular", {
+    description: "Regular mode — stop any active owner and run prompts without long-horizon routing",
+    handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
+      stopActiveOwnerFor();
+      gate.setSessionMode("none");
+      notify(ctx, "Regular mode.");
+    },
+  });
 
 }

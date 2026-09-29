@@ -91,7 +91,9 @@ export function extractTail(
     .filter((entry) => entry.text.length > 0);
 }
 
-/** Best-effort cumulative token count from assistant usage fields. */
+/** Best-effort cumulative token count from assistant usage fields. Accepts
+ *  both shapes pi providers emit: {input, output, cacheRead, cacheWrite,
+ *  totalTokens} and {inputTokens, outputTokens}. */
 export function sumUsageTokens(messages: readonly unknown[]): number | undefined {
   let total = 0;
   let seen = false;
@@ -105,14 +107,74 @@ export function sumUsageTokens(messages: readonly unknown[]): number | undefined
       seen = true;
       continue;
     }
-    const input = typeof record.inputTokens === "number" ? record.inputTokens : 0;
-    const output = typeof record.outputTokens === "number" ? record.outputTokens : 0;
+    const input = typeof record.input === "number"
+      ? record.input
+      : typeof record.inputTokens === "number"
+        ? record.inputTokens
+        : 0;
+    const output = typeof record.output === "number"
+      ? record.output
+      : typeof record.outputTokens === "number"
+        ? record.outputTokens
+        : 0;
     if (input + output > 0) {
       total += input + output;
       seen = true;
     }
   }
   return seen ? total : undefined;
+}
+
+/**
+ * Char-based token estimate (ceil(chars/4)) over a turn's assistant text,
+ * thinking, tool-call args, and toolResult text. Used when a provider reports
+ * no usable usage so the budget still bounds the loop.
+ */
+export function estimateTokens(messages: readonly unknown[]): number {
+  let chars = 0;
+  const countText = (value: unknown): void => {
+    if (typeof value === "string") chars += value.length;
+  };
+  for (const message of messages) {
+    if (typeof message !== "object" || message === null) continue;
+    const record = message as Record<string, unknown>;
+    const role = typeof record.role === "string" ? record.role : undefined;
+    const content = record.content;
+    if (role === "assistant") {
+      if (typeof content === "string") {
+        chars += content.length;
+      } else if (Array.isArray(content)) {
+        for (const part of content) {
+          if (typeof part !== "object" || part === null) continue;
+          const block = part as Record<string, unknown>;
+          if (block.type === "text") countText(block.text);
+          else if (block.type === "thinking") countText(block.thinking);
+          else if (block.type === "toolCall" || block.type === "tool_call" || block.type === "toolUse" || block.type === "tool_use") {
+            const args = block.arguments !== undefined ? block.arguments : block.input;
+            if (typeof args === "string") {
+              chars += args.length;
+            } else if (args !== undefined && args !== null) {
+              try {
+                chars += JSON.stringify(args).length;
+              } catch {
+                // Unserializable args just don't count.
+              }
+            }
+          }
+        }
+      }
+    } else if (role === "toolResult" || role === "tool_result") {
+      if (typeof content === "string") chars += content.length;
+      else if (Array.isArray(content)) {
+        for (const part of content) {
+          if (typeof part === "object" && part !== null && (part as Record<string, unknown>).type === "text") {
+            countText((part as Record<string, unknown>).text);
+          }
+        }
+      }
+    }
+  }
+  return Math.ceil(chars / 4);
 }
 
 export interface RuntimeDeps {
@@ -163,9 +225,23 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
       void pi.sendUserMessage(text, { deliverAs: "steer" });
     },
   });
+  // pi's tool_execution_end carries no input — capture args per call at
+  // execution start and join them at the end, so "identical arguments" keys
+  // on real arguments instead of collapsing to one hash for the whole tool.
+  const argsByCallId = new Map<string, unknown>();
+  pi.on("tool_execution_start", (event) => {
+    try {
+      const startEvent = event as { toolCallId?: string; args?: unknown };
+      if (typeof startEvent.toolCallId === "string") {
+        argsByCallId.set(startEvent.toolCallId, startEvent.args);
+      }
+    } catch {
+      // Detector instrumentation must never abort a turn.
+    }
+  });
   pi.on("tool_execution_end", (event) => {
     try {
-    const toolEvent = event as { toolName?: string; result?: unknown; isError?: boolean };
+    const toolEvent = event as { toolCallId?: string; toolName?: string; result?: unknown; isError?: boolean; input?: unknown };
     if (typeof toolEvent.toolName !== "string") return;
     const resultText =
       typeof toolEvent.result === "string"
@@ -177,9 +253,12 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
               return String(toolEvent.result ?? "");
             }
           })();
+    const callId = typeof toolEvent.toolCallId === "string" ? toolEvent.toolCallId : undefined;
+    const input = callId !== undefined ? argsByCallId.get(callId) : undefined;
+    if (callId !== undefined) argsByCallId.delete(callId);
     runaway.feed({
       tool: toolEvent.toolName,
-      input: (event as { input?: unknown }).input,
+      input: input ?? (event as { input?: unknown }).input,
       resultText: resultText.slice(0, 400),
       isError: toolEvent.isError === true,
     });
@@ -211,7 +290,23 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
     const tokens = sumUsageTokens(messages);
     // Only update when this turn actually reported usage — a usage-less turn
     // keeps the last known counter (and never erases an injected one).
-    if (tokens !== undefined) deps.continuation.setTokenCounter(() => tokens);
+    if (tokens !== undefined) {
+      deps.continuation.setTokenCounter(() => tokens);
+      deps.continuation.setTokensEstimated(false);
+    } else if (messages.length > 0) {
+      // Messages exist but carry no usable usage: estimate from their sizes so
+      // the budget still bounds the loop (flagged as estimated everywhere).
+      const estimated = estimateTokens(messages);
+      deps.continuation.setTokenCounter(() => estimated);
+      deps.continuation.setTokensEstimated(true);
+    }
+    deps.continuation.setNotify((text, level) => {
+      try {
+        (ctx as { ui?: { notify?: (t: string, l?: string) => void } }).ui?.notify?.(text, level ?? "warning");
+      } catch {
+        // Notification must never break settlement.
+      }
+    });
     if (deps.machine.get()) lastEvidence = activity;
     await deps.continuation.onTurnEnd(activity);
     // Per-loop goal progress: fire-and-forget, never delays the next turn.

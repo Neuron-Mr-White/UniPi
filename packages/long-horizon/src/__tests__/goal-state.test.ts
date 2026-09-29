@@ -227,12 +227,12 @@ test("crash recovery: restore reloads durable state", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("no_progress_after_completion_claim: rejected claims + stall park", () => {
+test("no_progress_after_completion_claim: five rejected claims park unconditionally", () => {
   const { m: mm, dir } = machine();
-  mm.create("objective", { stallCap: 3, maxTurns: 50 });
+  mm.create("objective", { stallCap: 50, maxTurns: 50 });
   let state = mm.getActive()!;
-  // Three rejected claims in a row with no progress between them.
-  for (let i = 0; i < 2; i++) {
+  // Four rejected claims stay active regardless of the stall streak.
+  for (let i = 0; i < 4; i++) {
     state = mm.settleTurn({
       goalId: state.goalId,
       revision: state.revision,
@@ -240,8 +240,9 @@ test("no_progress_after_completion_claim: rejected claims + stall park", () => {
       verifier: { verdict: "not_met", missing: ["x"] },
       madeProgress: false,
     })!;
+    assert.equal(state.status, "active", `claim ${i + 1}`);
   }
-  assert.equal(state.status, "active"); // streak 2/3, notMet 2/3
+  assert.equal(state.notMetStreak, 4);
   state = mm.settleTurn({
     goalId: state.goalId,
     revision: state.revision,
@@ -251,5 +252,45 @@ test("no_progress_after_completion_claim: rejected claims + stall park", () => {
   })!;
   assert.equal(state.status, "paused");
   assert.equal(state.reason, "paused(no_progress_after_completion_claim)");
+  assert.equal(state.notMetStreak, 5);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("verifier_inconclusive: two consecutive weak verdicts pause", () => {
+  const { m: mm, dir } = machine();
+  mm.create("objective", { maxTurns: 50 });
+  let state = mm.getActive()!;
+  state = mm.settleTurn({
+    goalId: state.goalId,
+    revision: state.revision,
+    completionClaim: { summary: "done" },
+    verifier: { verdict: "inconclusive" },
+  })!;
+  assert.equal(state.status, "active");
+  assert.equal(state.inconclusiveStreak, 1);
+  state = mm.settleTurn({
+    goalId: state.goalId,
+    revision: state.revision,
+    completionClaim: { summary: "done again" },
+    verifier: { verdict: "inconclusive" },
+  })!;
+  assert.equal(state.status, "paused");
+  assert.equal(state.reason, "paused(verifier_inconclusive)");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("verifier_unavailable: an evaluator that failed twice pauses immediately", () => {
+  const { m: mm, dir } = machine();
+  mm.create("objective", { maxTurns: 50 });
+  let state = mm.getActive()!;
+  state = mm.settleTurn({
+    goalId: state.goalId,
+    revision: state.revision,
+    completionClaim: { summary: "done" },
+    verifier: { verdict: "inconclusive" },
+    verifierUnavailable: true,
+  })!;
+  assert.equal(state.status, "paused");
+  assert.equal(state.reason, "paused(verifier_unavailable)");
   rmSync(dir, { recursive: true, force: true });
 });

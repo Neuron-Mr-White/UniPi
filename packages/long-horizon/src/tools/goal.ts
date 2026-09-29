@@ -59,6 +59,11 @@ export class GoalToolset {
     return this.pending;
   }
 
+  /** Drop any pending proposal unverified (user stop/clear); get_goal stops advertising it. */
+  discardProposal(): void {
+    this.pending = null;
+  }
+
   register(pi: ExtensionAPI): void {
     // ── create_goal ───────────────────────────────────────────────────
     pi.registerTool({
@@ -219,6 +224,7 @@ export class GoalToolset {
         stall_cap: goal.stallCap,
         token_budget: goal.tokenBudget,
         tokens_used: goal.tokensBaselinePending ? null : goal.tokensNow - goal.tokensAtStart,
+        tokens_estimated: goal.tokensEstimated === true,
         expected_goal_id: goal.goalId,
         expected_updated_at: goal.updatedAt,
         updated_at: goal.updatedAt,

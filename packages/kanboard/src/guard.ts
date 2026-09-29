@@ -9,8 +9,8 @@
 
 import { tokenizeArgs } from "./commands.js";
 
-export const WRITE_BLOCK_REASON =
-  "kanboard board writes are only allowed during /unipi:kanboard-do or a runner task";
+export const DEFAULT_DO_CREDITS = 10;
+export const WRITE_CREDITS_USED_UP = "kanboard write credits used up — run /unipi:kanboard-do to reload";
 export const addCapReason = (limit: number): string => `at most ${limit} new tasks per turn`;
 /** @deprecated tests should read the limit through the guard's getter instead. */
 export const ADD_CAP = 20;
@@ -80,35 +80,55 @@ export function isReadonly(invocation: KanboardInvocation): boolean {
 }
 
 export interface WriteGuard {
-  /** Open the window for a `/unipi:kanboard-do` turn. */
+  /** Grant / top up the session's write credits to N (kanboard.doCredits). */
   open(): void;
+  /** Revoke remaining credits (/unipi:kanboard-do off). */
+  revoke(): void;
+  /** Credits left this session. */
+  remaining(): number;
   /** Arm the agent_end closer right after the -do prompt was sent. */
   noteSent(): void;
-  /**
-   * A window opened by -do closes on the first agent_end that isn't the
-   * pre-send echo (>150ms after noteSent). Returns true when it just closed.
-   */
+  /** Credits persist across turns; this only closes the -do window label. */
   onAgentEnd(): boolean;
   /** null when the command is allowed; otherwise the block reason. */
   check(command: string): string | null;
 }
 
 /**
- * The window is open during a -do turn (`doOpen`) or while the runner has a
- * task in phase `running`. `runnerTask` returns that task's id (null when the
- * runner is not running one) — the `add` counter resets whenever the running
- * task changes, so autowork/queue drains get a fresh 20 per task.
+ * Writes cost session credits (one per write subcommand in the command line);
+ * reads are free and never blocked. A runner task keeps unlimited access
+ * (still add-capped). Credits persist across turns and follow-up questions
+ * until spent; /unipi:kanboard-do tops up to N without stacking past N.
  */
-export function createWriteGuard(runnerTask: () => string | null, addLimit: () => number = () => ADD_CAP): WriteGuard {
+export function createWriteGuard(
+  runnerTask: () => string | null,
+  addLimit: () => number = () => ADD_CAP,
+  doCredits: () => number = () => DEFAULT_DO_CREDITS,
+): WriteGuard {
+  let credits = 0;
   let doOpen = false;
   let sentAt = 0;
   let adds = 0;
   let lastTask: string | null = null;
+  const countAdd = (invocation: KanboardInvocation): string | null => {
+    if (invocation.sub !== "add") return null;
+    adds += 1;
+    const limit = addLimit();
+    return limit > 0 && adds > limit ? addCapReason(limit) : null;
+  };
   return {
     open() {
-      doOpen = true;
+      credits = Math.max(credits, Math.max(0, doCredits()));
       adds = 0;
       lastTask = null;
+      doOpen = true;
+    },
+    revoke() {
+      credits = 0;
+      doOpen = false;
+    },
+    remaining() {
+      return credits;
     },
     noteSent() {
       sentAt = Date.now();
@@ -130,12 +150,15 @@ export function createWriteGuard(runnerTask: () => string | null, addLimit: () =
       }
       for (const invocation of invocations) {
         if (isReadonly(invocation)) continue;
-        if (!(doOpen || task !== null)) return WRITE_BLOCK_REASON;
-        if (invocation.sub === "add") {
-          adds += 1;
-          const limit = addLimit();
-          if (limit > 0 && adds > limit) return addCapReason(limit);
+        if (task !== null) {
+          const cap = countAdd(invocation);
+          if (cap) return cap;
+          continue;
         }
+        if (credits <= 0) return WRITE_CREDITS_USED_UP;
+        credits -= 1;
+        const cap = countAdd(invocation);
+        if (cap) return cap;
       }
       return null;
     },

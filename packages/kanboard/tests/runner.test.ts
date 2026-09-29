@@ -575,3 +575,244 @@ describe("strategy labels", { skip: !hasBinary }, () => {
     assert.doesNotMatch(askPrompt, /Work autonomously/);
   });
 });
+
+describe("runner × goal lifecycle (FIX 4)", { skip: !hasBinary }, () => {
+  let home: string;
+  let workspace: string;
+  let kind: ReturnType<typeof fakePi>;
+  let runner: ReturnType<typeof createRunner>;
+  let goalCalls: string[];
+  let goalState: { status: string; reason?: string };
+
+  function setup(): void {
+    home = mkdtempSync(join(tmpdir(), "kb-goalrun-"));
+    workspace = mkdtempSync(join(tmpdir(), "kb-goalws-"));
+    process.env.UNIPI_KANBOARD_HOME = home;
+    // Runner and test CLI share one session so agent-side moves/cancels pass
+    // the binary's session rules.
+    process.env.UNIPI_KANBOARD_SESSION = "pi-goalfix";
+    const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
+    execFileSync(debugBinary, ["project", "add", "--name", "GoalRun"], { env, cwd: workspace, encoding: "utf-8" });
+    resetCommandRunners();
+    goalCalls = [];
+    goalState = { status: "active" };
+    kind = fakePi();
+    registerCommandRunner("unipi:goal-start", (_c: never, args: unknown) => {
+      goalCalls.push(`start:${JSON.stringify(args)}`);
+      return { ok: true, goalId: "goal-1" };
+    });
+    // Faithful mirrors of the long-horizon runners: pause only an ACTIVE goal,
+    // resume only a PAUSED one.
+    registerCommandRunner("unipi:goal-pause", (_c: never, args: unknown) => {
+      goalCalls.push(`pause:${JSON.stringify(args)}`);
+      if (goalState.status !== "active") return { ok: false, reason: `goal is ${goalState.status}` };
+      goalState.status = "paused";
+      return { ok: true, goalId: "goal-1" };
+    });
+    registerCommandRunner("unipi:goal-resume", (_c: never, args: unknown) => {
+      goalCalls.push(`resume:${JSON.stringify(args)}`);
+      if (goalState.status !== "paused") return { ok: false, reason: `goal is ${goalState.status}` };
+      goalState.status = "active";
+      return { ok: true, goalId: "goal-1" };
+    });
+    registerCommandRunner("unipi:goal-stop", (_c: never, args: unknown) => {
+      goalCalls.push(`stop:${JSON.stringify(args)}`);
+      goalState.status = "complete";
+      goalState.reason = "complete(user_requested)";
+      return { ok: true };
+    });
+    registerCommandRunner("unipi:goal-status", () => ({
+      found: true,
+      goalId: "goal-1",
+      status: goalState.status,
+      reason: goalState.reason,
+      objective: "ship it",
+    }));
+    const cli = createCli({ path: debugBinary, source: "dev-build" }, env);
+    runner = createRunner({
+      pi: kind.pi as never,
+      cli,
+      project: () =>
+        JSON.parse(execFileSync(debugBinary, ["project", "show", "--json"], { env, cwd: workspace, encoding: "utf-8" })).project.slug,
+      cwd: workspace,
+      settings: () => ({ ...DEFAULT_SETTINGS }),
+      debug: () => undefined,
+    });
+    runnerRef = runner;
+  }
+
+  const addLabelled = (title: string, ...extra: string[]): string =>
+    JSON.parse(
+      execFileSync(debugBinary, ["add", title, "--status", "todo", ...extra, "--json"], {
+        env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+        cwd: workspace,
+        encoding: "utf-8",
+      }),
+    ).id as string;
+
+  const showTask = (id: string): KanboardTask =>
+    JSON.parse(
+      execFileSync(debugBinary, ["show", id, "--json"], {
+        env: { ...process.env, UNIPI_KANBOARD_HOME: home },
+        cwd: workspace,
+        encoding: "utf-8",
+      }),
+    ) as KanboardTask;
+
+  const settle = async (): Promise<void> => {
+    kind.fireAgentEnd([{ role: "assistant", content: [{ type: "text", text: "work done" }] }]);
+    await new Promise((r) => setTimeout(r, 1500));
+  };
+
+  after(() => {
+    delete process.env.UNIPI_KANBOARD_SESSION;
+    for (const d of [home, workspace]) if (d) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("a user-stopped goal releases the task to Todo, not In Review (REWORK A1)", async () => {
+    setup();
+    const id = addLabelled("Stopped goal task", "--strategy", "goal", "--plan", "no");
+    await runner.work(fakeCtx());
+    assert.equal(runner.status().mode, "goal");
+    // Stop autowork so the released task is not immediately re-claimed.
+    runner.stop(fakeCtx());
+    // The user stopped the goal mid-task.
+    goalState = { status: "complete", reason: "complete(user_requested)" };
+    await settle();
+    assert.equal(showTask(id).status, "todo", "user-stopped goal must NOT push to in_review");
+    const last = (showTask(id).activity ?? []).slice(-1)[0]!;
+    assert.match(last.text, /goal stopped by user/);
+    assert.equal(runner.status().taskId, null);
+  });
+
+  it("an interrupted task parks its goal in the release note (FIX 4b)", async () => {
+    setup();
+    const id = addLabelled("Interrupted goal task", "--strategy", "goal", "--plan", "no");
+    await runner.work(fakeCtx());
+    // Let the claim's async set-run land before the abort.
+    await new Promise((r) => setTimeout(r, 300));
+    kind.fireAgentEnd([{ role: "assistant", content: "partial", stopReason: "aborted" }]);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(goalCalls.some((c) => c.startsWith('pause:{"goalId":"goal-1"}')), `pause not called: ${goalCalls}`);
+    assert.equal(showTask(id).status, "todo");
+    const note = (showTask(id).activity ?? []).map((entry) => entry.text).join("\n");
+    assert.match(note, /\[parked goal: goal-1\]/, "parked goal id survives the release");
+  });
+
+  it("re-claiming a task with a parked goal resumes it instead of starting fresh (FIX 4b)", async () => {
+    setup();
+    const id = addLabelled("Resumed goal task", "--strategy", "goal", "--plan", "no");
+    await runner.work(fakeCtx());
+    await new Promise((r) => setTimeout(r, 300));
+    // Interrupt: the goal parks, the release note records it, task → Todo.
+    kind.fireAgentEnd([{ role: "assistant", content: "partial", stopReason: "aborted" }]);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.match(
+      (showTask(id).activity ?? []).map((entry) => entry.text).join("\n"),
+      /\[parked goal: goal-1\]/,
+    );
+    goalCalls = [];
+    // Re-claim the SAME task: the parked goal resumes, no fresh start.
+    await runner.work(fakeCtx());
+    assert.ok(goalCalls.some((c) => c.startsWith("resume:")), `resume not called: ${goalCalls}`);
+    assert.ok(!goalCalls.some((c) => c.startsWith("start:")), "no fresh goal-start for a parked goal");
+    assert.equal(runner.status().mode, "goal");
+    assert.equal(showTask(id).status, "in_progress");
+  });
+
+  it("a task cancelled by the user stops its goal and leaves the board alone (FIX 4b)", async () => {
+    setup();
+    const id = addLabelled("Moved goal task", "--strategy", "goal", "--plan", "no");
+    await runner.work(fakeCtx());
+    await new Promise((r) => setTimeout(r, 300));
+    // No legal transition leaves a LIVE in_progress run, so the moved-away
+    // branch is exercised against a scripted board below (see the scripted
+    // describe at the bottom of this file).
+    void id;
+    assert.equal(runner.status().mode, "goal");
+  });
+
+  it("a paused goal defers settle: the task stays claimed and nothing is sent (FIX 4c)", async () => {
+    setup();
+    const id = addLabelled("Paused goal task", "--strategy", "goal", "--plan", "no");
+    await runner.work(fakeCtx());
+    goalState = { status: "paused" };
+    await settle();
+    assert.equal(showTask(id).status, "in_progress", "paused goal defers the release");
+    assert.equal(kind.sent.length, 1, "no continuation follow-up for a paused goal");
+    assert.equal(runner.status().taskId, id);
+  });
+});
+
+describe("runner × moved-away goal (FIX 4b, scripted cli — no binary)", () => {
+  it("a task the user moved to done stops its goal and is not released again", async () => {
+    resetCommandRunners();
+    const goalCalls: string[] = [];
+    registerCommandRunner("unipi:goal-start", () => ({ ok: true, goalId: "goal-7" }));
+    registerCommandRunner("unipi:goal-status", () => ({ found: true, goalId: "goal-7", status: "active" }));
+    registerCommandRunner("unipi:goal-stop", (_c: never, args: unknown) => {
+      goalCalls.push(`stop:${JSON.stringify(args)}`);
+      return { ok: true };
+    });
+    registerCommandRunner("unipi:goal-pause", () => ({ ok: false, reason: "unreachable on movedAway" }));
+
+    const task = { id: "GOA-9", title: "claimed task", status: "todo", strategy: "goal", plan: false };
+    const argvs: string[][] = [];
+    const cli = {
+      binary: { path: "/bin/fake-kb", source: "env" },
+      run: async (args: string[]) => {
+        argvs.push(args);
+        const sub = args[0];
+        if (sub === "queue") return { queue: [] };
+        if (sub === "claim-next") return { task: { ...task, status: "in_progress" }, waiting: [] };
+        if (sub === "list") return { tasks: [{ ...task }], problems: [] };
+        if (sub === "set-run") return {};
+        if (sub === "show") {
+          // The user moved it to done while the run was live.
+          return { ...task, status: "done", run: { mode: "goal", goal: "goal-7" } };
+        }
+        return {};
+      },
+    } as never;
+    const sent: string[] = [];
+    const notified: string[] = [];
+    const pi = {
+      sendUserMessage: (message: string) => sent.push(message),
+      appendEntry: () => undefined,
+      sendMessage: () => undefined,
+      on: () => () => undefined,
+    } as never;
+    let runnerRef2: ReturnType<typeof createRunner> | null = null;
+    const runner = createRunner({
+      pi,
+      cli,
+      project: () => "scripted",
+      cwd: process.cwd(),
+      settings: () => ({ ...DEFAULT_SETTINGS, defaultStrategy: "goal" }),
+      debug: () => undefined,
+    });
+    runnerRef2 = runner;
+    runnerRef = runnerRef2;
+
+    const ctx = {
+      cwd: process.cwd(),
+      ui: { notify: (m: string) => notified.push(m), setStatus: () => undefined, confirm: async () => true },
+      isIdle: () => true,
+      hasPendingMessages: () => false,
+      sessionManager: { getEntries: () => [], getBranch: () => [] },
+    } as never;
+
+    await runner.work(ctx);
+    assert.equal(sent.length, 1, "task claimed and prompted");
+    runnerRef2!.onAgentEnd({ messages: [{ role: "assistant", content: "partial", stopReason: "aborted" }] }, ctx);
+    await new Promise((r) => setTimeout(r, 1600));
+
+    assert.deepEqual(goalCalls, ['stop:{"goalId":"goal-7"}'], "goal-stop runs, no pause before it");
+    assert.equal(
+      argvs.some((args) => args[0] === "release"),
+      false,
+      "a done task is never released by the runner",
+    );
+    assert.equal(runner.status().taskId, null, "runner is idle again");
+  });
+});

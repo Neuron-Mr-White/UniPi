@@ -436,6 +436,22 @@ export function createRunner(deps: RunnerDeps): Runner {
     return true;
   }
 
+  /** Latest [parked goal: …] marker from the task's release comments, if any. */
+  async function parkedGoalFromNotes(taskId: string): Promise<string | null> {
+    try {
+      const shown = asTask(
+        "show",
+        await runCli<unknown>(["show", taskId], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
+      );
+      const matches = (shown.activity ?? [])
+        .map((entry) => entry.text.match(/\[parked goal: ([\w-]+)\]/)?.[1])
+        .filter((goal): goal is string => typeof goal === "string");
+      return matches.at(-1) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Wire the chosen strategy for the work turn; falls back toward "none". */
   async function applyStrategy(ctx: ExtensionContext, task: KanboardTask, strategy: Strategy): Promise<void> {
     const setRun = (mode: RunMode, goal?: string): void => {
@@ -447,6 +463,22 @@ export function createRunner(deps: RunnerDeps): Runner {
         .catch((error) => deps.debug(`set-run failed: ${error instanceof Error ? error.message : String(error)}`));
     };
     const goalStart = async (): Promise<boolean> => {
+      // A goal parked for THIS task (interrupted/released earlier) resumes
+      // instead of starting fresh; a stale id falls through to goal-start.
+      const priorGoal = task.run?.goal ?? (await parkedGoalFromNotes(task.id));
+      if (priorGoal) {
+        const resumed = await callCommandRunner<{ ok?: boolean; reason?: string }>(
+          "unipi:goal-resume",
+          ctx,
+          { goalId: priorGoal },
+        );
+        if (resumed.found && resumed.result?.ok) {
+          state.goalId = priorGoal;
+          state.mode = "goal";
+          setRun("goal", priorGoal);
+          return true;
+        }
+      }
       const started = await callCommandRunner<{ ok?: boolean; goalId?: string; reason?: string }>(
         "unipi:goal-start",
         ctx,
@@ -530,14 +562,14 @@ ${body}`.trim() },
   }
 
   /** Ask the goal engine whether the goal reached a terminal state. */
-  async function goalStatus(): Promise<{ status: string; objective?: string } | null> {
-    const looked = await callCommandRunner<{ found?: boolean; status?: string; objective?: string }>(
+  async function goalStatus(): Promise<{ status: string; reason?: string; objective?: string } | null> {
+    const looked = await callCommandRunner<{ found?: boolean; status?: string; reason?: string; objective?: string }>(
       "unipi:goal-status",
       undefined,
       { goalId: state.goalId },
     );
     if (!looked.found || !looked.result?.found || !looked.result.status) return null;
-    return { status: looked.result.status, objective: looked.result.objective };
+    return { status: looked.result.status, reason: looked.result.reason, objective: looked.result.objective };
   }
 
   function planStillActive(): boolean {
@@ -553,20 +585,56 @@ ${body}`.trim() },
         "show",
         await runCli<unknown>(["show", task.id], { extraEnv: { UNIPI_KANBOARD_PROJECT: project() } }),
       );
-      if (value.status === "blocked") {
+      // The user moved the task out from under the runner (done/cancelled/
+      // backlog): stop its goal, leave the board alone.
+      const movedAway = ["done", "cancelled", "backlog"].includes(value.status);
+      if (movedAway && state.goalId) {
+        await callCommandRunner("unipi:goal-stop", ctx, { goalId: state.goalId });
+      }
+      // A still-drivable goal is parked so re-claiming this task resumes it.
+      // The id rides the release comment (activity survives; the run block
+      // does not — release clears it).
+      let parkedMarker = "";
+      if (!movedAway && state.mode === "goal" && state.goalId) {
+        const paused = await callCommandRunner<{ ok?: boolean; reason?: string }>(
+          "unipi:goal-pause",
+          ctx,
+          { goalId: state.goalId },
+        );
+        if (paused.found && paused.result?.ok) {
+          deps.debug(`goal ${state.goalId} parked for ${task.id}`);
+          parkedMarker = ` [parked goal: ${state.goalId}]`;
+        }
+      }
+      if (movedAway) {
+        // The user's move stands — no release, just reset the runner.
+        ctx.ui.notify(`▣ ${task.id} was moved to ${value.status} outside the runner — goal stopped`, "warning");
+      } else if (value.status === "blocked") {
         const note = (value.activity ?? []).slice(-1)[0]?.text ?? "blocked";
         ctx.ui.notify(`▣ ${task.id} blocked: ${note}`, "warning");
       } else if (outcome === "in_review") {
-        await runCli(["release", task.id, "--to", "in_review", "--comment", comment], {
+        await runCli(["release", task.id, "--to", "in_review", "--comment", comment + parkedMarker], {
           extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
         });
         const first = comment.split("\n")[0]?.slice(0, 120) ?? "";
         ctx.ui.notify(`✓ ${task.id} → In Review: ${first}`, "info");
       } else {
-        await runCli(["release", task.id, "--to", outcome, "--comment", comment], {
+        await runCli(["release", task.id, "--to", outcome, "--comment", comment + parkedMarker], {
           extraEnv: { UNIPI_KANBOARD_PROJECT: project() },
         });
         ctx.ui.notify(`↩ ${task.id} → ${outcome === "todo" ? "Todo" : "Blocked"}: ${comment.slice(0, 120)}`, "warning");
+      }
+      if (movedAway) {
+        state.consumedText = state.lastText.trim();
+        state.task = null;
+        state.goalId = null;
+        state.endsSinceSend = 0;
+        state.phase = "idle";
+        persist("idle");
+        setStatus(ctx, state.stopAfterCurrent ? undefined : describe());
+        await postBoardProgress();
+        await continueLoop(ctx);
+        return;
       }
     } catch (error) {
       ctx.ui.notify(
@@ -878,13 +946,20 @@ ${body}`.trim() },
     }
     if (state.mode === "goal" && state.goalId) {
       const goal = await goalStatus();
-      if (goal && goal.status !== "complete") {
-        if (["failed", "blocked", "stalled", "abandoned", "budget_exhausted"].includes(goal.status)) {
-          await finishTask(ctx, "todo", `goal ${goal.status}`);
+      if (goal) {
+        // A user-stopped goal is NOT success: the task goes back to Todo.
+        if (goal.status === "complete" && goal.reason === "complete(user_requested)") {
+          await finishTask(ctx, "todo", "goal stopped by user");
           return;
         }
-        deps.debug(`settle deferred: goal ${goal.status}`);
-        return;
+        if (goal.status !== "complete") {
+          if (["failed", "blocked", "stalled", "abandoned", "budget_exhausted"].includes(goal.status)) {
+            await finishTask(ctx, "todo", `goal ${goal.status}`);
+            return;
+          }
+          deps.debug(`settle deferred: goal ${goal.status}`);
+          return;
+        }
       }
     }
 

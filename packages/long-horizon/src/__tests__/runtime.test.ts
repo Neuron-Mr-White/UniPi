@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { classifyToolCall, extractTail, sumUsageTokens, wireRuntime } from "../runtime.js";
+import { classifyToolCall, estimateTokens, extractTail, sumUsageTokens, wireRuntime } from "../runtime.js";
 import { GoalMachine } from "../engine/goal-state.js";
 import { GoalToolset } from "../tools/goal.js";
 import { GoalContinuation } from "../engine/continuation.js";
@@ -187,5 +187,161 @@ test("compaction arms the recovery fragment", async () => {
   pi.emit("tool_call", { toolName: "bash", input: { command: "ls" } });
   await fire(pi, "agent_end", { messages: [] });
   assert.match(pi.sent[1] ?? "", /Goal recovery/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── FIX 3: pi usage shape + estimation ───────────────────────────────────
+
+test("sumUsageTokens counts pi's {input, output, cacheRead, ...} usage shape", () => {
+  const total = sumUsageTokens([
+    {
+      role: "assistant",
+      content: "ok",
+      usage: { input: 2463, output: 143, cacheRead: 0, cacheWrite: 0, reasoning: 0, totalTokens: 2606 },
+    },
+    {
+      role: "assistant",
+      content: "ok2",
+      usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 0 }, // no totalTokens
+    },
+    { role: "assistant", content: "legacy", usage: { inputTokens: 7, outputTokens: 2 } },
+  ]);
+  assert.equal(total, 2606 + 15 + 9);
+});
+
+test("estimateTokens covers assistant text, thinking, tool args, and toolResult text", () => {
+  const estimate = estimateTokens([
+    { role: "user", content: "ignored user text 12345678" },
+    { role: "assistant", content: [{ type: "text", text: "abcd" }, { type: "thinking", thinking: "efgh" }] },
+    { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ij" } }] },
+    { role: "toolResult", toolCallId: "t1", content: [{ type: "text", text: "kl" }] },
+  ]);
+  const chars = 4 + 4 + JSON.stringify({ command: "ij" }).length + 2;
+  assert.equal(estimate, Math.ceil(chars / 4));
+});
+
+test("a usage-less turn estimates tokens and the budget fires on the estimate", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "lh-runtime-est-"));
+  const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
+  const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
+  const toolset = new GoalToolset({ machine, owner });
+  const pi = fakePi();
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
+  const continuation = new GoalContinuation({
+    machine,
+    toolset,
+    owner,
+    verifier: { evaluate: async () => { throw new Error("no verify"); } },
+    send: (message) => pi.sendUserMessage(message),
+  });
+  wireRuntime(pi as never, { machine, toolset, continuation, gate, loadSettings: () => DEFAULT_SETTINGS });
+  machine.create("bounded", { tokenBudget: 10 });
+  owner.activate("goal", "bounded");
+  // Kickoff turn.
+  await fire(pi, "agent_end", { messages: [{ role: "user", content: "go" }] });
+  // Turn with assistant text but NO usage anywhere → estimate arms the counter.
+  await fire(pi, "agent_end", {
+    messages: [
+      { role: "user", content: "x".repeat(100) },
+      { role: "assistant", content: "y".repeat(100) },
+    ],
+  });
+  const goal = machine.get()!;
+  assert.equal(goal.tokensBaselinePending, false, "estimate written as tokensNow");
+  assert.equal(goal.tokensEstimated, true);
+  assert.equal(goal.tokensNow - goal.tokensAtStart >= 10, false, "turn 1 = baseline");
+  // A second big usage-less turn exceeds the 10-token budget → budget_limited.
+  await fire(pi, "agent_end", {
+    messages: [{ role: "assistant", content: "z".repeat(400) }],
+  });
+  assert.equal(machine.get()?.status, "budget_limited");
+  assert.equal(machine.get()?.tokensEstimated, true);
+  assert.match(pi.sent.at(-1) ?? "", /budget limit/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── FIX 5: runaway guard wiring keys on real arguments ───────────────────
+
+function runawayRig() {
+  const dir = mkdtempSync(join(tmpdir(), "lh-runaway-"));
+  const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
+  const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
+  const toolset = new GoalToolset({ machine, owner });
+  const pi = fakePi();
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
+  const continuation = new GoalContinuation({
+    machine,
+    toolset,
+    owner,
+    verifier: { evaluate: async () => { throw new Error("no verify"); } },
+    send: (message) => pi.sendUserMessage(message),
+  });
+  wireRuntime(pi as never, { machine, toolset, continuation, gate, loadSettings: () => DEFAULT_SETTINGS });
+  machine.create("guard", {});
+  owner.activate("goal", "guard");
+  return { pi, dir };
+}
+
+function bashStep(pi: ReturnType<typeof fakePi>, id: string, command: string, result: string, isError = false): void {
+  pi.emit("tool_execution_start", { toolCallId: id, toolName: "bash", args: { command } });
+  pi.emit("tool_execution_end", { toolCallId: id, toolName: "bash", result, isError });
+}
+
+test("three DIFFERENT bash commands never trigger the guard (FIX 5a)", async () => {
+  const { pi, dir } = runawayRig();
+  bashStep(pi, "1", "npm test", "all green");
+  bashStep(pi, "2", "git status", "clean");
+  bashStep(pi, "3", "ls src", "a.ts");
+  assert.equal(pi.sent.length, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the same command three times steers once with the identical-arguments reminder", async () => {
+  const { pi, dir } = runawayRig();
+  bashStep(pi, "1", "npm test", "fail a", true);
+  bashStep(pi, "2", "npm test", "fail b", true);
+  bashStep(pi, "3", "npm test", "fail c", true);
+  const steers = pi.sent.filter((message) => message.startsWith("No-progress guard:"));
+  assert.equal(steers.length, 1);
+  assert.match(steers[0] ?? "", /identical arguments/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("same command and same output yields the identical-results variant, once", async () => {
+  const { pi, dir } = runawayRig();
+  bashStep(pi, "1", "npm test", "fail", true);
+  bashStep(pi, "2", "npm test", "fail", true);
+  bashStep(pi, "3", "npm test", "fail", true);
+  const steers = pi.sent.filter((message) => message.startsWith("No-progress guard:"));
+  assert.equal(steers.length, 1);
+  assert.match(steers[0] ?? "", /producing identical results/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("identical results under DIFFERENT args never match (FIX 5b)", async () => {
+  const { pi, dir } = runawayRig();
+  bashStep(pi, "1", "cat a.ts", "");
+  bashStep(pi, "2", "cat b.ts", "");
+  bashStep(pi, "3", "cat c.ts", "");
+  assert.equal(pi.sent.length, 0, "empty results from different reads are not a repeat");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("rg no-match exit 1 three times is expected work, not a loop (FIX 5c)", async () => {
+  const { pi, dir } = runawayRig();
+  bashStep(pi, "1", "rg needle src/", "no matches", true);
+  bashStep(pi, "2", "rg needle lib/", "no matches", true);
+  bashStep(pi, "3", "rg needle dist/", "no matches", true);
+  assert.equal(pi.sent.length, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("get_goal calls never trigger the guard even when repeated (FIX 5c)", async () => {
+  const { pi, dir } = runawayRig();
+  for (const id of ["1", "2", "3", "4"]) {
+    pi.emit("tool_execution_start", { toolCallId: id, toolName: "get_goal", args: {} });
+    pi.emit("tool_execution_end", { toolCallId: id, toolName: "get_goal", result: "{}" });
+  }
+  assert.equal(pi.sent.length, 0);
   rmSync(dir, { recursive: true, force: true });
 });

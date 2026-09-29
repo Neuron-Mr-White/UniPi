@@ -71,6 +71,7 @@ export default function (pi: ExtensionAPI) {
       return status?.phase === "running" ? status.taskId : null;
     },
     () => readKanboardSettings().turnAddLimit,
+    () => readKanboardSettings().doCredits,
   );
   const sessionId = (): string => process.env.UNIPI_KANBOARD_SESSION ?? `pi-${process.pid}`;
 

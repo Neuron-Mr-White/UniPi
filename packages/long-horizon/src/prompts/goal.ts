@@ -96,7 +96,7 @@ export function renderContinuationHint(goal: GoalState, verifierReason?: string)
     goal.noProgressStreak > 0 ? `, ${goal.noProgressStreak}/${goal.stallCap} no-progress` : "";
   const budget =
     goal.tokenBudget !== null && !goal.tokensBaselinePending
-      ? `, ${Math.max(0, goal.tokensNow - goal.tokensAtStart)}/${goal.tokenBudget} tok`
+      ? `, ${Math.max(0, goal.tokensNow - goal.tokensAtStart)}/${goal.tokenBudget} tok${goal.tokensEstimated ? " (est.)" : ""}`
       : "";
   return (
     `${CONTINUATION_HINT}` +

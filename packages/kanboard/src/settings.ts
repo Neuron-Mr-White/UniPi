@@ -31,6 +31,8 @@ export interface KanboardSettings {
   maxSessions: number;
   /** `add` calls allowed per -do/runner window (0 = unlimited). */
   turnAddLimit: number;
+  /** Write credits a /unipi:kanboard-do grants (each board write costs 1). */
+  doCredits: number;
   /** Strategy for unlabelled tasks ("auto" = jev decides). */
   defaultStrategy: "auto" | "none" | "goal" | "ralph" | "swarm" | "graph";
   /** Plan-first for unlabelled tasks (jev is never asked about plan). */
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   queueMax: 10,
   maxSessions: 2,
   turnAddLimit: 20,
+  doCredits: 10,
   defaultStrategy: "auto",
   defaultPlan: false,
   blocking: "avoid",
@@ -113,6 +116,7 @@ export function registerKanboardSettings(): void {
           { key: "queueMax", type: "number", label: "-do queue limit", min: 0, zeroLabel: "unlimited", description: "Tasks a session may queue for the runner" },
           { key: "maxSessions", type: "number", label: "Sessions working at once (per project)", min: 1, description: "Distinct sessions holding in_progress tasks" },
           { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per -do turn or runner task" },
+          { key: "doCredits", type: "number", label: "-do write credits", min: 0, zeroLabel: "off", description: "Write credits a /unipi:kanboard-do grants; each board write costs 1, reads are free" },
         ],
       },
       {
@@ -183,6 +187,7 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
     queueMax: typeof raw.queueMax === "number" && raw.queueMax >= 0 ? raw.queueMax : DEFAULT_SETTINGS.queueMax,
     maxSessions: typeof raw.maxSessions === "number" && raw.maxSessions >= 1 ? raw.maxSessions : DEFAULT_SETTINGS.maxSessions,
     turnAddLimit: typeof raw.turnAddLimit === "number" && raw.turnAddLimit >= 0 ? raw.turnAddLimit : DEFAULT_SETTINGS.turnAddLimit,
+    doCredits: typeof raw.doCredits === "number" && raw.doCredits >= 0 ? raw.doCredits : DEFAULT_SETTINGS.doCredits,
     defaultStrategy:
       typeof raw.defaultStrategy === "string" &&
       ["auto", "none", "goal", "ralph", "swarm", "graph"].includes(raw.defaultStrategy)

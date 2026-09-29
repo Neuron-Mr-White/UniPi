@@ -14,7 +14,7 @@ import { appendProgress, emitEvent, getPackageVersion, registerCommandRunner, re
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
-import { registerLongHorizonCommands } from "./src/commands.js";
+import { registerLongHorizonCommands, stopActiveOwner } from "./src/commands.js";
 import { loadSettings } from "./src/settings.js";
 import { GoalMachine } from "./src/engine/goal-state.js";
 import { GoalToolset } from "./src/tools/goal.js";
@@ -211,7 +211,56 @@ export default function longHorizon(pi: ExtensionAPI): void {
     if (typeof goalId === "string" && goalId.length > 0 && goal.goalId !== goalId) {
       return { found: false, reason: `the active goal is ${goal.goalId}` };
     }
-    return { found: true, goalId: goal.goalId, status: goal.status, objective: goal.objective };
+    return { found: true, goalId: goal.goalId, status: goal.status, reason: goal.reason, objective: goal.objective };
+  });
+
+  // kanboard runner bridge: pause/resume/stop the goal around task releases
+  // and re-claims, so an interrupted task keeps its goal for the next claim.
+  registerCommandRunner("unipi:goal-pause", async (_ctx, args) => {
+    const goal = machine.get();
+    const active = owner.getActive();
+    if (!goal || goal.status !== "active" || active?.kind !== "goal") {
+      return { ok: false, reason: goal ? `goal is ${goal.status}` : "no goal in this session" };
+    }
+    const requested = (args as { goalId?: unknown } | undefined)?.goalId;
+    if (typeof requested === "string" && requested.length > 0 && requested !== goal.goalId) {
+      return { ok: false, reason: `the active goal is ${goal.goalId}` };
+    }
+    const paused = machine.pause("paused(user_requested)");
+    if (!paused) return { ok: false, reason: `goal is ${goal.status}` };
+    const parked = owner.suspend("paused(user_requested)");
+    if (!parked) {
+      // Slot held: the goal stays paused but unowned — resume reactivates it.
+      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "suspended", kind: "goal" });
+    }
+    return { ok: true, goalId: paused.goalId, status: paused.status };
+  });
+
+  registerCommandRunner("unipi:goal-resume", async (_ctx, args) => {
+    const goal = machine.get();
+    const requested = (args as { goalId?: unknown } | undefined)?.goalId;
+    if (!goal) return { ok: false, reason: "no goal in this session" };
+    if (goal.status !== "paused") return { ok: false, reason: `goal is ${goal.status}, not paused` };
+    if (typeof requested === "string" && requested.length > 0 && requested !== goal.goalId) {
+      return { ok: false, reason: `the parked goal is ${goal.goalId}` };
+    }
+    const resumed = machine.resume();
+    if (!resumed) return { ok: false, reason: "goal could not be resumed" };
+    if (owner.getParked()) owner.resume();
+    gate.setExplicit("goal");
+    return { ok: true, goalId: resumed.goalId, status: resumed.status };
+  });
+
+  registerCommandRunner("unipi:goal-stop", async (_ctx, args) => {
+    const goal = machine.get();
+    const requested = (args as { goalId?: unknown } | undefined)?.goalId;
+    if (typeof requested === "string" && requested.length > 0 && goal && requested !== goal.goalId) {
+      return { ok: false, reason: `the goal in this session is ${goal.goalId}` };
+    }
+    const stopped = stopActiveOwner(pi, gate, owner, machine, toolset, "goal");
+    return stopped !== undefined
+      ? { ok: true, goalId: requested || goal?.goalId }
+      : { ok: false, reason: goal && goal.status === "complete" ? "goal already stopped" : "no active goal" };
   });
 
   // kanboard strategy runners: swarm/graph set the explicit mode for the next
@@ -246,7 +295,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
     ralphBar: () => ralphProgressData(ralph),
     estimateGoal: (ctx) => runtime.estimateGoal(ctx),
     goalEstimateOn: () => loadSettings().goalProgress !== "off",
-  });
+  }, machine, toolset);
 
   // Crash recovery: repair, don't resume — reload durable state so the gate
   // reattaches the owner's tool surface; the continuation arms a recovery
@@ -254,7 +303,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
   pi.on("session_start", () => {
     const restored = owner.restore();
     machine.restore();
-    if (machine.getActive()) continuation.armRecovery();
+    // Only a truly drivable goal arms the recovery fragment; a paused goal
+    // must come back idle until the user (or the kanboard runner) resumes it.
+    const goalStatus = machine.get()?.status;
+    if (goalStatus === "active" || goalStatus === "waiting") continuation.armRecovery();
     // Resume (`pi -r`) starts no turn, so before_agent_start never fires. Publish
     // the mode to the shared holder the footer PULLS each render — the active
     // owner's mode if one survived, else the default — so the header restores
@@ -275,6 +327,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
       "unipi:ralph",
       "unipi:swarm",
       "unipi:graph",
+      "unipi:regular",
     ],
     tools: ["create_goal", "get_goal", "update_goal", "todowrite", "ralph_done", "loop_status", "swarm_report", "swarm_status", "swarm_yield", "update_agent_graph", "graph_output", "view_agent_graph"],
   });
