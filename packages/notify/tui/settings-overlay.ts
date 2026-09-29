@@ -545,7 +545,7 @@ export class NotifySettingsOverlay implements Component {
     }
     lines.push(
       this.overlay.frameLine(
-        this.overlay.fg("dim", "  Blocking prompts only (ask_user, permission_request)"),
+        this.overlay.fg("dim", "  Blocking prompts only (ask_user, permission_request, ui_prompt)"),
         innerWidth,
       ),
     );

@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 
 import {
   filterPlatformsAfterInput,
+  hasRecentInput,
+  isBlockingEvent,
   mergeSilenceAfterInput,
   noteInput,
   resetInputActivity,
@@ -123,7 +125,7 @@ describe("silence after input", () => {
 
   it("lets blocking events through inside the window", () => {
     noteInput(1_000);
-    for (const eventType of ["ask_user_prompt", "permission_request"]) {
+    for (const eventType of ["ask_user_prompt", "permission_request", "ui_prompt"]) {
       const { send, silenced } = filterPlatformsAfterInput(
         ALL,
         config({ platforms: [] }),
@@ -145,5 +147,38 @@ describe("silence after input", () => {
     );
     assert.deepEqual(send, ["gotify", "telegram", "ntfy"]);
     assert.deepEqual(silenced, ["native"]);
+  });
+});
+
+describe("blocking events", () => {
+  it("does not treat lifecycle events or a missing type as blocking", () => {
+    assert.equal(isBlockingEvent("agent_end"), false);
+    assert.equal(isBlockingEvent(undefined), false);
+  });
+});
+
+describe("recent input", () => {
+  beforeEach(() => {
+    resetInputActivity();
+  });
+
+  it("reports no recent input before any keypress", () => {
+    assert.equal(hasRecentInput(2_000, 1_000), false);
+  });
+
+  it("reports recent input inside the window", () => {
+    noteInput(1_000);
+    assert.equal(hasRecentInput(2_000, 1_000 + 1_999), true);
+  });
+
+  it("stops reporting recent input once the window elapses", () => {
+    noteInput(1_000);
+    assert.equal(hasRecentInput(2_000, 1_000 + 2_000), false);
+  });
+
+  it("forgets input after a reset", () => {
+    noteInput(1_000);
+    resetInputActivity();
+    assert.equal(hasRecentInput(2_000, 1_000 + 100), false);
   });
 });

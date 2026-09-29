@@ -26,6 +26,7 @@ const VALID_PLATFORMS: ReadonlySet<NotifyPlatform> = new Set([
 const BLOCKING_EVENTS: ReadonlySet<string> = new Set([
   "ask_user_prompt",
   "permission_request",
+  "ui_prompt",
 ]);
 
 /** Whether an event type is a human-blocking prompt. */
@@ -40,6 +41,14 @@ export function noteInput(at: number = Date.now()): void {
   lastInputAt = at;
 }
 
+/**
+ * Whether a keypress happened within the last `windowMs`, independent of the
+ * `silenceAfterInput` setting. `now` is injectable for tests.
+ */
+export function hasRecentInput(windowMs: number, now: number = Date.now()): boolean {
+  return lastInputAt > 0 && now - lastInputAt < windowMs;
+}
+
 /** Clear activity (session start/shutdown). */
 export function resetInputActivity(): void {
   lastInputAt = 0;
@@ -51,8 +60,8 @@ export function resetInputActivity(): void {
  * Empty `platforms` (while enabled) silences all incoming channels, matching
  * `events.*.platforms: []` → all enabled.
  *
- * Human-blocking events (`ask_user_prompt`, `permission_request`) bypass the
- * filter entirely — the keypress that triggered them must not mute them.
+ * Human-blocking events (`ask_user_prompt`, `permission_request`, `ui_prompt`)
+ * bypass the filter entirely — the keypress that triggered them must not mute them.
  */
 export function filterPlatformsAfterInput(
   platforms: NotifyPlatform[],
@@ -114,8 +123,5 @@ function shouldSilence(
   cfg: SilenceAfterInputConfig | undefined,
   now: number,
 ): cfg is SilenceAfterInputConfig {
-  if (!cfg?.enabled) return false;
-  if (lastInputAt <= 0) return false;
-  if (now - lastInputAt >= cfg.windowMs) return false;
-  return true;
+  return cfg?.enabled === true && hasRecentInput(cfg.windowMs, now);
 }

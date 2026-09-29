@@ -14,7 +14,13 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_CONFIG, loadConfig, saveConfig } from "../../settings.ts";
+import {
+  DEFAULT_CONFIG,
+  loadConfig,
+  saveConfig,
+  updateConfig,
+  validateConfig,
+} from "../../settings.ts";
 import type { NotifyConfig } from "../../types.ts";
 
 const REAL_HOME = process.env.HOME;
@@ -81,6 +87,21 @@ describe("loadConfig deep copy", () => {
     assert.deepEqual(reloaded.silenceAfterInput.platforms, ["native"]);
   });
 
+  it("merge path: an older file without ui_prompt gets the default, off", () => {
+    const dir = join(home, ".unipi", "config", "notify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        events: { ask_user_prompt: { enabled: true, platforms: [] } },
+      } satisfies Partial<NotifyConfig>),
+    );
+
+    const config = loadConfig();
+    assert.equal(config.events.ask_user_prompt.enabled, true);
+    assert.deepEqual(config.events.ui_prompt, { enabled: false, platforms: [] });
+  });
+
   it("save then load round-trips without cross-contamination", () => {
     const config = loadConfig();
     config.telegram.enabled = true;
@@ -89,5 +110,62 @@ describe("loadConfig deep copy", () => {
 
     const reloaded = loadConfig();
     assert.equal(reloaded.telegram.enabled, true);
+  });
+});
+
+describe("loadConfig fallback and updateConfig", () => {
+  beforeEach(() => {
+    freshHome();
+  });
+
+  it("returns the defaults when the config file is not valid JSON", () => {
+    const dir = join(home, ".unipi", "config", "notify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "config.json"), "{ not json");
+
+    assert.deepEqual(loadConfig(), DEFAULT_CONFIG);
+  });
+
+  it("updateConfig saves the change and later loads see it", () => {
+    const updated = updateConfig({ defaultPlatforms: ["ntfy"] });
+
+    assert.deepEqual(updated.defaultPlatforms, ["ntfy"]);
+    assert.deepEqual(loadConfig().defaultPlatforms, ["ntfy"]);
+    assert.deepEqual(loadConfig().events.ui_prompt, { enabled: false, platforms: [] });
+  });
+});
+
+describe("validateConfig", () => {
+  it("accepts the defaults", () => {
+    assert.deepEqual(validateConfig(structuredClone(DEFAULT_CONFIG)), []);
+  });
+
+  it("names every missing credential of an enabled platform", () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.gotify.enabled = true;
+    config.telegram.enabled = true;
+
+    assert.deepEqual(validateConfig(config), [
+      "Gotify: serverUrl is required",
+      "Gotify: appToken is required",
+      "Telegram: botToken is required",
+      "Telegram: chatId is required",
+    ]);
+  });
+
+  it("accepts an enabled platform with its credentials", () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.gotify = { enabled: true, serverUrl: "https://gotify.example", appToken: "t", priority: 5 };
+    config.telegram = { enabled: true, botToken: "b", chatId: "c" };
+
+    assert.deepEqual(validateConfig(config), []);
+  });
+
+  it("rejects a gotify priority outside 1 to 10", () => {
+    for (const priority of [0, 11]) {
+      const config = structuredClone(DEFAULT_CONFIG);
+      config.gotify.priority = priority;
+      assert.deepEqual(validateConfig(config), ["Gotify: priority must be between 1 and 10"]);
+    }
   });
 });
