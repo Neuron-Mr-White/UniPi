@@ -14,12 +14,11 @@ Decides which skills the agent sees: per-project on/off, a vault of extra skills
 
 ```
 Skill settings · 42 skills · editing global · proxy on
-    E   D   M    skill                source  description
- › [x] [x] [ ]   api-contract         user    Check REST/JSON API changes ...
-   [ ] [x] [ ]   aws-deploy           vault   Deploy services to AWS with ...
+    E   M    skill                source  description
+ › [x] [ ]   api-contract         user    Check REST/JSON API changes ...
+   [ ] [ ]   aws-deploy           vault   Deploy services to AWS with ...
 
-E enabled — in the session; off blocks /skill:name
-D discoverable — listed in the system prompt
+E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name
 M must show — always listed, even when judging would hide it
 bright = set in global · dim = inherited
 ```
@@ -27,7 +26,7 @@ bright = set in global · dim = inherited
 | Key | Action |
 |-----|--------|
 | `↑` `↓` | Move between skills (PgUp/PgDn page) |
-| `←` `→` | Move between the E / D / M columns |
+| `←` `→` | Move between the E / M columns |
 | `space` | Toggle the cell |
 | `d` | Clear the cell in the edited scope (inherit again) |
 | `g` | Edit the global or the project scope |
@@ -35,14 +34,13 @@ bright = set in global · dim = inherited
 | type | Filter by name, source or description (Esc clears) |
 | `enter` / `esc` | Save / cancel |
 
-Cells show the effective value: project over global over the default (vault skills off, everything else on and discoverable). Only the cells you changed are written, each option on its own, so a project can override just one.
+Cells show the effective value: project over global over the default (vault skills off, everything else on). Only the cells you changed are written, each option on its own, so a project can override just one.
 
 ## Skill proxy
 
 Off by default. While off, pi's skills pass through untouched (exposure judging still applies), vault skills stay hidden, and your choices are saved but not applied. Turn it on and:
 
 - Skills turned **off** are removed from the session, including `/skill:name`.
-- **Unlisted** skills are left out of the system prompt but still run with `/skill:name`.
 - The **vault**, `~/.unipi/skill-vault/`, takes part. Keep as many skills there as you like; they stay off until a scope turns them on, so a project only gets the ones it needs. Changes apply on the next prompt, no reload needed. Any folder with a `SKILL.md`, up to three levels deep (`vault/<skill>/` or `vault/<pack>/<skill>/`).
 
 ## Exposure

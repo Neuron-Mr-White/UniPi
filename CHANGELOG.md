@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `skill-registry`: skill states reduced to **Enabled + Must show** — the "discoverable" (unlisted) middle state is gone. Off still removes a skill from the session entirely (not listed, never revealed, `/skill:name` blocked); must show implies enabled and is always listed. Stored `discoverable: false` states and the legacy `"unlisted"` value migrate to off on read (a `mustShow: true` wins). The Skill settings… grid now has two columns, E and M.
+
 ## [3.0.0-alpha.10] — 2026-09-29
 
 ### Changed

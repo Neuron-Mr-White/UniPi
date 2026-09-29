@@ -4,12 +4,11 @@
  *   Skill settings · 47 skills · editing project · proxy on
  *   Search: (type to filter)
  *   ────────────────────────────────────────────────────────────
- *        E   D   M    skill                 source
- *   ›   [x] [x] [ ]   sql-review            user     Review SQL migrations…
- *       [ ] [x] [ ]   aws-deploy            vault    Deploy services to AWS…
+ *        E   M    skill                 source
+ *   ›   [x] [ ]   sql-review            user     Review SQL migrations…
+ *       [ ] [ ]   aws-deploy            vault    Deploy services to AWS…
  *
- *   E enabled — in the session; off blocks /skill:name
- *   D discoverable — listed in the system prompt
+ *   E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name
  *   M must show — always listed, even when judging would hide it
  *   ↑↓ skill · ←→ column · space toggle · d inherit · g scope · p proxy · enter save · esc cancel · type to filter
  *
@@ -22,9 +21,9 @@ import { frameOverlay } from "@pi-unipi/core";
 import type { SkillSource } from "./registry.js";
 import type { SkillState } from "./settings.js";
 
-export type Column = "enabled" | "discoverable" | "mustShow";
-export const COLUMNS: readonly Column[] = ["enabled", "discoverable", "mustShow"];
-const LETTER: Record<Column, string> = { enabled: "E", discoverable: "D", mustShow: "M" };
+export type Column = "enabled" | "mustShow";
+export const COLUMNS: readonly Column[] = ["enabled", "mustShow"];
+const LETTER: Record<Column, string> = { enabled: "E", mustShow: "M" };
 
 export interface EditorSkill {
   name: string;
@@ -55,7 +54,7 @@ export interface EditorOptions {
 
 function defaultFor(column: Column, source: SkillSource): boolean {
   if (column === "enabled") return source !== "vault";
-  return column === "discoverable";
+  return false;
 }
 
 /** Effective value of one cell: project over global over the source default. */
@@ -193,8 +192,7 @@ export class SkillEditor {
 
     lines.push("");
     const legend: Array<[Column, string]> = [
-      ["enabled", "enabled — in the session; off blocks /skill:name"],
-      ["discoverable", "discoverable — listed in the system prompt"],
+      ["enabled", "enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name"],
       ["mustShow", "must show — always listed, even when judging would hide it"],
     ];
     for (const [c, text] of legend) {

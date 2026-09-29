@@ -2,12 +2,12 @@
  * @pi-unipi/skill-registry — Extension entry
  *
  * Per turn (before_agent_start), on pi's discovered skills:
- *   1. registry (proxy on): drop skills turned off, unlist non-discoverable
- *      ones; the vault is mounted via resources_discover and stays off until
- *      a scope turns a skill on.
+ *   1. registry (proxy on): drop skills turned off — removed from the session,
+ *      /skill:name included; the vault is mounted via resources_discover and
+ *      stays off until a scope turns a skill on.
  *   2. exposure: off (bundled stripped) | all | judged (see src/judge.ts).
  * Plus /unipi:skills (the hub opened on Skills), the "Skill settings…" overlay
- * (per-skill Enabled / Discoverable / Must show, src/editor.ts), and the
+ * (per-skill Enabled / Must show, src/editor.ts), and the
  * reveal event kanboard uses to surface a skill mid-session.
  */
 
@@ -71,7 +71,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
     if (state) state.judged = false;
   };
 
-  /** "Skill settings…" — the per-skill E/D/M overlay. */
+  /** "Skill settings…" — the per-skill E/M overlay. */
   const openEditor = async (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
     const cwd = ctx.cwd ?? process.cwd();
@@ -106,7 +106,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
   registerCommandRunner("unipi:skills-editor", async (raw: unknown) => openEditor(raw as ExtensionContext));
 
   pi.registerCommand("unipi:skills", {
-    description: "Skill settings — proxy, exposure, and per-skill Enabled / Discoverable / Must show (opens /unipi:settings on Skills)",
+    description: "Skill settings — proxy, exposure, and per-skill Enabled / Must show (opens /unipi:settings on Skills)",
     handler: async (_args, ctx) => {
       await openSettingsHub(ctx, {
         filter: "skills",

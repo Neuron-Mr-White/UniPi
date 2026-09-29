@@ -146,21 +146,20 @@ describe("registry", () => {
   ];
 
   it("keeps vault skills off by default and applies explicit states", () => {
-    const r = applyRegistry(cat, { quiet: { discoverable: false } }, "/repo", vault);
+    const r = applyRegistry(cat, { quiet: { enabled: false } }, "/repo", vault);
     assert.deepEqual(r.listed.map((s) => s.name), ["global-one"]);
-    assert.deepEqual([...r.disabled], ["vaulted"]);
-    assert.deepEqual(r.unlisted.map((s) => s.name), ["quiet"]);
-    const on = applyRegistry(cat, { vaulted: { enabled: true, mustShow: true }, "global-one": { enabled: false }, quiet: { discoverable: false, mustShow: true } }, "/repo", vault);
+    assert.deepEqual([...r.disabled].sort(), ["quiet", "vaulted"]);
+    const on = applyRegistry(cat, { vaulted: { enabled: true, mustShow: true }, "global-one": { enabled: false }, quiet: { enabled: false, mustShow: true } }, "/repo", vault);
     assert.deepEqual(on.listed.map((s) => s.name).sort(), ["quiet", "vaulted"]);
     assert.deepEqual([...on.disabled], ["global-one"]);
-    assert.deepEqual([...on.mustShow].sort(), ["quiet", "vaulted"], "must show wins over unlisted");
+    assert.deepEqual([...on.mustShow].sort(), ["quiet", "vaulted"], "must show wins over disabled");
   });
 
   it("resolves defaults per source", () => {
-    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, discoverable: false, mustShow: false });
-    assert.deepEqual(effectiveState({ discoverable: false }, "user"), { enabled: true, discoverable: false, mustShow: false });
-    assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, discoverable: true, mustShow: false });
-    assert.deepEqual(effectiveState({ enabled: false, mustShow: true }, "user"), { enabled: false, discoverable: false, mustShow: false }, "off wins");
+    assert.deepEqual(effectiveState(undefined, "vault"), { enabled: false, mustShow: false });
+    assert.deepEqual(effectiveState({ enabled: false }, "user"), { enabled: false, mustShow: false });
+    assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, mustShow: false });
+    assert.deepEqual(effectiveState({ mustShow: true }, "vault"), { enabled: true, mustShow: true }, "must show implies enabled");
   });
 
   it("parses /skill:name commands", () => {
@@ -168,6 +167,42 @@ describe("registry", () => {
     assert.equal(skillCommandName("hello"), undefined);
   });
 
+});
+
+describe("legacy state migration", () => {
+  const vault = "/home/u/.unipi/skill-vault";
+  const skill = (name: string) => ({ name, description: "d", baseDir: `/home/u/.agents/skills/${name}` });
+
+  it("{discoverable:false} → disabled", () => {
+    const states = normalizeStates({ quiet: { discoverable: false } });
+    assert.deepEqual(states, { quiet: { enabled: false } });
+    const r = applyRegistry([skill("quiet")], states, "/repo", vault);
+    assert.deepEqual([...r.disabled], ["quiet"]);
+    assert.deepEqual(r.listed, []);
+  });
+
+  it("\"unlisted\" → disabled", () => {
+    const states = normalizeStates({ quiet: "unlisted" });
+    assert.deepEqual(states, { quiet: { enabled: false } });
+    const r = applyRegistry([skill("quiet")], states, "/repo", vault);
+    assert.deepEqual([...r.disabled], ["quiet"]);
+  });
+
+  it("{discoverable:false, mustShow:true} → enabled and listed", () => {
+    const states = normalizeStates({ quiet: { discoverable: false, mustShow: true } });
+    assert.deepEqual(states, { quiet: { mustShow: true } });
+    const r = applyRegistry([skill("quiet")], states, "/repo", vault);
+    assert.deepEqual(r.listed.map((s) => s.name), ["quiet"]);
+    assert.deepEqual([...r.mustShow], ["quiet"]);
+    assert.equal(r.disabled.size, 0);
+  });
+
+  it("a vault skill with no state → disabled", () => {
+    const r = applyRegistry([{ name: "vaulted", description: "d", baseDir: `${vault}/vaulted` }], {}, "/repo", vault);
+    assert.deepEqual([...r.disabled], ["vaulted"]);
+    assert.deepEqual(r.listed, []);
+    assert.equal(r.mustShow.size, 0);
+  });
 });
 
 describe("settings", () => {
@@ -181,8 +216,8 @@ describe("settings", () => {
     assert.deepEqual(JSON.parse(readFileSync(projectSettingsPath(cwd, "skills"), "utf8")).exposure, { mode: "off", maxSkills: 8 });
   });
 
-  it("reads the short-lived string form", () => {
-    assert.deepEqual(normalizeStates({ a: "off", b: "unlisted", c: { mustShow: true, x: 1 }, e: 3 }), { a: { enabled: false }, b: { enabled: true, discoverable: false }, c: { mustShow: true } });
+  it("reads the short-lived string form (unlisted migrates to off)", () => {
+    assert.deepEqual(normalizeStates({ a: "off", b: "unlisted", c: { mustShow: true, x: 1 }, e: 3 }), { a: { enabled: false }, b: { enabled: false }, c: { mustShow: true } });
   });
 
   it("saves only the cells that changed, unsetting cleared ones", () => {
@@ -234,23 +269,22 @@ describe("skill settings overlay", () => {
     return { ed, get result() { return result; } };
   };
 
-  it("shows effective values with a legend and moves between E/D/M with ←/→", () => {
-    const h = make({ global: { "sql-review": { discoverable: false } }, project: {} });
+  it("shows effective values with a legend and moves between E and M with ←/→", () => {
+    const h = make({ global: { "sql-review": { mustShow: true } }, project: {} });
     const text = h.ed.render(140).join("\n");
-    assert.match(text, /E\s+D\s+M/);
-    assert.match(text, /\[ \] \[x\] \[ \]\s+aws-deploy/, "vault skill is off by default");
-    assert.match(text, /\[x\] \[ \] \[ \]\s+sql-review/, "inherited global value");
+    assert.match(text, /E\s+M\s+skill/);
+    assert.match(text, /\[ \] \[ \]\s+aws-deploy/, "vault skill is off by default");
+    assert.match(text, /\[x\] \[x\]\s+sql-review/, "inherited global must show");
     assert.match(text, /E enabled/);
     assert.match(text, /M must show/);
+    h.ed.handleInput("\x1b[C"); // → M (two columns: wraps from E)
+    h.ed.handleInput("\x1b[D"); // ← wraps back to E
     h.ed.handleInput("\x1b[B"); // sql-review
-    h.ed.handleInput("\x1b[C"); h.ed.handleInput("\x1b[C"); // → M
-    h.ed.handleInput(" ");
-    h.ed.handleInput("\x1b[D"); h.ed.handleInput("\x1b[D"); // ← E
     h.ed.handleInput(" "); // disable (project)
     h.ed.handleInput("\r");
     assert.equal(h.result?.type, "saved");
-    assert.deepEqual(h.result?.layers.project, { "sql-review": { mustShow: true, enabled: false } });
-    assert.deepEqual(h.result?.layers.global, { "sql-review": { discoverable: false } });
+    assert.deepEqual(h.result?.layers.project, { "sql-review": { enabled: false } });
+    assert.deepEqual(h.result?.layers.global, { "sql-review": { mustShow: true } });
   });
 
   it("d clears the edited layer's value; g switches scope; esc cancels", () => {

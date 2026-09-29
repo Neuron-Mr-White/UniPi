@@ -4,7 +4,7 @@
  *   proxy          — off (default): pi's skills pass through untouched (only
  *                    exposure judging applies) and vault skills stay hidden.
  *                    on: the per-skill states below apply, vault included.
- *   states.<name>  — { enabled, discoverable, mustShow } per skill, edited in
+ *   states.<name>  — { enabled, mustShow } per skill, edited in
  *                    the "Skill settings…" overlay (src/editor.ts). The engine
  *                    merges global + project layers per option, so a project
  *                    can turn a vault skill on (or pin a skill) just for itself.
@@ -44,9 +44,7 @@ export interface ExposureSettings {
 export interface SkillState {
   /** false = removed from the session entirely (catalog and /skill:name). */
   enabled?: boolean;
-  /** false = not listed in the system prompt; /skill:name still works. */
-  discoverable?: boolean;
-  /** true = always listed, even when exposure judging would hide it. */
+  /** true = always listed and enabled, even when exposure judging would hide it. */
   mustShow?: boolean;
 }
 
@@ -109,7 +107,7 @@ registerSettings({
       ...STATIC_SECTIONS[0]!,
       fields: [
         ...STATIC_SECTIONS[0]!.fields,
-        { key: "states", type: "action", label: "Skill settings…", description: "Per skill: Enabled / Discoverable / Must show, per global or project scope", command: "unipi:skills-editor" },
+        { key: "states", type: "action", label: "Skill settings…", description: "Per skill: Enabled / Must show, per global or project scope", command: "unipi:skills-editor" },
       ],
     },
     ...STATIC_SECTIONS.slice(1),
@@ -125,7 +123,7 @@ export function readStateLayers(cwd: string): { global: Layer; project: Layer } 
   return { global: layer("global"), project: layer("project") };
 }
 
-const OPTIONS = ["enabled", "discoverable", "mustShow"] as const;
+const OPTIONS = ["enabled", "mustShow"] as const;
 
 /**
  * Write only what changed: a set option becomes `states.<name>.<opt>`, a
@@ -221,20 +219,23 @@ export function normalizeExposure(raw: unknown): ExposureSettings {
   };
 }
 
-/** Per-skill states; also reads the short-lived "on" | "unlisted" | "off" form. */
+/**
+ * Per-skill states. Migrates on read: the legacy "on" | "unlisted" | "off"
+ * strings, and the dropped `discoverable` flag — `discoverable: false` was the
+ * old unlisted state and now means disabled, unless mustShow (which wins).
+ */
 export function normalizeStates(raw: unknown): Record<string, SkillState> {
   const out: Record<string, SkillState> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (value === "off") out[name] = { enabled: false };
-    else if (value === "unlisted") out[name] = { enabled: true, discoverable: false };
-    else if (value === "on") out[name] = { enabled: true, discoverable: true };
+    if (value === "off" || value === "unlisted") out[name] = { enabled: false };
+    else if (value === "on") out[name] = { enabled: true };
     else if (value && typeof value === "object") {
       const v = value as Record<string, unknown>;
       const state: SkillState = {};
       if (typeof v.enabled === "boolean") state.enabled = v.enabled;
-      if (typeof v.discoverable === "boolean") state.discoverable = v.discoverable;
       if (typeof v.mustShow === "boolean") state.mustShow = v.mustShow;
+      if (v.discoverable === false && state.enabled !== false && !state.mustShow) state.enabled = false;
       out[name] = state;
     }
   }
