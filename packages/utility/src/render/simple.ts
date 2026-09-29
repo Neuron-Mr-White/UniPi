@@ -131,6 +131,8 @@ interface CallRec {
   group: CallRec[];
   invalidate?: () => void;
   invalidating?: boolean;
+  /** Bumped whenever args change (render-cache key; args can be a whole file). */
+  rev?: number;
 }
 
 const byId = new Map<string, CallRec>();
@@ -451,8 +453,27 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       rec.invalidate = () => ctx.invalidate();
       for (const r of currentGroup) touch(r);
     }
-    rec.args = args ?? rec.args;
+    if (args && args !== rec.args) {
+      rec.args = args;
+      rec.rev = (rec.rev ?? 0) + 1;
+    }
+    let cache: { key: string; lines: string[] } | undefined;
     const paint = (width: number): string[] => {
+      // pi prefixes every non-empty self-rendered tool with a blank line
+      // (tool-execution.js render: lines.push("")), so one row per component
+      // leaves gaps inside a group. Paint the whole group in its LAST component;
+      // earlier ones render [] (pi skips the blank for empty components).
+      // PERF: bail out BEFORE planning — pi re-renders every component on each
+      // keystroke, and planning the whole group in every row was O(n²) per
+      // keypress (typing lag in long sessions).
+      const g = rec!.group;
+      if (g[g.length - 1] !== rec) return [];
+      // Cache by width + the group's render-relevant state; a render with
+      // nothing changed (every keystroke) is then a string compare, not n
+      // truncateToWidth calls.
+      let key = `${width}`;
+      for (const c of g) key += `\u0001${c.id}\u0002${c.running ? 1 : 0}${c.failed ? 1 : 0}${c.meta}\u0002${c.rev ?? 0}`;
+      if (cache && cache.key === key) return cache.lines;
       // Read the group live: a late text signal can move this row to a new group.
       const rows = planGroupRows(
         rec!.group.map(toGroupCall),
@@ -465,13 +486,9 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
           return `${theme.fg("borderMuted", `${s.connector} `)}${marker(theme, s.running, s.failedCount === s.total)} ${label}${failure}${attempts}`;
         },
       );
-      // pi prefixes every non-empty self-rendered tool with a blank line
-      // (tool-execution.js render: lines.push("")), so one row per component
-      // leaves gaps inside a group. Paint the whole group in its LAST component;
-      // earlier ones render [] (pi skips the blank for empty components).
-      const g = rec!.group;
-      if (g[g.length - 1] !== rec) return [];
-      return rows.map((r) => r.row).filter((r): r is string => !!r);
+      const lines = rows.map((r) => r.row).filter((r): r is string => !!r);
+      cache = { key, lines };
+      return lines;
     };
     return new SimpleLine(paint);
   };
