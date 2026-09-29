@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.13] — 2026-09-29
+
+### Fixed
+- utility: typing in the input box lagged badly in long sessions with the simple render style — every keystroke re-planned and re-truncated each tool group once per row (O(n²)). Non-last rows now return early and the group paint is memoized by width + call state.
+
 ## [3.0.0-alpha.12] — 2026-09-29
 
 ### Added
