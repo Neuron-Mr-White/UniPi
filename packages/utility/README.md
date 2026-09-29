@@ -74,7 +74,7 @@ Defaults are FLUX.2 [klein] 4B on OpenRouter for both generation and editing, wh
 
 ## Response formatting
 
-Settings → Utility → Response formatting → Style changes how pi's built-in `read`, `bash`, `edit` and `write` calls look in the transcript. The model sees exactly the same tools either way; only the drawing changes. It applies after `/reload` — the renderers are registered once when extensions load, so toggling mid-session shows a `↻ style→…` pending badge in the footer until you reload.
+Settings → Utility → Response formatting → Style changes how pi's built-in `read`, `bash`, `edit` and `write` calls look in the transcript. The model sees exactly the same tools either way; only the drawing changes. It applies after `/reload` (or a restart) — the renderers are registered once when extensions load, so a change made mid-session takes effect on the next reload.
 
 - **simple** — one line per tool, output collapsed:
   ```

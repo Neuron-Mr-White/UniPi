@@ -6,15 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.12] — 2026-09-29
+
 ### Added
 - `kanboard`: **agent `start` / `finish`** — an agent working board tasks by hand ("do UNI-5 and UNI-8") now moves them itself: `start <ID>` (todo → in_progress, self-claimed for the session; deps satisfied, not already claimed, per-project session cap) and `finish <ID> --comment "<summary>"` (in_progress → in_review; only a task this session `start`ed — another session's or a runner claim is refused; summary required). Both are free (no write credit) and need no `/unipi:kanboard-do`. A session may have several tasks started. Agent claims carry `run.owner: agent` (runner claims are unchanged on disk) and belong to the pi process (`UNIPI_KANBOARD_PID`), so the stale-claim reaper releases them to Todo when the session dies. `move` as an agent points at `start`/`finish` for those two transitions.
 - `kanboard`: **progress reminders** (setting `kanboard.reminders`, default on; no LLM, never blocking) — R1: on the first file-changing tool call of a turn, while a task named in the prompt (or `show`n) is still Todo and nothing is started, a steer is appended to that tool result; R2: at the end of a turn with a started task still In Progress, a follow-up asks to `finish` it or say what remains / block it (at most 2 per task each). Silent in runner-owned runs.
 
 ### Changed
 - `kanboard`: transition table — `todo → in_progress` and `in_progress → in_review` allow the agent actor (via `start`/`finish`) besides the runner; in_review → done/todo stays user-only. The kanboard skill and the `/unipi:kanboard-do` prompt now say "`start` a task before working on it, `finish` it with a summary when done".
+- `kanboard` web UI: claimed cards distinguish an agent claim (`start`ed by a session) from a runner claim.
+- `footer`: the glance input frame is open-sided — `GlanceEditor` body rows drop the `│` rails; only the rounded corners on the top/bottom borders frame the prompt (content keeps its column via a one-space indent, rows are truncated to the inner width).
 
 ### Fixed
-- `utility`: the Response formatting → Style description no longer claims the change applies "in a new session" — tool renderers are registered once at extension load, so only a restart or `/reload` applies it.
+- `utility`: the Response formatting → Style description no longer claims the change applies "in a new session" — tool renderers are registered once at extension load, so only a restart or `/reload` applies it. The setting now reads "applies after /reload" (utility README updated to match).
 
 ## [3.0.0-alpha.11] — 2026-09-29
 
