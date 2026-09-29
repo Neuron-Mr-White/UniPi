@@ -70,7 +70,7 @@ export const DEFAULT_SETTINGS: LongHorizonSettings = {
     // openrouter/custom ride the decisions endpoint → the hosted jev id.
     model: "typesafe/jev-1.13",
     baseUrl: "",
-    threshold: 0.6,
+    threshold: 0.8,
     timeoutMs: 0,
     apiKey: "",
   },

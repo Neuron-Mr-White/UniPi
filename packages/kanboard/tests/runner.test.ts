@@ -177,7 +177,7 @@ describe("runner", { skip: !hasBinary }, () => {
   it("claims the next task, asks jev for the mode, and sends the rules with the task", async () => {
     setup();
     const id = add("Add a --verbose flag to loop.sh");
-    // jev is unconfigured in tests → null → direct.
+    // New-user default: defaultStrategy none → no jev call, one-pass run.
     const ctx = fakeCtx();
     await run(ctx);
 
@@ -324,7 +324,8 @@ describe("runner", { skip: !hasBinary }, () => {
   });
 
   it("uses the long-horizon goal runner for goal mode and reads its status", async () => {
-    setup();
+    // defaultStrategy auto — the only routing that consults jev.
+    setup({ defaultStrategy: "auto" });
     const id = add("A large multi-step objective");
     const calls: string[] = [];
     registerCommandRunner("unipi:goal-start", (_ctx, args) => {
@@ -556,6 +557,75 @@ describe("strategy labels", { skip: !hasBinary }, () => {
     );
     assert.equal(shown.run.mode, "goal");
   });
+
+  it("new-settings defaults: an unlabelled task runs none without a jev call", async () => {
+    setup();
+    let jevCalls = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      jevCalls += 1;
+      return new Response("{}");
+    }) as never;
+    process.env.OPENROUTER_API_KEY = "test-key";
+    try {
+      addLabelled("Unlabelled default task");
+      await runner.work(fakeCtx());
+      assert.equal(jevCalls, 0, "defaultStrategy none must not ask jev");
+      assert.equal(runner.status().mode, "none");
+      assert.equal(kind.sent.length, 1);
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  it("defaultStrategy auto: jev confidence below the threshold abstains to none", async () => {
+    setup({ defaultStrategy: "auto" });
+    let jevCalls = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      jevCalls += 1;
+      return new Response(JSON.stringify({ answers: { strategy: { choice: "goal", confidence: 0.5 } } }), { status: 200 });
+    }) as never;
+    process.env.OPENROUTER_API_KEY = "test-key";
+    try {
+      addLabelled("Low-confidence task");
+      await runner.work(fakeCtx());
+      assert.equal(jevCalls, 1, "jev was asked once");
+      assert.equal(runner.status().mode, "none", "confidence 0.5 < 0.8 → none");
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
+  it("defaultStrategy auto: a confident jev answer picks the strategy", async () => {
+    setup({ defaultStrategy: "auto" });
+    const calls: string[] = [];
+    registerCommandRunner("unipi:goal-start", (_c: never, args: unknown) => {
+      calls.push(`goal-start:${JSON.stringify(args)}`);
+      return { ok: true, goalId: "goal-12" };
+    });
+    registerCommandRunner("unipi:goal-status", () => ({ found: true, goalId: "goal-12", status: "complete" }));
+    let jevCalls = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      jevCalls += 1;
+      return new Response(JSON.stringify({ answers: { strategy: { choice: "goal", confidence: 0.9 } } }), { status: 200 });
+    }) as never;
+    process.env.OPENROUTER_API_KEY = "test-key";
+    try {
+      addLabelled("Confident task");
+      await runner.work(fakeCtx());
+      assert.equal(jevCalls, 1, "jev was asked once");
+      assert.equal(runner.status().mode, "goal");
+      assert.ok(calls.some((c) => c.startsWith("goal-start:")), `goal-start not called: ${calls}`);
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env.OPENROUTER_API_KEY;
+    }
+  });
+
   it("blocking=avoid tells the task to assume-and-note; blocking=ask keeps the old lines", async () => {
     setup();
     const id = addLabelled("Do the thing");

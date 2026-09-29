@@ -33,8 +33,10 @@ export interface KanboardSettings {
   turnAddLimit: number;
   /** Write credits a /unipi:kanboard-do grants (each board write costs 1). */
   doCredits: number;
-  /** Strategy for unlabelled tasks ("auto" = jev decides). */
+  /** Strategy for unlabelled tasks ("auto" = jev decides, gated by `jevThreshold`). */
   defaultStrategy: "auto" | "none" | "goal" | "ralph" | "swarm" | "graph";
+  /** Confidence floor for jev's strategy answer; below it (or missing) the task runs "none". */
+  jevThreshold: number;
   /** Plan-first for unlabelled tasks (jev is never asked about plan). */
   defaultPlan: boolean;
   /** Whether a blocked-by-confusion task may ask the user (ask) or must
@@ -56,7 +58,8 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   maxSessions: 2,
   turnAddLimit: 20,
   doCredits: 10,
-  defaultStrategy: "auto",
+  defaultStrategy: "none",
+  jevThreshold: 0.8,
   defaultPlan: false,
   blocking: "avoid",
 };
@@ -128,14 +131,22 @@ export function registerKanboardSettings(): void {
             type: "enum",
             label: "Default strategy",
             options: [
-              { value: "auto", label: "Auto (jev decides)" },
+              { value: "auto", label: "Auto (jev decides, gated by confidence)" },
               { value: "none", label: "none (one-pass change)" },
               { value: "goal", label: "goal (iterate until verifiably done)" },
               { value: "ralph", label: "ralph (checklist of similar chores)" },
               { value: "swarm", label: "swarm (parallel parts)" },
               { value: "graph", label: "graph (dependent steps)" },
             ],
-            description: "Strategy for tasks without a --strategy label",
+            description: "Strategy for tasks without a --strategy label; auto = jev decides, gated by the confidence threshold",
+          },
+          {
+            key: "jevThreshold",
+            type: "number",
+            label: "Jev confidence threshold",
+            min: 0.01,
+            max: 1,
+            description: "Below this jev's strategy answer abstains → none (0-1)",
           },
           {
             key: "defaultPlan",
@@ -193,6 +204,10 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
       ["auto", "none", "goal", "ralph", "swarm", "graph"].includes(raw.defaultStrategy)
         ? (raw.defaultStrategy as KanboardSettings["defaultStrategy"])
         : DEFAULT_SETTINGS.defaultStrategy,
+    jevThreshold:
+      typeof raw.jevThreshold === "number" && raw.jevThreshold > 0 && raw.jevThreshold <= 1
+        ? raw.jevThreshold
+        : DEFAULT_SETTINGS.jevThreshold,
     defaultPlan: raw.defaultPlan === true,
     blocking: raw.blocking === "ask" ? "ask" : "avoid",
   };

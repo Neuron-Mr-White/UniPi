@@ -33,6 +33,12 @@ test("defaults when no settings file exists", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("new-user defaults: judge off, threshold 0.8, default mode none", () => {
+  assert.equal(DEFAULT_SETTINGS.judge.enabled, false);
+  assert.equal(DEFAULT_SETTINGS.judge.threshold, 0.8);
+  assert.equal(DEFAULT_SETTINGS.defaultMode, "none");
+});
+
 test("reads unipi.longHorizon from the shared settings file", () => {
   const dir = sandboxHome();
   writeSettings(dir, { unipi: { longHorizon: { judge: { enabled: true, provider: "openrouter" }, defaultMode: "swarm" } } });
@@ -41,7 +47,7 @@ test("reads unipi.longHorizon from the shared settings file", () => {
   assert.equal(settings.judge.provider, "openrouter");
   // Untouched judge keys fall back to defaults (provider-aware model).
   assert.equal(settings.judge.model, "typesafe/jev-1.13");
-  assert.equal(settings.judge.threshold, 0.6);
+  assert.equal(settings.judge.threshold, 0.8);
   assert.equal(settings.defaultMode, "swarm");
   process.env.HOME = originalHome;
   resetSettingsCache();
@@ -80,7 +86,7 @@ test("invalid stored values are repaired to defaults", () => {
   const dir = sandboxHome();
   writeSettings(dir, { unipi: { longHorizon: { judge: { threshold: 5, provider: "bogus" }, defaultMode: "weird" } } });
   const settings = loadSettings(true);
-  assert.equal(settings.judge.threshold, 0.6);
+  assert.equal(settings.judge.threshold, 0.8);
   // An unknown provider falls back to the Decision Model default transport.
   assert.equal(settings.judge.provider, "openrouter");
   assert.equal(settings.defaultMode, "none");

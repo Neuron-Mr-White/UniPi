@@ -254,19 +254,28 @@ export function createRunner(deps: RunnerDeps): Runner {
     const board = deps.settings();
     const labelled = typeof task.strategy === "string" && (task.strategy as string) !== "auto" ? (task.strategy as Strategy) : undefined;
     const plan: boolean = typeof task.plan === "boolean" ? task.plan : board.defaultPlan === true;
+    // Jev routing is enabled only by defaultStrategy "auto"; disabled = the
+    // board default runs, no jev call at all.
+    const jevRouting = board.defaultStrategy === "auto";
     let strategy: Strategy | undefined = labelled;
-    if (strategy === undefined && board.defaultStrategy !== "auto") {
+    if (strategy === undefined && !jevRouting) {
       strategy = board.defaultStrategy as Strategy;
     }
     let jevAnswer: string | null = null;
-    if (strategy === undefined) {
+    let jevConfidence: number | null = null;
+    if (strategy === undefined && jevRouting) {
       const settings = resolveDecisionModel(cwd, "kanboard");
       const answers = await askJev({ ...strategyQuestion(task), settings, env: process.env });
       jevAnswer = answers?.strategy?.choice ?? null;
-      strategy = jevAnswer !== null && jevAnswer in STRATEGY_CRITERIA ? (jevAnswer as Strategy) : "none";
+      jevConfidence = typeof answers?.strategy?.confidence === "number" ? answers.strategy.confidence : null;
+      // Same confidence gate as the long-horizon judge: a missing or low
+      // confidence abstains to "none".
+      const accepted =
+        jevAnswer !== null && jevAnswer in STRATEGY_CRITERIA && (jevConfidence ?? -1) >= board.jevThreshold;
+      strategy = accepted ? (jevAnswer as Strategy) : "none";
     }
-    deps.debug(`strategy ${task.id}: label=${labelled ?? "-"} board=${board.defaultStrategy}/${board.defaultPlan ? "plan" : "no-plan"} jev answered ${JSON.stringify(jevAnswer)} → ${strategy}${plan ? "+plan" : ""}`);
-    return { strategy, plan };
+    deps.debug(`strategy ${task.id}: label=${labelled ?? "-"} board=${board.defaultStrategy}/${board.defaultPlan ? "plan" : "no-plan"} jev answered ${JSON.stringify(jevAnswer)} confidence=${jevConfidence ?? "-"}/${board.jevThreshold} → ${strategy}${plan ? "+plan" : ""}`);
+    return { strategy: strategy ?? "none", plan };
   }
 
   // ── prompting ─────────────────────────────────────────────────────────────

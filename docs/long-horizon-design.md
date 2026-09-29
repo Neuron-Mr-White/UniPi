@@ -74,7 +74,7 @@ mid success) · single verifiable objective → `goal` (higher cost, pareto cost
 decomposable complex → `swarm` · dependent complex → `graph` · highest-reliability single-shot
 needs → judge says `none`/`goal` and the user routes to subagents explicitly.
 
-- **Confidence gate**: `confidence < threshold (default 0.6)` → keep active owner, else
+- **Confidence gate**: `confidence < threshold (default 0.8)` → keep active owner, else
   default mode. Optionally surface a one-line note (`/unipi:mode` to override). Configurable.
 - **Fail-open**: timeout (~1s budget) / error / no key → active owner, else default. The gate
   never blocks a turn on the judge.
