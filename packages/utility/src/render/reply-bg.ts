@@ -3,9 +3,10 @@
  *
  * In a long transcript of collapsed tool rows the actual answer is easy to
  * miss. An assistant message with no tool calls (the turn's reply) is painted
- * on the darkest possible panel (true black), introduced by a thin divider
- * line labelled "summary". On light themes the text is lifted to bright white
- * so it stays readable on the black panel.
+ * on the darkest possible panel (true black), framed by a heavy rule labelled
+ * "summary" above and a matching unlabelled rule below, with one blank row of
+ * breathing space before the top rule. On light themes the text is lifted to
+ * bright white so it stays readable on the black panel.
  *
  * pi has no hook for assistant-message rendering, and extensions get a
  * different module instance of AssistantMessageComponent than the one pi
@@ -80,21 +81,39 @@ export function replyFg(theme: { getBgAnsi?: (k: string) => string } | undefined
   }
 }
 
-/** The divider introducing the panel: "─ summary ─────…". */
-export function dividerLine(theme: { fg?: (k: string, t: string) => string } | undefined, label: string, width: number): string {
-  const dash = (n: number) => "─".repeat(Math.max(0, n));
-  const text = ` ${label} `;
-  const line = `\u2500${text}${dash(width - 1 - visibleWidth(text))}`;
-  const fg = (t: string) => {
+/**
+ * The heavy rule that frames the panel. With a label the word sits centred
+ * between two runs of rule ("━━━━━ summary ━━━━━"); without one the rule
+ * spans the full width (the closing edge under the panel). Painted in the
+ * theme's horizontal-rule colour (brighter than a border) with a bold label.
+ */
+export function dividerLine(
+  theme: { fg?: (k: string, t: string) => string; bold?: (t: string) => string } | undefined,
+  label: string,
+  width: number,
+): string {
+  const w = Math.max(0, width);
+  const rule = "━";
+  const color = (t: string) => {
     try {
-      return theme?.fg?.("borderMuted", t) ?? `\x1b[90m${t}\x1b[39m`;
+      return theme?.fg?.("mdHr", t) ?? `\x1b[90m${t}\x1b[39m`;
     } catch {
       return `\x1b[90m${t}\x1b[39m`;
     }
   };
-  // truncate by visible width; the theme wrapper is zero-width
-  const visible = line.length;
-  return visible <= width ? fg(line) : fg(line.slice(0, Math.max(0, width)));
+  const bold = (t: string) => {
+    try {
+      return theme?.bold?.(t) ?? `\x1b[1m${t}\x1b[22m`;
+    } catch {
+      return `\x1b[1m${t}\x1b[22m`;
+    }
+  };
+  if (!label) return color(rule.repeat(w));
+  const text = ` ${label} `;
+  const inner = visibleWidth(text);
+  if (inner >= w) return color(text.slice(0, w));
+  const left = Math.floor((w - inner) / 2);
+  return color(rule.repeat(left)) + bold(color(text)) + color(rule.repeat(w - inner - left));
 }
 
 /**
@@ -123,7 +142,7 @@ export function isBlankStep(msg: unknown): boolean {
  */
 export function patchAssistantRender(
   proto: AssistantLike,
-  getPanel: () => { bg: string; fg: string | null; dividerFor: (width: number) => string },
+  getPanel: () => { bg: string; fg: string | null; dividerFor: (width: number, label?: string) => string },
 ): void {
   const p = proto as unknown as Record<PropertyKey, unknown>;
   if (p[PATCHED]) return;
@@ -140,9 +159,14 @@ export function patchAssistantRender(
     const { bg, fg, dividerFor } = getPanel();
     const hit = cache.get(this);
     if (hit && hit.width === width && hit.msg === this.lastMessage && hit.bg === bg && hit.streaming === this.isStreaming) return hit.lines;
-    const painted = [dividerFor(width), ...lines.map((l) => paintLine(l, width, bg, fg))];
-    // A bottom pad row so the panel doesn't end flush on the last text line.
-    painted.push(paintLine("", width, bg));
+    const painted = [
+      "", // breathing space above the section rule
+      dividerFor(width),
+      ...lines.map((l) => paintLine(l, width, bg, fg)),
+      // A bottom pad row so the panel doesn't end flush on the last text line.
+      paintLine("", width, bg),
+      dividerFor(width, ""), // closing edge under the panel
+    ];
     cache.set(this, { width, msg: this.lastMessage, bg, streaming: this.isStreaming, lines: painted });
     return painted;
   };
@@ -166,7 +190,7 @@ export function installReplyBackground(pi: {
     patchAssistantRender(Object.getPrototypeOf(hit) as AssistantLike, () => ({
       bg: replyBg(),
       fg: replyFg(theme),
-      dividerFor: (width: number) => dividerLine(theme, "summary", width),
+      dividerFor: (width: number, label = "summary") => dividerLine(theme, label, width),
     }));
     done = true;
     try {

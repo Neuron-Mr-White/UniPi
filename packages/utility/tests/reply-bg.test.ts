@@ -9,11 +9,19 @@ test("reply background is true black; light themes lift the text fg", () => {
   assert.ok((bgLuminance("\x1b[48;5;236m") ?? 1) < 0.5);
 });
 
-test("divider line labels the panel and fills the width", () => {
-  const t = { fg: (_k: string, s2: string) => `\x1b[90m${s2}\x1b[39m` };
-  const d = dividerLine(t, "summary", 20);
+const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+test("divider is a centred heavy rule; unlabelled it spans the width", () => {
+  const t = { fg: (_k: string, s2: string) => `\x1b[90m${s2}\x1b[39m`, bold: (s2: string) => `\x1b[1m${s2}\x1b[22m` };
+  const d = dividerLine(t, "summary", 40);
   assert.ok(d.includes(" summary "));
-  assert.equal(d.length, 20 + "\x1b[90m".length + "\x1b[39m".length);
+  assert.equal(strip(d).length, 40);
+  assert.equal(strip(d).indexOf(" summary "), 15);
+  assert.equal(strip(d)[0], "━");
+  assert.equal(strip(d).at(-1), "━");
+  const plain = dividerLine(t, "", 12);
+  assert.equal(strip(plain), "━".repeat(12));
+  assert.ok(!plain.includes("\x1b[1m"));
 });
 
 test("paintLine pads to width and re-opens the background after resets", () => {
@@ -35,12 +43,20 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
       return ["hello"];
     }
   }
-  patchAssistantRender(Fake.prototype as never, () => ({ bg: "\x1b[48;5;236m", fg: null, dividerFor: (w: number) => `─ summary ${"─".repeat(Math.max(0, w - 10))}` }));
+  patchAssistantRender(Fake.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number, label = "summary") =>
+      label ? `─ ${label} ${"─".repeat(Math.max(0, w - label.length - 4))}` : "─".repeat(w),
+  }));
   const reply = new Fake();
   const first = reply.render(10);
-  assert.equal(first.length, 3); // divider + text + bottom pad row
-  assert.equal(first[0], "─ summary ");
-  assert.ok(first[1]!.startsWith("\x1b[48;5;236m"));
+  assert.equal(first.length, 5); // spacer + rule + text + pad + closing rule
+  assert.equal(first[0], "");
+  assert.equal(first[1], "─ summary ");
+  assert.equal(first[4], "─".repeat(10));
+  assert.ok(first[2]!.startsWith("\x1b[48;5;236m"));
+  assert.ok(!first[4]!.includes("\x1b[48;5;236m")); // the rules sit outside the panel
   assert.strictEqual(reply.render(10), first); // cached array
   const withTools = new Fake();
   withTools.hasToolCalls = true;
