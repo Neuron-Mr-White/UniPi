@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bgLuminance, dividerLine, findAssistant, paintLine, patchAssistantRender, replyBg, replyFg } from "../src/render/reply-bg.ts";
+import { bgLuminance, dividerLine, findAssistant, paintLine, patchAssistantRender, replyBg, replyFg, stripBlankRuns, trimEdgeBlankLines } from "../src/render/reply-bg.ts";
 
 test("reply background is true black; light themes lift the text fg", () => {
   assert.equal(replyBg(), "\x1b[48;2;0;0;0m");
@@ -70,6 +70,33 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
   assert.ok(calls >= 3);
 });
 
+test("an errored or aborted tail is not framed as the summary", () => {
+  class Fake {
+    hasToolCalls = false;
+    isStreaming = false;
+    lastMessage: unknown;
+    contentContainer = {};
+    updateContent() {}
+    render(_w: number): string[] {
+      return ["Error: 500"];
+    }
+  }
+  patchAssistantRender(Fake.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number, label = "summary") =>
+      label ? `─ ${label} ${"─".repeat(Math.max(0, w - label.length - 4))}` : "─".repeat(w),
+  }));
+  for (const stopReason of ["error", "aborted", "length", "pending", "deferred"]) {
+    const m = new Fake();
+    m.lastMessage = { stopReason, content: [{ type: "text", text: "Error: 500" }] };
+    assert.deepEqual(m.render(10), ["Error: 500"], stopReason);
+  }
+  const ok = new Fake();
+  ok.lastMessage = { stopReason: "stop", content: [{ type: "text", text: "done" }] };
+  assert.equal(ok.render(10).length, 5); // normal reply still framed
+});
+
 test("thinking/tool-only steps render no rows; errors still show", () => {
   class Step {
     hasToolCalls = true;
@@ -86,9 +113,9 @@ test("thinking/tool-only steps render no rows; errors still show", () => {
   s.lastMessage = { content: [{ type: "thinking", thinking: "hmm" }, { type: "toolCall", id: "1" }], stopReason: "toolUse" };
   assert.deepEqual(s.render(10), []);
   s.lastMessage = { content: [{ type: "thinking", thinking: "hmm" }], stopReason: "error" };
-  assert.deepEqual(s.render(10), ["", ""]);
+  assert.deepEqual(s.render(10), []); // an all-blank render now paints nothing
   s.lastMessage = { content: [{ type: "text", text: "hi" }, { type: "toolCall", id: "1" }], stopReason: "toolUse" };
-  assert.deepEqual(s.render(10), ["", ""]);
+  assert.deepEqual(s.render(10), []); // a blank-only step renders nothing — compact
 });
 
 test("findAssistant walks the TUI tree", () => {
@@ -96,4 +123,115 @@ test("findAssistant walks the TUI tree", () => {
   const tree = { children: [{ children: [{}, { children: [a] }] }] };
   assert.equal(findAssistant(tree), a);
   assert.equal(findAssistant({ children: [{}] }), undefined);
+});
+
+test("stripBlankRuns drops blank thinking regions and their trailing spacer only", () => {
+  const spacer = () => ({ lines: 1, render: () => [""] });
+  const region = (lines: string[]) => ({ child: {}, render: () => lines });
+  const md = (s: string) => ({ render: () => [s] });
+  const hidden = region([" \x1b[3m\x1b[38;5;245m\x1b[39m\x1b[23m  "]); // ANSI-only label → blank row
+  const visible = region([" Thinking…"]);
+  const container = {
+    children: [spacer(), hidden, spacer(), md("● text"), visible, spacer(), md("more")],
+  };
+  stripBlankRuns(container as never, 80);
+  assert.equal(container.children.length, 5);
+  assert.equal(container.children[0]!.render!(80)[0], "");
+  assert.equal((container.children[1] as any).render(80)[0], "● text");
+  assert.equal(container.children[2], visible); // real label kept…
+  assert.equal(typeof (container.children[3] as any).lines, "number"); // …and so is its spacer
+  assert.equal((container.children[4] as any).render(80)[0], "more");
+});
+
+test("the patched render strips hidden-thinking rows and edge blanks before painting", () => {
+  const spacer = () => ({ lines: 1, render: () => [""] });
+  const hiddenRegion = { child: {}, render: () => [" \x1b[3m\x1b[39m "] };
+  class Msg {
+    hasToolCalls = true;
+    isStreaming = true;
+    lastMessage: unknown = { content: [{ type: "thinking", thinking: "hmm" }, { type: "text", text: "hi" }] };
+    contentContainer = { children: [spacer(), hiddenRegion, spacer(), { render: () => [" hi"] }] };
+    updateContent() {}
+    render(_w: number): string[] {
+      return this.contentContainer.children.flatMap((c: any) => c.render(80));
+    }
+  }
+  patchAssistantRender(Msg.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number) => "─".repeat(w),
+  }));
+  // pi's leading Spacer(1) row is trimmed too — no stray blank above the text.
+  assert.deepEqual(new Msg().render(80), [" hi"]);
+});
+
+test("a leading blank row is not painted inside the summary panel", () => {
+  class Reply {
+    hasToolCalls = false;
+    isStreaming = false;
+    lastMessage: unknown = { stopReason: "stop", content: [{ type: "text", text: "hello" }] };
+    contentContainer = {};
+    updateContent() {}
+    render(_w: number): string[] {
+      // pi's leading Spacer(1) + the text row.
+      return ["", "hello"];
+    }
+  }
+  patchAssistantRender(Reply.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number, label = "summary") =>
+      label ? `─ ${label} ${"─".repeat(Math.max(0, w - label.length - 4))}` : "─".repeat(w),
+  }));
+  const out = new Reply().render(10);
+  assert.equal(out.length, 5); // breathing + rule + text + pad + rule — no pad under the rule
+  assert.equal(out[1], "─ summary ");
+  assert.ok(out[2]!.includes("hello"));
+});
+
+test("trimEdgeBlankLines carries dropped OSC-133 zone markers onto surviving lines", () => {
+  class Z {
+    hasToolCalls = false;
+    isStreaming = false;
+    lastMessage: unknown = { stopReason: "stop", content: [{ type: "text", text: "hi" }] };
+    contentContainer = {};
+    updateContent() {}
+    render(_w: number): string[] {
+      // zone start on the blank spacer row; end+final on the last text row.
+      return ["\x1b]133;A\x07", " hi", "\x1b]133;B\x07\x1b]133;C\x07 bye "];
+    }
+  }
+  patchAssistantRender(Z.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number) => "─".repeat(w),
+  }));
+  const out = new Z().render(10);
+  // " hi" keeps its zone start; " bye " keeps end+final; no blank rows painted.
+  assert.ok(out[2]!.includes("\x1b]133;A\x07") && out[2]!.includes("hi"));
+  assert.ok(out[3]!.includes("\x1b]133;B\x07") && out[3]!.includes("\x1b]133;C\x07"));
+  // Direct unit check: dropped edge blanks pass their markers to the nearest
+  // surviving line, keeping pi's convention (markers precede the line's text).
+  const trimmed = trimEdgeBlankLines(["\x1b]133;A\x07  ", " x ", "  \x1b]133;B\x07"]);
+  assert.deepEqual(trimmed, ["\x1b]133;A\x07\x1b]133;B\x07 x "]);
+  assert.deepEqual(trimEdgeBlankLines(["", "  \x1b[3m\x1b[39m"]), []);
+});
+
+test("an all-blank render paints nothing (no panel, no gap)", () => {
+  class Blank {
+    hasToolCalls = false;
+    isStreaming = false;
+    lastMessage: unknown = { stopReason: "stop", content: [{ type: "text", text: "hi" }] };
+    contentContainer = {};
+    updateContent() {}
+    render(_w: number): string[] {
+      return ["", "  "];
+    }
+  }
+  patchAssistantRender(Blank.prototype as never, () => ({
+    bg: "\x1b[48;5;236m",
+    fg: null,
+    dividerFor: (w: number) => "─".repeat(w),
+  }));
+  assert.deepEqual(new Blank().render(10), []);
 });

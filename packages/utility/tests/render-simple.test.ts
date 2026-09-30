@@ -17,6 +17,7 @@ import {
   installSimpleGroupEvents,
   anchorAssistant,
   applyMessageOrder,
+  reconcileSimpleGroups,
   type GroupCall,
   type RowFn,
   type SummaryFn,
@@ -430,5 +431,70 @@ describe("group painted in one component (no pi blank line between rows)", () =>
     assert.deepEqual((a as any).render(160), []);
     assert.deepEqual((b as any).render(160), []);
     assert.deepEqual((c as any).render(160), [" ├ • Read 2 files", " └ • Ran  ls -la · 9 output lines"]);
+  });
+});
+
+describe("reconcileSimpleGroups (resumed-history rebuild)", () => {
+  beforeEach(() => resetSimpleGroups());
+  const w = () => simpleWrapTool({ ...base, name: "read" } as never) as typeof base;
+  const mk = (id: string) => ({ expanded: false, cwd: "/repo", args: { file_path: `/repo/${id}` }, toolCallId: id, invalidate: () => {} }) as never;
+  const done = (wr: any, id: string) =>
+    wr.renderResult!({ isError: false, content: [{ type: "text", text: "a" }] } as never, { expanded: false, isPartial: false } as never, theme, mk(id));
+  const toolComp = (id: string) => ({ toolCallId: id, updateResult: () => {} });
+  const assistantComp = (content: unknown[]) => ({
+    lastMessage: { content },
+    contentContainer: { children: [] },
+    hasToolCalls: true,
+    updateContent() {},
+  });
+  const text = (t: string) => ({ type: "text", text: t });
+  const tc = (id: string) => ({ type: "toolCall", id });
+  const userComp = () => ({ text: "hi", children: [] });
+
+  it("rebuilds groups in transcript order: replayed rows split at text and user boundaries", () => {
+    const wr = w();
+    // replay registers every call into one group (no events fire)…
+    const a = wr.renderCall!({ file_path: "/repo/a" } as never, theme, mk("a")); done(wr, "a");
+    const b = wr.renderCall!({ file_path: "/repo/b" } as never, theme, mk("b")); done(wr, "b");
+    const c = wr.renderCall!({ file_path: "/repo/c" } as never, theme, mk("c")); done(wr, "c");
+    const d = wr.renderCall!({ file_path: "/repo/d" } as never, theme, mk("d")); done(wr, "d");
+    // …so the last component alone paints all four rows
+    assert.deepEqual((a as any).render(160), []);
+    assert.deepEqual((d as any).render(160), [" └ • Read 4 files"]);
+    // the real transcript: [a][text+b][user][text+c,d]
+    const tree = {
+      children: [
+        assistantComp([text("first"), tc("a")]),
+        toolComp("a"),
+        assistantComp([text("second"), tc("b")]),
+        toolComp("b"),
+        userComp(),
+        assistantComp([text("third"), tc("c"), tc("d")]),
+        toolComp("c"),
+        toolComp("d"),
+      ],
+    };
+    reconcileSimpleGroups(tree);
+    reconcileSimpleGroups(tree); // idempotent
+    assert.match((a as any).render(160)[0], /^ └ • Read \(\.\/a\)/);
+    assert.match((b as any).render(160)[0], /^ └ • Read \(\.\/b\)/);
+    assert.deepEqual((c as any).render(160), []);
+    assert.deepEqual((d as any).render(160), [" └ • Read 2 files"]);
+  });
+
+  it("a call not preceded by text keeps sharing the previous group", () => {
+    const wr = w();
+    const a = wr.renderCall!({ file_path: "/repo/a" } as never, theme, mk("a")); done(wr, "a");
+    const b = wr.renderCall!({ file_path: "/repo/b" } as never, theme, mk("b")); done(wr, "b");
+    const tree = {
+      children: [
+        assistantComp([tc("a"), tc("b")]), // thinking/tool-only message → no break
+        toolComp("a"),
+        toolComp("b"),
+      ],
+    };
+    reconcileSimpleGroups(tree);
+    assert.deepEqual((a as any).render(160), []);
+    assert.deepEqual((b as any).render(160), [" └ • Read 2 files"]);
   });
 });

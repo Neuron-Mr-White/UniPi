@@ -33,7 +33,7 @@ interface TreeNode {
   children?: unknown[];
 }
 
-function isAssistant(c: unknown): c is AssistantLike {
+export function isAssistant(c: unknown): c is AssistantLike {
   const a = c as Partial<AssistantLike> | null;
   return !!a && typeof a === "object" && "contentContainer" in a && "hasToolCalls" in a && typeof a.updateContent === "function";
 }
@@ -139,6 +139,67 @@ export function isBlankStep(msg: unknown): boolean {
   return !m.content.some((c: any) => c?.type === "text" && typeof c.text === "string" && c.text.trim());
 }
 
+/** A rendered row that paints nothing: whitespace + SGR/OSC sequences only. */
+const OSC_SEQ = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+const SGR_SEQ = /\x1b\[[0-9;]*m/g;
+
+export function isBlankRendered(line: string): boolean {
+  return line.replace(OSC_SEQ, "").replace(SGR_SEQ, "").trim() === "";
+}
+
+/**
+ * Drop rendered blank rows at both edges of a component's output. pi parks a
+ * Spacer(1) as the first child of every content-bearing assistant message —
+ * rendered, it's a stray blank row below custom badges and above mid-turn
+ * text, and a pad row under the summary rule inside the reply panel. Dropped
+ * edge lines keep their OSC-133 zone markers (pi prepends `\x1b]133;A\x07` to
+ * the first line of a tool-free message): they're moved onto the surviving
+ * edge lines so prompt-zone navigation isn't lost.
+ */
+export function trimEdgeBlankLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && isBlankRendered(lines[start]!)) start++;
+  while (end > start && isBlankRendered(lines[end - 1]!)) end--;
+  const kept = lines.slice(start, end);
+  if (kept.length === 0) return kept;
+  const zones = (ls: string[]) => ls.join("").match(OSC_SEQ)?.join("") ?? "";
+  // Tail first, then head: a single surviving line ends up head+tail+text,
+  // matching pi's A…B C order (zone start precedes zone end).
+  const tail = zones(lines.slice(end));
+  if (tail) kept[kept.length - 1] = tail + kept[kept.length - 1];
+  const head = zones(lines.slice(0, start));
+  if (head) kept[0] = head + kept[0];
+  return kept;
+}
+
+/**
+ * Drop children of a message's content container that render only blank rows.
+ * In simple mode that's each hidden-thinking run: pi wraps the label Text in a
+ * MouseRegion, and theme.italic(theme.fg(key, "")) is ANSI escapes around an
+ * empty string — it survives Text's empty check (`trim()` keeps escapes) and
+ * paints a full blank row — plus the Spacer pi parks after a thinking run. A
+ * thinking+text step would otherwise show ~3 blank rows above the text. A
+ * region with real content (non-empty label) is kept.
+ */
+export function stripBlankRuns(container: unknown, width: number): void {
+  const kids = (container as TreeNode | undefined)?.children;
+  if (!Array.isArray(kids)) return;
+  const blank = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "").trim() === "";
+  for (let i = kids.length - 1; i >= 0; i--) {
+    const child = kids[i] as { child?: unknown; render?: (w: number) => string[] } | null;
+    if (!child || typeof child !== "object" || !("child" in child) || typeof child.render !== "function") continue;
+    let empty = false;
+    try {
+      empty = child.render(width).every(blank);
+    } catch {}
+    if (!empty) continue;
+    kids.splice(i, 1);
+    const next = kids[i] as { lines?: unknown } | null | undefined;
+    if (next && typeof next === "object" && typeof next.lines === "number") kids.splice(i, 1);
+  }
+}
+
 /**
  * Wrap the component class's render once. `getBg` is read per render so a
  * theme switch takes effect; `enabled` lets the caller turn it off.
@@ -156,9 +217,14 @@ export function patchAssistantRender(
     // thinking-only step (and a hidden label line), so every tool step left
     // blank rows — a growing gap above tool groups. No visible text → no rows.
     if (isBlankStep(this.lastMessage)) return [];
-    const lines = original.call(this, width);
-    // Only the reply: finished, no tool calls, something visible.
+    stripBlankRuns(this.contentContainer, width);
+    const lines = trimEdgeBlankLines(original.call(this, width));
+    // Only the reply: finished, no tool calls, something visible — and the
+    // message must have ended cleanly. An error/abort/length/deferred tail
+    // isn't the turn's reply and doesn't get the summary frame.
     if (this.hasToolCalls || this.isStreaming || lines.length === 0) return lines;
+    const stop = (this.lastMessage as { stopReason?: string } | undefined)?.stopReason;
+    if (stop === "pending" || stop === "error" || stop === "aborted" || stop === "length" || stop === "deferred") return lines;
     const { bg, fg, dividerFor } = getPanel();
     const hit = cache.get(this);
     if (hit && hit.width === width && hit.msg === this.lastMessage && hit.bg === bg && hit.streaming === this.isStreaming) return hit.lines;
@@ -179,14 +245,23 @@ export function patchAssistantRender(
 /**
  * Install for the session: grab the TUI via an empty widget, and after each
  * agent turn look for an assistant component until one is found and patched.
+ * `onTick` runs on every attempt once the TUI is known — it gets the tree root,
+ * which the simple renderer uses to reconcile tool-call grouping after a
+ * resumed-session history render (replay fires no message_* events, so the
+ * event-driven group breaks never happen and every call lands in one group).
  */
 export function installReplyBackground(pi: {
   on: (event: any, handler: (event: any, ctx?: any) => void) => void;
-}): void {
+}, onTick?: (tui: unknown) => void): void {
   let tui: unknown;
   let theme: any;
   let done = false;
   const tryPatch = () => {
+    if (tui) {
+      try {
+        onTick?.(tui);
+      } catch {}
+    }
     if (done || !tui) return;
     const hit = findAssistant(tui);
     if (!hit) return;
@@ -213,8 +288,10 @@ export function installReplyBackground(pi: {
           },
           { placement: "belowEditor" },
         );
-        // Resumed sessions already have replies on screen.
-        setTimeout(tryPatch, 0);
+        // Resumed sessions already have replies on screen; history renders
+        // right after extension init, so probe a few times until the tree is
+        // populated even if the user never sends another message.
+        for (const ms of [0, 400, 2000]) setTimeout(tryPatch, ms);
       } catch {}
     });
     pi.on("message_start", () => setTimeout(tryPatch, 0));

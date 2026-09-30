@@ -24,7 +24,7 @@ import type {
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
-import { installReplyBackground } from "./reply-bg.js";
+import { installReplyBackground, isAssistant } from "./reply-bg.js";
 
 type AnyTool = ToolDefinition<any, any, any>;
 
@@ -174,7 +174,11 @@ export function installSimpleGroupEvents(pi: {
     // grouping is cosmetic; never block load
   }
   hideThinking(pi);
-  installReplyBackground(pi);
+  installReplyBackground(pi, (tui) => {
+    try {
+      reconcileSimpleGroups(tui);
+    } catch {}
+  });
 }
 
 /**
@@ -230,6 +234,76 @@ export function markBreakBefore(id: string): void {
 /** Visible assistant text (whitespace-only text blocks don't count). */
 export function messageHasText(msg: { content?: unknown }): boolean {
   return Array.isArray(msg.content) && msg.content.some((c: any) => c?.type === "text" && typeof c.text === "string" && c.text.trim());
+}
+
+// ─── replay reconciliation (resume / re-rendered history) ─────────────────
+
+/** Duck-typed pi ToolExecutionComponent (a direct child of the chat container). */
+function isToolExec(c: unknown): c is { toolCallId: string } {
+  const t = c as { toolCallId?: unknown; updateResult?: unknown } | null;
+  return !!t && typeof t === "object" && typeof t.toolCallId === "string" && typeof t.updateResult === "function";
+}
+
+/** User-message components: a Container carrying `.text` or a parsed `.skillBlock`. */
+function isUserMessage(c: unknown): boolean {
+  const t = c as { text?: unknown; children?: unknown; skillBlock?: unknown } | null;
+  return !!t && typeof t === "object" && Array.isArray(t.children) && (typeof t.text === "string" || "skillBlock" in t);
+}
+
+/** The chat container = the outermost node whose direct children include tool executions. */
+function findGroupHost(root: unknown, depth = 0): unknown[] | undefined {
+  if (!root || typeof root !== "object" || depth > 14) return undefined;
+  const children = (root as { children?: unknown }).children;
+  if (!Array.isArray(children)) return undefined;
+  if (children.some(isToolExec)) return children;
+  for (const child of children) {
+    const hit = findGroupHost(child, depth + 1);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * Rebuild group membership from the rendered transcript order. Resumed and
+ * re-rendered sessions (renderSessionItems, boundary-compaction re-renders)
+ * construct the tool components without firing message_* events, so no group
+ * breaks ever happen: every call lands in one group and only the last
+ * component paints — a wall of tool rows with all the text elsewhere. Walking
+ * the chat container's children in order reproduces the live rule: a call
+ * preceded by visible text (its message's own block order → breakBefore) or a
+ * user message starts a fresh group. Idempotent: when the tree already agrees
+ * with the groups, no rec moves and nothing repaints.
+ */
+export function reconcileSimpleGroups(root: unknown): void {
+  const children = findGroupHost(root);
+  if (!children) return;
+  let group: CallRec[] = [];
+  let breakNext = false;
+  for (const child of children) {
+    if (isAssistant(child)) {
+      if (applyMessageOrder((child.lastMessage ?? {}) as { content?: unknown })) breakNext = true;
+      continue;
+    }
+    if (!isToolExec(child)) {
+      if (isUserMessage(child)) breakNext = true;
+      continue;
+    }
+    const rec = byId.get(child.toolCallId);
+    const brk = breakNext || breakBefore.has(child.toolCallId);
+    breakNext = false;
+    if (!rec) continue;
+    if (brk) group = [];
+    if (rec.group !== group) {
+      const old = rec.group;
+      const at = old.indexOf(rec);
+      if (at >= 0) old.splice(at, 1);
+      rec.group = group;
+      for (const r of old) touch(r);
+      touch(rec);
+    }
+    if (!group.includes(rec)) group.push(rec);
+  }
+  currentGroup = group;
 }
 
 /**
@@ -452,9 +526,11 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       rec = { id: ctx.toolCallId, name: def.name, args: args ?? {}, cwd: ctx.cwd, running: true, done: false, failed: false, meta: "", group: currentGroup };
       byId.set(ctx.toolCallId, rec);
       currentGroup.push(rec);
-      rec.invalidate = () => ctx.invalidate();
       for (const r of currentGroup) touch(r);
     }
+    // Rebind every call: on history re-renders pi makes a fresh component for
+    // the same toolCallId, and invalidate() must reach the live one.
+    rec.invalidate = () => ctx.invalidate();
     if (args && args !== rec.args) {
       rec.args = args;
       rec.rev = (rec.rev ?? 0) + 1;
