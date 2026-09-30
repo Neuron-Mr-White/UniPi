@@ -18,6 +18,9 @@ export interface MemoryConfig {
   write: boolean;
   /** Include `mempalace wake-up` output in the start reminder. */
   wakeUp: boolean;
+  /** How the end-of-task save happens: a background side session, the inline
+   *  nextTurn reminder, or nothing. */
+  saveMode: "side" | "reminder" | "off";
   /** Start the MemPalace daemon automatically when it isn't running. */
   autoStartDaemon: boolean;
   /** Keep the MemPalace install current via a daily PyPI check + uv upgrade. */
@@ -28,6 +31,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
   recallAtStart: true,
   write: true,
   wakeUp: true,
+  saveMode: "side",
   autoStartDaemon: false,
   mempalaceAutoUpdate: true,
 };
@@ -57,6 +61,19 @@ registerSettings({
           type: "boolean",
           label: "Wake-up summary at start",
           description: "Include `mempalace wake-up --wing <project>` output in the start reminder.",
+        },
+        {
+          key: "saveMode",
+          type: "enum",
+          label: "Save mode",
+          description:
+            "side: a background side session reviews the finished run and stores what's worth keeping (nothing enters the conversation). " +
+            "reminder: an end-of-task note asks the agent to save. off: no save pass at all.",
+          options: [
+            { value: "side", label: "side agent" },
+            { value: "reminder", label: "reminder" },
+            { value: "off", label: "off" },
+          ],
         },
         {
           key: "autoStartDaemon",

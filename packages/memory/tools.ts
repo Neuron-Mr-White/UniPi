@@ -139,16 +139,34 @@ function listCard(t: ThemeLike, details: unknown, expanded: boolean, global: boo
   return memoryCard(t, rows);
 }
 
-export function registerMemoryTools(
-  pi: ExtensionAPI,
+/** The real tool bodies, callable outside the main registration — the
+ *  background save session mounts these on its stub tools. */
+export interface MemoryExecutors {
+  store: (
+    params: { title: string; content: string; tags?: string[]; type?: string },
+    ctx: { cwd: string },
+  ) => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>;
+  search: (params: {
+    query: string;
+    limit?: number;
+    scope?: string;
+  }) => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>;
+  remove: (params: {
+    title?: string;
+    id?: string;
+  }) => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>;
+  list: () => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>;
+  globalList: () => Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }>;
+}
+
+type EventSink = { events: { emit: (name: string, payload: unknown) => void } };
+
+export function memoryExecutors(
+  pi: EventSink,
   backend: () => SessionBackend | null,
   activity?: ToolActivity,
-  options?: { neutral?: boolean },
-): void {
+): MemoryExecutors {
   const W = () => backend();
-  // recallAtStart=off swaps the "call BEFORE work" nudge for neutral wording —
-  // the tools stay callable, the agent just isn't ordered to use them first.
-  const neutral = options?.neutral === true;
   const localPeek = (title: string) => {
     const b = W();
     if (!b) return { exact: null as ReturnType<typeof findByTitle>, similar: [] as string[] };
@@ -160,7 +178,7 @@ export function registerMemoryTools(
     return { exact, similar };
   };
 
-  const storeExecute = async (
+  const store = async (
     params: { title: string; content: string; tags?: string[]; type?: string },
     ctx: { cwd: string },
   ) => {
@@ -220,6 +238,116 @@ export function registerMemoryTools(
     };
   };
 
+  const search = async (
+    params: { query: string; limit?: number; scope?: string },
+  ) => {
+    activity?.onRecall?.();
+    const b = W();
+    if (!b) {
+      return {
+        content: [{ type: "text" as const, text: `Memory search unavailable — the memory backend isn't running.` }],
+        details: { results: [] },
+      };
+    }
+    const limit = params.limit || 10;
+    const scope = params.scope === "project" ? "project" : "all";
+    const hits = await b.search(params.query, limit, scope);
+    if (hits.length === 0) {
+      return {
+        content: [{ type: "text" as const, text: `No memories found for: "${params.query}"` }],
+        details: { query: params.query, hits: [] },
+      };
+    }
+    const output = hits
+      .map((h, i) => `${i + 1}. [${h.wing}] **${h.title}** (${h.room} · ${sourceLabel(h.sourceLabel)})\n   ${h.snippet}`)
+      .join("\n\n");
+    return {
+      content: [{ type: "text" as const, text: `Found ${hits.length} memories:\n\n${output}` }],
+      details: { query: params.query, hits },
+    };
+  };
+
+  const remove = async (params: { title?: string; id?: string }) => {
+    activity?.onStore?.();
+    const b = W();
+    if (!b) {
+      return { content: [{ type: "text" as const, text: `Memory backend unavailable — nothing deleted.` }], details: { deleted: false } };
+    }
+    const key = params.id || params.title;
+    if (!key) {
+      return { content: [{ type: "text" as const, text: "Provide a title or id to delete." }], details: { deleted: false } };
+    }
+    const res = await b.delete(b.project, key);
+    activity?.onWriteDone?.();
+    if (res.found) {
+      emitEvent(pi, UNIPI_EVENTS.MEMORY_DELETED, { id: key, title: key, project: b.project });
+    }
+    return {
+      content: [{ type: "text" as const, text: res.found ? `Deleted memory: ${key} (${res.outcome})` : `Memory not found: ${key}` }],
+      details: { deleted: res.found, id: key, title: key, outcome: res.outcome },
+    };
+  };
+
+  const list = async () => {
+    activity?.onRecall?.();
+    const b = W();
+    const memories = b ? await b.list() : [];
+    if (memories.length === 0) {
+      return { content: [{ type: "text" as const, text: "No memories stored for this project." }], details: { memories: [] } };
+    }
+    const output = memories.map((m) => `- ${m.title} (${m.type})`).join("\n");
+    return {
+      content: [{ type: "text" as const, text: `Project memories (${memories.length}):\n\n${output}` }],
+      details: { memories },
+    };
+  };
+
+  const globalList = async () => {
+    activity?.onRecall?.();
+    const b = W();
+    if (!b) {
+      return { content: [{ type: "text" as const, text: "Memory backend unavailable." }], details: { memories: [] } };
+    }
+    // Pull every project dir's md files for a cross-project list.
+    const { listProjectDirs } = await import("./files.js");
+    const { sanitizeProjectName } = await import("./paths.js");
+    const memories: Array<{ project: string; id: string; title: string; type: string }> = [];
+    for (const { name } of listProjectDirs()) {
+      for (const m of await b.list(sanitizeProjectName(name))) {
+        memories.push(m);
+      }
+    }
+    if (memories.length === 0) {
+      return { content: [{ type: "text" as const, text: "No memories stored in any project." }], details: { memories: [] } };
+    }
+    const grouped = new Map<string, typeof memories>();
+    for (const m of memories) {
+      grouped.set(m.project, [...(grouped.get(m.project) ?? []), m]);
+    }
+    let output = "";
+    for (const [p, ms] of grouped) {
+      output += `\n**${p}** (${ms.length}):\n` + ms.map((m) => `  - ${m.title} (${m.type})`).join("\n") + "\n";
+    }
+    return {
+      content: [{ type: "text" as const, text: `All memories across ${grouped.size} projects (${memories.length} total):${output}` }],
+      details: { memories },
+    };
+  };
+
+  return { store, search, remove, list, globalList };
+}
+
+export function registerMemoryTools(
+  pi: ExtensionAPI,
+  backend: () => SessionBackend | null,
+  activity?: ToolActivity,
+  options?: { neutral?: boolean },
+): void {
+  // recallAtStart=off swaps the "call BEFORE work" nudge for neutral wording —
+  // the tools stay callable, the agent just isn't ordered to use them first.
+  const neutral = options?.neutral === true;
+  const ex = memoryExecutors(pi, backend, activity);
+
   pi.registerTool({
     name: MEMORY_TOOLS.STORE,
     label: "Store Memory",
@@ -252,38 +380,9 @@ export function registerMemoryTools(
       return memoryCard(theme, storeRows(theme, d), outcomeTone(d.outcome));
     },
     async execute(_id, params, _s, _o, ctx) {
-      return storeExecute(params, ctx);
+      return ex.store(params, ctx);
     },
   });
-
-  const searchExecute = async (
-    params: { query: string; limit?: number; scope?: string },
-  ) => {
-    activity?.onRecall?.();
-    const b = W();
-    if (!b) {
-      return {
-        content: [{ type: "text" as const, text: `Memory search unavailable — the memory backend isn't running.` }],
-        details: { results: [] },
-      };
-    }
-    const limit = params.limit || 10;
-    const scope = params.scope === "project" ? "project" : "all";
-    const hits = await b.search(params.query, limit, scope);
-    if (hits.length === 0) {
-      return {
-        content: [{ type: "text" as const, text: `No memories found for: "${params.query}"` }],
-        details: { query: params.query, hits: [] },
-      };
-    }
-    const output = hits
-      .map((h, i) => `${i + 1}. [${h.wing}] **${h.title}** (${h.room} · ${sourceLabel(h.sourceLabel)})\n   ${h.snippet}`)
-      .join("\n\n");
-    return {
-      content: [{ type: "text" as const, text: `Found ${hits.length} memories:\n\n${output}` }],
-      details: { query: params.query, hits },
-    };
-  };
 
   pi.registerTool({
     name: MEMORY_TOOLS.SEARCH,
@@ -316,7 +415,7 @@ export function registerMemoryTools(
     renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
     renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
     async execute(_id, params, _s, _o, _ctx) {
-      return searchExecute(params);
+      return ex.search(params);
     },
   });
 
@@ -333,8 +432,7 @@ export function registerMemoryTools(
     renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
     renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
     async execute(_id, params, _s, _o, _ctx) {
-      activity?.onRecall?.();
-      return searchExecute({ query: params.query, limit: params.limit, scope: "all" });
+      return ex.search({ query: params.query, limit: params.limit, scope: "all" });
     },
   });
 
@@ -356,24 +454,7 @@ export function registerMemoryTools(
       return memoryCard(theme, [{ left: `${theme.bold("Memory")} ${theme.fg("dim", "forgot")} ${String(d?.title ?? d?.id ?? "memory")}`, right }], d?.deleted ? outcomeTone(outcome) : "warning");
     },
     async execute(_id, params, _s, _o, _ctx) {
-      activity?.onStore?.();
-      const b = W();
-      if (!b) {
-        return { content: [{ type: "text" as const, text: "Memory backend unavailable — nothing deleted." }], details: { deleted: false } };
-      }
-      const key = params.id || params.title;
-      if (!key) {
-        return { content: [{ type: "text" as const, text: "Provide a title or id to delete." }], details: { deleted: false } };
-      }
-      const res = await b.delete(b.project, key);
-      activity?.onWriteDone?.();
-      if (res.found) {
-        emitEvent(pi, UNIPI_EVENTS.MEMORY_DELETED, { id: key, title: key, project: b.project });
-      }
-      return {
-        content: [{ type: "text" as const, text: res.found ? `Deleted memory: ${key} (${res.outcome})` : `Memory not found: ${key}` }],
-        details: { deleted: res.found, id: key, title: key, outcome: res.outcome },
-      };
+      return ex.remove(params);
     },
   });
 
@@ -387,17 +468,7 @@ export function registerMemoryTools(
     renderCall: (_args, theme, context) => pendingLine(theme, context, "listing…"),
     renderResult: (result, options, theme) => listCard(theme, result.details, options.expanded, false),
     async execute(_id, _p, _s, _o, _ctx) {
-      activity?.onRecall?.();
-      const b = W();
-      const memories = b ? await b.list() : [];
-      if (memories.length === 0) {
-        return { content: [{ type: "text" as const, text: "No memories stored for this project." }], details: { memories: [] } };
-      }
-      const output = memories.map((m) => `- ${m.title} (${m.type})`).join("\n");
-      return {
-        content: [{ type: "text" as const, text: `Project memories (${memories.length}):\n\n${output}` }],
-        details: { memories },
-      };
+      return ex.list();
     },
   });
 
@@ -410,35 +481,7 @@ export function registerMemoryTools(
     renderCall: (_args, theme, context) => pendingLine(theme, context, "listing…"),
     renderResult: (result, options, theme) => listCard(theme, result.details, options.expanded, true),
     async execute(_id, _p, _s, _o, _ctx) {
-      activity?.onRecall?.();
-      const b = W();
-      if (!b) {
-        return { content: [{ type: "text" as const, text: "Memory backend unavailable." }], details: { memories: [] } };
-      }
-      // Pull every project dir's md files for a cross-project list.
-      const { listProjectDirs } = await import("./files.js");
-      const { sanitizeProjectName } = await import("./paths.js");
-      const memories: Array<{ project: string; id: string; title: string; type: string }> = [];
-      for (const { name } of listProjectDirs()) {
-        for (const m of await b.list(sanitizeProjectName(name))) {
-          memories.push(m);
-        }
-      }
-      if (memories.length === 0) {
-        return { content: [{ type: "text" as const, text: "No memories stored in any project." }], details: { memories: [] } };
-      }
-      const grouped = new Map<string, typeof memories>();
-      for (const m of memories) {
-        grouped.set(m.project, [...(grouped.get(m.project) ?? []), m]);
-      }
-      let output = "";
-      for (const [p, ms] of grouped) {
-        output += `\n**${p}** (${ms.length}):\n` + ms.map((m) => `  - ${m.title} (${m.type})`).join("\n") + "\n";
-      }
-      return {
-        content: [{ type: "text" as const, text: `All memories across ${grouped.size} projects (${memories.length} total):${output}` }],
-        details: { memories },
-      };
+      return ex.globalList();
     },
   });
 }

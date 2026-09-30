@@ -7,6 +7,7 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -21,6 +22,12 @@ import {
 import { createSessionBackend, type SessionBackend } from "./session.js";
 import { registerMemoryTools, MEMORY_TOOLS, memoryCard, type RailRow } from "./tools.js";
 import { registerMemoryCommands, type SessionOverrides } from "./commands.js";
+import {
+  SAVE_CARD_TYPE,
+  shouldRunSideSave,
+  startMemorySave,
+  type MemorySaveRun,
+} from "./save-session.js";
 import { readMemoryConfig, agentHooksEnabled } from "./settings.js";
 import { replayPending, pendingCount, type PendingOp } from "./pending.js";
 import { adoptLooseFiles, needsMigration, runConversion, readConversionState } from "./convert.js";
@@ -44,6 +51,32 @@ const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 const RECALL_CUSTOM_TYPE = "unipi-memory-recall-reminder";
 const RETRO_CUSTOM_TYPE = "unipi-memory-retro-reminder";
 const CARD_CUSTOM_TYPE = "unipi-memory-session-card";
+
+/** ~/.unipi/logs/memory.log lines when UNIPI_DEBUG_MEMORY=1 (silent otherwise). */
+export function memoryDebug(line: string): void {
+  if (process.env.UNIPI_DEBUG_MEMORY !== "1") return;
+  try {
+    const dir = join(os.homedir(), ".unipi", "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(join(dir, "memory.log"), `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    // best-effort
+  }
+}
+
+/** True when the branch segment AFTER the last compaction already carries the
+ *  recall reminder — a /reload or resume must not inject it twice. */
+export function branchHasRecallReminder(
+  branch: Array<{ type: string; customType?: string }>,
+): boolean {
+  let lastCompact = -1;
+  branch.forEach((entry, index) => {
+    if (entry.type === "compaction") lastCompact = index;
+  });
+  return branch
+    .slice(lastCompact + 1)
+    .some((entry) => entry.type === "custom_message" && entry.customType === RECALL_CUSTOM_TYPE);
+}
 
 export function buildMemoryRecallReminder(input: {
   projectName: string;
@@ -176,6 +209,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     recallDone = false;
     storeDone = false;
+    // Reload/resume: the reminder is already in this branch's context tail —
+    // injecting again would just repeat it.
+    try {
+      if (branchHasRecallReminder(ctx.sessionManager.getBranch())) recallDone = true;
+    } catch {
+      // branch read is best-effort
+    }
     overrides.recall = undefined;
     overrides.write = undefined;
     wakeUpPromise = null;
@@ -427,6 +467,9 @@ export default function (pi: ExtensionAPI) {
         ])) ?? undefined;
     }
 
+    // Injected once per session (and once after each compaction — the
+    // session_compact / COMPACTOR_COMPACTED handlers below reset the flag).
+    recallDone = true;
     return {
       message: {
         customType: RECALL_CUSTOM_TYPE,
@@ -442,6 +485,30 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
+  // Save pass outcome card — UI-only entry, never model context.
+  try {
+    pi.registerEntryRenderer?.<{ titles?: string[]; usage?: { input: number; cacheRead: number; cacheWrite: number; output: number } }>(
+      SAVE_CARD_TYPE,
+      (entry, _options, theme) => {
+        const d = entry.data;
+        if (!d?.titles?.length) return undefined;
+        const t = theme as unknown as KitTheme;
+        const rows: RailRow[] = [
+          { left: `${t.bold("Memory saved")} ${d.titles.join(", ")}` },
+        ];
+        if (d.usage) {
+          rows.push(
+            t.fg(
+              "dim",
+              `save pass · in ${d.usage.input} · cache ${d.usage.cacheRead}/${d.usage.cacheWrite} · out ${d.usage.output}`,
+            ),
+          );
+        }
+        return memoryCard(t, rows);
+      },
+    );
+  } catch { /* UI-dependent */ }
+
   // Two agent runs can end before the next user prompt (e.g. a background-task
   // completion triggers a follow-up turn) — keep at most one queued reminder.
   const retro = retroReminderGuard();
@@ -450,25 +517,94 @@ export default function (pi: ExtensionAPI) {
     retro.clear();
   });
 
-  pi.on("agent_end", async (_event, _ctx) => {
-    if (storeDone || !recallDone) return;
-    if (retro.queued) return;
-    if (!readMemoryConfig().write || overrides.write === false) return;
-    if (!agentHooksEnabled()) return;
-    if (!pi.getActiveTools().includes(MEMORY_TOOLS.STORE)) return;
-    retro.queue();
-    pi.sendMessage(
-      {
-        customType: RETRO_CUSTOM_TYPE,
-        content: [
-          "**🧠 Memory reminder:** If you learned something non-obvious in this task,",
-          "call `memory_store` to save it as a memory for future sessions.",
-          "Update existing memories instead of creating duplicates.",
-        ].join(" "),
-        display: true,
-      },
-      { deliverAs: "nextTurn" },
-    );
+  // Per-run activity for the side save pass: reset on agent_start, counted on
+  // tool_call. The side session runs on its own AgentSession — its calls never
+  // reach these handlers.
+  let runToolCalls = 0;
+  let runHadWrite = false;
+  let runStoredMemory = false;
+  let saveRun: MemorySaveRun | null = null;
+
+  pi.on("agent_start", () => {
+    runToolCalls = 0;
+    runHadWrite = false;
+    runStoredMemory = false;
+  });
+  pi.on("tool_call", (event) => {
+    runToolCalls += 1;
+    if (event.toolName === "edit" || event.toolName === "write") runHadWrite = true;
+    if (event.toolName === MEMORY_TOOLS.STORE || event.toolName === MEMORY_TOOLS.DELETE) {
+      runStoredMemory = true;
+    }
+  });
+
+  pi.on("agent_end", async (_event, ctx) => {
+    const cfg = readMemoryConfig(ctx.cwd);
+    const mode = cfg.saveMode;
+
+    if (mode === "reminder") {
+      // Exactly the pre-side behaviour: one nextTurn nudge per finished run.
+      if (storeDone || !recallDone) return;
+      if (retro.queued) return;
+      if (!cfg.write || overrides.write === false) return;
+      if (!agentHooksEnabled()) return;
+      if (!pi.getActiveTools().includes(MEMORY_TOOLS.STORE)) return;
+      retro.queue();
+      pi.sendMessage(
+        {
+          customType: RETRO_CUSTOM_TYPE,
+          content: [
+            "**🧠 Memory reminder:** If you learned something non-obvious in this task,",
+            "call `memory_store` to save it as a memory for future sessions.",
+            "Update existing memories instead of creating duplicates.",
+          ].join(" "),
+          display: true,
+        },
+        { deliverAs: "nextTurn" },
+      );
+      return;
+    }
+
+    if (mode !== "side") return; // "off"
+    if (
+      !shouldRunSideSave({
+        write: cfg.write,
+        writeOverride: overrides.write,
+        hooksEnabled: agentHooksEnabled(),
+        storeActive: pi.getActiveTools().includes(MEMORY_TOOLS.STORE),
+        runToolCalls,
+        runHadWrite,
+        runStoredMemory,
+        running: saveRun !== null,
+      })
+    ) {
+      return;
+    }
+
+    const run = startMemorySave(pi, ctx, () => backend);
+    saveRun = run;
+    void run.finished
+      .then((outcome) => {
+        const usage = outcome.usage;
+        memoryDebug(
+          `save: stored=[${outcome.stored.join(", ")}]` +
+            (usage ? ` usage in=${usage.input} cacheRead=${usage.cacheRead} cacheWrite=${usage.cacheWrite} out=${usage.output}` : "") +
+            (outcome.error ? ` error=${outcome.error}` : ""),
+        );
+        if (outcome.stored.length > 0) {
+          // A store happened — a later reminder-mode switch shouldn't re-nag.
+          storeDone = true;
+          try {
+            pi.appendEntry(SAVE_CARD_TYPE, { titles: outcome.stored, usage });
+          } catch {
+            // card is cosmetic
+          }
+        }
+      })
+      .catch((error) => memoryDebug(`save: ${error instanceof Error ? error.message : String(error)}`))
+      .finally(() => {
+        if (saveRun === run) saveRun = null;
+      });
   });
 
   pi.on("session_compact", async () => {
@@ -482,6 +618,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     if (pendingTimer) { clearInterval(pendingTimer); pendingTimer = null; }
     replayKick = () => {};
+    saveRun?.abort();
+    saveRun = null;
     backend?.close();
     backend = null;
   });
