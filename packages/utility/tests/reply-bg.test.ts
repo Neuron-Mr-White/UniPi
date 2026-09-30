@@ -54,12 +54,13 @@ test("only a finished reply without tool calls is painted, and repeat renders ar
   }));
   const reply = new Fake();
   const first = reply.render(10);
-  assert.equal(first.length, 5); // spacer + rule + text + pad + closing rule
+  assert.equal(first.length, 6); // spacer + rule + pad + text + pad + closing rule
   assert.equal(first[0], "");
   assert.equal(first[1], "─ summary ");
-  assert.equal(first[4], "─".repeat(10));
-  assert.ok(first[2]!.startsWith("\x1b[48;5;236m"));
-  assert.ok(!first[4]!.includes("\x1b[48;5;236m")); // the rules sit outside the panel
+  assert.ok(first[2]!.startsWith("\x1b[48;5;236m")); // one blank pad row on the panel bg
+  assert.ok(first[3]!.includes("hello"));
+  assert.equal(first[5], "─".repeat(10));
+  assert.ok(!first[5]!.includes("\x1b[48;5;236m")); // the rules sit outside the panel
   assert.strictEqual(reply.render(10), first); // cached array
   const withTools = new Fake();
   withTools.hasToolCalls = true;
@@ -94,7 +95,7 @@ test("an errored or aborted tail is not framed as the summary", () => {
   }
   const ok = new Fake();
   ok.lastMessage = { stopReason: "stop", content: [{ type: "text", text: "done" }] };
-  assert.equal(ok.render(10).length, 5); // normal reply still framed
+  assert.equal(ok.render(10).length, 6); // normal reply still framed
 });
 
 test("thinking/tool-only steps render no rows; errors still show", () => {
@@ -184,9 +185,10 @@ test("a leading blank row is not painted inside the summary panel", () => {
       label ? `─ ${label} ${"─".repeat(Math.max(0, w - label.length - 4))}` : "─".repeat(w),
   }));
   const out = new Reply().render(10);
-  assert.equal(out.length, 5); // breathing + rule + text + pad + rule — no pad under the rule
+  assert.equal(out.length, 6); // breathing + rule + pad + text + pad + rule — exactly one pad row under the rule
   assert.equal(out[1], "─ summary ");
-  assert.ok(out[2]!.includes("hello"));
+  assert.equal(out[2]!.replace(/\x1b\[[0-9;]*m/g, ""), "          "); // one blank pad row only
+  assert.ok(out[3]!.includes("hello"));
 });
 
 test("trimEdgeBlankLines carries dropped OSC-133 zone markers onto surviving lines", () => {
@@ -207,9 +209,9 @@ test("trimEdgeBlankLines carries dropped OSC-133 zone markers onto surviving lin
     dividerFor: (w: number) => "─".repeat(w),
   }));
   const out = new Z().render(10);
-  // " hi" keeps its zone start; " bye " keeps end+final; no blank rows painted.
-  assert.ok(out[2]!.includes("\x1b]133;A\x07") && out[2]!.includes("hi"));
-  assert.ok(out[3]!.includes("\x1b]133;B\x07") && out[3]!.includes("\x1b]133;C\x07"));
+  // " hi" keeps its zone start; " bye " keeps end+final; one pad row below the rule.
+  assert.ok(out[3]!.includes("\x1b]133;A\x07") && out[3]!.includes("hi"));
+  assert.ok(out[4]!.includes("\x1b]133;B\x07") && out[4]!.includes("\x1b]133;C\x07"));
   // Direct unit check: dropped edge blanks pass their markers to the nearest
   // surviving line, keeping pi's convention (markers precede the line's text).
   const trimmed = trimEdgeBlankLines(["\x1b]133;A\x07  ", " x ", "  \x1b]133;B\x07"]);

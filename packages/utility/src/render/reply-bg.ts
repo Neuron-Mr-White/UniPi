@@ -231,6 +231,10 @@ export function patchAssistantRender(
     const painted = [
       "", // breathing space above the section rule
       dividerFor(width),
+      // Exactly one pad row below the rule, mirroring the bottom pad: the
+      // reply (its `●` anchor) starts one blank row under "─ summary ─" —
+      // never flush, never two.
+      paintLine("", width, bg),
       ...lines.map((l) => paintLine(l, width, bg, fg)),
       // A bottom pad row so the panel doesn't end flush on the last text line.
       paintLine("", width, bg),

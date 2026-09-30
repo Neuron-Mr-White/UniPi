@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `utility` (simple render style): the reply panel has exactly one blank pad row between the `─ summary ─` rule and the reply text (and before the closing rule) — the edge-blank trim had left the `●` text flush under the rule.
+
 ## [3.0.0-alpha.15] — 2026-09-30
 
 ### Fixed
