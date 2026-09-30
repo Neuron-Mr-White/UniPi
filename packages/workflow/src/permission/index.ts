@@ -4,8 +4,10 @@
  * Every tool call is classified (read-only, workspace write, bash, other) and
  * gated by the active mode. In `auto`, an unrecognized bash command is judged by
  * jev (one Decision-model call) instead of prompting; anything destructive or
- * ambiguous always asks. Without a UI nothing prompts: it behaves like `full`,
- * except saved deny rules and dangerous patterns, which are blocked outright.
+ * ambiguous always asks. `full` runs everything short of saved deny rules (and
+ * dangerous bash in headless runs, where nothing could confirm it). Without a UI
+ * nothing prompts: it behaves like `full`, except saved deny rules and dangerous
+ * patterns, which are blocked outright.
  */
 
 import { appendFileSync, mkdirSync } from "node:fs";
@@ -166,7 +168,7 @@ export function registerPermissionModes(pi: ExtensionAPI, controller: Permission
             ? "Prompt before every write, bash call and other tool"
             : m === "auto"
               ? "Read-only and workspace writes run; jev judges ambiguous bash (default)"
-              : "Run everything except saved deny rules and dangerous patterns",
+              : "Run everything — only saved deny rules block",
       }));
       return items.length > 0 ? items : null;
     },

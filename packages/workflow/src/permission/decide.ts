@@ -90,10 +90,13 @@ export async function decideToolCall(input: ToolCallInput, deps: DecideDeps): Pr
   // 2. Read-only tools.
   if (READ_ONLY_TOOLS.has(tool)) return { action: "allow", reason: "read-only tool" };
 
-  // 3. write / edit — inside the workspace or the temp dir is fine outside ask mode.
+  // 3. write / edit — inside the workspace or the temp dir is fine outside ask mode;
+  // full mode runs everything (UNI-40: it must be able to write anywhere, e.g. the
+  // installed-extension hot-patch in ~/.pi), so only ask/auto prompt on outside writes.
   if (isWrite) {
     const inside = isInsidePath(subject, deps.cwd) || isInsidePath(subject, deps.tmpdir);
     if (inside && deps.mode !== "ask") return { action: "allow", reason: "inside the workspace" };
+    if (deps.mode === "full") return { action: "allow", reason: "full mode · outside the workspace" };
     if (!deps.hasUI) return { action: "allow", reason: "no UI — full behaviour" };
     return {
       action: "ask",

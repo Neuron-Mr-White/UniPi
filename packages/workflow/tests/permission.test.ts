@@ -57,12 +57,18 @@ describe("write / edit", () => {
       assert.equal(decision.action, "ask");
     });
 
-    it(`${tool} outside the workspace always asks`, async () => {
-      for (const mode of ["auto", "full"] as PermissionMode[]) {
+    it(`${tool} outside the workspace asks in auto and ask`, async () => {
+      for (const mode of ["auto", "ask"] as PermissionMode[]) {
         const decision = await decideToolCall({ toolName: tool, subject: "/etc/hosts" }, deps({ mode }));
         assert.equal(decision.action, "ask");
         assert.match(decision.action === "ask" ? decision.reason : "", /outside the workspace/);
       }
+    });
+
+    // UNI-40: full mode must not prompt — it runs everything short of deny rules.
+    it(`${tool} outside the workspace is allowed in full mode`, async () => {
+      const decision = await decideToolCall({ toolName: tool, subject: "/etc/hosts" }, deps({ mode: "full" }));
+      assert.equal(decision.action, "allow");
     });
 
     it(`${tool} into the temp dir is allowed in auto`, async () => {
