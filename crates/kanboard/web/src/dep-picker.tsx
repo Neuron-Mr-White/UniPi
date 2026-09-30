@@ -1,22 +1,13 @@
 /**
- * Shared "runs after" task picker: autofocused search, status-sorted results,
- * keyboard nav, capped list. Used by the New-task dialog and the task panel.
+ * Shared "runs after" task picker: autofocused search, newest-created-first
+ * results, keyboard nav, capped list. Used by the New-task dialog and the task panel.
  */
 
 import { For, Show, createSignal, type JSX } from "solid-js";
 import type { Task } from "./api.js";
 import { Icon, StatusGlyph } from "./icons.js";
+import { newestFirst } from "./mention.js";
 import { board } from "./state.js";
-
-/** Display order for dependency candidates. */
-const RANK: Record<string, number> = {
-  todo: 0,
-  in_progress: 1,
-  blocked: 2,
-  in_review: 3,
-  backlog: 4,
-  done: 5,
-};
 
 const MAX_SHOWN = 50;
 
@@ -42,7 +33,7 @@ export function depCandidates(needle: string, exclude: Set<string>, selfId?: str
     .filter((task) => !["cancelled", "archived"].includes(task.status))
     .filter((task) => !selfId || !wouldCycle(selfId, task.id))
     .filter((task) => !text || task.id.toLowerCase().includes(text) || task.title.toLowerCase().includes(text))
-    .sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9) || a.id.localeCompare(b.id));
+    .sort(newestFirst);
   return { shown: pool.slice(0, MAX_SHOWN), more: Math.max(0, pool.length - MAX_SHOWN) };
 }
 

@@ -345,6 +345,10 @@ fn multi_line_notes_with_blank_lines_round_trip() {
         parsed.activity.last().unwrap().text,
         "parent\n  indented child\n    deeper"
     );
+    // UNI-8: paragraph breaks survive (one empty line, never `  `).
+    let paragraphs = &parsed.activity[parsed.activity.len() - 2].text;
+    assert_eq!(paragraphs, "line one\n\nline three", "{text}");
+    assert!(!text.contains("\n  \n"), "no whitespace-only line: {text:?}");
     assert_eq!(format::render(&parsed), text);
     // And an indented note written through the CLI validates.
     let round_tripped = format::render(&parsed);
@@ -354,8 +358,26 @@ fn multi_line_notes_with_blank_lines_round_trip() {
 }
 
 #[test]
-fn strategy_and_plan_round_trip_and_back_compat() {
-    // New fields parse + render; files without them load as None.
+fn paragraph_breaks_collapse_and_never_join_the_next_entry() {
+    let mut task = sample();
+    task.push_activity(Utc::now(), Actor::Agent, "summary\n\n\n\n- a\n- b\n\n**Need:**\n1. x");
+    task.push_activity(Utc::now(), Actor::User, "next entry");
+    let text = format::render(&task);
+    let (parsed, problems) = format::parse("x.md", &text);
+    assert!(problems.is_empty(), "{problems:?}");
+    let parsed = parsed.unwrap();
+    let n = parsed.activity.len();
+    assert_eq!(parsed.activity[n - 2].text, "summary\n\n- a\n- b\n\n**Need:**\n1. x");
+    assert_eq!(parsed.activity[n - 1].text, "next entry");
+    assert_eq!(format::render(&parsed), text, "render is idempotent");
+}
+
+#[test]
+fn legacy_strategy_plan_and_runner_run_blocks_still_parse_and_round_trip() {
+    // Files written before the runner was removed carry `strategy:`/`plan:`
+    // and runner-owned `run:` blocks (no `owner:`). They must keep parsing
+    // cleanly and re-render byte-for-byte (the board is strict about canonical
+    // form), even though nothing exposes those fields any more.
     let (task, problems) = kanboard::format::parse(
         "T-1.md",
         "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\nstrategy: swarm\nplan: true\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\n---\n\nBody line one\n",
@@ -381,17 +403,74 @@ fn strategy_and_plan_round_trip_and_back_compat() {
     assert_eq!(task.run.unwrap().mode.as_str(), "none");
 }
 
+const LEGACY_TASK: &str = "---
+id: FIX-900
+title: Routed by the old runner
+status: in_progress
+priority: high
+order: 1000
+deps: []
+labels: []
+strategy: goal
+plan: true
+created: 2026-09-24T10:00:00Z
+updated: 2026-09-24T10:05:00Z
+run:
+  session: old-runner
+  pid: 999999
+  host: elsewhere
+  mode: goal
+  goal: goal-7
+  started: 2026-09-24T10:05:00Z
+---
+
+Body text.
+
+## Activity
+- 2026-09-24T10:00:00Z [user] created
+- 2026-09-24T10:05:00Z [system] claimed by session old-runner (mode goal) pid 999999 on elsewhere
+";
+
 #[test]
-fn strategy_edit_cli_parses_and_clears() {
-    assert_eq!(
-        kanboard::cli::parse_strategy_label("goal").unwrap(),
-        Some(kanboard::model::Strategy::Goal)
-    );
-    assert_eq!(kanboard::cli::parse_strategy_label("auto").unwrap(), None);
-    assert!(kanboard::cli::parse_strategy_label("bogus").is_err());
-    assert_eq!(kanboard::cli::parse_plan_flag("yes").unwrap(), Some(true));
-    assert_eq!(kanboard::cli::parse_plan_edit("auto").unwrap(), None);
-    assert!(kanboard::cli::parse_plan_flag("maybe").is_err());
+fn a_board_with_legacy_strategy_plan_files_validates_and_hides_them() {
+    let fixture = Fixture::new();
+    let path = common::write_task_file(&fixture, "FIX-900", LEGACY_TASK);
+
+    // validate: clean, nothing to fix.
+    let checked = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
+    assert!(checked.problems.is_empty(), "{:?}", checked.problems);
+    let fixed = commands::validate(&fixture.layout, fixture.project.clone(), true).unwrap();
+    assert!(fixed.fixed.is_empty(), "already canonical: {:?}", fixed.fixed);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), LEGACY_TASK);
+
+    // The board loads it; the JSON no longer exposes the routing fields.
+    let listed = fixture.list_json();
+    let entry = &listed["tasks"][0];
+    assert_eq!(entry["id"], "FIX-900");
+    assert!(listed["problems"].as_array().unwrap().is_empty(), "{listed}");
+    assert!(entry.get("strategy").is_none(), "{entry}");
+    assert!(entry.get("plan").is_none(), "{entry}");
+    assert_eq!(entry["run"]["owner"], "system");
+
+    // A write keeps the legacy lines (the file stays canonical).
+    commands::note(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        "FIX-900",
+        "still here",
+    )
+    .unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("strategy: goal\nplan: true\n"), "{text}");
+    let checked = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
+    assert!(checked.problems.is_empty(), "{:?}", checked.problems);
+
+    // The CLI no longer accepts the flags.
+    let output = common::cli(&fixture, &["add", "x", "--strategy", "goal"]);
+    assert!(!output.status.success());
+    let output = common::cli(&fixture, &["edit", "FIX-900", "--plan", "yes"]);
+    assert!(!output.status.success());
 }
 
 #[test]
@@ -402,18 +481,22 @@ fn pi_settings_patch_validates_and_preserves_other_keys() {
     // SAFETY: test is single-threaded here.
     unsafe { std::env::set_var("HOME", tmp.path()) };
     // Pre-existing foreign key survives.
-    patch_pi_settings(&serde_json::json!({"otherKey": "keep", "queueMax": 5}).as_object().unwrap().clone()).unwrap();
+    patch_pi_settings(&serde_json::json!({"otherKey": "keep", "maxSessions": 3}).as_object().unwrap().clone()).unwrap();
     let stored = load_pi_settings();
-    assert_eq!(stored["queueMax"], 5);
+    assert_eq!(stored["maxSessions"], 3);
     assert_eq!(stored["otherKey"], "keep");
     // Valid patch validates.
     let good = validate_pi_patch(
-        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "blocking": "ask", "chainGate": "done", "retentionDays": 30}).as_object().unwrap().clone(),
+        &serde_json::json!({"blocking": "ask", "chainGate": "done", "retentionDays": 30}).as_object().unwrap().clone(),
     ).unwrap();
-    assert_eq!(good["defaultStrategy"], "swarm");
-    assert!(good["defaultPlan"].as_bool().unwrap());
+    assert_eq!(good["blocking"], "ask");
+    // Keys of the removed runner (routing, queue) are ignored, not written and not refused.
+    let legacy = validate_pi_patch(
+        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "queueMax": 5}).as_object().unwrap().clone(),
+    ).unwrap();
+    assert!(legacy.is_empty(), "{legacy:?}");
     // Invalid values are rejected.
-    assert!(validate_pi_patch(&serde_json::json!({"defaultStrategy": "bogus"}).as_object().unwrap().clone()).is_err());
+    assert!(validate_pi_patch(&serde_json::json!({"blocking": "bogus"}).as_object().unwrap().clone()).is_err());
     assert!(validate_pi_patch(&serde_json::json!({"maxSessions": 0}).as_object().unwrap().clone()).is_err());
     assert!(validate_pi_patch(&serde_json::json!({"nope": 1}).as_object().unwrap().clone()).is_err());
 }

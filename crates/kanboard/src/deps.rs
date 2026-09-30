@@ -56,8 +56,8 @@ pub fn blocked_by(
     }
 }
 
-/// Dependencies that cannot progress on their own: still in Backlog (the runner
-/// never claims Backlog) or missing. A task waiting on these is "locked" until a
+/// Dependencies that cannot progress on their own: still in Backlog (`start`
+/// only takes todo tasks) or missing. A task waiting on these is "locked" until a
 /// human schedules the dependency — distinct from waiting on work in flight.
 pub fn locked_by(
     task: &Task,

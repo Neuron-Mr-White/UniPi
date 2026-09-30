@@ -1,55 +1,23 @@
-//! Session-scoped rules: one claim per session, at most two sessions per
-//! project, dead-pid reaping, `claim-next --id`, the per-session queue, agent
-//! edit/block ownership, the `[agent:<session>]` activity tag, and the
+//! Session-scoped rules: at most two sessions per project, dead-pid reaping,
+//! agent edit/block ownership, the `[agent:<session>]` activity tag, and the
 //! read-only `next`/`chain`/`search` commands.
 
 mod common;
 
 use common::{Fixture, cli, id_of, task_from};
-use kanboard::commands::{self, ClaimArgs, Common, EditArgs};
+use kanboard::commands::{self, Common, EditArgs, StartArgs};
 use kanboard::model::{Actor, ChainGate, Priority, Status};
 use kanboard::store::Project;
 use serde_json::Value;
 
-fn claim(fixture: &Fixture, session: &str, pid: u32) -> Result<Value, kanboard::error::Error> {
-    let host = commands::hostname();
-    let args = ClaimArgs {
-        session,
-        pid,
-        host: &host,
-        mode: kanboard::model::RunMode::None,
-        id: None,
-    };
-    commands::claim_next(
-        &fixture.layout,
-        fixture.project.clone(),
-        ChainGate::InReview,
-        &args,
-        fixture.common.now,
-    )
-}
-
-fn claim_id(
+/// `start <ID>` for `session` (pid owns the claim).
+fn start_id(
     fixture: &Fixture,
     session: &str,
     pid: u32,
     id: &str,
 ) -> Result<Value, kanboard::error::Error> {
-    let host = commands::hostname();
-    let args = ClaimArgs {
-        session,
-        pid,
-        host: &host,
-        mode: kanboard::model::RunMode::None,
-        id: Some(id),
-    };
-    commands::claim_next(
-        &fixture.layout,
-        fixture.project.clone(),
-        ChainGate::InReview,
-        &args,
-        fixture.common.now,
-    )
+    fixture.try_start(id, session, pid)
 }
 
 fn agent(fixture: &Fixture, session: Option<&str>) -> Common {
@@ -57,30 +25,6 @@ fn agent(fixture: &Fixture, session: Option<&str>) -> Common {
     common.actor = Actor::Agent;
     common.session = session.map(|value| value.to_string());
     common
-}
-
-#[test]
-fn a_session_holds_one_claim_and_two_sessions_is_the_cap() {
-    let fixture = Fixture::new();
-    let pid = std::process::id();
-    for title in ["a", "b", "c", "d"] {
-        fixture.add_with(title, Status::Todo, Priority::None, &[]);
-    }
-
-    let first = claim(&fixture, "s1", pid).expect("s1 claims");
-    assert!(first["task"].is_object());
-    // The same session cannot take a second task.
-    let err = claim(&fixture, "s1", pid).unwrap_err();
-    assert!(err.to_string().contains("already runs"), "{err}");
-
-    // A second session is fine; a third hits the cap.
-    assert!(claim(&fixture, "s2", pid).expect("s2 claims")["task"].is_object());
-    let err = claim(&fixture, "s3", pid).unwrap_err();
-    assert!(
-        err.to_string().contains("s1") && err.to_string().contains("s2"),
-        "{err}"
-    );
-    assert!(err.to_string().contains("sessions"), "{err}");
 }
 
 #[test]
@@ -96,17 +40,19 @@ fn the_session_cap_is_per_project() {
     .unwrap();
     let pid = std::process::id();
 
-    fixture.add_with("a", Status::Todo, Priority::None, &[]);
-    fixture.add_with("b", Status::Todo, Priority::None, &[]);
-    claim(&fixture, "s1", pid).unwrap();
-    claim(&fixture, "s2", pid).unwrap();
+    let a = fixture.add_with("a", Status::Todo, Priority::None, &[]);
+    let b = fixture.add_with("b", Status::Todo, Priority::None, &[]);
+    let c = fixture.add_with("c", Status::Todo, Priority::None, &[]);
+    start_id(&fixture, "s1", pid, &a.id).unwrap();
+    start_id(&fixture, "s2", pid, &b.id).unwrap();
+    let err = start_id(&fixture, "s3", pid, &c.id).unwrap_err();
     assert!(
-        claim(&fixture, "s3", pid).is_err(),
-        "third session refused here"
+        err.to_string().contains("s1") && err.to_string().contains("s2"),
+        "third session refused here, naming the others: {err}"
     );
 
     // The other project is unaffected.
-    commands::add(
+    let x = commands::add(
         &fixture.layout,
         other.clone(),
         &fixture.common,
@@ -116,54 +62,50 @@ fn the_session_cap_is_per_project() {
         Priority::None,
         &[],
         &[],
-        None,
-        None,
     )
     .unwrap();
     let host = commands::hostname();
-    let args = ClaimArgs {
+    let args = StartArgs {
         session: "s3",
         pid,
         host: &host,
-        mode: kanboard::model::RunMode::None,
-        id: None,
     };
-    let value = commands::claim_next(
+    let value = commands::start(
         &fixture.layout,
         other,
         ChainGate::InReview,
+        &id_of(&x),
         &args,
         fixture.common.now,
     )
     .unwrap();
-    assert!(value["task"].is_object(), "s3 claims in the other project");
+    assert_eq!(value["status"], "in_progress", "s3 starts in the other project");
 }
 
 #[test]
-fn claim_reaps_dead_sessions_and_leaves_foreign_hosts_alone() {
+fn start_reaps_dead_sessions_and_leaves_foreign_hosts_alone() {
     let fixture = Fixture::new();
-    // Foreign first: the ghost's claim runs reap before claiming, and a
+    // Foreign first: the ghost's start runs reap before claiming, and a
     // foreign-host claim must survive it.
     let foreign = fixture.add_with("foreign", Status::Todo, Priority::None, &[]);
-    let claimed = commands::claim_next(
+    let claimed = commands::start(
         &fixture.layout,
         fixture.project.clone(),
         ChainGate::InReview,
-        &ClaimArgs {
+        &foreign.id,
+        &StartArgs {
             session: "elsewhere",
             pid: 999_998,
             host: "not-this-host",
-            mode: kanboard::model::RunMode::None,
-            id: Some(&foreign.id),
         },
         fixture.common.now,
     )
     .unwrap();
-    assert_eq!(claimed["task"]["id"], foreign.id.as_str());
+    assert_eq!(claimed["id"], foreign.id.as_str());
 
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
     // 999_999 is not a live pid on this host.
-    claim(&fixture, "ghost", 999_999).unwrap();
+    start_id(&fixture, "ghost", 999_999, &task.id).unwrap();
     let ghost_claimed = fixture
         .tasks()
         .into_iter()
@@ -223,98 +165,6 @@ fn claim_reaps_dead_sessions_and_leaves_foreign_hosts_alone() {
 }
 
 #[test]
-fn claim_next_id_claims_one_task_or_says_why_not() {
-    let fixture = Fixture::new();
-    let dep = fixture.add_with("dep", Status::Todo, Priority::None, &[]);
-    let waiting = fixture.add_with(
-        "waiting",
-        Status::Todo,
-        Priority::None,
-        std::slice::from_ref(&dep.id),
-    );
-    let parked = fixture.add_with("parked", Status::Backlog, Priority::None, &[]);
-    let pid = std::process::id();
-
-    // Not todo → named reason.
-    let err = claim_id(&fixture, "s1", pid, &parked.id).unwrap_err();
-    assert!(
-        err.to_string().contains("not todo") || err.to_string().contains("backlog"),
-        "{err}"
-    );
-    // Todo but waiting → the dep is named.
-    let err = claim_id(&fixture, "s1", pid, &waiting.id).unwrap_err();
-    assert!(err.to_string().contains(&dep.id), "{err}");
-    // Ready → claimed.
-    let value = claim_id(&fixture, "s1", pid, &dep.id).unwrap();
-    assert_eq!(value["task"]["id"], dep.id.as_str());
-}
-
-#[test]
-fn the_queue_is_per_session_and_deduped() {
-    let fixture = Fixture::new();
-    let ids: Vec<String> = (0..6)
-        .map(|index| {
-            fixture
-                .add_with(&format!("t{index}"), Status::Todo, Priority::None, &[])
-                .id
-        })
-        .collect();
-
-    // queue needs a session: the CLI refuses without --session/UNIPI_KANBOARD_SESSION.
-    let output = common::cli(&fixture, &["queue", "--list"]);
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("needs a session"));
-
-    let slug = fixture.project.clone();
-    commands::queue_update(&fixture.layout, slug.clone(), "s1", &ids[..5], None).unwrap();
-    // The default cap (10) is not hit by five — the sixth is a partial accept.
-    let sixth =
-        commands::queue_update(&fixture.layout, slug.clone(), "s1", &ids[5..], None).unwrap();
-    assert_eq!(sixth["queue"].as_array().unwrap().len(), 6);
-
-    // Another session has its own queue.
-    let other =
-        commands::queue_update(&fixture.layout, slug.clone(), "s2", &ids[..2], None).unwrap();
-    assert_eq!(other["queue"], serde_json::json!([ids[0], ids[1]]));
-    let listed = commands::queue_list(&fixture.layout, &slug, "s1").unwrap();
-    assert_eq!(listed["queue"].as_array().unwrap().len(), 6);
-
-    // Dedupe and unqueue.
-    let again =
-        commands::queue_update(&fixture.layout, slug.clone(), "s1", &ids[..2], None).unwrap();
-    assert_eq!(again["queue"].as_array().unwrap().len(), 6, "dedupe");
-    let trimmed =
-        commands::queue_update(&fixture.layout, slug.clone(), "s1", &[], Some(&ids[..2])).unwrap();
-    assert_eq!(trimmed["queue"].as_array().unwrap().len(), 4);
-    let cleared = commands::queue_update(&fixture.layout, slug, "s1", &[], Some(&[])).unwrap();
-    assert_eq!(cleared["queue"], serde_json::json!([]));
-
-    // Final tasks cannot be queued.
-    let done = fixture.add_with("done", Status::Todo, Priority::None, &[]);
-    claim_id(&fixture, "worker", std::process::id(), &done.id).unwrap();
-    commands::release(
-        &fixture.layout,
-        fixture.project.clone(),
-        &done.id,
-        Status::InReview,
-        "done",
-        ChainGate::InReview,
-        fixture.common.now,
-    )
-    .unwrap();
-    fixture.move_to(&done.id, Status::Done);
-    let err = commands::queue_update(
-        &fixture.layout,
-        fixture.project.clone(),
-        "s1",
-        &[done.id],
-        None,
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("final"), "{err}");
-}
-
-#[test]
 fn agents_edit_only_their_own_drafts() {
     let fixture = Fixture::new();
     let user_made = fixture.add("user task");
@@ -327,8 +177,6 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &user_made.id,
         EditArgs {
-            strategy: None,
-            plan: None,
             title: Some("new title"),
             body: None,
             priority: None,
@@ -350,8 +198,6 @@ fn agents_edit_only_their_own_drafts() {
             Priority::None,
             &[],
             &[],
-            None,
-            None,
         )
         .unwrap(),
     );
@@ -361,8 +207,6 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &mine.id,
         EditArgs {
-            strategy: None,
-            plan: None,
             title: None,
             body: Some("revised"),
             priority: None,
@@ -384,12 +228,10 @@ fn agents_edit_only_their_own_drafts() {
             Priority::None,
             &[],
             &[],
-            None,
-            None,
         )
         .unwrap(),
     );
-    claim_id(&fixture, "sess-x", std::process::id(), &reviewed.id).unwrap();
+    start_id(&fixture, "sess-x", std::process::id(), &reviewed.id).unwrap();
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -406,8 +248,6 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &reviewed.id,
         EditArgs {
-            strategy: None,
-            plan: None,
             title: Some("late edit"),
             body: None,
             priority: None,
@@ -424,20 +264,10 @@ fn an_agent_blocks_only_the_task_its_session_runs() {
     let first = fixture.add_with("first", Status::Todo, Priority::None, &[]);
     let second = fixture.add_with("second", Status::Todo, Priority::None, &[]);
     let pid = std::process::id();
-    claim(&fixture, "sess-a", pid).unwrap();
-    claim(&fixture, "sess-b", pid).unwrap();
-    let tasks = fixture.tasks();
-    let mine = tasks
-        .iter()
-        .find(|t| t.run.as_ref().map(|r| r.session.as_str()) == Some("sess-a"))
-        .unwrap()
-        .id
-        .clone();
-    let theirs = if mine == first.id {
-        second.id.clone()
-    } else {
-        first.id.clone()
-    };
+    start_id(&fixture, "sess-a", pid, &first.id).unwrap();
+    start_id(&fixture, "sess-b", pid, &second.id).unwrap();
+    let mine = first.id.clone();
+    let theirs = second.id.clone();
 
     // No session → refused with the reason named.
     let err = commands::move_task(
@@ -490,8 +320,6 @@ fn activity_entries_carry_the_session_tag() {
         Priority::None,
         &[],
         &[],
-        None,
-        None,
     )
     .unwrap();
     let id = id_of(&value);
@@ -591,7 +419,7 @@ fn next_chain_and_search_are_read_only() {
     assert_eq!(hits["tasks"][0]["id"], dependent.id.as_str());
 
     let old = fixture.add_with("shipped thing", Status::Todo, Priority::None, &[]);
-    claim_id(&fixture, "worker", std::process::id(), &old.id).unwrap();
+    start_id(&fixture, "worker", std::process::id(), &old.id).unwrap();
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -650,8 +478,6 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         &[shot.clone(), doc],
-        None,
-        None,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();
@@ -670,8 +496,6 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         std::slice::from_ref(&log),
-        None,
-        None,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();
@@ -687,91 +511,21 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
 }
 
 #[test]
-fn queue_partial_accepts_in_dependency_order_and_reports_left_out() {
-    let fixture = Fixture::new();
-    let a = fixture.add_with("A", Status::Todo, Priority::None, &[]);
-    let b = fixture.add_with(
-        "B",
-        Status::Todo,
-        Priority::None,
-        std::slice::from_ref(&a.id),
-    );
-    let c = fixture.add_with("C", Status::Todo, Priority::None, &[]);
-    let d = fixture.add_with("D", Status::Todo, Priority::None, &[]);
-
-    // Cap 3, order B A C D → topological puts A first, then B, C; D is left out.
-    let output = common::cli_with_env(
-        &fixture,
-        &[
-            "queue",
-            b.id.as_str(),
-            a.id.as_str(),
-            c.id.as_str(),
-            d.id.as_str(),
-            "--session",
-            "s1",
-            "--json",
-        ],
-        &[("UNIPI_KANBOARD_QUEUE_MAX", "3")],
-    );
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(
-        value["queue"],
-        serde_json::json!([a.id, b.id, c.id]),
-        "dependency order A before B, capped at 3"
-    );
-    assert_eq!(value["leftOut"][0]["id"], d.id.as_str());
-    assert_eq!(value["leftOut"][0]["reason"], "queue limit 3");
-
-    // Cap 0 = unlimited.
-    let output = common::cli_with_env(
-        &fixture,
-        &["queue", d.id.as_str(), "--session", "s1", "--json"],
-        &[("UNIPI_KANBOARD_QUEUE_MAX", "0")],
-    );
-    assert!(output.status.success());
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert!(
-        value["queue"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!(d.id))
-    );
-
-    // A missing id fails the whole call (nothing changed).
-    let output = common::cli_with_env(
-        &fixture,
-        &["queue", "KBL-999", "--session", "s1"],
-        &[("UNIPI_KANBOARD_QUEUE_MAX", "3")],
-    );
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("no such task"));
-}
-
-#[test]
 fn max_sessions_env_limits_other_sessions() {
     let fixture = Fixture::new();
     let first = fixture.add_with("first", Status::Todo, Priority::None, &[]);
-    fixture.add_with("second", Status::Todo, Priority::None, &[]);
+    let second = fixture.add_with("second", Status::Todo, Priority::None, &[]);
     let pid = std::process::id();
 
     let output = common::cli_with_env(
         &fixture,
         &[
-            "claim-next",
-            "--id",
+            "start",
             &first.id,
             "--session",
             "s1",
             "--pid",
             &pid.to_string(),
-            "--host",
-            "test",
         ],
         &[("UNIPI_KANBOARD_MAX_SESSIONS", "1")],
     );
@@ -785,13 +539,12 @@ fn max_sessions_env_limits_other_sessions() {
     let output = common::cli_with_env(
         &fixture,
         &[
-            "claim-next",
+            "start",
+            &second.id,
             "--session",
             "s2",
             "--pid",
             &pid.to_string(),
-            "--host",
-            "test",
         ],
         &[("UNIPI_KANBOARD_MAX_SESSIONS", "1")],
     );
@@ -810,15 +563,13 @@ fn in_review_to_archived_is_user_only_and_bulk_lane_works() {
     let b = fixture.add_with("b", Status::Todo, Priority::None, &[]);
     let done = fixture.add_with("c", Status::Todo, Priority::None, &[]);
     for id in [&a.id, &b.id] {
-        let claimed = common::claimed_id(&fixture.claim_next(&format!("s-{id}"), 999_999)).unwrap();
-        assert_eq!(&claimed, id);
+        fixture.start(id, &format!("s-{id}"), 999_999);
         let _ = cli(
             &fixture,
             &["release", id, "--to", "in_review", "--comment", "done"],
         );
     }
-    let claimed = common::claimed_id(&fixture.claim_next("s-done", 999_999)).unwrap();
-    assert_eq!(claimed, done.id);
+    fixture.start(&done.id, "s-done", 999_999);
     let _ = cli(
         &fixture,
         &[

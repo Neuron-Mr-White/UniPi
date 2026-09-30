@@ -47,28 +47,10 @@ export function PriorityTag(props: { priority: string }): JSX.Element {
   );
 }
 
-/** Strategy / plan tags — tiny labels on cards when the task is labelled. */
-export function StrategyTag(props: { task: Task }): JSX.Element {
-  return (
-    <>
-      <Show when={props.task.strategy}>
-        <span class="tag" title={`Work strategy: ${props.task.strategy}`}>
-          <span>{props.task.strategy}</span>
-        </span>
-      </Show>
-      <Show when={props.task.plan === true}>
-        <span class="tag" title="Plan first">
-          <span>plan</span>
-        </span>
-      </Show>
-    </>
-  );
-}
-
 /**
  * Dependency tag. Three states:
  *  - locked:  a dep is still in Backlog — nothing moves until a human schedules it;
- *  - waiting: deps are in flight (todo / in progress) — the runner will get there;
+ *  - waiting: deps are in flight (todo / in progress) — it becomes ready once they land;
  *  - ready:   every dep reached the gate.
  * Deps drawn directly above in the same chain are omitted (the connector shows them).
  */
@@ -133,24 +115,17 @@ export function LabelTags(props: { labels: string[]; max?: number }): JSX.Elemen
   );
 }
 
-/** "agent" for a hand-started task, else the runner's mode ("direct", "goal", …). */
-export function runLabel(run: { owner?: string; mode?: string } | null | undefined): string {
-  return run?.owner === "agent" ? "agent" : run?.mode ?? "direct";
-}
-
 export function AgentChip(props: { task: Task }): JSX.Element {
   return (
     <Show when={props.task.run}>
       <span
         class="agent-chip"
         title={
-          props.task.run?.owner === "agent"
-            ? `Started by the agent in session ${props.task.run?.session ?? "?"} — it moves the task to In Review with \`finish\``
-            : `Runner session ${props.task.run?.session ?? "?"} · ${props.task.run?.mode ?? "direct"} mode — moves to In Review when the turn ends`
+          `Started by the agent in session ${props.task.run?.session ?? "?"} — it moves the task to In Review with \`finish\` or to Blocked`
         }
       >
         <span class="pulse" aria-hidden="true" />
-        {runLabel(props.task.run)}
+        agent
         <span class="time">{elapsed(props.task.run?.started)}</span>
       </span>
     </Show>

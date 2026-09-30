@@ -8,7 +8,8 @@ import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "soli
 import { api, canMove, needsComment, type Rules, type Task } from "./api.js";
 import { offerToSchedule } from "./schedule.js";
 import { Icon, StatusGlyph } from "./icons.js";
-import { AgentChip, DepTag, LabelTags, PriorityTag, StrategyTag } from "./paint.js";
+import { plainText } from "./markdown.js";
+import { AgentChip, DepTag, LabelTags, PriorityTag } from "./paint.js";
 import {
   board,
   describe,
@@ -40,9 +41,9 @@ const FINAL = new Set(["done", "cancelled", "archived"]);
 const INFO: Record<string, (rules: Rules) => string> = {
   backlog: () => "Ideas and later work. Never run automatically. Drag to Todo when a task is ready.",
   todo: (rules) =>
-    `Ready to run. Autowork and queued work pick the next task by priority, then the order in this column (drag to reorder). A task waits until every task it runs after reaches ${rules.chainGate === "done" ? "Done" : "In Review"} — the chain-gate setting.`,
+    `Ready to work. An agent picks the next task by priority, then the order in this column (drag to reorder). A task waits until every task it runs after reaches ${rules.chainGate === "done" ? "Done" : "In Review"} — the chain-gate setting.`,
   in_progress: (rules) =>
-    `Being worked by an agent session. One task per session, at most ${rules.maxSessions ?? 2} sessions per project. Queued tasks are claimed by the runner and moved to In Review when the turn ends; a task the agent picks up by hand is claimed with "start" and moved with "finish". Locked to its session while it runs.`,
+    `Being worked by an agent session. At most ${rules.maxSessions ?? 2} sessions per project hold tasks at once. The agent claims a task with "start" and hands it on with "finish" (In Review) or by blocking it. Locked to its session while it runs.`,
   blocked: () => "The agent needs something from you. Read the reason on the card, reply with a comment, then drag it back to Todo.",
   in_review: () => "The agent finished. Check the activity, then drag to Done, or back to Todo with a note on what to change.",
   done: () => "Accepted by you. Summarize & archive, or archive without a summary, from the … menu.",
@@ -487,8 +488,8 @@ function Card(props: {
       </div>
       <div class="card-title title">{task().title}</div>
       <Show when={task().status === "blocked" && task().blockedReason?.text}>
-        <div class="card-blocked" title={task().blockedReason?.text}>
-          {task().blockedReason!.text}
+        <div class="card-blocked" title={plainText(task().blockedReason?.text)}>
+          {plainText(task().blockedReason!.text)}
         </div>
       </Show>
       <Show when={display.excerpt && excerpt()}>
@@ -496,7 +497,6 @@ function Card(props: {
       </Show>
       <div class="card-meta">
         <PriorityTag priority={task().priority} />
-        <StrategyTag task={task()} />
         <DepTag task={task()} drawnParents={props.parents} />
         <LabelTags labels={task().labels ?? []} max={2} />
       </div>

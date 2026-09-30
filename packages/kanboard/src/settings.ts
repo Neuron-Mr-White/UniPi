@@ -34,12 +34,6 @@ export interface KanboardSettings {
   doTasks: number;
   /** Board writes a /unipi:kanboard-do grants. */
   doWrites: number;
-  /** Strategy for unlabelled tasks ("auto" = jev decides, gated by `jevThreshold`). */
-  defaultStrategy: "auto" | "none" | "goal" | "ralph" | "swarm" | "graph";
-  /** Confidence floor for jev's strategy answer; below it (or missing) the task runs "none". */
-  jevThreshold: number;
-  /** Plan-first for unlabelled tasks (jev is never asked about plan). */
-  defaultPlan: boolean;
   /** Whether a blocked-by-confusion task may ask the user (ask) or must
    *  assume-and-note (avoid, the default). */
   blocking: "avoid" | "ask";
@@ -62,9 +56,6 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   turnAddLimit: 20,
   doTasks: 5,
   doWrites: 10,
-  defaultStrategy: "none",
-  jevThreshold: 0.8,
-  defaultPlan: false,
   blocking: "avoid",
   reminders: true,
 };
@@ -162,16 +153,6 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
       typeof raw.doWrites === "number" && raw.doWrites >= 0 && storedDoWritesSet(cwd)
         ? raw.doWrites
         : (storedLegacyDoCredits(cwd) ?? DEFAULT_SETTINGS.doWrites),
-    defaultStrategy:
-      typeof raw.defaultStrategy === "string" &&
-      ["auto", "none", "goal", "ralph", "swarm", "graph"].includes(raw.defaultStrategy)
-        ? (raw.defaultStrategy as KanboardSettings["defaultStrategy"])
-        : DEFAULT_SETTINGS.defaultStrategy,
-    jevThreshold:
-      typeof raw.jevThreshold === "number" && raw.jevThreshold > 0 && raw.jevThreshold <= 1
-        ? raw.jevThreshold
-        : DEFAULT_SETTINGS.jevThreshold,
-    defaultPlan: raw.defaultPlan === true,
     blocking: raw.blocking === "ask" ? "ask" : "avoid",
     reminders: raw.reminders !== false,
   };

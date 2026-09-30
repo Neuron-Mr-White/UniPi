@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::cli::{Cli, Command, ProjectCommand};
 use crate::commands::{self, Common, EditArgs, OrderTarget};
 use crate::error::{Error, Result};
-use crate::model::{Actor, ChainGate, Priority, RunMode, Status};
+use crate::model::{Actor, ChainGate, Priority, Status};
 use crate::store::{self, Layout};
 
 pub fn dispatch(cli: &Cli) -> Result<Value> {
@@ -60,8 +60,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             status,
             priority,
             after,
-            strategy,
-            plan,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let status = status
@@ -79,16 +77,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 })?),
                 None => read_body(body.as_deref())?,
             };
-            let strategy = strategy
-                .as_deref()
-                .map(crate::cli::parse_strategy_label)
-                .transpose()?
-                .flatten();
-            let plan = plan
-                .as_deref()
-                .map(crate::cli::parse_plan_flag)
-                .transpose()?
-                .flatten();
             commands::add(
                 &layout,
                 project,
@@ -99,8 +87,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 priority,
                 after,
                 attach,
-                strategy,
-                plan,
             )
         }
 
@@ -122,16 +108,17 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             id,
             status,
             comment,
+            attach,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let to = crate::cli::parse_status(status)?;
-            commands::move_task(&layout, project, &common, id, to, comment.as_deref())
+            commands::move_task_with(&layout, project, &common, id, to, comment.as_deref(), attach)
         }
 
-        Command::Note { id, text } => {
+        Command::Note { id, text, attach } => {
             let text = read_body(Some(text))?.unwrap_or_default();
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            commands::note(&layout, project, &common, id, &text)
+            commands::note_with(&layout, project, &common, id, &text, attach)
         }
 
         Command::Attach {
@@ -177,8 +164,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             body,
             priority,
             labels,
-            strategy,
-            plan,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let body = read_body(body.as_deref())?;
@@ -192,15 +177,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     .filter(|item| !item.is_empty())
                     .collect::<Vec<String>>()
             });
-            // edit: "auto" clears; a value sets.
-            let strategy = strategy
-                .as_deref()
-                .map(crate::cli::parse_strategy_edit)
-                .transpose()?;
-            let plan = plan
-                .as_deref()
-                .map(crate::cli::parse_plan_edit)
-                .transpose()?;
             commands::edit(
                 &layout,
                 project,
@@ -211,8 +187,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     body: body.as_deref(),
                     priority,
                     labels,
-                    strategy,
-                    plan,
                 },
             )
         }
@@ -249,29 +223,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::order(&layout, project, &common, id, target)
         }
 
-        Command::ClaimNext {
-            id,
-            pid,
-            host,
-            mode,
-        } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let mode: RunMode = crate::cli::parse_mode(mode)?;
-            let session = common.session.clone().ok_or_else(|| {
-                Error::usage(
-                    "claim-next needs a session: pass --session or set UNIPI_KANBOARD_SESSION",
-                )
-            })?;
-            let args = commands::ClaimArgs {
-                session: &session,
-                pid: *pid,
-                host,
-                mode,
-                id: id.as_deref(),
-            };
-            commands::claim_next(&layout, project, gate, &args, common.now)
-        }
-
         Command::Start { id, pid } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let session = require_session(&common, "start")?;
@@ -285,10 +236,10 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::start(&layout, project, gate, id, &args, common.now)
         }
 
-        Command::Finish { id, comment } => {
+        Command::Finish { id, comment, attach } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let session = require_session(&common, "finish")?;
-            commands::finish(&layout, project, gate, id, &session, comment, common.now)
+            commands::finish(&layout, project, gate, id, &session, comment, attach, common.now)
         }
 
         Command::Next => {
@@ -299,22 +250,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         Command::Reap { dry_run } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             commands::reap(&layout, project, *dry_run, common.now)
-        }
-
-        Command::Queue { ids, list } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let session = require_session(&common, "queue")?;
-            if *list || ids.is_empty() {
-                commands::queue_list(&layout, &project, &session)
-            } else {
-                commands::queue_update(&layout, project, &session, ids, None)
-            }
-        }
-
-        Command::Unqueue { ids } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let session = require_session(&common, "unqueue")?;
-            commands::queue_update(&layout, project, &session, &[], Some(ids))
         }
 
         Command::Chain { id } => {
@@ -331,20 +266,6 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let to = crate::cli::parse_status(to)?;
             commands::release(&layout, project, id, to, comment, gate, common.now)
-        }
-
-        Command::SetRun { id, mode, goal } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let mode: RunMode = crate::cli::parse_mode(mode)?;
-            commands::set_run(
-                &layout,
-                project,
-                id,
-                mode,
-                goal.as_deref(),
-                gate,
-                common.now,
-            )
         }
 
         Command::Duplicate { id } => {
@@ -538,20 +459,6 @@ fn indent_block(text: &str, indent: usize) -> String {
     text.lines().map(|l| format!("{pad}{l}")).collect::<Vec<_>>().join("\n")
 }
 
-/// `[strategy]`/`[plan]` tags for list/show text output (empty when unset).
-fn strategy_plan_tag(task: &Value) -> String {
-    let strategy = task.get("strategy").and_then(|v| v.as_str()).unwrap_or("");
-    let plan = task.get("plan").and_then(|v| v.as_bool());
-    let mut tag = String::new();
-    if !strategy.is_empty() {
-        tag.push_str(&format!(" [{strategy}]"));
-    }
-    if plan == Some(true) {
-        tag.push_str(" [plan]");
-    }
-    tag
-}
-
 /// First non-empty body line, ≤100 chars, indented — the `show` excerpt.
 fn body_excerpt(task: &Value) -> String {
     let body = task.get("body").and_then(|v| v.as_str()).unwrap_or("");
@@ -633,11 +540,10 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     let ready = field(task, "ready").as_bool().unwrap_or(false);
                     let waiting = ids(field(task, "waitingFor"));
                     format!(
-                        "{}  [{}] {}{}{}{}{}",
+                        "{}  [{}] {}{}{}{}",
                         text(task, "id"),
                         text(task, "status"),
                         text(task, "title"),
-                        strategy_plan_tag(task),
                         if field(task, "priority") == &json!("none") {
                             String::new()
                         } else {
@@ -666,7 +572,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             let status = text(payload, "status");
             let deps = ids(field(payload, "deps"));
             let mut out = format!(
-                "{} [{}] {}\n  priority: {}  order: {}  created: {}{}{}",
+                "{} [{}] {}\n  priority: {}  order: {}  created: {}{}",
                 text(payload, "id"),
                 status,
                 text(payload, "title"),
@@ -677,8 +583,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     String::new()
                 } else {
                     format!("  deps: {deps}")
-                },
-                strategy_plan_tag(payload)
+                }
             );
             let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or("").trim();
             if !body.is_empty() {
@@ -686,11 +591,10 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             }
             if let Some(run) = payload.get("run").filter(|value| !value.is_null()) {
                 out.push_str(&format!(
-                    "\n  run: session {} pid {} on {} mode {} ({})",
+                    "\n  run: session {} pid {} on {} ({})",
                     text(run, "session"),
                     text(run, "pid"),
                     text(run, "host"),
-                    text(run, "mode"),
                     text(payload, "staleness")
                 ));
             }
@@ -753,35 +657,6 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             text(payload, "order"),
             field(payload, "rebalanced")
         ),
-        Command::ClaimNext { .. } => {
-            let task = field(payload, "task");
-            if task.is_null() {
-                let waiting = field(payload, "waiting")
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|item| {
-                        format!(
-                            "{} (waiting {})",
-                            text(item, "id"),
-                            ids(field(item, "waitingFor"))
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                if waiting.is_empty() {
-                    "no ready task".to_string()
-                } else {
-                    format!("no ready task; todo but waiting: {}", waiting.join(", "))
-                }
-            } else {
-                format!(
-                    "{} claimed (mode {})",
-                    text(task, "id"),
-                    text(field(task, "run"), "mode")
-                )
-            }
-        }
         Command::Next => {
             let task = field(payload, "task");
             if task.is_null() {
@@ -838,33 +713,8 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             }
             out
         }
-        Command::Queue { .. } | Command::Unqueue { .. } => {
-            let queue = strings(field(payload, "queue"));
-            let mut out = format!(
-                "queue ({}): {}",
-                text(payload, "session"),
-                if queue.is_empty() {
-                    "empty".to_string()
-                } else {
-                    queue
-                }
-            );
-            let left_out = field(payload, "leftOut")
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-            if !left_out.is_empty() {
-                let ids: Vec<String> = left_out.iter().map(|entry| text(entry, "id")).collect();
-                let reason = left_out
-                    .first()
-                    .map(|entry| text(entry, "reason"))
-                    .unwrap_or_default();
-                out.push_str(&format!("; left out {} ({reason})", ids.join(" ")));
-            }
-            out
-        }
         Command::Settings { .. } => {
-            if field(payload, "queueMax").is_null() {
+            if field(payload, "maxSessions").is_null() {
                 let argv = field(payload, "piCommand")
                     .as_array()
                     .cloned()
@@ -884,7 +734,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     .filter_map(|v| v.as_str().map(str::to_string))
                     .collect();
                 format!(
-                    "pi-command: {}\nmodels: {} reported\nsummary model: {}\ncustom summary instruction: {}\nqueueMax: {} · maxSessions: {}",
+                    "pi-command: {}\nmodels: {} reported\nsummary model: {}\ncustom summary instruction: {}\nmaxSessions: {}",
                     if joined.is_empty() {
                         "(not set)".to_string()
                     } else {
@@ -903,7 +753,6 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                         }
                     },
                     field(payload, "summaryInstructionSet"),
-                    text(payload, "queueMax"),
                     text(payload, "maxSessions")
                 )
             }
@@ -957,11 +806,10 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 .iter()
                 .map(|task| {
                     format!(
-                        "{}  [{}] {}{}{}",
+                        "{}  [{}] {}{}",
                         text(task, "id"),
                         text(task, "status"),
                         text(task, "title"),
-                        strategy_plan_tag(task),
                         body_excerpt(task)
                     )
                 })
@@ -969,7 +817,6 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 .join("\n")
         }
         Command::Release { id, to, .. } => format!("{id} released to {to}"),
-        Command::SetRun { id, mode, .. } => format!("{id} mode {mode}"),
         Command::Duplicate { .. } => format!("{} created (duplicate)", text(payload, "id")),
         Command::ArchiveSweep { .. } => {
             let archived = ids(field(payload, "archived"));
@@ -1097,10 +944,6 @@ pub fn exit_code(cli: &Cli, payload: &Value) -> i32 {
             .unwrap_or(false)
     {
         return 1;
-    }
-    if let Command::ClaimNext { .. } = cli.command {
-        // "no ready task" is a normal outcome, not an error.
-        return 0;
     }
     0
 }

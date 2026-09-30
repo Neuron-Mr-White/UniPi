@@ -137,28 +137,28 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let slug = &fixture.project.slug;
 
-    // Drive a task to in_review through the runner path (system transitions).
-    // claim-next picks by priority, so use whatever it actually claimed.
+    // Drive a task to in_review: `start` it (as an agent session), then a
+    // system `release` hands it to review.
+    let task = fixture.tasks().into_iter().next().expect("a task");
     let claimed = cli(
         &fixture,
         &[
-            "claim-next",
+            "start",
+            &task.id,
+            "--actor",
+            "agent",
             "--session",
             "s-test",
             "--pid",
             &std::process::id().to_string(),
-            "--host",
-            "test-host",
             "--json",
         ],
     );
-    assert!(claimed.status.success());
-    let claimed: serde_json::Value = serde_json::from_slice(&claimed.stdout).expect("claim json");
-    let task = fixture
-        .tasks()
-        .into_iter()
-        .find(|candidate| candidate.id == claimed["task"]["id"].as_str().unwrap())
-        .expect("claimed task");
+    assert!(
+        claimed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&claimed.stderr)
+    );
     let released = cli(
         &fixture,
         &[
@@ -624,8 +624,8 @@ fn the_ui_never_claims_tasks() {
     let slug = &fixture.project.slug;
     let task = fixture.tasks().into_iter().next().unwrap();
 
-    // There is no endpoint that claims work: todo → in_progress is system-only,
-    // and the API has no claim route at all.
+    // There is no endpoint that claims work: todo → in_progress is an agent
+    // session's `start` (or system), and the API has no claim route at all.
     let response = http(
         daemon.port,
         "POST",
@@ -871,20 +871,24 @@ fn project_summaries_carry_counts_running_and_updated_at() {
         "{updated}"
     );
 
+    let first = fixture.tasks().into_iter().next().expect("a task");
     let claimed = cli(
         &fixture,
         &[
-            "claim-next",
+            "start",
+            &first.id,
             "--session",
             "s1",
             "--pid",
             &common::alive_pid().to_string(),
-            "--host",
-            "t",
             "--json",
         ],
     );
-    assert!(claimed.status.success());
+    assert!(
+        claimed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&claimed.stderr)
+    );
     let payload = http(daemon.port, "GET", "/api/projects", None)
         .unwrap()
         .json();
@@ -1030,7 +1034,7 @@ fn settings_set_round_trip_and_agent_refusal() {
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["piCommand"], serde_json::json!(["/usr/bin/pi"]));
-    assert_eq!(value["queueMax"], 10);
+    assert!(value.get("queueMax").is_none(), "the queue died with the runner");
     assert_eq!(value["maxSessions"], 2);
 
     // The legacy agent-command key is refused outright.

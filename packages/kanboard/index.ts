@@ -416,6 +416,10 @@ export default function (pi: ExtensionAPI) {
     // cannot release), and release requires a comment — the next run's resume
     // notice keys on it. Best effort: a dead pid is reaped with "session
     // lost" anyway.
+    // Children (subagents, fusion sidekicks, kanboard's own helpers) inherit
+    // the lead's session id: their shutdown must never release the lead's
+    // claims (a finished subagent used to bounce the lead's task to Todo).
+    if (isChildProcess() || process.env.UNIPI_KANBOARD_CHILD) return;
     try {
       const session = sessionId();
       const claims = await ownClaims();

@@ -133,7 +133,7 @@ fn unblocking_requires_the_answer() {
 }
 
 #[test]
-fn claim_and_run_end_are_system_and_agent_only() {
+fn start_and_finish_are_agent_and_system_only() {
     assert!(!allowed(
         Status::Todo,
         Status::InProgress,
@@ -458,7 +458,7 @@ fn the_table_has_no_duplicate_rows() {
 fn agent_blocks_declares_a_comment_and_the_row_becomes_readable() {
     let fixture = Fixture::new();
     let task = fixture.add_with("agent task", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("sess-1", std::process::id());
+    fixture.start(&task.id, "sess-1", std::process::id());
 
     let mut agent_common = fixture.common.clone();
     agent_common.actor = Actor::Agent;
@@ -496,7 +496,7 @@ fn agent_blocks_declares_a_comment_and_the_row_becomes_readable() {
 fn the_user_answers_a_blocked_task_and_the_note_survives() {
     let fixture = Fixture::new();
     let task = fixture.add_with("blocked task", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("sess-1", std::process::id());
+    fixture.start(&task.id, "sess-1", std::process::id());
     let mut agent_common = fixture.common.clone();
     agent_common.actor = Actor::Agent;
     agent_common.session = Some("sess-1".to_string());
@@ -556,7 +556,7 @@ fn the_user_answers_a_blocked_task_and_the_note_survives() {
 fn duplicate_resets_lifecycle_fields() {
     let fixture = Fixture::new();
     let task = fixture.add_with("original", Status::Todo, Priority::High, &[]);
-    fixture.claim_next("sess-1", std::process::id());
+    fixture.start(&task.id, "sess-1", std::process::id());
     let value = commands::duplicate(
         &fixture.layout,
         fixture.project.clone(),

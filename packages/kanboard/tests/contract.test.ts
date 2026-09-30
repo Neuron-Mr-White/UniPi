@@ -94,24 +94,26 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     assert.equal(typeof shown.staleness, "string");
   });
 
-  it("`claim-next` is {task, waiting} with a nullable task", () => {
-    const claimed = asClaimResult(cli(home, workspace, ["claim-next", "--session", "contract", "--pid", "1", "--host", "test"], env()));
-    assert.ok(claimed.task, "one todo task was ready");
-    assert.equal(claimed.task!.status, "in_progress");
-    assert.equal((claimed.task!.run as { host?: string })?.host, "test");
-    // Nothing else ready → task null, but `waiting` is still an array.
-    const tasks = asTaskList(cli(home, workspace, ["list"], env())).tasks;
-    const allClaimed = tasks.filter((task) => task.status === "todo").length === 0;
-    if (allClaimed) {
-      const again = asClaimResult(cli(home, workspace, ["claim-next", "--session", "contract2", "--pid", "1", "--host", "test"], env()));
-      assert.equal(again.task, null);
-      assert.ok(Array.isArray(again.waiting));
-    }
-    // Release it back for the following tests.
-    asTask("release", cli(home, workspace, ["release", claimed.task!.id, "--to", "todo", "--comment", "contract"], env()));
+  const agent = (session = "contract"): Record<string, string> => ({
+    ...env(),
+    UNIPI_KANBOARD_ACTOR: "agent",
+    UNIPI_KANBOARD_SESSION: session,
+    UNIPI_KANBOARD_PID: String(process.pid),
   });
 
-  it("a Backlog dependency surfaces as `lockedBy` in list and in claim-next's waiting", () => {
+  it("`next` is {task, waiting} with a nullable task, and `start` claims it for the session", () => {
+    const suggested = asClaimResult(cli(home, workspace, ["next"], env()));
+    assert.ok(suggested.task, "one todo task was ready");
+    assert.equal(suggested.task!.status, "todo", "next only suggests");
+    const started = asTask("start", cli(home, workspace, ["start", suggested.task!.id], agent()));
+    assert.equal(started.status, "in_progress");
+    assert.equal((started.run as { session?: string; owner?: string })?.session, "contract");
+    assert.equal((started.run as { owner?: string })?.owner, "agent");
+    // Hand it back for the following tests.
+    asTask("release", cli(home, workspace, ["release", started.id, "--to", "todo", "--comment", "contract"], env()));
+  });
+
+  it("a Backlog dependency surfaces as `lockedBy` in list and in next's waiting", () => {
     const home2 = mkdtempSync(join(tmpdir(), "kb-contract-lock-"));
     const ws2 = mkdtempSync(join(tmpdir(), "kb-contract-lock-ws-"));
     try {
@@ -121,9 +123,9 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
       const child = asTask("add", cli(home2, ws2, ["add", "child", "--status", "todo", "--after", parent.id], env2));
       const listed = asTaskList(cli(home2, ws2, ["list"], env2)).tasks.find((task) => task.id === child.id)!;
       assert.deepEqual(listed.lockedBy, [parent.id]);
-      const claim = asClaimResult(cli(home2, ws2, ["claim-next", "--session", "c", "--pid", "1", "--host", "t"], env2));
-      assert.equal(claim.task, null);
-      const entry = claim.waiting!.find((item) => item.id === child.id)!;
+      const next = asClaimResult(cli(home2, ws2, ["next"], env2));
+      assert.equal(next.task, null);
+      const entry = next.waiting!.find((item) => item.id === child.id)!;
       assert.deepEqual(entry.lockedBy, [parent.id]);
     } finally {
       rmSync(home2, { recursive: true, force: true });
@@ -131,44 +133,30 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     }
   });
 
-  it("`release`, `move`, `note` and `set-run` return the updated task", () => {
+  it("`start`, `note`, `move`, `finish` and `release` return the updated task", () => {
     const task = asTask("add", cli(home, workspace, ["add", "transitioned", "--status", "todo"], env()));
-    const claimed = asClaimResult(
-      cli(home, workspace, ["claim-next", "--session", "contract", "--pid", "1", "--host", "test"], env()),
-    );
-    const id = claimed.task?.id ?? task.id;
+    const started = asTask("start", cli(home, workspace, ["start", task.id], agent()));
+    assert.equal(started.status, "in_progress");
 
-    const running = asTask(
-      "set-run",
-      cli(home, workspace, ["set-run", id, "--mode", "plan"], { ...env(), UNIPI_KANBOARD_ACTOR: "system" }),
-    );
-    assert.equal(running.run?.mode, "plan");
-
-    const noted = asTask("note", cli(home, workspace, ["note", id, "a note"], env()));
+    const noted = asTask("note", cli(home, workspace, ["note", task.id, "a note"], env()));
     assert.equal(noted.activity?.at(-1)?.text, "a note");
 
-    // Only an agent may block a running task.
-    const moved = asTask(
-      "move",
-      cli(home, workspace, ["move", id, "blocked", "--comment", "waiting", "--session", "contract"], {
-        ...env(),
-        UNIPI_KANBOARD_ACTOR: "agent",
-      }),
-    );
+    // Only the agent session holding it may block a running task.
+    const moved = asTask("move", cli(home, workspace, ["move", task.id, "blocked", "--comment", "waiting"], agent()));
     assert.equal(moved.status, "blocked");
 
-    // `release` is the runner's own transition, so it needs a claimed task.
-    asTask("add", cli(home, workspace, ["add", "to be released", "--status", "todo"], env()));
-    const second = asClaimResult(
-      cli(home, workspace, ["claim-next", "--session", "contract", "--pid", "1", "--host", "test"], env()),
-    ).task;
-    assert.ok(second, "a second task was claimable");
+    const second = asTask("add", cli(home, workspace, ["add", "to be finished", "--status", "todo"], env()));
+    asTask("start", cli(home, workspace, ["start", second.id], agent()));
+    const finished = asTask("finish", cli(home, workspace, ["finish", second.id, "--comment", "done: x"], agent()));
+    assert.equal(finished.status, "in_review");
+    assert.ok(finished.run === null || finished.run === undefined, "leaving in_progress clears the run");
+
+    // `release` hands a claim back (user/system).
+    const third = asTask("add", cli(home, workspace, ["add", "to be released", "--status", "todo"], env()));
+    asTask("start", cli(home, workspace, ["start", third.id], agent()));
     const released = asTask(
       "release",
-      cli(home, workspace, ["release", second!.id, "--to", "todo", "--comment", "back"], {
-        ...env(),
-        UNIPI_KANBOARD_ACTOR: "system",
-      }),
+      cli(home, workspace, ["release", third.id, "--to", "todo", "--comment", "back"], { ...env(), UNIPI_KANBOARD_ACTOR: "system" }),
     );
     assert.equal(released.status, "todo");
     assert.ok(released.run === null || released.run === undefined, "leaving in_progress clears the run");

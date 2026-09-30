@@ -40,6 +40,7 @@ import {
   toggleTheme,
   upsertTask,
 } from "./state.js";
+import { Mention } from "./mention.js";
 import { AutoTextarea, Dialog, Kbd, MenuItem, MOD, Popover } from "./ui.js";
 
 // ─── new task ───────────────────────────────────────────────────────────────
@@ -50,15 +51,41 @@ export function NewTaskDialog(): JSX.Element {
   const [lane, setLane] = createSignal("backlog");
   const [priority, setPriority] = createSignal("none");
   const [after, setAfter] = createSignal<string[]>([]);
-  const [strategy, setStrategy] = createSignal("auto");
-  const [plan, setPlan] = createSignal("auto");
   const [more, setMore] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   /** Files picked/pasted before the task exists — uploaded right after creation. */
   const [pending, setPending] = createSignal<File[]>([]);
   let picker: HTMLInputElement | undefined;
+  let descriptionArea: HTMLTextAreaElement | undefined;
   const addFiles = (files: File[]): void => {
     if (files.length > 0) setPending((current) => [...current, ...files.map(namedFile)]);
+  };
+  /** Files dragged anywhere over the dialog (title, description, chips) attach. */
+  const [dropOver, setDropOver] = createSignal(false);
+  const hasFiles = (event: DragEvent): boolean => event.dataTransfer?.types.includes("Files") ?? false;
+  const dropZone = {
+    onDragEnter: (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      setDropOver(true);
+    },
+    onDragOver: (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      setDropOver(true);
+    },
+    onDragLeave: (event: DragEvent) => {
+      const next = event.relatedTarget as Node | null;
+      if (!next || !(event.currentTarget as Node).contains(next)) setDropOver(false);
+    },
+    onDrop: (event: DragEvent) => {
+      setDropOver(false);
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      addFiles(filesFrom(event));
+    },
   };
 
   createEffect(
@@ -69,9 +96,8 @@ export function NewTaskDialog(): JSX.Element {
       setBody("");
       setAfter([]);
       setPriority("none");
-      setStrategy("auto");
-      setPlan("auto");
       setPending([]);
+      setDropOver(false);
     }),
   );
 
@@ -88,8 +114,6 @@ export function NewTaskDialog(): JSX.Element {
         status: lane(),
         priority: priority(),
         after: after().length > 0 ? after() : undefined,
-        strategy: strategy() === "auto" ? undefined : strategy(),
-        plan: plan() === "auto" ? undefined : plan(),
       });
       if (pending().length > 0) {
         const uploaded = await uploadAll(created.id, pending());
@@ -116,6 +140,7 @@ export function NewTaskDialog(): JSX.Element {
 
   return (
     <Dialog open={newTaskLane() !== null} label="New task" onClose={close} width={640}>
+      <div class={`new-task-drop${dropOver() ? " drop-over" : ""}`} {...dropZone}>
       <header class="dialog-head">
         <span class="crumb-pill">
           <ProjectTile name={currentProject()?.name ?? "?"} size={14} />
@@ -150,8 +175,9 @@ export function NewTaskDialog(): JSX.Element {
             event.preventDefault();
             addFiles(files);
           }}
+          areaRef={(el) => (descriptionArea = el)}
           class="dialog-body-input"
-          placeholder="Add a description… (markdown)"
+          placeholder="Add a description… (markdown, @ to mention a task)"
           aria-label="Description"
           value={body()}
           maxHeight={260}
@@ -163,6 +189,7 @@ export function NewTaskDialog(): JSX.Element {
             }
           }}
         />
+        <Mention area={() => descriptionArea} setValue={setBody} />
       </div>
       <Show when={pending().length > 0}>
         <div class="pending-files">
@@ -179,15 +206,7 @@ export function NewTaskDialog(): JSX.Element {
           </For>
         </div>
       </Show>
-      <div
-        class="prop-row"
-        onDragOver={(event) => event.dataTransfer?.types.includes("Files") && event.preventDefault()}
-        onDrop={(event) => {
-          if (!event.dataTransfer?.types.includes("Files")) return;
-          event.preventDefault();
-          addFiles(filesFrom(event));
-        }}
-      >
+      <div class="prop-row">
         <Popover
           width={200}
           label="Status"
@@ -220,40 +239,6 @@ export function NewTaskDialog(): JSX.Element {
             <For each={[...PRIORITIES].reverse()}>
               {(option) => (
                 <MenuItem role="option" icon={<PriorityGlyph priority={option} />} label={PRIORITY_LABEL[option]} checked={priority() === option} onSelect={() => { setPriority(option); close(); }} />
-              )}
-            </For>
-          )}
-        </Popover>
-        <Popover
-          width={180}
-          label="Strategy"
-          trigger={(api) => (
-            <button class={`prop-chip${strategy() === "auto" ? " empty" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle} aria-label="Strategy">
-              {strategy() === "auto" ? "Strategy" : strategy()}
-            </button>
-          )}
-        >
-          {(close) => (
-            <For each={["auto", "none", "goal", "ralph", "swarm", "graph"]}>
-              {(option) => (
-                <MenuItem role="option" label={option === "auto" ? "Auto (jev decides)" : option} checked={strategy() === option} onSelect={() => { setStrategy(option); close(); }} />
-              )}
-            </For>
-          )}
-        </Popover>
-        <Popover
-          width={160}
-          label="Plan first"
-          trigger={(api) => (
-            <button class={`prop-chip${plan() === "auto" ? " empty" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle} aria-label="Plan first">
-              {plan() === "auto" ? "Plan" : plan() === "yes" ? "Plan: yes" : "Plan: no"}
-            </button>
-          )}
-        >
-          {(close) => (
-            <For each={["auto", "yes", "no"]}>
-              {(option) => (
-                <MenuItem role="option" label={option === "auto" ? "Default" : option === "yes" ? "Yes" : "No"} checked={plan() === option} onSelect={() => { setPlan(option); close(); }} />
               )}
             </For>
           )}
@@ -306,6 +291,13 @@ export function NewTaskDialog(): JSX.Element {
           <Kbd keys={["↵"]} />
         </button>
       </footer>
+      <Show when={dropOver()}>
+        <div class="drop-hint" aria-hidden="true">
+          <Icon.paperclip size={16} />
+          Drop to attach
+        </div>
+      </Show>
+      </div>
     </Dialog>
   );
 }
@@ -850,11 +842,11 @@ function ModelCombobox(props: {
   );
 }
 
-type SettingsCat = "summaries" | "defaults" | "runner" | "archive";
+type SettingsCat = "summaries" | "defaults" | "sessions" | "archive";
 const SETTINGS_CATS: Array<[SettingsCat, string]> = [
   ["summaries", "Summaries"],
   ["defaults", "Task defaults"],
-  ["runner", "Runner"],
+  ["sessions", "Sessions"],
   ["archive", "Archive"],
 ];
 
@@ -868,10 +860,7 @@ export function SettingsDialog(): JSX.Element {
   const [modelsError, setModelsError] = createSignal("");
   const [modelList, setModelList] = createSignal<string[]>([]);
   const [cat, setCat] = createSignal<SettingsCat>("summaries");
-  const [strategy, setStrategy] = createSignal("auto");
-  const [plan, setPlan] = createSignal(false);
   const [blocking, setBlocking] = createSignal("avoid");
-  const [queueMax, setQueueMax] = createSignal(10);
   const [maxSessions, setMaxSessions] = createSignal(2);
   const [turnAddLimit, setTurnAddLimit] = createSignal(20);
   const [chainGate, setChainGate] = createSignal("in_review");
@@ -906,13 +895,11 @@ export function SettingsDialog(): JSX.Element {
           setInstruction(settings.summaryInstruction);
           setCustomInstruction(settings.summaryInstruction !== settings.defaultSummaryInstruction);
           setCat("summaries");
-          setStrategy(settings.taskDefaults?.defaultStrategy ?? "auto");
-          setPlan(settings.taskDefaults?.defaultPlan ?? false);
+          const limits = settings.sessions ?? settings.runner;
           setBlocking(settings.taskDefaults?.blocking ?? "avoid");
-          setQueueMax(settings.runner?.queueMax ?? 10);
-          setMaxSessions(settings.runner?.maxSessions ?? 2);
-          setTurnAddLimit(settings.runner?.turnAddLimit ?? 20);
-          setChainGate(settings.runner?.chainGate ?? "in_review");
+          setMaxSessions(limits?.maxSessions ?? 2);
+          setTurnAddLimit(limits?.turnAddLimit ?? 20);
+          setChainGate(limits?.chainGate ?? "in_review");
           setArchiveDays(settings.archive?.archiveAfterDays ?? 0);
           setRetentionDays(settings.archive?.retentionDays ?? 90);
         })
@@ -930,10 +917,7 @@ export function SettingsDialog(): JSX.Element {
       await api.saveSettings({
         summaryModel: model().trim(),
         summaryInstruction: customInstruction() ? instruction() : "",
-        defaultStrategy: strategy(),
-        defaultPlan: plan(),
         blocking: blocking(),
-        queueMax: queueMax(),
         maxSessions: maxSessions(),
         turnAddLimit: turnAddLimit(),
         chainGate: chainGate(),
@@ -1027,42 +1011,17 @@ export function SettingsDialog(): JSX.Element {
           <Show when={cat() === "defaults"}>
           <div class="settings-heading">Task defaults</div>
           <div class="field">
-            <span class="field-label">Default strategy</span>
-            <select class="input" aria-label="Default strategy" value={strategy()} onChange={(e) => setStrategy(e.currentTarget.value)}>
-              <option value="auto">Auto (jev decides)</option>
-              <option value="none">none (one-pass change)</option>
-              <option value="goal">goal (iterate until done)</option>
-              <option value="ralph">ralph (checklist chores)</option>
-              <option value="swarm">swarm (parallel parts)</option>
-              <option value="graph">graph (dependent steps)</option>
-            </select>
-            <span class="field-hint">Strategy for tasks that carry no --strategy label.</span>
-          </div>
-          <div class="field">
-            <span class="field-label">Plan first by default</span>
-            <select class="input" aria-label="Plan first by default" value={plan() ? "yes" : "no"} onChange={(e) => setPlan(e.currentTarget.value === "yes")}>
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-            <span class="field-hint">A task label (--plan yes|no) always wins over this.</span>
-          </div>
-          <div class="field">
             <span class="field-label">Blocking</span>
             <select class="input" aria-label="Blocking" value={blocking()} onChange={(e) => setBlocking(e.currentTarget.value)}>
               <option value="avoid">Avoid — work autonomously, note assumptions</option>
               <option value="ask">Ask — block the task to ask the user</option>
             </select>
-            <span class="field-hint">What a confused runner task may do.</span>
+            <span class="field-hint">What the agent does when it is unsure how to go on.</span>
           </div>
           </Show>
 
-          <Show when={cat() === "runner"}>
-          <div class="settings-heading">Runner</div>
-          <div class="field">
-            <span class="field-label">Queue limit</span>
-            <input class="input" type="number" min="0" aria-label="Queue limit" value={queueMax()} onInput={(e) => setQueueMax(Math.max(0, Number(e.currentTarget.value) || 0))} />
-            <span class="field-hint">Tasks a session may queue — 0 = unlimited.</span>
-          </div>
+          <Show when={cat() === "sessions"}>
+          <div class="settings-heading">Sessions</div>
           <div class="field">
             <span class="field-label">Sessions at once</span>
             <input class="input" type="number" min="1" aria-label="Sessions at once" value={maxSessions()} onInput={(e) => setMaxSessions(Math.max(1, Number(e.currentTarget.value) || 1))} />
@@ -1071,7 +1030,7 @@ export function SettingsDialog(): JSX.Element {
           <div class="field">
             <span class="field-label">New tasks per turn</span>
             <input class="input" type="number" min="0" aria-label="New tasks per turn" value={turnAddLimit()} onInput={(e) => setTurnAddLimit(Math.max(0, Number(e.currentTarget.value) || 0))} />
-            <span class="field-hint">`add` calls per -do turn or runner task — 0 = unlimited.</span>
+            <span class="field-hint">`add` calls an agent may make per turn — 0 = unlimited.</span>
           </div>
           <div class="field">
             <span class="field-label">Chain gate</span>

@@ -10,6 +10,12 @@ fn by_id(tasks: &[kanboard::model::Task]) -> impl Fn(&str) -> Option<kanboard::m
     move |id: &str| tasks.iter().find(|task| task.id == id).cloned()
 }
 
+/// What `next` would suggest under `gate` (read-only).
+fn next(fixture: &Fixture, gate: ChainGate) -> serde_json::Value {
+    commands::next(&fixture.layout, fixture.project.clone(), gate, fixture.common.now)
+        .expect("next")
+}
+
 #[test]
 fn a_todo_task_without_deps_is_ready() {
     let fixture = Fixture::new();
@@ -26,7 +32,7 @@ fn backlog_tasks_are_never_ready() {
     let tasks = fixture.tasks();
     assert!(!deps::is_ready(&task, &by_id(&tasks), ChainGate::InReview));
     assert!(
-        !fixture.claim_next("s", common::alive_pid())["task"]
+        !next(&fixture, ChainGate::InReview)["task"]
             .as_object()
             .is_some()
     );
@@ -58,7 +64,7 @@ fn todo_and_in_progress_dependencies_satisfy_no_gate() {
     }
 
     // dep claimed (in_progress) → still blocked under both gates.
-    fixture.claim_next("sess-dep", std::process::id());
+    fixture.start(&dep.id, "sess-dep", std::process::id());
     let tasks = fixture.tasks();
     let dependent_now = tasks
         .iter()
@@ -85,7 +91,7 @@ fn in_review_satisfies_the_default_gate_but_not_done() {
     );
 
     // Put the dependency into in_review through the real lifecycle.
-    fixture.claim_next("sess-dep", std::process::id());
+    fixture.start(&dep.id, "sess-dep", std::process::id());
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -114,41 +120,15 @@ fn in_review_satisfies_the_default_gate_but_not_done() {
         "in_review does not satisfy the done gate"
     );
 
-    // And claim-next honours the gate it is given.
-    let claimed = commands::claim_next(
-        &fixture.layout,
-        fixture.project.clone(),
-        ChainGate::Done,
-        &commands::ClaimArgs {
-            session: "s",
-            pid: common::alive_pid(),
-            host: "h",
-            mode: kanboard::model::RunMode::None,
-            id: None,
-        },
-        fixture.common.now,
-    )
-    .expect("claim");
+    // And `next` honours the gate it is given.
     assert!(
-        claimed["task"].is_null(),
+        next(&fixture, ChainGate::Done)["task"].is_null(),
         "nothing ready under the done gate"
     );
-
-    let claimed = commands::claim_next(
-        &fixture.layout,
-        fixture.project.clone(),
-        ChainGate::InReview,
-        &commands::ClaimArgs {
-            session: "s",
-            pid: common::alive_pid(),
-            host: "h",
-            mode: kanboard::model::RunMode::None,
-            id: None,
-        },
-        fixture.common.now,
-    )
-    .expect("claim");
-    assert_eq!(claimed["task"]["id"], dependent.id.as_str());
+    assert_eq!(
+        next(&fixture, ChainGate::InReview)["task"]["id"],
+        dependent.id.as_str()
+    );
 }
 
 #[test]
@@ -195,7 +175,7 @@ fn a_done_dependency_satisfies_both_gates() {
         Priority::None,
         std::slice::from_ref(&dep.id),
     );
-    fixture.claim_next("sess-dep", std::process::id());
+    fixture.start(&dep.id, "sess-dep", std::process::id());
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -434,7 +414,7 @@ fn a_dependency_still_in_backlog_locks_the_dependent() {
         ChainGate::InReview
     ));
 
-    // The JSON surfaces it for the UI and the runner.
+    // The JSON surfaces it for the UI and the agent.
     let listed = fixture.list_json();
     let entry = listed["tasks"]
         .as_array()
@@ -444,12 +424,12 @@ fn a_dependency_still_in_backlog_locks_the_dependent() {
         .unwrap();
     assert_eq!(entry["lockedBy"], serde_json::json!([parked.id]));
 
-    // claim-next's "waiting" explains the lock too.
-    let claim = fixture.claim_next("s", common::alive_pid());
-    // flowing parent is ready and gets claimed; the child still reports its lock.
-    assert_eq!(claim["task"]["id"], flowing.id);
-    let waiting = claim["waiting"].as_array().cloned().unwrap_or_default();
-    let _ = waiting; // only populated when nothing is ready — covered below
+    // `next` suggests the flowing parent; its "waiting" explains the child's lock.
+    let suggestion = next(&fixture, ChainGate::InReview);
+    assert_eq!(suggestion["task"]["id"], flowing.id);
+    let waiting = suggestion["waiting"].as_array().unwrap();
+    let entry = waiting.iter().find(|w| w["id"] == child.id).unwrap();
+    assert_eq!(entry["lockedBy"], serde_json::json!([parked.id]));
 
     // Once the parent is scheduled, the lock clears (it may still be waiting).
     fixture.move_to(&parked.id, Status::Todo);
@@ -468,7 +448,7 @@ fn nothing_ready_reports_which_waits_are_locked() {
         Priority::None,
         std::slice::from_ref(&parked.id),
     );
-    let claim = fixture.claim_next("s", common::alive_pid());
+    let claim = next(&fixture, ChainGate::InReview);
     assert!(claim["task"].is_null());
     let waiting = claim["waiting"].as_array().unwrap();
     let entry = waiting.iter().find(|w| w["id"] == child.id).unwrap();

@@ -15,8 +15,8 @@ fn set_updated(fixture: &Fixture, id: &str, days_ago: i64) {
 
 fn archive_done(fixture: &Fixture, title: &str) -> String {
     let task = fixture.add_with(title, Status::Todo, Priority::None, &[]);
-    let id = common::claimed_id(&fixture.claim_next("s", 999_999)).unwrap();
-    assert_eq!(id, task.id);
+    let id = task.id.clone();
+    fixture.start(&id, "s", 999_999);
     let _ = cli(
         fixture,
         &["release", &id, "--to", "in_review", "--comment", "done"],

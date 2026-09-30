@@ -1,24 +1,34 @@
-//! Board behaviour: claim ordering, sparse ordering + rebalance, stale runs,
+//! Board behaviour: `next` ordering, sparse ordering + rebalance, stale runs,
 //! archive sweep, record locking under concurrency.
 
 mod common;
 
-use common::{Fixture, claimed_id};
+use common::Fixture;
 use kanboard::commands::{self, OrderTarget};
 use kanboard::model::{ChainGate, Priority, RunMode, Staleness, Status};
 use std::sync::Arc;
 
+/// The id `next` suggests (None when nothing is ready).
+fn next_id(fixture: &Fixture) -> Option<String> {
+    let value = commands::next(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .expect("next");
+    value["task"]["id"].as_str().map(str::to_string)
+}
+
 #[test]
-fn claim_next_takes_priority_first_then_order() {
+fn next_suggests_priority_first_then_order() {
     let fixture = Fixture::new();
     let low = fixture.add_with("low", Status::Todo, Priority::Low, &[]);
     let urgent = fixture.add_with("urgent", Status::Todo, Priority::Urgent, &[]);
     let high_a = fixture.add_with("high a", Status::Todo, Priority::High, &[]);
     let high_b = fixture.add_with("high b", Status::Todo, Priority::High, &[]);
 
-    // One session claims, releases to in_review, claims the next — the
-    // one-claim-per-session and two-sessions-per-project rules make parallel
-    // claims the sessions test's job.
+    // Start what `next` suggests, hand it to review, ask again.
     let release = |id: &String| {
         commands::release(
             &fixture.layout,
@@ -33,40 +43,26 @@ fn claim_next_takes_priority_first_then_order() {
     };
     let pid = std::process::id();
     // Within the same priority the earlier `order` wins.
-    assert_eq!(
-        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
-        urgent.id
-    );
-    release(&urgent.id);
-    assert_eq!(
-        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
-        high_a.id
-    );
-    release(&high_a.id);
-    assert_eq!(
-        claimed_id(&fixture.claim_next("s1", pid)).unwrap(),
-        high_b.id
-    );
-    release(&high_b.id);
-    assert_eq!(claimed_id(&fixture.claim_next("s1", pid)).unwrap(), low.id);
-    release(&low.id);
-    assert!(
-        claimed_id(&fixture.claim_next("s1", pid)).is_none(),
-        "nothing left"
-    );
+    for expected in [&urgent.id, &high_a.id, &high_b.id, &low.id] {
+        assert_eq!(next_id(&fixture).as_ref(), Some(expected));
+        fixture.start(expected, "s1", pid);
+        release(expected);
+    }
+    assert!(next_id(&fixture).is_none(), "nothing left");
 }
 
 #[test]
-fn claim_next_skips_claimed_tasks_forever() {
+fn a_started_task_is_neither_suggested_nor_restartable_until_released() {
     let fixture = Fixture::new();
     let task = fixture.add_with("only", Status::Todo, Priority::None, &[]);
-    assert_eq!(
-        claimed_id(&fixture.claim_next("s1", common::alive_pid())).unwrap(),
-        task.id
-    );
-    assert!(claimed_id(&fixture.claim_next("s2", common::alive_pid())).is_none());
-    // A second claim of the same task must not happen even if it is released to todo
-    // and re-claimed: it is a fresh claim, so it works again.
+    assert_eq!(next_id(&fixture), Some(task.id.clone()));
+    fixture.start(&task.id, "s1", common::alive_pid());
+    assert!(next_id(&fixture).is_none());
+    let err = fixture
+        .try_start(&task.id, "s2", common::alive_pid())
+        .unwrap_err();
+    assert!(err.to_string().contains("already claimed"), "{err}");
+    // Released back to todo, it is a fresh task: it can be started again.
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -77,72 +73,15 @@ fn claim_next_skips_claimed_tasks_forever() {
         fixture.common.now,
     )
     .expect("release");
-    assert_eq!(
-        claimed_id(&fixture.claim_next("s3", common::alive_pid())).unwrap(),
-        task.id
-    );
-}
-
-#[test]
-fn claim_records_the_run_block_and_an_activity_line() {
-    let fixture = Fixture::new();
-    let task = fixture.add_with("run me", Status::Todo, Priority::None, &[]);
-    let claimed = fixture.claim_next("session-42", common::alive_pid());
-    let payload = &claimed["task"];
-    assert_eq!(payload["status"], "in_progress");
-    assert_eq!(payload["run"]["session"], "session-42");
-    assert_eq!(payload["run"]["pid"], common::alive_pid());
-    assert_eq!(payload["run"]["mode"], "none");
-    let activity = payload["activity"].as_array().unwrap();
-    let last = activity.last().unwrap();
-    assert_eq!(last["actor"], "system");
-    assert!(
-        last["text"]
-            .as_str()
-            .unwrap()
-            .contains("claimed by session session-42")
-    );
-    assert_eq!(payload["id"], task.id.as_str());
-}
-
-#[test]
-fn set_run_switches_mode_and_goal() {
-    let fixture = Fixture::new();
-    let task = fixture.add_with("goal task", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", common::alive_pid());
-    let value = commands::set_run(
-        &fixture.layout,
-        fixture.project.clone(),
-        &task.id,
-        RunMode::Goal,
-        Some("goal-9"),
-        ChainGate::InReview,
-        fixture.common.now,
-    )
-    .expect("set-run");
-    assert_eq!(value["run"]["mode"], "goal");
-    assert_eq!(value["run"]["goal"], "goal-9");
-
-    // set-run on an unclaimed task is refused.
-    let other = fixture.add_with("unclaimed", Status::Todo, Priority::None, &[]);
-    let err = commands::set_run(
-        &fixture.layout,
-        fixture.project.clone(),
-        &other.id,
-        RunMode::Plan,
-        None,
-        ChainGate::InReview,
-        fixture.common.now,
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("no run block"), "{err}");
+    assert_eq!(next_id(&fixture), Some(task.id.clone()));
+    fixture.start(&task.id, "s3", common::alive_pid());
 }
 
 #[test]
 fn release_requires_a_comment_and_clears_the_run() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", common::alive_pid());
+    fixture.start(&task.id, "s1", common::alive_pid());
 
     let err = commands::release(
         &fixture.layout,
@@ -194,7 +133,7 @@ fn release_requires_a_comment_and_clears_the_run() {
 fn release_to_an_illegal_target_is_refused() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", common::alive_pid());
+    fixture.start(&task.id, "s1", common::alive_pid());
     let err = commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -212,7 +151,7 @@ fn release_to_an_illegal_target_is_refused() {
 fn releasing_to_todo_records_the_reason() {
     let fixture = Fixture::new();
     let task = fixture.add_with("t", Status::Todo, Priority::None, &[]);
-    fixture.claim_next("s1", common::alive_pid());
+    fixture.start(&task.id, "s1", common::alive_pid());
     commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -287,7 +226,7 @@ fn a_live_pid_blocks_user_moves() {
     let fixture = Fixture::new();
     let task = fixture.add_with("running", Status::Todo, Priority::None, &[]);
     // Our own process is definitely alive.
-    fixture.claim_next("s1", std::process::id());
+    fixture.start(&task.id, "s1", std::process::id());
     let stored = fixture
         .tasks()
         .into_iter()
@@ -312,7 +251,7 @@ fn a_live_pid_blocks_user_moves() {
         fixture.project.clone(),
         &task.id,
         Status::Todo,
-        "runner stopped",
+        "session stopped",
         ChainGate::InReview,
         fixture.common.now,
     )
@@ -505,7 +444,7 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
 
     // Only the user can complete: drive these two through the lifecycle.
     for id in [&fresh.id, &old.id] {
-        fixture.claim_next("s", std::process::id());
+        fixture.start(id, "s", std::process::id());
         commands::release(
             &fixture.layout,
             fixture.project.clone(),
@@ -613,34 +552,38 @@ fn archive_sweep_is_off_when_days_is_zero() {
 #[test]
 fn eight_threads_race_but_the_two_session_cap_holds() {
     let fixture = Fixture::new();
-    for title in ["one", "two", "three"] {
-        fixture.add_with(title, Status::Todo, Priority::None, &[]);
-    }
+    let ids: Vec<String> = (0..8)
+        .map(|index| {
+            fixture
+                .add_with(&format!("task {index}"), Status::Todo, Priority::None, &[])
+                .id
+        })
+        .collect();
 
     let layout = Arc::new(fixture.layout.clone());
     let project = fixture.project.clone();
     let mut handles = Vec::new();
-    for index in 0..8u32 {
+    for (index, id) in ids.into_iter().enumerate() {
         let layout = Arc::clone(&layout);
         let project = project.clone();
         handles.push(std::thread::spawn(move || {
-            let args = commands::ClaimArgs {
+            let host = commands::hostname();
+            let args = commands::StartArgs {
                 session: &format!("thread-{index}"),
                 // The test process is alive, so nothing is reaped; the
                 // two-sessions-per-project cap is what the threads hit.
                 pid: std::process::id(),
-                host: "test-host",
-                mode: RunMode::None,
-                id: None,
+                host: &host,
             };
-            commands::claim_next(
+            commands::start(
                 &layout,
                 project,
                 ChainGate::InReview,
+                &id,
                 &args,
                 chrono::Utc::now(),
             )
-            .map(|value| claimed_id(&value))
+            .map(|value| value["id"].as_str().map(str::to_string))
         }));
     }
 
@@ -653,9 +596,8 @@ fn eight_threads_race_but_the_two_session_cap_holds() {
             Err(err) => {
                 refused += 1;
                 assert!(
-                    err.to_string().contains("already run")
-                        || err.to_string().contains("already runs"),
-                    "unexpected claim error: {err}"
+                    err.to_string().contains("sessions already run tasks"),
+                    "unexpected start error: {err}"
                 );
             }
         }
@@ -771,7 +713,7 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
     assert!(message.contains("line 4"), "{message}");
     assert!(message.contains("validate --fix"), "{message}");
 
-    // add / move / claim-next all keep working on the valid tasks.
+    // add / move / next / start all keep working on the valid tasks.
     fixture.add("added while one file is broken");
     commands::move_task(
         &fixture.layout,
@@ -782,12 +724,13 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
         None,
     )
     .expect("move works");
-    let claimed = fixture.claim_next("s", common::alive_pid());
-    assert!(
-        claimed["task"].is_object(),
-        "claim-next ignores the corrupt file"
+    assert_eq!(
+        next_id(&fixture).as_deref(),
+        Some(good.id.as_str()),
+        "next ignores the corrupt file"
     );
-    assert_eq!(claimed["task"]["id"], good.id.as_str());
+    let started = fixture.start(&good.id, "s", common::alive_pid());
+    assert_eq!(started["status"], "in_progress");
 }
 
 #[test]

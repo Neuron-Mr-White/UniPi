@@ -112,18 +112,19 @@ deps: [UNI-10]
 labels: []
 created: 2026-09-24T10:00:00Z
 updated: 2026-09-24T10:05:00Z
-run:                    # present only while claimed
+run:                    # present only while claimed (`start`)
   session: 01a0ceb8
   pid: 12345
   host: coffee
-  mode: direct          # direct|plan|goal
+  mode: none            # legacy field, always none for new claims
   goal: null
   started: 2026-09-24T10:05:00Z
+  owner: agent          # absent = a legacy system claim
 ---
 Free-form description (markdown).
 
 ## Activity
-- 2026-09-24T10:05:00Z [system] claimed by session 01a0ceb8 (mode direct)
+- 2026-09-24T10:05:00Z [agent:01a0ceb8] started (pid 12345 on coffee)
 - 2026-09-24T10:20:00Z [agent] blocked: which log format do you want?
   (continuation lines are indented)
 ```
@@ -142,9 +143,11 @@ move <ID> <status> [--comment TEXT]
 note <ID> <TEXT>                 edit <ID> [--title] [--body -] [--priority] [--labels]
 link <ID> --after <DEP>          unlink <ID> --after <DEP>
 order <ID> (--before ID | --after-pos ID | --top | --bottom)
-claim-next --session S --pid P --host H [--mode M]        (system)
-release <ID> --to todo|in_review|blocked --comment TEXT   (system)
-set-run <ID> --mode M [--goal G]                          (system)
+next                             (read-only: the ready task to work next, and why others wait)
+start <ID> [--pid P]             (agent: todo → in_progress, claimed for --session)
+finish <ID> --comment TEXT       (agent: in_progress → in_review, own claim only)
+release <ID> --to todo|in_review|blocked --comment TEXT   (user/system: hand back a claim)
+reap [--dry-run]                 (release claims whose pid is gone)
 duplicate <ID>    archive-sweep [--after-days N]    validate [--fix]
 serve | status | stop                                     (K2)
 ```
@@ -152,18 +155,19 @@ serve | status | stop                                     (K2)
 Global: `--project <slug>` (else `UNIPI_KANBOARD_PROJECT`, else the project
 registered for the cwd's git root), `--actor user|agent|system` (else
 `UNIPI_KANBOARD_ACTOR`, else `user`), `--gate in_review|done` (readiness gate for
-`list --ready` and `claim-next`), `--json`.
+`list --ready`, `next` and `start`), `--session <id>` (else
+`UNIPI_KANBOARD_SESSION`; required by `start`/`finish`), `--json`.
 
-Exit codes: `0` ok (including `claim-next` finding nothing), `1` rule violation /
+Exit codes: `0` ok (including `next` finding nothing), `1` rule violation /
 validation finding, `2` usage error.
 
 ### `--json` payloads
 
 | Command | Payload |
 |---|---|
-| `add`, `show`, `move`, `note`, `edit`, `link`, `unlink`, `order`, `release`, `set-run`, `duplicate` | the task object |
+| `add`, `show`, `move`, `note`, `edit`, `link`, `unlink`, `order`, `start`, `finish`, `release`, `duplicate` | the task object |
 | `list`, `project list` | array of task / project objects |
-| `claim-next` | `{"task": <task|null>, "waiting": [{"id", "waitingFor"}]}` |
+| `next` | `{"task": <task|null>, "waiting": [{"id", "waitingFor", "lockedBy"}]}` |
 | `archive-sweep` | `{"archived": [id], "skipped"?: reason}` |
 | `validate` | `{"ok", "problems": [{"file","line","message","fixable"}], "fixed": [id]}` |
 | `project show` | `{"project", "counts", "total"}` |
@@ -173,11 +177,11 @@ and the message always names the violated rule, e.g.
 
 ```
 in_review → todo requires --comment (rework note)
-todo → in_progress is system only — claim it with `claim-next`
+todo → in_progress is agent/system only — an agent claims a ready task for its session with `start <ID>`
 done is final — nothing moves out of it; use `duplicate` to create a new task instead
 ```
 
-Task objects carry computed fields the UI/runner need: `ready`, `waitingFor`,
+Task objects carry computed fields the UI and agents need: `ready`, `waitingFor`,
 `depsStatus`, `staleness` (`running|stale|unknown`), `path`.
 
 ## Transitions
@@ -187,8 +191,8 @@ Only these moves exist; anything else is refused with the reason.
 | From → To | Who | Requirement |
 |---|---|---|
 | backlog ↔ todo | user, agent | — |
-| todo → in_progress | system | ready deps, unclaimed (`claim-next`) |
-| in_progress → in_review | system | `--comment` (run summary) |
+| todo → in_progress | agent, system | ready deps, unclaimed, session cap (`start <ID>`) |
+| in_progress → in_review | agent, system | `--comment` (summary; `finish <ID>`, own claim only) |
 | in_progress → blocked | agent, system | `--comment` (what is needed) |
 | in_progress → todo / backlog (stale run) | user, system | `--comment`; user needs a confirmed stale pid |
 | in_review → done | user | — |
@@ -204,7 +208,12 @@ messages say so, and the skill forbids agents from passing `--actor user`.
 
 A task is ready when it is `todo`, unclaimed, and every dep reached the chain
 gate — `in_review` → `{in_review, done}` (default), `done` → `{done}`. Cancelled
-and missing deps block. Ready tasks are taken by priority desc, then order asc.
+and missing deps block. `next` suggests ready tasks by priority desc, then order asc.
+
+Older task files may still carry `strategy:` / `plan:` frontmatter and runner
+`run:` blocks (no `owner:`, any `mode:`) from the removed headless runner. They
+parse, validate and re-render unchanged, but nothing sets or exposes them any
+more (they are not in `--json` / the API).
 
 ## Tests
 

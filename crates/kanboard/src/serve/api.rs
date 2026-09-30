@@ -13,9 +13,9 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::commands::{self, ClaimArgs, Common, EditArgs, OrderTarget};
+use crate::commands::{self, Common, EditArgs, OrderTarget};
 use crate::error::Error;
-use crate::model::{Actor, ChainGate, Priority, RunMode, Status};
+use crate::model::{Actor, ChainGate, Priority, Status};
 use crate::store::{self, Project};
 
 use super::AppState;
@@ -263,7 +263,6 @@ pub async fn rules() -> ApiResponse {
         // Tooltips render these live.
         "chainGate": gate().as_str(),
         "maxSessions": crate::commands::max_sessions(),
-        "queueMax": crate::commands::queue_max(),
     }))
 }
 
@@ -319,9 +318,6 @@ pub struct CreateRequest {
     pub priority: Option<String>,
     #[serde(default)]
     pub after: Vec<String>,
-    /// Work strategy label (`none|goal|ralph|swarm|graph`, or `auto`/absent).
-    pub strategy: Option<String>,
-    pub plan: Option<bool>,
 }
 
 pub async fn create(
@@ -362,16 +358,6 @@ pub async fn create(
         priority,
         &request.after,
         &[],
-        match request
-            .strategy
-            .as_deref()
-            .map(crate::cli::parse_strategy_label)
-            .transpose()
-        {
-            Ok(v) => v.flatten(),
-            Err(e) => return map_error(e, false),
-        },
-        request.plan,
     );
     match result {
         Ok(value) => ok(value),
@@ -458,10 +444,6 @@ pub struct EditRequest {
     pub body: Option<String>,
     pub priority: Option<String>,
     pub labels: Option<Vec<String>>,
-    /// Work strategy label (`none|goal|ralph|swarm|graph`, or `auto` to clear).
-    pub strategy: Option<String>,
-    /// Plan-first flag (`yes|no|auto` — `auto` clears).
-    pub plan: Option<String>,
 }
 
 pub async fn edit(
@@ -488,24 +470,6 @@ pub async fn edit(
         body: request.body.as_deref(),
         priority,
         labels: request.labels,
-        strategy: match request
-            .strategy
-            .as_deref()
-            .map(crate::cli::parse_strategy_edit)
-            .transpose()
-        {
-            Ok(v) => v,
-            Err(e) => return map_error(e, false),
-        },
-        plan: match request
-            .plan
-            .as_deref()
-            .map(crate::cli::parse_plan_edit)
-            .transpose()
-        {
-            Ok(v) => v,
-            Err(e) => return map_error(e, false),
-        },
     };
     match commands::edit(&state.layout, project, &common(), &id, args) {
         Ok(value) => ok(value),
@@ -616,18 +580,6 @@ pub async fn duplicate(
     }
 }
 
-/// Claim/runner endpoints are deliberately absent: the UI never starts work
-/// (spec principle 1). Only these helpers exist for tests and the pi runner.
-pub fn claim_for_runner(
-    layout: &crate::store::Layout,
-    project: Project,
-    args: &ClaimArgs<'_>,
-    mode: RunMode,
-) -> Result<Value, Error> {
-    let _ = mode;
-    commands::claim_next(layout, project, gate(), args, chrono::Utc::now())
-}
-
 #[cfg(test)]
 mod phrasing_tests {
     use super::*;
@@ -679,7 +631,7 @@ not-a-table
             "in_review → todo requires a comment (rework note)"
         );
         // A message without a flag is untouched.
-        let other = Error::rule("todo → in_progress is system only — claim it with `claim-next`");
+        let other = Error::rule("todo → in_progress is agent/system only — claim it with `start <ID>`");
         assert_eq!(ui_message(&other), other.to_string());
     }
 }
@@ -696,12 +648,11 @@ fn settings_payload(state: &AppState) -> Value {
         "summaryInstruction": settings.effective_instruction(),
         "defaultSummaryInstruction": super::settings::DEFAULT_SUMMARY_INSTRUCTION,
         "taskDefaults": {
-            "defaultStrategy": pi.get("defaultStrategy"),
-            "defaultPlan": pi.get("defaultPlan"),
             "blocking": pi.get("blocking"),
         },
+        // Key kept as `runner` for UI compatibility; these are the session
+        // limits the agent works under (`start` session cap, `add` budget).
         "runner": {
-            "queueMax": pi.get("queueMax"),
             "maxSessions": pi.get("maxSessions"),
             "turnAddLimit": pi.get("turnAddLimit"),
             "chainGate": pi.get("chainGate"),

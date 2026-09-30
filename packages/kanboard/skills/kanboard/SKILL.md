@@ -22,13 +22,13 @@ be on `PATH`):
 <binary> --actor agent --project <slug> chain <ID>               # upstream deps + downstream dependents
 <binary> --actor agent --project <slug> search "<text>" [--all]  # id/title/body, archived excluded unless --all
 <binary> --actor agent --project <slug> add "<title>" [--status todo] [--after <ID>] [--body-file <f>] [--attach <file>]…
-<binary> --actor agent --project <slug> note <ID> "<text>"
+<binary> --actor agent --project <slug> note <ID> "<text>" [--attach <file>]…
 <binary> --actor agent --project <slug> attach <ID> <file> --note "<what it shows>"
 <binary> --actor agent --project <slug> attachments <ID>
 <binary> --actor agent --project <slug> edit <ID> --title|--body|--labels …   # only tasks you created, while in backlog/todo
 <binary> --actor agent --project <slug> start <ID>                          # todo → in progress, claimed for your session (costs a -do slot)
-<binary> --actor agent --project <slug> finish <ID> --comment "<summary>"   # in progress → in review, only a task you started (free)
-<binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>"
+<binary> --actor agent --project <slug> finish <ID> --comment "<summary>" [--attach <file>]…   # in progress → in review, only a task you started (free)
+<binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>" [--attach <file>]…
 <binary> --actor agent --project <slug> link <ID> --after <DEP>
 <binary> --actor agent --project <slug> unlink <ID> --after <DEP>
 <binary> --actor agent --project <slug> order <ID> --top|--bottom|--before <ID>
@@ -94,9 +94,8 @@ lists them — read the files there directly if you need one.
    cannot continue — `move <ID> blocked --comment "<what you need>"`.
 5. **Work only on the task you were given.** Follow-up work goes to the board as
    a new task in Backlog (`add "<title>"`), optionally `link <new> --after <ID>`.
-   A session holds one claim at a time, and at most `maxSessions` (default 2)
-   sessions may run tasks in a project — if the board refuses a claim, that is
-   why. You may
+   At most `maxSessions` (default 2) sessions may hold tasks in a project at
+   once — if the board refuses a `start`, that is why. You may
    block only the task your own session is running (`move <ID> blocked` checks
    `--session`/`UNIPI_KANBOARD_SESSION` against the claim).
 6. **Sidekicks and subagents can read the board but never write it** — every
@@ -106,7 +105,14 @@ lists them — read the files there directly if you need one.
    ready task in the same session — there is no separate worker.)
 7. Use `note <ID> "<text>"` for progress worth remembering (decisions, what you
    verified, what you left undone) — it is the activity log the next reader sees.
-8. Dependencies form a DAG: a task is ready only when every dep reached the chain
+8. **Write the `finish` / `blocked` comment as the report the user reads.** It
+   is shown as the task's status banner and opens in a reader, rendered as
+   markdown. Lead with one plain sentence (what you did, or what stops you),
+   then short paragraphs or `-` bullets separated by blank lines; put questions
+   for the user as a numbered list under `**Need from you:**`. Name files and
+   commands in backticks. Do not repeat a note you already wrote — the report
+   replaces it. Attach evidence with `--attach <file>`.
+9. Dependencies form a DAG: a task is ready only when every dep reached the chain
    gate (`in_review` by default, `done` when configured). Cancelled deps block
    forever, so unlink or re-plan instead of waiting. `chain <ID>` shows the
    whole line, `next` shows what would be picked and why others wait.
@@ -126,6 +132,9 @@ but only to write a summary.)
 Users attach screenshots, logs and documents in the board UI; they appear in the
 text as markdown with `att:<ID>/<name>` references, and `show <ID> --json` lists
 them under `attachments` with an absolute `path` — read the file from there
-(use your image-reading tool for images). To hand back evidence, `attach` a file:
-it is stored beside the board and the comment embeds it, so the user sees the
-image or file inline.
+(use your image-reading tool for images). To hand back evidence (a screenshot,
+a log, a report), pass `--attach <file>` (repeatable) to `finish`, `move … blocked`
+or `note`, or use `attach <ID> <file> --note "…"`: the file is stored beside the
+board and the comment embeds it, so the user sees the image or file inline. A
+file's path written in the comment is replaced by the embed; otherwise the
+embed is appended. Attaching to a task you started is free.

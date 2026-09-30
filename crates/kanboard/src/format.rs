@@ -48,7 +48,8 @@ pub fn render(task: &Task) -> String {
                     .unwrap_or_else(|| "null".to_string())
             ));
             out.push_str(&format!("  started: {}\n", iso(run.started)));
-            // Runner claims keep the historical shape; only agent claims say so.
+            // Legacy system claims (pre-`start` files) keep the historical
+            // shape; only agent claims say so.
             if run.owner == RunOwner::Agent {
                 out.push_str("  owner: agent\n");
             }
@@ -75,11 +76,19 @@ pub fn render(task: &Task) -> String {
             _ => entry.actor.as_str().to_string(),
         };
         out.push_str(&format!("- {} [{}] {}\n", iso(entry.at), actor, first));
+        // Paragraph breaks survive as one truly empty line between indented
+        // continuation lines (a loose markdown list item). Never `  `: trailing
+        // whitespace would make the file non-canonical. Runs of blank lines
+        // collapse to one; trailing ones are dropped.
+        let mut gap = false;
         for line in lines {
-            // A blank continuation line would render as `  ` and make the file
-            // permanently non-canonical (validate would refuse the board).
             if line.trim().is_empty() {
+                gap = true;
                 continue;
+            }
+            if gap {
+                out.push('\n');
+                gap = false;
             }
             out.push_str(&format!("  {line}\n"));
         }
@@ -410,12 +419,17 @@ fn parse_body(
     };
 
     let mut pending: Option<ActivityEntry> = None;
+    // A blank line followed by a continuation line is a paragraph break
+    // inside the pending entry; before a new `- ` entry it means nothing.
+    let mut gap = false;
     for (index, raw) in lines.iter().enumerate().skip(activity_index + 1) {
         let line_no = index + 1;
         let line = raw.trim_end();
         if line.trim().is_empty() {
+            gap = pending.is_some();
             continue;
         }
+        let was_gap = std::mem::replace(&mut gap, false);
         if let Some(rest) = line.strip_prefix("- ") {
             if let Some(entry) = pending.take() {
                 activity.push(entry);
@@ -437,6 +451,9 @@ fn parse_body(
             match pending.as_mut() {
                 Some(entry) => {
                     entry.text.push('\n');
+                    if was_gap {
+                        entry.text.push('\n');
+                    }
                     // The file adds a two-space indent to continuation lines;
                     // strip exactly that (not all leading whitespace) so a note
                     // indented by its author round-trips byte-for-byte.

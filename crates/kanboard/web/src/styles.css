@@ -2459,6 +2459,29 @@ button.prop-value:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+.new-task-drop {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: inherit;
+}
+.new-task-drop .drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--brand-soft) 70%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--brand);
+  color: var(--text);
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
+}
 .composer.drop-over,
 .body-editor.drop-over textarea {
   box-shadow: inset 0 0 0 1.5px var(--brand), 0 0 0 4px var(--brand-soft);
@@ -2689,19 +2712,61 @@ button.prop-value:hover:not(:disabled) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.blocked-banner {
+/* ── status report banner (Blocked / In Review) ──────────────────────────── */
+.status-banner {
+  --tone: var(--s-blocked);
   display: flex;
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--s-blocked) 8%, transparent);
-  color: var(--s-blocked);
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+  color: var(--tone);
   align-items: flex-start;
 }
-.blocked-banner svg { flex: none; margin-top: 1px; }
-.blocked-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.blocked-banner-text strong { font-weight: 600; color: var(--text); }
-.blocked-banner-hint { font-size: var(--t-meta); color: var(--muted); }
+.status-banner.review { --tone: var(--s-in_review); }
+.status-banner > svg { flex: none; margin-top: 2px; }
+.status-banner-text { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.status-banner-head { display: flex; gap: 8px; align-items: baseline; font-size: var(--t-meta); }
+.status-banner-head strong { font-weight: 600; color: var(--tone); }
+.status-banner-body {
+  color: var(--text);
+  line-height: 1.5;
+  max-height: calc(4 * 1.5em);
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+  overflow-wrap: break-word;
+}
+.status-banner-hint { font-size: var(--t-meta); color: var(--muted); }
+.status-banner-read { flex: none; color: var(--tone); }
+
+/* status-change tag above a report in the timeline */
+.report-tag {
+  display: inline-block;
+  margin: 1px 0 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--muted);
+  background: var(--hover);
+}
+.report-tag.finished { color: var(--s-in_review); background: color-mix(in srgb, var(--s-in_review) 12%, transparent); }
+.report-tag.blocked { color: var(--s-blocked); background: color-mix(in srgb, var(--s-blocked) 12%, transparent); }
+.timeline .what-actions { display: flex; gap: 12px; align-items: center; }
+.timeline .show-more.read { display: inline-flex; gap: 4px; align-items: center; }
+
+/* full-text reader */
+.dialog.reader { max-height: calc(100vh - 96px); }
+.dialog.reader .dialog-head { gap: 8px; }
+.reader-body {
+  padding: 4px 22px 20px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.reader-body p { margin: 0 0 10px; }
 
 /* ── lane info popover ───────────────────────────────────────────────────── */
 .lane-info-pop {
@@ -2778,6 +2843,18 @@ button.prop-value:hover:not(:disabled) {
 .dep-option .dep-id { flex: none; font-size: var(--t-meta); }
 .dep-option .dep-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dep-more { font-style: normal; }
+
+/* ── @ task mentions ─────────────────────────────────────────────────────── */
+.mention-pop {
+  position: fixed;
+  z-index: 65;
+  width: 330px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  animation: pop-in 120ms var(--ease);
+}
 
 /* ── projects: archived section + card menu ──────────────────────────────── */
 .project-card { position: relative; }

@@ -3,7 +3,7 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use crate::model::{ChainGate, Priority, RunMode, Status, Strategy};
+use crate::model::{ChainGate, Priority, Status};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -21,7 +21,7 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "ACTOR")]
     pub actor: Option<String>,
 
-    /// Session identity for claims and the per-session queue
+    /// Session identity for `start`/`finish` claims and activity tags
     /// (defaults to $UNIPI_KANBOARD_SESSION).
     #[arg(long, global = true, value_name = "ID")]
     pub session: Option<String>,
@@ -83,12 +83,6 @@ pub enum Command {
         /// Dependency ids (may repeat).
         #[arg(long = "after", value_name = "ID")]
         after: Vec<String>,
-        /// Work strategy label: none|goal|ralph|swarm|graph (unset = jev decides).
-        #[arg(long, value_name = "STRATEGY|auto")]
-        strategy: Option<String>,
-        /// Plan-first flag: yes|no (unset/auto = jev decides).
-        #[arg(long, value_name = "yes|no|auto")]
-        plan: Option<String>,
     },
 
     /// List tasks.
@@ -110,10 +104,21 @@ pub enum Command {
         /// Required for some transitions (rework notes, block/unblock answers).
         #[arg(long)]
         comment: Option<String>,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
     },
 
     /// Append an activity note.
-    Note { id: String, text: String },
+    Note {
+        id: String,
+        text: String,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
+    },
 
     /// Attach a file (image, log, document…) to a task and log a comment embedding it.
     Attach {
@@ -144,12 +149,6 @@ pub enum Command {
         /// Comma-separated labels.
         #[arg(long, value_name = "A,B")]
         labels: Option<String>,
-        /// Work strategy label: none|goal|ralph|swarm|graph (auto = clear).
-        #[arg(long, value_name = "STRATEGY|auto")]
-        strategy: Option<String>,
-        /// Plan-first flag: yes|no|auto (auto = clear).
-        #[arg(long, value_name = "yes|no|auto")]
-        plan: Option<String>,
     },
 
     /// Add a dependency.
@@ -179,19 +178,6 @@ pub enum Command {
         bottom: bool,
     },
 
-    /// Claim the next ready task (system; uses the global --session).
-    ClaimNext {
-        /// Claim this specific task instead of the top of the queue.
-        #[arg(long, value_name = "ID")]
-        id: Option<String>,
-        #[arg(long)]
-        pid: u32,
-        #[arg(long)]
-        host: String,
-        #[arg(long, value_name = "none|plan|goal|ralph|swarm|graph", default_value = "none")]
-        mode: String,
-    },
-
     /// Start working a todo task yourself: todo → in_progress, claimed for
     /// this session (uses the global --session). Free for agents.
     Start {
@@ -210,9 +196,14 @@ pub enum Command {
         /// What you did (the reviewer reads it).
         #[arg(long)]
         comment: String,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
     },
 
-    /// Show what claim-next would pick without claiming (read-only).
+    /// Show which ready todo task would be worked next and why the others
+    /// wait (read-only; `start <ID>` claims it).
     Next,
 
     /// Release in-progress tasks whose session pid is gone (system).
@@ -221,18 +212,6 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-
-    /// Append task ids to this session's work queue (at most 5).
-    Queue {
-        /// Task ids to enqueue; empty with --list shows the queue.
-        ids: Vec<String>,
-        /// Show the queue instead of appending.
-        #[arg(long)]
-        list: bool,
-    },
-
-    /// Remove task ids from this session's queue (no ids clears it).
-    Unqueue { ids: Vec<String> },
 
     /// Show a task's dependency chain (upstream deps and downstream dependents).
     Chain { id: String },
@@ -245,22 +224,14 @@ pub enum Command {
         all: bool,
     },
 
-    /// Release a claimed task (system).
+    /// Release a claimed task (user/system — e.g. a stale claim whose
+    /// session is gone): in_progress → todo | in_review | blocked.
     Release {
         id: String,
         #[arg(long = "to", value_name = "todo|in_review|blocked")]
         to: String,
         #[arg(long)]
         comment: String,
-    },
-
-    /// Record the mode/goal of a claimed task (system).
-    SetRun {
-        id: String,
-        #[arg(long, value_name = "none|plan|goal|ralph|swarm|graph")]
-        mode: String,
-        #[arg(long)]
-        goal: Option<String>,
     },
 
     /// Copy a task into Backlog.
@@ -371,40 +342,4 @@ pub fn parse_status(value: &str) -> crate::error::Result<Status> {
 
 pub fn parse_priority(value: &str) -> crate::error::Result<Priority> {
     value.parse()
-}
-
-pub fn parse_mode(value: &str) -> crate::error::Result<RunMode> {
-    value.parse()
-}
-
-/// `none|goal|ralph|swarm|graph` labels; `auto` resolves to None (unset).
-pub fn parse_strategy_label(value: &str) -> crate::error::Result<Option<Strategy>> {
-    if value.eq_ignore_ascii_case("auto") {
-        return Ok(None);
-    }
-    value.parse::<Strategy>().map(Some).map_err(crate::error::Error::usage)
-}
-
-/// `edit --strategy` — `auto` clears.
-pub fn parse_strategy_edit(value: &str) -> crate::error::Result<Option<Strategy>> {
-    parse_strategy_label(value)
-}
-
-/// `yes|no|true|false` → bool; `auto` resolves to None (unset / clear).
-pub fn parse_plan_flag(value: &str) -> crate::error::Result<Option<bool>> {
-    if value.eq_ignore_ascii_case("auto") {
-        return Ok(None);
-    }
-    match value.to_lowercase().as_str() {
-        "yes" | "true" => Ok(Some(true)),
-        "no" | "false" => Ok(Some(false)),
-        other => Err(crate::error::Error::usage(format!(
-            "unknown plan {other:?} (yes|no|auto)"
-        ))),
-    }
-}
-
-/// `edit --plan` — `auto` clears.
-pub fn parse_plan_edit(value: &str) -> crate::error::Result<Option<bool>> {
-    parse_plan_flag(value)
 }

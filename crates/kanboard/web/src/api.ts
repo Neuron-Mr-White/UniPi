@@ -16,7 +16,7 @@ export interface Run {
   pid?: number;
   host?: string;
   mode?: string;
-  /** "agent" when the session claimed it with `start`; runner otherwise. */
+  /** "agent" when a session claimed it with `start`; "runner" only on claims written by old versions. */
   owner?: "runner" | "agent";
   goal?: string | null;
   started?: string;
@@ -54,6 +54,8 @@ export interface Task {
   path?: string;
   /** Why the latest move into blocked happened (comment, actor, when). */
   blockedReason?: { text: string; actor: string; at: string };
+  /** The full report behind In Review (the finish summary) or Blocked (the block reason). */
+  statusReport?: { kind: "review" | "blocked"; text: string; actor: string; at: string };
 }
 
 export interface Attachment {
@@ -84,10 +86,9 @@ export interface ProjectSummary {
 
 export interface Rules {
   statuses: string[];
-  /** Live chain gate + session/queue limits (tooltips read them). */
+  /** Live chain gate + session limit (tooltips read them). */
   chainGate?: string;
   maxSessions?: number;
-  queueMax?: number;
   allowedMoves: Record<string, string[]>;
   commentRequired: Record<string, Record<string, string>>;
   final: string[];
@@ -141,8 +142,10 @@ export interface Settings {
   summaryInstruction: string;
   defaultSummaryInstruction: string;
   /** pi-side kanboard settings (the ~/.unipi/config/kanboard namespace). */
-  taskDefaults: { defaultStrategy: string; defaultPlan: boolean; blocking: string };
-  runner: { queueMax: number; maxSessions: number; turnAddLimit: number; chainGate: string };
+  taskDefaults: { blocking: string };
+  /** Session limits (older daemons call this `runner`). */
+  sessions?: { maxSessions: number; turnAddLimit: number; chainGate: string };
+  runner?: { maxSessions: number; turnAddLimit: number; chainGate: string };
   archive: { archiveAfterDays: number; retentionDays: number };
 }
 
@@ -150,10 +153,7 @@ export interface Settings {
 export interface SettingsPatch {
   summaryModel?: string;
   summaryInstruction?: string;
-  defaultStrategy?: string;
-  defaultPlan?: boolean;
   blocking?: string;
-  queueMax?: number;
   maxSessions?: number;
   turnAddLimit?: number;
   chainGate?: string;
@@ -218,7 +218,7 @@ export const api = {
     request<{ tasks: Task[]; problems: Problem[] }>(`/api/projects/${encodeURIComponent(slug)}/tasks`),
   task: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`),
-  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[]; strategy?: string; plan?: string }) =>
+  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[] }) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/create`, { method: "POST", body: JSON.stringify(body) }),
   move: (slug: string, id: string, status: string, comment?: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/move`, {

@@ -5,7 +5,7 @@
  * writes. A `/unipi:kanboard-do` grants task SLOTS (each `start` uses one)
  * and a WRITE budget (add, edit, link, order, move backlog↔todo, note on
  * tasks you don't hold). Always free: reads, and `finish`, `move <ID>
- * blocked` and `note <ID>` on claims this session started — a started task
+ * blocked`, `note <ID>` and `attach <ID>` on claims this session started — a started task
  * can always be closed. Autowork lifts both budgets (the runaway guard is
  * the per-turn add cap). In child processes every write is refused: the
  * lead updates the board.
@@ -282,9 +282,9 @@ export function createWriteGuard(options: WriteGuardOptions = {}): WriteGuard {
 					const id = firstPositional(invocation)!;
 					if (await ownsClaim(id)) continue; // closing your own claim is free
 				}
-				if (invocation.sub === "note" && firstPositional(invocation) !== undefined) {
+				if ((invocation.sub === "note" || invocation.sub === "attach") && firstPositional(invocation) !== undefined) {
 					const id = firstPositional(invocation)!;
-					if (await ownsClaim(id)) continue; // noting your own claim is free
+					if (await ownsClaim(id)) continue; // noting on / attaching to your own claim is free
 				}
 				if (autowork) continue; // autowork: unlimited slots and writes
 				if (invocation.sub === "start") {

@@ -60,8 +60,6 @@ impl Fixture {
             priority,
             after,
             &[],
-            None,
-            None,
         )
         .expect("add");
         task_from(&value)
@@ -96,23 +94,31 @@ impl Fixture {
         .expect("move")
     }
 
-    pub fn claim_next(&self, session: &str, pid: u32) -> Value {
+    /// `start <ID>` as the agent of `session` (pid owns the claim) — the way
+    /// a task gets into in_progress now.
+    pub fn start(&self, id: &str, session: &str, pid: u32) -> Value {
+        self.try_start(id, session, pid).expect("start")
+    }
+
+    pub fn try_start(
+        &self,
+        id: &str,
+        session: &str,
+        pid: u32,
+    ) -> kanboard::error::Result<Value> {
         let host = commands::hostname();
-        let args = commands::ClaimArgs {
-            session,
-            pid,
-            host: &host,
-            mode: kanboard::model::RunMode::None,
-            id: None,
-        };
-        commands::claim_next(
+        commands::start(
             &self.layout,
             self.project.clone(),
             ChainGate::InReview,
-            &args,
+            id,
+            &commands::StartArgs {
+                session,
+                pid,
+                host: &host,
+            },
             self.common.now,
         )
-        .expect("claim")
     }
 }
 
@@ -126,14 +132,6 @@ pub fn id_of(value: &Value) -> String {
         .and_then(|id| id.as_str())
         .expect("id in payload")
         .to_string()
-}
-
-pub fn claimed_id(value: &Value) -> Option<String> {
-    let task = value.get("task")?;
-    if task.is_null() {
-        return None;
-    }
-    task.get("id")?.as_str().map(|id| id.to_string())
 }
 
 pub fn write_task_file(fixture: &Fixture, name: &str, contents: &str) -> PathBuf {

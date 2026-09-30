@@ -183,6 +183,7 @@ describe("the write budget", () => {
     const deps = { ownsClaim: async (id: string) => owned.has(id) };
     assert.equal(await guard.check("unipi-kanboard move UNI-5 blocked --comment need creds", deps), null, "own blocked is free");
     assert.equal(await guard.check("unipi-kanboard note UNI-5 'assumption: x'", deps), null, "own note is free");
+    assert.equal(await guard.check("unipi-kanboard attach UNI-5 /tmp/shot.png --note after", deps), null, "own attach is free");
     assert.equal(await guard.check("unipi-kanboard note UNI-8 x"), null, "foreign note costs a write");
     assert.equal(await guard.check("unipi-kanboard move UNI-8 blocked --comment y"), null, "foreign blocked costs a write");
     assert.equal(await guard.check("unipi-kanboard move UNI-5 todo"), null, "move todo costs a write even on own claims");
@@ -402,7 +403,7 @@ describe("doText / autoworkText", () => {
   it("states the budgets, the always-free set and the pre-flight rule", () => {
     const text = doText("s", "/bin/kb", "req", 5, 10);
     assert.match(text, /Budget this session: 5 task slots — each `start` uses one — and 10 board writes/);
-    assert.match(text, /Always free: reads, and `finish`, `move <ID> blocked --comment` and `note` on tasks you started/);
+    assert.match(text, /Always free: reads, and `finish`, `move <ID> blocked --comment`, `note` and `attach` on tasks you started/);
     assert.match(text, /if that is more than 5, start nothing — tell me you can do 5 now/);
     assert.match(text, /Sidekicks and subagents can read the board but not write it/);
     const singular = doText("s", "/bin/kb", "req", 1, 1);

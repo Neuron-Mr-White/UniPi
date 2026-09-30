@@ -124,9 +124,12 @@ export function renderMarkdown(text: string | undefined): string {
   });
 }
 
-/** Does this text contain an attachment reference? (comments render as markdown only then) */
-export function hasMarkup(text: string): boolean {
-  return /att:|!\[|\]\(|```|^#{1,6} |\*\*|^\s*[-*] |^\s*\d+\. |^\s*\|.*\|\s*$/m.test(text);
+/** Markdown → one line of plain text (card callouts, tooltips): no `**`, backticks or list markers. */
+export function plainText(text: string | undefined): string {
+  const html = renderMarkdown(text);
+  if (!html) return "";
+  const doc = new DOMParser().parseFromString(html.replace(/<\/(p|li|h\d)>|<br\s*\/?>/g, " $&"), "text/html");
+  return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 /** "3m ago", "2h ago", "5d ago" — short, tabular-friendly. */

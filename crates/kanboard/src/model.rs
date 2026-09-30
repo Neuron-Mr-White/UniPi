@@ -132,7 +132,7 @@ impl Priority {
         }
     }
 
-    /// Sort weight — `claim-next` takes priority desc, then order asc.
+    /// Sort weight — `next` suggests priority desc, then order asc.
     pub fn rank(self) -> u8 {
         match self {
             Priority::None => 0,
@@ -382,8 +382,9 @@ pub struct Run {
     pub goal: Option<String>,
     #[serde(serialize_with = "serialize_iso")]
     pub started: DateTime<Utc>,
-    /// Who holds the claim: the runner (`claim-next`, the default) or the
-    /// agent itself (`start`). Only agent claims can be `finish`ed.
+    /// Who holds the claim: the agent itself (`start`) or `system` — the
+    /// default, found only in files written before the headless runner was
+    /// removed. Only agent claims can be `finish`ed.
     #[serde(default)]
     pub owner: RunOwner,
 }
@@ -392,7 +393,9 @@ pub struct Run {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOwner {
-    /// The runner claimed it (`claim-next`); the run end releases it.
+    /// Legacy: a system claim from before the runner was removed (old task
+    /// files still carry it). Nothing creates these any more; the reaper or a
+    /// user `release` hands them back.
     #[default]
     System,
     /// The agent self-claimed it (`start`); it moves it on with `finish`.
@@ -455,11 +458,14 @@ pub struct Task {
     pub created: DateTime<Utc>,
     #[serde(serialize_with = "serialize_iso")]
     pub updated: DateTime<Utc>,
-    /// Labelled work strategy; unset = the runner's jev decides.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Legacy `strategy:` frontmatter from the removed runner's routing. Kept
+    /// only so old task files parse and re-render byte-for-byte (canonical
+    /// form); never set by commands and not part of the JSON output.
+    #[serde(default, skip_serializing)]
     pub strategy: Option<Strategy>,
-    /// Labelled "plan first" flag; unset = the runner's jev decides.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Legacy `plan:` frontmatter (same as `strategy`: read and re-rendered,
+    /// never exposed).
+    #[serde(default, skip_serializing)]
     pub plan: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Run>,

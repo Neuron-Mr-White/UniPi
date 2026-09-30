@@ -19,8 +19,8 @@ describe("kanboard settings", () => {
     registerKanboardSettings();
     const cwd = mkdtempSync(join(tmpdir(), "kb-set-"));
     try {
-      assert.equal(DEFAULT_SETTINGS.defaultStrategy, "none", "new users: jev routing off");
-      assert.equal(DEFAULT_SETTINGS.jevThreshold, 0.8);
+      assert.equal("defaultStrategy" in DEFAULT_SETTINGS, false, "runner-era routing keys are gone");
+      assert.equal("jevThreshold" in DEFAULT_SETTINGS, false);
       // readKanboardSettings merges stored (global/project) settings over the
       // defaults, so only the invalid-value path can assert the fallbacks.
       const defaults = readKanboardSettings(cwd);
@@ -33,7 +33,7 @@ describe("kanboard settings", () => {
 
       setSettings(
         "kanboard",
-        { maxSessions: 0, turnAddLimit: "many", requireAuth: true, keepToken: true, defaultStrategy: "weird", jevThreshold: 5 },
+        { maxSessions: 0, turnAddLimit: "many", requireAuth: true, keepToken: true },
         "project",
         cwd,
       );
@@ -42,17 +42,13 @@ describe("kanboard settings", () => {
       assert.equal(bad.turnAddLimit, DEFAULT_SETTINGS.turnAddLimit);
       assert.equal(bad.requireAuth, true);
       assert.equal(bad.keepToken, true);
-      assert.equal(bad.defaultStrategy, DEFAULT_SETTINGS.defaultStrategy, "invalid strategy → default none");
-      assert.equal(bad.jevThreshold, DEFAULT_SETTINGS.jevThreshold, "invalid threshold → default 0.8");
 
-      setSettings("kanboard", { doTasks: 0, doWrites: 0, maxSessions: 4, turnAddLimit: 0, defaultStrategy: "auto", jevThreshold: 0.5 }, "project", cwd);
+      setSettings("kanboard", { doTasks: 0, doWrites: 0, maxSessions: 4, turnAddLimit: 0 }, "project", cwd);
       const zeroed = readKanboardSettings(cwd);
       assert.equal(zeroed.doTasks, 0, "0 = off");
       assert.equal(zeroed.doWrites, 0, "0 = off");
       assert.equal(zeroed.maxSessions, 4);
       assert.equal(zeroed.turnAddLimit, 0);
-      assert.equal(zeroed.defaultStrategy, "auto");
-      assert.equal(zeroed.jevThreshold, 0.5);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

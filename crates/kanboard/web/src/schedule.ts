@@ -1,6 +1,6 @@
 /**
  * "Also move A to Todo": when a task lands in Todo while a dependency is still in
- * Backlog, it is locked (the runner never claims Backlog). Offer — never force —
+ * Backlog, it is locked (Backlog work is never picked up). Offer — never force —
  * to schedule those dependencies too.
  */
 import { api } from "./api.js";

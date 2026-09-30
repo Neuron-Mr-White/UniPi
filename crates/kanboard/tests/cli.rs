@@ -105,8 +105,8 @@ fn list_ready_uses_the_gate_flag() {
     assert_eq!(ids, vec![dep.id.as_str()]);
     assert!(!ids.contains(&dependent.id.as_str()));
 
-    // Move the dep to in_review via the library (the CLI would need the runner).
-    fixture.claim_next("s", std::process::id());
+    // Move the dep to in_review via the library (start, then a system release).
+    fixture.start(&dep.id, "s", std::process::id());
     kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -147,7 +147,7 @@ fn move_denied_reports_the_rule_and_exits_one() {
         kanboard::model::Priority::None,
         &[],
     );
-    fixture.claim_next("s", std::process::id());
+    fixture.start(&task.id, "s", std::process::id());
     // in_progress → in_review as a user needs a comment AND the system actor.
     let run = kb(&fixture, &["move", &task.id, "in_review", "--json"]);
     assert_eq!(run.code, 1);
@@ -218,7 +218,7 @@ fn move_to_a_final_lane_is_refused_with_a_hint() {
 }
 
 #[test]
-fn claim_next_json_reports_waiting_reasons_and_chains_exactly_once() {
+fn next_json_reports_waiting_reasons_and_start_claims_it() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(
         "dep",
@@ -233,42 +233,34 @@ fn claim_next_json_reports_waiting_reasons_and_chains_exactly_once() {
         std::slice::from_ref(&dep.id),
     );
 
-    let run = kb(
-        &fixture,
-        &[
-            "claim-next",
-            "--session",
-            "s1",
-            "--pid",
-            &std::process::id().to_string(),
-            "--host",
-            "test-host",
-            "--json",
-        ],
-    );
+    // `next` suggests the ready dep; the dependent waits on it.
+    let run = kb(&fixture, &["next", "--json"]);
     assert_eq!(run.code, 0);
     assert_eq!(run.json["task"]["id"], dep.id.as_str());
-    assert_eq!(run.json["task"]["run"]["session"], "s1");
 
+    let pid = std::process::id().to_string();
     let run = kb(
         &fixture,
-        &[
-            "claim-next",
-            "--session",
-            "s2",
-            "--pid",
-            "999998",
-            "--host",
-            "test-host",
-            "--json",
-        ],
+        &["start", &dep.id, "--session", "s1", "--pid", &pid, "--json"],
     );
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.json["run"]["session"], "s1");
+
+    let run = kb(&fixture, &["next", "--json"]);
+    assert_eq!(run.code, 0);
     assert!(
         run.json["task"].is_null(),
         "the dependent task is not ready"
     );
     assert_eq!(run.json["waiting"][0]["id"], dependent.id.as_str());
     assert_eq!(run.json["waiting"][0]["waitingFor"][0], dep.id.as_str());
+
+    // `start` refuses it with the same reason.
+    let run = kb(
+        &fixture,
+        &["start", &dependent.id, "--session", "s2", "--pid", &pid, "--json"],
+    );
+    assert_eq!(run.code, 1, "{run:?}");
 }
 
 #[test]
@@ -451,46 +443,39 @@ fn the_agent_actor_cannot_cancel_and_the_message_forbids_actor_override() {
 #[test]
 fn eight_processes_race_but_at_most_two_sessions_claim() {
     let fixture = Fixture::new();
-    for title in ["one", "two", "three"] {
-        fixture.add_with(
-            title,
-            kanboard::model::Status::Todo,
-            kanboard::model::Priority::None,
-            &[],
-        );
-    }
+    let ids: Vec<String> = (0..8)
+        .map(|index| {
+            fixture
+                .add_with(
+                    &format!("task {index}"),
+                    kanboard::model::Status::Todo,
+                    kanboard::model::Priority::None,
+                    &[],
+                )
+                .id
+        })
+        .collect();
 
-    // Two long-lived processes stand in for the running sessions' pids, so the
-    // first two claims are not reaped and the cap refuses the other six.
-    #[cfg(unix)]
-    let sleeper = || Command::new("sleep").arg("60").spawn().expect("sleep");
-    #[cfg(windows)]
-    let sleeper = || {
-        Command::new("cmd")
-            .args(["/c", "ping", "-n", "60", "127.0.0.1"])
-            .spawn()
-            .expect("ping")
-    };
-    let mut sleep_a = sleeper();
-    let mut sleep_b = sleeper();
-    let live = [sleep_a.id(), sleep_b.id()];
-
+    // Every session's pid is alive (this test process), so no claim is reaped
+    // and the session cap refuses all but the first two `start`s to lock.
+    let pid = std::process::id().to_string();
     let mut children = Vec::new();
-    for index in 0..8 {
-        let pid = live.get(index).copied().unwrap_or(900_000 + index as u32);
+    for (index, id) in ids.iter().enumerate() {
         let child = Command::new(bin())
             .args([
-                "claim-next",
+                "start",
+                id,
+                "--actor",
+                "agent",
                 "--session",
                 &format!("proc-{index}"),
                 "--pid",
-                &format!("{pid}"),
-                "--host",
-                "test-host",
+                &pid,
                 "--json",
             ])
             .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
             .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+            .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
             .current_dir(fixture.root())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -505,7 +490,7 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
         let output = child.wait_with_output().expect("wait");
         if output.status.success() {
             let payload: Value = serde_json::from_slice(&output.stdout).expect("json");
-            if let Some(id) = payload["task"]["id"].as_str() {
+            if let Some(id) = payload["id"].as_str() {
                 claimed.push(id.to_string());
             }
         } else {
@@ -515,19 +500,11 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
                 payload["error"]
                     .as_str()
                     .unwrap_or_default()
-                    .contains("sessions")
-                    || payload["error"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .contains("already runs"),
+                    .contains("sessions already run tasks"),
                 "unexpected refusal: {payload}"
             );
         }
     }
-    let _ = sleep_a.kill();
-    let _ = sleep_b.kill();
-    let _ = sleep_a.wait();
-    let _ = sleep_b.wait();
     claimed.sort();
     let unique = claimed.clone();
     claimed.dedup();

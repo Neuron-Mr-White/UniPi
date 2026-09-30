@@ -44,17 +44,19 @@ kb edit "${P[@]}" "$G" --labels deps >/dev/null
 kb edit "${P[@]}" "$J" --labels infra,security >/dev/null
 kb edit "${P[@]}" "$K" --labels api >/dev/null
 
-# Work the flow: claim-next picks by priority/order, so release whatever it claimed.
-claim() { "$KB" claim-next "${P[@]}" --session "$1" --pid "$$" --host coffee --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["task"]["id"])'; }
-X=$(claim s-7f2a); kb release "${P[@]}" "$X" --to in_review --comment "Sessions table + TTL index landed; dual-write behind SESSIONS_PG=1. Load test: p99 4ms." >/dev/null
-X=$(claim s-81c0); kb release "${P[@]}" "$X" --to in_review --comment "Token bucket in middleware; 429 + Retry-After verified with hey (200 rps)." >/dev/null
-kb move "${P[@]}" "$X" done >/dev/null 2>&1 || true
-X=$(claim s-93de); kb release "${P[@]}" "$X" --to blocked --comment "The CI runner clock skews by ~8s. Needs infra to enable NTP on runners." >/dev/null
-X=$(claim s-a41b); kb release "${P[@]}" "$X" --to in_review --comment "Cursor pagination done; added (created_at,id) index." >/dev/null
+# Work the flow the way an agent session does: start <ID> claims it, finish
+# hands it to review, `move … blocked --comment` parks it.
+start() { kb start "${P[@]}" "$2" --actor agent --session "$1" --pid "$$" >/dev/null; }
+finish() { kb finish "${P[@]}" "$2" --actor agent --session "$1" --comment "$3" >/dev/null; }
+start s-7f2a "$C"; finish s-7f2a "$C" "Sessions table + TTL index landed; dual-write behind SESSIONS_PG=1. Load test: p99 4ms."
+start s-81c0 "$A"; finish s-81c0 "$A" "Token bucket in middleware; 429 + Retry-After verified with hey (200 rps)."
+kb move "${P[@]}" "$A" done >/dev/null 2>&1 || true
+start s-93de "$F"; kb move "${P[@]}" "$F" blocked --actor agent --session s-93de --comment "The CI runner clock skews by ~8s. Needs infra to enable NTP on runners." >/dev/null
+start s-a41b "$K"; finish s-a41b "$K" "Cursor pagination done; added (created_at,id) index."
 kb move "${P[@]}" "$L" cancelled >/dev/null 2>&1 || true
 kb note "${P[@]}" "$E" "Prefer the OTLP/HTTP exporter; gRPC is blocked by the proxy." >/dev/null
 # One live agent keeps its run block.
-X=$(claim s-c55e); kb set-run "${P[@]}" "$X" --mode goal >/dev/null 2>&1 || true
+start s-c55e "$D"
 
 # Chains for the grouping demo: a 3-step chain in Todo, interleaved by order with
 # an unrelated task, and a task locked behind a Backlog parent.

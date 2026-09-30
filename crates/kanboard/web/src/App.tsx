@@ -6,7 +6,7 @@ import { Board } from "./Board.js";
 import { CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { ListView } from "./List.js";
-import { hue, ProjectTile, runLabel } from "./paint.js";
+import { hue, ProjectTile } from "./paint.js";
 import { TaskPanel } from "./TaskPanel.js";
 import {
   allLabels,
@@ -415,7 +415,7 @@ function Sidebar(): JSX.Element {
                   </span>
                   <span class="agent-time">{elapsed(task.run?.started)}</span>
                   <span class="agent-meta">
-                    {runLabel(task.run)} · session {task.run?.session ?? "?"}
+                    agent · session {task.run?.session ?? "?"}
                   </span>
                 </button>
               )}

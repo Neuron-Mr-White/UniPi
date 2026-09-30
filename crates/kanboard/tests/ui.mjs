@@ -48,13 +48,14 @@ if (!urlMode) {
   const env = { ...process.env, UNIPI_KANBOARD_HOME: home };
   const kb = (...call) => JSON.parse(execFileSync(binary, [...call, "--json"], { env, cwd: workspace, encoding: "utf-8" }));
   slug = kb("project", "add", "--name", "UI Check").slug;
-  // Two done tasks for the summarize & archive flow: claim → review → done.
-  // Seeded first so claim-next (order = creation) picks them, not the fixtures below.
+  // An agent works a task itself: start (claims it for the session) → finish (→ in_review).
+  const work = (id) => kb("start", id, "--actor", "agent", "--session", "ui-check", "--pid", String(process.pid));
+  // Two done tasks for the summarize & archive flow: start → finish → done.
   for (const name of ["shipped alpha", "shipped beta"]) {
-    kb("add", name, "--status", "todo");
-    const claimed = kb("claim-next", "--session", "ui-check", "--pid", "1", "--host", "test");
-    kb("release", claimed.task.id, "--to", "in_review", "--comment", "shipped");
-    kb("move", claimed.task.id, "done");
+    const id = kb("add", name, "--status", "todo").id;
+    work(id);
+    kb("finish", id, "--comment", "shipped", "--actor", "agent", "--session", "ui-check");
+    kb("move", id, "done");
   }
   const ids = ["b", "t1", "t2", "r1", "chain"].map((name, index) =>
     kb("add", `${name} task`, "--status", index === 2 || index === 4 ? "todo" : "backlog").id,
@@ -91,10 +92,11 @@ if (!urlMode) {
     ].join("\n"),
   );
   // One task in review so the comment-required move can be exercised.
-  kb("claim-next", "--session", "ui-check", "--pid", "1", "--host", "test");
-  kb("release", ids[2], "--to", "in_review", "--comment", "ready for review");
-  // One blocked task with a reason (card callout + panel banner).
-  const blockedId = kb("claim-next", "--session", "ui-check", "--pid", "1", "--host", "test").task.id;
+  work(ids[2]);
+  kb("finish", ids[2], "--comment", "ready for review", "--actor", "agent", "--session", "ui-check");
+  // One blocked task with a reason (card callout + panel banner): the "chain task" (ids[4]).
+  const blockedId = ids[4];
+  work(blockedId);
   kb("move", blockedId, "blocked", "--comment", "need the API endpoint before I can continue", "--actor", "agent", "--session", "ui-check");
   // A second, archived project — the overview's collapsed "Archived" section.
   const otherRoot = mkdtempSync(join(tmpdir(), "kb-ui-other-"));
@@ -516,8 +518,53 @@ try {
     const node = document.querySelector('.dialog');
     return node ? { title: !!node.querySelector('.dialog-title-input'), body: !!node.querySelector('.dialog-body-input'), chips: node.querySelectorAll('.prop-chip').length } : null;
   })()`);
-  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 6, JSON.stringify(dialog));
+  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 4, JSON.stringify(dialog));
   await session.shot("k7-newtask-light-1440.png");
+  // UNI-5: files dropped anywhere on the dialog (description, title) attach.
+  const dropped = await session.evaluate(`(async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 120));
+    const drop = async (target, name) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['x'], name, { type: 'image/png' }));
+      target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      await tick();
+      const hint = !!document.querySelector('.dialog .drop-hint');
+      const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+      target.dispatchEvent(event);
+      await tick();
+      return { hint, prevented: event.defaultPrevented };
+    };
+    const body = await drop(document.querySelector('.dialog-body-input'), 'body.png');
+    const title = await drop(document.querySelector('.dialog-title-input'), 'title.png');
+    const files = [...document.querySelectorAll('.dialog .pending-file')].map((n) => n.textContent.trim());
+    return { body, title, files, hintGone: !document.querySelector('.dialog .drop-hint') };
+  })()`);
+  check("files dropped on the new-task description and title attach", dropped?.body?.prevented && dropped?.title?.prevented && dropped.files.length === 2 && dropped.files[0].includes("body.png"), JSON.stringify(dropped));
+  check("the new-task dialog shows a drop hint while dragging", dropped?.body?.hint && dropped.hintGone, JSON.stringify(dropped));
+  // UNI-36: "@" in the description lists recent tasks (newest first), filters, inserts the id.
+  const mention = await session.evaluate(`(async () => {
+    const tick = (ms = 150) => new Promise((r) => setTimeout(r, ms));
+    const area = document.querySelector('.dialog-body-input');
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    const type = (value) => { area.focus(); set.call(area, value); area.setSelectionRange(value.length, value.length); area.dispatchEvent(new Event('input', { bubbles: true })); };
+    type('see @');
+    await tick();
+    const ids = [...document.querySelectorAll('.mention-pop .dep-id')].map((n) => n.textContent);
+    const tasks = await fetch('/api/projects/${slug}/tasks').then((r) => r.json());
+    const list = (Array.isArray(tasks) ? tasks : tasks.tasks).filter((t) => !['archived', 'cancelled'].includes(t.status));
+    const num = (id) => Number(/(\\d+)$/.exec(id)[1]);
+    const newest = list.sort((a, b) => Date.parse(b.created) - Date.parse(a.created) || num(b.id) - num(a.id))[0].id;
+    const target = list.find((t) => t.title === 'parked parent') ?? list[list.length - 1];
+    type('see @' + target.title.slice(0, 6));
+    await tick();
+    const filtered = [...document.querySelectorAll('.mention-pop .dep-id')].map((n) => n.textContent);
+    area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await tick();
+    return { ids, newest, filtered, target: target.id, value: area.value, closed: !document.querySelector('.mention-pop'), dialog: !!document.querySelector('.dialog') };
+  })()`);
+  check("@ lists recent tasks newest first", mention?.ids?.length > 0 && mention.ids[0] === mention.newest, JSON.stringify(mention));
+  check("@ filters as you type and Enter inserts the id", mention?.filtered?.includes(mention.target) && mention.value.startsWith("see " + mention.filtered[0] + " ") && mention.closed && mention.dialog, JSON.stringify(mention));
   await session.evaluate(`document.querySelector('.dialog [aria-label="Close"]').click()`);
   await sleep(300);
 
@@ -840,7 +887,7 @@ try {
       return { trigger: !!trigger && trigger.textContent.includes('pi default'), cats, collapsed, customize: !!customize, hint: dialog.innerText.includes('Default: changelog bullets'), gear: !!dialog.querySelector('.dialog-head svg') };
     })()`);
     check("settings dialog shows the categories nav + combobox + collapsed instruction",
-      dlg && dlg.trigger && dlg.cats.length === 4 && dlg.cats.includes("Summaries") && dlg.cats.includes("Task defaults") && dlg.cats.includes("Runner") && dlg.cats.includes("Archive") && dlg.collapsed && dlg.customize && dlg.hint,
+      dlg && dlg.trigger && dlg.cats.length === 4 && dlg.cats.includes("Summaries") && dlg.cats.includes("Task defaults") && dlg.cats.includes("Sessions") && dlg.cats.includes("Archive") && dlg.collapsed && dlg.customize && dlg.hint,
       JSON.stringify(dlg));
     // Category nav switches panes.
     const catCheck = await session.evaluate(`(async () => {
@@ -849,17 +896,19 @@ try {
       await new Promise((r) => setTimeout(r, 120));
       const hasStrategy = !!document.querySelector('.dialog [aria-label="Default strategy"]');
       const hasBlocking = !!document.querySelector('.dialog [aria-label="Blocking"]');
-      click('Runner');
+      click('Sessions');
       await new Promise((r) => setTimeout(r, 120));
+      const hasSessions = !!document.querySelector('.dialog [aria-label="Sessions at once"]');
       const hasQueue = !!document.querySelector('.dialog [aria-label="Queue limit"]');
       click('Archive');
       await new Promise((r) => setTimeout(r, 120));
       const hasArchive = !!document.querySelector('.dialog [aria-label="Auto-archive after days"]');
       click('Summaries');
       await new Promise((r) => setTimeout(r, 120));
-      return { hasStrategy, hasBlocking, hasQueue, hasArchive };
+      return { hasStrategy, hasBlocking, hasSessions, hasQueue, hasArchive };
     })()`);
-    check("settings categories render their fields", catCheck.hasStrategy && catCheck.hasBlocking && catCheck.hasQueue && catCheck.hasArchive, JSON.stringify(catCheck));
+    check("settings categories render their fields", catCheck.hasBlocking && catCheck.hasSessions && catCheck.hasArchive, JSON.stringify(catCheck));
+    check("settings no longer offer strategy or a queue limit", !catCheck.hasStrategy && !catCheck.hasQueue, JSON.stringify(catCheck));
     await session.shot("k14-settings-light-1440.png");
     // Point piCommand at the stub (echoes the prompt, serves --list-models),
     // then the dialog's Refresh link loads the daemon-owned catalog.
@@ -992,11 +1041,23 @@ try {
   const banner = await session.evaluate(`(async () => {
     const card = [...document.querySelectorAll('.card')].find((c) => c.querySelector('.card-blocked'));
     card?.click();
-    for (let i = 0; i < 30 && !document.querySelector('.blocked-banner'); i += 1) await new Promise((r) => setTimeout(r, 200));
-    const banner = document.querySelector('.blocked-banner');
-    return { text: banner?.textContent ?? null };
+    for (let i = 0; i < 30 && !document.querySelector('.status-banner.blocked'); i += 1) await new Promise((r) => setTimeout(r, 200));
+    const banner = document.querySelector('.status-banner.blocked');
+    const text = banner?.textContent ?? null;
+    const bodyWeight = banner ? getComputedStyle(banner.querySelector('.status-banner-body')).fontWeight : null;
+    // UNI-25: the eye opens the full report in a reader.
+    banner?.querySelector('[aria-label="Read the full report"]')?.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const reader = document.querySelector('.dialog.reader .reader-body')?.textContent ?? null;
+    document.querySelector('.dialog.reader [aria-label="Close"]')?.click();
+    await new Promise((r) => setTimeout(r, 200));
+    const tag = [...document.querySelectorAll('.timeline .report-tag')].map((n) => n.textContent);
+    return { text, bodyWeight, reader, readerClosed: !document.querySelector('.dialog.reader'), tag };
   })()`);
-  check("the task panel shows the blocked banner", /Blocked: need the API endpoint/.test(banner?.text ?? "") && /Reply below/.test(banner?.text ?? ""), JSON.stringify(banner));
+  check("the task panel shows the blocked banner", /^Blocked/.test(banner?.text ?? "") && /need the API endpoint/.test(banner?.text ?? "") && /Reply below/.test(banner?.text ?? ""), JSON.stringify(banner));
+  check("the block reason is body text, not a bold wall", Number(banner?.bodyWeight) < 600, String(banner?.bodyWeight));
+  check("the banner's eye opens the full report", /need the API endpoint before I can continue/.test(banner?.reader ?? "") && banner.readerClosed, JSON.stringify(banner));
+  check("the timeline tags the block entry", banner?.tag?.includes("Blocked"), JSON.stringify(banner?.tag));
   await sleep(900); // let the drawer slide-in + transitions settle
   await session.shot("k17-blocked-1440.png");
   await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);

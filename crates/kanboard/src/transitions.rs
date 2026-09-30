@@ -44,15 +44,15 @@ pub const RULES: &[Rule] = &[
         actors: USER_AGENT,
         comment: Comment::NotNeeded,
     },
-    // todo → in_progress | system (runner claim) + agent (`start`, self-claim)
-    // | deps satisfied, not claimed — enforced by claim-next / start, not `move`
+    // todo → in_progress | agent (`start`, self-claim) + system
+    // | deps satisfied, not claimed — enforced by `start`, not `move`
     Rule {
         from: Status::Todo,
         to: Status::InProgress,
         actors: AGENT_SYSTEM,
         comment: Comment::NotNeeded,
     },
-    // in_progress → in_review | system (run end) + agent (`finish`, own claim)
+    // in_progress → in_review | agent (`finish`, own claim) + system (`release`)
     // | summary note
     Rule {
         from: Status::InProgress,
@@ -176,8 +176,9 @@ pub fn check(
 
     if from == Status::InProgress && actor == Actor::User && staleness == Staleness::Running {
         return Err(Error::rule(
-            "in_progress → * while the run is alive is system only: the runner that owns it must release it \
-             (a user may cancel from the terminal that runs it; if the process died, re-run and confirm staleness)",
+            "in_progress → * while its session is alive is agent/system only: the agent that `start`ed it moves it on \
+             (`finish <ID> --comment` or `move <ID> blocked --comment`); if that process died, `reap` hands it back \
+             (or re-run once it reads as stale)",
         ));
     }
 
@@ -204,17 +205,17 @@ pub fn check(
 fn actor_denied(from: Status, to: Status, actor: Actor) -> String {
     match (from, to) {
         (Status::Todo, Status::InProgress) => {
-            "todo → in_progress is system only for users — the runner claims with `claim-next`, \
-             an agent self-claims with `start <ID>`"
+            "todo → in_progress is agent/system only — an agent claims a ready task for its session \
+             with `start <ID>`"
                 .to_string()
         }
         (Status::InProgress, Status::InReview) => {
-            "in_progress → in_review is system only for users — the runner writes it when the run ends, \
-             an agent that `start`ed the task uses `finish <ID> --comment`"
+            "in_progress → in_review is agent/system only — the agent that `start`ed the task hands it \
+             over with `finish <ID> --comment`"
                 .to_string()
         }
         (_, Status::Done) if actor == Actor::Agent => {
-            "agents cannot mark tasks done — release to in_review and let the user confirm \
+            "agents cannot mark tasks done — hand it to in_review (`finish <ID> --comment`) and let the user confirm \
              (actor=user is an honour system the skill forbids agents from breaking)"
                 .to_string()
         }
@@ -252,7 +253,7 @@ fn not_allowed(from: Status, to: Status, actor: Actor, staleness: Staleness) -> 
         );
     }
     if to == Status::InProgress {
-        return "in_progress is reachable only by claiming a ready todo task (`claim-next`, system)".to_string();
+        return "in_progress is reachable only from a ready todo task, claimed with `start <ID>`".to_string();
     }
     if to == Status::Archived {
         return match from {

@@ -7,10 +7,10 @@ use common::{Daemon, Fixture, cli, http, http_with_headers};
 use kanboard::model::{Priority, Status};
 
 /// Tasks land in Backlog/Todo only, so reach Done the way the UI does:
-/// claim → release to review → move to done.
+/// start → release to review → move to done.
 fn finish(fixture: &Fixture, title: &str) {
-    fixture.add_with(title, Status::Todo, Priority::None, &[]);
-    let claimed = common::claimed_id(&fixture.claim_next("test", 999_999)).expect("claim");
+    let claimed = fixture.add_with(title, Status::Todo, Priority::None, &[]).id;
+    fixture.start(&claimed, "test", 999_999);
     cli(
         fixture,
         &[

@@ -9,9 +9,10 @@ import { Portal } from "solid-js/web";
 import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
 import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
-import { hasMarkup, relativeTime, renderMarkdown } from "./markdown.js";
+import { relativeTime, renderMarkdown } from "./markdown.js";
 import { filesFrom, insertAtCursor, uploadAll } from "./attach.js";
 import { hue } from "./paint.js";
+import { Mention } from "./mention.js";
 import { offerToSchedule } from "./schedule.js";
 import {
   board,
@@ -28,7 +29,7 @@ import {
   toast,
   upsertTask,
 } from "./state.js";
-import { AutoTextarea, Avatar, Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
+import { AutoTextarea, Avatar, Dialog, Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
 
 export function TaskPanel(): JSX.Element {
   const task = (): Task | undefined => board.tasks.find((candidate) => candidate.id === openTaskId());
@@ -58,6 +59,13 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   const [busy, setBusy] = createSignal(false);
   const [uploading, setUploading] = createSignal(0);
   const [dropOver, setDropOver] = createSignal<"comment" | "body" | null>(null);
+  const [reader, setReader] = createSignal<ReaderEntry | null>(null);
+  /** The report behind In Review / Blocked (older daemons: the blocked reason only). */
+  const statusReport = (): Task["statusReport"] =>
+    props.task.statusReport ??
+    (props.task.status === "blocked" && props.task.blockedReason?.text
+      ? { kind: "blocked", ...props.task.blockedReason }
+      : undefined);
   let commentArea: HTMLTextAreaElement | undefined;
   let bodyArea: HTMLTextAreaElement | undefined;
   let filePicker: HTMLInputElement | undefined;
@@ -267,15 +275,36 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
           <Icon.close />
         </button>
       </header>
-      <Show when={props.task.status === "blocked" && props.task.blockedReason?.text}>
-        <div class="blocked-banner" role="alert">
-          <Icon.blocked size={15} />
-          <div class="blocked-banner-text">
-            <strong>Blocked: {props.task.blockedReason!.text}</strong>
-            <span class="blocked-banner-hint">Reply below, then move it back to Todo.</span>
+      <Show when={statusReport()}>
+        {(report) => (
+          <div class={`status-banner ${report().kind}`} role={report().kind === "blocked" ? "alert" : "status"}>
+            {report().kind === "blocked" ? <Icon.blocked size={15} /> : <Icon.review size={15} />}
+            <div class="status-banner-text">
+              <div class="status-banner-head">
+                <strong>{report().kind === "blocked" ? "Blocked" : "Ready for review"}</strong>
+                <span class="muted">
+                  {report().actor} · {relativeTime(report().at)}
+                </span>
+              </div>
+              <div class="status-banner-body md" innerHTML={renderMarkdown(report().text)} />
+              <span class="status-banner-hint">
+                {report().kind === "blocked"
+                  ? "Reply below, then move it back to Todo."
+                  : "Mark it Done, or send it back to Todo with a rework note."}
+              </span>
+            </div>
+            <button
+              class="icon-btn status-banner-read"
+              aria-label="Read the full report"
+              title="Read the full report"
+              onClick={() => setReader({ title: report().kind === "blocked" ? `${props.task.id} · Blocked` : `${props.task.id} · Report`, ...report() })}
+            >
+              <Icon.review size={15} />
+            </button>
           </div>
-        </div>
+        )}
       </Show>
+      <ReportReader entry={reader()} onClose={() => setReader(null)} />
 
       <div class="drawer-body">
         <div class="drawer-main">
@@ -348,6 +377,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                     }
                   }}
                 />
+                <Mention area={() => bodyArea} setValue={setBody} selfId={props.task.id} />
                 <div class="editor-foot">
                   <button
                     class="icon-btn"
@@ -406,7 +436,11 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                           {relativeTime(entry.at)}
                         </time>
                       </div>
-                      <ActivityText text={entry.text} system={entry.actor === "system"} />
+                      <ActivityText
+                        text={entry.text}
+                        system={entry.actor === "system"}
+                        onRead={(label, text) => setReader({ title: `${props.task.id} · ${label}`, text, actor: entry.actor, at: entry.at })}
+                      />
                     </div>
                   </li>
                 )}
@@ -426,6 +460,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   }
                 }}
               />
+              <Mention area={() => commentArea} setValue={setComment} selfId={props.task.id} />
               <Show when={comment().includes("att:")}>
                 <div class="composer-preview md" innerHTML={renderMarkdown(comment())} />
               </Show>
@@ -534,80 +569,6 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                       onSelect={() => {
                         close();
                         if (priority !== props.task.priority) void run(() => api.edit(target(), props.task.id, { priority }));
-                      }}
-                    />
-                  )}
-                </For>
-              )}
-            </Popover>
-          </div>
-
-          <div class="prop">
-            <span class="prop-label">Strategy</span>
-            <Popover
-              width={200}
-              label="Work strategy"
-              trigger={(p) => (
-                <button
-                  class={`prop-value${!props.task.strategy ? " muted" : ""}`}
-                  id="strategy"
-                  ref={p.ref}
-                  aria-expanded={p.open}
-                  disabled={busy()}
-                  onClick={p.toggle}
-                >
-                  {props.task.strategy ?? "Auto (jev)"}
-                  <Icon.chevronDown size={12} class="caret" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <For each={["auto", "none", "goal", "ralph", "swarm", "graph"]}>
-                  {(strategy) => (
-                    <MenuItem
-                      role="option"
-                      label={strategy === "auto" ? "Auto (jev)" : strategy}
-                      checked={(props.task.strategy ?? "auto") === strategy}
-                      onSelect={() => {
-                        close();
-                        void run(() => api.edit(target(), props.task.id, { strategy }));
-                      }}
-                    />
-                  )}
-                </For>
-              )}
-            </Popover>
-          </div>
-
-          <div class="prop">
-            <span class="prop-label">Plan first</span>
-            <Popover
-              width={200}
-              label="Plan first"
-              trigger={(p) => (
-                <button
-                  class={`prop-value${props.task.plan === undefined ? " muted" : ""}`}
-                  id="plan"
-                  ref={p.ref}
-                  aria-expanded={p.open}
-                  disabled={busy()}
-                  onClick={p.toggle}
-                >
-                  {props.task.plan === undefined ? "Default" : props.task.plan ? "Yes" : "No"}
-                  <Icon.chevronDown size={12} class="caret" />
-                </button>
-              )}
-            >
-              {(close) => (
-                <For each={[["auto", "Auto (jev)"], ["yes", "Yes"], ["no", "No"]]}>
-                  {([value, label]) => (
-                    <MenuItem
-                      role="option"
-                      label={label}
-                      checked={(props.task.plan === undefined ? "auto" : props.task.plan ? "yes" : "no") === value}
-                      onSelect={() => {
-                        close();
-                        void run(() => api.edit(target(), props.task.id, { plan: value }));
                       }}
                     />
                   )}
@@ -779,26 +740,84 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   );
 }
 
-/** One activity entry: markdown when it has markup, clamped to ~6 lines with "Show more". */
-function ActivityText(props: { text: string; system: boolean }): JSX.Element {
+/** Status-changing entries: a label chip, then the comment (the report). */
+const REPORT_PREFIXES: Array<[RegExp, string]> = [
+  [/^finished:\s*/, "Finished"],
+  [/^released to in_review:\s*/, "Finished"],
+  [/^blocked:\s*/, "Blocked"],
+  [/^released to blocked:\s*/, "Blocked"],
+  [/^unblocked:\s*/, "Unblocked"],
+  [/^rework:\s*/, "Rework"],
+  [/^released to todo:\s*/, "Released"],
+];
+
+export function splitReport(text: string): { label: string | null; body: string } {
+  for (const [pattern, label] of REPORT_PREFIXES) {
+    if (pattern.test(text)) return { label, body: text.replace(pattern, "") };
+  }
+  return { label: null, body: text };
+}
+
+/**
+ * One activity entry, always rendered as (sanitised) markdown so agent reports
+ * keep their paragraphs, lists and emphasis. Long entries clamp to ~6 lines
+ * with "Show more"; reports and long entries get an eye button that opens the
+ * full text in a reader.
+ */
+function ActivityText(props: { text: string; system: boolean; onRead: (label: string, text: string) => void }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
   const [overflows, setOverflows] = createSignal(false);
-  const markup = (): boolean => hasMarkup(props.text);
+  const parts = () => splitReport(props.text);
   const measure = (el: HTMLDivElement): void => {
-    requestAnimationFrame(() => setOverflows(el.scrollHeight > el.clientHeight + 4));
+    requestAnimationFrame(() => setOverflows(el.scrollHeight > el.clientHeight + 1));
   };
-  const cls = (): string => `what${markup() ? " md" : ""}${props.system ? " system" : ""}${expanded() ? "" : " clamped"}`;
+  const cls = (): string => `what md${props.system ? " system" : ""}${expanded() ? "" : " clamped"}`;
   return (
     <>
-      <Show when={markup()} fallback={<div class={cls()} ref={measure}>{props.text}</div>}>
-        <div class={cls()} ref={measure} innerHTML={renderMarkdown(props.text)} />
+      <Show when={parts().label}>
+        <span class={`report-tag ${parts().label!.toLowerCase()}`}>{parts().label}</span>
       </Show>
-      <Show when={overflows() || expanded()}>
-        <button class="show-more" onClick={() => setExpanded((open) => !open)}>
-          {expanded() ? "Show less" : "Show more"}
-        </button>
+      <div class={cls()} ref={measure} innerHTML={renderMarkdown(parts().body)} />
+      <Show when={overflows() || expanded() || parts().label}>
+        <div class="what-actions">
+          <Show when={overflows() || expanded()}>
+            <button class="show-more" onClick={() => setExpanded((open) => !open)}>
+              {expanded() ? "Show less" : "Show more"}
+            </button>
+          </Show>
+          <button class="show-more read" aria-label="Read in full" title="Read in full" onClick={() => props.onRead(parts().label ?? "Note", parts().body)}>
+            <Icon.review size={13} /> Read
+          </button>
+        </div>
       </Show>
     </>
+  );
+}
+
+interface ReaderEntry {
+  title: string;
+  text: string;
+  actor: string;
+  at: string;
+}
+
+/** A roomy reader for one report or comment: full markdown, no clamp. */
+function ReportReader(props: { entry: ReaderEntry | null; onClose: () => void }): JSX.Element {
+  return (
+    <Dialog open={props.entry !== null} label={props.entry?.title ?? "Report"} onClose={props.onClose} width={760} class="reader">
+      <header class="dialog-head">
+        <Icon.review size={14} />
+        <span>{props.entry?.title}</span>
+        <span class="muted">
+          {props.entry?.actor} · {relativeTime(props.entry?.at)}
+        </span>
+        <span class="spacer" />
+        <button class="icon-btn" aria-label="Close" onClick={props.onClose}>
+          <Icon.close size={14} />
+        </button>
+      </header>
+      <div class="dialog-body reader-body md" innerHTML={renderMarkdown(props.entry?.text ?? "")} />
+    </Dialog>
   );
 }
 

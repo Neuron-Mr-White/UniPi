@@ -69,16 +69,13 @@ pub fn save(layout: &Layout, settings: &PanelSettings) -> Result<()> {
 
 // ── pi-side kanboard settings (the unipi "kanboard" namespace) ────────────
 //
-// The board's Task defaults / Runner / Archive keys live in the same file
+// The board's Task defaults / session limits / Archive keys live in the same file
 // unipi's settings engine uses for the global layer:
 // `$HOME/.unipi/config/kanboard/config.json` (a flat JSON object; other
 // modules' keys must be preserved on write).
 
 pub const PI_SETTING_KEYS: &[&str] = &[
-    "defaultStrategy",
-    "defaultPlan",
     "blocking",
-    "queueMax",
     "maxSessions",
     "turnAddLimit",
     "chainGate",
@@ -86,7 +83,6 @@ pub const PI_SETTING_KEYS: &[&str] = &[
     "retentionDays",
 ];
 
-pub const STRATEGIES: &[&str] = &["auto", "none", "goal", "ralph", "swarm", "graph"];
 pub const BLOCKING: &[&str] = &["avoid", "ask"];
 pub const CHAIN_GATES: &[&str] = &["in_review", "done"];
 
@@ -131,28 +127,12 @@ pub fn effective_pi_settings() -> serde_json::Map<String, serde_json::Value> {
     let stored = load_pi_settings();
     let mut out = serde_json::Map::new();
     out.insert(
-        "defaultStrategy".to_string(),
-        stored
-            .get("defaultStrategy")
-            .cloned()
-            .filter(|v| v.as_str().is_some_and(|s| STRATEGIES.contains(&s)))
-            .unwrap_or_else(|| "auto".into()),
-    );
-    out.insert(
-        "defaultPlan".to_string(),
-        serde_json::Value::Bool(stored.get("defaultPlan").and_then(|v| v.as_bool()).unwrap_or(false)),
-    );
-    out.insert(
         "blocking".to_string(),
         stored
             .get("blocking")
             .cloned()
             .filter(|v| v.as_str().is_some_and(|s| BLOCKING.contains(&s)))
             .unwrap_or_else(|| "avoid".into()),
-    );
-    out.insert(
-        "queueMax".to_string(),
-        serde_json::Value::from(stored.get("queueMax").and_then(|v| v.as_u64()).unwrap_or(10)),
     );
     out.insert(
         "maxSessions".to_string(),
@@ -186,13 +166,6 @@ pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> 
     let mut out = serde_json::Map::new();
     for (key, value) in patch {
         match key.as_str() {
-            "defaultStrategy" => {
-                let v = value.as_str().ok_or("defaultStrategy must be a string")?;
-                if !STRATEGIES.contains(&v) {
-                    return Err(format!("unknown defaultStrategy {v:?}"));
-                }
-                out.insert(key.clone(), value.clone());
-            }
             "blocking" => {
                 let v = value.as_str().ok_or("blocking must be a string")?;
                 if !BLOCKING.contains(&v) {
@@ -207,13 +180,7 @@ pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> 
                 }
                 out.insert(key.clone(), value.clone());
             }
-            "defaultPlan" => {
-                if !value.is_boolean() {
-                    return Err("defaultPlan must be a boolean".to_string());
-                }
-                out.insert(key.clone(), value.clone());
-            }
-            "queueMax" | "turnAddLimit" | "archiveAfterDays" | "retentionDays" => {
+            "turnAddLimit" | "archiveAfterDays" | "retentionDays" => {
                 if !value.is_u64() {
                     return Err(format!("{key} must be a non-negative integer"));
                 }
@@ -226,8 +193,9 @@ pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> 
                 }
                 out.insert(key.clone(), value.clone());
             }
-            // Legacy key written by older daemons — ignored, not rejected.
-            "agentCommand" => {}
+            // Legacy keys (older daemons; the removed runner's routing and
+            // queue) — ignored, not rejected, so an older UI can still save.
+            "agentCommand" | "defaultStrategy" | "defaultPlan" | "queueMax" => {}
             other => return Err(format!("unknown settings key {other:?}")),
         }
     }

@@ -8,9 +8,7 @@ use crate::board::Board;
 use crate::deps;
 use crate::error::{Error, Result};
 use crate::format;
-use crate::model::{
-    Actor, ChainGate, Priority, Run, RunMode, RunOwner, Staleness, Status, Strategy, Task,
-};
+use crate::model::{Actor, ChainGate, Priority, Run, RunMode, RunOwner, Staleness, Status, Task};
 use crate::order;
 use crate::store::{self, Layout, Project};
 use crate::transitions;
@@ -97,6 +95,9 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
             if let Some(reason) = reason {
                 map.insert("blockedReason".into(), reason);
             }
+        }
+        if let Some(report) = status_report(task) {
+            map.insert("statusReport".into(), report);
         }
         map.insert(
             "attachments".into(),
@@ -190,8 +191,6 @@ pub fn add(
     priority: Priority,
     after: &[String],
     attach: &[std::path::PathBuf],
-    strategy: Option<Strategy>,
-    plan: Option<bool>,
 ) -> Result<Value> {
     let status = status.unwrap_or(Status::Backlog);
     if !matches!(status, Status::Backlog | Status::Todo) {
@@ -226,8 +225,6 @@ pub fn add(
         order::bottom_of(&lane),
         common.now,
     );
-    task.strategy = strategy;
-    task.plan = plan;
     let mut body = body.unwrap_or("").trim().to_string();
     for file in attach {
         let bytes = std::fs::read(file)
@@ -255,6 +252,29 @@ pub fn add(
         map.insert("id".into(), json!(id));
     }
     Ok(value)
+}
+
+/// The report behind the task's current status — what the reviewer or the
+/// person unblocking it reads: for in_review the latest `finished:` (agent) or
+/// `released to in_review:` (legacy runner) entry, for blocked the latest
+/// `blocked:` entry. The status prefix is stripped; the text is the full,
+/// untruncated comment (markdown).
+fn status_report(task: &Task) -> Option<Value> {
+    let (kind, prefixes): (&str, &[&str]) = match task.status {
+        Status::InReview => ("review", &["finished:", "released to in_review:"]),
+        Status::Blocked => ("blocked", &["blocked:", "blocked"]),
+        _ => return None,
+    };
+    task.activity.iter().rev().find_map(|entry| {
+        let prefix = prefixes.iter().find(|prefix| entry.text.starts_with(**prefix))?;
+        let text = entry.text[prefix.len()..].trim_start_matches([':', '—', ' ']).trim();
+        Some(json!({
+            "kind": kind,
+            "text": text,
+            "actor": entry.actor.as_str(),
+            "at": entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        }))
+    })
 }
 
 /// Splice an attachment reference into a body: `![label](path)` / `[label](path)`
@@ -287,6 +307,30 @@ fn embed_attachment(body: &str, path: &str, markdown: &str) -> String {
         }
     }
     out
+}
+
+/// Store `files` on task `id` and splice their markdown into `text` (a file's
+/// path in the text is replaced; otherwise the reference is appended). Used by
+/// `note`, `move` and `finish --attach` so a comment can carry evidence.
+fn embed_files(
+    layout: &Layout,
+    slug: &str,
+    id: &str,
+    text: &str,
+    files: &[std::path::PathBuf],
+) -> Result<String> {
+    let mut out = text.trim().to_string();
+    for file in files {
+        let bytes = std::fs::read(file)
+            .map_err(|err| Error::usage(format!("cannot read {}: {err}", file.display())))?;
+        let original = file
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".into());
+        let attachment = crate::attachments::store(layout, slug, id, &original, &bytes)?;
+        out = embed_attachment(&out, &file.to_string_lossy(), &attachment.markdown);
+    }
+    Ok(out)
 }
 
 /// `[{file, line, error}]` — the shape the CLI and the UI both report.
@@ -366,13 +410,26 @@ pub fn note(
     id: &str,
     text: &str,
 ) -> Result<Value> {
-    if text.trim().is_empty() {
+    note_with(layout, project, common, id, text, &[])
+}
+
+/// `note` with files attached to the comment (`note --attach`).
+pub fn note_with(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    text: &str,
+    attach: &[std::path::PathBuf],
+) -> Result<Value> {
+    if text.trim().is_empty() && attach.is_empty() {
         return Err(Error::usage("note text must not be empty"));
     }
     let lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
     let mut task = board.get(id)?;
-    task.push_activity_session(common.now, common.actor, common.tag(), text.trim());
+    let text = embed_files(layout, &board.project.slug, &task.id, text, attach)?;
+    task.push_activity_session(common.now, common.actor, common.tag(), &text);
     board.save(&task)?;
     drop(lock);
     let tasks = board.tasks()?;
@@ -430,10 +487,6 @@ pub struct EditArgs<'a> {
     pub body: Option<&'a str>,
     pub priority: Option<Priority>,
     pub labels: Option<Vec<String>>,
-    /// Some(v) sets, Some(None) clears; outer None = untouched.
-    pub strategy: Option<Option<Strategy>>,
-    /// Some(v) sets, Some(None) clears; outer None = untouched.
-    pub plan: Option<Option<bool>>,
 }
 
 pub fn edit(
@@ -476,14 +529,6 @@ pub fn edit(
     if let Some(labels) = args.labels {
         task.labels = labels;
         changed.push("labels");
-    }
-    if let Some(strategy) = args.strategy {
-        task.strategy = strategy;
-        changed.push("strategy");
-    }
-    if let Some(plan) = args.plan {
-        task.plan = plan;
-        changed.push("plan");
     }
     if changed.is_empty() {
         return Err(Error::usage(
@@ -632,35 +677,7 @@ fn rebalance_lane(board: &Board<'_>, lane_tasks: &[Task]) -> Result<usize> {
     Ok(rewritten.len())
 }
 
-// ─── claim / release / run ──────────────────────────────────────────────────
-
-pub struct ClaimArgs<'a> {
-    pub session: &'a str,
-    pub pid: u32,
-    pub host: &'a str,
-    pub mode: RunMode,
-    /// `claim-next --id`: claim one specific task instead of the top of the queue.
-    pub id: Option<&'a str>,
-}
-
-/// One runner claim per session, at most `max_sessions()` sessions per project.
-/// Tasks the agent `start`ed itself don't count toward the one-claim rule (a
-/// session may have several started), but they do occupy a session slot.
-fn claim_guard(tasks: &[Task], session: &str) -> Result<()> {
-    if let Some(running) = tasks.iter().find(|task| {
-        task.status == Status::InProgress
-            && task
-                .run
-                .as_ref()
-                .is_some_and(|run| run.session == session && run.owner == RunOwner::System)
-    }) {
-        return Err(Error::rule(format!(
-            "session {session} already runs {} — release it before claiming another",
-            running.id
-        )));
-    }
-    session_cap(tasks, session)
-}
+// ─── start / finish / release / reap ──────────────────────────────────────────────
 
 /// At most `max_sessions()` distinct sessions hold in_progress tasks.
 fn session_cap(tasks: &[Task], session: &str) -> Result<()> {
@@ -676,7 +693,8 @@ fn session_cap(tasks: &[Task], session: &str) -> Result<()> {
     }
     if others.len() >= max_sessions() {
         return Err(Error::rule(format!(
-            "two sessions already run tasks here ({}) — wait for one to finish",
+            "{} sessions already run tasks here ({}) — wait for one to finish",
+            others.len(),
             others.join(", ")
         )));
     }
@@ -739,7 +757,7 @@ pub fn reap(layout: &Layout, project: Project, dry_run: bool, now: DateTime<Utc>
     Ok(json!({ "released": released, "unknown": unknown }))
 }
 
-/// Sort order shared by `claim-next` and `next`: priority desc, then order, then id.
+/// The order `next` suggests ready tasks in: priority desc, then order, then id.
 fn claim_sort(a: &&Task, b: &&Task) -> std::cmp::Ordering {
     b.priority
         .rank()
@@ -768,100 +786,6 @@ fn waiting_json(
         .collect()
 }
 
-pub fn claim_next(
-    layout: &Layout,
-    project: Project,
-    gate: ChainGate,
-    args: &ClaimArgs<'_>,
-    now: DateTime<Utc>,
-) -> Result<Value> {
-    let lock = layout.lock_board(&project.slug)?;
-    let board = Board::open(layout, project)?;
-    let mut tasks = board.tasks()?;
-    // (a) Dead sessions give their tasks back before anyone claims.
-    reap_dead(&board, &mut tasks, now, false);
-    // (b)+(c) One claim per session, at most two sessions per project.
-    claim_guard(&tasks, args.session)?;
-    let by_id = board.dep_lookup(&tasks);
-
-    let chosen: Option<Task> = match args.id {
-        Some(id) => {
-            let task = tasks
-                .iter()
-                .find(|task| task.id == id)
-                .ok_or_else(|| Error::not_found(format!("claim-next --id {id}: no such task")))?;
-            if task.status != Status::Todo {
-                return Err(Error::rule(format!(
-                    "claim-next --id {id}: the task is {}, not todo",
-                    task.status
-                )));
-            }
-            if task.is_claimed() {
-                return Err(Error::rule(format!(
-                    "claim-next --id {id}: the task is already claimed"
-                )));
-            }
-            if let Some(blocked) = deps::blocked_by(task, &by_id, gate) {
-                return Err(Error::rule(format!(
-                    "claim-next --id {id}: {}",
-                    blocked.describe(gate)
-                )));
-            }
-            Some(task.clone())
-        }
-        None => {
-            let mut candidates: Vec<&Task> = tasks
-                .iter()
-                .filter(|task| deps::is_ready(task, &by_id, gate))
-                .collect();
-            candidates.sort_by(claim_sort);
-            candidates.first().map(|task| (*task).clone())
-        }
-    };
-
-    let Some(chosen) = chosen else {
-        let waiting = waiting_json(&by_id, &tasks, gate);
-        drop(lock);
-        return Ok(json!({ "task": Value::Null, "waiting": waiting }));
-    };
-
-    let mut task = chosen;
-    transitions::check(
-        Status::Todo,
-        Status::InProgress,
-        Actor::System,
-        None,
-        Staleness::Running,
-    )?;
-    task.status = Status::InProgress;
-    task.run = Some(Run {
-        session: args.session.to_string(),
-        pid: args.pid,
-        host: args.host.to_string(),
-        mode: args.mode,
-        goal: None,
-        started: now,
-        owner: RunOwner::System,
-    });
-    task.push_activity(
-        now,
-        Actor::System,
-        format!(
-            "claimed by session {} (mode {}) pid {} on {}",
-            args.session, args.mode, args.pid, args.host
-        ),
-    );
-    board.save(&task)?;
-    drop(lock);
-
-    let tasks = board.tasks()?;
-    let mut value = task_json(&board, &task, &tasks, gate);
-    if let Value::Object(ref mut map) = value {
-        map.insert("handoffNotes".into(), json!(task.handoff_notes()));
-    }
-    Ok(json!({ "task": value, "waiting": [] }))
-}
-
 pub struct StartArgs<'a> {
     pub session: &'a str,
     /// The long-lived process that owns the claim (the pi process, not the
@@ -871,9 +795,9 @@ pub struct StartArgs<'a> {
 }
 
 /// `start <ID>`: the agent self-claims a todo task for its session
-/// (todo → in_progress, actor agent). Same readiness rules as `claim-next
-/// --id` — deps satisfied, not already claimed, the per-project session cap —
-/// but a session may hold several started tasks.
+/// (todo → in_progress, actor agent). Deps must be satisfied, the task not
+/// already claimed, and the per-project session cap free; a session may hold
+/// several started tasks.
 pub fn start(
     layout: &Layout,
     project: Project,
@@ -885,7 +809,7 @@ pub fn start(
     let lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
     let mut tasks = board.tasks()?;
-    // Dead sessions give their tasks back first (same as claim-next).
+    // Dead sessions give their tasks back first.
     reap_dead(&board, &mut tasks, now, false);
     let by_id = board.dep_lookup(&tasks);
     let task = tasks
@@ -966,7 +890,8 @@ pub fn start(
 
 /// `finish <ID> --comment "…"`: the agent hands a task it `start`ed to review
 /// (in_progress → in_review, actor agent). Refused for another session's claim
-/// and for runner claims (the run end releases those).
+/// and for legacy system claims (not taken with `start`; a user releases those).
+#[allow(clippy::too_many_arguments)]
 pub fn finish(
     layout: &Layout,
     project: Project,
@@ -974,6 +899,7 @@ pub fn finish(
     id: &str,
     session: &str,
     comment: &str,
+    attach: &[std::path::PathBuf],
     now: DateTime<Utc>,
 ) -> Result<Value> {
     let summary = comment.trim();
@@ -1004,7 +930,7 @@ pub fn finish(
         }
         Some(run) if run.owner != RunOwner::Agent => {
             return Err(Error::rule(format!(
-                "finish {id}: claimed by the runner (session {}) — the runner moves it to in_review when the run ends",
+                "finish {id}: held by a system claim (session {}), not one taken with `start` — a user releases it (`release {id} --to in_review|todo --comment …`)",
                 run.session
             )));
         }
@@ -1023,6 +949,7 @@ pub fn finish(
         Some(summary),
         Staleness::Running,
     )?;
+    let summary = embed_files(layout, &board.project.slug, &task.id, summary, attach)?;
     task.status = Status::InReview;
     task.run = None;
     task.push_activity_session(
@@ -1048,7 +975,7 @@ pub fn release(
 ) -> Result<Value> {
     if !matches!(to, Status::Todo | Status::InReview | Status::Blocked) {
         return Err(Error::usage(
-            "release --to must be todo, in_review or blocked (the runner owns those transitions)",
+            "release --to must be todo, in_review or blocked (release only hands back an in-progress claim)",
         ));
     }
     if comment.trim().is_empty() {
@@ -1074,39 +1001,6 @@ pub fn release(
     Ok(task_json(&board, &task, &tasks, gate))
 }
 
-pub fn set_run(
-    layout: &Layout,
-    project: Project,
-    id: &str,
-    mode: RunMode,
-    goal: Option<&str>,
-    gate: ChainGate,
-    now: DateTime<Utc>,
-) -> Result<Value> {
-    let lock = layout.lock_board(&project.slug)?;
-    let board = Board::open(layout, project)?;
-    let mut task = board.get(id)?;
-    let Some(run) = task.run.as_mut() else {
-        return Err(Error::rule(format!(
-            "set-run needs a claimed task ({id} has no run block)"
-        )));
-    };
-    run.mode = mode;
-    run.goal = goal.map(|value| value.to_string());
-    task.push_activity(
-        now,
-        Actor::System,
-        match goal {
-            Some(goal) => format!("mode set to {mode} (goal {goal})"),
-            None => format!("mode set to {mode}"),
-        },
-    );
-    board.save(&task)?;
-    drop(lock);
-    let tasks = board.tasks()?;
-    Ok(task_json(&board, &task, &tasks, gate))
-}
-
 // ─── move ───────────────────────────────────────────────────────────────────
 
 pub fn move_task(
@@ -1116,6 +1010,19 @@ pub fn move_task(
     id: &str,
     to: Status,
     comment: Option<&str>,
+) -> Result<Value> {
+    move_task_with(layout, project, common, id, to, comment, &[])
+}
+
+/// `move` with files attached to the comment (`move --attach`).
+pub fn move_task_with(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    to: Status,
+    comment: Option<&str>,
+    attach: &[std::path::PathBuf],
 ) -> Result<Value> {
     let lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
@@ -1163,7 +1070,8 @@ pub fn move_task(
     }
 
     task.status = to;
-    let note = comment.unwrap_or("").trim();
+    let note = embed_files(layout, &board.project.slug, &task.id, comment.unwrap_or(""), attach)?;
+    let note = note.as_str();
     let text = match (from, to) {
         (_, Status::Blocked) => format!("blocked: {note}"),
         (Status::Blocked, Status::Todo) => format!("unblocked: {note}"),
@@ -1222,11 +1130,6 @@ fn env_usize(name: &str, default: usize, min: usize) -> usize {
         .unwrap_or(default.max(min))
 }
 
-/// Tasks one session may queue. `UNIPI_KANBOARD_QUEUE_MAX`, default 10, 0 = unlimited.
-pub fn queue_max() -> usize {
-    env_usize("UNIPI_KANBOARD_QUEUE_MAX", 10, 0)
-}
-
 /// Distinct sessions that may hold in_progress tasks per project.
 /// `UNIPI_KANBOARD_MAX_SESSIONS`, default 2, minimum 1.
 pub fn max_sessions() -> usize {
@@ -1269,8 +1172,6 @@ pub fn duplicate(layout: &Layout, project: Project, common: &Common, id: &str) -
         order::bottom_of(&lane),
         common.now,
     );
-    task.strategy = source.strategy;
-    task.plan = source.plan;
     task.body = source.body.clone();
     task.labels = source.labels.clone();
     task.deps = source.deps.clone();
@@ -1445,148 +1346,11 @@ pub fn validate(layout: &Layout, project: Project, fix: bool) -> Result<Validate
     Ok(ValidateResult { problems, fixed })
 }
 
-// ─── per-session queue ──────────────────────────────────────────────────────
-
-fn queue_path(layout: &Layout, slug: &str, session: &str) -> std::path::PathBuf {
-    // Session ids are caller-chosen; keep the file name inside queues/.
-    let safe: String = session
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    layout
-        .project_dir(slug)
-        .join("queues")
-        .join(format!("{safe}.json"))
-}
-
-fn queue_read(path: &std::path::Path) -> Vec<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-/// Topological order over the queue itself: an id whose deps are also queued
-/// comes after them, otherwise the caller's order is preserved.
-fn queue_topo_order(ids: &[String], tasks: &[Task]) -> Vec<String> {
-    let in_queue: std::collections::HashSet<&String> = ids.iter().collect();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut out = Vec::with_capacity(ids.len());
-    fn visit(
-        id: &str,
-        tasks: &[Task],
-        in_queue: &std::collections::HashSet<&String>,
-        seen: &mut std::collections::HashSet<String>,
-        out: &mut Vec<String>,
-    ) {
-        if !seen.insert(id.to_string()) {
-            return;
-        }
-        if let Some(task) = tasks.iter().find(|task| task.id == id) {
-            for dep in &task.deps {
-                if in_queue.contains(dep) {
-                    visit(dep, tasks, in_queue, seen, out);
-                }
-            }
-        }
-        out.push(id.to_string());
-    }
-    for id in ids {
-        visit(id, tasks, &in_queue, &mut seen, &mut out);
-    }
-    out
-}
-
-/// `queue <IDs…>` appends in dependency order, deduped, up to `queue_max()`
-/// (0 = unlimited) — ids past the cap come back in `leftOut`, never as an
-/// error. `unqueue [IDs…]` removes or clears. Both need the resolved session.
-pub fn queue_update(
-    layout: &Layout,
-    project: Project,
-    session: &str,
-    add_ids: &[String],
-    remove: Option<&[String]>,
-) -> Result<Value> {
-    let path = queue_path(layout, &project.slug, session);
-    let mut queue = queue_read(&path);
-    let board = Board::open(layout, project)?;
-    let tasks = board.tasks()?;
-    let mut left_out: Vec<Value> = Vec::new();
-    match remove {
-        Some(ids) => {
-            if ids.is_empty() {
-                queue.clear();
-            } else {
-                queue.retain(|queued| !ids.contains(queued));
-            }
-        }
-        None => {
-            // Validate every id first: a missing or final task fails the whole call.
-            for id in add_ids {
-                let task = tasks
-                    .iter()
-                    .find(|task| task.id == *id)
-                    .ok_or_else(|| Error::not_found(format!("queue {id}: no such task")))?;
-                if task.status.is_final() {
-                    return Err(Error::rule(format!(
-                        "queue {id}: the task is {} (final)",
-                        task.status
-                    )));
-                }
-            }
-            let mut combined = queue.clone();
-            for id in add_ids {
-                if !combined.contains(id) {
-                    combined.push(id.clone());
-                }
-            }
-            let ordered = queue_topo_order(&combined, &tasks);
-            let cap = queue_max();
-            let kept: Vec<String> = if cap == 0 {
-                ordered.clone()
-            } else {
-                ordered.iter().take(cap).cloned().collect()
-            };
-            for id in &ordered {
-                if !kept.contains(id) {
-                    left_out.push(json!({ "id": id, "reason": format!("queue limit {cap}") }));
-                }
-            }
-            queue = kept;
-        }
-    }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    crate::store::write_atomic(&path, &serde_json::to_string(&queue)?)?;
-    let added: Vec<String> = queue
-        .iter()
-        .filter(|id| add_ids.contains(id))
-        .cloned()
-        .collect();
-    Ok(json!({
-        "queue": queue,
-        "session": session,
-        "added": added,
-        "leftOut": left_out,
-    }))
-}
-
-pub fn queue_list(layout: &Layout, project: &Project, session: &str) -> Result<Value> {
-    let queue = queue_read(&queue_path(layout, &project.slug, session));
-    Ok(json!({ "queue": queue, "session": session }))
-}
-
 // ─── read-only: next / chain / search ───────────────────────────────────────
 
-/// `next`: the task claim-next would pick (after a simulated reap), plus the
-/// reasons every todo task is waiting. Writes nothing.
+/// `next`: the ready todo task to work next (after a simulated reap) — pick it
+/// up with `start <ID>` — plus the reasons every todo task is waiting. Writes
+/// nothing.
 pub fn next(
     layout: &Layout,
     project: Project,
@@ -1705,7 +1469,6 @@ pub fn settings_show(layout: &Layout) -> Result<Value> {
         "models": settings.models,
         "summaryModel": settings.summary_model,
         "summaryInstructionSet": !settings.summary_instruction.trim().is_empty(),
-        "queueMax": queue_max(),
         "maxSessions": max_sessions(),
     }))
 }
