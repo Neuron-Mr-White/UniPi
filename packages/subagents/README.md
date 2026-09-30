@@ -17,8 +17,8 @@ agents (`pi --mode rpc`) that run alongside it.
 
 | Where | What |
 |---|---|
-| Chat | `● Explore subagent <title>` card — live tail + `ctrl+b background · esc cancel` while it runs, then `└ Completed · 7s · 1 tool call` (ctrl+o shows the report). Background finishes: `● Subagent "<title>" completed └ …`. |
-| Below the input | `N subagents (k running) · ↓ select` — stays for the session, survives restart + resume. |
+| Chat | `● Explore subagent <title>` card — live tail + `└ General · ds/deepseek-flash · 32s · 20 tool calls · 10k in · 0.2k out · $0.11 · ctrl+b background · esc cancel` while it runs, then `└ Completed · 32s · 20 tool calls · 10k in · 0.2k out · $0.11` (ctrl+o shows the report). The stats line ticks live — profile, model, tool-call count, duration, tokens and cost (cost is omitted when the model's pricing is unknown). Background finishes: `● Subagent "<title>" completed └ …`. |
+| Below the input | `N subagents (k running) · ↓ select` plus one stat line per running agent, ticking each second — stays for the session, survives restart + resume. |
 | Dock (↓ from an empty input, or `/unipi:subagents`) | `↑↓` navigate · `↵` view the live transcript · `f` foreground · `x` cancel · `esc` close. |
 | Transcript view | task, tool calls with output, text; `↑↓`/PgUp/PgDn scroll, `g`/`G` top/end, `o` full tool output. |
 | Foreground | Spinner reads `Subagent running · Ctrl+B to run in background`. **Ctrl+B** sends every foreground subagent to the background; **Esc** cancels a foreground run. `f` on a background agent shows its live steps above the input and routes its approvals to you. |

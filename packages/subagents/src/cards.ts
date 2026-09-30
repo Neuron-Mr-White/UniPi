@@ -17,8 +17,9 @@
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Markdown, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { badge, leader, settledGlyph, SPINNER_MS, stateGlyph, STATE_COLOR } from "@pi-unipi/core";
+import type { SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import type { SubagentStatus } from "./manager.js";
-import { elapsed, plural, profileLabel, STATUS_LABEL, type ThemeLike } from "./ui.js";
+import { elapsed, plural, profileLabel, STATUS_LABEL, statLine, usageTail, type ThemeLike } from "./ui.js";
 
 export type Phase = "started" | "moved" | "done";
 
@@ -27,10 +28,13 @@ export interface CardDetails {
   id?: string;
   title?: string;
   profile?: string;
+  model?: string;
   status?: SubagentStatus;
   phase?: Phase;
   toolCalls?: number;
   durationMs?: number;
+  /** Token + cost totals (child pi session usage). */
+  usage?: SidekickUsage;
   error?: string;
   cancelledBy?: string;
   startedAt?: number;
@@ -66,7 +70,7 @@ export function meta(durationMs: number | undefined, toolCalls: number | undefin
 
 /** `└ …` line under a finished foreground card. */
 export function cardOutcome(d: CardDetails | undefined, theme: ThemeLike): string {
-  const m = meta(d?.durationMs, d?.toolCalls);
+  const m = [meta(d?.durationMs, d?.toolCalls), usageTail(d?.usage).slice(3)].filter(Boolean).join(" · ");
   const tail = m ? theme.fg("dim", ` · ${m}`) : "";
   if (d?.phase === "started") return theme.fg("dim", "└ Background subagent started.");
   if (d?.phase === "moved") return theme.fg("dim", "└ Moved to background · keeps working");
@@ -114,6 +118,9 @@ export interface RunResultHooks {
   tail(id: string, width: number): string[];
   toolCalls(id: string): number;
   startedAt(id: string): number | undefined;
+  /** Live token/cost totals — enriches the running foot when provided. */
+  usage?(id: string): SidekickUsage | undefined;
+  record?(id: string): { model: string; profile: string; title: string; startedAt: number; endedAt?: number } | undefined;
 }
 
 export function renderRunResult(
@@ -138,8 +145,11 @@ export function renderRunResult(
   if (opts.isPartial && d?.id !== undefined) {
     const id = d.id;
     return lines((w) => {
-      const started = hooks.startedAt(id) ?? Date.now();
-      const status = theme.fg("dim", `└ Running · ${elapsed(Date.now() - started)} · ${plural(hooks.toolCalls(id), "tool call")} · ctrl+b background · esc cancel`);
+      const rec = hooks.record?.(id);
+      const stats = rec !== undefined
+        ? statLine(rec, hooks.toolCalls(id), hooks.usage?.(id))
+        : `Running · ${elapsed(Date.now() - (hooks.startedAt(id) ?? Date.now()))} · ${plural(hooks.toolCalls(id), "tool call")}`;
+      const status = theme.fg("dim", `└ ${stats} · ctrl+b background · esc cancel`);
       return [...hooks.tail(id, w), truncateToWidth(`  ${status}`, w)];
     });
   }
@@ -161,7 +171,7 @@ export function renderCompletion(
   const status: SubagentStatus = raw === "aborted" || raw === "interrupted" ? "cancelled" : d?.status ?? "completed";
   const chip = badge(theme, STATE_COLOR[status], { running: "RUN ", completed: "DONE", failed: "FAIL", cancelled: "STOP" }[status]);
   const who = d?.profile ? `${theme.bold(profileLabel(d.profile))} ` : "";
-  const m = meta(d?.durationMs, d?.toolCalls);
+  const m = [d?.model, meta(d?.durationMs, d?.toolCalls), usageTail(d?.usage).slice(3)].filter(Boolean).join(" · ");
   const note = status === "cancelled" && d?.cancelledBy === "user" ? "cancelled by you" : status === "failed" ? "failed" : "";
   const right = [note ? theme.fg(STATE_COLOR[status], note) : "", m ? theme.fg("dim", m) : ""].filter(Boolean).join(theme.fg("dim", " · "));
   const report = expanded ? d?.report : undefined;

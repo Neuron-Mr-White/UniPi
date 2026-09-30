@@ -11,7 +11,8 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
-import { badge, leader, settledGlyph, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, stateGlyph } from "@pi-unipi/core";
+import { badge, formatTokens, leader, settledGlyph, spinner, SPINNER_MS, STATE_BADGE, STATE_COLOR, stateGlyph } from "@pi-unipi/core";
+import type { SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import type { SubagentRecord, SubagentStatus } from "./manager.js";
 import type { TranscriptItem } from "./transcript.js";
 
@@ -58,8 +59,30 @@ export function statusBadge(status: SubagentStatus, theme: ThemeLike): string {
   return badge(theme, STATE_COLOR[status], STATE_BADGE[status]);
 }
 
-function durationOf(rec: SubagentRecord, now = Date.now()): number {
+function durationOf(rec: Pick<SubagentRecord, "startedAt" | "endedAt">, now = Date.now()): number {
   return (rec.endedAt ?? now) - rec.startedAt;
+}
+
+/** `10k in · 0.2k out · $0.11` — omit zero token counts and unknown cost ($0). */
+export function usageTail(usage: SidekickUsage | undefined): string {
+  if (usage === undefined) return "";
+  const parts: string[] = [];
+  if (usage.input > 0 || usage.output > 0) parts.push(`${formatTokens(usage.input)} in`, `${formatTokens(usage.output)} out`);
+  if (usage.cost > 0) parts.push(`$${usage.cost.toFixed(2)}`);
+  return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+}
+
+/**
+ * The live stats line for one agent:
+ * `Explore · ds/flash · 32s · 20 tool calls · 10k in · 0.2k out · $0.11`.
+ */
+export function statLine(
+  rec: Pick<SubagentRecord, "profile" | "model" | "startedAt" | "endedAt">,
+  toolCalls: number,
+  usage: SidekickUsage | undefined,
+  now = Date.now(),
+): string {
+  return `${profileLabel(rec.profile)} · ${rec.model} · ${elapsed(durationOf(rec, now))} · ${plural(toolCalls, "tool call")}${usageTail(usage)}`;
 }
 
 /** `◆ 2 subagents (1 running) · ↓ select` — undefined when there are none. */
@@ -75,14 +98,47 @@ function spinFrame(): number {
   return Date.now();
 }
 
-/** Persistent strip under the editor. Re-renders on registry changes and
- *  animates nothing (Devin's strip is static text). */
+/** Live stats accessor for the strip's per-agent lines. */
+export interface AgentStats {
+  toolCalls: number;
+  usage?: SidekickUsage;
+}
+
+/** Persistent strip under the editor: `◆ 2 subagents (1 running) · ↓ select`
+ *  plus one stat line per running agent, ticking once a second. */
 export class SubagentStrip implements Component {
-  constructor(private readonly theme: ThemeLike, private readonly getRecords: () => readonly SubagentRecord[]) {}
+  private readonly timer: ReturnType<typeof setInterval>;
+
+  constructor(
+    tui: TUI,
+    private readonly theme: ThemeLike,
+    private readonly getRecords: () => readonly SubagentRecord[],
+    private readonly stats: (rec: SubagentRecord) => AgentStats,
+  ) {
+    this.timer = setInterval(() => {
+      if (this.getRecords().some((r) => r.status === "running")) tui.requestRender();
+    }, 1000);
+    this.timer.unref?.();
+  }
+
   invalidate(): void {}
+
+  dispose(): void {
+    clearInterval(this.timer);
+  }
+
   render(width: number): string[] {
     const text = stripText(this.getRecords(), this.theme);
-    return text === undefined ? [] : [truncateToWidth(text, width)];
+    if (text === undefined) return [];
+    const t = this.theme;
+    const lines = [truncateToWidth(text, width)];
+    const running = this.getRecords().filter((r) => r.status === "running");
+    for (const rec of running.slice(0, 3)) {
+      const s = this.stats(rec);
+      lines.push(truncateToWidth(`  ${spinner(t, undefined)} ${t.fg("dim", statLine(rec, s.toolCalls, s.usage))}`, width));
+    }
+    if (running.length > 3) lines.push(truncateToWidth(`  ${t.fg("dim", `… +${String(running.length - 3)} more`)}`, width));
+    return lines;
   }
 }
 
@@ -141,6 +197,7 @@ export interface DockActions {
   records: () => readonly SubagentRecord[];
   transcript: (rec: SubagentRecord) => TranscriptItem[];
   toolCalls: (rec: SubagentRecord) => number;
+  usage?: (rec: SubagentRecord) => SidekickUsage | undefined;
   subscribe: (listener: () => void) => () => void;
   foreground: (id: string) => string | undefined;
   cancel: (id: string) => string | undefined;
@@ -229,6 +286,8 @@ export class SubagentDock implements Component {
       const tags = [elapsed(durationOf(rec)), plural(calls, "tool")];
       if (rec.status === "running" && rec.background) tags.push("bg");
       tags.push(rec.model);
+      const tok = usageTail(this.actions.usage?.(rec));
+      if (tok) tags.push(tok.slice(3));
       const live = rec.status === "running" ? `${spinner(t, undefined, frame)} ` : "";
       const right = `${live}${t.fg("dim", tags.join(" · "))}`;
       out.push(visibleWidth(right) + 16 < w ? leader(t, truncateToWidth(left, w - visibleWidth(right) - 4), right, w) : truncateToWidth(left, w));
@@ -251,6 +310,8 @@ export class SubagentDock implements Component {
     const calls = this.actions.toolCalls(rec);
     const header = rule(t, `${statusGlyph(rec.status, t, frame)} ${t.fg("muted", profileLabel(rec.profile))} ${t.fg("dim", "›")} ${t.bold(rec.title)}`, `${elapsed(durationOf(rec))} · ${plural(calls, "tool")}`, w);
     const meta = [`Model: ${rec.model}${rec.thinking ? ` · ${rec.thinking}` : ""}`, `id ${rec.id}`, rec.status === "running" ? (rec.background ? "background" : "foreground") : t.fg(statusColor(rec.status), STATUS_LABEL[rec.status])];
+    const tok = usageTail(this.actions.usage?.(rec));
+    if (tok) meta.push(tok.slice(3));
     const body = renderItems(this.actions.transcript(rec), w - 1, t, { fullOutput: this.fullOutput, frame });
     if (rec.status !== "running") {
       if (rec.error) body.push("", t.fg(rec.status === "cancelled" ? "warning" : "error", `${rec.status === "cancelled" ? "⊘" : "✗"} ${rec.error}`));

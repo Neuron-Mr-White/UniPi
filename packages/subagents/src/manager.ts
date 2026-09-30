@@ -13,7 +13,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport, type SidekickEvent } from "@pi-unipi/core/child-agent.js";
+import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport, type SidekickEvent, type SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import { stateDir } from "@pi-unipi/core";
 import type { AgentProfile } from "./profiles.js";
 
@@ -44,6 +44,9 @@ export interface SubagentRecord {
   error?: string;
   /** Who cancelled it — "user" (dock x / Esc) or "session" (shutdown). */
   cancelledBy?: "user" | "session";
+  /** Token + cost totals recorded when the run settled (live runs read the
+   *  runtime's usage instead — see `usage()`). */
+  usage?: SidekickUsage;
   sessionFile: string;
   depth: number;
 }
@@ -224,6 +227,12 @@ export class SubagentManager {
     return run?.runtime.progress()?.toolCalls ?? records.get(id)?.toolCalls ?? 0;
   }
 
+  /** Live token/cost totals (running runtime) or the settled record's. */
+  usage(id: string): SidekickUsage | undefined {
+    const run = this.runs.get(id);
+    return run !== undefined ? run.runtime.usage : records.get(id)?.usage;
+  }
+
   /** Mark a run foreground/background (UI + approval routing done by caller). */
   setBackground(id: string, background: boolean): void {
     const rec = records.get(id);
@@ -349,6 +358,7 @@ export class SubagentManager {
           toolCalls: report.toolCalls,
           report: report.text,
           error: report.error,
+          usage: report.usage,
         }, report.events);
         opts.onDone?.(run, report);
       })

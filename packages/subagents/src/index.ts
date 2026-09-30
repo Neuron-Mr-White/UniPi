@@ -30,7 +30,7 @@ import {
 import { loadProfiles, type AgentProfile } from "./profiles.js";
 import { buildTranscript, itemsFromEvents } from "./transcript.js";
 import {
-  SubagentDock, SubagentStrip, elapsed, plural, profileLabel, statusColor, statusGlyph, tailLines, STATUS_LABEL, type ThemeLike,
+  SubagentDock, SubagentStrip, elapsed, plural, profileLabel, statusColor, statusGlyph, statLine, tailLines, STATUS_LABEL, type ThemeLike,
 } from "./ui.js";
 import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
 import {
@@ -194,8 +194,8 @@ export default function subagents(pi: ExtensionAPI): void {
           content: `<subagent_completion_notification agent_id="${report.id}" status="${status}">\n${body}\n</subagent_completion_notification>`,
           display: true,
           details: {
-            owner: "subagents", id: report.id, title: rec?.title ?? report.id, profile: rec?.profile, status,
-            cancelledBy: rec?.cancelledBy, toolCalls: report.toolCalls, durationMs: report.durationMs, report: report.text.slice(0, 20_000),
+            owner: "subagents", id: report.id, title: rec?.title ?? report.id, profile: rec?.profile, model: rec?.model, status,
+            cancelledBy: rec?.cancelledBy, toolCalls: report.toolCalls, durationMs: report.durationMs, usage: report.usage, report: report.text.slice(0, 20_000),
           },
         } as never,
         { deliverAs: "followUp", triggerTurn: true } as never,
@@ -255,7 +255,7 @@ export default function subagents(pi: ExtensionAPI): void {
         stripInstalled = true;
         ctx.ui.setWidget(STRIP_KEY, (tui, theme) => {
           stripTui = tui;
-          return new SubagentStrip(theme, getSharedSubagents);
+          return new SubagentStrip(tui, theme, getSharedSubagents, (rec) => ({ toolCalls: manager.toolCalls(rec.id), usage: manager.usage(rec.id) }));
         }, { placement: "belowEditor" });
       } else if (!wantStrip && stripInstalled) {
         stripInstalled = false;
@@ -294,7 +294,7 @@ export default function subagents(pi: ExtensionAPI): void {
       if (rec === undefined) continue;
       // Same Devin card as a foreground run_subagent.
       const head = `${statusGlyph(rec.status, theme)} ${theme.bold(`${profileLabel(rec.profile)} subagent`)} ${rec.title}`;
-      const foot = theme.fg("dim", `└ Running · ${elapsed(Date.now() - rec.startedAt)} · ${plural(manager.toolCalls(id), "tool call")} · ctrl+b background`);
+      const foot = theme.fg("dim", `└ ${statLine(rec, manager.toolCalls(id), manager.usage(id))} · ctrl+b background`);
       out.push(truncateToWidth(head, width), ...tailLines(liveItems(id), width, theme, 4), truncateToWidth(`  ${foot}`, width));
     }
     return out;
@@ -340,6 +340,7 @@ export default function subagents(pi: ExtensionAPI): void {
         records: getSharedSubagents,
         transcript: transcriptOf,
         toolCalls: (rec) => manager.toolCalls(rec.id),
+        usage: (rec) => manager.usage(rec.id),
         subscribe: subscribeSubagents,
         foreground: foregroundAgent,
         cancel: cancelAgent,
@@ -385,8 +386,18 @@ export default function subagents(pi: ExtensionAPI): void {
           tail: (id, w) => tailLines(liveItems(id), w, theme, 4),
           toolCalls: (id) => manager.toolCalls(id),
           startedAt: (id) => manager.record(id)?.startedAt,
+          usage: (id) => manager.usage(id),
+          record: (id) => manager.record(id),
         }),
       execute: runSubagent as never,
+      // Simple render style: live stats in the row meta, `└ Completed …` under it.
+      ...( {
+        simpleMeta: (details: CardDetails | undefined) => {
+          const rec = details?.id !== undefined ? manager.record(details.id) : undefined;
+          return rec === undefined ? undefined : ` · ${statLine(rec, manager.toolCalls(rec.id), manager.usage(rec.id))}`;
+        },
+        simpleResult: (result: { details?: CardDetails }, theme: ThemeLike) => [`  ${cardOutcome(result.details, theme)}`],
+      } as object),
     });
   }
 
@@ -396,9 +407,9 @@ export default function subagents(pi: ExtensionAPI): void {
 
   function doneDetails(rec: SubagentRecord, report: HandoffReport): CardDetails {
     return {
-      owner: "subagents", id: rec.id, title: rec.title, profile: rec.profile, phase: "done",
+      owner: "subagents", id: rec.id, title: rec.title, profile: rec.profile, model: rec.model, phase: "done",
       status: rec.status === "running" ? recordStatusFor(report, rec.cancelledBy) : rec.status,
-      toolCalls: report.toolCalls, durationMs: report.durationMs, error: report.error, cancelledBy: rec.cancelledBy,
+      toolCalls: report.toolCalls, durationMs: report.durationMs, usage: report.usage, error: report.error, cancelledBy: rec.cancelledBy,
     };
   }
 
@@ -442,7 +453,7 @@ export default function subagents(pi: ExtensionAPI): void {
         if (outcome !== undefined) return outcome;
         onUpdate?.({
           content: [{ type: "text" as const, text: `Subagent "${run.record.title}" working · ${plural(manager.toolCalls(id), "tool call")}` }],
-          details: { owner: "subagents", id, title: run.record.title, profile: run.record.profile, status: "running", startedAt: run.record.startedAt } satisfies CardDetails,
+          details: { owner: "subagents", id, title: run.record.title, profile: run.record.profile, model: run.record.model, status: "running", startedAt: run.record.startedAt } satisfies CardDetails,
         });
       }
     } finally {
@@ -483,7 +494,7 @@ export default function subagents(pi: ExtensionAPI): void {
     const { run } = start;
     const rec = run.record;
     const id = rec.id;
-    const base: CardDetails = { owner: "subagents", id, title: rec.title, profile: rec.profile };
+    const base: CardDetails = { owner: "subagents", id, title: rec.title, profile: rec.profile, model: rec.model };
 
     if (rec.background) {
       delivery.detach(id, run.done);
@@ -534,7 +545,7 @@ export default function subagents(pi: ExtensionAPI): void {
       if (id === undefined || record === undefined) {
         return textResult(params.agent_id !== undefined ? `No subagent found for ${params.agent_id}.` : "No subagent has run yet.", { owner: "subagents" }, true);
       }
-      const base: CardDetails = { owner: "subagents", id, title: record.title, profile: record.profile };
+      const base: CardDetails = { owner: "subagents", id, title: record.title, profile: record.profile, model: record.model };
       const run = manager.run(id);
       if (record.status !== "running" || run === undefined) {
         const text = record.report !== undefined
