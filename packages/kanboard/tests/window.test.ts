@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 import {
   CHILD_WRITE_REFUSAL,
@@ -620,5 +621,33 @@ describe("/unipi:kanboard show", () => {
     assert.ok(rows[0]!.includes("p · 5 tasks"));
     const bare = showRenderer({ content: "plain text" }, null, theme as never).render(80);
     assert.deepEqual(bare, ["plain text"]);
+  });
+
+  it("never renders a line wider than the terminal (CJK title + huge blockedReason)", () => {
+    // Regression: pi crashed with `Rendered line N exceeds terminal width (720 > 261)`
+    // when a blocked task carried a ~700-char reason — the old renderer budgeted with
+    // .length (CJK lies) and appended the extra untruncated once Math.max floored it.
+    const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
+    const fat = [
+      ...tasks,
+      {
+        id: "HEA-4",
+        title: "搭子 Dashboard wallet double-credit 心币心钻",
+        status: "blocked",
+        priority: "none",
+        blockedReason: {
+          text: `Not a code bug — verified live on the local stack (2026-09-28): claiming 每日签到 credited wallets AND wrote task_reward transaction rows. ${"The claim in your screenshot does not exist in the local DB — the app was pointed at a different environment. ".repeat(4)}NEED FROM YOU: which environment + account did you test on?`,
+        },
+      },
+    ];
+    for (const width of [261, 120, 80, 40, 20, 10]) {
+      const rows = showRenderer({ content: "", details: { project: "heartpick-427ef7", tasks: fat, all: true } }, null, theme as never).render(width);
+      for (const [i, line] of rows.entries()) {
+        assert.ok(
+          visibleWidth(line) <= width,
+          `width ${width}, line ${i} is ${visibleWidth(line)} cells: ${JSON.stringify(line)}`,
+        );
+      }
+    }
   });
 });

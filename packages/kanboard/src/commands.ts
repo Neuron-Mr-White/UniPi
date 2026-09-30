@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSettings } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
@@ -952,15 +953,29 @@ export function showRenderer(
         lines.push(theme.fg("accent", lane.label));
         for (const row of laneRows(inLane, lane.id)) {
           const head = `  ${row.branch}${row.number ? `${row.number} ` : ""}${theme.fg("muted", row.id)} ${row.prio} `;
-          // visible length so far, then truncate the title to fit.
-          const prefixLen = 2 + row.branch.length + (row.number ? row.number.length + 1 : 0) + row.id.length + 2;
-          const budget = Math.max(10, width - prefixLen - (row.extra ? row.extra.length + 2 : 0));
-          const title = row.title.length > budget ? `${row.title.slice(0, Math.max(1, budget - 1))}…` : row.title;
-          const extra = row.extra ? `  ${row.tone === "error" ? theme.fg("error", row.extra) : theme.fg("dim", row.extra)}` : "";
-          lines.push(`${head}${title}${extra}`);
+          const styledExtra = row.extra
+            ? `  ${row.tone === "error" ? theme.fg("error", row.extra) : theme.fg("dim", row.extra)}`
+            : "";
+          // Budgets in visible cells (CJK ≈ 2 cells, ANSI = 0 — .length lies on both).
+          // Title takes all the room left after the extra when both fit comfortably,
+          // else it is capped at 10 cells; the extra then takes whatever remains, so a
+          // huge blockedReason is truncated instead of overflowing the terminal (which
+          // hard-crashes pi). Final truncate is the belt-and-braces guarantee.
+          const avail = Math.max(0, width - visibleWidth(head));
+          const extraW = styledExtra ? visibleWidth(styledExtra) : 0;
+          const titleBudget = Math.max(0, avail - extraW >= 10 ? avail - extraW : Math.min(avail, 10));
+          const title = truncateToWidth(row.title, titleBudget, "…");
+          let line = `${head}${title}`;
+          if (styledExtra) {
+            const extraBudget = avail - visibleWidth(title) - 2;
+            if (extraBudget > 0) line += truncateToWidth(styledExtra, extraBudget + 2, "…");
+          }
+          lines.push(line);
         }
       }
-      return lines;
+      // Hard guarantee: a line wider than the terminal hard-crashes pi, so every
+      // emitted line — header and lane labels included — is truncated to `width`.
+      return lines.map((line) => truncateToWidth(line, width));
     },
     invalidate: () => undefined,
   };
