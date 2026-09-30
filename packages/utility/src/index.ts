@@ -19,6 +19,7 @@ import {
   UTILITY_COMMANDS,
   emitEvent,
   getPackageVersion,
+  installTips,
   openSettingsHub,
   chatModelsToCache,
   writeModelCache,
@@ -60,6 +61,8 @@ export default function (pi: ExtensionAPI) {
   registerToolRenderers(pi, readUtilSettings().render.style);
   // Normalize blank runs between transcript blocks (all render styles).
   installTranscriptSpacing(pi);
+  // Onboarding tips: one 💡 line above the editor on startup + matching events.
+  installTips(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     try {
