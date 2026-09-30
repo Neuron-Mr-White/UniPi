@@ -170,12 +170,7 @@ export const COMPACTOR_COMMANDS = {
   COMPACT_VCC: "compact-vcc",
   COMPACT_JEV: "compact-jev",
   COMPACT_BY_LLM: "compact-by-llm",
-  /** @deprecated use COMPACT_VCC */
-  LOSSLESS_COMPACT: "lossless-compact",
-  /** @deprecated use COMPACT_VCC */
-  COMPACT: "compact",
   SESSION_RECALL: "session-recall",
-  COMPACT_RECALL: "compact-recall",
   COMPACT_STATS: "compact-stats",
   COMPACT_DOCTOR: "compact-doctor",
   COMPACT_HELP: "compact-help",

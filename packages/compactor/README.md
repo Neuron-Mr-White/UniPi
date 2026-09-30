@@ -67,7 +67,7 @@ Configs from before the rework are translated automatically: `overrideDefaultCom
 | `/unipi:compact-doctor` | Check settings, Pi's compaction switch, leftovers |
 | `/unipi:compact-help` | Command summary |
 
-Deprecated: `/unipi:compact` and `/unipi:lossless-compact` (use `/unipi:compact-vcc`), `/unipi:compact-recall` (use `/unipi:session-recall`).
+Removed: `/unipi:compact` and `/unipi:lossless-compact` (use `/unipi:compact-vcc`), `/unipi:compact-recall` (use `/unipi:session-recall`).
 
 ## Tools
 

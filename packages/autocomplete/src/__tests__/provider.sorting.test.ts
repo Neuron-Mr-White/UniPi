@@ -79,8 +79,8 @@ describe("crossItemPriority", () => {
   });
 
   it("assigns tier 2 when full value has prefix (unipi: prefix)", () => {
-    // full = "unipi:compact", query = "unipi:co" → startsWith → tier 2
-    expect(crossItemPriority(item("unipi:compact"), true, "unipi:co")).toBe(2);
+    // full = "unipi:compact-vcc", query = "unipi:co" → startsWith → tier 2
+    expect(crossItemPriority(item("unipi:compact-vcc"), true, "unipi:co")).toBe(2);
   });
 
   // ── Tier 3: fuzzy fallback ──────────────────────────────────────────
@@ -193,7 +193,7 @@ describe("sortTaggedItems", () => {
 
   it("sorts across mixed tiers: exact → prefix → fuzzy", () => {
     const items = [
-      tagged("unipi:compact", true),    // tier 2 (prefix "co")
+      tagged("unipi:compact-vcc", true),    // tier 2 (prefix "co")
       tagged("compact-xyz", false),     // tier 2 (prefix "co")
       tagged("co", false),              // tier 0 (exact "co")
       tagged("unipi:consultant", true), // tier 2 (prefix "co")
@@ -203,14 +203,14 @@ describe("sortTaggedItems", () => {
 
     const sorted = sortTaggedItems(items, "co");
     // Tier 0: co
-    // Tier 2: compact-xyz, config (non-unipi) then unipi:compact, unipi:consultant (unipi)
+    // Tier 2: compact-xyz, config (non-unipi) then unipi:compact-vcc, unipi:consultant (unipi)
     // Tier 3: unipi:chore-create
     const result = values(sorted);
     expect(result[0]).toBe("co");
     // Tier 2 non-unipi
     expect(result.slice(1, 3)).toEqual(expect.arrayContaining(["compact-xyz", "config"]));
     // Tier 2 unipi
-    expect(result.slice(3, 5)).toEqual(expect.arrayContaining(["unipi:compact", "unipi:consultant"]));
+    expect(result.slice(3, 5)).toEqual(expect.arrayContaining(["unipi:compact-vcc", "unipi:consultant"]));
     // Tier 3
     expect(result[5]).toBe("unipi:chore-create");
   });

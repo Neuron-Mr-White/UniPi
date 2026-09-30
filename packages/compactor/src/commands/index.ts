@@ -5,9 +5,6 @@
  *   /unipi:compact-by-llm [focus]    model-written summary (Pi's summarizer)
  *   /unipi:session-recall <query>    search the full session history
  *   /unipi:compact-stats | -doctor | -help
- *
- * Deprecated: /unipi:compact, /unipi:lossless-compact (→ compact-vcc),
- * /unipi:compact-recall (→ session-recall).
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -52,20 +49,10 @@ export function registerCommands(pi: ExtensionAPI): void {
     description: "Compact now with a model-written summary (optional text focuses the summary)",
     handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "llm", args, "unipi:compact-by-llm"),
   });
-  const deprecated = (name: string) => ({
-    description: "(DEPRECATED) Use /unipi:compact-vcc",
-    handler: async (args: string, ctx: ExtensionCommandContext) => {
-      ctx.ui.notify(`/${name} is deprecated — use /unipi:compact-vcc (or /unipi:compact-by-llm).`, "warning");
-      runCompaction(ctx, "vcc", args, "unipi:compact-vcc");
-    },
-  });
-  pi.registerCommand("unipi:compact", deprecated("unipi:compact"));
-  pi.registerCommand("unipi:lossless-compact", deprecated("unipi:lossless-compact"));
-
   // pi-vcc parity: results are shown AND fed to the agent (triggerTurn).
-  const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext, commandName = "/unipi:session-recall") => {
+  const sessionRecallHandler = async (args: string, ctx: ExtensionCommandContext) => {
     const raw = args.trim();
-    const usage = `Usage: ${commandName} <query>${commandName === "/unipi:compact-recall" ? " (deprecated; use /unipi:session-recall)" : ""}`;
+    const usage = "Usage: /unipi:session-recall <query>";
     if (!raw) {
       ctx.ui.notify(usage, "warning");
       return;
@@ -90,11 +77,6 @@ export function registerCommands(pi: ExtensionAPI): void {
     description: "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",
     handler: sessionRecallHandler,
   });
-  pi.registerCommand("unipi:compact-recall", {
-    description: "(DEPRECATED) Search session history — use /unipi:session-recall instead",
-    handler: async (args: string, ctx: ExtensionCommandContext) => sessionRecallHandler(args, ctx, "/unipi:compact-recall"),
-  });
-
   pi.registerCommand("unipi:compact-stats", {
     description: "Show this session's compaction savings",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
