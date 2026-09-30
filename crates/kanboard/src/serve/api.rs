@@ -312,6 +312,7 @@ pub async fn task(
 
 #[derive(Deserialize)]
 pub struct CreateRequest {
+    #[serde(default)]
     pub title: String,
     pub body: Option<String>,
     pub status: Option<String>,
@@ -961,7 +962,11 @@ pub async fn summarize(
     );
     prompt.push_str("\n\n");
     for task in &done {
-        prompt.push_str(&format!("## {} — {}\n\n", task.id, task.title));
+        prompt.push_str(&format!(
+            "## {} — {}\n\n",
+            task.id,
+            task.display_title()
+        ));
         if !task.body.trim().is_empty() {
             prompt.push_str(task.body.trim());
             prompt.push_str("\n\n");

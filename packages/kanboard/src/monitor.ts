@@ -294,7 +294,7 @@ export function createKanboardMonitor(deps: MonitorDeps): KanboardMonitor {
 						source: "kanboard",
 						priority: AUTOWORK_PRIORITY,
 						customType: AUTOWORK_NUDGE_CUSTOM_TYPE,
-						content: `↻ next ready: ${next.id} ${next.title} — show it, start it, work it (autowork) ${ANTI_POISONING_SUFFIX}`,
+						content: `↻ next ready: ${next.id} ${next.displayTitle || next.title || "(untitled)"} — show it, start it, work it (autowork) ${ANTI_POISONING_SUFFIX}`,
 						display: true,
 						onDelivered: () => {
 							offersPerTask.set(next.id, offers); // counts on DELIVERY, not proposal

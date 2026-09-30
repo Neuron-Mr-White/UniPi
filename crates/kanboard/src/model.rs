@@ -548,4 +548,91 @@ impl Task {
     pub fn is_claimed(&self) -> bool {
         self.run.is_some()
     }
+
+    /// The title shown in listings: the task's own title when it has one, else
+    /// a title derived from the first body line that carries text. Attachment
+    /// embeds and bare images never become the title.
+    pub fn display_title(&self) -> String {
+        if !self.title.trim().is_empty() {
+            return self.title.clone();
+        }
+        for line in self.body.lines() {
+            let line = line.trim();
+            if line.is_empty() || is_embed(line) {
+                continue;
+            }
+            let stripped = strip_leading_markers(line);
+            let stripped = stripped.trim();
+            if stripped.is_empty() || is_embed(stripped) {
+                continue;
+            }
+            return truncate_chars(stripped, DISPLAY_TITLE_MAX_CHARS);
+        }
+        "(untitled)".to_string()
+    }
+}
+
+/// Longest derived title before a `…` is appended (characters, not bytes).
+const DISPLAY_TITLE_MAX_CHARS: usize = 80;
+
+/// Lines that are only an attachment embed (`…](att:…)`) or an image
+/// (`![label](url)`) carry no title-worthy text.
+fn is_embed(line: &str) -> bool {
+    if line.contains("](att:") {
+        return true;
+    }
+    let trimmed = line.trim_start_matches('!');
+    trimmed.starts_with('[') && line.ends_with(')') && line.contains("](")
+}
+
+/// Strip the markdown that prefixes a line: headings and block quotes strip
+/// unconditionally; list bullets (`-`, `*`, `+`) and ordered markers (`1.`,
+/// `2)`) only when whitespace follows — `-5 degrees` and `3.0 release` are
+/// text, not lists. Repeated, so `> - ## done` reduces to `done`.
+fn strip_leading_markers(line: &str) -> &str {
+    let mut rest = line;
+    loop {
+        let trimmed = rest.trim_start();
+        rest = if let Some(after) = trimmed.strip_prefix('#') {
+            after
+        } else if let Some(after) = trimmed.strip_prefix('>') {
+            after
+        } else if let Some(after) = trimmed
+            .strip_prefix('-')
+            .or_else(|| trimmed.strip_prefix('*'))
+            .or_else(|| trimmed.strip_prefix('+'))
+        {
+            if after.starts_with(char::is_whitespace) {
+                after
+            } else {
+                return rest;
+            }
+        } else {
+            let digits = trimmed.len() - trimmed.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            if digits == 0 {
+                return rest;
+            }
+            let after_digits = &trimmed[digits..];
+            let Some(after) = after_digits
+                .strip_prefix('.')
+                .or_else(|| after_digits.strip_prefix(')'))
+            else {
+                return rest;
+            };
+            if after.starts_with(char::is_whitespace) {
+                after
+            } else {
+                return rest;
+            }
+        };
+    }
+}
+
+/// Char-safe cut: at most `max` characters, a `…` marks the loss.
+fn truncate_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{cut}\u{2026}")
 }

@@ -1,7 +1,7 @@
 /** App shell: sidebar + inset sheet (breadcrumb, toolbar, board/list), overlays, global keys. */
 
 import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
-import { api, LANES, PRIORITIES, type ProjectSummary } from "./api.js";
+import { api, displayTitle, LANES, PRIORITIES, type ProjectSummary } from "./api.js";
 import { Board } from "./Board.js";
 import { CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
@@ -406,12 +406,12 @@ function Sidebar(): JSX.Element {
             </div>
             <For each={runningTasks()} fallback={<div class="sb-empty">No agents running.</div>}>
               {(task) => (
-                <button class="agent-row" onClick={() => setOpenTaskId(task.id)} title={task.title}>
+                <button class="agent-row" onClick={() => setOpenTaskId(task.id)} title={displayTitle(task)}>
                   <span class="agent-dot">
                     <span class="pulse" />
                   </span>
                   <span class="agent-title">
-                    <span class="mono muted">{task.id}</span> {task.title}
+                    <span class="mono muted">{task.id}</span> {displayTitle(task)}
                   </span>
                   <span class="agent-time">{elapsed(task.run?.started)}</span>
                   <span class="agent-meta">

@@ -209,6 +209,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
             String::new()
         }
     };
+    // Title is optional (the body can carry the point); a missing key reads
+    // as empty — no problem, and the file re-renders with `title: ""`.
     let title = match get("title") {
         Some((line, value)) => match unquote(&value) {
             Ok(text) => text,
@@ -217,14 +219,7 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
                 String::new()
             }
         },
-        None => {
-            problems.push(Problem::new(
-                file,
-                1,
-                "missing required frontmatter key \"title\"",
-            ));
-            String::new()
-        }
+        None => String::new(),
     };
     let status = match get("status") {
         Some((line, value)) => match value.trim().parse::<Status>() {

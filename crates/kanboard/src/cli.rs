@@ -62,8 +62,8 @@ pub enum Command {
 
     /// Create a task (Backlog by default).
     Add {
-        /// Task title.
-        title: String,
+        /// Task title (optional when the body carries the point).
+        title: Option<String>,
         /// Body text, or `-` to read stdin.
         #[arg(long)]
         body: Option<String>,

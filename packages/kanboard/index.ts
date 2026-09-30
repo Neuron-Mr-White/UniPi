@@ -44,6 +44,7 @@ import {
   syncPiRuntime,
   runRotateTokenAction,
   runStopDaemon,
+  captureToBacklog,
   type CommandDeps,
 } from "./src/commands.js";
 import { createWriteGuard } from "./src/guard.js";
@@ -223,6 +224,12 @@ export default function (pi: ExtensionAPI) {
 
   registerProgressRenderer(pi);
   registerKanboardCommands(pi, buildDeps());
+
+  // ── API for other extensions (input-shortcuts K chord) ──────────────
+  // Add the editor text to this project's Backlog as a body-only task.
+  (globalThis as { __unipi_kanboard_api?: unknown }).__unipi_kanboard_api = {
+    captureToBacklog: (opts: { cwd: string; text: string }) => captureToBacklog(buildDeps(), opts),
+  };
 
   // R1 progress reminders for hand-worked tasks (silent in child sessions).
   registerProgressReminders(

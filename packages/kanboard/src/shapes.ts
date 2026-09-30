@@ -45,6 +45,8 @@ export interface KanboardActivity {
 export interface KanboardTask {
   id: string;
   title: string;
+  /** Title derived from the first body line when `title` is empty (Rust `Task::display_title`). */
+  displayTitle?: string;
   body?: string;
   status: string;
   priority?: string;
@@ -115,6 +117,7 @@ export function asTask(command: string, value: unknown): KanboardTask {
     ...record,
     id: requireString(command, record, "id"),
     title: requireString(command, record, "title"),
+    displayTitle: typeof record.displayTitle === "string" ? record.displayTitle : undefined,
     status: requireString(command, record, "status"),
     deps: optionalArray<string>(record.deps) ?? [],
     activity: optionalArray<KanboardActivity>(record.activity) ?? [],

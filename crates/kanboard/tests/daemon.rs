@@ -392,6 +392,55 @@ fn create_and_read_tasks_over_the_api() {
 }
 
 #[test]
+fn api_create_without_a_title_needs_a_body() {
+    let fixture = fixture_with_tasks();
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let slug = &fixture.project.slug;
+
+    // A body without a title is fine: the title stays empty and the UI gets
+    // the derived display title.
+    let created = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/create"),
+        Some(r#"{"body":"the body carries the point"}"#),
+    )
+    .expect("create without title");
+    assert_eq!(created.status, 200, "{}", created.body);
+    let created = created.json();
+    assert_eq!(created["title"], "");
+    assert_eq!(created["displayTitle"], "the body carries the point");
+
+    // Neither title nor body is a 400 with the rule message.
+    let refused = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/create"),
+        Some(r#"{}"#),
+    )
+    .expect("create with neither");
+    assert_eq!(refused.status, 400, "{}", refused.body);
+    assert_eq!(refused.json()["kind"], "usage");
+    assert!(
+        refused.json()["error"]
+            .as_str()
+            .unwrap()
+            .contains("a task needs a title or a description")
+    );
+
+    // An edit that would leave neither is a 400 too.
+    let id = created["id"].as_str().unwrap().to_string();
+    let cleared = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{id}/edit"),
+        Some(r#"{"body":""}"#),
+    )
+    .expect("edit body away");
+    assert_eq!(cleared.status, 400, "{}", cleared.body);
+}
+
+#[test]
 fn sse_pushes_a_revision_after_a_cli_write() {
     let fixture = fixture_with_tasks();
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);

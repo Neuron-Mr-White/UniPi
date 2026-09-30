@@ -249,11 +249,22 @@ describe("add through the real handler + binary", { skip: !hasBinary }, () => {
     assert.match(notifications.at(-1) ?? "", /\(1 attachment\)/);
   });
 
-  it("a missing title is a usage notify, not a task", async () => {
+  it("a missing title with no description is a usage notify, not a task", async () => {
     onboard();
     await handler("unipi:kanboard-add", "--priority high", ctx());
-    assert.match(notifications.at(-1) ?? "", /needs a title/);
+    assert.match(notifications.at(-1) ?? "", /needs a title or a description/);
     assert.equal(listed().length, 0);
+  });
+
+  it("a description-only add omits the title positional and the binary derives the display title", async () => {
+    onboard();
+    await handler("unipi:kanboard-add", "--status todo\nfirst body line is the title", ctx());
+    const created = listed().find((task) => task.body === "first body line is the title");
+    assert.ok(created, "task created from the description alone");
+    assert.equal(created!.title, "");
+    assert.equal((created as { displayTitle?: string }).displayTitle, "first body line is the title");
+    assert.equal(created!.status, "todo");
+    assert.match(notifications.at(-1) ?? "", /^✓ .* added to Todo$/);
   });
 });
 

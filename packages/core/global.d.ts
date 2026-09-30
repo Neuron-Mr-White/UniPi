@@ -15,6 +15,16 @@ declare global {
   // eslint-disable-next-line no-var
   var __unipi_kanboard_registry: unknown;
 
+  /** Kanboard's API for other extensions — set by @pi-unipi/kanboard on load. */
+  // eslint-disable-next-line no-var
+  var __unipi_kanboard_api:
+    | {
+        captureToBacklog(opts: { cwd: string; text: string }): Promise<
+          { ok: true; id: string; attachments: number } | { ok: false; reason: string }
+        >;
+      }
+    | undefined;
+
   // eslint-disable-next-line no-var
   var __unipi_mcp_stats: import("./global-types.js").McpStatsLike | undefined;
 }

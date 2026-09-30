@@ -5,7 +5,7 @@
  */
 
 import { For, Show, createEffect, createSignal, onCleanup, type JSX } from "solid-js";
-import { api, canMove, needsComment, type Rules, type Task } from "./api.js";
+import { api, canMove, displayTitle, needsComment, type Rules, type Task } from "./api.js";
 import { offerToSchedule } from "./schedule.js";
 import { Icon, StatusGlyph } from "./icons.js";
 import { plainText } from "./markdown.js";
@@ -463,7 +463,7 @@ function Card(props: {
       draggable={task().run ? "false" : "true"}
       tabindex="0"
       role="button"
-      aria-label={`${task().id} ${task().title}`}
+      aria-label={`${task().id} ${displayTitle(task())}`}
       onDragStart={(event) => props.onDragStart(event)}
       onDragEnd={() => props.onDragEnd()}
       onClick={() => {
@@ -486,7 +486,7 @@ function Card(props: {
           <span class="tag stale">stale</span>
         </Show>
       </div>
-      <div class="card-title title">{task().title}</div>
+      <div class={`card-title title${task().title ? "" : " title-derived"}`}>{displayTitle(task())}</div>
       <Show when={task().status === "blocked" && task().blockedReason?.text}>
         <div class="card-blocked" title={plainText(task().blockedReason?.text)}>
           {plainText(task().blockedReason!.text)}

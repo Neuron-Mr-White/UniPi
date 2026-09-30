@@ -4,7 +4,7 @@
  */
 
 import { For, Show, createSignal, type JSX } from "solid-js";
-import type { Task } from "./api.js";
+import { displayTitle, type Task } from "./api.js";
 import { Icon, StatusGlyph } from "./icons.js";
 import { newestFirst } from "./mention.js";
 import { board } from "./state.js";
@@ -32,7 +32,7 @@ export function depCandidates(needle: string, exclude: Set<string>, selfId?: str
     .filter((task) => !exclude.has(task.id) && task.id !== selfId)
     .filter((task) => !["cancelled", "archived"].includes(task.status))
     .filter((task) => !selfId || !wouldCycle(selfId, task.id))
-    .filter((task) => !text || task.id.toLowerCase().includes(text) || task.title.toLowerCase().includes(text))
+    .filter((task) => !text || task.id.toLowerCase().includes(text) || displayTitle(task).toLowerCase().includes(text))
     .sort(newestFirst);
   return { shown: pool.slice(0, MAX_SHOWN), more: Math.max(0, pool.length - MAX_SHOWN) };
 }
@@ -106,7 +106,7 @@ export function DepList(props: {
             >
               <StatusGlyph status={task.status} size={12} />
               <span class="mono muted dep-id">{task.id}</span>
-              <span class="dep-title">{task.title}</span>
+              <span class={`dep-title${task.title ? "" : " title-derived"}`}>{displayTitle(task)}</span>
             </button>
           )}
         </For>

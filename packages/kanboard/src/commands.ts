@@ -577,15 +577,18 @@ export async function runAdd(deps: CommandDeps, ctx: ExtensionCommandContext, te
     ctx.ui.notify(`kanboard: ${parsed.error} — /unipi:kanboard-add [-p 1-5] [--after ID] [--status backlog|todo] <title>`, "warning");
     return;
   }
-  if (!parsed.title) {
-    ctx.ui.notify("kanboard: add needs a title — /unipi:kanboard-add <title>", "warning");
+  const hasDescription = parsed.description.trim().length > 0;
+  if (!parsed.title && !hasDescription) {
+    ctx.ui.notify("kanboard: add needs a title or a description — /unipi:kanboard-add <title> (lines below are the description)", "warning");
     return;
   }
   if (!(await ensureOnboarded(deps, ctx))) return;
 
   let bodyFile: string | null = null;
   try {
-    const argv = ["add", parsed.title, ...parsed.flags];
+    // A description-only add omits the title positional entirely (the binary
+    // stores an empty title and derives the display title from the body).
+    const argv = ["add", ...(parsed.title ? [parsed.title] : []), ...parsed.flags];
     if (parsed.description) {
       bodyFile = join(mkdtempSync(join(tmpdir(), "kb-add-")), "body.md");
       writeFileSync(bodyFile, parsed.description);
@@ -602,6 +605,55 @@ export async function runAdd(deps: CommandDeps, ctx: ExtensionCommandContext, te
       `kanboard: could not add the task — ${error instanceof KanboardCliError ? error.message : String(error)}`,
       "error",
     );
+  } finally {
+    if (bodyFile) rmSync(join(bodyFile, ".."), { recursive: true, force: true });
+  }
+}
+
+export type CaptureToBacklogResult =
+  | { ok: true; id: string; attachments: number }
+  | { ok: false; reason: string };
+
+/**
+ * Capture editor text as a Backlog task body — the entry point the
+ * input-shortcuts K chord calls through `globalThis.__unipi_kanboard_api`.
+ * No title: the body carries the point (the binary derives the display
+ * title). No prompts: when the folder is not onboarded the capture is
+ * refused with the reason instead.
+ */
+export async function captureToBacklog(
+  deps: CommandDeps,
+  opts: { cwd: string; text: string },
+): Promise<CaptureToBacklogResult> {
+  const client = deps.cli;
+  if (!client) return { ok: false, reason: deps.unavailable ?? "kanboard binary unavailable" };
+  let slug: string | null = null;
+  try {
+    const settings = getSettings("kanboard", opts.cwd) as { slug?: string };
+    slug = typeof settings.slug === "string" && settings.slug.length > 0 ? settings.slug : null;
+  } catch {
+    slug = null;
+  }
+  if (!slug) {
+    return { ok: false, reason: "kanboard is not set up here — run /unipi:kanboard" };
+  }
+  const text = opts.text.trim();
+  if (!text) return { ok: false, reason: "nothing to add" };
+  const attaches = detectFilePaths(text);
+  let bodyFile: string | null = null;
+  try {
+    bodyFile = join(mkdtempSync(join(tmpdir(), "kb-capture-")), "body.md");
+    writeFileSync(bodyFile, text);
+    const argv = ["--project", slug, "add", "--status", "backlog", "--body-file", bodyFile];
+    for (const file of attaches) argv.push("--attach", file);
+    const task = asTask("add", await client.run<unknown>(argv, { cwd: opts.cwd }));
+    deps.debug(`captureToBacklog ${task.id} (${attaches.length} attachments)`);
+    return { ok: true, id: task.id, attachments: attaches.length };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof KanboardCliError ? error.message : String(error),
+    };
   } finally {
     if (bodyFile) rmSync(join(bodyFile, ".."), { recursive: true, force: true });
   }
@@ -807,6 +859,8 @@ export async function runRotateTokenAction(
 interface ShowTask {
   id: string;
   title: string;
+  /** Derived title (Rust `display_title`) — shown when `title` is empty. */
+  displayTitle?: string;
   status: string;
   priority?: string;
   order?: number;
@@ -831,6 +885,11 @@ const SHOW_EXTRA_LANES: Array<{ id: string; label: string }> = [
 ];
 const PRIO_GLYPH: Record<string, string> = { urgent: "⇈", high: "↑", medium: "·", low: "↓", none: " " };
 const PRIO_RANK: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+/** The title a row shows: the derived one when the raw title is empty. */
+function showTitle(task: ShowTask): string {
+  return task.displayTitle || task.title || "(untitled)";
+}
 
 /** Same ordering as the CLI's claim_sort: priority, then lane order, then id. */
 export function claimOrder(tasks: ShowTask[]): ShowTask[] {
@@ -876,7 +935,7 @@ function laneRows(tasks: ShowTask[], lane: string): ShowRow[] {
         number: `${number}.`,
         id: task.id,
         prio: PRIO_GLYPH[task.priority ?? "none"] ?? " ",
-        title: task.title,
+        title: showTitle(task),
         extra:
           task.ready === false || waits.length > 0
             ? `waits for ${waits.join(", ")}`
@@ -899,7 +958,7 @@ function laneRows(tasks: ShowTask[], lane: string): ShowRow[] {
       branch: "",
       id: task.id,
       prio: PRIO_GLYPH[task.priority ?? "none"] ?? " ",
-      title: task.title,
+      title: showTitle(task),
       extra:
         lane === "in_progress" && task.run?.session
           ? `· ${task.run.session}`
@@ -1109,19 +1168,19 @@ export async function taskCompletions(
   const needle = prefix.toLowerCase();
   const items = cache.tasks
     .filter((task) => !["cancelled", "archived"].includes(task.status))
-    .filter((task) => task.id.toLowerCase().startsWith(needle) || (titleSearch && task.title.toLowerCase().includes(needle)))
+    .filter((task) => task.id.toLowerCase().startsWith(needle) || (titleSearch && showTitle(task).toLowerCase().includes(needle)))
     .slice(0, 12)
     .map((task) =>
       rowStyle === "id-title"
         ? {
             value: fullArgs(before, task.id),
-            label: `${task.id}  ${task.title.slice(0, 64)}`,
+            label: `${task.id}  ${showTitle(task).slice(0, 64)}`,
             description: task.status,
           }
         : {
             value: fullArgs(before, task.id),
             label: task.id,
-            description: `${task.status} — ${task.title}`,
+            description: `${task.status} — ${showTitle(task)}`,
           },
     );
   return items.length > 0 ? items : null;

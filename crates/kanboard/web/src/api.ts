@@ -33,6 +33,8 @@ export interface Activity {
 export interface Task {
   id: string;
   title: string;
+  /** Title derived from the first body line when `title` is empty (Rust `Task::display_title`). */
+  displayTitle?: string;
   body?: string;
   status: string;
   priority: string;
@@ -130,6 +132,11 @@ export function laneLabel(status: string): string {
   return LANES.find((lane) => lane.id === status)?.label ?? status.replace("_", " ");
 }
 export const MUTED_LANES = new Set(["done", "cancelled", "archived"]);
+
+/** The title a card/row/label shows: the server-derived one when `title` is empty. */
+export function displayTitle(task: { title: string; displayTitle?: string }): string {
+  return task.displayTitle || task.title || "(untitled)";
+}
 
 export interface Settings {
   /** argv the daemon spawns for summaries ([node, pi-script] or [pi]). */

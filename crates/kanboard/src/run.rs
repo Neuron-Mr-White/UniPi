@@ -81,7 +81,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 &layout,
                 project,
                 &common,
-                title,
+                title.as_deref().unwrap_or(""),
                 body.as_deref(),
                 status,
                 priority,
@@ -427,6 +427,17 @@ fn text(value: &Value, key: &str) -> String {
     }
 }
 
+/// The title a human sees: the derived `displayTitle` when the raw title is
+/// empty (older payloads without the key fall back to `title`).
+fn display_title(value: &Value) -> String {
+    let derived = text(value, "displayTitle");
+    if derived.is_empty() {
+        text(value, "title")
+    } else {
+        derived
+    }
+}
+
 fn strings(value: &Value) -> String {
     value
         .as_array()
@@ -514,7 +525,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             "{} created in {} ({})",
             text(payload, "id"),
             text(payload, "status"),
-            text(payload, "title")
+            display_title(payload)
         ),
         Command::List { .. } => {
             // K4 turned the JSON payload into `{tasks, problems}`; this table kept
@@ -543,7 +554,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                         "{}  [{}] {}{}{}{}",
                         text(task, "id"),
                         text(task, "status"),
-                        text(task, "title"),
+                        display_title(task),
                         if field(task, "priority") == &json!("none") {
                             String::new()
                         } else {
@@ -575,7 +586,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                 "{} [{}] {}\n  priority: {}  order: {}  created: {}{}",
                 text(payload, "id"),
                 status,
-                text(payload, "title"),
+                display_title(payload),
                 text(payload, "priority"),
                 text(payload, "order"),
                 text(payload, "created"),
@@ -683,7 +694,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     "next: {} [{}] {}",
                     text(task, "id"),
                     text(task, "priority"),
-                    text(task, "title")
+                    display_title(task)
                 )
             }
         }
@@ -772,13 +783,13 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                     "{} [{}] {}",
                     text(item, "id"),
                     text(item, "status"),
-                    text(item, "title")
+                    display_title(item)
                 )
             };
             let mut out = format!(
                 "{id} [{}] {}",
                 text(payload, "status"),
-                text(payload, "title")
+                display_title(payload)
             );
             if !upstream.is_empty() {
                 out.push_str("\n  upstream:");
@@ -809,7 +820,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
                         "{}  [{}] {}{}",
                         text(task, "id"),
                         text(task, "status"),
-                        text(task, "title"),
+                        display_title(task),
                         body_excerpt(task)
                     )
                 })

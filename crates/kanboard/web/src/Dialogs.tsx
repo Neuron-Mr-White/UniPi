@@ -1,7 +1,7 @@
 /** Dialogs: new task, comment-required move, ⌘K command palette, shortcuts, toasts. */
 
 import { For, Show, createEffect, createMemo, createSignal, on, type JSX } from "solid-js";
-import { api, ApiError, PRIORITIES, type Settings } from "./api.js";
+import { api, ApiError, displayTitle, PRIORITIES, type Settings } from "./api.js";
 import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { renderMarkdown } from "./markdown.js";
@@ -105,7 +105,7 @@ export function NewTaskDialog(): JSX.Element {
 
   async function submit(): Promise<void> {
     const target = slug();
-    if (!target || title().trim().length === 0) return;
+    if (!target || (title().trim().length === 0 && body().trim().length === 0)) return;
     setBusy(true);
     try {
       const created = await api.create(target, {
@@ -156,8 +156,8 @@ export function NewTaskDialog(): JSX.Element {
       <div class="dialog-body">
         <input
           class="dialog-title-input"
-          placeholder="Task title"
-          aria-label="Title"
+          placeholder="Title (optional)"
+          aria-label="Title (optional)"
           autofocus
           value={title()}
           onInput={(event) => setTitle(event.currentTarget.value)}
@@ -286,7 +286,7 @@ export function NewTaskDialog(): JSX.Element {
         <button class="btn" onClick={close}>
           Cancel
         </button>
-        <button class="btn primary" disabled={busy() || title().trim().length === 0} onClick={() => void submit()}>
+        <button class="btn primary" disabled={busy() || (title().trim().length === 0 && body().trim().length === 0)} onClick={() => void submit()}>
           Create task
           <Kbd keys={["↵"]} />
         </button>
@@ -424,7 +424,7 @@ export function CommandPalette(): JSX.Element {
     for (const task of board.tasks) {
       list.push({
         id: `t:${task.id}`,
-        label: task.title,
+        label: displayTitle(task),
         mono: task.id,
         kind: laneLabel(task.status),
         icon: <StatusGlyph status={task.status} />,

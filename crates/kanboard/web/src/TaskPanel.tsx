@@ -6,7 +6,7 @@
 
 import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import { api, canMove, needsComment, PRIORITIES, type Task } from "./api.js";
+import { api, canMove, displayTitle, needsComment, PRIORITIES, type Task } from "./api.js";
 import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { relativeTime, renderMarkdown } from "./markdown.js";
@@ -166,8 +166,14 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
 
   const saveTitle = (): void => {
     const next = title().trim();
-    if (next && next !== props.task.title) void run(() => api.edit(target(), props.task.id, { title: next }));
-    else setTitle(props.task.title);
+    // Clearing the title is fine while the body carries the point; with no
+    // body either, the server would refuse — keep the old title then.
+    if (next === props.task.title) return;
+    if (next || (props.task.body ?? "").trim().length > 0) {
+      void run(() => api.edit(target(), props.task.id, { title: next }));
+    } else {
+      setTitle(props.task.title);
+    }
   };
 
   const saveBody = async (): Promise<void> => {
@@ -312,6 +318,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
             class="title-edit title-input"
             rows={1}
             value={title()}
+            placeholder="Untitled — click to add a title"
             aria-label="Task title"
             onInput={(event) => setTitle(event.currentTarget.value)}
             onBlur={saveTitle}
@@ -590,7 +597,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                       <Show when={index() > 0}>, </Show>
                       <button
                         class="dep-id"
-                        title={depTask(dep)?.title}
+                        title={depTask(dep) ? displayTitle(depTask(dep)!) : undefined}
                         onClick={() => {
                           if (!depTask(dep)) return;
                           setOpenTaskId(dep);
@@ -629,10 +636,10 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                       setOpenTaskId(dep);
                       highlightTask(dep);
                     }}
-                    title={depTask(dep)?.title}
+                    title={depTask(dep) ? displayTitle(depTask(dep)!) : undefined}
                   >
                     <span class="mono">{dep}</span>
-                    {depTask(dep)?.title ?? "missing task"}
+                    <span class={depTask(dep)?.title ? "" : "title-derived"}>{depTask(dep) ? displayTitle(depTask(dep)!) : "missing task"}</span>
                   </button>
                   <button class="icon-btn sm" aria-label={`Remove dependency ${dep}`} onClick={() => void run(() => api.unlink(target(), props.task.id, dep))}>
                     <Icon.close size={12} />

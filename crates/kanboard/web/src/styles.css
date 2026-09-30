@@ -929,6 +929,11 @@ button.crumb:hover {
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
+/* Derived title (task has none — shown from the first body line): muted + italic. */
+.title-derived {
+  color: var(--muted);
+  font-style: italic;
+}
 .card-title {
   font-size: var(--t-title);
   font-weight: 550;

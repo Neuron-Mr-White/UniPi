@@ -1,5 +1,6 @@
 /** List view: grouped by status with sticky group headers and dense rows. */
 import { For, Show, type JSX } from "solid-js";
+import { displayTitle } from "./api.js";
 import { Icon, PriorityGlyph, PRIORITY_LABEL, StatusGlyph } from "./icons.js";
 import { relativeTime } from "./markdown.js";
 import { AgentChip, DepTag, LabelTags } from "./paint.js";
@@ -33,7 +34,7 @@ export function ListView(): JSX.Element {
                   role="row"
                   tabindex="0"
                   data-id={task.id}
-                  aria-label={`${task.id} ${task.title}`}
+                  aria-label={`${task.id} ${displayTitle(task)}`}
                   onClick={() => {
                     setSelectedId(task.id);
                     setOpenTaskId(task.id);
@@ -46,7 +47,7 @@ export function ListView(): JSX.Element {
                   </span>
                   <span class="card-id">{task.id}</span>
                   <StatusGlyph status={task.status} />
-                  <span class="row-title">{task.title}</span>
+                  <span class={`row-title${task.title ? "" : " title-derived"}`}>{displayTitle(task)}</span>
                   <span class="row-tags">
                     <AgentChip task={task} />
                     <DepTag task={task} drawnParents={parents} />

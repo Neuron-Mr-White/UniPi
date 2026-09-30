@@ -51,6 +51,7 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
             "path".into(),
             json!(board.task_path(&task.id).to_string_lossy()),
         );
+        map.insert("displayTitle".into(), json!(task.display_title()));
         map.insert("ready".into(), json!(deps::is_ready(task, &by_id, gate)));
         map.insert("staleness".into(), json!(staleness_of(task)));
         map.insert(
@@ -198,6 +199,11 @@ pub fn add(
             "new tasks start in backlog or todo, not {status}"
         )));
     }
+    // A task needs a point: a title or a description. The body here is the
+    // user's text — attachment embeds are appended below and count for nothing.
+    if title.trim().is_empty() && body.unwrap_or("").trim().is_empty() {
+        return Err(Error::usage("a task needs a title or a description"));
+    }
     let lock = layout.lock_board(&project.slug)?;
     // Re-read under the lock: a stale in-memory copy would hand out a used id.
     let mut project = Project::load(layout, &project.slug)?;
@@ -219,7 +225,7 @@ pub fn add(
     let lane = order::lane(tasks.iter().filter(|task| task.status == status));
     let mut task = Task::new(
         id.clone(),
-        title.to_string(),
+        title.trim().to_string(),
         status,
         priority,
         order::bottom_of(&lane),
@@ -512,9 +518,6 @@ pub fn edit(
     }
     let mut changed = Vec::new();
     if let Some(title) = args.title {
-        if title.trim().is_empty() {
-            return Err(Error::usage("--title must not be empty"));
-        }
         task.title = title.trim().to_string();
         changed.push("title");
     }
@@ -534,6 +537,11 @@ pub fn edit(
         return Err(Error::usage(
             "edit needs at least one of --title/--body/--priority/--labels",
         ));
+    }
+    // An empty title is fine as long as the body carries the point (and vice
+    // versa) — the task must not end up with neither.
+    if task.title.trim().is_empty() && task.body.trim().is_empty() {
+        return Err(Error::usage("a task needs a title or a description"));
     }
     task.push_activity_session(
         common.now,
@@ -1419,7 +1427,12 @@ pub fn chain(layout: &Layout, project: Project, gate: ChainGate, id: &str) -> Re
 
     let describe = |wanted: &str| -> Value {
         match by_id(wanted) {
-            Some(task) => json!({"id": task.id, "title": task.title, "status": task.status}),
+            Some(task) => json!({
+                "id": task.id,
+                "title": task.title,
+                "displayTitle": task.display_title(),
+                "status": task.status
+            }),
             None => json!({"id": wanted, "status": "missing"}),
         }
     };
@@ -1427,6 +1440,7 @@ pub fn chain(layout: &Layout, project: Project, gate: ChainGate, id: &str) -> Re
     Ok(json!({
         "id": task.id,
         "title": task.title,
+        "displayTitle": task.display_title(),
         "status": task.status,
         "upstream": upstream.iter().map(|id| describe(id)).collect::<Vec<_>>(),
         "downstream": downstream.iter().map(|id| describe(id)).collect::<Vec<_>>(),
