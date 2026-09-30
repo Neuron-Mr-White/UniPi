@@ -1,0 +1,21 @@
+{
+  "_note": "Ground truth authored by lead. expected = should be revealed; acceptable = not wrong if revealed (not a false positive); anything else revealed = false positive.",
+  "cases": [
+    { "id": "uni11-real", "prompt": "[Image #1]\n\nI performed the test in pi-test dir. The simple mode is not yet minimal. [Image #2] [Image #3] [Image #4] [Image #5] [Image #6] [Image #7]\n\nOur spacing too large, and look at the image, they actually 'rerenders'. Although we cannot get the thinking time, we can omit it if we don't want to build.\n\nThe core things is make it taking less space while rendering latest status only. Then rerender to show less when newer status are in?\n\nI tried it in mcode just now.", "expected": [], "acceptable": ["debug", "quick-fix", "quick-work"] },
+    { "id": "logo", "prompt": "Generate a logo for my coffee shop app, a minimal line-art cup.", "expected": ["image"], "acceptable": ["brandkit"] },
+    { "id": "debug-null", "prompt": "The login test fails with a null pointer in auth.ts, find out why.", "expected": ["debug"], "acceptable": ["quick-fix", "fix"] },
+    { "id": "scrape", "prompt": "Scrape the pricing table from https://example.com/pricing and save it as CSV.", "expected": ["agent-browser"], "acceptable": ["web", "wigolo", "browser-automation"] },
+    { "id": "mise", "prompt": "Set up node 22 and python 3.12 for this repo so everyone gets the same versions.", "expected": ["mise"], "acceptable": [] },
+    { "id": "board", "prompt": "Remind me later to rotate the API keys, put it on the board.", "expected": ["kanboard"], "acceptable": [] },
+    { "id": "graphql", "prompt": "Plan the migration of our REST API to GraphQL, then implement it.", "expected": ["brainstorm", "plan"], "acceptable": ["auto", "work", "gather-context", "research", "consultant"] },
+    { "id": "rename", "prompt": "Rename the variable foo to count in utils.ts.", "expected": [], "acceptable": ["quick-work"] },
+    { "id": "overeng", "prompt": "Is src/ over-engineered? Tell me what I can delete.", "expected": ["ponytail-audit"], "acceptable": ["ponytail-review", "ponytail", "scan-issues"] },
+    { "id": "telegram", "prompt": "Send me a Telegram message when the build finishes.", "expected": ["notify"], "acceptable": ["configure-notify", "delayedi"] },
+    { "id": "readme", "prompt": "Write a README for this package.", "expected": ["document"], "acceptable": ["writing-for-agents"] },
+    { "id": "android", "prompt": "Tap the login button on my Android emulator and take a screenshot.", "expected": ["android-device-automation"], "acceptable": ["vitest-midscene-e2e"] },
+    { "id": "recall", "prompt": "What did we decide last week about the cache layer?", "expected": ["mempalace-recall"], "acceptable": ["memory", "compactor"] },
+    { "id": "worktree", "prompt": "Create a separate worktree so I can try the refactor in parallel.", "expected": ["worktree-create"], "acceptable": [] },
+    { "id": "docs", "prompt": "Look up the current Next.js 15 caching API docs.", "expected": ["find-docs"], "acceptable": ["web", "wigolo", "research"] },
+    { "id": "css", "prompt": "The sidebar CSS overflows on mobile, fix the padding in Sidebar.tsx.", "expected": [], "acceptable": ["quick-fix", "debug", "fix"] }
+  ]
+}

@@ -1,0 +1,1772 @@
+{
+  "meta": {
+    "date": "2026-09-29T06:44:49.780Z",
+    "catalogSize": 59,
+    "catalog": [
+      {
+        "name": "api-contract",
+        "description": "Check REST/JSON API changes for breaking contract changes. Use when editing request or response shapes."
+      },
+      {
+        "name": "ask-user",
+        "description": "Interactive decision-gating tool for structured user input. Use ask_user when you need user confirmation, preferences, or decisions before proceeding with high-impact or ambiguous choices."
+      },
+      {
+        "name": "auto",
+        "description": "Full pipeline — brainstorm → plan → work → review → merge. One command, end to end."
+      },
+      {
+        "name": "brainstorm",
+        "description": "Collaborative discovery — explore problem space, evaluate approaches, write design spec. Use before any creative work."
+      },
+      {
+        "name": "btw",
+        "description": "Helps you use the /unipi:btw side-conversation workflow effectively. Use when you want to think in parallel, ask side questions without interrupting ongoing work, or inject a side thread back into the main agent."
+      },
+      {
+        "name": "chore-create",
+        "description": "Create reusable chore — save repeatable tasks like deploy, publish, push to docs/chore/."
+      },
+      {
+        "name": "chore-execute",
+        "description": "Execute a saved chore — run deploy, publish, push, or any repeatable task from docs/chore/."
+      },
+      {
+        "name": "coffee-sandbox",
+        "description": "How to reach and operate the \"coffee\" sandbox — the dedicated remote machine for unipi v3 development and testing (Tailscale, key-based SSH, omniroute bridge with the full model catalog, sleep-proofed for lid close). Use this skill whenever the user wants to test unipi on coffee, SSH into coffee, deploy code there, run pi/unipi remotely, or troubleshoot coffee's connectivity, sleep/lid behavior, or model availability. Includes exact aliases, the sudo password handling, and the gotchas from initial setup."
+      },
+      {
+        "name": "compactor",
+        "description": "Context management — compact session, recall history, run code, search content."
+      },
+      {
+        "name": "compactor-detail",
+        "description": "Full compactor reference — tool parameters, anti-patterns, sandbox languages, context budget, workflows."
+      },
+      {
+        "name": "compactor-doctor",
+        "description": "Diagnostics — validate config, session DB, runtimes, and troubleshoot compactor issues."
+      },
+      {
+        "name": "compactor-stats",
+        "description": "Stats display — context savings, session metrics, compactions, sandbox and recall/search counters."
+      },
+      {
+        "name": "configure-notify",
+        "description": "Help user configure Pi notification settings — platforms (native, Gotify, Telegram), events, and per-event routing. Guide through setup or make changes directly."
+      },
+      {
+        "name": "configure-updater",
+        "description": "Guide for using and configuring the Unipi updater — auto-update, changelog browser, and readme browser."
+      },
+      {
+        "name": "consolidate",
+        "description": "Consolidate — save learnings to memory, craft skills if reusable. Use at end of work session or to summarize current state."
+      },
+      {
+        "name": "consultant",
+        "description": "Expert consultation — advisory with framework-based analysis. Read-only. Use when you need expert advice before brainstorming."
+      },
+      {
+        "name": "council-mode",
+        "description": "Run a bounded supervisor-mediated advisor council. Use when the user asks for council mode, asks to convene advisors, debate a decision, cross-examine recommendations, or run /council."
+      },
+      {
+        "name": "debug",
+        "description": "Active bug investigation — reproduce, diagnose, root-cause analysis. Produces debug report for /unipi:fix."
+      },
+      {
+        "name": "docker-debug",
+        "description": "Diagnose failing Docker builds and containers. Use when a docker build, compose up or container start fails."
+      },
+      {
+        "name": "document",
+        "description": "Generate documentation — README, API docs, guides. Use when you need to document code or features."
+      },
+      {
+        "name": "fix",
+        "description": "Fix bugs using debug reports. Autocomplete for debug files. Records fixes in docs/fix/."
+      },
+      {
+        "name": "gather-context",
+        "description": "Research codebase — surface patterns, find prior art, prepare for brainstorm. Spawns subagents if available."
+      },
+      {
+        "name": "grill-me",
+        "description": "A relentless interview to sharpen a plan or design."
+      },
+      {
+        "name": "grilling",
+        "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+      },
+      {
+        "name": "handoff",
+        "description": "Compact the current conversation into a handoff document for another agent to pick up."
+      },
+      {
+        "name": "image",
+        "description": "Generate images from text prompts and analyze images with vision models"
+      },
+      {
+        "name": "kanboard-doctor",
+        "description": "Diagnose and fix kanboard parser issues — validates all workflow documents, reports errors, suggests fixes."
+      },
+      {
+        "name": "mcp",
+        "description": "MCP server management — discover, connect, and use Model Context Protocol tools"
+      },
+      {
+        "name": "memory",
+        "description": "Persistent cross-session memory management. Store and retrieve user preferences, project decisions, code patterns, and conversation summaries across sessions. Use when you need to remember something important or recall past context."
+      },
+      {
+        "name": "milestone-onboard",
+        "description": "Create MILESTONES.md from existing workflow docs — scan, propose, refine, write."
+      },
+      {
+        "name": "milestone-update",
+        "description": "Sync MILESTONES.md with completed work — scan docs, diff checkboxes, auto-update."
+      },
+      {
+        "name": "mise",
+        "description": "Provides expert guidance on mise (mise-en-place) — a polyglot dev tool and environment orchestrator that manages runtimes, environment variables, and project tasks. This skill should be used when users ask about mise configuration (mise.toml), installing or switching tool versions (Node, Python, Go, .NET, etc.), the mise task runner, environment variable management, secrets with SOPS/fnox, backends (ubi, cargo, npm, aqua), Lua plugins, shell hooks, migrating from asdf/nvm/direnv, or debugging with mise doctor."
+      },
+      {
+        "name": "notify",
+        "description": "Cross-platform notification system for Pi. Use notify_user when you need to urgently alert the user about critical findings, errors, or completion of long-running tasks."
+      },
+      {
+        "name": "plan",
+        "description": "Strategic planning — create implementation plan from brainstorm specs. Tasks, dependencies, acceptance criteria."
+      },
+      {
+        "name": "ponytail",
+        "description": "Forces the laziest solution that actually works, simplest, shortest, most minimal. Channels a senior dev who has seen everything: question whether the task needs to exist at all (YAGNI), reach for the standard library before custom code, native platform features before dependencies, one line before fifty. Supports intensity levels: lite, full (default), ultra. Use on ANY coding task: writing, adding, refactoring, fixing, reviewing, or designing code, and choosing libraries or dependencies. Also use whenever the user says \"ponytail\", \"be lazy\", \"lazy mode\", \"simplest solution\", \"minimal solution\", \"yagni\", \"do less\", or \"shortest path\", or complains about over-engineering, bloat, boilerplate, or unnecessary dependencies. Do NOT use for non-coding requests (general knowledge, prose, translation, summaries, recipes)."
+      },
+      {
+        "name": "ponytail-audit",
+        "description": "Whole-repo audit for over-engineering. Like ponytail-review, but scans the entire codebase instead of a diff: a ranked list of what to delete, simplify, or replace with stdlib/native equivalents. Use when the user says \"audit this codebase\", \"audit for over-engineering\", \"what can I delete from this repo\", \"find bloat\", \"ponytail-audit\", or \"/ponytail-audit\". One-shot report, does not apply fixes."
+      },
+      {
+        "name": "ponytail-debt",
+        "description": "Harvest every `ponytail:` comment in the codebase into a debt ledger, so the deliberate shortcuts and deferrals ponytail leaves behind get tracked instead of rotting into \"later means never\". Use when the user says \"ponytail debt\", \"/ponytail-debt\", \"what did ponytail defer\", \"list the shortcuts\", \"ponytail ledger\", or \"what did we mark to do later\". One-shot report, changes nothing."
+      },
+      {
+        "name": "ponytail-gain",
+        "description": "Show ponytail's measured impact as a compact scoreboard: less code, less cost, more speed, from the benchmark medians. One-shot display, not a persistent mode, and not a per-repo number. Trigger: /ponytail-gain, \"ponytail gain\", \"what does ponytail save\", \"show ponytail impact\", \"ponytail scoreboard\"."
+      },
+      {
+        "name": "ponytail-help",
+        "description": "Quick-reference card for all ponytail modes, skills, and commands. One-shot display, not a persistent mode. Trigger: /ponytail-help, \"ponytail help\", \"what ponytail commands\", \"how do I use ponytail\"."
+      },
+      {
+        "name": "ponytail-review",
+        "description": "Code review focused exclusively on over-engineering. Finds what to delete: reinvented standard library, unneeded dependencies, speculative abstractions, dead flexibility. One line per finding: location, what to cut, what replaces it. Use when the user says \"review for over-engineering\", \"what can we delete\", \"is this over-engineered\", \"simplify review\", or invokes /ponytail-review. Complements correctness-focused review, this one only hunts complexity."
+      },
+      {
+        "name": "quick-fix",
+        "description": "Fast bug fix without debug report. One-shot fix for clear, simple bugs. Records fixes in docs/fix/."
+      },
+      {
+        "name": "quick-work",
+        "description": "Fast single-task execution — one shot, done. Use for small tasks that don't need full brainstorm/plan/work flow."
+      },
+      {
+        "name": "release-notes",
+        "description": "Write user-facing release notes from git history. Use when preparing a release or changelog."
+      },
+      {
+        "name": "research",
+        "description": "Read-only research with bash access. Deep codebase investigation, documentation review, external research."
+      },
+      {
+        "name": "review-work",
+        "description": "Review work — check task completion, run lint/build, mark reviewer remarks. Use after /unipi:work completes."
+      },
+      {
+        "name": "scan-issues",
+        "description": "Passive codebase scan — find potential bugs, anti-patterns, security issues. Spawns subagents if available."
+      },
+      {
+        "name": "sql-review",
+        "description": "Review SQL migrations for locking, indexes and rollback safety. Use before merging schema changes."
+      },
+      {
+        "name": "teach",
+        "description": "Teach the user a new skill or concept, within this workspace."
+      },
+      {
+        "name": "to-questionnaire",
+        "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+      },
+      {
+        "name": "unipi-subagents",
+        "description": "Delegate work to builtin or custom subagents with single-agent, parallel, scripted-chaining, async, forked-context, and coordinated workflows. Use for advisory review, implementation handoffs, and multi-step tasks where a single agent should stay in control while other agents contribute context, planning, or execution."
+      },
+      {
+        "name": "unipi-v3-development",
+        "description": "Context and working state for unipi v3 development (the `v3` branch of the @pi-unipi extension suite). Use this skill at the start of ANY session that touches unipi v3: continuing the long-horizon module, the workspace/state de-scatter, the settings hub, per-package rewrites/removals, footer/badge UX, the network judge, or the v3-tasks plan. It records what is already done, the key architectural decisions, the gotchas that cost real debugging time, and where to look. Do NOT redo completed work — search here and docs/v3-tasks.md first."
+      },
+      {
+        "name": "utility",
+        "description": "Guidance for using the @pi-unipi/utility extension commands and tools. Provides lifecycle management, diagnostics, cleanup, batch execution, environment inspection, and terminal utilities."
+      },
+      {
+        "name": "wait-what",
+        "description": "Stop. That last message did not land — re-pitch it."
+      },
+      {
+        "name": "web",
+        "description": "Web search, read, and summarize tools with provider-based backend"
+      },
+      {
+        "name": "work",
+        "description": "Execute plan — implement tasks, test, commit on done. Works in worktree or on main branch. Resumable."
+      },
+      {
+        "name": "worktree-create",
+        "description": "Create git worktree for parallel work. Agent-driven naming."
+      },
+      {
+        "name": "worktree-list",
+        "description": "List all unipi worktrees. Shows branch, path, and status."
+      },
+      {
+        "name": "worktree-merge",
+        "description": "Merge worktree branches back to main. Gathers context from specs/plans, merges, cleans up."
+      },
+      {
+        "name": "writing-for-agents",
+        "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+      }
+    ],
+    "jev": {
+      "provider": "openrouter",
+      "model": "typesafe/jev-1.13",
+      "baseUrl": "",
+      "apiKey": "",
+      "timeoutMs": 60000
+    },
+    "model": "omniroute/dva/deepseek-v4-flash-low",
+    "revealCap": 5,
+    "note": "revealed sets over the mock catalog; jev scores from one full-catalog call per case"
+  },
+  "perCase": [
+    {
+      "id": "uni11-real",
+      "pins": [
+        "image"
+      ],
+      "jevMs": 750,
+      "modelMs": 4298,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "image",
+          "plan",
+          "brainstorm",
+          "work",
+          "compactor-stats"
+        ],
+        "jev0.8": [
+          "image"
+        ],
+        "nopins0.6": [
+          "plan",
+          "brainstorm",
+          "work",
+          "compactor-stats",
+          "debug"
+        ],
+        "nopins0.8": [],
+        "model": []
+      },
+      "scores": {
+        "api-contract": 0.08,
+        "ask-user": 0.27,
+        "auto": 0.41,
+        "brainstorm": 0.71,
+        "btw": 0.38,
+        "chore-create": 0.18,
+        "chore-execute": 0.22,
+        "coffee-sandbox": 0.13,
+        "compactor": 0.6,
+        "compactor-detail": 0.51,
+        "compactor-doctor": 0.2,
+        "compactor-stats": 0.67,
+        "configure-notify": 0.08,
+        "configure-updater": 0.06,
+        "consolidate": 0.4,
+        "consultant": 0.34,
+        "council-mode": 0.03,
+        "debug": 0.66,
+        "docker-debug": 0.1,
+        "document": 0.18,
+        "fix": 0.35,
+        "gather-context": 0.66,
+        "grill-me": 0.46,
+        "grilling": 0.11,
+        "handoff": 0.46,
+        "image": 0.34,
+        "kanboard-doctor": 0.11,
+        "mcp": 0.21,
+        "memory": 0.27,
+        "milestone-onboard": 0.12,
+        "milestone-update": 0.14,
+        "mise": 0.11,
+        "notify": 0.1,
+        "plan": 0.77,
+        "ponytail": 0.62,
+        "ponytail-audit": 0.22,
+        "ponytail-debt": 0.06,
+        "ponytail-gain": 0.21,
+        "ponytail-help": 0.11,
+        "ponytail-review": 0.38,
+        "quick-fix": 0.34,
+        "quick-work": 0.49,
+        "release-notes": 0.08,
+        "research": 0.56,
+        "review-work": 0.53,
+        "scan-issues": 0.3,
+        "sql-review": 0.03,
+        "teach": 0.23,
+        "to-questionnaire": 0.26,
+        "unipi-subagents": 0.34,
+        "unipi-v3-development": 0.27,
+        "utility": 0.48,
+        "wait-what": 0.35,
+        "web": 0.19,
+        "work": 0.7,
+        "worktree-create": 0.19,
+        "worktree-list": 0.09,
+        "worktree-merge": 0.15,
+        "writing-for-agents": 0.17
+      }
+    },
+    {
+      "id": "logo",
+      "pins": [
+        "coffee-sandbox"
+      ],
+      "jevMs": 303,
+      "modelMs": 3578,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "coffee-sandbox",
+          "image",
+          "quick-work"
+        ],
+        "jev0.8": [
+          "coffee-sandbox",
+          "image"
+        ],
+        "nopins0.6": [
+          "image",
+          "quick-work"
+        ],
+        "nopins0.8": [
+          "image"
+        ],
+        "model": [
+          "image"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.03,
+        "ask-user": 0.29,
+        "auto": 0.49,
+        "brainstorm": 0.48,
+        "btw": 0.16,
+        "chore-create": 0.06,
+        "chore-execute": 0.05,
+        "coffee-sandbox": 0.02,
+        "compactor": 0.12,
+        "compactor-detail": 0.1,
+        "compactor-doctor": 0.01,
+        "compactor-stats": 0.02,
+        "configure-notify": 0.02,
+        "configure-updater": 0.01,
+        "consolidate": 0.12,
+        "consultant": 0.15,
+        "council-mode": 0.03,
+        "debug": 0.04,
+        "docker-debug": 0.01,
+        "document": 0.05,
+        "fix": 0.03,
+        "gather-context": 0.26,
+        "grill-me": 0.34,
+        "grilling": 0.03,
+        "handoff": 0.28,
+        "image": 0.96,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.28,
+        "memory": 0.1,
+        "milestone-onboard": 0.07,
+        "milestone-update": 0.06,
+        "mise": 0.02,
+        "notify": 0.03,
+        "plan": 0.32,
+        "ponytail": 0.24,
+        "ponytail-audit": 0.01,
+        "ponytail-debt": 0.01,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.03,
+        "ponytail-review": 0.03,
+        "quick-fix": 0.05,
+        "quick-work": 0.78,
+        "release-notes": 0.03,
+        "research": 0.09,
+        "review-work": 0.23,
+        "scan-issues": 0.03,
+        "sql-review": 0.01,
+        "teach": 0.12,
+        "to-questionnaire": 0.21,
+        "unipi-subagents": 0.2,
+        "unipi-v3-development": 0.02,
+        "utility": 0.06,
+        "wait-what": 0.13,
+        "web": 0.14,
+        "work": 0.29,
+        "worktree-create": 0.06,
+        "worktree-list": 0.03,
+        "worktree-merge": 0.07,
+        "writing-for-agents": 0.05
+      }
+    },
+    {
+      "id": "debug-null",
+      "pins": [],
+      "jevMs": 403,
+      "modelMs": 3904,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "debug",
+          "fix",
+          "research",
+          "gather-context",
+          "scan-issues"
+        ],
+        "jev0.8": [
+          "debug",
+          "fix",
+          "research",
+          "gather-context"
+        ],
+        "nopins0.6": [
+          "debug",
+          "fix",
+          "research",
+          "gather-context",
+          "scan-issues"
+        ],
+        "nopins0.8": [
+          "debug",
+          "fix",
+          "research",
+          "gather-context"
+        ],
+        "model": [
+          "debug"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.1,
+        "ask-user": 0.1,
+        "auto": 0.5,
+        "brainstorm": 0.3,
+        "btw": 0.19,
+        "chore-create": 0.06,
+        "chore-execute": 0.13,
+        "coffee-sandbox": 0.09,
+        "compactor": 0.56,
+        "compactor-detail": 0.14,
+        "compactor-doctor": 0.12,
+        "compactor-stats": 0.03,
+        "configure-notify": 0.02,
+        "configure-updater": 0.02,
+        "consolidate": 0.14,
+        "consultant": 0.31,
+        "council-mode": 0.03,
+        "debug": 0.97,
+        "docker-debug": 0.07,
+        "document": 0.09,
+        "fix": 0.87,
+        "gather-context": 0.81,
+        "grill-me": 0.14,
+        "grilling": 0.02,
+        "handoff": 0.26,
+        "image": 0.02,
+        "kanboard-doctor": 0.04,
+        "mcp": 0.14,
+        "memory": 0.15,
+        "milestone-onboard": 0.06,
+        "milestone-update": 0.04,
+        "mise": 0.09,
+        "notify": 0.11,
+        "plan": 0.25,
+        "ponytail": 0.26,
+        "ponytail-audit": 0.03,
+        "ponytail-debt": 0.03,
+        "ponytail-gain": 0.01,
+        "ponytail-help": 0.04,
+        "ponytail-review": 0.05,
+        "quick-fix": 0.39,
+        "quick-work": 0.48,
+        "release-notes": 0.04,
+        "research": 0.85,
+        "review-work": 0.32,
+        "scan-issues": 0.78,
+        "sql-review": 0.03,
+        "teach": 0.18,
+        "to-questionnaire": 0.21,
+        "unipi-subagents": 0.31,
+        "unipi-v3-development": 0.08,
+        "utility": 0.35,
+        "wait-what": 0.09,
+        "web": 0.23,
+        "work": 0.65,
+        "worktree-create": 0.15,
+        "worktree-list": 0.07,
+        "worktree-merge": 0.1,
+        "writing-for-agents": 0.06
+      }
+    },
+    {
+      "id": "scrape",
+      "pins": [],
+      "jevMs": 279,
+      "modelMs": 4432,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "web",
+          "work",
+          "quick-work",
+          "plan"
+        ],
+        "jev0.8": [],
+        "nopins0.6": [
+          "web",
+          "work",
+          "quick-work",
+          "plan"
+        ],
+        "nopins0.8": [],
+        "model": [
+          "web"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.06,
+        "ask-user": 0.17,
+        "auto": 0.58,
+        "brainstorm": 0.16,
+        "btw": 0.19,
+        "chore-create": 0.28,
+        "chore-execute": 0.18,
+        "coffee-sandbox": 0.03,
+        "compactor": 0.31,
+        "compactor-detail": 0.23,
+        "compactor-doctor": 0.02,
+        "compactor-stats": 0.03,
+        "configure-notify": 0.02,
+        "configure-updater": 0.02,
+        "consolidate": 0.17,
+        "consultant": 0.16,
+        "council-mode": 0.02,
+        "debug": 0.27,
+        "docker-debug": 0.02,
+        "document": 0.09,
+        "fix": 0.11,
+        "gather-context": 0.32,
+        "grill-me": 0.11,
+        "grilling": 0.02,
+        "handoff": 0.2,
+        "image": 0.18,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.39,
+        "memory": 0.1,
+        "milestone-onboard": 0.09,
+        "milestone-update": 0.05,
+        "mise": 0.1,
+        "notify": 0.15,
+        "plan": 0.6,
+        "ponytail": 0.38,
+        "ponytail-audit": 0.02,
+        "ponytail-debt": 0.02,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.07,
+        "ponytail-review": 0.05,
+        "quick-fix": 0.08,
+        "quick-work": 0.72,
+        "release-notes": 0.02,
+        "research": 0.44,
+        "review-work": 0.32,
+        "scan-issues": 0.07,
+        "sql-review": 0.02,
+        "teach": 0.23,
+        "to-questionnaire": 0.13,
+        "unipi-subagents": 0.36,
+        "unipi-v3-development": 0.02,
+        "utility": 0.39,
+        "wait-what": 0.11,
+        "web": 0.75,
+        "work": 0.73,
+        "worktree-create": 0.07,
+        "worktree-list": 0.03,
+        "worktree-merge": 0.05,
+        "writing-for-agents": 0.12
+      }
+    },
+    {
+      "id": "mise",
+      "pins": [],
+      "jevMs": 283,
+      "modelMs": 4520,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "mise",
+          "work",
+          "quick-work",
+          "plan"
+        ],
+        "jev0.8": [
+          "mise",
+          "work"
+        ],
+        "nopins0.6": [
+          "mise",
+          "work",
+          "quick-work",
+          "plan"
+        ],
+        "nopins0.8": [
+          "mise",
+          "work"
+        ],
+        "model": [
+          "declarative-repo-setup"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.03,
+        "ask-user": 0.14,
+        "auto": 0.46,
+        "brainstorm": 0.17,
+        "btw": 0.13,
+        "chore-create": 0.36,
+        "chore-execute": 0.25,
+        "coffee-sandbox": 0.06,
+        "compactor": 0.21,
+        "compactor-detail": 0.09,
+        "compactor-doctor": 0.13,
+        "compactor-stats": 0.02,
+        "configure-notify": 0.02,
+        "configure-updater": 0.03,
+        "consolidate": 0.22,
+        "consultant": 0.24,
+        "council-mode": 0.02,
+        "debug": 0.13,
+        "docker-debug": 0.11,
+        "document": 0.26,
+        "fix": 0.11,
+        "gather-context": 0.5,
+        "grill-me": 0.21,
+        "grilling": 0.02,
+        "handoff": 0.28,
+        "image": 0.01,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.07,
+        "memory": 0.18,
+        "milestone-onboard": 0.13,
+        "milestone-update": 0.08,
+        "mise": 0.92,
+        "notify": 0.05,
+        "plan": 0.64,
+        "ponytail": 0.41,
+        "ponytail-audit": 0.03,
+        "ponytail-debt": 0.03,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.04,
+        "ponytail-review": 0.06,
+        "quick-fix": 0.15,
+        "quick-work": 0.66,
+        "release-notes": 0.07,
+        "research": 0.38,
+        "review-work": 0.4,
+        "scan-issues": 0.12,
+        "sql-review": 0.02,
+        "teach": 0.2,
+        "to-questionnaire": 0.1,
+        "unipi-subagents": 0.23,
+        "unipi-v3-development": 0.05,
+        "utility": 0.42,
+        "wait-what": 0.08,
+        "web": 0.16,
+        "work": 0.83,
+        "worktree-create": 0.11,
+        "worktree-list": 0.06,
+        "worktree-merge": 0.09,
+        "writing-for-agents": 0.13
+      }
+    },
+    {
+      "id": "board",
+      "pins": [],
+      "jevMs": 359,
+      "modelMs": 3733,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "memory",
+          "quick-work"
+        ],
+        "jev0.8": [],
+        "nopins0.6": [
+          "memory",
+          "quick-work"
+        ],
+        "nopins0.8": [],
+        "model": []
+      },
+      "scores": {
+        "api-contract": 0.1,
+        "ask-user": 0.12,
+        "auto": 0.22,
+        "brainstorm": 0.13,
+        "btw": 0.17,
+        "chore-create": 0.37,
+        "chore-execute": 0.1,
+        "coffee-sandbox": 0.06,
+        "compactor": 0.23,
+        "compactor-detail": 0.09,
+        "compactor-doctor": 0.09,
+        "compactor-stats": 0.05,
+        "configure-notify": 0.19,
+        "configure-updater": 0.03,
+        "consolidate": 0.22,
+        "consultant": 0.14,
+        "council-mode": 0.02,
+        "debug": 0.09,
+        "docker-debug": 0.03,
+        "document": 0.17,
+        "fix": 0.08,
+        "gather-context": 0.24,
+        "grill-me": 0.17,
+        "grilling": 0.03,
+        "handoff": 0.47,
+        "image": 0.03,
+        "kanboard-doctor": 0.14,
+        "mcp": 0.17,
+        "memory": 0.78,
+        "milestone-onboard": 0.17,
+        "milestone-update": 0.22,
+        "mise": 0.19,
+        "notify": 0.17,
+        "plan": 0.47,
+        "ponytail": 0.19,
+        "ponytail-audit": 0.03,
+        "ponytail-debt": 0.29,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.06,
+        "ponytail-review": 0.04,
+        "quick-fix": 0.09,
+        "quick-work": 0.72,
+        "release-notes": 0.05,
+        "research": 0.16,
+        "review-work": 0.16,
+        "scan-issues": 0.32,
+        "sql-review": 0.03,
+        "teach": 0.09,
+        "to-questionnaire": 0.1,
+        "unipi-subagents": 0.21,
+        "unipi-v3-development": 0.06,
+        "utility": 0.33,
+        "wait-what": 0.11,
+        "web": 0.17,
+        "work": 0.42,
+        "worktree-create": 0.1,
+        "worktree-list": 0.06,
+        "worktree-merge": 0.06,
+        "writing-for-agents": 0.11
+      }
+    },
+    {
+      "id": "graphql",
+      "pins": [],
+      "jevMs": 269,
+      "modelMs": 4031,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "plan",
+          "gather-context",
+          "work",
+          "research",
+          "brainstorm"
+        ],
+        "jev0.8": [
+          "plan",
+          "gather-context",
+          "work",
+          "research",
+          "brainstorm"
+        ],
+        "nopins0.6": [
+          "plan",
+          "gather-context",
+          "work",
+          "research",
+          "brainstorm"
+        ],
+        "nopins0.8": [
+          "plan",
+          "gather-context",
+          "work",
+          "research",
+          "brainstorm"
+        ],
+        "model": [
+          "brainstorm",
+          "plan",
+          "work",
+          "api-contract"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.75,
+        "ask-user": 0.68,
+        "auto": 0.61,
+        "brainstorm": 0.82,
+        "btw": 0.37,
+        "chore-create": 0.24,
+        "chore-execute": 0.2,
+        "coffee-sandbox": 0.09,
+        "compactor": 0.46,
+        "compactor-detail": 0.17,
+        "compactor-doctor": 0.06,
+        "compactor-stats": 0.06,
+        "configure-notify": 0.04,
+        "configure-updater": 0.02,
+        "consolidate": 0.41,
+        "consultant": 0.58,
+        "council-mode": 0.08,
+        "debug": 0.45,
+        "docker-debug": 0.16,
+        "document": 0.63,
+        "fix": 0.15,
+        "gather-context": 0.92,
+        "grill-me": 0.46,
+        "grilling": 0.09,
+        "handoff": 0.48,
+        "image": 0.03,
+        "kanboard-doctor": 0.04,
+        "mcp": 0.23,
+        "memory": 0.44,
+        "milestone-onboard": 0.5,
+        "milestone-update": 0.34,
+        "mise": 0.16,
+        "notify": 0.15,
+        "plan": 0.95,
+        "ponytail": 0.45,
+        "ponytail-audit": 0.07,
+        "ponytail-debt": 0.09,
+        "ponytail-gain": 0.03,
+        "ponytail-help": 0.03,
+        "ponytail-review": 0.13,
+        "quick-fix": 0.07,
+        "quick-work": 0.09,
+        "release-notes": 0.19,
+        "research": 0.84,
+        "review-work": 0.65,
+        "scan-issues": 0.43,
+        "sql-review": 0.25,
+        "teach": 0.22,
+        "to-questionnaire": 0.4,
+        "unipi-subagents": 0.78,
+        "unipi-v3-development": 0.06,
+        "utility": 0.26,
+        "wait-what": 0.17,
+        "web": 0.4,
+        "work": 0.9,
+        "worktree-create": 0.55,
+        "worktree-list": 0.18,
+        "worktree-merge": 0.39,
+        "writing-for-agents": 0.16
+      }
+    },
+    {
+      "id": "rename",
+      "pins": [],
+      "jevMs": 329,
+      "modelMs": 6441,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "quick-work",
+          "work"
+        ],
+        "jev0.8": [
+          "quick-work"
+        ],
+        "nopins0.6": [
+          "quick-work",
+          "work"
+        ],
+        "nopins0.8": [
+          "quick-work"
+        ],
+        "model": [
+          "quick-fix"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.03,
+        "ask-user": 0.06,
+        "auto": 0.53,
+        "brainstorm": 0.06,
+        "btw": 0.09,
+        "chore-create": 0.07,
+        "chore-execute": 0.08,
+        "coffee-sandbox": 0.03,
+        "compactor": 0.25,
+        "compactor-detail": 0.1,
+        "compactor-doctor": 0.02,
+        "compactor-stats": 0.04,
+        "configure-notify": 0.01,
+        "configure-updater": 0.01,
+        "consolidate": 0.07,
+        "consultant": 0.08,
+        "council-mode": 0.01,
+        "debug": 0.07,
+        "docker-debug": 0.01,
+        "document": 0.06,
+        "fix": 0.14,
+        "gather-context": 0.22,
+        "grill-me": 0.07,
+        "grilling": 0.01,
+        "handoff": 0.09,
+        "image": 0.01,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.16,
+        "memory": 0.08,
+        "milestone-onboard": 0.03,
+        "milestone-update": 0.04,
+        "mise": 0.03,
+        "notify": 0.02,
+        "plan": 0.18,
+        "ponytail": 0.31,
+        "ponytail-audit": 0.02,
+        "ponytail-debt": 0.02,
+        "ponytail-gain": 0.01,
+        "ponytail-help": 0.06,
+        "ponytail-review": 0.04,
+        "quick-fix": 0.51,
+        "quick-work": 0.94,
+        "release-notes": 0.06,
+        "research": 0.11,
+        "review-work": 0.45,
+        "scan-issues": 0.17,
+        "sql-review": 0.01,
+        "teach": 0.08,
+        "to-questionnaire": 0.06,
+        "unipi-subagents": 0.12,
+        "unipi-v3-development": 0.04,
+        "utility": 0.15,
+        "wait-what": 0.06,
+        "web": 0.07,
+        "work": 0.79,
+        "worktree-create": 0.08,
+        "worktree-list": 0.03,
+        "worktree-merge": 0.06,
+        "writing-for-agents": 0.06
+      }
+    },
+    {
+      "id": "overeng",
+      "pins": [
+        "wait-what"
+      ],
+      "jevMs": 332,
+      "modelMs": 3517,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "wait-what",
+          "ponytail-review",
+          "ponytail-audit",
+          "gather-context",
+          "research"
+        ],
+        "jev0.8": [
+          "wait-what",
+          "ponytail-review",
+          "ponytail-audit",
+          "gather-context"
+        ],
+        "nopins0.6": [
+          "ponytail-review",
+          "ponytail-audit",
+          "gather-context",
+          "research",
+          "ponytail"
+        ],
+        "nopins0.8": [
+          "ponytail-review",
+          "ponytail-audit",
+          "gather-context"
+        ],
+        "model": [
+          "ponytail-review"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.1,
+        "ask-user": 0.51,
+        "auto": 0.37,
+        "brainstorm": 0.55,
+        "btw": 0.21,
+        "chore-create": 0.11,
+        "chore-execute": 0.12,
+        "coffee-sandbox": 0.04,
+        "compactor": 0.49,
+        "compactor-detail": 0.32,
+        "compactor-doctor": 0.09,
+        "compactor-stats": 0.1,
+        "configure-notify": 0.03,
+        "configure-updater": 0.04,
+        "consolidate": 0.22,
+        "consultant": 0.71,
+        "council-mode": 0.09,
+        "debug": 0.2,
+        "docker-debug": 0.06,
+        "document": 0.19,
+        "fix": 0.11,
+        "gather-context": 0.85,
+        "grill-me": 0.54,
+        "grilling": 0.23,
+        "handoff": 0.28,
+        "image": 0.04,
+        "kanboard-doctor": 0.04,
+        "mcp": 0.29,
+        "memory": 0.25,
+        "milestone-onboard": 0.13,
+        "milestone-update": 0.1,
+        "mise": 0.1,
+        "notify": 0.06,
+        "plan": 0.25,
+        "ponytail": 0.75,
+        "ponytail-audit": 0.9,
+        "ponytail-debt": 0.1,
+        "ponytail-gain": 0.08,
+        "ponytail-help": 0.05,
+        "ponytail-review": 0.92,
+        "quick-fix": 0.13,
+        "quick-work": 0.45,
+        "release-notes": 0.06,
+        "research": 0.76,
+        "review-work": 0.54,
+        "scan-issues": 0.63,
+        "sql-review": 0.06,
+        "teach": 0.24,
+        "to-questionnaire": 0.4,
+        "unipi-subagents": 0.41,
+        "unipi-v3-development": 0.1,
+        "utility": 0.43,
+        "wait-what": 0.29,
+        "web": 0.21,
+        "work": 0.35,
+        "worktree-create": 0.15,
+        "worktree-list": 0.12,
+        "worktree-merge": 0.16,
+        "writing-for-agents": 0.16
+      }
+    },
+    {
+      "id": "telegram",
+      "pins": [],
+      "jevMs": 316,
+      "modelMs": 3737,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "configure-notify",
+          "notify"
+        ],
+        "jev0.8": [
+          "configure-notify",
+          "notify"
+        ],
+        "nopins0.6": [
+          "configure-notify",
+          "notify"
+        ],
+        "nopins0.8": [
+          "configure-notify",
+          "notify"
+        ],
+        "model": [
+          "configure-notify"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.07,
+        "ask-user": 0.19,
+        "auto": 0.29,
+        "brainstorm": 0.12,
+        "btw": 0.12,
+        "chore-create": 0.44,
+        "chore-execute": 0.26,
+        "coffee-sandbox": 0.05,
+        "compactor": 0.19,
+        "compactor-detail": 0.13,
+        "compactor-doctor": 0.06,
+        "compactor-stats": 0.05,
+        "configure-notify": 0.94,
+        "configure-updater": 0.04,
+        "consolidate": 0.13,
+        "consultant": 0.11,
+        "council-mode": 0.02,
+        "debug": 0.14,
+        "docker-debug": 0.14,
+        "document": 0.1,
+        "fix": 0.1,
+        "gather-context": 0.27,
+        "grill-me": 0.11,
+        "grilling": 0.01,
+        "handoff": 0.25,
+        "image": 0.03,
+        "kanboard-doctor": 0.05,
+        "mcp": 0.24,
+        "memory": 0.4,
+        "milestone-onboard": 0.13,
+        "milestone-update": 0.13,
+        "mise": 0.15,
+        "notify": 0.86,
+        "plan": 0.37,
+        "ponytail": 0.33,
+        "ponytail-audit": 0.02,
+        "ponytail-debt": 0.02,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.08,
+        "ponytail-review": 0.04,
+        "quick-fix": 0.1,
+        "quick-work": 0.56,
+        "release-notes": 0.05,
+        "research": 0.22,
+        "review-work": 0.25,
+        "scan-issues": 0.07,
+        "sql-review": 0.03,
+        "teach": 0.09,
+        "to-questionnaire": 0.1,
+        "unipi-subagents": 0.23,
+        "unipi-v3-development": 0.04,
+        "utility": 0.41,
+        "wait-what": 0.12,
+        "web": 0.14,
+        "work": 0.48,
+        "worktree-create": 0.06,
+        "worktree-list": 0.04,
+        "worktree-merge": 0.07,
+        "writing-for-agents": 0.16
+      }
+    },
+    {
+      "id": "readme",
+      "pins": [],
+      "jevMs": 393,
+      "modelMs": 3972,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "document",
+          "quick-work"
+        ],
+        "jev0.8": [
+          "document"
+        ],
+        "nopins0.6": [
+          "document",
+          "quick-work"
+        ],
+        "nopins0.8": [
+          "document"
+        ],
+        "model": [
+          "document"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.09,
+        "ask-user": 0.11,
+        "auto": 0.44,
+        "brainstorm": 0.43,
+        "btw": 0.15,
+        "chore-create": 0.15,
+        "chore-execute": 0.09,
+        "coffee-sandbox": 0.03,
+        "compactor": 0.26,
+        "compactor-detail": 0.12,
+        "compactor-doctor": 0.03,
+        "compactor-stats": 0.08,
+        "configure-notify": 0.03,
+        "configure-updater": 0.1,
+        "consolidate": 0.22,
+        "consultant": 0.26,
+        "council-mode": 0.03,
+        "debug": 0.11,
+        "docker-debug": 0.05,
+        "document": 0.98,
+        "fix": 0.07,
+        "gather-context": 0.51,
+        "grill-me": 0.28,
+        "grilling": 0.04,
+        "handoff": 0.18,
+        "image": 0.05,
+        "kanboard-doctor": 0.05,
+        "mcp": 0.17,
+        "memory": 0.13,
+        "milestone-onboard": 0.12,
+        "milestone-update": 0.2,
+        "mise": 0.08,
+        "notify": 0.05,
+        "plan": 0.29,
+        "ponytail": 0.32,
+        "ponytail-audit": 0.05,
+        "ponytail-debt": 0.04,
+        "ponytail-gain": 0.04,
+        "ponytail-help": 0.05,
+        "ponytail-review": 0.06,
+        "quick-fix": 0.06,
+        "quick-work": 0.69,
+        "release-notes": 0.18,
+        "research": 0.55,
+        "review-work": 0.29,
+        "scan-issues": 0.2,
+        "sql-review": 0.04,
+        "teach": 0.19,
+        "to-questionnaire": 0.26,
+        "unipi-subagents": 0.23,
+        "unipi-v3-development": 0.06,
+        "utility": 0.14,
+        "wait-what": 0.16,
+        "web": 0.21,
+        "work": 0.3,
+        "worktree-create": 0.1,
+        "worktree-list": 0.07,
+        "worktree-merge": 0.11,
+        "writing-for-agents": 0.24
+      }
+    },
+    {
+      "id": "android",
+      "pins": [],
+      "jevMs": 345,
+      "modelMs": 3565,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "quick-work"
+        ],
+        "jev0.8": [
+          "quick-work"
+        ],
+        "nopins0.6": [
+          "quick-work"
+        ],
+        "nopins0.8": [
+          "quick-work"
+        ],
+        "model": []
+      },
+      "scores": {
+        "api-contract": 0.03,
+        "ask-user": 0.08,
+        "auto": 0.44,
+        "brainstorm": 0.08,
+        "btw": 0.12,
+        "chore-create": 0.19,
+        "chore-execute": 0.11,
+        "coffee-sandbox": 0.05,
+        "compactor": 0.19,
+        "compactor-detail": 0.14,
+        "compactor-doctor": 0.02,
+        "compactor-stats": 0.03,
+        "configure-notify": 0.02,
+        "configure-updater": 0.02,
+        "consolidate": 0.08,
+        "consultant": 0.08,
+        "council-mode": 0.01,
+        "debug": 0.17,
+        "docker-debug": 0.04,
+        "document": 0.09,
+        "fix": 0.06,
+        "gather-context": 0.2,
+        "grill-me": 0.06,
+        "grilling": 0.01,
+        "handoff": 0.2,
+        "image": 0.46,
+        "kanboard-doctor": 0.01,
+        "mcp": 0.34,
+        "memory": 0.09,
+        "milestone-onboard": 0.06,
+        "milestone-update": 0.04,
+        "mise": 0.06,
+        "notify": 0.06,
+        "plan": 0.2,
+        "ponytail": 0.22,
+        "ponytail-audit": 0.01,
+        "ponytail-debt": 0.01,
+        "ponytail-gain": 0.01,
+        "ponytail-help": 0.2,
+        "ponytail-review": 0.02,
+        "quick-fix": 0.07,
+        "quick-work": 0.87,
+        "release-notes": 0.02,
+        "research": 0.13,
+        "review-work": 0.11,
+        "scan-issues": 0.05,
+        "sql-review": 0.01,
+        "teach": 0.14,
+        "to-questionnaire": 0.13,
+        "unipi-subagents": 0.3,
+        "unipi-v3-development": 0.02,
+        "utility": 0.41,
+        "wait-what": 0.13,
+        "web": 0.12,
+        "work": 0.37,
+        "worktree-create": 0.02,
+        "worktree-list": 0.02,
+        "worktree-merge": 0.03,
+        "writing-for-agents": 0.08
+      }
+    },
+    {
+      "id": "recall",
+      "pins": [
+        "wait-what"
+      ],
+      "jevMs": 291,
+      "modelMs": 3209,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "wait-what",
+          "memory",
+          "compactor",
+          "gather-context",
+          "research"
+        ],
+        "jev0.8": [
+          "wait-what",
+          "memory"
+        ],
+        "nopins0.6": [
+          "memory",
+          "compactor",
+          "gather-context",
+          "research"
+        ],
+        "nopins0.8": [
+          "memory"
+        ],
+        "model": [
+          "memory"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.1,
+        "ask-user": 0.28,
+        "auto": 0.13,
+        "brainstorm": 0.2,
+        "btw": 0.15,
+        "chore-create": 0.07,
+        "chore-execute": 0.04,
+        "coffee-sandbox": 0.05,
+        "compactor": 0.77,
+        "compactor-detail": 0.1,
+        "compactor-doctor": 0.13,
+        "compactor-stats": 0.1,
+        "configure-notify": 0.03,
+        "configure-updater": 0.03,
+        "consolidate": 0.35,
+        "consultant": 0.16,
+        "council-mode": 0.05,
+        "debug": 0.11,
+        "docker-debug": 0.04,
+        "document": 0.24,
+        "fix": 0.09,
+        "gather-context": 0.72,
+        "grill-me": 0.31,
+        "grilling": 0.05,
+        "handoff": 0.39,
+        "image": 0.03,
+        "kanboard-doctor": 0.11,
+        "mcp": 0.19,
+        "memory": 0.9,
+        "milestone-onboard": 0.16,
+        "milestone-update": 0.26,
+        "mise": 0.06,
+        "notify": 0.05,
+        "plan": 0.23,
+        "ponytail": 0.14,
+        "ponytail-audit": 0.04,
+        "ponytail-debt": 0.08,
+        "ponytail-gain": 0.03,
+        "ponytail-help": 0.03,
+        "ponytail-review": 0.08,
+        "quick-fix": 0.07,
+        "quick-work": 0.47,
+        "release-notes": 0.18,
+        "research": 0.62,
+        "review-work": 0.19,
+        "scan-issues": 0.12,
+        "sql-review": 0.07,
+        "teach": 0.07,
+        "to-questionnaire": 0.56,
+        "unipi-subagents": 0.21,
+        "unipi-v3-development": 0.07,
+        "utility": 0.19,
+        "wait-what": 0.39,
+        "web": 0.23,
+        "work": 0.14,
+        "worktree-create": 0.08,
+        "worktree-list": 0.09,
+        "worktree-merge": 0.15,
+        "writing-for-agents": 0.09
+      }
+    },
+    {
+      "id": "worktree",
+      "pins": [],
+      "jevMs": 269,
+      "modelMs": 3905,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "worktree-create",
+          "work",
+          "quick-work"
+        ],
+        "jev0.8": [
+          "worktree-create",
+          "work"
+        ],
+        "nopins0.6": [
+          "worktree-create",
+          "work",
+          "quick-work"
+        ],
+        "nopins0.8": [
+          "worktree-create",
+          "work"
+        ],
+        "model": [
+          "worktree-create"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.05,
+        "ask-user": 0.21,
+        "auto": 0.34,
+        "brainstorm": 0.15,
+        "btw": 0.26,
+        "chore-create": 0.15,
+        "chore-execute": 0.17,
+        "coffee-sandbox": 0.09,
+        "compactor": 0.21,
+        "compactor-detail": 0.15,
+        "compactor-doctor": 0.03,
+        "compactor-stats": 0.04,
+        "configure-notify": 0.01,
+        "configure-updater": 0.02,
+        "consolidate": 0.08,
+        "consultant": 0.22,
+        "council-mode": 0.03,
+        "debug": 0.11,
+        "docker-debug": 0.04,
+        "document": 0.08,
+        "fix": 0.08,
+        "gather-context": 0.3,
+        "grill-me": 0.15,
+        "grilling": 0.03,
+        "handoff": 0.22,
+        "image": 0.01,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.15,
+        "memory": 0.15,
+        "milestone-onboard": 0.07,
+        "milestone-update": 0.08,
+        "mise": 0.14,
+        "notify": 0.07,
+        "plan": 0.33,
+        "ponytail": 0.23,
+        "ponytail-audit": 0.04,
+        "ponytail-debt": 0.04,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.22,
+        "ponytail-review": 0.07,
+        "quick-fix": 0.06,
+        "quick-work": 0.63,
+        "release-notes": 0.05,
+        "research": 0.23,
+        "review-work": 0.21,
+        "scan-issues": 0.12,
+        "sql-review": 0.04,
+        "teach": 0.23,
+        "to-questionnaire": 0.08,
+        "unipi-subagents": 0.34,
+        "unipi-v3-development": 0.05,
+        "utility": 0.35,
+        "wait-what": 0.09,
+        "web": 0.08,
+        "work": 0.82,
+        "worktree-create": 0.97,
+        "worktree-list": 0.33,
+        "worktree-merge": 0.28,
+        "writing-for-agents": 0.07
+      }
+    },
+    {
+      "id": "docs",
+      "pins": [],
+      "jevMs": 273,
+      "modelMs": 3721,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "research",
+          "web",
+          "quick-work",
+          "gather-context"
+        ],
+        "jev0.8": [
+          "research",
+          "web"
+        ],
+        "nopins0.6": [
+          "research",
+          "web",
+          "quick-work",
+          "gather-context"
+        ],
+        "nopins0.8": [
+          "research",
+          "web"
+        ],
+        "model": [
+          "web"
+        ]
+      },
+      "scores": {
+        "api-contract": 0.15,
+        "ask-user": 0.07,
+        "auto": 0.34,
+        "brainstorm": 0.14,
+        "btw": 0.17,
+        "chore-create": 0.12,
+        "chore-execute": 0.12,
+        "coffee-sandbox": 0.03,
+        "compactor": 0.58,
+        "compactor-detail": 0.13,
+        "compactor-doctor": 0.06,
+        "compactor-stats": 0.06,
+        "configure-notify": 0.02,
+        "configure-updater": 0.02,
+        "consolidate": 0.21,
+        "consultant": 0.45,
+        "council-mode": 0.03,
+        "debug": 0.14,
+        "docker-debug": 0.03,
+        "document": 0.25,
+        "fix": 0.1,
+        "gather-context": 0.6,
+        "grill-me": 0.14,
+        "grilling": 0.02,
+        "handoff": 0.18,
+        "image": 0.03,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.42,
+        "memory": 0.15,
+        "milestone-onboard": 0.1,
+        "milestone-update": 0.21,
+        "mise": 0.11,
+        "notify": 0.06,
+        "plan": 0.19,
+        "ponytail": 0.3,
+        "ponytail-audit": 0.03,
+        "ponytail-debt": 0.03,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.04,
+        "ponytail-review": 0.05,
+        "quick-fix": 0.08,
+        "quick-work": 0.78,
+        "release-notes": 0.1,
+        "research": 0.94,
+        "review-work": 0.14,
+        "scan-issues": 0.09,
+        "sql-review": 0.02,
+        "teach": 0.26,
+        "to-questionnaire": 0.16,
+        "unipi-subagents": 0.34,
+        "unipi-v3-development": 0.02,
+        "utility": 0.13,
+        "wait-what": 0.13,
+        "web": 0.89,
+        "work": 0.34,
+        "worktree-create": 0.12,
+        "worktree-list": 0.04,
+        "worktree-merge": 0.09,
+        "writing-for-agents": 0.12
+      }
+    },
+    {
+      "id": "css",
+      "pins": [
+        "fix"
+      ],
+      "jevMs": 412,
+      "modelMs": 3785,
+      "modelFailures": 0,
+      "revealed": {
+        "jev0.6": [
+          "fix",
+          "quick-fix",
+          "quick-work",
+          "work",
+          "debug"
+        ],
+        "jev0.8": [
+          "fix",
+          "quick-fix",
+          "quick-work",
+          "work"
+        ],
+        "nopins0.6": [
+          "quick-fix",
+          "quick-work",
+          "work",
+          "debug",
+          "fix"
+        ],
+        "nopins0.8": [
+          "quick-fix",
+          "quick-work",
+          "work"
+        ],
+        "model": []
+      },
+      "scores": {
+        "api-contract": 0.02,
+        "ask-user": 0.08,
+        "auto": 0.56,
+        "brainstorm": 0.17,
+        "btw": 0.14,
+        "chore-create": 0.06,
+        "chore-execute": 0.08,
+        "coffee-sandbox": 0.04,
+        "compactor": 0.24,
+        "compactor-detail": 0.09,
+        "compactor-doctor": 0.02,
+        "compactor-stats": 0.03,
+        "configure-notify": 0.01,
+        "configure-updater": 0.01,
+        "consolidate": 0.11,
+        "consultant": 0.2,
+        "council-mode": 0.02,
+        "debug": 0.79,
+        "docker-debug": 0.02,
+        "document": 0.07,
+        "fix": 0.62,
+        "gather-context": 0.5,
+        "grill-me": 0.18,
+        "grilling": 0.01,
+        "handoff": 0.17,
+        "image": 0.03,
+        "kanboard-doctor": 0.02,
+        "mcp": 0.07,
+        "memory": 0.09,
+        "milestone-onboard": 0.05,
+        "milestone-update": 0.05,
+        "mise": 0.03,
+        "notify": 0.03,
+        "plan": 0.27,
+        "ponytail": 0.4,
+        "ponytail-audit": 0.03,
+        "ponytail-debt": 0.03,
+        "ponytail-gain": 0.02,
+        "ponytail-help": 0.03,
+        "ponytail-review": 0.05,
+        "quick-fix": 0.89,
+        "quick-work": 0.85,
+        "release-notes": 0.05,
+        "research": 0.27,
+        "review-work": 0.56,
+        "scan-issues": 0.5,
+        "sql-review": 0.01,
+        "teach": 0.17,
+        "to-questionnaire": 0.1,
+        "unipi-subagents": 0.17,
+        "unipi-v3-development": 0.05,
+        "utility": 0.08,
+        "wait-what": 0.1,
+        "web": 0.21,
+        "work": 0.85,
+        "worktree-create": 0.12,
+        "worktree-list": 0.03,
+        "worktree-merge": 0.08,
+        "writing-for-agents": 0.03
+      }
+    }
+  ],
+  "totals": {
+    "jev0.6": {
+      "tp": 9,
+      "fp": 33,
+      "fn": 5,
+      "precision": 0.214,
+      "recall": 0.643,
+      "cleanEmpties": 0,
+      "ofEmpties": 3
+    },
+    "jev0.8": {
+      "tp": 9,
+      "fp": 12,
+      "fn": 5,
+      "precision": 0.429,
+      "recall": 0.643,
+      "cleanEmpties": 1,
+      "ofEmpties": 3
+    },
+    "nopins0.6": {
+      "tp": 9,
+      "fp": 29,
+      "fn": 5,
+      "precision": 0.237,
+      "recall": 0.643,
+      "cleanEmpties": 0,
+      "ofEmpties": 3
+    },
+    "nopins0.8": {
+      "tp": 9,
+      "fp": 8,
+      "fn": 5,
+      "precision": 0.529,
+      "recall": 0.643,
+      "cleanEmpties": 2,
+      "ofEmpties": 3
+    },
+    "model": {
+      "tp": 6,
+      "fp": 3,
+      "fn": 8,
+      "precision": 0.667,
+      "recall": 0.429,
+      "cleanEmpties": 2,
+      "ofEmpties": 3
+    }
+  }
+}
