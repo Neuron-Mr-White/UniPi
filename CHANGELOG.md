@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.17] — 2026-09-30
+
+### Added
+- `kanboard`: **status reports** — task JSON carries `statusReport` (the full finish summary for In Review, the block reason for Blocked). The board panel shows it as a banner ("Ready for review" / "Blocked") with a markdown preview and an eye button that opens the whole report in a reader; timeline entries get Finished / Blocked / Rework tags and a Read button. (UNI-25, UNI-8)
+- `kanboard`: **`--attach <file>`** on `finish`, `move` and `note` (repeatable): the file is stored beside the board and embedded in the comment; a path written in the comment is replaced by the embed. `attach` on a task this session started is free. (UNI-35)
+- `kanboard` (board UI): **`@` task mentions** in the new-task description, the description editor and the comment box — recent tasks newest first, filter as you type, Enter/Tab inserts the id. (UNI-36)
+
+### Changed
+- `kanboard` (board UI): every activity entry renders as markdown; the "Runs after" picker lists the newest tasks first; the whole New task dialog accepts dropped files, with a drop overlay, and a stray drop no longer navigates the browser away. (UNI-5, UNI-36)
+- `kanboard` skill: the finish / block comment is written as the report the user reads (lead sentence, short paragraphs or bullets, questions under **Need from you:**).
+- `kanboard` (board UI): the Runner settings section is now Sessions; lane tooltips and the in-progress chip describe `start` / `finish` instead of the runner.
+
+### Removed
+- `kanboard` binary (phase 2 of the runner removal): the `claim-next`, `queue`, `unqueue` and `set-run` subcommands, the per-session queue and `UNIPI_KANBOARD_QUEUE_MAX`, `--strategy` / `--plan` on `add` and `edit`, strategy/plan in the API, task JSON and board settings (`defaultStrategy`, `defaultPlan`, `queueMax`), and the Strategy / Plan controls in the board UI. Old task files with `strategy:`, `plan:` or runner `run:` blocks still load and validate. Error and help text now describe `start` / `finish` / `move … blocked`. (UNI-37)
+- `kanboard`: the unused `defaultStrategy`, `jevThreshold` and `defaultPlan` settings.
+
+### Fixed
+- `kanboard`: blank lines inside activity entries were dropped when the task file was written, gluing an agent's paragraphs and lists into one block; paragraph breaks now survive. (UNI-8)
+- `kanboard`: a subagent or fusion sidekick shutting down released the lead's open claims back to Todo ("session ended mid-task"), because children inherit the lead's session id; shutdown release now runs in the lead only.
+
 ## [3.0.0-alpha.16] — 2026-09-30
 
 ### Added
