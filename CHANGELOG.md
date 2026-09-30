@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.15] — 2026-09-30
+
+### Fixed
+- `utility` (simple render style): a hidden-thinking run inside a thinking+text step no longer leaves blank rows — pi wraps the (empty) label in escapes that survive its own blank check, so a step showed up to three stray blank rows above its text; whitespace-only children and the spacer after each are now dropped before painting.
+- `utility` (simple render style): resumed and re-rendered sessions (resume, boundary-compaction re-render) rebuild tool groups from the rendered transcript order — replayed calls never fired group-break events, so every row landed in one flat group and only the last component painted.
+- `utility` (simple render style): compact spacing — pi's leading spacer row on every content-bearing assistant message is trimmed: no stray blank below custom badges (`▌ Memory recall …`), above mid-turn text, and no painted pad row under the `─ summary ─` rule inside the reply panel. Dropped edge rows keep their OSC-133 prompt-zone markers.
+
 ## [3.0.0-alpha.14] — 2026-09-30
 
 ### Added
