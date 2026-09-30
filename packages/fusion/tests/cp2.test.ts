@@ -66,22 +66,25 @@ test("intermediate text is emitted; the final report text is not", () => {
 
 const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
 
+// Rendered lines carry the sidekick rail + background — strip ANSI to assert on text.
+const stripAnsi = (s: string) => s.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;]*m/g, "");
+
 test("tool step renders collapsed (≤3 output lines) and expanded shows all", () => {
   const step: SidekickStep = { kind: "tool", name: "bash", arg: "ls", output: "a\nb\nc\nd\ne", isError: false, durationMs: 10 };
-  const collapsed = renderSidekickStep(step, false, theme).render(200).join("\n");
+  const collapsed = stripAnsi(renderSidekickStep(step, false, theme).render(200).join("\n"));
   assert.match(collapsed, /◆ bash ls/);
   assert.ok(collapsed.includes("c") && collapsed.includes("e"));
   assert.ok(collapsed.includes("2 earlier lines"));
-  const expanded = renderSidekickStep(step, true, theme).render(200).join("\n");
+  const expanded = stripAnsi(renderSidekickStep(step, true, theme).render(200).join("\n"));
   for (const l of ["a", "b", "c", "d", "e"]) assert.ok(expanded.split("\n").some((r) => r.trimEnd().endsWith(l)), `expanded shows ${l}`);
 });
 
-test("text step renders ◆ + markdown; thinking only when expanded", () => {
+test("text step renders markdown; thinking only when expanded", () => {
   const step: SidekickStep = { kind: "text", text: "answer", thinking: "deep thought" };
-  const collapsed = renderSidekickStep(step, false, theme).render(200).join("\n");
+  const collapsed = stripAnsi(renderSidekickStep(step, false, theme).render(200).join("\n"));
   assert.ok(collapsed.includes("answer"));
   assert.ok(!collapsed.includes("deep thought"), "thinking hidden collapsed");
-  const expanded = renderSidekickStep(step, true, theme).render(200).join("\n");
+  const expanded = stripAnsi(renderSidekickStep(step, true, theme).render(200).join("\n"));
   assert.ok(expanded.includes("deep thought"));
 });
 

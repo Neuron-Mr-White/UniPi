@@ -243,12 +243,14 @@ describe("simpleWrapTool", () => {
     const call = wrapped.renderCall!({ query: "x" } as never, theme, ctx);
     const runningLine = (call as { render: (w: number) => string[] }).render(120)[0];
     assert.match(runningLine, /Memory Search/);
-    assert.match(runningLine, /…/);
+    // executionStarted stamps the row with the live `· Ns` timer
+    assert.match(runningLine, /· 0s/);
     const res = { isError: false, content: [{ type: "text", text: "a" }] } as never;
     const resultComp = wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx);
     assert.deepEqual((resultComp as { render: (w: number) => string[] }).render(120), []);
     const doneLine = (call as { render: (w: number) => string[] }).render(120)[0];
     assert.match(doneLine, /1 output line/);
+    assert.match(doneLine, /· \d+s/, "done row pins the final duration");
     assert.ok(!doneLine.includes("…"));
     const expanded = wrapped.renderCall!({ query: "x" } as never, theme, { ...ctx, expanded: true } as never);
     assert.equal((expanded as { render: (w: number) => string[] }).render(120)[0], "ORIGINAL");
@@ -275,6 +277,47 @@ describe("simpleWrapTool", () => {
     // both done: single packed summary row
     assert.deepEqual((c1 as { render: (w: number) => string[] }).render(160), []);
     assert.deepEqual((c2 as { render: (w: number) => string[] }).render(160), [" └ • Read 2 files"]);
+  });
+
+  it("a def's simpleResult hook keeps compact result rows under the row", () => {
+    const def = {
+      ...base,
+      name: "ask_user",
+      simpleResult: (result: { details?: { outcome?: string } }) =>
+        result.details?.outcome === "answered" ? ["   Header: answer"] : [],
+    } as never;
+    const wrapped = simpleWrapTool(def) as typeof base;
+    const ctx = { expanded: false, cwd: "/repo", args: {}, toolCallId: "a1" } as never;
+    wrapped.renderCall!({} as never, theme, ctx);
+    const res = { isError: false, content: [{ type: "text", text: "User answered" }], details: { outcome: "answered" } } as never;
+    const comp = wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx);
+    assert.deepEqual((comp as { render: (w: number) => string[] }).render(120), ["    Header: answer"]);
+    // partial updates render nothing extra
+    const part = wrapped.renderResult!(res, { expanded: false, isPartial: true } as never, theme, ctx);
+    assert.deepEqual((part as { render: (w: number) => string[] }).render(120), []);
+  });
+
+  it("a def's simpleMeta hook drives live row meta (recomputed per paint)", () => {
+    let calls = 3;
+    const def = {
+      ...base,
+      name: "run_subagent",
+      simpleMeta: (details: { id?: string } | undefined) =>
+        details?.id !== undefined ? ` · worker · ${String(calls)} tool calls` : undefined,
+    } as never;
+    const wrapped = simpleWrapTool(def) as typeof base;
+    const ctx = { expanded: false, cwd: "/repo", args: { title: "Job" }, toolCallId: "s1" } as never;
+    const call = wrapped.renderCall!({ title: "Job" } as never, theme, ctx);
+    const render = () => (call as { render: (w: number) => string[] }).render(140)[0]!;
+    assert.match(render(), /Delegating/);
+    const res = (d: { id?: string }) => ({ isError: false, content: [{ type: "text", text: "x" }], details: d }) as never;
+    wrapped.renderResult!(res({ id: "a1" }), { expanded: false, isPartial: true } as never, theme, ctx);
+    assert.match(render(), /worker · 3 tool calls/, "live meta on the running row");
+    calls = 7;
+    wrapped.renderResult!(res({ id: "a1" }), { expanded: false, isPartial: true } as never, theme, ctx);
+    assert.match(render(), /7 tool calls/, "meta re-evaluated each paint");
+    wrapped.renderResult!(res({ id: "a1" }), { expanded: false, isPartial: false } as never, theme, ctx);
+    assert.match(render(), /7 tool calls/, "stats survive on the done row");
   });
 
   it("assistant text breaks the group (noteGroupBreak)", () => {

@@ -82,6 +82,11 @@ Settings → Utility → Response formatting → Style changes how pi's built-in
   ▪ Edited ./demo/app.py · +1 -1
   ▪ Ran    cd demo && ls -la && python3 app.py · 7 output lines
   ```
+  The live (latest) row shows a ticking timer (`• Running npm test · 12s`) and
+  done rows pin the final duration (`· 7 output lines · 3s`). Tools that opt in
+  keep their result under the row (`ask_user`'s Q→A) or drive the meta live
+  (`run_subagent`'s model · calls · duration · tokens · cost). Sidekick steps
+  and other non-pi-tool activity draw with the same verbs/markers.
 - **regular** (default) — pi's own rendering, untouched.
 - **advanced** —
   - Commands are syntax-highlighted. Code embedded in a command is highlighted in its own language: heredoc bodies (`python - <<'PY'`, `cat > x.ts <<EOF`) and `python -c` / `node -e` strings.
@@ -89,7 +94,11 @@ Settings → Utility → Response formatting → Style changes how pi's built-in
   - Edits show as a diff with line numbers, syntax colouring by file type, and tinted added/removed lines.
   - Writes and reads are highlighted by file type.
 
-Ctrl+O expands anything collapsed in every style.
+Ctrl+O expands anything collapsed in every style. In every style, blank runs
+between transcript blocks are normalized: each block keeps its interior
+spacing, but adjacent blocks are separated by exactly one blank row (pi
+otherwise stacks a block's own padding on top of its leading spacer,
+producing occasional 2–4 blank runs).
 
 ## Model cache
 

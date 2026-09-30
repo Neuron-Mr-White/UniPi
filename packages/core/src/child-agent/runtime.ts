@@ -22,7 +22,7 @@ import { leadExtensionArgs } from "./child-args.js";
 /** A completed sidekick step, streamed to the lead chat as a UI-only
  *  `sidekick-step` custom entry (never model-facing). */
 export type SidekickStep =
-  | { kind: "tool"; name: string; arg: string; output: string; isError: boolean; durationMs: number }
+  | { kind: "tool"; name: string; arg: string; output: string; isError: boolean; durationMs: number; args?: Record<string, unknown> }
   | { kind: "text"; text: string; thinking?: string };
 
 /** The subset of ExtensionUIContext the child's prompts get forwarded to. */
@@ -399,6 +399,7 @@ export class ChildAgentRuntime {
         this.emitStep({
           kind: "tool",
           name: event.name,
+          args: event.args,
           arg: event.args === undefined ? "" : primaryArg(event.name, event.args),
           output: event.output.split("\n").slice(-40).map(capLine).join("\n"),
           isError: event.isError,

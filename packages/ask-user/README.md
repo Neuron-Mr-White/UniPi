@@ -31,7 +31,7 @@ The `ask_user` tool (off by default — enable it in `/unipi:settings` → Ask U
 
 Questions you leave unanswered are sent as **skipped** — skipping never blocks. The header chips show progress: `✓` answered, a number for multi-select picks.
 
-In the transcript the answers stay as a short tree (`● Asked user 3 questions` / `│ Planet: Mars` / `└ Last book: Dune`).
+In the transcript the answers stay as a short tree (`● Asked user 3 questions` / `│ Planet: Mars` / `└ Last book: Dune`). In the **simple** render style the collapsed `• Asked user` row keeps the same answers as compact `header: answer` rows underneath — answering never makes them disappear.
 
 ## For the agent
 

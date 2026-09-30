@@ -114,9 +114,14 @@ notification and any follow-up turn, so the report is not released at an
 intermediate checkpoint. If a prompt arrives while the child is processing,
 Fusion retries it once with pi's `followUp` streaming behavior. Sidekick work
 renders as ordinary tool activity — handoff ids, `agent_id`, and
-`read_subagent` protocol text never reach the terminal. Sidekick output keeps
-that same format on the main surface, marked as sidekick-origin by a `▍` rail.
-While the sidekick works and the lead's turn is over, an animated
+`read_subagent` protocol text never reach the terminal. Sidekick steps draw in
+the active render style — mcode rows in simple, `◆` + guttered output in
+advanced, pi's own finished-call card (its exported `ToolExecutionComponent` +
+per-tool defs) in regular — each line marked as sidekick-origin by a `▏` rail
+on the custom-message background. Consecutive steps join into one rail block
+with no blank separator; in simple mode a run of tool steps draws the same
+`├…├…└` tree the lead's tools get, and prose steps stay `●`-anchored inside
+the block. While the sidekick works and the lead's turn is over, an animated
 `sidekick working` line above the editor shows the live tool count and elapsed
 time until the report lands.
 `read_subagent({agent_id?, block?, timeout?})` reads or waits for a handoff.

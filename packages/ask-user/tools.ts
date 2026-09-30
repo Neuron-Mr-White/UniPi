@@ -169,7 +169,26 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
     renderCall: () => new Text("", 0, 0),
     renderResult: (result, _options, theme, _context) => renderAskResult(result.details as AskDetails | undefined, theme as Theme),
     renderShell: "self",
+    // The simple render style collapses every tool to one row — the Q→A is
+    // the whole point of ask_user, so keep compact `header: answer` rows
+    // under the `Asked user` line (utility's simpleResult hook), and hide the
+    // `· N output lines` meta (the answers are the output).
+    ...( {
+      simpleMeta: () => "",
+      simpleResult: (result: { details?: AskDetails }, theme: Theme) => askRows(result.details, theme),
+    } as object),
   });
+}
+
+/** Compact Q→A rows for the simple render style's collapsed view. */
+export function askRows(details: AskDetails | undefined, theme: Theme): string[] {
+  const questions = details?.questions ?? [];
+  if (details === undefined || questions.length === 0) return [];
+  if (details.outcome === "cancelled") return [`   ${theme.fg("error", "Canceled by the user")}`];
+  if (details.outcome === "clarify") return [`   ${theme.fg("warning", "Not ready to answer — wants to clarify first")}`];
+  if (details.outcome === "unavailable") return [`   ${theme.fg("dim", "not shown (no interactive UI or turned off)")}`];
+  if (details.outcome === "action") return [`   ${theme.fg("muted", "picked an action")}`];
+  return questions.map((q, i) => `   ${theme.fg("muted", `${q.header}: ${answerSummary(q, details.answers?.[i])}`)}`);
 }
 
 /** end_turn / new_session options (workflow handoffs). */

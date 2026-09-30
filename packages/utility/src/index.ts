@@ -29,6 +29,7 @@ import { registerAnswerCommand } from "./answer/index.js";
 import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import { registerToolRenderers } from "./render/tools.js";
+import { installTranscriptSpacing } from "./render/spacing.js";
 import { readUtilSettings } from "./settings.js";
 
 export { readUtilSettings } from "./settings.js";
@@ -57,6 +58,8 @@ export default function (pi: ExtensionAPI) {
   registerAttachments(pi);
   registerImage(pi);
   registerToolRenderers(pi, readUtilSettings().render.style);
+  // Normalize blank runs between transcript blocks (all render styles).
+  installTranscriptSpacing(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     try {

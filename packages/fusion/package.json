@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@pi-unipi/core": "3.0.0-alpha.17",
-    "@pi-unipi/subagents": "3.0.0-alpha.17"
+    "@pi-unipi/subagents": "3.0.0-alpha.17",
+    "@pi-unipi/utility": "3.0.0-alpha.17"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.87.1",

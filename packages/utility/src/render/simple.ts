@@ -25,6 +25,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { installReplyBackground, isAssistant } from "./reply-bg.js";
+import { findTranscriptContainer, patchTranscriptSpacing } from "./spacing.js";
 
 type AnyTool = ToolDefinition<any, any, any>;
 
@@ -47,6 +48,8 @@ const VERBS: Record<string, [string, string, string]> = {
   task: ["Delegating", "Delegated", "Delegation failed"],
   delegate: ["Delegating", "Delegated", "Delegation failed"],
   spawn_agent: ["Delegating", "Delegated", "Delegation failed"],
+  run_subagent: ["Delegating", "Delegated", "Delegation failed"],
+  ask_user: ["Asking user", "Asked user", "Ask failed"],
 };
 
 /** mcode's fallback for unknown tools: `get_goal` → `Get Goal`. */
@@ -60,7 +63,7 @@ export function titleCaseTool(name: string): string {
     .join(" ");
 }
 
-function verbsFor(name: string): [string, string, string] {
+export function verbsFor(name: string): [string, string, string] {
   return VERBS[name.trim().toLowerCase()] ?? [titleCaseTool(name), titleCaseTool(name), `${titleCaseTool(name)} failed`];
 }
 
@@ -134,6 +137,14 @@ interface CallRec {
   invalidating?: boolean;
   /** Bumped whenever args change (render-cache key; args can be a whole file). */
   rev?: number;
+  /** Set when the call's execution starts — drives the live `· Ns` row timer. */
+  startedAt?: number;
+  endedAt?: number;
+  /** Latest result details — the input a tool's `simpleMeta` hook reads. */
+  details?: unknown;
+  /** Live meta evaluated per paint (tool opt-in: live stats such as a
+   *  subagent's tool-call count ticking under the row). */
+  metaFn?: () => string | undefined;
 }
 
 const byId = new Map<string, CallRec>();
@@ -177,6 +188,11 @@ export function installSimpleGroupEvents(pi: {
   installReplyBackground(pi, (tui) => {
     try {
       reconcileSimpleGroups(tui);
+    } catch {}
+    // The container is re-created on session resume — re-patch when found.
+    try {
+      const transcript = findTranscriptContainer(tui);
+      if (transcript !== undefined) patchTranscriptSpacing(transcript);
     } catch {}
   });
 }
@@ -355,6 +371,8 @@ export interface GroupCall {
   meta: string;
   failed: boolean;
   running: boolean;
+  /** Elapsed label (`12s`) shown on the running row instead of the `…` tail. */
+  tick?: string;
 }
 
 type Category = "read" | "search" | "list";
@@ -470,13 +488,15 @@ export function simpleToolLine(
   theme: Theme,
   name: string,
   target: string,
-  opts: { running: boolean; failed?: boolean; meta?: string; connector?: "├" | "└"; width: number },
+  opts: { running: boolean; failed?: boolean; meta?: string; tick?: string; connector?: "├" | "└"; width: number },
 ): string {
   const [runningVerb, doneVerb, failedVerb] = verbsFor(name);
   const verb = opts.failed ? failedVerb : opts.running ? runningVerb : doneVerb;
   const connector = theme.fg("borderMuted", `${opts.connector ?? "└"} `);
   const isShell = name === "bash" || name === "powershell";
-  const tail = opts.running ? theme.fg("muted", " …") : opts.meta ? theme.fg(opts.failed ? "error" : "muted", opts.meta) : "";
+  const tail = opts.running
+    ? theme.fg("muted", opts.tick ? ` · ${opts.tick}` : opts.meta ? opts.meta : " …")
+    : opts.meta ? theme.fg(opts.failed ? "error" : "muted", opts.meta) : "";
   let line: string;
   if (!target) line = `${marker(theme, opts.running, !!opts.failed)} ${theme.bold(verb)}`;
   else if (isShell) line = `${marker(theme, opts.running, !!opts.failed)} ${theme.bold(verb)}  ${target}`;
@@ -511,7 +531,17 @@ export function resetSimpleGroups(): void {
 // ─── the wrapper ──────────────────────────────────────────────────────────
 
 function toGroupCall(rec: CallRec): GroupCall {
-  return { id: rec.id, name: rec.name, target: targetArg(rec.name, rec.args, rec.cwd), meta: rec.meta, failed: rec.failed, running: rec.running };
+  const liveMeta = rec.metaFn?.();
+  const meta = liveMeta ?? rec.meta;
+  const tick = rec.running && rec.startedAt !== undefined && liveMeta === undefined ? formatSeconds(Date.now() - rec.startedAt) : undefined;
+  return { id: rec.id, name: rec.name, target: targetArg(rec.name, rec.args, rec.cwd), meta, failed: rec.failed, running: rec.running, tick };
+}
+
+/** The live row timer: whole seconds, `12s` / `1m05s`. */
+export function formatSeconds(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${String(s)}s`;
+  return `${String(Math.floor(s / 60))}m${String(s % 60).padStart(2, "0")}s`;
 }
 
 export function simpleWrapTool(def: AnyTool): AnyTool {
@@ -535,6 +565,21 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       rec.args = args;
       rec.rev = (rec.rev ?? 0) + 1;
     }
+    // Live row timer: execution start stamps the row and a per-second tick
+    // repaints `· Ns` on it (same pattern pi's own bash renderer uses:
+    // interval on ctx.state, cleared when the final result lands).
+    if (ctx.executionStarted === true && rec.startedAt === undefined) {
+      rec.startedAt = Date.now();
+      const state = ctx.state as { timer?: ReturnType<typeof setInterval> } | undefined;
+      if (state !== undefined && state.timer === undefined) {
+        state.timer = setInterval(() => {
+          try {
+            ctx.invalidate();
+          } catch {}
+        }, 1000);
+        state.timer.unref?.();
+      }
+    }
     let cache: { key: string; lines: string[] } | undefined;
     const paint = (width: number): string[] => {
       // pi prefixes every non-empty self-rendered tool with a blank line
@@ -548,15 +593,20 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       if (g[g.length - 1] !== rec) return [];
       // Cache by width + the group's render-relevant state; a render with
       // nothing changed (every keystroke) is then a string compare, not n
-      // truncateToWidth calls.
+      // truncateToWidth calls. The running row's elapsed seconds are part of
+      // the key so the per-second tick repaints it but keystrokes don't.
       let key = `${width}`;
-      for (const c of g) key += `\u0001${c.id}\u0002${c.running ? 1 : 0}${c.failed ? 1 : 0}${c.meta}\u0002${c.rev ?? 0}`;
+      for (const c of g) {
+        const meta = c.metaFn?.() ?? c.meta;
+        const tick = c.running && c.startedAt !== undefined ? Math.floor((Date.now() - c.startedAt) / 1000) : 0;
+        key += `\u0001${c.id}\u0002${c.running ? 1 : 0}${c.failed ? 1 : 0}${meta}\u0002${c.rev ?? 0}\u0002${String(tick)}`;
+      }
       if (cache && cache.key === key) return cache.lines;
       // Read the group live: a late text signal can move this row to a new group.
       const rows = planGroupRows(
         rec!.group.map(toGroupCall),
         (call, o) =>
-          simpleToolLine(theme, call.name, call.target, { running: o.running, failed: o.failed, meta: call.meta, connector: o.connector, width }),
+          simpleToolLine(theme, call.name, call.target, { running: o.running, failed: o.failed, meta: call.meta, tick: call.tick, connector: o.connector, width }),
         (s) => {
           const label = theme.bold(`${s.running ? s.actionRunning : s.actionDone} ${s.opCount} ${s.noun}`);
           const failure = s.failedCount === s.total ? theme.fg("error", " · failed") : s.failedCount > 0 ? theme.fg("error", ` · ${s.failedCount} failed`) : "";
@@ -582,13 +632,50 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       const rec = byId.get(ctx.toolCallId);
       if (rec) {
         rec.invalidate = () => ctx.invalidate();
+        rec.details = (result as { details?: unknown } | undefined)?.details;
+        const liveMeta = (def as { simpleMeta?: (details: unknown, ctx: unknown) => string | undefined }).simpleMeta;
+        if (liveMeta !== undefined) {
+          rec.metaFn = () => {
+            try {
+              return liveMeta(rec.details, ctx) ?? rec!.meta;
+            } catch {
+              return rec!.meta;
+            }
+          };
+        }
         const meta = outputMeta(result);
         const changed = !rec.done || rec.meta !== meta || rec.failed !== ctx.isError;
-        rec.meta = meta;
+        if (!options.isPartial) {
+          // Final result: stop the live timer and pin `· Ns` on the done row.
+          const state = ctx.state as { timer?: ReturnType<typeof setInterval> } | undefined;
+          if (state?.timer !== undefined) clearInterval(state.timer);
+          if (state !== undefined) state.timer = undefined;
+          rec.endedAt = Date.now();
+          if (rec.startedAt !== undefined && rec.endedAt >= rec.startedAt) {
+            rec.meta = `${meta} · ${formatSeconds(rec.endedAt - rec.startedAt)}`;
+          } else {
+            rec.meta = meta;
+          }
+          rec.done = true;
+          rec.running = false;
+        } else {
+          rec.meta = meta;
+          rec.running = true;
+        }
         rec.failed = !!ctx.isError;
-        rec.running = !!options.isPartial;
-        if (!options.isPartial) rec.done = true;
         if (changed && !options.isPartial) for (const r of rec.group) touch(r);
+      }
+      // Tools that opt in keep a compact result under their collapsed row
+      // (ask_user's Q→A list, run_subagent's `└ Completed · 7s · 2 calls`).
+      const simpleResult = (def as { simpleResult?: (result: unknown, theme: Theme, ctx: unknown) => string[] }).simpleResult;
+      if (!options.isPartial && simpleResult !== undefined) {
+        return new SimpleLine(() => {
+          try {
+            return simpleResult(result, theme, ctx) ?? [];
+          } catch {
+            return [];
+          }
+        });
       }
       return new SimpleLine(() => []);
     } catch {
