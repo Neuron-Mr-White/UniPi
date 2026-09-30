@@ -3,7 +3,7 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { api, displayTitle, LANES, PRIORITIES, type ProjectSummary } from "./api.js";
 import { Board } from "./Board.js";
-import { CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
+import { BoardSummarizeDialog, CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { ListView } from "./List.js";
 import { hue, ProjectTile } from "./paint.js";
@@ -12,6 +12,7 @@ import {
   allLabels,
   applyTheme,
   board,
+  setBoardSummarizeOpen,
   clearFilters,
   conn,
   currentProject,
@@ -181,6 +182,15 @@ export function App(): JSX.Element {
             <span class="total num">
               {shown()} {shown() === 1 ? "task" : "tasks"}
             </span>
+            <button
+              class="btn"
+              aria-label="Summarize board"
+              title="Summarize the whole board"
+              onClick={() => setBoardSummarizeOpen(true)}
+            >
+              <Icon.sparkle size={14} />
+              <span class="label-txt">Summarize</span>
+            </button>
             <button class="btn primary" onClick={() => setNewTaskLane("backlog")} title="New task  C" aria-label="New task">
               <Icon.plus size={14} />
               <span class="label-txt">New task</span>
@@ -264,6 +274,7 @@ export function App(): JSX.Element {
       <CommentDialog />
       <NewTaskDialog />
       <SummarizeDialog />
+      <BoardSummarizeDialog />
       <SettingsDialog />
       <CommandPalette />
       <ShortcutsDialog />

@@ -635,6 +635,97 @@ not-a-table
         let other = Error::rule("todo → in_progress is agent/system only — claim it with `start <ID>`");
         assert_eq!(ui_message(&other), other.to_string());
     }
+
+    // ─── summarize prompt assembly ──────────────────────────────────────────
+
+    fn task(id: &str, status: Status, activity: usize) -> crate::model::Task {
+        let mut task = crate::model::Task::new(
+            id.to_string(),
+            format!("title {id}"),
+            status,
+            Priority::High,
+            0,
+            Utc::now(),
+        );
+        task.body = format!("body of {id}");
+        for index in 0..activity {
+            task.push_activity(Utc::now(), Actor::Agent, format!("entry {index}"));
+        }
+        task
+    }
+
+    #[test]
+    fn summarize_done_scope_unchanged_shape() {
+        let done = task("T-1", Status::Done, 2);
+        let lanes = vec![(Status::Done, vec![&done])];
+        let prompt = summarize_prompt("INSTR", None, None, &lanes, false, false, None);
+        assert!(prompt.starts_with("INSTR\n\n"), "{prompt}");
+        assert!(prompt.contains(crate::serve::settings::SUMMARY_STYLE), "{prompt}");
+        // No lane headers or meta line in done scope; full activity.
+        assert!(!prompt.contains("# done"), "{prompt}");
+        assert!(!prompt.contains("priority:"), "{prompt}");
+        assert_eq!(prompt.matches("entry ").count(), 2, "{prompt}");
+        assert!(!prompt.contains("Previous summary"), "{prompt}");
+    }
+
+    #[test]
+    fn summarize_board_scope_lanes_order_and_fields() {
+        let todo = task("T-1", Status::Todo, 1);
+        let done = task("T-9", Status::Done, 7);
+        let backlog = task("B-2", Status::Backlog, 0);
+        let lanes = vec![
+            (Status::Backlog, vec![&backlog]),
+            (Status::Todo, vec![&todo]),
+            (Status::InProgress, vec![]),
+            (Status::InReview, vec![]),
+            (Status::Blocked, vec![]),
+            (Status::Done, vec![&done]),
+        ];
+        let prompt = summarize_prompt("BOARD", None, None, &lanes, true, true, Some(BOARD_ACTIVITY_CAP));
+        // Lane headers appear in board order, even empty ones.
+        let order = |needle: &str| prompt.find(needle).unwrap_or(usize::MAX);
+        assert!(
+            order("# backlog") < order("# todo")
+                && order("# todo") < order("# in_progress")
+                && order("# in_progress") < order("# done"),
+            "{prompt}"
+        );
+        // Per-task meta + body; activity capped at the last 5 entries.
+        assert!(prompt.contains("status: todo · priority: high"), "{prompt}");
+        assert!(prompt.contains("body of T-9"), "{prompt}");
+        assert_eq!(prompt.matches("entry ").count(), 1 + BOARD_ACTIVITY_CAP, "{prompt}");
+        assert!(!prompt.contains("entry 0\n") || prompt.contains("- "), "{prompt}");
+        assert!(!prompt.contains("entry 1"), "last 5 of 7 → entries 2..6 only: {prompt}");
+    }
+
+    #[test]
+    fn summarize_previous_and_note_block() {
+        let done = task("T-1", Status::Done, 0);
+        let lanes = vec![(Status::Done, vec![&done])];
+        let prompt = summarize_prompt(
+            "INSTR",
+            Some("  OLD SUMMARY  "),
+            Some("focus on bugs"),
+            &lanes,
+            false,
+            false,
+            None,
+        );
+        let block = "Previous summary:\nOLD SUMMARY\n\nThe user's note on it:\nfocus on bugs\n\nWrite an improved summary that follows the note.";
+        assert!(prompt.contains(block), "{prompt}");
+        // The block sits between the instruction head and the task list.
+        assert!(
+            prompt.find(block).unwrap() > prompt.find(crate::serve::settings::SUMMARY_STYLE).unwrap()
+                && prompt.find(block).unwrap() < prompt.find("## T-1").unwrap(),
+            "{prompt}"
+        );
+        // No note → "(none)".
+        let bare = summarize_prompt("INSTR", Some("OLD"), None, &lanes, false, false, None);
+        assert!(bare.contains("The user's note on it:\n(none)"), "{bare}");
+        // Empty previous → no block at all.
+        let empty = summarize_prompt("INSTR", Some("  "), None, &lanes, false, false, None);
+        assert!(!empty.contains("Previous summary"), "{empty}");
+    }
 }
 
 // ─── panel settings ─────────────────────────────────────────────────────────
@@ -903,10 +994,108 @@ async fn run_list_models(
 #[derive(Deserialize)]
 pub struct SummarizeRequest {
     pub instruction: Option<String>,
+    /// "done" (default — done lane only, unchanged behaviour) or "board"
+    /// (every non-archived, non-cancelled task, grouped by lane).
+    pub scope: Option<String>,
+    /// A prior generated summary fed back in for an improved pass.
+    pub previous: Option<String>,
+    /// The user's note steering the (re)summary.
+    pub note: Option<String>,
+}
+
+/// Board scope walks the visible flow minus cancelled/archived.
+const SUMMARY_BOARD_LANES: [Status; 6] = [
+    Status::Backlog,
+    Status::Todo,
+    Status::InProgress,
+    Status::InReview,
+    Status::Blocked,
+    Status::Done,
+];
+
+/// Board scope without a user prompt.
+const DEFAULT_BOARD_INSTRUCTION: &str =
+    "Summarize the board: what is in each lane, what matters most next.";
+
+/// Board prompts stay bounded: only the last few activity entries per task.
+const BOARD_ACTIVITY_CAP: usize = 5;
+
+/// One `## ID — title` task section. `with_meta` adds the status/priority line
+/// (board scope); `activity_cap` trims to the last N entries when set.
+fn summarize_task_section(
+    task: &crate::model::Task,
+    with_meta: bool,
+    activity_cap: Option<usize>,
+) -> String {
+    let mut section = format!("## {} — {}\n\n", task.id, task.display_title());
+    if with_meta {
+        section.push_str(&format!(
+            "status: {} · priority: {}\n\n",
+            task.status.as_str(),
+            task.priority.as_str()
+        ));
+    }
+    if !task.body.trim().is_empty() {
+        section.push_str(task.body.trim());
+        section.push_str("\n\n");
+    }
+    let entries: &[crate::model::ActivityEntry] = match activity_cap {
+        Some(cap) if task.activity.len() > cap => &task.activity[task.activity.len() - cap..],
+        _ => &task.activity,
+    };
+    for entry in entries {
+        section.push_str(&format!(
+            "- {} [{}] {}\n",
+            entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            entry.actor.as_str(),
+            entry.text
+        ));
+    }
+    section.push('\n');
+    section
+}
+
+/// `<instruction>\n\n<SUMMARY_STYLE>[\n\nPrevious summary block]\n\n<tasks>` —
+/// the done scope renders identically to the original flat list.
+fn summarize_prompt(
+    instruction: &str,
+    previous: Option<&str>,
+    note: Option<&str>,
+    lanes: &[(Status, Vec<&crate::model::Task>)],
+    lane_headers: bool,
+    with_meta: bool,
+    activity_cap: Option<usize>,
+) -> String {
+    // The fixed style tail always applies — the editable part never carries it.
+    let mut prompt = format!(
+        "{}\n\n{}",
+        instruction.trim(),
+        super::settings::SUMMARY_STYLE
+    );
+    if let Some(previous) = previous.map(str::trim).filter(|text| !text.is_empty()) {
+        let note = note
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .unwrap_or("(none)");
+        prompt.push_str(&format!(
+            "\n\nPrevious summary:\n{previous}\n\nThe user's note on it:\n{note}\n\nWrite an improved summary that follows the note."
+        ));
+    }
+    prompt.push_str("\n\n");
+    for (status, tasks) in lanes {
+        if lane_headers {
+            prompt.push_str(&format!("# {} ({})\n\n", status.as_str(), tasks.len()));
+        }
+        for task in tasks {
+            prompt.push_str(&summarize_task_section(task, with_meta, activity_cap));
+        }
+    }
+    prompt
 }
 
 /// `POST /api/projects/{slug}/summarize` — run the configured agent over the
-/// done tasks: prompt on stdin, summary on stdout.
+/// done tasks (default) or the whole board (`scope: "board"`): prompt on
+/// stdin, summary on stdout. Board scope summarizes only — no archive action.
 pub async fn summarize(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -917,6 +1106,18 @@ pub async fn summarize(
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
+    let scope = request
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("done");
+    if scope != "done" && scope != "board" {
+        return err(
+            StatusCode::BAD_REQUEST,
+            &Error::usage(format!("scope must be done or board, not `{scope}`")),
+        );
+    }
     let settings = super::settings::load(&state.layout);
     if settings.pi_command.is_empty() {
         let mut response = ApiResponse::error(
@@ -931,61 +1132,81 @@ pub async fn summarize(
         return response;
     }
 
-    let done: Vec<crate::model::Task> =
+    let all: Vec<crate::model::Task> =
         match crate::board::Board::open(&state.layout, project.clone())
             .and_then(|board| board.tasks())
         {
-            Ok(tasks) => tasks
-                .into_iter()
-                .filter(|task| task.status == Status::Done)
-                .collect(),
+            Ok(tasks) => tasks,
             Err(error) => return err(StatusCode::INTERNAL_SERVER_ERROR, &error),
         };
-    if done.is_empty() {
+    let board_scope = scope == "board";
+    let lanes: Vec<(Status, Vec<&crate::model::Task>)> = if board_scope {
+        SUMMARY_BOARD_LANES
+            .iter()
+            .map(|status| {
+                (
+                    *status,
+                    all.iter().filter(|task| task.status == *status).collect(),
+                )
+            })
+            .collect()
+    } else {
+        vec![
+            (
+                Status::Done,
+                all.iter().filter(|task| task.status == Status::Done).collect(),
+            ),
+        ]
+    };
+    let total = lanes.iter().map(|(_, tasks)| tasks.len()).sum::<usize>();
+    if total == 0 {
         return err(
             StatusCode::BAD_REQUEST,
-            &Error::rule("no done tasks to summarize"),
+            &Error::rule(if board_scope {
+                "no tasks to summarize"
+            } else {
+                "no done tasks to summarize"
+            }),
         );
     }
 
+    // Board scope takes the user's prompt (instruction, else note) or the
+    // board default; done scope keeps the configured instruction.
     let instruction = request
         .instruction
         .as_deref()
         .map(str::trim)
         .filter(|text| !text.is_empty())
-        .unwrap_or_else(|| settings.effective_instruction());
-    // The fixed style tail always applies — the editable part never carries it.
-    let mut prompt = format!(
-        "{}\n\n{}",
-        instruction.trim(),
-        super::settings::SUMMARY_STYLE
+        .or_else(|| {
+            board_scope
+                .then(|| request.note.as_deref().map(str::trim).filter(|t| !t.is_empty()))
+                .flatten()
+        })
+        .unwrap_or_else(|| {
+            if board_scope {
+                DEFAULT_BOARD_INSTRUCTION
+            } else {
+                settings.effective_instruction()
+            }
+        });
+    let prompt = summarize_prompt(
+        instruction,
+        request.previous.as_deref(),
+        request.note.as_deref(),
+        &lanes,
+        board_scope,
+        board_scope,
+        board_scope.then_some(BOARD_ACTIVITY_CAP),
     );
-    prompt.push_str("\n\n");
-    for task in &done {
-        prompt.push_str(&format!(
-            "## {} — {}\n\n",
-            task.id,
-            task.display_title()
-        ));
-        if !task.body.trim().is_empty() {
-            prompt.push_str(task.body.trim());
-            prompt.push_str("\n\n");
-        }
-        for entry in &task.activity {
-            prompt.push_str(&format!(
-                "- {} [{}] {}\n",
-                entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-                entry.actor.as_str(),
-                entry.text
-            ));
-        }
-        prompt.push('\n');
-    }
+    let task_ids: Vec<String> = lanes
+        .iter()
+        .flat_map(|(_, tasks)| tasks.iter().map(|task| task.id.clone()))
+        .collect();
 
     match run_agent(&settings, &prompt, &project, &state.layout).await {
         Ok(summary) => ok(json!({
             "summary": summary,
-            "taskIds": done.iter().map(|task| task.id.clone()).collect::<Vec<_>>(),
+            "taskIds": task_ids,
         })),
         Err((status, message)) => err(status, &Error::rule(message)),
     }

@@ -293,11 +293,20 @@ export const api = {
     }),
   updateProject: (slug: string, patch: { archived?: boolean }) =>
     request<ProjectSummary>(`/api/projects/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify(patch) }),
-  summarize: (slug: string, instruction?: string) =>
-    request<SummaryResult>(`/api/projects/${encodeURIComponent(slug)}/summarize`, {
+  summarize: (
+    slug: string,
+    opts?: { instruction?: string; scope?: "done" | "board"; previous?: string; note?: string },
+  ) => {
+    const body: Record<string, string> = {};
+    if (opts?.instruction?.trim()) body.instruction = opts.instruction;
+    if (opts?.scope) body.scope = opts.scope;
+    if (opts?.previous?.trim()) body.previous = opts.previous;
+    if (opts?.note?.trim()) body.note = opts.note;
+    return request<SummaryResult>(`/api/projects/${encodeURIComponent(slug)}/summarize`, {
       method: "POST",
-      body: JSON.stringify(instruction ? { instruction } : {}),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   archiveSummary: (slug: string, body: { markdown: string; taskIds: string[] }) =>
     request<ArchiveResult>(`/api/projects/${encodeURIComponent(slug)}/archive-summary`, {
       method: "POST",

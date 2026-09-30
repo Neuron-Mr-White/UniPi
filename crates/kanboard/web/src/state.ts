@@ -75,6 +75,7 @@ export const [newTaskLane, setNewTaskLane] = createSignal<string | null>(null);
 export const [commentRequest, setCommentRequest] = createSignal<CommentRequest | null>(null);
 export const [settingsOpen, setSettingsOpen] = createSignal(false);
 export const [summarizeOpen, setSummarizeOpen] = createSignal(false);
+export const [boardSummarizeOpen, setBoardSummarizeOpen] = createSignal(false);
 /** Ticks every 15s so elapsed times ("running 4m") stay current. */
 export const [now, setNow] = createSignal(Date.now());
 setInterval(() => setNow(Date.now()), 15_000);

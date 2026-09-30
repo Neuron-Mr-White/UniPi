@@ -984,6 +984,28 @@ try {
       JSON.stringify(gen),
     );
     await session.shot("k15-summarize-result-1440.png");
+
+    // Resummarize with note: the note + prior summary go back to the agent.
+    const resum = await session.evaluate(`(async () => {
+      const dlg = () => document.querySelector('.dialog');
+      [...dlg().querySelectorAll('.btn')].find((b) => /Resummarize with note/.test(b.textContent))?.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const area = dlg().querySelector('[aria-label="Note for the resummary"]');
+      if (!area) return 'no note area';
+      area.value = 'TESTNOTE-RESUM focus blockers';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 100));
+      [...dlg().querySelectorAll('.resummarize-note .btn')].find((b) => /Resummarize$/.test(b.textContent.trim()))?.click();
+      for (let i = 0; i < 40 && !dlg().querySelector('.summary-preview')?.textContent.includes('TESTNOTE-RESUM'); i += 1) await new Promise((r) => setTimeout(r, 300));
+      return { text: dlg().querySelector('.summary-preview')?.textContent ?? '', gone: !dlg().querySelector('[aria-label="Note for the resummary"]') };
+    })()`);
+    check(
+      "resummarize with note feeds previous+note back (stub echoes the prompt)",
+      typeof resum === "object" && resum.text.includes("TESTNOTE-RESUM") && resum.text.includes("Previous summary") && resum.gone,
+      JSON.stringify(typeof resum === "object" ? resum.text.slice(0, 120) : resum),
+    );
+    await session.shot("k15b-summarize-resummarize-1440.png");
+
     const archived = await session.evaluate(`(async () => {
       const done = () => document.querySelectorAll('.lane[data-lane="done"] .card').length;
       [...document.querySelectorAll('.dialog .btn.primary')].find((b) => /Save & archive/.test(b.textContent))?.click();
@@ -996,6 +1018,50 @@ try {
       "saving the summary archives the done tasks",
       archived?.after === 0 && /Archived 2 tasks/.test(archived.toast),
       JSON.stringify(archived),
+    );
+
+    // Board-wide summarize from the sheet header (no archive in this dialog).
+    const boardSum = await session.evaluate(`(async () => {
+      document.querySelector('[aria-label="Summarize board"]')?.click();
+      for (let i = 0; i < 20 && !document.querySelector('.dialog [aria-label="Summary prompt"]'); i += 1) await new Promise((r) => setTimeout(r, 200));
+      const dlg = () => [...document.querySelectorAll('.dialog')].find((d) => d.querySelector('[aria-label="Summary prompt"]') || d.querySelector('.summary-preview'));
+      if (!dlg()) return 'dialog did not open';
+      [...dlg().querySelectorAll('.btn.primary')].find((b) => /Generate summary/.test(b.textContent))?.click();
+      for (let i = 0; i < 40 && !dlg()?.querySelector('.summary-preview'); i += 1) await new Promise((r) => setTimeout(r, 300));
+      const text = dlg()?.querySelector('.summary-preview')?.textContent ?? '';
+      const noArchive = ![...dlg().querySelectorAll('button')].some((b) => /archive/i.test(b.textContent));
+      return { text, noArchive };
+    })()`);
+    check(
+      "the header Summarize button opens the board dialog and generates",
+      // The stub echoes the prompt; markdown renders `# todo (2)` as a heading.
+      typeof boardSum === "object" && /todo \(\d+\)/.test(boardSum.text) && boardSum.text.includes("Summarize the board") && boardSum.noArchive,
+      JSON.stringify(typeof boardSum === "object" ? boardSum.text.slice(0, 120) : boardSum),
+    );
+    await session.shot("k17-board-summarize-1440.png");
+
+    // Board dialog resummarize-with-note.
+    const boardResum = await session.evaluate(`(async () => {
+      const dlg = () => [...document.querySelectorAll('.dialog')].find((d) => d.querySelector('.summary-preview'));
+      if (!dlg()) return 'no result dialog';
+      [...dlg().querySelectorAll('.btn')].find((b) => /Resummarize with note/.test(b.textContent))?.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const area = dlg().querySelector('[aria-label="Note for the resummary"]');
+      if (!area) return 'no note area';
+      area.value = 'BOARDNOTE only todo in priority order';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 100));
+      [...dlg().querySelectorAll('.resummarize-note .btn')].find((b) => /Resummarize$/.test(b.textContent.trim()))?.click();
+      for (let i = 0; i < 40 && !dlg().querySelector('.summary-preview')?.textContent.includes('BOARDNOTE'); i += 1) await new Promise((r) => setTimeout(r, 300));
+      const text = dlg().querySelector('.summary-preview')?.textContent ?? '';
+      [...dlg().querySelectorAll('.btn')].find((b) => b.textContent.trim() === 'Done')?.click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { text, closed: !document.querySelector('.dialog') };
+    })()`);
+    check(
+      "the board dialog resummarizes with a note",
+      typeof boardResum === "object" && boardResum.text.includes("BOARDNOTE") && boardResum.text.includes("Previous summary") && boardResum.closed,
+      JSON.stringify(typeof boardResum === "object" ? boardResum.text.slice(0, 120) : boardResum),
     );
   }
 

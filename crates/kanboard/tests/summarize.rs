@@ -215,6 +215,68 @@ fn summarize_runs_pi_and_reports_failures() {
     assert!(failed.body.contains("bad-news"), "{}", failed.body);
 }
 
+#[cfg(unix)]
+#[test]
+fn summarize_board_scope_groups_lanes_and_carries_the_note() {
+    let fixture = fixture();
+    let slug = &fixture.project.slug;
+    // A cancelled task must be excluded from the board scope.
+    let cancelled = fixture
+        .add_with("cancelled work", Status::Todo, Priority::None, &[])
+        .id;
+    fixture.move_to(&cancelled, Status::Cancelled);
+
+    let stub = pi_stub(&fixture, "#!/bin/sh\ncat\n");
+    write_settings(&fixture, serde_json::json!({ "piCommand": [stub] }));
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+
+    let response = http(
+        daemon.port,
+        "POST",
+        &format!("/api/projects/{slug}/summarize"),
+        Some(r#"{"scope":"board","note":"priority order please","previous":"OLD SUMMARY"}"#),
+    )
+    .unwrap();
+    assert_eq!(response.status, 200, "{}", response.body);
+    let summary = response.json()["summary"].as_str().unwrap().to_string();
+
+    // note doubles as the instruction when instruction is absent; the
+    // previous+note block lands before the task list.
+    assert!(summary.contains("priority order please"), "{summary}");
+    assert!(
+        summary.contains("Previous summary:\nOLD SUMMARY"),
+        "{summary}"
+    );
+    // Lane headers in board order.
+    let at = |needle: &str| summary.find(needle).unwrap_or(usize::MAX);
+    assert!(
+        at("# backlog") < at("# todo") && at("# todo") < at("# done"),
+        "{summary}"
+    );
+    // Per-task meta line; the cancelled task is absent entirely.
+    assert!(summary.contains("status: todo"), "{summary}");
+    assert!(!summary.contains(&cancelled), "{summary}");
+    assert!(!summary.contains("cancelled work"), "{summary}");
+    // taskIds covers every included (non-archived, non-cancelled) task.
+    let ids = response.json()["taskIds"].as_array().unwrap().len();
+    let live = fixture
+        .tasks()
+        .iter()
+        .filter(|task| ![Status::Cancelled, Status::Archived].contains(&task.status))
+        .count();
+    assert_eq!(ids, live, "{ids} vs {live}");
+
+    // A bogus scope is a 400.
+    let bad = http(
+        daemon.port,
+        "POST",
+        &format!("/api/projects/{slug}/summarize"),
+        Some(r#"{"scope":"everything"}"#),
+    )
+    .unwrap();
+    assert_eq!(bad.status, 400, "{}", bad.body);
+}
+
 #[test]
 fn archive_summary_writes_the_file_and_archives_done_tasks() {
     let fixture = fixture();

@@ -10,6 +10,7 @@ import { offerToSchedule } from "./schedule.js";
 import { filesFrom, namedFile, uploadAll } from "./attach.js";
 import {
   board,
+  boardSummarizeOpen,
   commentRequest,
   currentProject,
   describe,
@@ -26,6 +27,7 @@ import {
   setPaletteOpen,
   setSelectedId,
   setSettingsOpen,
+  setBoardSummarizeOpen,
   setShortcutsOpen,
   setSidebarCollapsed,
   setSummarizeOpen,
@@ -588,6 +590,8 @@ export function SummarizeDialog(): JSX.Element {
   const [needsAgent, setNeedsAgent] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
+  const [noteOpen, setNoteOpen] = createSignal(false);
+  const [note, setNote] = createSignal("");
   const doneCount = (): number => board.tasks.filter((task) => task.status === "done").length;
 
   createEffect(
@@ -597,6 +601,8 @@ export function SummarizeDialog(): JSX.Element {
       setSummary("");
       setTaskIds([]);
       setNeedsAgent(false);
+      setNoteOpen(false);
+      setNote("");
       void api
         .settings()
         .then((settings) => setInstruction(settings.summaryInstruction))
@@ -614,11 +620,36 @@ export function SummarizeDialog(): JSX.Element {
     setBusy(true);
     setNeedsAgent(false);
     try {
-      const result = await api.summarize(target, instruction());
+      const result = await api.summarize(target, { instruction: instruction() });
       setSummary(result.summary);
       setTaskIds(result.taskIds);
       setEditing(false);
       setStep("result");
+    } catch (error) {
+      if (error instanceof ApiError && error.needsAgent) setNeedsAgent(true);
+      else toast(describe(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Resummarize: feed the shown summary + the user's note back in. */
+  async function resummarize(): Promise<void> {
+    const target = slug();
+    if (!target || busy()) return;
+    setBusy(true);
+    setNeedsAgent(false);
+    try {
+      const result = await api.summarize(target, {
+        instruction: instruction(),
+        previous: summary(),
+        note: note(),
+      });
+      setSummary(result.summary);
+      setTaskIds(result.taskIds);
+      setEditing(false);
+      setNote("");
+      setNoteOpen(false);
     } catch (error) {
       if (error instanceof ApiError && error.needsAgent) setNeedsAgent(true);
       else toast(describe(error), "error");
@@ -661,16 +692,39 @@ export function SummarizeDialog(): JSX.Element {
       </header>
       <div class="dialog-body">
         <Show when={step() === "config"} fallback={
-          <Show when={editing()} fallback={<div class="summary-preview md" innerHTML={renderMarkdown(summary())} />}>
-            <AutoTextarea
-              class="dialog-body-input"
-              aria-label="Summary (markdown)"
-              value={summary()}
-              maxHeight={260}
-              style={{ "min-height": "140px" }}
-              onInput={(event) => setSummary(event.currentTarget.value)}
-            />
-          </Show>
+          <>
+            <Show when={editing()} fallback={<div class="summary-preview md" innerHTML={renderMarkdown(summary())} />}>
+              <AutoTextarea
+                class="dialog-body-input"
+                aria-label="Summary (markdown)"
+                value={summary()}
+                maxHeight={260}
+                style={{ "min-height": "140px" }}
+                onInput={(event) => setSummary(event.currentTarget.value)}
+              />
+            </Show>
+            <Show when={noteOpen()}>
+              <div class="resummarize-note">
+                <AutoTextarea
+                  class="dialog-body-input"
+                  aria-label="Note for the resummary"
+                  placeholder="What should the summary do differently? (e.g. focus on blockers)"
+                  value={note()}
+                  maxHeight={140}
+                  style={{ "min-height": "60px" }}
+                  onInput={(event) => setNote(event.currentTarget.value)}
+                />
+                <div style={{ "margin-top": "8px" }}>
+                  <button class="btn" disabled={busy()} onClick={() => void resummarize()}>
+                    <Show when={busy()} fallback={<Icon.sparkle size={14} />}>
+                      <span class="spinner" />
+                    </Show>
+                    {busy() ? "Resummarizing…" : "Resummarize"}
+                  </button>
+                </div>
+              </div>
+            </Show>
+          </>
         }>
           <p class="hint" style={{ margin: "0 0 10px" }}>
             {doneCount()} done task{doneCount() === 1 ? "" : "s"} will be summarized by the configured agent, then archived.
@@ -707,6 +761,14 @@ export function SummarizeDialog(): JSX.Element {
       </div>
       <footer class="dialog-foot">
         <Show when={step() === "result"}>
+          <button
+            class="btn"
+            aria-pressed={noteOpen()}
+            aria-label="Resummarize with note"
+            onClick={() => setNoteOpen(!noteOpen())}
+          >
+            Resummarize with note
+          </button>
           <button class="btn" aria-pressed={editing()} onClick={() => setEditing(!editing())}>
             {editing() ? "Preview" : "Edit"}
           </button>
@@ -740,6 +802,173 @@ export function SummarizeDialog(): JSX.Element {
         >
           <button class="btn primary" disabled={busy() || summary().trim().length === 0} onClick={() => void saveAndArchive()}>
             Save & archive {taskIds().length} task{taskIds().length === 1 ? "" : "s"}
+          </button>
+        </Show>
+      </footer>
+    </Dialog>
+  );
+}
+
+// ─── board summarize (no archive) ────────────────────────────────────────────
+
+/**
+ * Header "Summarize": runs the board scope over every live lane with an
+ * optional user prompt. Result is markdown with Copy + resummarize-with-note
+ * — nothing here archives tasks.
+ */
+export function BoardSummarizeDialog(): JSX.Element {
+  const [promptText, setPromptText] = createSignal("");
+  const [summary, setSummary] = createSignal("");
+  const [generated, setGenerated] = createSignal(false);
+  const [needsAgent, setNeedsAgent] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const [noteOpen, setNoteOpen] = createSignal(false);
+  const [note, setNote] = createSignal("");
+
+  createEffect(
+    on(boardSummarizeOpen, (open) => {
+      if (!open) return;
+      setSummary("");
+      setGenerated(false);
+      setNeedsAgent(false);
+      setNoteOpen(false);
+      setNote("");
+    }),
+  );
+
+  const close = (): void => {
+    if (!busy()) setBoardSummarizeOpen(false);
+  };
+
+  async function run(previous?: string, runNote?: string): Promise<void> {
+    const target = slug();
+    if (!target || busy()) return;
+    setBusy(true);
+    setNeedsAgent(false);
+    try {
+      const result = await api.summarize(target, {
+        scope: "board",
+        instruction: promptText(),
+        previous,
+        note: runNote,
+      });
+      setSummary(result.summary);
+      setGenerated(true);
+      setNote("");
+      setNoteOpen(false);
+    } catch (error) {
+      if (error instanceof ApiError && error.needsAgent) setNeedsAgent(true);
+      else toast(describe(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={boardSummarizeOpen()} label="Summarize board" onClose={close} width={640} class="modal">
+      <header class="dialog-head">
+        <span>Summarize board</span>
+        <span class="spacer" />
+        <button class="icon-btn" aria-label="Close" disabled={busy()} onClick={close}>
+          <Icon.close size={14} />
+        </button>
+      </header>
+      <div class="dialog-body">
+        <Show when={!generated()} fallback={<div class="summary-preview md" innerHTML={renderMarkdown(summary())} />}>
+          <p class="hint" style={{ margin: "0 0 10px" }}>
+            The agent summarizes every lane on the board. An optional prompt steers it.
+          </p>
+          <AutoTextarea
+            class="dialog-body-input"
+            aria-label="Summary prompt"
+            placeholder={
+              "Optional: steer the summary\n\ne.g. Summarize only todo, in priority order\ne.g. Explain the relevance of the current todo tasks"
+            }
+            value={promptText()}
+            maxHeight={160}
+            style={{ "min-height": "80px" }}
+            onInput={(event) => setPromptText(event.currentTarget.value)}
+          />
+          <Show when={needsAgent()}>
+            <div class="banner" role="alert" style={{ "margin-top": "10px" }}>
+              <Icon.warn size={16} />
+              <div>
+                <strong>No agent configured.</strong> Set the command that writes the summary first.
+                <div style={{ "margin-top": "8px" }}>
+                  <button
+                    class="btn"
+                    onClick={() => {
+                      setBoardSummarizeOpen(false);
+                      setSettingsOpen(true);
+                    }}
+                  >
+                    <Icon.gear size={14} />
+                    Configure an agent first
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Show>
+        </Show>
+        <Show when={generated() && noteOpen()}>
+          <div class="resummarize-note">
+            <AutoTextarea
+              class="dialog-body-input"
+              aria-label="Note for the resummary"
+              placeholder="What should the summary do differently? (e.g. Summarize only todo, in priority order)"
+              value={note()}
+              maxHeight={140}
+              style={{ "min-height": "60px" }}
+              onInput={(event) => setNote(event.currentTarget.value)}
+            />
+            <div style={{ "margin-top": "8px" }}>
+              <button class="btn" disabled={busy()} onClick={() => void run(summary(), note())}>
+                <Show when={busy()} fallback={<Icon.sparkle size={14} />}>
+                  <span class="spinner" />
+                </Show>
+                {busy() ? "Resummarizing…" : "Resummarize"}
+              </button>
+            </div>
+          </div>
+        </Show>
+      </div>
+      <footer class="dialog-foot">
+        <Show when={generated()}>
+          <button
+            class="btn"
+            aria-pressed={noteOpen()}
+            aria-label="Resummarize with note"
+            onClick={() => setNoteOpen(!noteOpen())}
+          >
+            Resummarize with note
+          </button>
+          <button
+            class="btn"
+            onClick={() =>
+              void navigator.clipboard?.writeText(summary()).then(
+                () => toast("Copied summary", "success"),
+                () => toast("Couldn't copy the summary", "error"),
+              )
+            }
+          >
+            <Icon.copy size={14} />
+            Copy
+          </button>
+        </Show>
+        <span class="spacer" />
+        <Show
+          when={generated()}
+          fallback={
+            <button class="btn primary" disabled={busy()} onClick={() => void run()}>
+              <Show when={busy()} fallback={<Icon.sparkle size={14} />}>
+                <span class="spinner" />
+              </Show>
+              {busy() ? "Summarizing…" : "Generate summary"}
+            </button>
+          }
+        >
+          <button class="btn" disabled={busy()} onClick={close}>
+            Done
           </button>
         </Show>
       </footer>
