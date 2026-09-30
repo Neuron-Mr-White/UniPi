@@ -1,135 +1,117 @@
 /**
- * Unit tests for UndoRedoBuffer.
+ * Unit tests for EditHistory — the linear checkpoint list behind undo/redo.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { UndoRedoBuffer } from "../src/undo-redo.ts";
+import { EditHistory, MAX_CHARS, MAX_STATES } from "../src/undo-redo.ts";
 
-describe("UndoRedoBuffer", () => {
-  it("basic undo/redo roundtrip", () => {
-    const buf = new UndoRedoBuffer();
+describe("EditHistory", () => {
+  it("records, undoes and redoes linearly", () => {
+    const h = new EditHistory();
+    h.record("");
+    h.record("a");
+    h.record("ab");
 
-    buf.snapshot("first");
-    // Reset debounce for test
-    (buf as any).lastSnapshotAt = 0;
-    buf.snapshot("second");
+    assert.deepEqual(h.undo("ab"), { text: "a", ok: true });
+    assert.deepEqual(h.undo("a"), { text: "", ok: true });
+    assert.equal(h.undo("").ok, false);
+    assert.equal(h.undo("").reason, "nothing to undo");
 
-    const undo1 = buf.undo("current");
-    assert.equal(undo1.ok, true);
-    assert.equal(undo1.text, "second");
-
-    const undo2 = buf.undo("second");
-    assert.equal(undo2.ok, true);
-    assert.equal(undo2.text, "first");
-
-    // Nothing more to undo
-    const undo3 = buf.undo("first");
-    assert.equal(undo3.ok, false);
-    assert.equal(undo3.reason, "nothing to undo");
-
-    // Redo
-    const redo1 = buf.redo("first");
-    assert.equal(redo1.ok, true);
-    assert.equal(redo1.text, "second");
-
-    const redo2 = buf.redo("second");
-    assert.equal(redo2.ok, true);
-    assert.equal(redo2.text, "current");
-
-    // Nothing more to redo
-    const redo3 = buf.redo("current");
-    assert.equal(redo3.ok, false);
-    assert.equal(redo3.reason, "nothing to redo");
+    assert.deepEqual(h.redo(""), { text: "a", ok: true });
+    assert.deepEqual(h.redo("a"), { text: "ab", ok: true });
+    assert.equal(h.redo("ab").ok, false);
+    assert.equal(h.redo("ab").reason, "nothing to redo");
   });
 
-  it("redo clears on new snapshot", () => {
-    const buf = new UndoRedoBuffer();
+  it("recording the same state twice is a no-op (dedupe)", () => {
+    const h = new EditHistory();
+    h.record("same");
+    h.record("same");
+    h.record("same");
+    assert.equal(h.undo("same").ok, false, "only one state exists — nothing before it");
 
-    buf.snapshot("a");
-    (buf as any).lastSnapshotAt = 0;
-    buf.snapshot("b");
-    buf.undo("current"); // redo now has "current"
-
-    (buf as any).lastSnapshotAt = 0;
-    buf.snapshot("c"); // should clear redo
-
-    const redo = buf.redo("whatever");
-    assert.equal(redo.ok, false);
-    assert.equal(redo.reason, "nothing to redo");
+    h.record("same");
+    h.record("other");
+    // The deduped records did not push extra states.
+    assert.deepEqual(h.undo("other"), { text: "same", ok: true });
   });
 
-  it("max size eviction", () => {
-    const buf = new UndoRedoBuffer();
+  it("a new edit truncates the redo tail", () => {
+    const h = new EditHistory();
+    h.record("");
+    h.record("one");
+    assert.ok(h.undo("one").ok);
+    // User edits instead of redoing.
+    h.record("one!");
+    assert.equal(h.redo("one!").ok, false, "redo invalidated by the edit");
+    assert.deepEqual(h.undo("one!"), { text: "", ok: true });
+  });
 
-    // Push 55 snapshots (max is 50)
-    for (let i = 0; i < 55; i++) {
-      buf.snapshot(`text-${i}`);
-      // Manually reset debounce for testing
-      (buf as any).lastSnapshotAt = 0;
+  it("undo records the current text first (captures un-flushed typing)", () => {
+    const h = new EditHistory();
+    h.record("committed");
+    // The user typed more since the last checkpoint; no record() call happened.
+    assert.deepEqual(h.undo("committed plus typing"), { text: "committed", ok: true });
+    // The un-flushed state is now in the history: redo returns to it.
+    assert.deepEqual(h.redo("committed"), { text: "committed plus typing", ok: true });
+  });
+
+  it("a flush of the restored text does not destroy the redo", () => {
+    const h = new EditHistory();
+    h.record("");
+    h.record("hello");
+    assert.ok(h.undo("hello").ok); // now showing ""
+    assert.deepEqual(h.redo(""), { text: "hello", ok: true });
+    // The burst flush fires afterwards with the restored text — a no-op.
+    h.record("hello");
+    assert.equal(h.redo("hello").ok, false, "redo was consumed, not destroyed");
+    assert.deepEqual(h.undo("hello"), { text: "", ok: true });
+    assert.deepEqual(h.redo(""), { text: "hello", ok: true });
+  });
+
+  it("evicts oldest states beyond the count cap", () => {
+    const h = new EditHistory();
+    for (let i = 0; i <= MAX_STATES; i++) {
+      h.record(`state ${i}`);
     }
-
-    // Undo all — should only get 50
-    let count = 0;
-    for (let i = 0; i < 60; i++) {
-      const result = buf.undo("x");
-      if (result.ok) count++;
+    // states 0..MAX_STATES = MAX_STATES+1 entries → state 0 evicted.
+    let current = `state ${MAX_STATES}`;
+    let steps = 0;
+    for (;;) {
+      const result = h.undo(current);
+      if (!result.ok) break;
+      current = result.text;
+      steps += 1;
     }
-    assert.equal(count, 50);
+    assert.equal(steps, MAX_STATES - 1, "oldest checkpoint evicted, newest kept");
+    assert.equal(current, "state 1");
   });
 
-  it("clear resets everything", () => {
-    const buf = new UndoRedoBuffer();
+  it("evicts by character budget, not just count", () => {
+    const h = new EditHistory();
+    // Three ~0.9M states: the second pair fits, the third busts the budget.
+    const chunk = "x".repeat(900_000);
+    h.record(chunk);
+    h.record(chunk + "a");
+    h.record(chunk + "b");
+    let current = chunk + "b";
+    const first = h.undo(current);
+    assert.ok(first.ok, "newest predecessor survives");
+    assert.equal(first.text, chunk + "a");
+    assert.equal(h.undo(first.text).ok, false, "the oldest state was evicted by the char budget");
 
-    buf.snapshot("a");
-    buf.snapshot("b");
-    buf.undo("current");
-
-    buf.clear();
-
-    const undo = buf.undo("x");
-    assert.equal(undo.ok, false);
-
-    const redo = buf.redo("x");
-    assert.equal(redo.ok, false);
+    // A single huge state is always kept (the newest survives).
+    const lone = new EditHistory();
+    lone.record("x".repeat(MAX_CHARS + 10));
+    assert.equal(lone.undo("x".repeat(MAX_CHARS + 10)).ok, false);
   });
 
-  it("debounce prevents rapid snapshots", () => {
-    const buf = new UndoRedoBuffer();
-
-    buf.snapshot("first");
-    buf.snapshot("second"); // should be debounced
-
-    // Only one snapshot should exist
-    const undo = buf.undo("current");
-    assert.equal(undo.ok, true);
-    assert.equal(undo.text, "first");
-
-    // No more undos
-    const undo2 = buf.undo("first");
-    assert.equal(undo2.ok, false);
-  });
-
-  it("consecutive undos work without throttle", () => {
-    const buf = new UndoRedoBuffer();
-
-    buf.snapshot("a");
-    (buf as any).lastSnapshotAt = 0;
-    buf.snapshot("b");
-    (buf as any).lastSnapshotAt = 0;
-    buf.snapshot("c");
-
-    // Three consecutive undos should all work
-    const undo1 = buf.undo("current");
-    assert.equal(undo1.ok, true);
-    assert.equal(undo1.text, "c");
-
-    const undo2 = buf.undo("c");
-    assert.equal(undo2.ok, true);
-    assert.equal(undo2.text, "b");
-
-    const undo3 = buf.undo("b");
-    assert.equal(undo3.ok, true);
-    assert.equal(undo3.text, "a");
+  it("clear() resets everything", () => {
+    const h = new EditHistory();
+    h.record("something");
+    h.clear();
+    assert.equal(h.undo("something").ok, false);
+    assert.equal(h.redo("something").ok, false);
   });
 });

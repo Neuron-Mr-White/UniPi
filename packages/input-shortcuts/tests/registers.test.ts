@@ -1,5 +1,6 @@
 /**
- * Unit tests for RegisterStore.
+ * Unit tests for RegisterStore (stash-only; old files with numbered
+ * registers must still load).
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -48,18 +49,23 @@ describe("RegisterStore", () => {
     assert.equal(store.getStash(), "");
   });
 
-  it("registers are empty by default", () => {
-    const store = new RegisterStore(tmpDir);
+  it("loads an old file that still has numbered registers (they are ignored)", () => {
+    const filePath = join(tmpDir, ".unipi/config/input-shortcuts.json");
+    mkdirSync(join(tmpDir, ".unipi/config"), { recursive: true });
+    writeFileSync(
+      filePath,
+      JSON.stringify({ stash: "kept", registers: ["r0", "r1", "", "", "", "", "", "", "", ""] }),
+      "utf-8",
+    );
 
-    for (let i = 0; i < 10; i++) {
-      assert.equal(store.getRegister(i), "");
-    }
-  });
-
-  it("getRegister handles out-of-range indices", () => {
     const store = new RegisterStore(tmpDir);
-    assert.equal(store.getRegister(-1), "");
-    assert.equal(store.getRegister(10), "");
+    assert.equal(store.getStash(), "kept");
+
+    // Saving rewrites the file without the legacy keys.
+    store.setStash("kept2");
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+    assert.equal(parsed.stash, "kept2");
+    assert.equal("registers" in parsed, false);
   });
 
   it("handles corrupt file gracefully", () => {
@@ -70,7 +76,6 @@ describe("RegisterStore", () => {
 
     const store = new RegisterStore(tmpDir);
     assert.equal(store.getStash(), "");
-    assert.equal(store.getRegister(0), "");
   });
 
   it("handles partial data in file", () => {
@@ -81,7 +86,6 @@ describe("RegisterStore", () => {
 
     const store = new RegisterStore(tmpDir);
     assert.equal(store.getStash(), "ok");
-    assert.equal(store.getRegister(0), "");
   });
 
   it("atomic write produces valid JSON", () => {
@@ -89,9 +93,7 @@ describe("RegisterStore", () => {
     store.setStash("test");
 
     const filePath = join(tmpDir, ".unipi/config/input-shortcuts.json");
-    const raw = readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as { stash: string };
     assert.equal(parsed.stash, "test");
-    assert.equal(parsed.registers.length, 10);
   });
 });

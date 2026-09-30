@@ -7,19 +7,22 @@
  * ARCHITECTURE:
  * - The overlay ONLY captures action selection (pure UI, no side effects)
  * - All actions execute OUTSIDE the overlay via callbacks after done()
- * - Undo works via onTerminalInput: snapshots text before each keypress
- * - Cut/Copy: overlay closes immediately, then action runs (non-blocking)
+ * - Undo history: a BurstTracker watches onTerminalInput and records the
+ *   editor text twice per typing burst (open + close) — O(1) per keystroke.
+ * - Y copies the LAST ASSISTANT RESPONSE via pi's copyToClipboard;
+ *   K adds the editor text to the kanboard backlog (no title).
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey } from "@earendil-works/pi-tui";
+import { copyToClipboard } from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
 import { MODULES, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
-import { UndoRedoBuffer } from "./undo-redo.ts";
+import { EditHistory } from "./undo-redo.ts";
+import { BurstTracker } from "./burst.ts";
+import { getLastResponseText, type SessionEntryLike } from "./last-response.ts";
 import { ChordOverlay, type ChordCallbacks } from "./chord-overlay.ts";
 import { loadConfig } from "./settings.ts";
-import { copyToClipboard } from "./clipboard.ts";
-import { THINKING_CYCLE } from "./types.ts";
 import { installClearedInput } from "./cleared-input.ts";
 
 // ─── Status feedback ────────────────────────────────────────────────────────
@@ -47,107 +50,29 @@ function showError(ctx: ExtensionContext, text: string): void {
 export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   // Shared state
   const registers = new RegisterStore();
-  const undoRedo = new UndoRedoBuffer();
+  const history = new EditHistory();
+  const burst = new BurstTracker({
+    getText: () => ui?.getEditorText() ?? "",
+    record: (text) => history.record(text),
+    now: Date.now,
+    setTimeout: (handler, ms) => setTimeout(handler, ms),
+    clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  });
 
-  // Persistent UI reference (captured on first handler call, persists for session)
+  // Persistent UI reference (captured when the tracker installs, persists for session)
   let ui: ExtensionContext["ui"] | null = null;
-  let inputListenerRegistered = false;
-  let suppressInputListener = false; // set during undo/redo to prevent self-referencing snapshots
+  let uninstallInput: (() => void) | null = null;
 
-  // ─── Text change detection via onTerminalInput ────────────────────────
-  // Snapshots the editor text BEFORE each keypress, enabling undo for typed text.
-  //
-  // Three independent triggers commit a snapshot (they don't conflict):
-  //   1. Pause: user stops typing for 500ms → snapshot the text before this typing session
-  //   2. Count: user types 20+ characters since last snapshot → snapshot mid-typing
-  //   3. Time: 3 seconds elapsed since last snapshot (even if still typing) → snapshot
-  //
-  // How it works:
-  //   - On each keypress, capture text BEFORE the editor processes it
-  //   - `pendingSnapshot` = text before the current typing session started (first keypress)
-  //   - `keystrokeCount` = how many edit keys pressed since last snapshot
-  //   - `lastSnapshotAt` = timestamp of last snapshot commit
-  //   - 500ms timer resets on each keypress (fires only on pause)
-  //
-  // Example: user types "hello world" continuously:
-  //   - Key 1: pendingSnapshot = "", count=1
-  //   - Key 10: count=10 (no trigger yet)
-  //   - Key 20: count=20 → COMMIT snapshot="", reset. Now pendingSnapshot=current
-  //   - User pauses 500ms → COMMIT snapshot=current, reset
-  //
-  // Example: user types slowly (1 char per second):
-  //   - Key 1: pendingSnapshot="", count=1, timer starts
-  //   - Key 2 (1s later): timer was reset, count=2
-  //   - ... (timer fires after each pause between keys)
-  //   - Each pause triggers a snapshot
-
-  let pendingSnapshot: string | null = null;
-  let keystrokeCount = 0;
-  let lastSnapshotAt = 0;
-  let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const SNAPSHOT_PAUSE_MS = 500;    // pause trigger
-  const SNAPSHOT_COUNT_THRESHOLD = 20; // character count trigger
-  const SNAPSHOT_TIME_MS = 3000;    // time trigger
-
-  /** Commit the pending snapshot and reset all tracking state. */
-  function commitSnapshot(): void {
-    if (pendingSnapshot !== null) {
-      undoRedo.snapshot(pendingSnapshot);
-    }
-    pendingSnapshot = null;
-    keystrokeCount = 0;
-    lastSnapshotAt = Date.now();
-    if (snapshotTimer) {
-      clearTimeout(snapshotTimer);
-      snapshotTimer = null;
-    }
-  }
-
-  function setupInputListener(): void {
-    if (inputListenerRegistered || !ui) return;
-    inputListenerRegistered = true;
-
-    ui.onTerminalInput((data: string) => {
-      if (!ui || suppressInputListener) return;
-
-      // Only snapshot for edit keys (printable, backspace, delete, enter)
-      const isEditKey = data.length === 1 || data === "\x7f" || matchesKey(data, Key.delete) || data === "\r" || data === "\n";
-      if (!isEditKey) return;
-
-      // Capture text BEFORE the keypress is processed by the editor
-      const textBefore = ui.getEditorText();
-
-      // On first keypress of a new session, store the pending snapshot
-      if (pendingSnapshot === null) {
-        pendingSnapshot = textBefore;
-        lastSnapshotAt = Date.now();
-      }
-
-      keystrokeCount++;
-
-      // ─── Trigger 1: Character count threshold (20 chars) ─────────
-      if (keystrokeCount >= SNAPSHOT_COUNT_THRESHOLD) {
-        commitSnapshot();
-        // Don't return — let the pause timer restart below
-      }
-
-      // ─── Trigger 2: Time threshold (3 seconds) ───────────────────
-      if (pendingSnapshot !== null && Date.now() - lastSnapshotAt >= SNAPSHOT_TIME_MS) {
-        commitSnapshot();
-      }
-
-      // ─── Trigger 3: Pause timer (500ms after last keypress) ──────
-      // Reset the pause timer on each keypress
-      if (snapshotTimer) {
-        clearTimeout(snapshotTimer);
-      }
-      snapshotTimer = setTimeout(() => {
-        // User stopped typing — commit the snapshot
-        if (pendingSnapshot !== null) {
-          commitSnapshot();
-        }
-      }, SNAPSHOT_PAUSE_MS);
+  /**
+   * Install the burst tracker on the editor input stream — idempotent.
+   * Called from session_start (so history exists before the first chord)
+   * and lazily from the chord handler as a fallback.
+   */
+  function installBurstTracker(ctx: ExtensionContext): void {
+    if (uninstallInput || !ctx.hasUI) return;
+    ui = ctx.ui;
+    uninstallInput = ctx.ui.onTerminalInput(() => {
+      burst.onInput();
     });
   }
 
@@ -157,9 +82,10 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
   function doStash(ctx: ExtensionContext): void {
     const text = ctx.ui.getEditorText();
     if (text.length > 0) {
-      undoRedo.snapshot(text); // snapshot before clearing
+      history.record(text); // state before clearing
       registers.setStash(text);
       ctx.ui.setEditorText("");
+      history.record("");
       showSuccess(ctx, "✓ stash saved");
     } else {
       const stash = registers.getStash();
@@ -167,48 +93,35 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
         showError(ctx, "stash empty");
         return;
       }
-      undoRedo.snapshot(""); // snapshot empty state before restoring
+      history.record("");
       ctx.ui.setEditorText(stash);
+      history.record(stash);
       showSuccess(ctx, "✓ stash restored");
     }
   }
 
   function doUndo(ctx: ExtensionContext): void {
-    suppressInputListener = true;
+    burst.close(); // capture un-flushed typing before stepping
     const current = ctx.ui.getEditorText();
-    const result = undoRedo.undo(current);
+    const result = history.undo(current);
     if (result.ok) {
       ctx.ui.setEditorText(result.text);
       showSuccess(ctx, "✓ undo");
     } else {
       showError(ctx, "nothing to undo");
     }
-    suppressInputListener = false;
   }
 
   function doRedo(ctx: ExtensionContext): void {
-    suppressInputListener = true;
+    burst.close();
     const current = ctx.ui.getEditorText();
-    const result = undoRedo.redo(current);
+    const result = history.redo(current);
     if (result.ok) {
       ctx.ui.setEditorText(result.text);
       showSuccess(ctx, "✓ redo");
     } else {
       showError(ctx, "nothing to redo");
     }
-    suppressInputListener = false;
-  }
-
-  function doAppendRegister(ctx: ExtensionContext, index: number): void {
-    const regText = registers.getRegister(index);
-    if (regText.length === 0) {
-      showError(ctx, `register ${index} empty`);
-      return;
-    }
-    const current = ctx.ui.getEditorText();
-    undoRedo.snapshot(current);
-    ctx.ui.setEditorText(current + regText);
-    showSuccess(ctx, `✓ register ${index} appended`);
   }
 
   function doAppendStash(ctx: ExtensionContext): void {
@@ -217,92 +130,84 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       showError(ctx, "stash empty");
       return;
     }
-    const current = ctx.ui.getEditorText();
-    undoRedo.snapshot(current);
-    ctx.ui.setEditorText(current + stashText);
+    const before = ctx.ui.getEditorText();
+    history.record(before);
+    const after = before + stashText;
+    ctx.ui.setEditorText(after);
+    history.record(after);
     showSuccess(ctx, "✓ stash appended");
   }
 
-  function doCopy(ctx: ExtensionContext): void {
-    const text = ctx.ui.getEditorText();
-    if (text.length === 0) {
-      showError(ctx, "nothing to copy");
+  async function doCopyLastResponse(ctx: ExtensionContext): Promise<void> {
+    const entries = ctx.sessionManager.getBranch() as unknown as SessionEntryLike[];
+    const text = getLastResponseText(entries);
+    if (!text) {
+      showError(ctx, "no response to copy");
       return;
     }
-    const result = copyToClipboard(text);
-    if (result.ok) {
-      showSuccess(ctx, "✓ copied");
-    } else {
-      showError(ctx, result.reason ?? "clipboard unavailable");
+    try {
+      await copyToClipboard(text);
+      showSuccess(ctx, "✓ copied last response");
+    } catch (error) {
+      showError(ctx, `copy failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  function doCut(ctx: ExtensionContext): void {
+  async function doKanboard(ctx: ExtensionContext): Promise<void> {
     const text = ctx.ui.getEditorText();
-    if (text.length === 0) {
-      showError(ctx, "nothing to cut");
+    if (text.trim().length === 0) {
+      showError(ctx, "nothing to add");
       return;
     }
-    const result = copyToClipboard(text);
-    if (result.ok) {
-      undoRedo.snapshot(text); // snapshot before clearing
+    const api = globalThis.__unipi_kanboard_api;
+    if (!api) {
+      showError(ctx, "kanboard not loaded");
+      return;
+    }
+    let result: Awaited<ReturnType<typeof api.captureToBacklog>>;
+    try {
+      result = await api.captureToBacklog({ cwd: ctx.cwd, text });
+    } catch (error) {
+      showError(ctx, `kanboard: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!result.ok) {
+      showError(ctx, result.reason);
+      return;
+    }
+    // The capture takes ~100ms; only clear the editor if the user has not
+    // typed since — otherwise the new text stays and just gets the status.
+    if (ctx.ui.getEditorText() === text) {
+      history.record(text); // state before clearing
       ctx.ui.setEditorText("");
-      showSuccess(ctx, "✓ cut");
-    } else {
-      showError(ctx, result.reason ?? "clipboard unavailable");
+      history.record("");
     }
-  }
-
-  function doToggleThinking(): void {
-    const current = pi.getThinkingLevel();
-    const idx = THINKING_CYCLE.indexOf(current as any);
-    const nextIdx = idx >= 0 ? (idx + 1) % THINKING_CYCLE.length : 0;
-    const next = THINKING_CYCLE[nextIdx];
-    pi.setThinkingLevel(next as any);
-    // Note: no ctx available here for status, but thinking level is visible in UI
+    const att = `(${result.attachments} attachment${result.attachments === 1 ? "" : "s"})`;
+    showSuccess(ctx, `✓ ${result.id} added to Backlog ${att}`);
   }
 
   // ─── Register ALT+S shortcut — opens chord overlay ─────────────────────
 
   pi.registerShortcut(Key.alt("s"), {
-    description: "Input shortcuts — stash, undo, redo, copy, cut, toggle thinking",
+    description: "Input shortcuts — stash, undo, redo, append stash, copy last response, kanboard",
     handler: async (ctx: ExtensionContext) => {
       if (!ctx.hasUI) return;
 
-      // Capture persistent UI reference and setup input listener (once)
-      if (!ui) {
-        ui = ctx.ui;
-        setupInputListener();
-      }
-
-      // Suppress input listener while overlay is open.
-      // The onTerminalInput handler fires for the ALT+S keypress itself,
-      // capturing the current text as a pending snapshot. If we don't suppress,
-      // that snapshot would be committed after undo runs, creating a "undo undoes undo" loop.
-      suppressInputListener = true;
-      if (snapshotTimer) { clearTimeout(snapshotTimer); snapshotTimer = null; }
-      pendingSnapshot = null;
-      keystrokeCount = 0;
+      // Fallback install (session_start normally did this already).
+      installBurstTracker(ctx);
 
       void ctx.ui.custom<void>(
         async (tui, theme, keybindings, done) => {
-          const wrappedDone = () => {
-            suppressInputListener = false;
-            done();
-          };
-
           const callbacks: ChordCallbacks = {
             onStash: () => doStash(ctx),
             onUndo: () => doUndo(ctx),
             onRedo: () => doRedo(ctx),
-            onAppendRegister: (index) => doAppendRegister(ctx, index),
             onAppendStash: () => doAppendStash(ctx),
-            onCopy: () => doCopy(ctx),
-            onCut: () => doCut(ctx),
-            onToggleThinking: () => doToggleThinking(),
+            onCopyLastResponse: () => doCopyLastResponse(ctx),
+            onKanboard: () => doKanboard(ctx),
           };
 
-          return new ChordOverlay(tui, theme, keybindings, wrappedDone, callbacks);
+          return new ChordOverlay(tui, theme, keybindings, done, callbacks);
         },
         {
           overlay: true,
@@ -332,15 +237,18 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   // ─── Session lifecycle ─────────────────────────────────────────────────
 
+  pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+    installBurstTracker(ctx);
+  });
+
   pi.on("session_shutdown", async () => {
-    if (snapshotTimer) {
-      clearTimeout(snapshotTimer);
-      snapshotTimer = null;
+    if (uninstallInput) {
+      uninstallInput();
+      uninstallInput = null;
     }
-    pendingSnapshot = null;
-    keystrokeCount = 0;
-    lastSnapshotAt = 0;
-    undoRedo.clear();
+    burst.cancel();
+    ui = null;
+    history.clear();
   });
 
   // ─── Info-screen registration ────────────────────────────────────────────
@@ -357,20 +265,14 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
         stats: [
           { id: "chordKey", label: "Chord key", show: true },
           { id: "tabInsertKey", label: "Tab insert key", show: true },
-          { id: "registersUsed", label: "Registers used", show: true },
           { id: "stashStatus", label: "Stash", show: true },
         ],
       },
       dataProvider: async () => {
         const config = loadConfig();
-        let used = 0;
-        for (let i = 0; i <= 9; i++) {
-          if (registers.getRegister(i).length > 0) used++;
-        }
         return {
           chordKey: { value: config.chordKey, detail: "Key to open shortcuts overlay" },
           tabInsertKey: { value: config.tabInsertKey, detail: "Key to insert tab" },
-          registersUsed: { value: `${used}/10`, detail: "Non-empty numbered registers" },
           stashStatus: { value: registers.getStash().length > 0 ? "set" : "empty", detail: "Stash register" },
         };
       },

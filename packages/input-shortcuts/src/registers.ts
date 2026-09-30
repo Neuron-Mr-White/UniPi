@@ -1,7 +1,8 @@
 /**
- * Register store with JSON file persistence.
- * 10 numbered registers (0-9) + 1 stash register (S).
- * File: .unipi/config/input-shortcuts.json
+ * Stash store with JSON file persistence.
+ * The file lives at .unipi/config/input-shortcuts.json. Older versions stored
+ * ten numbered registers (0-9) next to the stash; those keys are ignored on
+ * load and dropped on the next save.
  * Atomic writes (write to .tmp then rename).
  */
 
@@ -9,11 +10,6 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 import type { RegisterData } from "./types.ts";
 import { REGISTERS_FILE } from "./types.ts";
-
-const EMPTY_DATA: RegisterData = {
-  stash: "",
-  registers: ["", "", "", "", "", "", "", "", "", ""],
-};
 
 export class RegisterStore {
   private data: RegisterData | null = null;
@@ -37,13 +33,6 @@ export class RegisterStore {
     this.save();
   }
 
-  /** Get a numbered register (0-9). */
-  getRegister(index: number): string {
-    if (index < 0 || index > 9) return "";
-    this.ensureLoaded();
-    return this.data!.registers[index] ?? "";
-  }
-
   /** Lazy load from disk on first access. */
   private ensureLoaded(): void {
     if (this.loaded) return;
@@ -53,17 +42,13 @@ export class RegisterStore {
       if (existsSync(this.filePath)) {
         const raw = readFileSync(this.filePath, "utf-8");
         const parsed = JSON.parse(raw) as Partial<RegisterData>;
-        this.data = {
-          stash: typeof parsed.stash === "string" ? parsed.stash : "",
-          registers: Array.isArray(parsed.registers) && parsed.registers.length === 10
-            ? parsed.registers.map((r) => (typeof r === "string" ? r : ""))
-            : [...EMPTY_DATA.registers],
-        };
+        // Extra keys (the old numbered registers) are ignored, not an error.
+        this.data = { stash: typeof parsed.stash === "string" ? parsed.stash : "" };
       } else {
-        this.data = { ...EMPTY_DATA, registers: [...EMPTY_DATA.registers] };
+        this.data = { stash: "" };
       }
     } catch {
-      this.data = { ...EMPTY_DATA, registers: [...EMPTY_DATA.registers] };
+      this.data = { stash: "" };
     }
   }
 

@@ -1,19 +1,19 @@
 /**
- * TUI overlay component for ALT+S chord mode.
+ * TUI overlay component for the ALT+S chord.
  *
- * Two states: root chord (action menu) and register sub-chord (register list).
- * Uses ctx.ui.custom() pattern from btw/compactor.
+ * One state: the root action menu. Uses the ctx.ui.custom() pattern from
+ * btw/compactor.
  *
  * IMPORTANT: The overlay ONLY captures the user's action selection.
  * Actions are NOT executed inside the overlay — they are deferred to the
- * caller via callbacks (onStash, onUndo, etc.). The caller closes the
+ * caller via callbacks (onStash, onUndo, …). The caller closes the
  * overlay via done(), then executes the action outside the overlay context
  * where ctx.ui.getEditorText() / setEditorText() actually work.
  *
- * Closes on ESC or after selecting an action. No timeout.
+ * Closes on ESC or after selecting an action; an unknown key closes silently.
+ * No timeout.
  */
 
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   Key,
@@ -23,8 +23,6 @@ import {
   type TUI,
   type KeybindingsManager,
 } from "@earendil-works/pi-tui";
-import type { ChordState } from "./types.ts";
-import { THINKING_CYCLE } from "./types.ts";
 
 /** Theme-like interface matching pi-coding-agent's Theme */
 interface ThemeLike {
@@ -39,11 +37,9 @@ export interface ChordCallbacks {
   onStash: () => void;
   onUndo: () => void;
   onRedo: () => void;
-  onAppendRegister: (index: number) => void;
   onAppendStash: () => void;
-  onCopy: () => void;
-  onCut: () => void;
-  onToggleThinking: () => void;
+  onCopyLastResponse: () => void | Promise<void>;
+  onKanboard: () => void | Promise<void>;
 }
 
 // ─── Action menu lines ──────────────────────────────────────────────────────
@@ -52,26 +48,15 @@ const ROOT_ACTIONS: Array<{ key: string; label: string }> = [
   { key: "S", label: "Stash / Restore" },
   { key: "U", label: "Undo" },
   { key: "R", label: "Redo" },
-  { key: "A", label: "Append from register" },
-  { key: "Y", label: "Copy to clipboard" },
-  { key: "D", label: "Cut to clipboard" },
-  { key: "T", label: "Toggle thinking" },
+  { key: "A", label: "Append stash" },
+  { key: "Y", label: "Copy last response" },
+  { key: "K", label: "Add to kanboard backlog" },
 ];
 
-function buildRegisterActions(): Array<{ key: string; label: string }> {
-  const actions: Array<{ key: string; label: string }> = [];
-  for (let i = 0; i <= 9; i++) {
-    actions.push({ key: String(i), label: `Register ${i}` });
-  }
-  actions.push({ key: "S", label: "Stash register" });
-  return actions;
-}
-
-// ─── ChordOverlay Component ─────────────────────────────────────────────────
+// ─── ChordOverlay Component ─────────────────────────────────────────────────────────
 
 export class ChordOverlay extends Container implements Focusable {
   private _focused = true;
-  private state: ChordState = "chord_root";
   private actionLines: Text[] = [];
   private tui: TUI;
   private theme: ThemeLike;
@@ -103,17 +88,7 @@ export class ChordOverlay extends Container implements Focusable {
   }
 
   private renderRootMenu(): void {
-    this.state = "chord_root";
     this.actionLines = ROOT_ACTIONS.map(
-      (a) => new Text(`  ${this.theme.fg("accent", `[${a.key}]`)} ${a.label}`, 1, 0),
-    );
-    this.requestRender();
-  }
-
-  private renderRegisterMenu(): void {
-    this.state = "chord_reg";
-    const regActions = buildRegisterActions();
-    this.actionLines = regActions.map(
       (a) => new Text(`  ${this.theme.fg("accent", `[${a.key}]`)} ${a.label}`, 1, 0),
     );
     this.requestRender();
@@ -129,13 +104,7 @@ export class ChordOverlay extends Container implements Focusable {
       return;
     }
 
-    const key = data.toLowerCase();
-
-    if (this.state === "chord_root") {
-      this.handleRootKey(key);
-    } else if (this.state === "chord_reg") {
-      this.handleRegKey(key);
-    }
+    this.handleRootKey(data.toLowerCase());
   }
 
   private handleRootKey(key: string): void {
@@ -150,16 +119,13 @@ export class ChordOverlay extends Container implements Focusable {
         this.closeThenExecute(() => this.callbacks.onRedo());
         break;
       case "a":
-        this.enterRegChord();
-        return; // don't close — show register sub-menu
+        this.closeThenExecute(() => this.callbacks.onAppendStash());
+        break;
       case "y":
-        this.closeThenExecute(() => this.callbacks.onCopy());
+        this.closeThenExecute(() => this.callbacks.onCopyLastResponse());
         break;
-      case "d":
-        this.closeThenExecute(() => this.callbacks.onCut());
-        break;
-      case "t":
-        this.closeThenExecute(() => this.callbacks.onToggleThinking());
+      case "k":
+        this.closeThenExecute(() => this.callbacks.onKanboard());
         break;
       default:
         // Unknown key — silent close
@@ -168,28 +134,12 @@ export class ChordOverlay extends Container implements Focusable {
     }
   }
 
-  private handleRegKey(key: string): void {
-    if (key === "s") {
-      this.closeThenExecute(() => this.callbacks.onAppendStash());
-    } else if (/^[0-9]$/.test(key)) {
-      const index = parseInt(key, 10);
-      this.closeThenExecute(() => this.callbacks.onAppendRegister(index));
-    } else {
-      // Unknown key — silent close
-      this.close();
-    }
-  }
-
-  private enterRegChord(): void {
-    this.renderRegisterMenu();
-  }
-
   /**
    * Close the overlay, then execute the action.
    * The action runs AFTER the overlay is dismissed, so ctx.ui.getEditorText()
    * and setEditorText() work correctly (they don't work while overlay is open).
    */
-  private closeThenExecute(action: () => void): void {
+  private closeThenExecute(action: () => void | Promise<void>): void {
     this.done(); // close the overlay
     // Use setTimeout(0) to defer action to next tick — overlay will be dismissed by then
     setTimeout(action, 0);
@@ -213,7 +163,7 @@ export class ChordOverlay extends Container implements Focusable {
     lines.push(this.theme.fg("borderMuted", `┌${"─".repeat(innerWidth)}┐`));
 
     // Title
-    const title = this.state === "chord_root" ? "Input Shortcuts" : "Append from register";
+    const title = "Input Shortcuts";
     const titlePadded = title.padEnd(innerWidth);
     lines.push(`${this.theme.fg("borderMuted", "│")}${this.theme.fg("accent", titlePadded)}${this.theme.fg("borderMuted", "│")}`);
 

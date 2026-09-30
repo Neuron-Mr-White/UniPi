@@ -2,14 +2,8 @@
  * Shared type definitions for input-shortcuts package.
  */
 
-export interface TextSnapshot {
-  text: string;
-  timestamp: number;
-}
-
 export interface RegisterData {
   stash: string;
-  registers: string[];
 }
 
 export interface InputShortcutsConfig {
@@ -21,14 +15,13 @@ export type ChordAction =
   | "stash"
   | "redo"
   | "undo"
-  | "appendRegister"
   | "appendStash"
-  | "copy"
-  | "cut"
-  | "toggleThinking"
+  | "copyLastResponse"
+  | "kanboard"
   | "tab";
 
-export type ChordState = "idle" | "chord_root" | "chord_reg";
+/** The overlay shows only the root menu; Esc/unknown key closes silently. */
+export type ChordState = "idle" | "chord_root";
 
 export const DEFAULT_CONFIG: InputShortcutsConfig = {
   chordKey: "alt+s",
@@ -37,12 +30,7 @@ export const DEFAULT_CONFIG: InputShortcutsConfig = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const UNDO_DEBOUNCE_MS = 500;
-export const MAX_UNDO_SNAPSHOTS = 50;
 export const STATUS_SUCCESS_MS = 2000;
 export const STATUS_ERROR_MS = 3000;
 export const REGISTERS_FILE = ".unipi/config/input-shortcuts.json";
 export const CONFIG_FILE = ".unipi/config/input-shortcuts-config.json";
-
-// Thinking level cycle for toggle action
-export const THINKING_CYCLE = ["off", "low", "medium", "high", "xhigh"] as const;

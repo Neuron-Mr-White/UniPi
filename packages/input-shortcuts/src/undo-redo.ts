@@ -1,74 +1,86 @@
 /**
- * In-memory ring buffer for undo/redo with debounce and throttle.
+ * Linear checkpoint history for the editor.
  *
- * - Max 50 snapshots in undo stack
- * - 500ms debounce on snapshot creation
- * - 1s throttle on undo
- * - Redo buffer cleared on new snapshot
+ * `states` is the ordered list of editor texts and `index` points at the
+ * current one; undo steps back, redo steps forward. `record` is idempotent
+ * for the current state, so a flush that re-records the text an undo just
+ * restored is a no-op — no suppress flags needed.
+ *
+ * Memory is bounded two ways: at most MAX_STATES checkpoints and at most
+ * MAX_CHARS characters in total (oldest evicted first, running char total,
+ * O(1) amortized per operation).
  */
 
-import type { TextSnapshot } from "./types.ts";
-import { MAX_UNDO_SNAPSHOTS, UNDO_DEBOUNCE_MS } from "./types.ts";
+export const MAX_STATES = 100;
+export const MAX_CHARS = 2_000_000;
 
-export interface UndoRedoResult {
+export interface HistoryResult {
   text: string;
   ok: boolean;
   reason?: string;
 }
 
-export class UndoRedoBuffer {
-  private undoStack: TextSnapshot[] = [];
-  private redoStack: TextSnapshot[] = [];
-  private lastSnapshotAt = 0;
+export class EditHistory {
+  private states: string[] = [];
+  private index = -1;
+  private chars = 0;
 
-  /**
-   * Take a snapshot of current text BEFORE it changes.
-   * Pushes to undo stack, clears redo stack.
-   * 500ms debounce: skips if last snapshot was within 500ms.
-   */
-  snapshot(text: string): void {
-    const now = Date.now();
-    if (now - this.lastSnapshotAt < UNDO_DEBOUNCE_MS) return;
-
-    this.undoStack.push({ text, timestamp: now });
-    if (this.undoStack.length > MAX_UNDO_SNAPSHOTS) {
-      this.undoStack.shift();
+  /** Commit `text` as the current state. No-op when it did not change. */
+  record(text: string): void {
+    if (this.index >= 0 && this.states[this.index] === text) return;
+    // Anything after the current state was redone-able — a new edit kills it.
+    for (let i = this.index + 1; i < this.states.length; i++) {
+      this.chars -= this.states[i]!.length;
     }
-    this.redoStack = [];
-    this.lastSnapshotAt = now;
+    this.states.length = this.index + 1;
+    this.states.push(text);
+    this.chars += text.length;
+    this.index = this.states.length - 1;
+    this.evict();
   }
 
   /**
-   * Undo: pop from undo stack, push current text to redo.
+   * Step back. `current` is recorded first so un-flushed typing since the
+   * last burst is not lost — then the previous state is returned.
    */
-  undo(currentText: string): UndoRedoResult {
-    if (this.undoStack.length === 0) {
-      return { text: currentText, ok: false, reason: "nothing to undo" };
+  undo(current: string): HistoryResult {
+    this.record(current);
+    if (this.index <= 0) {
+      return { text: current, ok: false, reason: "nothing to undo" };
     }
-
-    const snapshot = this.undoStack.pop()!;
-    this.redoStack.push({ text: currentText, timestamp: Date.now() });
-    return { text: snapshot.text, ok: true };
+    this.index -= 1;
+    return { text: this.states[this.index]!, ok: true };
   }
 
   /**
-   * Redo: pop from redo stack, push current text to undo.
-   * No throttle on redo.
+   * Step forward. An edit after an undo invalidates the redo: `current`
+   * no longer matches the state we are sitting on, so record it and fail.
    */
-  redo(currentText: string): UndoRedoResult {
-    if (this.redoStack.length === 0) {
-      return { text: currentText, ok: false, reason: "nothing to redo" };
+  redo(current: string): HistoryResult {
+    const at = this.index >= 0 ? this.states[this.index] : undefined;
+    if (current !== at) {
+      this.record(current);
+      return { text: current, ok: false, reason: "nothing to redo" };
     }
-
-    const snapshot = this.redoStack.pop()!;
-    this.undoStack.push({ text: currentText, timestamp: Date.now() });
-    return { text: snapshot.text, ok: true };
+    if (this.index >= this.states.length - 1) {
+      return { text: current, ok: false, reason: "nothing to redo" };
+    }
+    this.index += 1;
+    return { text: this.states[this.index]!, ok: true };
   }
 
-  /** Clear both stacks. Call on session shutdown. */
+  /** Drop everything. Call on session shutdown. */
   clear(): void {
-    this.undoStack = [];
-    this.redoStack = [];
-    this.lastSnapshotAt = 0;
+    this.states = [];
+    this.index = -1;
+    this.chars = 0;
+  }
+
+  private evict(): void {
+    while (this.states.length > 1 && (this.states.length > MAX_STATES || this.chars > MAX_CHARS)) {
+      this.chars -= this.states[0]!.length;
+      this.states.shift();
+      this.index -= 1;
+    }
   }
 }
