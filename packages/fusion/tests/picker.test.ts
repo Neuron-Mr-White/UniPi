@@ -173,6 +173,40 @@ test("disabled Fusion row renders setup hint on its own line", () => {
   assert.doesNotMatch(text, /no pricing data from provider/);
 });
 
+test("space toggles which side ←/→ adjusts on the Fusion row", () => {
+  // Default target is the lead (unchanged behaviour).
+  const lead = run(state(), [DOWN, RIGHT, ENTER]).result;
+  assert.equal(lead?.type === "fusion" && lead.leadEffort, "high");
+  assert.equal(lead?.type === "fusion" && lead.sidekickEffort, "low");
+  // Space targets the sidekick: ←/→ now move its effort, not the lead's.
+  const side = run(state(), [DOWN, " ", RIGHT, RIGHT, ENTER]).result;
+  assert.equal(side?.type === "fusion" && side.leadEffort, "medium");
+  assert.equal(side?.type === "fusion" && side.sidekickEffort, "high");
+  // Toggling again returns control to the lead.
+  const back = run(state(), [DOWN, " ", " ", RIGHT, ENTER]).result;
+  assert.equal(back?.type === "fusion" && back.leadEffort, "high");
+  assert.equal(back?.type === "fusion" && back.sidekickEffort, "low");
+});
+
+test("the Fusion row shows both efforts and marks the side ←/→ adjusts", () => {
+  const leadText = run(state(), [DOWN]).picker.render(140).join("\n");
+  assert.match(leadText, /Lead Opus ▾ ▸Medium/);
+  assert.match(leadText, /Sidekick GLM Flash ▾ Low/);
+  assert.match(leadText, /←→ lead effort/);
+  assert.match(leadText, /space → sidekick/);
+  const sideText = run(state(), [DOWN, " "]).picker.render(140).join("\n");
+  assert.match(sideText, /Lead Opus ▾ Medium/);
+  assert.match(sideText, /Sidekick GLM Flash ▾ ▸Low/);
+  assert.match(sideText, /←→ sidekick effort/);
+  assert.match(sideText, /space → lead/);
+});
+
+test("sidekick effort steps are clamped and persist through confirm", () => {
+  const { result } = run(state({ active: { kind: "fusion", lead: "a/opus", sidekick: "b/glm", leadEffort: "high", sidekickEffort: "low" } }), [" ", LEFT, LEFT, LEFT, ENTER]);
+  assert.equal(result?.type === "fusion" && result.leadEffort, "high");
+  assert.equal(result?.type === "fusion" && result.sidekickEffort, "off");
+});
+
 test("fusion-row effort is independent of per-model effort", () => {
   // Select the Fusion row and bump its effort twice (medium → xhigh).
   const { picker } = run(state(), [DOWN, RIGHT, RIGHT]);

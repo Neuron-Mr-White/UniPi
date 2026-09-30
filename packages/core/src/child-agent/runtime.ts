@@ -554,6 +554,18 @@ export class ChildAgentRuntime {
     this.send({ type: "abort" });
   }
 
+  /** Update the thinking level: live over rpc when the child is running, and
+   *  in the spawn args the next time a process is (re)started. */
+  setThinking(level: EffortLevel): void {
+    this.cfg.thinking = level;
+    if (!this.isAlive()) return;
+    try {
+      this.send({ type: "set_thinking_level", level });
+    } catch {
+      // A mid-exit write fails; the level still applies to the next spawn.
+    }
+  }
+
   kill(): void {
     const child = this.child;
     if (!child) return;

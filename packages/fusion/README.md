@@ -23,7 +23,7 @@ pi's extension and RPC APIs natively.
 │  Model key  openrouter/deepseek/deepseek-v4.1-flash                  │
 │                                                                       │
 │  ✱ New  ✱ Promotion  ✱ Beta · Pairs frontier intelligence with cost-efficient execution │
-│↑↓ select · tab lead · ←→ effort · ↵ confirm · esc cancel              │
+│↑↓ select · tab lead · ←→ lead effort · space → side · ↵ confirm · esc │
 ╰───────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -41,6 +41,11 @@ pi's extension and RPC APIs natively.
 - **`tab`** on the Fusion row cycles focus: effort → lead → sidekick
   (`shift+tab` reverses). Focused columns open an inline dropdown over the
   preset lists; `↵` applies, `esc` collapses.
+- **`space`** on the Fusion row toggles which side `←`/`→` adjusts: lead
+  effort (default) ↔ sidekick effort. The row shows both levels (`Lead … ▸High`,
+  `Sidekick … Low` — `▸` marks the side `←`/`→` moves) and the hint line names
+  the target. A changed sidekick effort reaches a running sidekick over rpc
+  (`set_thinking_level`) and lands in the spawn args for the next process.
 - **Price panel**: the highlighted model's blended price is marked on a
   logarithmic red→orange→yellow→green→cyan→blue→violet slider. Fusion shows
   `Input`, `Cached input`, `Output`, `Sidekick input`, `Sidekick cached input`,

@@ -244,3 +244,23 @@ test("CRLF records are accepted", async () => {
   assert.equal((await handoff.done).text, "ok");
   runtime.kill();
 });
+
+test("setThinking sends set_thinking_level to a live child and updates spawn config", async () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  runtime.handoff("work");
+  emit(child, { type: "response", command: "prompt", success: true });
+  runtime.setThinking("high");
+  assert.deepEqual(sent.find((c) => c.type === "set_thinking_level"), { type: "set_thinking_level", level: "high" });
+  // Next spawn (after kill) uses the new level in the CLI args.
+  runtime.kill();
+});
+
+test("setThinking without a live child only updates the spawn config", () => {
+  const child = fakeChild();
+  const sent = commands(child);
+  const runtime = runtimeWith(child);
+  runtime.setThinking("high"); // never spawned — nothing written to stdin
+  assert.equal(sent.some((c) => c.type === "set_thinking_level"), false);
+});

@@ -30,7 +30,8 @@
  *
  * On the Fusion row, Tab cycles effort → lead → sidekick (Shift+Tab
  * reverses); the lead/sidekick focus opens an inline dropdown fed by the
- * preset lists.
+ * preset lists. With the effort control focused, Space toggles whether ←/→
+ * adjusts the lead's or the sidekick's effort (default: lead).
  */
 
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
@@ -194,6 +195,8 @@ export class ModelPicker {
   private search = "";
   private selected = 0;
   private focus: FusionFocus = "effort";
+  /** Which side ←/→ adjusts on the Fusion row's effort control. */
+  private effortTarget: "lead" | "sidekick" = "lead";
   private dropdownIndex = 0;
   private done = false;
 
@@ -401,7 +404,11 @@ export class ModelPicker {
       const delta: -1 | 1 = matchesKey(data, Key.left) ? -1 : 1;
       if (row?.kind === "fusion") {
         // Fusion-row effort is its own state: never touches per-model memory.
-        if (this.focus === "effort") this.fusionLeadEffort = stepEffort(this.fusionLeadEffort, delta);
+        // Space picks which side ←/→ adjusts.
+        if (this.focus === "effort") {
+          if (this.effortTarget === "lead") this.fusionLeadEffort = stepEffort(this.fusionLeadEffort, delta);
+          else this.fusionSidekickEffort = stepEffort(this.fusionSidekickEffort, delta);
+        }
       } else if (row?.key !== undefined) {
         this.effort[row.key] = stepEffort(this.effortFor(row.key), delta);
       }
@@ -414,7 +421,16 @@ export class ModelPicker {
         return;
       }
     } else if (data === " " || matchesKey(data, Key.space)) {
-      // Space = quick action: stage the highlighted model as the Fusion lead.
+      // Space = quick action. On a model row it stages the highlighted model
+      // as the Fusion lead; on the Fusion row it toggles which side the
+      // effort control adjusts (Tab is taken by the lead/sidekick cycle).
+      if (row?.kind === "fusion") {
+        if (this.focus === "effort" && this.fusionAvailable()) {
+          this.effortTarget = this.effortTarget === "lead" ? "sidekick" : "lead";
+          this.changed();
+        }
+        return;
+      }
       if (row?.kind === "model" && !disabledFusion) {
         this.lead = row.key;
         this.changed();
@@ -597,7 +613,12 @@ export class ModelPicker {
     const badge = model?.badge;
     const badgeGlyph = badge === undefined ? "" : ` ${t.fg(badge === "new" ? "success" : badge === "promotion" ? "accent" : "warning", "✱")}`;
 
-    const level = row.kind === "fusion" ? this.fusionLeadEffort : this.effortFor(row.key);
+    const level =
+      row.kind === "fusion"
+        ? this.effortTarget === "lead"
+          ? this.fusionLeadEffort
+          : this.fusionSidekickEffort
+        : this.effortFor(row.key);
     const arrowsOn = !disabledFusion && highlighted && this.focus === "effort";
     const left = arrowsOn ? t.fg("accent", "←") : " ";
     const right = arrowsOn ? t.fg("accent", "→") : " ";
@@ -615,12 +636,19 @@ export class ModelPicker {
         const sideName = this.nameOf(this.sidekick, 14);
         const leadFocused = highlighted && this.focus === "lead";
         const sideFocused = highlighted && this.focus === "sidekick";
+        // Each side shows its effort; a ▸ marks the side ←/→ adjusts.
+        const effortSuffix = (side: "lead" | "sidekick") => {
+          const lv = effortLabel(side === "lead" ? this.fusionLeadEffort : this.fusionSidekickEffort);
+          return highlighted && this.focus === "effort" && this.effortTarget === side
+            ? t.fg("accent", t.bold(` ▸${lv}`))
+            : t.fg("dim", ` ${lv}`);
+        };
         const leadText = leadFocused
-          ? `${t.fg("accent", t.bold("Lead"))} ${t.fg("accent", leadName)} ${t.fg("accent", "▾")}`
-          : `${t.fg("dim", "Lead")} ${t.fg("text", leadName)} ${t.fg("dim", "▾")}`;
+          ? `${t.fg("accent", t.bold("Lead"))} ${t.fg("accent", leadName)} ${t.fg("accent", "▾")}${effortSuffix("lead")}`
+          : `${t.fg("dim", "Lead")} ${t.fg("text", leadName)} ${t.fg("dim", "▾")}${effortSuffix("lead")}`;
         const sideText = sideFocused
-          ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}`
-          : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}`;
+          ? `${t.fg("accent", t.bold("Sidekick"))} ${t.fg("accent", sideName)} ${t.fg("accent", "▾")}${effortSuffix("sidekick")}`
+          : `${t.fg("dim", "Sidekick")} ${t.fg("text", sideName)} ${t.fg("dim", "▾")}${effortSuffix("sidekick")}`;
         line += `   ${leadText}   ${sideText}`;
       }
     }
@@ -738,8 +766,12 @@ export class ModelPicker {
       parts.push("↑↓ select", "type to search all models", `tab ${this.focus === "lead" ? "sidekick" : "effort"}`, "enter apply", "alt+enter set default", "esc collapse");
     } else {
       parts.push("↑↓ select");
-      if (row?.kind === "fusion") parts.push("tab lead");
-      parts.push("←→ effort", "enter/tab confirm", "alt+enter set default", "space set lead", "esc cancel");
+      if (row?.kind === "fusion") {
+        const other = this.effortTarget === "lead" ? "sidekick" : "lead";
+        parts.push("tab lead", `←→ ${this.effortTarget} effort`, `space → ${other}`, "enter confirm", "alt+enter set default", "esc cancel");
+      } else {
+        parts.push("←→ effort", "enter/tab confirm", "alt+enter set default", "space set lead", "esc cancel");
+      }
     }
     return t.fg("dim", parts.join(" · "));
   }

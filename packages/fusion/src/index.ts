@@ -424,6 +424,16 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       return;
     }
     if (!samePair) stopRuntime();
+    else if (
+      result.type === "fusion" &&
+      active?.kind === "fusion" &&
+      active.sidekickEffort !== result.sidekickEffort
+    ) {
+      // Same pair, new sidekick strength: a live child gets it over rpc
+      // (set_thinking_level); the value also lands in the spawn args for the
+      // next process start.
+      runtime?.setThinking(result.sidekickEffort);
+    }
     const effort = result.type === "single" ? result.effort : result.leadEffort;
     try {
       pi.setThinkingLevel(effort);
