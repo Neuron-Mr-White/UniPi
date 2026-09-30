@@ -2,9 +2,11 @@
  * JSON contract test: every shape the extension consumes is produced by the REAL
  * binary (no stubs) and pushed through the same parsers the extension uses, so a
  * change on the Rust side fails here instead of in the user's session.
+ * (Runner-era helpers — nothingReadyMessage, attachmentSection — died with the
+ * runner; the JSON shapes themselves are still asserted here.)
  *
- * Regression: K4 turned `list --json` into `{tasks, problems}` while the runner
- * still cast it to an array — `/unipi:kanboard work` died with
+ * Regression: K4 turned `list --json` into `{tasks, problems}` while the
+ * extension still cast it to an array — `/unipi:kanboard work` died with
  * "all.map is not a function" after the task had already been claimed.
  */
 
@@ -15,7 +17,6 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { nothingReadyMessage } from "../src/runner.js";
 import {
   asClaimResult,
   asDaemonStatus,
@@ -87,7 +88,7 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     const shown = asTask("show", cli(home, workspace, ["show", created.id], env()));
     assert.equal(shown.id, created.id);
     assert.equal(shown.title, "another task");
-    // Fields the runner's prompt relies on.
+    // Fields the extension relies on.
     assert.ok(Array.isArray(shown.activity) && shown.activity.length > 0);
     assert.ok("waitingFor" in shown || !shown.deps?.length);
     assert.equal(typeof shown.staleness, "string");
@@ -124,8 +125,6 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
       assert.equal(claim.task, null);
       const entry = claim.waiting!.find((item) => item.id === child.id)!;
       assert.deepEqual(entry.lockedBy, [parent.id]);
-      const message = nothingReadyMessage({ waiting: 1, blocked: 0 }, claim.waiting!);
-      assert.match(message, new RegExp(`${child.id} waits on ${parent.id}, still in Backlog`));
     } finally {
       rmSync(home2, { recursive: true, force: true });
       rmSync(ws2, { recursive: true, force: true });
@@ -199,7 +198,7 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     assert.ok(Array.isArray(result.problems));
   });
 
-  it("a shape mismatch produces a clear error, not a crash deep in the runner", () => {
+  it("a shape mismatch produces a clear error, not a crash", () => {
     // This is what the stale binary did: an array where {tasks} is expected.
     assert.throws(() => asTaskList([{ id: "X-1" }]), (error: unknown) => {
       assert.ok(error instanceof KanboardShapeError);
@@ -213,7 +212,7 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
     assert.throws(() => asStopResult({}), KanboardShapeError);
   });
 
-  it("every list entry parses into the task type the runner uses", () => {
+  it("every list entry parses into the task type the extension uses", () => {
     const { tasks } = asTaskList(cli(home, workspace, ["list"], env()));
     for (const task of tasks as KanboardTask[]) {
       assert.equal(typeof task.id, "string");
@@ -226,7 +225,6 @@ describe("CLI JSON contract (real binary)", { skip: !hasBinary }, () => {
 
 describe("attachments contract (real binary)", { skip: !hasBinary }, () => {
   it("`attach` returns the task with an attachment descriptor, and the prompt lists it", async () => {
-    const { attachmentSection } = await import("../src/runner.js");
     const home2 = mkdtempSync(join(tmpdir(), "kb-contract-att-"));
     const ws2 = mkdtempSync(join(tmpdir(), "kb-contract-att-ws-"));
     try {
@@ -244,9 +242,7 @@ describe("attachments contract (real binary)", { skip: !hasBinary }, () => {
       assert.equal(last, `CI output\n${descriptor.markdown}`);
 
       const shown = asTask("show", cli(home2, ws2, ["show", task.id], env2));
-      const section = attachmentSection(shown).join("\n");
-      assert.match(section, /## Attachments/);
-      assert.ok(section.includes(descriptor.path), "the agent gets the absolute path");
+      assert.ok((shown.attachments as unknown[] | undefined)?.length, "the attachment survives a show round-trip");
     } finally {
       rmSync(home2, { recursive: true, force: true });
       rmSync(ws2, { recursive: true, force: true });

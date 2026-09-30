@@ -21,6 +21,7 @@ import type { EditorOptions, EditorTheme, TUI } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getIcon, getResolvedIconStyle } from "./rendering/icons.js";
+import { kanboardGlanceLabel } from "@pi-unipi/core";
 import { lolcatRainbow, paintLolcatGradient } from "./rendering/lolcat.js";
 
 /** Live status injected by the footer extension. */
@@ -43,12 +44,13 @@ export interface GlanceStatus {
 	modelName: string;
 	/** Current thinking level (already "off"-filtered by the provider). */
 	thinkingLevel: string | null;
-	/**
-	 * Active Fusion pair, when selected. When set, the model slot renders
-	 * `Fusion · <lead> <effort> ◆ <sidekick>` — lead lit, sidekick muted —
-	 * and the plain thinking slot is suppressed (efforts are inline).
+	/** Active Fusion pair, when selected. When set, the model slot renders
+	 *  `Fusion · <lead> <effort> ◆ <sidekick>` — lead lit, sidekick muted —
+	 *  and the plain thinking slot is suppressed (efforts are inline).
 	 */
 	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number; busy?: boolean; leadToolCalls?: number; sidekickToolCalls?: number } | null;
+	/** Kanboard claims/autowork snapshot (null → no `▣` segment). */
+	kanboard: { claims: string[]; autowork: boolean } | null;
 }
 
 const BORDER = {
@@ -198,17 +200,21 @@ export function composeGlanceTitles(
 	branch: string | null,
 	workspace: string,
 	lhMode: string | null = null,
+	kanboard: { claims: string[]; autowork: boolean } | null = null,
 ): { titleParts: string[]; leftTitle: string } {
+	const kanboardLabel = kanboardGlanceLabel(kanboard);
 	const titleParts: string[] = [];
 	if (getResolvedIconStyle() === "text") {
 		titleParts.push(brand);
 		if (lhMode) titleParts.push(`mode:${lhMode}`);
+		if (kanboardLabel) titleParts.push(kanboardLabel.replace(/^▣ /, "kanboard:"));
 		if (branch) titleParts.push(`branch:${branch}`);
 		return { titleParts, leftTitle: ` workspace:${workspace} ` };
 	}
 	const brandIcon = getIcon("model");
 	titleParts.push(`${brandIcon ? brandIcon + " " : ""}${brand}`);
 	if (lhMode) titleParts.push(lhMode);
+	if (kanboardLabel) titleParts.push(kanboardLabel);
 	if (branch) {
 		const gitIcon = getIcon("git");
 		titleParts.push(`${gitIcon ? gitIcon + " " : ""}${branch}`);
@@ -278,7 +284,7 @@ export class GlanceEditor extends CustomEditor {
 		// Brand rendered as an animated lolcat gradient (phase from wall time;
 		// the footer's 1s refresh timer re-renders, so it shimmers each tick).
 		const brand = lolcatRainbow("UNIPI", Date.now() / 1000);
-		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace, st.lhMode);
+		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace, st.lhMode, st.kanboard);
 		const title = titleParts.join(SEP);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;

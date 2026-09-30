@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, getPackageVersion, registerCommandRunner, registerCompactionContext, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { appendProgress, emitEvent, getPackageVersion, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -19,6 +19,7 @@ import { loadSettings } from "./src/settings.js";
 import { GoalMachine } from "./src/engine/goal-state.js";
 import { GoalToolset } from "./src/tools/goal.js";
 import { GoalContinuation } from "./src/engine/continuation.js";
+import { NudgeStash, ownerEventClearsStash } from "./src/engine/nudge-stash.js";
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
 import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
@@ -58,10 +59,23 @@ export default function longHorizon(pi: ExtensionAPI): void {
   const version = getPackageVersion("long-horizon");
   const statePath = () => lhStatePath("state.json");
 
+  // Standalone loads (`-e long-horizon/index.ts`) must install the arbiter
+  // themselves; the umbrella installs it before modules mount, and this call
+  // is a no-op there (holder flag).
+  try {
+    installArbiter(pi);
+  } catch {
+    // Never block module load on the arbiter.
+  }
+
   // Owner lifecycle → unipi event bus (footer/info-screen consume these).
+  // A finished or parked owner invalidates an undelivered nudge (declared
+  // before `owner` so the onChange closure can clear it).
+  const stash = new NudgeStash();
   const owner = new OwnerCoordinator({
     statePath,
     onChange: (_snapshot, event: OwnerEvent) => {
+      if (ownerEventClearsStash(event)) stash.take();
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: event.type,
         ...("owner" in event && event.owner
@@ -110,13 +124,62 @@ export default function longHorizon(pi: ExtensionAPI): void {
                 ? "active owner"
                 : data.source === "judge_abstained_low_confidence"
                   ? "judge abstained → default"
-                  : "default";
+                  : data.source === "child"
+                    ? "child agent"
+                    : "default";
         const line = `${t.fg?.("customMessageText", badge) ?? badge} ${t.fg?.("dim", via) ?? via}`;
         return new Text(line, 0, 0);
       },
     );
   } catch {
     // Renderer registration is UI-dependent; skip where unavailable.
+  }
+
+  // ── messaging: nudge stash, not the message queue ──────────────────
+  // Continuation/ralph sends land in a one-slot stash; the arbiter delivers
+  // it as the single before_settle nudge (priority 100) and takes it.
+  // Timer wakes while idle (waiting-backoff) stay direct sends: they are
+  // events, and nothing would settle to drain the stash for them.
+  // (`stash` is declared above the owner so owner stops can clear it.)
+  let runActive = false;
+  try {
+    pi.on("agent_start", () => {
+      runActive = true;
+    });
+    pi.on("agent_settled", () => {
+      runActive = false;
+    });
+  } catch {
+    // Idle tracking must never block load.
+  }
+  const send: (message: string, kind?: "kickoff") => void = (message, kind) => {
+    stash.put(message, kind === "kickoff" ? { kickoff: true } : {});
+  };
+  const sendNow = (message: string): void => {
+    try {
+      if (runActive) void pi.sendUserMessage(message, { deliverAs: "followUp" });
+      else void pi.sendUserMessage(message);
+    } catch {
+      // A failed wake must never crash the session.
+    }
+  };
+  try {
+    registerNudgeProvider("long-horizon", 100, () => {
+      const text = stash.peek();
+      if (text === null) return null;
+      return {
+        source: "long-horizon",
+        priority: 100,
+        customType: "unipi:lh-continue",
+        content: text,
+        display: true,
+        onDelivered: () => {
+          stash.take();
+        },
+      };
+    });
+  } catch {
+    // Registration must never block load.
   }
 
   // Goal engine: machine + tools + continuation + runtime wiring.
@@ -132,24 +195,18 @@ export default function longHorizon(pi: ExtensionAPI): void {
     toolset,
     owner,
     verifier: { evaluate: async () => { throw new Error("verifier unbound"); } },
-    // Sent from agent_end, while pi still counts the run as streaming: a plain
-    // send is rejected ("Agent is already processing") and the loop stalls.
-    // followUp queues it for the next turn (and is ignored when idle).
-    send: (message) => {
-      void pi.sendUserMessage(message, { deliverAs: "followUp" });
-    },
+    // Continuation messages ride the arbiter's nudge stash (delivered as the
+    // single before_settle nudge); timer wakes use sendNow directly.
+    send,
+    sendNow,
   });
   // Ralph loop rides the same goal machine + verifier; footer events preserved.
   const ralph = new RalphLoop({
     machine,
     owner,
     ralphDir: () => join(stateDir("long-horizon", "state"), "ralph"),
-    // Sent from agent_end, while pi still counts the run as streaming: a plain
-    // send is rejected ("Agent is already processing") and the loop stalls.
-    // followUp queues it for the next turn (and is ignored when idle).
-    send: (message) => {
-      void pi.sendUserMessage(message, { deliverAs: "followUp" });
-    },
+    // Iteration prompts ride the arbiter's nudge stash like the goal's.
+    send,
     onEvent: (event) => {
       if (event.type === "loop_start") {
         emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_START, { name: event.name, iteration: event.iteration, total: event.total });

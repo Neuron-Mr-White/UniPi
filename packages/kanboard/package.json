@@ -7,7 +7,7 @@
   "license": "MIT",
   "author": "Neuron Mr White",
   "scripts": {
-    "test": "npx tsx --test tests/**/*.test.ts"
+    "test": "UNIPI_FUSION_CHILD= UNIPI_SUBAGENT_CHILD= UNIPI_KANBOARD_CHILD= npx tsx --test tests/*.test.ts tests/*/*.test.ts"
   },
   "repository": {
     "type": "git",

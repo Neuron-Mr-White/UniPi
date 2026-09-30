@@ -18,6 +18,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { gatherEvidence } from "@pi-unipi/core";
 
 export const MAX_CHANGE_CHARS = 4_000;
 export const MAX_CHANGE_ITEMS = 100;
@@ -49,6 +50,8 @@ export interface VerifierDeps {
   readonly timeoutMs?: number;
   readonly setTimeout?: (fn: () => void, ms: number) => unknown;
   readonly clearTimeout?: (handle: unknown) => void;
+  /** Cross-module evidence (kanboard claims, …); defaults to core's registry. */
+  readonly gather?: typeof gatherEvidence;
 }
 
 const VERIFIER_SYSTEM = `You are the completion verifier for an autonomous coding agent. Given an OBJECTIVE and an EVIDENCE BRIEF, judge whether the objective is fully satisfied.
@@ -161,6 +164,22 @@ export async function verifyCompletion(
   brief: string,
   abortSignal?: AbortSignal,
 ): Promise<VerificationVerdict> {
+  // Cross-module evidence first: any blocking item forces not_met WITHOUT
+  // paying for an evaluator call (the evidence is already conclusive).
+  const gather = deps.gather ?? gatherEvidence;
+  const evidence = await gather();
+  if (evidence.blocking.length > 0) {
+    return {
+      verdict: "not_met",
+      reason: "board: open work remains",
+      missing: [...evidence.blocking],
+      evaluatorFailed: false,
+    };
+  }
+  if (evidence.notes.length > 0) {
+    brief = `${brief}\n--- MODULE EVIDENCE ---\n${evidence.notes.join("\n")}`;
+  }
+
   const prompt = buildVerificationPrompt(objective, brief);
   const timeoutMs = deps.timeoutMs ?? DEFAULT_VERIFIER_TIMEOUT_MS;
   const setT = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));

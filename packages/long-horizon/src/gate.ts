@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { emitEvent, isChildProcess, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
 import type { OwnerCoordinator, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
@@ -164,6 +164,13 @@ export class Gate {
   }
 
   async resolveForTurn(prompt: string): Promise<GateState> {
+    // Children are the hands, the lead is the voice: no LH modes, no judge,
+    // no owners in fusion/subagent children (escape hatch: UNIPI_LH_ALLOW_CHILD).
+    if (isChildProcess() && process.env.UNIPI_LH_ALLOW_CHILD !== "1") {
+      this.pendingExplicit = null;
+      this.turn = { mode: "none", source: "child" };
+      return this.turn;
+    }
     const settings = this.deps.loadSettings?.() ?? loadSettings();
     // Explicit switch away from an active owner suspends it first (max-1
     // park slot; a held slot refuses the override and the owner keeps mode).

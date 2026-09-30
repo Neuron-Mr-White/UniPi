@@ -2,29 +2,28 @@
  * @pi-unipi/kanboard — progress reminders (no LLM, never blocking).
  *
  * When the agent works board tasks by hand ("do UNI-5 and UNI-8"), the board
- * should show it: `start <ID>` moves a task to In Progress for this session,
- * `finish <ID> --comment` hands it to In Review. Two text-only reminders keep
- * that honest:
+ * should show it: `start <ID>` moves a task to In Progress for this session.
+ * Continuation after that is the arbiter's job (src/monitor.ts); what stays
+ * here is:
  *
  *   R1  every file-changing tool call of an agent turn, for each mentioned
  *       task that is still Todo and has not been reminded this turn (one
  *       steer per task per turn, at most twice per task).
- *   R2  agent_end with a task this session started still In Progress → one
- *       follow-up message (at most twice per task).
  *
  * "Mentioned" = task ids in the user's prompts plus ids the agent `show`ed;
- * only ids that exist on the board count. Both reminders are silent in
- * runner-owned runs, in kanboard's own child sessions and when the setting
- * `kanboard.reminders` is off.
+ * only ids that exist on the board count. R1 is silent in child sessions
+ * (children only read the board) and when the setting `kanboard.reminders`
+ * is off.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isChildProcess } from "@pi-unipi/core";
 
 import { kanboardInvocations, shellSegments } from "./guard.js";
 import type { KanboardTask } from "./shapes.js";
 
 export const REMINDER_CUSTOM_TYPE = "unipi:kanboard-reminder";
-/** Reminders per task id (R1 and R2 each). */
+/** R1 reminders per task id. */
 export const MAX_REMINDERS_PER_TASK = 2;
 
 /** Same wording long-horizon's runaway guard uses: the reminder must not stick. */
@@ -104,21 +103,9 @@ export function r1Text(todo: string[], cli: string | null): string {
   );
 }
 
-export function r2Text(open: string[], cli: string | null): string {
-  const prefix = cli ? `${cli} ` : "";
-  const lines = open.map(
-    (id) =>
-      `${id} is still In Progress. If done: \`${prefix}finish ${id} --comment "<summary>"\`. ` +
-      `If not: say what remains, or \`${prefix}move ${id} blocked --comment "<what you need>"\`.`,
-  );
-  return `[kanboard] ${lines.join("\n")}\n${ANTI_POISONING_SUFFIX}`;
-}
-
 export interface TrackerDeps {
   /** Reminders on (setting `kanboard.reminders`). */
   enabled(): boolean;
-  /** The runner owns this turn (a queued/claimed task is running) → silent. */
-  runnerOwned(): boolean;
   /** This session's id (UNIPI_KANBOARD_SESSION). */
   session(): string;
   /** `list` on the current project; [] when unavailable. */
@@ -144,36 +131,19 @@ export interface ProgressTracker {
   onTurnStart(): void;
   /** tool_result: record `show`/`start`, and return R1 content when due. */
   onToolResult(event: ToolResultLike): Promise<{ content: ToolResultContent } | undefined>;
-  /** agent_end: the R2 text when due (the caller delivers it). */
-  onAgentEnd(event: { messages?: unknown[] }): Promise<string | null>;
   /** For tests / status. */
-  state(): { mentioned: string[]; started: string[]; r1: Record<string, number>; r2: Record<string, number> };
-}
-
-function aborted(messages: unknown[] | undefined): boolean {
-  if (!Array.isArray(messages)) return false;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index] as { role?: string; stopReason?: string };
-    if (message?.role === "assistant") return message.stopReason === "aborted";
-  }
-  return false;
-}
-
-function ownedStart(task: KanboardTask, session: string): boolean {
-  const run = task.run as { session?: string; owner?: string } | null | undefined;
-  return task.status === "in_progress" && run?.session === session && run?.owner === "agent";
+  state(): { mentioned: string[]; started: string[]; r1: Record<string, number> };
 }
 
 export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
   const mentioned = new Set<string>();
-  /** Ids this session ran `start` on (candidates; the board is the truth). */
+  /** Ids this session ran `start` on (bookkeeping; the board is the truth). */
   const started = new Set<string>();
   const r1Count = new Map<string, number>();
-  const r2Count = new Map<string, number>();
   /** Task ids already reminded this turn (per-task re-arm, not one shot). */
   const remindedThisTurn = new Set<string>();
   const debug = (message: string): void => deps.debug?.(`reminders: ${message}`);
-  const silent = (): boolean => !deps.enabled() || deps.runnerOwned() || Boolean(process.env.UNIPI_KANBOARD_CHILD);
+  const silent = (): boolean => !deps.enabled() || isChildProcess() || Boolean(process.env.UNIPI_KANBOARD_CHILD);
 
   const safeList = async (): Promise<KanboardTask[] | null> => {
     try {
@@ -186,10 +156,9 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
 
   return {
     onPrompt(text) {
-      // Our own reminders name started tasks; they are not new mentions, and a
-      // runner task prompt belongs to the runner. (A -do request counts: its
-      // text carries the user's request verbatim.)
-      if (text.includes(ANTI_POISONING_SUFFIX) || deps.runnerOwned()) return;
+      // Our own reminders name started tasks; they are not new mentions. (A
+      // -do request counts: its text carries the user's request verbatim.)
+      if (text.includes(ANTI_POISONING_SUFFIX)) return;
       for (const id of taskIdsIn(text)) mentioned.add(id);
     },
 
@@ -205,6 +174,7 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
           if (!id) continue;
           if (invocation.sub === "show") mentioned.add(id);
           if (invocation.sub === "start" && !event.isError) started.add(id);
+
         }
       }
       if (!isFileChangingCall(toolName, event.input)) return undefined;
@@ -229,47 +199,18 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
       return { content: [...(event.content ?? []), { type: "text", text: `\n\n${r1Text(todo, deps.cliPrefix())}` }] };
     },
 
-    async onAgentEnd(event) {
-      if (silent() || started.size === 0 || aborted(event.messages)) return null;
-      const tasks = await safeList();
-      if (!tasks) return null;
-      const session = deps.session();
-      const byId = new Map(tasks.map((task) => [task.id, task]));
-      const open: string[] = [];
-      for (const id of [...started]) {
-        const task = byId.get(id);
-        if (!task || !ownedStart(task, session)) {
-          started.delete(id); // finished, blocked, reaped or someone else's now
-          continue;
-        }
-        if ((r2Count.get(id) ?? 0) >= MAX_REMINDERS_PER_TASK) continue;
-        r2Count.set(id, (r2Count.get(id) ?? 0) + 1);
-        open.push(id);
-      }
-      if (open.length === 0) return null;
-      debug(`R2 for ${open.join(", ")}`);
-      return r2Text(open, deps.cliPrefix());
-    },
-
     state() {
       return {
         mentioned: [...mentioned],
         started: [...started],
         r1: Object.fromEntries(r1Count),
-        r2: Object.fromEntries(r2Count),
       };
     },
   };
 }
 
-/**
- * Wire the tracker into pi's events. R2 is computed at agent_end and handed
- * back through `takePending()`: the caller sends it at agent_settled — a
- * message sent while the turn is still finalizing is queued as a follow-up
- * that never gets delivered (same reason the -do queue drains there).
- */
-export function registerProgressReminders(pi: ExtensionAPI, tracker: ProgressTracker): { takePending(): string | null } {
-  let pending: string | null = null;
+/** Wire the tracker into pi's events. */
+export function registerProgressReminders(pi: ExtensionAPI, tracker: ProgressTracker): void {
   pi.on("before_agent_start", (event) => {
     tracker.onPrompt(String((event as { prompt?: unknown }).prompt ?? ""));
     return undefined;
@@ -281,19 +222,4 @@ export function registerProgressReminders(pi: ExtensionAPI, tracker: ProgressTra
     const result = await tracker.onToolResult(event as unknown as ToolResultLike);
     return result as never;
   });
-  pi.on("agent_end", async (event) => {
-    pending = await tracker.onAgentEnd(event as { messages?: unknown[] });
-  });
-  return {
-    takePending() {
-      const text = pending;
-      pending = null;
-      return text;
-    },
-  };
-}
-
-/** Deliver an R2 reminder as a visible custom message that starts a turn. */
-export function sendReminder(pi: ExtensionAPI, text: string): void {
-  pi.sendMessage({ customType: REMINDER_CUSTOM_TYPE, content: text, display: true }, { triggerTurn: true });
 }

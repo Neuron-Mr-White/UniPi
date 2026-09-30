@@ -86,3 +86,17 @@ UniPi's `/unipi:prefix-cache` diagnostic observes this provider-native boundary 
 ## Compaction
 
 UniPi currently performs deterministic, zero-LLM compaction. Therefore it does not issue a second summarizer request whose prefix needs warming. UniPi's additional percentage trigger is disabled by default; Pi core's reserve-token safety trigger remains active unless the user changes Pi settings. With Pi 0.84.1 defaults, core compaction triggers above `contextWindow - 16,384` estimated tokens and retains approximately 20,000 recent tokens. Enabling UniPi's optional 80% trigger intentionally trades earlier epoch resets for more headroom, with cooldown and minimum-growth guards against repeat compaction. If LLM summarization is introduced, the summarization call must replay the current conversation's exact system prompt, ordered tools, and leading messages, then append the compaction instruction as the final user message. Replacing the system prompt with a special summarizer prompt would throw away the warm prefix at the most expensive point in the session.
+
+## Continuation nudges (turn arbiter)
+
+Long-horizon and kanboard continuations ride **tail `custom_message` entries**
+delivered by core's turn arbiter at `agent_before_settle`
+(`packages/core/src/turn/arbiter.ts`): the previous request's prefix — system
+prompt, tool definitions, prior messages — is untouched, and the nudge is
+appended as one new tail entry before the continuation request. The nudge text
+is **deterministic** for a given state (claim id, nudge counters, mode), so a
+re-offer of the same nudge reproduces the same tail. Nudges never change the
+system prompt and never reorder tools; providers that were mid-flight when the
+nudge was proposed keep their exact surface. The long-horizon kickoff/continuation
+messages live in a one-slot stash (overwritten, kickoff append-only) so at most
+one deterministic tail message is added per settle.

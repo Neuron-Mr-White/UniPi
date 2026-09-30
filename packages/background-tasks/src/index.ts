@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createSpinnerLine, setHerdrWorking } from "@pi-unipi/core";
+import { createSpinnerLine, isChildProcess, registerWaitSource, setHerdrWorking } from "@pi-unipi/core";
 import { loadBackgroundTasksConfig } from "./config.js";
 import { BackgroundTaskRegistry } from "./registry.js";
 import {
@@ -41,6 +41,15 @@ function pendingWakeText(registry: BackgroundTaskRegistry, isIdle: () => boolean
       : ` · ${taskDisplayName(first)} ${formatDuration(now - first.startTime)}${pendingWake.length > 1 ? ` +${String(pendingWake.length - 1)} more` : ""}`;
   const count = pendingWake.length === 1 ? "1 bg task" : `${String(pendingWake.length)} bg tasks`;
   return `waiting on ${count}${detail} — agent resumes automatically when done`;
+}
+
+/** Arbiter wait-source reason (lead only): what a running wake-task is, or null. */
+export function pendingWakeReason(tasks: readonly { status: string; triggerOnCompletion: boolean; command?: string; name?: string; description?: string; id?: string }[]): string | null {
+  const pendingWake = tasks.filter((task) => task.status === "running" && task.triggerOnCompletion);
+  if (pendingWake.length === 0) return null;
+  const first = pendingWake[0];
+  const more = pendingWake.length > 1 ? ` +${String(pendingWake.length - 1)} more` : "";
+  return `bg: ${first === undefined ? "task" : taskDisplayName(first)}${more}`;
 }
 
 export default function backgroundTasksExtension(pi: ExtensionAPI): void {
@@ -75,6 +84,16 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     },
   });
   setSharedTaskRegistry(registry);
+
+  // Turn-arbiter wait source (lead only): while a task that will wake the
+  // agent is still running, a nudge would race the wake — defer to it.
+  if (!isChildProcess()) {
+    try {
+      registerWaitSource("background-tasks", () => pendingWakeReason(registry.allTasks()));
+    } catch {
+      // Registration must never block module load.
+    }
+  }
 
   const eventService: BackgroundTaskExtensionService = installBackgroundTaskExtensionApi({
     events: pi.events,

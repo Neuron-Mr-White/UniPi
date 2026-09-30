@@ -234,3 +234,26 @@ settings surface exposes today and move with it.
 4. **Resolved: graph is a first-class user trigger.** `/unipi:graph <prompt>` works in v1
    (never hidden). The engine behind it ships staged: v1 = single-wave scheduling with input
    frontiers (a real but minimal graph); full monotonic DAG + finish semantics when proven.
+
+## 11. Continuation on the turn arbiter (2026-09-30)
+
+Continuation is no longer a direct `sendUserMessage` from `agent_end`. The
+engine settles at `agent_end` (verifier included) and writes the decided
+message into a one-slot **nudge stash** (`src/engine/nudge-stash.ts`); a nudge
+provider (`"long-horizon"`, priority 100) on core's turn arbiter
+(`packages/core/src/turn/arbiter.ts`, `agent_before_settle`) returns the stash
+and takes it on delivery — at most one continuation message per settle, and
+kanboard's monitor (priority 50) can never fight it. The kickoff contract is
+append-only in the stash; wrap-up rides the same path. Timer wakes
+(waiting-backoff) are idle-time **events** and stay direct sends
+(`sendNow`), because nothing will settle to drain a stash for them. Pi awaits
+`agent_end` handlers fully before the boundary, so no ordering fallback is
+needed.
+
+**Child rule:** in fusion/subagent children (and kanboard children) long-horizon
+resolves mode `none` (source `child`), never consults the judge, and
+`OwnerCoordinator.activate` refuses owner creation with "report back to the
+lead" — children are the hands, the lead is the voice. Escape hatch:
+`UNIPI_LH_ALLOW_CHILD=1` restores normal behavior inside a child. Owner
+transitions publish to the shared holder (`getSharedOwnerStatus`) that
+kanboard's monitor reads for deference and stop notices.

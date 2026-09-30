@@ -26,6 +26,7 @@ export type ResolutionSource =
   | "owner"
   | "judge"
   | "judge_abstained_low_confidence"
+  | "child"
   | "default";
 
 export interface Resolution {

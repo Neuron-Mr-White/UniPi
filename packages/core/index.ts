@@ -14,8 +14,12 @@ export * from "./bounded-output.js";
 export * from "./spinner-line.js";
 export * from "./fusion-status.js";
 export * from "./long-horizon-status.js";
+export * from "./long-horizon-owner-status.js";
+export * from "./kanboard-status.js";
 export * from "./plan-permission-status.js";
 export * from "./command-echo.js";
+export * from "./src/turn/arbiter.js";
+export * from "./src/evidence.js";
 
 // v3 workspace identity + state layout (marker-file id, per-workspace roots)
 export * from "./src/workspace/identity.js";

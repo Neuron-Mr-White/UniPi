@@ -1,6 +1,7 @@
 import { Text, type Component } from "@earendil-works/pi-tui";
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { isChildProcess, registerWaitSource } from "@pi-unipi/core";
 import type { SidekickRuntime, HandoffProgress, HandoffReport } from "./sidekick-runtime.js";
 import { createCompletionDelivery, registerSubagentReader, type SubagentReader } from "@pi-unipi/core/child-agent.js";
 import { duration } from "./transcript.js";
@@ -102,6 +103,32 @@ type ThemeLike = {
   bold: (text: string) => string;
 };
 
+/**
+ * In-flight NON-blocking handoffs, for the turn arbiter's wait source: a
+ * block:false sidekick is still working while the lead settles, so the
+ * arbiter must defer (its completion lands as an event turn). Blocking
+ * handoffs never reach settle (the lead waits inside the tool call), and
+ * interrupted waits detach to background the same way.
+ */
+export class BackgroundHandoffTracker {
+  private readonly handoffs = new Map<string, Promise<HandoffReport>>();
+
+  /** Track a detached handoff. Cleanup queues behind the completion delivery: every caller detaches the delivery BEFORE tracking, so the wait source only clears after the completion followUp is queued. */
+  track(id: string, done: Promise<HandoffReport>): void {
+    void done.catch(() => undefined).then(() => this.handoffs.delete(id));
+    this.handoffs.set(id, done);
+  }
+
+  get size(): number {
+    return this.handoffs.size;
+  }
+
+  /** Arbiter wait-source reason, or null when nothing is in flight. */
+  reason(): string | null {
+    return this.handoffs.size > 0 ? "sidekick working" : null;
+  }
+}
+
 
 type ToolDetails = Partial<HandoffReport> & { progress?: HandoffProgress; background?: boolean; id?: string };
 
@@ -141,6 +168,17 @@ function renderCompletionLine(theme: ThemeLike, report: HandoffReport | undefine
 }
 
 export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): void {
+  // Turn-arbiter wait source (lead only).
+  const backgroundHandoffs = new BackgroundHandoffTracker();
+  const trackBackgroundHandoff = (id: string, done: Promise<HandoffReport>): void => backgroundHandoffs.track(id, done);
+  if (!isChildProcess()) {
+    try {
+      registerWaitSource("fusion", () => backgroundHandoffs.reason());
+    } catch {
+      // Registration must never block tool registration.
+    }
+  }
+
   pi.registerMessageRenderer("sidekick-completion", (message: { details?: HandoffReport }, _options, theme) => renderCompletionLine(theme as unknown as ThemeLike, message.details));
 
   // One delivery mechanism for every handoff nobody is waiting on.
@@ -164,6 +202,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
       if (params.block === false) {
         void handoff.done.then((report) => deps.onReport?.(ctx, report)).catch(() => undefined);
         completion.detach(handoff.id, handoff.done);
+        trackBackgroundHandoff(handoff.id, handoff.done);
         deps.onDetach?.(ctx);
         return result(`Handoff ${handoff.id} started in the background. You will receive a <subagent_completion_notification agent_id="${handoff.id}"> when it finishes; use read_subagent to wait.`, { background: true, id: handoff.id });
       }
@@ -178,6 +217,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
         return result(reportText(waited.report), waited.report, waited.report.status !== "completed");
       }
       completion.detach(handoff.id, handoff.done);
+      trackBackgroundHandoff(handoff.id, handoff.done);
       deps.onDetach?.(ctx);
       if (waited.error) return result(`Handoff ${handoff.id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`${progressText(runtime, handoff.id)}\nHandoff ${handoff.id} aborted.`, undefined, true);
@@ -223,6 +263,7 @@ export function registerFusionTools(pi: ExtensionAPI, deps: FusionToolDeps): voi
         return result(reportText(waited.report), { ...waited.report, owner: "fusion" }, waited.report.status !== "completed");
       }
       completion.detach(id, latest.done);
+      trackBackgroundHandoff(id, latest.done);
       deps.onDetach?.(ctx);
       if (waited.error) return result(`Handoff ${id} failed: ${waited.error}`, undefined, true);
       if (waited.aborted) return result(`Handoff ${id} aborted.`, undefined, true);

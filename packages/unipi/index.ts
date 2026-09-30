@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { installArbiter, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
 import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "@pi-unipi/utility";
 
 import workflow from "@pi-unipi/workflow";
@@ -37,6 +37,13 @@ import watchdog from "@pi-unipi/watchdog";
 
 export default function (pi: ExtensionAPI) {
   const api = withCommandEcho(pi);
+  // The turn arbiter must own the single agent_before_settle handler BEFORE
+  // any module mounts (idempotent; a no-op in child processes).
+  try {
+    installArbiter(pi);
+  } catch {
+    // Never block startup on the arbiter.
+  }
   // "simple" render style = mcode transcript: every tool registered by any
   // unipi module is captured here and, after all modules load, re-registered
   // with the collapsed one-liner wrapper (execute/schema untouched; Ctrl+O

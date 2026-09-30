@@ -55,8 +55,18 @@ export interface ContinuationDeps {
   readonly owner: OwnerCoordinator;
   /** Verifier wiring; defaults to a VerifierDeps the caller provides. */
   readonly verifier: VerifierDeps;
-  /** Deliver a continuation/kickoff/wrap-up message (tail message). */
-  send(message: string): void;
+  /**
+   * Deliver a continuation/kickoff/wrap-up message. Messages go to the
+   * arbiter's nudge stash (long-horizon/index.ts), NOT the message queue;
+   * `kind: "kickoff"` marks the kickoff contract, which is never overwritten
+   * while undelivered.
+   */
+  send(message: string, kind?: "kickoff"): void;
+  /**
+   * Direct delivery for TIMER wakes while idle (waiting-backoff): an event,
+   * not a nudge — bypasses the stash and prompts immediately.
+   */
+  sendNow?(message: string): void;
   /** User-only notification (wired to ctx.ui.notify at agent_end; optional in tests). */
   notify?(text: string, level?: "info" | "warning" | "error"): void;
   getTokenCount?(): number | undefined;
@@ -134,7 +144,7 @@ export class GoalContinuation {
 
   /** Deliver the kickoff contract once for a fresh goal (cache-stable). */
   deliverKickoff(goal: GoalState): void {
-    this.deps.send(renderKickoff(goal.objective));
+    this.deps.send(renderKickoff(goal.objective), "kickoff");
     this.deps.machine.markKickoffDelivered(goal.goalId);
     this.consecutiveWaits = 0;
     this.lastVerifierReason = undefined;
@@ -267,7 +277,9 @@ export class GoalContinuation {
         const woken = this.deps.machine.wakeWaiting();
         if (woken) {
           this.consecutiveWaits = 0;
-          this.deps.send(renderContinuationHint(woken));
+          // Timer wake while idle: an event, delivered directly — never
+          // through the stash (nothing will settle to drain it).
+          (this.deps.sendNow ?? this.deps.send)(renderContinuationHint(woken));
         }
       }, delayMs);
       return { action: "wait", delayMs };

@@ -26,18 +26,18 @@ describe("kanboard settings", () => {
       const defaults = readKanboardSettings(cwd);
       assert.equal(defaults.requireAuth, false);
       assert.equal(defaults.keepToken, false);
-      assert.equal(defaults.queueMax, 10);
       assert.equal(defaults.maxSessions, 2);
       assert.equal(defaults.turnAddLimit, 20);
+      assert.equal(defaults.doTasks, 5);
+      assert.equal(defaults.doWrites, 10);
 
       setSettings(
         "kanboard",
-        { queueMax: -1, maxSessions: 0, turnAddLimit: "many", requireAuth: true, keepToken: true, defaultStrategy: "weird", jevThreshold: 5 },
+        { maxSessions: 0, turnAddLimit: "many", requireAuth: true, keepToken: true, defaultStrategy: "weird", jevThreshold: 5 },
         "project",
         cwd,
       );
       const bad = readKanboardSettings(cwd);
-      assert.equal(bad.queueMax, DEFAULT_SETTINGS.queueMax);
       assert.equal(bad.maxSessions, DEFAULT_SETTINGS.maxSessions);
       assert.equal(bad.turnAddLimit, DEFAULT_SETTINGS.turnAddLimit);
       assert.equal(bad.requireAuth, true);
@@ -45,9 +45,10 @@ describe("kanboard settings", () => {
       assert.equal(bad.defaultStrategy, DEFAULT_SETTINGS.defaultStrategy, "invalid strategy → default none");
       assert.equal(bad.jevThreshold, DEFAULT_SETTINGS.jevThreshold, "invalid threshold → default 0.8");
 
-      setSettings("kanboard", { queueMax: 0, maxSessions: 4, turnAddLimit: 0, defaultStrategy: "auto", jevThreshold: 0.5 }, "project", cwd);
+      setSettings("kanboard", { doTasks: 0, doWrites: 0, maxSessions: 4, turnAddLimit: 0, defaultStrategy: "auto", jevThreshold: 0.5 }, "project", cwd);
       const zeroed = readKanboardSettings(cwd);
-      assert.equal(zeroed.queueMax, 0, "0 = unlimited");
+      assert.equal(zeroed.doTasks, 0, "0 = off");
+      assert.equal(zeroed.doWrites, 0, "0 = off");
       assert.equal(zeroed.maxSessions, 4);
       assert.equal(zeroed.turnAddLimit, 0);
       assert.equal(zeroed.defaultStrategy, "auto");
@@ -57,15 +58,32 @@ describe("kanboard settings", () => {
     }
   });
 
-  it("applyLimitEnv exports both limits to process.env", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "kb-env-"));
+  it("doCredits migrates into doWrites at read time", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "kb-mig-"));
     try {
-      applyLimitEnv({ ...DEFAULT_SETTINGS, queueMax: 3, maxSessions: 1 });
-      assert.equal(process.env.UNIPI_KANBOARD_QUEUE_MAX, "3");
-      assert.equal(process.env.UNIPI_KANBOARD_MAX_SESSIONS, "1");
+      setSettings("kanboard", { doCredits: 7 }, "project", cwd);
+      const migrated = readKanboardSettings(cwd);
+      assert.equal(migrated.doWrites, 7, "the old credit value becomes the write budget");
+      assert.equal(migrated.doTasks, DEFAULT_SETTINGS.doTasks);
+      // An explicit doWrites wins over the legacy key.
+      setSettings("kanboard", { doWrites: 3 }, "project", cwd);
+      assert.equal(readKanboardSettings(cwd).doWrites, 3);
     } finally {
-      delete process.env.UNIPI_KANBOARD_QUEUE_MAX;
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("applyLimitEnv exports the limits to process.env", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "kb-env-"));
+    const savedQueue = process.env.UNIPI_KANBOARD_QUEUE_MAX;
+    delete process.env.UNIPI_KANBOARD_QUEUE_MAX;
+    try {
+      applyLimitEnv({ ...DEFAULT_SETTINGS, maxSessions: 1 });
+      assert.equal(process.env.UNIPI_KANBOARD_MAX_SESSIONS, "1");
+      assert.equal(process.env.UNIPI_KANBOARD_QUEUE_MAX, undefined, "queueMax died with the runner");
+    } finally {
       delete process.env.UNIPI_KANBOARD_MAX_SESSIONS;
+      if (savedQueue !== undefined) process.env.UNIPI_KANBOARD_QUEUE_MAX = savedQueue;
       rmSync(cwd, { recursive: true, force: true });
     }
   });

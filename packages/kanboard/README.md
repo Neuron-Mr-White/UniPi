@@ -3,10 +3,14 @@
 The pi half of **kanboard v3**: a per-project board for deferred work. The
 storage, transition rules and web UI live in the Rust binary
 ([`crates/kanboard`](../../crates/kanboard) — one writer for every change); this
-package is the terminal-side bridge: commands, the task runner, hub settings and
-the `kanboard` skill.
+package is the terminal-side bridge: commands, the `-do` budget, the turn
+arbiter's kanboard monitor, hub settings and the `kanboard` skill.
+**There is no runner** — the session works board tasks itself; the runner,
+queue and strategy labels were removed (see
+[`docs/plans/2026-09-30-01a0f095.md`](../../docs/plans/2026-09-30-01a0f095.md)).
 
-Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-24-kanboard-v3-design.md).
+Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-24-kanboard-v3-design.md)
+(superseded for the runner/queue/strategy parts).
 
 ## Commands
 
@@ -18,7 +22,7 @@ Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-2
 | `open [--host H] [--port N]` | Ensure the daemon (reuse a healthy one, else spawn `serve` detached) and print `http://127.0.0.1:<port>/p/<slug>`. The browser opens only when `openBrowser` is on. |
 | `onboard` | `project add` for this workspace and remembers the slug. Idempotent. |
 | `close` | Shut down the board daemon — the web UI goes offline until the next `open`. Running tasks are unaffected. |
-| `status` | Daemon pid/port, project counts, active claims (session/pid/host/staleness), this session's queue, and the runner's current task. |
+| `status` | Daemon pid/port, project counts and active claims (session/pid/host/staleness). |
 | `doctor` | ✓/✗ setup check (binary, daemon health, project, summary agent, bind, claims) as a display-only message. |
 
 The other three commands are separate slash commands:
@@ -26,56 +30,46 @@ The other three commands are separate slash commands:
 | Command | What it does |
 |---|---|
 | `/unipi:kanboard-add [-p 1-5] [--after ID] [--status backlog\|todo] <title>` | Capture a task — no agent turn. Lines below the title are the body; existing file paths pasted there are attached. `-p` maps 1 none · 2 low · 3 medium · 4 high · 5 urgent. |
-| `/unipi:kanboard-do <request>` | Reveal the skill and hand the request to the agent with board writes enabled for that turn. The agent may add/move/queue/note; it cannot run tasks — queued ids are drained by the runner when the turn ends. |
-| `/unipi:kanboard-autowork start\|stop` | `start` runs ready tasks one by one (queue order first, then `claim-next`); `stop` finishes the current task, then stops. |
+| `/unipi:kanboard-do <request>` | Reveal the skill and hand the request to the agent with a **budget**: `doTasks` task slots (each `start` uses one) and `doWrites` board writes (add, edit, link, order, move backlog↔todo, note on tasks you don't hold). Always free: reads, and `finish`, `move <ID> blocked --comment` and `note` on tasks this session started. Budgets persist across turns until spent; `-do` tops up without stacking, `off` revokes. Children never write. |
+| `/unipi:kanboard-autowork start\|stop` | `start` turns autowork on: the session works every ready task one at a time, in any mode it chooses, with no budget limits. `stop` turns the offers off (never aborts the current turn). |
 
 The old `add`/`work`/`stop` subcommands and bare-text capture now just point at
 these commands.
 
-## Runner (`/unipi:kanboard-autowork start`)
+## Continuation: the turn arbiter's monitor
 
-One job per session. The **runner owns the lifecycle transitions** the agent is
-not allowed to write:
+There is no runner loop. When a run settles, `src/monitor.ts` — a nudge
+provider on core's turn arbiter (`agent_before_settle`) — proposes at most one
+continuation:
 
-1. `claim-next --session <sid> --pid <ppid> --host <host> --gate <chainGate>` —
-   nothing ready → `Nothing ready (N waiting on deps, M blocked)`.
-2. **The task's labels decide how it runs** (`edit <ID> --strategy
-   none|goal|ralph|swarm|graph` and `--plan yes|no`; `auto`/unset = jev picks).
-   jev gets one `choice` call with only the unset questions (title + body
-   ≤2000 chars): strategy criteria none/goal/ralph/swarm/graph + plan yes/no.
-   jev null → `none` + no plan; the decision is logged to
-   `~/.unipi/logs/kanboard.log` with `UNIPI_DEBUG_KANBOARD=1`.
-3. `set-run --mode`, then the task goes to the agent as a user message: title,
-   body, last 10 activity entries, each dependency with its status and last note,
-   and the rules (block with a comment to ask a question; never write
-   `in_review`/`done`/`cancelled`; work only on this task).
-   - **plan=yes** → plan mode is entered through workflow's `unipi:plan-enter`
-     runner first; approval stays interactive; a discarded plan releases the
-     task to Todo with `plan discarded`. The chosen strategy applies to the
-     work turn after approval (deferred until `planModeChanged`).
-   - **goal** → long-horizon's `unipi:goal-start` runner starts a goal with the
-     task as the objective; the goal id is recorded with `set-run --goal` and
-     completion is read back with `unipi:goal-status`.
-   - **swarm / graph** → long-horizon's `unipi:lh-explicit` runner sets the
-     explicit mode for the work turn.
-   - **ralph** → `unipi:ralph-start` starts the checklist loop (task title +
-     body as the checklist file); with no `- [ ]` items or a failed start it
-     falls back to goal, then none.
-4. Run end (a `/plan` settle after the last `agent_end`, once the agent reports
-   idle with no queued messages): the task is re-read — if the agent blocked it,
-   that is respected and reported (`▣ UNI-12 blocked: <comment>`) and the loop
-   continues; otherwise `release --to in_review --comment <last assistant text
-   ≤500 chars>`. `Esc` (aborted turn) → `release --to todo --comment "interrupted
-   by user"` and the loop stops. Session shutdown → `release --to todo` with
-   `session ended`.
-5. After each task: `✓ UNI-12 → In Review: <first line>`, then the loop takes
-   the next id from the session **queue** (`claim-next --id`; entries that went
-   stale are dropped with a notice), falls back to `claim-next` while autowork
-   is on, and stops when nothing is ready. The event loop is never blocked.
+- **Claims (priority 50):** a task this session started is still In Progress →
+  `↻ UNI-30 still In Progress — continue, or finish/block it (n/5)`.
+- **Autowork-next (priority 40):** autowork on, no open claims, a ready task
+  exists → `↻ next ready: UNI-33 <title> …`; nothing ready → an
+  `autowork done` notice, then autowork turns itself off.
 
-Footer: `▣ UNI-12 · <strategy>[ +plan]` while a task runs. The claimed task is persisted with
-`pi.appendEntry("unipi:kanboard-runner", …)`, so `/reload` or a resume offers to
-resume it or releases it to Todo.
+The monitor defers to a **long-horizon owner** (priority 100), to **pending
+events** and to **wait sources** (a running bg wake, a busy sidekick, a
+background subagent). It **disarms** on an aborted/errored run (Esc never gets
+talked over) and when a goal stops paused/budget with claims open (notice
+only). Runaway guards: 2 nudged runs with zero tool calls → `⚠ stalled`, a
+hard cap of 5 nudges per task, a question heuristic (the agent asked the user
+something → notice, no nudge), and in autowork the same stall rule plus a
+3-offers-per-task cap. After an Esc, a later prompt that names a claimed id
+re-arms the monitor.
+
+**Children are read-only.** Sidekicks and subagents may read the board; every
+write is refused with "board writes are the lead's job — report this to the
+lead". Reminders are silent there too.
+
+**Session identity & lifecycle.** On every lead `session_start` the session id
+becomes `UNIPI_KANBOARD_SESSION = pi-<pi session id>` (stable across `-c`/`-r`)
+and `UNIPI_KANBOARD_PID` the process pid. At startup stale claims whose pid died
+are reaped (`session lost: …`), and tasks released that way get a one-time
+notice ("UNI-30 was released when the last run ended — ask me to re-start it").
+On `session_shutdown` this session's open claims are released to Todo with
+`released: session ended mid-task (<session>)` (actor system — the agent actor
+cannot release).
 
 ## Settings (hub section "Kanboard")
 
@@ -88,10 +82,11 @@ resume it or releases it to Todo.
 | `openBrowser` | `false` | Open the board in a browser on `open` |
 | `requireAuth` | `false` | Also require the access token on 127.0.0.1 (remote always does) |
 | `keepToken` | `false` | Reuse `<home>/token` across daemon restarts |
-| `queueMax` | `10` | Tasks a session may queue (0 = unlimited); passed to the CLI as `UNIPI_KANBOARD_QUEUE_MAX` |
-| `maxSessions` | `2` | Distinct sessions running tasks per project (`UNIPI_KANBOARD_MAX_SESSIONS`) |
-| `turnAddLimit` | `20` | `add` calls allowed per -do turn or runner task (0 = unlimited) |
-| `reminders` | `true` | Progress reminders for hand-worked tasks: a steer on the first file-changing call while a mentioned task is still Todo (R1), and a follow-up at turn end while a started task is still In Progress (R2, max 2 per task). Text only, silent in runner runs |
+| `maxSessions` | `2` | Distinct sessions holding in-progress tasks per project (`UNIPI_KANBOARD_MAX_SESSIONS`) |
+| `turnAddLimit` | `20` | `add` calls allowed per turn (0 = unlimited) — the runaway guard, applies in autowork too |
+| `reminders` | `true` | R1: steer on the first file-changing call while a mentioned task is still Todo (text only, never blocks; silent in child sessions) |
+| `doTasks` | `5` | Task slots a `/unipi:kanboard-do` grants (each `start` costs one) |
+| `doWrites` | `10` | Board writes a `/unipi:kanboard-do` grants; a stored `doCredits` migrates into this |
 | *actions* | | `Open board…`, `Stop daemon`, `Summary agent command…`, `Rotate access token` |
 
 `Summary agent command…` writes through `settings set agent-command` and
@@ -210,10 +205,10 @@ The extension never edits those files — the binary owns them.
 | `UNI-5 is unreadable: … (line N)` | That task's own file is broken — repair it before moving/noting it. |
 | The daemon looks stale | `unipi-kanboard status` (pid + liveness), then `/unipi:kanboard close`, `unipi-kanboard stop` (SIGTERM, ≤3s) or the hub's **Stop daemon** action. |
 | Nothing is ready | `unipi-kanboard list --ready --json` shows `waitingFor`; a cancelled dependency blocks forever — `link`/`unlink` to re-plan. |
-| The runner prompts for permission on every board call | Fixed in auto mode: `unipi-kanboard … --actor agent` is allow-listed by the permission gate (ask mode still asks). |
+| A board call prompts for permission | Fixed in auto mode: `unipi-kanboard … --actor agent` is allow-listed by the permission gate (ask mode still asks). |
 
 ## Tests
 
 ```bash
-npm test -w packages/kanboard     # bin resolution, commands, runner, settings
+npm test -w packages/kanboard     # bin resolution, commands, budget guard, monitor, settings
 ```

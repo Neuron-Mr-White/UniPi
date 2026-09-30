@@ -2,7 +2,8 @@
  * @pi-unipi/kanboard — settings (hub section "Kanboard").
  */
 
-import { getSettings, registerCommandRunner, registerSettings, setSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
+import { existsSync, readFileSync } from "node:fs";
+import { getSettings, globalSettingsPath, projectSettingsPath, registerCommandRunner, registerSettings, setSettings } from "@pi-unipi/core";
 
 export type ChainGate = "in_review" | "done";
 
@@ -25,14 +26,14 @@ export interface KanboardSettings {
   requireAuth: boolean;
   /** Reuse <home>/token so board links survive daemon restarts. */
   keepToken: boolean;
-  /** Tasks one session may queue (0 = unlimited). */
-  queueMax: number;
   /** Distinct sessions running tasks per project (min 1). */
   maxSessions: number;
-  /** `add` calls allowed per -do/runner window (0 = unlimited). */
+  /** `add` calls allowed per turn (0 = unlimited). */
   turnAddLimit: number;
-  /** Write credits a /unipi:kanboard-do grants (each board write costs 1). */
-  doCredits: number;
+  /** Task slots a /unipi:kanboard-do grants (each `start` uses one). */
+  doTasks: number;
+  /** Board writes a /unipi:kanboard-do grants. */
+  doWrites: number;
   /** Strategy for unlabelled tasks ("auto" = jev decides, gated by `jevThreshold`). */
   defaultStrategy: "auto" | "none" | "goal" | "ralph" | "swarm" | "graph";
   /** Confidence floor for jev's strategy answer; below it (or missing) the task runs "none". */
@@ -57,10 +58,10 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   openBrowser: false,
   requireAuth: false,
   keepToken: false,
-  queueMax: 10,
   maxSessions: 2,
   turnAddLimit: 20,
-  doCredits: 10,
+  doTasks: 5,
+  doWrites: 10,
   defaultStrategy: "none",
   jevThreshold: 0.8,
   defaultPlan: false,
@@ -79,11 +80,11 @@ export function registerKanboardSettings(): void {
   registerSettings({
     namespace: KANBOARD_NAMESPACE,
     label: "Kanboard",
-    defaults: { ...DEFAULT_SETTINGS, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
+    defaults: { ...DEFAULT_SETTINGS } as unknown as Record<string, unknown>,
     schema: [
       {
         title: "Kanboard",
-        description: "Deferred-work board: task runner, daemon and skill",
+        description: "The session's work board: daemon, -do budgets and skill",
         fields: [
           {
             key: "chainGate",
@@ -120,72 +121,18 @@ export function registerKanboardSettings(): void {
             label: "Keep the access token across restarts",
             description: "Reuse one token so board links stay valid; rotate it below.",
           },
-          { key: "queueMax", type: "number", label: "-do queue limit", min: 0, zeroLabel: "unlimited", description: "Tasks a session may queue for the runner" },
           { key: "maxSessions", type: "number", label: "Sessions working at once (per project)", min: 1, description: "Distinct sessions holding in_progress tasks" },
-          { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per -do turn or runner task" },
+          { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per turn" },
           {
             key: "reminders",
             type: "boolean",
             label: "Progress reminders",
-            description: "Remind the agent to `start` a mentioned Todo task before editing and to `finish` it before the turn ends (text only, never blocks; off in runner runs)",
+            description: "Remind the agent to `start` a mentioned Todo task before editing (text only, never blocks; off in child sessions)",
           },
-          { key: "doCredits", type: "number", label: "-do write credits", min: 0, zeroLabel: "off", description: "Write credits a /unipi:kanboard-do grants; each board write costs 1, reads are free" },
+          { key: "doTasks", type: "number", label: "-do task slots", min: 0, zeroLabel: "off", description: "Task slots a /unipi:kanboard-do grants; each `start` uses one" },
+          { key: "doWrites", type: "number", label: "-do write budget", min: 0, zeroLabel: "off", description: "Board writes a /unipi:kanboard-do grants (add, edit, link, order, move, note on tasks you don't hold)" },
         ],
       },
-      {
-        title: "Task defaults",
-        description: "What the runner does when a task carries no label",
-        fields: [
-          {
-            key: "defaultStrategy",
-            type: "enum",
-            label: "Default strategy",
-            options: [
-              { value: "auto", label: "Auto (jev decides, gated by confidence)" },
-              { value: "none", label: "none (one-pass change)" },
-              { value: "goal", label: "goal (iterate until verifiably done)" },
-              { value: "ralph", label: "ralph (checklist of similar chores)" },
-              { value: "swarm", label: "swarm (parallel parts)" },
-              { value: "graph", label: "graph (dependent steps)" },
-            ],
-            description: "Strategy for tasks without a --strategy label; auto = jev decides, gated by the confidence threshold",
-          },
-          {
-            key: "jevThreshold",
-            type: "number",
-            label: "Jev confidence threshold",
-            min: 0.01,
-            max: 1,
-            description: "Below this jev's strategy answer abstains → none (0-1)",
-          },
-          {
-            key: "defaultPlan",
-            type: "boolean",
-            label: "Plan first by default",
-            description: "Unlabelled tasks get a plan+approval turn before work (jev is never asked)",
-          },
-          {
-            key: "blocking",
-            type: "enum",
-            label: "Blocking",
-            options: [
-              { value: "avoid", label: "Avoid — work autonomously, note assumptions" },
-              { value: "ask", label: "Ask — block the task to ask the user" },
-            ],
-            description: "What a confused runner task may do; avoid = assume-and-note, only block on true impossibles",
-          },
-        ],
-      },
-      {
-        title: "Board",
-        description: "Daemon, tokens and links",
-        fields: [
-          { key: "open", type: "action", label: "Open board…", description: "Start the daemon and print the URL", command: ACTION_OPEN },
-          { key: "stopDaemon", type: "action", label: "Stop daemon", description: "Terminate the running kanboard daemon", command: ACTION_STOP_DAEMON },
-          { key: "rotateToken", type: "action", label: "Rotate access token", description: "Drop the persistent token; a fresh one mints on the next daemon start", command: ACTION_ROTATE_TOKEN },
-        ],
-      },
-      decisionModelSection({ title: "Strategy — Decision model" }),
     ],
   });
 }
@@ -205,10 +152,16 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
     openBrowser: raw.openBrowser === true,
     requireAuth: raw.requireAuth === true,
     keepToken: raw.keepToken === true,
-    queueMax: typeof raw.queueMax === "number" && raw.queueMax >= 0 ? raw.queueMax : DEFAULT_SETTINGS.queueMax,
     maxSessions: typeof raw.maxSessions === "number" && raw.maxSessions >= 1 ? raw.maxSessions : DEFAULT_SETTINGS.maxSessions,
     turnAddLimit: typeof raw.turnAddLimit === "number" && raw.turnAddLimit >= 0 ? raw.turnAddLimit : DEFAULT_SETTINGS.turnAddLimit,
-    doCredits: typeof raw.doCredits === "number" && raw.doCredits >= 0 ? raw.doCredits : DEFAULT_SETTINGS.doCredits,
+    // Migration: getSettings merges defaults, so a stored doCredits hides
+    // behind the doWrites default. Look at the stored layer for the legacy key
+    // (project first, then global) — the next settings write persists doWrites.
+    doTasks: typeof raw.doTasks === "number" && raw.doTasks >= 0 ? raw.doTasks : DEFAULT_SETTINGS.doTasks,
+    doWrites:
+      typeof raw.doWrites === "number" && raw.doWrites >= 0 && storedDoWritesSet(cwd)
+        ? raw.doWrites
+        : (storedLegacyDoCredits(cwd) ?? DEFAULT_SETTINGS.doWrites),
     defaultStrategy:
       typeof raw.defaultStrategy === "string" &&
       ["auto", "none", "goal", "ralph", "swarm", "graph"].includes(raw.defaultStrategy)
@@ -228,6 +181,35 @@ export function writeKanboardSettings(patch: Partial<KanboardSettings>, cwd: str
   setSettings(KANBOARD_NAMESPACE, patch as unknown as Record<string, unknown>, "global", cwd);
 }
 
+/** Whether any stored layer carries an explicit doWrites (defaults don't count). */
+function storedDoWritesSet(cwd: string): boolean {
+  for (const file of [projectSettingsPath(cwd, KANBOARD_NAMESPACE), globalSettingsPath(KANBOARD_NAMESPACE)]) {
+    try {
+      if (!existsSync(file)) continue;
+      const parsed = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+      if (typeof parsed.doWrites === "number") return true;
+    } catch {
+      // A corrupt file has no legacy value either.
+    }
+  }
+  return false;
+}
+
+/** The pre-slot doCredits value from the stored layers, if any. */
+function storedLegacyDoCredits(cwd: string): number | undefined {
+  for (const file of [projectSettingsPath(cwd, KANBOARD_NAMESPACE), globalSettingsPath(KANBOARD_NAMESPACE)]) {
+    try {
+      if (!existsSync(file)) continue;
+      const parsed = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+      const value = parsed.doCredits;
+      if (typeof value === "number" && value >= 0) return value;
+    } catch {
+      // A corrupt file has no legacy value either.
+    }
+  }
+  return undefined;
+}
+
 /** Re-exported so index.ts and tests share one registration path. */
 export function registerKanboardRunners(runners: {
   open: (ctx: unknown) => void | Promise<void>;
@@ -241,9 +223,9 @@ export function registerKanboardRunners(runners: {
 
 /**
  * Limits reach the Rust CLI through the environment — refresh the process-wide
- * values so the agent's bash calls and the runner's CLI calls both see them.
+ * values so the agent's bash calls and spawned CLI calls both see them.
+ * (queueMax died with the runner; the binary's queue limit is untouched.)
  */
 export function applyLimitEnv(settings: KanboardSettings): void {
-  process.env.UNIPI_KANBOARD_QUEUE_MAX = String(settings.queueMax);
   process.env.UNIPI_KANBOARD_MAX_SESSIONS = String(settings.maxSessions);
 }

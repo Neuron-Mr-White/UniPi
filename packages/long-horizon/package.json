@@ -23,7 +23,7 @@
     "graph"
   ],
   "scripts": {
-    "test": "tsc --noEmit && npx tsx --test src/__tests__/*.test.ts",
+    "test": "tsc --noEmit && UNIPI_FUSION_CHILD= UNIPI_SUBAGENT_CHILD= UNIPI_KANBOARD_CHILD= npx tsx --test src/__tests__/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "files": [

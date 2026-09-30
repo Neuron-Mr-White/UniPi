@@ -4,14 +4,13 @@
  *   tool_call    → TurnActivity accumulation (bash commands, edit/write
  *                  files, call count)
  *   agent_end    → extract recent tail + token totals, run continuation
- *                  settlement, deliver the next message
- *   continuation.send → pi.sendUserMessage (a follow-up user turn: the gate
- *                  re-resolves, the owner wins, the loop continues)
+ *                  settlement, fill the arbiter's nudge stash (delivered by
+ *                  the single agent_before_settle nudge, long-horizon/index.ts)
  *   verifier     → modelRegistry.complete on the session model (or the
  *                  configured verifier model)
  *
- * The loop closes here: agent_end → settle → sendUserMessage → next turn →
- * agent_end … bounded by maxTurns / stall cap / token budget.
+ * The loop closes here: agent_end → settle → stash → before_settle nudge →
+ * next turn → agent_end … bounded by maxTurns / stall cap / token budget.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";

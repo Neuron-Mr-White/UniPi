@@ -18,7 +18,7 @@ be on `PATH`):
 ```sh
 <binary> --actor agent --project <slug> list [--ready] [--json]
 <binary> --actor agent --project <slug> show <ID>
-<binary> --actor agent --project <slug> next                     # what claim-next would pick + why
+<binary> --actor agent --project <slug> next                     # what would be picked next + why (read-only)
 <binary> --actor agent --project <slug> chain <ID>               # upstream deps + downstream dependents
 <binary> --actor agent --project <slug> search "<text>" [--all]  # id/title/body, archived excluded unless --all
 <binary> --actor agent --project <slug> add "<title>" [--status todo] [--after <ID>] [--body-file <f>] [--attach <file>]…
@@ -26,23 +26,24 @@ be on `PATH`):
 <binary> --actor agent --project <slug> attach <ID> <file> --note "<what it shows>"
 <binary> --actor agent --project <slug> attachments <ID>
 <binary> --actor agent --project <slug> edit <ID> --title|--body|--labels …   # only tasks you created, while in backlog/todo
-<binary> --actor agent --project <slug> edit <ID> --strategy none|goal|ralph|swarm|graph|auto  # how the runner works it (auto/unset = jev decides)
-<binary> --actor agent --project <slug> edit <ID> --plan yes|no|auto        # plan+approve first (auto/unset = jev decides)
-<binary> --actor agent --project <slug> start <ID>                          # todo → in progress, claimed for your session (free)
+<binary> --actor agent --project <slug> start <ID>                          # todo → in progress, claimed for your session (costs a -do slot)
 <binary> --actor agent --project <slug> finish <ID> --comment "<summary>"   # in progress → in review, only a task you started (free)
 <binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>"
 <binary> --actor agent --project <slug> link <ID> --after <DEP>
 <binary> --actor agent --project <slug> unlink <ID> --after <DEP>
 <binary> --actor agent --project <slug> order <ID> --top|--bottom|--before <ID>
-<binary> --actor agent --project <slug> queue <ID>… | queue --list            # your session's work queue (limit: setting queueMax, default 10)
-<binary> --actor agent --project <slug> unqueue [<ID>…]                      # no ids clears it
 ```
 
+There is **no queue and no runner** — the session works tasks itself
+(`/unipi:kanboard-autowork` just keeps offering the next ready task).
+`queue`, `unqueue`, `claim-next`, `set-run` and `edit --strategy/--plan` are
+removed and refused.
+
 `--json` gives machine-readable output for every subcommand (task objects carry
-`ready`, `waitingFor`, `depsStatus`, `staleness`, `strategy` and `plan`).
+`ready`, `waitingFor`, `depsStatus` and `staleness`).
 
 `list`/`search` show a one-line body excerpt; read a task's full description with
-`show <ID>` before editing, linking or queueing it.
+`show <ID>` before editing or starting it.
 
 `settings show` reads the pi runtime and effective limits; `settings set`
 and `rotate-token` are user-only — the agent is refused.
@@ -52,10 +53,11 @@ and `rotate-token` are user-only — the agent is refused.
 | Move | Who |
 |---|---|
 | backlog ↔ todo | user, agent |
-| todo → in progress | the runner (`claim-next`), or the agent with `start <ID>` (claims it for its session) |
+| todo → in progress | the agent with `start <ID>` (claims it for its session; costs a `-do` slot) |
 | edit a task | agent — only tasks it created, and only in backlog/todo |
-| in progress → in review | the runner (when a runner task's turn ends), or the agent with `finish <ID> --comment` — only a task its own session `start`ed |
+| in progress → in review | the agent with `finish <ID> --comment` — only a task its own session `start`ed |
 | in progress → blocked | agent, system — **comment required** (what you need) |
+| in progress → todo | user or system `release` — comment required (the session died or gave the task up) |
 | blocked → todo | user only — comment required (the answer) |
 | in review → done | user only |
 | in review → todo/backlog | user only — comment required (rework note) |
@@ -72,15 +74,18 @@ lists them — read the files there directly if you need one.
 
 1. **Never pass `--actor user`.** That is an honour system: pretending to be the
    user to cancel a task or mark it done breaks the board's whole contract.
-2. **Working a task by hand** (the user says "do UNI-5"): **`start` a task
-   before working on it, `finish` it with a summary when done** —
-   `start <ID>` before your first edit, `finish <ID> --comment "<what you did>"`
-   before your turn ends (or `move <ID> blocked --comment "<what you need>"` if
-   you cannot). Both are free and need no `/unipi:kanboard-do`. In Review means
-   "the agent did the work, a human reviews" — never leave a task you worked in
-   Todo or In Progress. You may have several tasks started. **Never move a task
-   to `done`**, and never `finish` a task the runner gave you: the runner writes
-   in_review for its own tasks when your turn ends (`finish` refuses them).
+2. **Work the tasks yourself, in this session** (the user says "do UNI-5"):
+   **`start` a task before working on it, `finish` it with a summary when done**
+   — `start <ID>` before your first edit, `finish <ID> --comment "<what you
+   did>"` before your turn ends (or `move <ID> blocked --comment "<what you
+   need>"` if you cannot). `finish` and own-claim `blocked`/`note` are always
+   free; **`start` costs one of your `-do` task slots** — count the tasks a
+   request needs BEFORE starting anything, and if that is more than your
+   remaining slots, start none of them: say what you can do now and ask whether
+   to raise `kanboard.doTasks` or work in batches. In Review means "the agent
+   did the work, a human reviews" — never leave a task you started In Progress
+   (the board monitor will nudge you back to it). **Never move a task to
+   `done`.**
 3. **Never cancel.** If a task should be dropped, block it with
    `move <ID> blocked --comment "suggest cancel: <why>"` and let the user decide.
 4. **Follow the blocking rule in your task prompt**: by default work
@@ -94,10 +99,11 @@ lists them — read the files there directly if you need one.
    why. You may
    block only the task your own session is running (`move <ID> blocked` checks
    `--session`/`UNIPI_KANBOARD_SESSION` against the claim).
-6. **To have tasks worked by the runner after a `/unipi:kanboard-do` turn, queue
-   them** with `queue <IDs>` (Todo tasks, up to the queue limit — setting
-   `queueMax`, default 10) — the runner starts them one by one after the turn
-   ends. Never `claim-next` yourself, and don't `start` a task you queued.
+6. **Sidekicks and subagents can read the board but never write it** — every
+   write is refused with "board writes are the lead's job". Brief them with the
+   task, then update the board yourself from their reports. (The lead session
+   works tasks itself; `/unipi:kanboard-autowork` just keeps offering the next
+   ready task in the same session — there is no separate worker.)
 7. Use `note <ID> "<text>"` for progress worth remembering (decisions, what you
    verified, what you left undone) — it is the activity log the next reader sees.
 8. Dependencies form a DAG: a task is ready only when every dep reached the chain
@@ -108,10 +114,12 @@ lists them — read the files there directly if you need one.
 ## Terminal-only execution
 
 The web UI can create, edit, reorder, link and move tasks, but it **never runs a
-task** — there is no run button. Work starts only from a terminal: the runner
-(`/unipi:kanboard-autowork start`, or the queue after a `/unipi:kanboard-do`), or
-an agent that `start`s a task the user asked it to do. (The Done column's "Summarize & archive" does call the
-agent command set in the board's Settings, but only to write a summary.)
+task** — there is no run button. Work starts only from a terminal: the session
+itself, driven by `/unipi:kanboard-do` (a task-slot + write budget for one
+request) or `/unipi:kanboard-autowork` (the monitor keeps offering the next
+ready task in this session — no separate worker exists). (The Done column's
+"Summarize & archive" does call the agent command set in the board's Settings,
+but only to write a summary.)
 
 ## Attachments
 

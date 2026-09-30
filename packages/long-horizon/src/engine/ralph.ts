@@ -93,7 +93,8 @@ export interface RalphLoopDeps {
   readonly owner: OwnerCoordinator;
   /** Resolve the ralph dir (usually ctx.cwd-based). */
   ralphDir(): string;
-  send(message: string): void;
+  /** Lands in the arbiter's nudge stash; the first prompt is the kickoff contract. */
+  send(message: string, kind?: "kickoff"): void;
   now?(): number;
   /** Footer/info-screen events (loop_start / iteration_done / loop_end). */
   onEvent?(event: RalphEvent): void;
@@ -214,7 +215,7 @@ export class RalphLoop {
     const itemsTotal = parseChecklist(taskContent).length;
     this.deps.onEvent?.({ type: "loop_start", name: state.name, iteration: 1, total: itemsTotal });
     const firstPrompt = this.buildIterationPrompt(state, false);
-    this.deps.send(firstPrompt);
+    this.deps.send(firstPrompt, "kickoff");
     return { ok: true, state, firstPrompt };
   }
 

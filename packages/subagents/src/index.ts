@@ -17,14 +17,14 @@ import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-cod
 import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import {
-  UNIPI_EVENTS, emitEvent, getSettings, registerSettings, getSharedFusionStatus, SPINNER_MS,
+  UNIPI_EVENTS, emitEvent, getSettings, isChildProcess, registerSettings, registerWaitSource, getSharedFusionStatus, SPINNER_MS,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
   createCompletionDelivery, type HandoffReport,
 } from "@pi-unipi/core/child-agent.js";
 import {
-  SubagentManager, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
+  SubagentManager, backgroundRunningReason, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
   MAX_CONCURRENT, type SubagentRecord, type SubagentRun, type SubagentStatus,
 } from "./manager.js";
 import { loadProfiles, type AgentProfile } from "./profiles.js";
@@ -149,6 +149,17 @@ export { cardOutcome };
 export default function subagents(pi: ExtensionAPI): void {
   const manager = new SubagentManager();
   const delivery = createCompletionDelivery<HandoffReport>((report) => deliverCompletion(report));
+
+  // Turn-arbiter wait source (lead only): a background subagent is still
+  // working while the lead settles — its completion will arrive as an event
+  // turn, so a nudge now would race it.
+  if (!isChildProcess()) {
+    try {
+      registerWaitSource("subagents", () => backgroundRunningReason(getSharedSubagents()));
+    } catch {
+      // Registration must never block module load.
+    }
+  }
 
   let profiles: AgentProfile[] = [];
   let config: SubagentsConfig = { ...DEFAULT_CONFIG };

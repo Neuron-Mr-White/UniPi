@@ -7,7 +7,7 @@
 
 import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedLongHorizonMode, getSharedPlanPermissionStatus } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedKanboardStatus, getSharedLongHorizonMode, getSharedPlanPermissionStatus } from "@pi-unipi/core";
 import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
 import { FooterRenderer } from "./rendering/renderer.js";
 import { subscribeToEvents } from "./events.js";
@@ -448,6 +448,7 @@ function installGlanceEditor(
         const lhMode = typeof lhModeRaw === "string" && lhModeRaw.length > 0
           ? MODE_LABELS[lhModeRaw] ?? lhModeRaw
           : null;
+        const kanboard = getSharedKanboardStatus() ?? null;
         // Plan/permission state rides the same CORE registry data, written by
         // the workflow module's events (also re-emitted on session_start).
         const coreData = st.registry.getGroupData("core") as
@@ -470,6 +471,7 @@ function installGlanceEditor(
           modelName,
           thinkingLevel: typeof p?.thinkingLevel === "string" ? p.thinkingLevel : null,
           fusion,
+          kanboard,
         };
       }),
     );

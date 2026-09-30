@@ -309,7 +309,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     assert.match(noted.lines.at(-1) ?? "", /^✓ [A-Z]+-\d+ added to Backlog$/);
   });
 
-  it("status reports daemon, project counts and the runner", async () => {
+  it("status reports daemon and project counts", async () => {
     const { runStatus } = await import("../src/commands.js");
     const noted = notifications();
     const ctx = { cwd: workspace, ui: noted.ui } as never;
@@ -317,7 +317,6 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
     const text = noted.lines.at(-1) ?? "";
     assert.match(text, /daemon: not running/);
     assert.match(text, /project: /);
-    assert.match(text, /runner: idle/);
   });
 
   it("unavailable binary: nothing runs and the message names the platform", async () => {

@@ -14,6 +14,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } f
 import { getSettings } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
+import { DEFAULT_DO_TASKS, DEFAULT_DO_WRITES } from "./guard.js";
 import { asProject, asStopResult, asTask, asTaskList, type KanboardTask } from "./shapes.js";
 import { applyLimitEnv, readKanboardSettings, type KanboardSettings } from "./settings.js";
 
@@ -32,19 +33,24 @@ export const HELP = `Kanboard commands
                                         start the board and print its link
   /unipi:kanboard close                 shut the board down
   /unipi:kanboard onboard               register this project
-  /unipi:kanboard status                board, claims and queue
+  /unipi:kanboard status                board and claims
   /unipi:kanboard show [--all]          the board, in chat (lanes + claim order)
   /unipi:kanboard doctor                check the setup
   /unipi:kanboard-add [-p 1-5] <title>  add a task; lines below the title are the description (paste images there)
-  /unipi:kanboard-do <request>          let the agent use the board for this turn
-  /unipi:kanboard-autowork start|stop   work ready tasks chain by chain; stop finishes the current one first
+  /unipi:kanboard-do <request>          grant the agent task slots + a write budget
+  /unipi:kanboard-autowork start|stop   work every ready task in this session; stop just turns the offers off
 Priority -p: 1 none · 2 low · 3 medium · 4 high · 5 urgent`;
 
-export function doText(slug: string, cli: string, request: string, queueMax = 10, credits = 0): string {
-  const limit = queueMax === 0 ? "Todo tasks" : `Todo tasks, at most ${queueMax}`;
-  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). You have ${credits} write credit${credits === 1 ? "" : "s"} remaining this session — each board write (add, move, edit, note, link, order, queue) costs 1, reads are free; /unipi:kanboard-do tops the credits back up. You can add tasks, move them between backlog and todo, link, order, note, and edit tasks you created. To have tasks worked by the runner, queue them in order with \`queue <IDs>\` (${limit}); the runner starts them one by one after this turn. If you work a task yourself in this turn instead, \`start <ID>\` it before working on it and \`finish <ID> --comment "<summary>"\` it when done (both free) — never leave a task you worked in Todo or In Progress. Read a task with \`show <ID>\` before editing, linking or queueing it — \`list\` only shows titles and a one-line excerpt. To choose how a task is worked, label it with \`edit <ID> --strategy none|goal|ralph|swarm|graph\` and \`--plan yes|no\`; leave it unset to let the runner decide. If the request is unclear, ask me instead of guessing.
+export function doText(slug: string, cli: string, request: string, slots = DEFAULT_DO_TASKS, writes = DEFAULT_DO_WRITES): string {
+  const s = slots === 1 ? "" : "s";
+  const ws = writes === 1 ? "" : "s";
+  return `[kanboard] For this request you may use the kanboard skill on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`). Budget this session: ${String(slots)} task slot${s} — each \`start\` uses one — and ${String(writes)} board write${ws} (add, edit, link, order, move backlog↔todo, note on tasks you don't hold); /unipi:kanboard-do tops both back up. Always free: reads, and \`finish\`, \`move <ID> blocked --comment\` and \`note\` on tasks you started. Work the tasks yourself in this session, in whatever mode fits: \`start <ID>\` right before you work it, then \`finish <ID> --comment "<summary>"\` or \`move <ID> blocked --comment "<what you need>"\` — never leave a task you started In Progress. Before starting anything, count the tasks this request needs; if that is more than ${String(slots)}, start nothing — tell me you can do ${String(slots)} now and ask whether to raise the limit (setting kanboard.doTasks) or work in batches. Read a task with \`show <ID>\` before editing or starting it — \`list\` only shows titles and a one-line excerpt. Sidekicks and subagents can read the board but not write it: brief them with the task, then update the board yourself from their report. If the request is unclear, ask me instead of guessing.
 
 Request: ${request}`;
+}
+
+export function autoworkText(slug: string, cli: string): string {
+  return `[kanboard] Autowork on project ${slug} (CLI: \`${cli} --actor agent --project ${slug} …\`): work every ready task on the board, one at a time, in this session — choose any mode yourself (regular, goal, ralph, swarm, graph). No budget limits. Pick with \`next\` or \`list --ready\`; for each: \`show <ID>\`, \`start <ID>\`, work it, then \`finish <ID> --comment "<summary>"\` or \`move <ID> blocked --comment "<what you need>"\`. When you finish one, I'll offer the next ready task. Sidekicks and subagents can read the board but not write it — update the board yourself from their reports.`;
 }
 
 /**
@@ -185,13 +191,8 @@ export interface CommandDeps {
   settings: () => KanboardSettings;
   /** Reveal the kanboard skill for this session (append-only). */
   revealSkill: (ctx: ExtensionContext | ExtensionCommandContext) => void;
-  /** Autowork: claim-and-run loop (queue first, then claim-next). */
-  work: (ctx: ExtensionContext) => Promise<void>;
-  /** Finish the current task, then stop the loop. */
-  stop: (ctx: ExtensionContext) => void;
-  /** Drain this session's queue after a -do turn (no-op when empty/running). */
-  drainQueue: (ctx: ExtensionContext) => Promise<void>;
-  status: () => { taskId: string | null; mode: string | null; phase: string };
+  /** Autowork on/off (guard budget, monitor, status holder). */
+  setAutowork(on: boolean): void;
   /** The write window opened by -do (read by the tool_call gate). */
   guard: import("./guard.js").WriteGuard;
   /** This session's id (UNIPI_KANBOARD_SESSION / pi-<pid>). */
@@ -410,7 +411,6 @@ export async function ensureDaemon(
         ...process.env,
         UNIPI_KANBOARD_ACTOR: "user",
         UNIPI_KANBOARD_CHAIN_GATE: settings.chainGate,
-        UNIPI_KANBOARD_QUEUE_MAX: String(settings.queueMax),
         UNIPI_KANBOARD_MAX_SESSIONS: String(settings.maxSessions),
       },
     });
@@ -633,7 +633,7 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
       }
       const bar = boardProgressData(tasks, slug);
       if (bar) deps.progress?.(bar);
-      // Active claims and this session's queue.
+      // Active claims of this session.
       const running = tasks.filter((task) => task.status === "in_progress");
       if (running.length > 0) {
         lines.push("claims:");
@@ -645,42 +645,13 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
           );
         }
       }
-      try {
-        const queue = (await client!.run<unknown>(["queue", "--list"], {
-          extraEnv: { UNIPI_KANBOARD_SESSION: deps.session() },
-        })) as { queue?: string[] };
-        lines.push(`queue (${deps.session()}): ${(queue.queue ?? []).join(" ") || "empty"}`);
-      } catch {
-        lines.push("queue: (unreadable)");
-      }
     } catch {
       lines.push(`project: ${slug} (unreadable board)`);
     }
   } else {
     lines.push("project: not registered here — /unipi:kanboard onboard");
   }
-  const run = deps.status();
-  lines.push(run.taskId ? `runner: ${run.taskId} · ${run.mode} · ${run.phase}` : "runner: idle");
   ctx.ui.notify(lines.join("\n"), "info");
-}
-
-/**
- * After a -do window closed (the first real agent_end), start draining this
- * session's queue when it is non-empty. Returns true when draining started.
- */
-export async function drainQueueAfterDo(deps: CommandDeps, ctx: ExtensionContext): Promise<boolean> {
-  const client = deps.cli;
-  const slug = currentSlug();
-  if (!client || !slug) return false;
-  const queued = await client
-    .run<{ queue?: string[] }>(["queue", "--list"], {
-      extraEnv: { UNIPI_KANBOARD_PROJECT: slug, UNIPI_KANBOARD_SESSION: deps.session() },
-    })
-    .then((payload) => payload.queue ?? [])
-    .catch(() => [] as string[]);
-  if (queued.length === 0) return false;
-  await deps.drainQueue(ctx);
-  return true;
 }
 
 
@@ -1044,7 +1015,7 @@ const SUB_DESCRIPTIONS: Record<Subcommand, string> = {
   open: "Start the daemon and print the board URL (--host 0.0.0.0|tailscale, --port N)",
   close: "Shut down the board daemon (the web UI goes offline)",
   onboard: "Register this project on the board",
-  status: "Daemon, project counts, claims, queue and the runner state",
+  status: "Daemon, project counts and claims",
   doctor: "Check the whole setup (binary, daemon, project, agent, claims)",
   show: "The board in chat: lanes + claim order (--all adds cancelled/archived)",
 };
@@ -1240,7 +1211,14 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
   }
 
   pi.on("context", (event) => {
-    const hidden = new Set([HELP_CUSTOM_TYPE, DOCTOR_CUSTOM_TYPE, SHOW_CUSTOM_TYPE]);
+    // Monitor notices ride custom ENTRIES (never messages) — this is defense
+    // in depth in case one ever becomes a message.
+    const hidden = new Set([
+      HELP_CUSTOM_TYPE,
+      DOCTOR_CUSTOM_TYPE,
+      SHOW_CUSTOM_TYPE,
+      "unipi:kanboard-notice",
+    ]);
     const filtered = event.messages.filter(
       (message) => !hidden.has((message as { customType?: string }).customType ?? ""),
     );
@@ -1257,7 +1235,18 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
     // Limits live in the environment; refresh so this bash call inherits the
     // current settings (the spawned CLI reads them).
     applyLimitEnv(deps.settings());
-    const reason = deps.guard.check(command);
+    const reason = await deps.guard.check(command, {
+      ownsClaim: async (id) => {
+        const client = deps.cli;
+        const slug = currentSlug();
+        if (!client || !slug) return false;
+        const task = asTask("show", await client.run([ "show", id, "--json" ], {
+          extraEnv: { UNIPI_KANBOARD_PROJECT: slug, UNIPI_KANBOARD_SESSION: deps.session() },
+        }));
+        const run = task.run as { session?: string } | null | undefined;
+        return task.status === "in_progress" && run?.session === deps.session();
+      },
+    });
     return reason ? { block: true, reason } : undefined;
   });
 
@@ -1281,11 +1270,11 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
         return;
       }
       if (sub === "work") {
-        ctx.ui.notify("kanboard: use /unipi:kanboard-autowork start to work the queue", "info");
+        ctx.ui.notify("kanboard: use /unipi:kanboard-autowork start to work every ready task in this session", "info");
         return;
       }
       if (sub === "stop") {
-        ctx.ui.notify("kanboard: use /unipi:kanboard-autowork stop to finish the current task and stop", "info");
+        ctx.ui.notify("kanboard: use /unipi:kanboard-autowork stop to turn autowork offers off", "info");
         return;
       }
 
@@ -1334,13 +1323,13 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
   });
 
   pi.registerCommand("unipi:kanboard-do", {
-    description: "Grant kanboard write credits to the agent (/unipi:kanboard-do <request>; off revokes)",
+    description: "Grant the agent kanboard task slots and a write budget (/unipi:kanboard-do <request>; off revokes)",
     getArgumentCompletions: (prefix: string) => kanboardDoCompletions(deps, prefix ?? ""),
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const request = (args ?? "").trim();
       if (request.toLowerCase() === "off") {
         deps.guard.revoke();
-        ctx.ui.notify("kanboard: write credits revoked — reads stay free", "info");
+        ctx.ui.notify("kanboard: -do budget revoked — reads stay free", "info");
         return;
       }
       if (!request) {
@@ -1359,12 +1348,13 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
       const busy = typeof (ctx as unknown as { isIdle?: () => boolean }).isIdle === "function"
         ? !(ctx as unknown as { isIdle: () => boolean }).isIdle!()
         : false;
+      const budget = deps.guard.remaining();
       pi.sendUserMessage(
-        doText(slug, client.binary.path, request, deps.settings().queueMax, deps.guard.remaining()),
+        doText(slug, client.binary.path, request, budget.slots, budget.writes),
         busy ? { deliverAs: "followUp" } : undefined,
       );
       deps.guard.noteSent();
-      deps.debug(`do credits open (${slug}): ${deps.guard.remaining()} remaining`);
+      deps.debug(`do open (${slug}): ${JSON.stringify(deps.guard.remaining())}`);
     },
   });
 
@@ -1382,11 +1372,27 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
       const sub = (args ?? "").trim().toLowerCase();
       if (sub === "start") {
         if (!(await ensureOnboarded(deps, ctx))) return;
-        await deps.work(ctx as unknown as ExtensionContext);
+        const client = deps.cli;
+        if (!client) {
+          ctx.ui.notify(`kanboard: ${deps.unavailable}`, "warning");
+          return;
+        }
+        const slug = currentSlug()!;
+        deps.revealSkill(ctx);
+        deps.setAutowork(true);
+        deps.guard.setAutowork(true);
+        deps.debug(`autowork on (${slug})`);
+        const busy = typeof (ctx as unknown as { isIdle?: () => boolean }).isIdle === "function"
+          ? !(ctx as unknown as { isIdle: () => boolean }).isIdle!()
+          : false;
+        pi.sendUserMessage(autoworkText(slug, client.binary.path), busy ? { deliverAs: "followUp" } : undefined);
         return;
       }
       if (sub === "stop") {
-        deps.stop(ctx as unknown as ExtensionContext);
+        deps.setAutowork(false);
+        deps.guard.setAutowork(false);
+        deps.debug("autowork off");
+        ctx.ui.notify("kanboard: autowork off", "info");
         return;
       }
       ctx.ui.notify("kanboard: /unipi:kanboard-autowork start|stop", "warning");

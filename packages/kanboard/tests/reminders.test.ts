@@ -14,16 +14,14 @@ import { join } from "node:path";
 import {
   ANTI_POISONING_SUFFIX,
   MAX_REMINDERS_PER_TASK,
-  REMINDER_CUSTOM_TYPE,
   createProgressTracker,
   isFileChangingCall,
   registerProgressReminders,
-  sendReminder,
   shellChangesFiles,
   taskIdsIn,
   type TrackerDeps,
 } from "../src/reminders.js";
-import { createWriteGuard, isFreeWrite, kanboardInvocations, WRITE_CREDITS_USED_UP } from "../src/guard.js";
+import { createWriteGuard, SLOTS_USED_UP, WRITES_USED_UP } from "../src/guard.js";
 import { doText } from "../src/commands.js";
 import { setSettings } from "@pi-unipi/core";
 import { DEFAULT_SETTINGS, readKanboardSettings, registerKanboardSettings } from "../src/settings.js";
@@ -55,7 +53,6 @@ function fakeBoard(initial: Record<string, string>) {
 function tracker(board: ReturnType<typeof fakeBoard>, extra: Partial<TrackerDeps> = {}) {
   return createProgressTracker({
     enabled: () => true,
-    runnerOwned: () => false,
     session: () => SESSION,
     list: async () => {
       board.lists += 1;
@@ -158,10 +155,9 @@ describe("R1: steer on the first file-changing call", () => {
     board.start("UNI-5");
     await t.onToolResult(bash(`${BIN} --actor agent --project p start UNI-5`));
     assert.equal(await t.onToolResult(edit), undefined);
-    // Finish it; nothing is left In Progress, so no R2.
+    // Finish it; nothing is left In Progress.
     board.finish("UNI-5");
     await t.onToolResult(bash(`${BIN} --actor agent --project p finish UNI-5 --comment done`));
-    assert.equal(await t.onAgentEnd({ messages: [] }), null);
     // A later turn touching UNI-8's files names UNI-8 only (cap: 2 per task).
     t.onTurnStart();
     const late = textOf(await t.onToolResult(edit));
@@ -191,24 +187,17 @@ describe("R1: steer on the first file-changing call", () => {
     off.onTurnStart();
     assert.equal(await off.onToolResult(edit), undefined, "setting off");
 
-    const runner = tracker(board, { runnerOwned: () => true });
-    runner.onPrompt("do UNI-5");
-    runner.onTurnStart();
-    assert.equal(await runner.onToolResult(edit), undefined, "runner-owned run");
-
     const unknown = tracker(board);
     unknown.onPrompt("do UNI-6 and NOPE-1");
     unknown.onTurnStart();
     assert.equal(await unknown.onToolResult(edit), undefined, "backlog/missing ids are not Todo");
   });
 
-  it("does not record mentions from runner prompts or its own reminders", () => {
-    let owned = true;
-    const t = tracker(fakeBoard({}), { runnerOwned: () => owned });
+  it("does not record mentions from its own reminders", () => {
+    const t = tracker(fakeBoard({}));
     t.onPrompt("[kanboard UNI-3] Fix it — depends on UNI-2");
-    owned = false;
-    t.onPrompt(`[kanboard] UNI-4 is still In Progress. ${ANTI_POISONING_SUFFIX}`);
-    assert.deepEqual(t.state().mentioned, []);
+    t.onPrompt(`[kanboard] ↻ UNI-4 still In Progress — continue, or finish/block it (1/5) ${ANTI_POISONING_SUFFIX}`);
+    assert.deepEqual(t.state().mentioned, ["UNI-3", "UNI-2"], "the nudge text records nothing new");
   });
 
   it("records ids the agent `show`ed as mentions", async () => {
@@ -239,101 +228,37 @@ describe("R1: steer on the first file-changing call", () => {
   });
 });
 
-describe("R2: follow-up at agent_end", () => {
-  it("names started tasks still In Progress, max 2 per task", async () => {
-    const board = fakeBoard({ "UNI-5": "todo", "UNI-8": "todo" });
-    const t = tracker(board);
-    t.onPrompt("do UNI-5 and UNI-8");
-    t.onTurnStart();
-    for (const id of ["UNI-5", "UNI-8"]) {
-      board.start(id);
-      await t.onToolResult(bash(`${BIN} --actor agent --project p start ${id}`));
-    }
-    board.finish("UNI-5");
-    const first = await t.onAgentEnd({ messages: [] });
-    assert.ok(first);
-    assert.match(first!, /UNI-8 is still In Progress/);
-    assert.doesNotMatch(first!, /UNI-5/, "finished tasks are dropped");
-    assert.match(first!, /finish UNI-8 --comment/);
-    assert.match(first!, /move UNI-8 blocked --comment/);
-    assert.ok(first!.includes(ANTI_POISONING_SUFFIX));
-    assert.ok(await t.onAgentEnd({ messages: [] }), "second reminder");
-    assert.equal(await t.onAgentEnd({ messages: [] }), null, "capped at 2");
-    assert.deepEqual(t.state().r2, { "UNI-8": 2 });
-  });
-
-  it("stays quiet when nothing was started, the start failed, the turn was aborted or the runner owns it", async () => {
-    const board = fakeBoard({ "UNI-5": "todo" });
-    const t = tracker(board);
-    assert.equal(await t.onAgentEnd({ messages: [] }), null, "nothing started");
-    await t.onToolResult(bash(`${BIN} start UNI-5`, true));
-    assert.equal(await t.onAgentEnd({ messages: [] }), null, "a refused start is not a start");
-
-    board.start("UNI-5");
-    await t.onToolResult(bash(`${BIN} start UNI-5`));
-    assert.equal(
-      await t.onAgentEnd({ messages: [{ role: "assistant", stopReason: "aborted" }] }),
-      null,
-      "user abort",
-    );
-    let owned = true;
-    const runner = tracker(board, { runnerOwned: () => owned });
-    await runner.onToolResult(bash(`${BIN} start UNI-5`));
-    assert.equal(await runner.onAgentEnd({ messages: [] }), null, "runner run");
-    owned = false;
-    assert.ok(await runner.onAgentEnd({ messages: [] }), "fires once the runner is idle");
-  });
-
-  it("drops tasks that were blocked or reaped", async () => {
-    const board = fakeBoard({ "UNI-5": "todo" });
-    const t = tracker(board);
-    board.start("UNI-5");
-    await t.onToolResult(bash(`${BIN} start UNI-5`));
-    board.tasks.get("UNI-5")!.status = "blocked";
-    board.tasks.get("UNI-5")!.run = null;
-    assert.equal(await t.onAgentEnd({ messages: [] }), null);
-    assert.deepEqual(t.state().started, []);
-  });
-});
-
 describe("pi wiring", () => {
-  it("steers through tool_result and delivers R2 only when taken", async () => {
+  it("steers through tool_result; nothing is queued at agent_end", async () => {
     const handlers = new Map<string, (event: unknown) => unknown>();
-    const sent: Array<{ message: { customType: string; content: string; display: boolean }; options: unknown }> = [];
     const pi = {
       on: (name: string, handler: (event: unknown) => unknown) => handlers.set(name, handler),
-      sendMessage: (message: never, options: unknown) => sent.push({ message, options }),
     } as never;
     const board = fakeBoard({ "UNI-5": "todo" });
-    const wired = registerProgressReminders(pi, tracker(board));
+    registerProgressReminders(pi, tracker(board));
     await handlers.get("before_agent_start")!({ prompt: "please do UNI-5" });
     await handlers.get("agent_start")!({});
     const steered = (await handlers.get("tool_result")!(edit)) as { content: Array<{ text?: string }> };
     assert.match(textOf(steered), /UNI-5 is still Todo/);
     board.start("UNI-5");
     await handlers.get("tool_result")!(bash(`${BIN} start UNI-5`));
-    await handlers.get("agent_end")!({ messages: [] });
-    assert.equal(sent.length, 0, "nothing is sent from agent_end itself");
-    const text = wired.takePending();
-    assert.match(text ?? "", /UNI-5 is still In Progress/);
-    assert.equal(wired.takePending(), null);
-    sendReminder(pi, text!);
-    assert.equal(sent[0]!.message.customType, REMINDER_CUSTOM_TYPE);
-    assert.deepEqual(sent[0]!.options, { triggerTurn: true });
+    assert.ok(handlers.has("before_agent_start") && handlers.has("agent_start") && handlers.has("tool_result"));
+    assert.ok(!handlers.has("agent_end"), "R2 is gone — continuation is the monitor's job");
   });
 });
 
-describe("the write window: start/finish are free", () => {
-  it("passes start/finish without a -do window and without spending credits", () => {
-    const guard = createWriteGuard(() => null, () => 20, () => 10);
-    assert.ok(isFreeWrite(kanboardInvocations(`${BIN} --actor agent start UNI-5`)[0]!));
-    assert.equal(guard.check(`${BIN} --actor agent --project p start UNI-5`), null);
-    assert.equal(guard.check(`${BIN} --actor agent --project p finish UNI-5 --comment "done"`), null);
-    assert.equal(guard.remaining(), 0);
-    assert.equal(guard.check(`${BIN} note UNI-5 x`), WRITE_CREDITS_USED_UP, "other writes still need credits");
+describe("the write window: own-claim closes are free", () => {
+  it("finish is free without budget; start needs a slot", async () => {
+    const guard = createWriteGuard({ addLimit: () => 20, doTasks: () => 5, doWrites: () => 10, isChild: () => false });
+    assert.equal(await guard.check(`${BIN} --actor agent start UNI-5`), SLOTS_USED_UP, "0 slots, no start");
+    assert.equal(await guard.check(`${BIN} --actor agent --project p finish UNI-5 --comment "done"`), null, "finish is always free");
+    assert.deepEqual(guard.remaining(), { slots: 0, writes: 0, autowork: false });
+    assert.equal(await guard.check(`${BIN} note UNI-5 x`), WRITES_USED_UP, "other writes still need budget");
     guard.open();
-    assert.equal(guard.check(`${BIN} start UNI-6 && ${BIN} finish UNI-6 --comment ok && ${BIN} note UNI-6 x`), null);
-    assert.equal(guard.remaining(), 9, "only the note cost a credit");
+    const owned = new Set(["UNI-6"]);
+    const deps = { ownsClaim: async (id: string) => owned.has(id) };
+    assert.equal(await guard.check(`${BIN} start UNI-6 && ${BIN} finish UNI-6 --comment ok && ${BIN} note UNI-6 x`, deps), null);
+    assert.deepEqual(guard.remaining(), { slots: 4, writes: 10, autowork: false }, "only the start cost a slot");
   });
 });
 
@@ -352,11 +277,12 @@ describe("settings + prompt text", () => {
     }
   });
 
-  it("the -do text tells the agent to start and finish", () => {
-    const text = doText("slug", BIN, "do UNI-5");
-    assert.match(text, /`start <ID>` it before working on it/);
-    assert.match(text, /`finish <ID> --comment "<summary>"` it when done/);
-    assert.match(text, /queue <IDs>/);
+  it("the -do text carries the budgets and the pre-flight rule", () => {
+    const text = doText("slug", BIN, "do UNI-5", 5, 10);
+    assert.match(text, /5 task slots — each `start` uses one — and 10 board writes/);
+    assert.match(text, /if that is more than 5, start nothing/);
+    assert.match(text, /`finish <ID> --comment "<summary>"` or `move <ID> blocked --comment "<what you need>"`/);
+    assert.match(text, /Sidekicks and subagents can read the board but not write it/);
   });
 });
 
@@ -391,12 +317,11 @@ describe("start/finish against the real binary", { skip: !existsSync(binary) }, 
     rmSync(workspace, { recursive: true, force: true });
   });
 
-  it("R1 → start → R2 → finish on a real board", async () => {
+  it("R1 → start → finish on a real board", async () => {
     const a = asTask("add", run(["add", "first", "--status", "todo"]));
     const b = asTask("add", run(["add", "second", "--status", "todo"]));
     const t = createProgressTracker({
       enabled: () => true,
-      runnerOwned: () => false,
       session: () => SESSION,
       list: async () => asTaskList(run(["list"])).tasks,
       cliPrefix: () => null,
@@ -413,12 +338,10 @@ describe("start/finish against the real binary", { skip: !existsSync(binary) }, 
     const nudged = textOf(await t.onToolResult(edit));
     assert.match(nudged, new RegExp(`${b.id} is still Todo`), "the un-started task is nudged");
     assert.doesNotMatch(nudged, new RegExp(`${a.id}\\b`), "the started task is not named");
-    assert.match((await t.onAgentEnd({ messages: [] })) ?? "", new RegExp(`${a.id} is still In Progress`));
 
     // Another session can't finish it; this one can.
     assert.throws(() => run(["finish", a.id, "--comment", "x"], { ...agent, UNIPI_KANBOARD_SESSION: "other" }));
     const done = asTask("finish", run(["finish", a.id, "--comment", "did it"], agent));
     assert.equal(done.status, "in_review");
-    assert.equal(await t.onAgentEnd({ messages: [] }), null, "nothing left in progress");
   });
 });

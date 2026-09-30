@@ -1,5 +1,12 @@
 # Kanboard v3 — design
 
+> **Superseded (2026-09-30)** for the runner, session queue and task
+> strategy/plan label parts: they were removed — the session works board tasks
+> itself and continuation is the turn arbiter's job. See
+> [`docs/plans/2026-09-30-01a0f095.md`](../plans/2026-09-30-01a0f095.md)
+> ("Kanboard without a runner"). The board storage, transition rules, web UI
+> and CLI contract below still hold.
+
 Status: agreed with the user 2026-09-24. Replaces the old htmx/Alpine kanboard entirely.
 
 ## Purpose

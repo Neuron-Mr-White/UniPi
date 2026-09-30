@@ -62,6 +62,13 @@ export function getSharedSubagents(): readonly SubagentRecord[] {
   return [...records.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
 
+/** Arbiter wait-source reason (lead only): a background run still in flight, or null. */
+export function backgroundRunningReason(all: readonly SubagentRecord[]): string | null {
+  return all.some((record) => record.background && record.status === "running")
+    ? "background subagent running"
+    : null;
+}
+
 export function subscribeSubagents(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

@@ -12,8 +12,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ensureDir, tryRead, writeJson } from "@pi-unipi/core";
+import { ensureDir, isChildProcess, markSharedOwnerStopped, setSharedOwner, tryRead, writeJson } from "@pi-unipi/core";
 import type { OwnerKind } from "./modes.js";
+
+/** Surfaced by create_goal / ralph / swarm / graph tools inside children. */
+export const CHILD_OWNER_REFUSAL =
+  "Long-horizon owners are not available inside a child agent — do the work and report back to the lead.";
 
 export type OwnerStatus = "active" | "parked";
 
@@ -109,9 +113,13 @@ export class OwnerCoordinator {
 
   /**
    * Create and activate a new owner. Refuses while another owner is active —
-   * callers surface "finish or suspend the current owner first".
+   * callers surface "finish or suspend the current owner first". In child
+   * processes owning is refused outright (throw — tool failures must throw).
    */
   activate(kind: OwnerKind, label: string): OwnerState | undefined {
+    if (isChildProcess() && process.env.UNIPI_LH_ALLOW_CHILD !== "1") {
+      throw new Error(CHILD_OWNER_REFUSAL);
+    }
     if (this.active) return undefined;
     const ownerId = randomUUID();
     const now = new Date(this.deps.now?.() ?? Date.now()).toISOString();
@@ -216,13 +224,30 @@ export class OwnerCoordinator {
     }
     const snapshot = this.snapshot();
     this.deps.onChange?.(snapshot, { type: "restored", snapshot });
+    this.publishStatus({ type: "restored", snapshot });
     return snapshot;
   }
 
   private commit(event: OwnerEvent): OwnerState | undefined {
     this.persist();
+    this.publishStatus(event);
     this.deps.onChange?.(this.snapshot(), event);
     return "owner" in event ? event.owner : undefined;
+  }
+
+  /** Publish the transition to the shared holder kanboard's monitor reads. */
+  private publishStatus(event: OwnerEvent): void {
+    try {
+      if (event.type === "finished") markSharedOwnerStopped(stopKindOf(event.reason));
+      // Parked (paused) goals go through suspend, not finish — kanboard must
+      // see them as a stop of kind "paused" this run, same as finish would.
+      if (event.type === "suspended") markSharedOwnerStopped("paused");
+      if (this.active) setSharedOwner({ kind: this.active.kind, status: "active" });
+      else if (this.parked) setSharedOwner({ kind: this.parked.kind, status: "parked" });
+      else setSharedOwner(undefined);
+    } catch {
+      // Status publishing must never roll back a committed transition.
+    }
   }
 
   private commitActive(patch: Partial<OwnerState>): OwnerState {
@@ -252,4 +277,12 @@ function renewLease(owner: OwnerState): OwnerLease {
     ownerId: owner.ownerId,
     generation: owner.lease.generation + 1,
   });
+}
+
+/** Map a terminal reason to the coarse stop kind kanboard's monitor needs. */
+export function stopKindOf(reason: string): "complete" | "paused" | "budget" | "other" {
+  if (reason === "complete" || reason.startsWith("complete(")) return "complete";
+  if (reason === "paused" || reason.startsWith("paused(")) return "paused";
+  if (reason.includes("budget")) return "budget";
+  return "other";
 }
