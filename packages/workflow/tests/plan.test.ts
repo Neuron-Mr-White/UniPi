@@ -188,6 +188,17 @@ describe("plan messages", () => {
     assert.match(text, /plan_submit/);
   });
 
+  it("puts a humanized Summary first, before the detailed sections", () => {
+    const text = planInstructions("docs/plans/x.md");
+    assert.match(text, /headings verbatim/i);
+    assert.ok(
+      text.indexOf("## Summary") < text.indexOf("## Steps"),
+      "Summary precedes the detail sections",
+    );
+    assert.match(text, /plain language/i);
+    assert.match(text, /5–10 lines/);
+  });
+
   it("the per-turn reminder is one compact line", () => {
     const text = planReminder("docs/plans/x.md");
     assert.equal(text.includes("\n"), false);

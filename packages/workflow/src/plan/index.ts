@@ -37,8 +37,14 @@ export function planInstructions(planPath: string): string {
     "Plan mode is ON — investigation only, no implementation.",
     `The ONLY file you may write or edit is ${planPath}.`,
     "Bash is limited to read-only commands; every mutating tool is refused.",
-    "Investigate the codebase, then write the plan to that file. It must start with:",
+    "Investigate the codebase, then write the plan to that file using these",
+    "headings verbatim, in this order:",
     PLAN_TEMPLATE.join("\n"),
+    "## Summary comes first and is written for the human approving the plan:",
+    "5–10 lines of plain language covering what will change and why, what the",
+    "user will notice, and any risks or decisions that need them — no file",
+    "paths or code unless essential. Everything below it is the full plan for",
+    "whoever implements it.",
     `When the plan is written, call ${PLAN_TOOL} to ask for approval.`,
   ].join("\n");
 }

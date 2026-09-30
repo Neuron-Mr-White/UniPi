@@ -78,6 +78,9 @@ Entering plan mode (`/unipi:plan`, `Alt+P`):
 - a compact message states the rules: investigation only, the plan file is the ONLY
   writable path (`docs/plans/<YYYY-MM-DD>-<short-session-id>.md`), bash is limited
   to read-only commands;
+- the plan opens with `## Summary` — 5–10 lines of plain language for the human
+  deciding whether to approve (what changes and why, what you'll notice, risks or
+  open decisions) — then the full detail: Steps, Files, Risks, Verification;
 - every later turn gets a short reminder `[plan mode: read-only · plan file … ·
   call plan_submit when ready]` — appended as a message, never to the system prompt,
   so the provider prefix cache stays intact.
