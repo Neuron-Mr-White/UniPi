@@ -13,7 +13,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport, type SidekickEvent, type SidekickUsage } from "@pi-unipi/core/child-agent.js";
+import { ChildAgentRuntime, createCompletionDelivery, type HandoffReport, type SidekickEvent, type SidekickStep, type SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import { stateDir } from "@pi-unipi/core";
 import type { AgentProfile } from "./profiles.js";
 
@@ -250,6 +250,7 @@ export class SubagentManager {
     depth: number;
     maxDepth: number;
     onProgress?: () => void;
+    onStep?: (step: SidekickStep) => void;
   }): ChildAgentRuntime {
     if (this.runtimeFactory !== undefined) return this.runtimeFactory(opts);
     return new ChildAgentRuntime({
@@ -265,6 +266,7 @@ export class SubagentManager {
       },
       promptPrefix: `Subagent "${opts.title}": `,
       onProgress: opts.onProgress,
+      onStep: opts.onStep,
     });
   }
 
@@ -284,6 +286,8 @@ export class SubagentManager {
     resume?: string;
     maxConcurrent?: number;
     onDone?: (run: SubagentRun, report: HandoffReport) => void;
+    /** UI-only completed-step stream (the final report is never emitted). */
+    onStep?: (record: SubagentRecord, step: SidekickStep) => void;
   }): { run: SubagentRun } | { error: string } {
     const max = opts.maxConcurrent ?? MAX_CONCURRENT;
     if (opts.resume !== undefined && this.runs.has(opts.resume)) {
@@ -333,6 +337,15 @@ export class SubagentManager {
         // Activity bumps are memory-only — index.json writes on status changes.
         this.touch(r, { toolCalls: runtime.progress()?.toolCalls ?? r.toolCalls });
       },
+      onStep: opts.onStep === undefined
+        ? undefined
+        : (step) => {
+          try {
+            opts.onStep?.(record, step);
+          } catch {
+            /* UI-only step stream never affects the run */
+          }
+        },
     });
     const handoff = runtime.handoff(opts.task);
     // Reports carry the subagent id, not the runtime's per-handoff id — every

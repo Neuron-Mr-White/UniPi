@@ -320,7 +320,11 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         onProgress: () => publishStatusLater(),
         onStep: (step) => {
           try {
-            pi.appendEntry("sidekick-step", step as unknown as Record<string, unknown>);
+            // Group per handoff so resumed handoffs render as separate panels
+            // even with no lead turn between them; old entries without a
+            // group fall back to the shared "sidekick" run.
+            const handoffId = runtime?.latest()?.id;
+            pi.appendEntry("sidekick-step", { ...step, group: `sidekick:${handoffId ?? "default"}`, label: "Sidekick" });
           } catch {
             /* entry rendering never affects the handoff */
           }
@@ -350,8 +354,13 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     return `Sidekick tokens: in ${String(runtime.usage.input)} · out ${String(runtime.usage.output)} · cached ${String(runtime.usage.cacheRead)} · cache write ${String(runtime.usage.cacheWrite)}\nSidekick cost: $${savings.sidekickUsd.toFixed(2)} · at lead prices: $${savings.atLeadUsd.toFixed(2)} · saved: $${savings.savedUsd.toFixed(2)}\nHandoffs: ${String(runtime.reports.size)} · runtime alive: ${String(runtime.isAlive())} · busy: ${String(runtime.isBusy())}${pricing}`;
   }
 
-  pi.registerEntryRenderer("sidekick-step", (entry: { data?: unknown }, options: { expanded?: boolean }, theme) =>
-    renderSidekickStep(entry.data as never, options.expanded === true, theme as never));
+  pi.registerEntryRenderer("sidekick-step", (entry: { data?: { group?: string; label?: string } }, options: { expanded?: boolean }, theme) =>
+    renderSidekickStep(
+      entry.data as never,
+      options.expanded === true,
+      theme as never,
+      { group: entry.data?.group ?? "sidekick", label: entry.data?.label },
+    ));
 
   registerFusionTools(pi, {
     getRuntime,

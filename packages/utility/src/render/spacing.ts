@@ -41,6 +41,40 @@ interface Renderable {
   setGroupPosition?: (pos: SpacingGroupPosition) => void;
 }
 
+/**
+ * pi's CustomEntryComponent (duck-typed): the host transcript child wraps the
+ * extension's renderer output in `customComponent`, so group metadata lives
+ * one level down. `entry.customType` marks the wrapper even before a render
+ * produced content.
+ */
+export function isCustomEntry(c: unknown): boolean {
+  return !!c && typeof c === "object" && "customComponent" in c &&
+    (c as { entry?: { customType?: unknown } }).entry?.customType !== undefined;
+}
+
+/** Metadata + position hooks, wherever they live (wrapper or legacy direct). */
+interface GroupOwner {
+  spacingGroup?: string;
+  spacingKind?: string;
+  setGroupPosition?: (pos: SpacingGroupPosition) => void;
+}
+
+/**
+ * Resolve the group owner for a transcript child: ONLY an explicit custom
+ * entry (isCustomEntry) unwraps to its inner `customComponent` — an arbitrary
+ * object that merely happens to carry a customComponent field is never
+ * hijacked. Anything else is the legacy path: the child itself carries the
+ * metadata. Nothing is copied: the owner is re-resolved every render so
+ * theme/expansion rebuilds of the inner component are picked up.
+ */
+export function groupOwnerOf(child: unknown): GroupOwner {
+  if (isCustomEntry(child)) {
+    const inner = (child as { customComponent?: unknown }).customComponent;
+    if (inner !== undefined && inner !== null && typeof inner === "object") return inner as GroupOwner;
+  }
+  return (child ?? {}) as GroupOwner;
+}
+
 interface MouseLayout {
   width: number;
   children: Array<{ component: unknown; height: number }>;
@@ -67,7 +101,7 @@ export function findTranscriptContainer(root: unknown, depth = 0): TranscriptCon
   if (!root || typeof root !== "object" || depth > 12) return undefined;
   const children = (root as { children?: unknown[] }).children;
   if (!Array.isArray(children) || children.length === 0) return undefined;
-  if (children.some((c) => isAssistant(c) || isToolExecution(c))) return root as TranscriptContainer;
+  if (children.some((c) => isAssistant(c) || isToolExecution(c) || isCustomEntry(c))) return root as TranscriptContainer;
   for (const child of children) {
     const hit = findTranscriptContainer(child, depth + 1);
     if (hit !== undefined) return hit;
@@ -87,33 +121,53 @@ export function patchTranscriptSpacing(container: TranscriptContainer): void {
   const flagged = container as TranscriptContainer & Record<symbol, unknown>;
   if (flagged[SPACING_PATCHED] === true) return;
   const self = container;
+  // Previous-render group state per child (keyed by child identity): a child
+  // that was in a run last render but isn't anymore gets its position reset
+  // and its rendered rows replaced — otherwise a stale ├ survives a group
+  // removal on persistent (non-rebuilt) owners.
+  const groupedLastRender = new WeakSet<object>();
   self.render = function render(width: number): string[] {
     const rendered = self.children.map((child) => ({ child, lines: trimEdgeBlankLines(child.render(width)) }));
     const visible = rendered.filter((r) => r.lines.length > 0);
     // Runs of adjacent visible children sharing a spacingGroup: tell every
-    // member its position (index/count + neighbour kinds), then re-render
-    // it — the position may change its lines (├ vs └ tree connectors).
+    // member's group owner its position (index/count + neighbour kinds), then
+    // re-render the OUTER child — the owner may change its lines (├ vs └ tree
+    // connectors, panel label) and the wrapper owns the transcript row.
+    const members = new Set<object>();
     let gi = 0;
     while (gi < visible.length) {
-      const grp = visible[gi]!.child.spacingGroup;
+      const grp = groupOwnerOf(visible[gi]!.child).spacingGroup;
       if (grp === undefined || grp === "") {
         gi++;
         continue;
       }
       let end = gi + 1;
-      while (end < visible.length && visible[end]!.child.spacingGroup === grp) end++;
-      const members = visible.slice(gi, end);
-      members.forEach((m, idx) => {
-        if (m.child.setGroupPosition === undefined) return;
-        m.child.setGroupPosition({
+      while (end < visible.length && groupOwnerOf(visible[end]!.child).spacingGroup === grp) end++;
+      const run = visible.slice(gi, end);
+      run.forEach((m, idx) => {
+        const owner = groupOwnerOf(m.child);
+        members.add(m.child);
+        groupedLastRender.add(m.child);
+        if (owner.setGroupPosition === undefined) return;
+        owner.setGroupPosition({
           index: idx,
-          count: members.length,
-          prevKind: idx > 0 ? members[idx - 1]!.child.spacingKind : undefined,
-          nextKind: idx < members.length - 1 ? members[idx + 1]!.child.spacingKind : undefined,
+          count: run.length,
+          prevKind: idx > 0 ? groupOwnerOf(run[idx - 1]!.child).spacingKind : undefined,
+          nextKind: idx < run.length - 1 ? groupOwnerOf(run[idx + 1]!.child).spacingKind : undefined,
         });
         m.lines = trimEdgeBlankLines(m.child.render(width));
       });
       gi = end;
+    }
+    // Group removed since the last render: reset the owner's position and
+    // swap its rendered rows for the post-reset render (├ → └ same tick).
+    for (const r of visible) {
+      if (members.has(r.child) || !groupedLastRender.has(r.child)) continue;
+      const owner = groupOwnerOf(r.child);
+      if (owner.setGroupPosition === undefined) continue;
+      owner.setGroupPosition({ index: 0, count: 1 });
+      r.lines = trimEdgeBlankLines(r.child.render(width));
+      groupedLastRender.delete(r.child);
     }
     const lines: string[] = [];
     const mouseChildren: Array<{ component: unknown; height: number }> = [];
@@ -123,8 +177,8 @@ export function patchTranscriptSpacing(container: TranscriptContainer): void {
         mouseChildren.push({ component: child, height: 0 });
         continue;
       }
-      const grp = child.spacingGroup !== "" ? child.spacingGroup : undefined;
-      const joined = grp !== undefined && grp === prevGroup;
+      const grp = groupOwnerOf(child).spacingGroup;
+      const joined = grp !== undefined && grp !== "" && grp === prevGroup;
       // pi attributes the separator to the child below it (it unshifts ""
       // into the child's lines); grouped members get no separator.
       if (lines.length > 0 && !joined) childLines.unshift("");

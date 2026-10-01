@@ -16,12 +16,13 @@
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
   UNIPI_EVENTS, emitEvent, getSettings, isChildProcess, registerSettings, registerWaitSource, getSharedFusionStatus, SPINNER_MS,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
-  createCompletionDelivery, type HandoffReport,
+  createCompletionDelivery, type HandoffReport, type SidekickStep,
 } from "@pi-unipi/core/child-agent.js";
 import {
   SubagentManager, backgroundRunningReason, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
@@ -146,8 +147,33 @@ export function resolveSubagentThinking(
 
 export { cardOutcome };
 
-export default function subagents(pi: ExtensionAPI): void {
-  const manager = new SubagentManager();
+/**
+ * UI-only completed-step entry: payload + guarded append, identical for
+ * foreground and background runs. The final report is intentionally never
+ * streamed here — the lead reports it itself. Exported for tests.
+ */
+export function appendSubagentStep(
+  appendEntry: (type: string, data: Record<string, unknown>) => void,
+  record: Pick<SubagentRecord, "id" | "title" | "profile" | "startedAt">,
+  step: SidekickStep,
+): void {
+  try {
+    appendEntry("subagent-step", {
+      ...step,
+      agentId: record.id,
+      id: record.id,
+      title: record.title,
+      profile: record.profile,
+      group: `subagent:${record.id}:${record.startedAt}`,
+      label: `${profileLabel(record.profile)} subagent · ${record.title}`,
+    });
+  } catch {
+    /* entry rendering never affects the run */
+  }
+}
+
+export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentManager }): void {
+  const manager = deps?.manager ?? new SubagentManager();
   const delivery = createCompletionDelivery<HandoffReport>((report) => deliverCompletion(report));
 
   // Turn-arbiter wait source (lead only): a background subagent is still
@@ -462,7 +488,6 @@ export default function subagents(pi: ExtensionAPI): void {
       syncUi();
     }
   }
-
   async function runSubagent(
     _toolCallId: string,
     params: { title: string; task: string; profile: string; is_background?: boolean; resume?: string },
@@ -489,6 +514,7 @@ export default function subagents(pi: ExtensionAPI): void {
       background: resumeId === undefined && params.is_background === true,
       resume: resumeId,
       maxConcurrent: config.maxConcurrent,
+      onStep: (record, step) => appendSubagentStep((type, data) => pi.appendEntry(type, data), record, step),
     });
     if ("error" in start) return textResult(start.error, { owner: "subagents", status: "failed", title: params.title, error: start.error }, true);
     const { run } = start;
@@ -577,6 +603,16 @@ export default function subagents(pi: ExtensionAPI): void {
   // Background completion notice — badge: `DONE Explore title ···· 7s · 1 tool call`.
   pi.registerMessageRenderer("subagent-completion", (message: { details?: CardDetails & { report?: string } }, opts: { expanded?: boolean }, theme) =>
     renderCompletion(message.details, opts.expanded === true, theme));
+
+  // Completed subagent steps as a delegated panel (shared UNI-2 renderer;
+  // historical entries keep their cards, new ones stream below them).
+  pi.registerEntryRenderer("subagent-step", (entry: { data?: DelegatedStep & { group?: string; label?: string } }, opts: { expanded?: boolean }, theme) =>
+    renderDelegatedStep(
+      entry.data as DelegatedStep,
+      opts.expanded === true,
+      theme as never,
+      { group: entry.data?.group ?? "subagent", label: entry.data?.label },
+    ));
 
   // ── Prompt section (only while enabled) ───────────────────────────────────
   pi.on("before_agent_start", (event, ctx) => {

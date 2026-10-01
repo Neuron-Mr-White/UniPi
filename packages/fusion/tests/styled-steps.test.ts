@@ -95,3 +95,23 @@ test("a non-sidekick block between steps still gets the blank row", () => {
   assert.equal(lines[1], "");
   assert.equal(lines[3], "");
 });
+
+test("identity groups: same handoff joins, different handoffs separate", () => {
+  const same = chatWith([
+    renderSidekickStep(tool({ name: "read", arg: "a.ts" }), false, theme, { group: "sidekick:h1", label: "Sidekick" }),
+    renderSidekickStep(tool({ name: "bash", arg: "npm test", output: "ok" }), false, theme, { group: "sidekick:h1", label: "Sidekick" }),
+  ]);
+  patchTranscriptSpacing(same);
+  const joined = same.render(80).map(strip);
+  assert.equal(joined.length, 3, "header + 2 rows, no gap inside a handoff");
+  assert.equal(joined[0], "▏ ◆ Sidekick");
+
+  const separate = chatWith([
+    renderSidekickStep(tool({ name: "read", arg: "a.ts" }), false, theme, { group: "sidekick:h1", label: "Sidekick" }),
+    renderSidekickStep(tool({ name: "bash", arg: "npm test", output: "ok" }), false, theme, { group: "sidekick:h2", label: "Sidekick" }),
+  ]);
+  patchTranscriptSpacing(separate);
+  const lines = separate.render(80).map(strip);
+  assert.ok(lines.some((l, i) => i > 0 && l === "" && lines[i - 1]!.startsWith("▏")), "gap between resumed handoffs");
+  assert.equal(lines.filter((l) => l === "▏ ◆ Sidekick").length, 2, "each handoff labels its own panel");
+});

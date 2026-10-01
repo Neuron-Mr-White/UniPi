@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { getSharedFusionStatus } from "@pi-unipi/core";
 import fusionExtension from "../src/index.js";
 import { EDIT_NUDGE, bashNudge } from "../src/prompts.js";
@@ -13,7 +14,7 @@ function model(provider: string, id: string): Record<string, unknown> {
 
 function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
   const handlers = new Map<string, (event: any, ctx: any) => unknown>();
-  const calls = { setModel: [] as Record<string, unknown>[], thinking: [] as string[], notices: [] as string[] };
+  const calls = { setModel: [] as Record<string, unknown>[], thinking: [] as string[], notices: [] as string[], entryRenderers: new Map<string, (entry: { data?: unknown }, options: { expanded?: boolean }, theme: unknown) => unknown>() };
   const pi = {
     on: (name: string, handler: (event: any, ctx: any) => unknown) => handlers.set(name, handler),
     registerTool: () => undefined,
@@ -21,7 +22,9 @@ function setup(home: string, cwd: string, models: Record<string, unknown>[]) {
     setActiveTools: () => undefined,
     registerCommand: () => undefined,
     registerMessageRenderer: () => undefined,
-    registerEntryRenderer: () => undefined,
+    registerEntryRenderer: (type: string, renderer: (entry: { data?: unknown }, options: { expanded?: boolean }, theme: unknown) => unknown) => {
+      calls.entryRenderers.set(type, renderer);
+    },
     registerShortcut: () => undefined,
     registerFlag: () => undefined,
     setModel: async (value: Record<string, unknown>) => {
@@ -185,6 +188,47 @@ test("trivial bash does not contribute to the nudge streak or lead status count"
     assert.equal(status?.busy, false);
     assert.equal(status?.leadToolCalls, 1);
   } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
+test("persisted sidekick-step renderer reads stored groups", () => {
+  const previousHome = process.env.HOME;
+  const home = mkdtempSync(join(tmpdir(), "uni-fusion-index-"));
+  const previousCwd = process.cwd();
+  const cwd = mkdtempSync(join(tmpdir(), "uni-fusion-cwd-"));
+  process.env.HOME = home;
+  process.chdir(cwd);
+  try {
+    const { calls } = setup(home, process.cwd(), [{ provider: "a", id: "lead", name: "lead", reasoning: true, cost: { input: 1, cacheRead: 0.1, output: 2 } }]);
+    const renderer = calls.entryRenderers.get("sidekick-step");
+    assert.ok(renderer, "sidekick-step entry renderer registered");
+    const strip = (s: string) => String(s).replace(/\x1b\[[0-9;]*m/g, "").trimEnd();
+    const renderGroup = (data: Record<string, unknown>) => {
+      const comp = renderer!({ data }, { expanded: false }, { fg: (c: string, t: string) => t, bold: (t: string) => t }) as { spacingGroup: string; render(w: number): string[] };
+      return { group: comp.spacingGroup, first: strip(comp.render(80)[0]!) };
+    };
+    assert.equal(
+      renderGroup({ kind: "tool", name: "read", arg: "a.ts", output: "", isError: false, durationMs: 5, group: "sidekick:h1", label: "Sidekick" }).group,
+      "sidekick:h1",
+      "persisted group passes through",
+    );
+    assert.equal(
+      renderGroup({ kind: "tool", name: "read", arg: "a.ts", output: "", isError: false, durationMs: 5 }).group,
+      "sidekick",
+      "old entries fall back to the shared group",
+    );
+    assert.equal(
+      renderGroup({ kind: "tool", name: "read", arg: "a.ts", output: "", isError: false, durationMs: 5, group: "sidekick:h1", label: "Sidekick" }).first,
+      "▏ ◆ Sidekick",
+      "persisted label draws the panel header once",
+    );
+    const noLabel = renderGroup({ kind: "tool", name: "read", arg: "a.ts", output: "", isError: false, durationMs: 5 });
+    assert.equal(noLabel.group, "sidekick");
+    assert.ok(noLabel.first.startsWith("▏ ") && !noLabel.first.includes("Sidekick"), "old entries without label start straight at the tree");
+  } finally {
+    process.chdir(previousCwd);
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
   }
