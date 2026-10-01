@@ -320,6 +320,35 @@ describe("simpleWrapTool", () => {
     assert.match(render(), /7 tool calls/, "stats survive on the done row");
   });
 
+  it("replaying the same final result never re-arms invalidate (alpha.18 OOM)", async () => {
+    const flush = () => new Promise<void>((r) => setImmediate(r));
+    const wrapped = simpleWrapTool({ ...base, name: "bash" } as never) as typeof base;
+    let invalidated = 0;
+    const ctx = {
+      expanded: false, executionStarted: true, cwd: "/repo", args: { command: "ls" }, toolCallId: "oom1",
+      invalidate: () => { invalidated++; },
+    } as never;
+    const call = wrapped.renderCall!({ command: "ls" } as never, theme, ctx);
+    await flush();
+    const res = { isError: false, content: [{ type: "text", text: "out" }] } as never;
+    // history re-renders (updateDisplay, resume, boundary compaction) re-invoke
+    // renderResult with the SAME final result; the row must not repaint again:
+    // baking the duration suffix into rec.meta made `changed` true on every
+    // replay → touch() → microtask → ctx.invalidate() → updateDisplay →
+    // renderResult → … a self-sustaining loop that OOM'd pi (~4 GB / 30 s).
+    wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx);
+    await flush();
+    const settled = invalidated;
+    for (let i = 0; i < 5; i++) {
+      wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx);
+    }
+    await flush();
+    assert.equal(invalidated, settled, "replayed final results schedule no repaint");
+    // the done row still pins its runtime
+    const doneLine = (call as { render: (w: number) => string[] }).render(120)[0]!;
+    assert.match(doneLine, /Ran  ls · 1 output line · \d+s/);
+  });
+
   it("assistant text breaks the group (noteGroupBreak)", () => {
     const def = { ...base, name: "read" } as never;
     const wrapped = simpleWrapTool(def) as typeof base;

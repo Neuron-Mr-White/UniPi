@@ -140,6 +140,14 @@ interface CallRec {
   /** Set when the call's execution starts — drives the live `· Ns` row timer. */
   startedAt?: number;
   endedAt?: number;
+  /**
+   * Runtime pinned once at the final result (endedAt − startedAt). Kept out of
+   * `meta` on purpose: renderResult compares `meta` against the fresh bare
+   * outputMeta to detect change, and a duration baked into `meta` made that
+   * comparison true on every re-render, re-arming the invalidate microtask in
+   * a self-sustaining loop that OOM'd the process (alpha.18).
+   */
+  durationMs?: number;
   /** Latest result details — the input a tool's `simpleMeta` hook reads. */
   details?: unknown;
   /** Live meta evaluated per paint (tool opt-in: live stats such as a
@@ -530,9 +538,18 @@ export function resetSimpleGroups(): void {
 
 // ─── the wrapper ──────────────────────────────────────────────────────────
 
+/**
+ * Display meta for a finished row: the bare outputMeta plus the pinned `· Ns`
+ * runtime. Appended here (paint time) instead of being stored in `meta`, so
+ * the renderResult change-detection never sees the suffix.
+ */
+function pinnedMeta(rec: CallRec): string {
+  return !rec.running && rec.durationMs !== undefined ? `${rec.meta} · ${formatSeconds(rec.durationMs)}` : rec.meta;
+}
+
 function toGroupCall(rec: CallRec): GroupCall {
   const liveMeta = rec.metaFn?.();
-  const meta = liveMeta ?? rec.meta;
+  const meta = liveMeta ?? pinnedMeta(rec);
   const tick = rec.running && rec.startedAt !== undefined && liveMeta === undefined ? formatSeconds(Date.now() - rec.startedAt) : undefined;
   return { id: rec.id, name: rec.name, target: targetArg(rec.name, rec.args, rec.cwd), meta, failed: rec.failed, running: rec.running, tick };
 }
@@ -597,7 +614,7 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       // the key so the per-second tick repaints it but keystrokes don't.
       let key = `${width}`;
       for (const c of g) {
-        const meta = c.metaFn?.() ?? c.meta;
+        const meta = c.metaFn?.() ?? pinnedMeta(c);
         const tick = c.running && c.startedAt !== undefined ? Math.floor((Date.now() - c.startedAt) / 1000) : 0;
         key += `\u0001${c.id}\u0002${c.running ? 1 : 0}${c.failed ? 1 : 0}${meta}\u0002${c.rev ?? 0}\u0002${String(tick)}`;
       }
@@ -637,25 +654,33 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
         if (liveMeta !== undefined) {
           rec.metaFn = () => {
             try {
-              return liveMeta(rec.details, ctx) ?? rec!.meta;
+              return liveMeta(rec.details, ctx) ?? pinnedMeta(rec);
             } catch {
-              return rec!.meta;
+              return pinnedMeta(rec);
             }
           };
         }
         const meta = outputMeta(result);
-        const changed = !rec.done || rec.meta !== meta || rec.failed !== ctx.isError;
+        // Compare settled values: bare meta against bare meta, and boolean
+        // against boolean (a raw `!== ctx.isError` never settles when the ctx
+        // field is undefined). Either mismatch would re-arm touch() on every
+        // re-render — the alpha.18 OOM loop.
+        const changed = !rec.done || rec.meta !== meta || rec.failed !== !!ctx.isError;
         if (!options.isPartial) {
-          // Final result: stop the live timer and pin `· Ns` on the done row.
+          // Final result: stop the live timer and pin the runtime. The pinned
+          // duration goes to `durationMs`, never into `meta` — `meta` must stay
+          // the bare outputMeta so `changed` settles to false on re-renders;
+          // the old suffix-in-meta made every replayed final result "changed",
+          // which re-armed touch() → invalidate() → updateDisplay → renderResult
+          // as a self-sustaining loop (~5M iters → 4 GB heap, alpha.18 OOM).
           const state = ctx.state as { timer?: ReturnType<typeof setInterval> } | undefined;
           if (state?.timer !== undefined) clearInterval(state.timer);
           if (state !== undefined) state.timer = undefined;
           rec.endedAt = Date.now();
-          if (rec.startedAt !== undefined && rec.endedAt >= rec.startedAt) {
-            rec.meta = `${meta} · ${formatSeconds(rec.endedAt - rec.startedAt)}`;
-          } else {
-            rec.meta = meta;
+          if (rec.durationMs === undefined && rec.startedAt !== undefined && rec.endedAt >= rec.startedAt) {
+            rec.durationMs = rec.endedAt - rec.startedAt;
           }
+          rec.meta = meta;
           rec.done = true;
           rec.running = false;
         } else {
