@@ -11,16 +11,13 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { planJevCompaction, planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
-import { pruneWithJev } from "../packages/compactor/src/compaction/jev-prune.ts";
+import { planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
 import { DEFAULT_COMPACTOR_CONFIG } from "../packages/compactor/src/config/schema.ts";
 import { collectOrigins, isInjectedUserText } from "../packages/compactor/src/compaction/source.ts";
 import { textOf } from "../packages/compactor/src/compaction/content.ts";
 
 const args = process.argv.slice(2);
-const useJev = args[0] === "--jev";
-const [outDir, ...specs] = useJev ? args.slice(1) : args;
-const JEV = { provider: "openrouter" as const, model: "typesafe/jev-1.13", baseUrl: "", apiKey: "", timeoutMs: 20_000 };
+const [outDir, ...specs] = args;
 if (!outDir || specs.length === 0) {
   console.error("usage: compactor-eval.mts <out-dir> <session.jsonl[:idx|all]>...");
   process.exit(1);
@@ -64,9 +61,7 @@ for (const spec of specs) {
     for (let cur = byId.get(target.parentId); cur; cur = byId.get(cur.parentId)) branch.unshift(cur);
     const t0 = performance.now();
     const planInput = { branchEntries: branch, tokensBefore: target.tokensBefore, config: DEFAULT_COMPACTOR_CONFIG, cwd };
-    const plan = useJev
-      ? await planJevCompaction(planInput, (c, s) => pruneWithJev(c, s, JEV))
-      : planLosslessCompaction(planInput);
+    const plan = planLosslessCompaction(planInput);
     const ms = Math.round(performance.now() - t0);
     const slug = `${basename(join(file, "..")).replace(/^--home-oi-Projects-|--$/g, "").slice(0, 40)}-c${idx}`;
     if (!plan.ok) {
@@ -103,7 +98,6 @@ for (const spec of specs) {
       `session: ${file}`,
       `branch entries: ${branch.length} · tokensBefore ${target.tokensBefore} · summary ${plan.summary.length} chars (~${Math.round(plan.summary.length / 4)} tok) · kept tail ~${plan.stats.keptTokensEst} tok · ${ms} ms`,
       `sections: ${(plan.details.sections as string[]).join(", ")}`,
-      ...(useJev ? [`jev: ${JSON.stringify(plan.details.jev, null, 1)}`] : []),
       "",
       "## SUMMARY",
       plan.summary,
@@ -115,8 +109,7 @@ for (const spec of specs) {
       ...after.map((a) => `- ${a}`),
     ].join("\n");
     writeFileSync(join(outDir, `${slug}.md`), doc);
-    const jev = plan.details.jev as { asked?: number; dropped?: number } | undefined;
-    rows.push(`${slug}\t${plan.summary.length}c\t${ms}ms\t${target.tokensBefore}→${plan.stats.tokensAfterEst}${jev ? `\tjev ${jev.dropped}/${jev.asked}` : ""}`);
+    rows.push(`${slug}\t${plan.summary.length}c\t${ms}ms\t${target.tokensBefore}→${plan.stats.tokensAfterEst}`);
   }
 }
 console.log(rows.join("\n"));

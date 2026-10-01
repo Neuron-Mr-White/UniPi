@@ -16,7 +16,7 @@ export interface CompactorInfoData {
   last: Stat;
 }
 
-const METHOD_NAME = { vcc: "lossless", jev: "lossless + jev", llm: "model summary" } as const;
+const METHOD_NAME = { vcc: "lossless", llm: "model summary" } as const;
 
 function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));

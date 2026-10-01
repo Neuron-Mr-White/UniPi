@@ -38,7 +38,7 @@ function dirSizeMb(dir: string): number {
 
 export function ctxDoctor(config: CompactorConfig, opts: { hasModel: boolean }): DoctorResult {
   const checks: DoctorResult["checks"] = [];
-  const method = config.method === "vcc" ? "lossless" : config.method === "jev" ? "lossless + jev" : "model summary";
+  const method = config.method === "vcc" ? "lossless" : "model summary";
   const when = config.trigger === "pi" ? "Pi's context limit" : `${config.thresholdPercent}% of context`;
   checks.push({ name: "Settings", status: "pass", message: `method: ${method} · when: ${when} · Pi's /compact: ${config.piCompact}` });
 

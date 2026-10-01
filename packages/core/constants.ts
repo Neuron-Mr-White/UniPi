@@ -168,7 +168,6 @@ export const COMPACTOR_TOOLS = {
 /** Compactor command names */
 export const COMPACTOR_COMMANDS = {
   COMPACT_VCC: "compact-vcc",
-  COMPACT_JEV: "compact-jev",
   COMPACT_BY_LLM: "compact-by-llm",
   SESSION_RECALL: "session-recall",
   COMPACT_STATS: "compact-stats",

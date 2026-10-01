@@ -2,27 +2,24 @@
  * Continuation A/B for the compactor: at a real compaction point of a
  * recorded session, write two resumable session files —
  *   <slug>.old.jsonl  the branch + the compaction that actually happened
- *   <slug>.new.jsonl  the branch + today's compactor summary (vcc or jev)
+ *   <slug>.new.jsonl  the branch + today's compactor summary (vcc)
  * plus <slug>.next.md with what really happened afterwards. Fork each file
  * with `pi --fork <file> -nt -p "<question>"` and compare the answers
  * against .next.md.
  *
- *   npx tsx scripts/compactor-continue.mts [--jev] <out-dir> <session.jsonl[:idx]>...
+ *   npx tsx scripts/compactor-continue.mts <out-dir> <session.jsonl[:idx]>...
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { planJevCompaction, planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
-import { pruneWithJev } from "../packages/compactor/src/compaction/jev-prune.ts";
+import { planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
 import { DEFAULT_COMPACTOR_CONFIG } from "../packages/compactor/src/config/schema.ts";
 import { textOf } from "../packages/compactor/src/compaction/content.ts";
 import { collectOrigins, isInjectedUserText } from "../packages/compactor/src/compaction/source.ts";
 
 const args = process.argv.slice(2);
-const useJev = args[0] === "--jev";
-const [outDir, ...specs] = useJev ? args.slice(1) : args;
-const JEV = { provider: "openrouter" as const, model: "typesafe/jev-1.13", baseUrl: "", apiKey: "", timeoutMs: 20_000 };
+const [outDir, ...specs] = args;
 mkdirSync(outDir, { recursive: true });
 
 const flat = (s: string, n: number) => {
@@ -50,7 +47,7 @@ for (const spec of specs) {
   const branch: any[] = [];
   for (let cur = byId.get(target.parentId); cur; cur = byId.get(cur.parentId)) branch.unshift(cur);
   const input = { branchEntries: branch, tokensBefore: target.tokensBefore, config: DEFAULT_COMPACTOR_CONFIG, cwd: header?.cwd };
-  const plan = useJev ? await planJevCompaction(input, (c, s) => pruneWithJev(c, s, JEV)) : planLosslessCompaction(input);
+  const plan = planLosslessCompaction(input);
   if (!plan.ok) continue;
   const slug = basename(join(file, "..")).replace(/^--home-oi-Projects-|--$/g, "").slice(0, 40) + `-c${compactions.indexOf(target)}`;
 

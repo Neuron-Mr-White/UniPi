@@ -95,12 +95,12 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // info (2 commands)
   "unipi:info":          "info",
+  "unipi:tips-reset":    "info",
 
   // web-api (2 commands)
 
-  // compact (7 commands)
+  // compact (6 commands)
   "unipi:compact-vcc":      "compact",
-  "unipi:compact-jev":      "compact",
   "unipi:compact-by-llm":   "compact",
   "unipi:session-recall":  "compact",
   "unipi:compact-stats":   "compact",
@@ -170,10 +170,10 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:settings": "Configure all unipi modules in one panel",
 
   "unipi:info":          "Show system information",
+  "unipi:tips-reset":    "Reset info-tip show counts so every tip is eligible again",
 
 
   "unipi:compact-vcc":      "Lossless compaction now — no model call (keep:N)",
-  "unipi:compact-jev":      "Lossless compaction, pruned by jev of what is no longer in force",
   "unipi:compact-by-llm":   "Compact now with a model-written summary",
   "unipi:session-recall":   "Search session history, including compacted-away messages",
   "unipi:compact-stats":    "Show this session's compaction savings",

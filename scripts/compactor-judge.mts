@@ -5,7 +5,7 @@
  *
  * Per case:
  *   1. facts   — the model lists the 25 facts from the LLM reference that matter
- *                most for continuing; each is checked against jev and vcc
+ *                most for continuing; each is checked against vcc
  *                (summary + the shared kept tail): present / partial / missing /
  *                contradicted.
  *   2. stale   — items in each summary that are outdated, wrong or irrelevant.
@@ -77,7 +77,6 @@ for (const slug of slugs) {
     continue;
   }
   const llm = read(join(dir, `${slug}.llm.md`));
-  const jev = read(join(dir, `${slug}.jev.md`));
   const vcc = read(join(dir, `${slug}.vcc.md`));
   const tail = keptTail(slug);
   const next = read(join(dir, `${slug}.next.md`));
@@ -97,26 +96,25 @@ for (const slug of slugs) {
         `=== FACTS ===\n${facts.facts.map((f: string, i: number) => `${i + 1}. ${f}`).join("\n")}\n\n=== SUMMARY (${label}) ===\n${summary}\n\n=== RECENT MESSAGES ===\n${tail}`,
     );
   // Sequential: the provider route has a small concurrency limit.
-  const jevCheck = await check("A", jev);
-  const vccCheck = await check("B", vcc);
+  const vccCheck = await check("A", vcc);
   const llmStale = await ask(`List up to 10 items in this SUMMARY that are stale, wrong, or irrelevant noise for continuing the work, judging by the RECENT MESSAGES. Return {"stale": [string, ...]}.\n\n=== SUMMARY ===\n${llm}\n\n=== RECENT MESSAGES ===\n${tail}`);
 
   let resume: any = null;
-  const answers = ["llm", "jev", "vcc"].map((k) => ({ k, a: read(join(dir, `${slug}.${k}.answer.md`)) }));
+  const answers = ["llm", "vcc"].map((k) => ({ k, a: read(join(dir, `${slug}.${k}.answer.md`)) }));
   if (answers.every((x) => x.a.trim())) {
     const order = answers.map((x) => x).sort(() => Math.random() - 0.5);
-    const labels = ["A", "B", "C"];
+    const labels = ["A", "B"];
     const r = await ask(
-      `Three agents resumed the same coding session after a context compaction, each given a different summary. Each wrote what it believes is the current request, what is done, the next action, constraints and open questions.\n` +
+      `Two agents resumed the same coding session after a context compaction, each given a different summary. Each wrote what it believes is the current request, what is done, the next action, constraints and open questions.\n` +
         `Compare each answer to WHAT ACTUALLY HAPPENED NEXT. Score 1-10 for: request (current request right), next (next action matches what was actually done or clearly right), constraints (correct standing constraints, none invented), accuracy (no false claims about state). Also give overall 1-10 and one-line reason.\n` +
-        `Return {"A": {"request":n,"next":n,"constraints":n,"accuracy":n,"overall":n,"why":"..."}, "B": {...}, "C": {...}}.\n\n` +
+        `Return {"A": {"request":n,"next":n,"constraints":n,"accuracy":n,"overall":n,"why":"..."}, "B": {...}}.\n\n` +
         order.map((x, i) => `=== ANSWER ${labels[i]} ===\n${x.a}`).join("\n\n") +
         `\n\n=== WHAT ACTUALLY HAPPENED NEXT ===\n${next}`,
     );
     resume = Object.fromEntries(order.map((x, i) => [x.k, r[labels[i]]]));
   }
 
-  const result = { slug, facts: facts.facts, jev: jevCheck, vcc: vccCheck, llmStale: llmStale.stale, resume };
+  const result = { slug, facts: facts.facts, vcc: vccCheck, llmStale: llmStale.stale, resume };
   writeFileSync(out, JSON.stringify(result, null, 1));
   table.push(summarize(slug, result));
 }
@@ -127,7 +125,7 @@ function summarize(slug: string, r: any): string {
     const pts = v.reduce((s, x) => s + (x === "present" ? 1 : x === "partial" ? 0.5 : 0), 0);
     return `${Math.round((pts / n) * 100)}%${v.includes("contradicted") ? ` (${v.filter((x) => x === "contradicted").length}✗)` : ""}`;
   };
-  const res = r.resume ? ` | resume llm ${r.resume.llm?.overall} jev ${r.resume.jev?.overall} vcc ${r.resume.vcc?.overall}` : "";
-  return `${slug.padEnd(44)} facts jev ${score(r.jev.verdicts)} vcc ${score(r.vcc.verdicts)} | stale llm ${r.llmStale.length} jev ${r.jev.stale.length} vcc ${r.vcc.stale.length}${res}`;
+  const res = r.resume ? ` | resume llm ${r.resume.llm?.overall} vcc ${r.resume.vcc?.overall}` : "";
+  return `${slug.padEnd(44)} facts vcc ${score(r.vcc.verdicts)} | stale llm ${r.llmStale.length} vcc ${r.vcc.stale.length}${res}`;
 }
 console.log(table.join("\n"));

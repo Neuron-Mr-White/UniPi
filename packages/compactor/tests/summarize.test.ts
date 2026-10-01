@@ -7,8 +7,6 @@ import {
   selectOpenErrors,
   selectRequests,
   selectState,
-  summaryCandidates,
-  itemKey,
   RECALL_NOTE,
 } from "../src/compaction/summarize.js";
 import { assistant, compaction, custom, originMark, toolResult, user, workingSession } from "./fixtures.js";
@@ -176,17 +174,6 @@ describe("user answers, pruning inputs and redaction", () => {
     expect(quoted).not.toContain("9801");
   });
 
-  it("jev candidates: middle requests, answers as decisions, never the first or latest request", () => {
-    const branch = [user("first purpose request"), user("Deploy now please to production"), ask("Where should it run?", "dev"), user("latest request here")];
-    const source = collectSummarySource(branch, branch.length);
-    const candidates = summaryCandidates({ source, budgetChars: 8000 });
-    expect(candidates.find((c) => c.text.startsWith("Deploy now"))?.kind).toBe("request");
-    expect(candidates.find((c) => c.text.startsWith("Where should it run?"))?.kind).toBe("decision");
-    expect(candidates.some((c) => c.text.includes("first purpose") || c.text.includes("latest request"))).toBe(false);
-    const pruned = buildLosslessSummary({ source, budgetChars: 8000, drop: new Set([itemKey("Deploy now please to production")]) }).text;
-    expect(pruned).not.toContain("Deploy now");
-    expect(pruned).toContain("latest request here");
-  });
 });
 
 describe("user corrections", () => {

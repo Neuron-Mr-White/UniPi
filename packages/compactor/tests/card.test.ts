@@ -10,39 +10,38 @@ const stats = {
 } as any;
 
 describe("compaction card", () => {
-  const jev = buildCardData({
-    method: "jev",
+  const card = buildCardData({
+    method: "vcc",
     trigger: "percent",
     tokensBefore: 9131,
     stats,
-    details: { sections: ["Active Work", "Your Requests"], jev: { asked: 12, dropped: 2, droppedItems: ["request: Deploy now", "supersede: speed set to 1.2x"] } },
+    details: { sections: ["Active Work", "Your Requests"] },
     summary: "x".repeat(1000),
     percent: 12.4,
     threshold: 3,
   });
 
   it("one plain line: sizes, method, outcome, trigger", () => {
-    expect(cardHeadline(jev)).toBe("Compacted 9.1k → 655 tokens · lossless + jev · 2 stale dropped · at 12%");
+    expect(cardHeadline(card)).toBe("Compacted 9.1k → 655 tokens · lossless · at 12%");
     const manual = buildCardData({ method: "vcc", trigger: "manual", tokensBefore: 40000, stats, details: null, command: "unipi:compact-vcc" });
     expect(cardHeadline(manual)).toContain("· lossless · /unipi:compact-vcc");
     const pi = buildCardData({ method: "llm", trigger: "threshold", tokensBefore: 120000, stats: null, details: null, summary: "y".repeat(8000) });
     expect(cardHeadline(pi)).toBe("Compacted from 120k tokens · model summary · context limit");
   });
 
-  it("details on expand: trigger, kept, summary, dropped items, recall", () => {
-    const rows = Object.fromEntries(cardDetails(jev).filter(([l]) => l));
-    expect(rows.Method).toBe("lossless + jev (asked 12, dropped 2)");
+  it("details on expand: trigger, kept, summary, recall", () => {
+    const rows = Object.fromEntries(cardDetails(card).filter(([l]) => l));
+    expect(rows.Method).toBe("lossless");
     expect(rows.Trigger).toBe("12% of context (setting: 3%)");
     expect(rows.Kept).toBe("last 1 of 2 turns · ~400 tokens verbatim");
     expect(rows.Summary).toBe("~250 tokens · Active Work, Your Requests");
-    expect(rows.Dropped).toBe("Deploy now");
     expect(rows.Recall).toContain("/unipi:session-recall");
   });
 
   it("collapsed renders one line with the ctrl+o hint; expanded adds the details", () => {
-    const collapsed = renderCompactionCard(jev, false, theme).render(120);
+    const collapsed = renderCompactionCard(card, false, theme).render(120);
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0]).toContain("ctrl+o");
-    expect(renderCompactionCard(jev, true, theme).render(120).length).toBeGreaterThan(5);
+    expect(renderCompactionCard(card, true, theme).render(120).length).toBeGreaterThan(5);
   });
 });

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
-import { planJevCompaction, planLosslessCompaction, registerCompactionHooks, setPendingCompaction } from "../src/compaction/hooks.js";
+import { planLosslessCompaction, registerCompactionHooks, setPendingCompaction } from "../src/compaction/hooks.js";
 import { loadConfig, translateLegacyConfig } from "../src/config/manager.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
 import { originKey } from "../src/compaction/source.js";
@@ -184,28 +184,6 @@ describe("config", () => {
     expect(config.trigger).toBe("percent");
     expect(config.thresholdPercent).toBe(60);
     expect((config as any).sessionGoals).toBeUndefined();
-  });
-});
-
-describe("jev method", () => {
-  const input = () => ({ branchEntries: workingSession(), tokensBefore: 50_000, config: { ...DEFAULT_COMPACTOR_CONFIG }, cwd });
-
-  it("rebuilds without what jev drops and records it", async () => {
-    const plan = await planJevCompaction(input(), async (candidates) => ({
-      drop: new Set(candidates.filter((c) => c.text.startsWith("Build a login page")).map((c) => c.key)),
-      asked: candidates.length,
-      answered: candidates.length,
-    }));
-    expect(plan.ok).toBe(true);
-    if (!plan.ok) return;
-    expect(plan.details.method).toBe("jev");
-    expect((plan.details.jev as any).asked).toBeGreaterThan(0);
-  });
-
-  it("falls back to the plain lossless summary when jev is silent", async () => {
-    const plan = await planJevCompaction(input(), async (c) => ({ drop: new Set(), asked: c.length, answered: 0 }));
-    expect(plan.ok && (plan.details.jev as any).jev).toBe("unavailable");
-    expect(plan.ok && plan.summary).toContain("[Your Requests]");
   });
 });
 

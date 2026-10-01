@@ -14,15 +14,14 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { compact as piCompact, generateSummaryWithUsage, DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
-import { collectCompactionContext, emitEvent, formatTokens, resolveDecisionModel, UNIPI_EVENTS } from "@pi-unipi/core";
+import { collectCompactionContext, emitEvent, formatTokens, UNIPI_EVENTS } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { autoCompactionOf } from "../config/schema.js";
 import { buildOwnCut, resolveSmartKeepUserTurns, applyTailBudget, MAX_SMART_TAIL_TOKENS } from "./cut.js";
 import { parseCompactionInstructions } from "./compact-args.js";
 import { calibrateCharsPerToken, estimateMessageContentChars, estimateTokensFromChars } from "./token-estimate.js";
 import { collectSummarySource, ORIGIN_ENTRY_TYPE, originKey } from "./source.js";
-import { autoBudgetTokens, buildLosslessSummary, pruneState, summaryCandidates, type LosslessSummaryInput, type SummaryCandidate } from "./summarize.js";
-import { pruneWithJev } from "./jev-prune.js";
+import { autoBudgetTokens, buildLosslessSummary, type LosslessSummaryInput } from "./summarize.js";
 import { CARD_TYPE, type CompactionCardData, type CompactionTrigger } from "../card.js";
 import {
   createAutoCompactionState,
@@ -77,7 +76,6 @@ export function buildCardData(opts: {
   threshold?: number;
 }): CompactionCardData {
   const { stats, details } = opts;
-  const jev = details?.jev as { asked?: number; dropped?: number; droppedItems?: string[]; jev?: string } | undefined;
   const summaryChars = typeof opts.summary === "string" ? opts.summary.length : 0;
   return {
     method: opts.method,
@@ -88,9 +86,6 @@ export function buildCardData(opts: {
     ...(summaryChars ? { summaryTokens: Math.ceil(summaryChars / SUMMARY_CHARS_PER_TOKEN) } : {}),
     ...(stats ? { keptTurns: stats.keptUserTurns, totalTurns: stats.totalUserTurns, keptTokens: stats.keptTokensEst } : {}),
     ...(Array.isArray(details?.sections) ? { sections: details!.sections as string[] } : {}),
-    ...(opts.method === "jev" && jev
-      ? { jev: { asked: jev.asked ?? 0, dropped: jev.dropped ?? 0, items: (jev.droppedItems ?? []).map((i) => i.replace(/^\w+: /, "")), ...(jev.jev === "unavailable" ? { unavailable: true } : {}) } }
-      : {}),
     ...(opts.percent != null ? { percent: opts.percent } : {}),
     ...(opts.threshold != null ? { threshold: opts.threshold } : {}),
   };
@@ -139,10 +134,6 @@ export interface LosslessPlanInput {
   config: CompactorConfig;
   cwd?: string;
   reason?: string;
-  /** Item keys to leave out of the summary (jev pruning). */
-  drop?: ReadonlySet<string>;
-  /** Receives the summary input before it is built (jev pruning reads it). */
-  onSummaryInput?: (input: LosslessSummaryInput) => void;
 }
 
 export type LosslessPlan =
@@ -203,9 +194,7 @@ export function planLosslessCompaction(input: LosslessPlanInput): LosslessPlan {
     cwd: input.cwd,
     fileOps: input.fileOps,
     sections: config.sections,
-    drop: input.drop,
   };
-  input.onSummaryInput?.(summaryInput);
   const summary = buildLosslessSummary(summaryInput);
 
   const tokensAfter = keptTokens + estimateTokensFromChars(summary.text.length, SUMMARY_CHARS_PER_TOKEN);
@@ -245,38 +234,6 @@ export function planLosslessCompaction(input: LosslessPlanInput): LosslessPlan {
     },
   };
 }
-
-/**
- * Lossless compaction pruned by jev: build once to collect the candidates,
- * ask jev which are no longer in force, rebuild without them (their room goes
- * to other items). Falls back to the plain lossless plan when jev is silent.
- */
-export async function planJevCompaction(
-  input: LosslessPlanInput,
-  prune: (candidates: SummaryCandidate[], state: string) => Promise<{ drop: Set<string>; asked: number; answered: number }>,
-): Promise<LosslessPlan> {
-  let captured: LosslessSummaryInput | null = null;
-  const first = planLosslessCompaction({ ...input, onSummaryInput: (si) => (captured = si) });
-  if (!first.ok || !captured) return first;
-  const candidates = summaryCandidates(captured);
-  if (candidates.length === 0) return withMethod(first, "jev", { asked: 0, dropped: 0 });
-  const result = await prune(candidates, pruneState(captured));
-  if (result.answered === 0) return withMethod(first, "jev", { asked: result.asked, dropped: 0, jev: "unavailable" });
-  const plan = result.drop.size > 0 ? planLosslessCompaction({ ...input, drop: result.drop }) : first;
-  return withMethod(plan, "jev", {
-    asked: result.asked,
-    dropped: result.drop.size,
-    droppedItems: candidates.filter((c) => result.drop.has(c.key)).map((c) => `${c.kind}: ${(c.earlier ?? c.text).slice(0, 120)}`),
-  });
-}
-
-function withMethod(plan: LosslessPlan, method: CompactionMethod, extra: Record<string, unknown>): LosslessPlan {
-  return plan.ok ? { ...plan, details: { ...plan.details, method, jev: extra } } : plan;
-}
-
-/** jev pruning with the Decision Model (shared, or the compactor's custom override). */
-export const jevPruner = (cwd: string, signal?: AbortSignal) => (candidates: SummaryCandidate[], state: string) =>
-  pruneWithJev(candidates, state, resolveDecisionModel(cwd, "compactor"), { signal });
 
 // ── model summary ────────────────────────────────────────
 
@@ -384,7 +341,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     const parsed = parseCompactionInstructions(event.customInstructions);
     const method: CompactionMethod = pendingMethod
       ?? (parsed.isCompactor
-        ? (config.method === "jev" ? "jev" : "vcc")
+        ? "vcc"
         : reason === "manual" && config.piCompact !== "follow"
           ? config.piCompact
           : config.method);
@@ -427,9 +384,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
       reason,
       contextWindow: ctx?.model?.contextWindow,
     };
-    const plan = method === "jev"
-      ? await planJevCompaction(planInput, jevPruner(cwd, event.signal))
-      : planLosslessCompaction(planInput);
+    const plan = planLosslessCompaction(planInput);
 
     if (!plan.ok) {
       // Overflow must still recover: let Pi's own summarizer handle it.
@@ -460,7 +415,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
   pi.on("session_compact", (event: SessionCompactEvent, ctx) => {
     const details = (event.compactionEntry as { details?: { compactor?: string; method?: CompactionMethod } } | undefined)?.details;
     const ours = details?.compactor === COMPACTOR_ID;
-    const method: CompactionMethod = !ours ? "llm" : details?.method === "llm" || details?.method === "jev" ? details.method : "vcc";
+    const method: CompactionMethod = !ours ? "llm" : details?.method === "llm" ? "llm" : "vcc";
     afterCompaction(ours ? lastStats : null, method);
 
     const wasCommand = commandCompaction;
@@ -556,7 +511,7 @@ type BoundaryDraft = {
 
 async function boundaryLosslessDraft(branch: any[], config: CompactorConfig, cwd: string, tokensBefore?: number, contextWindow?: number): Promise<BoundaryDraft | null> {
   const input: LosslessPlanInput = { branchEntries: branch, tokensBefore, config, cwd, reason: "percent", contextWindow };
-  const plan = config.method === "jev" ? await planJevCompaction(input, jevPruner(cwd)) : planLosslessCompaction(input);
+  const plan = planLosslessCompaction(input);
   if (!plan.ok) return null;
   lastStats = plan.stats;
   return {

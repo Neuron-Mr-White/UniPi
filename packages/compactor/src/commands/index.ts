@@ -41,10 +41,6 @@ export function registerCommands(pi: ExtensionAPI): void {
     description: "Lossless compaction now — instant structured summary, no model call (keep:N keeps N recent turns)",
     handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "vcc", args, "unipi:compact-vcc"),
   });
-  pi.registerCommand("unipi:compact-jev", {
-    description: "Lossless compaction, then jev drops items no longer in force (done requests, reversed decisions, fixed errors)",
-    handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "jev", args, "unipi:compact-jev"),
-  });
   pi.registerCommand("unipi:compact-by-llm", {
     description: "Compact now with a model-written summary (optional text focuses the summary)",
     handler: async (args: string, ctx: ExtensionCommandContext) => runCompaction(ctx, "llm", args, "unipi:compact-by-llm"),
@@ -112,7 +108,6 @@ export function registerCommands(pi: ExtensionAPI): void {
         [
           "Compactor",
           "  /unipi:compact-vcc [keep:N]    lossless compaction now (no model call)",
-          "  /unipi:compact-jev [keep:N]    lossless, then jev prunes what is no longer in force",
           "  /unipi:compact-by-llm [focus]  compact now with a model-written summary",
           "  /unipi:session-recall <query>  search everything in this session, including compacted parts",
           "  /unipi:compact-stats           this session's savings",

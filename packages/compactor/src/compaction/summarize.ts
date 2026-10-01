@@ -42,8 +42,6 @@ export interface LosslessSummaryInput {
   cwd?: string;
   fileOps?: FileOps;
   sections?: SummarySections;
-  /** Item keys to leave out (jev pruning; see itemKey). */
-  drop?: ReadonlySet<string>;
 }
 
 export interface LosslessSummary {
@@ -63,7 +61,6 @@ const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 /** Stable identity of a summary item (survives clipping to ≥80 chars). */
 export const itemKey = (text: string): string => oneLine(text).slice(0, 80).toLowerCase();
 
-const NO_DROP: ReadonlySet<string> = new Set();
 
 export function clip(text: string, max: number): string {
   if (max <= 1) return "";
@@ -98,12 +95,12 @@ export interface RequestSelection {
   shown: Set<number>;
 }
 
-export function selectRequestLines(requests: string[], maxChars: number, drop: ReadonlySet<string> = NO_DROP): RequestSelection {
+export function selectRequestLines(requests: string[], maxChars: number): RequestSelection {
   const all = requests
     .map((r, i) => ({ text: oneLine(r), i }))
     .filter((r) => r.text.length > 0 && !TRIVIAL_REQUEST_RE.test(r.text));
-  // The opening request and the latest one always stay; the rest can be pruned.
-  const meaningful = all.filter((r, k) => k === 0 || k === all.length - 1 || !drop.has(itemKey(r.text)));
+  // The opening request and the latest one always stay.
+  const meaningful = all;
   const shown = new Set<number>();
   if (meaningful.length === 0) return { lines: [], shown };
   const [first, ...rest] = meaningful;
@@ -148,7 +145,6 @@ export function selectDecisions(
   requests: string[],
   maxChars: number,
   skip: ReadonlySet<number> = new Set(),
-  drop: ReadonlySet<string> = NO_DROP,
 ): string[] {
   const seen = new Set<string>();
   const found: string[] = [];
@@ -157,7 +153,7 @@ export function selectDecisions(
     // An answer to an agent question is one explicit decision: keep it whole.
     if (request.includes(" → ")) {
       const key = request.toLowerCase().slice(0, 60);
-      if (!seen.has(key) && !drop.has(itemKey(request))) {
+      if (!seen.has(key)) {
         seen.add(key);
         found.push(clip(oneLine(request), 260));
       }
@@ -181,7 +177,7 @@ export function selectDecisions(
       if (/^(?:it|this|that|these|those)\b/i.test(piece) && piece.length < 60) continue; // needs context it lacks
       if (/^[`$]|[{};]\s*$/.test(piece)) continue; // code, not a decision
       const key = piece.toLowerCase().slice(0, 60);
-      if (seen.has(key) || drop.has(itemKey(piece))) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       found.push(clip(oneLine(piece), 220));
       pushedFromThis = found.length - 1;
@@ -223,7 +219,7 @@ function pickDecisions(found: string[], maxChars: number): string[] {
 /** A progress report to the user is long; step narration ("Next I'll…") is short. */
 const REPORT_MIN_CHARS = 400;
 
-export function selectState(reports: string[], maxChars: number, dropReport = false): string[] {
+export function selectState(reports: string[], maxChars: number): string[] {
   const flat = reports.map((r) => oneLine(r.replace(/!\[[^\]]*\]\([^)]*\)/g, ""))).filter(Boolean);
   if (flat.length === 0) return [];
   let reportIdx = -1;
@@ -235,7 +231,7 @@ export function selectState(reports: string[], maxChars: number, dropReport = fa
   }
   const latestIdx = flat.length - 1;
   if (reportIdx === latestIdx) return [`Last report: ${clip(flat[reportIdx], maxChars - 20)}`];
-  if (reportIdx < 0 || dropReport) return [`Latest step: ${clip(flat[latestIdx], reportIdx < 0 ? Math.floor(maxChars * 0.3) : maxChars - 20)}`];
+  if (reportIdx < 0) return [`Latest step: ${clip(flat[latestIdx], Math.floor(maxChars * 0.3))}`];
   const step = `Latest step: ${clip(flat[latestIdx], Math.floor(maxChars * 0.3))}`;
   const age = latestIdx - reportIdx;
   const label = `Last full report (${age} message${age === 1 ? "" : "s"} earlier — may be outdated)`;
@@ -353,10 +349,8 @@ export function lessonCandidates(blocks: NormalizedBlock[]): LessonCandidate[] {
 const LESSON_PRIORITY: Record<LessonCandidate["source"], number> = { memory: 0, comment: 1, diagnosis: 2 };
 
 /** Memory notes first, then comments, then diagnoses; newest first within each; chronological output. */
-export function selectLessons(blocks: NormalizedBlock[], maxChars: number, drop: ReadonlySet<string> = NO_DROP): string[] {
-  const all = lessonCandidates(blocks)
-    .map((c, i) => ({ ...c, i }))
-    .filter((c) => !drop.has(itemKey(c.text)));
+export function selectLessons(blocks: NormalizedBlock[], maxChars: number): string[] {
+  const all = lessonCandidates(blocks).map((c, i) => ({ ...c, i }));
   const ranked = [...all].sort((a, b) => LESSON_PRIORITY[a.source] - LESSON_PRIORITY[b.source] || b.i - a.i);
   const chosen: typeof all = [];
   let used = 0;
@@ -434,16 +428,6 @@ export function selectKnowledge(blocks: NormalizedBlock[], cwd: string | undefin
 
 // ── Commits ──────────────────────────────────────────────
 
-/** Commit subjects in session order, for supersede pairing. */
-function commitTimeline(blocks: NormalizedBlock[]): Array<{ text: string; at: number }> {
-  const out: Array<{ text: string; at: number }> = [];
-  for (const [i, b] of blocks.entries()) {
-    if (b.kind !== "tool_result" || b.isError) continue;
-    for (const m of b.text.matchAll(COMMIT_LINE_RE)) out.push({ text: `commit ${m[2].slice(0, 8)}: ${clip(m[3].trim(), 160)}`, at: i });
-  }
-  return out;
-}
-
 const COMMIT_LINE_RE = /\[([\w./@-]+)(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+?)(?= \d+ files? changed|$)/g;
 /** `git commit -m "msg"` / `-qm 'msg'` — for quiet commits that print no summary line. */
 const COMMIT_CMD_RE = /\bgit\s+commit\b[^"'\n]*?\s-[a-zA-Z]*m\s*(["'])((?:(?!\1).){3,}?)\1/;
@@ -484,7 +468,7 @@ const callTarget = (b: Extract<NormalizedBlock, { kind: "tool_call" }>): string 
 /** Later successes of the same tool after which an error counts as moved past. */
 const RESOLVED_AFTER_SUCCESSES = 3;
 
-export function selectOpenErrors(blocks: NormalizedBlock[], maxChars: number, drop: ReadonlySet<string> = NO_DROP): string[] {
+export function selectOpenErrors(blocks: NormalizedBlock[], maxChars: number): string[] {
   const lastTarget = new Map<string, string>();
   const open = new Map<string, { tool: string; text: string; ref?: number; successesAfter: number }>();
   // Only recent errors can still be open; older ones are history (session_recall).
@@ -506,9 +490,7 @@ export function selectOpenErrors(blocks: NormalizedBlock[], maxChars: number, dr
       if (err.tool === b.name && ++err.successesAfter >= RESOLVED_AFTER_SUCCESSES) open.delete(k);
     }
   }
-  const lines = [...open.values()]
-    .filter((e) => !drop.has(itemKey(e.text)))
-    .map((e) => (e.ref != null ? `${e.text} (#${e.ref})` : e.text));
+  const lines = [...open.values()].map((e) => (e.ref != null ? `${e.text} (#${e.ref})` : e.text));
   return fitItems(lines.slice(-5).reverse(), maxChars).reverse();
 }
 
@@ -517,9 +499,9 @@ export function selectOpenErrors(blocks: NormalizedBlock[], maxChars: number, dr
 /** The transcript covers recent work; older history lives in the sections above. */
 export const TRANSCRIPT_WINDOW_BLOCKS = 160;
 
-export function selectTranscript(blocks: NormalizedBlock[], maxChars: number, fileOps?: FileOps, drop: ReadonlySet<string> = NO_DROP): string {
+export function selectTranscript(blocks: NormalizedBlock[], maxChars: number, fileOps?: FileOps): string {
   if (maxChars < 200 || blocks.length === 0) return "";
-  const recent = blocks.slice(-TRANSCRIPT_WINDOW_BLOCKS).filter((b) => b.kind !== "user" || !drop.has(itemKey(b.text)));
+  const recent = blocks.slice(-TRANSCRIPT_WINDOW_BLOCKS);
   const selected = selectRankedBriefBlocks(recent, { maxBriefChars: maxChars, fileOps });
   const lines = compileBrief(selected).split("\n").map((l) => clip(l, 300));
   // Hard cap: keep the newest lines that fit.
@@ -533,105 +515,6 @@ export function selectTranscript(blocks: NormalizedBlock[], maxChars: number, fi
   while (out.length > 0 && !out[0].startsWith("[")) out.shift();
   return out.join("\n").trim();
 }
-
-// ── jev pruning inputs ───────────────────────────────────
-
-export const REPORT_KEY = "__last_full_report__";
-
-export interface SummaryCandidate {
-  key: string;
-  kind: "request" | "decision" | "error" | "report" | "lesson" | "supersede";
-  text: string;
-  /** supersede: the earlier item that `text` may replace (key is the earlier item's). */
-  earlier?: string;
-}
-
-const STOP = new Set("the and for that this with from have will should would could into your about there their them then than when what which while also just like only more some such very been being were they those these after before does done make made need needs want wants user agent".split(" "));
-const contentWords = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9_.\-/]{4,}|\d+(?:\.\d+)?x?/g) ?? []).filter((w) => !STOP.has(w)));
-
-/**
- * Pairs (earlier, later) about the same thing — shared distinctive words —
- * so jev can answer a local question: does the later one replace the earlier?
- */
-export function supersedePairs(
-  items: string[],
-  maxPairs = 30,
-  canBeEarlier: (i: number) => boolean = () => true,
-  perLater = 3,
-): Array<{ earlier: string; later: string }> {
-  const words = items.map(contentWords);
-  const pairs: Array<{ earlier: string; later: string }> = [];
-  for (let j = items.length - 1; j > 0 && pairs.length < maxPairs; j--) {
-    const matches: Array<{ i: number; score: number }> = [];
-    for (let i = 0; i < j; i++) {
-      if (!canBeEarlier(i)) continue;
-      let shared = 0;
-      for (const w of words[j]) if (words[i].has(w)) shared++;
-      const union = words[i].size + words[j].size - shared;
-      const jaccard = union ? shared / union : 0;
-      // Overlap vs the shorter item: long notes about one subject share few
-      // words relative to their union. Jaccard ≥0.6 is the same statement twice.
-      const score = shared / Math.max(1, Math.min(words[i].size, words[j].size));
-      if (shared >= 3 && score >= 0.3 && jaccard < 0.6) matches.push({ i, score });
-    }
-    // One later item (a reversal) can replace several earlier ones.
-    for (const m of matches.sort((a, b) => b.score - a.score).slice(0, perLater)) {
-      if (pairs.length < maxPairs) pairs.push({ earlier: items[m.i], later: items[j] });
-    }
-  }
-  return pairs;
-}
-
-/** Items jev may prune: earlier requests, decisions, open errors, an older report. */
-export function summaryCandidates(input: LosslessSummaryInput): SummaryCandidate[] {
-  const { source } = input;
-  const budget = Math.max(2000, Math.round(input.budgetChars));
-  const out: SummaryCandidate[] = [];
-  const requests = source.requests.map(oneLine).filter((r) => r && !TRIVIAL_REQUEST_RE.test(r));
-  // Middle requests (first and latest always stay), newest first, bounded.
-  // An answered question is a decision (higher bar to drop), not a one-off request.
-  for (const r of requests.slice(1, -1).reverse().slice(0, 12)) out.push({ key: itemKey(r), kind: r.includes(" → ") ? "decision" : "request", text: clip(r, 400) });
-  for (const d of selectDecisions(source.requests, budget * 0.35)) out.push({ key: itemKey(d), kind: "decision", text: d });
-  for (const e of selectOpenErrors(source.blocks, budget * 0.2)) out.push({ key: itemKey(e.replace(/ \(#\d+\)$/, "")), kind: "error", text: e });
-  const state = selectState(source.reports, budget);
-  const report = state.find((l) => l.startsWith("Last full report"));
-  if (report) out.push({ key: REPORT_KEY, kind: "report", text: clip(report, 700) });
-  // Local questions (no session state needed): is this a durable lesson, and
-  // does a later item replace an earlier one on the same subject?
-  const lessons = lessonCandidates(source.blocks);
-  for (const l of lessons.slice(-40)) out.push({ key: itemKey(l.text), kind: "lesson", text: l.text });
-  const ordered = [...requests.slice(1, -1).map((r) => clip(r, 300)), ...selectDecisions(source.requests, 1e9)];
-  // Agent-side timeline: a lesson may be replaced by a later lesson or commit.
-  const commits = commitTimeline(source.blocks);
-  // The kept tail is newer than everything summarized: its lessons and commits can only be LATER.
-  const tailBlocks = source.tail ?? [];
-  const tailItems = [...lessonCandidates(tailBlocks).map((l) => l.text), ...commitTimeline(tailBlocks).map((c) => c.text)];
-  const timeline = [
-    ...[...lessons.map((l) => ({ text: l.text, at: l.at, lesson: true })), ...commits.map((c) => ({ ...c, lesson: false }))].sort((a, b) => a.at - b.at),
-    ...tailItems.map((text) => ({ text, at: Number.MAX_SAFE_INTEGER, lesson: false })),
-  ];
-  const agentPairs = supersedePairs(timeline.map((t) => t.text), 30, (i) => timeline[i].lesson);
-  for (const p of [...supersedePairs(ordered, 12), ...agentPairs]) {
-    out.push({ key: itemKey(p.earlier), kind: "supersede", text: p.later, earlier: p.earlier });
-  }
-  const seen = new Set<string>();
-  return out.filter((c) => (seen.has(`${c.kind}:${c.key}`) ? false : (seen.add(`${c.kind}:${c.key}`), true)));
-}
-
-/** What jev judges against: active work, the latest requests and steps, recent commits and transcript. */
-export function pruneState(input: LosslessSummaryInput): string {
-  const { source } = input;
-  const requests = source.requests.map(oneLine).filter((r) => r && !TRIVIAL_REQUEST_RE.test(r));
-  const parts = [
-    input.activeWork?.length ? `Active work:\n${input.activeWork.map((b) => b.text).join("\n")}` : "",
-    requests.length ? `Latest user requests:\n${requests.slice(-2).map((r) => `- ${clip(r, 500)}`).join("\n")}` : "",
-    `Latest agent messages:\n${source.reports.slice(-3).map((r) => `- ${clip(oneLine(r), 700)}`).join("\n")}`,
-    `Recent commits:\n${selectCommits(source.blocks, 800).join("\n")}`,
-    `Recent activity:\n${selectTranscript(source.blocks, 2500)}`,
-  ];
-  return redactSecrets(parts.filter(Boolean).join("\n\n"));
-}
-
 // ── secrets ──────────────────────────────────────────────
 
 const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
@@ -684,16 +567,15 @@ export function buildLosslessSummary(input: LosslessSummaryInput): LosslessSumma
     const lines = input.activeWork.map((b) => clip(b.text.trim(), Math.max(200, per)));
     parts.push(["Active Work", `[Active Work]\n${lines.join("\n\n")}`]);
   }
-  const drop = input.drop ?? NO_DROP;
-  const requestSel = on.requests ? selectRequestLines(source.requests, cap(SHARES.requests), drop) : { lines: [], shown: new Set<number>() };
+  const requestSel = on.requests ? selectRequestLines(source.requests, cap(SHARES.requests)) : { lines: [], shown: new Set<number>() };
   if (on.requests) parts.push(["Your Requests", section("Your Requests", requestSel.lines)]);
-  if (on.state) parts.push(["Latest State", section("Latest State", selectState(source.reports, cap(SHARES.state), drop.has(REPORT_KEY)))]);
-  if (on.decisions) parts.push(["Decisions & Constraints", section("Decisions & Constraints", selectDecisions(source.requests, cap(SHARES.decisions), requestSel.shown, drop))]);
+  if (on.state) parts.push(["Latest State", section("Latest State", selectState(source.reports, cap(SHARES.state)))]);
+  if (on.decisions) parts.push(["Decisions & Constraints", section("Decisions & Constraints", selectDecisions(source.requests, cap(SHARES.decisions), requestSel.shown))]);
   if (on.files) parts.push(["Files", section("Files", selectFiles(source.blocks, input.cwd, cap(SHARES.files)))]);
-  if (on.lessons) parts.push(["Lessons", section("Lessons", selectLessons(source.blocks, cap(SHARES.lessons), drop))]);
+  if (on.lessons) parts.push(["Lessons", section("Lessons", selectLessons(source.blocks, cap(SHARES.lessons)))]);
   if (on.files) parts.push(["Project Knowledge", section("Project Knowledge", selectKnowledge(source.blocks, input.cwd, cap(SHARES.knowledge)))]);
   if (on.commits) parts.push(["Commits", section("Commits", selectCommits(source.blocks, cap(SHARES.commits)))]);
-  if (on.errors) parts.push(["Open Errors", section("Open Errors", selectOpenErrors(source.blocks, cap(SHARES.errors), drop))]);
+  if (on.errors) parts.push(["Open Errors", section("Open Errors", selectOpenErrors(source.blocks, cap(SHARES.errors)))]);
 
   const head = parts.filter(([, text]) => text);
   const headText = head.map(([, text]) => text).join("\n\n");
@@ -702,7 +584,7 @@ export function buildLosslessSummary(input: LosslessSummaryInput): LosslessSumma
   let transcript = "";
   if (on.transcript) {
     const remaining = budget - headText.length - RECALL_NOTE.length - 40;
-    transcript = selectTranscript(source.blocks, Math.max(Math.floor(budget * 0.18), remaining), input.fileOps, drop);
+    transcript = selectTranscript(source.blocks, Math.max(Math.floor(budget * 0.18), remaining), input.fileOps);
     if (transcript) sections.push("Recent Transcript");
   }
 

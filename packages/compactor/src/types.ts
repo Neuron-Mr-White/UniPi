@@ -53,10 +53,9 @@ export type BudgetCutKind = "no_anchor" | "oversized_tail";
 // ─────────────────────────────────────────────────────────
 
 /**
- * vcc = UniPi's lossless zero-LLM summary; jev = lossless, then pruned of
- * items jev judges no longer in force; llm = a model-written summary.
+ * vcc = UniPi's lossless zero-LLM summary; llm = a model-written summary.
  */
-export type CompactionMethod = "vcc" | "jev" | "llm";
+export type CompactionMethod = "vcc" | "llm";
 
 /** Summary sections that can be switched off (Advanced). */
 export interface SummarySections {

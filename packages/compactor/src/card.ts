@@ -4,7 +4,7 @@
  *
  * Pi draws its own `[compaction] Compacted from N tokens` block (expands to
  * the summary); this card adds what Pi does not say: the size after, the
- * method, what triggered it, what was kept and what jev dropped.
+ * method, what triggered it, and what was kept.
  */
 
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
@@ -18,7 +18,7 @@ export type CompactionTrigger = "manual" | "threshold" | "overflow" | "percent";
 export interface CompactionCardData {
   method: CompactionMethod;
   trigger: CompactionTrigger;
-  /** The command that ran it (manual only), e.g. "unipi:compact-jev". */
+  /** The command that ran it (manual only), e.g. "unipi:compact-vcc". */
   command?: string;
   tokensBefore: number;
   tokensAfter?: number;
@@ -27,14 +27,12 @@ export interface CompactionCardData {
   totalTurns?: number;
   keptTokens?: number;
   sections?: string[];
-  jev?: { asked: number; dropped: number; items: string[]; unavailable?: boolean };
   percent?: number;
   threshold?: number;
 }
 
 const METHOD_NAME: Record<CompactionMethod, string> = {
   vcc: "lossless",
-  jev: "lossless + jev",
   llm: "model summary",
 };
 
@@ -58,8 +56,6 @@ function triggerLong(d: CompactionCardData): string {
 export function cardHeadline(d: CompactionCardData): string {
   const size = d.tokensAfter != null ? `${formatTokens(d.tokensBefore)} → ${formatTokens(d.tokensAfter)}` : `from ${formatTokens(d.tokensBefore)}`;
   const parts = [`Compacted ${size} tokens`, METHOD_NAME[d.method]];
-  if (d.jev?.unavailable) parts.push("jev unavailable");
-  else if (d.jev && d.jev.dropped > 0) parts.push(`${d.jev.dropped} stale dropped`);
   parts.push(triggerShort(d));
   return parts.join(" · ");
 }
@@ -67,7 +63,7 @@ export function cardHeadline(d: CompactionCardData): string {
 /** Label/value rows for the expanded card. */
 export function cardDetails(d: CompactionCardData): Array<[string, string]> {
   const rows: Array<[string, string]> = [
-    ["Method", d.method === "jev" && d.jev ? `${METHOD_NAME.jev} (asked ${d.jev.asked}, dropped ${d.jev.dropped})` : METHOD_NAME[d.method]],
+    ["Method", METHOD_NAME[d.method]],
     ["Trigger", triggerLong(d)],
   ];
   if (d.keptTurns != null && d.totalTurns != null) {
@@ -76,7 +72,6 @@ export function cardDetails(d: CompactionCardData): Array<[string, string]> {
   if (d.summaryTokens != null) {
     rows.push(["Summary", `~${formatTokens(d.summaryTokens)} tokens${d.sections?.length ? ` · ${d.sections.join(", ")}` : ""}`]);
   }
-  for (const [i, item] of (d.jev?.items ?? []).slice(0, 6).entries()) rows.push([i === 0 ? "Dropped" : "", item]);
   rows.push(["Recall", "everything before stays searchable: /unipi:session-recall"]);
   return rows;
 }

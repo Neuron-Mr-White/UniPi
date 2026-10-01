@@ -4,13 +4,12 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getSettingsScoped, registerSettings, setSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
+import { getSettingsScoped, registerSettings, setSettings } from "@pi-unipi/core";
 import type { CompactorConfig } from "../types.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
 
 const METHOD_OPTIONS = [
   { value: "vcc", label: "lossless (no model)" },
-  { value: "jev", label: "lossless + jev pruning" },
   { value: "llm", label: "model summary" },
 ] as const;
 
@@ -20,7 +19,7 @@ const METHOD_OPTIONS = [
 registerSettings({
   namespace: "compactor",
   label: "Compactor",
-  defaults: { ...DEFAULT_COMPACTOR_CONFIG, decisionModel: DEFAULT_DECISION_OVERRIDE } as unknown as Record<string, unknown>,
+  defaults: { ...DEFAULT_COMPACTOR_CONFIG } as unknown as Record<string, unknown>,
   schema: [
     {
       title: "Compaction",
@@ -30,7 +29,7 @@ registerSettings({
           key: "method",
           type: "enum",
           label: "Method",
-          description: "Lossless: instant structured summary, full history stays searchable. + jev pruning: jev (the Decision model) drops items no longer in force — done requests, reversed decisions, fixed errors (~1s, fractions of a cent). Model summary: Pi's model-written summary (costs a model call).",
+          description: "Lossless: instant structured summary, full history stays searchable. Model summary: Pi's model-written summary (costs a model call).",
           options: METHOD_OPTIONS,
         },
         {
@@ -76,7 +75,6 @@ registerSettings({
         { key: "debug", type: "boolean", label: "Debug output", description: "Write compaction diagnostics to /tmp/compactor-debug.json" },
       ],
     },
-    decisionModelSection({ title: "jev pruning — Decision model" }),
   ],
 });
 
@@ -96,6 +94,9 @@ export function translateLegacyConfig(raw: Raw): Raw {
   for (const key of Object.keys(DEFAULT_COMPACTOR_CONFIG)) {
     if (key in raw) out[key] = raw[key];
   }
+  // The jev method was removed: a saved method:"jev" behaves as "vcc".
+  if (out.method === "jev") out.method = "vcc";
+  if (out.piCompact === "jev") out.piCompact = "vcc";
   if (!("method" in raw) && raw.overrideDefaultCompaction === false) out.method = "llm";
   const auto = raw.autoCompaction;
   if (isRecord(auto)) {
@@ -134,6 +135,8 @@ export function loadConfig(cwd: string = process.cwd()): CompactorConfig {
     }
     if (raw) config = deepMerge(config, translateLegacyConfig(raw));
   }
+  if (config.method === "jev") config.method = "vcc";
+  if (config.piCompact === "jev") config.piCompact = "vcc";
   return config as unknown as CompactorConfig;
 }
 

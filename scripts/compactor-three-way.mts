@@ -1,15 +1,14 @@
 /**
- * Three-way compactor comparison at a real compaction point of a recorded
- * session: Pi's model-written summary (the reference), lossless + jev, and
- * lossless (vcc). All three summarize the same history and keep the same tail
- * (the lossless cut), so only the summary differs.
+ * Two-way compactor comparison at a real compaction point of a recorded
+ * session: Pi's model-written summary (the reference) and lossless (vcc).
+ * Both summarize the same history and keep the same tail (the lossless
+ * cut), so only the summary differs.
  *
  *   npx tsx scripts/compactor-three-way.mts <out-dir> <model-id> <session.jsonl[:idx]>...
  *
- * Needs ~/.pi/agent/models.json (the model's provider entry) and a jev key
- * (OPENROUTER_API_KEY). Writes per case:
- *   <slug>.{llm,jev,vcc}.jsonl   resumable sessions (branch + that compaction)
- *   <slug>.{llm,jev,vcc}.md      the summaries
+ * Needs ~/.pi/agent/models.json (the model's provider entry). Writes per case:
+ *   <slug>.{llm,vcc}.jsonl   resumable sessions (branch + that compaction)
+ *   <slug>.{llm,vcc}.md      the summaries
  *   <slug>.next.md               what really happened afterwards
  */
 
@@ -18,8 +17,7 @@ import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { convertToLlm, generateSummaryWithUsage, serializeConversation } from "@earendil-works/pi-coding-agent";
-import { planJevCompaction, planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
-import { pruneWithJev } from "../packages/compactor/src/compaction/jev-prune.ts";
+import { planLosslessCompaction } from "../packages/compactor/src/compaction/hooks.ts";
 import { DEFAULT_COMPACTOR_CONFIG } from "../packages/compactor/src/config/schema.ts";
 import { textOf } from "../packages/compactor/src/compaction/content.ts";
 import { collectOrigins, isInjectedUserText } from "../packages/compactor/src/compaction/source.ts";
@@ -51,7 +49,6 @@ if (model?.provider === "omniroute" && existsSync(bridgeConfig)) {
   apiKey = bridge.apiKey ?? bridge.key ?? apiKey;
 }
 
-const JEV = { provider: "openrouter" as const, model: "typesafe/jev-1.13", baseUrl: "", apiKey: "", timeoutMs: 20_000 };
 /** Serialized chars per summarization call (Pi-style chained updates beyond this). */
 const CHUNK_CHARS = Number(process.env.CHUNK_CHARS ?? 600_000);
 
@@ -134,7 +131,7 @@ for (const spec of specs) {
   const target = compactions[idx];
   if (!target) continue;
   const slug = basename(join(file, "..")).replace(/^--home-oi-Projects-|--$/g, "").slice(0, 40) + `-c${idx}`;
-  // An existing model summary is reused (expensive); jev/vcc are always rebuilt.
+  // An existing model summary is reused (expensive); vcc is always rebuilt.
   const cachedLlm = existsSync(join(outDir, `${slug}.llm.md`)) ? readFileSync(join(outDir, `${slug}.llm.md`), "utf8") : null;
   const branch: any[] = [];
   for (let c = byId.get(target.parentId); c; c = byId.get(c.parentId)) branch.unshift(c);
@@ -144,11 +141,6 @@ for (const spec of specs) {
   const vcc = planLosslessCompaction(input);
   if (!vcc.ok) continue;
   const tVcc = Date.now() - t0;
-  const t1 = Date.now();
-  const jev = await planJevCompaction(input, (c, s) => pruneWithJev(c, s, JEV));
-  if (!jev.ok) continue;
-  const tJev = Date.now() - t1;
-
   // Common cut: the lossless tail; the model summarizes everything before it.
   const keptIdx = vcc.firstKeptEntryId ? branch.findIndex((e) => e.id === vcc.firstKeptEntryId) : branch.length;
   const toSummarize = branch.slice(0, keptIdx < 0 ? branch.length : keptIdx).filter((e) => e.type === "message").map((e) => e.message);
@@ -173,7 +165,6 @@ for (const spec of specs) {
     writeFileSync(join(outDir, `${slug}.${kind}.md`), summary);
   };
   write("vcc", vcc.summary, vcc.details);
-  write("jev", jev.summary, jev.details);
   write("llm", llm.text, { method: "llm-reference", model: modelId, calls: llm.calls });
 
   const origins = collectOrigins(branch);
@@ -200,10 +191,9 @@ for (const spec of specs) {
     entries: branch.length,
     summarizedChars: llm.chars,
     keptTokens: vcc.stats.keptTokensEst,
-    chars: { llm: llm.text.length, jev: jev.summary.length, vcc: vcc.summary.length },
-    ms: { llm: tLlm, jev: tJev, vcc: tVcc },
+    chars: { llm: llm.text.length, vcc: vcc.summary.length },
+    ms: { llm: tLlm, vcc: tVcc },
     llmCalls: llm.calls,
-    jev: jev.details.jev,
   };
   const statsPath = join(outDir, `${slug}.stats.json`);
   if (cachedLlm && existsSync(statsPath)) {
@@ -211,5 +201,5 @@ for (const spec of specs) {
     Object.assign(stats, { summarizedChars: prev.summarizedChars, llmCalls: prev.llmCalls, ms: { ...stats.ms, llm: prev.ms?.llm } });
   }
   writeFileSync(statsPath, JSON.stringify(stats, null, 1));
-  console.log(`${slug}\tllm ${llm.text.length}c/${Math.round(tLlm / 1000)}s(${llm.calls})\tjev ${jev.summary.length}c/${tJev}ms\tvcc ${vcc.summary.length}c/${tVcc}ms`);
+  console.log(`${slug}\tllm ${llm.text.length}c/${Math.round(tLlm / 1000)}s(${llm.calls})\tvcc ${vcc.summary.length}c/${tVcc}ms`);
 }

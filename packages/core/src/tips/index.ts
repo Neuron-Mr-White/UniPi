@@ -247,7 +247,7 @@ export function installTips(pi: ExtensionAPI): void {
       // headless
     }
   });
-  pi.registerCommand(RESET_COMMAND, {
+  pi.registerCommand("unipi:tips-reset", {
     description: "Reset info-tip show counts so every tip is eligible again",
     handler: async (_args, ctx) => {
       resetTipCounts();

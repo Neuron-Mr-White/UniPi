@@ -7,10 +7,7 @@ Compaction for Pi that keeps work going. When the context fills up, the compacto
 | Method | What it does | Cost |
 |---|---|---|
 | **Lossless** (default) | Builds a structured summary without a model call, in milliseconds. | Free |
-| **Lossless + jev** | The lossless summary, then jev (the Decision model, TypeSafe jev) drops items no longer in force: completed one-off requests, reversed decisions, fixed errors, an outdated report. Their room goes to other items. | ~0.5–2 s, fractions of a cent |
 | **Model summary** | Pi's own model-written summary, with the active-work block added on top. | One model call |
-
-jev only drops what it is confident about: decisions (including your answers to agent questions) need ≥92% certainty, one-off requests ≥80%, errors ≥75%. Your first and latest requests are never dropped. With no jev key or on timeout it falls back to the plain lossless summary. It uses the shared Decision Model (`/unipi:settings → Decision Model`); `Compactor → jev pruning — Decision model` can switch it to a custom one for the compactor only.
 
 ### The lossless summary
 
@@ -30,7 +27,7 @@ Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling
 
 ## In the TUI
 
-- **Compaction card:** one line under Pi's own `[compaction]` block, e.g. `▌ Compacted 7.9k → 2.2k tokens · lossless + jev · 1 stale dropped · at 3%`. ctrl+o expands it: method, trigger, what was kept verbatim, summary sections, what jev dropped. It is a custom entry: shown, never sent to the model.
+- **Compaction card:** one line under Pi's own `[compaction]` block, e.g. `▌ Compacted 7.9k → 2.2k tokens · lossless · at 3%`. ctrl+o expands it: method, trigger, what was kept verbatim, summary sections. It is a custom entry: shown, never sent to the model.
 - **Footer strip** (under the input): `5 compactions · 47k→15k · just now`, hidden until the first compaction. With the glance frame off, the `compactions` segment shows the same (`cmp 5× 47k→15k · 1m`).
 - **Info screen** (`/unipi:info` → Compactor): method and trigger settings, compactions by method, tokens before → after, the last compaction.
 
@@ -45,7 +42,7 @@ Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling
 
 | Setting | Default | |
 |---|---|---|
-| Method | lossless | lossless · lossless + jev · model summary |
+| Method | lossless | lossless · model summary |
 | Pi's /compact | same as Method | What Pi's built-in `/compact` does |
 | When | Pi's context limit | Or: at a percentage |
 | Percentage | 80 | Used when When = at a percentage |
@@ -60,14 +57,13 @@ Configs from before the rework are translated automatically: `overrideDefaultCom
 | Command | |
 |---|---|
 | `/unipi:compact-vcc [keep:N]` | Lossless compaction now; `keep:N` keeps the last N user turns |
-| `/unipi:compact-jev [keep:N]` | Lossless compaction pruned by jev |
 | `/unipi:compact-by-llm [focus]` | Model-summary compaction now; optional text focuses the summary |
 | `/unipi:session-recall <query>` | Search the full session history (`scope:all`, `page:N`) |
 | `/unipi:compact-stats` | This session's compactions and savings |
 | `/unipi:compact-doctor` | Check settings, Pi's compaction switch, leftovers |
 | `/unipi:compact-help` | Command summary |
 
-Removed: `/unipi:compact` and `/unipi:lossless-compact` (use `/unipi:compact-vcc`), `/unipi:compact-recall` (use `/unipi:session-recall`).
+Removed: `/unipi:compact` and `/unipi:lossless-compact` (use `/unipi:compact-vcc`), `/unipi:compact-recall` (use `/unipi:session-recall`), `/unipi:compact-jev` and the jev method (a saved `method: "jev"` behaves as lossless).
 
 ## Tools
 

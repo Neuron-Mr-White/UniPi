@@ -29,7 +29,7 @@ const CHARS_PER_TOKEN = 4;
 
 function methodOf(details: any): CompactionMethod {
   if (details?.compactor !== "@pi-unipi/compactor") return "llm";
-  return details.method === "llm" || details.method === "jev" ? details.method : "vcc";
+  return details.method === "llm" ? "llm" : "vcc";
 }
 
 export function sessionCompactionStats(branch: readonly any[]): SessionCompactionStats {
@@ -57,7 +57,7 @@ export function sessionCompactionStats(branch: readonly any[]): SessionCompactio
       tokensAfter: after,
       method,
       ...(Number.isFinite(at) ? { at } : {}),
-      ...(method === "jev" && typeof details.jev?.dropped === "number" ? { jevDropped: details.jev.dropped } : {}),
+      ...(typeof details.jev?.dropped === "number" ? { jevDropped: details.jev.dropped } : {}),
     });
   }
 
@@ -66,7 +66,7 @@ export function sessionCompactionStats(branch: readonly any[]): SessionCompactio
   return { compactions, tokensBefore, tokensAfter, tokensSaved: Math.max(0, tokensBefore - tokensAfter) };
 }
 
-const METHOD_WORD: Record<CompactionMethod, string> = { vcc: "lossless", jev: "jev", llm: "model" };
+const METHOD_WORD: Record<CompactionMethod, string> = { vcc: "lossless", llm: "model" };
 
 /** "3 lossless, 1 jev" — only the methods that occurred. */
 export function methodBreakdown(stats: SessionCompactionStats): string {
