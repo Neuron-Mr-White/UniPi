@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.18] — 2026-10-01
+
+### Added
+- `kanboard` (board UI): **Summarize** in the header runs a board-wide summary with an optional prompt; a task's **Resummarize** takes an extra note. (UNI-38)
+- `memory`: save runs in a prefix-cache-matched side session (`saveMode`: side · reminder · off); the recall reminder is injected once per session/compaction, not re-added on /reload. (UNI-32)
+- `subagents`: a live stat line per subagent — profile, model, duration, tool calls, tokens, cost — in all render styles. (UNI-26)
+- `core`: onboarding tips — a least-shown tip at startup plus event tips after compaction and other moments; `/unipi:tips-reset` resets show counts. (UNI-27)
+
+### Changed
+- `input-shortcuts`: ALT+S chord rework — burst-based O(1) undo/redo; A appends to the stash, Y copies the last response, K adds the input to the kanboard backlog; the registers (0-9), cut and toggle-thinking keys are gone.
+- `kanboard`: a task needs a title **or** a description — `displayTitle` is derived from the body everywhere; `captureToBacklog` API for other extensions. (UNI-42)
+- `permission`: full mode no longer prompts on writes outside the workspace — everything short of deny rules runs. (UNI-40)
+- render: sidekick steps use the active style's tool/prose format in a tinted rail, grouped like the lead's tree; one blank row between transcript blocks; simple mode gains a live tool timer and keeps ask_user answers. (UNI-2, UNI-43, UNI-24, UNI-39)
+- `workflow`: `/unipi:plan` opens with a plain-language Summary for the approver. (UNI-28)
+- `fusion`: sidekick effort is set in the `/unipi:model` fusion row — Space toggles the lead/sidekick target, applied live. (UNI-15)
+
+### Removed
+- `compactor`: removed `/unipi:compact-jev` and the jev compaction method — vcc and LLM compaction remain; a saved `method: jev` falls back to vcc.
+- `compactor`: removed the deprecated `/unipi:compact`, `/unipi:lossless-compact` and `/unipi:compact-recall`. (UNI-23)
+
+### Fixed
+- `kanboard show`: width-safe board rows — CJK-aware budgets and truncation on every line; a huge blockedReason no longer crashes pi.
+
 ## [3.0.0-alpha.17] — 2026-09-30
 
 ### Added
