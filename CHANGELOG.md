@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.19] — 2026-10-01
+
+### Added
+- `subagents`: completed subagent steps stream into the lead transcript as delegated panels — a live `subagent-step` entry per step (foreground and background runs) renders in the shared UNI-2 rail style alongside the existing status card, grouped per subagent.
+
+### Changed
+- render: the delegated-work panel (bright cyan `▏` rail on a single dark-cyan fill) moved into a shared `utility` helper used by both fusion sidekick steps and subagent steps; sidekick panels are grouped per handoff so a resumed handoff renders as its own panel instead of merging into the previous run.
+
+### Fixed
+- render: panel continuity survives pi's `CustomEntryComponent` host wrapper — group metadata is resolved through the wrapper and re-resolved every render, and nested card backgrounds are stripped instead of stacking inside the cyan fill.
+- render: fixed the alpha.18 OOM in the simple style — the final result baked the `· Ns` runtime suffix into the tool meta, re-arming the invalidate loop on every re-render (unbounded heap growth and eventual SIGABRT); the duration is pinned once and appended at paint.
+
 ## [3.0.0-alpha.18] — 2026-10-01
 
 ### Added
