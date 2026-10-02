@@ -1175,8 +1175,9 @@ try {
   // "Projects" crumb → overview
   const toPicker = await session.evaluate(`(async () => {
     [...document.querySelectorAll('.crumbs .crumb')].find((b) => b.textContent === 'Projects')?.click();
-    for (let i = 0; i < 30 && !document.querySelector('.picker'); i += 1) await new Promise((r) => setTimeout(r, 200));
-    return !!document.querySelector('.picker');
+    // The overview page is the Dashboard now (UNI-67); .picker is its legacy name.
+    for (let i = 0; i < 30 && !document.querySelector('.dashboard, .picker'); i += 1) await new Promise((r) => setTimeout(r, 200));
+    return !!document.querySelector('.dashboard, .picker');
   })()`);
   check("the Projects crumb opens the overview", toPicker === true, String(toPicker));
   await session.send("Page.navigate", { url: boardUrl(slug) });
@@ -1267,7 +1268,7 @@ try {
   }
   const overview = await session.evaluate(`(async () => {
     [...document.querySelectorAll('.crumbs .crumb')].find((b) => b.textContent === 'Projects')?.click();
-    for (let i = 0; i < 30 && !document.querySelector('.picker'); i += 1) await new Promise((r) => setTimeout(r, 200));
+    for (let i = 0; i < 30 && !document.querySelector('.dashboard, .picker'); i += 1) await new Promise((r) => setTimeout(r, 200));
     const head = document.querySelector('.archived-head');
     head?.click();
     await new Promise((r) => setTimeout(r, 300));
