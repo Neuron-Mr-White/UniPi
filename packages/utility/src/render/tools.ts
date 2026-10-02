@@ -33,6 +33,7 @@ import {
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { asJson, diffStats, exitCode, parseDiff, splitCommand, stripStatus, testSummary } from "./parse.js";
 import { simpleWrapTool } from "./simple.js";
+import { withHarnessToolAnnotations } from "./harness.js";
 import { readPiToolOptions } from "./pi-settings.js";
 
 export type RenderStyle = "simple" | "regular" | "advanced";
@@ -173,7 +174,7 @@ function withDefinition(name: string, make: (cwd: string) => AnyDef, style: Rend
   };
   const base = def(process.cwd());
   const r = renderers(name, style, def);
-  return {
+  const built = {
     name: base.name,
     label: base.label,
     description: base.description,
@@ -183,10 +184,13 @@ function withDefinition(name: string, make: (cwd: string) => AnyDef, style: Rend
     ...(base.prepareArguments ? { prepareArguments: base.prepareArguments } : {}),
     ...(base.executionMode ? { executionMode: base.executionMode } : {}),
     renderShell: "self",
-    execute: (id, params, signal, onUpdate, ctx) => def(ctx?.cwd ?? process.cwd()).execute(id, params, signal, onUpdate, ctx),
+    execute: (id: string, params: unknown, signal: AbortSignal, onUpdate: unknown, ctx: unknown) =>
+      def(ctx !== null && typeof ctx === "object" && "cwd" in ctx ? (ctx as { cwd?: string }).cwd ?? process.cwd() : process.cwd())
+        .execute(id, params as never, signal, onUpdate as never, ctx as never),
     renderCall: r.call,
     renderResult: r.result,
   } as AnyDef;
+  return withHarnessToolAnnotations(built) as unknown as AnyDef;
 }
 
 function renderers(name: string, style: RenderStyle, def: (cwd: string) => AnyDef) {
@@ -311,8 +315,21 @@ function renderers(name: string, style: RenderStyle, def: (cwd: string) => AnyDe
 
 /** Re-register the built-in tools with styled renderers ("regular" = pi's own, untouched). */
 export function registerToolRenderers(pi: ExtensionAPI, style: RenderStyle): void {
-  if (style === "regular") return;
   const opts = readPiToolOptions(process.cwd());
+  if (style === "regular") {
+    // REGULAR style: native factories (renderCall/renderResult/renderShell kept
+    // as-is), wrapped for harness annotations. NOT the advanced withDefinition
+    // renderer — regular keeps pi's native tool cards.
+    const cwd = process.cwd();
+    for (const make of [createGrepToolDefinition, createFindToolDefinition, createLsToolDefinition]) {
+      pi.registerTool(withHarnessToolAnnotations(make(cwd) as AnyDef));
+    }
+    pi.registerTool(withHarnessToolAnnotations(createReadToolDefinition(cwd, opts.read) as AnyDef));
+    pi.registerTool(withHarnessToolAnnotations(createBashToolDefinition(cwd, opts.bash) as AnyDef));
+    pi.registerTool(withHarnessToolAnnotations(createEditToolDefinition(cwd) as AnyDef));
+    pi.registerTool(withHarnessToolAnnotations(createWriteToolDefinition(cwd) as AnyDef));
+    return;
+  }
   if (style === "simple") {
     // mcode look: every tool is wrapped to a collapsed one-liner by the unipi
     // entry (see simple.ts); register the core search/list tools unipi does

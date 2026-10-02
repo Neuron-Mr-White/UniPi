@@ -4,7 +4,7 @@
  * moves, priority, dependencies, labels, run block, file path).
  */
 
-import { For, Show, createEffect, createSignal, on, type JSX } from "solid-js";
+import { For, Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { api, canMove, displayTitle, needsComment, PRIORITIES, type Task } from "./api.js";
 import { DepList } from "./dep-picker.js";
@@ -12,6 +12,7 @@ import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { relativeTime, renderMarkdown } from "./markdown.js";
 import { filesFrom, insertAtCursor, uploadAll } from "./attach.js";
 import { hue } from "./paint.js";
+import { LabelPicker } from "./label-picker.js";
 import { Mention } from "./mention.js";
 import { offerToSchedule } from "./schedule.js";
 import {
@@ -24,12 +25,21 @@ import {
   openTaskId,
   rules,
   setCommentRequest,
+  setNewTaskLane,
   setOpenTaskId,
+  setRecreateFrom,
   slug,
   toast,
   upsertTask,
 } from "./state.js";
 import { AutoTextarea, Avatar, Dialog, Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
+
+/**
+ * True while the open drawer holds unsent drafts (title/body edits, a comment,
+ * a pending upload). App's global Esc guard reads it so backdrop and Esc never
+ * silently discard the user's typing (UNI-61).
+ */
+export const [drawerDirty, setDrawerDirty] = createSignal(false);
 
 export function TaskPanel(): JSX.Element {
   const task = (): Task | undefined => board.tasks.find((candidate) => candidate.id === openTaskId());
@@ -40,7 +50,8 @@ export function TaskPanel(): JSX.Element {
     <Show when={task()}>
       {(current) => (
         <Portal>
-          <div class="drawer-scrim" onClick={close} />
+          {/* UNI-61: the scrim never discards drafts — Drawer guards via drawerDirty. */}
+          <div class="drawer-scrim" onClick={() => !drawerDirty() && close()} />
           <aside class="drawer panel" role="dialog" aria-label={`${current().id} details`}>
             <Drawer task={current()} onClose={close} />
           </aside>
@@ -55,12 +66,13 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   const [body, setBody] = createSignal(props.task.body ?? "");
   const [editing, setEditing] = createSignal(false);
   const [comment, setComment] = createSignal("");
-  const [labelDraft, setLabelDraft] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [uploading, setUploading] = createSignal(0);
   const [dropOver, setDropOver] = createSignal<"comment" | "body" | null>(null);
   const [reader, setReader] = createSignal<ReaderEntry | null>(null);
-  /** The report behind In Review / Blocked (older daemons: the blocked reason only). */
+  /** UNI-61: explicit close on a dirty drawer asks before discarding. */
+  const [confirmDiscard, setConfirmDiscard] = createSignal(false);
+  /** The status report behind In Review / Blocked (older daemons: the blocked reason only). */
   const statusReport = (): Task["statusReport"] =>
     props.task.statusReport ??
     (props.task.status === "blocked" && props.task.blockedReason?.text
@@ -115,6 +127,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
         setBody(props.task.body ?? "");
         setEditing(false);
         setComment("");
+        setConfirmDiscard(false);
       },
     ),
   );
@@ -129,6 +142,29 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
   );
 
   const target = (): string => slug() ?? "";
+
+  /** Unsent drafts worth protecting (UNI-61). */
+  const dirty = (): boolean =>
+    editing() ||
+    title() !== props.task.title ||
+    body() !== (props.task.body ?? "") ||
+    comment().trim().length > 0 ||
+    uploading() > 0;
+  createEffect(() => setDrawerDirty(dirty()));
+  onCleanup(() => setDrawerDirty(false));
+
+  /** Backdrop/Esc: never discard a draft silently. */
+  const requestClose = (): void => {
+    if (dirty()) {
+      setConfirmDiscard(true);
+      return;
+    }
+    props.onClose();
+  };
+  const discardAndClose = (): void => {
+    setConfirmDiscard(false);
+    props.onClose();
+  };
 
   const run = async (work: () => Promise<unknown>, message?: string): Promise<boolean> => {
     setBusy(true);
@@ -159,9 +195,35 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
       setCommentRequest({ task: { ...current }, to, hint });
       return;
     }
-    void run(async () => upsertTask(await api.move(target(), current.id, to)), `Moved ${current.id} to ${laneLabel(to)}`).then(
-      (ok) => ok && to === "todo" && offerToSchedule(current.id),
-    );
+    // Capture everything at move time: the undo must act on the project and
+    // task the move happened against, even if the user navigates elsewhere
+    // before clicking Undo (UNI-57).
+    const projectSlug = target();
+    const taskId = current.id;
+    void run(async () => {
+      const moved = await api.move(projectSlug, taskId, to);
+      // Only the board the move happened on shows the result.
+      if (slug() === projectSlug) upsertTask(moved);
+      const token = moved.undoToken;
+      if (token) {
+        toast(`Moved ${taskId} to ${laneLabel(to)}`, "success", {
+          label: "Undo",
+          run: async () => {
+            try {
+              const restored = await api.undoMove(projectSlug, taskId, token);
+              if (slug() === projectSlug) upsertTask(restored);
+            } catch (error) {
+              toast(describe(error), "error");
+            } finally {
+              // loadBoard is a no-op when the user is on another project.
+              if (slug() === projectSlug) await loadBoard(projectSlug);
+            }
+          },
+        });
+      } else {
+        toast(`Moved ${taskId} to ${laneLabel(to)}`, "success");
+      }
+    }).then((ok) => ok && to === "todo" && offerToSchedule(taskId));
   }
 
   const saveTitle = (): void => {
@@ -190,11 +252,18 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
     if (await run(() => api.note(target(), props.task.id, text))) setComment("");
   };
 
-  const addLabel = (): void => {
-    const label = labelDraft().trim().replace(/,/g, "");
-    setLabelDraft("");
-    if (!label || (props.task.labels ?? []).includes(label)) return;
-    void run(() => api.edit(target(), props.task.id, { labels: [...(props.task.labels ?? []), label] }));
+  /** UNI-60: the label rail uses the same searchable picker as the Add form;
+   *  every toggle/create/remove saves immediately (no draft state). */
+  const setLabels = (labels: string[]): void =>
+    void run(() => api.edit(target(), props.task.id, { labels }));
+  const toggleLabel = (label: string): void => {
+    const current = props.task.labels ?? [];
+    setLabels(current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
+  };
+  const createLabel = (label: string): void => {
+    const clean = label.trim().replace(/,/g, "");
+    if (!clean || (props.task.labels ?? []).includes(clean)) return;
+    setLabels([...(props.task.labels ?? []), clean]);
   };
 
   const copy = (text: string, what: string): void => {
@@ -243,6 +312,17 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   void run(() => api.duplicate(target(), props.task.id), "Duplicated");
                 }}
               />
+              <Show when={props.task.status === "cancelled"}>
+                <MenuItem
+                  icon={<Icon.duplicate size={14} />}
+                  label="Recreate task…"
+                  onSelect={() => {
+                    close();
+                    setRecreateFrom(props.task);
+                    setNewTaskLane("todo");
+                  }}
+                />
+              </Show>
               <MenuItem
                 icon={<Icon.copy size={14} />}
                 label="Copy file path"
@@ -277,10 +357,18 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
             </>
           )}
         </Popover>
-        <button class="icon-btn" aria-label="Close details" title="Close  Esc" onClick={props.onClose}>
+        <button class="icon-btn" aria-label="Close details" title="Close  Esc" onClick={requestClose}>
           <Icon.close />
         </button>
       </header>
+      <Show when={confirmDiscard()}>
+        <div class="discard-strip" role="alertdialog" aria-label="Discard changes?">
+          <span>Discard unsaved changes?</span>
+          <span class="spacer" />
+          <button class="btn" onClick={() => setConfirmDiscard(false)}>Keep editing</button>
+          <button class="btn danger" onClick={discardAndClose}>Discard</button>
+        </div>
+      </Show>
       <Show when={statusReport()}>
         {(report) => (
           <div class={`status-banner ${report().kind}`} role={report().kind === "blocked" ? "alert" : "status"}>
@@ -659,6 +747,7 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
                   <span class="tag label removable" style={{ "--label-hue": hue(label) }}>
                     <span>{label}</span>
                     <button
+                      disabled={busy()}
                       aria-label={`Remove label ${label}`}
                       onClick={() =>
                         void run(() => api.edit(target(), props.task.id, { labels: (props.task.labels ?? []).filter((item) => item !== label) }))
@@ -671,20 +760,20 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
               </For>
             </div>
           </Show>
-          <input
-            class="label-input"
-            placeholder="+ Add label"
-            aria-label="Add label"
-            value={labelDraft()}
-            onInput={(event) => setLabelDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === ",") {
-                event.preventDefault();
-                addLabel();
-              }
-            }}
-            onBlur={addLabel}
-          />
+          <Popover
+            width={280}
+            label="Edit labels"
+            trigger={(api) => (
+              <button class="rail-add" ref={api.ref} aria-expanded={api.open} aria-label="Edit labels" onClick={api.toggle}>
+                <Icon.plus size={13} />
+                Edit labels
+              </button>
+            )}
+          >
+            {(close) => (
+              <LabelPicker selected={props.task.labels ?? []} onToggle={toggleLabel} onCreate={createLabel} close={close} disabled={busy()} />
+            )}
+          </Popover>
 
           <Show when={props.task.run}>
             <div class="rail-sep" />
@@ -730,6 +819,10 @@ function Drawer(props: { task: Task; onClose: () => void }): JSX.Element {
           <dl class="meta-lines">
             <dt>Created</dt>
             <dd title={props.task.created}>{relativeTime(props.task.created)}</dd>
+            <Show when={props.task.creator}>
+              <dt>Created by</dt>
+              <dd>{props.task.creator === "agent" ? "agent" : "user"}</dd>
+            </Show>
             <dt>Updated</dt>
             <dd title={props.task.updated}>{relativeTime(props.task.updated)}</dd>
           </dl>

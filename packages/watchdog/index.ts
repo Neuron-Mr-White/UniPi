@@ -14,7 +14,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import * as os from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { askJev, resolveDecisionModel } from "@pi-unipi/core";
+import { askJev, harnessToolResultDetails, harnessMetadata, resolveDecisionModel, sendHarnessUserMessage } from "@pi-unipi/core";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
 import { loadWatchdogSettings, registerWatchdogSettings, type WatchdogSettings } from "./src/config.js";
 import { evaluateTick } from "./src/decide.js";
@@ -216,6 +216,12 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
     return {
       content: [{ type: "text", text: `${warning}\n\n${original}` }],
       isError: true,
+      details: harnessToolResultDetails(
+        (event as { details?: unknown }).details,
+        { source: "Watchdog", title: "Kill warning", synopsis: "Killed after timeout — do not blindly re-run", severity: "warning" },
+        "boundary",
+        warning,
+      ),
     };
   });
 
@@ -229,6 +235,7 @@ export function registerWatchdogExtension(pi: { on(event: string, handler: (even
         customType: "unipi-watchdog",
         content,
         display: true,
+        details: { unipiHarness: harnessMetadata({ source: "Watchdog", title: "Watchdog warnings", synopsis: "Drained pending warnings", severity: "warning" }, "before_agent_start") },
       },
     };
   });
@@ -458,7 +465,12 @@ async function tick(enabled: boolean): Promise<void> {
           const text = `⚠ Watchdog aborted "${item.toolName}": jev judged it ${reason}.`;
           try {
             ctx.abort();
-            state.pi?.sendUserMessage(text, { deliverAs: "followUp" });
+            sendHarnessUserMessage(
+              state.pi!,
+              text,
+              { source: "Watchdog", title: "Tool aborted", synopsis: "jev judged the tool stuck", severity: "warning" },
+              { deliverAs: "followUp" },
+            );
           } catch {
             // best-effort
           }

@@ -12,7 +12,7 @@ import { promisify } from "node:util";
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { getSettings } from "@pi-unipi/core";
+import { getSettings, sendHarnessUserMessage } from "@pi-unipi/core";
 
 import { KanboardCliError, type KanboardCli } from "./bin.js";
 import { DEFAULT_DO_TASKS, DEFAULT_DO_WRITES } from "./guard.js";
@@ -671,7 +671,10 @@ export async function runStatus(deps: CommandDeps, ctx: ExtensionCommandContext 
   const slug = currentSlug();
   if (slug) {
     try {
-      const { tasks, problems } = asTaskList(await client!.run<unknown>(["list"], {}));
+      // --all: the status view counts every lane; the CLI's bare `list`
+      // default (todo/in_progress/blocked/in_review/done) would hide backlog
+      // and cancelled here (UNI-62).
+      const { tasks, problems } = asTaskList(await client!.run<unknown>(["list", "--all"], {}));
       const counts = tasks.reduce<Record<string, number>>((acc, task) => {
         acc[task.status] = (acc[task.status] ?? 0) + 1;
         return acc;
@@ -1050,7 +1053,8 @@ async function runShow(deps: CommandDeps, ctx: ExtensionCommandContext, pi: Exte
   const slug = currentSlug()!;
   let tasks: ShowTask[] = [];
   try {
-    const payload = (await client.run(["list", "--json"], { cwd: ctx.cwd })) as { tasks?: ShowTask[] };
+    // --all: this display lists every lane; the CLI bare default hides backlog/cancelled (UNI-62).
+    const payload = (await client.run(["list", "--all", "--json"], { cwd: ctx.cwd })) as { tasks?: ShowTask[] };
     tasks = payload.tasks ?? [];
   } catch (error) {
     ctx.ui.notify(`kanboard: show failed — ${error instanceof KanboardCliError ? error.message : String(error)}`, "error");
@@ -1158,7 +1162,7 @@ export async function taskCompletions(
   let cache = taskCache.get(client);
   if (!cache || Date.now() - cache.at > 5_000) {
     try {
-      const payload = (await client.run(["list", "--json"], { cwd: process.cwd() })) as { tasks?: ShowTask[] };
+      const payload = (await client.run(["list", "--all", "--json"], { cwd: process.cwd() })) as { tasks?: ShowTask[] };
       cache = { at: Date.now(), tasks: payload.tasks ?? [] };
       taskCache.set(client, cache);
     } catch {
@@ -1423,8 +1427,14 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
         ? !(ctx as unknown as { isIdle: () => boolean }).isIdle!()
         : false;
       const budget = deps.guard.remaining();
-      pi.sendUserMessage(
+      sendHarnessUserMessage(
+        pi,
         doText(slug, client.binary.path, request, budget.slots, budget.writes),
+        {
+          source: "Kanboard",
+          title: "Task budget",
+          synopsis: `slots ${String(budget.slots)} · writes ${String(budget.writes)} · user request included`,
+        },
         busy ? { deliverAs: "followUp" } : undefined,
       );
       deps.guard.noteSent();
@@ -1459,7 +1469,12 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
         const busy = typeof (ctx as unknown as { isIdle?: () => boolean }).isIdle === "function"
           ? !(ctx as unknown as { isIdle: () => boolean }).isIdle!()
           : false;
-        pi.sendUserMessage(autoworkText(slug, client.binary.path), busy ? { deliverAs: "followUp" } : undefined);
+        sendHarnessUserMessage(
+          pi,
+          autoworkText(slug, client.binary.path),
+          { source: "Kanboard", title: "Autowork", synopsis: "no budget limits · user request included" },
+          busy ? { deliverAs: "followUp" } : undefined,
+        );
         return;
       }
       if (sub === "stop") {

@@ -24,6 +24,7 @@ import {
   setCommentRequest,
   setNewTaskLane,
   setOpenTaskId,
+  setRecreateFrom,
   setSelectedId,
   setSummarizeOpen,
   slug,
@@ -32,7 +33,7 @@ import {
   upsertTask,
   visibleLanes,
 } from "./state.js";
-import { MenuItem, Popover } from "./ui.js";
+import { ContextMenu, MenuItem, Popover } from "./ui.js";
 
 /** Lanes whose header shows a solid status pill (the "active" part of the flow). */
 const PILL_LANES = new Set(["in_progress", "in_review", "blocked", "done"]);
@@ -195,42 +196,41 @@ export function Board(): JSX.Element {
   async function commit(original: Task, toLane: string, beforeId: string | null): Promise<void> {
     const target = slug();
     if (!target) return;
-    const siblings = board.tasks
-      .filter((task) => task.status === original.status)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .map((task) => task.id);
-    const previousNeighbour = siblings[siblings.indexOf(original.id) + 1] ?? null;
+    const onThisBoard = (): boolean => slug() === target;
     try {
-      if (original.status !== toLane) upsertTask(await api.move(target, original.id, toLane));
-      if (beforeId) await api.order(target, original.id, { before: beforeId });
-      else if (original.status !== toLane) await api.order(target, original.id, { bottom: true });
-      await loadBoard(target);
-      const moved = original.status !== toLane;
-      if (moved && toLane === "todo") offerToSchedule(original.id);
-      const reversible = !moved || (canMove(rules, { ...original, status: toLane, allowedMoves: undefined }, original.status) && !needsComment(rules, toLane, original.status));
-      toast(
-        moved ? `Moved ${original.id} to ${laneLabel(toLane)}` : `Reordered ${original.id}`,
-        "success",
-        reversible
-          ? {
-              label: "Undo",
-              run: async () => {
-                try {
-                  if (moved) await api.move(target, original.id, original.status);
-                  if (previousNeighbour) await api.order(target, original.id, { before: previousNeighbour });
-                  else await api.order(target, original.id, { bottom: true });
-                } catch (error) {
-                  toast(describe(error), "error");
-                } finally {
-                  await loadBoard(target);
-                }
-              },
+      // Undoable moves (cancelled, done, archived, blocked → done) carry a
+      // one-shot token; reordering after them would change the task and kill
+      // the snapshot, so they land at their natural position instead (UNI-57).
+      const moved = original.status !== toLane ? await api.move(target, original.id, toLane) : null;
+      if (moved && onThisBoard()) upsertTask(moved);
+      const undoToken = moved?.undoToken;
+      if (!undoToken) {
+        if (beforeId) await api.order(target, original.id, { before: beforeId });
+        else if (original.status !== toLane) await api.order(target, original.id, { bottom: true });
+      }
+      if (onThisBoard()) await loadBoard(target);
+      const movedLanes = moved !== null;
+      if (movedLanes && toLane === "todo") offerToSchedule(original.id);
+      if (undoToken) {
+        toast(`Moved ${original.id} to ${laneLabel(toLane)}`, "success", {
+          label: "Undo",
+          run: async () => {
+            try {
+              const restored = await api.undoMove(target, original.id, undoToken);
+              if (onThisBoard()) upsertTask(restored);
+            } catch (error) {
+              toast(describe(error), "error");
+            } finally {
+              if (onThisBoard()) await loadBoard(target);
             }
-          : undefined,
-      );
+          },
+        });
+      } else {
+        toast(movedLanes ? `Moved ${original.id} to ${laneLabel(toLane)}` : `Reordered ${original.id}`, "success");
+      }
     } catch (error) {
-      upsertTask(original);
-      await loadBoard(target);
+      if (onThisBoard()) upsertTask(original);
+      if (onThisBoard()) await loadBoard(target);
       toast(describe(error), "error");
     }
   }
@@ -451,21 +451,29 @@ function Card(props: {
 }): JSX.Element {
   const task = () => props.task;
   const excerpt = (): string => (task().body ?? "").replace(/[#>*_`[\]]/g, " ").replace(/\s+/g, " ").trim();
+  /** Right-click menu position (UNI-57 Recreate lives here for cancelled cards). */
+  const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
+  const final = (): boolean => FINAL.has(task().status);
+  const closeMenu = (): void => void setMenu(null);
   return (
     <article
-      class={`card${props.dragging ? " dragging" : ""}${FINAL.has(task().status) ? " final" : ""}${task().status === "cancelled" ? " cancelled" : ""}${
+      class={`card${props.dragging ? " dragging" : ""}${final() ? " final" : ""}${task().status === "cancelled" ? " cancelled" : ""}${
         selectedId() === task().id ? " selected" : ""
       }${task().run ? " running" : ""}${props.chain !== "single" ? ` chained chain-${props.chain}` : ""}${
         (task().lockedBy ?? []).length > 0 ? " locked" : ""
       }`}
       data-id={task().id}
       data-chain={props.chain}
-      draggable={task().run ? "false" : "true"}
+      draggable={task().run || final() ? "false" : "true"}
       tabindex="0"
       role="button"
       aria-label={`${task().id} ${displayTitle(task())}`}
       onDragStart={(event) => props.onDragStart(event)}
       onDragEnd={() => props.onDragEnd()}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY });
+      }}
       onClick={() => {
         setSelectedId(task().id);
         setOpenTaskId(task().id);
@@ -480,6 +488,8 @@ function Card(props: {
     >
       <div class="card-top">
         <span class="card-id">{task().id}</span>
+        {/* UNI-60: label chips sit immediately right of the id. */}
+        <LabelTags labels={task().labels ?? []} max={2} />
         <span class="spacer" />
         <AgentChip task={task()} />
         <Show when={task().status === "in_progress" && task().staleness && task().staleness !== "running"}>
@@ -498,8 +508,29 @@ function Card(props: {
       <div class="card-meta">
         <PriorityTag priority={task().priority} />
         <DepTag task={task()} drawnParents={props.parents} />
-        <LabelTags labels={task().labels ?? []} max={2} />
       </div>
+      <ContextMenu at={menu()} label={`${task().id} actions`} onClose={closeMenu}>
+        <MenuItem
+          icon={<Icon.review size={14} />}
+          label="Open"
+          onSelect={() => {
+            closeMenu();
+            setSelectedId(task().id);
+            setOpenTaskId(task().id);
+          }}
+        />
+        <Show when={task().status === "cancelled"}>
+          <MenuItem
+            icon={<Icon.duplicate size={14} />}
+            label="Recreate task…"
+            onSelect={() => {
+              closeMenu();
+              setRecreateFrom(task());
+              setNewTaskLane("todo");
+            }}
+          />
+        </Show>
+      </ContextMenu>
     </article>
   );
 }

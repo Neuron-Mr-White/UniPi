@@ -16,7 +16,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
+import { appendProgress, emitEvent, sendHarnessUserMessage, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
 import type { LhMode, OwnerKind } from "./modes.js";
 import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
@@ -247,7 +247,11 @@ export function registerLongHorizonCommands(
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "resumed", ownerId: resumed.ownerId });
       const resumeMode = resumed.kind === "ralph-loop" ? "ralph" : resumed.kind;
       gate.setExplicit(resumeMode as LhMode);
-      await pi.sendUserMessage("Continue the resumed owner from its own durable state; re-read its status before acting.");
+      await sendHarnessUserMessage(
+        pi,
+        "Continue the resumed owner from its own durable state; re-read its status before acting.",
+        { source: "Long-horizon", title: "Resume", synopsis: "Owner resumed from durable state" },
+      );
       return;
     }
 

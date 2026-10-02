@@ -692,11 +692,20 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
       }
       // Tools that opt in keep a compact result under their collapsed row
       // (ask_user's Q→A list, run_subagent's `└ Completed · 7s · 2 calls`).
-      const simpleResult = (def as { simpleResult?: (result: unknown, theme: Theme, ctx: unknown) => string[] }).simpleResult;
+      // The hook is invoked lazily, per paint, exactly like before — its
+      // callback may read live state (e.g. subagent stats that update). It
+      // may return precomposed lines (SimpleLine indents and truncates them
+      // per width) or a width-aware Component, whose render(width) is
+      // delegated. Errors or undefined yield no result lines.
+      const simpleResult = (def as {
+        simpleResult?: (result: unknown, theme: Theme, ctx: unknown) => string[] | Component | undefined;
+      }).simpleResult;
       if (!options.isPartial && simpleResult !== undefined) {
-        return new SimpleLine(() => {
+        return new SimpleLine((width) => {
           try {
-            return simpleResult(result, theme, ctx) ?? [];
+            const out = simpleResult(result, theme, ctx);
+            if (out !== null && typeof out === "object" && "render" in out) return out.render(width);
+            return Array.isArray(out) ? (out as string[]) : [];
           } catch {
             return [];
           }

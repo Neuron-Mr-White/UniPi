@@ -218,8 +218,10 @@ describe("add through the real handler + binary", { skip: !hasBinary }, () => {
   }
 
   function listed(): Array<{ id: string; title: string; status: string; priority: string; body?: string; deps?: Array<{ id: string } | string> }> {
+    // --all: captured tasks land in backlog, which the bare CLI list hides (UNI-62).
     return cliJson<{ tasks: Array<{ id: string; title: string; status: string; priority: string; body?: string; deps?: Array<{ id: string } | string> }> }>(home, workspace, [
       "list",
+      "--all",
     ]).tasks;
   }
 

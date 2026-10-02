@@ -42,7 +42,7 @@ impl Common {
     }
 }
 
-fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> Value {
+pub fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> Value {
     let by_id = board.dep_lookup(all);
     let blocked = deps::blocked_by(task, &by_id, gate);
     let mut value = serde_json::to_value(task).unwrap_or(Value::Null);
@@ -52,6 +52,7 @@ fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> V
             json!(board.task_path(&task.id).to_string_lossy()),
         );
         map.insert("displayTitle".into(), json!(task.display_title()));
+        map.insert("creator".into(), json!(task.creator_of().as_str()));
         map.insert("ready".into(), json!(deps::is_ready(task, &by_id, gate)));
         map.insert("staleness".into(), json!(staleness_of(task)));
         map.insert(
@@ -192,6 +193,7 @@ pub fn add(
     priority: Priority,
     after: &[String],
     attach: &[std::path::PathBuf],
+    labels: &[String],
 ) -> Result<Value> {
     let status = status.unwrap_or(Status::Backlog);
     if !matches!(status, Status::Backlog | Status::Todo) {
@@ -244,6 +246,17 @@ pub fn add(
     }
     task.body = body.trim().to_string();
     task.deps = after.to_vec();
+    // Labels are trimmed, deduped and never empty; creation order is kept.
+    let mut seen_labels = Vec::new();
+    for label in labels {
+        let label = label.trim();
+        if !label.is_empty() && !seen_labels.contains(&label.to_string()) {
+            seen_labels.push(label.to_string());
+        }
+    }
+    task.labels = seen_labels;
+    // The creator is written once here and never again (UNI-59).
+    task.creator = Some(common.actor);
     task.push_activity_session(
         common.now,
         common.actor,
@@ -358,7 +371,7 @@ pub fn list(
     layout: &Layout,
     project: Project,
     gate: ChainGate,
-    status: Option<Status>,
+    statuses: &[Status],
     ready_only: bool,
 ) -> Result<Value> {
     let board = Board::open(layout, project)?;
@@ -367,7 +380,7 @@ pub fn list(
 
     let mut selected: Vec<&Task> = tasks
         .iter()
-        .filter(|task| status.map(|status| task.status == status).unwrap_or(true))
+        .filter(|task| statuses.contains(&task.status))
         .collect();
     if ready_only {
         selected.retain(|task| deps::is_ready(task, &by_id, gate));
@@ -1032,9 +1045,41 @@ pub fn move_task_with(
     comment: Option<&str>,
     attach: &[std::path::PathBuf],
 ) -> Result<Value> {
+    let (value, _) = move_task_undoable(layout, project, common, id, to, comment, attach)?;
+    Ok(value)
+}
+
+/// The material an undo needs: the exact pre-move task and the exact
+/// post-move task (compared wholesale — activity included — to reject any
+/// intervening change).
+#[derive(Debug, Clone)]
+pub struct UndoMove {
+    pub before: Task,
+    pub after: Task,
+}
+
+/// `move` that also reports undo material. The pre-move task is captured
+/// under the same board lock that performs the write, so the snapshot can
+/// never race another writer. `UndoMove` is `Some` only for hard-to-reverse
+/// user transitions to a terminal lane (see `transitions::undo_worthy`) on a
+/// task with no live claim — claims are never revived (UNI-57).
+#[allow(clippy::too_many_arguments)]
+pub fn move_task_undoable(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    to: Status,
+    comment: Option<&str>,
+    attach: &[std::path::PathBuf],
+) -> Result<(Value, Option<UndoMove>)> {
     let lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
-    let mut task = board.get(id)?;
+    let read = board.get(id)?;
+    let undoable =
+        transitions::undo_worthy(read.status, to, common.actor) && read.run.is_none();
+    let before = read.clone();
+    let mut task = read;
     let from = task.status;
     let staleness = staleness_of(&task);
     // The self-claim moves have their own commands: `move` would skip the
@@ -1111,6 +1156,67 @@ pub fn move_task_with(
     board.save(&task)?;
     drop(lock);
     let tasks = board.tasks()?;
+    let value = task_json(&board, &task, &tasks, common.gate);
+    let undo = undoable.then(|| UndoMove {
+        before,
+        after: task.clone(),
+    });
+    Ok((value, undo))
+}
+
+/// Undo one move: restore the exact pre-move task — status and everything —
+/// after verifying nothing has changed since the move. The comparison is the
+/// full canonical file text (activity included), so any intervening write —
+/// note, edit, reorder, another move, even within the same second — is caught
+/// (in-memory timestamps carry nanoseconds the file format rounds away, so
+/// raw struct equality would both miss and misfire). The token itself is
+/// checked by the caller's daemon-held store; undo is a user surface only
+/// (UNI-57).
+pub fn undo_move(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    expected_after: &Task,
+    before: Task,
+) -> Result<Value> {
+    // Defence in depth against direct library callers: undo is a user
+    // surface, the snapshot must name the very task it restores, and a
+    // snapshot that still carries a claim is never revived (UNI-57).
+    if common.actor != Actor::User {
+        return Err(Error::rule(
+            "undo is a user surface — agents and system cannot undo moves",
+        ));
+    }
+    if before.id != expected_after.id {
+        return Err(Error::rule(
+            "the undo snapshot does not name this task — refusing it",
+        ));
+    }
+    if before.run.is_some() {
+        return Err(Error::rule(
+            "the undo snapshot carries a live claim — claims are never revived",
+        ));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let current = board.get(&expected_after.id)?;
+    if crate::format::render(&current) != crate::format::render(expected_after) {
+        return Err(Error::rule(
+            "the task changed since that move — undo is no longer available (move it back by hand)",
+        ));
+    }
+    let to = current.status;
+    let mut task = before;
+    let from = task.status;
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("undo: {to} → {from} (state restored)"),
+    );
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
     Ok(task_json(&board, &task, &tasks, common.gate))
 }
 
@@ -1183,6 +1289,8 @@ pub fn duplicate(layout: &Layout, project: Project, common: &Common, id: &str) -
     task.body = source.body.clone();
     task.labels = source.labels.clone();
     task.deps = source.deps.clone();
+    // A duplicate is a new task by whoever duplicated it (UNI-59).
+    task.creator = Some(common.actor);
     task.push_activity_session(
         common.now,
         common.actor,

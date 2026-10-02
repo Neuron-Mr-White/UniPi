@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_EVENTS, emitEvent, registerCommandRunner, setSharedPlanMode } from "@pi-unipi/core";
+import { UNIPI_EVENTS, emitEvent, harnessMetadata, registerCommandRunner, sendHarnessUserMessage, setSharedPlanMode } from "@pi-unipi/core";
 import {
   PLAN_MESSAGE_TYPE,
   PLAN_STATE_ENTRY,
@@ -98,8 +98,10 @@ export async function approvePlan(
   }
 
   disablePlanMode(pi, ctx, "approved");
-  pi.sendUserMessage(
+  sendHarnessUserMessage(
+    pi,
     `Implement the approved plan below. Treat it as authoritative; do not re-plan.\n\n${content}`,
+    { source: "Plan mode", title: "Approved plan", synopsis: "Plan approved — implementation handoff" },
     { deliverAs: "followUp" },
   );
   return { status: "approved" };
@@ -153,6 +155,7 @@ export function enablePlanMode(
     customType: PLAN_MESSAGE_TYPE,
     content: planInstructions(displayPlanPath(ctx.cwd, planFile)),
     display: true,
+    details: { unipiHarness: harnessMetadata({ source: "Plan mode", title: "Plan mode on", synopsis: "Investigation only — plan file required" }, "direct") },
   });
   ctx.ui.notify(`Plan mode on — plan file ${displayPlanPath(ctx.cwd, planFile)}`, "info");
   return planFile;
@@ -178,7 +181,12 @@ export function disablePlanMode(
   });
   if (reason !== "approved") {
     const note = reason === "discarded" ? "[plan mode off — plan discarded]" : "[plan mode off]";
-    pi.sendMessage({ customType: PLAN_MESSAGE_TYPE, content: note, display: true });
+    pi.sendMessage({
+      customType: PLAN_MESSAGE_TYPE,
+      content: note,
+      display: true,
+      details: { unipiHarness: harnessMetadata({ source: "Plan mode", title: reason === "discarded" ? "Plan discarded" : "Plan mode off" }, "direct") },
+    });
   }
   ctx.ui.notify(
     reason === "discarded" ? "Plan mode off — plan discarded" : "Plan mode off",
@@ -335,6 +343,7 @@ export function registerPlanMode(pi: ExtensionAPI): void {
         customType: PLAN_MESSAGE_TYPE,
         content: planReminder(displayPlanPath(ctx.cwd, state.planFile)),
         display: false,
+        details: { unipiHarness: harnessMetadata({ source: "Plan mode", title: "Plan reminder (hidden)" }, "before_agent_start") },
       },
     };
   });

@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.20] — 2026-10-02
+
+### Added
+- `kanboard` (board UI): **Dashboard** command center — greeting header with waiting/agents/ready/done-7d stats and a 14-day throughput spark; a per-project "Needs you" inbox (Approve / Rework / Answer inline, j/k/Enter, 3 rows per project + 10 overall, `+N more` / `Show fewer`, Expand all / Collapse all, oldest-wait on collapsed groups); project cards; live agents; up next; and an activity timeline that folds a task's quick steps into one trail. Expand/collapse animate. Backed by `GET /api/dashboard`. (UNI-67)
+- `kanboard`: archive projects from the sidebar's right-click menu into an **Archived** section. (UNI-51)
+- `kanboard`: labels — create or pick labels in the task form; each label gets a stable hash colour. (UNI-60)
+- `kanboard`: task owner — tasks record "Created by agent / user" automatically; read-only. (UNI-59)
+- `kanboard`: undo toast for moves that are hard to reverse (e.g. dragging to Cancelled, or In Review → Done); cancelled tasks stay final and offer **Recreate task** (right-click), which opens Add Task prefilled with the add-task fields only. (UNI-57)
+
+### Changed
+- `kanboard` CLI: bare `list` shows only the active lanes (todo, in progress, blocked, in review, done); `--all` adds backlog, cancelled and archived. (UNI-62)
+- `kanboard`: a user can move a Blocked task straight to Done. (UNI-63)
+- `kanboard` (board UI): clicking outside the create/edit task form no longer closes it and discards input. (UNI-61)
+- render: harness-origin messages (reminders, nudges, kickoffs) are styled as source-labelled violet/slate panels in every render style, while the model-facing text is unchanged. (UNI-53)
+- `memory`: the save-pass card shows humanized token counts with explicit cache read/write labels. (UNI-56)
+
+### Fixed
+- `kanboard`: titles containing `"` no longer gain an extra backslash on every save. (UNI-58)
+
 ## [3.0.0-alpha.19] — 2026-10-01
 
 ### Added

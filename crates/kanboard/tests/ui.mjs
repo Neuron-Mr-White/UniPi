@@ -518,7 +518,7 @@ try {
     const node = document.querySelector('.dialog');
     return node ? { title: !!node.querySelector('.dialog-title-input'), body: !!node.querySelector('.dialog-body-input'), chips: node.querySelectorAll('.prop-chip').length } : null;
   })()`);
-  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 4, JSON.stringify(dialog));
+  check("C opens the new-task dialog", !!dialog && dialog.title && dialog.body && dialog.chips === 5, JSON.stringify(dialog)); // status, priority, labels (UNI-60), runs-after, attach
   await session.shot("k7-newtask-light-1440.png");
   // UNI-5: files dropped anywhere on the dialog (description, title) attach.
   const dropped = await session.evaluate(`(async () => {
@@ -565,7 +565,11 @@ try {
   })()`);
   check("@ lists recent tasks newest first", mention?.ids?.length > 0 && mention.ids[0] === mention.newest, JSON.stringify(mention));
   check("@ filters as you type and Enter inserts the id", mention?.filtered?.includes(mention.target) && mention.value.startsWith("see " + mention.filtered[0] + " ") && mention.closed && mention.dialog, JSON.stringify(mention));
+  // UNI-61: the dialog holds drafts (the @ mention inserted text), so Close
+  // asks before discarding — confirm it.
   await session.evaluate(`document.querySelector('.dialog [aria-label="Close"]').click()`);
+  await sleep(300);
+  await session.evaluate(`[...document.querySelectorAll('.discard-strip .btn')].find((b) => /Discard/.test(b.textContent))?.click()`);
   await sleep(300);
 
   // 7b. command palette (Ctrl+K) finds a task and opens it
@@ -823,7 +827,10 @@ try {
   })()`);
   check("the body editor has an Attach button + picker", attachBits?.attach && attachBits.picker && attachBits.editing, JSON.stringify(attachBits));
   await session.shot("k11-attach-light-1440.png");
+  // UNI-61: the body editor is an unsent draft — close asks, then discard.
   await session.evaluate(`document.querySelector('[aria-label="Close details"]')?.click()`);
+  await sleep(300);
+  await session.evaluate(`[...document.querySelectorAll('.panel .discard-strip .btn')].find((b) => /Discard/.test(b.textContent))?.click()`);
   await sleep(300);
 
   const flashed = await session.evaluate(`(async () => {

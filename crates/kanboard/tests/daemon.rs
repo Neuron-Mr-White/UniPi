@@ -4,8 +4,15 @@
 mod common;
 
 use common::{Daemon, Fixture, cli, http, read_sse};
-use kanboard::model::{Priority, Status};
+use kanboard::commands;
+use kanboard::model::{ChainGate, Priority, Status};
+use kanboard::store::Project;
 use std::time::{Duration, Instant};
+
+
+fn watching_enabled() -> bool {
+    std::env::var("KB_TEST_NO_WATCH").as_deref() != Ok("1")
+}
 
 fn fixture_with_tasks() -> Fixture {
     let fixture = Fixture::new();
@@ -352,8 +359,8 @@ fn create_and_read_tasks_over_the_api() {
     assert_eq!(created["status"], "backlog");
     assert_eq!(created["priority"], "urgent");
 
-    // It is on disk (the CLI sees it) and in the listing.
-    let list = cli(&fixture, &["list", "--json"]);
+    // It is on disk (the CLI sees it) and in the listing (--all: it lands in backlog).
+    let list = cli(&fixture, &["list", "--all", "--json"]);
     let payload: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
     assert!(
         payload["tasks"]
@@ -442,6 +449,10 @@ fn api_create_without_a_title_needs_a_body() {
 
 #[test]
 fn sse_pushes_a_revision_after_a_cli_write() {
+    if !watching_enabled() {
+        eprintln!("skipped: KB_TEST_NO_WATCH=1 (no file watcher)");
+        return;
+    }
     let fixture = fixture_with_tasks();
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let slug = fixture.project.slug.clone();
@@ -477,6 +488,10 @@ fn sse_pushes_a_revision_after_a_cli_write() {
 #[cfg(unix)]
 #[test]
 fn sse_pushes_a_revision_when_home_is_a_symlink() {
+    if !watching_enabled() {
+        eprintln!("skipped: KB_TEST_NO_WATCH=1 (no file watcher)");
+        return;
+    }
     let fixture = fixture_with_tasks();
     // The link lives inside the fixture's own temp root — /tmp is shared.
     let link = fixture.root().join("linked-home");
@@ -510,14 +525,17 @@ fn idle_shutdown_removes_daemon_json() {
     let fixture = fixture_with_tasks();
     // Idle window of 3s: the daemon starts, then shuts itself down with no
     // clients connected and no requests.
-    let mut child = std::process::Command::new(common::bin())
+    let mut command = std::process::Command::new(common::bin());
+    command
         .args(["serve", "--port", "0", "--idle-secs", "3"])
         .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
         .current_dir(fixture.root())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("spawn serve");
+        .stderr(std::process::Stdio::piped());
+    if std::env::var("KB_TEST_NO_WATCH").as_deref() == Ok("1") {
+        command.env("UNIPI_KANBOARD_NO_WATCH", "1");
+    }
+    let mut child = command.spawn().expect("spawn serve");
 
     let info_path = fixture.layout.home.join("daemon.json");
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -1110,4 +1128,527 @@ fn settings_set_round_trip_and_agent_refusal() {
     let output = common::cli(&fixture, &["rotate-token", "--actor", "agent"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("user/system only"));
+}
+
+/// UNI-57: the undo endpoint — token issued only for hard-to-reverse moves,
+/// consumed once, scoped to its task, rejected after any intervening change.
+#[test]
+fn undo_token_is_issued_once_scoped_and_refuses_stale_tasks() {
+    let fixture = Fixture::new();
+    let review = fixture.add_with("review me", Status::Todo, Priority::None, &[]);
+    fixture.start(&review.id, "s", common::alive_pid());
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &review.id,
+        Status::InReview,
+        "ready",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+    let cancel = fixture.add_with("cancel me", Status::Todo, Priority::None, &[]);
+    let routine = fixture.add_with("routine", Status::Backlog, Priority::None, &[]);
+    let slug = &fixture.project.slug;
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let post = |path: &str, body: String| {
+        http(daemon.port, "POST", path, Some(&body)).expect("http")
+    };
+
+    // A routine, reversible move carries no token.
+    let response = post(
+        &format!("/api/tasks/{slug}/{}/move", routine.id),
+        r#"{"status":"todo"}"#.into(),
+    );
+    assert_eq!(response.status, 200, "{}", response.body);
+    assert!(response.json().get("undoToken").is_none(), "{}", response.body);
+
+    // in_review → done carries one; undo restores in_review; reuse refuses.
+    let response = post(
+        &format!("/api/tasks/{slug}/{}/move", review.id),
+        r#"{"status":"done"}"#.into(),
+    );
+    assert_eq!(response.status, 200, "{}", response.body);
+    let token = response.json()["undoToken"].as_str().expect("undoToken").to_string();
+    let undone = post(
+        &format!("/api/tasks/{slug}/{}/undo", review.id),
+        format!(r#"{{"token":"{token}"}}"#),
+    );
+    assert_eq!(undone.status, 200, "{}", undone.body);
+    assert_eq!(undone.json()["status"], "in_review");
+    let reused = post(
+        &format!("/api/tasks/{slug}/{}/undo", review.id),
+        format!(r#"{{"token":"{token}"}}"#),
+    );
+    assert_eq!(reused.status, 409, "{}", reused.body);
+
+    // A cancellation is undoable too — and scoped: the token refuses on a
+    // different task's path.
+    let response = post(
+        &format!("/api/tasks/{slug}/{}/move", cancel.id),
+        r#"{"status":"cancelled"}"#.into(),
+    );
+    let token = response.json()["undoToken"].as_str().expect("undoToken").to_string();
+    let cross = post(
+        &format!("/api/tasks/{slug}/{}/undo", review.id),
+        format!(r#"{{"token":"{token}"}}"#),
+    );
+    assert_eq!(cross.status, 409, "{}", cross.body);
+    let undone = post(
+        &format!("/api/tasks/{slug}/{}/undo", cancel.id),
+        format!(r#"{{"token":"{token}"}}"#),
+    );
+    assert_eq!(undone.status, 200, "{}", undone.body);
+    assert_eq!(undone.json()["status"], "todo");
+
+    // An intervening change kills the undo even within the same second: the
+    // whole task, activity included, must still match the post-move state.
+    let response = post(
+        &format!("/api/tasks/{slug}/{}/move", review.id),
+        r#"{"status":"done"}"#.into(),
+    );
+    let token = response.json()["undoToken"].as_str().expect("undoToken").to_string();
+    let noted = post(
+        &format!("/api/tasks/{slug}/{}/note", review.id),
+        r#"{"text":"a change after the move"}"#.into(),
+    );
+    assert_eq!(noted.status, 200);
+    let stale = post(
+        &format!("/api/tasks/{slug}/{}/undo", review.id),
+        format!(r#"{{"token":"{token}"}}"#),
+    );
+    assert_eq!(stale.status, 409, "{}", stale.body);
+    assert!(stale.json()["error"].as_str().unwrap().contains("changed since"), "{}", stale.body);
+
+    // Unknown tokens refuse.
+    let unknown = post(
+        &format!("/api/tasks/{slug}/{}/undo", review.id),
+        r#"{"token":"deadbeefdeadbeefdeadbeefdeadbeef"}"#.into(),
+    );
+    assert_eq!(unknown.status, 409, "{}", unknown.body);
+}
+
+/// UNI-57: expired tokens refuse with an expiry message. The TTL override is
+/// passed to the daemon child only — never the test process, where a global
+/// would leak into parallel tests.
+#[test]
+fn undo_tokens_expire() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("expire me", Status::Todo, Priority::None, &[]);
+    let slug = &fixture.project.slug;
+    let daemon = Daemon::start_with_envs(
+        &fixture,
+        &["--idle-secs", "120"],
+        &[("UNIPI_KANBOARD_UNDO_TTL_SECS", "1")],
+    );
+    let response = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/move", task.id),
+        Some(r#"{"status":"cancelled"}"#),
+    )
+    .expect("move");
+    let token = response.json()["undoToken"].as_str().expect("undoToken").to_string();
+    std::thread::sleep(Duration::from_millis(1300));
+    let undone = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/undo", task.id),
+        Some(&format!(r#"{{"token":"{token}"}}"#)),
+    )
+    .expect("undo");
+    assert_eq!(undone.status, 409, "{}", undone.body);
+    assert!(
+        undone.json()["error"].as_str().unwrap().contains("expired"),
+        "{}",
+        undone.body
+    );
+}
+
+/// UNI-57 rework: API writes carry their own revision bumps, so SSE push works
+/// even with the file watcher off (UNIPI_KANBOARD_NO_WATCH on the daemon
+/// child). This test never skips — it runs with the watcher forcibly off.
+#[test]
+fn sse_pushes_on_api_move_and_undo_without_the_watcher() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("sse undo", Status::Todo, Priority::None, &[]);
+    fixture.start(&task.id, "s", common::alive_pid());
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::InReview,
+        "ready",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+    let slug = fixture.project.slug.clone();
+    let daemon = Daemon::start_with_envs(
+        &fixture,
+        &["--idle-secs", "120"],
+        &[("UNIPI_KANBOARD_NO_WATCH", "1")],
+    );
+    let port = daemon.port;
+    let value = slug.clone();
+    let reader = std::thread::spawn(move || read_sse(port, &format!("/events?project={value}"), 5));
+    std::thread::sleep(Duration::from_millis(600));
+
+    let moved = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/move", task.id),
+        Some(r#"{"status":"done"}"#),
+    )
+    .expect("move");
+    assert_eq!(moved.status, 200, "{}", moved.body);
+    let token = moved.json()["undoToken"].as_str().expect("undoToken").to_string();
+    std::thread::sleep(Duration::from_millis(700));
+    let undone = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/undo", task.id),
+        Some(&format!(r#"{{"token":"{token}"}}"#)),
+    )
+    .expect("undo");
+    assert_eq!(undone.status, 200, "{}", undone.body);
+
+    let lines = reader.join().expect("sse reader");
+    let revisions: Vec<u64> = lines
+        .iter()
+        .filter(|line| line.starts_with("data:"))
+        .filter_map(|line| line.trim_start_matches("data:").trim().parse::<u64>().ok())
+        .collect();
+    let bump_count = revisions.iter().filter(|revision| **revision >= 1).count();
+    assert!(bump_count >= 2, "expected revisions for move AND undo, got {revisions:?}");
+}
+
+/// UNI-51: one endpoint lists every claimed task across all projects.
+#[test]
+fn running_lists_claimed_tasks_across_projects() {
+    let fixture = Fixture::new();
+    let first = fixture.add_with("claimed here", Status::Todo, Priority::None, &[]);
+    fixture.start(&first.id, "session-a", common::alive_pid());
+    let slug = &fixture.project.slug;
+    // A second project with its own claimed task.
+    let other_root = fixture.root().join("other");
+    std::fs::create_dir_all(&other_root).unwrap();
+    let other = Project::create(&fixture.layout, &other_root, Some("Other"), Some("OTH")).unwrap();
+    let second_value = commands::add(
+        &fixture.layout,
+        other.clone(),
+        &fixture.common,
+        "claimed there",
+        None,
+        Some(Status::Todo),
+        Priority::None,
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+    let second = second_value["id"].as_str().unwrap().to_string();
+    let host = commands::hostname();
+    commands::start(
+        &fixture.layout,
+        other.clone(),
+        ChainGate::InReview,
+        &second,
+        &commands::StartArgs { session: "session-b", pid: common::alive_pid(), host: &host },
+        fixture.common.now,
+    )
+    .unwrap();
+
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let response = http(daemon.port, "GET", "/api/running", None).expect("running");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let payload = response.json();
+    let items = payload["running"].as_array().expect("array");
+    assert_eq!(items.len(), 2, "{}", response.body);
+    let slugs: Vec<&str> = items.iter().map(|item| item["slug"].as_str().unwrap()).collect();
+    assert!(slugs.contains(&slug.as_str()) && slugs.contains(&other.slug.as_str()), "{slugs:?}");
+    for item in items {
+        assert!(item["project"].is_string());
+        assert!(!item["task"]["run"].is_null());
+        assert!(item["task"]["id"].is_string());
+    }
+}
+
+/// UNI-59/60 over the API: create takes labels; the creator is stamped from
+/// the (always-user) API actor and edit refuses to change it.
+#[test]
+fn api_create_stamps_creator_and_edit_rejects_creator_changes() {
+    let fixture = Fixture::new();
+    let slug = &fixture.project.slug;
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let created = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/create"),
+        Some(r#"{"title":"with labels","labels":["web","web"," ui "]}"#),
+    )
+    .expect("create");
+    assert_eq!(created.status, 200, "{}", created.body);
+    let task = created.json();
+    assert_eq!(task["creator"], "user");
+    let labels: Vec<&str> = task["labels"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+    assert_eq!(labels, vec!["web", "ui"]);
+
+    // Creator changes are refused outright (UNI-59: immutable edit API).
+    let edit = http(
+        daemon.port,
+        "POST",
+        &format!("/api/tasks/{slug}/{}/edit", task["id"].as_str().unwrap()),
+        Some(r#"{"creator":"agent","title":"hijack"}"#),
+    )
+    .expect("edit");
+    assert_eq!(edit.status, 400, "{}", edit.body);
+    assert!(
+        edit.json()["error"].as_str().unwrap().contains("cannot be changed"),
+        "{}",
+        edit.body
+    );
+    // The refused edit changed nothing.
+    let shown = http(
+        daemon.port,
+        "GET",
+        &format!("/api/tasks/{slug}/{}", task["id"].as_str().unwrap()),
+        None,
+    )
+    .unwrap();
+    assert_eq!(shown.json()["title"], "with labels");
+    assert_eq!(shown.json()["creator"], "user");
+}
+
+/// UNI-67: the dashboard endpoint — archived projects excluded, inbox ordered
+/// oldest-waiting-first with excerpts, upNext filtered to ready todos by
+/// priority, activity window/order, doneAt and reviewWaits windows.
+#[test]
+fn dashboard_endpoint_sections_ordering_and_windows() {
+    use kanboard::model::Priority;
+
+    let fixture = Fixture::new();
+    let now = fixture.common.now;
+
+    // Old review: entered in_review three days ago and still waiting.
+    let old_review = fixture.add_with("old review", Status::Todo, Priority::None, &[]);
+    fixture.start(&old_review.id, "s", common::alive_pid());
+    kanboard::commands::finish(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        &old_review.id,
+        "s",
+        "fix login flow\n\nscreenshots ![x](att:1) attached",
+        &[],
+        now - chrono::Duration::days(3),
+    )
+    .unwrap();
+
+    // Blocked: released one day ago with the agent's question as the comment.
+    let blocked = fixture.add_with("blocked work", Status::Todo, Priority::None, &[]);
+    fixture.start(&blocked.id, "s", common::alive_pid());
+    kanboard::commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &blocked.id,
+        Status::Blocked,
+        "need the retry fixture fixed before I can continue",
+        ChainGate::InReview,
+        now - chrono::Duration::days(1),
+    )
+    .unwrap();
+
+    // Fresh review: entered in_review just now.
+    let fresh_review = fixture.add_with("fresh review", Status::Todo, Priority::None, &[]);
+    fixture.start(&fresh_review.id, "s", common::alive_pid());
+    kanboard::commands::finish(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        &fresh_review.id,
+        "s",
+        "just finished\nsecond line",
+        &[],
+        now,
+    )
+    .unwrap();
+
+    // Done cycle: in_review then done — one completed review wait + doneAt.
+    let done = fixture.add_with("done cycle", Status::Todo, Priority::None, &[]);
+    fixture.start(&done.id, "s", common::alive_pid());
+    kanboard::commands::finish(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        &done.id,
+        "s",
+        "cycle summary",
+        &[],
+        now,
+    )
+    .unwrap();
+    fixture.move_to(&done.id, Status::Done);
+
+    // Ready todos across priorities; one todo parked behind a Backlog dep
+    // (never ready) and nine extra urgents to prove the cap.
+    fixture.add_labeled("urgent next", Status::Todo, Priority::Urgent, &[], &[]);
+    fixture.add_labeled("high next", Status::Todo, Priority::High, &[], &[]);
+    fixture.add_labeled("low next", Status::Todo, Priority::Low, &[], &[]);
+    let parked = fixture.add("parked parent");
+    fixture.add_labeled("not ready", Status::Todo, Priority::Urgent, std::slice::from_ref(&parked.id), &[]);
+    for index in 0..6 {
+        fixture.add_labeled(&format!("flood {index}"), Status::Todo, Priority::Urgent, &[], &[]);
+    }
+
+    // An archived project with a waiting task must not appear anywhere.
+    let other_root = fixture.root().join("archived-proj");
+    std::fs::create_dir_all(&other_root).unwrap();
+    let archived = Project::create(&fixture.layout, &other_root, Some("Archived Proj"), Some("ARP")).unwrap();
+    commands::project_set_archived(&fixture.layout, &archived.slug, true).unwrap();
+
+    let slug = &fixture.project.slug;
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let response = http(daemon.port, "GET", "/api/dashboard", None).expect("dashboard");
+    assert_eq!(response.status, 200, "{}", response.body);
+    let payload = response.json();
+    assert!(payload["generatedAt"].is_string());
+
+    // Inbox: oldest waiting first, archived excluded, excerpts derived.
+    let inbox = payload["inbox"].as_array().unwrap();
+    assert_eq!(inbox.len(), 3, "{}", payload);
+    assert_eq!(inbox[0]["task"]["id"], old_review.id.as_str());
+    assert_eq!(inbox[1]["task"]["id"], blocked.id.as_str());
+    assert_eq!(inbox[2]["task"]["id"], fresh_review.id.as_str());
+    let old_since = chrono::DateTime::parse_from_rfc3339(inbox[0]["waitingSince"].as_str().unwrap()).unwrap();
+    assert_eq!(old_since.timestamp(), (now - chrono::Duration::days(3)).timestamp());
+    assert_eq!(
+        inbox[1]["excerpt"].as_str().unwrap(),
+        "need the retry fixture fixed before I can continue"
+    );
+    assert_eq!(inbox[2]["excerpt"], "just finished");
+    assert_eq!(inbox[0]["excerpt"], "fix login flow");
+    assert!(inbox.iter().all(|item| item["slug"] == slug.as_str()));
+
+    // upNext: ready todos only, urgent-first ordering, capped at 8.
+    let up_next = payload["upNext"].as_array().unwrap();
+    assert_eq!(up_next.len(), 8, "{}", payload);
+    let titles: Vec<&str> = up_next
+        .iter()
+        .map(|item| item["task"]["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titles[0], "urgent next", "{titles:?}");
+    assert!(!titles.contains(&"not ready"), "{titles:?}");
+    // Priority dominates lane order: `high next` was created before the
+    // floods but sorts after every urgent; `low next` falls past the cap.
+    assert_eq!(titles[7], "high next", "{titles:?}");
+
+    // Activity: newest first, inside the 48h window (the 3-day-old finish is out).
+    let activity = payload["activity"].as_array().unwrap();
+    assert!(!activity.is_empty());
+    // Newest first, and equal-second entries of one task keep chronological
+    // per-task order (the seq tie-break the step trails rely on).
+    let stamps: Vec<chrono::DateTime<chrono::Utc>> = activity
+        .iter()
+        .map(|entry| chrono::DateTime::parse_from_rfc3339(entry["at"].as_str().unwrap()).unwrap().into())
+        .collect();
+    assert!(now - stamps[0] <= chrono::Duration::hours(48));
+    let same_task: Vec<&serde_json::Value> = activity
+        .iter()
+        .filter(|entry| entry["taskId"] == done.id.as_str())
+        .collect();
+    assert!(same_task.len() >= 3, "{same_task:?}");
+    let texts: Vec<&str> = same_task.iter().map(|entry| entry["text"].as_str().unwrap()).collect();
+    assert!(texts[0].starts_with("moved in_review → done"), "{texts:?}");
+    assert!(texts.last().unwrap().starts_with("created in"), "{texts:?}");
+    assert!(activity
+        .iter()
+        .any(|entry| entry["text"].as_str().unwrap().contains("need the retry fixture fixed")));
+
+    // Throughput + review waits: one completed cycle today.
+    let done_at = payload["doneAt"].as_array().unwrap();
+    assert_eq!(done_at.len(), 1);
+    let waits = payload["reviewWaits"].as_array().unwrap();
+    assert_eq!(waits.len(), 1);
+    assert!(waits[0].as_i64().unwrap() >= 0);
+
+    // Per-project health: archived slug absent, counts right.
+    let projects = payload["projects"].as_array().unwrap();
+    assert_eq!(projects.len(), 1, "{}", payload);
+    assert_eq!(projects[0]["slug"], slug.as_str());
+    assert_eq!(projects[0]["review"], 2);
+    assert_eq!(projects[0]["blocked"], 1);
+    assert_eq!(projects[0]["ready"], 9, "ready todos minus the dep-blocked one");
+}
+
+/// UNI-67 rework: a done transition that an undo later reverted must not be
+/// counted in doneAt — the dashboard never shows throughput that didn't stick.
+#[test]
+fn dashboard_done_at_excludes_reverted_done() {
+    let fixture = Fixture::new();
+
+    // Control: a done that stays done.
+    let kept = fixture.add_with("kept done", Status::Todo, Priority::None, &[]);
+    fixture.start(&kept.id, "s", common::alive_pid());
+    kanboard::commands::finish(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        &kept.id,
+        "s",
+        "stays",
+        &[],
+        fixture.common.now,
+    )
+    .unwrap();
+    fixture.move_to(&kept.id, Status::Done);
+
+    // Reverted: moved to done, then undone back to in_review.
+    let reverted = fixture.add_with("reverted done", Status::Todo, Priority::None, &[]);
+    fixture.start(&reverted.id, "s", common::alive_pid());
+    kanboard::commands::finish(
+        &fixture.layout,
+        fixture.project.clone(),
+        ChainGate::InReview,
+        &reverted.id,
+        "s",
+        "reverted",
+        &[],
+        fixture.common.now,
+    )
+    .unwrap();
+    let (_, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &reverted.id,
+        Status::Done,
+        None,
+        &[],
+    )
+    .unwrap();
+    let undo = undo.expect("in_review → done carries undo material");
+    let restored = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        undo.before,
+    )
+    .unwrap();
+    assert_eq!(restored["status"], "in_review");
+
+    // One ready todo so readyTotal has something to count.
+    fixture.add_labeled("ready after rework", Status::Todo, Priority::None, &[], &[]);
+
+    let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
+    let response = http(daemon.port, "GET", "/api/dashboard", None).expect("dashboard");
+    let payload = response.json();
+    let done_at = payload["doneAt"].as_array().unwrap();
+    assert_eq!(done_at.len(), 1, "the reverted done must not count: {payload}");
+    let kept_day = chrono::DateTime::parse_from_rfc3339(done_at[0].as_str().unwrap()).unwrap();
+    assert_eq!(kept_day.timestamp(), fixture.common.now.timestamp());
+    // readyTotal counts every ready todo, uncapped.
+    assert_eq!(payload["readyTotal"], 1, "{}", payload);
+    assert_eq!(payload["upNext"].as_array().unwrap().len(), 1);
 }

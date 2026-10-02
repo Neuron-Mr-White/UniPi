@@ -17,6 +17,8 @@ import {
   emitEvent,
   getPackageVersion,
   type KitTheme,
+  formatTokens,
+  harnessMetadata,
 } from "@pi-unipi/core";
 
 import { createSessionBackend, type SessionBackend } from "./session.js";
@@ -51,6 +53,16 @@ const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 const RECALL_CUSTOM_TYPE = "unipi-memory-recall-reminder";
 const RETRO_CUSTOM_TYPE = "unipi-memory-retro-reminder";
 const CARD_CUSTOM_TYPE = "unipi-memory-session-card";
+
+/** Human-readable save-pass usage line (UI only — persisted usage stays raw). */
+export function saveUsageLine(usage: {
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+}): string {
+  return `save pass · input ${formatTokens(usage.input)} · cache read ${formatTokens(usage.cacheRead)} / write ${formatTokens(usage.cacheWrite)} · output ${formatTokens(usage.output)} tokens`;
+}
 
 /** ~/.unipi/logs/memory.log lines when UNIPI_DEBUG_MEMORY=1 (silent otherwise). */
 export function memoryDebug(line: string): void {
@@ -481,6 +493,7 @@ export default function (pi: ExtensionAPI) {
           wakeUp: wake,
         }),
         display: true,
+        details: { unipiHarness: harnessMetadata({ source: "Memory", title: "Memory recall", synopsis: "Recalled at session start" }, "before_agent_start") },
       },
     };
   });
@@ -497,12 +510,7 @@ export default function (pi: ExtensionAPI) {
           { left: `${t.bold("Memory saved")} ${d.titles.join(", ")}` },
         ];
         if (d.usage) {
-          rows.push(
-            t.fg(
-              "dim",
-              `save pass · in ${d.usage.input} · cache ${d.usage.cacheRead}/${d.usage.cacheWrite} · out ${d.usage.output}`,
-            ),
-          );
+          rows.push(t.fg("dim", saveUsageLine(d.usage)));
         }
         return memoryCard(t, rows);
       },
@@ -559,6 +567,7 @@ export default function (pi: ExtensionAPI) {
             "Update existing memories instead of creating duplicates.",
           ].join(" "),
           display: true,
+          details: { unipiHarness: harnessMetadata({ source: "Memory", title: "Memory save?", synopsis: "Save reminder after a finished run" }, "nextTurn") },
         },
         { deliverAs: "nextTurn" },
       );

@@ -31,10 +31,13 @@ import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import { registerToolRenderers } from "./render/tools.js";
 import { installTranscriptSpacing } from "./render/spacing.js";
+import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAnnotations } from "./render/harness.js";
+import { installHarnessProvenance } from "@pi-unipi/core";
 import { readUtilSettings } from "./settings.js";
 
 export { readUtilSettings } from "./settings.js";
 export { simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "./render/simple.js";
+export { withHarnessToolAnnotations } from "./render/harness.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
@@ -48,6 +51,12 @@ const ALL_COMMANDS = [
 ].map((cmd) => `unipi:${cmd}`);
 
 export default function (pi: ExtensionAPI) {
+  // Standalone installs need provenance before any command can send.
+  try {
+    installHarnessProvenance(pi);
+  } catch {
+    // cosmetic
+  }
   pi.registerCommand("unipi:settings", {
     description: "Configure all unipi modules in one panel (global + project scopes); /unipi:settings <search> opens it filtered",
     handler: async (args, ctx) => openSettingsHub(ctx, { filter: args.trim() }),
@@ -61,6 +70,9 @@ export default function (pi: ExtensionAPI) {
   registerToolRenderers(pi, readUtilSettings().render.style);
   // Normalize blank runs between transcript blocks (all render styles).
   installTranscriptSpacing(pi);
+  // Harness provenance: known custom-type panels + native USER card patch.
+  installHarnessRenderers(pi);
+  installHarnessUserRendering(pi);
   // Onboarding tips: one 💡 line above the editor on startup + matching events.
   installTips(pi);
 

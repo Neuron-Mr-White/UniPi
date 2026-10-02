@@ -574,6 +574,16 @@ fn list_prints_tasks_and_warns_about_problems() {
         "the table must not claim an empty board: {}",
         run.stdout
     );
+    // Bare `list` shows the active lanes only — the backlog task stays hidden
+    // until --all (UNI-62).
+    assert!(!run.stdout.contains("first"), "{}", run.stdout);
+    assert!(
+        run.stdout.contains("[todo] second (high)"),
+        "{}",
+        run.stdout
+    );
+
+    let run = kb(&fixture, &["list", "--all"]);
     assert!(run.stdout.contains("first"), "{}", run.stdout);
     assert!(
         run.stdout.contains("[todo] second (high)"),
@@ -595,4 +605,47 @@ fn list_prints_tasks_and_warns_about_problems() {
 
     let run = kb(&fixture, &["list"]);
     assert!(run.stdout.contains("need repair"), "{}", run.stdout);
+}
+
+/// UNI-62: bare `list` shows only todo/in_progress/blocked/in_review/done;
+/// `--status` narrows to one lane; `--all` adds backlog, cancelled, archived.
+#[test]
+fn bare_list_defaults_to_active_lanes_and_status_overrides() {
+    let fixture = Fixture::new();
+    fixture.add_with("in backlog", kanboard::model::Status::Backlog, kanboard::model::Priority::None, &[]);
+    fixture.add_with("in todo", kanboard::model::Status::Todo, kanboard::model::Priority::None, &[]);
+    let done = fixture.add_with("in done", kanboard::model::Status::Todo, kanboard::model::Priority::None, &[]);
+    fixture.start(&done.id, "s", std::process::id());
+    kanboard::commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &done.id,
+        kanboard::model::Status::InReview,
+        "ready",
+        kanboard::model::ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+    fixture.move_to(&done.id, kanboard::model::Status::Done);
+    let gone = fixture.add_with("gone", kanboard::model::Status::Todo, kanboard::model::Priority::None, &[]);
+    fixture.move_to(&gone.id, kanboard::model::Status::Cancelled);
+
+    let titles = |args: &[&str]| -> Vec<String> {
+        let run = kb(&fixture, args);
+        let mut titles: Vec<String> = run.json["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["title"].as_str().map(str::to_string))
+            .collect();
+        titles.sort();
+        titles
+    };
+
+    assert_eq!(titles(&["list", "--json"]), vec!["in done", "in todo"]);
+    assert_eq!(titles(&["list", "--status", "backlog", "--json"]), vec!["in backlog"]);
+    assert_eq!(
+        titles(&["list", "--all", "--json"]),
+        vec!["gone", "in backlog", "in done", "in todo"]
+    );
 }

@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isChildProcess } from "@pi-unipi/core";
+import { isChildProcess, harnessToolResultDetails } from "@pi-unipi/core";
 
 import { kanboardInvocations, shellSegments } from "./guard.js";
 import type { KanboardTask } from "./shapes.js";
@@ -196,7 +196,16 @@ export function createProgressTracker(deps: TrackerDeps): ProgressTracker {
         r1Count.set(id, (r1Count.get(id) ?? 0) + 1);
       }
       debug(`R1 for ${todo.join(", ")}`);
-      return { content: [...(event.content ?? []), { type: "text", text: `\n\n${r1Text(todo, deps.cliPrefix())}` }] };
+      const annotation = `\n\n${r1Text(todo, deps.cliPrefix())}`;
+      return {
+        content: [...(event.content ?? []), { type: "text", text: annotation }],
+        details: harnessToolResultDetails(
+          (event as { details?: unknown }).details,
+          { source: "Kanboard", title: "R1 progress reminder", synopsis: `${todo.join(", ")} still Todo`, severity: "warning" },
+          "boundary",
+          annotation,
+        ),
+      };
     },
 
     state() {

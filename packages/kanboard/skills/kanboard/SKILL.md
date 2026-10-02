@@ -16,7 +16,7 @@ Always pass the actor and the project, and call it by absolute path (it may not
 be on `PATH`):
 
 ```sh
-<binary> --actor agent --project <slug> list [--ready] [--json]
+<binary> --actor agent --project <slug> list [--ready] [--all] [--json]   # bare list = todo/in_progress/blocked/in_review/done only; --all adds backlog/cancelled/archived
 <binary> --actor agent --project <slug> show <ID>
 <binary> --actor agent --project <slug> next                     # what would be picked next + why (read-only)
 <binary> --actor agent --project <slug> chain <ID>               # upstream deps + downstream dependents

@@ -5,6 +5,7 @@ import { api, displayTitle, LANES, PRIORITIES, type ProjectSummary } from "./api
 import { Board } from "./Board.js";
 import { BoardSummarizeDialog, CommandPalette, CommentDialog, NewTaskDialog, SettingsDialog, ShortcutsDialog, SummarizeDialog, Toasts } from "./Dialogs.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
+import { Dashboard } from "./dashboard.js";
 import { ListView } from "./List.js";
 import { hue, ProjectTile } from "./paint.js";
 import { TaskPanel } from "./TaskPanel.js";
@@ -12,6 +13,7 @@ import {
   allLabels,
   applyTheme,
   board,
+  globalRunning,
   setBoardSummarizeOpen,
   clearFilters,
   conn,
@@ -31,7 +33,6 @@ import {
   paletteOpen,
   projects,
   query,
-  runningTasks,
   scope,
   selectedId,
   setSelectedId,
@@ -53,7 +54,38 @@ import {
   toggleTheme,
   view,
 } from "./state.js";
-import { Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
+import { drawerDirty } from "./TaskPanel.js";
+import { ContextMenu, Kbd, MenuItem, MenuLabel, MenuSeparator, MOD, Popover } from "./ui.js";
+
+/** Shared sidebar project actions — the … popover and right-click menu both
+ *  render these (UNI-51). */
+function projectMenuItems(
+  project: ProjectSummary,
+  archived: boolean,
+  close: () => void,
+  setArchived: (project: ProjectSummary, archived: boolean) => void,
+): JSX.Element {
+  return (
+    <>
+      <MenuItem
+        icon={<Icon.board size={14} />}
+        label="Open"
+        onSelect={() => {
+          close();
+          void openProject(project.slug);
+        }}
+      />
+      <MenuItem
+        icon={<Icon.archive size={14} />}
+        label={archived ? "Unarchive" : "Archive"}
+        onSelect={() => {
+          close();
+          setArchived(project, !archived);
+        }}
+      />
+    </>
+  );
+}
 
 /** Active vs archived split — sidebar, switcher and overview all use it. */
 const activeProjects = createMemo(() => projects.items.filter((project) => !project.archived));
@@ -130,8 +162,11 @@ export function App(): JSX.Element {
           setShortcutsOpen(true);
           break;
         case "Escape":
-          if (drawerOpen) setOpenTaskId(null);
-          else if (query()) setQuery("");
+          // UNI-61: a dirty drawer is protected — Esc on it opens the discard
+          // prompt instead of silently throwing the drafts away.
+          if (drawerOpen) {
+            if (!drawerDirty()) setOpenTaskId(null);
+          } else if (query()) setQuery("");
           break;
       }
     };
@@ -198,7 +233,7 @@ export function App(): JSX.Element {
           </Show>
         </header>
 
-        <Show when={slug()} fallback={<ProjectPicker />}>
+        <Show when={slug()} fallback={<Dashboard />}>
           <div class="toolbar">
             <div class="segmented" role="group" aria-label="View">
               <button class="btn" aria-pressed={view() === "board" && scope() === "all"} onClick={() => setView("board")}>
@@ -287,10 +322,23 @@ export function App(): JSX.Element {
 
 function Sidebar(): JSX.Element {
   const counts = (status: string): number => board.tasks.filter((task) => task.status === status).length;
-  const isHere = (target: "board" | "list", targetScope: "all" | "in_review" | "blocked" = "all"): boolean =>
-    !!slug() && view() === target && scope() === targetScope;
+  const isHere = (target: "board" | "list" | "dashboard", targetScope: "all" | "in_review" | "blocked" = "all"): boolean => {
+    if (target === "dashboard") return slug() === null;
+    return !!slug() && view() === target && scope() === targetScope;
+  };
   const openCount = (project: ProjectSummary): number =>
     ["backlog", "todo", "in_progress", "in_review", "blocked"].reduce((sum, status) => sum + (project.counts?.[status] ?? 0), 0);
+
+  /** Archive/unarchive from the sidebar (UNI-51). */
+  const setArchived = (project: ProjectSummary, archived: boolean): void => {
+    void api
+      .updateProject(project.slug, { archived })
+      .then(() => loadProjects())
+      .then(() => toast(archived ? `Archived ${project.name}` : `Unarchived ${project.name}`, "success"))
+      .catch((error) => toast(describe(error), "error"));
+  };
+  /** Right-click menu state for sidebar project rows (UNI-51). */
+  const [rowMenu, setRowMenu] = createSignal<{ x: number; y: number; project: ProjectSummary } | null>(null);
 
   return (
     <aside class="sidebar" aria-label="Sidebar">
@@ -301,7 +349,11 @@ function Sidebar(): JSX.Element {
           trigger={(api) => (
             <button class="workspace" ref={api.ref} aria-expanded={api.open} aria-haspopup="menu" onClick={api.toggle} title={currentProject()?.root}>
               <Show when={currentProject()} fallback={<Icon.logo size={22} />}>
-                {(project) => <ProjectTile name={project().name} size={22} />}
+                {(project) => (
+                  <RunningTile project={project()} size={22}>
+                    <ProjectTile name={project().name} size={22} />
+                  </RunningTile>
+                )}
               </Show>
               <span class="ws-name">{currentProject()?.name ?? "kanboard"}</span>
               <Icon.chevronDown size={14} class="ws-chevron" />
@@ -350,6 +402,18 @@ function Sidebar(): JSX.Element {
       </button>
 
       <div class="sb-scroll">
+        <button
+          class="nav-item dashboard-nav"
+          aria-current={isHere("dashboard") ? "page" : undefined}
+          onClick={() => void openProject(null)}
+          title="Dashboard — every project at a glance"
+        >
+          <Icon.folder />
+          <span class="label">Dashboard</span>
+          <Show when={projects.loaded}>
+            <span class="count">{activeProjects().length}</span>
+          </Show>
+        </button>
         <Show when={slug()}>
           <button class="nav-item" aria-current={isHere("board") ? "page" : undefined} onClick={() => setView("board")} title="Board">
             <Icon.board />
@@ -391,48 +455,74 @@ function Sidebar(): JSX.Element {
         </div>
         <For each={activeProjects()}>
           {(project) => (
-            <button
-              class="nav-item"
-              aria-current={project.slug === slug() ? "page" : undefined}
-              onClick={() => void openProject(project.slug)}
-              title={project.name}
+            <div
+              class="nav-row"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setRowMenu({ x: event.clientX, y: event.clientY, project });
+              }}
             >
-              <ProjectTile name={project.name} size={18} />
-              <span class="label">{project.name}</span>
-              <span class="count">{openCount(project)}</span>
-            </button>
+              <button
+                class="nav-item"
+                aria-current={project.slug === slug() ? "page" : undefined}
+                onClick={() => void openProject(project.slug)}
+                title={project.name}
+              >
+                <RunningTile project={project} size={18}>
+                  <ProjectTile name={project.name} size={18} />
+                </RunningTile>
+                <span class="label">{project.name}</span>
+                <span class="count">{openCount(project)}</span>
+              </button>
+            </div>
           )}
         </For>
+        <ContextMenu
+          at={rowMenu() ? { x: rowMenu()!.x, y: rowMenu()!.y } : null}
+          label="Project actions"
+          onClose={() => setRowMenu(null)}
+        >
+          <Show when={rowMenu()}>
+            {(menu) => projectMenuItems(menu().project, false, () => setRowMenu(null), setArchived)}
+          </Show>
+        </ContextMenu>
         <Show when={projects.loaded && activeProjects().length === 0}>
           <div class="sb-empty">No projects registered.</div>
         </Show>
 
-        <Show when={slug()}>
-          <div class="agents">
-            <div class="sb-section">
-              Agents
-              <Show when={runningTasks().length > 0}>
-                <span class="count num">{runningTasks().length} running</span>
-              </Show>
-            </div>
-            <For each={runningTasks()} fallback={<div class="sb-empty">No agents running.</div>}>
-              {(task) => (
-                <button class="agent-row" onClick={() => setOpenTaskId(task.id)} title={displayTitle(task)}>
-                  <span class="agent-dot">
-                    <span class="pulse" />
-                  </span>
-                  <span class="agent-title">
-                    <span class="mono muted">{task.id}</span> {displayTitle(task)}
-                  </span>
-                  <span class="agent-time">{elapsed(task.run?.started)}</span>
-                  <span class="agent-meta">
-                    agent · session {task.run?.session ?? "?"}
-                  </span>
-                </button>
-              )}
-            </For>
-          </div>
+        <Show when={archivedProjects().length > 0}>
+          <ArchivedProjectsSection onUnarchive={(project) => setArchived(project, false)} />
         </Show>
+
+        <div class="agents">
+          <div class="sb-section">
+            Agents
+            <Show when={globalRunning.items.length > 0}>
+              <span class="count num">{globalRunning.items.length} running</span>
+            </Show>
+          </div>
+          <For each={globalRunning.items} fallback={<div class="sb-empty">No agents running.</div>}>
+            {(item) => (
+              <button
+                class="agent-row"
+                title={`${item.project} · ${item.task.id}`}
+                onClick={() => {
+                  void openProject(item.slug).then(() => setOpenTaskId(item.task.id));
+                }}
+              >
+                <span class="agent-dot">
+                  <span class="pulse" />
+                </span>
+                <span class="agent-title">
+                  <span class="agent-project">{item.project}</span>
+                  <span class="mono muted">{item.task.id}</span> {displayTitle(item.task)}
+                </span>
+                <span class="agent-time">{elapsed(item.task.run?.started)}</span>
+                <span class="agent-meta">agent · session {item.task.run?.session ?? "?"}</span>
+              </button>
+            )}
+          </For>
+        </div>
       </div>
 
       <div class="sb-foot">
@@ -454,6 +544,65 @@ function Sidebar(): JSX.Element {
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Project tile with the rotating yellow ring while agents run (UNI-51);
+ *  the ring sits still under prefers-reduced-motion. */
+function RunningTile(props: { project: ProjectSummary; size: number; children: JSX.Element }): JSX.Element {
+  return (
+    <span
+      class="running-tile"
+      classList={{ "is-running": (props.project.running ?? 0) > 0 }}
+      style={{ width: `${props.size}px`, height: `${props.size}px` }}
+      title={(props.project.running ?? 0) > 0 ? `${props.project.running} agent(s) running` : undefined}
+    >
+      {props.children}
+    </span>
+  );
+}
+
+/** Collapsed list of archived projects in the sidebar (UNI-51). */
+function ArchivedProjectsSection(props: { onUnarchive: (project: ProjectSummary) => void }): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  const [rowMenu, setRowMenu] = createSignal<{ x: number; y: number; project: ProjectSummary } | null>(null);
+  return (
+    <div class="sb-archived">
+      <button class="sb-section as-button" aria-expanded={open()} onClick={() => setOpen(!open())}>
+        <Show when={open()} fallback={<Icon.chevronRight size={12} />}>
+          <Icon.chevronDown size={12} />
+        </Show>
+        Archived
+        <span class="count num">{archivedProjects().length}</span>
+      </button>
+      <Show when={open()}>
+        <For each={archivedProjects()}>
+          {(project) => (
+            <div
+              class="nav-row archived"
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setRowMenu({ x: event.clientX, y: event.clientY, project });
+              }}
+            >
+              <button class="nav-item" onClick={() => void openProject(project.slug)} title={`${project.name} (archived)`}>
+                <ProjectTile name={project.name} size={16} />
+                <span class="label">{project.name}</span>
+              </button>
+            </div>
+          )}
+        </For>
+        <ContextMenu
+          at={rowMenu() ? { x: rowMenu()!.x, y: rowMenu()!.y } : null}
+          label="Project actions"
+          onClose={() => setRowMenu(null)}
+        >
+          <Show when={rowMenu()}>
+            {(menu) => projectMenuItems(menu().project, true, () => setRowMenu(null), (project) => props.onUnarchive(project))}
+          </Show>
+        </ContextMenu>
+      </Show>
+    </div>
   );
 }
 
@@ -580,126 +729,6 @@ function DisplayMenu(): JSX.Element {
 }
 
 // ─── all projects ───────────────────────────────────────────────────────────
-
-function ProjectPicker(): JSX.Element {
-  const segments = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"];
-  return (
-    <div class="picker">
-      <h1>Projects</h1>
-      <p class="lede">Every project registered on this machine.</p>
-      <Show when={!projects.loaded}>
-        <div class="project-grid">
-          <div class="skeleton" style={{ height: "136px" }} />
-          <div class="skeleton" style={{ height: "136px" }} />
-        </div>
-      </Show>
-      <Show when={projects.loaded && projects.items.length === 0}>
-        <div class="empty-state">
-          <div class="art">
-            <Icon.board size={24} />
-          </div>
-          <h2>No projects yet</h2>
-          <p>
-            Register one with <code>/unipi:kanboard onboard</code> in pi, or <code>unipi-kanboard project add</code>.
-          </p>
-        </div>
-      </Show>
-      <div class="project-grid">
-        <For each={activeProjects()}>{(project) => <ProjectCard project={project} segments={segments} />}</For>
-      </div>
-      <Show when={archivedProjects().length > 0}>
-        <ArchivedSection />
-      </Show>
-    </div>
-  );
-}
-
-function ProjectCard(props: { project: ProjectSummary; segments: string[]; archived?: boolean }): JSX.Element {
-  const project = props.project;
-  return (
-    <div class="project-card" role="group">
-      <button class="pc-open" onClick={() => void openProject(project.slug)}>
-        <div class="pc-head">
-          <ProjectTile name={project.name} size={28} />
-          <div style={{ "min-width": 0 }}>
-            <div class="pc-name">{project.name}</div>
-            <div class="pc-path">{project.root ?? project.slug}</div>
-          </div>
-        </div>
-        <div class="stack-bar" aria-hidden="true">
-          <For each={props.segments}>
-            {(status) => (
-              <Show when={(project.counts?.[status] ?? 0) > 0}>
-                <span style={{ flex: String(project.counts?.[status] ?? 0), background: `var(--s-${status})` }} />
-              </Show>
-            )}
-          </For>
-        </div>
-        <div class="pc-stats">
-          <For each={props.segments.filter((status) => (project.counts?.[status] ?? 0) > 0)}>
-            {(status) => (
-              <span>
-                <StatusGlyph status={status} size={12} />
-                <span class="num">{project.counts?.[status]}</span> {laneLabel(status)}
-              </span>
-            )}
-          </For>
-          <Show when={(project.total ?? 0) === 0}>
-            <span>No tasks yet</span>
-          </Show>
-        </div>
-        <Show when={(project.problems ?? []).length > 0}>
-          <span class="tag stale">{(project.problems ?? []).length} file(s) need repair</span>
-        </Show>
-      </button>
-      <Popover
-        width={180}
-        align="end"
-        label={`${project.name} options`}
-        trigger={(api) => (
-          <button class="icon-btn sm pc-menu" ref={api.ref} aria-expanded={api.open} aria-label={`${project.name} options`} onClick={api.toggle}>
-            <Icon.more size={14} />
-          </button>
-        )}
-      >
-        {(close) => (
-          <MenuItem
-            icon={<Icon.archive size={14} />}
-            label={props.archived ? "Unarchive" : "Archive"}
-            onSelect={() => {
-              close();
-              void api
-                .updateProject(project.slug, { archived: !props.archived })
-                .then(loadProjects)
-                .catch((error) => toast(describe(error), "error"));
-            }}
-          />
-        )}
-      </Popover>
-    </div>
-  );
-}
-
-function ArchivedSection(): JSX.Element {
-  const [open, setOpen] = createSignal(false);
-  const segments = ["backlog", "todo", "in_progress", "blocked", "in_review", "done"];
-  return (
-    <div class="archived-section">
-      <button class="archived-head" aria-expanded={open()} onClick={() => setOpen(!open())}>
-        <Show when={open()} fallback={<Icon.chevronRight size={14} />}>
-          <Icon.chevronDown size={14} />
-        </Show>
-        Archived ({archivedProjects().length})
-      </button>
-      <Show when={open()}>
-        <div class="project-grid">
-          <For each={archivedProjects()}>{(project) => <ProjectCard project={project} segments={segments} archived />}</For>
-        </div>
-      </Show>
-    </div>
-  );
-}
-
 
 /** ≤720px: the rail collapses into a logo button that opens this menu. */
 function MobileMenu(): JSX.Element {

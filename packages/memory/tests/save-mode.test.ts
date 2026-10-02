@@ -429,3 +429,16 @@ test("side mode skips non-substantive runs and runs where the agent stored", asy
   }
   assert.equal(logged.includes("save:"), false, `no save pass started: ${logged}`);
 });
+
+/** UNI-56 — save-card usage line is humanized (UI only, raw usage untouched). */
+test("saveUsageLine humanizes token counts, keeps zeros readable, does not mutate usage", async () => {
+  const { saveUsageLine } = await import("../index.ts");
+  const usage = { input: 729296, cacheRead: 17416192, cacheWrite: 0, output: 41994 };
+  const snapshot = { ...usage };
+  assert.equal(
+    saveUsageLine(usage),
+    "save pass · input 729k · cache read 17M / write 0 · output 42k tokens",
+  );
+  assert.equal(saveUsageLine({ input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }), "save pass · input 0 · cache read 0 / write 0 · output 0 tokens");
+  assert.deepEqual(usage, snapshot, "usage object must not be mutated");
+});

@@ -575,3 +575,39 @@ fn rule_for_unknown_pairs_is_none() {
     assert!(rule_for(Status::Backlog, Status::Done).is_none());
     assert!(!comment_required(Status::Backlog, Status::Todo));
 }
+
+/// UNI-63: a user may close a blocked task directly; agents still cannot mark
+/// anything done.
+#[test]
+fn blocked_to_done_is_user_only() {
+    transitions::check(Status::Blocked, Status::Done, Actor::User, None, Staleness::Running)
+        .expect("user blocked → done needs no comment");
+    let err =
+        transitions::check(Status::Blocked, Status::Done, Actor::Agent, None, Staleness::Running)
+            .unwrap_err();
+    assert!(err.to_string().contains("agents cannot mark tasks done"), "{err}");
+    assert_eq!(transitions::allowed_targets(Status::Blocked, Actor::User), vec![
+        Status::Todo,
+        Status::Done,
+        Status::Cancelled
+    ]);
+}
+
+/// UNI-57: which completed moves carry an undo offer — terminal lanes whose
+/// reverse is not a plain user move; routine reversible moves never do.
+#[test]
+fn undo_worthy_matches_the_hard_to_reverse_moves() {
+    assert!(transitions::undo_worthy(Status::InReview, Status::Done, Actor::User));
+    assert!(transitions::undo_worthy(Status::Todo, Status::Cancelled, Actor::User));
+    assert!(transitions::undo_worthy(Status::Backlog, Status::Cancelled, Actor::User));
+    assert!(transitions::undo_worthy(Status::Blocked, Status::Done, Actor::User));
+    assert!(transitions::undo_worthy(Status::Done, Status::Archived, Actor::User));
+    assert!(transitions::undo_worthy(Status::InReview, Status::Archived, Actor::User));
+    // Routine, normally reversible moves are not undo-worthy.
+    assert!(!transitions::undo_worthy(Status::Backlog, Status::Todo, Actor::User));
+    assert!(!transitions::undo_worthy(Status::Todo, Status::Backlog, Actor::User));
+    assert!(!transitions::undo_worthy(Status::Blocked, Status::Todo, Actor::User));
+    // Never for agents, never out of a live claim.
+    assert!(!transitions::undo_worthy(Status::Todo, Status::Cancelled, Actor::Agent));
+    assert!(!transitions::undo_worthy(Status::InProgress, Status::Blocked, Actor::User));
+}

@@ -10,7 +10,8 @@
  */
 
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { installArbiter, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { installArbiter, installHarnessProvenance, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { withHarnessToolAnnotations } from "@pi-unipi/utility";
 import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "@pi-unipi/utility";
 
 import workflow from "@pi-unipi/workflow";
@@ -37,6 +38,12 @@ import watchdog from "@pi-unipi/watchdog";
 
 export default function (pi: ExtensionAPI) {
   const api = withCommandEcho(pi);
+  // Harness provenance must observe every input/send — install before modules.
+  try {
+    installHarnessProvenance(api);
+  } catch {
+    // Provenance is cosmetic; never blocks startup.
+  }
   // The turn arbiter must own the single agent_before_settle handler BEFORE
   // any module mounts (idempotent; a no-op in child processes).
   try {
@@ -54,8 +61,11 @@ export default function (pi: ExtensionAPI) {
     get(target, prop, receiver) {
       if (prop === "registerTool") {
         return (tool: ToolDefinition<any, any, any>) => {
-          captured.set(tool.name, tool);
-          return rawRegister(tool);
+          // Harness tool-annotation wrapper (idempotent, applied BEFORE the
+          // simple-mode wrapper so simpleResult hooks merge).
+          const wrapped = withHarnessToolAnnotations(tool);
+          captured.set(tool.name, wrapped);
+          return rawRegister(wrapped);
         };
       }
       return Reflect.get(target, prop, receiver);

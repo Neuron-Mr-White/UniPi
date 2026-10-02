@@ -10,8 +10,8 @@ use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, RunOwner, Statu
 
 pub const ACTIVITY_HEADING: &str = "## Activity";
 
-const FRONTMATTER_KEYS: [&str; 11] = [
-    "id", "title", "status", "priority", "order", "deps", "labels", "strategy", "plan", "created", "updated",
+const FRONTMATTER_KEYS: [&str; 12] = [
+    "id", "title", "status", "priority", "order", "deps", "labels", "creator", "strategy", "plan", "created", "updated",
 ];
 
 /// Render a task to its canonical file text.
@@ -25,6 +25,9 @@ pub fn render(task: &Task) -> String {
     out.push_str(&format!("order: {}\n", task.order));
     out.push_str(&format!("deps: {}\n", flow_list(&task.deps)));
     out.push_str(&format!("labels: {}\n", flow_list(&task.labels)));
+    if let Some(creator) = task.creator {
+        out.push_str(&format!("creator: {}\n", creator.as_str()));
+    }
     if let Some(strategy) = task.strategy {
         out.push_str(&format!("strategy: {}\n", strategy.as_str()));
     }
@@ -288,6 +291,23 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     };
     let deps = parse_list(file, get("deps"), "deps", &mut problems);
     let labels = parse_list(file, get("labels"), "labels", &mut problems);
+    let creator = match get("creator") {
+        Some((line, value)) => match value.trim().parse::<Actor>() {
+            Ok(actor) => Some(actor),
+            Err(_) => {
+                problems.push(Problem::new(
+                    file,
+                    line,
+                    format!(
+                        "unknown creator \"{}\" (expected user|agent|system)",
+                        value.trim()
+                    ),
+                ));
+                None
+            }
+        },
+        None => None,
+    };
     let created = parse_date(file, get("created"), "created", &mut problems);
     let updated = parse_date(file, get("updated"), "updated", &mut problems);
 
@@ -339,8 +359,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         // `validate` can print everything, but callers must treat it as invalid.
         return (
             Some(build(
-                id, title, status, priority, order, deps, labels, created, updated, strategy,
-                plan, run, body, activity,
+                id, title, status, priority, order, deps, labels, creator, created, updated,
+                strategy, plan, run, body, activity,
             )),
             problems,
         );
@@ -351,8 +371,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     }
 
     let task = Some(build(
-        id, title, status, priority, order, deps, labels, created, updated, strategy, plan, run,
-        body, activity,
+        id, title, status, priority, order, deps, labels, creator, created, updated, strategy,
+        plan, run, body, activity,
     ));
     (task, problems)
 }
@@ -366,6 +386,7 @@ fn build(
     order: i64,
     deps: Vec<String>,
     labels: Vec<String>,
+    creator: Option<Actor>,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
     strategy: Option<crate::model::Strategy>,
@@ -382,6 +403,7 @@ fn build(
         order,
         deps,
         labels,
+        creator,
         created,
         updated,
         strategy,
@@ -746,21 +768,37 @@ fn unquote(value: &str) -> std::result::Result<String, String> {
     if trimmed.is_empty() || trimmed == "null" || trimmed == "~" {
         return Ok(String::new());
     }
-    let unquoted = if (trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2)
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2)
-    {
-        &trimmed[1..trimmed.len() - 1]
-    } else {
-        trimmed
-    };
-    match serde_norway::from_str::<String>(&format!("\"{}\"", escape_yaml(unquoted))) {
-        Ok(text) => Ok(text),
-        Err(_) => Ok(unquoted.to_string()),
+    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2)
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2);
+    if quoted {
+        // Parse the quoted form as YAML so escape sequences (\", \\, \n, …)
+        // resolve exactly once. Re-escaping before parsing (the old behaviour)
+        // turned `\"` into a literal backslash + quote, and every save grew
+        // the title by one more `\` (UNI-58).
+        if let Ok(text) = serde_norway::from_str::<String>(trimmed) {
+            return Ok(text);
+        }
     }
+    let unquoted = if quoted { &trimmed[1..trimmed.len() - 1] } else { trimmed };
+    Ok(unquoted.to_string())
 }
 
 fn escape_yaml(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || (c as u32) == 0x7f => {
+                out.push_str(&format!("\\u{:04X}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Quote a scalar when YAML would otherwise change its meaning.

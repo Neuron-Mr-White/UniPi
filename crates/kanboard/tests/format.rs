@@ -500,3 +500,49 @@ fn pi_settings_patch_validates_and_preserves_other_keys() {
     assert!(validate_pi_patch(&serde_json::json!({"maxSessions": 0}).as_object().unwrap().clone()).is_err());
     assert!(validate_pi_patch(&serde_json::json!({"nope": 1}).as_object().unwrap().clone()).is_err());
 }
+
+/// UNI-58: quotes, backslashes, single quotes and newlines used to gain one
+/// backslash per save — `unquote` re-escaped the escapes before parsing, so
+/// `title: "say \"hi\""` parsed back as `say \"hi\"` and grew on every save.
+/// Render→parse→render must be identity from the first pass, forever.
+#[test]
+fn hostile_title_roundtrips_repeatedly() {
+    let titles = [
+        r#"say "hi""#,
+        r#"back\slash "and quotes""#,
+        r#"it's a 'plan', okay?"#,
+        "line one\nline two",
+        r#""quoted at both ends""#,
+        r#"trailing "quote""#,
+    ];
+    for title in titles {
+        let mut task = sample();
+        task.title = title.to_string();
+        let mut text = format::render(&task);
+        for round in 0..4 {
+            let (parsed, problems) = format::parse("t.md", &text);
+            assert!(problems.is_empty(), "{title:?} round {round}: {problems:?}");
+            let parsed = parsed.expect("usable frontmatter");
+            assert_eq!(parsed.title, title, "round {round}");
+            let next = format::render(&parsed);
+            assert_eq!(next, text, "round {round}: rendering is not stable");
+            text = next;
+        }
+    }
+}
+
+/// The run block's session/host go through the same unquote path.
+#[test]
+fn quoted_run_session_survives_a_roundtrip() {
+    let mut task = sample();
+    if let Some(run) = task.run.as_mut() {
+        run.session = r#"weird "session" name"#.into();
+    }
+    let text = format::render(&task);
+    let (parsed, problems) = format::parse("t.md", &text);
+    assert!(problems.is_empty(), "{problems:?}");
+    assert_eq!(
+        parsed.expect("usable").run.expect("run").session,
+        r#"weird "session" name"#
+    );
+}

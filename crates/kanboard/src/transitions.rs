@@ -109,6 +109,13 @@ pub const RULES: &[Rule] = &[
         actors: USER,
         comment: Comment::Required("the answer, shown to the agent on next claim"),
     },
+    // blocked → done | user (UNI-63: a blocked task the user closes directly)
+    Rule {
+        from: Status::Blocked,
+        to: Status::Done,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
     // backlog/todo/blocked → cancelled | user only | —
     Rule {
         from: Status::Backlog,
@@ -304,4 +311,24 @@ pub fn comment_required(from: Status, to: Status) -> bool {
         rule_for(from, to).map(|rule| rule.comment),
         Some(Comment::Required(_))
     )
+}
+
+/// Whether a completed `from → to` move deserves an undo offer: a user move
+/// into a terminal lane whose reverse is not a plain user move (no reverse
+/// rule, the user is not allowed, or the reverse needs a comment). Routine,
+/// reversible moves never carry an undo token (UNI-57).
+pub fn undo_worthy(from: Status, to: Status, actor: Actor) -> bool {
+    if actor != Actor::User || from == Status::InProgress {
+        return false;
+    }
+    if !matches!(to, Status::Done | Status::Cancelled | Status::Archived) {
+        return false;
+    }
+    match rule_for(to, from) {
+        None => true,
+        Some(rule) => {
+            !rule.actors.contains(&Actor::User)
+                || matches!(rule.comment, Comment::Required(_))
+        }
+    }
 }

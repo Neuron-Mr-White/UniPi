@@ -469,6 +469,11 @@ pub struct Task {
     pub plan: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Run>,
+    /// Who created the task — set once at creation, never written again
+    /// (UNI-59). `None` only for files written before the field existed; the
+    /// display falls back to the first activity entry's actor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creator: Option<Actor>,
     /// Everything between the frontmatter and `## Activity`.
     #[serde(default)]
     pub body: String,
@@ -498,9 +503,21 @@ impl Task {
             strategy: None,
             plan: None,
             run: None,
+            creator: None,
             body: String::new(),
             activity: Vec::new(),
         }
+    }
+
+    /// The creator to display: the persisted field, else the first activity
+    /// entry's actor (older files), else user.
+    pub fn creator_of(&self) -> Actor {
+        self.creator.unwrap_or_else(|| {
+            self.activity
+                .first()
+                .map(|entry| entry.actor)
+                .unwrap_or(Actor::User)
+        })
     }
 
     pub fn push_activity(&mut self, at: DateTime<Utc>, actor: Actor, text: impl Into<String>) {

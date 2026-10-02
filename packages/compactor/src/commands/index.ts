@@ -8,7 +8,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { COMPACTOR_INSTRUCTION, formatTokens } from "@pi-unipi/core";
+import { COMPACTOR_INSTRUCTION, formatTokens, harnessMetadata } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { setPendingCompaction } from "../compaction/hooks.js";
 import { vccRecall } from "../tools/vcc-recall.js";
@@ -67,7 +67,12 @@ export function registerCommands(pi: ExtensionAPI): void {
       return;
     }
     const result = vccRecall(blocks, { query, scope: parsed.scope, page });
-    pi.sendMessage({ customType: "compactor-recall", content: result.text, display: true }, { triggerTurn: true });
+    pi.sendMessage({
+      customType: "compactor-recall",
+      content: result.text,
+      display: true,
+      details: { unipiHarness: harnessMetadata({ source: "Compactor", title: "Session recall", synopsis: "Results from /unipi:session-recall" }, "direct") },
+    }, { triggerTurn: true });
   };
   pi.registerCommand("unipi:session-recall", {
     description: "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",

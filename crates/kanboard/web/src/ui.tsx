@@ -150,6 +150,71 @@ export function MenuLabel(props: { children: JSX.Element }): JSX.Element {
 
 export const MenuSeparator = (): JSX.Element => <div class="menu-sep" role="separator" />;
 
+// ─── context menu ──────────────────────────────────────────────────────
+
+/** Right-click menu: portalled at the pointer, clamped to the viewport,
+ *  closed by outside click, scroll-resize or Escape. Children are the
+ *  MenuItems — the same vocabulary the Popover menus use. */
+export function ContextMenu(props: {
+  at: { x: number; y: number } | null;
+  label: string;
+  onClose: () => void;
+  children: JSX.Element;
+}): JSX.Element {
+  const [pos, setPos] = createSignal(props.at);
+  createEffect(() => {
+    if (!props.at) return;
+    const at = props.at;
+    setPos(at);
+    // Clamp after first paint: shift the menu fully inside the viewport.
+    queueMicrotask(() => {
+      const node = document.querySelector<HTMLElement>(".card-menu");
+      if (!node) return;
+      const box = node.getBoundingClientRect();
+      const left = Math.max(8, Math.min(at.x, window.innerWidth - box.width - 8));
+      const top = Math.max(8, Math.min(at.y, window.innerHeight - box.height - 8));
+      setPos({ x: left, y: top });
+    });
+  });
+  createEffect(() => {
+    if (!props.at) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        props.onClose();
+      }
+    };
+    const onDown = (event: PointerEvent): void => {
+      const node = event.target as Node;
+      if (document.querySelector(".card-menu")?.contains(node)) return;
+      props.onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown, true);
+    onCleanup(() => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown, true);
+    });
+  });
+  return (
+    <Show when={props.at && pos()}>
+      <Portal>
+        <div class="overlay context" onPointerDown={(event) => event.target === event.currentTarget && props.onClose()}>
+          <div
+            class="popover card-menu"
+            role="menu"
+            aria-label={props.label}
+            style={{ top: `${pos()!.y}px`, left: `${pos()!.x}px` }}
+            onKeyDown={(event) => menuKeys(event)}
+          >
+            {props.children}
+          </div>
+        </div>
+      </Portal>
+    </Show>
+  );
+}
+
 // ─── dialog ─────────────────────────────────────────────────────────────────
 
 export function Dialog(props: {
@@ -158,6 +223,8 @@ export function Dialog(props: {
   onClose: () => void;
   width?: number;
   class?: string;
+  /** When false (create/edit with drafts), clicking the backdrop never closes (UNI-61). */
+  dismissable?: boolean;
   children: JSX.Element;
 }): JSX.Element {
   createEffect(() => {
@@ -178,7 +245,13 @@ export function Dialog(props: {
   return (
     <Show when={props.open}>
       <Portal>
-        <div class="overlay" onPointerDown={(event) => event.target === event.currentTarget && props.onClose()}>
+        <div
+          class="overlay"
+          onPointerDown={(event) => {
+            if (props.dismissable === false) return;
+            event.target === event.currentTarget && props.onClose();
+          }}
+        >
           <div
             class={`dialog${props.class ? ` ${props.class}` : ""}`}
             role="dialog"

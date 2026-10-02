@@ -47,6 +47,25 @@ export class NudgeStash {
  * stops or parks, a queued hint targets a machine that no longer drives. The
  * wrap-up survives because continuation puts it AFTER owner.finish commits.
  */
+export interface StashMetaState<M> {
+	meta: M | undefined;
+	kickoff: boolean;
+}
+
+/** Pure metadata mirror of the stash merge semantics: a put into an undelivered
+ * KICKOFF appends and KEEPS the original provenance; any other put replaces it.
+ * `hasText` mirrors stash.peek() !== null. */
+export function nextStashMetaState<M>(
+	prev: StashMetaState<M> | undefined,
+	hasText: boolean,
+	kind: "kickoff" | undefined,
+	incoming: M,
+): StashMetaState<M> {
+	const merging = hasText && (prev?.kickoff ?? false);
+	if (merging) return { meta: prev?.meta, kickoff: true };
+	return { meta: incoming, kickoff: kind === "kickoff" };
+}
+
 export function ownerEventClearsStash(event: { type: string }): boolean {
 	return event.type === "finished" || event.type === "suspended";
 }

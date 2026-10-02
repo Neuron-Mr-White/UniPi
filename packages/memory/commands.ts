@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { sendHarnessUserMessage } from "@pi-unipi/core";
 import type { SessionBackend } from "./session.js";
 import { MEMORY_TOOLS } from "./tools.js";
 import { readMemoryConfig } from "./settings.js";
@@ -226,8 +227,10 @@ export function registerMemoryCommands(
         return;
       }
       ctx.ui.notify("Analyzing text for memories... Use memory_store tool to save.", "info");
-      pi.sendUserMessage(
+      sendHarnessUserMessage(
+        pi,
         `Analyze the following text and extract any memory-worthy items (user preferences, project decisions, code patterns, conversation summaries). For each item found, use the memory_store tool to save it.\n\nText to analyze:\n${args}`,
+        { source: "Memory", title: "Extract memories", synopsis: "Generated from /unipi:memory-process" },
         { deliverAs: "followUp" },
       );
     },
@@ -237,7 +240,8 @@ export function registerMemoryCommands(
     description: "Consolidate current session into memory",
     handler: async (_args, ctx) => {
       ctx.ui.notify("Consolidating session into memory... Use memory_store tool to save insights.", "info");
-      pi.sendUserMessage(
+      sendHarnessUserMessage(
+        pi,
         `Review the current session and identify any memory-worthy items:
 - User preferences discovered
 - Project decisions made
@@ -245,6 +249,7 @@ export function registerMemoryCommands(
 - Important context to remember
 
 For each item, use the memory_store tool to save it with an appropriate title and type.`,
+        { source: "Memory", title: "Consolidate session", synopsis: "Generated from /unipi:memory-consolidate" },
         { deliverAs: "followUp" },
       );
     },

@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, getPackageVersion, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { appendProgress, emitEvent, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -19,7 +19,7 @@ import { loadSettings } from "./src/settings.js";
 import { GoalMachine } from "./src/engine/goal-state.js";
 import { GoalToolset } from "./src/tools/goal.js";
 import { GoalContinuation } from "./src/engine/continuation.js";
-import { NudgeStash, ownerEventClearsStash } from "./src/engine/nudge-stash.js";
+import { NudgeStash, nextStashMetaState, ownerEventClearsStash, type StashMetaState } from "./src/engine/nudge-stash.js";
 import { RalphLoop } from "./src/engine/ralph.js";
 import { registerRalphTools } from "./src/tools/ralph.js";
 import { SwarmLedger, registerSwarmTools } from "./src/tools/swarm.js";
@@ -72,10 +72,16 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // A finished or parked owner invalidates an undelivered nudge (declared
   // before `owner` so the onChange closure can clear it).
   const stash = new NudgeStash();
+  // Provenance mirror state lives with the stash (declared BEFORE the owner
+  // constructor — its onChange may fire immediately).
+  let stashMetaState: StashMetaState<ReturnType<typeof harnessMetadata>> = { meta: undefined, kickoff: false };
   const owner = new OwnerCoordinator({
     statePath,
     onChange: (_snapshot, event: OwnerEvent) => {
-      if (ownerEventClearsStash(event)) stash.take();
+      if (ownerEventClearsStash(event)) {
+        stash.take();
+        stashMetaState = { meta: undefined, kickoff: false };
+      }
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: event.type,
         ...("owner" in event && event.owner
@@ -152,13 +158,24 @@ export default function longHorizon(pi: ExtensionAPI): void {
   } catch {
     // Idle tracking must never block load.
   }
-  const send: (message: string, kind?: "kickoff") => void = (message, kind) => {
+  const send: (message: string, kind?: "kickoff", meta?: { source: string; title: string; synopsis?: string; severity?: "warning" }) => void = (
+    message,
+    kind,
+    meta,
+  ) => {
+    const next = nextStashMetaState(stashMetaState, stash.peek() !== null, kind, harnessMetadata(meta ?? { source: "Goal", title: kind === "kickoff" ? "Kickoff" : "Continuation" }, "boundary"));
+    stashMetaState = next;
     stash.put(message, kind === "kickoff" ? { kickoff: true } : {});
   };
-  const sendNow = (message: string): void => {
+  const sendNow = (message: string, meta?: { source: string; title: string; synopsis?: string; severity?: "warning" }): void => {
     try {
-      if (runActive) void pi.sendUserMessage(message, { deliverAs: "followUp" });
-      else void pi.sendUserMessage(message);
+      const options = runActive ? { deliverAs: "followUp" as const } : undefined;
+      sendHarnessUserMessage(
+        pi,
+        message,
+        meta ?? { source: "Goal", title: "Continuation" },
+        options,
+      );
     } catch {
       // A failed wake must never crash the session.
     }
@@ -173,8 +190,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
         customType: "unipi:lh-continue",
         content: text,
         display: true,
+        ...(stashMetaState.meta !== undefined ? { details: { unipiHarness: stashMetaState.meta } } : {}),
         onDelivered: () => {
           stash.take();
+          stashMetaState = { meta: undefined, kickoff: false };
         },
       };
     });
@@ -206,7 +225,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
     owner,
     ralphDir: () => join(stateDir("long-horizon", "state"), "ralph"),
     // Iteration prompts ride the arbiter's nudge stash like the goal's.
-    send,
+    send: (message, kind) => send(message, kind, { source: "Ralph", title: "Iteration", synopsis: "Loop iteration prompt" }),
     onEvent: (event) => {
       if (event.type === "loop_start") {
         emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_START, { name: event.name, iteration: event.iteration, total: event.total });

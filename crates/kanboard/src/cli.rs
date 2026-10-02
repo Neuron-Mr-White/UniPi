@@ -83,12 +83,20 @@ pub enum Command {
         /// Dependency ids (may repeat).
         #[arg(long = "after", value_name = "ID")]
         after: Vec<String>,
+        /// Label (may repeat).
+        #[arg(long = "label", value_name = "LABEL")]
+        labels: Vec<String>,
     },
 
-    /// List tasks.
+    /// List tasks. Bare `list` shows the active lanes only (todo,
+    /// in_progress, blocked, in_review, done) — `--all` adds backlog,
+    /// cancelled and archived, `--status` narrows to one lane.
     List {
         #[arg(long, value_name = "STATUS")]
         status: Option<String>,
+        /// Every lane, including backlog, cancelled and archived.
+        #[arg(long)]
+        all: bool,
         /// Only tasks whose deps reached the chain gate.
         #[arg(long)]
         ready: bool,

@@ -10,7 +10,7 @@
  */
 
 import type { Nudge, SettleInfo } from "@pi-unipi/core";
-import { kanboardGlanceLabel } from "@pi-unipi/core";
+import { harnessMetadata, kanboardGlanceLabel } from "@pi-unipi/core";
 
 import { ANTI_POISONING_SUFFIX, taskIdsIn } from "./reminders.js";
 import type { KanboardTask } from "./shapes.js";
@@ -247,6 +247,7 @@ export function createKanboardMonitor(deps: MonitorDeps): KanboardMonitor {
 					source: "kanboard",
 					priority: CLAIMS_PRIORITY,
 					customType: CLAIMS_NUDGE_CUSTOM_TYPE,
+					details: { unipiHarness: harnessMetadata({ source: "Kanboard", title: "Unfinished task", synopsis: String(target.id), severity: "warning" }, "boundary") },
 					content,
 					display: true,
 					onDelivered: () => {
@@ -294,6 +295,7 @@ export function createKanboardMonitor(deps: MonitorDeps): KanboardMonitor {
 						source: "kanboard",
 						priority: AUTOWORK_PRIORITY,
 						customType: AUTOWORK_NUDGE_CUSTOM_TYPE,
+						details: { unipiHarness: harnessMetadata({ source: "Kanboard", title: "Next task", synopsis: String(next.id) }, "boundary") },
 						content: `↻ next ready: ${next.id} ${next.displayTitle || next.title || "(untitled)"} — show it, start it, work it (autowork) ${ANTI_POISONING_SUFFIX}`,
 						display: true,
 						onDelivered: () => {

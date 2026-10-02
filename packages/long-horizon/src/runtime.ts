@@ -23,7 +23,7 @@ import type { RalphLoop } from "./engine/ralph.js";
 import type { LongHorizonSettings } from "./settings.js";
 import { loadSettings } from "./settings.js";
 import { RunawayGuard } from "./engine/runaway.js";
-import { appendProgress, registerProgressRenderer, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, registerProgressRenderer, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
 import { goalEstimatePrompt, goalProgressData, parseEstimate, type GoalEvidence } from "./progress.js";
 import { TERMINAL_GOAL_STATUSES } from "./engine/goal-state.js";
 
@@ -221,7 +221,12 @@ export function wireRuntime(pi: ExtensionAPI, deps: RuntimeDeps): RuntimeHandle 
   // ── runaway guard: feed steps, steer once per turn ─────────────────
   const runaway = new RunawayGuard({
     steer: (text) => {
-      void pi.sendUserMessage(text, { deliverAs: "steer" });
+      sendHarnessUserMessage(
+        pi,
+        text,
+        { source: "Progress guard", title: "No-progress guard", synopsis: "Repeated work detected", severity: "warning" },
+        { deliverAs: "steer" },
+      );
     },
   });
   // pi's tool_execution_end carries no input — capture args per call at

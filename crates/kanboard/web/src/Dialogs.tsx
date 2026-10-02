@@ -5,7 +5,8 @@ import { api, ApiError, displayTitle, PRIORITIES, type Settings } from "./api.js
 import { DepList } from "./dep-picker.js";
 import { Icon, PRIORITY_LABEL, PriorityGlyph, StatusGlyph } from "./icons.js";
 import { renderMarkdown } from "./markdown.js";
-import { ProjectTile } from "./paint.js";
+import { hue, ProjectTile } from "./paint.js";
+import { LabelPicker } from "./label-picker.js";
 import { offerToSchedule } from "./schedule.js";
 import { filesFrom, namedFile, uploadAll } from "./attach.js";
 import {
@@ -21,10 +22,12 @@ import {
   openProject,
   paletteOpen,
   projects,
+  recreateFrom,
   setCommentRequest,
   setNewTaskLane,
   setOpenTaskId,
   setPaletteOpen,
+  setRecreateFrom,
   setSelectedId,
   setSettingsOpen,
   setBoardSummarizeOpen,
@@ -53,12 +56,53 @@ export function NewTaskDialog(): JSX.Element {
   const [lane, setLane] = createSignal("backlog");
   const [priority, setPriority] = createSignal("none");
   const [after, setAfter] = createSignal<string[]>([]);
+  const [labels, setLabels] = createSignal<string[]>([]);
   const [more, setMore] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   /** Files picked/pasted before the task exists — uploaded right after creation. */
   const [pending, setPending] = createSignal<File[]>([]);
+  /** UNI-61: explicit Close/Cancel on a dirty form asks before discarding. */
+  const [confirmDiscard, setConfirmDiscard] = createSignal(false);
+  /** The lane the dialog opened with — changing it is a draft (UNI-61). */
+  const [initialLane, setInitialLane] = createSignal("backlog");
   let picker: HTMLInputElement | undefined;
   let descriptionArea: HTMLTextAreaElement | undefined;
+
+  /** A draft worth protecting: any content (even whitespace), choice,
+   *  changed lane or pending upload. */
+  const dirty = (): boolean =>
+    title().length > 0 ||
+    body().length > 0 ||
+    after().length > 0 ||
+    labels().length > 0 ||
+    priority() !== "none" ||
+    lane() !== initialLane() ||
+    pending().length > 0;
+
+  /** Guarded dismissal: backdrop/Esc never discard a draft (UNI-61). */
+  const requestClose = (): void => {
+    if (dirty()) {
+      setConfirmDiscard(true);
+      return;
+    }
+    close();
+  };
+
+  const close = (): void => {
+    void setNewTaskLane(null);
+    setRecreateFrom(null);
+    setConfirmDiscard(false);
+  };
+
+  const toggleLabel = (label: string): void =>
+    void setLabels((current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));
+
+  const createLabel = (raw: string): void => {
+    const label = raw.trim().replace(/,/g, "");
+    if (!label) return;
+    if (!labels().includes(label)) setLabels((current) => [...current, label]);
+  };
+
   const addFiles = (files: File[]): void => {
     if (files.length > 0) setPending((current) => [...current, ...files.map(namedFile)]);
   };
@@ -93,17 +137,31 @@ export function NewTaskDialog(): JSX.Element {
   createEffect(
     on(newTaskLane, (next) => {
       if (next === null) return;
-      setLane(next === "todo" ? "todo" : "backlog");
-      setTitle("");
-      setBody("");
-      setAfter([]);
-      setPriority("none");
+      const source = recreateFrom();
+      if (source) {
+        // UNI-57 Recreate: creation fields only — title, body, priority,
+        // labels, deps. No status history, comments, run or attachments;
+        // creation mints a fresh id.
+        setLane("todo");
+        setTitle(source.title);
+        setBody(source.body ?? "");
+        setPriority(source.priority && source.priority !== "none" ? source.priority : "none");
+        setAfter([...(source.deps ?? [])]);
+        setLabels([...(source.labels ?? [])]);
+      } else {
+        setLane(next === "todo" ? "todo" : "backlog");
+        setTitle("");
+        setBody("");
+        setAfter([]);
+        setLabels([]);
+        setPriority("none");
+      }
       setPending([]);
       setDropOver(false);
+      setConfirmDiscard(false);
+      setInitialLane(lane());
     }),
   );
-
-  const close = (): void => void setNewTaskLane(null);
 
   async function submit(): Promise<void> {
     const target = slug();
@@ -116,6 +174,7 @@ export function NewTaskDialog(): JSX.Element {
         status: lane(),
         priority: priority(),
         after: after().length > 0 ? after() : undefined,
+        labels: labels().length > 0 ? labels() : undefined,
       });
       if (pending().length > 0) {
         const uploaded = await uploadAll(created.id, pending());
@@ -130,6 +189,7 @@ export function NewTaskDialog(): JSX.Element {
       if (more()) {
         setTitle("");
         setBody("");
+        setLabels([]);
         document.querySelector<HTMLInputElement>(".dialog-title-input")?.focus();
       } else close();
     } catch (error) {
@@ -139,9 +199,8 @@ export function NewTaskDialog(): JSX.Element {
     }
   }
 
-
   return (
-    <Dialog open={newTaskLane() !== null} label="New task" onClose={close} width={640}>
+    <Dialog open={newTaskLane() !== null} label="New task" onClose={requestClose} width={640} dismissable={false}>
       <div class={`new-task-drop${dropOver() ? " drop-over" : ""}`} {...dropZone}>
       <header class="dialog-head">
         <span class="crumb-pill">
@@ -149,12 +208,28 @@ export function NewTaskDialog(): JSX.Element {
           {currentProject()?.name ?? slug()}
         </span>
         <Icon.chevronRight size={12} />
-        <span>New task</span>
+        <span>{recreateFrom() ? "Recreate task" : "New task"}</span>
         <span class="spacer" />
-        <button class="icon-btn" aria-label="Close" onClick={close}>
+        <button class="icon-btn" aria-label="Close" onClick={requestClose}>
           <Icon.close size={14} />
         </button>
       </header>
+      <Show when={recreateFrom()}>
+        <div class="recreate-banner">
+          <Icon.duplicate size={13} />
+          <span>
+            Recreating <b class="mono">{recreateFrom()!.id}</b> — creating makes a new task; comments, history and status stay behind.
+          </span>
+        </div>
+      </Show>
+      <Show when={confirmDiscard()}>
+        <div class="discard-strip" role="alertdialog" aria-label="Discard draft?">
+          <span>Discard this draft?</span>
+          <span class="spacer" />
+          <button class="btn" onClick={() => setConfirmDiscard(false)}>Keep editing</button>
+          <button class="btn danger" onClick={close}>Discard</button>
+        </div>
+      </Show>
       <div class="dialog-body">
         <input
           class="dialog-title-input"
@@ -264,6 +339,21 @@ export function NewTaskDialog(): JSX.Element {
             />
           )}
         </Popover>
+        <Popover
+          width={280}
+          label="Labels"
+          trigger={(api) => (
+            <button class={`prop-chip${labels().length === 0 ? " empty" : ""}`} ref={api.ref} aria-expanded={api.open} onClick={api.toggle} aria-label="Labels">
+              <span
+                class="label-dot"
+                style={{ width: "9px", height: "9px", "border-radius": "3px", background: labels().length > 0 ? hue(labels()[0]!) : "var(--faint)" }}
+              />
+              {labels().length === 0 ? "Labels" : labels().join(", ")}
+            </button>
+          )}
+        >
+          {(close) => <LabelPicker selected={labels()} onToggle={toggleLabel} onCreate={createLabel} close={close} />}
+        </Popover>
         <button class="prop-chip empty" aria-label="Attach files" onClick={() => picker?.click()}>
           <Icon.paperclip size={13} />
           Attach
@@ -285,7 +375,7 @@ export function NewTaskDialog(): JSX.Element {
           Create more
         </label>
         <span class="spacer" />
-        <button class="btn" onClick={close}>
+        <button class="btn" onClick={requestClose}>
           Cancel
         </button>
         <button class="btn primary" disabled={busy() || (title().trim().length === 0 && body().trim().length === 0)} onClick={() => void submit()}>
@@ -304,6 +394,7 @@ export function NewTaskDialog(): JSX.Element {
   );
 }
 
+
 // ─── comment-required move ──────────────────────────────────────────────────
 
 export function CommentDialog(): JSX.Element {
@@ -314,15 +405,18 @@ export function CommentDialog(): JSX.Element {
 
   async function submit(): Promise<void> {
     const request = commentRequest();
-    const target = slug();
-    if (!request || !target || text().trim().length === 0) return;
+    // Off-board callers (Dashboard inbox) move against their own project.
+    const project = request?.slug ?? slug();
+    if (!request || !project || text().trim().length === 0) return;
     setBusy(true);
     try {
-      upsertTask(await api.move(target, request.task.id, request.to, text().trim()));
+      const moved = await api.move(project, request.task.id, request.to, text().trim());
+      // Only the matching board takes the update (never a foreign task).
+      if (slug() === project) upsertTask(moved);
       await request.after?.();
-      await loadBoard(target);
+      if (slug() === project) await loadBoard(project);
       toast(`Moved ${request.task.id} to ${laneLabel(request.to)}`, "success");
-      if (request.to === "todo") offerToSchedule(request.task.id);
+      if (request.to === "todo" && slug() === project) offerToSchedule(request.task.id);
       close();
     } catch (error) {
       toast(describe(error), "error");

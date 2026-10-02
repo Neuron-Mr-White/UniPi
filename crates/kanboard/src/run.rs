@@ -60,6 +60,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             status,
             priority,
             after,
+            labels,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let status = status
@@ -87,16 +88,26 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 priority,
                 after,
                 attach,
+                labels,
             )
         }
 
-        Command::List { status, ready } => {
+        Command::List { status, all, ready } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let status = status
-                .as_deref()
-                .map(crate::cli::parse_status)
-                .transpose()?;
-            commands::list(&layout, project, gate, status, *ready)
+            let statuses: Vec<Status> = match status {
+                Some(value) => vec![crate::cli::parse_status(value)?],
+                // Bare `list` shows the active lanes; `--all` is everything
+                // including backlog, cancelled and archived (UNI-62).
+                None if *all => Status::ALL.to_vec(),
+                None => vec![
+                    Status::Todo,
+                    Status::InProgress,
+                    Status::Blocked,
+                    Status::InReview,
+                    Status::Done,
+                ],
+            };
+            commands::list(&layout, project, gate, &statuses, *ready)
         }
 
         Command::Show { id } => {

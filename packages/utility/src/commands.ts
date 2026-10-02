@@ -7,14 +7,19 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
+import { harnessMetadata, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
 import { findCleanupItems, formatBytes, formatCleanupPreview, removeCleanupItems } from "./lifecycle/cleanup.js";
 import { runDiagnostics, formatDiagnosticsReport } from "./diagnostics/engine.js";
 
 /** Send a markdown response via pi.sendMessage */
 function sendResponse(pi: ExtensionAPI, markdown: string): void {
   pi.sendMessage(
-    { customType: "unipi-response", content: markdown, display: true },
+    {
+      customType: "unipi-response",
+      content: markdown,
+      display: true,
+      details: { unipiHarness: harnessMetadata({ source: "Utility", title: "Response", synopsis: "Command response" }, "followUp") },
+    },
     { deliverAs: "followUp" },
   );
 }

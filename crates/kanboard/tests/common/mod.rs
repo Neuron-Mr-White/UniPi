@@ -50,6 +50,18 @@ impl Fixture {
         priority: Priority,
         after: &[String],
     ) -> Task {
+        self.add_labeled(title, status, priority, after, &[])
+    }
+
+    /// `add` with labels — the shape the UNI-60 create path uses.
+    pub fn add_labeled(
+        &self,
+        title: &str,
+        status: Status,
+        priority: Priority,
+        after: &[String],
+        labels: &[String],
+    ) -> Task {
         let value = commands::add(
             &self.layout,
             self.project.clone(),
@@ -60,6 +72,7 @@ impl Fixture {
             priority,
             after,
             &[],
+            labels,
         )
         .expect("add");
         task_from(&value)
@@ -72,11 +85,17 @@ impl Fixture {
     }
 
     pub fn list_json(&self) -> Value {
+        self.list_statuses(&Status::ALL)
+    }
+
+    /// `list` over an explicit set of lanes (the UNI-62 CLI default is a
+    /// subset of these).
+    pub fn list_statuses(&self, statuses: &[Status]) -> Value {
         commands::list(
             &self.layout,
             self.project.clone(),
             ChainGate::InReview,
-            None,
+            statuses,
             false,
         )
         .expect("list")
@@ -223,18 +242,50 @@ impl Daemon {
 
     /// `start` but with a different UNIPI_KANBOARD_HOME path (e.g. a symlink to
     /// the fixture home — the watcher must still resolve event paths).
+    /// `start` with extra env vars set on the daemon child only — never on
+    /// the test process (globals would leak into parallel tests, e.g. the
+    /// undo TTL override).
+    pub fn start_with_envs(fixture: &Fixture, extra: &[&str], envs: &[(&str, &str)]) -> Daemon {
+        let mut command_envs: Vec<(String, String)> =
+            envs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        if std::env::var("KB_TEST_NO_WATCH").as_deref() == Ok("1")
+            && !envs.iter().any(|(k, _)| *k == "UNIPI_KANBOARD_NO_WATCH")
+        {
+            command_envs.push(("UNIPI_KANBOARD_NO_WATCH".into(), "1".into()));
+        }
+        let refs: Vec<(&str, &str)> = command_envs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        Self::start_with_env_refs(fixture, extra, fixture.layout.home.as_path(), &refs)
+    }
+
     pub fn start_with_home(fixture: &Fixture, extra: &[&str], home: &std::path::Path) -> Daemon {
+        Self::start_with_env_refs(fixture, extra, home, &[])
+    }
+
+    fn start_with_env_refs(fixture: &Fixture, extra: &[&str], home: &std::path::Path, envs: &[(&str, &str)]) -> Daemon {
         let mut args = vec!["serve", "--port", "0"];
         args.extend_from_slice(extra);
-        let child = Command::new(bin())
+        let mut command = Command::new(bin());
+        command
             .args(&args)
             .env("UNIPI_KANBOARD_HOME", home.as_os_str())
             .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
             .current_dir(fixture.root())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn serve");
+            .stderr(Stdio::piped());
+        // Watch-exhausted machines set KB_TEST_NO_WATCH=1: daemons start
+        // without the file watcher (SSE push tests skip themselves).
+        if std::env::var("KB_TEST_NO_WATCH").as_deref() == Ok("1")
+            && !envs.iter().any(|(k, _)| *k == "UNIPI_KANBOARD_NO_WATCH")
+        {
+            command.env("UNIPI_KANBOARD_NO_WATCH", "1");
+        }
+        for (key, value) in envs {
+            command.env(key, value);
+        }
+        let child = command.spawn().expect("spawn serve");
 
         let deadline = Instant::now() + Duration::from_secs(20);
         let info_path = fixture.layout.home.join("daemon.json");

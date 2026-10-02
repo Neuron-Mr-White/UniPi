@@ -22,6 +22,7 @@ import {
   type RowFn,
   type SummaryFn,
 } from "../src/render/simple.ts";
+import { registerMemoryTools } from "../../memory/tools.js";
 
 const theme = {
   fg: (_c: string, t: string) => t,
@@ -295,6 +296,91 @@ describe("simpleWrapTool", () => {
     // partial updates render nothing extra
     const part = wrapped.renderResult!(res, { expanded: false, isPartial: true } as never, theme, ctx);
     assert.deepEqual((part as { render: (w: number) => string[] }).render(120), []);
+  });
+
+  it("simpleResult stays lazy: invoked per paint; a Component result delegates render(width)", () => {
+    const rail = { invalidate() {}, render: (w: number) => [`RAIL width=${w}`] };
+    let hookCalls = 0;
+    const def = {
+      ...base,
+      name: "memory_search",
+      simpleResult: () => {
+        hookCalls++;
+        return rail;
+      },
+    } as never;
+    const wrapped = simpleWrapTool(def) as typeof base;
+    const ctx = { expanded: false, cwd: "/repo", args: {}, toolCallId: "c1" } as never;
+    wrapped.renderCall!({} as never, theme, ctx);
+    const res = { isError: false, content: [{ type: "text", text: "found" }] } as never;
+    // partial updates stay empty and must not reach the hook
+    const part = wrapped.renderResult!(res, { expanded: false, isPartial: true } as never, theme, ctx);
+    assert.deepEqual((part as { render: (w: number) => string[] }).render(120), []);
+    assert.equal(hookCalls, 0, "partial results never call the hook");
+    // collapsed: wrapping is lazy — the hook fires per paint and the returned
+    // Component renders at the live row width (never frozen at a fixed width)
+    const out = wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx);
+    assert.equal(hookCalls, 0, "no eager call at renderResult time");
+    assert.deepEqual((out as { render: (w: number) => string[] }).render(80), [" RAIL width=79"]);
+    assert.equal(hookCalls, 1, "one hook call per paint");
+    assert.deepEqual((out as { render: (w: number) => string[] }).render(120), [" RAIL width=119"]);
+    assert.equal(hookCalls, 2, "each paint re-invokes the hook (lazy, stats can update)");
+    // expanded: the original renderer wins, without consulting the hook
+    const expanded = wrapped.renderResult!(res, { expanded: true, isPartial: false } as never, theme, ctx);
+    assert.deepEqual((expanded as { render: (w: number) => string[] }).render(120), ["ORIGINAL_RESULT"]);
+    assert.equal(hookCalls, 2, "expanded path must not call the hook");
+  });
+
+  it("UNI-55: memory_search wrapped simple keeps the full hit rail collapsed", () => {
+    const defs: unknown[] = [];
+    registerMemoryTools({ registerTool: (d: unknown) => defs.push(d), registerCommand: () => {} } as never, () => null);
+    const byName = Object.fromEntries(defs.map((d) => [((d as { name: string }).name), d]));
+    const search = byName.memory_search as { simpleResult?: unknown; simpleMeta?: () => string };
+    const globalSearch = byName.global_memory_search as typeof search;
+    for (const [label, def] of [["memory_search", search], ["global_memory_search", globalSearch]] as const) {
+      assert.equal(typeof def.simpleResult, "function", `${label} opts in`);
+      assert.equal(def.simpleMeta?.(), "");
+    }
+    for (const other of ["memory_store", "memory_list", "global_memory_list"] as const) {
+      const def = byName[other] as { simpleResult?: unknown; simpleMeta?: unknown };
+      assert.equal(def.simpleResult, undefined, `${other} stays on the plain collapsed row`);
+      assert.equal(def.simpleMeta, undefined, `${other} has no simpleMeta hook`);
+    }
+    const wrapped = simpleWrapTool(search as never) as typeof base;
+    const ctx = { expanded: false, cwd: "/repo", args: { query: "rail" }, toolCallId: "m1" } as never;
+    wrapped.renderCall!({ query: "rail" } as never, theme, ctx);
+    const hits = [
+      { title: "one", wing: "unipi", room: "patterns", score: 0.9, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+      { title: "two", wing: "unipi", room: "patterns", score: 0.8, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+      { title: "three", wing: "unipi", room: "summaries", score: 0.7, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+      { title: "four", wing: "unipi", room: "summaries", score: 0.6, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+      { title: "five", wing: "unipi", room: "decisions", score: 0.5, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+      { title: "sixth-hit", wing: "unipi", room: "decisions", score: 0.4, snippet: "s", sourceLabel: "pi", isPiMemory: true },
+    ];
+    const res = { isError: false, content: [{ type: "text", text: "6 memories" }], details: { query: "rail", hits } } as never;
+    const out = wrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx) as { render: (w: number) => string[] };
+    const lines = out.render(200);
+    assert.match(lines[0]!, /Memory "rail"/);
+    assert.match(lines[0]!, /6 hits/);
+    assert.equal(lines.length, 7, "heading + all 6 hit rails");
+    assert.match(lines[6]!, /sixth-hit/, "the sixth hit is visible, nothing dropped");
+    assert.ok(!lines.some((l) => l.includes("more")), "no '… N more' truncation row");
+    for (const l of out.render(60)) assert.ok(l.length <= 60, `rails truncate to the width: ${JSON.stringify(l)}`);
+    // the done row keeps its compact shape — no output-line meta from simpleMeta
+    const done = (wrapped.renderCall!({ query: "rail" } as never, theme, ctx) as { render: (w: number) => string[] }).render(200)[0]!;
+    assert.match(done, /Memory Search \(rail\)/);
+    assert.ok(!done.includes("output line"), "simpleMeta '' suppresses the output-line count");
+    // the global alias renders identically
+    const gWrapped = simpleWrapTool(globalSearch as never) as typeof base;
+    gWrapped.renderCall!({ query: "rail" } as never, theme, ctx);
+    const gOut = gWrapped.renderResult!(res, { expanded: false, isPartial: false } as never, theme, ctx) as { render: (w: number) => string[] };
+    assert.deepEqual(gOut.render(200), lines, "global_memory_search matches memory_search line for line");
+    // empty results stay a single tidy row, not a broken card
+    const empty = { isError: false, content: [{ type: "text", text: "0 memories" }], details: { query: "nothing", hits: [] } } as never;
+    const emptyLines = (wrapped.renderResult!(empty, { expanded: false, isPartial: false } as never, theme, ctx) as { render: (w: number) => string[] }).render(200);
+    assert.equal(emptyLines.length, 1, "empty result: heading only");
+    assert.match(emptyLines[0]!, /Memory "nothing"/);
+    assert.match(emptyLines[0]!, /no matches/);
   });
 
   it("a def's simpleMeta hook drives live row meta (recomputed per paint)", () => {

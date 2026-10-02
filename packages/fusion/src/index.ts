@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS } from "@pi-unipi/core";
+import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -405,16 +405,34 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     if (toolName === "edit" || toolName === "write") {
       if (editNudgedThisTurn) return;
       editNudgedThisTurn = true;
-      return { content: [...event.content, { type: "text" as const, text: EDIT_NUDGE }] };
+      return {
+        content: [...event.content, { type: "text" as const, text: EDIT_NUDGE }],
+        details: harnessToolResultDetails(
+          (event as { details?: unknown }).details,
+          { source: "Fusion", title: "Delegate edits", synopsis: "Direct edit instead of sidekick delegation", severity: "warning" },
+          "boundary",
+          EDIT_NUDGE,
+        ),
+      };
     }
     if (toolName !== "bash") return;
     const command = typeof event.input.command === "string" ? event.input.command : "";
     if (isTrivialShell(command)) return;
     bashStreak += 1;
     if (bashStreak < BASH_NUDGE_EVERY) return;
-    const content = [...event.content, { type: "text" as const, text: bashNudge(bashStreak) }];
+    const annotation = bashNudge(bashStreak);
+    const synopsis = "Non-trivial shell work since last handoff";
+    const content = [...event.content, { type: "text" as const, text: annotation }];
     bashStreak = 0;
-    return { content };
+    return {
+      content,
+      details: harnessToolResultDetails(
+        (event as { details?: unknown }).details,
+        { source: "Fusion", title: "Delegate shell work", synopsis, severity: "warning" },
+        "boundary",
+        annotation,
+      ),
+    };
   });
 
   async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean }): Promise<void> {

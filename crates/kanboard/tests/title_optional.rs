@@ -19,6 +19,7 @@ fn add(fixture: &Fixture, title: &str, body: Option<&str>) -> Result<serde_json:
         Priority::None,
         &[],
         &[],
+        &[],
     )
 }
 

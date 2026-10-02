@@ -13,7 +13,7 @@
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
+import { emitEvent, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRegistry, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
@@ -158,7 +158,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
       if (entries.length === 0) return;
       for (const e of entries) state.revealed.add(e.name);
       pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: entries.map((e) => e.name) });
-      pi.sendMessage({ customType: "unipi-skills-revealed", content: revealMessage(entries), display: true }, { triggerTurn: false });
+      pi.sendMessage({ customType: "unipi-skills-revealed", content: revealMessage(entries), display: true, details: { unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: `${String(entries.length)} relevant skill(s)` }, "direct") } }, { triggerTurn: false });
     } catch {
       // ignore
     }
@@ -213,7 +213,14 @@ export default function skillRegistry(pi: ExtensionAPI) {
       if (out.status && ctx.hasUI) ctx.ui.setStatus("skills", out.status);
       if (out.reveal.length > 0) {
         pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: out.reveal.map((r) => r.name) });
-        return { message: { customType: "unipi-skills-revealed", content: revealMessage(out.reveal), display: true } };
+        return {
+          message: {
+            customType: "unipi-skills-revealed",
+            content: revealMessage(out.reveal),
+            display: true,
+            details: { unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: `${String(out.reveal.length)} relevant skill(s)` }, "before_agent_start") },
+          },
+        };
       }
       return undefined;
     } catch {

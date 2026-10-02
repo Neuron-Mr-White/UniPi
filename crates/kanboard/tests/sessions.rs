@@ -62,6 +62,7 @@ fn the_session_cap_is_per_project() {
         Priority::None,
         &[],
         &[],
+        &[],
     )
     .unwrap();
     let host = commands::hostname();
@@ -198,6 +199,7 @@ fn agents_edit_only_their_own_drafts() {
             Priority::None,
             &[],
             &[],
+            &[],
         )
         .unwrap(),
     );
@@ -226,6 +228,7 @@ fn agents_edit_only_their_own_drafts() {
             None,
             Some(Status::Todo),
             Priority::None,
+            &[],
             &[],
             &[],
         )
@@ -318,6 +321,7 @@ fn activity_entries_carry_the_session_tag() {
         None,
         Some(Status::Backlog),
         Priority::None,
+        &[],
         &[],
         &[],
     )
@@ -478,6 +482,7 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         &[shot.clone(), doc],
+        &[],
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();
@@ -496,6 +501,7 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         Priority::None,
         &[],
         std::slice::from_ref(&log),
+        &[],
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();

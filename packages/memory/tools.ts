@@ -414,6 +414,14 @@ export function registerMemoryTools(
     renderShell: "self",
     renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
     renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
+    // Retrieval is the deliberate exception to compact tool results: simple
+    // mode keeps the full search rail (every hit with its meter and source)
+    // under the collapsed row — a bare "N output lines" would hide exactly
+    // what the search was for.
+    ...( {
+      simpleMeta: () => "",
+      simpleResult: (result: { details?: unknown }, theme: ThemeLike) => searchCard(theme, result.details, true),
+    } as object),
     async execute(_id, params, _s, _o, _ctx) {
       return ex.search(params);
     },
@@ -431,6 +439,11 @@ export function registerMemoryTools(
     renderShell: "self",
     renderCall: (args, theme, context) => pendingLine(theme, context, `searching "${String(args.query).slice(0, 60)}"…`),
     renderResult: (result, options, theme) => searchCard(theme, result.details, options.expanded),
+    // Same retrieval exception as memory_search.
+    ...( {
+      simpleMeta: () => "",
+      simpleResult: (result: { details?: unknown }, theme: ThemeLike) => searchCard(theme, result.details, true),
+    } as object),
     async execute(_id, params, _s, _o, _ctx) {
       return ex.search({ query: params.query, limit: params.limit, scope: "all" });
     },

@@ -6,6 +6,7 @@ pub mod assets;
 pub mod auth;
 pub mod events;
 pub mod settings;
+pub mod undo;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -46,6 +47,9 @@ pub struct AppState {
     /// Holding the lock across a fetch also serializes refreshes — concurrent
     /// callers share one in-flight run.
     pub model_cache: tokio::sync::Mutex<Option<(Instant, Vec<String>)>>,
+    /// UNI-57 undo tokens: short-lived, daemon-held move snapshots (see
+    /// `undo::UndoStore`). Memory only — undo expires on restart.
+    pub undo: undo::UndoStore,
 }
 
 impl AppState {
@@ -62,6 +66,7 @@ impl AppState {
             watcher: Mutex::new(None),
             closing: tokio::sync::watch::channel(false).0,
             model_cache: tokio::sync::Mutex::new(None),
+            undo: undo::UndoStore::new(),
         })
     }
 
@@ -200,7 +205,13 @@ pub async fn serve(layout: Layout, options: ServeOptions) -> Result<Value> {
     };
     let state = AppState::new(layout.clone(), options.host.clone(), token.clone());
 
-    *state.watcher.lock().expect("watcher slot") = Some(spawn_watcher(state.clone())?);
+    // File watching feeds the SSE revisions. On machines whose inotify budget
+    // is exhausted the daemon died at startup for every caller; it now serves
+    // without live updates when UNIPI_KANBOARD_NO_WATCH=1 (tests on this dev
+    // machine set it; production still fails loudly).
+    if std::env::var("UNIPI_KANBOARD_NO_WATCH").as_deref() != Ok("1") {
+        *state.watcher.lock().expect("watcher slot") = Some(spawn_watcher(state.clone())?);
+    }
 
     let info = DaemonInfo {
         pid: std::process::id(),
@@ -286,10 +297,13 @@ fn router(state: Arc<AppState>) -> axum::Router {
         .route("/api/projects/{slug}/done-lane", post(api::done_lane))
         .route("/api/models", get(api::models))
         .route("/api/rules", get(api::rules))
+        .route("/api/running", get(api::running))
+        .route("/api/dashboard", get(api::dashboard))
         .route("/api/projects/{slug}/tasks", get(api::tasks))
         .route("/api/tasks/{slug}/{id}", get(api::task))
         .route("/api/tasks/{slug}/create", post(api::create))
         .route("/api/tasks/{slug}/{id}/move", post(api::move_task))
+        .route("/api/tasks/{slug}/{id}/undo", post(api::undo))
         .route("/api/tasks/{slug}/{id}/note", post(api::note))
         .route("/api/tasks/{slug}/{id}/edit", post(api::edit))
         .route("/api/tasks/{slug}/{id}/link", post(api::link))

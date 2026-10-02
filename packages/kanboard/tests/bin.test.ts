@@ -440,7 +440,7 @@ describe("commands against the real binary", { skip: !hasBinary }, () => {
 
   it("archive sweep runs on session start when archiveAfterDays is set", async () => {
     delete process.env.UNIPI_KANBOARD_PROJECT;
-    const tasks = execFileSync(debugBinary, ["list", "--json"], {
+    const tasks = execFileSync(debugBinary, ["list", "--all", "--json"], {
       env: { ...process.env, UNIPI_KANBOARD_HOME: home, UNIPI_KANBOARD_PROJECT: "" },
       cwd: workspace,
       encoding: "utf-8",

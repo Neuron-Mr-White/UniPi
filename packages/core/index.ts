@@ -45,3 +45,4 @@ export * from "./compaction-context.js";
 export * from "./src/settings/migrations.js";
 export * from "./src/tips/index.js";
 export * from "./src/tips/store.js";
+export * from "./harness-messages.js";

@@ -5,7 +5,7 @@ mod common;
 
 use common::Fixture;
 use kanboard::commands::{self, OrderTarget};
-use kanboard::model::{ChainGate, Priority, RunMode, Staleness, Status};
+use kanboard::model::{Actor, ChainGate, Priority, RunMode, Staleness, Status};
 use std::sync::Arc;
 
 /// The id `next` suggests (None when nothing is ready).
@@ -680,7 +680,7 @@ fn a_corrupt_file_no_longer_blocks_the_board() {
         &fixture.layout,
         fixture.project.clone(),
         ChainGate::InReview,
-        None,
+        &Status::ALL,
         false,
     )
     .expect("list works with a corrupt file");
@@ -745,4 +745,341 @@ fn validate_still_reports_every_problem_and_can_fix_them() {
 
     let result = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
     assert_eq!(result.problems.len(), 1);
+}
+
+/// UNI-60: labels ride the create path (trimmed, deduped) and land in the
+/// file; UNI-59: the creator is written once, mirrored by agents, and old
+/// files without the field fall back to the first activity entry.
+#[test]
+fn create_carries_labels_and_an_immutable_creator() {
+    let fixture = Fixture::new();
+    let task = fixture.add_labeled(
+        "labeled",
+        Status::Todo,
+        Priority::High,
+        &[],
+        &["web".to_string(), "web".to_string(), "  ui  ".to_string()],
+    );
+    assert_eq!(task.labels, vec!["web".to_string(), "ui".to_string()]);
+    assert_eq!(task.creator_of(), Actor::User);
+    let path = fixture.layout.task_path(&fixture.project.slug, &task.id);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("labels: [web, ui]"), "{text}");
+    assert!(text.contains("creator: user"), "{text}");
+
+    // An agent-created task records agent.
+    let agent = kanboard::commands::Common::new(Actor::Agent, ChainGate::InReview);
+    let created = commands::add(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent,
+        "by agent",
+        None,
+        Some(Status::Todo),
+        Priority::None,
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+    assert_eq!(created["creator"], "agent");
+
+    // A duplicate is a new task by whoever duplicated it — not the source's
+    // creator.
+    let duplicated = commands::duplicate(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+    )
+    .unwrap();
+    assert_eq!(duplicated["creator"], "user");
+    assert_ne!(duplicated["id"], task.id.as_str());
+
+    // Older file without `creator:` falls back to the first activity entry.
+    let agent_task_id: String = created["id"].as_str().unwrap().to_string();
+    let agent_path = fixture.layout.task_path(&fixture.project.slug, &agent_task_id);
+    let stripped = std::fs::read_to_string(&agent_path)
+        .unwrap()
+        .lines()
+        .filter(|line| !line.starts_with("creator:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&agent_path, stripped).unwrap();
+    let shown = commands::show(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent_task_id,
+        ChainGate::InReview,
+    )
+    .unwrap();
+    assert_eq!(shown["creator"], "agent", "falls back to first activity actor");
+}
+
+/// todo → in_review via a claim + system release (the legal path).
+fn to_review(fixture: &Fixture, id: &str) {
+    fixture.start(id, "s", std::process::id());
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        id,
+        Status::InReview,
+        "ready",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+}
+
+/// UNI-57: undo restores the exact pre-move state; any intervening change —
+/// even one stamped within the same second — refuses it. The fixture's
+/// `Common` stamps every write with one fixed timestamp, so the note below is
+/// genuinely a same-second change.
+#[test]
+fn undo_restores_pre_move_state_and_rejects_intervening_changes() {
+    let fixture = Fixture::new();
+
+    // ── a same-second intervening change refuses the undo ──────────────────
+    let stale_task = fixture.add_with("stale undo", Status::Todo, Priority::High, &[]);
+    to_review(&fixture, &stale_task.id);
+    let (_, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &stale_task.id,
+        Status::Done,
+        None,
+        &[],
+    )
+    .unwrap();
+    let undo = undo.expect("in_review → done carries undo material");
+    commands::note(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &stale_task.id,
+        "after the move",
+    )
+    .unwrap();
+    let refused = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        undo.before,
+    )
+    .unwrap_err();
+    assert!(refused.to_string().contains("changed since that move"), "{refused}");
+
+    // ── a clean move undoes fully, with an explicit undo entry ─────────────
+    let task = fixture.add_with("undo me", Status::Todo, Priority::High, &[]);
+    to_review(&fixture, &task.id);
+    commands::note(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        "keep me",
+    )
+    .unwrap();
+    let before = fixture
+        .tasks()
+        .into_iter()
+        .find(|candidate| candidate.id == task.id)
+        .unwrap();
+    let (_, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Done,
+        None,
+        &[],
+    )
+    .unwrap();
+    let undo = undo.unwrap();
+    let restored = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        undo.before,
+    )
+    .unwrap();
+    assert_eq!(restored["status"], "in_review");
+    let mut now = fixture
+        .tasks()
+        .into_iter()
+        .find(|candidate| candidate.id == task.id)
+        .unwrap();
+    // Everything but the appended undo entry matches the pre-move task.
+    assert_eq!(now.activity.len(), before.activity.len() + 1);
+    let undo_entry = now.activity.pop().unwrap();
+    assert_eq!(undo_entry.text, "undo: done → in_review (state restored)");
+    assert_eq!(undo_entry.actor, Actor::User);
+    now.updated = before.updated;
+    assert_eq!(now, before, "state restored exactly (modulo the undo entry)");
+}
+
+/// Undo material exists only where the move is hard to reverse; a claimed
+/// task is never snapshotted, so a claim can never be revived.
+#[test]
+fn routine_moves_carry_no_undo_and_claims_are_never_snapshotted() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("routine", Status::Backlog, Priority::None, &[]);
+    let (_, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Todo,
+        None,
+        &[],
+    )
+    .unwrap();
+    assert!(undo.is_none(), "backlog → todo is reversible");
+
+    // A blocked → done move is undo-worthy and restores the block context.
+    let blocked = fixture.add_with("closing blocked", Status::Todo, Priority::None, &[]);
+    fixture.start(&blocked.id, "s", std::process::id());
+    commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &blocked.id,
+        Status::Blocked,
+        "stuck",
+        ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+    let (value, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &blocked.id,
+        Status::Done,
+        None,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(value["status"], "done");
+    let undo = undo.expect("blocked → done carries undo material");
+    let restored = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        undo.before,
+    )
+    .unwrap();
+    assert_eq!(restored["status"], "blocked");
+
+    // A claimed task: undo_worthy may say yes in principle, but the run block
+    // excludes it from snapshots (defence in depth — terminal moves from a
+    // live claim are refused by the table anyway).
+    assert!(!kanboard::transitions::undo_worthy(
+        Status::InProgress,
+        Status::Archived,
+        Actor::User
+    ));
+}
+
+/// UNI-57 rework: undo is defence-in-depth — direct library callers passing an
+/// agent/system actor, a snapshot naming another task, or a snapshot with a
+/// live claim are refused before anything is written.
+#[test]
+fn undo_refuses_non_user_actors_foreign_snapshots_and_claims() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("guarded undo", Status::Todo, Priority::None, &[]);
+    to_review(&fixture, &task.id);
+    let (_, undo) = commands::move_task_undoable(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Done,
+        None,
+        &[],
+    )
+    .unwrap();
+    let undo = undo.expect("in_review → done carries undo material");
+
+    // A non-user actor is refused outright.
+    let agent = commands::Common::new(Actor::Agent, ChainGate::InReview);
+    let refused = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent,
+        &undo.after,
+        undo.before.clone(),
+    )
+    .unwrap_err();
+    assert!(refused.to_string().contains("user surface"), "{refused}");
+    let system = commands::Common::new(Actor::System, ChainGate::InReview);
+    assert!(commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &system,
+        &undo.after,
+        undo.before.clone()
+    )
+    .is_err());
+
+    // A snapshot naming a different task is refused.
+    let other = fixture.add("another task");
+    let foreign = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        {
+            let mut snapshot = undo.before.clone();
+            snapshot.id = other.id.clone();
+            snapshot
+        },
+    )
+    .unwrap_err();
+    assert!(foreign.to_string().contains("does not name this task"), "{foreign}");
+
+    // A snapshot carrying a live claim is refused.
+    let claimed_snapshot = {
+        let mut snapshot = undo.before.clone();
+        snapshot.run = Some(kanboard::model::Run {
+            session: "s".into(),
+            pid: std::process::id(),
+            host: commands::hostname(),
+            mode: kanboard::model::RunMode::None,
+            goal: None,
+            started: fixture.common.now,
+            owner: kanboard::model::RunOwner::Agent,
+        });
+        snapshot
+    };
+    let claim = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        claimed_snapshot,
+    )
+    .unwrap_err();
+    assert!(claim.to_string().contains("never revived"), "{claim}");
+
+    // Nothing above wrote anything: the task is still done and the undo
+    // remains available for the legitimate caller.
+    let current = fixture
+        .tasks()
+        .into_iter()
+        .find(|candidate| candidate.id == task.id)
+        .unwrap();
+    assert_eq!(current.status, Status::Done);
+    let restored = commands::undo_move(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &undo.after,
+        undo.before,
+    )
+    .unwrap();
+    assert_eq!(restored["status"], "in_review");
 }

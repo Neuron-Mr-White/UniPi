@@ -13,7 +13,8 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::commands::{self, Common, EditArgs, OrderTarget};
+use crate::commands::{self, task_json, Common, EditArgs, OrderTarget};
+use crate::deps;
 use crate::error::Error;
 use crate::model::{Actor, ChainGate, Priority, Status};
 use crate::store::{self, Project};
@@ -280,19 +281,48 @@ pub async fn tasks(
     Query(query): Query<TasksQuery>,
 ) -> ApiResponse {
     state.touch();
-    let status = query
-        .status
-        .as_deref()
-        .and_then(|value| value.parse::<Status>().ok());
+    // No filter means every lane — the board and the API stay all-inclusive;
+    // only the CLI's bare `list` narrows to the active lanes (UNI-62).
+    let statuses: Vec<Status> = match query.status.as_deref() {
+        Some(value) => match value.parse::<Status>() {
+            Ok(status) => vec![status],
+            Err(error) => return map_error(error, false),
+        },
+        None => Status::ALL.to_vec(),
+    };
     let ready_only = query.ready.as_deref() == Some("true");
     let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
-    match commands::list(&state.layout, project, gate(), status, ready_only) {
+    match commands::list(&state.layout, project, gate(), &statuses, ready_only) {
         Ok(value) => ok(value),
         Err(error) => map_error(error, false),
     }
+}
+
+/// `GET /api/running` — every claimed task across all projects, for the
+/// sidebar's global agent list. Each item carries the project (slug + name)
+/// plus the full task JSON, so one fetch paints the whole list (UNI-51).
+pub async fn running(State(state): State<Arc<AppState>>) -> ApiResponse {
+    state.touch();
+    let mut items: Vec<Value> = Vec::new();
+    if let Ok(projects) = state.layout.list_projects() {
+        for project in projects {
+            if let Ok(board) = crate::board::Board::open(&state.layout, project.clone())
+                && let Ok((tasks, _)) = board.state()
+            {
+                for task in tasks.iter().filter(|task| task.run.is_some()) {
+                    items.push(json!({
+                        "slug": project.slug,
+                        "project": project.name,
+                        "task": task_json(&board, task, &tasks, gate()),
+                    }));
+                }
+            }
+        }
+    }
+    ok(json!({ "running": items }))
 }
 
 pub async fn task(
@@ -319,6 +349,8 @@ pub struct CreateRequest {
     pub priority: Option<String>,
     #[serde(default)]
     pub after: Vec<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
 }
 
 pub async fn create(
@@ -359,9 +391,15 @@ pub async fn create(
         priority,
         &request.after,
         &[],
+        &request.labels,
     );
     match result {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            // Live updates must not depend on the file watcher: API writes
+            // bump their project's revision themselves.
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
     }
 }
@@ -404,17 +442,82 @@ pub async fn move_task(
         Err(error) => return map_error(error, false),
     };
 
-    let result = commands::move_task(
+    let result = commands::move_task_undoable(
         &state.layout,
         project,
         &common(),
         &id,
         to,
         request.comment.as_deref(),
+        &[],
     );
     match result {
-        Ok(value) => ok(value),
+        Ok((mut value, undo)) => {
+            // Hard-to-reverse user moves carry a one-shot undo token; the
+            // snapshots live in daemon memory and expire (UNI-57).
+            if let Some(undo) = undo {
+                let token = state
+                    .undo
+                    .insert(&slug, &undo.after.id.clone(), undo.before, undo.after);
+                if let Value::Object(ref mut map) = value {
+                    map.insert("undoToken".into(), json!(token));
+                }
+            }
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, needs_comment),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UndoRequest {
+    pub token: String,
+}
+
+/// `POST /api/tasks/{slug}/{id}/undo {token}` — restore the exact pre-move
+/// task. The token is consumed atomically before any other check (reuse and
+/// expiry both refuse), it must name this very task, and the task itself must
+/// be byte-identical to its post-move state. User surface only: there is no
+/// CLI undo (UNI-57).
+pub async fn undo(
+    State(state): State<Arc<AppState>>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(request): Json<UndoRequest>,
+) -> ApiResponse {
+    state.touch();
+    let entry = match state.undo.take(&request.token, &slug, &id) {
+        Ok(entry) => entry,
+        Err(crate::serve::undo::UndoRejection::Unknown) => {
+            return err(
+                StatusCode::CONFLICT,
+                &Error::rule("that undo is no longer available (expired, used, or the daemon restarted)"),
+            );
+        }
+        Err(crate::serve::undo::UndoRejection::Expired) => {
+            return err(
+                StatusCode::CONFLICT,
+                &Error::rule("that undo expired — move the task back by hand"),
+            );
+        }
+        Err(crate::serve::undo::UndoRejection::WrongTask) => {
+            return err(
+                StatusCode::CONFLICT,
+                &Error::rule("this undo token belongs to a different move"),
+            );
+        }
+    };
+    let project = match project_by_slug(&state, &slug) {
+        Ok(project) => project,
+        Err(error) => return err(StatusCode::NOT_FOUND, &error),
+    };
+    match commands::undo_move(&state.layout, project, &common(), &entry.after, entry.before) {
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
+        // A refused undo is a stale-undo conflict, not a bad request.
+        Err(error) => err(StatusCode::CONFLICT, &error),
     }
 }
 
@@ -434,7 +537,10 @@ pub async fn note(
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
     match commands::note(&state.layout, project, &common(), &id, &request.text) {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
     }
 }
@@ -445,6 +551,10 @@ pub struct EditRequest {
     pub body: Option<String>,
     pub priority: Option<String>,
     pub labels: Option<Vec<String>>,
+    /// Accepted only to be refused: the creator is written once at creation
+    /// and never changes (UNI-59).
+    #[serde(default)]
+    pub creator: Option<String>,
 }
 
 pub async fn edit(
@@ -453,6 +563,12 @@ pub async fn edit(
     Json(request): Json<EditRequest>,
 ) -> ApiResponse {
     state.touch();
+    if request.creator.is_some() {
+        return err(
+            StatusCode::BAD_REQUEST,
+            &Error::rule("the creator of a task is set at creation and cannot be changed"),
+        );
+    }
     let project = match project_by_slug(&state, &slug) {
         Ok(project) => project,
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
@@ -473,7 +589,10 @@ pub async fn edit(
         labels: request.labels,
     };
     match commands::edit(&state.layout, project, &common(), &id, args) {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
     }
 }
@@ -520,7 +639,10 @@ async fn link_impl(
         remove,
     );
     match result {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
     }
 }
@@ -561,7 +683,10 @@ pub async fn order(
         }
     };
     match commands::order(&state.layout, project, &common(), &id, target) {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
     }
 }
@@ -576,8 +701,57 @@ pub async fn duplicate(
         Err(error) => return err(StatusCode::NOT_FOUND, &error),
     };
     match commands::duplicate(&state.layout, project, &common(), &id) {
-        Ok(value) => ok(value),
+        Ok(value) => {
+            state.bump(&slug);
+            ok(value)
+        }
         Err(error) => map_error(error, false),
+    }
+}
+
+#[cfg(test)]
+mod dashboard_tests {
+    use super::{entered_status, excerpt_chars, first_non_empty_line, strip_markdown_images};
+    use crate::model::Status;
+
+    /// The single vocabulary mapping every dashboard derivation builds on —
+    /// mirrors exactly what commands.rs writes (UNI-67).
+    #[test]
+    fn entered_status_reads_the_write_path_vocabulary() {
+        assert_eq!(entered_status("finished: shipped the thing"), Some(Status::InReview));
+        assert_eq!(entered_status("released to in_review: looks good"), Some(Status::InReview));
+        assert_eq!(entered_status("released to todo: needs work"), Some(Status::Todo));
+        assert_eq!(entered_status("moved in_review → done"), Some(Status::Done));
+        assert_eq!(entered_status("moved in_review → done (bulk)"), Some(Status::Done));
+        assert_eq!(entered_status("moved blocked → done: closed directly"), Some(Status::Done));
+        assert_eq!(entered_status("moved todo → in_review"), Some(Status::InReview));
+        assert_eq!(entered_status("blocked: what about the retry test?"), Some(Status::Blocked));
+        assert_eq!(entered_status("unblocked: fixed in 4f2a"), Some(Status::Todo));
+        assert_eq!(entered_status("rework: the fixture still fails"), Some(Status::Todo));
+        assert_eq!(entered_status("cancelled"), Some(Status::Cancelled));
+        assert_eq!(entered_status("cancelled: duplicate of T-2"), Some(Status::Cancelled));
+        assert_eq!(entered_status("archived"), Some(Status::Archived));
+        assert_eq!(entered_status("archived from done (bulk)"), Some(Status::Archived));
+        assert_eq!(entered_status("undo: done → in_review (state restored)"), Some(Status::InReview));
+        assert_eq!(entered_status("created in todo"), Some(Status::Todo));
+        // Notes/edits/ordering are not transitions.
+        assert_eq!(entered_status("edited title, body"), None);
+        assert_eq!(entered_status("ordered (position 3000)"), None);
+        assert_eq!(entered_status("keep me"), None);
+        assert_eq!(entered_status("session lost: abc (pid 12) ended without releasing"), None);
+    }
+
+    #[test]
+    fn excerpt_strips_images_takes_first_line_and_truncates() {
+        assert_eq!(strip_markdown_images("before ![shot](att:x) after"), "before  after");
+        assert_eq!(first_non_empty_line("\n\n  second line\nthird"), "second line");
+        let long = format!("{}{}", "x".repeat(200), "![img](att:y)");
+        let cut = excerpt_chars(&long, 160);
+        assert_eq!(cut.chars().count(), 160);
+        assert!(cut.ends_with('\u{2026}'));
+        assert!(!cut.contains("!["));
+        // A short summary passes through untouched.
+        assert_eq!(excerpt_chars("finished: ship it\n\nnotes", 160), "finished: ship it");
     }
 }
 
@@ -1091,6 +1265,343 @@ fn summarize_prompt(
         }
     }
     prompt
+}
+
+// ─── dashboard (UNI-67) ─────────────────────────────────────────────────
+//
+// Read-only command-center feed for the Dashboard view. Everything derives
+// from the SAME activity-text vocabulary the write path emits (see
+// `commands::move_task_undoable` / `finish` / `release`): `finished: …`,
+// `released to <status>: …`, `moved <from> → <to>[: note][ (bulk)]`,
+// `blocked: …`, `unblocked: …`, `rework: …`, `cancelled[: note]`, `archived`
+// and `undo: <to> → <from> …`. `entered_status` is the single place that
+// maps a text to "the status this entry moved the task into".
+
+/// The status an activity entry moved its task INTO, or None when the entry
+/// is not a status transition (notes, edits, ordering, …).
+pub(crate) fn entered_status(text: &str) -> Option<Status> {
+    let text = text.trim();
+    if text.starts_with("finished:") {
+        return Some(Status::InReview);
+    }
+    if let Some(rest) = text.strip_prefix("released to ") {
+        return rest.split(':').next()?.trim().parse().ok();
+    }
+    if text == "blocked" || text.starts_with("blocked:") {
+        return Some(Status::Blocked);
+    }
+    if text.starts_with("unblocked:") || text.starts_with("rework:") {
+        return Some(Status::Todo);
+    }
+    if text == "cancelled" || text.starts_with("cancelled:") {
+        return Some(Status::Cancelled);
+    }
+    if text == "archived" || text.starts_with("archived ") || text.starts_with("archived:") {
+        // The write path only emits these for archive moves — the tail is a
+        // note ("… from done (bulk)", "… automatically after N days"), not a
+        // parseable status.
+        return Some(Status::Archived);
+    }
+    if let Some(rest) = text.strip_prefix("moved ") {
+        // `moved <from> → <to>` / `… : note` / `… (bulk)`.
+        let to = rest.rsplit(" → ").next()?.trim();
+        let to = to.split(':').next()?.trim();
+        let to = to.strip_suffix(" (bulk)").unwrap_or(to);
+        return to.parse().ok();
+    }
+    if let Some(rest) = text.strip_prefix("undo: ") {
+        // `undo: <to> → <from> (state restored)` — the task moved back to from.
+        let from = rest.rsplit(" → ").next()?.split(" (").next()?.trim();
+        return from.parse().ok();
+    }
+    if let Some(rest) = text.strip_prefix("created in ") {
+        return rest.split_whitespace().next()?.parse().ok();
+    }
+    None
+}
+
+/// The latest activity entry that moved `task` INTO `status`.
+fn transition_into(task: &crate::model::Task, status: Status) -> Option<&crate::model::ActivityEntry> {
+    task.activity
+        .iter()
+        .rev()
+        .find(|entry| entered_status(&entry.text) == Some(status))
+}
+
+/// First line that carries text.
+fn first_non_empty_line(text: &str) -> &str {
+    text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("")
+}
+
+/// Strip the transition prefix so the excerpt is just what the agent said:
+/// `blocked: <question>`, `released to blocked: <question>`,
+/// `finished: <summary>`, `released to in_review: <summary>`.
+fn strip_transition_prefix(text: &str) -> &str {
+    let text = text.trim();
+    if let Some(rest) = text.strip_prefix("released to ") {
+        return rest.split_once(':').map(|(_, rest)| rest.trim()).unwrap_or(rest);
+    }
+    for prefix in ["blocked:", "finished:"] {
+        if let Some(rest) = text.strip_prefix(prefix) {
+            return rest.trim();
+        }
+    }
+    text
+}
+
+/// Remove markdown image embeds (`![alt](url)`) — they never read well in a
+/// one-line excerpt.
+fn strip_markdown_images(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("![") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 2..];
+        match after.find("](") {
+            Some(close) => match after[close + 2..].find(')') {
+                Some(end) => {
+                    rest = &after[close + 2 + end + 1..];
+                }
+                None => {
+                    out.push_str(&rest[at..at + 2]);
+                    rest = after;
+                }
+            },
+            None => {
+                out.push_str(&rest[at..at + 2]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Char-safe cut with an ellipsis.
+fn excerpt_chars(text: &str, max: usize) -> String {
+    let trimmed = strip_markdown_images(first_non_empty_line(text)).trim().to_string();
+    if trimmed.chars().count() <= max {
+        return trimmed;
+    }
+    let cut: String = trimmed.chars().take(max.saturating_sub(1)).collect();
+    format!("{cut}\u{2026}")
+}
+
+/// `GET /api/dashboard` — read-only command-center payload for the Dashboard
+/// view: what needs the user (in_review/blocked with wait ages), what an
+/// agent would pick next, live activity, throughput and per-project health.
+/// Archived projects are excluded (UNI-67).
+pub async fn dashboard(State(state): State<Arc<AppState>>) -> ApiResponse {
+    state.touch();
+    let now = Utc::now();
+    let activity_window = chrono::Duration::hours(48);
+    let throughput_window = chrono::Duration::days(14);
+
+    let mut inbox: Vec<Value> = Vec::new();
+    let mut up_next: Vec<Value> = Vec::new();
+    let mut up_next_before_cap = 0usize;
+    // Newest first; equal timestamps keep per-task chronological order via
+    // the push sequence (a stable at-only sort would leave same-second
+    // clusters oldest-first and reverse the dashboard's step trails).
+    let mut activity: Vec<(chrono::DateTime<Utc>, u64, Value)> = Vec::new();
+    let mut activity_seq: u64 = 0;
+    let mut done_at: Vec<String> = Vec::new();
+    let mut review_waits: Vec<i64> = Vec::new();
+    let mut projects: Vec<Value> = Vec::new();
+
+    if let Ok(projects_list) = state.layout.list_projects() {
+        for project in projects_list {
+            if project.archived {
+                continue;
+            }
+            let Ok(board) = crate::board::Board::open(&state.layout, project.clone()) else {
+                continue;
+            };
+            let Ok((tasks, problems)) = board.state() else {
+                continue;
+            };
+            let by_id = board.dep_lookup(&tasks);
+            let gate = gate();
+            let mut review = 0usize;
+            let mut blocked = 0usize;
+            let mut ready = 0usize;
+            let mut last_activity: Option<chrono::DateTime<Utc>> = None;
+
+            for task in &tasks {
+                last_activity = Some(last_activity.map_or(task.updated, |latest| latest.max(task.updated)));
+                match task.status {
+                    Status::InReview | Status::Blocked => {
+                        if task.status == Status::InReview {
+                            review += 1;
+                        } else {
+                            blocked += 1;
+                        }
+                        let entry = transition_into(task, task.status);
+                        let waiting_since = entry.map(|entry| entry.at).unwrap_or(task.updated);
+                        // An undo re-entered the status without carrying the
+                        // agent's words — fall back to the previous real
+                        // transition into the same status for the excerpt.
+                        let excerpt_entry = match entry {
+                            Some(entry) if entry.text.starts_with("undo:") => task
+                                .activity
+                                .iter()
+                                .rev()
+                                .skip_while(|candidate| candidate.at != entry.at)
+                                .skip(1)
+                                .find(|candidate| {
+                                    !candidate.text.starts_with("undo:")
+                                        && entered_status(&candidate.text) == Some(task.status)
+                                })
+                                .or(Some(entry)),
+                            other => other,
+                        };
+                        let excerpt = match task.status {
+                            Status::Blocked | Status::InReview => {
+                                excerpt_entry.map(|entry| excerpt_chars(strip_transition_prefix(&entry.text), 160))
+                            }
+                            _ => None,
+                        };
+                        inbox.push(json!({
+                            "slug": project.slug,
+                            "project": project.name,
+                            "task": task_json(&board, task, &tasks, gate),
+                            "waitingSince": crate::format::iso(waiting_since),
+                            "excerpt": excerpt,
+                        }));
+                    }
+                    Status::Todo => {
+                        let is_ready = deps::is_ready(task, &by_id, gate);
+                        if is_ready {
+                            ready += 1;
+                        }
+                        if is_ready && task.run.is_none() {
+                            up_next_before_cap += 1;
+                            up_next.push(json!({
+                                "slug": project.slug,
+                                "project": project.name,
+                                "task": task_json(&board, task, &tasks, gate),
+                            }));
+                        }                    }
+                    _ => {}
+                }
+
+                // Done events, revert-aware: an `undo: done → …` after a
+                // transition into done means that done never happened — drop
+                // the recorded stamp (UNI-67 rework).
+                let mut done_stamps: Vec<chrono::DateTime<Utc>> = Vec::new();
+                for entry in &task.activity {
+                    if entered_status(&entry.text) == Some(Status::Done) {
+                        done_stamps.push(entry.at);
+                    } else if let Some(rest) = entry.text.trim().strip_prefix("undo: ") {
+                        let reverted = rest.split(" → ").next().unwrap_or("").trim();
+                        if reverted.parse::<Status>().is_ok_and(|status| status == Status::Done) {
+                            done_stamps.pop();
+                        }
+                    }
+                }
+                for entry in &task.activity {
+                    if now - entry.at <= activity_window {
+                        activity_seq += 1;
+                        activity.push((
+                            entry.at,
+                            activity_seq,
+                            json!({
+                                "slug": project.slug,
+                                "project": project.name,
+                                "taskId": task.id,
+                                "title": task.display_title(),
+                                "at": crate::format::iso(entry.at),
+                                "actor": entry.actor.as_str(),
+                                "session": entry.session,
+                                "text": entry.text,
+                            }),
+                        ));
+                    }
+                }
+                done_at.extend(
+                    done_stamps
+                        .into_iter()
+                        .filter(|at| now - *at <= throughput_window)
+                        .map(crate::format::iso),
+                );
+
+                // Completed review cycles: entering in_review, next status
+                // transition leaving it, exit within the window.
+                for (index, entry) in task.activity.iter().enumerate() {
+                    if entered_status(&entry.text) != Some(Status::InReview) {
+                        continue;
+                    }
+                    let exit = task.activity[index + 1..].iter().find(|later| {
+                        let left = entered_status(&later.text);
+                        left.is_some() && left != Some(Status::InReview)
+                    });
+                    if let Some(exit) = exit
+                        && now - exit.at <= throughput_window
+                    {
+                        review_waits.push((exit.at - entry.at).num_seconds().max(0));
+                    }
+                }
+            }
+
+            projects.push(json!({
+                "slug": project.slug,
+                "review": review,
+                "blocked": blocked,
+                "ready": ready,
+                "lastActivity": last_activity.map(crate::format::iso),
+                "problems": problems.len(),
+            }));
+        }
+    }
+
+    inbox.sort_by_key(|item| {
+        item["waitingSince"]
+            .as_str()
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .unwrap_or(now.into())
+    });
+    up_next.sort_by(|a, b| {
+        let rank = |item: &Value| -> u8 {
+            item["task"]["priority"]
+                .as_str()
+                .and_then(|value| value.parse::<Priority>().ok())
+                .unwrap_or(Priority::None)
+                .rank()
+        };
+        let order = |item: &Value| -> i64 { item["task"]["order"].as_i64().unwrap_or(0) };
+        let created = |item: &Value| -> chrono::DateTime<Utc> {
+            item["task"]["created"]
+                .as_str()
+                .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                .map(|value| value.with_timezone(&Utc))
+                .unwrap_or(now)
+        };
+        // Urgent first, then lane order, then creation (UNI-67).
+        rank(b)
+            .cmp(&rank(a))
+            .then_with(|| order(a).cmp(&order(b)))
+            .then_with(|| created(a).cmp(&created(b)))
+    });
+    up_next.truncate(8);
+    let ready_total = up_next_before_cap;
+
+    activity.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+    activity.truncate(60);
+    let activity: Vec<Value> = activity.into_iter().map(|(_, _, value)| value).collect();
+
+    done_at.sort();
+    review_waits.sort_unstable();
+
+    ok(json!({
+        "generatedAt": crate::format::iso(now),
+        "inbox": inbox,
+        "upNext": up_next,
+        "readyTotal": ready_total,
+        "activity": activity,
+        "doneAt": done_at,
+        "reviewWaits": review_waits,
+        "projects": projects,
+    }))
 }
 
 /// `POST /api/projects/{slug}/summarize` — run the configured agent over the

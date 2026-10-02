@@ -44,6 +44,9 @@ export interface CommentRequest {
   task: Task;
   to: string;
   hint: string;
+  /** Project the move happens against — set by off-board callers like the
+   *  Dashboard inbox; defaults to the open board (UNI-67). */
+  slug?: string;
   /** Called after the move succeeded (e.g. to re-order the dropped card). */
   after?: () => Promise<void>;
 }
@@ -72,6 +75,8 @@ export const [sidebarCollapsed, setSidebarCollapsedSignal] = createSignal(localS
 export const [paletteOpen, setPaletteOpen] = createSignal(false);
 export const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
 export const [newTaskLane, setNewTaskLane] = createSignal<string | null>(null);
+/** UNI-57: a cancelled task being recreated — prefills the Add modal's creation fields only. */
+export const [recreateFrom, setRecreateFrom] = createSignal<Task | null>(null);
 export const [commentRequest, setCommentRequest] = createSignal<CommentRequest | null>(null);
 export const [settingsOpen, setSettingsOpen] = createSignal(false);
 export const [summarizeOpen, setSummarizeOpen] = createSignal(false);
@@ -219,6 +224,25 @@ export async function loadProjects(): Promise<void> {
     toast(describe(error), "error");
   } finally {
     setProjects("loaded", true);
+  }
+  // The global agent list rides along: every projects refresh point (SSE
+  // revision, open, actions) is exactly when it is stale too.
+  await loadRunning();
+}
+
+/** UNI-51: claimed tasks across every project, for the sidebar's Agents section. */
+export const [globalRunning, setGlobalRunning] = createStore<{ items: Array<{ slug: string; project: string; task: Task }>; loaded: boolean }>({
+  items: [],
+  loaded: false,
+});
+
+export async function loadRunning(): Promise<void> {
+  try {
+    setGlobalRunning("items", (await api.running()).running);
+    setGlobalRunning("loaded", true);
+  } catch {
+    // Older daemon without /api/running: an empty list beats a toast per poll.
+    setGlobalRunning({ items: [], loaded: true });
   }
 }
 

@@ -35,6 +35,8 @@ export interface Task {
   title: string;
   /** Title derived from the first body line when `title` is empty (Rust `Task::display_title`). */
   displayTitle?: string;
+  /** Who created it — user|agent, set once at creation (UNI-59). */
+  creator?: string;
   body?: string;
   status: string;
   priority: string;
@@ -69,6 +71,52 @@ export interface Attachment {
   mime: string;
   kind: "image" | "video" | "audio" | "pdf" | "text" | "file";
   markdown: string;
+}
+
+export interface DashboardProject {
+  slug: string;
+  review: number;
+  blocked: number;
+  ready: number;
+  lastActivity: string | null;
+  problems: number;
+}
+
+export interface DashboardInboxItem {
+  slug: string;
+  project: string;
+  task: Task;
+  waitingSince: string;
+  excerpt: string | null;
+}
+
+export interface DashboardUpNextItem {
+  slug: string;
+  project: string;
+  task: Task;
+}
+
+export interface DashboardActivityItem {
+  slug: string;
+  project: string;
+  taskId: string;
+  title: string;
+  at: string;
+  actor: string;
+  session: string | null;
+  text: string;
+}
+
+export interface DashboardData {
+  generatedAt: string;
+  inbox: DashboardInboxItem[];
+  /** Every ready todo, uncapped (upNext is the capped top slice). */
+  readyTotal: number;
+  upNext: DashboardUpNextItem[];
+  activity: DashboardActivityItem[];
+  doneAt: string[];
+  reviewWaits: number[];
+  projects: DashboardProject[];
 }
 
 export interface ProjectSummary {
@@ -220,17 +268,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   projects: () => request<ProjectSummary[]>("/api/projects"),
+  /** Every claimed task across all projects — the sidebar's global agent list (UNI-51). */
+  running: () => request<{ running: Array<{ slug: string; project: string; task: Task }> }>("/api/running"),
+  /** UNI-67: the Dashboard command-center payload (read-only). */
+  dashboard: () => request<DashboardData>("/api/dashboard"),
   rules: () => request<Rules>("/api/rules"),
   tasks: (slug: string) =>
     request<{ tasks: Task[]; problems: Problem[] }>(`/api/projects/${encodeURIComponent(slug)}/tasks`),
   task: (slug: string, id: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`),
-  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[] }) =>
+  create: (slug: string, body: { title: string; body?: string; status?: string; priority?: string; after?: string[]; labels?: string[] }) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/create`, { method: "POST", body: JSON.stringify(body) }),
   move: (slug: string, id: string, status: string, comment?: string) =>
-    request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/move`, {
+    request<Task & { undoToken?: string }>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/move`, {
       method: "POST",
       body: JSON.stringify({ status, comment }),
+    }),
+  /** Undo one hard-to-reverse move with its one-shot token (UNI-57). */
+  undoMove: (slug: string, id: string, token: string) =>
+    request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/undo`, {
+      method: "POST",
+      body: JSON.stringify({ token }),
     }),
   note: (slug: string, id: string, text: string) =>
     request<Task>(`/api/tasks/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/note`, {

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { NudgeStash } from "../engine/nudge-stash.js";
+import { NudgeStash, nextStashMetaState } from "../engine/nudge-stash.js";
 
 test("put/peek/take: single slot, take clears", () => {
   const stash = new NudgeStash();
@@ -40,4 +40,20 @@ test("a kickoff put lands in an empty slot as the kickoff", () => {
   stash.put("KICKOFF", { kickoff: true });
   stash.put("hint 2");
   assert.match(stash.peek() ?? "", /^KICKOFF\n\nhint 2$/);
+});
+
+/** UNI-53 — stash metadata mirror of the merge semantics. */
+test("nextStashMetaState: kickoff then appended ralph keeps the ORIGINAL kickoff source", () => {
+  const kickoff = nextStashMetaState(undefined, false, "kickoff", { source: "Goal", title: "Kickoff" });
+  assert.equal(kickoff.kickoff, true);
+  const merged = nextStashMetaState(kickoff, true, undefined, { source: "Ralph", title: "Iteration" });
+  assert.equal(merged.meta?.source, "Goal", "merged stash must keep the kickoff provenance");
+  assert.equal(merged.kickoff, true);
+});
+
+test("nextStashMetaState: non-kickoff overwrite replaces the source; fresh start re-arms", () => {
+  const replaced = nextStashMetaState({ meta: { source: "Goal", title: "Kickoff" } as never, kickoff: false }, true, undefined, { source: "Ralph", title: "Iteration" });
+  assert.equal(replaced.meta?.source, "Ralph", "non-kickoff overwrite replaces meta");
+  const cleared = nextStashMetaState({ meta: replaced.meta, kickoff: replaced.kickoff }, false, "kickoff", { source: "Goal", title: "Kickoff" });
+  assert.equal(cleared.meta?.source, "Goal");
 });
