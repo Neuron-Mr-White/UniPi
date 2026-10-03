@@ -68,19 +68,18 @@ runs commands. UniPi adds the parts that a long session needs.
 ## Proof
 
 Each feature below exists because published results support it. The numbers
-come from the linked sources. They are not UniPi benchmarks. The "why" column
-is our opinion.
+come from the linked sources. They are not UniPi benchmarks.
 
-| Feature | Benchmark | Why we have it | Source |
-|---|---|---|---|
-| **Memory** | 96.6% recall@5 on LongMemEval, with raw semantic search and 0 API calls. | Chat assistants lose about 30% accuracy when facts span many sessions. We want the agent to find last week's decision without a model call. MemPalace does this on your machine. | [MemPalace](https://github.com/MemPalace/mempalace) · [LongMemEval](https://arxiv.org/abs/2410.10813) |
-| **Fusion** | Frontier-level FrontierCode score at up to 60% lower cost. | Most turns in a coding session are routine edits and commands. We think a frontier model should plan and review, and a lower-cost model should do the typing. | [Devin Fusion](https://cognition.com/blog/devin-fusion) |
-| **Fusion with two frontier models** | 69.0% on DRACO for two frontier models together. The best single model scored 65.3%. | Different models make different mistakes. A second strong model finds errors that one model misses. Use two frontier models when quality matters more than cost. | [OpenRouter Fusion](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) · [Mixture-of-Agents](https://arxiv.org/abs/2406.04692) |
-| **Goal** | HumanEval pass@1 went from 80% to 91% with a loop on test feedback. | An agent that grades its own work stops too early or claims success. Self-written checks can hide real failures. Our goal loop continues until a separate verifier agrees, inside turn and stall budgets. | [Reflexion](https://arxiv.org/abs/2303.11366) · [Self-authored verification](https://arxiv.org/abs/2607.24300) |
-| **Ralph** | Six repositories overnight for $297 in API cost (a reported hackathon result). | Long tasks do not fit in one context window. A checklist file keeps the progress on disk. Each iteration works the next items and checks them off. A verifier reads the file before the loop ends. We think a simple loop is the right tool for checklist work. | [Ralph loop](https://ghuntley.com/ralph/) · [YC hackathon report](https://paddo.dev/blog/ralph-wiggum-autonomous-loops/) |
-| **Swarm** | 90.2% higher than a single agent on Anthropic's research eval. | Independent items do not need to wait for each other. Each worker gets a clean context, and the lead reads only the summaries. A swarm uses more tokens, so we keep it for wide work. | [Anthropic multi-agent research](https://www.anthropic.com/engineering/multi-agent-research-system) |
-| **Graph** | Up to 3.7× lower latency, 6.7× lower cost and about 9% higher accuracy than ReAct. | Many tasks have steps that need earlier results. A graph runs the independent steps at the same time. Each step gets only the inputs it needs. | [LLMCompiler (ICML 2024)](https://arxiv.org/abs/2312.04511) |
-| **Prefix cache** | Up to 90% lower cost and 85% lower latency for long prompts. | Each agent turn sends the full conversation again. In our UniPi 2.4 logs, each cache miss sent about 62,700 tokens again at the full price. UniPi keeps the prefix byte-identical, so a turn pays full price only for the new tail. | [Anthropic prompt caching](https://claude.com/blog/prompt-caching) · [Modular handbook](https://handbook.modular.com/inference-optimization/prefix-caching/) · [our cache study](docs/deepseek-cache-rate-research.md) |
+| Feature | Benchmark | Source |
+|---|---|---|
+| **Memory** | 96.6% recall@5 on LongMemEval, with raw semantic search and 0 API calls. | [MemPalace](https://github.com/MemPalace/mempalace) · [LongMemEval](https://arxiv.org/abs/2410.10813) |
+| **Fusion** | Frontier-level FrontierCode score at up to 60% lower cost. | [Devin Fusion](https://cognition.com/blog/devin-fusion) |
+| **Fusion with two frontier models** | 69.0% on DRACO for two frontier models together. The best single model scored 65.3%. | [OpenRouter Fusion](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) · [Mixture-of-Agents](https://arxiv.org/abs/2406.04692) |
+| **Goal** | HumanEval pass@1 went from 80% to 91% with a loop on test feedback. | [Reflexion](https://arxiv.org/abs/2303.11366) · [Self-authored verification](https://arxiv.org/abs/2607.24300) |
+| **Ralph** | Six repositories overnight for $297 in API cost (a reported hackathon result). | [Ralph loop](https://ghuntley.com/ralph/) · [YC hackathon report](https://paddo.dev/blog/ralph-wiggum-autonomous-loops/) |
+| **Swarm** | 90.2% higher than a single agent on Anthropic's research eval. | [Anthropic multi-agent research](https://www.anthropic.com/engineering/multi-agent-research-system) |
+| **Graph** | Up to 3.7× lower latency, 6.7× lower cost and about 9% higher accuracy than ReAct. | [LLMCompiler (ICML 2024)](https://arxiv.org/abs/2312.04511) |
+| **Prefix cache** | Up to 90% lower cost and 85% lower latency for long prompts. | [Anthropic prompt caching](https://claude.com/blog/prompt-caching) · [Modular handbook](https://handbook.modular.com/inference-optimization/prefix-caching/) · [our cache study](docs/deepseek-cache-rate-research.md) |
 
 Long work matters more each year. METR measured that the length of software
 tasks that agents can finish doubles about every 7 months
