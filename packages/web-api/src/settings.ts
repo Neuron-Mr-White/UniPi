@@ -78,7 +78,6 @@ const DEFAULT_CONFIG: WebApiConfig = {
     tavily: { enabled: false },
     firecrawl: { enabled: false },
     perplexity: { enabled: false },
-    "llm-summarize": { enabled: true },
   },
   smartFetch: {},
 };

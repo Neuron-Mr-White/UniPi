@@ -37,6 +37,9 @@ export const WEB_TOOLS = {
   SUMMARIZE: "web_llm_summarize",
 } as const;
 
+/** The three tool names this module owns. */
+export type WebToolName = (typeof WEB_TOOLS)[keyof typeof WEB_TOOLS];
+
 /**
  * Get available providers for a capability.
  * Filters by enabled status and API key availability.
@@ -61,6 +64,44 @@ function getAvailableProviders(capability: WebCapability): WebProvider[] {
 
     return true;
   });
+}
+
+/**
+ * Whether each web tool can work right now: web_search needs at least one
+ * enabled search provider, web_llm_summarize needs Perplexity (the only
+ * summarize provider, keyed). multi_web_content_read is always true — its
+ * default engine (smart-fetch) is local and keyless. wigolo counts as
+ * available: there is no synchronous installed-check (the SDK loads via a
+ * dynamic import), and provider fallthrough already skips an
+ * enabled-but-uninitialized daemon.
+ */
+export function webToolAvailability(): Record<WebToolName, boolean> {
+  return {
+    [WEB_TOOLS.SEARCH]: getAvailableProviders("search").length > 0,
+    [WEB_TOOLS.READ]: true,
+    [WEB_TOOLS.SUMMARIZE]: getAvailableProviders("summarize").length > 0,
+  };
+}
+
+/**
+ * Adds/removes ONLY the three web tools from pi's active set so tools that
+ * cannot work (no enabled provider / no API key) are never exposed to the
+ * agent. At most one `setActiveTools` call, skipped entirely when membership
+ * already matches. Never call at extension load — the active-tool APIs throw
+ * outside a session.
+ */
+export function syncWebTools(
+  pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">,
+  availability: Record<WebToolName, boolean>,
+): void {
+  const names: string[] = Object.values(WEB_TOOLS);
+  const current = pi.getActiveTools();
+  const wanted = new Set<string>(names.filter((name) => availability[name as WebToolName] !== false));
+  if (names.every((name) => current.includes(name) === wanted.has(name))) return;
+  // Keep every other tool in its current order; append newly-enabled web tools.
+  const kept = current.filter((name) => !names.includes(name) || wanted.has(name));
+  const additions = [...wanted].filter((name) => !current.includes(name));
+  pi.setActiveTools([...kept, ...additions]);
 }
 
 /**
@@ -187,10 +228,9 @@ async function executeProviderRead(
  */
 async function executeSummarize(
   url: string,
-  prompt?: string,
-  sourceRank?: number
+  prompt?: string
 ): Promise<SummarizeResult> {
-  const candidates = selectProviderChain("summarize", sourceRank);
+  const candidates = selectProviderChain("summarize");
 
   return withProviderFallthrough(candidates, async (provider) => {
     if (!provider.summarize) {
@@ -341,11 +381,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
       } catch (error) {
         const message =
           describeError(error);
-        return {
-          content: [{ type: "text", text: `Search failed: ${message}` }],
-          isError: true,
-          details: {},
-        };
+        throw new Error(`Search failed: ${message}`);
       }
     },
   });
@@ -554,19 +590,11 @@ export function registerWebTools(pi: ExtensionAPI): void {
         }
 
         // Should never reach here
-        return {
-          content: [{ type: "text", text: "Invalid url parameter." }],
-          isError: true,
-          details: {},
-        };
+        throw new Error("Invalid url parameter.");
       } catch (error) {
         const message =
           describeError(error);
-        return {
-          content: [{ type: "text", text: `Read failed: ${message}` }],
-          isError: true,
-          details: {},
-        };
+        throw new Error(`Read failed: ${message}`);
       }
     },
   });
@@ -576,14 +604,13 @@ export function registerWebTools(pi: ExtensionAPI): void {
     name: WEB_TOOLS.SUMMARIZE,
     label: "Web LLM Summarize",
     description:
-      "Summarize web content using LLM. " +
-      "Fetches content from URL, then uses LLM to summarize. " +
+      "Summarize web content using LLM (Perplexity). " +
+      "Fetches content from URL, then uses the LLM to summarize. " +
       "Higher cost (LLM tokens + provider cost).",
     promptSnippet: "Summarize web content using LLM.",
     promptGuidelines: [
       "Use web_llm_summarize to get a summary of web content.",
       "Specify custom prompt for targeted summaries.",
-      "Omit source for auto-selection of content provider.",
       "Higher cost due to LLM token usage.",
     ],
     parameters: Type.Object({
@@ -595,23 +622,10 @@ export function registerWebTools(pi: ExtensionAPI): void {
             "Omit for default comprehensive summary.",
         })
       ),
-      source: Type.Optional(
-        Type.Number({
-          description:
-            "Provider selection for content fetch (1=Perplexity, 2=LLM summarize). " +
-            "Omit for auto-selection.",
-          minimum: 1,
-          maximum: 2,
-        })
-      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       try {
-        const result = await executeSummarize(
-          params.url,
-          params.prompt,
-          params.source
-        );
+        const result = await executeSummarize(params.url, params.prompt);
 
         return {
           content: [
@@ -625,11 +639,7 @@ export function registerWebTools(pi: ExtensionAPI): void {
       } catch (error) {
         const message =
           describeError(error);
-        return {
-          content: [{ type: "text", text: `Summarize failed: ${message}` }],
-          isError: true,
-          details: {},
-        };
+        throw new Error(`Summarize failed: ${message}`);
       }
     },
   });

@@ -14,7 +14,7 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
-import { registerWebTools, WEB_TOOLS } from "./tools.js";
+import { registerWebTools, syncWebTools, webToolAvailability, WEB_TOOLS } from "./tools.js";
 import { registerWebCommands } from "./commands.js";
 import { webCache } from "./cache.js";
 import { loadConfig, loadSmartFetchSettings } from "./settings.js";
@@ -43,8 +43,20 @@ export default function (pi: ExtensionAPI) {
   registerWebTools(pi);
   registerWebCommands(pi);
 
+  // Tools that cannot work (no enabled provider / no API key) must not be
+  // exposed to the agent. Re-checked on every prompt so a settings change in
+  // the hub applies from the next turn; never called at extension load.
+  const syncTools = () => {
+    try {
+      syncWebTools(pi, webToolAvailability());
+    } catch {
+      // Active tools may not be ready — the next prompt retries.
+    }
+  };
+
   // Session lifecycle
   pi.on("session_start", async (_event, ctx) => {
+    syncTools();
     // Clean expired cache entries on startup
     webCache.clearExpired();
 
@@ -111,6 +123,10 @@ export default function (pi: ExtensionAPI) {
         },
       });
     }
+  });
+
+  pi.on("before_agent_start", async (_event, _ctx) => {
+    syncTools();
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
