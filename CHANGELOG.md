@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.23] — 2026-10-04
+
+### Added
+- `core`: the `/unipi:settings` hub explains the selected setting in a fixed 4-row info panel — wrapped description, the highlighted (or stored) enum option's meaning, and a meta line (`default … · range … · scope`). Enum and multiselect options carry their own descriptions, shown while the option list is open; number fields take `unit` (`6000 ms`, `80%`); option descriptions join the search haystack. (UNI-50)
+- guard test (`tests/settings-metadata.test.ts`): every settings field and option must be described (labels ≤ 24 chars, sentences end with a period, units live in `unit`, option fragments don't) across all 23 namespaces.
+
+### Changed
+- `web-api`: web tools that cannot work are no longer exposed to the agent — `web_search`/`web_llm_summarize` drop out of the active tools when no enabled provider can serve them (re-checked every prompt), `multi_web_content_read` always stays (smart-fetch is local). The phantom `llm-summarize` provider is gone and `web_llm_summarize` lost its useless `source` parameter. Tool failures now throw instead of returning ignored `isError` results. (UNI-72)
+- settings: shorter labels (explanations moved into descriptions), and pruned knobs —
+  - `background-tasks`: removed `defaultTimeoutSeconds` (nothing read it).
+  - `compactor`: the nine `sections.*` booleans became one **Summary sections** multiselect (stored booleans still work); `cooldownMs`/`repeatMinGrowthTokens` fixed at their defaults; `debug` moved to `UNIPI_COMPACTOR_DEBUG=1`.
+  - `memory`: `recallAtStart` + `wakeUp` merged into one **Recall at start** enum (`off`/`reminder`/`wake-up`); stored booleans migrate per scope.
+  - `permission`: removed `jevJudge` — auto mode always consults jev.
+  - `footer`: classic-only options (`preset`, `separator`, `zoneSeparator`, `full labels`, `color mode`) moved under an advanced **Classic footer** section; preset list now offers the real presets (`compact`, `full`, `ascii` instead of the dead `dense`/`devops`/`zen`).
+  - `image`: custom endpoint fields moved into per-tool **Custom endpoint…** pages (summary shows `off` or the host).
+  - `web-api`: Smart fetch section is advanced; `os`/`batchConcurrency` removed from the schema (engine defaults remain).
+  - `kanboard`: reorganized into Agent / Housekeeping / **Board server** (advanced, plus open/stop/rotate-token actions); dead `blocking` setting deleted.
+
+### Docs
+- README: dropped the "Why we have it" column from the Proof table.
+
 ## [3.0.0-alpha.22] — 2026-10-03
 
 ### Changed
