@@ -24,6 +24,7 @@ import type {
   ToolRenderResultOptions,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { markHarnessAnnotated, withHarnessToolAnnotations } from "./harness.js";
 import { installReplyBackground, isAssistant } from "./reply-bg.js";
 import { findTranscriptContainer, patchTranscriptSpacing } from "./spacing.js";
 
@@ -562,6 +563,7 @@ export function formatSeconds(ms: number): string {
 }
 
 export function simpleWrapTool(def: AnyTool): AnyTool {
+  def = withHarnessToolAnnotations(def);
   const renderCall = (args: any, theme: Theme, ctx: any) => {
     if (ctx.expanded && def.renderCall) return def.renderCall(args, theme, ctx);
     let rec = byId.get(ctx.toolCallId);
@@ -719,6 +721,7 @@ export function simpleWrapTool(def: AnyTool): AnyTool {
   };
 
   const wrapped = { ...def, renderShell: "self" as const, renderCall, renderResult };
+  markHarnessAnnotated(wrapped);
   simpleWrapped.add(wrapped);
   return wrapped;
 }

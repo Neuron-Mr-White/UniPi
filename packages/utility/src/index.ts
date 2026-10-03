@@ -37,7 +37,7 @@ import { readUtilSettings } from "./settings.js";
 
 export { readUtilSettings } from "./settings.js";
 export { simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "./render/simple.js";
-export { withHarnessToolAnnotations } from "./render/harness.js";
+export { withHarnessToolAnnotations, markHarnessAnnotated, isHarnessAnnotated } from "./render/harness.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 

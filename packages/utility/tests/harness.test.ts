@@ -24,7 +24,7 @@ function harnessSource(): string {
 }
 import { readFileSync } from "node:fs";
 import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
-import { harnessMetadata } from "@pi-unipi/core";
+import { harnessMetadata, harnessToolResultDetails } from "@pi-unipi/core";
 import {
   HarnessPanel,
   installHarnessRenderers,
@@ -414,4 +414,54 @@ it("unannotated builtins: ctx forwarded EXACTLY; value returned verbatim", () =>
   const wrappedReal = withHarnessToolAnnotations(raw as never) as typeof raw;
   assert.equal(typeof wrappedReal.renderResult, typeof originalRender);
   assert.equal(wrappedReal.name, raw.name);
+});
+
+it("simpleWrapTool double-wrap preserves identity and renders annotation exactly once in collapsed and expanded", () => {
+  const def = {
+    name: "bash",
+    label: "Bash",
+    description: "Run commands",
+    parameters: { type: "object", properties: { command: { type: "string" } } } as never,
+    execute: () => ({ content: [{ type: "text", text: "echo hi" }], details: {}, isError: false }),
+    renderShell: "self" as const,
+    renderCall: () => ({ render: () => ["running bash…"] }),
+    renderResult: (result: any, _options: any) => ({
+      render: () => [(result.content?.[0] as { text?: string })?.text ?? "bash output"],
+    }),
+    simpleResult: (result: any, _theme: unknown, _ctx?: unknown) => [
+      (result.content?.[0] as { text?: string })?.text ?? "bash output",
+    ],
+  };
+
+  const wrapped = simpleWrapTool(def as never);
+  const rewrapped = withHarnessToolAnnotations(wrapped as never);
+  assert.equal(rewrapped, wrapped, "double-wrap must return same object identity");
+
+  const details = harnessToolResultDetails(
+    undefined,
+    { source: "Fusion", title: "Delegate shell work", synopsis: "Non-trivial shell work since last handoff", severity: "warning" },
+    "boundary",
+    "text",
+  );
+  const result = {
+    content: [{ type: "text", text: "npm test output" }],
+    details,
+    isError: false,
+  };
+
+  // Collapsed rendering (expanded: false, isPartial: false)
+  const collapsed = rewrapped.renderResult!(result, { expanded: false, isPartial: false } as never, {} as never, { toolCallId: "call-1" } as never);
+  assert.ok(collapsed !== undefined && typeof (collapsed as { render?: unknown }).render === "function");
+  const collapsedRows = (collapsed as { render: (w: number) => string[] }).render(120).map(stripAnsiLocal);
+  const collapsedJoined = collapsedRows.join("\n");
+  const collapsedMatches = collapsedJoined.match(/UniPi · Fusion/g) ?? [];
+  assert.equal(collapsedMatches.length, 1, `collapsed must contain 'UniPi · Fusion' exactly once (got ${collapsedMatches.length})\n${collapsedJoined}`);
+
+  // Expanded rendering (expanded: true, isPartial: false)
+  const expanded = rewrapped.renderResult!(result, { expanded: true, isPartial: false } as never, {} as never, { toolCallId: "call-1" } as never);
+  assert.ok(expanded !== undefined && typeof (expanded as { render?: unknown }).render === "function");
+  const expandedRows = (expanded as { render: (w: number) => string[] }).render(120).map(stripAnsiLocal);
+  const expandedJoined = expandedRows.join("\n");
+  const expandedMatches = expandedJoined.match(/UniPi · Fusion/g) ?? [];
+  assert.equal(expandedMatches.length, 1, `expanded must contain 'UniPi · Fusion' exactly once (got ${expandedMatches.length})\n${expandedJoined}`);
 });

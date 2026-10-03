@@ -606,6 +606,15 @@ export function installHarnessUserRendering(pi: ExtensionAPI): void {
 // ── tool annotations ────────────────────────────────────────────────────────
 const ANNOTATION_WRAPPED = Symbol.for("unipi.harnessToolAnnotations");
 
+export function isHarnessAnnotated(def: object): boolean {
+  return Boolean((def as { [ANNOTATION_WRAPPED]?: boolean })[ANNOTATION_WRAPPED]);
+}
+
+export function markHarnessAnnotated(def: object): void {
+  if (isHarnessAnnotated(def)) return;
+  Object.defineProperty(def, ANNOTATION_WRAPPED, { value: true, enumerable: false, configurable: true });
+}
+
 function annotationsOf(result: unknown): HarnessToolAnnotation[] {
   const details = (result as { details?: { unipiHarnessAnnotations?: unknown } } | null | undefined)?.details;
   const list = details?.unipiHarnessAnnotations;
@@ -646,8 +655,8 @@ function composeWithRows(base: unknown, rows: (width: number) => string[]): Comp
  * EXACTLY as before; defs without a renderResult keep the native default.
  * Idempotent per definition (mutates + marks). */
 export function withHarnessToolAnnotations<T extends object>(def: T & { name?: string }): T {
+  if (isHarnessAnnotated(def)) return def;
   const anyDef = def as { [ANNOTATION_WRAPPED]?: boolean; renderResult?: unknown; simpleResult?: unknown; name?: string };
-  if (anyDef[ANNOTATION_WRAPPED]) return def;
   const toolName = typeof anyDef.name === "string" ? anyDef.name : undefined;
   const headerFor = (result: unknown): string[] => {
     const pal = paletteFor(undefined);
@@ -678,6 +687,6 @@ export function withHarnessToolAnnotations<T extends object>(def: T & { name?: s
       ),
     );
   }) as unknown as (result: never, theme: never, ctx?: never) => unknown;
-  Object.defineProperty(def, ANNOTATION_WRAPPED, { value: true, enumerable: false });
+  markHarnessAnnotated(def);
   return def;
 }
