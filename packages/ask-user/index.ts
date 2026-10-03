@@ -15,7 +15,8 @@ import {
   emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
-import { registerAskUserTools } from "./tools.js";
+import { getAskUserSettings } from "./config.js";
+import { isSubagentChild, registerAskUserTools, syncAskUserTool } from "./tools.js";
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -25,13 +26,27 @@ export default function (pi: ExtensionAPI) {
   // Register tools
   registerAskUserTools(pi);
 
+  const sync = (cwd?: string) => {
+    try {
+      const want = getAskUserSettings(cwd).enabled && !isSubagentChild();
+      syncAskUserTool(pi, want);
+    } catch {
+      // tools may not be ready
+    }
+  };
+
   // Session lifecycle — announce module
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
+    sync(ctx?.cwd);
     emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.ASK_USER,
       version: VERSION,
       commands: [],
       tools: [ASK_USER_TOOLS.ASK],
     });
+  });
+
+  pi.on("before_agent_start", async (_event, ctx) => {
+    sync(ctx?.cwd);
   });
 }

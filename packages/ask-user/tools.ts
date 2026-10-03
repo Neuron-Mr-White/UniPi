@@ -28,9 +28,27 @@ export interface AskDetails {
   questions: AskQuestion[];
   answers?: QuestionAnswer[];
   outcome: "answered" | "clarify" | "cancelled" | "action" | "unavailable";
+  reason?: "disabled" | "no-ui";
   /** Legacy single-question fields, kept for older consumers (compactor, notify). */
   question?: string;
   attachments?: Array<Pick<Attachment, "id" | "kind" | "path" | "name">>;
+}
+
+/**
+ * Adds the ask_user tool to pi's active set when enabled, removes it otherwise,
+ * touching ONLY `ask_user`, never another module's tools. Skips `setActiveTools`
+ * when nothing would change.
+ */
+export function syncAskUserTool(
+  pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">,
+  want: boolean,
+): void {
+  const current = pi.getActiveTools();
+  if (current.includes(ASK_USER_TOOLS.ASK) === want) return;
+  const set = new Set(current);
+  if (want) set.add(ASK_USER_TOOLS.ASK);
+  else set.delete(ASK_USER_TOOLS.ASK);
+  pi.setActiveTools([...set]);
 }
 
 const OPTION = Type.Object({
@@ -51,8 +69,8 @@ const QUESTION = Type.Object({
   other: Type.Optional(Type.Boolean({ description: "Offer \"Other (type your own)\" (default true)" })),
 });
 
-function unavailable(questions: AskQuestion[], text: string) {
-  return { content: [{ type: "text" as const, text }], details: { questions, outcome: "unavailable" } as AskDetails };
+function unavailable(questions: AskQuestion[], text: string, reason?: "disabled" | "no-ui") {
+  return { content: [{ type: "text" as const, text }], details: { questions, outcome: "unavailable", reason } as AskDetails };
 }
 
 function imageParts(attachments: readonly Attachment[]) {
@@ -120,8 +138,8 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
           "ask_user is not available inside a subagent. You cannot talk to the user directly — only your lead can. Do not guess an answer: state the question, the options you considered and your recommendation in your report.",
         );
       }
-      if (!settings.enabled) return unavailable(questions, "ask_user is turned off in settings — ask in your reply instead.");
-      if (!ctx.hasUI) return unavailable(questions, "No interactive UI (non-interactive mode) — ask in your reply instead.");
+      if (!settings.enabled) return unavailable(questions, "ask_user is turned off in settings — ask in your reply instead.", "disabled");
+      if (!ctx.hasUI) return unavailable(questions, "No interactive UI (non-interactive mode) — ask in your reply instead.", "no-ui");
       if (questions.length === 0) throw new Error("ask_user needs at least one question with a question text.");
 
       if (settings.notifyOnAsk) {
@@ -186,7 +204,15 @@ export function askRows(details: AskDetails | undefined, theme: Theme): string[]
   if (details === undefined || questions.length === 0) return [];
   if (details.outcome === "cancelled") return [`   ${theme.fg("error", "Canceled by the user")}`];
   if (details.outcome === "clarify") return [`   ${theme.fg("warning", "Not ready to answer — wants to clarify first")}`];
-  if (details.outcome === "unavailable") return [`   ${theme.fg("dim", "not shown (no interactive UI or turned off)")}`];
+  if (details.outcome === "unavailable") {
+    const text =
+      details.reason === "disabled"
+        ? "not shown — ask_user is turned off in settings"
+        : details.reason === "no-ui"
+          ? "not shown — no interactive UI"
+          : "not shown (no interactive UI or turned off)";
+    return [`   ${theme.fg("dim", text)}`];
+  }
   if (details.outcome === "action") return [`   ${theme.fg("muted", "picked an action")}`];
   return questions.map((q, i) => `   ${theme.fg("muted", `${q.header}: ${answerSummary(q, details.answers?.[i])}`)}`);
 }
@@ -228,7 +254,15 @@ export function renderAskResult(details: AskDetails | undefined, theme: Theme): 
   const rows: string[] = [];
   if (details!.outcome === "cancelled") rows.push(t.fg("error", "Canceled by the user"));
   else if (details!.outcome === "clarify") rows.push(t.fg("warning", "Not ready to answer — wants to clarify first"));
-  else if (details!.outcome === "unavailable") rows.push(t.fg("dim", "not shown (no interactive UI or turned off)"));
+  else if (details!.outcome === "unavailable") {
+    const text =
+      details!.reason === "disabled"
+        ? "not shown — ask_user is turned off in settings"
+        : details!.reason === "no-ui"
+          ? "not shown — no interactive UI"
+          : "not shown (no interactive UI or turned off)";
+    rows.push(t.fg("dim", text));
+  }
   else {
     questions.forEach((q, i) => {
       const a = details!.answers?.[i];
