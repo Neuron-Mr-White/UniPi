@@ -1,87 +1,104 @@
-# @pi-unipi/compactor
+# Compactor
 
-Compaction for Pi that keeps work going. When the context fills up, the compactor replaces older messages with a summary. The full history stays in the session file, so nothing is lost and anything can be recalled.
+Compactor makes the context smaller when it fills up, so long work can continue.
+The full history stays in the session file, and the agent can search it.
 
-## Methods
+`@pi-unipi/compactor` · part of [UniPi](../../README.md)
 
-| Method | What it does | Cost |
-|---|---|---|
-| **Lossless** (default) | Builds a structured summary without a model call, in milliseconds. | Free |
-| **Model summary** | Pi's own model-written summary, with the active-work block added on top. | One model call |
+## What it does
 
-### The lossless summary
+- Replaces old messages with a summary when the context fills up.
+- The default method, lossless, makes the summary with 0 model calls.
+- The model summary method uses Pi's model-written summary. It adds the active
+  work block at the top. It costs one model call.
+- Makes each lossless summary again from the full history. It does not merge
+  old summaries, so the summary does not grow over time.
+- Removes passwords, API keys and bearer tokens from the summary.
+  `session_recall` can still find them.
+- Shows a compaction card in the chat and a compaction count in the footer.
 
-It is rebuilt from the **full** session history on every compaction, never merged onto the previous summary, so it cannot drift or grow over time. Sections, in the order a resuming model needs them:
+## Quick start
 
-1. **Active Work**: the goal, ralph loop or kanboard task in flight, supplied by those modules from their own state.
-2. **Your Requests**: the user's own messages and answers to agent questions (`ask_user`: "question → answer"). Text that extensions send with the user role (loop prompts, nudges, notifications) is excluded.
-3. **Latest State**: the most recent step and the last full progress report.
-4. **Decisions & Constraints**: the user's instructions ("keep the orange theme"), corrections ("I did not ask for this"), and answers to agent questions. Half the room goes to the most recent ones, the rest to standing rules from anywhere in the session ("always…", "never…", "by default…"). Bug reports, pasted text and code blocks are left out.
-5. **Files**: modified, created and read files, as relative paths.
-6. **Project Knowledge**: what the agent learned that no message states: project notes it wrote or read (SKILL.md, AGENTS.md, DESIGN.md, docs), build/test/deploy commands it ran more than once, and the hosts it worked against. Switched with the Files section.
-7. **Commits**: hash and subject.
-8. **Open Errors**: recent failures that were not followed by a success.
-9. **Recent Transcript**: a ranked slice of recent work.
-
-Each section has its own share of a hard budget (auto: 1.5k–4k tokens, scaling with session size). Credentials (typed passwords, API keys, bearer tokens) are redacted before anything is clipped; `session_recall` still has them. A closing line points the model to `session_recall`.
-
-## In the TUI
-
-- **Compaction card:** one line under Pi's own `[compaction]` block, e.g. `▌ Compacted 7.9k → 2.2k tokens · lossless · at 3%`. ctrl+o expands it: method, trigger, what was kept verbatim, summary sections. It is a custom entry: shown, never sent to the model.
-- **Footer strip** (under the input): `5 compactions · 47k→15k · just now`, hidden until the first compaction. With the glance frame off, the `compactions` segment shows the same (`cmp 5× 47k→15k · 1m`).
-- **Info screen** (`/unipi:info` → Compactor): method and trigger settings, compactions by method, tokens before → after, the last compaction.
-
-## When it compacts
-
-- **Pi's context limit** (default): Pi decides when, using its own compaction settings (`compaction.reserveTokens`, per-model overrides). The compactor decides what the summary contains. Pi continues the run after compacting.
-- **At a percentage**: compacts once context use reaches the set percentage. This happens at a turn boundary, so running goal, ralph and kanboard loops are not interrupted.
-
-## Settings
-
-`/unipi:settings → Compactor`
-
-| Setting | Default | |
-|---|---|---|
-| Method | lossless | lossless · model summary |
-| Pi's /compact | same as Method | What Pi's built-in `/compact` does |
-| When | Pi's context limit | Or: at a percentage |
-| Percentage | 80 | Used when When = at a percentage |
-| Notifications | on | The compaction card after automatic compactions (commands always show it); failures still notify |
-
-**Advanced compaction** (collapsed): smart keep tail, summary budget, per-section toggles, percentage cooldown and repeat growth, extra instructions for model summaries, debug output.
-
-Configs from before the rework are translated automatically: `overrideDefaultCompaction: false` becomes Method = model summary, and `autoCompaction.enabled` becomes When = at a percentage.
+1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
+   package alone: `pi install npm:@pi-unipi/compactor`.
+2. Work as usual. Compaction starts at Pi's context limit.
+3. Type `/unipi:compact-stats` to see the tokens that compaction saved.
 
 ## Commands
 
-| Command | |
+| Command | What it does |
 |---|---|
-| `/unipi:compact-vcc [keep:N]` | Lossless compaction now; `keep:N` keeps the last N user turns |
-| `/unipi:compact-by-llm [focus]` | Model-summary compaction now; optional text focuses the summary |
-| `/unipi:session-recall <query>` | Search the full session history (`scope:all`, `page:N`) |
-| `/unipi:compact-stats` | This session's compactions and savings |
-| `/unipi:compact-doctor` | Check settings, Pi's compaction switch, leftovers |
-| `/unipi:compact-help` | Command summary |
+| `/unipi:compact-vcc [keep:N]` | Runs lossless compaction now. `keep:N` keeps the last N user turns. |
+| `/unipi:compact-by-llm [focus]` | Runs model summary compaction now. The text sets the focus of the summary. |
+| `/unipi:session-recall <query>` | Searches the full session history. Add `scope:all` or `page:N`. |
+| `/unipi:compact-stats` | Shows the compactions and the saved tokens of this session. |
+| `/unipi:compact-doctor` | Checks the settings, Pi's compaction switch and old files. |
+| `/unipi:compact-help` | Shows a list of compactor commands. |
 
-Removed: `/unipi:compact` and `/unipi:lossless-compact` (use `/unipi:compact-vcc`), `/unipi:compact-recall` (use `/unipi:session-recall`), `/unipi:compact-jev` and the jev method (a saved `method: "jev"` behaves as lossless).
+## Agent tools
 
-## Tools
+| Tool | What it does |
+|---|---|
+| `session_recall` | Searches the session with keywords or a regex. It also finds messages that compaction removed. `expand` gives full entries by index. |
+| `context_budget` | Gives the percent of the context in use and the tokens left. |
 
-- `session_recall`: keyword/regex search over the session branch, including compacted-away messages. `expand` returns full entries by index (the `#N` refs in summaries); `mode: "touched"` lists files.
-- `context_budget`: how full the context is.
+## Lossless summary
+
+The summary has these sections. Each section gets a part of a token budget. The
+auto budget is 1.5k to 4k tokens. It grows with the session size.
+
+1. Active Work: the goal, ralph loop or kanboard task that runs now.
+2. Your Requests: your messages and your `ask_user` answers.
+3. Latest State: the last step and the last progress report.
+4. Decisions & Constraints: your instructions, corrections and rules.
+5. Files: changed, new and read files, with relative paths.
+6. Lessons: notes that the agent wrote, such as memory notes and diagnoses.
+7. Project Knowledge: project notes, repeated build and test commands, hosts.
+8. Commits: hash and subject.
+9. Open Errors: recent failures with no later success.
+10. Recent Transcript: a ranked part of the recent work.
+
+## Settings
+
+Namespace `compactor`. Open it with `/unipi:settings`.
+
+| Key | Default | What it does |
+|---|---|---|
+| `method` | `vcc` | `vcc` is lossless. `llm` is the model summary. |
+| `piCompact` | `follow` | Sets what Pi's `/compact` does. `follow` uses `method`. |
+| `trigger` | `pi` | `pi` uses Pi's context limit. `percent` compacts at `thresholdPercent`. |
+| `thresholdPercent` | `80` | Context percent for the `percent` trigger. Range 30 to 95. |
+| `notify` | `true` | Shows the card after an automatic compaction. Failures always show. |
+| `smartKeepTail` | `true` | Keeps more recent turns when the kept tail is very small. |
+| `summaryBudgetTokens` | `0` | Lossless summary size. `0` is auto. |
+| `sections.<name>` | `true` | Turns one summary section on or off. |
+| `cooldownMs` | `60000` | Minimum time between two `percent` compactions. |
+| `repeatMinGrowthTokens` | `4000` | New tokens needed before the next `percent` compaction. |
+| `llmInstructions` | empty | More instructions for the model summary. |
+| `debug` | `false` | Writes diagnostics to `/tmp/compactor-debug.json`. |
+
+The `percent` trigger compacts at a turn boundary. Goal, ralph and kanboard
+loops continue without a stop.
 
 ## For other modules
 
-Register an active-work provider so summaries lead with your state:
+Register an active work provider. The summary then starts with your state.
 
 ```ts
 import { registerCompactionContext } from "@pi-unipi/core";
-registerCompactionContext("my-module", () => (running ? "Task X is in progress — …" : null));
+registerCompactionContext("my-module", () => (running ? "Task X is in progress" : null));
 ```
 
-Compactions applied at a turn boundary (percentage trigger) do not fire Pi's `session_compact`; listen to `UNIPI_EVENTS.COMPACTOR_COMPACTED` to react to every compaction.
+A turn-boundary compaction does not fire Pi's `session_compact` event. Listen to
+`UNIPI_EVENTS.COMPACTOR_COMPACTED` to get each compaction.
 
-## Removed in 3.0
+## How it works
 
-- **Session continuity**: the SQLite event log and the hidden snapshot restored after compaction. It logged every session under one shared ID, so snapshots mixed projects and grew to ~60k tokens. The summary now derives files, errors and commits from the session itself. `/unipi:compact-doctor` reports the old `~/.unipi/db/compactor` directory, which can be deleted.
-- **Sandbox tools** (`sandbox`, `sandbox_file`, `sandbox_batch`), the `compact` tool (it never compacted), `compactor_stats` / `compactor_doctor` tools (use the commands), presets, and the inert strategy modes.
+Read [Compaction](../../docs/architecture/compaction.md) and
+[Prefix cache](../../docs/architecture/prefix-cache.md).
+
+## See also
+
+- [Commands reference](../../docs/reference/commands.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Memory](../memory/README.md)

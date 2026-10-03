@@ -1,76 +1,79 @@
-# @pi-unipi/background-tasks
+# Background Tasks
 
-Background tasks for UniPi — durable background shell jobs plus one read-only
-delegated background agent, with a footer dock the user can manage while the
-agent keeps working. Originally adopted from
-[pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks);
-the Fusion council, attested Pi runs, and Anthropic attribution surfaces were
-removed in 2.17.0 so the module does exactly one thing.
+Background Tasks runs long shell commands in the background, so the agent can
+continue to work. When a task finishes, the agent gets a notice.
 
-## Master toggle
+`@pi-unipi/background-tasks` · part of [UniPi](../../README.md)
 
-One config key disables the entire module — no tools, no commands, no hooks, no UI:
+## What it does
 
-```json
-// ~/.unipi/config/background-tasks.json (global)
-// <workspace>/.unipi/config/background-tasks.json (override; workspace wins)
-{
-  "enabled": true
-}
-```
+- Starts a named shell command and returns at once with a task ID and an output file.
+- When the task stops, sends a `<background-task-notification>` message. By
+  default, this message starts a new agent turn.
+- Gives the agent bounded log reads, so large output does not fill the context.
+- Stops a task when its output is more than 20 MiB.
+- Shows a start card, a completion card and a task dock.
+- Shows a wait line above the editor while the agent waits for a task.
 
-Open `/unipi:settings` (Background Tasks group) for the master toggle,
-defaults, output caps, delegate defaults).
+## Quick start
 
-## Surfaces
+1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
+   package alone: `pi install npm:@pi-unipi/background-tasks`.
+2. Ask the agent to run a long test suite in the background. The agent calls `bg_run`.
+3. Push `Shift+Down` to open the task dock.
 
-### Tools
+## Commands
 
-| Tool | Purpose |
-| --- | --- |
-| `bg_run` | Start a named long-running shell command; terminal notification wakes a follow-up turn by default |
-| `bg_status` / `bg_logs` / `bg_kill` | Point-in-time inspection, bounded log reads, stop — never polling primitives |
-| `bg_delegate` + `bg_result` | One read-only child Pi agent seeded with a frozen projection of this conversation; hash-verified answer retrieval |
+| Command or key | What it does |
+|---|---|
+| `/unipi:bg [--agent] [--name "Name"] <command>` | Starts a background task. It sends a notice, but does not start a turn. |
+| `/unipi:bg-tasks` | Opens the task manager. |
+| `Shift+Down` | Opens the task dock. |
+| `Ctrl+Alt+C` | Clears the notices of finished tasks. |
 
-### Commands
+## Agent tools
 
-`/unipi:bg` (start a shell task), `/unipi:bg-tasks` (open the dock),
-`/unipi:settings` (Background Tasks group).
+| Tool | What it does |
+|---|---|
+| `bg_run` | Starts a named shell command. Set `isAgent` to `true` only for a command that starts an LLM agent. |
+| `bg_status` | Shows the state of one task or all tasks at one time. |
+| `bg_logs` | Reads bounded output from a task. |
+| `bg_kill` | Stops a running task by ID. |
 
-Shortcuts: `Shift↓` opens the task manager dock; `Ctrl+Alt+C` clears finished notices.
+Do not call `bg_status` or `bg_logs` in a loop to wait. The notification
+message is the final state of the task.
 
-## What the user sees
+| `notifyOnCompletion` | `triggerOnCompletion` | Result |
+|---|---|---|
+| `true` | `true` (`bg_run` default) | A notice and a new agent turn. |
+| `true` | `false` (`/unipi:bg` default) | A notice only. |
+| `false` | any | No notice. Check the task yourself. |
 
-- **Launch card** — `bg_run` results render as a tinted card (`● bg started <name> · wakes agent on completion`) so the start of a task is visible in the transcript.
-- **Pending-wake line** — while the agent is idle but a task that will wake it is still running, a spinner line sits above the editor: `⠋ waiting on 1 bg task · <name> 12s — agent resumes automatically when done`. Without this the UI looks finished and users assume the turn is over.
-- **Completion card** — the terminal notification renders as a tinted card (`✓ bg done <name> · exit 0 · 25s · agent woken`) with the last three output lines. Failed / stopped tasks use the error tint.
-- **Dock** (`Shift↓`) — rows show `⏰ wakes agent` for tasks that will resume the agent, and the last output line for running shell tasks.
+## Settings
 
-## Storage layout (ours — never `.pi/`)
+Namespace `background-tasks`. Open it with `/unipi:settings`.
 
-- Runtime artifacts (task output/metadata): `$TMPDIR/unipi-bg-tasks/<session>-<pid>-<nonce>/`
-- Durable delegate artifacts: `<workspace>/.unipi/delegate/<session>-<pid>/<task-id>/`
-- Config: `~/.unipi/config/background-tasks.json` + workspace override
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Master switch. When it is `false`, the package registers no tools, commands or UI. |
+| `notifyOnCompletion` | `true` | Sends a notice when a task stops. |
+| `triggerOnCompletion` | `true` | Starts an agent turn when a task stops. |
+| `defaultTimeoutSeconds` | `0` | Stops a task after this time. `0` means no limit. |
+| `maxFinishedTasks` | `30` | Number of finished tasks to keep. |
+| `maxOutputBytes` | `20971520` | Stops and fails a task above this output size. Minimum 1024. |
 
-## Environment
+| Variable | What it does |
+|---|---|
+| `UNIPI_BG_TMP_DIR` | Folder for task output. The default is `TMPDIR` or `/tmp`. |
+| `UNIPI_BG_MAX_OUTPUT_BYTES` | Default output limit. The `maxOutputBytes` setting wins. |
+| `UNIPI_BG_SHELL`, `UNIPI_BG_SHELL_PATH` | On Windows, sets the shell: `cmd` or `bash`. |
+| `UNIPI_BG_DISABLE_PI_TELEMETRY` | Set to `1` to stop the telemetry wrap of agent commands. |
 
-`UNIPI_BG_*` prefix (replaces the reference `PI_BG_*`):
-`UNIPI_BG_TMP_DIR`, `UNIPI_BG_MAX_OUTPUT_BYTES`, `UNIPI_BG_SHELL`,
-`UNIPI_BG_SHELL_PATH`, `UNIPI_BG_DISABLE_PI_TELEMETRY`, `UNIPI_BG_DELEGATE_*`.
+Task output goes to `<tmp>/unipi-bg-tasks/<session>-<pid>-<nonce>/`.
 
-## Completion delivery
+## For other packages
 
-| `notifyOnCompletion` | `triggerOnCompletion` | Mode |
-| --- | --- | --- |
-| true (default) | true (bg_run default) | Durable terminal notification + automatic follow-up turn |
-| true | false (`/unipi:bg` default) | Notification only |
-| false | — | Manual monitoring |
-
-Treat `<background-task-notification>` as durable terminal truth — do not poll.
-
-## Shared registry (for sibling extensions)
-
-Other packages can read the live task registry synchronously — no events, no polling:
+Read the live task list without events:
 
 ```ts
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
@@ -79,19 +82,18 @@ const tasks = getSharedTaskRegistry()?.allTasks() ?? [];
 const running = tasks.filter((t) => t.status === "running").length;
 ```
 
-The registry is published on `globalThis` under a `Symbol.for` key at extension
-init and `session_start`, and cleared on `session_shutdown` (counts are
-per-session). Returns `undefined` when the module is disabled — callers must
-treat that as "no data", e.g. the footer's glance process line does.
+The function returns `undefined` when the package is off. Treat that as "no data".
 
-## Differences from the reference
+## How it works
 
-- Commands live in the `/unipi:*` namespace; env prefix is `UNIPI_BG_*`.
-- Runtime artifacts under the OS temp root (per-registry nonce) and durable
-  delegate artifacts under workspace `.unipi/` — never `.pi/`.
-- The reference's `update-check` footer surface is dropped (unipi's updater
-  module owns updates).
-- Removed: attested Pi runs, the five-slot Fusion council tools, and the
-  Anthropic attribution provider override.
+Read [Turn arbiter](../../docs/architecture/turn-arbiter.md) and
+[Harness messages](../../docs/architecture/harness-messages.md).
 
-ISC-licensed reference: Copyright Ismail <ismailsalikhodjaev@gmail.com>.
+## See also
+
+- [Subagents](../subagents/README.md)
+- [Tools reference](../../docs/reference/tools.md)
+- [Shortcuts reference](../../docs/reference/shortcuts.md)
+
+Based on [pi-background-tasks](https://github.com/ismailsaleekh/pi-background-tasks)
+(ISC license, Copyright Ismail).

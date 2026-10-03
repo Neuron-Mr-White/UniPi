@@ -1,165 +1,98 @@
-# @pi-unipi/fusion
+# Fusion
 
-Local Fusion for UniPi: a Devin-inspired lead + persistent sidekick pair, a
-curated model preset, and a keyboard-first picker (`/unipi:model`). It uses
-pi's extension and RPC APIs natively.
+Fusion pairs a strong lead model with a lower-cost sidekick model, so the lead
+plans and the sidekick does the routine work.
 
-## `/unipi:model` — the picker
+`@pi-unipi/fusion` · part of [UniPi](../../README.md)
 
-```
-╭ Model ───────────────────────────────────────────────────────────────╮
-│/ Type to search                                                       │
-│───────────────────────────────────────────────────────────────────────│
-│❭ Fusion                              ← ▰▰▰▱▱ → Medium  Lead Fable… ▾ │
-│· GLM-5.3 Flash ✱                        ▰▰▰▰▰   Max                │
-│· openrouter · deepseek/deepseek-v4.1-flash ▰▰▱▱▱   High              │
-│  ↓ more below                                                        │
-│                                                                       │
-│  ━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━               │
-│  Input      Cached input   Output     Sidekick input                 │
-│  $10 / 1M   $0.25 / 1M     $50 / 1M   $0.2 / 1M                     │
-│  Sidekick cached input   Sidekick output                             │
-│  $0.02 / 1M              $1.2 / 1M                                   │
-│  Model key  openrouter/deepseek/deepseek-v4.1-flash                  │
-│                                                                       │
-│  ✱ New  ✱ Promotion  ✱ Beta · Pairs frontier intelligence with cost-efficient execution │
-│↑↓ select · tab lead · ←→ lead effort · space → side · ↵ confirm · esc │
-╰───────────────────────────────────────────────────────────────────────╯
-```
+## What it does
 
-- **Row order**: the active selection pinned first, then the Fusion row (when a
-  pair is configured), then recent (≤5, MRU), then the preset models, then
-  **every other available model** — the catalogue is never hidden; the preset
-  only controls ordering. When a single model is selected its row lights up
-  with `✓`; when Fusion is selected the selection lives on the Fusion row and
-  plain rows stay unmarked.
-- **`←`/`→`** steps the highlighted row's effort (pi thinking level:
-  off → minimal → low → medium → high → xhigh → max) and it is **remembered per
-  model**. The five-cell bar fills with `▰` and uses `▱` for remaining levels.
-  The Fusion row keeps its own lead/sidekick efforts, so adjusting Fusion never
-  rewrites a model's standalone level.
-- **`tab`** on the Fusion row cycles focus: effort → lead → sidekick
-  (`shift+tab` reverses). Focused columns open an inline dropdown over the
-  preset lists; `↵` applies, `esc` collapses.
-- **`space`** on the Fusion row toggles which side `←`/`→` adjusts: lead
-  effort (default) ↔ sidekick effort. The row shows both levels (`Lead … ▸High`,
-  `Sidekick … Low` — `▸` marks the side `←`/`→` moves) and the hint line names
-  the target. A changed sidekick effort reaches a running sidekick over rpc
-  (`set_thinking_level`) and lands in the spawn args for the next process.
-- **Price panel**: the highlighted model's blended price is marked on a
-  logarithmic red→orange→yellow→green→cyan→blue→violet slider. Fusion shows
-  `Input`, `Cached input`, `Output`, `Sidekick input`, `Sidekick cached input`,
-  and `Sidekick output`, and the exact registry key of the highlighted row is
-  spelled out (`Model key  openrouter/deepseek/deepseek-v4.1-flash`; both the
-  lead and sidekick keys on the Fusion row).
-- **Name column & provider**: the name column sizes itself to the widest row
-  label (minimum 24 columns) up to the terminal width, and the effort control
-  stays right-anchored — so wide terminals show full names. A row only gets a
-  dim `provider · ` prefix when its display name is ambiguous: it contains a
-  `/` (`deepseek/deepseek-v4.1-flash` reads like a key) or the same friendly
-  name is offered by more than one provider. Unique names stay clean, and the
-  prefix is never truncated.
-- **Confirm** applies: `pi.setModel`, `pi.setThinkingLevel(effort)`, updates
-  MRU + persisted active selection, and shows `Fusion · Lead ◆ Sidekick` in
-  the footer. Switching the model through pi's own `/model`/Ctrl+P drops
-  Fusion mode.
-- Because pi intercepts `/model` inside its editor before extensions run, the
-  command cannot be replaced — instead typing `/model` pins `/unipi:model`
-  as the **first autocomplete suggestion**.
-- Fast Mode is not implemented because pi has no equivalent capability.
+- Gives `/unipi:model`, a keyboard model picker. It shows all available models,
+  their prices and a thinking level for each model.
+- Lets you select one model, or a Fusion pair of a lead and a sidekick.
+- Runs one persistent sidekick for each lead session. The sidekick is a child Pi
+  process. Its context and shells stay between handoffs.
+- Tells the lead to give work to the sidekick. In each turn, the first direct
+  `edit` or `write` of the lead gets a reminder. Each 4 non-trivial `bash`
+  calls of the lead also get a reminder.
+- Shows the estimated savings of the sidekick in `/unipi:fusion-stats`.
 
-Hand-edited preset badge metadata renders `✱` as New, Promotion, or Beta:
+## Quick start
 
-```json
-{"badges": {"provider/model": "new"}}
-```
+1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
+   package alone: `pi install npm:@pi-unipi/fusion`.
+2. Open `/unipi:settings`. Select "Edit fusion presets…". Mark the lead and
+   sidekick models.
+3. Type `/unipi:model`. Select the Fusion row. Push `Enter`.
+4. Give the agent a task. The lead calls the `sidekick` tool.
 
-## `/unipi:settings → Fusion → "Edit fusion presets…"` — curation
+## Commands
 
-Two-column checklist over every available model:
+| Command | What it does |
+|---|---|
+| `/unipi:model` | Opens the model picker. When you type `/model`, the picker is the first suggestion. |
+| `/unipi:fusion-stats` | Shows sidekick tokens, costs, savings, handoffs and runtime state. |
 
-```
-╭ Fusion preset ───────────────────────────────────────────────────────╮
-│Fusion preset · 2 lead · 2 sidekick · writes to global                │
-│Search: (type to filter)                                               │
-│    L   S    model                                                     │
-│ › [x] [ ]  provider/lead                                              │
-│   [ ] [x]  provider/sidekick                                          │
-│↑↓ select · ←→ column · space toggle sidekick · Enter save · esc cancel │
-╰───────────────────────────────────────────────────────────────────────╯
-```
+## Picker keys
 
-- `←`/`→` (or `tab`) switches the L/S column, `space` toggles membership,
-  `Enter` saves & closes, `esc` cancels, and typing filters. Selected models
-  float to the top so the curated set is always visible.
-- Defaults are not edited here: confirming a Fusion pair in `/unipi:model`
-  records it as the preset default.
+| Key | What it does |
+|---|---|
+| Up, Down | Moves the selection. |
+| Typing | Filters the models. |
+| Left, Right | Changes the thinking level of the selected row. Fusion keeps the level for each model. |
+| `Tab`, `Shift+Tab` | On the Fusion row, moves the focus: effort, lead, sidekick. |
+| `Space` | On the Fusion row, selects lead effort or sidekick effort. |
+| `Enter` | Applies the selection. |
+| `Alt+Enter` | Saves the selected row as the startup model. |
+| `Esc` | Closes the picker. |
 
-Any model key in the registry is allowed — there is no OAuth/subscription gate.
+If you change the model with Pi's own `/model` or `Ctrl+P`, Fusion mode stops.
 
-## Persistent sidekick
+## Agent tools
 
-Confirming a Fusion pair selects the lead for the session. The `sidekick` tool
-runs one lazy-spawned child pi per lead session; its session file is persisted
-at `~/.unipi/state/fusion/sidekick/<lead-session-id>.jsonl`. Context and shells
-persist across handoffs. The sidekick's context compacts independently of the
-lead's (it is its own pi session). `sidekick({message, block:true})` waits by
-default; `block:false` returns immediately and delivers a
-`<subagent_completion_notification>`. Calling it while busy steers the same
-handoff. A handoff whose lead turn has ended — started with `block:false`,
-abandoned by a user message, or timed out — still wakes the lead with that same
-completion notification when its report lands, exactly once. Background tasks
-keep that handoff open through their completion
-notification and any follow-up turn, so the report is not released at an
-intermediate checkpoint. If a prompt arrives while the child is processing,
-Fusion retries it once with pi's `followUp` streaming behavior. Sidekick work
-renders as ordinary tool activity — handoff ids, `agent_id`, and
-`read_subagent` protocol text never reach the terminal. Sidekick steps draw in
-the active render style — mcode rows in simple, `◆` + guttered output in
-advanced, pi's own finished-call card (its exported `ToolExecutionComponent` +
-per-tool defs) in regular — each line marked as sidekick-origin by a `▏` rail
-on the custom-message background. Consecutive steps join into one rail block
-with no blank separator; in simple mode a run of tool steps draws the same
-`├…├…└` tree the lead's tools get, and prose steps stay `●`-anchored inside
-the block. While the sidekick works and the lead's turn is over, an animated
-`sidekick working` line above the editor shows the live tool count and elapsed
-time until the report lands.
-`read_subagent({agent_id?, block?, timeout?})` reads or waits for a handoff.
+| Tool | What it does |
+|---|---|
+| `sidekick` | Gives a message to the sidekick. `block: true` (default) waits for the report. `block: false` returns now. The report comes later as a completion notice. |
+| `read_subagent` | Reads or waits for a sidekick handoff. |
 
-The child receives `UNIPI_FUSION_CHILD=1` and `UNIPI_SUBAGENT_CHILD=1`; the
-Fusion extension guard prevents child processes from registering Fusion tools,
-commands, or lead policy.
+A call to `sidekick` while the sidekick works sends the message as an
+interrupt. It does not start a second sidekick.
 
-The lead gets the persistent delegation policy through `before_agent_start`,
-and the first direct `edit`/`write` receives a one-time delegation nudge.
-`/unipi:fusion-stats` reports sidekick tokens, costs at sidekick and lead
-rates, estimated savings, handoff count, and runtime state. The footer shows
-savings above `$0.005`.
+## Settings
 
-## Storage
+Namespace `fusion`. Open it with `/unipi:settings`.
+
+| Key | Default | What it does |
+|---|---|---|
+| `startup.model` | empty | Model that Pi opens with. Empty uses Pi's default. Global only. |
+| `startup.thinking` | not set | Thinking level that Pi opens with. Global only. |
+| `default.lead` | empty | Lead model when you confirm the Fusion row with no change. |
+| `default.sidekick` | empty | Sidekick model for the same case. |
+
+The preset file holds the model lists, levels, recent models and badges:
+
+- Global: `~/.unipi/config/fusion/preset.json`
+- Project: `<project>/.unipi/fusion-preset.json`. Its lists replace the global
+  lists. Its objects merge with the global objects.
+
+Add a `prices` object to the preset file when a provider gives no prices:
 
 ```json
-// ~/.unipi/config/fusion/preset.json (global)
-// <cwd>/.unipi/fusion-preset.json    (project override; lists replace, objects merge)
-{
-  "schema_version": 1,
-  "lead": ["provider/lead"],
-  "sidekick": ["provider/sidekick"],
-  "default": {"lead": "provider/lead", "sidekick": "provider/sidekick"},
-  "effort": {"provider/sidekick": "high"},
-  "badges": {"provider/sidekick": "new"},
-  "prices": {"provider/sidekick": {"input": 0.2, "cachedInput": 0.02, "output": 1.2}},
-  "recent": ["provider/lead"],
-  "active": {"kind": "fusion", "lead": "provider/lead", "sidekick": "provider/sidekick"}
-}
+{"prices": {"provider/model": {"input": 0.2, "cachedInput": 0.02, "output": 1.2}}}
 ```
 
-`prices` is an optional manual override for models whose provider reports no pricing.
+## How it works
 
-## Status
+The sidekick session file is
+`~/.unipi/workspace/<id>/sessions/<sid>/fusion/sidekick/<lead-session-id>.jsonl`.
+The sidekick compacts its own context. The child gets `UNIPI_FUSION_CHILD=1` and
+`UNIPI_SUBAGENT_CHILD=1`, so it does not load Fusion tools or commands.
 
-- [x] Preset store, project layering, curation UI, autocomplete boost
-- [x] Picker effort bars, price slider, price panel, badges, legend
-- [x] Persistent sidekick runtime, blocking/non-blocking tools, steering,
-      progress, completion card, session isolation
-- [x] Lead policy, first-edit nudge, savings estimate, footer and stats command
+Read [Delegation](../../docs/architecture/delegation.md) for the lead and
+sidekick flow.
+
+## See also
+
+- [Subagents](../subagents/README.md)
+- [Prefix cache](../../docs/architecture/prefix-cache.md)
+- [Commands reference](../../docs/reference/commands.md)

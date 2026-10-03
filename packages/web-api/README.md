@@ -1,166 +1,118 @@
-# @pi-unipi/web-api
+# Web API
 
-Web search, page reading, and content summarization for the agent. The read path uses a local smart-fetch engine by default — free, no API key, browser-grade TLS fingerprinting that bypasses Cloudflare.
+Give the agent tools to search the web and read pages, with free providers first.
 
-[wigolo](https://github.com/KnockOutEZ/wigolo) is the default search and read provider when installed — a local-first engine with multi-engine search, rank fusion and on-device reranking, at $0/query with no API key. Paid providers (SerpAPI, Tavily, Firecrawl, Perplexity) are available as fallbacks, and DuckDuckGo and Jina work out of the box.
+`@pi-unipi/web-api` · part of [UniPi](../../README.md)
 
-### wigolo (optional, recommended)
+## What it does
 
-wigolo is ranked first for both search and read but is **not bundled** — it is an
-AGPL-licensed project while UniPi is MIT, so it is an optional dependency loaded
-at runtime only if you installed it. Set it up once:
+- Adds three agent tools: `web_search`, `multi_web_content_read` and `web_llm_summarize`.
+- Reads pages with a local smart-fetch engine by default. This engine needs no API key and costs $0.
+- Sorts providers by rank. Free providers have the lowest ranks.
+- Tries the next provider when one provider fails, if you do not name a provider.
+- Keeps read results in a file cache for 1 hour.
+- Uses [wigolo](https://github.com/KnockOutEZ/wigolo) for search and read when you install it. wigolo is a local search engine. It needs no API key.
+
+## Quick start
+
+UniPi installs this package:
+
+```bash
+pi install npm:@pi-unipi/unipi
+```
+
+To install this package alone:
+
+```bash
+pi install npm:@pi-unipi/web-api
+```
+
+The tools work with no setup. DuckDuckGo, Jina and the smart-fetch engine need no key.
+
+To add wigolo (optional, about 1.5 GB of models):
 
 ```bash
 npm install -g wigolo
-npx wigolo init      # downloads the browser engine + on-device models (~1.5 GB)
-npx wigolo doctor    # verify
+npx wigolo init
+npx wigolo doctor
 ```
 
-Until then, web calls fall through automatically to the next-ranked provider, so
-nothing breaks if you skip it. Disable it entirely in `/unipi:settings (Web API)`.
+UniPi does not bundle wigolo, because wigolo uses the AGPL license. UniPi loads it at run time only when you install it. If wigolo is not ready, the tools use the next provider.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:settings (Web API)` | Configure providers, API keys, and smart-fetch defaults |
-| `/unipi:settings` | Clear web cache, provider keys, fetch defaults (Web API group) |
+This package has no slash commands. Open `/unipi:settings` and select the **Web API** group to change providers, keys and fetch defaults. The group also has a **Clear web cache…** action.
 
-## Special Triggers
+## Agent tools
 
-Workflow skills detect web-api and inject web tools for research-type commands:
+| Tool | What it does |
+|---|---|
+| `web_search` | Searches the web. Returns a list of titles, URLs and snippets. |
+| `multi_web_content_read` | Reads one URL or a list of URLs. Returns markdown with title, author, site and word count. |
+| `web_llm_summarize` | Summarizes one URL. Takes an optional `prompt`. Needs Perplexity with an API key. |
 
-| Skill | What Changes |
-|-------|--------------|
-| `research` | Full web search, read, summarize |
-| `gather-context` | External documentation lookup |
-| `consultant` | Industry best practices research |
-| `subagents` (explore) | Web research in parallel |
+Each tool takes an optional `source` number. Omit `source` to let the tool select the provider. If you give `source`, the tool uses only that provider and reports its error.
 
-The footer and info-screen don't display web-api data — it's a tool package, not a state package.
-
-## Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| `web_search` | Search the web via provider |
-| `multi_web_content_read` | Extract content from URLs (smart-fetch or provider) |
-| `web_llm_summarize` | Summarize web content via LLM |
-
-### web_search
-
-```
-# Auto-select cheapest provider
+```text
 web_search(query: "TypeScript generics")
-
-# Use specific provider
-web_search(query: "latest AI research", source: 5)  # Tavily
-```
-
-### multi_web_content_read
-
-```
-# Single URL (smart-fetch engine by default)
-multi_web_content_read(url: "https://example.com/article")
-
-# Batch URLs
+web_search(query: "latest AI research", source: 5)
 multi_web_content_read(url: ["https://example.com/a", "https://example.com/b"])
-
-# Provider fallback (wigolo)
-multi_web_content_read(url: "https://example.com/article", source: 1)
-
-# Custom options
 multi_web_content_read(url: "https://example.com/article", format: "json", maxChars: 10000)
+web_llm_summarize(url: "https://example.com/research", prompt: "List the key findings")
 ```
 
-### web_llm_summarize
-
-```
-web_llm_summarize(url: "https://example.com/long-article")
-web_llm_summarize(url: "https://example.com/research", prompt: "Extract key findings")
-```
-
-## Smart-Fetch Engine
-
-Local content extraction pipeline — no API key required:
-
-| Component | Purpose |
-|-----------|---------|
-| **wreq-js** | Browser-grade TLS fingerprinting (bypasses Cloudflare) |
-| **defuddle** | Intelligent content extraction from HTML |
-| **linkedom** | Server-side DOM parsing |
-
-Outputs clean markdown with metadata (title, author, site, word count). Supports batch concurrent fetching with progress.
+`multi_web_content_read` also takes `browser`, `os`, `format` (`markdown`, `html`, `text`, `json`), `maxChars`, `timeoutMs`, `removeImages`, `includeReplies`, `proxy`, `batchConcurrency` and `verbose`.
 
 ## Providers
 
-### Search
+| `source` | `web_search` | `multi_web_content_read` | `web_llm_summarize` | Key |
+|---|---|---|---|---|
+| 0 | — | smart-fetch engine (default) | — | No |
+| 1 | wigolo | wigolo | Perplexity | No (Perplexity: yes) |
+| 2 | DuckDuckGo | Jina Reader | — | No |
+| 3 | Jina Search | Firecrawl | — | Jina: optional. Firecrawl: yes |
+| 4 | SerpAPI | Perplexity | — | Yes |
+| 5 | Tavily | — | — | Yes |
+| 6 | Perplexity | — | — | Yes |
 
-| Provider | Rank | Cost | API Key |
-|----------|------|------|---------|
-| wigolo (local) | 1 | Free | No |
-| DuckDuckGo | 2 | Free | No |
-| Jina AI Search | 3 | Freemium | Optional |
-| SerpAPI | 4 | Paid | Required |
-| Tavily | 5 | Paid | Required |
-| Perplexity | 6 | Paid | Required |
+SerpAPI, Tavily, Firecrawl and Perplexity are off by default. To use one, enable it and set its API key in `/unipi:settings` → **Web API** → **Providers**.
 
-### Read
+## Settings
 
-| Provider | Rank | Cost | API Key |
-|----------|------|------|---------|
-| Smart-Fetch Engine | 0 | Free | No |
-| wigolo (local) | 1 | Free | No |
-| Jina AI Reader | 2 | Freemium | Optional |
-| Firecrawl | 3 | Paid | Required |
-| Perplexity | 4 | Paid | Required |
+Open `/unipi:settings` → **Web API**. The settings file is `~/.unipi/config/web-api/config.json`. A project file at `.unipi/config/web-api/config.json` overrides it.
 
-### Summarize
+| Key | Default | What it does |
+|---|---|---|
+| `providers.<id>.enabled` | `true` for wigolo, DuckDuckGo, Jina. `false` for paid providers | Turns a provider on or off. |
+| `providers.<id>.apiKey` | unset | API key for the provider. |
+| `smartFetch.browser` | `chrome_145` | TLS fingerprint profile of the smart-fetch engine. |
+| `smartFetch.os` | `windows` | OS fingerprint. |
+| `smartFetch.maxChars` | `50000` | Maximum characters in one result. |
+| `smartFetch.timeoutMs` | `15000` | Request timeout in milliseconds. |
+| `smartFetch.batchConcurrency` | `8` | Number of URLs that one batch read fetches at the same time. |
+| `smartFetch.removeImages` | `false` | Removes image references from the result. |
+| `smartFetch.includeReplies` | `extractors` | Extracts replies and comments where an extractor supports them. |
 
-| Provider | Rank | Cost | API Key |
-|----------|------|------|---------|
-| Perplexity | 1 | Paid | Required |
-| LLM Summarize | 2 | LLM tokens | No |
+## How it works
 
-## Configurables
+The smart-fetch engine uses three libraries:
 
-### API Keys
+- `wreq-js` sends requests with a browser TLS fingerprint.
+- `linkedom` parses the HTML.
+- `defuddle` extracts the main content.
 
-Configure via `/unipi:settings (Web API)` (interactive TUI) or environment variables:
+The tool caches smart-fetch results in `~/.unipi/config/web-api/cache/`. The cache key includes the URL, browser, format and `maxChars`. UniPi removes expired entries at session start and at session end.
 
-```bash
-export SERPAPI_KEY="your-key"
-export TAVILY_API_KEY="your-key"
-export FIRECRAWL_API_KEY="your-key"
-export PERPLEXITY_API_KEY="your-key"
-export JINA_API_KEY="your-key"
-```
-
-Providers auto-enable when you add a valid API key.
-
-### Smart-Fetch Defaults
-
-Configure browser profile, OS, max chars, timeout via `/unipi:settings (Web API) → "Smart Fetch Defaults"`.
-
-### Settings Files
-
-- **Auth:** `~/.unipi/config/web-api/auth.json` (API keys, gitignored)
-- **Config:** `~/.unipi/config/web-api/config.json` (provider settings, smart-fetch defaults)
-
-### Cache
-
-- Default TTL: 1 hour
-- Cache location: `~/.unipi/config/web-api/cache/`
-- Automatic for all read operations
+The Info Screen shows a **Web API** group with the count of enabled providers, the wigolo state, the smart-fetch state and cache size.
 
 ## Troubleshooting
 
-**No provider available:** Run `/unipi:settings (Web API)` and add API keys or enable a free provider.
+- **No provider configured.** Open `/unipi:settings` → **Web API**. Enable a free provider.
+- **A page does not load with smart-fetch.** Set a different `browser` value, or use a provider with `source: 2`.
+- **`web_llm_summarize` fails.** Enable Perplexity and set its API key.
 
-**Smart-fetch fails:** Try a different browser profile (`browser: "chrome_133"`) or a provider fallback (`source: 1`).
+## See also
 
-**Rate limiting:** Add an API key for higher limits, use smart-fetch (no limits), or try a different provider.
-
-## License
-
-MIT
+- [Settings reference](../../docs/reference/settings.md)
+- [Tools reference](../../docs/reference/tools.md)
+- [Info Screen](../info-screen/README.md)

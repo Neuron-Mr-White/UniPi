@@ -1,156 +1,121 @@
-# @pi-unipi/notify
+# Notify
 
-Push notifications when things happen. Workflow finishes, Ralph loop completes, MCP server errors — notify sends alerts to native OS, Gotify, Telegram, or ntfy.
+Send a notification to your desktop or phone when the agent finishes work or needs an answer.
 
-Configure once, get alerts everywhere. Per-event platform routing lets you send critical errors to Telegram and routine completions to Gotify. Native desktop notifications can also be suppressed while the Pi window is focused.
+`@pi-unipi/notify` · part of [UniPi](../../README.md)
+
+## What it does
+
+- Sends notifications to four platforms: native OS, [Gotify](https://gotify.net), Telegram and [ntfy](https://ntfy.sh).
+- Sends a notification for each enabled event, for example when a workflow ends or the agent asks a question.
+- Lets you route each event to its own platforms.
+- Gives the agent a `notify_user` tool.
+- Sends a question again every 2 minutes, 3 times at most, until you answer it.
+- Can write a one-line summary of the last agent message with a model of your choice ("recap").
+
+## Quick start
+
+UniPi installs this package:
+
+```bash
+pi install npm:@pi-unipi/unipi
+```
+
+To install this package alone:
+
+```bash
+pi install npm:@pi-unipi/notify
+```
+
+Native OS notifications work with no setup. To add a phone platform:
+
+1. Open `/unipi:settings`.
+2. Select the **Notify** group.
+3. Open the page for `gotify`, `telegram` or `ntfy`.
+4. Set **Enabled** to on.
+5. Enter the server URL, token, topic or chat ID.
+6. Select **Send test notification** to make sure that it works.
+
+For Telegram, get a bot token from @BotFather. Then enter the token and your chat ID.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:settings (Notify)` | Platforms setup wizards, test notification, recap model, event matrix |
-| `/unipi:notify-event` | Toggle a single event without the TUI (`<event> <on\|off>`) — reports the new value; run `/reload` to re-register listeners |
+| Command | What it does |
+|---|---|
+| `/unipi:notify-event <event> <on\|off>` | Turns one event on or off without the TUI. Run `/reload` after it to apply the change. |
 
-## Special Triggers
+All other controls are in `/unipi:settings` → **Notify**.
 
-Notify subscribes to Pi lifecycle events and routes notifications based on your config:
+## Agent tools
 
-| Event | Default | Description |
-|-------|---------|-------------|
-| `workflow_end` | On | Workflow command completes |
-| `ralph_loop_end` | On | Ralph loop completes |
-| `mcp_server_error` | On | MCP server error |
-| `agent_end` | Off | Low-level agent run ends (may fire again on retries) |
-| `agent_settled` | Off | Agent fully settles after retries, compaction, and queued continuations |
-| `memory_consolidated` | Off | Memory auto-saved |
-| `session_shutdown` | Off | Session ends |
-| `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
-| `permission_request` | Off | A permission prompt is about to be shown (requires [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system)) |
+| Tool | What it does |
+|---|---|
+| `notify_user` | Sends a notification. Takes `message`, and optional `title`, `priority` (`low`, `normal`, `high`) and `platforms`. |
 
-`ask_user_prompt` and `permission_request` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see [Re-notify unanswered prompts](#re-notify-unanswered-prompts)).
+`priority` sets Gotify to 2, 5 or 8 and ntfy to 2, 3 or 5. Native and Telegram ignore it.
 
-Notify registers with the info-screen dashboard, showing enabled platforms and last notification time. The footer subscribes to `NOTIFICATION_SENT` events to display notification stats.
-
-## Agent Tool
-
-| Tool | Description |
-|------|-------------|
-| `notify_user` | Send cross-platform notification |
-
-```
-notify_user({
-  title: "Build Failed",
-  message: "TypeScript compilation failed with 12 errors.",
-  priority: "high"
-})
+```text
+notify_user({ title: "Build failed", message: "tsc found 12 errors.", priority: "high" })
 ```
 
-An explicit semantic priority overrides configured urgency for that dispatch on platforms that support it: `low`/`normal`/`high` map to Gotify `2`/`5`/`8` and ntfy `2`/`3`/`5`. Native and Telegram have no priority input and ignore it. When omitted, Gotify and ntfy retain their configured numeric priorities.
+## Events
 
-## Platforms
+| Event | Default | Sent when |
+|---|---|---|
+| `workflow_end` | on | A workflow command ends. |
+| `ralph_loop_end` | on | A ralph loop ends. |
+| `mcp_server_error` | on | An MCP server reports an error. |
+| `agent_end` | off | One agent run ends. It can occur again after a retry. |
+| `agent_settled` | off | The agent stops after all retries, compaction and queued work. |
+| `memory_consolidated` | off | Memory saves facts. |
+| `session_shutdown` | off | The session ends. |
+| `ask_user_prompt` | off | The agent asks you a question and waits. |
+| `permission_request` | off | A permission prompt opens. This needs [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system). |
 
-### Native OS
+`ask_user_prompt` and `permission_request` are blocking events. The agent stops until you answer.
 
-Desktop notifications via [node-notifier](https://github.com/mikaelbr/node-notifier):
-- **Windows:** SnoreToast (no admin required)
-- **macOS:** terminal-notifier
-- **Linux:** notify-send / libnotify
+## Settings
 
-Zero configuration — works out of the box. Set `native.suppressWhenFocused` to `true` to skip native notifications when the active/focused window is already Pi.
+Open `/unipi:settings` → **Notify**. The file is `~/.unipi/config/notify/config.json`. A project file at `.unipi/config/notify/config.json` overrides it.
 
-### Silence after input
+| Key | Default | What it does |
+|---|---|---|
+| `events.<event>.enabled` | refer to [Events](#events) | Turns the event on or off. |
+| `events.<event>.platforms` | `[]` | Platforms for the event. An empty list means all enabled platforms. |
+| `native.enabled` | `true` | Turns native OS notifications on or off. |
+| `native.suppressWhenFocused` | `false` | Stops native notifications when the Pi window has focus. Works on Windows only. |
+| `gotify.serverUrl`, `gotify.appToken`, `gotify.priority` | priority `5` | Gotify server, token and priority (0–10). |
+| `telegram.botToken`, `telegram.chatId` | unset | Telegram bot and chat. |
+| `ntfy.serverUrl`, `ntfy.topic`, `ntfy.token`, `ntfy.priority` | `https://ntfy.sh`, priority `3` | ntfy server, topic, token and priority (1–5). |
+| `silenceAfterInput.enabled` | `false` | Stops notifications for a time after you press a key. |
+| `silenceAfterInput.windowMs` | `10000` | Length of that quiet time, in milliseconds. |
+| `silenceAfterInput.platforms` | `["native"]` | Platforms to keep quiet. |
+| `renotify.enabled` | `true` | Sends a blocking event again until you answer. |
+| `renotify.intervalMs` | `120000` | Time between two reminders, in milliseconds. |
+| `renotify.maxRepeats` | `3` | Number of reminders after the first notification. `0` sends no reminders. |
+| `recap.enabled` | `false` | Summarizes the last agent message for `agent_end` and `agent_settled`. |
+| `recap.model` | `openrouter/openai/gpt-oss-20b` | Model for the summary. |
+| `recap.disableThinking` | `false` | Asks a llama.cpp or vLLM server to skip reasoning tokens. |
 
-After a terminal keypress, listed platforms stay quiet for `windowMs`. Default: **off**, native only, 10s. Edit in `/unipi:settings (Notify)` → Platforms (Quiet after activity + channel chips), or in `~/.unipi/config/notify/config.json`:
+## How it works
 
-```json
-{
-  "silenceAfterInput": {
-    "enabled": true,
-    "windowMs": 10000,
-    "platforms": ["native"]
-  }
-}
-```
+A reminder has the text `(still waiting)` in its title and `high` priority. Reminders stop when one of these occurs:
 
-Add `gotify`, `telegram`, or `ntfy` to `platforms` to silence those channels too. Empty `platforms` silences all enabled platforms (same as `events.*.platforms`). Blocking events (`ask_user_prompt`, `permission_request`) are never silenced — see below.
+- You press a key.
+- herdr reports that the agent is not blocked.
+- The agent starts a new turn.
+- The session ends.
 
-### Re-notify unanswered prompts
+Only one reminder runs at a time. Silence after input does not apply to blocking events.
 
-When a blocking prompt (`ask_user_prompt`, `permission_request`) is not answered, notify re-sends the same notification every `intervalMs`, with the title suffixed `(still waiting)` and priority `high`, up to `maxRepeats` times. Default: **on**, every 2 minutes, 3 repeats. This is the one notify case where missing the push leaves the agent parked indefinitely.
+Recap sends the last message (2,000 characters at most) to the recap model with a limit of 100 tokens. If the model gives no summary, notify uses the first 100 characters of the message. A thinking model can use all 100 tokens to reason. If your server supports chat template options, set `recap.disableThinking` to `true`. Keep it `false` for a strict OpenAI-compatible server, because that server rejects unknown fields.
 
-```json
-{
-  "renotify": {
-    "enabled": true,
-    "intervalMs": 120000,
-    "maxRepeats": 3
-  }
-}
-```
+Native notifications use [node-notifier](https://github.com/mikaelbr/node-notifier): SnoreToast on Windows, terminal-notifier on macOS and `notify-send` on Linux.
 
-`maxRepeats: 0` sends the initial notification only. Reminders stop as soon as any of these fires: the user presses a key, herdr reports `herdr:blocked` `active: false`, the agent starts a new turn (`agent_start`), or the session ends. Only one prompt can be outstanding at a time — arming a new one replaces the previous reminder. Reminders bypass `silenceAfterInput` because blocking events are exempt from it.
+Each sent notification emits a `NOTIFICATION_SENT` event on the [event bus](../../docs/architecture/event-bus.md).
 
-Edit in `/unipi:settings (Notify)` → Re-notify, or in `~/.unipi/config/notify/config.json`.
+## See also
 
-### Gotify
-
-Self-hosted push notification server:
-
-```json
-{
-  "gotify": {
-    "enabled": true,
-    "serverUrl": "https://your-gotify-server.com",
-    "appToken": "your-app-token",
-    "priority": 5
-  }
-}
-```
-
-### Telegram
-
-Bot API notifications. Run `/unipi:settings` → Notify → telegram → "Setup & test…":
-1. Create a bot via @BotFather
-2. Paste the bot token
-3. Auto-detect your chat ID
-
-### ntfy
-
-HTTP-based pub-sub notifications via [ntfy.sh](https://ntfy.sh) or self-hosted:
-
-```json
-{
-  "ntfy": {
-    "enabled": true,
-    "serverUrl": "https://ntfy.sh",
-    "topic": "your-topic-name",
-    "priority": 3
-  }
-}
-```
-
-## Configurables
-
-Settings stored at `~/.unipi/config/notify/config.json`. Edit via `/unipi:settings (Notify)` or manual JSON editing.
-
-Per-event platform routing lets you control where each event type goes. The settings overlay shows all events with platform toggles.
-
-### Recap (thinking models)
-
-Recap summarizes the last assistant message into a one-line push notification (100-token budget). Thinking models served by llama.cpp or vLLM can spend that entire budget on reasoning and return nothing, falling back to a plain 100-character truncation. If your recap endpoint supports chat-template kwargs, set `recap.disableThinking` to skip reasoning tokens:
-
-```json
-{
-  "recap": {
-    "enabled": true,
-    "model": "localhost/gemma-4-e4b",
-    "disableThinking": true
-  }
-}
-```
-
-This sends `chat_template_kwargs: { enable_thinking: false, preserve_thinking: false }` with the request. Keep it `false` (the default) for strict OpenAI-compatible endpoints — they reject unknown params. Anthropic models are unaffected (thinking is opt-in there).
-
-## License
-
-MIT
+- [Ask User](../ask-user/README.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Event bus](../../docs/architecture/event-bus.md)

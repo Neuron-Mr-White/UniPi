@@ -1,77 +1,75 @@
-# @pi-unipi/updater
+# Updater
 
-Checks npm for new versions on session start, shows a changelog diff, and lets you update with one keypress. Also provides TUI browsers for package READMEs and the changelog.
+Updater tells you when a new UniPi release is on npm and installs it with one key.
 
-The update overlay appears automatically when a newer version is found. Press `Y` to update, `n` to skip. Skipped versions are cached — you only get re-prompted when an even newer version appears.
+`@pi-unipi/updater` · part of [UniPi](../../README.md)
+
+## What it does
+
+- Checks the npm registry for `@pi-unipi/unipi` at session start.
+- Shows an update overlay with the changelog entries between your version and the new version.
+- Runs `pi install npm:@pi-unipi/unipi` when you press `Y`.
+- Remembers a version that you skip. It asks again only for a newer version.
+- Opens package READMEs and the changelog in TUI overlays.
+- Adds an Updater group to the info screen: installed version, latest version, status and last check.
+
+## Quick start
+
+Updater ships in `@pi-unipi/unipi`. It checks the version of `@pi-unipi/unipi`, so it is useful only with the full suite.
+
+1. Start a pi session. Updater checks npm in the background.
+2. If a newer version is on npm, the update overlay opens.
+3. Press `Y` to install. Press `n` to skip this version.
+4. Restart pi to load the new version.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:readme [package]` | Browse package README files in TUI overlay |
-| `/unipi:changelog` | Browse CHANGELOG.md with version list and detail view |
-| `/unipi:settings` | Configure check interval and auto-update mode (Updater group) |
+| Command | What it does |
+|---|---|
+| `/unipi:readme [package]` | Opens the README browser. A package name, for example `utility`, opens that README. |
+| `/unipi:changelog` | Opens the changelog browser with a version list and a detail view. |
 
-### TUI Controls
+## Keys
 
-| Key | Action |
-|-----|--------|
-| `j/k` or Up/Down | Navigate |
-| `Enter` | Select/open |
-| `q/Esc` | Back/close |
-| `g/G` | Jump to top/bottom |
-| `Space` | Cycle options (settings) |
-| `h/l` or Left/Right | Cycle options (settings) |
+Update overlay:
 
-## Special Triggers
+| Key | What it does |
+|---|---|
+| `Y` or `y` | Installs the new version. |
+| `n`, `q` or `Esc` | Skips this version. |
+| `j` / `k` or arrows | Scrolls the changelog. |
+| `g` / `G` | Goes to the top or the bottom. |
 
-On session start, updater checks the npm registry for `@pi-unipi/unipi`. If a newer version exists and wasn't previously skipped, it shows the update overlay with changelog diff. This runs once per session, respecting the check interval config.
+README and changelog browsers:
 
-Updater registers with the info-screen dashboard, showing installed version, latest version, update status, and last check time.
+| Key | What it does |
+|---|---|
+| `j` / `k` or arrows | Moves in the list, or scrolls the detail view. |
+| `Enter` | Opens the selected item. |
+| `g` / `G` | Goes to the top or the bottom. |
+| `q` or `Esc` | Goes back to the list, or closes the list. |
 
-## How Updates Work
+## Settings
 
-1. Session start triggers npm registry check
-2. Compare latest version with installed version
-3. If newer and not skipped, show update overlay
-4. User views changelog diff, presses `Y` to update or `n` to skip
-5. Update runs `pi install npm:@pi-unipi/unipi`
-6. Skipped version cached — re-prompted only for newer versions
+Open `/unipi:settings` → Updater. The namespace is `updater`.
 
-## Configurables
+| Key | Default | What it does |
+|---|---|---|
+| `checkIntervalMs` | `3600000` (1 hour) | Minimum time between two npm checks. Options: 30 min, 1 hour, 6 hours, 1 day. |
+| `autoUpdate` | `notify` | `disabled`: no check. `notify`: the overlay asks you. `auto`: the overlay counts down 5 seconds, then installs. Press `n` to cancel and skip this version. |
 
-Config stored at `~/.unipi/config/updater/config.json`:
+## How it works
 
-```json
-{
-  "checkIntervalMs": 3600000,
-  "autoUpdate": "notify"
-}
-```
+1. At session start, Updater reads `~/.unipi/cache/updater/last-check.json`.
+2. If the last check is older than `checkIntervalMs`, Updater gets the `latest` dist-tag from npm. The request stops after 10 seconds.
+3. Updater compares the versions. It never offers a lower version.
+4. If the new version is not skipped, the overlay opens. Updater gets the changelog for the new version from GitHub. If that fails, it uses the local `CHANGELOG.md`.
+5. The install command stops after 60 seconds. If it fails, the overlay shows the error. Press any key to close it.
 
-| Option | Values | Default |
-|--------|--------|---------|
-| `checkIntervalMs` | 1800000 (30min), 3600000 (1h), 21600000 (6h), 86400000 (1d) | 3600000 (1h) |
-| `autoUpdate` | disabled, notify, auto | notify |
+A failed npm check is silent. Updater then uses the cached result.
 
-### Auto-update Modes
+## See also
 
-- **disabled** — No update checks on session start
-- **notify** — Show overlay with changelog, user chooses Y/n
-- **auto** — Show countdown, auto-install after 5 seconds unless cancelled
-
-### Cache
-
-Last-check cache at `~/.unipi/cache/updater/last-check.json`:
-
-```json
-{
-  "lastCheck": "2026-05-01T12:00:00.000Z",
-  "latestVersion": "0.1.16",
-  "skippedVersion": "0.1.16"
-}
-```
-
-## License
-
-MIT
+- [Commands reference](../../docs/reference/commands.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Info Screen](../info-screen/README.md)

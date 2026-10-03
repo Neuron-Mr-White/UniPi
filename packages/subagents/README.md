@@ -1,41 +1,87 @@
-# @pi-unipi/subagents
+# Subagents
 
-Devin-model subagents for pi: the lead delegates self-contained work to independent child
-agents (`pi --mode rpc`) that run alongside it.
+Subagents let the agent give a self-contained task to a child agent, so the
+main context stays small.
 
-- `run_subagent` — foreground (wait + report) or background (`<subagent_completion_notification>`
-  followUp, exactly once). Approval prompts reach the user only while a foreground waiter is
-  attached; background subagents are denied with a reason ("running in the background… don't
-  retry"). `resume:<agent_id>` continues an earlier agent in its session file.
-- `read_subagent` — shared tool (core registry): reads subagents AND Fusion sidekick handoffs.
-- Profiles: `subagent_explore` (read-only allowlist + cheap default model),
-  `subagent_general` (all tools minus nesting, parent's model), and custom markdown agents from
-  `~/.unipi/config/agents/` + `<workspace>/.unipi/config/agents/` (project wins).
-- Nesting: children spawn only below `UNIPI_SUBAGENT_MAX_DEPTH` (default 1 = no nesting).
+`@pi-unipi/subagents` · part of [UniPi](../../README.md)
 
-## Screen
+## What it does
 
-| Where | What |
+- Starts each child agent as a separate Pi process (`pi --mode rpc`).
+- Runs a child in the foreground, or in the background. A background child
+  sends one completion notice when it finishes.
+- Can resume an earlier child in its own session.
+- Gives two built-in profiles and lets you add custom agents as Markdown files.
+- Shows a live card for each child, with the model, tool calls, tokens and cost.
+- Runs 8 children or fewer at the same time by default.
+
+| Profile | What it does |
 |---|---|
-| Chat | `● Explore subagent <title>` card — live tail + `└ General · ds/deepseek-flash · 32s · 20 tool calls · 10k in · 0.2k out · $0.11 · ctrl+b background · esc cancel` while it runs, then `└ Completed · 32s · 20 tool calls · 10k in · 0.2k out · $0.11` (ctrl+o shows the report). The stats line ticks live — profile, model, tool-call count, duration, tokens and cost (cost is omitted when the model's pricing is unknown). Background finishes: `● Subagent "<title>" completed └ …`. |
-| Below the input | `N subagents (k running) · ↓ select` plus one stat line per running agent, ticking each second — stays for the session, survives restart + resume. |
-| Dock (↓ from an empty input, or `/unipi:subagents`) | `↑↓` navigate · `↵` view the live transcript · `f` foreground · `x` cancel · `esc` close. |
-| Transcript view | task, tool calls with output, text; `↑↓`/PgUp/PgDn scroll, `g`/`G` top/end, `o` full tool output. |
-| Foreground | Spinner reads `Subagent running · Ctrl+B to run in background`. **Ctrl+B** sends every foreground subagent to the background; **Esc** cancels a foreground run. `f` on a background agent shows its live steps above the input and routes its approvals to you. |
+| `subagent_explore` | Read-only research. It uses the default subagent model. |
+| `subagent_general` | General tasks, also code changes. It uses your model. |
 
-States: running `◐`, completed `✓`, failed `✗`, cancelled `⊘` (its own state — "cancelled by you"
-when you pressed Esc or `x`).
+## Quick start
 
-## Config
+1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
+   package alone: `pi install npm:@pi-unipi/subagents`.
+2. Ask the agent to explore a part of the code with a subagent.
+3. Push `Ctrl+B` to send a foreground child to the background.
+4. Push the down arrow in an empty input to open the subagent panel.
 
-`/unipi:settings → Subagents`: enabled, default subagent model (picker; empty = Fusion sidekick →
-your model), default thinking, max running at once, **Manage agents…**. Settings and agent files
-are re-read every turn — no restart.
+## Commands
 
-`/unipi:agents` — list profiles; create a custom agent step by step (name → this project / all
-projects → description → model → tools → prompt); edit, copy between global/project, or delete.
-Files use the Devin/Claude format (`name`, `description`, `model`, `allowed-tools`|`tools`,
-`thinking`, `max-nesting`; body = system prompt).
+| Command or key | What it does |
+|---|---|
+| `/unipi:subagents` | Opens the subagent panel. |
+| `/unipi:agents` | Lists profiles. Creates, edits, copies or deletes custom agents. |
+| `Ctrl+B` | Sends all foreground children to the background. |
+| `Esc` | Cancels a foreground child. |
 
-State: `~/.unipi/workspace/<id>/state/subagents/sessions/<lead-session-id>/` (`index.json` + one
-`<agent_id>.jsonl` child session per agent).
+In the panel, use the arrow keys to move. Push `Enter` to see the live
+transcript. Push `f` to bring a child to the foreground. Push `x` to cancel it.
+
+## Agent tools
+
+| Tool | What it does |
+|---|---|
+| `run_subagent` | Starts a child with a `title`, `task` and `profile`. Use `is_background` to run without a wait. Use `resume` with an agent ID to continue a child. |
+| `read_subagent` | Reads the report of a subagent or a Fusion sidekick. |
+
+A background child cannot show approval prompts. A denied call returns a reason
+to the child. A foreground child sends its prompts to you.
+
+## Settings
+
+Namespace `subagents`. Open it with `/unipi:settings`. The package reads the
+settings and agent files again each turn, so you do not need to restart Pi.
+
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Gives `run_subagent` and `read_subagent` to the agent. |
+| `defaultModel` | empty | Model for `subagent_explore` and custom agents with no model. Empty uses the Fusion sidekick, then your model. |
+| `defaultThinking` | `inherit` | Thinking level for the same agents. |
+| `maxConcurrent` | `8` | Maximum children that run at the same time. Range 1 to 16. |
+
+Set `UNIPI_SUBAGENT_MAX_DEPTH` to let children start children. The default is
+`1`, which means no nesting.
+
+## Custom agents
+
+Put a Markdown file in `~/.unipi/config/agents/` or in
+`<project>/.unipi/config/agents/`. The project file wins. The body is the system
+prompt. The front matter can have these keys: `name`, `description`, `model`,
+`tools` or `allowed-tools`, `thinking` and `max-nesting`.
+
+The package keeps child sessions in
+`~/.unipi/workspace/<id>/state/subagents/sessions/<lead-session-id>/`.
+
+## How it works
+
+Read [Delegation](../../docs/architecture/delegation.md) and
+[Harness messages](../../docs/architecture/harness-messages.md).
+
+## See also
+
+- [Fusion](../fusion/README.md)
+- [Background tasks](../background-tasks/README.md)
+- [Tools reference](../../docs/reference/tools.md)

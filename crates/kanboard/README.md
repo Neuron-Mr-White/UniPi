@@ -1,223 +1,137 @@
-# @pi-unipi/kanboard — core crate (v3)
+# Kanboard crate
 
-The Rust half of kanboard v3: **one writer implementation** for every board
-change. The CLI works standalone; K2 adds `serve` (daemon + UI + SSE) on top of
-the same library.
+The Rust binary `unipi-kanboard` holds the Kanboard task files, the transition rules, the daemon and the web UI. It is the only program that writes board files.
 
-Spec: [`docs/specs/2026-09-24-kanboard-v3-design.md`](../../docs/specs/2026-09-24-kanboard-v3-design.md).
+Crate `kanboard` · binary `unipi-kanboard` · used by [`@pi-unipi/kanboard`](../../packages/kanboard/README.md)
+
+## Layout
 
 ```
 crates/kanboard/
-  build.rs            fails the build if web/dist/index.html is missing
-  web/                the SolidJS UI (built separately with npm; web/dist is embedded)
-  src/lib.rs          library (the daemon reuses this)
-  src/main.rs         the `unipi-kanboard` binary (clap → library)
-  src/format.rs       task file format: strict parser (line numbers) + renderer
-  src/model.rs        statuses, priorities, actors, run blocks, staleness
-  src/transitions.rs  the transition table (actors, required comments, finals)
-  src/deps.rs         dependency DAG: cycles, readiness under a chain gate
-  src/order.rs        sparse lane ordering + rebalancing
-  src/store.rs        ~/.unipi/kanboard layout, project registry, flock, atomic writes
-  src/board.rs        read/write every task file in a project
-  src/commands.rs     the operations behind every subcommand
-  src/run.rs          CLI dispatcher (JSON + human rendering)
-  src/daemon.rs       daemon.json, the single-instance lock, `status`, `stop`
-  src/serve/mod.rs    `serve`: axum router, listener, file watcher, idle shutdown, signals
-  src/serve/api.rs    JSON API (every handler calls the library the CLI uses)
-  src/serve/events.rs SSE `/events?project=<slug>`
-  src/serve/assets.rs embedded web/dist (rust-embed) + SPA fallback
+  build.rs              stops the build if web/dist/index.html is missing
+  web/                  SolidJS UI (Vite). web/dist is embedded into the binary
+  src/main.rs           the binary (clap → library)
+  src/lib.rs            the library that the CLI and the daemon share
+  src/cli.rs            clap definitions        src/run.rs    CLI dispatcher (JSON and text)
+  src/model.rs          statuses, priorities, actors, run blocks, staleness
+  src/format.rs         task file parser (with line numbers) and renderer
+  src/transitions.rs    transition table       src/deps.rs   dependency graph, readiness
+  src/order.rs          sparse lane order      src/board.rs  read and write the task files
+  src/store.rs          home layout, project registry, locks, atomic writes
+  src/attachments.rs    files attached to tasks
+  src/commands.rs       the operation behind each subcommand
+  src/daemon.rs         daemon.json, single-instance lock, status, stop
+  src/serve/            daemon: router (mod.rs), api.rs, events.rs (SSE), auth.rs,
+                        assets.rs, settings.rs, undo.rs
 ```
 
-## Daemon (`serve`)
+## Build and test
 
 ```bash
-unipi-kanboard serve [--port N] [--idle-min N]   # 0 = OS-assigned port; idle default 10
-unipi-kanboard status                            # daemon.json + liveness
-unipi-kanboard stop [--timeout SECS]             # SIGTERM, waits ≤3s by default
+npm --prefix crates/kanboard/web ci
+npm --prefix crates/kanboard/web run build      # writes web/dist
+cargo build --release --manifest-path crates/kanboard/Cargo.toml
+cargo test --manifest-path crates/kanboard/Cargo.toml
+cargo clippy --all-targets --manifest-path crates/kanboard/Cargo.toml -- -D warnings
 ```
 
-- **Single instance:** `flock(daemon.lock)`. A second `serve` prints the running
-  `daemon.json` as JSON and exits `0` (the pi extension relies on that).
-- Binds `127.0.0.1` (`--port 0` → OS picks), writes `daemon.json`
-  `{pid, port, version, startedAt}` atomically, and removes it on exit —
-  including SIGTERM/SIGINT and idle shutdown.
-- **Idle shutdown** after `--idle-min` (default 10) with no SSE clients and no
-  HTTP requests in that window (`--idle-secs` is a hidden test knob).
-- **File watcher** (`notify`) on `projects/`: content changes bump that project's
-  revision and every `/events?project=<slug>` client gets `data: <rev>`. Access
-  events are ignored (a read must not wake the UI) and bursts are coalesced, so
-  one CLI write is exactly one revision.
-- A pid whose process is gone (or a **zombie**) counts as dead, so `stop` and the
-  stale-run check never hang on a corpse.
+The pi extension finds the binary in this order:
 
-## JSON API
+1. `UNIPI_KANBOARD_BIN`.
+2. The npm package `@pi-unipi/kanboard-<platform>-<arch>`.
+3. `crates/kanboard/target/{release,debug}/unipi-kanboard`.
 
-Every handler calls the same library functions as the CLI, so the UI cannot drift
-from the terminal rules. The actor is always `user` (the UI never claims work).
-
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/health` | `{ok, version, pid}` |
-| GET | `/api/projects` | project summaries + per-lane counts |
-| GET | `/api/projects/{slug}/tasks` | `?status=` `?ready=true` |
-| GET | `/api/tasks/{slug}/{id}` | one task (deps status, staleness, ready) |
-| POST | `/api/tasks/{slug}/create` | `{title, body?, status?, priority?, after?}` |
-| POST | `/api/tasks/{slug}/{id}/move` | `{status, comment?}` — **409 + `needsComment`** when the rule needs one |
-| GET | `/api/rules` | transition table for the `user` actor — `allowedMoves`, `commentRequired`, `final` |
-| POST | `/api/tasks/{slug}/{id}/note` · `/edit` · `/link` · `/unlink` · `/order` · `/duplicate` | |
-
-Rule violations answer 4xx with the message the CLI prints
-(`{"ok":false,"error":"in_review → todo requires --comment (rework note)","kind":"rule"}`),
-404 for unknown project/task, 400 for usage.
-
-## UI
-
-The UI is a SolidJS app under `web/`, built separately (`npm --prefix crates/kanboard/web
-run build`) and embedded into the binary from `web/dist` with `rust-embed` — no
-runtime filesystem dependency. `GET /` and any unmatched path serve `index.html`
-(client-side routing owns everything past `/`); hashed asset paths are served
-directly. `build.rs` fails the build with a clear message if `web/dist/index.html`
-is missing.
+`npm run publish:kanboard` publishes the five platform packages. It skips a package with an empty `bin/` folder.
 
 ## Storage
 
-`UNIPI_KANBOARD_HOME` overrides the root (tests use it); otherwise
-`~/.unipi/kanboard`.
+The root is `~/.unipi/kanboard/`. `UNIPI_KANBOARD_HOME` overrides it.
 
 ```
+daemon.json  daemon.lock  token  settings.json
 projects/<slug>/
-  project.json      {slug, name, root, prefix, nextId, createdAt}
-  board.lock        flock held for every write in this project
+  project.json          {slug, name, root, prefix, nextId, createdAt, archived}
+  board.lock            flock, held for each write
   tasks/<PREFIX>-<n>.md
+  attachments/<ID>/     attached files
+  cold/                 archived and cancelled tasks after retentionDays
 ```
 
-`slug` = `<basename(root)>-<first 6 hex of sha256(abs root)>`; the root is the
-git toplevel (else cwd). `prefix` defaults to the first three alphanumerics of
-the name, uppercased (`unipi` → `UNI`), and is editable with `project add --prefix`.
+The slug is `<basename(root)>-<first 6 hex of sha256(root)>`. The root is the git top-level folder, or the current folder. The prefix is the first three letters or digits of the name, in upper case. Each write goes to a temporary file, then `fsync`, then `rename`, while the process holds `board.lock`.
 
-Every write is atomic (temp file in the same directory → `fsync` → `rename`)
-and happens while holding `board.lock`, so several terminals can run `work`
-against one board without double claims.
-
-## Task file
-
-```markdown
----
-id: UNI-12
-title: Add --verbose flag to loop.sh
-status: todo            # backlog|todo|in_progress|in_review|blocked|done|cancelled|archived
-priority: none          # none|low|medium|high|urgent
-order: 3000             # sparse sort key inside a lane
-deps: [UNI-10]
-labels: []
-created: 2026-09-24T10:00:00Z
-updated: 2026-09-24T10:05:00Z
-run:                    # present only while claimed (`start`)
-  session: 01a0ceb8
-  pid: 12345
-  host: coffee
-  mode: none            # legacy field, always none for new claims
-  goal: null
-  started: 2026-09-24T10:05:00Z
-  owner: agent          # absent = a legacy system claim
----
-Free-form description (markdown).
-
-## Activity
-- 2026-09-24T10:05:00Z [agent:01a0ceb8] started (pid 12345 on coffee)
-- 2026-09-24T10:20:00Z [agent] blocked: which log format do you want?
-  (continuation lines are indented)
-```
-
-`## Activity` is append-only. Anything else is a validation problem with a line
-number: `validate` prints `<file>:<line>: <message>` and exits 1;
-`validate --fix` rewrites canonical formatting (never semantic problems).
+A task file has YAML front matter (`id`, `title`, `status`, `priority`, `order`, `deps`, `labels`, `created`, `updated`, and `run` while claimed) and a markdown body. The `## Activity` section is append-only. `validate` prints `<file>:<line>: <message>` for each problem. `validate --fix` rewrites the format only.
 
 ## CLI
 
 ```
-project add [--root P] [--name N] [--prefix P] | project list | project show
-add <title> [--body -|TEXT] [--status backlog|todo] [--priority ..] [--after ID...]
-list [--status S] [--ready]      show <ID>
-move <ID> <status> [--comment TEXT]
-note <ID> <TEXT>                 edit <ID> [--title] [--body -] [--priority] [--labels]
-link <ID> --after <DEP>          unlink <ID> --after <DEP>
+project add [--root P] [--name N] [--prefix P] | list | show | archive <slug> | unarchive <slug>
+add [<title>] [--body TEXT|-] [--body-file F] [--attach F] [--status backlog|todo]
+    [--priority none|low|medium|high|urgent] [--after ID] [--label L]
+list [--status S] [--all] [--ready]   show <ID>   chain <ID>   search <text> [--all]
+move <ID> <status> [--comment TEXT] [--attach F]
+note <ID> <TEXT> [--attach F]   attach <ID> <FILE> [--note TEXT] [--name N]   attachments <ID>
+edit <ID> [--title] [--body] [--priority] [--labels A,B]
+link <ID> --after <DEP>   unlink <ID> --after <DEP>
 order <ID> (--before ID | --after-pos ID | --top | --bottom)
-next                             (read-only: the ready task to work next, and why others wait)
-start <ID> [--pid P]             (agent: todo → in_progress, claimed for --session)
-finish <ID> --comment TEXT       (agent: in_progress → in_review, own claim only)
-release <ID> --to todo|in_review|blocked --comment TEXT   (user/system: hand back a claim)
-reap [--dry-run]                 (release claims whose pid is gone)
-duplicate <ID>    archive-sweep [--after-days N]    validate [--fix]
-serve | status | stop                                     (K2)
+next   start <ID> [--pid P]   finish <ID> --comment TEXT [--attach F]   release <ID> --to S --comment TEXT
+reap [--dry-run]   duplicate <ID>   archive-sweep [--after-days N] [--retention-days N]
+validate [--fix]   settings show | settings set <field> <value>   rotate-token
+serve [--host A] [--port N] [--idle-min N] [--require-auth] [--keep-token]   status   stop [--timeout S]
 ```
 
-Global: `--project <slug>` (else `UNIPI_KANBOARD_PROJECT`, else the project
-registered for the cwd's git root), `--actor user|agent|system` (else
-`UNIPI_KANBOARD_ACTOR`, else `user`), `--gate in_review|done` (readiness gate for
-`list --ready`, `next` and `start`), `--session <id>` (else
-`UNIPI_KANBOARD_SESSION`; required by `start`/`finish`), `--json`.
+Global flags: `--project` (else `UNIPI_KANBOARD_PROJECT`, else the project of the git root), `--actor user|agent|system` (else `UNIPI_KANBOARD_ACTOR`, else `user`), `--session` (else `UNIPI_KANBOARD_SESSION`), `--gate in_review|done` and `--json`.
 
-Exit codes: `0` ok (including `next` finding nothing), `1` rule violation /
-validation finding, `2` usage error.
+Exit codes: `0` success, `1` rule or validation error, `2` usage error. With `--json`, errors go to stderr as `{"ok": false, "kind": "rule|usage|not_found|io", "error": "…"}`. The message names the rule, for example `in_review → todo requires --comment (rework note)`.
 
-### `--json` payloads
-
-| Command | Payload |
-|---|---|
-| `add`, `show`, `move`, `note`, `edit`, `link`, `unlink`, `order`, `start`, `finish`, `release`, `duplicate` | the task object |
-| `list`, `project list` | array of task / project objects |
-| `next` | `{"task": <task|null>, "waiting": [{"id", "waitingFor", "lockedBy"}]}` |
-| `archive-sweep` | `{"archived": [id], "skipped"?: reason}` |
-| `validate` | `{"ok", "problems": [{"file","line","message","fixable"}], "fixed": [id]}` |
-| `project show` | `{"project", "counts", "total"}` |
-
-Errors are JSON on stderr: `{"ok": false, "kind": "rule|usage|not_found|io", "error": "…"}`,
-and the message always names the violated rule, e.g.
-
-```
-in_review → todo requires --comment (rework note)
-todo → in_progress is agent/system only — an agent claims a ready task for its session with `start <ID>`
-done is final — nothing moves out of it; use `duplicate` to create a new task instead
-```
-
-Task objects carry computed fields the UI and agents need: `ready`, `waitingFor`,
-`depsStatus`, `staleness` (`running|stale|unknown`), `path`.
+`settings set` and `rotate-token` refuse the `agent` actor. `UNIPI_KANBOARD_MAX_SESSIONS` (default 2) limits the sessions that can hold In Progress tasks in one project.
 
 ## Transitions
 
-Only these moves exist; anything else is refused with the reason.
-
-| From → To | Who | Requirement |
+| From → To | Actor | Comment |
 |---|---|---|
 | backlog ↔ todo | user, agent | — |
-| todo → in_progress | agent, system | ready deps, unclaimed, session cap (`start <ID>`) |
-| in_progress → in_review | agent, system | `--comment` (summary; `finish <ID>`, own claim only) |
-| in_progress → blocked | agent, system | `--comment` (what is needed) |
-| in_progress → todo / backlog (stale run) | user, system | `--comment`; user needs a confirmed stale pid |
+| todo → in_progress | agent, system | — (`start`: deps ready, no claim, session limit) |
+| in_progress → in_review | agent, system | run summary (`finish`, own claim only) |
+| in_progress → blocked | agent, system | what the agent needs |
+| in_progress → todo or backlog | user, system | the reason to release the stale run |
 | in_review → done | user | — |
-| in_review → todo / backlog | user | `--comment` (rework note) |
-| blocked → todo | user | `--comment` (the answer, shown on next claim) |
-| backlog / todo / blocked → cancelled | user | — |
-| done / cancelled → archived | user | or automatically after `archiveAfterDays` |
+| in_review → todo or backlog | user | rework note |
+| in_review → archived | user | — |
+| blocked → todo | user | the answer for the agent |
+| blocked → done | user | — |
+| backlog, todo or blocked → cancelled | user | — |
+| done or cancelled → archived | user, system | — |
 
-`done`, `cancelled` and `archived` are final. Actors are an honour system: the
-messages say so, and the skill forbids agents from passing `--actor user`.
+`done`, `cancelled` and `archived` are final. A task is ready when it is `todo`, has no claim, and each dependency reached the gate (`in_review` gate: in_review or done. `done` gate: done). `next` sorts ready tasks by priority, then order, then ID.
 
-## Readiness
+## Daemon
 
-A task is ready when it is `todo`, unclaimed, and every dep reached the chain
-gate — `in_review` → `{in_review, done}` (default), `done` → `{done}`. Cancelled
-and missing deps block. `next` suggests ready tasks by priority desc, then order asc.
+`serve` starts the web UI, the JSON API and server-sent events (SSE).
 
-Older task files may still carry `strategy:` / `plan:` frontmatter and runner
-`run:` blocks (no `owner:`, any `mode:`) from the removed headless runner. They
-parse, validate and re-render unchanged, but nothing sets or exposes them any
-more (they are not in `--json` / the API).
+- **One instance.** The daemon holds `flock(daemon.lock)`. A second `serve` prints `{"alreadyRunning": true, "bindingChanged": …, "daemon": …}` and exits with `0`.
+- **daemon.json** holds `{pid, port, version, startedAt, host, token?}`. The daemon removes it on exit.
+- **Idle stop.** The daemon stops after `--idle-min` minutes (default 10) with no HTTP request and no SSE client.
+- **File watch.** A change under `projects/` increments the project revision. Each `GET /events?project=<slug>` client gets `data: <rev>`.
+- **Access.** A loopback bind needs no token, unless you use `--require-auth`. Other binds need the token as `?t=`, the `kb_token` cookie or `Authorization: Bearer`. A POST with an `Origin` that differs from `Host` gets a refusal.
 
-## Tests
+## JSON API
 
-```bash
-cargo test                 # 78 tests: format, transitions, deps, board, CLI
-cargo clippy --all-targets -- -D warnings
-```
+Each handler calls the library that the CLI uses. The API always acts as `user`.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/health` | `{ok, version}`, plus `pid` on loopback |
+| GET | `/api/projects` · `/api/dashboard` · `/api/running` | Project summaries, dashboard data, claimed tasks |
+| PUT | `/api/projects/{slug}` | `{archived}` |
+| GET | `/api/projects/{slug}/tasks` | `?status=`, `?ready=true` |
+| GET | `/api/tasks/{slug}/{id}` | One task |
+| POST | `/api/tasks/{slug}/create` | `{title, body?, status?, priority?, after?}` |
+| POST | `/api/tasks/{slug}/{id}/move` | `{status, comment?}`. 409 with `needsComment` when a comment is necessary |
+| POST | `/api/tasks/{slug}/{id}/undo` | `{token}` from a move |
+| POST | `/api/tasks/{slug}/{id}/note` · `edit` · `link` · `unlink` · `order` · `duplicate` | Task changes |
+| POST | `/api/tasks/{slug}/{id}/attachments?name=` | Raw file body, 25 MiB at most |
+| GET | `/api/files/{slug}/{task}/{name}` | An attached file |
+| POST | `/api/projects/{slug}/summarize` · `archive-summary` · `archive-lane` · `done-lane` | Lane actions and summaries |
+| GET, PUT | `/api/settings` · GET `/api/models` · GET `/api/rules` | Panel settings, model list, transition table for `user` |
+
+A rule error returns 4xx with the CLI message: `{"ok":false,"error":"…","kind":"rule"}`. An unknown project or task returns 404.

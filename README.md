@@ -1,126 +1,158 @@
-<p align="center"><img src="docs/assets/unipi-logo.png" width="200" alt="UniPi"></p>
+<p align="center">
+  <img src="docs/assets/unipi-logo.png" width="220" alt="UniPi logo: Unicrab behind three terminal screens">
+</p>
 
-# Unipi
+<h1 align="center">UniPi</h1>
 
-23 workspace packages that turn Pi into a full development workstation. Structured workflows, persistent memory, parallel agents, web research, notifications, context management, command autocomplete, and a live status bar — all wired together through a shared event system.
+<p align="center">
+  <b>Extensions that make the Pi coding agent finish long work, remember it and show it.</b>
+</p>
 
-One command installs everything:
+<p align="center">
+  <a href="https://www.npmjs.com/package/@pi-unipi/unipi"><img src="https://img.shields.io/npm/v/%40pi-unipi%2Funipi?label=npm&color=e8452c" alt="npm version"></a>
+  <a href="https://github.com/Neuron-Mr-White/unipi/actions/workflows/ci.yml"><img src="https://github.com/Neuron-Mr-White/unipi/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/pi-%5E0.87.1-555" alt="Pi 0.87.1 or later">
+</p>
+
+<p align="center">
+  <a href="docs/guide/getting-started.md">Getting started</a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="docs/architecture/README.md">Architecture</a> ·
+  <a href="docs/reference/commands.md">Commands</a> ·
+  <a href="docs/story/unicrab.md">Meet Unicrab</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+## Install
+
 ```bash
 pi install npm:@pi-unipi/unipi
 ```
 
-## Requirements
+UniPi needs [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+`0.87.1` or later. This command installs 21 extension packages. Each package
+also works alone.
 
-- **Pi (`@earendil-works/pi-coding-agent`) `^0.87.1`** — Unipi 3.0.0-alpha tracks the Pi 0.87 SDK (extension boundary events, `SessionManager`-canonical context, `TranscriptContext` custom-provider inputs, native prompt-cache warming). Older Pi releases still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<3.0.0` if you must stay on an older Pi.
+<p align="center">
+  <img src="docs/assets/screenshots/glance-footer.png" alt="The glance footer: a framed input box with the git branch, mode, context use, model and live turn statistics">
+</p>
 
-## What You Get
+The glance footer frames the input box. It shows the git branch, the mode, the
+context use and the model. After each turn, the strip below it shows turns,
+steps, wall time, tool time, time to first token, tokens per second and cache
+hits.
 
-**[Workflow](./packages/workflow/README.md)** — **plan mode** (`/unipi:plan`, `Alt+P`) and **permission modes** (`ask` · `auto` · `full`). Plan mode makes a session read-only except for its plan file; auto mode lets jev judge ambiguous bash before it runs.
+## Why UniPi
 
-**[Long-Horizon](./packages/long-horizon/)** — Mode-gated long-horizon execution: `/goal` (one objective until verifiably true, propose+verify), `/ralph` (task-file iteration loops), `/swarm` (independent fan-out + synthesis), `/graph` (dependent multi-step work). A TypeSafe jev prompt judge routes each turn; one automation owner per session with park/resume; runaway-guard steering; token/turn/stall budgets.
+Pi is a small coding agent for the terminal. It reads files, edits files and
+runs commands. UniPi adds the parts that a long session needs.
 
-**[Memory](./packages/memory/README.md)** — Markdown files + [MemPalace](https://github.com/mempalace/mempalace) semantic search share a memory palace across pi, Devin, and zcode. Facts, preferences, and decisions persist across sessions; v2 data converts via `/unipi:memory migrate`.
+| UniPi gives you | How | Proof in the code |
+|---|---|---|
+| **Work that finishes** | `/unipi:goal` keeps one objective until a separate verifier agrees that it is true. | 50 turns by default (200 maximum). A pause after 8 turns without progress or 5 `not_met` verdicts. |
+| **One driver for each turn** | A turn arbiter selects one continuation when the agent stops. | 1 nudge for each stop. Priorities: goal 100, board claims 50, autowork 40. |
+| **Compaction with no model call** | The default `vcc` method rebuilds the summary from the full session history with fixed rules. | 0 LLM calls. The summary cannot grow from an earlier summary. |
+| **A warm prompt cache** | Changing state goes into new tail messages. The system prompt and tool list stay the same. | Rules from a study of 8,019 requests. |
+| **Parallel hands** | A lead model gives work to a lower-cost sidekick, to subagents or to background tasks. | Up to 8 subagents at once. 1 persistent sidekick for each session. |
+| **A board for deferred work** | Kanboard keeps tasks in Markdown files, with a web UI and a terminal UI. | One Rust binary writes every change and checks every transition rule. |
+| **Memory between sessions** | Facts and decisions go to Markdown files and to a MemPalace index. | Four memory types: preference, decision, pattern and summary. |
+| **Hang detection** | Watchdog asks a small judge model about long tool calls. | 2 agreeing checks at confidence 0.8 or more before a kill. |
 
-**[Compactor](./packages/compactor/README.md)** — Compaction that keeps work going. Lossless zero-LLM summaries (or Pi's model summary), rebuilt from the full session history, led by the live goal/ralph/kanboard state; the full history stays searchable with session recall.
+## Kanboard
 
-**[Prefix-cache architecture](./docs/prefix-cache-architecture.md)** — Append-only request discipline, explicit cache epochs, deterministic tools, privacy-safe diagnostics, provider limitations, and bounded cold-epoch output.
+Kanboard is a task board for each project. You and the agent use the same
+board. The agent claims a task, works it, and sends it to review with a
+summary. You approve it or send it back with a note.
 
-**[Subagents](./packages/subagents/README.md)** — Parallel execution with file locking. Spawn background agents to research, fix, or build while the main agent keeps going.
+<p align="center">
+  <img src="docs/assets/screenshots/kanboard-dashboard.png" alt="Kanboard dashboard: tasks waiting on you, running agents, ready tasks and a 14-day throughput chart">
+</p>
 
-**[Fusion](./packages/fusion/README.md)** — Run two models as one: a frontier lead delegates to a cheaper persistent sidekick that keeps its own context and shells, and stays in the loop while the sidekick works. Pair them from `/unipi:model`; `/unipi:fusion-stats` shows what the sidekick saved you.
+The dashboard shows what needs you across all projects. You can approve a
+review or answer a blocked question in one click.
 
-**[Background Tasks](./packages/background-tasks/README.md)** — Long-running commands and delegate agents that survive the turn that started them, with a live dock, output capture, and a wake line while the agent waits on them.
+<p align="center">
+  <img src="docs/assets/screenshots/kanboard-board.png" alt="Kanboard board view with Backlog, Todo, In Progress, Blocked, In Review and Done lanes">
+</p>
 
-**[Web API](./packages/web-api/README.md)** — Web search, page reading, content summarization. Defaults to [wigolo](https://github.com/KnockOutEZ/wigolo), a local-first engine with multi-engine search and on-device reranking — $0/query, no API key. Plus a smart-fetch engine with browser-grade TLS fingerprinting. Paid providers as fallbacks, and auto-selection falls through when a provider is unavailable.
+- Run `/unipi:kanboard open` to open the board in your browser.
+- Run `/unipi:kanboard-add <title>` to add a task without an agent turn.
+- Run `/unipi:kanboard-do <request>` to give the agent a budget of tasks and
+  board writes.
+- Run `/unipi:kanboard-autowork start` to let the agent work every ready task.
 
+The screenshots use demo data. Read the [Kanboard README](packages/kanboard/README.md).
 
-**[MCP](./packages/mcp/README.md)** — Browse 7,800+ MCP servers, add them interactively. Tools from servers register automatically as Pi tools.
+## Harness architecture
 
-**[Notify](./packages/notify/README.md)** — Push notifications to native OS, Gotify, Telegram, or ntfy. Per-event platform routing plus native focus suppression so alerts can stay quiet while Pi is already focused.
+UniPi adds these mechanisms to the Pi harness. Each page gives the problem, a
+diagram, the limits from the source, and the files to read.
 
-**[Footer](./packages/footer/README.md)** — Persistent status bar showing live stats from every package. Now with the Glance footer: a framed input box with an animated rainbow brand, git branch title, and a live session strip (turns, wall/tool time, TTFT, tok/s, cache hit). Responsive layout, presets, per-segment toggling.
+| Mechanism | Problem it solves |
+|---|---|
+| [Event bus](docs/architecture/event-bus.md) | 21 packages must work together without import-time coupling. |
+| [Turn arbiter](docs/architecture/turn-arbiter.md) | Several packages want to continue the run when the agent stops. Only one may act. |
+| [Prefix cache](docs/architecture/prefix-cache.md) | One changed byte in the request prefix makes the provider bill the full context again. |
+| [Compaction](docs/architecture/compaction.md) | A summary must keep the live task, and it must not grow at each compaction. |
+| [Long-horizon](docs/architecture/long-horizon.md) | Multi-turn work needs one driver, a separate judge and hard budgets. |
+| [Delegation](docs/architecture/delegation.md) | Work goes to other models and processes. Each one needs a known context boundary. |
+| [Harness messages](docs/architecture/harness-messages.md) | Text from the harness reaches the model as user text. The user must see where it came from. |
+| [Watchdog](docs/architecture/watchdog.md) | A timer cannot tell a hung command from a slow build. |
 
-**[BTW](./packages/btw/README.md)** — Inline side questions (`/unipi:btw`) answered by a fresh read-only session seeded from the current context — the main agent never sees them.
-
-**[Ask User](./packages/ask-user/README.md)** — Structured input for decision gates. Single-select, multi-select, freeform. The agent asks instead of guessing.
-
-**[Kanboard](./packages/kanboard/README.md)** — Web UI and TUI overlay for kanban boards. Parses all workflow documents into cards with progress indicators.
-
-**[Info Screen](./packages/info-screen/README.md)** — Dashboard overlay showing module status, tools, and custom data groups.
-
-**[Utility](./packages/utility/README.md)** — Environment info, diagnostics, cleanup, name badge, and Shiki-powered diff rendering.
-
-**[Updater](./packages/updater/README.md)** — Checks npm for new versions on session start. Changelog browser and readme browser in TUI overlays.
-
-**[Input Shortcuts](./packages/input-shortcuts/README.md)** — Keyboard shortcuts via vim-style chord overlay. Stash/restore, undo/redo, clipboard, thinking toggle.
-
-**[Command Enchantment](./packages/autocomplete/README.md)** — Enhanced `/unipi:*` autocomplete with full command names, package tags, descriptions, colors, and registry audits that catch stale command docs before release.
-
-## Architecture
-
-Packages discover each other through events, not direct imports. Core defines the event types and constants. Every package emits `MODULE_READY` on load and subscribes to events it cares about.
-
+```mermaid
+flowchart LR
+  stop(["agent stops"]) --> arb{"turn arbiter<br/>1 nudge maximum"}
+  arb -- "priority 100" --> lh["long-horizon<br/>goal · ralph · swarm · graph"]
+  arb -- "priority 50" --> claims["kanboard<br/>claimed task"]
+  arb -- "priority 40" --> auto["kanboard<br/>autowork"]
+  lh --> tail["new tail message<br/>(prefix stays cached)"]
+  claims --> tail
+  auto --> tail
+  tail --> next(["next turn"])
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        Core                             │
-│              Events, Constants, Utilities                │
-└───────────────────────┬─────────────────────────────────┘
-                        │
-    ┌───────────────────┼───────────────────┐
-    │                   │                   │
-    ▼                   ▼                   ▼
-┌─────────┐       ┌──────────┐       ┌──────────┐
-│ Workflow │       │ Compactor│       │  Memory  │
-│  Skills  │       │  Engine  │       │  Store   │
-└────┬─────┘       └────┬─────┘       └────┬─────┘
-     │                  │                  │
-     └──────────────────┼──────────────────┘
-                        ▼
-                  ┌──────────┐
-                  │  Footer  │ ← Subscribes to all events
-                  └──────────┘
-```
 
-Coexists triggers enhance behavior when packages are installed together. Workflow skills detect subagents and inject parallel strategies. All skills get MCP tools when MCP is installed. Web-api adds web research to investigation skills. Each package works standalone.
+## Packages
 
-## Commands (Brief)
+| Area | Packages |
+|---|---|
+| Finish long work | [Long-Horizon](packages/long-horizon/README.md) · [Workflow](packages/workflow/README.md) · [Kanboard](packages/kanboard/README.md) |
+| Keep context | [Compactor](packages/compactor/README.md) · [Memory](packages/memory/README.md) |
+| Work in parallel | [Fusion](packages/fusion/README.md) · [Subagents](packages/subagents/README.md) · [Background Tasks](packages/background-tasks/README.md) · [BTW](packages/btw/README.md) |
+| Reach outside | [Web API](packages/web-api/README.md) · [MCP](packages/mcp/README.md) · [Notify](packages/notify/README.md) |
+| Stay safe | [Watchdog](packages/watchdog/README.md) · [Skill Registry](packages/skill-registry/README.md) · [Ask User](packages/ask-user/README.md) |
+| See and control | [Footer](packages/footer/README.md) · [Info Screen](packages/info-screen/README.md) · [Input Shortcuts](packages/input-shortcuts/README.md) · [Command Enchantment](packages/autocomplete/README.md) |
+| Maintain | [Utility](packages/utility/README.md) · [Updater](packages/updater/README.md) · [Core](packages/core/README.md) |
 
-| Category | Prefix | Examples |
-|----------|--------|----------|
-| Workflow | `/unipi:` | plan (plan mode), permission (permission modes) |
-| Kanboard | `/unipi:` | kanboard (board: capture, work runner, web UI) |
-| Long-Horizon | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph` | <prompt>, start, stop, status, resume, clear |
-| Memory | `/unipi:memory-` | process, search, consolidate, forget |
-| Compactor | `/unipi:` | compact-vcc, compact-by-llm, session-recall, compact-stats, compact-doctor, compact-help |
-| Notify | `/unipi:notify-` | settings, test, set-tg, set-ntfy |
-| MCP | `/unipi:mcp-` | add, settings, sync, status |
-| Web | `/unipi:web-` | settings, cache-clear |
-| BTW | `/unipi:btw` | question |
-| Utility | `/unipi:` | env, doctor, status, cleanup, badge-name |
-| Kanboard | `/unipi:kanboard` | toggle, doctor |
-| Footer | `/unipi:footer` | toggle, settings |
-| Watchdog | `/unipi:settings` | jev judges long-running tools; kills or warns when stuck |
-| Updater | `/unipi:` | readme, changelog |
-| Info | `/unipi:info` | dashboard, settings |
+The [docs index](docs/README.md#packages) gives one line and the npm name for
+each package.
 
-## Agent Tools (Brief)
+## Meet Unicrab
 
-| Tool | Package | What It Does |
-|------|---------|--------------|
-| `create_goal` / `get_goal` / `update_goal` | long-horizon | Goal propose+verify lifecycle |
-| `todowrite` | long-horizon | Visible session plan |
-| `ralph_done` / `loop_status` | long-horizon | Loop iteration + progress |
-| `swarm_report` / `swarm_status` / `swarm_yield` | long-horizon | Fan-out supervision |
-| `update_agent_graph` / `graph_output` / `view_agent_graph` | long-horizon | Dependent work graph |
-| `spawn_helper` / `get_helper_result` | subagents | Parallel agents |
-| `memory_store` / `memory_search` / `memory_delete` | memory | Memory CRUD |
-| `web_search` / `multi_web_content_read` / `web_llm_summarize` | web-api | Web research |
-| `image_generate` / `image_edit` / `image_recognize` | utility | Image generation, editing and vision (recognize hides while the session model has vision) |
-| `notify_user` | notify | Push notifications |
-| `sidekick` / `read_subagent` | fusion | Delegate to the persistent sidekick and collect its report |
-| `bg_run` / `bg_status` / `bg_logs` / `bg_kill` / `bg_delegate` / `bg_result` | background-tasks | Long-running commands and background delegate agents |
-| `ask_user` | ask-user | User input |
-| `session_recall` / `context_budget` | compactor | Context management |
+<img align="right" src="docs/assets/unicrab-pixel.png" width="120" alt="Unicrab pixel art">
+
+Unicrab is the UniPi mascot. It started as the author's pet crab. Now it says
+hello when Pi starts and leaves hints above the input box. Press `Alt+H` for the
+next hint.
+
+Read [The making of Unicrab](docs/story/unicrab.md): from a real crab, to pixel
+art, to a terminal character that is 7 columns wide.
+
+<p align="center">
+  <img src="docs/assets/screenshots/unicrab-start.png" alt="The UniPi start screen with Unicrab in half-block pixel art">
+</p>
+
+## Docs
+
+- [Getting started](docs/guide/getting-started.md)
+- [Commands](docs/reference/commands.md) · [Agent tools](docs/reference/tools.md) · [Shortcuts](docs/reference/shortcuts.md) · [Settings](docs/reference/settings.md) · [Glossary](docs/reference/glossary.md)
+- [Architecture](docs/architecture/README.md)
+- [All docs](docs/README.md)
+
+The docs use STE-flavored English
+([ASD-STE100](https://www.asd-ste100.org/)): short sentences, active voice and
+one meaning for each word. The [style guide](docs/contributing/docs-style.md)
+gives the rules.
 
 ## Development
 
@@ -129,65 +161,33 @@ git clone https://github.com/Neuron-Mr-White/unipi.git
 cd unipi
 npm install
 npm run typecheck
-```
-
-### Project Structure
-
-```
-unipi/
-├── packages/
-│   ├── core/           # Shared constants, events, utilities
-│   ├── workflow/       # plan mode + permission modes
-│   ├── skill-registry/  # per-project skill on/off + jev-judged exposure
-│   ├── long-horizon/  # /goal /ralph /swarm /graph mode-gated execution
-│   ├── memory/         # SQLite + vector search
-│   ├── compactor/      # Context engine
-│   ├── subagents/      # Parallel execution
-│   ├── fusion/         # Lead + sidekick pairing
-│   ├── background-tasks/ # Long-running tasks and delegates
-│   ├── web-api/        # Web research
-│   ├── image/          # Image generation and vision
-│   ├── mcp/            # MCP server integration
-│   ├── notify/         # Push notifications
-│   ├── footer/         # Status bar
-│   ├── btw/            # Side conversations
-│   ├── ask-user/       # Structured input
-│   ├── kanboard/       # Kanban visualization
-│   ├── info-screen/    # Dashboard overlay
-│   ├── utility/        # Diagnostics, diff rendering
-│   ├── updater/        # Auto-update, browsers
-│   ├── input-shortcuts/ # Keyboard shortcuts
-│   ├── autocomplete/   # Enhanced command autocomplete
-│   └── unipi/          # Umbrella package
-├── docs/               # Project documentation (specs, plans, fixes, …)
-├── .unipi/             # Runtime data (config, sessions, ralph)
-└── CHANGELOG.md
-```
-
-### Adding a Package
-
-1. Create `packages/your-package/` with `package.json` and `index.ts`
-2. Depend on `@pi-unipi/core` for constants and events
-3. Emit `MODULE_READY` on load
-4. Add to umbrella package dependencies and imports
-5. Run `npm run typecheck`
-
-### Running Tests
-
-```bash
 npm test
 ```
 
+To add a package:
+
+1. Create `packages/<name>/` with a `package.json` and an `index.ts`.
+2. Import events and constants from `@pi-unipi/core`.
+3. Emit `MODULE_READY` when the package loads.
+4. Add the package to `packages/unipi/index.ts` and to the root
+   `package.json`.
+5. Run `npm run typecheck` and `npm test`.
+
+Packages talk over events and shared state holders. Import from
+`@pi-unipi/core`, not from a peer package. The
+[event bus page](docs/architecture/event-bus.md) explains the rules.
+
 ## Contributing
 
-1. Fork the repo
-2. Create a feature branch
-3. Make your changes
-4. Run `npm run typecheck` and `npm test`
-5. Submit a pull request
+1. Fork the repository.
+2. Create a branch.
+3. Make your change.
+4. Run `npm run typecheck` and `npm test`.
+5. Open a pull request.
 
-Keep packages focused. One package, one responsibility. Use events for cross-package communication — no direct imports between packages.
+Keep one job in each package. For docs, follow the
+[style guide](docs/contributing/docs-style.md).
 
 ## License
 
-MIT
+MIT © Neuron Mr White

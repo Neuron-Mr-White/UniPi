@@ -1,108 +1,112 @@
-# @pi-unipi/core
+# UniPi Core
 
-Shared infrastructure for every Unipi package. Provides constants, event types, and utility functions so packages can discover each other without tight coupling.
+Core gives every UniPi package one set of constants, event names, settings and
+file helpers, so packages work together without direct imports.
 
-Other packages import from `@pi-unipi/core` to emit events, read module names, and use common file operations. Without it, each package would need its own event definitions and utilities.
+`@pi-unipi/core` · part of [UniPi](../../README.md)
 
-## Usage
+![Unicrab, the UniPi mascot](../../docs/assets/unicrab-pixel.png)
+
+## What it does
+
+- Defines the shared event names in `UNIPI_EVENTS` and module names in `MODULES`.
+- Gives the settings engine. Each module registers a namespace. The
+  `/unipi:settings` hub shows all namespaces.
+- Gives the state layout under `~/.unipi/`. Each module gets `global`, `config`,
+  `state` and `session` folders.
+- Gives the turn arbiter, harness message metadata and the shared TUI kit.
+- Gives the Unicrab hints engine. The `@pi-unipi/utility` package installs it.
+
+Core is a library. Its `pi` field registers no extensions. You get it when you
+install UniPi:
+
+```bash
+pi install npm:@pi-unipi/unipi
+```
+
+## Developer API
+
+Import from `@pi-unipi/core`. Use `emitEvent` to send events on the Pi event bus.
+It returns `false` and does not throw if the emit fails.
 
 ```typescript
-import { UNIPI_EVENTS, MODULES, sanitize, emitEvent } from "@pi-unipi/core";
+import { UNIPI_EVENTS, MODULES, emitEvent, sanitize } from "@pi-unipi/core";
 
-// Emit module ready event
 emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
   name: MODULES.WORKFLOW,
-  version: "1.0.0",
-  commands: ["brainstorm", "plan"],
+  version: "3.0.0",
+  commands: ["unipi:plan"],
   tools: [],
 });
 
-// Use shared utilities
 const safeName = sanitize("my/feature: branch");
 ```
 
-## Hints (Unicrab)
+| Area | Main exports |
+|---|---|
+| Constants | `UNIPI_PREFIX`, `MODULES`, `WORKFLOW_COMMANDS`, `MEMORY_TOOLS`, `COMPACTOR_TOOLS`, other `*_COMMANDS` and `*_DEFAULTS` |
+| Events | `UNIPI_EVENTS` and payload types such as `UnipiModuleEvent`, `UnipiCompactionEvent`, `UnipiMemoryStoredEvent` |
+| Settings | `registerSettings`, `getSettings`, `setSettings`, `unsetSettings`, `openSettingsHub` |
+| State paths | `unipiRoot`, `workspaceRoot`, `stateDir`, `statePath`, `sessionId` |
+| Turn arbiter | `installArbiter`, `registerNudgeProvider`, `registerWaitSource`, `onSettleDecision` |
+| Harness messages | `sendHarnessUserMessage`, `readHarnessMeta`, `harnessToolResultDetails` |
+| Command runners | `registerCommandRunner`, `runCommandByName` |
+| File helpers | `sanitize`, `ensureDir`, `tryRead`, `tryDelete`, `readJson`, `writeJson`, `fileExists`, `resolvePath` |
+| Other helpers | `randomId`, `now`, `parseArgs`, `getPackageVersion`, `formatTokens`, `compareVersions` |
 
-The hints system introduces **Unicrab**, a friendly pixel-crab mascot providing contextual onboarding and workflow guidance:
+Settings files use this layout. The project file wins over the global file.
 
-- **What shows when**:
-  - **Startup**: One least-shown, least-recent hint on `session_start` (whatsnew hints prioritized after version upgrades; lore and whatsnew excluded from regular startup rotation).
-  - **Start Screen**: If `hints.header` is enabled, a custom startup header features 22×10 (≥72 cols) or 14×6 (40–71 cols) truecolor half-block crab pixel art, colored wordmark, and random lore line.
-  - **Widget**: A compact single-row hint above the editor (`<crab> <text>  <category · alt+h ›>`) rendered with a 7-column half-block mascot in truecolor/256-color (or opt-in Kitty image mode).
-  - **Events**: Contextual hints triggered by derived thresholds (`hints:context-high`, `hints:long-bash`, `hints:tool-errors`, `hints:long-prompt`, `hints:remember`, `hints:image-input`) and bus events. Capped at 4 event hints per session; never replaces a hint shown in the same turn.
-- **Shortcuts**:
-  - `Alt+H`: Cycle to the next startup hint (ordered least-shown first).
-  - `Alt+Shift+H`: Navigate backward in the session hint history stack.
-- **Commands**:
-  - `/unipi:hint`: Opens an interactive hub-kit overlay browser with live filtering, category headers, and seen/unseen/learned status tags.
-  - `/unipi:hint next`: Same as Alt+H.
-  - `/unipi:hint reset`: Resets show counts and learned state in `~/.unipi/global/hints/hints.json`.
-- **Settings (`hints` namespace)**:
-  - `hints.enabled` (boolean, default true)
-  - `hints.header` (boolean, default true): Unicrab start screen banner.
-  - `hints.crab` (enum: `auto` | `blocks` | `image`, default `auto`): `auto` resolves to half-blocks; `image` is opt-in experimental Kitty terminal graphics.
-  - `hints.reset` (action): Clears hint history.
-- **Lines (`src/hints/lines.ts`)**:
-  - Central lines file containing audited hints across command, shortcut, setting, capability, explain, trouble, whatsnew, workflow, and lore categories.
-  - **Rule**: Every named command, key, setting, or tool must be strictly verified against package source code before inclusion.
+| Scope | Path |
+|---|---|
+| Global settings | `~/.unipi/config/<namespace>/config.json` |
+| Project settings | `<project>/.unipi/config/<namespace>/config.json` |
+| Cross-project state | `~/.unipi/global/<module>/` |
+| Workspace state | `~/.unipi/workspace/<id>/state/<module>/` |
+| Session state | `~/.unipi/workspace/<id>/sessions/<sid>/<module>/` |
 
-## Exports
+## Unicrab hints
 
-### Constants
+Unicrab is the UniPi mascot. The hints engine shows one short tip above the
+editor.
 
-- `UNIPI_PREFIX` — Command prefix (`unipi:`)
-- `MODULES` — All module names
-- `WORKFLOW_COMMANDS` — Workflow command names
-- `RALPH_COMMANDS` — Ralph command names
-- `RALPH_TOOLS` — Ralph tool names
-- `RALPH_DEFAULTS` — Default ralph settings
-- `RALPH_DIR` — Ralph state directory
-- `RALPH_COMPLETE_MARKER` — Loop completion marker
+- At startup, the engine shows the tip with the lowest show count. After a
+  version upgrade, it shows a "what's new" tip first.
+- The start screen shows the Unicrab pixel art, the version and a random lore
+  line. It needs 40 columns or more. At 72 columns or more, it shows the large crab.
+- Some events show a tip. Examples are context use of 70% or more, a `bash`
+  run of 30 seconds or more, and 3 tool errors in a row.
+- The engine shows 4 event tips or fewer per session. It does not replace a tip
+  in the same turn.
+- The engine keeps show counts in `~/.unipi/global/hints/hints.json`.
 
-### Events
+| Command or key | What it does |
+|---|---|
+| `/unipi:hint` | Opens a hint browser with a search filter. |
+| `/unipi:hint next` | Shows the next startup tip. |
+| `/unipi:hint reset` | Clears show counts and learned state. |
+| `Alt+H` | Shows the next startup tip. |
+| `Alt+Shift+H` | Goes back in the tip history of this session. |
 
-- `UNIPI_EVENTS` — Event names
-- `UnipiModuleEvent` — Module ready/gone payload
-- `UnipiWorkflowEvent` — Workflow start/end payload
-- `UnipiRalphLoopEvent` — Ralph loop start/end payload
-- `UnipiRalphIterationEvent` — Ralph iteration payload
-- `UnipiStatusRequestEvent` / `UnipiStatusResponseEvent` — Status payloads
+| Key | Default | What it does |
+|---|---|---|
+| `hints.enabled` | `true` | Shows tips above the editor. |
+| `hints.header` | `true` | Shows the Unicrab start screen. |
+| `hints.crab` | `auto` | Sets the mascot style: `auto`, `blocks` or `image`. `image` uses Kitty graphics and is experimental. |
+| `hints.reset` | action | Clears the hint history. |
 
-### Utilities
+Each hint text is in `src/hints/lines.ts`. Before you add a hint, find each
+command, key, setting and tool name in the source.
 
-- `sanitize(name)` — Sanitize string for filenames
-- `ensureDir(path)` — Create parent directories
-- `tryDelete(path)` — Safe file deletion
-- `tryRead(path)` — Safe file read
-- `safeMtimeMs(path)` — File modification time
-- `tryRemoveDir(path)` — Safe directory removal
-- `resolvePath(cwd, path)` — Resolve relative/absolute paths
-- `fileExists(path)` — Check file existence
-- `writeFile(path, content)` — Write file with dir creation
-- `readJson<T>(path)` — Read JSON file
-- `writeJson(path, data)` — Write JSON file
-- `randomId(length)` — Generate random ID
-- `now()` — ISO timestamp
-- `parseArgs(str)` — Parse quoted arguments
-- `getPackageVersion(dir)` — Read package version
-- `isModuleAvailable(cwd, name)` — Check if npm module exists
-- `emitEvent(pi, name, payload)` — Safe event emission
+## How it works
 
-## How Packages Use Core
+Packages find each other through events on the Pi event bus. They do not import
+each other. Read the [architecture overview](../../docs/architecture/README.md),
+the [event bus](../../docs/architecture/event-bus.md) and the
+[turn arbiter](../../docs/architecture/turn-arbiter.md).
 
-Every Unipi package depends on `@pi-unipi/core`. On load, each package:
+## See also
 
-1. Imports `MODULES` to register its own name
-2. Imports `UNIPI_EVENTS` to subscribe to lifecycle events
-3. Calls `emitEvent(pi, UNIPI_EVENTS.MODULE_READY, ...)` to announce itself
-4. Uses utility functions for file I/O and path resolution
-
-This creates a loose coupling — packages discover each other through events, not direct imports.
-
-## Configuration
-
-Core has no configuration. It's a pure utility layer.
-
-## License
-
-MIT
+- [Harness messages](../../docs/architecture/harness-messages.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Shortcuts reference](../../docs/reference/shortcuts.md)
+- [Glossary](../../docs/reference/glossary.md)

@@ -1,147 +1,104 @@
-# @pi-unipi/footer
+# Footer
 
-Persistent status bar at the bottom of the terminal. Shows live stats from all Unipi packages — compactor tokens saved, memory count, MCP status, Ralph loops, workflow state, kanboard tasks, notifications.
+Show live session stats and the state of every UniPi package at the bottom of the terminal.
 
-Subscribes to events from every package and renders segments using Pi's `setFooter` + `setWidget` APIs. Responsive layout adjusts to terminal width, with a secondary row for narrow terminals.
+`@pi-unipi/footer` · part of [UniPi](../../README.md)
 
-## Glance Footer (new in 2.12)
+![Glance footer: a framed input box with the branch, model and a session stats line](../../docs/assets/screenshots/glance-footer.png)
 
-An experimental input surface, on by default and toggleable in `/unipi:settings` (Footer) → **Glance mode**:
+## What it does
 
+- Puts a frame around the input box. This is **glance mode**, and it is on by default.
+- Shows a stats line below the input. It shows turns, steps, model time and tool time. It also shows average time to first token (TTFT), tokens per second, compactions and cache hit rate.
+- Shows a line above the input with counts of background tasks: running, stopped, failed and done.
+- Shows a status line with segments from each package when glance mode is off. This is the **classic** footer.
+- Lets you select a preset, separator, icon style and color mode, and turn each segment on or off.
+
+## Quick start
+
+UniPi installs this package:
+
+```bash
+pi install npm:@pi-unipi/unipi
 ```
-╭─ 󰚩 UNIPI │  feat/footer-default-v2 │ ───────────────────────────╮
-│ Type your prompt here...                                        │
-╰─ 󰉋 unipi ────────────────────── 42%/1.0M │ GLM-5.3 │ thinking:high ─╯
-              2 turn · 20 steps | 00:12:14 · tool 00:02 | 20ms avg ttft · 120 tok/s | 90% cache hit
+
+To install this package alone:
+
+```bash
+pi install npm:@pi-unipi/footer
 ```
 
-- **Top border:** animated lolcat-gradient UNIPI brand + git branch (turns rainbow-frame animated while thinking is max/xhigh)
-- **Bottom border:** workspace · context %/window · model · thinking level
-- **Session strip:** turns/steps, wall + tool wall time, average TTFT, tok/s, cache hit % — colored per stat, honest across restarts (derived from persisted session timestamps when live hooks are unavailable; provider-reported `usage.output` anchors token counts whenever present)
-- **Process line (new in 2.13):** centered one-liner directly above the frame while background work is in flight — `● 3 running  ● 1 stopped  ● 1 failed  ● 2 done` — green ● running, yellow ● stopped (killed), red ● failed, gray ● done. Covers every task type (shell jobs, delegates, fusion workflows) via direct registry reads; zero-count buckets are omitted and the line hides when idle. Counts reset per session.
-- The classic segment status line is suppressed while glance mode is on; toggle it back for the classic footer
+The footer starts with the session. Open `/unipi:settings` → **Footer** to change it.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:footer` | Toggle footer on/off |
-| `/unipi:footer on` / `/unipi:footer off` | Enable/disable explicitly |
-| `/unipi:settings` | Hub — preset, separator, zone separator, icon style, glance mode, per-segment toggles (Footer group) |
-| `/unipi:footer-help` | Show footer segment guide |
+| Command | What it does |
+|---|---|
+| `/unipi:footer` | Turns the footer on or off. |
+| `/unipi:footer on` | Turns the footer on. |
+| `/unipi:footer off` | Turns the footer off. |
+| `/unipi:footer-help` | Shows each active segment with its icon, label and description. |
 
-## Special Triggers
+## The glance frame
 
-Footer subscribes to events from every Unipi package:
+The glance frame has three parts:
 
-| Group | Events | Segments |
-|-------|--------|----------|
-| core | Pi SDK | model, thinking, path, git, context_pct, cost, tokens, session |
-| compactor | Pi session data | compactions — `cmp 4× 39k→13k · 3m` (count, tokens before → after, time since the last; hidden until the first) |
-| memory | `MEMORY_STORED`/`DELETED`/`CONSOLIDATED` | project_count, total_count, consolidations |
-| mcp | `MCP_SERVER_STARTED`/`STOPPED`/`ERROR` | servers_total, servers_active, tools_total |
-| ralph | `RALPH_LOOP_START`/`END`/`ITERATION_DONE` | active_loops, total_iterations, loop_status |
-| workflow | `WORKFLOW_START`/`END` | current_command, sandbox_level, command_duration |
-| kanboard | Direct registry read | docs_count, tasks_done, tasks_total, task_pct |
-| notify | `NOTIFICATION_SENT` | platforms_enabled, last_sent |
+- **Top border.** The UNIPI brand, the long-horizon mode, the git branch, and the plan and permission mode. The brand shows a moving rainbow. The frame also shows the rainbow when the thinking level is `xhigh` or `max`.
+- **Bottom border.** The workspace name, context use and window size, the model and the thinking level. With a [Fusion](../fusion/README.md) pair, it shows the lead and the sidekick. It also shows Kanboard claims.
+- **Stats line.** The line below the input. A part stays hidden until it has data. For example, compactions show only after the first compaction.
 
-Footer works even if packages load after it — late-arriving events update the cache.
+The background-task line reads the [Background Tasks](../background-tasks/README.md) registry. It shows nothing when no task exists.
+
+Set **Glance mode** to off to get the classic status line.
 
 ## Presets
 
-| Preset | Description |
-|--------|-------------|
-| `default` | Glance-era: UNIPI brand, model, thinking, directory, git \| context/tokens, tps, cost, clock |
-| `classic` | The pre-2.12 balanced layout: model, api, tools, git \| tps, context, cost + compactor + memory + ralph |
-| `minimal` | Essentials only: path, git, context |
-| `compact` | Core + key stats: model, git, cost, context |
-| `full` | Everything from all groups |
-| `ascii` | Core segments with ASCII icons |
+A preset selects the segments of the classic status line.
 
-## Segment Groups
+| Preset | Segments |
+|---|---|
+| `default` | brand, mode, model, directory, git, context, compactions, tokens, TPS, cost, clock, duration |
+| `classic` | mode, model, API state, tool count, git, TPS, context, cost, compactions, memory, command, loop status, extensions |
+| `minimal` | mode, model, git, context, clock |
+| `compact` | mode, model, git, TPS, context, cost, clock, duration |
+| `full` | all groups, with a second row |
+| `ascii` | the same segments as `compact` |
 
-| Group | Default | Data Source |
-|-------|---------|-------------|
-| **core** | ON | Pi SDK (ctx.sessionManager, footerData) |
-| **compactor** | ON | Live Pi session data; last-compaction event |
-| **memory** | ON | `MEMORY_STORED`/`DELETED`/`CONSOLIDATED` events |
-| **mcp** | ON | `MCP_SERVER_STARTED`/`STOPPED`/`ERROR` events |
-| **ralph** | ON | `RALPH_LOOP_START`/`END`/`ITERATION_DONE` events |
-| **workflow** | ON | `WORKFLOW_START`/`END` events |
-| **kanboard** | ON | Kanboard registry (direct read) |
-| **notify** | OFF | `NOTIFICATION_SENT` event |
-| **status_ext** | ON | `footerData.getExtensionStatuses()` |
+The hub list also shows `dense`, `devops` and `zen`. These names have no preset definition, so the footer uses `default` for them. To select `compact`, `full` or `ascii`, edit the settings file.
 
-## Configurables
+## Settings
 
-Settings in `~/.pi/agent/settings.json` under `unipi.footer`:
+Open `/unipi:settings` → **Footer**. The file is `~/.unipi/config/footer/config.json`. A project file at `.unipi/config/footer/config.json` overrides it.
 
-```json
-{
-  "unipi": {
-    "footer": {
-      "enabled": true,
-      "preset": "default",
-      "glanceMode": true,
-      "separator": "powerline-thin",
-      "iconStyle": "nerd",
-      "colorMode": "auto",
-      "groups": {
-        "compactor": {
-          "show": true,
-          "segments": {
-            "compactions": true
-          }
-        }
-      }
-    }
-  }
-}
-```
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Turns the footer on or off. |
+| `glanceMode` | `true` | Uses the glance frame around the input. |
+| `preset` | `default` | Selects the segments of the classic status line. |
+| `showFullLabels` | `false` | Shows full labels in place of short labels. |
+| `separator` | `powerline-thin` | Segment divider: `powerline`, `powerline-thin`, `slash`, `pipe`, `dot`, `ascii`. |
+| `zoneSeparator` | `│` | Divider between the left, center and right zones. |
+| `iconStyle` | `nerd` | Icon set: `nerd` (needs a Nerd Font), `emoji` or `text`. |
+| `colorMode` | `auto` | `auto`, `truecolor`, `256` or `none`. |
+| `groups.<group>.show` | `true` (`notify`: `false`) | Shows or hides a segment group. |
+| `groups.<group>.segments.<id>` | per segment | Shows or hides one segment. |
 
-### Separator Styles
+`colorMode: auto` uses 24-bit color where the terminal supports it. It uses 256 colors in terminals such as Apple Terminal. It uses no color when the `NO_COLOR` environment variable exists.
 
-| Style | Look |
-|-------|------|
-| `powerline` | Thick powerline arrows |
-| `powerline-thin` | Thin powerline arrows (default) |
-| `slash` | / |
-| `pipe` | \| |
-| `dot` | Middle dot |
-| `ascii` | > < |
+The hub **Color mode** list shows `mono`. The footer does not know this value and uses `auto`. Use `none` in the file to turn off color.
 
-### Icon Styles
+For the full list of segments and icons, refer to [Footer customization](../../FOOTER_CUSTOMIZATION.md).
 
-| Style | Description |
-|-------|-------------|
-| `nerd` | Nerd Font glyphs (auto-detected) |
-| `emoji` | Unicode symbols (works on most terminals) |
-| `text` | Plain text labels (works everywhere). Glance frame drops the robot glyph: `UNIPI │ branch:main`, `workspace:unipi` |
+## How it works
 
-When `iconStyle` is not set, footer auto-detects Nerd Font support and defaults to `nerd` if available, `emoji` otherwise.
+The footer listens to UniPi events on the [event bus](../../docs/architecture/event-bus.md). Examples are `MEMORY_STORED`, `MCP_SERVER_STARTED`, `RALPH_LOOP_START`, `WORKFLOW_START`, `COMPACTOR_COMPACTED` and `NOTIFICATION_SENT`. It keeps the last data of each event. Thus a package that loads after the footer still shows its data.
 
-### Color Mode
+Some segments read data directly: the Pi session, the Kanboard registry and the Info Screen cache. The footer draws again each second.
 
-| Mode | Description |
-|------|-------------|
-| `auto` | Detect terminal support from environment (default) |
-| `truecolor` | Force 24-bit ANSI color |
-| `256` | Force xterm-256 color fallback |
-| `none` | Disable footer color escapes |
+The classic status line puts segments that do not fit into a second row.
 
-`auto` uses truecolor where supported and downgrades to xterm-256 colors for terminals such as Apple Terminal that do not reliably render 24-bit color escapes.
+## See also
 
-### Responsive Layout
-
-```
-Wide terminal (>120 cols):
-  model | thinking | path | git | context | compactions | cost | project_count
-
-Narrow terminal (<120 cols):
-  Row 1: model | thinking | path | git | context | cost
-  Row 2: compactions | project_count | ralph | workflow
-```
-
-## License
-
-MIT
+- [Footer customization](../../FOOTER_CUSTOMIZATION.md)
+- [Info Screen](../info-screen/README.md)
+- [Settings reference](../../docs/reference/settings.md)

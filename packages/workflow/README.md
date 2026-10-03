@@ -1,122 +1,99 @@
-# @pi-unipi/workflow
+# Workflow
 
-Two always-on session mechanisms:
+Workflow controls which tool calls the agent can run without your approval, and
+gives a read-only plan mode.
 
-- **permission modes** — every tool call passes a gate before it runs: `ask`, `auto`
-  (default), or `full`. In `auto`, a cheap **jev** (TypeSafe System One) call judges
-  ambiguous bash instead of prompting you for everything.
-- **plan mode** — a read-only session that can only write its own plan file, then
-  hands you an approval prompt when the plan is ready.
+`@pi-unipi/workflow` · part of [UniPi](../../README.md)
 
-The twenty slash commands this package used to register (`/unipi:brainstorm`,
-`/unipi:work`, `/unipi:review-work`, `/unipi:auto`, …) are gone; their skills moved
-to [@pi-unipi/skill-registry](../skill-registry/README.md) and stay loadable via
-`/skill:<name>`. Plan mode and ordinary prompting replace the command pipeline.
+## What it does
 
-## Commands & keys
+- Checks each tool call against a permission mode: `ask`, `auto` (default) or `full`.
+- In `auto` mode, sends an unknown `bash` command to jev for a risk verdict.
+  Jev is the UniPi decision model: one small LLM call that returns a choice and
+  a confidence.
+- Saves "Always allow" rules for each project. Saved deny rules apply in all modes.
+- Gives plan mode. In plan mode, the agent can only read files and write one plan file.
+- Shows the plan in a review screen. You approve it, ask for changes or discard it.
 
-| Command / key | Effect |
+## Quick start
+
+1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
+   package alone: `pi install npm:@pi-unipi/workflow`.
+2. Push `Alt+M` to change the permission mode.
+3. Push `Alt+P` to start plan mode. Ask the agent for a plan.
+
+## Commands
+
+| Command or key | What it does |
 |---|---|
-| `/unipi:plan [on\|off\|view\|approve]` | Toggle/enter plan mode, view the plan file, or run the approval prompt |
-| `Alt+P` | Toggle plan mode |
-| `/unipi:permission [ask\|auto\|full]` | Set or show the permission mode |
-| `Alt+M` | Cycle `ask → auto → full` |
+| `/unipi:permission` | Shows the current mode, the project mode and the default mode. |
+| `/unipi:permission ask\|auto\|full` | Sets the mode for this project. |
+| `Alt+M` | Cycles the mode: `ask`, `auto`, `full`. |
+| `/unipi:plan` | Starts or stops plan mode. |
+| `/unipi:plan on\|off` | Starts or stops plan mode. |
+| `/unipi:plan view` | Shows the plan file. |
+| `/unipi:plan approve` | Opens the plan review screen. |
+| `Alt+P` | Starts or stops plan mode. |
+
+## Agent tools
+
+| Tool | What it does |
+|---|---|
+| `plan_submit` | Plan mode only. Opens the plan review screen for the user. |
 
 ## Permission modes
 
-| Mode | Behaviour |
+| Mode | What runs without a prompt |
 |---|---|
-| `ask` | Prompt before every write/edit, bash call, and other tool |
-| `auto` (default) | Read-only tools always run; writes inside the workspace (or the temp dir) run; dangerous commands still prompt; anything else is judged by jev — `safe` with confidence ≥ `jevConfidence` runs, otherwise it prompts |
-| `full` | Everything runs except commands matching a saved **deny** rule |
+| `ask` | Read-only tools only. All other calls show a prompt. |
+| `auto` | Read-only tools, read-only `bash`, and writes in the project or the temp folder. Jev checks other `bash` commands. |
+| `full` | All calls, also dangerous `bash`. Saved deny rules still block. |
 
-Classification order for a tool call:
+The gate checks a tool call in this order:
 
-1. **Saved rules** — glob rules (`allow`/`deny`) stored per project, checked first.
-   Deny rules apply in every mode, including `full`.
-2. **Read-only tools** — `read`, `grep`, `find`, `ls`, `ffgrep`, `fffind`,
-   `memory_search`, `web_search`, `bg_status`, `ask_user`, … always allowed.
-3. **`write` / `edit`** — allowed in `auto`/`full` when the resolved path is inside
-   the workspace or the temp dir; outside it always prompts.
-4. **`bash`** — split into simple commands (quote-aware) and classified:
-   - **dangerous** patterns (`rm -rf`, `sudo`, `dd`, `mkfs`, `chmod -R`, `curl | sh`,
-     `git push --force`, `git reset --hard`, `git clean -f`, `kill -9`/`pkill`,
-     writes into `~/.ssh`, `~/.aws`, `/etc`, reading `.env`/`id_rsa`/`*.pem`) always
-     prompt — even in `ask` mode;
-   - **read-only allowlist** (`ls`, `cat`, `grep`, `find` without `-exec`, `git
-     status/diff/log`, `jq`, `diff`, …) runs in `auto`;
-   - anything else: one jev `risk` question (`safe` / `needs_approval` /
-     `dangerous`) over `cwd` + the command. jev failure → prompt.
-5. **Other tools** (MCP, subagents, background tasks) — allowed in `auto`/`full`;
-   `ask` mode prompts.
+1. Saved rules. A deny rule blocks the call. An allow rule runs it.
+2. Read-only tools, such as `read`, `grep`, `ls`, `memory_search` and `bg_status`.
+3. `write` and `edit`. A path outside the project and the temp folder shows a
+   prompt in `ask` and `auto` modes.
+4. `bash`. Dangerous patterns, such as `rm -rf`, `sudo` or `git push --force`,
+   show a prompt in `ask` and `auto` modes. In `auto` mode, jev must say `safe`
+   with a confidence of `jevConfidence` or more. Otherwise, you get a prompt.
+5. Other tools. They run in `auto` and `full` modes.
 
-### The approval prompt
+The prompt gives four options: "Allow once", "Always allow", "Deny" and "Deny
+with note". The agent gets your note in the block reason.
 
-```
-Allow bash: rm -rf /tmp/wd-test?
-jev: dangerous 0.94
-  1. Allow once                     ← Enter
-  2. Always allow `rm -rf *`
-  3. Deny
-  4. Deny with note…
-```
-
-The first option is selected, so `Enter` allows once. `Always allow …` writes a
-project-scoped allow rule for the suggested pattern (bash: first word(s) + `*`,
-write/edit: the containing directory glob). `Deny with note…` collects a note that
-becomes part of the block reason the agent sees:
-`Blocked by permission (user denied): <note>`. `Esc` denies.
-
-With no UI (print mode, subagent children) nothing ever prompts: it behaves like
-`full`, except saved deny rules and dangerous patterns are blocked with a reason.
+When there is no UI, nothing shows a prompt. The gate blocks dangerous `bash`
+and saved deny rules. It runs all other calls.
 
 ## Plan mode
 
-Entering plan mode (`/unipi:plan`, `Alt+P`):
-
-- state is persisted per session, so a resume keeps it;
-- a compact message states the rules: investigation only, the plan file is the ONLY
-  writable path (`docs/plans/<YYYY-MM-DD>-<short-session-id>.md`), bash is limited
-  to read-only commands;
-- the plan opens with `## Summary` — 5–10 lines of plain language for the human
-  deciding whether to approve (what changes and why, what you'll notice, risks or
-  open decisions) — then the full detail: Steps, Files, Risks, Verification;
-- every later turn gets a short reminder `[plan mode: read-only · plan file … ·
-  call plan_submit when ready]` — appended as a message, never to the system prompt,
-  so the provider prefix cache stays intact.
-
-Enforcement runs before the permission gate: writes to anything but the plan file are
-blocked, bash must match the read-only allowlist (no jev), and mutating tools such as
-`bg_run` are refused with
-`Plan mode is read-only. Write your plan to <path> and call plan_submit.`
-
-`plan_submit` shows the approval prompt — `Approve & implement` (Enter),
-`Keep planning…` (your feedback returns as the tool result so the agent keeps going),
-or `Discard plan`. Approving turns plan mode off, answers `Plan approved.`, and queues
-the plan markdown as the next user message with the instruction to implement it.
-`/unipi:plan view` shows the plan file; `/unipi:plan approve` runs the same approval
-path without the tool call.
+- The plan file is `docs/plans/<date>-<session-id>.md` in the project.
+- The agent can write only the plan file. `bash` must be read-only. Other tools
+  that change state get a block message.
+- Each turn gets a short reminder message. The system prompt does not change.
+- "Approve & implement" stops plan mode. It sends the plan as the next user message.
+- "Keep planning" sends your feedback to the agent.
 
 ## Settings
 
-Registered as the `permission` namespace and rendered by `/unipi:settings` →
-**Permissions**:
+Namespace `permission`. Open it with `/unipi:settings`.
 
-| Setting | Default | Meaning |
+| Key | Default | What it does |
 |---|---|---|
-| `mode` | `auto` | `ask` · `auto` · `full` |
-| `jevJudge` | `true` | Let jev judge ambiguous bash in `auto` |
-| `jevConfidence` | `0.7` | Minimum jev confidence to accept `safe` |
-| `rules` | `[]` | Saved rules (count shown; clear via the action row) |
+| `mode` | not set | Mode for this project. Project scope only. |
+| `defaultMode` | `auto` | Mode for projects that set no mode. Global scope only. |
+| `jevJudge` | `true` | Lets jev check unknown `bash` commands in `auto` mode. |
+| `jevConfidence` | `0.7` | Minimum confidence for a `safe` verdict. |
+| `rules` | `[]` | Saved allow and deny rules. The hub has a "Clear saved rules" action. |
+| `decisionModel.source` | `inherit` | `inherit` uses the shared `decision-model` settings. `custom` sets a model for this namespace. |
 
-The footer shows the active mode (`auto` dim, `ask` accent, `full` warning) and a bold
-`PLAN` marker while plan mode is active.
+Set `UNIPI_DEBUG_PERMISSION=1` to write each decision to
+`~/.unipi/logs/permission.log`.
 
-## Debugging
+## See also
 
-`UNIPI_DEBUG_PERMISSION=1` appends every decision to
-`~/.unipi/logs/permission.log`:
-
-```
-decision tool=bash mode=auto verdict=jev risk=needs_approval confidence=0.82 action=ask cmd="npm publish"
-```
+- [Commands reference](../../docs/reference/commands.md)
+- [Shortcuts reference](../../docs/reference/shortcuts.md)
+- [Harness messages](../../docs/architecture/harness-messages.md)
+- [Skill registry](../skill-registry/README.md) has the old workflow skills.

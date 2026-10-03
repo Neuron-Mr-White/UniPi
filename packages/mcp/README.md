@@ -1,83 +1,84 @@
-# @pi-unipi/mcp
+# MCP
 
-Browse a catalog of 7,800+ MCP servers, add them interactively, and use their tools in Pi. MCP (Model Context Protocol) servers expose external capabilities — GitHub operations, database queries, file system access — as tools the agent can call.
+Connect MCP servers to Pi so the agent can call their tools.
 
-The add command opens a split-pane overlay: server browser on the left, JSON config editor on the right. Pick a server, edit its config, save. Tools from added servers are automatically registered as Pi tools with the pattern `{serverName}__{toolName}`.
+`@pi-unipi/mcp` · part of [UniPi](../../README.md)
+
+MCP (Model Context Protocol) is a standard way for a server to give tools to an AI agent. Examples are GitHub operations, database queries and file access.
+
+## What it does
+
+- Starts each enabled MCP server at session start and registers its tools as Pi tools.
+- Names each tool `<server>__<tool>`, for example `github__search_code`.
+- Lets you browse a server catalog and add a server from a TUI overlay.
+- Reads server configs from a global folder and a project folder. The project config wins.
+- Limits each tool result to 64 KiB of text. It saves the full text of a larger result to a file.
+- Supports 20 servers at most.
+
+## Quick start
+
+UniPi installs this package:
+
+```bash
+pi install npm:@pi-unipi/unipi
+```
+
+To install this package alone:
+
+```bash
+pi install npm:@pi-unipi/mcp
+```
+
+To add a server:
+
+1. Open `/unipi:settings`.
+2. Select the **MCP** group.
+3. Select **Add server…**.
+4. Search the catalog and select a server. You can also paste a custom config.
+5. Edit the JSON config in the right pane. Save it.
+6. Restart Pi.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:settings` | Add servers, enable/disable, sync catalog (MCP group) |
-| `/unipi:settings` | Sync catalog, add/enable servers (MCP group) |
-| `/unipi:mcp-status` | Text summary of all configured servers |
-| `/unipi:settings` | "Reload servers…" reminds you to restart Pi for a clean tool-schema epoch |
+| Command | What it does |
+|---|---|
+| `/unipi:mcp-status` | Shows each server, its state, its tool count and the last error. |
 
-### Setup Flow
+The **MCP** group in `/unipi:settings` has four actions:
 
-1. Run `/unipi:settings` → MCP → "Add server…"
-2. Browse or search the server catalog
-3. Edit the config in the right pane
-4. Save and restart Pi to activate
+| Action | What it does |
+|---|---|
+| **Configure MCP servers…** | Opens a list of servers. Enable, disable or edit a server. |
+| **Add server…** | Opens the catalog browser and the JSON config editor. |
+| **Sync catalog…** | Downloads the server list from `punkpeye/awesome-mcp-servers` on GitHub. |
+| **Reload servers…** | Tells you to restart Pi. |
 
-## Special Triggers
+## Agent tools
 
-When MCP is installed, all workflow skills get access to MCP server tools. Tools are named `{serverName}__{toolName}` — for example, `github__search_code` or `filesystem__read_file`.
+This package has no fixed tools. Each running server adds its own tools.
 
-MCP registers with the info-screen dashboard, showing server count, active servers, and total tools. The footer subscribes to `MCP_SERVER_STARTED`, `MCP_SERVER_STOPPED`, and `MCP_SERVER_ERROR` events to display MCP status.
-
-## Agent Tools
-
-MCP tools are registered dynamically based on configured servers. Once a server is added and Pi restarts, its tools become available to the agent.
-
-### Deterministic Definitions and Cache Behavior
-
-At session startup, enabled servers connect and discover tools in parallel. Registration waits for all discoveries to settle, then registers the successful combined tool set in canonical `{serverName}__{toolName}` order. Duplicate final names are rejected explicitly instead of allowing one definition to overwrite another.
-
-MCP input properties are cloned and recursively canonicalized before registration: schema object keys use locale-independent UTF-16 code-unit order, valid schema `required` string arrays are sorted and deduplicated, a missing top-level `required` becomes `[]`, and literal-value arrays keep their source order. Each tool also receives a stable label matching its final Pi name. These stable definitions and registration order prevent equivalent MCP configurations from changing the serialized tool list between runs, improving provider prompt-cache reuse. A server that fails discovery is excluded from the combined set; a registration error fails startup for that prepared set and is not reported as successful.
-
-Pi 0.84 cannot remove dynamically registered tools. Enabling, disabling, deleting, or changing MCP servers is therefore applied on the next Pi restart rather than mutating the tool list mid-session. This prevents stale schemas and makes the restart an explicit cache-epoch boundary.
-
-### Bounded Results
-
-MCP text results are model-visible up to a hard 64 KiB ceiling. A larger result keeps a bounded head/tail preview and, when the raw result is at most 16 MiB, writes the complete text to a private mode-0600 artifact under `~/.unipi/tool-results/`. Existing result directories are tightened to mode 0700. The returned result includes the path and directs the agent to use `read` with offset/limit. Results above the raw safety cap or filesystem write failures still return a bounded preview with an explicit non-retention warning. MCP image bytes are not written by this text bridge; image blocks remain represented by MIME metadata as before.
-
-Example tool calls:
-```
+```text
 github__search_code({ query: "authentication middleware" })
-github__list_pull_requests({ state: "open" })
 filesystem__read_file({ path: "/home/user/config.json" })
 ```
 
-The agent doesn't need to know about MCP directly — tools appear in its tool list with the server prefix.
+## Configuration
 
-## Configurables
+| Path | What it holds |
+|---|---|
+| `~/.unipi/config/mcp/` | Global server configs. |
+| `<project>/.unipi/config/mcp/` | Project server configs. |
 
-### File Locations
+Each folder can hold two files:
 
-```
-~/.unipi/config/mcp/              ← Global defaults
-{project}/.unipi/config/mcp/      ← Project overrides
-```
+- `mcp-config.json` holds the server definitions. UniPi writes it with mode `0600`.
+- `config.json` holds the enabled state of each server.
 
-### Files at Each Level
-
-- **`mcp-config.json`** — Server definitions (standard MCP format)
-- **`config.json`** — Metadata (enabled/disabled, sync preferences)
-- **`auth.json`** — Sensitive environment variables (chmod 600, optional)
-
-### Config Format
-
-`mcp-config.json` uses the standard MCP format compatible with Claude Desktop, Cursor, and other MCP clients:
+`mcp-config.json` uses the common MCP format that Claude Desktop and Cursor also use:
 
 ```json
 {
   "mcpServers": {
-    "github": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
-      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxx" }
-    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
@@ -86,23 +87,34 @@ The agent doesn't need to know about MCP directly — tools appear in its tool l
 }
 ```
 
-### Config Merge Rules
+Merge rules:
 
-1. Server exists only in global — loaded normally
-2. Server exists only in project — loaded normally
-3. Server exists in both — project wins entirely
-4. `"enabled": false` in project metadata — disabled even if defined globally
+1. A server in one folder only loads as defined.
+2. A server in both folders uses the project definition.
+3. A server with `"enabled": false` in the project `config.json` does not start.
+
+## How it works
+
+At session start, all enabled servers connect at the same time. Each request to a server has a 10-second timeout. When all servers finish, the package registers the tools of the good servers in one sorted list. A server that fails does not add tools.
+
+The package sorts the keys in each tool schema. Thus the tool list is the same from one run to the next, and the provider can reuse its prompt cache. Refer to [Prefix cache](../../docs/architecture/prefix-cache.md).
+
+Pi cannot remove a tool during a session. Thus a change to a server takes effect at the next Pi start.
+
+When a result is more than 64 KiB, the agent gets the start and the end of the text. If the full text is 16 MiB or less, the package writes it to `~/.unipi/tool-results/` with mode `0600`. The result gives the file path, so the agent can use `read` to see the rest.
+
+The catalog file is `~/.unipi/config/mcp/servers.json`. If this file does not exist, the package uses a list of 49 servers that ships with it.
+
+The Info Screen shows an **MCP Servers** group with total, active and failed servers and the tool count.
 
 ## Troubleshooting
 
-**Server won't start:** Check `/unipi:mcp-status` for errors, verify the command exists on your system.
+- **A server does not start.** Run `/unipi:mcp-status` to see the error. Make sure that the server command is on your `PATH`.
+- **New tools do not show.** Restart Pi.
+- **The sync fails.** Examine your network. The 49-server list stays available.
 
-**Tools not appearing:** Ensure the server is running and supports the MCP protocol.
+## See also
 
-**Config issues:** Validate JSON syntax and check file permissions.
-
-**Sync issues:** Run `/unipi:settings` → MCP → "Sync catalog…", check network. The seed catalog (49 servers) is available offline as fallback.
-
-## License
-
-MIT
+- [Prefix cache](../../docs/architecture/prefix-cache.md)
+- [Commands reference](../../docs/reference/commands.md)
+- [Info Screen](../info-screen/README.md)

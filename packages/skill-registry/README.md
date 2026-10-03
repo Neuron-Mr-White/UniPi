@@ -1,62 +1,96 @@
-# @pi-unipi/skill-registry
+# Skill Registry
 
-Decides which skills the agent sees: per-project on/off, a vault of extra skills, and jev-judged exposure.
+Skill Registry controls which skills the agent sees, per project, and keeps the system prompt stable for the prefix cache.
+
+`@pi-unipi/skill-registry` · part of [UniPi](../../README.md)
+
+## What it does
+
+- Turns each skill on or off, in the global scope or the project scope.
+- Marks a skill as "must show", so the agent always sees it.
+- Keeps a vault of extra skills in `~/.unipi/skill-vault/`. Vault skills stay off until a scope turns them on.
+- When you have many skills, lists only the skills that matter to the first real request.
+- Names each hidden skill in a short system prompt section, so the agent can read it when necessary.
+- Keeps the listed set the same for all of the session, so the prefix cache stays valid.
+
+## Quick start
+
+Skill Registry ships in `@pi-unipi/unipi`. To install it alone:
+
+```bash
+pi install npm:@pi-unipi/skill-registry
+```
+
+1. Type `/unipi:skills`. The settings hub opens on the Skills group.
+2. Set **Skill proxy** to on. Without the proxy, Skill Registry saves your per-skill choices but does not apply them.
+3. Select **Skill settings…** to open the skill grid.
+4. Set the cells, then press `Enter` to save.
+
+Changes apply from the next prompt. You do not need `/reload`.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:skills` | Opens `/unipi:settings` on Skills (proxy, exposure, and the **Skill settings…** row) |
+| Command | What it does |
+|---|---|
+| `/unipi:skills` | Opens `/unipi:settings` on the Skills group. |
 
-## Skill settings
+## Skill grid
 
-`/unipi:settings` → Skills → **Skill settings…** opens a grid of every skill pi loaded, like Fusion's preset editor:
+**Skill settings…** shows each skill with its source (`vault`, `project`, `user`, `unipi` or `package`) and two columns:
 
-```
-Skill settings · 42 skills · editing global · proxy on
-    E   M    skill                source  description
- › [x] [ ]   api-contract         user    Check REST/JSON API changes ...
-   [ ] [ ]   aws-deploy           vault   Deploy services to AWS with ...
+- **E** (enabled): the agent can see the skill. Off removes it from the session, and blocks `/skill:name`.
+- **M** (must show): the agent always sees the skill, also when exposure judging would hide it.
 
-E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name
-M must show — always listed, even when judging would hide it
-bright = set in global · dim = inherited
-```
+| Key | What it does |
+|---|---|
+| `↑` `↓`, PgUp, PgDn | Moves between skills. |
+| `←` `→`, Tab | Moves between the E and M columns. |
+| Space | Toggles the cell. |
+| `d` | Clears the cell in the current scope. The cell then inherits again. |
+| `g` | Changes the scope: global or project. |
+| `p` | Turns the skill proxy on or off. |
+| Other letters | Filter by name, source or description. Esc clears the filter. |
+| `Enter` | Saves. |
+| `Esc` | Cancels. |
 
-| Key | Action |
-|-----|--------|
-| `↑` `↓` | Move between skills (PgUp/PgDn page) |
-| `←` `→` | Move between the E / M columns |
-| `space` | Toggle the cell |
-| `d` | Clear the cell in the edited scope (inherit again) |
-| `g` | Edit the global or the project scope |
-| `p` | Skill proxy on/off |
-| type | Filter by name, source or description (Esc clears) |
-| `enter` / `esc` | Save / cancel |
+A project value wins over a global value. With no value, vault skills are off and all other skills are on. Skill Registry writes only the cells that you change.
 
-Cells show the effective value: project over global over the default (vault skills off, everything else on). Only the cells you changed are written, each option on its own, so a project can override just one.
+## Settings
 
-## Skill proxy
+Open `/unipi:settings` → Skills. The namespace is `skills`.
 
-Off by default. While off, pi's skills pass through untouched (exposure judging still applies), vault skills stay hidden, and your choices are saved but not applied. Turn it on and:
+| Key | Default | What it does |
+|---|---|---|
+| `proxy` | `false` | Applies the per-skill states and includes the vault. |
+| `exposure.mode` | `judged` | `judged`: jev picks the listed skills. `all`: list all skills. `off`: remove the UniPi bundled skills from the list. |
+| `exposure.threshold` | `0.8` | Minimum jev relevance score for a skill to stay listed. Range 0 to 1. |
+| `exposure.maxSkills` | `12` | Maximum number of listed skills. With this number of skills or fewer, no judging occurs. |
+| `exposure.recheck` | `true` | On later prompts, tells the agent about hidden skills that jev finds relevant. |
+| `states` | `{}` | Per-skill `enabled` and `mustShow`. Edit it in **Skill settings…**. |
 
-- Skills turned **off** are removed from the session, including `/skill:name`.
-- The **vault**, `~/.unipi/skill-vault/`, takes part. Keep as many skills there as you like; they stay off until a scope turns them on, so a project only gets the ones it needs. Changes apply on the next prompt, no reload needed. Any folder with a `SKILL.md`, up to three levels deep (`vault/<skill>/` or `vault/<pack>/<skill>/`).
+The group also has a Decision model section. Set `decisionModel.source` to `inherit` or `custom`.
 
-## Exposure
+Set `UNIPI_SKILL_VAULT` to use a different vault folder.
 
-Settings → Skills → Exposure:
+## How it works
 
-- **judged** (default) — when more skills are available than *Max skills listed* (12), the first real request of the session picks the listed set, and it stays fixed for the session so the system prompt never changes (prefix cache intact). Greetings don't count.
-  1. **Named skills are always kept.** A skill whose name appears in the request (`agent-browser`, "grill me") or a word only its name contains ("ssh into **coffee**" → `coffee-sandbox`) is listed without asking a model.
-  2. **jev scores the rest** against the request; those above the threshold are listed best first, up to *Max skills listed* in total.
-  3. **Hidden skills are still named.** The system prompt gets a short section listing every hidden skill by folder, so the agent knows it exists and can read its `SKILL.md`.
-  4. **Later requests** that name a hidden skill (or, with *recheck*, that jev finds it relevant to) get a message pointing at it. The system prompt itself never changes.
-- **all** — every skill is listed.
-- **off** — UniPi's bundled skills are removed from the list.
+In `judged` mode, Skill Registry picks the listed set on the first real prompt of the session. Greetings do not count. jev is the UniPi Decision Model.
 
-jev uses the shared Decision Model (Settings → Skills → Decision model: inherit or custom). If jev is unavailable, every skill is listed.
+1. A skill that the prompt names is always kept. A distinctive word of the name is enough: "ssh into coffee" keeps `coffee-sandbox`.
+2. Must-show skills are always kept.
+3. jev scores the other skills against the prompt. Skills at or above `exposure.threshold` stay, best first, up to `exposure.maxSkills`.
+4. A system prompt section names each hidden skill and its folder.
 
-## License
+After this, the system prompt does not change for the session. On a later prompt, a message tells the agent about hidden skills that the prompt names. With `exposure.recheck`, it also tells the agent about hidden skills that jev finds relevant. Each message names 5 skills at most.
 
-MIT
+If jev does not answer, Skill Registry lists all skills.
+
+The vault holds any folder with a `SKILL.md`, up to three levels deep: `vault/<skill>/` or `vault/<pack>/<skill>/`.
+
+Other packages can emit the `unipi:skills:reveal` event with `{ names: [...] }` to tell the agent about hidden skills.
+
+## See also
+
+- [Prefix cache](../../docs/architecture/prefix-cache.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Glossary](../../docs/reference/glossary.md)

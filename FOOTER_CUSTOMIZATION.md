@@ -1,234 +1,108 @@
-# Footer Stats Customization
+# Footer customization
 
-> Edit the values below. Then run the update to apply to `packages/footer/src/rendering/icons.ts`.
+This page lists each segment of the UniPi [footer](packages/footer/README.md). It tells you how to show, hide and change segments.
 
-## Core Segments
+## Show or hide a segment
 
-- Stat name: **model**
-  tstqststa Emoji: 🤖
-  - Nerd: 󰚩 
-  - Text: MDL
+1. Open `/unipi:settings`.
+2. Select the **Footer** group.
+3. Open **Segments…**.
+4. Turn a group or a segment on or off.
 
-- Stat name: **api_state**
-  - Emoji: 🔄
-  - Nerd: 󱂛
-  - Text: API
+You can also edit `~/.unipi/config/footer/config.json`:
 
-- Stat name: **tool_count**
-  - Emoji: 🔧
-  - Nerd: 󱁤
-  - Text: TLS
+```json
+{
+  "preset": "full",
+  "groups": {
+    "notify": { "show": true },
+    "core": { "segments": { "hostname": true, "cost": false } }
+  }
+}
+```
 
-- Stat name: **git**
-  - Emoji: 🔀
-  - Nerd:  
-  - Text: GIT
+A segment shows when its group has `show: true` and one of these is true:
 
-- Stat name: **tps**
-  - Emoji: ⚡
-  - Nerd: 󰓅
-  - Text: TPS
+- The active preset contains the segment, and the segment value is not `false`.
+- The segment value is `true`. This adds the segment to any preset.
 
-- Stat name: **context_pct**
-  - Emoji: 🗄️
-  - Nerd: 󰁷 
-  - Text: CTX
+Run `/unipi:footer-help` to see the active segments.
 
-- Stat name: **cost**
-  - Emoji: 💲
-  - Nerd: 
-  - Text: CST
+## Segments
 
-- Stat name: **tokens_total**
-  - Emoji: 📊
-  - Nerd: 
-  - Text: TOK
+"Short" is the label that the footer shows when `showFullLabels` is `false`. "Zone" is the position in the classic status line.
 
-- Stat name: **tokens_in**
-  - Emoji: ⬇️
-  - Nerd: 
-  - Text: TKI
+### core
 
-- Stat name: **tokens_out**
-  - Emoji: ⬆️
-  - Nerd: 
-  - Text: TKO
+| Segment | Short | Zone | Default | What it shows |
+|---|---|---|---|---|
+| `uni` | UNI | left | on | UniPi brand mark |
+| `lh_mode` | MODE | left | on | Long-horizon mode: Goal, Ralph, Swarm, Graph or Regular |
+| `model` | MDL | left | on | Model name |
+| `api_state` | API | left | on | API connection state |
+| `tool_count` | TLS | left | on | Number of tools |
+| `git` | GIT | left | on | Git branch and dirty state |
+| `directory` | DIR | left | on | Directory name |
+| `session` | SES | left | off | Session ID |
+| `hostname` | HST | left | off | Machine name |
+| `tps` | TPS | center | on | Tokens per second during output |
+| `context_pct` | CTX | center | on | Percent of the context window in use |
+| `cost` | CST | center | on | Session cost in USD |
+| `tokens_total` | TOK | center | off | Total tokens in the session |
+| `tokens_in` | TIN | center | off | Input tokens |
+| `tokens_out` | TOUT | center | off | Output tokens |
+| `thinking_level` | THK | center | off | Thinking level of the model |
+| `clock` | CLK | right | on | Time of day (HH:MM:SS) |
+| `duration` | DUR | right | on | Session duration |
 
-- Stat name: **session**
-  - Emoji: 📋
-  - Nerd:  
-  - Text: SES
+### Package groups
 
-- Stat name: **hostname**
-  - Emoji: 🏠
-  - Nerd: 
-  - Text: HST
+| Group | Segment | Short | Default | What it shows |
+|---|---|---|---|---|
+| `compactor` | `compactions` | CMP | on | Count, tokens before and after, time since the last compaction |
+| `memory` | `project_count` | MEM | on | Memory entries for this project |
+| `memory` | `total_count` | TOT | on | Memory entries for all projects |
+| `memory` | `memory_state` | MST | on | Recall and write switches, and pending operations |
+| `memory` | `consolidations` | CNS | off | Number of memory consolidations |
+| `mcp` | `servers_total` | SRV | on | MCP servers in the config |
+| `mcp` | `servers_active` | ACT | on | Connected MCP servers |
+| `mcp` | `tools_total` | TLS | on | MCP tools |
+| `mcp` | `servers_failed` | ERR | on | MCP servers that failed |
+| `ralph` | `active_loops` | RL | on | Active ralph loops |
+| `ralph` | `total_iterations` | ITR | on | Total loop iterations |
+| `ralph` | `loop_status` | STS | on | Loop status |
+| `workflow` | `current_command` | WRK | on | Active workflow command |
+| `workflow` | `sandbox_level` | SBX | off | Sandbox level |
+| `workflow` | `command_duration` | CDUR | on | Duration of the active command |
+| `kanboard` | `docs_count` | DOC | on | Number of workflow documents |
+| `kanboard` | `tasks_done` | DNE | on | Completed tasks |
+| `kanboard` | `tasks_total` | TSK | on | All tasks |
+| `kanboard` | `task_pct` | PCT | on | Percent of tasks complete |
+| `notify` | `platforms_enabled` | NTF | on | Enabled notification platforms |
+| `notify` | `last_sent` | LST | on | Time of the last notification |
+| `status_ext` | `extension_statuses` | EXT | on | Status text from other extensions |
 
-- Stat name: **clock**
-  - Emoji: 🕔
-  - Nerd: 
-  - Text: CLK
+All segment groups are on by default, except `notify`. The default preset uses only some of these segments. The `full` preset uses almost all of them.
 
-- Stat name: **duration**
-  - Emoji: ⏱
-  - Nerd: 󱎫
-  - Text: DUR
+## Icons
 
-- Stat name: **thinking_level**
-  - Emoji: 💡
-  - Nerd: 
-  - Text: THK
+Each segment has three icons: one for `nerd`, one for `emoji` and one for `text`. Set the style with the `iconStyle` key.
 
-## Compactor Segments
+| Style | Example (`model`, `git`, `cost`) | Needs |
+|---|---|---|
+| `nerd` | `󰚩`, ``, `` | A Nerd Font in the terminal |
+| `emoji` | `🤖`, `🔀`, `💲` | Emoji support |
+| `text` | `MDL`, `GIT`, `CST` | Nothing |
 
-- Stat name: **session_events**
-  - Emoji: 📈
-  - Nerd: 
-  - Text: EVT
+With `text`, the glance frame shows labels such as `branch:main` and `workspace:unipi` in place of glyphs.
 
-- Stat name: **compactions**
-  - Emoji: 🗜️
-  - Nerd: 󰲏
-  - Text: CMP
+To change an icon, edit `packages/footer/src/rendering/icons.ts`. This file has three maps: `NERD_ICONS`, `EMOJI_ICONS` and `TEXT_ICONS`. The keys use camel case. For example, `project_count` uses the key `projectCount`, and `context_pct` uses the key `context`. To apply a change, run `npm run build` and restart Pi.
 
-- Stat name: **tokens_saved**
-  - Emoji: 💲
+## Separators
 
-- Stat name: **compression_ratio**
-  - Emoji: 📐
-  - Nerd: 󰲏
-  - Text: RAT
+| Key | Values |
+|---|---|
+| `separator` | `powerline`, `powerline-thin` (default), `slash`, `pipe`, `dot`, `ascii` |
+| `zoneSeparator` | `│` (default), `╎`, `·`, `─`, `none` |
 
-- Stat name: **indexed_docs** *(hidden — no data source)*
-  - Emoji: 📑
-  - Nerd: 󰈙
-  - Text: IDX
-
-- Stat name: **sandbox_runs** *(hidden — no data source)*
-  - Emoji: ▶️
-  - Nerd: 
-  - Text: SBX
-
-- Stat name: **search_queries** *(hidden — no data source)*
-  - Emoji: 🔍
-  - Nerd: 
-  - Text: QRY
-
-## Memory Segments
-
-- Stat name: **project_count**
-  - Emoji: 🧠
-  - Nerd: 
-  - Text: MEM
-
-- Stat name: **total_count**
-  - Emoji: 🧠
-  - Nerd: 
-  - Text: MEM
-
-- Stat name: **consolidations**
-  - Emoji: 🔄
-  - Nerd: 
-  - Text: CNS
-
-## MCP Segments
-
-- Stat name: **servers_total**
-  - Emoji: 🖥️
-  - Nerd: 󰖷
-  - Text: SRV
-
-- Stat name: **servers_active**
-  - Emoji: 🟢
-  - Nerd: 󰖷
-  - Text: ACT
-
-- Stat name: **tools_total**
-  - Emoji: 🔧
-  - Nerd: 󰖷
-  - Text: TLS
-
-- Stat name: **servers_failed**
-  - Emoji: ⚠️
-  - Nerd: 󰖷
-  - Text: ERR
-
-## Ralph Segments
-
-- Stat name: **active_loops**
-  - Emoji: 🔁
-  - Nerd: 󰜉
-  - Text: LPS
-
-- Stat name: **total_iterations**
-  - Emoji: 🔁
-  - Nerd: 󰜉
-  - Text: ITR
-
-- Stat name: **loop_status**
-  - Emoji: 🔁
-  - Nerd: 󰜉
-  - Text: STS
-
-## Workflow Segments
-
-- Stat name: **current_command**
-  - Emoji: ▶️
-  - Nerd: 
-  - Text: CMD
-
-- Stat name: **sandbox_level** *(hidden by default)*
-  - Emoji: 🔒
-  - Nerd: 󰟾
-  - Text: SBX
-
-- Stat name: **command_duration**
-  - Emoji: ⏱
-  - Nerd: 󱎫
-  - Text: DUR
-
-## Kanboard Segments
-
-- Stat name: **docs_count**
-  - Emoji: 📑
-  - Nerd: 󰧮
-  - Text: DOC
-
-- Stat name: **tasks_done**
-  - Emoji: ✅
-  - Nerd: 󱪚 
-  - Text: DNE
-
-- Stat name: **tasks_total**
-  - Emoji: 📋
-  - Nerd: 
-  - Text: TSK
-
-- Stat name: **task_pct**
-  - Emoji: 📊
-  - Nerd: 
-  - Text: PCT
-
-## Notify Segments
-
-- Stat name: **platforms_enabled**
-  - Emoji: 🔔
-  - Nerd: 
-  - Text: NTF
-
-- Stat name: **last_sent**
-  - Emoji: ⏱
-  - Nerd: 󱎫
-  - Text: LST
-
-## Status Extension
-
-- Stat name: **extension_statuses**
-  - Emoji: 🧩
-  - Nerd: 󱖫
-  - Text: EXT
-
----
-
-**Totals: 42 segments** across 8 groups
-- Core: 15 · Compactor: 7 · Memory: 3 · MCP: 4 · Ralph: 3 · Workflow: 3 · Kanboard: 4 · Notify: 2 · Status-Ext: 1
+The `powerline` styles need a Nerd Font or a Powerline font.

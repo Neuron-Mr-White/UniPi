@@ -1,66 +1,91 @@
-# @pi-unipi/watchdog
+# Watchdog
 
-Jev watchdog for long-running tool calls and background tasks. Uses the TypeSafe System One Decision model (the same jev model the long-horizon mode router uses) to judge whether a running tool call or background task is stuck, and kills or warns accordingly.
+Watchdog finds tool calls and background tasks that are stuck, and stops them or warns the agent.
 
-Off by default. Configure in `/unipi:settings` → Watchdog.
+`@pi-unipi/watchdog` · part of [UniPi](../../README.md)
 
-## How it works
+## What it does
 
-Every `intervalMin` minutes (default 5), the watchdog sends ONE jev request per watched item:
+- Watches running `bash` calls, background tasks and other long tools.
+- Asks jev, the UniPi Decision Model, if each item is progressing, waiting, stuck or looping.
+- Acts only after 2 checks in a row agree, with confidence 0.8 or more (defaults).
+- Protects dev servers, file watchers and daemons that run normally.
+- Tells the agent why it stopped a `bash` call, so the agent does not run it again blindly.
+- Is off by default. No timers run until you turn it on.
 
-- **status** (choice): progressing / waiting / stuck / looping
-- **persistent** (noul): is this a long-lived service operating normally?
+## Quick start
 
-A kill (or warn) fires when:
+Watchdog ships in `@pi-unipi/unipi`. To install it alone:
 
-- status is **stuck** or **looping**
-- confidence ≥ `confidence` (default 0.8)
-- the persistent noul is < 0.5, **OR** the status is `looping` (an error loop is not healthy, even for a service)
-- for `agreeChecks` (default 2) consecutive checks
+```bash
+pi install npm:@pi-unipi/watchdog
+```
 
-The persistent veto protects dev servers, file watchers, and daemons that are operating normally. A loop that keeps printing errors is NOT healthy — it gets killed even if it looks like a service.
+1. Type `/unipi:settings`.
+2. Open the Watchdog group.
+3. Set `enabled` to on.
+4. Start a new session. Watchdog starts its timer at session start.
 
-## What gets watched
+Watchdog has no commands and no agent tools.
 
-| Item | Setting | Kill mechanism |
+## What it watches
+
+| Item | Setting | Action |
 |---|---|---|
-| bash tool calls | `watchBash` (default on) | process-group kill of the detected child shell |
+| `bash` tool calls | `watchBash` | Stops the process group of the command. |
+| Background tasks | `watchBgTasks` | Stops the task through the background task registry. |
+| Other tools (web, image, MCP, subagents) | `otherTools` | Warns, or aborts the turn. |
 
-The bash kill never overrides pi's tool: it scans pi's direct children for the command string (in its raw and shell-expanded forms — `~`/`$VAR`, quotes stripped, since a `-c` shell expands and implicit-execs a simple command) and requires EXACTLY ONE match. Zero or several matches downgrade to a warning instead of guessing.
-| background tasks | `watchBgTasks` (default on) | `stopTask` via the shared registry |
-| other tools (web, image, mcp, subagents) | `otherTools` (off/warn/abort-turn) | notify / abort turn |
-
-**Never watched:** `ask_user` (human wait), quick tools (read/write/edit/grep/find/ls), persistent servers (no completion triggers configured).
+Watchdog never watches `read`, `write`, `edit`, `grep`, `find`, `ls`, `ask_user`, `read_subagent`, `bg_kill` or `bg_tasks`. It also skips a background task that has no completion trigger, because that task is a server.
 
 ## Settings
 
-| Setting | Default | Description |
+Open `/unipi:settings` → Watchdog. The namespace is `watchdog`.
+
+| Key | Default | What it does |
 |---|---|---|
-| `enabled` | `false` | Off by default — no timers run until enabled |
-| `intervalMin` | `5` | Check interval in minutes |
-| `firstCheckMin` | `2` | Minutes until the first check |
-| `confidence` | `0.8` | Minimum jev confidence to act |
-| `agreeChecks` | `2` | Consecutive agreeing checks before acting |
-| `action` | `kill` | Kill the item, or only warn |
-| `watchBash` | `true` | Watch bash tool calls |
-| `watchBgTasks` | `true` | Watch background tasks |
-| `otherTools` | `warn` | For tools without a kill handle: warn or abort the turn |
+| `enabled` | `false` | Turns the watchdog on. |
+| `intervalMin` | `5` | Minutes between two checks of one item. |
+| `firstCheckMin` | `2` | Minimum age of an item, in minutes, before its first check. |
+| `confidence` | `0.8` | Minimum jev confidence to act. Range 0 to 1. |
+| `agreeChecks` | `2` | Number of checks in a row that must agree. |
+| `action` | `kill` | `kill` stops a `bash` call. `warn` only sends a warning. |
+| `watchBash` | `true` | Watches `bash` calls. |
+| `watchBgTasks` | `true` | Watches background tasks. |
+| `otherTools` | `warn` | `off`, `warn` or `abort-turn` for tools that Watchdog cannot stop. |
 
-## Tool result annotation
+The group also has a Decision model section. Set `decisionModel.source` to `inherit` or `custom`.
 
-When the watchdog kills a bash call, the tool result carries:
+In this release, `action` applies to `bash` calls only. Watchdog stops a stuck background task also when `action` is `warn`.
+
+## How it works
+
+1. A timer runs every 15 seconds or less. It does not call jev until an item is due.
+2. For each due item, Watchdog sends jev the command and its run time. It also sends the time since new output, and the last 3,000 characters of output.
+3. jev answers two questions. `status` is one of `progressing`, `waiting`, `stuck` or `looping`. `persistent` scores if the item is a service that runs normally.
+4. Watchdog acts when all of these are true:
+   - `status` is `stuck` or `looping`.
+   - The confidence is at or above `confidence`.
+   - The item is not a normal service. A `looping` item is never a normal service.
+   - `agreeChecks` checks in a row agree.
+
+To stop a `bash` call, Watchdog does not replace the pi `bash` tool. It looks for the command in the child processes of pi. It stops the process group only when exactly one child matches. With zero or many matches, it sends a warning. On Windows, it always sends a warning.
+
+The tool result of a stopped call starts with a line like this:
 
 ```
-⚠ Killed by unipi watchdog after 95s: jev judged it stuck (confidence 0.92) on 2 consecutive checks — no new output for 95s. Do not blindly re-run; investigate or change approach.
+⚠ Killed by unipi watchdog after 410s: jev judged it judged stuck; stuck (confidence 0.92) on 2 consecutive checks — no new output for 300s. Do not blindly re-run; investigate or change approach.
 ```
 
-The original output follows the warning. `isError` is set to `true`.
+The original output follows. The result has `isError: true`. Warnings go to the agent at the start of the next turn. While Watchdog watches items, the status bar shows `watchdog: N`.
 
-## Debug logging
+## Debug log
 
-Set `UNIPI_DEBUG_WATCHDOG=1` to enable debug logging to `~/.unipi/logs/watchdog.log`:
+Set `UNIPI_DEBUG_WATCHDOG=1` to write a log to `~/.unipi/logs/watchdog.log`. Each check writes one line with the status, the confidence and the streak.
 
-```
-2026-09-23T09:46:58Z before_agent_start mode=judged skills=37
-2026-09-23T09:46:58Z judged 37 -> 12 kept=[work, fix, ...] latency=376ms failOpen=false
-```
+## See also
+
+- [Watchdog architecture](../../docs/architecture/watchdog.md)
+- [Background Tasks](../background-tasks/README.md)
+- [Settings reference](../../docs/reference/settings.md)
+- [Glossary](../../docs/reference/glossary.md)

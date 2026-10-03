@@ -1,113 +1,122 @@
-# @pi-unipi/utility
+# Utility
 
-The settings hub, automatic session naming, image tools, pasted-file attachments, `/unipi:answer`, and a few maintenance commands. Also keeps the shared model cache every other module's model picker reads.
+Utility gives UniPi one settings panel, names your sessions, attaches pasted files, and gives the agent image tools.
+
+`@pi-unipi/utility` · part of [UniPi](../../README.md)
+
+## What it does
+
+- Opens one settings hub for every UniPi package (`/unipi:settings`).
+- Names the session after a real request starts or changes the topic.
+- Lets you answer the questions in the last agent reply without scrolling (`/unipi:answer`).
+- Turns pasted or dropped file paths into attachments: `[Image #1]`, `[File #2]`.
+- Gives the agent three image tools: generate, edit and recognize.
+- Changes how `read`, `bash`, `edit` and `write` calls look in the transcript.
+
+## Quick start
+
+Utility ships in `@pi-unipi/unipi`. To install it alone:
+
+```bash
+pi install npm:@pi-unipi/utility
+```
+
+1. Type `/unipi:settings` to open the settings hub.
+2. Type a search term after the command to filter the hub, for example `/unipi:settings image`.
+3. Type `/unipi:doctor` to check the UniPi runtime.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/unipi:settings [search]` | Configure every UniPi module in one panel (global + project scopes); a search term opens it filtered (`/unipi:settings image`). Typing `/settings` lists it before pi's own `/settings` |
-| `/unipi:continue` (`/unipi:retry`) | Take another turn from where the agent stopped, without adding text |
-| `/unipi:cleanup` | Remove stale UniPi temp files and leftovers. Shows what it would remove and asks first; `--dry-run` only lists, `--yes` skips the question |
-| `/unipi:doctor` | Check folders, config, the model cache, the Decision Model key and skill exposure |
-| `/unipi:answer` (`reply`\|`questions`\|`web`) | Answer the agent's last reply without scrolling back and forth |
+| Command | What it does |
+|---|---|
+| `/unipi:settings [search]` | Opens the settings hub for all UniPi packages. Global and project scopes. |
+| `/unipi:continue` | Starts one more agent turn without new text. |
+| `/unipi:retry` | Same as `/unipi:continue`. |
+| `/unipi:cleanup` | Lists stale UniPi files, then asks before it removes them. `--dry-run` only lists. `--yes` does not ask. |
+| `/unipi:doctor` | Checks folders, config files, Node, the model cache, the Decision Model and skill exposure. |
+| `/unipi:answer [reply\|questions\|web]` | Opens a screen to answer the last agent reply. |
 
-Skill exposure and the skill manager live in `@pi-unipi/skill-registry` (`/unipi:skills`).
+The skill manager is in [Skill Registry](../skill-registry/README.md) (`/unipi:skills`).
 
-The agent gets the three image tools (below) and nothing else from this package.
-
-## Automatic session naming
-
-After each round that finished normally, if you typed the prompt:
-
-1. Greetings, thanks, "ok", "continue" and slash commands are skipped outright.
-2. jev (the Decision Model) answers two short questions: is this a real request with its own subject, and — if the session already has a name — does it move to a different task? Only a confident "yes" renames.
-3. The name is written by a separate throwaway session whose only tool is `rename_session`. It sees the current name and your last few requests, nothing else, and never touches the main session.
-
-A name you set yourself with pi's `/name` is never overwritten. Without a Decision Model key, only an unnamed session gets named, on its first prompt of four words or more.
-
-Inside Herdr, the name is also shown as the pane title and, while the tab still has its default number, the tab label.
-
-Settings (`/unipi:settings` → Utility → Session name): auto-rename on/off, naming model (defaults to the session model), Herdr sync, and a **Rename now** action.
-
-## Answering the last reply
-
-`/unipi:answer` opens one of three screens (Settings → Utility → Answer picks the default; `/unipi:answer reply|questions|web` overrides it once, with suggestions as you type):
-
-- **reply** (default) — like `/unipi:btw`, it takes the place of the input area: the agent's last reply in a scrollable view on top, a fixed input box below. ↑↓ scroll the reply while nothing is typed; once you type they move the cursor in your answer, and Alt+↑↓ or PgUp/PgDn scroll instead. Shift+Enter (or Ctrl+J) adds a line, Enter sends it as your next message, Esc goes back to the normal editor with your draft. If the reply asks questions, Tab switches to **questions**.
-- **questions** — pi's editor holding only `Q1. … / A1:` pairs for every question in the reply: each sentence ending in `?`, in full, even when it wraps over several lines (code blocks and URLs are ignored). The cursor starts on the first answer, Tab / Shift+Tab jump between answers, Ctrl+G opens your `$EDITOR`, Enter sends one message that quotes each question above its answer; empty answers are listed as not answered.
-- **web** — a local page with the full reply on the left and one box per question on the right (plus a free-text note), on 127.0.0.1 behind a random URL. Over SSH (detected from `SSH_CONNECTION`/`SSH_TTY`) it doesn't open a browser: it shows the `ssh -L` command, built from this machine's hostname and the port (47321 unless you set one), and the URL to open on your own machine.
-
-When a reply asks questions, a line above the editor says so (`2 questions in the reply — /unipi:answer questions …`) until you send anything. Settings → Utility → Answer → Questions hint turns it off.
-
-## Pasted images and files
-
-Paste a screenshot (Ctrl+V), drag a file into the terminal, or paste a path, and the path in the editor becomes a token: `[Image #1]` for PNG/JPEG/GIF/WebP, `[File #2]` for documents (PDF, text, office files, archives, media). A chip row above the editor lists what's attached, with small previews in terminals that can draw images (Kitty, Ghostty, iTerm2, WezTerm).
-
-When you send:
-- Images go to the model as real images, in the order their tokens appear.
-- File tokens become `[File #2: /path/to/file]` so the agent can read them.
-- A line under your message in the transcript shows what was attached; the model doesn't see it.
-
-Delete a token to drop its attachment. Only paths that arrive by paste, drop or Ctrl+V are converted; a path you type stays text. Settings → Utility → Attachments turns this or the previews off.
-
-## Image tools
+## Agent tools
 
 | Tool | What it does |
-|------|--------------|
-| `image_generate` | Text → image |
-| `image_edit` | Image + text → image |
-| `image_recognize` | Image → text with a vision model; only offered while the session model can't see images itself |
+|---|---|
+| `image_generate` | Makes an image from a text prompt. |
+| `image_edit` | Changes an image from a text instruction. The source is a file path, a `data:` URL or base64. |
+| `image_recognize` | Describes an image with a vision model. The agent gets this tool only when the session model cannot see images. |
 
-Settings → Image has one section per tool. Each model picker only lists models that fit: generation shows models whose output includes images, editing shows models that take an image and output one, recognition shows vision models. The list comes from the shared model cache: pi's registry, OpenRouter's image models (refreshed daily), and a few fal models when a fal key is set.
+The tools return images inline. `image_generate` and `image_edit` also save files to `~/.unipi/images/`. The default model for both is `openrouter/black-forest-labs/flux.2-klein-4b`.
 
-How a model is called depends on its provider:
+Utility sends each call to the provider in the model id:
 
-| Model | Sent to | Key |
-|-------|---------|-----|
-| `openrouter/…` | OpenRouter (chat with image output) | Settings → Image → Keys, else pi's `/login`, else `OPENROUTER_API_KEY` |
-| `fal/…` | fal.run | Settings → Image → Keys, else `FAL_KEY` / `FAL_API_KEY` |
-| any other pi provider | that provider's endpoint (OpenAI images format) | pi's key for that provider |
-| anything, with a **custom endpoint** set | your base URL, model id sent as typed, format of your choice (OpenAI images, OpenRouter-style, fal) | the endpoint's own key |
+| Model id | Endpoint | Key |
+|---|---|---|
+| `openrouter/…` | OpenRouter | `keys.openrouter`, then pi `/login`, then `OPENROUTER_API_KEY` |
+| `fal/…` | fal.run | `keys.fal`, then `FAL_KEY` or `FAL_API_KEY` |
+| other pi provider | that provider, OpenAI images format | pi key for that provider |
+| any, with a custom `baseUrl` | your URL, with the format in `api` | the `apiKey` of that endpoint |
 
-Defaults are FLUX.2 [klein] 4B on OpenRouter for both generation and editing, which is cheap and fast. Images are returned inline and saved to `~/.unipi/images/`. When a call fails, the tool reports it as a failure with the missing key or setting spelled out.
+## Answer the last reply
 
-## Response formatting
+`/unipi:answer` has three methods. The `answer.method` setting picks the default. An argument overrides it one time.
 
-Settings → Utility → Response formatting → Style changes how pi's built-in `read`, `bash`, `edit` and `write` calls look in the transcript. The model sees exactly the same tools either way; only the drawing changes. It applies after `/reload` (or a restart) — the renderers are registered once when extensions load, so a change made mid-session takes effect on the next reload.
+- `reply` shows the last reply in a scroll view, with an input box under it. Enter sends your text. Esc goes back to the editor with your draft.
+- `questions` fills the editor with `Q1. … / A1:` pairs, one pair for each sentence that ends in `?`. Tab moves to the next answer. Ctrl+G opens `$EDITOR`.
+- `web` opens a local form on 127.0.0.1. Over SSH, it does not open a browser. It shows an `ssh -L` command and the URL. Port 47321 is the first try over SSH.
 
-- **simple** — one line per tool, output collapsed:
-  ```
-  ▪ Read   ./demo/app.py · 5 lines
-  ▪ Edited ./demo/app.py · +1 -1
-  ▪ Ran    cd demo && ls -la && python3 app.py · 7 output lines
-  ```
-  The live (latest) row shows a ticking timer (`• Running npm test · 12s`) and
-  done rows pin the final duration (`· 7 output lines · 3s`). Tools that opt in
-  keep their result under the row (`ask_user`'s Q→A) or drive the meta live
-  (`run_subagent`'s model · calls · duration · tokens · cost). Sidekick steps
-  and other non-pi-tool activity draw with the same verbs/markers.
-- **regular** (default) — pi's own rendering, untouched.
-- **advanced** —
-  - Commands are syntax-highlighted. Code embedded in a command is highlighted in its own language: heredoc bodies (`python - <<'PY'`, `cat > x.ts <<EOF`) and `python -c` / `node -e` strings.
-  - Output shows its last 10 lines. Whole-output JSON is pretty-printed, test-run summaries (node:test, vitest, cargo, pytest) get a ✓/✗ line, and an exit line shows the code and time.
-  - Edits show as a diff with line numbers, syntax colouring by file type, and tinted added/removed lines.
-  - Writes and reads are highlighted by file type.
+After a reply with questions, a hint line above the editor shows the count. Set `answer.hint` to `false` to hide it.
 
-Ctrl+O expands anything collapsed in every style. In every style, blank runs
-between transcript blocks are normalized: each block keeps its interior
-spacing, but adjacent blocks are separated by exactly one blank row (pi
-otherwise stacks a block's own padding on top of its leading spacer,
-producing occasional 2–4 blank runs).
+## Attachments
 
-## Model cache
+Paste a screenshot with Ctrl+V, drag a file into the terminal, or paste a path. The path becomes a token in the editor:
 
-On every session start, utility writes pi's live model list (models with credentials) to `~/.unipi/config/models-cache.json`, with each model's input and output modalities. The settings hub pickers and kanboard read it; `readModelCache()` / `filterModels()` in `@pi-unipi/core` give the same list to any module.
+- `[Image #N]` for PNG, JPEG, GIF and WebP. Utility sends the image to the model as an image.
+- `[File #N]` for other files. Utility sends `[File #N: /path/to/file]`, so the agent can read the file.
 
-## Cleanup safety
+Remove a token to remove its attachment. A path that you type stays text. Kitty, Ghostty, iTerm2 and WezTerm show small previews.
 
-`/unipi:cleanup` can only remove what its allowlist names: saved tool outputs and `unipi-*` temp files older than 7 days, and the old compactor continuity database. Memory, v2 backups, kanboard boards, config and workspace state are never candidates.
+## Session names
 
-## License
+After each round that ends without an error, Utility can name the session:
 
-MIT
+1. It skips a round with only a greeting or a short reply and no tool work.
+2. jev, the UniPi Decision Model, answers two questions. Did the round start a real task? Did the task change?
+3. A separate one-tool session writes the name. It sees only the current name and your last requests.
+
+Utility does not overwrite a name that you set with pi `/name`. If jev does not answer, Utility names only an unnamed session. The round must have tool work or a prompt of 4 or more words. In Herdr, the name also goes to the pane title.
+
+## Settings
+
+Open `/unipi:settings` → Utility, or → Image.
+
+| Key | Default | What it does |
+|---|---|---|
+| `utility.rename.auto` | `true` | Names the session when the topic starts or changes. |
+| `utility.rename.model` | `""` | Model for the naming session. Empty means the session model. |
+| `utility.rename.herdrSync` | `true` | Shows the session name as the Herdr pane title and tab label. |
+| `utility.answer.method` | `reply` | Default method for `/unipi:answer`. |
+| `utility.answer.hint` | `true` | Shows the questions hint above the editor. |
+| `utility.answer.port` | `0` | Web form port. `0` means any free port. |
+| `utility.attachments.enabled` | `true` | Turns pasted paths into attachments. |
+| `utility.attachments.preview` | `true` | Shows inline previews. |
+| `utility.render.style` | `regular` | `simple`, `regular` or `advanced` tool rendering. Applies after `/reload`. |
+| `image.generate.enabled` | `true` | Gives the agent `image_generate`. Applies after `/reload`. |
+| `image.edit.enabled` | `true` | Gives the agent `image_edit`. Applies after `/reload`. |
+| `image.recognize.enabled` | `true` | Gives text-only models `image_recognize`. |
+| `image.generate.outputDir` | `~/.unipi/images` | Folder for saved images. |
+
+The Image group also has a model, a custom `baseUrl`, an `apiKey` and an `api` format for each tool.
+
+## How it works
+
+- **Model cache.** At each session start, Utility writes the model list to `~/.unipi/config/models-cache.json`. The settings pickers read this file.
+- **Rendering.** `simple` shows one line for each tool call. `advanced` adds syntax colors, diffs and test summaries. `regular` is pi's own view. Ctrl+O expands collapsed output in all styles.
+- **Cleanup.** `/unipi:cleanup` removes only items on a fixed list: saved tool outputs and `unipi-*` temp files older than 7 days, and the old compactor database. It never removes memory, boards or config.
+
+## See also
+
+- [Settings reference](../../docs/reference/settings.md)
+- [Commands reference](../../docs/reference/commands.md)
+- [Tools reference](../../docs/reference/tools.md)
+- [Glossary](../../docs/reference/glossary.md)

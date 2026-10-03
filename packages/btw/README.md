@@ -1,23 +1,69 @@
-# @pi-unipi/btw
+# BTW
 
-`/unipi:btw [question]` opens an inline panel over the input area for a quick side question — the main agent keeps running and never sees any of it.
+Ask a side question while the main agent works, without adding it to the main conversation.
 
-Each question runs in a fresh read-only pi session seeded from the main session's current branch (including in-progress tool calls). There is **no memory between btw questions** — earlier Q&As are not fed back. Page history lives only for the pi session and is cleared on new/resume/tree navigation. Nothing is written to the main session.
+`@pi-unipi/btw` · part of [UniPi](../../README.md)
 
-## Panel
+## What it does
 
+- Opens a panel in place of the input box. The main agent continues to run.
+- Answers each question in a new, read-only session. This session starts with a copy of the main conversation, with tool calls that are in progress.
+- Gives the side session four tools only: `read`, `grep`, `find` and `ls`. It cannot run commands or change files.
+- Uses the model and the thinking level of the main session.
+- Writes nothing to the main session. The main agent never sees the question or the answer.
+- Keeps no memory between questions. Each question starts again from the main conversation.
+
+## Quick start
+
+UniPi installs this package:
+
+```bash
+pi install npm:@pi-unipi/unipi
 ```
-❭ <question>          your question
-… / ✓ tool lines      read-only tools only (read, grep, find, ls)
-Thinking..            while waiting
-answer                rendered as markdown
-❭ Ask a /btw…         input (locked while streaming)
+
+To install this package alone:
+
+```bash
+pi install npm:@pi-unipi/btw
 ```
 
-- `Enter` ask · `↑`/`↓` (empty input) page earlier Q&As · `PgUp`/`PgDn` scroll long answers · `Ctrl+C` cancel the answer · `Esc` back to the chat (a streaming answer keeps running into history; reopen with `/unipi:btw`).
+Then ask a question:
 
-Read-only: `read`, `grep`, `find`, `ls` only — no commands, no file changes. If you want something changed, ask in the main conversation.
+```text
+/unipi:btw what does the retry loop in client.ts do?
+```
 
-Without a UI (print mode), `/unipi:btw <question>` prints the answer via notify.
+## Commands
 
-Based on [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.
+| Command | What it does |
+|---|---|
+| `/unipi:btw [question]` | Opens the panel. If you give a question, the panel starts to answer it. |
+
+In print mode (no UI), `/unipi:btw <question>` shows the answer as a notification. A question is necessary in this mode.
+
+## Panel keys
+
+| Key | What it does |
+|---|---|
+| `Enter` | Asks the question in the input. It does nothing while an answer streams. |
+| `↑` / `↓` | Shows an earlier or later question and answer. Works when the input is empty. |
+| `PgUp` / `PgDn` | Scrolls a long answer. |
+| `Ctrl+C` | Stops the answer that streams. If no answer streams, it closes the panel. |
+| `Esc` | Closes the panel. An answer that streams continues and goes into the history. |
+
+Run `/unipi:btw` again to open the history. Only one answer can stream at a time.
+
+## How it works
+
+The panel shows each question, a line for each tool call, and the answer as markdown. The history stays in memory for the Pi session only. BTW clears it when a session starts or resumes, and when you move in the session tree.
+
+If you want a change to your files, ask in the main conversation.
+
+Older sessions can contain `btw-note` messages from an earlier BTW version. BTW still shows these messages and hides them from the model.
+
+BTW comes from [pi-btw](https://github.com/Neuron-Mr-White/pi-btw) by Dan Bachelder.
+
+## See also
+
+- [Ask User](../ask-user/README.md)
+- [Commands reference](../../docs/reference/commands.md)
