@@ -141,6 +141,7 @@ export class Gate {
   /** Mode of the last badge shown, so only mode TRANSITIONS reprint. */
   private lastBadge: LhMode | null = null;
   private readonly deps: GateDeps;
+  private pi?: ExtensionAPI;
 
   constructor(deps: GateDeps) {
     this.deps = deps;
@@ -157,6 +158,13 @@ export class Gate {
   setSessionMode(mode: LhMode): void {
     this.sessionOverride = mode;
     this.pendingExplicit = null;
+    setSharedLongHorizonMode(mode);
+    if (this.pi) {
+      emitEvent(this.pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
+        mode,
+        source: "explicit",
+      });
+    }
   }
 
   current(): GateState | null {
@@ -207,6 +215,7 @@ export class Gate {
 
   /** pi wiring. Registered once from index.ts. */
   register(pi: ExtensionAPI): void {
+    this.pi = pi;
     // Decision badge: a UI-only session entry (never sent to the LLM) so the
     // user always sees how the turn was routed — rendered with a distinct
     // background by the entry renderer registered in index.ts.

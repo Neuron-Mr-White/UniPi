@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { getSharedLongHorizonMode, setSharedLongHorizonMode, UNIPI_EVENTS } from "@pi-unipi/core";
 import {
   ALL_MODE_TOOLS,
   DELEGATION_TOOLS,
@@ -173,3 +174,32 @@ test("badge prints on mode transitions only, not every turn", async () => {
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("after register + setSessionMode('none'), getSharedLongHorizonMode is none and event is emitted", () => {
+  const { gate, dir } = harness();
+  const events: Array<{ name: string; payload: unknown }> = [];
+  const pi = {
+    on: () => {},
+    events: {
+      emit: (name: string, payload: unknown) => {
+        events.push({ name, payload });
+      },
+    },
+  };
+
+  try {
+    setSharedLongHorizonMode("goal");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    gate.register(pi as any);
+    gate.setSessionMode("none");
+
+    assert.equal(getSharedLongHorizonMode(), "none");
+    const resolved = events.filter((e) => e.name === UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED);
+    assert.equal(resolved.length, 1);
+    assert.deepEqual(resolved[0]?.payload, { mode: "none", source: "explicit" });
+  } finally {
+    setSharedLongHorizonMode(undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
