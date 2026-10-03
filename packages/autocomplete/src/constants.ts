@@ -95,7 +95,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
 
   // info (2 commands)
   "unipi:info":          "info",
-  "unipi:tips-reset":    "info",
+  "unipi:hint":          "info",
 
   // web-api (2 commands)
 
@@ -170,7 +170,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:settings": "Configure all unipi modules in one panel",
 
   "unipi:info":          "Show system information",
-  "unipi:tips-reset":    "Reset info-tip show counts so every tip is eligible again",
+  "unipi:hint":          "Browse and search Unicrab hints, or cycle/reset",
 
 
   "unipi:compact-vcc":      "Lossless compaction now — no model call (keep:N)",

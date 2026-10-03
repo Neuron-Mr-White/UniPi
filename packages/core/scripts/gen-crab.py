@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""
+Generate packages/core/src/hints/crab-data.ts from ~/Downloads/pixelartunipi.png.
+Generates:
+  - CRAB_KITTY_PNG_BASE64 (22x19 grid upscaled 4x nearest-neighbour, transparent bg)
+  - CRAB_22_LINES_TRUECOLOR (10 rows, 22 cols visible)
+  - CRAB_22_LINES_256 (10 rows, 22 cols visible)
+  - CRAB_14_LINES_TRUECOLOR (6 rows, 14 cols visible)
+  - CRAB_14_LINES_256 (6 rows, 14 cols visible)
+  - CRAB_PALETTE, CRAB_22_GRID, CRAB_14_GRID
+"""
+
+import os
+import sys
+import io
+import base64
+from collections import Counter
+from PIL import Image
+
+SOURCE_PNG = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "docs", "assets", "unicrab-pixel.png")
+)
+OUTPUT_TS = os.path.join(os.path.dirname(__file__), "..", "src", "hints", "crab-data.ts")
+
+BOX = (40, 120, 1214, 1130)
+
+def is_bg(p):
+    return p[3] < 128 or (p[0] > 230 and p[1] > 230 and p[2] > 230)
+
+def build_grid(im, cols):
+    x0, y0, x1, y1 = BOX
+    cw = (x1 - x0) / cols
+    rows = round((y1 - y0) / cw)
+    ch = (y1 - y0) / rows
+    px = im.load()
+    out = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            cnt = Counter()
+            for yy in range(int(y0 + r * ch + ch * 0.2), int(y0 + (r + 1) * ch - ch * 0.2), 3):
+                for xx in range(int(x0 + c * cw + cw * 0.2), int(x0 + (c + 1) * cw - cw * 0.2), 3):
+                    p = px[xx, yy]
+                    cnt[None if is_bg(p) else (p[0] // 24 * 24, p[1] // 24 * 24, p[2] // 24 * 24)] += 1
+            row.append(cnt.most_common(1)[0][0])
+        out.append(row)
+    return out
+
+def build_xterm_table():
+    table = [
+        (0,0,0), (128,0,0), (0,128,0), (128,128,0), (0,0,128), (128,0,128), (0,128,128), (192,192,192),
+        (128,128,128), (255,0,0), (0,255,0), (255,255,0), (0,0,255), (255,0,255), (0,255,255), (255,255,255)
+    ]
+    steps = [0, 95, 135, 175, 215, 255]
+    for r in steps:
+        for g in steps:
+            for b in steps:
+                table.append((r, g, b))
+    for i in range(24):
+        v = 8 + 10 * i
+        table.append((v, v, v))
+    return table
+
+XTERM_TABLE = build_xterm_table()
+
+def rgb_to_256(r, g, b):
+    best = 0
+    best_dist = 10**9
+    for i, c in enumerate(XTERM_TABLE):
+        d = (r - c[0])**2 + (g - c[1])**2 + (b - c[2])**2
+        if d < best_dist:
+            best_dist = d
+            best = i
+    return best
+
+def render_ansi_lines(g, truecolor=True):
+    if len(g) % 2:
+        g = g + [[None] * len(g[0])]
+    lines = []
+    for r in range(0, len(g), 2):
+        s = ""
+        for a, b in zip(g[r], g[r+1]):
+            if a is None and b is None:
+                s += " "
+            elif b is None:
+                if truecolor:
+                    s += f"\x1b[38;2;{a[0]};{a[1]};{a[2]}m▀\x1b[39m"
+                else:
+                    c256 = rgb_to_256(*a)
+                    s += f"\x1b[38;5;{c256}m▀\x1b[39m"
+            elif a is None:
+                if truecolor:
+                    s += f"\x1b[38;2;{b[0]};{b[1]};{b[2]}m▄\x1b[39m"
+                else:
+                    c256 = rgb_to_256(*b)
+                    s += f"\x1b[38;5;{c256}m▄\x1b[39m"
+            else:
+                if truecolor:
+                    s += f"\x1b[38;2;{a[0]};{a[1]};{a[2]}m\x1b[48;2;{b[0]};{b[1]};{b[2]}m▀\x1b[39m\x1b[49m"
+                else:
+                    ca = rgb_to_256(*a)
+                    cb = rgb_to_256(*b)
+                    s += f"\x1b[38;5;{ca}m\x1b[48;5;{cb}m▀\x1b[39m\x1b[49m"
+        lines.append(s)
+    return lines
+
+def generate():
+    im = Image.open(SOURCE_PNG).convert("RGBA")
+    g22 = build_grid(im, 22)
+    g14 = build_grid(im, 14)
+
+    # 4x upscaled PNG of 22x19
+    h22 = len(g22)
+    w22 = len(g22[0])
+    im22 = Image.new("RGBA", (w22, h22), (0, 0, 0, 0))
+    for y, row in enumerate(g22):
+        for x, c in enumerate(row):
+            if c is not None:
+                im22.putpixel((x, y), (c[0], c[1], c[2], 255))
+    im22_scaled = im22.resize((w22 * 4, h22 * 4), Image.NEAREST)
+    buf = io.BytesIO()
+    im22_scaled.save(buf, format="PNG")
+    b64_png = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    lines22_tc = render_ansi_lines(g22, truecolor=True)
+    lines22_256 = render_ansi_lines(g22, truecolor=False)
+    lines14_tc = render_ansi_lines(g14, truecolor=True)
+    lines14_256 = render_ansi_lines(g14, truecolor=False)
+
+    # Palette
+    unique_colors = sorted({c for row in (g22 + g14) for c in row if c is not None})
+    color_map = {c: i + 1 for i, c in enumerate(unique_colors)}
+    palette = [[0, 0, 0]] + [list(c) for c in unique_colors]
+
+    def grid_to_indices(g):
+        return [[color_map.get(c, 0) for c in row] for row in g]
+
+    idx22 = grid_to_indices(g22)
+    idx14 = grid_to_indices(g14)
+
+    os.makedirs(os.path.dirname(OUTPUT_TS), exist_ok=True)
+    with open(OUTPUT_TS, "w", encoding="utf-8") as f:
+        f.write("/**\n * Auto-generated by packages/core/scripts/gen-crab.py — DO NOT EDIT DIRECTLY.\n */\n\n")
+        f.write(f"export const CRAB_KITTY_PNG_BASE64 = {repr(b64_png)};\n\n")
+        f.write(f"export const CRAB_PALETTE: readonly (readonly [number, number, number])[] = {repr(palette)};\n\n")
+        f.write(f"export const CRAB_22_GRID: readonly (readonly number[])[] = {repr(idx22)};\n\n")
+        f.write(f"export const CRAB_14_GRID: readonly (readonly number[])[] = {repr(idx14)};\n\n")
+        f.write(f"export const CRAB_22_LINES_TRUECOLOR: readonly string[] = {repr(lines22_tc)};\n\n")
+        f.write(f"export const CRAB_22_LINES_256: readonly string[] = {repr(lines22_256)};\n\n")
+        f.write(f"export const CRAB_14_LINES_TRUECOLOR: readonly string[] = {repr(lines14_tc)};\n\n")
+        f.write(f"export const CRAB_14_LINES_256: readonly string[] = {repr(lines14_256)};\n")
+
+    print(f"Generated {OUTPUT_TS}")
+
+if __name__ == "__main__":
+    generate()

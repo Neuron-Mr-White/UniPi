@@ -19,7 +19,7 @@ import {
   UTILITY_COMMANDS,
   emitEvent,
   getPackageVersion,
-  installTips,
+  installHints,
   openSettingsHub,
   chatModelsToCache,
   writeModelCache,
@@ -73,8 +73,8 @@ export default function (pi: ExtensionAPI) {
   // Harness provenance: known custom-type panels + native USER card patch.
   installHarnessRenderers(pi);
   installHarnessUserRendering(pi);
-  // Onboarding tips: one 💡 line above the editor on startup + matching events.
-  installTips(pi);
+  // Unicrab hints: one line above the editor on startup + matching events.
+  installHints(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     try {

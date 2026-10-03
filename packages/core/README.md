@@ -21,6 +21,31 @@ emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
 const safeName = sanitize("my/feature: branch");
 ```
 
+## Hints (Unicrab)
+
+The hints system introduces **Unicrab**, a friendly pixel-crab mascot providing contextual onboarding and workflow guidance:
+
+- **What shows when**:
+  - **Startup**: One least-shown, least-recent hint on `session_start` (whatsnew hints prioritized after version upgrades; lore and whatsnew excluded from regular startup rotation).
+  - **Start Screen**: If `hints.header` is enabled, a custom startup header features 22×10 (≥72 cols) or 14×6 (40–71 cols) truecolor half-block crab pixel art, colored wordmark, and random lore line.
+  - **Widget**: A compact single-row hint above the editor (`<crab> <text>  <category · alt+h ›>`) rendered with a 7-column half-block mascot in truecolor/256-color (or opt-in Kitty image mode).
+  - **Events**: Contextual hints triggered by derived thresholds (`hints:context-high`, `hints:long-bash`, `hints:tool-errors`, `hints:long-prompt`, `hints:remember`, `hints:image-input`) and bus events. Capped at 4 event hints per session; never replaces a hint shown in the same turn.
+- **Shortcuts**:
+  - `Alt+H`: Cycle to the next startup hint (ordered least-shown first).
+  - `Alt+Shift+H`: Navigate backward in the session hint history stack.
+- **Commands**:
+  - `/unipi:hint`: Opens an interactive hub-kit overlay browser with live filtering, category headers, and seen/unseen/learned status tags.
+  - `/unipi:hint next`: Same as Alt+H.
+  - `/unipi:hint reset`: Resets show counts and learned state in `~/.unipi/global/hints/hints.json`.
+- **Settings (`hints` namespace)**:
+  - `hints.enabled` (boolean, default true)
+  - `hints.header` (boolean, default true): Unicrab start screen banner.
+  - `hints.crab` (enum: `auto` | `blocks` | `image`, default `auto`): `auto` resolves to half-blocks; `image` is opt-in experimental Kitty terminal graphics.
+  - `hints.reset` (action): Clears hint history.
+- **Lines (`src/hints/lines.ts`)**:
+  - Central lines file containing audited hints across command, shortcut, setting, capability, explain, trouble, whatsnew, workflow, and lore categories.
+  - **Rule**: Every named command, key, setting, or tool must be strictly verified against package source code before inclusion.
+
 ## Exports
 
 ### Constants

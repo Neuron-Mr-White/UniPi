@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `core`: **Hints** system with pixel-crab mascot **Unicrab** (UNI-27).
+  - Startup header banner featuring 22×10 (≥72 cols) and 14×6 (40–71 cols) truecolor half-block Unicrab pixel art, letter-colored wordmark, and random lore.
+  - Single-row hint widget above the editor with a 7-column half-block mascot in truecolor/256-color (or opt-in Kitty image mode).
+  - Keyboard shortcuts: `Alt+H` for next startup hint (cycle pool: non-learned startup hints least-shown first), `Alt+Shift+H` for session hint history navigation.
+  - `/unipi:hint`: hub-kit overlay browser grouped by category with seen/unseen/learned tags and live filter; `/unipi:hint next` and `/unipi:hint reset`.
+  - Derived event triggers: `hints:context-high` (≥70% usage on turn_end), `hints:long-bash` (≥30s bash tool execution), `hints:tool-errors` (3 consecutive errors), `hints:long-prompt` (≥800 chars or 3+ paragraphs), `hints:remember`, and `hints:image-input`.
+  - Usage-aware learning (`teaches`), whatsnew version checks, startup maxShows (3), event maxShows (2), per-session event cap (4), and single-turn no-replace rules.
+
+### Changed
+- `core`: onboarding tips renamed to hints; `/unipi:tips-reset` → `/unipi:hint reset`; settings moved to the `hints` namespace; old tip counts are not carried over. Default `auto` mascot mode uses half-blocks; Kitty image mode is opt-in.
+
 ## [3.0.0-alpha.20] — 2026-10-02
 
 ### Added
