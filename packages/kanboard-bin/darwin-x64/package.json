@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/kanboard-darwin-x64",
-  "version": "3.0.0-alpha.20",
+  "version": "3.0.0-alpha.21",
   "description": "unipi kanboard binary for darwin x64 (universal-ready) — installed by @pi-unipi/kanboard",
   "license": "MIT",
   "author": "Neuron Mr White",

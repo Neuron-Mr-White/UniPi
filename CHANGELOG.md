@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.21] — 2026-10-03
+
 ### Added
 - `core`: **Hints** system with pixel-crab mascot **Unicrab** (UNI-27).
   - Startup header banner featuring 22×10 (≥72 cols) and 14×6 (40–71 cols) truecolor half-block Unicrab pixel art, letter-colored wordmark, and random lore.
