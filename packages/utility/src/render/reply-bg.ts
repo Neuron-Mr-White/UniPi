@@ -143,7 +143,12 @@ export function isBlankStep(msg: unknown): boolean {
 const OSC_SEQ = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const SGR_SEQ = /\x1b\[[0-9;]*m/g;
 
+function isImageLine(line: string): boolean {
+  return line.includes("\x1b_G") || line.includes("\x1b]1337;File=");
+}
+
 export function isBlankRendered(line: string): boolean {
+  if (isImageLine(line)) return false;
   return line.replace(OSC_SEQ, "").replace(SGR_SEQ, "").trim() === "";
 }
 
@@ -159,8 +164,31 @@ export function isBlankRendered(line: string): boolean {
 export function trimEdgeBlankLines(lines: string[]): string[] {
   let start = 0;
   let end = lines.length;
-  while (start < end && isBlankRendered(lines[start]!)) start++;
-  while (end > start && isBlankRendered(lines[end - 1]!)) end--;
+
+  let firstNonBlank = -1;
+  let lastImageIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    if (firstNonBlank === -1 && !isBlankRendered(l)) {
+      firstNonBlank = i;
+    }
+    if (isImageLine(l)) {
+      lastImageIndex = i;
+    }
+  }
+
+  // Never trim leading blanks if the first non-blank line is an image line (iTerm2 layout).
+  const skipLeadingTrim = firstNonBlank !== -1 && isImageLine(lines[firstNonBlank]!);
+  if (!skipLeadingTrim) {
+    while (start < end && isBlankRendered(lines[start]!)) start++;
+  }
+
+  // Never trim trailing blanks that come after the last image line (Kitty layout).
+  const trailingBlanksAfterImage = lastImageIndex !== -1 && lines.slice(lastImageIndex + 1).every(isBlankRendered);
+  if (!trailingBlanksAfterImage) {
+    while (end > start && isBlankRendered(lines[end - 1]!)) end--;
+  }
+
   const kept = lines.slice(start, end);
   if (kept.length === 0) return kept;
   const zones = (ls: string[]) => ls.join("").match(OSC_SEQ)?.join("") ?? "";

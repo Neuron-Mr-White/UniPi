@@ -16,6 +16,8 @@
 
 import { isAssistant, trimEdgeBlankLines } from "./reply-bg.js";
 
+export { trimEdgeBlankLines } from "./reply-bg.js";
+
 /** A block's position inside a run of same-group siblings. */
 export interface SpacingGroupPosition {
   index: number;

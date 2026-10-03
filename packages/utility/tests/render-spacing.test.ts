@@ -8,7 +8,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { findTranscriptContainer, patchTranscriptSpacing, type SpacingGroupPosition, type TranscriptContainer } from "../src/render/spacing.ts";
+import { findTranscriptContainer, patchTranscriptSpacing, trimEdgeBlankLines, type SpacingGroupPosition, type TranscriptContainer } from "../src/render/spacing.ts";
 
 const block = (lines: string[]) => ({ render: (_w: number) => [...lines], invalidate() {} });
 
@@ -91,6 +91,32 @@ describe("patchTranscriptSpacing", () => {
     const first = c.render;
     patchTranscriptSpacing(c);
     assert.equal(c.render, first);
+  });
+
+  describe("image line edge trimming (UNI-71)", () => {
+    it("trimEdgeBlankLines keeps Kitty image and its trailing blanks intact (length 4)", () => {
+      const kitty = ["\x1b_Ga=T,f=100;AAAA\x1b\\", "", "", ""];
+      const kept = trimEdgeBlankLines([...kitty]);
+      assert.equal(kept.length, 4);
+      assert.deepEqual(kept, kitty);
+    });
+
+    it("a child rendering ['', '• Read x', '', sequence, '', ''] inside patchTranscriptSpacing keeps its 2 trailing blanks", () => {
+      const childLines = ["", "• Read x", "", "\x1b_Ga=T;AAAA\x1b\\", "", ""];
+      const c = container([block(childLines)]);
+      patchTranscriptSpacing(c);
+      assert.deepEqual(c.render(80), ["• Read x", "", "\x1b_Ga=T;AAAA\x1b\\", "", ""]);
+    });
+
+    it("iTerm2 keeps leading blanks intact", () => {
+      const iterm = ["", "", "\x1b[2A\x1b]1337;File=inline=1:AAAA\x07"];
+      const kept = trimEdgeBlankLines([...iterm]);
+      assert.deepEqual(kept, iterm);
+    });
+
+    it("a plain block still gets trimmed as before", () => {
+      assert.deepEqual(trimEdgeBlankLines(["", "plain", "", ""]), ["plain"]);
+    });
   });
 });
 

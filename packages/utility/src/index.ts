@@ -12,7 +12,7 @@
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   MODULES,
@@ -31,6 +31,7 @@ import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import { registerToolRenderers } from "./render/tools.js";
 import { installTranscriptSpacing } from "./render/spacing.js";
+import { installSimpleImageCollapse } from "./render/images.js";
 import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAnnotations } from "./render/harness.js";
 import { installHarnessProvenance } from "@pi-unipi/core";
 import { readUtilSettings } from "./settings.js";
@@ -67,7 +68,13 @@ export default function (pi: ExtensionAPI) {
   registerAnswerCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
-  registerToolRenderers(pi, readUtilSettings().render.style);
+  const style = readUtilSettings().render.style;
+  registerToolRenderers(pi, style);
+  try {
+    installSimpleImageCollapse(ToolExecutionComponent.prototype, () => style === "simple");
+  } catch {
+    // best-effort prototype patch
+  }
   // Normalize blank runs between transcript blocks (all render styles).
   installTranscriptSpacing(pi);
   // Harness provenance: known custom-type panels + native USER card patch.
