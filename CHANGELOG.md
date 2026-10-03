@@ -6,11 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.22] — 2026-10-03
+
 ### Changed
+- `utility`: harness annotations (e.g. the Fusion "delegate shell work" nudge) render once in simple mode instead of three rows.
+- `utility`: simple mode hides tool-result images until Ctrl+O; images no longer overlap the text below them in any render style. (UNI-71)
+- `utility`: simple mode spacing — text sits directly above its tool group, one blank row before the next text; same in sidekick/subagent panels. (UNI-45)
 - `utility`: the transcript render style now defaults to `simple` (one collapsed line per tool call). Set `utility.render.style` to `regular` in `/unipi:settings` for Pi's own view. An unknown stored value now falls back to the default instead of `regular`.
+- `ask-user`: `ask_user` is removed from the agent's tools while disabled in settings; the unavailable row says why (turned off vs no interactive UI). (UNI-69)
+- `long-horizon`: `/unipi:regular` and goal stop update the footer mode immediately. (UNI-66)
 
 ### Docs
-- Rewrote the README, the package READMEs and the new `docs/` pages (guide, reference, architecture, Unicrab story) in STE-flavored English, with screenshots.
+- v3 docs rewritten in plain controlled English (README, package READMEs, guide, reference, architecture, Unicrab story), with screenshots.
 
 ## [3.0.0-alpha.21] — 2026-10-03
 
