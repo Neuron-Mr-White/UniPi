@@ -55,10 +55,14 @@ use and the model.
 | Run `/unipi:model` | You select a model, or a lead and sidekick pair for Fusion. |
 | Run `/unipi:doctor` | UniPi checks its configuration and prints the result. |
 
+UniPi starts in simple mode. Each tool call shows as one line. Press `Ctrl+O`
+to expand the output. To use Pi's own view, set `utility.render.style` to
+`regular` in `/unipi:settings`.
+
 After one turn, the strip below the input box shows live numbers: turns, steps,
 wall time, tool time, time to first token, tokens per second and cache hits.
 
-![The glance footer after one turn](../assets/screenshots/glance-footer.png)
+![Simple mode, memory recall and save, and the glance footer](../assets/screenshots/simple-memory-glance.png)
 
 ## Next steps
 

@@ -65,7 +65,7 @@ export const DEFAULT_ANSWER_SETTINGS: AnswerSettings = { method: "reply", hint: 
 
 export const DEFAULT_ATTACHMENT_SETTINGS: AttachmentSettings = { enabled: true, preview: true };
 
-export const DEFAULT_RENDER_SETTINGS: RenderSettings = { style: "regular" };
+export const DEFAULT_RENDER_SETTINGS: RenderSettings = { style: "simple" };
 
 const DEFAULT_SETTINGS: UtilSettings = {
   rename: { ...DEFAULT_RENAME_SETTINGS },
@@ -218,7 +218,7 @@ export function normalizeSettings(parsed: unknown): UtilSettings {
       preview: typeof att.preview === "boolean" ? att.preview : DEFAULT_ATTACHMENT_SETTINGS.preview,
     },
     render: {
-      style: render.style === "simple" || render.style === "advanced" ? render.style : "regular",
+      style: render.style === "simple" || render.style === "regular" || render.style === "advanced" ? render.style : DEFAULT_RENDER_SETTINGS.style,
     },
   };
 }

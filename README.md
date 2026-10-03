@@ -35,29 +35,54 @@ UniPi needs [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 also works alone.
 
 <p align="center">
-  <img src="docs/assets/screenshots/glance-footer.png" alt="The glance footer: a framed input box with the git branch, mode, context use, model and live turn statistics">
+  <img src="docs/assets/screenshots/simple-memory-glance.png" alt="A UniPi session in simple mode with memory recall, memory save and the glance footer">
 </p>
 
-The glance footer frames the input box. It shows the git branch, the mode, the
-context use and the model. After each turn, the strip below it shows turns,
-steps, wall time, tool time, time to first token, tokens per second and cache
-hits.
+This screenshot shows one turn in a demo session:
+
+- **Simple mode** (the default) shows each tool call as one line.
+- **Memory** finds the test setup from an earlier session and saves a new fact
+  for later sessions.
+- **The glance footer** frames the input box. It shows the git branch, the
+  mode, the context use and the model. The strip below it shows turns, steps,
+  wall time, tool time, time to first token, tokens per second and cache hits.
 
 ## Why UniPi
 
 Pi is a small coding agent for the terminal. It reads files, edits files and
 runs commands. UniPi adds the parts that a long session needs.
 
-| UniPi gives you | How | Proof in the code |
+| UniPi gives you | How |
+|---|---|
+| **Memory between sessions** | Facts and decisions go to Markdown files and to a MemPalace index. |
+| **Two models as one** | Fusion pairs a lead model with a sidekick model. |
+| **Work that finishes** | `goal`, `ralph`, `swarm` and `graph` modes keep the agent on a long task. |
+| **A warm prompt cache** | Changing state goes into new tail messages. The prefix stays the same. |
+| **One driver for each turn** | A turn arbiter selects one continuation when the agent stops. |
+| **Compaction with no model call** | The default `vcc` method rebuilds the summary from the full session history. |
+| **Parallel hands** | Subagents and background tasks work while the lead continues. |
+| **A board for deferred work** | Kanboard keeps tasks in Markdown files, with a web UI and a terminal UI. |
+| **Hang detection** | Watchdog asks a small judge model about long tool calls. |
+| **A short transcript** | Simple mode shows one line for each tool call. Ctrl+O expands it. |
+
+## Proof
+
+UniPi builds on methods that other teams measured. The numbers below come from
+the linked sources. They are not UniPi benchmarks.
+
+| Feature | What UniPi does | Published result |
 |---|---|---|
-| **Work that finishes** | `/unipi:goal` keeps one objective until a separate verifier agrees that it is true. | 50 turns by default (200 maximum). A pause after 8 turns without progress or 5 `not_met` verdicts. |
-| **One driver for each turn** | A turn arbiter selects one continuation when the agent stops. | 1 nudge for each stop. Priorities: goal 100, board claims 50, autowork 40. |
-| **Compaction with no model call** | The default `vcc` method rebuilds the summary from the full session history with fixed rules. | 0 LLM calls. The summary cannot grow from an earlier summary. |
-| **A warm prompt cache** | Changing state goes into new tail messages. The system prompt and tool list stay the same. | Rules from a study of 8,019 requests. |
-| **Parallel hands** | A lead model gives work to a lower-cost sidekick, to subagents or to background tasks. | Up to 8 subagents at once. 1 persistent sidekick for each session. |
-| **A board for deferred work** | Kanboard keeps tasks in Markdown files, with a web UI and a terminal UI. | One Rust binary writes every change and checks every transition rule. |
-| **Memory between sessions** | Facts and decisions go to Markdown files and to a MemPalace index. | Four memory types: preference, decision, pattern and summary. |
-| **Hang detection** | Watchdog asks a small judge model about long tool calls. | 2 agreeing checks at confidence 0.8 or more before a kill. |
+| **Memory** | Stores each memory in [MemPalace](https://github.com/MemPalace/mempalace) for semantic search. | MemPalace reports 96.6% recall@5 on LongMemEval with raw semantic search and zero API calls. |
+| **Fusion** | A lead model plans and reviews. A sidekick model does the routine work. | [Devin Fusion](https://cognition.com/blog/devin-fusion) uses the same lead-and-sidekick design. Cognition reports frontier-level FrontierCode scores at up to 60% lower cost. |
+| **Fusion with two frontier models** | You can pair two frontier models in `/unipi:model`. | In [OpenRouter's test](https://openrouter.ai/blog/announcements/fusion-beats-frontier/), a panel of two frontier models scored 69.0% on DRACO. The best single model scored 65.3%. |
+| **Goal** | Works over many turns until an independent verifier accepts the goal. | [Reflexion](https://arxiv.org/abs/2303.11366) loops on test feedback and raised HumanEval pass@1 from 80% to 91%. [Research on self-improving agents](https://arxiv.org/abs/2607.24300) shows that self-written checks can hide failures. UniPi therefore uses a separate verifier. |
+| **Ralph** | Repeats a task loop over a checklist file until the agent completes every item. | The [Ralph loop](https://ghuntley.com/ralph/) by Geoffrey Huntley built the CURSED programming language. At a YC hackathon, teams [shipped six repositories overnight](https://paddo.dev/blog/ralph-wiggum-autonomous-loops/) for $297 in API cost. |
+| **Swarm** | Sends independent items to parallel workers, then writes one summary. | In [Anthropic's multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system), a lead agent with parallel subagents scored 90.2% higher than a single agent. |
+| **Graph** | Plans dependent steps as a graph. Each step starts when its inputs are ready. | [LLMCompiler](https://arxiv.org/abs/2312.04511) (ICML 2024) plans tool calls as a dependency graph. It reports up to 3.7× lower latency, 6.7× lower cost and about 9% higher accuracy than ReAct. |
+| **Prefix cache** | Keeps the system prompt, tools and earlier messages byte-identical. New state goes at the end. | A cached prefix [skips the prefill work again](https://handbook.modular.com/inference-optimization/prefix-caching/). [Anthropic reports](https://claude.com/blog/prompt-caching) up to 90% lower cost and 85% lower latency for long prompts. |
+
+The [architecture pages](docs/architecture/README.md) show how each mechanism
+works in UniPi, with the limits from the source.
 
 ## Kanboard
 

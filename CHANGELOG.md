@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- `utility`: the transcript render style now defaults to `simple` (one collapsed line per tool call). Set `utility.render.style` to `regular` in `/unipi:settings` for Pi's own view. An unknown stored value now falls back to the default instead of `regular`.
+
+### Docs
+- Rewrote the README, the package READMEs and the new `docs/` pages (guide, reference, architecture, Unicrab story) in STE-flavored English, with screenshots.
+
 ## [3.0.0-alpha.21] — 2026-10-03
 
 ### Added

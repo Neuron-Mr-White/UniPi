@@ -321,7 +321,7 @@ model. `subagent_general` always uses your model.
 | `answer.method` | `reply`, `questions`, `web` | `reply` | Sets the default screen of `/unipi:answer`. |
 | `answer.hint` | on, off | on | Shows a hint after a reply that asks questions. |
 | `answer.port` | number | 0 (auto) | Sets the port of the web form. |
-| `render.style` | `simple`, `regular`, `advanced` | `regular` | Sets how tool calls show in the transcript. |
+| `render.style` | `simple`, `regular`, `advanced` | `simple` | Sets how tool calls show in the transcript. |
 | `attachments.enabled` | on, off | on | Changes pasted file paths into `[Image #N]` and `[File #N]` tokens. |
 | `attachments.preview` | on, off | on | Shows small image previews in supported terminals. |
 

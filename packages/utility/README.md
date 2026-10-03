@@ -100,7 +100,7 @@ Open `/unipi:settings` → Utility, or → Image.
 | `utility.answer.port` | `0` | Web form port. `0` means any free port. |
 | `utility.attachments.enabled` | `true` | Turns pasted paths into attachments. |
 | `utility.attachments.preview` | `true` | Shows inline previews. |
-| `utility.render.style` | `regular` | `simple`, `regular` or `advanced` tool rendering. Applies after `/reload`. |
+| `utility.render.style` | `simple` | `simple`, `regular` or `advanced` tool rendering. Applies after `/reload`. |
 | `image.generate.enabled` | `true` | Gives the agent `image_generate`. Applies after `/reload`. |
 | `image.edit.enabled` | `true` | Gives the agent `image_edit`. Applies after `/reload`. |
 | `image.recognize.enabled` | `true` | Gives text-only models `image_recognize`. |
@@ -111,7 +111,7 @@ The Image group also has a model, a custom `baseUrl`, an `apiKey` and an `api` f
 ## How it works
 
 - **Model cache.** At each session start, Utility writes the model list to `~/.unipi/config/models-cache.json`. The settings pickers read this file.
-- **Rendering.** `simple` shows one line for each tool call. `advanced` adds syntax colors, diffs and test summaries. `regular` is pi's own view. Ctrl+O expands collapsed output in all styles.
+- **Rendering.** `simple` (the default) shows one line for each tool call. `advanced` adds syntax colors, diffs and test summaries. `regular` is pi's own view. Ctrl+O expands collapsed output in all styles.
 - **Cleanup.** `/unipi:cleanup` removes only items on a fixed list: saved tool outputs and `unipi-*` temp files older than 7 days, and the old compactor database. It never removes memory, boards or config.
 
 ## See also
