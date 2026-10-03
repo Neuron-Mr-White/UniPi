@@ -67,19 +67,29 @@ runs commands. UniPi adds the parts that a long session needs.
 
 ## Proof
 
-UniPi builds on methods that other teams measured. The numbers below come from
-the linked sources. They are not UniPi benchmarks.
+Each feature below exists because published results support it. The numbers
+come from the linked sources. They are not UniPi benchmarks. The "why" column
+is our opinion.
 
-| Feature | What UniPi does | Published result |
-|---|---|---|
-| **Memory** | Stores each memory in [MemPalace](https://github.com/MemPalace/mempalace) for semantic search. | MemPalace reports 96.6% recall@5 on LongMemEval with raw semantic search and zero API calls. |
-| **Fusion** | A lead model plans and reviews. A sidekick model does the routine work. | [Devin Fusion](https://cognition.com/blog/devin-fusion) uses the same lead-and-sidekick design. Cognition reports frontier-level FrontierCode scores at up to 60% lower cost. |
-| **Fusion with two frontier models** | You can pair two frontier models in `/unipi:model`. | In [OpenRouter's test](https://openrouter.ai/blog/announcements/fusion-beats-frontier/), a panel of two frontier models scored 69.0% on DRACO. The best single model scored 65.3%. |
-| **Goal** | Works over many turns until an independent verifier accepts the goal. | [Reflexion](https://arxiv.org/abs/2303.11366) loops on test feedback and raised HumanEval pass@1 from 80% to 91%. [Research on self-improving agents](https://arxiv.org/abs/2607.24300) shows that self-written checks can hide failures. UniPi therefore uses a separate verifier. |
-| **Ralph** | Repeats a task loop over a checklist file until the agent completes every item. | The [Ralph loop](https://ghuntley.com/ralph/) by Geoffrey Huntley built the CURSED programming language. At a YC hackathon, teams [shipped six repositories overnight](https://paddo.dev/blog/ralph-wiggum-autonomous-loops/) for $297 in API cost. |
-| **Swarm** | Sends independent items to parallel workers, then writes one summary. | In [Anthropic's multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system), a lead agent with parallel subagents scored 90.2% higher than a single agent. |
-| **Graph** | Plans dependent steps as a graph. Each step starts when its inputs are ready. | [LLMCompiler](https://arxiv.org/abs/2312.04511) (ICML 2024) plans tool calls as a dependency graph. It reports up to 3.7× lower latency, 6.7× lower cost and about 9% higher accuracy than ReAct. |
-| **Prefix cache** | Keeps the system prompt, tools and earlier messages byte-identical. New state goes at the end. | A cached prefix [skips the prefill work again](https://handbook.modular.com/inference-optimization/prefix-caching/). [Anthropic reports](https://claude.com/blog/prompt-caching) up to 90% lower cost and 85% lower latency for long prompts. |
+| Feature | Benchmark | Why we have it | Source |
+|---|---|---|---|
+| **Memory** | 96.6% recall@5 on LongMemEval, with raw semantic search and 0 API calls. | Chat assistants lose about 30% accuracy when facts span many sessions. We want the agent to find last week's decision without a model call. MemPalace does this on your machine. | [MemPalace](https://github.com/MemPalace/mempalace) · [LongMemEval](https://arxiv.org/abs/2410.10813) |
+| **Fusion** | Frontier-level FrontierCode score at up to 60% lower cost. | Most turns in a coding session are routine edits and commands. We think a frontier model should plan and review, and a lower-cost model should do the typing. | [Devin Fusion](https://cognition.com/blog/devin-fusion) |
+| **Fusion with two frontier models** | 69.0% on DRACO for two frontier models together. The best single model scored 65.3%. | Different models make different mistakes. A second strong model finds errors that one model misses. Use two frontier models when quality matters more than cost. | [OpenRouter Fusion](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) · [Mixture-of-Agents](https://arxiv.org/abs/2406.04692) |
+| **Goal** | HumanEval pass@1 went from 80% to 91% with a loop on test feedback. | An agent that grades its own work stops too early or claims success. Self-written checks can hide real failures. Our goal loop continues until a separate verifier agrees, inside turn and stall budgets. | [Reflexion](https://arxiv.org/abs/2303.11366) · [Self-authored verification](https://arxiv.org/abs/2607.24300) |
+| **Ralph** | Six repositories overnight for $297 in API cost (a reported hackathon result). | Long tasks do not fit in one context window. A checklist file keeps the progress on disk. Each iteration works the next items and checks them off. A verifier reads the file before the loop ends. We think a simple loop is the right tool for checklist work. | [Ralph loop](https://ghuntley.com/ralph/) · [YC hackathon report](https://paddo.dev/blog/ralph-wiggum-autonomous-loops/) |
+| **Swarm** | 90.2% higher than a single agent on Anthropic's research eval. | Independent items do not need to wait for each other. Each worker gets a clean context, and the lead reads only the summaries. A swarm uses more tokens, so we keep it for wide work. | [Anthropic multi-agent research](https://www.anthropic.com/engineering/multi-agent-research-system) |
+| **Graph** | Up to 3.7× lower latency, 6.7× lower cost and about 9% higher accuracy than ReAct. | Many tasks have steps that need earlier results. A graph runs the independent steps at the same time. Each step gets only the inputs it needs. | [LLMCompiler (ICML 2024)](https://arxiv.org/abs/2312.04511) |
+| **Prefix cache** | Up to 90% lower cost and 85% lower latency for long prompts. | Each agent turn sends the full conversation again. In our UniPi 2.4 logs, each cache miss sent about 62,700 tokens again at the full price. UniPi keeps the prefix byte-identical, so a turn pays full price only for the new tail. | [Anthropic prompt caching](https://claude.com/blog/prompt-caching) · [Modular handbook](https://handbook.modular.com/inference-optimization/prefix-caching/) · [our cache study](docs/deepseek-cache-rate-research.md) |
+
+Long work matters more each year. METR measured that the length of software
+tasks that agents can finish doubles about every 7 months
+([METR](https://metr.org/blog/2025-03-19-measuring-ai-ability-to-complete-long-tasks/)).
+UniPi gives these longer runs memory, budgets and a verifier.
+
+Two notes on the sources. OpenRouter's Fusion uses a panel of models and a
+judge. UniPi Fusion uses a lead and a sidekick. The Ralph numbers are a
+reported result, not a controlled benchmark.
 
 The [architecture pages](docs/architecture/README.md) show how each mechanism
 works in UniPi, with the limits from the source.
