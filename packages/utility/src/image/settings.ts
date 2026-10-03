@@ -75,10 +75,20 @@ export const DEFAULT_CONFIG: ImageConfig = {
 };
 
 const API_OPTIONS = [
-  { value: "openai-images", label: "OpenAI images (/images/generations)" },
-  { value: "openrouter", label: "OpenRouter-style chat (modalities)" },
-  { value: "fal", label: "fal (fal.run/<model>)" },
+  { value: "openai-images", label: "OpenAI images", description: "POST /images/generations with the model id as typed" },
+  { value: "openrouter", label: "OpenRouter chat", description: "chat completions that return image modalities" },
+  { value: "fal", label: "fal", description: "fal.run/<model> REST endpoint" },
 ];
+
+/** `off` when unset, else the endpoint's host — page summary for Custom endpoint. */
+function endpointSummary(baseUrl: unknown): string {
+  if (typeof baseUrl !== "string" || baseUrl.trim() === "") return "off";
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl.length > 30 ? `${baseUrl.slice(0, 29)}…` : baseUrl;
+  }
+}
 
 registerSettings({
   namespace: "image",
@@ -89,35 +99,77 @@ registerSettings({
       title: "Generate",
       description: "Text → image (image_generate)",
       fields: [
-        { key: "generate.enabled", type: "boolean", label: "Enabled", description: "Give the agent the image_generate tool" },
-        { key: "generate.model", type: "model", label: "Model", capability: "image-output", description: "Models whose output includes images" },
-        { key: "generate.outputDir", type: "string", label: "Save to folder", description: "~ is expanded" },
-        { key: "generate.saveToDisk", type: "boolean", label: "Save to disk" },
-        { key: "generate.baseUrl", type: "string", label: "Custom endpoint", emptyLabel: "none (use the model's provider)", description: "Send the model id as typed to this base URL instead" },
-        { key: "generate.apiKey", type: "secret", label: "Custom endpoint key", emptyLabel: "none" },
-        { key: "generate.api", type: "enum", label: "Custom endpoint API", options: API_OPTIONS },
+        { key: "generate.enabled", type: "boolean", label: "Enabled", description: "Give the agent the image_generate tool. Applies from the next session start." },
+        { key: "generate.model", type: "model", label: "Model", capability: "image-output", description: "Models whose output includes an image." },
+        { key: "generate.outputDir", type: "string", label: "Save to folder", description: "Folder generated images are written to. ~ expands to your home." },
+        { key: "generate.saveToDisk", type: "boolean", label: "Save to disk", description: "Write results to the folder; off hands them to the agent only." },
+        {
+          key: "generate.endpoint",
+          type: "page",
+          label: "Custom endpoint…",
+          description: "Send the model id as typed to your own gateway instead of its provider.",
+          summary: (values) => endpointSummary((values as { generate?: { baseUrl?: string } }).generate?.baseUrl),
+          sections: [
+            {
+              title: "Generate endpoint",
+              fields: [
+                { key: "generate.baseUrl", type: "string", label: "Base URL", emptyLabel: "none (use the model's provider)", description: "OpenAI-compatible base URL the model id is sent to." },
+                { key: "generate.apiKey", type: "secret", label: "API key", emptyLabel: "none", description: "Key for the custom endpoint; without it the request goes out unsigned." },
+                { key: "generate.api", type: "enum", label: "API", description: "Wire shape the custom endpoint speaks.", options: API_OPTIONS },
+              ],
+            },
+          ],
+        },
       ],
     },
     {
       title: "Edit",
       description: "Image + text → image (image_edit)",
       fields: [
-        { key: "edit.enabled", type: "boolean", label: "Enabled", description: "Give the agent the image_edit tool" },
-        { key: "edit.model", type: "model", label: "Model", capability: "image-edit", description: "Models that take an image and output an image" },
-        { key: "edit.baseUrl", type: "string", label: "Custom endpoint", emptyLabel: "none (use the model's provider)" },
-        { key: "edit.apiKey", type: "secret", label: "Custom endpoint key", emptyLabel: "none" },
-        { key: "edit.api", type: "enum", label: "Custom endpoint API", options: API_OPTIONS },
+        { key: "edit.enabled", type: "boolean", label: "Enabled", description: "Give the agent the image_edit tool. Applies from the next session start." },
+        { key: "edit.model", type: "model", label: "Model", capability: "image-edit", description: "Models that take an image and return an image." },
+        {
+          key: "edit.endpoint",
+          type: "page",
+          label: "Custom endpoint…",
+          description: "Send the model id as typed to your own gateway instead of its provider.",
+          summary: (values) => endpointSummary((values as { edit?: { baseUrl?: string } }).edit?.baseUrl),
+          sections: [
+            {
+              title: "Edit endpoint",
+              fields: [
+                { key: "edit.baseUrl", type: "string", label: "Base URL", emptyLabel: "none (use the model's provider)", description: "OpenAI-compatible base URL the model id is sent to." },
+                { key: "edit.apiKey", type: "secret", label: "API key", emptyLabel: "none", description: "Key for the custom endpoint; without it the request goes out unsigned." },
+                { key: "edit.api", type: "enum", label: "API", description: "Wire shape the custom endpoint speaks.", options: API_OPTIONS },
+              ],
+            },
+          ],
+        },
       ],
     },
     {
       title: "Recognize",
       description: "Image → text (image_recognize; hidden while the session model can see images)",
       fields: [
-        { key: "recognize.enabled", type: "boolean", label: "Enabled", description: "Give text-only models the image_recognize tool" },
-        { key: "recognize.model", type: "model", label: "Model", capability: "image-input", emptyLabel: "inherit (session model)", emptyOption: "inherit (session model)" },
-        { key: "recognize.systemPrompt", type: "string", label: "System prompt", emptyLabel: "built-in analyst prompt" },
-        { key: "recognize.baseUrl", type: "string", label: "Custom endpoint", emptyLabel: "none (use the model's provider)", description: "OpenAI-compatible chat endpoint" },
-        { key: "recognize.apiKey", type: "secret", label: "Custom endpoint key", emptyLabel: "none" },
+        { key: "recognize.enabled", type: "boolean", label: "Enabled", description: "Give text-only models the image_recognize tool. Applies from the next session start." },
+        { key: "recognize.model", type: "model", label: "Model", capability: "image-input", emptyLabel: "inherit (session model)", emptyOption: "inherit (session model)", description: "Vision model that describes images; empty uses the session model." },
+        { key: "recognize.systemPrompt", type: "string", label: "System prompt", emptyLabel: "built-in analyst prompt", description: "Tells the vision model how to describe screenshots and diagrams." },
+        {
+          key: "recognize.endpoint",
+          type: "page",
+          label: "Custom endpoint…",
+          description: "Chat endpoint the vision call goes to instead of the model's provider.",
+          summary: (values) => endpointSummary((values as { recognize?: { baseUrl?: string } }).recognize?.baseUrl),
+          sections: [
+            {
+              title: "Recognize endpoint",
+              fields: [
+                { key: "recognize.baseUrl", type: "string", label: "Base URL", emptyLabel: "none (use the model's provider)", description: "OpenAI-compatible chat endpoint the vision call goes to." },
+                { key: "recognize.apiKey", type: "secret", label: "API key", emptyLabel: "none", description: "Key for the custom endpoint; without it the request goes out unsigned." },
+              ],
+            },
+          ],
+        },
       ],
     },
     {
@@ -125,8 +177,8 @@ registerSettings({
       description: "Used when the model's provider is OpenRouter or fal",
       advanced: true,
       fields: [
-        { key: "keys.openrouter", type: "secret", label: "OpenRouter key", emptyLabel: "pi login or OPENROUTER_API_KEY" },
-        { key: "keys.fal", type: "secret", label: "fal key", emptyLabel: "FAL_KEY / FAL_API_KEY" },
+        { key: "keys.openrouter", type: "secret", label: "OpenRouter key", emptyLabel: "pi login or OPENROUTER_API_KEY", description: "Stored key wins over the environment for OpenRouter models." },
+        { key: "keys.fal", type: "secret", label: "fal key", emptyLabel: "FAL_KEY / FAL_API_KEY", description: "Stored key wins over the environment for fal models." },
       ],
     },
   ],

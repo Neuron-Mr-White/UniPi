@@ -762,7 +762,7 @@ describe("group colors (namespace ▌)", () => {
       defaults: { show: true },
       schema: [{ title: "Display", fields: [{ key: "show", type: "boolean", label: "Show" }] }],
     });
-    const hub = makeHub();
+    const hub = makeHub(() => 80); // panel reserve shrinks the list — give the late namespace room
     const color = namespaceColor("info-screen");
     assert.ok(color, "info-screen resolves to a package color");
     const lines = hub.render(100);
@@ -1375,5 +1375,132 @@ describe("scope visibility + distinct keys", () => {
     const glob = JSON.parse(readFileSync(globFile, "utf8"));
     assert.ok(glob.defaultMode !== undefined, "defaultMode written to global layer");
     assert.equal(glob.mode, undefined, "no stray `mode` key in global");
+  });
+});
+
+// ── info panel (UNI-50) ─────────────────────────────────────────────────────
+
+import { formatFieldValue, type SettingsField } from "../schema.js";
+
+describe("info panel", () => {
+  const LONG_DESC =
+    "Controls how aggressively the agent compacts the conversation when the " +
+    "context window fills up: a higher setting keeps more of the recent " +
+    "transcript verbatim before the summary takes over, trading tokens for " +
+    "fidelity, while a lower setting summarizes sooner and cheaper.";
+
+  beforeEach(() => {
+    registerSettings({
+      namespace: "hubpanel",
+      label: "Panel",
+      defaults: { flagged: true, level: "low", timeout: 6000 },
+      schema: [
+        { title: "Panel section", fields: [
+          { key: "withDesc", type: "boolean", label: "With description", description: LONG_DESC },
+          { key: "noDesc", type: "boolean", label: "No description field" },
+          {
+            key: "level", type: "enum", label: "Level",
+            description: "How hard to try.",
+            options: [
+              { value: "low", label: "Low", description: "fewer checks, faster" },
+              { value: "high", label: "High", description: "every check, slower" },
+              { value: "mad", label: "Mad", description: "checks all the way down" },
+            ],
+          },
+          {
+            key: "timeout", type: "number", label: "Timeout", unit: "ms",
+            min: 1000, max: 60000, description: "How long to wait.",
+            scopes: ["global"],
+          },
+        ] },
+      ],
+    });
+  });
+
+  /** Strip ANSI and frame borders from every line. */
+  const plain = (lines: string[]): string[] => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/[│]/g, ""));
+
+  /** The 5 panel rows (rule + 4), sitting directly above the hint line. */
+  function panelRows(hub: SettingsHub, width = 100): string[] {
+    const lines = plain(hub.render(width));
+    const hintIdx = lines.length - 2; // bottom frame border is the last line
+    return lines.slice(hintIdx - 5, hintIdx);
+  }
+
+  it("(a) long description wraps to 2 rows and the second ends with …", () => {
+    const hub = makeHub();
+    jumpTo(hub, "With description");
+    const rows = panelRows(hub);
+    assert.equal(rows.length, 5);
+    assert.match(rows[0]!.replace(/[│]/g, ""), /^─+$/);
+    const desc = (rows[1]! + " " + rows[2]!).replace(/\s+/g, " ").trim();
+    assert.ok(desc.startsWith("Controls how aggressively"), `row 1 carries the description start: ${rows[1]}`);
+    assert.ok(rows[2]!.trimEnd().endsWith("…"), `row 2 truncated: ${rows[2]}`);
+    assert.ok(desc.includes("verbatim"), "row 2 carries the wrapped rest");
+  });
+
+  it("(b) the panel keeps the frame height constant across row kinds", () => {
+    const hub = makeHub();
+    jumpTo(hub, "With description");
+    const withDesc = hub.render(100).length;
+    jumpTo(hub, "No description field");
+    const withoutDesc = hub.render(100).length;
+    jumpTo(hub, "Timeout"); // header band directly above this row
+    const underHeader = hub.render(100).length;
+    assert.equal(withDesc, withoutDesc);
+    assert.equal(withDesc, underHeader);
+  });
+
+  it("(c) the option line follows the highlighted option as ↓ moves, before any pick", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Level");
+    hub.handleInput("\r"); // open the enum option list
+    let rows = panelRows(hub);
+    assert.match(rows[3]!, /▸ Low — fewer checks, faster/);
+    hub.handleInput("\x1b[B"); // ↓ — highlight moves, nothing picked yet
+    rows = panelRows(hub);
+    assert.match(rows[3]!, /▸ High — every check, slower/);
+    hub.handleInput("\x1b"); // cancel — stored value unchanged
+    jumpTo(hub, "Level");
+    assert.match(panelRows(hub)[3]!, /▸ Low — fewer checks, faster/);
+  });
+
+  it("(d) list mode shows the option matching the stored value", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Level");
+    assert.match(panelRows(hub)[3]!, /▸ Low — fewer checks, faster/);
+    hub.handleInput(" "); // quick-cycle low → high
+    assert.match(panelRows(hub)[3]!, /▸ High — every check, slower/);
+  });
+
+  it("(e) the meta line shows default, range with unit, and global only", () => {
+    const hub = makeHub();
+    jumpTo(hub, "Timeout");
+    const rows = panelRows(hub);
+    assert.match(rows[4]!, /default 6000 ms/);
+    assert.match(rows[4]!, /range 1000–60000 ms/);
+    assert.match(rows[4]!, /global only/);
+    assert.match(rows[4]!, / · /, "meta parts join with ` · `");
+  });
+
+  it("(f) number unit formatting: ms gets a space, % hugs, zeroLabel still wins", () => {
+    const ms: SettingsField = { key: "t", type: "number", label: "T", unit: "ms" };
+    const pct: SettingsField = { key: "p", type: "number", label: "P", unit: "%" };
+    const zero: SettingsField = { key: "z", type: "number", label: "Z", unit: "ms", zeroLabel: "∞ none" };
+    assert.equal(formatFieldValue(ms, 6000), "6000 ms");
+    assert.equal(formatFieldValue(pct, 80), "80%");
+    assert.equal(formatFieldValue(zero, 0), "∞ none");
+    assert.equal(formatFieldValue(ms, 0), "0 ms", "0 without zeroLabel still formats with the unit");
+    assert.equal(formatFieldValue(ms, undefined), "unset");
+  });
+
+  it("(g) the panel is omitted when the terminal is too short for 3 list rows", () => {
+    const hub = makeHub(() => 13); // 6 raw list rows − 5 panel rows < 3 → omit
+    jumpTo(hub, "With description");
+    const short = plain(hub.render(100)).join("\n");
+    assert.ok(!short.includes("Controls how aggressively"), "no description without panel room");
+    const tall = makeHub(() => 40);
+    jumpTo(tall, "With description");
+    assert.ok(plain(tall.render(100)).join("\n").includes("Controls how aggressively"));
   });
 });

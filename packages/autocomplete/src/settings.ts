@@ -29,7 +29,7 @@ registerSettings({
           key: "autocompleteEnhanced",
           type: "boolean",
           label: "Enhanced autocomplete",
-          description: "Fuzzy /unipi:* command suggestions",
+          description: "Fuzzy /unipi:* command suggestions while you type.",
         },
       ],
     },

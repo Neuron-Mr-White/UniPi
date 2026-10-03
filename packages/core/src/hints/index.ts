@@ -432,9 +432,9 @@ registerSettings({
           label: "Mascot style",
           description: "How to render the Unicrab mascot in the hint widget.",
           options: [
-            { value: "auto", label: "Auto (half-blocks)" },
-            { value: "blocks", label: "Blocks (Unicode half-blocks)" },
-            { value: "image", label: "Image (Kitty graphics, experimental: overlays can't draw over it)" },
+            { value: "auto", label: "auto", description: "half-blocks, or graphics when detected" },
+            { value: "blocks", label: "blocks", description: "unicode half-blocks, always safe" },
+            { value: "image", label: "image", description: "kitty graphics; overlays can't draw over it" },
           ],
         },
         {

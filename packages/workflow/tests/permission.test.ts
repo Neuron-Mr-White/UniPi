@@ -18,7 +18,6 @@ const CWD = "/workspace/project";
 function deps(overrides: Partial<DecideDeps> = {}): DecideDeps {
   return {
     mode: "auto",
-    jevJudge: true,
     jevConfidence: 0.7,
     rules: [],
     cwd: CWD,
@@ -136,16 +135,6 @@ describe("bash matrix", () => {
     );
     assert.equal(decision.action, "ask");
     assert.match(decision.action === "ask" ? decision.reason : "", /jev: unavailable/);
-  });
-
-  it("jevJudge off asks in auto", async () => {
-    let called = false;
-    const decision = await decideToolCall(
-      { toolName: "bash", subject: "npm install left-pad" },
-      deps({ jevJudge: false, askJevRisk: async () => { called = true; return safeJev(); } }),
-    );
-    assert.equal(decision.action, "ask");
-    assert.equal(called, false, "jev must not be consulted when disabled");
   });
 
   it("the agent's kanboard CLI is allowed in auto and full, asks in ask mode", async () => {
@@ -302,7 +291,7 @@ function fakeCtx(choice: string | undefined, note?: string): FakeCtx {
   return ctx;
 }
 
-const settings = { mode: "auto" as PermissionMode, jevJudge: true, jevConfidence: 0.7, rules: [] };
+const settings = { mode: "auto" as PermissionMode, jevConfidence: 0.7, rules: [] };
 const request = {
   toolName: "bash",
   summary: "rm -rf /tmp/wd-test",

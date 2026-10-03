@@ -11,6 +11,12 @@
  *   secret  → Input submenu, value masked in the list (API keys etc.)
  */
 
+/** An enum/multiselect option: bare value, or labeled with its own explanation. */
+export type SettingsOption = string | { readonly value: string; readonly label: string; readonly description?: string };
+
+/** Physical unit of a number field — shown in the info panel and value column. */
+export type SettingsUnit = "ms" | "s" | "min" | "days" | "tokens" | "bytes" | "chars" | "%";
+
 export type SettingsField = (
   | {
       readonly key: string;
@@ -24,7 +30,12 @@ export type SettingsField = (
       readonly label: string;
       readonly description?: string;
       /** Cycle order; entries are raw values or value:label pairs. */
-      readonly options: readonly (string | { readonly value: string; readonly label: string })[];
+      readonly options: readonly SettingsOption[];
+      /**
+       * Options are self-explanatory values (glyphs, OS names, levels,
+       * intervals); no per-option description required.
+       */
+      readonly plainOptions?: boolean;
       /**
        * When true the field also accepts a free-text value: the cycle ends with
        * `custom…`, and Space on any position jumps to custom + opens the inline
@@ -62,6 +73,8 @@ export type SettingsField = (
       readonly description?: string;
       readonly min?: number;
       readonly max?: number;
+      /** Physical unit — shown with the value ("6000 ms", "80%") and in the info panel. */
+      readonly unit?: SettingsUnit;
       /** Shown when the value is 0 (e.g. "∞ none" for timeouts). */
       readonly zeroLabel?: string;
       /** Shown as a dim `ⓘ` line under the inline editor's input. */
@@ -144,7 +157,9 @@ export type SettingsField = (
       readonly type: "multiselect";
       readonly label: string;
       readonly description?: string;
-      readonly options: readonly (string | { readonly value: string; readonly label: string })[];
+      readonly options: readonly SettingsOption[];
+      /** See enum — self-explanatory values need no per-option description. */
+      readonly plainOptions?: boolean;
       /** Shown when the selection is empty (e.g. "all platforms"). */
       readonly emptyLabel?: string;
     }
@@ -209,8 +224,8 @@ export function setField(
   return clone;
 }
 
-/** Normalize an enum option entry to {value, label}. */
-export function enumOption(option: string | { value: string; label: string }): { value: string; label: string } {
+/** Normalize an enum option entry to {value, label, description?}. */
+export function enumOption(option: SettingsOption): { value: string; label: string; description?: string } {
   return typeof option === "string" ? { value: option, label: option } : option;
 }
 
@@ -233,7 +248,11 @@ export function formatFieldValue(field: SettingsField, value: unknown): string {
     }
     case "number":
       if (value === 0 && field.type === "number" && field.zeroLabel) return field.zeroLabel;
-      return value === undefined || value === null ? "unset" : String(value);
+      if (value === undefined || value === null) return "unset";
+      if (field.type === "number" && field.unit) {
+        return field.unit === "%" ? `${value}%` : `${value} ${field.unit}`;
+      }
+      return String(value);
     case "multiselect": {
       const chosen = Array.isArray(value) ? value.map(String) : [];
       if (chosen.length === 0) return field.emptyLabel ?? "none";

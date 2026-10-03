@@ -6,11 +6,24 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { getSettingsScoped, registerSettings, setSettings } from "@pi-unipi/core";
 import type { CompactorConfig } from "../types.js";
-import { DEFAULT_COMPACTOR_CONFIG } from "./schema.js";
+import { DEFAULT_COMPACTOR_CONFIG, SUMMARY_SECTION_IDS } from "./schema.js";
 
 const METHOD_OPTIONS = [
-  { value: "vcc", label: "lossless (no model)" },
-  { value: "llm", label: "model summary" },
+  { value: "vcc", label: "lossless", description: "instant structured summary; history stays searchable" },
+  { value: "llm", label: "model summary", description: "pi's model writes the summary — costs one model call" },
+] as const;
+
+/** The `summarySections` multiselect: labels + explanations per section id. */
+const SUMMARY_SECTION_OPTIONS = [
+  { value: "activeWork", label: "Active work", description: "goal, ralph and kanboard state" },
+  { value: "requests", label: "Your requests", description: "the user requests this session answered" },
+  { value: "state", label: "Latest state", description: "the agent's most recent progress reports" },
+  { value: "decisions", label: "Decisions", description: "decisions and constraints reached so far" },
+  { value: "files", label: "Files", description: "files touched and what was done to them" },
+  { value: "commits", label: "Commits", description: "commit history of this session" },
+  { value: "errors", label: "Open errors", description: "unresolved errors worth remembering" },
+  { value: "lessons", label: "Lessons", description: "memory notes and diagnoses written down" },
+  { value: "transcript", label: "Recent transcript", description: "the last turns kept verbatim" },
 ] as const;
 
 // Registered with the unified settings hub. Canonical paths:
@@ -29,28 +42,28 @@ registerSettings({
           key: "method",
           type: "enum",
           label: "Method",
-          description: "Lossless: instant structured summary, full history stays searchable. Model summary: Pi's model-written summary (costs a model call).",
+          description: "How the context is summarized. Takes effect on the next compaction.",
           options: METHOD_OPTIONS,
         },
         {
           key: "piCompact",
           type: "enum",
           label: "Pi's /compact",
-          description: "What Pi's built-in /compact command does",
-          options: [{ value: "follow", label: "same as Method" }, ...METHOD_OPTIONS],
+          description: "What pi's built-in /compact command does: follow Method, or force one.",
+          options: [{ value: "follow", label: "same as Method", description: "reuse whatever Method is set to" }, ...METHOD_OPTIONS],
         },
         {
           key: "trigger",
           type: "enum",
           label: "When",
-          description: "Pi's limit: compact when the context nears the model's window (Pi's compaction settings). Percentage: compact at a set % of the window.",
+          description: "What trips a compaction while you work.",
           options: [
-            { value: "pi", label: "Pi's context limit" },
-            { value: "percent", label: "at a percentage" },
+            { value: "pi", label: "pi's context limit", description: "compact when pi itself nears the model's window" },
+            { value: "percent", label: "at a percentage", description: "compact when usage crosses the threshold below" },
           ],
         },
-        { key: "thresholdPercent", type: "number", label: "Percentage", min: 30, max: 95, description: "Used when When = at a percentage" },
-        { key: "notify", type: "boolean", label: "Notifications", description: "Show a notice when compaction runs or fails" },
+        { key: "thresholdPercent", type: "number", label: "Trigger threshold", unit: "%", min: 30, max: 95, description: "Context share that trips a compaction when When = at a percentage." },
+        { key: "notify", type: "boolean", label: "Notifications", description: "Notice when a compaction runs or fails." },
       ],
     },
     {
@@ -58,21 +71,17 @@ registerSettings({
       description: "Tuned defaults — rarely worth changing",
       advanced: true,
       fields: [
-        { key: "smartKeepTail", type: "boolean", label: "Smart keep tail", description: "Keep more recent turns when the kept tail would be tiny (≤5k tokens, up to 25k)" },
-        { key: "summaryBudgetTokens", type: "number", label: "Summary budget", min: 0, max: 20000, zeroLabel: "auto", description: "Lossless summary size in tokens (auto scales 1.5k–4k with session size)" },
-        { key: "sections.activeWork", type: "boolean", label: "Section: active work", description: "Goal, ralph and kanboard state from those modules" },
-        { key: "sections.requests", type: "boolean", label: "Section: your requests" },
-        { key: "sections.state", type: "boolean", label: "Section: latest state", description: "The agent's most recent progress reports" },
-        { key: "sections.decisions", type: "boolean", label: "Section: decisions & constraints" },
-        { key: "sections.files", type: "boolean", label: "Section: files" },
-        { key: "sections.commits", type: "boolean", label: "Section: commits" },
-        { key: "sections.errors", type: "boolean", label: "Section: open errors" },
-        { key: "sections.lessons", type: "boolean", label: "Section: lessons", description: "Lessons the agent wrote down: memory notes, # comments, diagnoses" },
-        { key: "sections.transcript", type: "boolean", label: "Section: recent transcript" },
-        { key: "cooldownMs", type: "number", label: "Percentage cooldown ms", min: 0, zeroLabel: "none", description: "Minimum delay between percentage-triggered compactions" },
-        { key: "repeatMinGrowthTokens", type: "number", label: "Percentage repeat growth", min: 0, zeroLabel: "off", description: "New tokens needed to compact again while still above the percentage" },
-        { key: "llmInstructions", type: "string", label: "Model summary instructions", emptyLabel: "none", description: "Extra instructions passed to model-written summaries" },
-        { key: "debug", type: "boolean", label: "Debug output", description: "Write compaction diagnostics to /tmp/compactor-debug.json" },
+        { key: "smartKeepTail", type: "boolean", label: "Smart keep tail", description: "Keep more recent turns when the kept tail would be tiny (≤5k tokens, up to 25k)." },
+        { key: "summaryBudgetTokens", type: "number", label: "Summary budget", unit: "tokens", min: 0, max: 20000, zeroLabel: "auto", description: "Lossless summary size in tokens (auto scales 1.5k–4k with session size)." },
+        {
+          key: "summarySections",
+          type: "multiselect",
+          label: "Summary sections",
+          description: "What the summary keeps — deselect to drop it from every new summary.",
+          options: SUMMARY_SECTION_OPTIONS,
+          emptyLabel: "none",
+        },
+        { key: "llmInstructions", type: "string", label: "Summary instructions", emptyLabel: "none", description: "Extra instructions passed to model-written summaries." },
       ],
     },
   ],
@@ -103,8 +112,6 @@ export function translateLegacyConfig(raw: Raw): Raw {
     if (!("trigger" in raw) && auto.enabled === true) out.trigger = "percent";
     const carry: Array<[keyof CompactorConfig, string]> = [
       ["thresholdPercent", "thresholdPercent"],
-      ["cooldownMs", "cooldownMs"],
-      ["repeatMinGrowthTokens", "repeatMinGrowthTokens"],
       ["notify", "notify"],
     ];
     for (const [to, from] of carry) {
@@ -137,7 +144,47 @@ export function loadConfig(cwd: string = process.cwd()): CompactorConfig {
   }
   if (config.method === "jev") config.method = "vcc";
   if (config.piCompact === "jev") config.piCompact = "vcc";
+  // The defaults-merged object always carries summarySections, so the stored
+  // layers decide: new array wins, else legacy sections booleans, else default.
+  const selection = storedSummarySelection(cwd);
+  if (selection !== undefined) config.summarySections = selection;
+  normalizeSummarySections(config);
   return config as unknown as CompactorConfig;
+}
+
+/**
+ * The stored section selection: first layer (project wins) with the new
+ * array, else the first with a legacy sections object (membership = every id
+ * not explicitly false). undefined = nothing stored — the default applies.
+ */
+function storedSummarySelection(cwd: string): string[] | undefined {
+  for (const scope of ["project", "global"] as const) {
+    let layer: Raw | undefined;
+    try {
+      layer = getSettingsScoped("compactor", scope, cwd);
+    } catch {
+      layer = undefined;
+    }
+    if (!layer) continue;
+    if (Array.isArray(layer.summarySections)) return layer.summarySections.map(String);
+    if (isRecord(layer.sections)) {
+      const legacy = layer.sections;
+      return SUMMARY_SECTION_IDS.filter((id) => legacy[id] !== false);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * `summarySections` (string[]) present → the internal `sections` object
+ * derives from membership; absent → the default selection stands.
+ */
+function normalizeSummarySections(config: Raw): void {
+  if (!Array.isArray(config.summarySections)) return;
+  const on = new Set(config.summarySections.map(String));
+  const sections: Raw = {};
+  for (const id of SUMMARY_SECTION_IDS) sections[id] = on.has(id);
+  config.sections = sections;
 }
 
 /**
@@ -148,10 +195,18 @@ export function migrateLegacyConfigFiles(cwd: string = process.cwd()): void {
   for (const scope of ["global", "project"] as const) {
     try {
       const raw = getSettingsScoped("compactor", scope, cwd);
-      if (!raw || (!("overrideDefaultCompaction" in raw) && !("autoCompaction" in raw))) continue;
+      if (!raw) continue;
+      // summarySections: derive from a stored legacy sections object once, so
+      // the hub shows the effective selection. Additive — booleans stay.
+      if (!Array.isArray(raw.summarySections) && isRecord(raw.sections)) {
+        const derived = SUMMARY_SECTION_IDS.filter((id) => (raw.sections as Raw)[id] !== false);
+        setSettings("compactor", { summarySections: [...derived] }, scope, cwd);
+        raw.summarySections = derived;
+      }
+      if (!("overrideDefaultCompaction" in raw) && !("autoCompaction" in raw)) continue;
       const translated = translateLegacyConfig(raw);
       const patch: Raw = {};
-      for (const key of ["method", "trigger", "thresholdPercent", "cooldownMs", "repeatMinGrowthTokens", "notify"]) {
+      for (const key of ["method", "trigger", "thresholdPercent", "notify", "summarySections"]) {
         if (!(key in raw) && key in translated) patch[key] = translated[key];
       }
       if (Object.keys(patch).length > 0) setSettings("compactor", patch, scope, cwd);

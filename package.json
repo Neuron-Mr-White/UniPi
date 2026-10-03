@@ -27,7 +27,7 @@
     "prepare": "node scripts/build-bundle.mjs --if-missing",
     "prepublishOnly": "npm run build",
     "publish:all": "npm publish --workspaces --access public",
-    "test": "npx tsx --test tests/*.test.js packages/memory/tests/*.test.ts && npm test --workspaces --if-present",
+    "test": "npx tsx --test tests/*.test.js tests/*.test.ts packages/memory/tests/*.test.ts && npm test --workspaces --if-present",
     "typecheck": "npx tsc --noEmit --skipLibCheck",
     "tui:gallery": "npx tsx scripts/tui-gallery/index.ts",
     "publish:kanboard": "node scripts/publish-kanboard-platforms.mjs"

@@ -17,7 +17,7 @@ import {
   DEFAULT_REMOVE_IMAGES,
   DEFAULT_INCLUDE_REPLIES,
 } from "./engine/constants.js";
-import { BROWSER_PROFILES, OS_PROFILES } from "./engine/profiles.js";
+import { BROWSER_PROFILES } from "./engine/profiles.js";
 import { getField, getSettings, registerSettings, setField, setSettings, settingsLayers } from "@pi-unipi/core";
 
 /** Auth storage structure (API keys) */
@@ -159,6 +159,18 @@ export function saveAuth(auth: WebApiAuth): void {
   if (Object.keys(patch).length > 0) setSettings("web-api", patch, "global", process.cwd());
 }
 
+/** One-line identity per provider — page description in the hub. */
+const PROVIDER_BLURBS: Record<string, string> = {
+  wigolo: "Local web engine: multi-engine search and tiered fetch. Needs npx wigolo init, no key.",
+  duckduckgo: "Keyless web search.",
+  "jina-search": "Keyless web search via Jina.",
+  "jina-reader": "Keyless URL-to-markdown reader.",
+  serpapi: "Google results API. Paid key.",
+  tavily: "Research-oriented search API. Paid key.",
+  firecrawl: "Scraping and crawl API. Paid key.",
+  perplexity: "Search and summarize via Perplexity. Paid key.",
+};
+
 // Registered with the unified settings hub. Provider auth rides the engine
 // (providers.<id>.apiKey secret fields, editable via per-provider pages);
 // legacy auth.json is imported once on first read.
@@ -174,16 +186,18 @@ registerSettings({
         key: `providers.${id}` as string,
         type: "page" as const,
         label: id,
+        description: PROVIDER_BLURBS[id] ?? "Web provider.",
         sections: [
           {
             title: id,
             fields: [
-              { key: `providers.${id}.enabled` as string, type: "boolean" as const, label: "Enabled" },
+              { key: `providers.${id}.enabled` as string, type: "boolean" as const, label: "Enabled", description: "Let this provider serve requests of its kind." },
               {
                 key: `providers.${id}.apiKey` as string,
                 type: "secret" as const,
                 label: "API key",
                 emptyLabel: "unset (public access)",
+                description: "Key sent with every request to this provider.",
               },
             ],
           },
@@ -192,31 +206,31 @@ registerSettings({
     },
     {
       title: "Smart fetch",
+      advanced: true,
       fields: [
         {
           key: "smartFetch.browser",
           type: "enum",
           label: "Browser profile",
-          description: "TLS fingerprint profile (newest first)",
+          plainOptions: true,
+          description: "Browser identity the fetch engine presents to sites; newest first.",
           options: [...BROWSER_PROFILES].reverse(),
         },
-        { key: "smartFetch.os", type: "enum", label: "OS fingerprint", options: [...OS_PROFILES] },
         {
           key: "smartFetch.includeReplies",
           type: "enum",
           label: "Include replies",
-          description: "Comment/reply extraction for supported providers",
+          description: "Whether comment and reply sections are fetched and kept.",
           options: [
-            { value: "true", label: "yes" },
-            { value: "false", label: "no" },
-            { value: "extractors", label: "extractors (default)" },
+            { value: "true", label: "yes", description: "fetch and include comment replies" },
+            { value: "false", label: "no", description: "main content only" },
+            { value: "extractors", label: "extractors (default)", description: "each extractor decides per site" },
           ],
         },
-        { key: "smartFetch.maxChars", type: "number", label: "Max chars", min: 1000 },
-        { key: "smartFetch.timeoutMs", type: "number", label: "Timeout ms", min: 1000 },
-        { key: "smartFetch.batchConcurrency", type: "number", label: "Batch concurrency", min: 1, max: 32 },
-        { key: "smartFetch.removeImages", type: "boolean", label: "Remove images" },
-        { key: "cache.clear", type: "action", label: "Clear web cache…", description: "drop every cached response (with confirm)", command: "unipi:web-cache-clear" },
+        { key: "smartFetch.maxChars", type: "number", label: "Max chars", min: 1000, description: "Content cap per URL before truncation." },
+        { key: "smartFetch.timeoutMs", type: "number", label: "Timeout", unit: "ms", min: 1000, description: "Per-request timeout." },
+        { key: "smartFetch.removeImages", type: "boolean", label: "Remove images", description: "Strip image references from fetched content." },
+        { key: "cache.clear", type: "action", label: "Clear web cache…", description: "Drop every cached response (with a confirm step).", command: "unipi:web-cache-clear" },
       ],
     },
   ],

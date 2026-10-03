@@ -49,7 +49,6 @@ describe("permission settings namespace", () => {
     assert.deepEqual(definition!.defaults, {
       mode: "auto",
       defaultMode: "auto",
-      jevJudge: true,
       jevConfidence: 0.7,
       rules: [],
       decisionModel: { source: "inherit", provider: "openrouter", model: "", baseUrl: "", apiKey: "", timeoutMs: 0 },
@@ -57,12 +56,12 @@ describe("permission settings namespace", () => {
     assert.equal(DEFAULT_SETTINGS.mode, "auto");
   });
 
-  it("exposes mode, jevJudge, jevConfidence and the clear-rules action", () => {
+  it("exposes mode, jevConfidence and the clear-rules action", () => {
     const fields = PERMISSION_SECTIONS[0]!.fields;
     const keys = fields.map((field) => field.key);
     // Project override (clearable, project-scope only) + the all-projects
     // default as a DISTINCT key (a shared `mode` key collided in the hub).
-    assert.deepEqual(keys, ["mode", "defaultMode", "jevJudge", "jevConfidence", "rulesCount"]);
+    assert.deepEqual(keys, ["mode", "defaultMode", "jevConfidence", "rulesCount"]);
 
     const mode = fields[0]!;
     assert.equal(mode.type, "enum");
@@ -77,12 +76,12 @@ describe("permission settings namespace", () => {
     const projectMode = fields[0]!;
     assert.equal(projectMode.type === "enum" ? projectMode.clearable : undefined, true);
 
-    const confidence = fields[3]!;
+    const confidence = fields[2]!;
     assert.equal(confidence.type, "number");
     assert.equal(confidence.type === "number" ? confidence.min : undefined, 0);
     assert.equal(confidence.type === "number" ? confidence.max : undefined, 1);
 
-    const action = fields[4]!;
+    const action = fields[3]!;
     assert.equal(action.type, "action");
     assert.equal(action.type === "action" ? action.command : undefined, "unipi:permission-clear-rules");
   });
@@ -92,7 +91,6 @@ describe("permission settings namespace", () => {
     registerPermissionSettings(dir);
     writePermissionMode("auto", dir);
     assert.equal(readPermissionSettings(dir).mode, "auto");
-    assert.equal(readPermissionSettings(dir).jevJudge, true);
     assert.equal(readPermissionSettings(dir).jevConfidence, 0.7);
     assert.deepEqual(readPermissionSettings(dir).rules, []);
   });

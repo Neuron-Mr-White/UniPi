@@ -64,8 +64,9 @@ registerSettings({
         },
         {
           key: "defaultThinking", type: "enum", label: "Default thinking level",
+          plainOptions: true,
           description: "For subagent_explore and custom agents without thinking:. subagent_general uses yours.",
-          options: [{ value: "inherit", label: "inherit (your level)" }, "off", "minimal", "low", "medium", "high", "xhigh"],
+          options: [{ value: "inherit", label: "inherit" }, "off", "minimal", "low", "medium", "high", "xhigh"],
         },
         { key: "maxConcurrent", type: "number", label: "Max running at once", min: 1, max: 16, description: "Further run_subagent calls are refused until one finishes." },
       ],

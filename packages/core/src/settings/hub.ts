@@ -30,6 +30,7 @@ import {
   matchesKey,
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { frameOverlay, OverlayTheme } from "../../tui-overlay.js";
 import { boxInnerWidth } from "../../tui-width.js";
@@ -44,6 +45,7 @@ import {
   hubMaxRows,
   hubMoreAbove,
   hubMoreBelow,
+  hubRawRows,
   hubMarkChar,
   hubMarkSpan,
   hubRowColumns,
@@ -107,6 +109,13 @@ interface Row {
 const PAGE_ROWS = 10;
 /** Header bands and section notes are not selectable. */
 const isBand = (r: Row | undefined): boolean => r?.kind === "header" || r?.kind === "note";
+/** Option descriptions join the search haystack (find a setting by its explanation). */
+function optionHaystack(field: SettingsField | undefined): string {
+  if (!field || (field.type !== "enum" && field.type !== "multiselect")) return "";
+  return field.options
+    .map((o) => (typeof o === "object" ? o.description ?? "" : ""))
+    .join(" ");
+}
 /** Picked value meaning "open the inline editor with the raw text". */
 const CUSTOM_VALUE = Symbol("custom");
 const HISTORY_CAP = 50;
@@ -139,6 +148,57 @@ export function nextEnumValue(field: SettingsField, current: unknown): { value: 
   const idx = opts.findIndex((o) => o.value === cur);
   const next = idx === -1 ? opts[0]! : opts[(idx + 1) % opts.length]!;
   return { value: next.value, label: next.label };
+}
+
+// ── info panel ─────────────────────────────────────────────────────────────
+/**
+ * The fixed explanation panel shown above the hint line: one dim rule row +
+ * EXACTLY 4 rows so the frame height never changes with the selection.
+ *   rows 1–2  the description, word-wrapped (row 2 truncated with … if longer)
+ *   row 3     the highlighted/stored enum or multiselect option (may be blank)
+ *   row 4     dim schema meta line: default · range · scope · custom allowed
+ * Header and note rows pass an empty description — the panel renders blank
+ * rows, never fewer.
+ */
+export interface InfoPanelSpec {
+  /** Field/section description; "" for header/note rows. */
+  readonly description: string;
+  /** Highlighted (picker open) or stored (list mode) option; null → blank row. */
+  readonly option: { readonly label: string; readonly description?: string } | null;
+  /** Schema-derived meta parts ("default off", "range 0–100%", "global only"). */
+  readonly meta: readonly string[];
+  /** Inner frame width in visible cells. */
+  readonly width: number;
+}
+
+export function infoPanelLines(spec: InfoPanelSpec): string[] {
+  const { description, option, meta, width } = spec;
+  const textWidth = Math.max(8, width - 2);
+  const lines: string[] = [hubExactRow(dim("─".repeat(Math.max(1, width))), width)];
+
+  // Rows 1–2: description wrapped to at most two rows; overflow truncates.
+  const wrapped = description ? wrapTextWithAnsi(description, textWidth) : [];
+  if (wrapped.length === 0) {
+    lines.push(hubExactRow("", width), hubExactRow("", width));
+  } else if (wrapped.length === 1) {
+    lines.push(hubExactRow(`  ${wrapped[0]!}`, width), hubExactRow("", width));
+  } else {
+    lines.push(hubExactRow(`  ${wrapped[0]!}`, width));
+    const rest = wrapped.slice(1).join(" ");
+    lines.push(hubExactRow(`  ${truncateToWidth(rest, textWidth, "…")}`, width));
+  }
+
+  // Row 3: option line — blank unless an enum/multiselect option is in focus.
+  if (option && option.description) {
+    const line = `▸ ${bold(option.label)} — ${option.description}`;
+    lines.push(hubExactRow(`  ${truncateToWidth(line, textWidth, "…")}`, width));
+  } else {
+    lines.push(hubExactRow("", width));
+  }
+
+  // Row 4: dim meta line, blank when empty.
+  lines.push(hubExactRow(meta.length > 0 ? dim(`  ${meta.join(" · ")}`) : "", width));
+  return lines;
 }
 
 export class SettingsHub {
@@ -321,6 +381,7 @@ export class SettingsHub {
         r.context ?? "",
         r.namespace ?? "",
         r.field?.description ?? "",
+        optionHaystack(r.field),
       ].join(" ").toLowerCase();
       if (words.every((w) => haystack.includes(w))) {
         if (currentHeader && !headerPushed) {
@@ -1057,6 +1118,72 @@ export class SettingsHub {
     return new Set(Array.isArray(value) ? value.map(String) : []);
   }
 
+  /** Schema identity of an enum/picker value, for the info panel option line. */
+  private optionInfo(field: SettingsField, value: unknown): { label: string; description?: string } | null {
+    if (value === USE_DEFAULT) {
+      return { label: "use default", description: "clear the project value so the global one applies" };
+    }
+    if (value === CUSTOM_VALUE) {
+      const hint = "hint" in field ? field.hint : undefined;
+      return { label: "custom", description: hint ? `type any value · ${hint}` : "type any value" };
+    }
+    if (field.type !== "enum" && field.type !== "multiselect") return null;
+    const opt = field.options.map(enumOption).find((o) => o.value === String(value));
+    return opt ? { label: opt.label, description: opt.description } : null;
+  }
+
+  /** Build the info-panel content for the cursor's row (any mode). */
+  private infoPanelSpec(): InfoPanelSpec {
+    const inner = boxInnerWidth(this.renderWidth);
+    const row = this.currentRow();
+    let description = "";
+    let option: InfoPanelSpec["option"] = null;
+    const meta: string[] = [];
+    if (row) {
+      if (row.kind === "toggle" && row.namespace) {
+        const label = getSettingsDefinition(row.namespace)?.label ?? row.namespace;
+        description = `Show or hide the advanced settings for ${label}.`;
+      } else if (row.kind === "field" && row.field) {
+        const field = row.field;
+        description = field.description ?? "";
+        // Option line: the picker's HIGHLIGHTED option when a list is open on
+        // this row (updates as ↑↓ moves), else the enum's stored value. A
+        // multiselect has no single stored value — blank in list mode.
+        if (field.type === "enum" || field.type === "multiselect") {
+          if (this.mode === "model" && this.picker && this.picker.row.id === row.id) {
+            const filtered = this.pickerFiltered();
+            const idx = filtered[this.picker.selected];
+            if (idx !== undefined) option = this.optionInfo(field, this.picker.values[idx]);
+          } else if (this.mode !== "model" && field.type === "enum") {
+            option = this.optionInfo(field, getField(this.valueOf(row.namespace!), field.key));
+          }
+        }
+        if (row.namespace && field.type !== "page" && field.type !== "action") {
+          const definition = getSettingsDefinition(row.namespace);
+          const fallback = definition ? getField(definition.defaults, field.key) : undefined;
+          if (fallback !== undefined) meta.push(`default ${formatFieldValue(field, fallback)}`);
+        }
+        if (field.type === "number" && field.min !== undefined && field.max !== undefined) {
+          const unit = field.unit;
+          meta.push(`range ${field.min}–${field.max}${unit === "%" ? "%" : unit ? ` ${unit}` : ""}`);
+        }
+        if (("scope" in field && field.scope === "global")
+          || (field.scopes && field.scopes.length === 1 && field.scopes[0] === "global")) {
+          meta.push("global only");
+        } else if (field.scopes && field.scopes.length === 1 && field.scopes[0] === "project") {
+          meta.push("project only");
+        }
+        if (field.type === "enum" && field.allowCustom) meta.push("custom allowed");
+      }
+    }
+    return { description, option, meta, width: inner };
+  }
+
+  /** The 5 info-panel rows (rule + 4), exactly `inner` cells each. */
+  private renderInfoPanel(): string[] {
+    return infoPanelLines(this.infoPanelSpec());
+  }
+
   private clampScroll(len: number, maxRows: number): void {
     // Kit clamp keeps the header run DIRECTLY above the cursor visible when
     // scrolling up (see hubClampScroll).
@@ -1115,7 +1242,11 @@ export class SettingsHub {
     // RELATIVE height: about half the terminal — a dialog, not a takeover —
     // but never taller than fits (term - 7 of chrome) and never below 3 rows.
     const term = this.terminalRows();
-    const maxRows = hubMaxRows(term, overlayReserve);
+    // The info panel (rule + 4 rows) rides below the list in every mode —
+    // unless the terminal is so short the list would drop under 3 rows.
+    const rawRows = hubRawRows(term, overlayReserve);
+    const panelReserve = rawRows - 5 >= 3 ? 5 : 0;
+    const maxRows = hubMaxRows(term, overlayReserve + panelReserve);
     this.clampScroll(visible.length, maxRows);
 
     if (this.scroll > 0) body.push(hubMoreAbove(this.scroll, inner));
@@ -1137,6 +1268,7 @@ export class SettingsHub {
     if (below > 0) body.push(hubMoreBelow(below, inner));
 
     if (this.toast) body.push(this.exactRow(`  ${bold(this.toast)}`, inner));
+    if (panelReserve > 0) body.push(...this.renderInfoPanel());
     body.push(hubHintLine(this.hintLine(), inner));
     this.toast = null; // shown for exactly one render
     return frameOverlay(body, width, {

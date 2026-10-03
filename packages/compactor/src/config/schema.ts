@@ -4,6 +4,23 @@
 
 import type { AutoCompactionConfig, CompactorConfig } from "../types.js";
 
+/** Percentage-trigger tuning, fixed since the settings were pruned (UNI-50). */
+export const COOLDOWN_MS = 60_000;
+export const REPEAT_MIN_GROWTH_TOKENS = 4_000;
+
+/** Summary-section ids in canonical order (hub multiselect `summarySections`). */
+export const SUMMARY_SECTION_IDS = [
+  "activeWork",
+  "requests",
+  "state",
+  "decisions",
+  "files",
+  "commits",
+  "errors",
+  "lessons",
+  "transcript",
+] as const;
+
 export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
   method: "vcc",
   piCompact: "follow",
@@ -23,10 +40,8 @@ export const DEFAULT_COMPACTOR_CONFIG: CompactorConfig = {
     lessons: true,
     transcript: true,
   },
-  cooldownMs: 60_000,
-  repeatMinGrowthTokens: 4_000,
+  summarySections: [...SUMMARY_SECTION_IDS],
   llmInstructions: "",
-  debug: false,
 };
 
 /** The percentage-trigger view of a config (input to decideAutoCompaction). */
@@ -34,8 +49,8 @@ export function autoCompactionOf(config: CompactorConfig): AutoCompactionConfig 
   return {
     enabled: config.trigger === "percent",
     thresholdPercent: config.thresholdPercent,
-    cooldownMs: config.cooldownMs,
-    repeatMinGrowthTokens: config.repeatMinGrowthTokens,
+    cooldownMs: COOLDOWN_MS,
+    repeatMinGrowthTokens: REPEAT_MIN_GROWTH_TOKENS,
     notify: config.notify,
   };
 }

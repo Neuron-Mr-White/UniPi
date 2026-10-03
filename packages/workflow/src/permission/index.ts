@@ -108,7 +108,6 @@ export function createPermissionController(pi: ExtensionAPI): PermissionControll
     const settings = readPermissionSettings(ctx.cwd);
     const decision = await decideToolCall(input, {
       mode: settings.mode,
-      jevJudge: settings.jevJudge,
       jevConfidence: settings.jevConfidence,
       rules: settings.rules,
       cwd: ctx.cwd,

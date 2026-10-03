@@ -37,7 +37,6 @@ export interface JevRisk {
 
 export interface DecideDeps {
   mode: PermissionMode;
-  jevJudge: boolean;
   jevConfidence: number;
   rules: readonly PermissionRule[];
   cwd: string;
@@ -132,7 +131,7 @@ export async function decideToolCall(input: ToolCallInput, deps: DecideDeps): Pr
 
     if (deps.mode === "full") return { action: "allow", reason: "full mode" };
 
-    if (deps.mode === "auto" && deps.jevJudge) {
+    if (deps.mode === "auto") {
       const risk = deps.askJevRisk ? await deps.askJevRisk(jevRiskState(deps.cwd, subject)) : null;
       if (risk && risk.choice === "safe" && risk.confidence >= deps.jevConfidence) {
         return { action: "allow", reason: `jev: safe ${risk.confidence.toFixed(2)}` };
@@ -143,7 +142,7 @@ export async function decideToolCall(input: ToolCallInput, deps: DecideDeps): Pr
     }
 
     if (!deps.hasUI) return { action: "allow", reason: "no UI — full behaviour" };
-    return { action: "ask", reason: deps.mode === "auto" ? "auto mode (jev off)" : "ask mode", subject };
+    return { action: "ask", reason: "ask mode", subject };
   }
 
   // 5. Everything else (MCP, subagents, background tasks…).

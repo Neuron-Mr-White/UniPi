@@ -265,17 +265,17 @@ registerSettings({
       title: "Startup",
       description: "The model pi opens with. /unipi:model → alt+enter sets the same thing (on the Fusion row it starts in Fusion).",
       fields: [
-        { key: "startup.model", type: "model", label: "Startup model", capability: "text", emptyLabel: "pi default", scopes: ["global"] },
-        { key: "startup.thinking", type: "enum", label: "Startup thinking level", options: [...STARTUP_THINKING], scopes: ["global"] },
+        { key: "startup.model", type: "model", label: "Startup model", capability: "text", emptyLabel: "pi default", scopes: ["global"], description: "The model pi opens with. /unipi:model alt+enter sets the same thing." },
+        { key: "startup.thinking", type: "enum", label: "Startup thinking level", plainOptions: true, options: [...STARTUP_THINKING], scopes: ["global"], description: "Thinking level the session starts at." },
       ],
     },
     {
       title: "Default pair",
       description: "Used when the Fusion row is confirmed without editing",
       fields: [
-        { key: "default.lead", type: "model", label: "Lead", emptyLabel: "picker default", capability: "text", emptyOption: "picker default" },
-        { key: "default.sidekick", type: "model", label: "Sidekick", emptyLabel: "picker default", capability: "text", emptyOption: "picker default" },
-        { key: "presets.editor", type: "action", label: "Edit fusion presets…", description: "curate lead/sidekick lists + defaults", command: "unipi:fusion-preset" },
+        { key: "default.lead", type: "model", label: "Lead", emptyLabel: "picker default", capability: "text", emptyOption: "picker default", description: "Lead model of the pair used when the Fusion row is confirmed unedited." },
+        { key: "default.sidekick", type: "model", label: "Sidekick", emptyLabel: "picker default", capability: "text", emptyOption: "picker default", description: "Sidekick model of the pair used when the Fusion row is confirmed unedited." },
+        { key: "presets.editor", type: "action", label: "Edit fusion presets…", description: "Curate the lead and sidekick lists and the defaults.", command: "unipi:fusion-preset" },
       ],
     },
   ],

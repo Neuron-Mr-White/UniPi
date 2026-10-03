@@ -88,14 +88,10 @@ export interface CompactorConfig {
   /** Lossless summary budget in tokens; 0 = auto (scales with session size). */
   summaryBudgetTokens: number;
   sections: SummarySections;
-  /** Percentage trigger: minimum delay between compactions. */
-  cooldownMs: number;
-  /** Percentage trigger: new tokens needed to compact again while still above threshold. */
-  repeatMinGrowthTokens: number;
+  /** Hub multiselect form of `sections`; present → sections derives from it. */
+  summarySections?: string[];
   /** Extra instructions for model-written summaries. */
   llmInstructions: string;
-  /** Write compaction diagnostics to /tmp/compactor-debug.json. */
-  debug: boolean;
 }
 
 /** Percentage auto-compaction trigger settings (decision input). */

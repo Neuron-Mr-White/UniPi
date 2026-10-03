@@ -30,7 +30,7 @@ import {
   startMemorySave,
   type MemorySaveRun,
 } from "./save-session.js";
-import { readMemoryConfig, agentHooksEnabled } from "./settings.js";
+import { migrateRecallLevel, readMemoryConfig, agentHooksEnabled } from "./settings.js";
 import { replayPending, pendingCount, type PendingOp } from "./pending.js";
 import { adoptLooseFiles, needsMigration, runConversion, readConversionState } from "./convert.js";
 import {
@@ -219,6 +219,7 @@ export default function (pi: ExtensionAPI) {
   } catch { /* UI-dependent */ }
 
   pi.on("session_start", async (_event, ctx) => {
+    migrateRecallLevel(ctx.cwd);
     recallDone = false;
     storeDone = false;
     // Reload/resume: the reminder is already in this branch's context tail —

@@ -21,8 +21,6 @@ export interface BackgroundTasksConfig {
   notifyOnCompletion: boolean;
   /** Default triggerOnCompletion (follow-up wake) for bg_run tasks. */
   triggerOnCompletion: boolean;
-  /** Default timeoutSeconds for shell tasks (0 = none). */
-  defaultTimeoutSeconds: number;
   /** Max finished tasks retained in memory. */
   maxFinishedTasks: number;
   /** Output cap in bytes before a task is killed+failed (default 20 MiB). */
@@ -33,7 +31,6 @@ export const DEFAULT_CONFIG: BackgroundTasksConfig = {
   enabled: true,
   notifyOnCompletion: true,
   triggerOnCompletion: true,
-  defaultTimeoutSeconds: 0,
   maxFinishedTasks: 30,
   maxOutputBytes: 20 * 1024 * 1024,
 };
@@ -114,11 +111,6 @@ export function validateBackgroundTasksConfig(config: unknown): string[] {
       problems.push(`${key} must be a boolean`);
     }
   }
-  if (c.defaultTimeoutSeconds !== undefined) {
-    if (typeof c.defaultTimeoutSeconds !== "number" || !Number.isFinite(c.defaultTimeoutSeconds) || c.defaultTimeoutSeconds < 0) {
-      problems.push("defaultTimeoutSeconds must be a non-negative number");
-    }
-  }
   if (c.maxFinishedTasks !== undefined) {
     if (typeof c.maxFinishedTasks !== "number" || !Number.isInteger(c.maxFinishedTasks) || c.maxFinishedTasks < 1) {
       problems.push("maxFinishedTasks must be a positive integer");
@@ -154,12 +146,11 @@ registerSettings({
     {
       title: "Tasks",
       fields: [
-        { key: "enabled", type: "boolean", label: "Enabled", description: "Master toggle — off registers nothing" },
-        { key: "notifyOnCompletion", type: "boolean", label: "Notify on completion" },
-        { key: "triggerOnCompletion", type: "boolean", label: "Follow-up wake", description: "Terminal state wakes the agent" },
-        { key: "defaultTimeoutSeconds", type: "number", label: "Timeout s", min: 0, zeroLabel: "∞ none" },
-        { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1 },
-        { key: "maxOutputBytes", type: "number", label: "Output cap bytes", min: 1024, description: "Kill+fail a task past this output size" },
+        { key: "enabled", type: "boolean", label: "Enabled", description: "Master toggle — off registers no tools, commands, hooks or UI." },
+        { key: "notifyOnCompletion", type: "boolean", label: "Notify on completion", description: "Default for tool-launched tasks; bg_run can override per call." },
+        { key: "triggerOnCompletion", type: "boolean", label: "Follow-up wake", description: "A finished task's terminal state wakes the agent for a follow-up turn." },
+        { key: "maxFinishedTasks", type: "number", label: "Max finished kept", min: 1, description: "Finished tasks kept in memory before the oldest is dropped." },
+        { key: "maxOutputBytes", type: "number", label: "Output cap", unit: "bytes", min: 1024, description: "Kill and fail a task that outputs more than this." },
       ],
     },
   ],
@@ -202,10 +193,6 @@ export function loadBackgroundTasksConfig(cwd: string): LoadedBackgroundTasksCon
       typeof merged.notifyOnCompletion === "boolean" ? merged.notifyOnCompletion : DEFAULT_CONFIG.notifyOnCompletion,
     triggerOnCompletion:
       typeof merged.triggerOnCompletion === "boolean" ? merged.triggerOnCompletion : DEFAULT_CONFIG.triggerOnCompletion,
-    defaultTimeoutSeconds:
-      typeof merged.defaultTimeoutSeconds === "number" && Number.isFinite(merged.defaultTimeoutSeconds) && merged.defaultTimeoutSeconds >= 0
-        ? merged.defaultTimeoutSeconds
-        : DEFAULT_CONFIG.defaultTimeoutSeconds,
     maxFinishedTasks:
       typeof merged.maxFinishedTasks === "number" && Number.isInteger(merged.maxFinishedTasks) && merged.maxFinishedTasks >= 1
         ? merged.maxFinishedTasks

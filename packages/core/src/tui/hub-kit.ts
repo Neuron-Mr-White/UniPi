@@ -199,11 +199,20 @@ export function hubHintLine(text: string, inner: number): string {
 // ─── Viewport (relative height + scroll) ─────────────────────────────────
 
 /**
+ * Un-floored dialog row math: `min(term/2, term-7) - reserve`. Callers decide
+ * what to do below the 3-row floor (hubMaxRows clamps; the info panel omits
+ * itself when fewer than 3 list rows would remain).
+ */
+export function hubRawRows(terminalRows: number, overlayReserve = 0): number {
+  return Math.min(Math.floor(terminalRows / 2), terminalRows - 7) - overlayReserve;
+}
+
+/**
  * Visible rows for the current scroll: `maxRows = max(3, min(term/2, term-7)
  * - reserve)` — a dialog, not a takeover.
  */
 export function hubMaxRows(terminalRows: number, overlayReserve = 0): number {
-  return Math.max(3, Math.min(Math.floor(terminalRows / 2), terminalRows - 7) - overlayReserve);
+  return Math.max(3, hubRawRows(terminalRows, overlayReserve));
 }
 
 /**

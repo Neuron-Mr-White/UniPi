@@ -14,7 +14,6 @@ import {
   emitEvent,
   getPackageVersion,
   registerCommandRunner,
-  registerSettings,
   HUB_OVERLAY_OPTIONS,
   HUB_WIDE_OVERLAY_OPTIONS,
 } from "@pi-unipi/core";
@@ -25,6 +24,7 @@ import { ServerRegistry } from "./bridge/registry.js";
 import { compareCodeUnits } from "./bridge/translator.js";
 import { renderMcpAddOverlay } from "./tui/add-overlay.js";
 import { renderMcpSettingsOverlay } from "./tui/settings-overlay.js";
+import "./settings.js"; // hub namespace (action rows) — registered at import
 
 /** Package version */
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
@@ -283,47 +283,6 @@ export default function (pi: ExtensionAPI) {
     openMcpAdd("", ctx as ExtensionCommandContext));
   registerCommandRunner(`unipi:${MCP_COMMANDS.SETTINGS}`, (ctx) =>
     openMcpSettings("", ctx as ExtensionCommandContext));
-  registerSettings({
-    namespace: "mcp",
-    label: "MCP",
-    defaults: {},
-    schema: [
-      {
-        title: "Servers",
-        description: "Server registry lives in its own overlay (catalog, jira, …)",
-        fields: [
-          {
-            key: "configure",
-            type: "action",
-            label: "Configure MCP servers…",
-            command: `unipi:${MCP_COMMANDS.SETTINGS}`,
-            description: "add / edit / enable servers",
-          },
-          {
-            key: "add",
-            type: "action",
-            label: "Add server…",
-            command: `unipi:${MCP_COMMANDS.ADD}`,
-            description: "browse the catalog or paste a custom config",
-          },
-          {
-            key: "sync",
-            type: "action",
-            label: "Sync catalog…",
-            description: "refresh the server catalog from GitHub",
-            command: `unipi:${MCP_COMMANDS.SYNC}`,
-          },
-          {
-            key: "reload",
-            type: "action",
-            label: "Reload servers…",
-            description: "restart pi to apply tool-schema changes safely",
-            command: `unipi:${MCP_COMMANDS.RELOAD}`,
-          },
-        ],
-      },
-    ],
-  });
 
   // mcp-reload — hub action runner ("Reload servers…" row): Pi 0.80 does not
   // expose dynamic tool removal, so reloading safely means a process restart.

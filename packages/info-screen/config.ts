@@ -77,10 +77,14 @@ registerSettings({
           key: "bootMode",
           type: "enum",
           label: "Boot mode",
-          options: ["on", "off", "auto-close"],
-          description: "Dashboard behavior at startup",
+          description: "Dashboard behavior at startup.",
+          options: [
+            { value: "on", label: "on", description: "show the dashboard and leave it open" },
+            { value: "off", label: "off", description: "don't show the dashboard" },
+            { value: "auto-close", label: "auto-close", description: "show it, then close after the timeout" },
+          ],
         },
-        { key: "bootTimeoutMs", type: "number", label: "Auto-close ms", min: 0 },
+        { key: "bootTimeoutMs", type: "number", label: "Auto-close", unit: "ms", min: 0, description: "How long the dashboard stays up in auto-close mode." },
       ],
     },
     {
@@ -90,18 +94,19 @@ registerSettings({
           key: "groups-page",
           type: "page",
           label: "Groups & stats…",
-          description: "Per-group and per-stat visibility",
+          description: "Choose which groups and stats appear on the dashboard.",
           sections: () => {
             const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string; config: { stats: Array<{ id: string; label: string }> } }> } }).__unipi_info_registry;
             const groups = registry?.getAllGroups() ?? [];
             return groups.map((g) => ({
               title: g.name,
               fields: [
-                { key: `groups.${g.id}.show`, type: "boolean" as const, label: `Show ${g.name}` },
+                { key: `groups.${g.id}.show`, type: "boolean" as const, label: `Show ${g.name}`, description: `Show the ${g.name} group on the dashboard.` },
                 ...g.config.stats.map((s) => ({
                   key: `groups.${g.id}.stats.${s.id}`,
                   type: "boolean" as const,
                   label: s.label,
+                  description: `Show the ${s.label} stat in the ${g.name} group.`,
                 })),
               ],
             }));
@@ -111,7 +116,7 @@ registerSettings({
           key: "groupOrder",
           type: "order",
           label: "Group order",
-          description: "Tab order of the dashboard groups",
+          description: "Tab order of the dashboard groups.",
           items: () => {
             const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string }> } }).__unipi_info_registry;
             return (registry?.getAllGroups() ?? []).map((g) => ({ value: g.id, label: g.name }));

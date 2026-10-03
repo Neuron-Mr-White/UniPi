@@ -52,9 +52,9 @@ export const DEFAULT_DECISION_OVERRIDE: DecisionModelOverride = {
 };
 
 const PROVIDER_OPTIONS = [
-  { value: "openrouter", label: "openrouter (decisions endpoint)" },
-  { value: "typesafe", label: "typesafe (native systemone)" },
-  { value: "custom", label: "custom (Base URL + API key)" },
+  { value: "openrouter", label: "openrouter", description: "decisions endpoint for jev and gateway models" },
+  { value: "typesafe", label: "typesafe", description: "native systemone transport" },
+  { value: "custom", label: "custom", description: "your own OpenRouter-shape gateway (Base URL + key)" },
 ] as const;
 
 const MODEL_PRESETS = {
@@ -67,19 +67,19 @@ const MODEL_PRESETS = {
 function modelFields(prefix: string, emptyModel?: string): SettingsField[] {
   const k = (name: string) => (prefix ? `${prefix}.${name}` : name);
   return [
-    { key: k("provider"), type: "enum", label: "Provider", options: PROVIDER_OPTIONS, description: "openrouter = decisions endpoint · typesafe = native systemone · custom = your own gateway" },
+    { key: k("provider"), type: "enum", label: "Provider", options: PROVIDER_OPTIONS, description: "Transport the judge call goes through." },
     {
       key: k("model"),
       type: "model",
       label: "Model",
-      description: "A decision (classifier) model — jev; custom… for others",
+      description: "A decision (classifier) model — jev; custom… for others.",
       providerKey: k("provider"),
       presetsByProvider: MODEL_PRESETS,
       ...(emptyModel ? { emptyLabel: emptyModel, emptyOption: emptyModel } : {}),
     },
-    { key: k("baseUrl"), type: "string", label: "Base URL", description: "Required when provider = custom", emptyLabel: "provider default" },
-    { key: k("apiKey"), type: "secret", label: "API key", description: "A stored key wins over the environment (OPENROUTER_API_KEY / TYPESAFE_API_KEY)", emptyLabel: "environment" },
-    { key: k("timeoutMs"), type: "number", label: "Timeout ms", min: 0, zeroLabel: "auto (1s native / 6s decisions)" },
+    { key: k("baseUrl"), type: "string", label: "Base URL", description: "Gateway URL; required when provider = custom.", emptyLabel: "provider default" },
+    { key: k("apiKey"), type: "secret", label: "API key", description: "Stored key wins over the environment (OPENROUTER_API_KEY / TYPESAFE_API_KEY).", emptyLabel: "environment" },
+    { key: k("timeoutMs"), type: "number", label: "Timeout", unit: "ms", min: 0, zeroLabel: "auto (1s native / 6s decisions)", description: "Abort budget for one judge call." },
   ];
 }
 
@@ -111,9 +111,10 @@ export function decisionModelSection(opts: { title?: string; advanced?: boolean 
         key: "decisionModel.source",
         type: "enum",
         label: "Decision model",
+        description: "Whether this module uses the shared Decision Model or its own.",
         options: [
-          { value: "inherit", label: "inherit (Decision Model settings)" },
-          { value: "custom", label: "custom" },
+          { value: "inherit", label: "inherit", description: "use the shared Decision Model settings" },
+          { value: "custom", label: "custom", description: "override below for this module only" },
         ],
       },
       ...modelFields("decisionModel", "shared model"),

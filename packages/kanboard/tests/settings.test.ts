@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +13,19 @@ import {
 } from "../src/settings.js";
 import { runRotateTokenAction, syncPiRuntime } from "../src/commands.js";
 import type { CommandDeps } from "../src/commands.js";
+
+// The engine merges the machine's GLOBAL kanboard layer into every read —
+// pin HOME so tests see defaults, not the developer's live config.
+const fakeHome = mkdtempSync(join(tmpdir(), "kb-home-"));
+let prevHome: string | undefined;
+before(() => {
+  prevHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+});
+after(() => {
+  process.env.HOME = prevHome;
+  rmSync(fakeHome, { recursive: true, force: true });
+});
 
 describe("kanboard settings", () => {
   it("new fields default and validate like the old ones", () => {

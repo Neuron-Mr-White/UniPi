@@ -68,7 +68,7 @@ const STATIC_SECTIONS: SettingsSection[] = [
     title: "Skill registry",
     description: "Turn skills on or off per project, and keep a vault of extra skills",
     fields: [
-      { key: "proxy", type: "boolean", label: "Skill proxy", description: "Apply the per-skill choices below and include ~/.unipi/skill-vault (off = pi's skills as-is, vault hidden)" },
+      { key: "proxy", type: "boolean", label: "Skill proxy", description: "Apply the per-skill choices below and include ~/.unipi/skill-vault. Off leaves pi's skills as-is and hides the vault." },
     ],
   },
   {
@@ -80,15 +80,15 @@ const STATIC_SECTIONS: SettingsSection[] = [
         type: "enum",
         label: "Skill exposure",
         options: [
-          { value: "judged", label: "judged (jev decides)" },
-          { value: "all", label: "all (no judging)" },
-          { value: "off", label: "off (bundled stripped)" },
+          { value: "judged", label: "judged", description: "jev picks the skills listed for the session" },
+          { value: "all", label: "all", description: "list everything, no judging" },
+          { value: "off", label: "off", description: "strip bundled skills from the system prompt" },
         ],
-        description: "judged = jev picks the skills listed for the session",
+        description: "How the session's skill list is picked.",
       },
-      { key: "exposure.threshold", type: "number", label: "Relevance threshold", min: 0, max: 1, description: "Minimum jev relevance for a skill to stay listed" },
-      { key: "exposure.maxSkills", type: "number", label: "Max skills listed", min: 1 },
-      { key: "exposure.recheck", type: "boolean", label: "Announce newly relevant skills on later prompts" },
+      { key: "exposure.threshold", type: "number", label: "Relevance threshold", min: 0, max: 1, description: "Minimum jev relevance for a skill to stay listed." },
+      { key: "exposure.maxSkills", type: "number", label: "Max skills listed", min: 1, description: "At or under this size the catalog is never judged." },
+      { key: "exposure.recheck", type: "boolean", label: "Announce new skills", description: "Tell the agent when a hidden skill becomes relevant on a later prompt." },
     ],
   },
 ];
@@ -107,7 +107,7 @@ registerSettings({
       ...STATIC_SECTIONS[0]!,
       fields: [
         ...STATIC_SECTIONS[0]!.fields,
-        { key: "states", type: "action", label: "Skill settings…", description: "Per skill: Enabled / Must show, per global or project scope", command: "unipi:skills-editor" },
+        { key: "states", type: "action", label: "Skill settings…", description: "Per skill Enabled / Must show, per global or project scope.", command: "unipi:skills-editor" },
       ],
     },
     ...STATIC_SECTIONS.slice(1),

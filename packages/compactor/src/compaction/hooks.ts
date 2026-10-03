@@ -362,7 +362,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
       } catch (err) {
         if (event.signal?.aborted) return { cancel: true };
         // Fall back to Pi's own path (same summarizer, Pi's auth handling).
-        dbg(config.debug, { method: "llm", fallback: true, error: String(err) });
+        dbg(process.env.UNIPI_COMPACTOR_DEBUG === "1", { method: "llm", fallback: true, error: String(err) });
         return;
       }
     }
@@ -394,14 +394,14 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
           ctx?.ui?.notify?.(plan.reason === "no_live_messages" ? "compactor: nothing to compact" : "compactor: too few messages to compact", "warning");
         } catch {}
       }
-      dbg(config.debug, { cancelled: true, reason: plan.reason });
+      dbg(process.env.UNIPI_COMPACTOR_DEBUG === "1", { cancelled: true, reason: plan.reason });
       return { cancel: true };
     }
 
     lastStats = plan.stats;
     lastDetails = plan.details;
     if (!parsed.isCompactor && parsed.followUpPrompt && reason === "manual") pendingFollowUpPrompt = parsed.followUpPrompt;
-    dbg(config.debug, { method: "vcc", reason, stats: plan.stats, details: plan.details, summaryPreview: plan.summary.slice(0, 800) });
+    dbg(process.env.UNIPI_COMPACTOR_DEBUG === "1", { method: "vcc", reason, stats: plan.stats, details: plan.details, summaryPreview: plan.summary.slice(0, 800) });
     return {
       compaction: {
         summary: plan.summary,

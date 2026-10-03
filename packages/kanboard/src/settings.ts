@@ -34,9 +34,6 @@ export interface KanboardSettings {
   doTasks: number;
   /** Board writes a /unipi:kanboard-do grants. */
   doWrites: number;
-  /** Whether a blocked-by-confusion task may ask the user (ask) or must
-   *  assume-and-note (avoid, the default). */
-  blocking: "avoid" | "ask";
   /** Progress reminders when the agent works board tasks by hand: `start`
    *  before the first edit, `finish` (or block) before the turn ends. */
   reminders: boolean;
@@ -56,7 +53,6 @@ export const DEFAULT_SETTINGS: KanboardSettings = {
   turnAddLimit: 20,
   doTasks: 5,
   doWrites: 10,
-  blocking: "avoid",
   reminders: true,
 };
 
@@ -74,54 +70,65 @@ export function registerKanboardSettings(): void {
     defaults: { ...DEFAULT_SETTINGS } as unknown as Record<string, unknown>,
     schema: [
       {
-        title: "Kanboard",
-        description: "The session's work board: daemon, -do budgets and skill",
+        title: "Agent",
+        description: "Task flow and budgets for sessions working the board",
         fields: [
           {
             key: "chainGate",
             type: "enum",
             label: "Chain gate",
+            description: "When a dependency counts as satisfied and the next task may start.",
             options: [
-              { value: "in_review", label: "in_review (next task starts when this one is reviewed)" },
-              { value: "done", label: "done (next task waits for a completed dependency)" },
+              { value: "in_review", label: "in review", description: "next task may start once this one is in review" },
+              { value: "done", label: "done", description: "next task waits for a completed dependency" },
             ],
-            description: "When a dependency counts as satisfied for the next task",
           },
-          { key: "idleMin", type: "number", label: "Daemon idle minutes", min: 1, description: "Shut the daemon down after this long with no board open" },
+          { key: "maxSessions", type: "number", label: "Max sessions", min: 1, description: "Distinct sessions that may hold in_progress tasks, per project." },
+          { key: "turnAddLimit", type: "number", label: "Adds per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls one turn may make." },
+          { key: "reminders", type: "boolean", label: "Progress reminders", description: "Remind the agent to `start` a mentioned task before editing; text only, off in child sessions." },
+          { key: "doTasks", type: "number", label: "-do task slots", min: 0, zeroLabel: "off", description: "Task slots a /unipi:kanboard-do grants; each `start` uses one." },
+          { key: "doWrites", type: "number", label: "-do write budget", min: 0, zeroLabel: "off", description: "Board writes a /unipi:kanboard-do grants (add, edit, link, order, move, notes)." },
+        ],
+      },
+      {
+        title: "Housekeeping",
+        description: "What happens to finished and cancelled tasks",
+        fields: [
+          { key: "archiveAfterDays", type: "number", label: "Archive after", unit: "days", min: 0, zeroLabel: "off", description: "Auto-archive done/cancelled tasks on session start." },
+          { key: "retentionDays", type: "number", label: "Cold storage after", unit: "days", min: 0, zeroLabel: "off", description: "Move archived tasks to cold storage — readable files, gone from the board." },
+        ],
+      },
+      {
+        title: "Board server",
+        description: "Daemon binding, lifetime and access token",
+        advanced: true,
+        fields: [
           {
             key: "host",
             type: "string",
             label: "Bind address",
             emptyLabel: "127.0.0.1 (local only)",
             hint: "127.0.0.1 · 0.0.0.0 (LAN, token-gated) · tailscale (tailnet IP)",
-            description: "Anything but a loopback address requires an access token",
+            description: "Address the board server binds; anything but a loopback requires the access token.",
           },
-          { key: "port", type: "number", label: "Daemon port", min: 0, max: 65535, zeroLabel: "auto", description: "0 lets the OS pick a free port" },
-          { key: "archiveAfterDays", type: "number", label: "Archive after (days)", min: 0, zeroLabel: "off", description: "Auto-archive done/cancelled tasks on session start" },
-          { key: "retentionDays", type: "number", label: "Cold storage after (days)", min: 0, zeroLabel: "off", description: "Move archived/cancelled tasks to cold storage — files stay readable, the board drops them" },
-          { key: "openBrowser", type: "boolean", label: "Open the browser", description: "Open the board in a browser when /unipi:kanboard opens it" },
+          { key: "port", type: "number", label: "Daemon port", min: 0, max: 65535, zeroLabel: "auto", description: "Port the board server listens on; 0 lets the OS pick a free one." },
+          { key: "idleMin", type: "number", label: "Daemon idle", unit: "min", min: 1, description: "Shut the daemon down after this long with no board open." },
+          { key: "openBrowser", type: "boolean", label: "Open browser", description: "Open the board in a browser when /unipi:kanboard opens it." },
           {
             key: "requireAuth",
             type: "boolean",
-            label: "Require the access token on localhost too",
-            description: "Remote binds always need the token; this adds it for 127.0.0.1. Applies on the next daemon start.",
+            label: "Token on localhost",
+            description: "Require the access token on 127.0.0.1 too; remote binds always need it. Next daemon start.",
           },
           {
             key: "keepToken",
             type: "boolean",
-            label: "Keep the access token across restarts",
-            description: "Reuse one token so board links stay valid; rotate it below.",
+            label: "Keep token",
+            description: "Reuse <home>/token across restarts so board links stay valid; rotate below.",
           },
-          { key: "maxSessions", type: "number", label: "Sessions working at once (per project)", min: 1, description: "Distinct sessions holding in_progress tasks" },
-          { key: "turnAddLimit", type: "number", label: "New tasks per turn", min: 0, zeroLabel: "unlimited", description: "`add` calls allowed per turn" },
-          {
-            key: "reminders",
-            type: "boolean",
-            label: "Progress reminders",
-            description: "Remind the agent to `start` a mentioned Todo task before editing (text only, never blocks; off in child sessions)",
-          },
-          { key: "doTasks", type: "number", label: "-do task slots", min: 0, zeroLabel: "off", description: "Task slots a /unipi:kanboard-do grants; each `start` uses one" },
-          { key: "doWrites", type: "number", label: "-do write budget", min: 0, zeroLabel: "off", description: "Board writes a /unipi:kanboard-do grants (add, edit, link, order, move, note on tasks you don't hold)" },
+          { key: "open", type: "action", label: "Open board…", description: "Start the daemon and open the board.", command: ACTION_OPEN },
+          { key: "stopDaemon", type: "action", label: "Stop daemon…", description: "Shut the board server down now.", command: ACTION_STOP_DAEMON },
+          { key: "rotateToken", type: "action", label: "Rotate access token…", description: "Issue a new token; old board links stop working.", command: ACTION_ROTATE_TOKEN },
         ],
       },
     ],
@@ -153,7 +160,6 @@ export function readKanboardSettings(cwd: string = process.cwd()): KanboardSetti
       typeof raw.doWrites === "number" && raw.doWrites >= 0 && storedDoWritesSet(cwd)
         ? raw.doWrites
         : (storedLegacyDoCredits(cwd) ?? DEFAULT_SETTINGS.doWrites),
-    blocking: raw.blocking === "ask" ? "ask" : "avoid",
     reminders: raw.reminders !== false,
   };
 }

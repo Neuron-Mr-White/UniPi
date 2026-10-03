@@ -20,7 +20,6 @@ export type PermissionMode = "ask" | "auto" | "full";
 export interface PermissionSettings {
   mode: PermissionMode;
   defaultMode: PermissionMode;
-  jevJudge: boolean;
   jevConfidence: number;
   rules: PermissionRule[];
 }
@@ -28,44 +27,37 @@ export interface PermissionSettings {
 export const DEFAULT_SETTINGS = {
   mode: "auto",
   defaultMode: "auto",
-  jevJudge: true,
   jevConfidence: 0.7,
   rules: [] as PermissionRule[],
 } satisfies PermissionSettings;
 
 const MODE_OPTIONS = [
-  { value: "ask", label: "ask (always prompt)" },
-  { value: "auto", label: "auto (jev-judged)" },
-  { value: "full", label: "full (only deny rules)" },
+  { value: "ask", label: "ask", description: "prompt for everything not explicitly allowed" },
+  { value: "auto", label: "auto", description: "allow safe calls; jev judges ambiguous bash" },
+  { value: "full", label: "full", description: "allow everything except saved deny rules" },
 ] as const;
 
 export const PERMISSION_SECTIONS: SettingsSection[] = [
   {
     title: "Permissions",
-    description: "Tool-call gate: ask, auto (jev judges ambiguous bash), or full",
+    description: "Tool-call gate: ask, auto (jev judges ambiguous bash), or full.",
     fields: [
       {
         key: "mode",
         type: "enum",
-        label: "Mode (this project)",
+        label: "Mode here",
         options: MODE_OPTIONS.map((o) => ({ ...o })),
         clearable: true,
         scopes: ["project"],
-        description: "Alt+M cycles · use-default clears the project mode",
+        description: "Tool-call gate for this project. Alt+M cycles it.",
       },
       {
         key: "defaultMode",
         type: "enum",
-        label: "Default mode (all projects)",
+        label: "Default mode",
         scope: "global",
         options: MODE_OPTIONS.map((o) => ({ ...o })),
-        description: "Fallback mode for projects that set none",
-      },
-      {
-        key: "jevJudge",
-        type: "boolean",
-        label: "Judge ambiguous bash with jev",
-        description: "One Decision-model call per unrecognized command in auto mode",
+        description: "Mode for projects that set none of their own.",
       },
       {
         key: "jevConfidence",
@@ -73,13 +65,13 @@ export const PERMISSION_SECTIONS: SettingsSection[] = [
         label: "Minimum jev confidence",
         min: 0,
         max: 1,
-        description: "Below this a 'safe' verdict still prompts",
+        description: "Auto mode accepts a 'safe' jev verdict at or above this confidence; below it, the call prompts.",
       },
       {
         key: "rulesCount",
         type: "action",
         label: "Clear saved rules…",
-        description: "Forget every allow/deny rule saved for this project",
+        description: "Forget every allow/deny rule saved for this project.",
         command: "unipi:permission-clear-rules",
       },
     ],
@@ -121,7 +113,6 @@ export function readPermissionSettings(cwd: string): PermissionSettings {
   return {
     mode: effectivePermissionMode(cwd),
     defaultMode: coerceMode(raw.defaultMode),
-    jevJudge: raw.jevJudge !== false,
     jevConfidence:
       typeof raw.jevConfidence === "number" && raw.jevConfidence >= 0 && raw.jevConfidence <= 1
         ? raw.jevConfidence
