@@ -6,9 +6,9 @@
  * child's edge blanks and joins non-empty blocks with exactly one gap.
  */
 
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { findTranscriptContainer, patchTranscriptSpacing, trimEdgeBlankLines, type SpacingGroupPosition, type TranscriptContainer } from "../src/render/spacing.ts";
+import { findTranscriptContainer, patchTranscriptSpacing, setTextToolJoin, trimEdgeBlankLines, type SpacingGroupPosition, type TranscriptContainer } from "../src/render/spacing.ts";
 
 const block = (lines: string[]) => ({ render: (_w: number) => [...lines], invalidate() {} });
 
@@ -116,6 +116,41 @@ describe("patchTranscriptSpacing", () => {
 
     it("a plain block still gets trimmed as before", () => {
       assert.deepEqual(trimEdgeBlankLines(["", "plain", "", ""]), ["plain"]);
+    });
+  });
+
+  describe("text to tool joining (UNI-45)", () => {
+    afterEach(() => {
+      setTextToolJoin(() => false);
+    });
+
+    const assistantLike = (lines: string[]) => ({
+      contentContainer: { children: [] },
+      hasToolCalls: false,
+      updateContent() {},
+      render: (_w: number) => [...lines],
+      invalidate() {},
+    });
+
+    const toolExecLike = (lines: string[]) => ({
+      updateArgs() {},
+      updateResult() {},
+      render: (_w: number) => [...lines],
+      invalidate() {},
+    });
+
+    it("with predicate on: assistant -> tool -> assistant joins text to tool with no gap", () => {
+      setTextToolJoin(() => true);
+      const c = container([assistantLike(["text"]), toolExecLike(["- a", "- b"]), assistantLike(["text2"])]);
+      patchTranscriptSpacing(c);
+      assert.deepEqual(c.render(80), ["text", "- a", "- b", "", "text2"]);
+    });
+
+    it("with predicate off: renders the old gaps between all blocks", () => {
+      setTextToolJoin(() => false);
+      const c = container([assistantLike(["text"]), toolExecLike(["- a", "- b"]), assistantLike(["text2"])]);
+      patchTranscriptSpacing(c);
+      assert.deepEqual(c.render(80), ["text", "", "- a", "- b", "", "text2"]);
     });
   });
 });

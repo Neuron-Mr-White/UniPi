@@ -247,6 +247,9 @@ export function renderDelegatedStep(step: DelegatedStep, expanded: boolean, them
       lines.push(`${dTheme.fg("accent", "◆")} ${dTheme.fg("accent", dTheme.bold(options.label))}`);
     }
     if (step.kind === "text") {
+      if (style === "simple" && pos?.prevKind === "tool") {
+        lines.push("");
+      }
       lines.push(...styledTextLines(style, step.text, { thinking: expanded ? step.thinking : undefined }, dTheme, inner));
     } else {
       const connector: "├" | "└" = pos?.nextKind === "tool" ? "├" : "└";

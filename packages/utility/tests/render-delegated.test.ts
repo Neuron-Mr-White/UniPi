@@ -277,4 +277,18 @@ describe("renderDelegatedStep rework regressions", () => {
     const lines = chat.render(80).map(strip);
     assert.match(lines.filter((l) => l.startsWith("▏"))[0]!, /├/, "positioned connector still applied");
   });
+
+  it("UNI-45: simple style text step after a tool step renders a painted blank first row", () => {
+    const textStep = text("result summary");
+    const compToolPrev = renderDelegatedStep(textStep, false, theme, { group: "g", style: "simple" });
+    compToolPrev.setGroupPosition({ index: 1, count: 2, prevKind: "tool" });
+    const linesToolPrev = compToolPrev.render(80);
+    assert.equal(strip(linesToolPrev[0]!), "▏");
+
+    const compTextPrev = renderDelegatedStep(textStep, false, theme, { group: "g", style: "simple" });
+    compTextPrev.setGroupPosition({ index: 1, count: 2, prevKind: "text" });
+    const linesTextPrev = compTextPrev.render(80);
+    assert.notEqual(strip(linesTextPrev[0]!), "▏");
+    assert.match(strip(linesTextPrev[0]!), /result summary/);
+  });
 });

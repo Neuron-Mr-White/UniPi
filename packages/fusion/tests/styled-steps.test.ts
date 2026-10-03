@@ -71,10 +71,11 @@ test("a tool step followed by prose ends its tree run (└)", () => {
   const chat = chatWith(children);
   patchTranscriptSpacing(chat);
   const lines = chat.render(80).map(strip);
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 4);
   assert.match(lines[0]!, /^▏ └ • Read \(src\/a\.ts\)/, "next is prose → └");
-  assert.match(lines[1]!, /^▏ ● done looking/);
-  assert.match(lines[2]!, /^▏ └ • Read \(src\/b\.ts\)/);
+  assert.equal(lines[1], "▏");
+  assert.match(lines[2]!, /^▏ ● done looking/);
+  assert.match(lines[3]!, /^▏ └ • Read \(src\/b\.ts\)/);
 });
 
 test("without a position (patch absent) steps fall back to └", () => {

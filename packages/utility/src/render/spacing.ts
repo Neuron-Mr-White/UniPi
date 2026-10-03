@@ -18,6 +18,12 @@ import { isAssistant, trimEdgeBlankLines } from "./reply-bg.js";
 
 export { trimEdgeBlankLines } from "./reply-bg.js";
 
+let joinTextToTools: () => boolean = () => false;
+
+export function setTextToolJoin(fn: () => boolean): void {
+  joinTextToTools = fn;
+}
+
 /** A block's position inside a run of same-group siblings. */
 export interface SpacingGroupPosition {
   index: number;
@@ -174,19 +180,23 @@ export function patchTranscriptSpacing(container: TranscriptContainer): void {
     const lines: string[] = [];
     const mouseChildren: Array<{ component: unknown; height: number }> = [];
     let prevGroup: string | undefined;
+    let prevVisibleChild: unknown | undefined;
     for (const { child, lines: childLines } of rendered) {
       if (childLines.length === 0) {
         mouseChildren.push({ component: child, height: 0 });
         continue;
       }
       const grp = groupOwnerOf(child).spacingGroup;
-      const joined = grp !== undefined && grp !== "" && grp === prevGroup;
+      const joined =
+        (grp !== undefined && grp !== "" && grp === prevGroup) ||
+        (joinTextToTools() && prevVisibleChild !== undefined && isAssistant(prevVisibleChild) && isToolExecution(child));
       // pi attributes the separator to the child below it (it unshifts ""
       // into the child's lines); grouped members get no separator.
       if (lines.length > 0 && !joined) childLines.unshift("");
       lines.push(...childLines);
       mouseChildren.push({ component: child, height: childLines.length });
       prevGroup = grp;
+      prevVisibleChild = child;
     }
     self.mouseLayout = { width, children: mouseChildren };
     return lines;

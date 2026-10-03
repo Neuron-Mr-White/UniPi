@@ -30,7 +30,7 @@ import { registerAnswerCommand } from "./answer/index.js";
 import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import { registerToolRenderers } from "./render/tools.js";
-import { installTranscriptSpacing } from "./render/spacing.js";
+import { installTranscriptSpacing, setTextToolJoin } from "./render/spacing.js";
 import { installSimpleImageCollapse } from "./render/images.js";
 import { installHarnessRenderers, installHarnessUserRendering, withHarnessToolAnnotations } from "./render/harness.js";
 import { installHarnessProvenance } from "@pi-unipi/core";
@@ -75,6 +75,7 @@ export default function (pi: ExtensionAPI) {
   } catch {
     // best-effort prototype patch
   }
+  setTextToolJoin(() => style === "simple");
   // Normalize blank runs between transcript blocks (all render styles).
   installTranscriptSpacing(pi);
   // Harness provenance: known custom-type panels + native USER card patch.
