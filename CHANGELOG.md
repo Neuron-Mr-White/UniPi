@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `notify`: prompts that send no event of their own (third-party `ask_user` tools, the permission prompt, the plan review) can notify through the new **Input Needed** event (`input_needed`, off by default); closing any prompt now stops its reminders. (GitHub #38)
+
 ## [3.0.0-alpha.28] — 2026-10-04
 
 ### Changed

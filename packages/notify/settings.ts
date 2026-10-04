@@ -30,6 +30,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
     session_shutdown: { enabled: false, platforms: [] },
     ask_user_prompt: { enabled: false, platforms: [] },
     permission_request: { enabled: false, platforms: [] },
+    input_needed: { enabled: false, platforms: [] },
   },
   native: {
     enabled: true,
@@ -79,6 +80,7 @@ const EVENT_PHRASES: Record<string, string> = {
   session_shutdown: "the session shuts down.",
   ask_user_prompt: "the agent asks you a question.",
   permission_request: "a permission prompt opens.",
+  input_needed: "the agent is waiting on any prompt (covers tools that send no event of their own).",
 };
 
 /** One section per known event: enable + platform routing. */

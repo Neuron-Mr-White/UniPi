@@ -91,3 +91,12 @@ describe("loadConfig deep copy", () => {
     assert.equal(reloaded.telegram.enabled, true);
   });
 });
+
+describe("DEFAULT_CONFIG events", () => {
+  it("defines input_needed, disabled by default", () => {
+    assert.deepEqual(DEFAULT_CONFIG.events.input_needed, {
+      enabled: false,
+      platforms: [],
+    });
+  });
+});

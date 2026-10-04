@@ -38,7 +38,8 @@ Help users configure the `@pi-unipi/notify` notification system.
     "memory_consolidated": { "enabled": false, "platforms": [] },
     "session_shutdown": { "enabled": false, "platforms": [] },
     "ask_user_prompt": { "enabled": false, "platforms": [] },
-    "permission_request": { "enabled": false, "platforms": [] }
+    "permission_request": { "enabled": false, "platforms": [] },
+    "input_needed": { "enabled": false, "platforms": [] }
   },
   "native": {
     "enabled": true,
@@ -207,10 +208,11 @@ ntfy uses dedicated `ntfy.json` files at both global and project scope, with ful
 | `session_shutdown` | Off | Session ends |
 | `ask_user_prompt` | Off | Agent asked a question and is waiting for an answer |
 | `permission_request` | Off | A permission prompt is about to be shown |
+| `input_needed` | Off | The agent waits on any prompt while it runs (covers tools that send no event of their own) |
 
 Each event can override `platforms` — empty array means use `defaultPlatforms`.
 
-`ask_user_prompt` and `permission_request` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see the Re-notify unanswered prompts section under Platforms).
+`ask_user_prompt`, `permission_request` and `input_needed` are **blocking** events: while one is unanswered the agent is parked, so notify re-sends it periodically (see the Re-notify unanswered prompts section under Platforms).
 
 ### `permission_request`
 

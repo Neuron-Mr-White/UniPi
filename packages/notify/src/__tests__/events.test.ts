@@ -11,6 +11,7 @@ import { UNIPI_EVENTS } from "@pi-unipi/core";
 import {
   disarmRenotify,
   hasPendingWakeTask,
+  PROMPT_DEDUP_MS,
   registerEventListeners,
   type DispatchNotification,
 } from "../../events.ts";
@@ -405,5 +406,130 @@ describe("notify — re-notify unanswered blocking prompts", () => {
     t.mock.timers.tick(RENOTIFY_INTERVAL * 5);
 
     assert.equal(h.calls.length, 2);
+  });
+});
+
+// ─── input_needed (ui_prompt lifecycle) ───────────────────────────
+
+/**
+ * Fire every lifecycle handler registered for an event (real pi dispatches
+ * all of them; e.g. agent_end has both the notification and the
+ * agent-running tracker).
+ */
+async function invokeAllLifecycle(
+  h: ReturnType<typeof harness>,
+  event: string,
+  payload?: unknown,
+): Promise<void> {
+  const handlers = h.lifecycle.get(event) ?? [];
+  assert.ok(handlers.length > 0, `no lifecycle handler registered for ${event}`);
+  for (const handler of handlers) {
+    await handler(payload);
+  }
+}
+
+describe("notify — input_needed (ui_prompt lifecycle)", () => {
+  // The suite must not depend on the ambient value: sidekick/subagent shells
+  // run with UNIPI_SUBAGENT_CHILD=1, which suppresses registration entirely.
+  const savedSubagentEnv = process.env.UNIPI_SUBAGENT_CHILD;
+  beforeEach(() => {
+    delete process.env.UNIPI_SUBAGENT_CHILD;
+  });
+  after(() => {
+    if (savedSubagentEnv === undefined) delete process.env.UNIPI_SUBAGENT_CHILD;
+    else process.env.UNIPI_SUBAGENT_CHILD = savedSubagentEnv;
+  });
+
+  it("notifies once for ui_prompt_start while the agent runs, with renotify armed", (t) => {
+    // Mock Date as well, anchored at the real clock, and step past the dedup
+    // window: earlier tests in this file stamped lastBlockingAlertAt with the
+    // real clock (a mock starting at 0 would make the delta negative).
+    t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+    t.mock.timers.tick(PROMPT_DEDUP_MS + 1);
+    const h = harness(fakeConfig(["input_needed"]));
+
+    invokeAllLifecycle(h, "agent_start", {});
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "Pick a colour" });
+
+    const inputCalls = h.calls.filter((call) => call.eventType === "input_needed");
+    assert.equal(inputCalls.length, 1);
+    assert.equal(inputCalls[0]?.title, "Pi — Input Needed");
+    assert.equal(inputCalls[0]?.priority, "high");
+    assert.match(inputCalls[0]?.message ?? "", /Pick a colour/);
+
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+    assert.equal(h.calls.length, 2, "reminder fired");
+    assert.equal(h.calls[1]?.eventType, "input_needed");
+    assert.match(h.calls[1]?.title ?? "", /\(still waiting\)/);
+  });
+
+  it("does not notify while the agent is idle (user's own overlay)", () => {
+    const h = harness(fakeConfig(["input_needed"]));
+
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "Pick a colour" });
+
+    assert.equal(h.calls.length, 0);
+  });
+
+  it("stops notifying after agent_end", () => {
+    const h = harness(fakeConfig(["input_needed"]));
+
+    invokeAllLifecycle(h, "agent_start", {});
+    invokeAllLifecycle(h, "agent_end", {});
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "Pick a colour" });
+
+    assert.equal(h.calls.length, 0);
+  });
+
+  it("skips ui_prompt_start right after an ask_user alert (same prompt)", () => {
+    const h = harness(fakeConfig(["ask_user_prompt", "input_needed"]));
+
+    invokeAllLifecycle(h, "agent_start", {});
+    invokeBus(h, "unipi:ask-user:prompt", { question: "Which model?" });
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "custom", title: "Which model?" });
+
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0]?.eventType, "ask_user_prompt");
+  });
+
+  it("input_needed disabled: no dispatch, but prompt close still disarms a reminder", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    const h = harness(fakeConfig(["ask_user_prompt"])); // input_needed stays off
+
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "Pick a colour" });
+    armAskUser(h);
+    assert.equal(h.calls.length, 1);
+
+    invokeAllLifecycle(h, "ui_prompt_end", {});
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+
+    assert.equal(h.calls.length, 1, "prompt close stopped the ask_user reminder");
+  });
+
+  it("two open prompts: first end keeps the reminder, second end disarms", (t) => {
+    t.mock.timers.enable({ apis: ["setInterval", "Date"], now: Date.now() });
+    t.mock.timers.tick(PROMPT_DEDUP_MS + 1);
+    const h = harness(fakeConfig(["input_needed"]));
+
+    invokeAllLifecycle(h, "agent_start", {});
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "First" });
+    invokeAllLifecycle(h, "ui_prompt_start", { kind: "select", title: "Second" });
+    assert.equal(h.calls.length, 2);
+
+    invokeAllLifecycle(h, "ui_prompt_end", {});
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+    assert.equal(h.calls.length, 3, "still armed while one prompt is open");
+
+    invokeAllLifecycle(h, "ui_prompt_end", {});
+    t.mock.timers.tick(RENOTIFY_INTERVAL);
+    assert.equal(h.calls.length, 3, "disarmed once every prompt closed");
+  });
+
+  it("registers nothing in a subagent child (UNIPI_SUBAGENT_CHILD=1)", () => {
+    process.env.UNIPI_SUBAGENT_CHILD = "1";
+    const h = harness(fakeConfig(["input_needed"]));
+
+    assert.equal(h.lifecycle.get("ui_prompt_start")?.length ?? 0, 0);
+    assert.equal(h.lifecycle.get("ui_prompt_end")?.length ?? 0, 0);
   });
 });

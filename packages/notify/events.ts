@@ -15,6 +15,7 @@ import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification } from "./platforms/ntfy.js";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
+import { buildInputNeededMessage } from "./input-needed-message.js";
 import { summarizeLastMessage } from "./summarize.js";
 import { filterPlatformsAfterInput, isBlockingEvent } from "./activity.js";
 
@@ -75,6 +76,22 @@ const unsubs: Array<() => void> = [];
 /** Pending re-notify interval for an unanswered blocking prompt. */
 let renotifyTimer: ReturnType<typeof setInterval> | undefined;
 
+/**
+ * A `ui_prompt_start` within this window of an ask_user/permission alert is
+ * the same prompt — pi emits the bus event and the lifecycle event back to
+ * back. Exported for tests.
+ */
+export const PROMPT_DEDUP_MS = 2000;
+
+/** Whether an agent run is in progress — `input_needed` fires only while it is. */
+let agentRunning = false;
+
+/** Open blocking UI prompts (`ui_prompt_start`/`ui_prompt_end` pairing). */
+let openPrompts = 0;
+
+/** When the last ask_user/permission alert went out, for ui_prompt de-dup. */
+let lastBlockingAlertAt = 0;
+
 /** Cancel any pending re-notify timer. Safe to call at any time. */
 export function disarmRenotify(): void {
   const timer = renotifyTimer;
@@ -128,9 +145,33 @@ function armRenotify(
   renotifyTimer = timer;
 }
 
+/**
+ * Dispatch a human-blocking prompt alert: high priority plus the reminder
+ * loop. Non-`input_needed` alerts also stamp `lastBlockingAlertAt` so the
+ * back-to-back `ui_prompt_start` for the same prompt is seen as announced.
+ */
+function notifyBlocking(
+  pi: ExtensionAPI,
+  eventKey: string,
+  title: string,
+  message: string,
+  platforms: NotifyPlatform[],
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  if (eventKey !== "input_needed") lastBlockingAlertAt = Date.now();
+  dispatch(pi, title, message, platforms, eventKey, config, cwd, "high").catch(() => {
+    // Silently ignore — background notification failure is non-blocking.
+  });
+  armRenotify(pi, title, message, platforms, eventKey, config, cwd, dispatch);
+}
+
 /** Unregister all previously registered pi.events.on() listeners. */
 function unregisterAll(): void {
   disarmRenotify();
+  agentRunning = false;
+  openPrompts = 0;
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -161,6 +202,7 @@ export const BUILTIN_EVENTS: Record<
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
   ask_user_prompt: { hook: UNIPI_EVENTS.ASK_USER_PROMPT, label: "Question Asked" },
   permission_request: { hook: PERMISSION_UI_PROMPT_EVENT, label: "Permission Request" },
+  input_needed: { hook: "ui_prompt_start", label: "Input Needed" },
 };
 
 /**
@@ -184,7 +226,9 @@ export function registerEventListeners(
   unregisterAll();
   // Register built-in events (except agent lifecycle notifications which have custom logic)
   for (const [eventKey, def] of Object.entries(BUILTIN_EVENTS)) {
-    if (isAgentNotificationEvent(eventKey)) continue; // handled separately below
+    // Agent notifications have custom logic; input_needed has its own
+    // ui_prompt_start registration below (with agent-running + de-dup guards).
+    if (isAgentNotificationEvent(eventKey) || eventKey === "input_needed") continue;
 
     const eventConfig = config.events[eventKey];
     if (!eventConfig?.enabled) continue;
@@ -192,6 +236,12 @@ export function registerEventListeners(
     const handler = (payload: unknown) => {
       const title = `Pi — ${def.label}`;
       const message = buildEventMessage(eventKey, payload);
+      // Human-blocking prompts: high priority, reminder loop, and a stamp
+      // that keeps the follow-up ui_prompt_start from double-firing.
+      if (isBlockingEvent(eventKey)) {
+        notifyBlocking(pi, eventKey, title, message, eventConfig.platforms, config, cwd, dispatch);
+        return;
+      }
       // Fire-and-forget: don't block the event emitter
       dispatch(
         pi,
@@ -205,9 +255,6 @@ export function registerEventListeners(
       ).catch(() => {
         // Silently ignore — background notification failure is non-blocking.
       });
-      if (isBlockingEvent(eventKey)) {
-        armRenotify(pi, title, message, eventConfig.platforms, eventKey, config, cwd, dispatch);
-      }
     };
 
     // Pi lifecycle events are dispatched via ExtensionRunner — must use
@@ -225,14 +272,16 @@ export function registerEventListeners(
   const askUserConfig = config.events["ask_user_prompt"];
   if (askUserConfig?.enabled) {
     unsubs.push(pi.events.on(ASK_USER_PROMPT_EVENT, (payload: unknown) => {
-      const title = `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`;
-      const message = buildAskUserPromptMessage(payload);
-      dispatch(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, "high").catch(
-        () => {
-          // Silently ignore — background notification failure is non-blocking.
-        }
+      notifyBlocking(
+        pi,
+        "ask_user_prompt",
+        `Pi — ${BUILTIN_EVENTS.ask_user_prompt.label}`,
+        buildAskUserPromptMessage(payload),
+        askUserConfig.platforms,
+        config,
+        cwd,
+        dispatch,
       );
-      armRenotify(pi, title, message, askUserConfig.platforms, "ask_user_prompt", config, cwd, dispatch);
     }));
   }
 
@@ -242,11 +291,67 @@ export function registerEventListeners(
     if ((payload as { active?: unknown } | null)?.active === false) disarmRenotify();
   }));
   (pi as any).on("agent_start", () => {
+    agentRunning = true;
     disarmRenotify();
   });
 
   registerAgentNotification(pi, "agent_end", config, cwd, dispatch);
   registerAgentNotification(pi, "agent_settled", config, cwd, dispatch);
+
+  // Keep the agent-running flag in sync. Registered after the agent
+  // notification handlers above so the first agent_end handler stays the
+  // notification path (pi.on handlers fire in registration order).
+  (pi as any).on("agent_end", () => {
+    agentRunning = false;
+  });
+
+  registerInputNeeded(pi, config, cwd, dispatch);
+}
+
+/**
+ * pi ≥0.84.4 fires `ui_prompt_start`/`ui_prompt_end` around every blocking
+ * user-facing prompt — including ones that emit no bus event of their own
+ * (third-party ask_user tools, the permission prompt, the plan review).
+ *
+ * The start/end pair is registered whenever we are not a subagent child,
+ * independent of the `input_needed` flag: the open-prompt counter must stay
+ * paired so a prompt closing also disarms ask_user/permission reminders.
+ * Only the notification itself respects the flag, and it fires only while
+ * the agent is running — a `ui_prompt_start` while idle is the user's own
+ * overlay (e.g. /unipi:settings).
+ */
+function registerInputNeeded(
+  pi: ExtensionAPI,
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  // Subagent children never own a user-facing prompt.
+  if (process.env.UNIPI_SUBAGENT_CHILD === "1") return;
+
+  (pi as any).on("ui_prompt_start", (payload: unknown) => {
+    openPrompts += 1;
+    const eventConfig = config.events["input_needed"];
+    if (!eventConfig?.enabled) return;
+    if (!agentRunning) return;
+    // Same prompt already announced as ask_user/permission_request.
+    if (Date.now() - lastBlockingAlertAt < PROMPT_DEDUP_MS) return;
+    notifyBlocking(
+      pi,
+      "input_needed",
+      `Pi — ${BUILTIN_EVENTS.input_needed.label}`,
+      buildInputNeededMessage(payload),
+      eventConfig.platforms,
+      config,
+      cwd,
+      dispatch,
+    );
+  });
+
+  (pi as any).on("ui_prompt_end", () => {
+    openPrompts = Math.max(0, openPrompts - 1);
+    if (openPrompts === 0) disarmRenotify();
+  });
 }
 
 /** Get all platforms that are currently enabled in config */

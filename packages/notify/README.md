@@ -71,8 +71,11 @@ notify_user({ title: "Build failed", message: "tsc found 12 errors.", priority: 
 | `session_shutdown` | off | The session ends. |
 | `ask_user_prompt` | off | The agent asks you a question and waits. |
 | `permission_request` | off | A permission prompt opens. This needs [`@gotgenes/pi-permission-system`](https://www.npmjs.com/package/@gotgenes/pi-permission-system). |
+| `input_needed` | off | The agent waits on any prompt while it runs. Covers prompts that send no event of their own — third-party `ask_user` tools, the permission prompt, the plan review. |
 
 `ask_user_prompt` and `permission_request` are blocking events. The agent stops until you answer.
+
+`input_needed` is the catch-all for the same situation: Pi fires it around every blocking prompt, including ones that emit no event of their own. It only fires while the agent is running — prompts you open yourself while the agent is idle (for example `/unipi:settings`) stay quiet — and a prompt already announced as `ask_user_prompt` or `permission_request` is not announced twice. Closing any prompt stops its reminders.
 
 ## Settings
 
@@ -104,6 +107,7 @@ A reminder has the text `(still waiting)` in its title and `high` priority. Remi
 - You press a key.
 - herdr reports that the agent is not blocked.
 - The agent starts a new turn.
+- The prompt closes.
 - The session ends.
 
 Only one reminder runs at a time. Silence after input does not apply to blocking events.

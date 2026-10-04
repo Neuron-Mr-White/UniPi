@@ -26,6 +26,7 @@ const VALID_PLATFORMS: ReadonlySet<NotifyPlatform> = new Set([
 const BLOCKING_EVENTS: ReadonlySet<string> = new Set([
   "ask_user_prompt",
   "permission_request",
+  "input_needed",
 ]);
 
 /** Whether an event type is a human-blocking prompt. */
@@ -51,8 +52,9 @@ export function resetInputActivity(): void {
  * Empty `platforms` (while enabled) silences all incoming channels, matching
  * `events.*.platforms: []` → all enabled.
  *
- * Human-blocking events (`ask_user_prompt`, `permission_request`) bypass the
- * filter entirely — the keypress that triggered them must not mute them.
+ * Human-blocking events (`ask_user_prompt`, `permission_request`,
+ * `input_needed`) bypass the filter entirely — the keypress that triggered
+ * them must not mute them.
  */
 export function filterPlatformsAfterInput(
   platforms: NotifyPlatform[],
