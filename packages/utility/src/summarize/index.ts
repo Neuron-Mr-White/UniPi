@@ -1,9 +1,10 @@
 /**
  * @pi-unipi/utility — /unipi:summarize [focus]
  *
- * Asks the agent for a summary of the session in the shape the bundled
- * `summarize` skill sets. The command sends `/skill:summarize`, so pi
- * inlines the skill file into the turn, and the agent cannot skip it.
+ * Runs the bundled `summarize` skill again on the last reply. The command
+ * sends `/skill:summarize` (plus the user's own text, if any), so pi inlines
+ * the skill file into the turn, the agent cannot skip it, and the command
+ * adds no wording of its own.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -11,13 +12,10 @@ import { sendHarnessUserMessage, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unip
 
 export const SUMMARIZE_SKILL = "summarize";
 
-/** The prompt the command sends. `focus` narrows the summary; empty means the whole session. */
+/** The text the command sends: the skill, plus the user's own text (if any) as-is. */
 export function summarizePrompt(focus: string): string {
   const f = focus.trim();
-  const scope = f
-    ? `Summarize this session for me, with the focus on: ${f}`
-    : "Summarize this session for me: what we did, why, and where it stands now.";
-  return `/skill:${SUMMARIZE_SKILL} ${scope} Use only what happened in this session. Do not call tools.`;
+  return f ? `/skill:${SUMMARIZE_SKILL} ${f}` : `/skill:${SUMMARIZE_SKILL}`;
 }
 
 /** True when pi can expand `/skill:summarize` (the skill is loaded and on). */
@@ -45,7 +43,7 @@ export function registerSummarizeCommand(pi: ExtensionAPI): void {
       sendHarnessUserMessage(
         pi,
         summarizePrompt(focus),
-        { source: "Utility", title: "Summarize", synopsis: focus ? `focus: ${focus}` : "whole session" },
+        { source: "Utility", title: "Summarize", synopsis: focus ? `ask: ${focus}` : "last reply" },
         { expandPromptTemplates: true },
       );
       // sendUserMessage does not wait. Print mode (-p) exits when the handler

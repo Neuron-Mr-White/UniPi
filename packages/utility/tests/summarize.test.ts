@@ -23,14 +23,17 @@ function fakePi(commands: string[]) {
 const idle = (notes: string[] = []) => ({ isIdle: () => true, hasUI: true, ui: { notify: (m: string) => notes.push(m) }, waitForIdle: async () => {} });
 
 describe("summarizePrompt", () => {
-  it("expands the skill and summarizes the whole session by default", () => {
-    const p = summarizePrompt("");
-    assert.match(p, /^\/skill:summarize /);
-    assert.match(p, /Summarize this session/);
-    assert.match(p, /Do not call tools/);
+  it("sends the skill alone when there is no text", () => {
+    assert.equal(summarizePrompt(""), "/skill:summarize");
+    assert.equal(summarizePrompt("   "), "/skill:summarize");
   });
-  it("carries a focus", () => {
-    assert.match(summarizePrompt("  the deploy problem "), /focus on: the deploy problem /);
+  it("appends the user's text as-is", () => {
+    assert.equal(summarizePrompt("  what behaviour would it change? "), "/skill:summarize what behaviour would it change?");
+  });
+  it("adds no wording of its own", () => {
+    for (const p of [summarizePrompt(""), summarizePrompt("  what behaviour would it change? ")]) {
+      assert.doesNotMatch(p, /Summarize this session|Do not call tools|focus on/);
+    }
   });
 });
 
@@ -40,7 +43,7 @@ describe("/unipi:summarize", () => {
     registerSummarizeCommand(pi);
     await registered["unipi:summarize"]!("auth fix", idle());
     assert.equal(sent.length, 1);
-    assert.match(sent[0]!.text, /^\/skill:summarize .*auth fix/);
+    assert.equal(sent[0]!.text, "/skill:summarize auth fix");
     assert.deepEqual(sent[0]!.opts, { expandPromptTemplates: true });
   });
   it("refuses when the skill is off, and when the agent is busy", async () => {
@@ -65,6 +68,7 @@ describe("summarize SKILL.md", () => {
   it("has kebab-case name and a description that sets it as the final-reply default", () => {
     assert.match(text, /^---\nname: summarize\n/);
     assert.match(text, /final reply/);
+    assert.ok(text.includes("last reply"), "mentions the last reply");
     assert.match(text, /unless the\s+user asked for full\s+detail/);
   });
   it("keeps the shape the user picked", () => {

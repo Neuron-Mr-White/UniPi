@@ -17,7 +17,7 @@ description: |
 | `/unipi:continue` / `/unipi:retry` | Take another turn without new text |
 | `/unipi:cleanup` | Remove stale UniPi temp files (previews and asks first; `--dry-run`, `--yes`) |
 | `/unipi:doctor` | Check config, model cache, Decision Model key, skill exposure |
-| `/unipi:summarize [focus]` | Ask the agent for a session summary (uses the `summarize` skill) |
+| `/unipi:summarize [focus]` | Summarize the last reply again (runs the `summarize` skill); any text is passed to the skill as the user's question |
 
 ## Notes for the agent
 

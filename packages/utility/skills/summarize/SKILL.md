@@ -11,8 +11,15 @@ description: |
 
 Use this skill for the final reply after work (a task, an investigation, a
 fix), and when the user runs /unipi:summarize. "The work" below means the
-session, or the part of it you are summarizing: the user's messages, your
-tool calls and their results, and your replies.
+latest piece of work: the user's last request, the tool calls and results
+that answered it, and your last reply. Use the rest of the session only as
+context to explain it.
+
+When the user runs /unipi:summarize, summarize your last reply again in
+this shape. Do not call tools. If text follows this skill, it is the
+user's question or focus. Answer it about your last reply. Words like "it"
+or "this" refer to what your last reply covered. Use earlier parts of the
+session only when the user's text asks about them.
 
 ## When not to use it
 
