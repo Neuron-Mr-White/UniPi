@@ -148,7 +148,7 @@ test("recurring edit nudges reset once per turn", async () => {
   }
 });
 
-test("bash nudges recur every four non-trivial commands and sidekick resets", async () => {
+test("bash nudge fires once per run; sidekick resets the streak but not the flag", async () => {
   const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
   const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
   const previousHome = process.env.HOME;
@@ -163,8 +163,41 @@ test("bash nudges recur every four non-trivial commands and sidekick resets", as
     for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
     const fourth = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
     assert.equal(fourth?.content.at(-1)?.text, bashNudge(4));
+    // Once per run: further non-trivial calls (even across sidekick handoffs,
+    // which keep resetting the streak) never nudge again this run.
+    for (let i = 0; i < 8; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
     toolResult({ toolName: "sidekick", content: [] }, ctx);
+    for (let i = 0; i < 4; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
+test("a new agent run re-arms the bash nudge; trivial commands never count", async () => {
+  const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
+  const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    writePreset(home, { kind: "fusion", lead: "a/lead", sidekick: "b/side" });
+    const lead = model("a", "lead");
+    const side = model("b", "side");
+    const { handlers, ctx } = setup(home, cwd, [lead, side]);
+    await handlers.get("session_start")?.({}, { ...ctx, model: lead });
+    const toolResult = handlers.get("tool_result")!;
+    // First run: 12 non-trivial bash results → exactly one nudge (the 4th).
     for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    const first = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
+    assert.equal(first?.content.at(-1)?.text, bashNudge(4));
+    for (let i = 0; i < 8; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    // Trivial commands still don't count toward the streak.
+    for (let i = 0; i < 5; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "git status" }, content: [] }, ctx), undefined);
+    // New run: the nudge is armed again and fires on the 4th non-trivial call.
+    handlers.get("before_agent_start")?.({ systemPromptOptions: { sections: {} } }, ctx);
+    for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    const second = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
+    assert.equal(second?.content.at(-1)?.text, bashNudge(4));
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
