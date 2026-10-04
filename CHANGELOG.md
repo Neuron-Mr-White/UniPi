@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.27] — 2026-10-04
+
+### Added
+- `core`: 4 new Unicrab hints for the footer changes — three what's-new tips (tokens and cost under the input, the Footer settings, the responsive drop) and a setting hint for `footer.rainbow`.
+- `footer`: **Glance settings** — the stats strip under the input, the frame badges and the rainbow are configurable in `/unipi:settings` → **Footer**: per-part strip toggles (`strip.turns`, `strip.time`, `strip.speed`, `strip.tokens`, `strip.cost`, `strip.compactions`, `strip.cache`), a **Rainbow** mode (`always` / `brand-only` / `off`), the background-task line (`processLine`), and badge toggles (`badges.mode`, `badges.planPermission`, `badges.fusion`, `badges.kanboard`).
+- `footer`: **session tokens and cost in the stats line** — `↑12.3k in · ↓4.1k out` and `$1.23` (`sub` on subscription models); sums skip failed/aborted replies.
+- `footer`: **responsive to the terminal** — narrow widths drop stats parts by priority (compactions → cache → time → turns → speed → cost → tokens) whole instead of truncating mid-part, and the frame degrades its badges (kanboard → fusion → plan/permission → mode) before the branch or model truncate; below 20 terminal rows the stats and task lines hide while the frame stays.
+
+- `workflow`: **plan reviews in two parts** — plans have a `## Summary` for the approver and an `## Implementation` for whoever builds it; the review overlay shows them side by side at 120+ columns (Tab switches pane) and stacked on narrower terminals.
+
+### Changed
+- `workflow`: **plan mode is no longer read-only by allowlist** — research, memory, subagents and read-only shell run as normal; only writes outside the plan file, `docs/plans/` and temp dirs are blocked (in every permission mode), and state-changing shell asks first (skipped in `full`).
+- `workflow`: **plan with the user before submitting** — the plan-mode prompt asks the model to settle shaping decisions with `ask_user`; `plan_submit` refuses while `### Open questions` lists items or when the plan is unchanged since "Keep planning", and Approve/Discard end the turn.
+- `fusion`: the lead's shell-delegation nudge counts per request (it no longer fires at the start of a new prompt) and treats piped read-only commands (`grep … | head`, `2>&1`) as trivial.
+
+### Removed
+- `footer`: the **classic segment renderer** — presets, separators, segments, `/unipi:footer-help` and their settings (`preset`, `separator`, `zoneSeparator`, `showFullLabels`, `groups`, `glanceMode`) are gone; the glance frame is the only footer. Old keys in existing config files are ignored. `enabled: false` gives the plain pi editor.
+
+### Changed (footer)
+- `footer`: the **Color mode** setting now offers `auto` / `truecolor` / `256` / `none` (the hub previously offered `mono`, which the footer silently treated as `auto`; stored `mono` values load as `none`).
+- `footer`: the 1-second refresh no longer replays the whole session branch — the scan is incremental (full rescan on branch change or compaction), the stats read a cached snapshot instead of walking the branch per paint, settings loads are memoized, and the redraw fires only when something displayed changed.
+- `core` / `autocomplete`: `/unipi:footer-help` command entries removed.
+
+### Fixed
+- `footer`: the MODULE_READY announcement now reports the package version instead of a hard-coded `0.1.0`.
+
+### Docs
+- README: the glance-footer caption names tokens, cost and the responsive fit; a new What's new row for alpha.27 (classic footer removed).
+
 ## [3.0.0-alpha.26] — 2026-10-04
 
 ### Fixed
