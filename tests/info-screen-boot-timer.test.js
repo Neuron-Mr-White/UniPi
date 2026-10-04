@@ -1,82 +1,84 @@
 /**
- * Regression test for the "stuck starting screen" bug.
+ * Regression test for the "stuck starting screen" bug, now guarding the
+ * Unicrab splash's self-dismiss timer.
  *
- * When an update is available, the updater's "Update Available" overlay is
- * stacked on top of the info-screen boot dashboard. The boot auto-close timer
- * closes via `done()`, which pops the *topmost* overlay in the TUI stack — not
- * this overlay specifically. So firing the timer while the update overlay was
- * on top popped the update overlay and spent the info overlay's one-shot
- * `close`, leaving the starting screen stranded (the user could no longer
- * dismiss it). The fix makes `startBootTimer` defer until this overlay is the
- * focused/topmost entry.
+ * pi's `done()` pops the TOPMOST overlay. A timer that dismissed while the
+ * updater's prompt was stacked on top closed the prompt instead and stranded
+ * the splash. `armSelfDismiss` must defer while covered and retry.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { InfoOverlay } from "../packages/info-screen/tui/info-overlay.ts";
+import { armSelfDismiss } from "../packages/info-screen/tui/self-dismiss.ts";
 
-/** Wait `ms` as a real timer (the boot timer uses real timers too). */
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-describe("InfoOverlay boot auto-close", () => {
-  it("auto-closes when it is the topmost overlay", async () => {
-    const overlay = new InfoOverlay();
-    let closed = false;
-    overlay.onClose = () => {
-      closed = true;
-    };
-    overlay.isTopmostOverlay = () => true;
-    overlay.startBootTimer(20);
+function harness(opts = {}) {
+  const s = { hidden: false, closed: false, destroyed: false };
+  const hooks = {
+    isDestroyed: () => s.destroyed,
+    destroy: () => {
+      s.destroyed = true;
+    },
+    ...(opts.selfHide === false
+      ? {}
+      : {
+          selfHide: () => {
+            s.hidden = true;
+          },
+        }),
+    onClose: () => {
+      s.closed = true;
+    },
+    ...opts.hooks,
+  };
+  return { s, hooks };
+}
+
+describe("splash self-dismiss", () => {
+  it("hides itself when topmost", async () => {
+    const { s, hooks } = harness({ hooks: { isTopmostVisible: () => true } });
+    armSelfDismiss(20, hooks);
     await wait(60);
-    assert.equal(closed, true, "should close when topmost");
-    overlay.destroy();
+    assert.equal(s.hidden, true);
+    assert.equal(s.closed, false, "must not use done() when selfHide exists");
   });
 
-  it("does not auto-close while another overlay is stacked on top", async () => {
-    const overlay = new InfoOverlay();
-    let closed = false;
-    overlay.onClose = () => {
-      closed = true;
-    };
-    overlay.isTopmostOverlay = () => false; // something is on top of us
-    overlay.startBootTimer(20);
+  it("waits while another overlay is stacked on top, then hides", async () => {
+    let top = false;
+    const { s, hooks } = harness({ hooks: { isTopmostVisible: () => top } });
+    armSelfDismiss(20, hooks);
     await wait(80);
-    assert.equal(
-      closed,
-      false,
-      "must not fire done() while not topmost — that would pop the covering overlay and strand this one",
-    );
-    overlay.destroy();
+    assert.equal(s.hidden, false, "covered → must not dismiss");
+    top = true;
+    await wait(80);
+    assert.equal(s.hidden, true);
   });
 
-  it("auto-closes once it becomes topmost after the covering overlay closes", async () => {
-    const overlay = new InfoOverlay();
-    let closed = false;
-    overlay.onClose = () => {
-      closed = true;
-    };
-    let topmost = false;
-    overlay.isTopmostOverlay = () => topmost;
-    overlay.startBootTimer(20);
-    await wait(80); // timer fired but deferred — covering overlay still up
-    assert.equal(closed, false);
-    topmost = true; // covering overlay closed; we're topmost now
-    await wait(80); // next re-arm fires and closes
-    assert.equal(closed, true, "should close after becoming topmost");
+  it("falls back to done() only while focused", async () => {
+    let focused = false;
+    const { s, hooks } = harness({ selfHide: false, hooks: { isTopmostOverlay: () => focused } });
+    armSelfDismiss(20, hooks);
+    await wait(80);
+    assert.equal(s.closed, false);
+    focused = true;
+    await wait(80);
+    assert.equal(s.closed, true);
   });
 
-  it("any keypress cancels the boot timer (topmost case)", async () => {
-    const overlay = new InfoOverlay();
-    let closed = false;
-    overlay.onClose = () => {
-      closed = true;
-    };
-    overlay.isTopmostOverlay = () => true;
-    overlay.startBootTimer(40);
-    overlay.handleInput("j"); // user is driving — cancels the timer
-    await wait(120);
-    assert.equal(closed, false, "keypress should cancel the boot timer");
-    overlay.destroy();
+  it("cancel stops the timer", async () => {
+    const { s, hooks } = harness({ hooks: { isTopmostVisible: () => true } });
+    const cancel = armSelfDismiss(30, hooks);
+    cancel();
+    await wait(80);
+    assert.equal(s.hidden, false);
+  });
+
+  it("no-op for non-positive timeouts", async () => {
+    const { s, hooks } = harness();
+    armSelfDismiss(0, hooks);
+    await wait(30);
+    assert.equal(s.hidden, false);
   });
 });
