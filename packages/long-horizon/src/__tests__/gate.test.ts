@@ -279,7 +279,7 @@ test("register(): session_start starts tools off, explicit goal turns them on, a
   gate.register(pi as any);
 
   // Fresh session: every mode tool off before any turn.
-  await pi.fireEvent("session_start", {});
+  gate.resetModeTools();
   assert.deepEqual(modeToolsIn(pi.activeTools), [], "a fresh session starts with mode tools off");
   assert.deepEqual(pi.activeTools.filter((n) => !ALL_MODE_TOOLS.includes(n)), ["read", "bash"]);
 
@@ -348,14 +348,16 @@ test("restore syncs an active owner's tools on; an ownerless restore leaves them
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   gate.register(pi as any);
 
-  // Gate's session_start sync puts tools off; ownerless restore keeps them off.
-  void pi.fireEvent("session_start", {});
+  // index's session_start calls resetModeTools() first; an ownerless restore
+  // then keeps the tools off.
+  gate.resetModeTools();
   assert.deepEqual(modeToolsIn(pi.activeTools), []);
   owner.restore();
   assert.deepEqual(modeToolsIn(pi.activeTools), []);
 
-  // Crash recovery with a live active owner (session_start's restore runs
-  // after the gate's sync): the owner's mode tools come back immediately.
+  // Crash recovery with a live active owner (the restore runs after the
+  // reset, same order as index's single session_start handler): the owner's
+  // mode tools come back immediately.
   writeFileSync(
     join(dir, "state.json"),
     JSON.stringify({

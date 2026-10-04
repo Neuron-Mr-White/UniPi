@@ -218,6 +218,19 @@ export class Gate {
     }
   }
 
+  /** Fresh or resumed sessions start with the mode tools OFF; a restored
+   *  active owner re-syncs its mode's tools ON right after via
+   *  onOwnerChanged. Wired from index's single session_start handler so the
+   *  extension keeps exactly one. Best-effort: never throws. */
+  resetModeTools(): void {
+    try {
+      if (!this.pi) return;
+      syncModeTools(this.pi, "none");
+    } catch {
+      // Session start must never fail because of tool syncing.
+    }
+  }
+
   current(): GateState | null {
     return this.turn;
   }
@@ -321,14 +334,6 @@ export class Gate {
         .replace(/\n?<\/long-horizon>(\n|$)/, "$1");
       event.systemPromptOptions.sections["long-horizon"] = inner;
       return undefined;
-    });
-
-    // Fresh or resumed sessions start with the mode tools OFF: the session's
-    // first before_agent_start re-syncs to whatever the turn resolves to. All
-    // long-horizon tools register synchronously during module load (before
-    // session_start fires), so nothing re-activates them after this.
-    pi.on("session_start", () => {
-      syncModeTools(pi, "none");
     });
 
     pi.on("before_provider_request", (event) => {

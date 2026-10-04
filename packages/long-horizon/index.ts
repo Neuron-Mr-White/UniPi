@@ -383,6 +383,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // reattaches the owner's tool surface; the continuation arms a recovery
   // fragment for the first post-restart turn.
   pi.on("session_start", () => {
+    // Mode tools start OFF; a restored active owner re-syncs them ON below.
+    gate.resetModeTools();
     const restored = owner.restore();
     machine.restore();
     // Only a truly drivable goal arms the recovery fragment; a paused goal
