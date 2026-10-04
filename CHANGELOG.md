@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.24] — 2026-10-04
+
 ### Added
 - `utility`: bundled **`summarize` skill** — the default shape for the agent's final reply after work: a one-sentence answer, numbered sections that open with a bold takeaway, optional mermaid diagram for 3+ step flows, "Problems and fixes", "Not verified", "Still open", and typed questions (`Q1 (pick one)` / `(pick any)` / `(your answer)`, a recommendation only when the work gives a reason). A level gate matches the user's technical depth. Skipped when the user asks for full detail or raw output. Tuned against `ds/deepseek-flash` in a blind A/B arena over 12 real long-session turns.
 - `utility`: **`/unipi:summarize [focus]`** — asks the agent for that summary of the session now (expands `/skill:summarize`, so the skill is always applied; waits for the turn in print mode).
