@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { hostname } from "node:os";
 import { ExtensionEditorComponent, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey } from "@earendil-works/pi-tui";
-import { boxInnerWidth, frameOverlay, HUB_OVERLAY_OPTIONS, hubBoldText as bold, hubDimText as dim, hubExactRow, hubTheme, setHubTheme, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
+import { boxInnerWidth, frameOverlay, HUB_OVERLAY_OPTIONS, hubBoldText as bold, hubDimText as dim, hubExactRow, hubTheme, sendHarnessUserMessage, setHubTheme, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
 import { readUtilSettings } from "../settings.js";
 import { ReplyPanel, type ReplyPanelResult } from "./reply.js";
 import { buildTemplate, composeAnswers, extractQuestions, messageText, parseTemplate } from "./extract.js";
@@ -207,7 +207,12 @@ export function registerAnswerCommand(pi: ExtensionAPI): void {
         ctx.ui.notify("Nothing answered — nothing sent.", "info");
         return;
       }
-      pi.sendUserMessage(message, ctx.isIdle() ? undefined : { deliverAs: "followUp" });
+      sendHarnessUserMessage(
+        pi,
+        message,
+        { source: "Answer", title: "Your answers", synopsis: `${questions.length} question(s) answered` },
+        ctx.isIdle() ? undefined : { deliverAs: "followUp" },
+      );
     },
   });
 }

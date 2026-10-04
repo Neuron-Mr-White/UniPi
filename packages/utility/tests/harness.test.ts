@@ -139,6 +139,54 @@ const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\
   });
 });
 
+describe("meta.lines (skill reveal rows)", () => {
+  const longDescription = `kanboard — Board integration for tasks ${"x".repeat(200)}`;
+  const revealMeta = harnessMetadata(
+    {
+      source: "Skills",
+      title: "Skill reveal",
+      synopsis: "show-me, kanboard",
+      lines: ["show-me — Help the user understand the changes quickly", longDescription],
+    },
+    "direct",
+  );
+  const body = "Relevant skills for this request (not in your skills list):\n- show-me — Help\n- kanboard — Board";
+  const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "");
+
+  it("advanced collapsed: label, one row per line, Ctrl+O row, no origin row, all within width", () => {
+    const rows = new HarnessPanel(body, revealMeta, { expanded: false, style: "advanced" }, THEME).render(80);
+    const plain = rows.map(strip);
+    assert.equal(plain.length, 4, `expected label + 2 lines + Ctrl+O, got ${plain.length}: ${JSON.stringify(plain)}`);
+    assert.ok(plain[0]!.includes("UniPi · Skills · Skill reveal"), "label missing");
+    assert.equal(plain.filter((l) => l.includes("show-me —")).length, 1, "show-me row missing");
+    assert.equal(plain.filter((l) => l.includes("kanboard —")).length, 1, "kanboard row missing");
+    assert.ok(plain[3]!.includes("Ctrl+O: full message"), "Ctrl+O hint missing");
+    assert.ok(plain.every((l) => !l.includes("origin:")), "origin row must be skipped for lines metas");
+    for (const row of rows) assert.ok(visibleWidth(row) <= 80, `row over width: ${visibleWidth(row)}`);
+  });
+
+  it("advanced expanded: item rows plus the full body, no Ctrl+O hint", () => {
+    const text = panelText(new HarnessPanel(body, revealMeta, { expanded: true, style: "advanced" }, THEME), 80);
+    assert.ok(text.includes("show-me —"), "item row lost when expanded");
+    assert.ok(text.includes("kanboard — Board"), "full body lost when expanded");
+    assert.ok(!text.includes("Ctrl+O: full message"), "expanded must drop the hint");
+    assert.ok(!text.includes("origin:"), "origin row must stay skipped when expanded");
+  });
+
+  it("advanced without lines is unchanged (origin footer, body preview)", () => {
+    const m = harnessMetadata({ source: "T", title: "T" }, "direct");
+    const text = panelText(new HarnessPanel(body, m, { expanded: false, style: "advanced" }, THEME), 80);
+    assert.ok(text.includes("origin: harness"), "origin footer missing");
+    assert.ok(!text.includes("Ctrl+O: full message"), "plain advanced must keep its own collapsed shape");
+  });
+
+  it("simple shows the synopsis (the joined names) and the hint", () => {
+    const text = panelText(new HarnessPanel(body, revealMeta, { expanded: false, style: "simple" }, THEME), 80);
+    assert.ok(text.includes("show-me, kanboard"), "synopsis with names missing");
+    assert.ok(text.includes("Ctrl+O: full message"), "hint missing");
+  });
+});
+
 describe("known custom-type renderers", () => {
   it("registers all KNOWN_CUSTOM_TYPES and uses details.unipiHarness when present", () => {
     const h = fakePi();

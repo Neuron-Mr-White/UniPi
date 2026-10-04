@@ -5,6 +5,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sendHarnessUserMessage } from "@pi-unipi/core";
 import type { SessionLaunchReason, SessionLaunchStatus } from "./types.js";
 
 /** Compact handoff fallback timer. Keeps the launcher from stalling if callbacks wait for the tool turn to finish. */
@@ -80,7 +81,7 @@ function deliverFollowUpMessage(
   reason: SessionLaunchReason,
 ): HandoffResult {
   try {
-    pi.sendUserMessage(prefill, { deliverAs: "followUp" });
+    sendHarnessUserMessage(pi, prefill, { source: "Ask user", title: "Handoff", synopsis: "Prefill from the launcher" }, { deliverAs: "followUp" });
     return { status: "queued", reason, prefill };
   } catch (error) {
     return fallbackToEditor(ctx, prefill, reason, error);

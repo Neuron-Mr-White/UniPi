@@ -156,9 +156,10 @@ export default function skillRegistry(pi: ExtensionAPI) {
       const names = data.names.map(String).filter((n) => !state!.revealed.has(n));
       const entries = state.hidden.filter((h) => names.includes(h.name));
       if (entries.length === 0) return;
+      const revealed = entries.map((e) => e.name);
       for (const e of entries) state.revealed.add(e.name);
-      pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: entries.map((e) => e.name) });
-      pi.sendMessage({ customType: "unipi-skills-revealed", content: revealMessage(entries), display: true, details: { unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: `${String(entries.length)} relevant skill(s)` }, "direct") } }, { triggerTurn: false });
+      pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: revealed });
+      pi.sendMessage({ customType: "unipi-skills-revealed", content: revealMessage(entries), display: true, details: { names: revealed, unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: revealed.join(", "), lines: entries.map((e) => `${e.name} — ${e.description}`) }, "direct") } }, { triggerTurn: false });
     } catch {
       // ignore
     }
@@ -214,13 +215,14 @@ export default function skillRegistry(pi: ExtensionAPI) {
       if (out.freeze) pi.appendEntry(SKILLS_JUDGED_ENTRY, out.freeze);
       if (out.status && ctx.hasUI) ctx.ui.setStatus("skills", out.status);
       if (out.reveal.length > 0) {
-        pi.appendEntry(SKILLS_REVEALED_ENTRY, { names: out.reveal.map((r) => r.name) });
+        const names = out.reveal.map((r) => r.name);
+        pi.appendEntry(SKILLS_REVEALED_ENTRY, { names });
         return {
           message: {
             customType: "unipi-skills-revealed",
             content: revealMessage(out.reveal),
             display: true,
-            details: { unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: `${String(out.reveal.length)} relevant skill(s)` }, "before_agent_start") },
+            details: { names, unipiHarness: harnessMetadata({ source: "Skills", title: "Skill reveal", synopsis: names.join(", "), lines: out.reveal.map((r) => `${r.name} — ${r.description}`) }, "before_agent_start") },
           },
         };
       }

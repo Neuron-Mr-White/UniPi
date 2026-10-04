@@ -14,7 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { compact as piCompact, generateSummaryWithUsage, DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
-import { collectCompactionContext, emitEvent, formatTokens, UNIPI_EVENTS } from "@pi-unipi/core";
+import { collectCompactionContext, emitEvent, formatTokens, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { autoCompactionOf } from "../config/schema.js";
 import { buildOwnCut, resolveSmartKeepUserTurns, applyTailBudget, MAX_SMART_TAIL_TOKENS } from "./cut.js";
@@ -444,7 +444,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     if (followUp) {
       setTimeout(() => {
         try {
-          pi.sendUserMessage(followUp, { deliverAs: "followUp" });
+          sendHarnessUserMessage(pi, followUp, { source: "Compactor", title: "Follow-up", synopsis: "Prompt queued after compaction" }, { deliverAs: "followUp" });
         } catch {}
       }, 0);
     }

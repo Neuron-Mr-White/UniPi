@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
+import { sendHarnessUserMessage, UNIPI_PREFIX, UTILITY_COMMANDS } from "@pi-unipi/core";
 
 export const SUMMARIZE_SKILL = "summarize";
 
@@ -41,7 +41,13 @@ export function registerSummarizeCommand(pi: ExtensionAPI): void {
         if (ctx.hasUI) ctx.ui.notify("The summarize skill is off or missing. Turn it on in /unipi:skills.", "warning");
         return;
       }
-      pi.sendUserMessage(summarizePrompt(args ?? ""), { expandPromptTemplates: true });
+      const focus = (args ?? "").trim();
+      sendHarnessUserMessage(
+        pi,
+        summarizePrompt(focus),
+        { source: "Utility", title: "Summarize", synopsis: focus ? `focus: ${focus}` : "whole session" },
+        { expandPromptTemplates: true },
+      );
       // sendUserMessage does not wait. Print mode (-p) exits when the handler
       // returns, so wait for the summary turn to start and end.
       await new Promise((r) => setTimeout(r, 0));

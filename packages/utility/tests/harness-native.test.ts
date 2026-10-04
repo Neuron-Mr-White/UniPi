@@ -207,6 +207,25 @@ test("expansion toggle reaches the panel via getToolsExpanded", async () => {
   assert.ok(strip(expandedText).includes("expand body"), "expanded body missing");
 });
 
+test("skill-block user entry with unipiHarness wraps its trailing user message", async () => {
+  const block = [
+    '<skill name="summarize" location="/s/summarize/SKILL.md">',
+    "References are relative to /s/summarize.",
+    "",
+    "Summarize the session.",
+    "</skill>",
+    "",
+    "focus x",
+  ].join("\n");
+  const host = setup([{ id: "e0", text: block, meta: meta("m0", "Utility") }]);
+  host.container.children.push(new UserMessageComponent("focus x"));
+  host.probeRender();
+  await host.tick();
+  const card = host.userCards()[0]!;
+  assert.ok(rendersRail(card), "labelled skill-block user message must be panelled");
+  assert.ok(card.render(80).join("").includes("Utility"), "panel must carry the harness source");
+});
+
 test("shutdown stops reconciliation (no throw, timers cleared)", async () => {
   const host = setup([{ id: "e0", text: "one", meta: meta("m0") }]);
   host.container.children.push(new UserMessageComponent("one"));

@@ -287,6 +287,19 @@ test("userMessageText joins text parts without separators (SDK parity)", () => {
   assert.equal(userMessageText([{ type: "text", text: "a" }, { type: "image", data: "x" }, { type: "text", text: "b" }]), "ab");
 });
 
+test("readHarnessMeta keeps valid lines, drops malformed ones without rejecting the meta", () => {
+  const base = { version: 1 as const, id: "hm-x", source: "Skills", title: "Skill reveal", delivery: "direct" as const };
+  const kept = readHarnessMeta({ unipiHarness: { ...base, lines: ["show-me — Helps", "kanboard — Boards"] } });
+  assert.ok(kept, "meta with valid lines rejected");
+  assert.deepEqual(kept!.lines, ["show-me — Helps", "kanboard — Boards"]);
+  for (const bad of ["show-me, kanboard", ["ok", 42], [null], { 0: "x" }]) {
+    const dropped = readHarnessMeta({ unipiHarness: { ...base, lines: bad } });
+    assert.ok(dropped, `meta rejected for lines ${JSON.stringify(bad)} — must drop the field, not the meta`);
+    assert.equal(dropped!.lines, undefined, `malformed lines survived: ${JSON.stringify(bad)}`);
+  }
+  assert.equal(readHarnessMeta({ unipiHarness: base })?.lines, undefined, "absent lines must stay absent");
+});
+
 test("earlier macrotask-deferring input handler fails closed to native (documented gap); handled input too", async () => {
   // ExtensionRunner-ish: handlers await in order inside sendUserMessage.
   const handlers: Record<string, Array<(e?: unknown) => unknown>> = {};
@@ -419,6 +432,58 @@ test("frozen host: repeated install stays safe, no false labels", () => {
   h_dispatch(handlers, "message_start", { message: human });
   h_dispatch(handlers, "message_end", { message: human });
   assert.equal(metaOf(replacements), undefined, "human mislabelled on frozen host");
+});
+
+test("skill-command send matches its expanded skill block (summarize pattern)", async () => {
+  const h = makeHost({ hold: true });
+  installHarnessProvenance(h.root);
+  await sendHarnessUserMessage(
+    h.root,
+    "/skill:summarize focus x",
+    { source: "Utility", title: "Summarize", synopsis: "focus: focus x" },
+    { expandPromptTemplates: true },
+  );
+  assert.deepEqual(h.sent, [{ content: "/skill:summarize focus x", options: { expandPromptTemplates: true } }], "raw send must carry the expand option unchanged");
+  // pi expands /skill:<name> AFTER the input handlers: before_agent_start and
+  // the message user text carry the <skill> block, not the armed text.
+  const expanded =
+    '<skill name="summarize" location="/s/summarize/SKILL.md">\nReferences are relative to /s/summarize.\n\nSummarize the session.\n</skill>\n\nfocus x';
+  for (const fn of h.handlers["before_agent_start"] ?? []) await fn({ prompt: expanded });
+  deliverExpanded(h, expanded);
+  const meta = metaOf(h.replacements);
+  assert.ok(meta, "expanded skill block must be labelled");
+  assert.equal(meta!.source, "Utility");
+  assert.equal(meta!.title, "Summarize");
+});
+
+/** message_start + message_end against the EXPANDED text, collecting the
+ * message_end replacement (makeHost's flush paths only handle raw texts). */
+function deliverExpanded(h: ReturnType<typeof makeHost>, expanded: string): void {
+  const message = userMsg(expanded);
+  h.dispatch("message_start", { message });
+  for (const fn of h.handlers["message_end"] ?? []) {
+    const r = fn({ message });
+    if (r && typeof r === "object" && "message" in (r as object)) h.replacements.push((r as { message: unknown }).message);
+  }
+}
+
+test("skill-command send with a different userMessage fails closed", async () => {
+  const h = makeHost({ hold: true });
+  installHarnessProvenance(h.root);
+  await sendHarnessUserMessage(h.root, "/skill:summarize focus x", { source: "Utility", title: "Summarize" }, { expandPromptTemplates: true });
+  const expanded =
+    '<skill name="summarize" location="/s/summarize/SKILL.md">\nReferences are relative to /s/summarize.\n\nSummarize the session.\n</skill>\n\nsome other focus';
+  for (const fn of h.handlers["before_agent_start"] ?? []) await fn({ prompt: expanded });
+  deliverExpanded(h, expanded);
+  assert.equal(metaOf(h.replacements), undefined, "mismatched skill args must stay native");
+  // And exact-text matching stays as-is: an unexpanded passthrough (unknown
+  // skill) still labels because the armed text equals the dispatched text.
+  const h2 = makeHost({ hold: true });
+  installHarnessProvenance(h2.root);
+  await sendHarnessUserMessage(h2.root, "/skill:summarize focus x", { source: "Utility", title: "Summarize" }, { expandPromptTemplates: true });
+  for (const fn of h2.handlers["before_agent_start"] ?? []) await fn({ prompt: "/skill:summarize focus x" });
+  deliverExpanded(h2, "/skill:summarize focus x");
+  assert.equal(metaOf(h2.replacements)?.source, "Utility", "exact-text passthrough must still label");
 });
 
 function h_dispatch(handlers: Record<string, Array<(e?: unknown) => unknown>>, name: string, event?: unknown): void {

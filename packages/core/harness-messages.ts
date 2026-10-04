@@ -31,7 +31,7 @@
  * boundaries purge everything outstanding — the failure mode is always native
  * fallback, never a human message mislabelled.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { parseSkillBlock, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export type HarnessDelivery =
   | "direct"
@@ -47,6 +47,8 @@ export interface HarnessMessageMeta {
   source: string;
   title: string;
   synopsis?: string;
+  /** Optional pre-rendered summary rows (advanced style renders one row each). */
+  lines?: string[];
   delivery: HarnessDelivery;
   severity?: "warning";
 }
@@ -172,6 +174,10 @@ export function readHarnessMeta(source: unknown): HarnessMessageMeta | undefined
   ) {
     return undefined;
   }
+  // Optional summary lines: malformed ones are dropped, the meta stays valid.
+  if (m.lines !== undefined && !(Array.isArray(m.lines) && m.lines.every((l) => typeof l === "string"))) {
+    return { ...m, lines: undefined } as HarnessMessageMeta;
+  }
   return m as HarnessMessageMeta;
 }
 
@@ -183,6 +189,24 @@ export function userMessageText(content: unknown): string {
     .filter((c): c is { type: "text"; text: string } => (c as { type?: string }).type === "text")
     .map((c) => (c as { text: string }).text)
     .join("");
+}
+
+/** Match an admission record's text against a dispatched text. Exact by
+ * default; a `/skill:<name> <rest>` record additionally matches its
+ * POST-EXPANSION form — pi turns the command into a `<skill …>` block AFTER
+ * the input handlers ran (AgentSession._expandSkillCommand), so the
+ * before_agent_start prompt and the message user text no longer equal the
+ * armed text. Everything else stays exact; no match = native (fail closed). */
+function recordMatchesText(recordText: string, text: string): boolean {
+  if (recordText === text) return true;
+  if (!recordText.startsWith("/skill:")) return false;
+  const skill = parseSkillBlock(text);
+  if (!skill) return false;
+  // Mirror _expandSkillCommand's split: name up to the first space, rest trimmed.
+  const spaceIndex = recordText.indexOf(" ");
+  const name = spaceIndex === -1 ? recordText.slice(7) : recordText.slice(7, spaceIndex);
+  const rest = spaceIndex === -1 ? "" : recordText.slice(spaceIndex + 1).trim();
+  return skill.name === name && (skill.userMessage ?? "") === rest;
 }
 
 function userTextFromMessage(message: unknown): string {
@@ -203,7 +227,7 @@ export function sendHarnessUserMessage(
   pi: ExtensionAPI,
   content: string,
   meta: HarnessMessageMetaInput,
-  options?: { deliverAs?: "steer" | "followUp" },
+  options?: { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean },
 ): ReturnType<ExtensionAPI["sendUserMessage"]> {
   let arm: Arm | undefined;
   try {
@@ -253,7 +277,7 @@ function prune(state: HarnessRegistryState): void {
  * matching group. */
 function selectRecord(state: HarnessRegistryState, text: string): HarnessMessageMeta | undefined {
   const candidates = state.records.filter(
-    (r) => r.state === "admitted" && r.text === text && (r.kind !== "harness" || r.eligible),
+    (r) => r.state === "admitted" && recordMatchesText(r.text, text) && (r.kind !== "harness" || r.eligible),
   );
   if (candidates.length === 0) return undefined;
   const origins = new Set(candidates.map((r) => r.origin));
@@ -336,7 +360,7 @@ export function installHarnessProvenance(pi: ExtensionAPI): void {
     // unconfirmed direct records are stale and dropped. Queued untouched.
     for (const r of state.records) {
       if (r.kind === "harness" && r.delivery === "direct" && r.state === "admitted") {
-        if (r.text === prompt) r.eligible = true;
+        if (recordMatchesText(r.text, prompt)) r.eligible = true;
       }
     }
     state.records = state.records.filter(

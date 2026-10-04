@@ -302,7 +302,13 @@ export function registerLongHorizonCommands(
       });
     }
     gate.setExplicit(mode);
-    await pi.sendUserMessage(args.trim());
+    const prompt = args.trim();
+    const collapsed = prompt.replace(/\s+/g, " ").trim();
+    await sendHarnessUserMessage(pi, prompt, {
+      source: "Long-horizon",
+      title: definition.label,
+      synopsis: collapsed.length > 80 ? `${collapsed.slice(0, 80)}…` : collapsed,
+    });
   };
 
   pi.registerCommand("unipi:goal", { description: MODE_DESCRIPTIONS.goal, getArgumentCompletions: goalCompletions, handler: modeHandler("goal") });

@@ -209,6 +209,12 @@ export class HarnessPanel implements Component {
     } else if (style === "regular") {
       if (expanded) out.push(...plainRows(detailText(this.meta), DIM));
       for (const l of body) out.push(l);
+    } else if (this.meta.lines?.length) {
+      // Pre-rendered summary rows (e.g. skill reveals): ONE row per line, then
+      // the same expand affordance as simple. No origin footer.
+      for (const line of this.meta.lines) out.push(DIM(line));
+      if (expanded) out.push(...body);
+      else out.push(...plainRows(`Ctrl+O: full message (${body.length} rendered rows)`, DIM));
     } else {
       if (expanded) {
         out.push(...body);
@@ -399,8 +405,12 @@ export function installHarnessUserRendering(pi: ExtensionAPI): void {
       const text = contentText(message.content);
       const skill = parseSkillBlock(text);
       if (skill) {
-        // Skill blocks render as their own component — never harness-labelled.
-        if (skill.userMessage) out.push({ entryId: String(entry.id), text: skill.userMessage });
+        // Skill blocks render as their own component; a harness-labelled one
+        // still wraps its trailing user message. No meta → native.
+        if (skill.userMessage) {
+          const meta = readHarnessMeta(message);
+          out.push({ entryId: String(entry.id), text: skill.userMessage, ...(meta ? { meta } : {}) });
+        }
         continue;
       }
       if (text.length === 0) continue; // images-only: no native card
