@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.28] — 2026-10-04
+
+### Changed
+- `utility`: **`/unipi:summarize` re-summarizes the last reply**, with the session as context. The command sends only `/skill:summarize`, plus any text you add, which reaches the skill as your question ("what would it change?" now asks about the last reply). It no longer wraps your text in a "summarize this session" prompt.
+
 ## [3.0.0-alpha.27] — 2026-10-04
 
 ### Added

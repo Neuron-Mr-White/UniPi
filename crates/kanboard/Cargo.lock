@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "kanboard"
-version = "3.0.0-alpha.27"
+version = "3.0.0-alpha.28"
 dependencies = [
  "anyhow",
  "axum",
