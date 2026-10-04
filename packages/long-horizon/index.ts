@@ -87,6 +87,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
         ...("owner" in event && event.owner
           ? { ownerId: event.owner.ownerId, kind: event.owner.kind, status: event.owner.status }
           : {}),
+        ...(event.type === "finished" ? { reason: event.reason } : {}),
       });
     },
   });

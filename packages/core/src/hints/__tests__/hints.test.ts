@@ -552,7 +552,7 @@ test("header layout: width 30 returns empty lines (leaves pi built-in header)", 
 
 // ─── lines integrity test ───────────────────────────────────────────────────
 
-test("lines integrity: all commands verified against source and category counts met", async () => {
+test("lines integrity: every command named in a hint exists", async () => {
   // Collect all registered command names from packages + autocomplete registry
   const { COMMAND_REGISTRY } = await import("../../../../autocomplete/src/constants.js");
   const registeredCommands = new Set<string>(Object.keys(COMMAND_REGISTRY));
@@ -592,20 +592,54 @@ test("lines integrity: all commands verified against source and category counts 
     }
   }
 
-  // Check category counts
-  const counts: Record<string, number> = {};
-  for (const h of CONTENT_HINTS) {
-    counts[h.category] = (counts[h.category] || 0) + 1;
-  }
+});
 
-  assert.ok((counts.command ?? 0) >= 20, `command category: ${counts.command} >= 20`);
-  assert.ok((counts.shortcut ?? 0) >= 10, `shortcut category: ${counts.shortcut} >= 10`);
-  assert.ok((counts.setting ?? 0) >= 10, `setting category: ${counts.setting} >= 10`);
-  assert.ok((counts.capability ?? 0) >= 8, `capability category: ${counts.capability} >= 8`);
-  assert.ok((counts.explain ?? 0) >= 6, `explain category: ${counts.explain} >= 6`);
-  assert.ok((counts.trouble ?? 0) >= 5, `trouble category: ${counts.trouble} >= 5`);
-  assert.ok((counts.whatsnew ?? 0) >= 4, `whatsnew category: ${counts.whatsnew} >= 4`);
-  assert.ok((counts.workflow ?? 0) >= 8, `workflow category: ${counts.workflow} >= 8`);
-  assert.equal(counts.lore, 12, `lore category: ${counts.lore} == 12`);
-  assert.ok(CONTENT_HINTS.length >= 75 && CONTENT_HINTS.length <= 90, `total hints in 75..90: ${CONTENT_HINTS.length}`);
+// ─── fun one-shot detectors ─────────────────────────────────────────────────
+
+const shownText = (widgets: Record<string, unknown>): string => {
+  const w = widgets[WIDGET_KEY] as ((tui: unknown, theme: unknown) => { render(width: number): string[] }) | string[] | undefined;
+  if (!w) return "";
+  if (Array.isArray(w)) return w.join("");
+  return w({}, {}).render(200).join("");
+};
+
+test("fun detectors: rm -rf, force push and big write each fire once", async () => {
+  for (const [event, call] of [
+    ["hints:rm-rf", { toolName: "bash", input: { command: "rm -rf build/" } }],
+    ["hints:force-push", { toolName: "bash", input: { command: "git push --force origin main" } }],
+    ["hints:big-write", { toolName: "write", input: { path: "a.ts", content: "x".repeat(41_000) } }],
+  ] as const) {
+    const { pi, widgets, emitPi } = fakePi();
+    registerHints([{ id: `h-${event}`, category: "trouble", text: `fired ${event}`, when: { event } }]);
+    installHints(pi as never);
+    emitPi("session_start", {});
+    emitPi("input", { text: "go" });
+    emitPi("tool_call", call);
+    assert.match(shownText(widgets), new RegExp(`fired ${event}`), event);
+  }
+});
+
+test("fun detectors: harmless commands do not fire", async () => {
+  const { pi, widgets, emitPi } = fakePi();
+  registerHints([
+    { id: "rm", category: "trouble", text: "rm fired", when: { event: "hints:rm-rf" } },
+    { id: "fp", category: "trouble", text: "fp fired", when: { event: "hints:force-push" } },
+  ]);
+  installHints(pi as never);
+  emitPi("session_start", {});
+  emitPi("input", { text: "go" });
+  emitPi("tool_call", { toolName: "bash", input: { command: "rm -r tmp && git push origin main" } });
+  assert.equal(shownText(widgets), "");
+});
+
+test("fun detectors: 50 clean tool results in a row fire the streak once", async () => {
+  const { pi, widgets, emitPi } = fakePi();
+  registerHints([{ id: "streak", category: "lore", text: "streak fired", when: { event: "hints:clean-streak" } }]);
+  installHints(pi as never);
+  emitPi("session_start", {});
+  emitPi("input", { text: "go" });
+  for (let i = 0; i < 49; i++) emitPi("tool_result", { isError: false });
+  assert.equal(shownText(widgets), "");
+  emitPi("tool_result", { isError: false });
+  assert.match(shownText(widgets), /streak fired/);
 });

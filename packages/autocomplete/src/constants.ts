@@ -171,7 +171,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
 
   "unipi:settings": "Configure all unipi modules in one panel",
 
-  "unipi:info":          "Show system information",
+  "unipi:info":          "Dashboard — this session, context, usage, compaction savings, modules",
   "unipi:hint":          "Browse and search Unicrab hints, or cycle/reset",
 
 

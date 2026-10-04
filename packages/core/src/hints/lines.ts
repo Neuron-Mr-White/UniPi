@@ -11,7 +11,7 @@ const isTool = (name: string) => (p: unknown) =>
   (p as { toolName?: string } | undefined)?.toolName === name;
 
 export const HINT_LINES: readonly Hint[] = [
-  // ─── command (20) ───────────────────────────────────────────────────────────
+  // ─── command (23) ───────────────────────────────────────────────────────────
   {
     id: "cmd.settings",
     category: "command",
@@ -153,7 +153,29 @@ export const HINT_LINES: readonly Hint[] = [
     teaches: "/unipi:skills",
   },
 
-  // ─── shortcut (10) ──────────────────────────────────────────────────────────
+  {
+    id: "cmd.summarize",
+    category: "command",
+    text: "/unipi:summarize gives a plain-words recap of the session. Add words after it to set a focus.",
+    when: "startup",
+    teaches: "/unipi:summarize",
+  },
+  {
+    id: "cmd.info",
+    category: "command",
+    text: "/unipi:info is your crab's-eye view: press 1-9 to jump between session, usage and savings.",
+    when: "startup",
+    teaches: "/unipi:info",
+  },
+  {
+    id: "cmd.regular",
+    category: "command",
+    text: "Done with goal, ralph, swarm or graph? /unipi:regular stops the loop and returns to plain turns.",
+    when: "startup",
+    teaches: "/unipi:regular",
+  },
+
+  // ─── shortcut (11) ──────────────────────────────────────────────────────────
   {
     id: "key.alt-s",
     category: "shortcut",
@@ -215,7 +237,14 @@ export const HINT_LINES: readonly Hint[] = [
     when: { event: "user_bash" },
   },
 
-  // ─── setting (10) ───────────────────────────────────────────────────────────
+  {
+    id: "key.ctrl-o",
+    category: "shortcut",
+    text: "Each tool call shows as one line. Press Ctrl+O to open the full output, and again to fold it.",
+    when: "startup",
+  },
+
+  // ─── setting (12) ───────────────────────────────────────────────────────────
   {
     id: "set.render-style",
     category: "setting",
@@ -274,6 +303,20 @@ export const HINT_LINES: readonly Hint[] = [
     id: "set.long-horizon-judge",
     category: "setting",
     text: "long-horizon.judge.enabled in /unipi:settings lets the AI classify prompts into autonomous modes.",
+    when: "startup",
+  },
+
+  {
+    id: "set.skills-must-show",
+    category: "setting",
+    text: "In /unipi:skills, E turns a skill on or off, and M keeps it always in front of the agent.",
+    when: "startup",
+    teaches: "/unipi:skills",
+  },
+  {
+    id: "set.info-splash",
+    category: "setting",
+    text: "Info Screen → Unicrab splash in /unipi:settings: auto-close, stay until a key, or off.",
     when: "startup",
   },
 
@@ -345,7 +388,7 @@ export const HINT_LINES: readonly Hint[] = [
     when: { event: "hints:image-input" },
   },
 
-  // ─── explain (9, event-based) ───────────────────────────────────────────────
+  // ─── explain (10) ───────────────────────────────────────────────
   {
     id: "exp.permission-ask",
     category: "explain",
@@ -404,6 +447,13 @@ export const HINT_LINES: readonly Hint[] = [
     when: { event: "unipi:update:available" },
   },
 
+  {
+    id: "exp.info-scope",
+    category: "explain",
+    text: "In /unipi:info, s means this session, p this project, and g every project on this machine.",
+    when: "startup",
+  },
+
   // ─── trouble (6, event-based + cleanup) ─────────────────────────────────────
   {
     id: "trb.tool-errors",
@@ -443,7 +493,7 @@ export const HINT_LINES: readonly Hint[] = [
     teaches: "/unipi:cleanup",
   },
 
-  // ─── whatsnew (4) ───────────────────────────────────────────────────────────
+  // ─── whatsnew (12) ───────────────────────────────────────────────────────────
   {
     id: "new.unicrab",
     category: "whatsnew",
@@ -472,6 +522,65 @@ export const HINT_LINES: readonly Hint[] = [
     text: "The Unicrab startup banner greets your terminal with colorful pixel crab art.",
     when: "startup",
     since: "3.0.0-alpha.21",
+  },
+
+  {
+    id: "new.simple-default",
+    category: "whatsnew",
+    text: "Simple mode is now the default: one line per tool call. Ctrl+O opens any of them.",
+    when: "startup",
+    since: "3.0.0-alpha.22",
+  },
+  {
+    id: "new.settings-explain",
+    category: "whatsnew",
+    text: "/unipi:settings now explains every setting and option in a panel below the list.",
+    when: "startup",
+    teaches: "/unipi:settings",
+    since: "3.0.0-alpha.23",
+  },
+  {
+    id: "new.web-tools-hide",
+    category: "whatsnew",
+    text: "Web tools with no working provider now hide from the agent. Add a key to bring them back.",
+    when: "startup",
+    since: "3.0.0-alpha.23",
+  },
+  {
+    id: "new.summarize",
+    category: "whatsnew",
+    text: "New skill: summarize. Long work ends with a short recap: answer first, then open items.",
+    when: "startup",
+    since: "3.0.0-alpha.24",
+  },
+  {
+    id: "new.splash",
+    category: "whatsnew",
+    text: "Unicrab now waves at startup: how fast Pi got ready, and what you spent today.",
+    when: "startup",
+    since: "3.0.0-alpha.25",
+  },
+  {
+    id: "new.info-dashboard",
+    category: "whatsnew",
+    text: "/unipi:info now opens on This session: cost, tokens, and what fills your context.",
+    when: "startup",
+    teaches: "/unipi:info",
+    since: "3.0.0-alpha.25",
+  },
+  {
+    id: "new.compaction-savings",
+    category: "whatsnew",
+    text: "The Compactor page in /unipi:info counts the tokens and dollars compaction saved you.",
+    when: "startup",
+    since: "3.0.0-alpha.25",
+  },
+  {
+    id: "new.harness-panel",
+    category: "whatsnew",
+    text: "Prompts UniPi sends for you (goal, summarize, answer) now show as a UniPi panel, not as you.",
+    when: "startup",
+    since: "3.0.0-alpha.25",
   },
 
   // ─── workflow (8) ───────────────────────────────────────────────────────────
@@ -529,7 +638,85 @@ export const HINT_LINES: readonly Hint[] = [
     when: { event: "hints:long-prompt" },
   },
 
-  // ─── lore (12) ──────────────────────────────────────────────────────────────
+  // ─── moments (fun, event-based; each fires at most once a session) ────────
+  {
+    id: "fun.late-night",
+    category: "lore",
+    text: "It's late. Unicrab is tucked in the sand. /unipi:summarize leaves tomorrow-you a note.",
+    when: { event: "hints:late-night" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.clean-streak",
+    category: "lore",
+    text: "Fifty tool calls in a row with no error. Unicrab is clicking its claws in applause.",
+    when: { event: "hints:clean-streak" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.rm-rf",
+    category: "trouble",
+    text: "An rm -rf just went by. Unicrab hid its pebbles. /unipi:permission ask makes the agent ask first.",
+    when: { event: "hints:rm-rf" },
+    maxShows: 3,
+  },
+  {
+    id: "fun.force-push",
+    category: "trouble",
+    text: "Force push spotted. Unicrab checks the tide twice before it rewrites the beach.",
+    when: { event: "hints:force-push" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.big-write",
+    category: "explain",
+    text: "That file is big enough to hold a whole reef. Ask for it in parts to keep diffs readable.",
+    when: { event: "hints:big-write" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.cache-hot",
+    category: "explain",
+    text: "95% of that reply came from the prompt cache. The prefix stayed still, so it cost little.",
+    when: { event: "hints:cache-hot" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.goal-done",
+    category: "lore",
+    text: "Goal reached! Unicrab does its sideways victory shuffle. /unipi:info has the bill.",
+    when: {
+      event: "unipi:long-horizon:owner:changed",
+      match: (p: unknown) => {
+        const e = p as { event?: string; reason?: string };
+        return e?.event === "finished" && typeof e.reason === "string" && /^complete\b/.test(e.reason);
+      },
+    },
+    maxShows: 3,
+  },
+  {
+    id: "fun.memory-forget",
+    category: "lore",
+    text: "A memory was deleted. Unicrab buries it under a small pebble and moves on.",
+    when: { event: "unipi:memory:deleted" },
+    maxShows: 1,
+  },
+  {
+    id: "fun.mcp-tools",
+    category: "explain",
+    text: "New MCP tools have joined the reef. /unipi:info → MCP shows who brought what.",
+    when: { event: "unipi:mcp:tools:registered" },
+    maxShows: 2,
+  },
+  {
+    id: "fun.ralph-lap",
+    category: "lore",
+    text: "Another ralph lap done. Unicrab keeps count in the sand, one scratch per lap.",
+    when: { event: "unipi:ralph:iteration:done" },
+    maxShows: 2,
+  },
+
+  // ─── lore ──────────────────────────────────────────────────────────────
   {
     id: "lore.1",
     category: "lore",
@@ -600,6 +787,81 @@ export const HINT_LINES: readonly Hint[] = [
     id: "lore.12",
     category: "lore",
     text: "Merge conflicts don't scare Unicrab. It has survived low tide.",
+    when: "startup",
+  },
+  {
+    id: "lore.13",
+    category: "lore",
+    text: "Unicrab tried to read the whole codebase once. It now believes in grep.",
+    when: "startup",
+  },
+  {
+    id: "lore.14",
+    category: "lore",
+    text: "Unicrab's shell is red because it blushes at every TODO it leaves behind.",
+    when: "startup",
+  },
+  {
+    id: "lore.15",
+    category: "lore",
+    text: "Unicrab doesn't fear deadlines. Its shell is hard, and the tide always comes back.",
+    when: "startup",
+  },
+  {
+    id: "lore.16",
+    category: "lore",
+    text: "Two models in one turn? Unicrab calls that Fusion. It has done it with two claws for years.",
+    when: "startup",
+  },
+  {
+    id: "lore.17",
+    category: "lore",
+    text: "Unicrab's favourite test is the one that failed yesterday and passes today.",
+    when: "startup",
+  },
+  {
+    id: "lore.18",
+    category: "lore",
+    text: "Unicrab never forgets a fact. It writes it down, because crabs are bad at remembering.",
+    when: "startup",
+  },
+  {
+    id: "lore.19",
+    category: "lore",
+    text: "Every compaction, Unicrab presses the ocean flat like a flower in a book.",
+    when: "startup",
+  },
+  {
+    id: "lore.20",
+    category: "lore",
+    text: "Unicrab was asked for a one-line fix. It wrote one line. Then it wrote the test.",
+    when: "startup",
+  },
+  {
+    id: "fun.info-cost",
+    category: "capability",
+    text: "Curious what this chat cost? /unipi:info shows it in digits big enough for a crab.",
+    when: "startup",
+    teaches: "/unipi:info",
+  },
+  {
+    id: "fun.context-bucket",
+    category: "capability",
+    text: "Wondering what fills your context? /unipi:info shows a bucket: prompts, replies, tool output.",
+    when: "startup",
+    teaches: "/unipi:info",
+  },
+  {
+    id: "fun.btw",
+    category: "workflow",
+    text: "Got a quick question mid-run? /unipi:btw asks it on the side. The main tide keeps flowing.",
+    when: "startup",
+    teaches: "/unipi:btw",
+  },
+  {
+    id: "fun.hint-reset",
+    category: "lore",
+    text: "Seen every hint? /unipi:hint reset and Unicrab will tell you all its stories again.",
     when: "startup",
   },
 ];

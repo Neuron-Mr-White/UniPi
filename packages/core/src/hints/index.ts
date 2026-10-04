@@ -743,8 +743,18 @@ export function installHints(pi: ExtensionAPI): void {
     }
   });
 
+  // Fun one-shot detectors: each fires at most once per session.
+  const once = new Set<string>();
+  const fireOnce = (name: string, payload: unknown = {}): void => {
+    if (once.has(name)) return;
+    once.add(name);
+    fireEvent(name, payload);
+  };
+  let cleanStreak = 0;
+
   pi.on("tool_result", (event: { isError?: boolean }) => {
     if (event?.isError) {
+      cleanStreak = 0;
       consecutiveToolErrors += 1;
       if (consecutiveToolErrors >= 3) {
         consecutiveToolErrors = 0;
@@ -752,6 +762,38 @@ export function installHints(pi: ExtensionAPI): void {
       }
     } else {
       consecutiveToolErrors = 0;
+      cleanStreak += 1;
+      if (cleanStreak === 50) fireOnce("hints:clean-streak", { count: 50 });
+    }
+  });
+
+  pi.on("tool_call", (event: { toolName?: string; input?: Record<string, unknown> }) => {
+    const input = event?.input ?? {};
+    if (event?.toolName === "bash") {
+      const cmd = String(input.command ?? "");
+      if (/\brm\s+-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)\b/i.test(cmd)) fireOnce("hints:rm-rf");
+      if (/\bgit\s+push\b[^|;&]*\s--force(?:-with-lease)?\b|\bgit\s+push\s+-f\b/.test(cmd)) fireOnce("hints:force-push");
+    }
+    if (event?.toolName === "write") {
+      const content = String(input.content ?? "");
+      if (content.length >= 40_000) fireOnce("hints:big-write", { chars: content.length });
+    }
+  });
+
+  pi.on("turn_end", (_event, ctx) => {
+    // Late night: between 1:00 and 4:59 local time.
+    const h = new Date().getHours();
+    if (h >= 1 && h < 5) fireOnce("hints:late-night", { hour: h });
+    // Cache-hit milestone: the last reply read ≥ 95% of its context from cache.
+    try {
+      const branch = (ctx as { sessionManager?: { getLeafEntry?: () => unknown } })?.sessionManager?.getLeafEntry?.() as
+        | { type?: string; message?: { role?: string; usage?: { input?: number; cacheRead?: number } } }
+        | undefined;
+      const u = branch?.type === "message" && branch.message?.role === "assistant" ? branch.message.usage : undefined;
+      const total = (u?.input ?? 0) + (u?.cacheRead ?? 0);
+      if (u && total >= 20_000 && (u.cacheRead ?? 0) / total >= 0.95) fireOnce("hints:cache-hot", { ratio: (u.cacheRead ?? 0) / total });
+    } catch {
+      /* cosmetic */
     }
   });
 
