@@ -7,6 +7,7 @@
 
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, renameSync, openSync, readSync, closeSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
+import { SavingsAccumulator, totalsOf, EMPTY_SAVINGS, type CompactionSaving, type SavingsTotals } from "@pi-unipi/core";
 import { homedir } from "node:os";
 
 /** Usage data for a single message */
@@ -41,7 +42,18 @@ export interface UsageStats {
   byModelMonth: Record<string, { tokens: number; cost: number; sessions: number }>;
   /** Total sessions */
   sessionCount: number;
+  /** Last 30 local days, oldest → newest (index 29 = today). */
+  daily: Array<{ tokens: number; cost: number }>;
+  /** Sessions with usage today. */
+  sessionsToday: number;
+  /** What compaction saved, across every session (deduped). */
+  compaction: SavingsTotals;
+  /** Same, per session directory (= per project). */
+  compactionByDir: Record<string, SavingsTotals>;
 }
+
+/** Days kept in `daily`. */
+export const DAILY_DAYS = 30;
 
 /** Time period boundaries */
 interface PeriodBounds {
@@ -70,6 +82,8 @@ interface CachedFile {
   mtimeMs: number;
   size: number;
   records: UsageRecord[];
+  /** Compactions in this file: [at, before, after, replies, paid, context]. */
+  savings?: Array<[number, number, number, number, number, number]>;
 }
 
 interface UsageCacheFile {
@@ -83,14 +97,65 @@ interface UsageCacheFile {
  * Bump when the record layout or parsing semantics change, so stale caches
  * from an older build are discarded rather than silently reused.
  */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 function getCachePath(): string {
   const base = process.env.UNIPI_DIR || join(homedir(), ".unipi");
   return join(base, "cache", "usage-stats.json");
 }
 
+/**
+ * In-process copy of the cache. The JSON is ~10 MB for a heavy user: reading
+ * and parsing it costs ~50 ms and rewriting it ~30 ms. Keeping it in memory
+ * makes every refresh after the first a stat pass plus re-parsing only the
+ * session files that changed (usually just the live one).
+ */
+let memCache: UsageCacheFile | null = null;
+let writeTimer: ReturnType<typeof setTimeout> | null = null;
+/** Disk writes are debounced; a crash costs at most one incremental re-parse. */
+const WRITE_DEBOUNCE_MS = 30_000;
+
+function scheduleWrite(): void {
+  if (writeTimer) return;
+  writeTimer = setTimeout(() => {
+    writeTimer = null;
+    if (memCache) writeCache(memCache);
+  }, WRITE_DEBOUNCE_MS);
+  writeTimer.unref?.();
+}
+
+/**
+ * True when a refresh would be incremental (cache present and current
+ * format). Boot-time warm-ups check this so a format bump never triggers a
+ * cold multi-second parse behind the user's back.
+ */
+export function usageCacheWarm(): boolean {
+  if (memCache) return true;
+  try {
+    const path = getCachePath();
+    if (!existsSync(path)) return false;
+    // The version field is written first; read just the head of the file.
+    const fd = openSync(path, "r");
+    const head = Buffer.alloc(64);
+    readSync(fd, head, 0, 64, 0);
+    closeSync(fd);
+    return head.toString("utf8").startsWith(`{"version":${CACHE_VERSION},`);
+  } catch {
+    return false;
+  }
+}
+
+/** Flush a pending cache write now (session shutdown). */
+export function flushUsageCache(): void {
+  if (writeTimer) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+    if (memCache) writeCache(memCache);
+  }
+}
+
 function readCache(): UsageCacheFile {
+  if (memCache) return memCache;
   const empty: UsageCacheFile = { version: CACHE_VERSION, models: [], files: {} };
   try {
     const path = getCachePath();
@@ -98,6 +163,7 @@ function readCache(): UsageCacheFile {
     const parsed = JSON.parse(readFileSync(path, "utf-8")) as UsageCacheFile;
     if (!parsed || parsed.version !== CACHE_VERSION) return empty;
     if (!Array.isArray(parsed.models) || typeof parsed.files !== "object") return empty;
+    memCache = parsed;
     return parsed;
   } catch {
     // Corrupt or unreadable cache: rebuild from scratch.
@@ -205,17 +271,25 @@ function forEachLine(filePath: string, onLine: (line: string) => void): void {
  * so it must happen at aggregation time. Caching raw per-file records keeps
  * each entry independent and lets any single file be re-parsed in isolation.
  */
-function extractRecords(filePath: string, modelIndex: Map<string, number>, models: string[]): UsageRecord[] {
+function extractRecords(
+  filePath: string,
+  modelIndex: Map<string, number>,
+  models: string[],
+): { records: UsageRecord[]; savings: NonNullable<CachedFile["savings"]> } {
   const records: UsageRecord[] = [];
+  const acc = new SavingsAccumulator();
 
   forEachLine(filePath, (line) => {
     if (!line || !line.trim()) return;
+    // Cheap pre-filter: only messages and compactions matter.
+    if (!line.includes('"assistant"') && !line.includes('"compaction"')) return;
     let entry: any;
     try {
       entry = JSON.parse(line);
     } catch {
       return; // Skip malformed lines
     }
+    acc.feed(entry);
 
     if (entry.type !== "message" || entry.message?.role !== "assistant") return;
     const msg = entry.message;
@@ -247,7 +321,8 @@ function extractRecords(filePath: string, modelIndex: Map<string, number>, model
     ]);
   });
 
-  return records;
+  const savings = acc.items.map((c) => [c.at, c.before, c.after, c.replies, c.paid, c.context] as [number, number, number, number, number, number]);
+  return { records, savings };
 }
 
 /**
@@ -294,6 +369,10 @@ function emptyStats(): UsageStats {
     byModelWeek: {},
     byModelMonth: {},
     sessionCount: 0,
+    daily: Array.from({ length: DAILY_DAYS }, () => ({ tokens: 0, cost: 0 })),
+    sessionsToday: 0,
+    compaction: { ...EMPTY_SAVINGS },
+    compactionByDir: {},
   };
 }
 
@@ -348,7 +427,7 @@ function collectStats(): { stats: UsageStats; pending: Promise<void> } {
   // A file disappearing means the old cache had entries we must drop.
   if (Object.keys(nextFiles).length !== Object.keys(cache.files).length) cacheDirty = true;
 
-  const seenHashes = new Set<string>();
+  const seenHashes = new Map<number, number | number[]>();
   const periods = getPeriodBounds();
   const todayStart = periods.today.start.getTime();
   const weekStart = periods.week.start.getTime();
@@ -370,16 +449,41 @@ function collectStats(): { stats: UsageStats; pending: Promise<void> } {
     entry.sessions++;
   };
 
+  // Local midnights for the last DAILY_DAYS days (DST-safe: built with
+  // setDate, not by subtracting 24h). dayStarts[i] is day i's 00:00.
+  const dayStarts: number[] = [];
+  for (let i = 0; i < DAILY_DAYS; i++) {
+    const d = new Date(todayStart);
+    d.setDate(d.getDate() - (DAILY_DAYS - 1 - i));
+    dayStarts.push(d.getTime());
+  }
+  const firstDay = dayStarts[0]!;
+  const dayIndex = (ts: number): number => {
+    if (ts < firstDay) return -1;
+    for (let i = DAILY_DAYS - 1; i >= 0; i--) if (ts >= dayStarts[i]!) return i;
+    return -1;
+  };
+
   const aggregate = (records: UsageRecord[]): void => {
     let counted = 0;
+    let countedToday = false;
     for (const rec of records) {
       const [timestamp, hashTokens, countedTokens, cost, modelIdx, isCounted] = rec;
 
       // Dedup key is claimed even for records that are not counted, matching
       // the original ordering (hash added before the validity check).
-      const hash = `${timestamp}:${hashTokens}`;
-      if (seenHashes.has(hash)) continue;
-      seenHashes.add(hash);
+      // Exact (timestamp, tokens) dedup without building a string per record —
+      // that was the single biggest cost of a warm refresh. Almost every
+      // timestamp has one record, so the value is a number until it collides.
+      const seen = seenHashes.get(timestamp);
+      if (seen === undefined) seenHashes.set(timestamp, hashTokens);
+      else if (typeof seen === "number") {
+        if (seen === hashTokens) continue;
+        seenHashes.set(timestamp, [seen, hashTokens]);
+      } else {
+        if (seen.includes(hashTokens)) continue;
+        seen.push(hashTokens);
+      }
       if (!isCounted) continue;
 
       counted++;
@@ -388,7 +492,14 @@ function collectStats(): { stats: UsageStats; pending: Promise<void> } {
       stats.cost.allTime += cost;
       bump(stats.byModel, model, countedTokens, cost);
 
+      const di = dayIndex(timestamp);
+      if (di >= 0 && di < DAILY_DAYS) {
+        stats.daily[di]!.tokens += countedTokens;
+        stats.daily[di]!.cost += cost;
+      }
+
       if (timestamp >= todayStart) {
+        countedToday = true;
         stats.tokens.today += countedTokens;
         stats.cost.today += cost;
         bump(stats.byModelToday, model, countedTokens, cost);
@@ -406,12 +517,33 @@ function collectStats(): { stats: UsageStats; pending: Promise<void> } {
     if (counted > 0) {
       stats.sessionCount++;
     }
+    if (countedToday) stats.sessionsToday++;
+  };
+
+  // Compactions are copied into forked session files; count each once.
+  const seenCompactions = new Set<string>();
+  const allSavings: CompactionSaving[] = [];
+  const dirSavings = new Map<string, CompactionSaving[]>();
+  const aggregateSavings = (path: string, rows: CachedFile["savings"]): void => {
+    if (!rows) return;
+    const dir = basename(dirname(path));
+    for (const [at, before, after, replies, paid, context] of rows) {
+      const key = `${at}:${before}`;
+      if (seenCompactions.has(key)) continue;
+      seenCompactions.add(key);
+      const c: CompactionSaving = { at, before, after, replies, paid, context };
+      allSavings.push(c);
+      let list = dirSavings.get(dir);
+      if (!list) dirSavings.set(dir, (list = []));
+      list.push(c);
+    }
   };
 
   const finish = (): void => {
-    if (cacheDirty) {
-      writeCache({ version: CACHE_VERSION, models, files: nextFiles });
-    }
+    stats.compaction = totalsOf(allSavings);
+    for (const [dir, list] of dirSavings) stats.compactionByDir[dir] = totalsOf(list);
+    memCache = { version: CACHE_VERSION, models, files: nextFiles };
+    if (cacheDirty) scheduleWrite();
   };
 
   const YIELD_EVERY = 25;
@@ -422,9 +554,13 @@ function collectStats(): { stats: UsageStats; pending: Promise<void> } {
       let records: UsageRecord[];
       if (item.cached) {
         records = item.cached.records;
+        aggregateSavings(item.path, item.cached.savings);
       } else {
-        records = extractRecords(item.path, modelIndex, models);
+        const parsed = extractRecords(item.path, modelIndex, models);
+        records = parsed.records;
         nextFiles[item.path].records = records;
+        nextFiles[item.path].savings = parsed.savings;
+        aggregateSavings(item.path, parsed.savings);
         // Only re-parsed files are expensive; cache hits are near-free, so
         // yielding is gated on real work to avoid pointless loop turns.
         sinceYield++;
