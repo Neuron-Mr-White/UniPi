@@ -204,6 +204,33 @@ test("a new agent run re-arms the bash nudge; trivial commands never count", asy
   }
 });
 
+test("a new prompt restarts the streak; a carried-over count cannot nudge early", async () => {
+  const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
+  const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    writePreset(home, { kind: "fusion", lead: "a/lead", sidekick: "b/side" });
+    const lead = model("a", "lead");
+    const side = model("b", "side");
+    const { handlers, ctx } = setup(home, cwd, [lead, side]);
+    await handlers.get("session_start")?.({}, { ...ctx, model: lead });
+    const toolResult = handlers.get("tool_result")!;
+    // Run 1 accumulates 3 non-trivial calls but never reaches the nudge.
+    for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    // A new prompt resets the streak, so the fresh run starts from zero.
+    handlers.get("before_agent_start")?.({ systemPromptOptions: { sections: {} } }, ctx);
+    assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined, "no nudge on the first non-trivial call of a fresh prompt");
+    // The once-per-run guarantee still holds within the same run.
+    for (let i = 0; i < 2; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    const fourth = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
+    assert.equal(fourth?.content.at(-1)?.text, bashNudge(4));
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
+
 test("trivial bash does not contribute to the nudge streak or lead status count", async () => {
   const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
   const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));

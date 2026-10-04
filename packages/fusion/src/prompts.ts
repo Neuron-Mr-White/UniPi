@@ -81,11 +81,11 @@ export const FIRST_EDIT_NUDGE = EDIT_NUDGE;
 
 /**
  * Appended after the lead has run several consecutive non-trivial shell
- * commands itself without a handoff. Builds, tests, installs, environment
+ * commands itself in one request. Builds, tests, installs, environment
  * repair and multi-step shell work are the sidekick's job by default.
  */
 export function bashNudge(count: number): string {
-  return `<system_guidance>You have run ${String(count)} non-trivial shell commands yourself since the last handoff. Builds, test runs, installs, environment setup or repair, and any multi-step shell work are to be delegated to the \`sidekick\` by default; it runs on the same machine and remembers earlier handoffs, so a short brief with the goal, the exact commands or checks you want, and the done-criteria is enough. Keep running commands yourself only when a single read-only command answers a question you need right now, or when the user is waiting on an urgent deliverable.</system_guidance>`;
+  return `<system_guidance>You have run ${String(count)} non-trivial shell commands yourself in this request. Builds, test runs, installs, environment setup or repair, and any multi-step shell work are to be delegated to the \`sidekick\` by default; it runs on the same machine and remembers earlier handoffs, so a short brief with the goal, the exact commands or checks you want, and the done-criteria is enough. Keep running commands yourself only when a single read-only command answers a question you need right now, or when the user is waiting on an urgent deliverable.</system_guidance>`;
 }
 
 export function sidekickSystemPrompt(id: FusionIdentity): string {

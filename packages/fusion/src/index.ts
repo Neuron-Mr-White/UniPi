@@ -232,9 +232,9 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   let editNudgedThisTurn = false;
   let bashStreak = 0;
   // The shell-delegation nudge fires at most ONCE per agent run (per user
-  // prompt): pi restarts the handler state on every before_agent_start, and
-  // sidekick/read_subagent handoffs keep resetting bashStreak, but neither
-  // may re-arm the nudge within the same run.
+  // prompt): before_agent_start re-arms the flag and restarts the streak, and
+  // sidekick/read_subagent handoffs keep resetting bashStreak, but the flag
+  // may not re-arm within the same run.
   let bashNudgedThisRun = false;
 
   const wakeLine = createSidekickWakeLine({
@@ -384,6 +384,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   // present only while Fusion is active.
   pi.on("before_agent_start", (event, ctx) => {
     bashNudgedThisRun = false;
+    bashStreak = 0; // each user prompt starts a fresh non-trivial count
     syncFusionTools(); // safety net: re-sync after any module re-juggled tools
     if (active?.kind === "fusion") {
       event.systemPromptOptions.sections["fusion-lead-policy"] = leadPolicy(identity(ctx));
@@ -429,7 +430,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     if (bashStreak < BASH_NUDGE_EVERY) return;
     bashNudgedThisRun = true;
     const annotation = bashNudge(bashStreak);
-    const synopsis = "Non-trivial shell work since last handoff";
+    const synopsis = "Non-trivial shell work in this request";
     const content = [...event.content, { type: "text" as const, text: annotation }];
     bashStreak = 0;
     return {
