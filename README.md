@@ -241,7 +241,7 @@ The recent releases, in short. The [changelog](CHANGELOG.md) has the details.
 
 | Release | What changed for you |
 |---|---|
-| next | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
+| alpha.25 | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
 | alpha.24 | The `summarize` skill and `/unipi:summarize [focus]`. Long work ends with a short recap: the answer first, then findings, open items and questions. |
 | alpha.23 | `/unipi:settings` explains each setting and each option in a panel below the list. Web tools with no working provider hide from the agent. |
 | alpha.22 | Simple mode is the default. Each tool call is one line, and `Ctrl+O` opens it. Images no longer overlap the text below them. |

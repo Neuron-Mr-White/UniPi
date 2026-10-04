@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.25] — 2026-10-04
+
+### Added
+- `info-screen`: **Unicrab splash** at startup — the existing Unicrab half-block art, a shimmering block wordmark with version chip, greeting, how fast Pi got ready, and live facts (resumed session totals or cwd/branch, today's spend from the cached snapshot, update available), with a draining countdown edge. Non-capturing and stack-safe in `auto-close` mode. Replaces the boot-time dashboard; the hints start-screen header is unchanged. (UNI-78)
+- `info-screen`: redesigned **`/unipi:info`** dashboard — opaque panel coloured per page, pill tab strip, fixed body height, page dots, `1`–`9` jump, `/unipi:info <page>`. Pages draw themselves with a new Unicode toolkit, no emoji. (UNI-79)
+  - **This session** (first page): cost / tokens / replies / time in 3-row gradient digits, context meter, token mix + cache hit, tokens-per-reply braille chart, ranked tools with failures, directory/branch/files/compactions. (UNI-80)
+  - **Usage**: today / week / month spend, 30-day column chart with Monday ticks, model share bar + ranked models. (UNI-81)
+  - **Tools / Skills / Modules**: live from pi (`getAllTools`, `getCommands`), source share bars, column grids, active vs. off; modules with versions and measured load time. (UNI-82)
+  - **MCP, Compactor, Updates, Web, Memory, Keys**: status dots, compaction before→after bars, version track, provider × capability matrix, memory types, keycaps. (UNI-83)
+- `core`: `viz` kit (`Paint`, `bigText`, `gradient`, `spark`, `columns`, `brailleArea`, `gauge`, `shareBar`, `chip`, `grid`, …) — every piece returns exact-width lines in truecolor or 256-colour. (UNI-77)
+- `scripts/info-preview`: print the splash and every page at any width without Pi.
+- `info-screen`: **scope tags** `s` session / `p` project / `g` global on every scoped number (legend in the footer); project pages (memory, mcp, compactor) are cached per workspace, so one project's numbers never show in another. MCP servers show whether they come from global or project config. (UNI-91)
+- `info-screen` / `core`: **compaction savings** — tokens not re-sent (saved × replies after each compaction) and ≈ money not spent at the context rate actually paid, for the session, the project and all projects (`core/src/compaction-savings.ts`; the usage parser collects it per session file). Compactor page: savings tiles, without-vs-with bars, per-compaction timeline. (UNI-92)
+- `core`: 37 new Unicrab hints (127 in total). Catch-up tips for what shipped since the hints release — `/unipi:summarize`, `/unipi:info`, `/unipi:regular`, `Ctrl+O` in simple mode, **E**/**M** in `/unipi:skills`, the splash setting, the `s`/`p`/`g` tags — and 8 "what's new" tips tied to alpha.22–alpha.25 (shown once after you update). Eight new lore lines.
+- `core`: **moment hints** — Unicrab reacts once a session to a late-night turn, 50 clean tool calls in a row, an `rm -rf`, a force push, a 40k+ character write, a ≥95% cache-hit reply, a finished goal, a deleted memory, new MCP tools and a ralph lap. The hint-count test is gone; only the "every named command exists" check stays.
+- `long-horizon`: the owner-changed event now carries `reason` when an owner finishes.
+- `info-screen`: **context breakdown** on This session — a bucket split into system prompt, tool schemas, your prompts, replies, tool results and summaries (from what pi will send next), window gauge on its edge, heaviest tool outputs. (UNI-93)
+
+### Changed
+- `info-screen`: Usage chart labels its peak and today over the bars with a real date axis; one model → one line; model bars are true shares. (UNI-94)
+- `info-screen`: Modules page shows what each module adds (tools, commands, settings, keys — recorded exactly by `packages/unipi` during load) instead of millisecond bars; load time is flagged only past 20 ms. (UNI-95)
+- harness: prompts that UniPi sends for you (`/unipi:goal`/`ralph`/`swarm`/`graph` kickoffs, `/unipi:summarize`, `/unipi:answer`, the compactor follow-up, the ask-user handoff) render as a UniPi harness panel instead of a plain user message. The skills reveal names the skills in simple mode and lists them in advanced mode. (UNI-88, UNI-89)
+- `info-screen`: `bootMode` / `bootTimeoutMs` now control the splash (default 2.5 s). `groupOrder` and per-page show/hide are honoured and re-read when the dashboard opens. Duplicate tab priorities fixed by one page-style table.
+
+### Docs
+- README: new **See your session** section with screenshots of the splash and the dashboard (demo data), a **What's new** table for the recent releases, and two new rows in "Why UniPi". The Info Screen README explains the context bucket and how compaction savings are counted.
+- `scripts/info-preview/demo.ts`: demo session and history for screenshots — no real paths or spend.
+
+### Performance
+- `info-screen`: page data is saved to `~/.unipi/cache/info-screen.json`, so the dashboard opens filled; page bodies are memoised; the session page walks the transcript once per new entry. Usage refresh on a 1,500-session history went from ~190 ms to ~35 ms warm (in-memory parser cache, debounced cache writes, no per-record string keys). (UNI-84)
+
 ## [3.0.0-alpha.24] — 2026-10-04
 
 ### Added

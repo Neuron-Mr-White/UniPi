@@ -36,3 +36,4 @@ Cargo.lock.orig
 # Built web assets (npm run build in crates/kanboard/web)
 crates/kanboard/web/dist/
 crates/kanboard/web/node_modules/
+packages/*/.unipi/
