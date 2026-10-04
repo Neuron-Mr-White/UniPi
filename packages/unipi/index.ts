@@ -81,7 +81,33 @@ export default function (pi: ExtensionAPI) {
     // Never block startup on housekeeping.
   }
 
-  const load = (_name: string, extension: (api: ExtensionAPI) => void) => extension(registering);
+  // Per-module registration time + what each module registered (tools,
+  // commands, shortcuts), read by the info screen's
+  // Modules page. Captured by wrapping the api for the duration of load().
+  const loadTimes: Record<string, number> = {};
+  const contributions: Record<string, { tools: string[]; commands: string[]; shortcuts: number }> = {};
+  const g = globalThis as { __unipi_load_times?: Record<string, number>; __unipi_contributions?: typeof contributions };
+  g.__unipi_load_times = loadTimes;
+  g.__unipi_contributions = contributions;
+  const load = (name: string, extension: (api: ExtensionAPI) => void) => {
+    const c: { tools: string[]; commands: string[]; shortcuts: number } = (contributions[name] = { tools: [], commands: [], shortcuts: 0 });
+    const tracking = new Proxy(registering, {
+      get(target, prop, receiver) {
+        const v = Reflect.get(target, prop, receiver);
+        if (typeof v !== "function") return v;
+        if (prop === "registerTool") return (t: { name: string }, ...rest: unknown[]) => (c.tools.push(t.name), (v as Function).call(target, t, ...rest));
+        if (prop === "registerCommand") return (n: string, ...rest: unknown[]) => (c.commands.push(n), (v as Function).call(target, n, ...rest));
+        if (prop === "registerShortcut") return (...a: unknown[]) => (c.shortcuts++, (v as Function).apply(target, a));
+        return v;
+      },
+    });
+    const t0 = performance.now();
+    try {
+      extension(tracking as ExtensionAPI);
+    } finally {
+      loadTimes[name] = Math.round((performance.now() - t0) * 10) / 10;
+    }
+  };
 
   load("workflow", workflow);
   load("long-horizon", longHorizon);
