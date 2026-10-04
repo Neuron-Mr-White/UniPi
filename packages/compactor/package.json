@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/compactor",
-  "version": "3.0.0-alpha.25",
+  "version": "3.0.0-alpha.26",
   "description": "Compaction for Pi — lossless zero-LLM or model summaries, rebuilt from full history, with session recall",
   "type": "module",
   "main": "src/index.ts",
@@ -33,8 +33,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.25",
-    "@pi-unipi/info-screen": "3.0.0-alpha.25",
+    "@pi-unipi/core": "3.0.0-alpha.26",
+    "@pi-unipi/info-screen": "3.0.0-alpha.26",
     "@earendil-works/pi-agent-core": "^0.87.1"
   },
   "peerDependencies": {
