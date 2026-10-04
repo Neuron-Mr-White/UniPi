@@ -14,6 +14,7 @@ import { collectSession, renderSession, sessionData, type SessionCtxLike } from 
 import { renderUsage, usageData, type UsageRaw } from "./pages/usage.js";
 import { setCompactorHistorySource } from "./pages/modules.js";
 import { inventoryData, renderInventory, renderModules, type ModulesRaw, type Named } from "./pages/inventory.js";
+import type { Scope } from "./palette.js";
 
 // ─── load tracking ─────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ export function registerCoreGroups(): void {
       const activeCount = active ? items.filter((i) => i.active).length : undefined;
       return inventoryData(items, activeCount);
     },
-    render: (pc) => renderInventory(pc, "tools", "no tools registered"),
+    render: (pc) => renderInventory(pc, "tools", "no tools registered", "s"),
   });
 
   infoRegistry.registerGroup({
@@ -245,7 +246,10 @@ export function registerCoreGroups(): void {
       } catch {
         items = [];
       }
-      return inventoryData(items);
+      // Skills install per machine except project-local ones — the tags make
+      // that explicit (most skills are global, not session-scoped).
+      const groupScopes: Record<string, Scope> = { project: "p", user: "g", agents: "g", unipi: "g", package: "g" };
+      return inventoryData(items, undefined, groupScopes);
     },
     render: (pc) => renderInventory(pc, "skills", "add skills under ~/.pi/agent/skills or .pi/skills"),
   });

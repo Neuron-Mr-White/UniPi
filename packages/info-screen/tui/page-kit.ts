@@ -25,13 +25,13 @@ import {
 import type { GroupData, PageContext } from "../types.js";
 import { accentRamp, shade, SCOPE_COLOR, SCOPE_WORD, type Scope } from "../palette.js";
 
-/** One-cell scope tag: `s` session (cyan) · `p` project (green) · `g` global (amber). */
+/** One-cell scope tag: `g` global (amber) · `p` project (green) · `s` session (cyan). */
 export function tag(p: Paint, scope: Scope): string {
   return p.bold(p.rgb(SCOPE_COLOR[scope], scope));
 }
 
-/** `s session  p project  g global` — legend for the footer. */
-export function scopeLegend(p: Paint, scopes: readonly Scope[] = ["s", "p", "g"]): string {
+/** `g global  p project  s session` — legend for the footer, biggest scope first. */
+export function scopeLegend(p: Paint, scopes: readonly Scope[] = ["g", "p", "s"]): string {
   return scopes.map((sc) => `${tag(p, sc)} ${p.fg("dim", SCOPE_WORD[sc])}`).join("  ");
 }
 
@@ -138,13 +138,14 @@ export function rankBars(
   });
 }
 
-/** `■ input 42%  ■ output 9%  …` legend, wrapped onto as many rows as needed. */
-export function legend(pc: PageContext, items: ReadonlyArray<{ label: string; color: RGB }>): string[] {
+/** `■ input 42%  ■ output 9%  …` legend, wrapped onto as many rows as needed.
+ *  An entry may carry a one-cell scope tag: `■ g user 30`. */
+export function legend(pc: PageContext, items: ReadonlyArray<{ label: string; color: RGB; scope?: Scope }>): string[] {
   const p = pc.paint;
   const rows: string[] = [];
   let cur = "";
   for (const i of items) {
-    const piece = `${p.rgb(i.color, "■")} ${muted(p, i.label)}`;
+    const piece = `${p.rgb(i.color, "■")} ${i.scope ? `${tag(p, i.scope)} ` : ""}${muted(p, i.label)}`;
     if (cur && visibleWidth(cur) + 3 + visibleWidth(piece) > pc.width) {
       rows.push(fitTo(cur, pc.width));
       cur = piece;

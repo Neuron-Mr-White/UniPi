@@ -10,7 +10,8 @@
 import { compact, fitTo, grid, rightTo, shareBar, type RGB } from "@pi-unipi/core";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { GroupData, PageContext } from "../types.js";
-import { dim, empty, legend, muted, section, tiles } from "../tui/page-kit.js";
+import type { Scope } from "../palette.js";
+import { dim, empty, legend, muted, section, tag, tiles } from "../tui/page-kit.js";
 
 export interface Named {
   name: string;
@@ -22,6 +23,8 @@ export interface InventoryRaw {
   items: Named[];
   groups: Array<[string, number]>;
   activeCount?: number;
+  /** Scope per group label, shown as a one-cell tag in the legend. */
+  groupScopes?: Record<string, Scope>;
 }
 
 const GROUP_COLORS: RGB[] = [[0, 200, 240], [240, 120, 24], [190, 150, 240], [120, 200, 120], [240, 192, 48], [230, 120, 200], [78, 201, 176], [140, 140, 160]];
@@ -33,7 +36,7 @@ function colorMap(groups: ReadonlyArray<[string, number]>): Map<string, RGB> {
   return m;
 }
 
-export function inventoryData(items: Named[], activeCount?: number): GroupData {
+export function inventoryData(items: Named[], activeCount?: number, groupScopes?: Record<string, Scope>): GroupData {
   const counts = new Map<string, number>();
   for (const i of items) counts.set(i.group, (counts.get(i.group) ?? 0) + 1);
   const groups = [...counts.entries()].sort((a, b) => b[1] - a[1]);
@@ -42,7 +45,7 @@ export function inventoryData(items: Named[], activeCount?: number): GroupData {
     const gb = groups.findIndex(([g]) => g === b.group);
     return ga - gb || a.name.localeCompare(b.name);
   });
-  const raw: InventoryRaw = { items: sorted, groups, activeCount };
+  const raw: InventoryRaw = { items: sorted, groups, activeCount, groupScopes };
   return {
     total: { value: String(items.length) },
     groups: { value: groups.map(([g, n]) => `${n} ${g}`).join(", ") },
@@ -50,7 +53,7 @@ export function inventoryData(items: Named[], activeCount?: number): GroupData {
   };
 }
 
-export function renderInventory(pc: PageContext, noun: string, emptyHint: string): string[] {
+export function renderInventory(pc: PageContext, noun: string, emptyHint: string, headerScope?: Scope): string[] {
   const raw = pc.data.raw?.raw as InventoryRaw | undefined;
   if (!raw || raw.items.length === 0) return empty(pc, `No ${noun} loaded`, emptyHint);
   const p = pc.paint;
@@ -63,10 +66,10 @@ export function renderInventory(pc: PageContext, noun: string, emptyHint: string
   out.push(...tiles(pc, headline));
   out.push("");
   out.push(fitTo(shareBar(p, raw.groups.map(([g, n]) => ({ value: n, color: colors.get(g)! })), pc.width, "▆"), pc.width));
-  out.push(...legend(pc, raw.groups.map(([g, n]) => ({ label: `${g} ${n}`, color: colors.get(g)! }))));
+  out.push(...legend(pc, raw.groups.map(([g, n]) => ({ label: `${g} ${n}`, color: colors.get(g)!, scope: raw.groupScopes?.[g] }))));
   out.push("");
 
-  out.push(section(pc, `all ${noun}`, dim(p, "● active  ○ off")));
+  out.push(section(pc, `all ${noun}`, dim(p, "● active  ○ off"), headerScope));
   const items = raw.items.map((i) => {
     const c = colors.get(i.group) ?? [140, 140, 160];
     const mark = i.active === false ? p.rgb(c, "○") : p.rgb(c, "●");

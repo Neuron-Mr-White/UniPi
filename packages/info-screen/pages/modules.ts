@@ -110,9 +110,9 @@ export function renderCompactor(pc: PageContext): string[] {
   out.push(section(pc, "saved by compaction", dim(p, "tokens not re-sent · ≈ money not spent")));
   out.push(
     ...tiles(pc, [
-      { label: "session", value: moneyShort(sess.dollars), sub: `${compact(sess.avoided)} tok · ${sess.count}×`, scope: "s", stops: [[0, 160, 200], [0, 200, 240], [160, 230, 255]] },
-      ...(hist.project ? [{ label: "project", value: moneyShort(hist.project.dollars), sub: `${compact(hist.project.avoided)} tok · ${hist.project.count}×`, scope: "p" as const, stops: [[70, 150, 70], [120, 200, 120], [190, 240, 190]] as RGB[] }] : []),
       ...(hist.global ? [{ label: "global", value: moneyShort(hist.global.dollars), sub: `${compact(hist.global.avoided)} tok · ${hist.global.count}×`, scope: "g" as const, stops: [CRAB.amber, CRAB.gold, CRAB.cream] }] : []),
+      ...(hist.project ? [{ label: "project", value: moneyShort(hist.project.dollars), sub: `${compact(hist.project.avoided)} tok · ${hist.project.count}×`, scope: "p" as const, stops: [[70, 150, 70], [120, 200, 120], [190, 240, 190]] as RGB[] }] : []),
+      { label: "session", value: moneyShort(sess.dollars), sub: `${compact(sess.avoided)} tok · ${sess.count}×`, scope: "s", stops: [[0, 160, 200], [0, 200, 240], [160, 230, 255]] },
     ]),
   );
 
@@ -287,8 +287,8 @@ export function renderMemory(pc: PageContext): string[] {
   const out: string[] = [];
   out.push(
     ...tiles(pc, [
-      { label: "project", value: compact(raw.projectCount), sub: raw.project, scope: "p" },
       { label: "global", value: compact(raw.total), sub: "all projects", scope: "g" },
+      { label: "project", value: compact(raw.projectCount), sub: raw.project, scope: "p" },
       { label: "share", value: `${raw.total ? Math.round((raw.projectCount / raw.total) * 100) : 0}%`, sub: "project / global" },
     ]),
   );

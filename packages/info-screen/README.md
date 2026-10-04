@@ -12,7 +12,7 @@ See what your session costs, what fills its context and what compaction saved yo
 
 - **Startup splash.** Unicrab says hello when Pi starts. The splash shows how fast Pi got ready, the session you came back to, today's spend and any update. It does not take your keys. It closes after `bootTimeoutMs`.
 - **Dashboard.** `/unipi:info` opens a set of pages. The first page is about this session.
-- **Scope tags.** A small letter before a number gives its scope: `s` is this session, `p` is this project and `g` is all projects on this machine.
+- **Scope tags.** A small letter before a number gives its scope: `g` is all projects on this machine, `p` is this project and `s` is this session.
 - **Fast open.** The dashboard opens at once on cached numbers. Then it updates the page that you look at.
 
 ## Quick start
@@ -63,7 +63,7 @@ splash waits for that overlay to close.
 | Tools | Each tool, with a colour for its source. Active tools have a full dot. |
 | Skills | Each skill, with a colour for where it lives. |
 | Modules | What each UniPi module adds: tools, commands, settings and keys. Other extensions. |
-| Compactor | Tokens and money that compaction saved, for `s`, `p` and `g`. Each compaction in this session. |
+| Compactor | Tokens and money that compaction saved, for `g`, `p` and `s`. Each compaction in this session. |
 | MCP · Memory · Web · Updates · Keys | The state of each module. MCP servers show `g` or `p` for the config that they come from. |
 
 ### The context bucket

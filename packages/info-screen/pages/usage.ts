@@ -150,6 +150,7 @@ export function renderUsage(pc: PageContext): string[] {
       out.push(fitTo(`${p.rgb(MODEL_COLORS[0]!, "●")} ${p.bold(m[0])}  ${dim(p, "every token this month")}  ${p.bold(useCost ? money(m[1]) : compact(m[2]))}`, pc.width));
     } else {
       out.push(fitTo(shareBar(p, raw.models.map((m, i) => ({ value: metric(m), color: MODEL_COLORS[i % MODEL_COLORS.length]! })), pc.width, "▆"), pc.width));
+      out.push("");
       // Ranked list: bars scaled to the TOTAL (so they read as shares, not "max = full").
       const nameW = Math.min(26, Math.max(...raw.models.map((m) => m[0].length)) + 1);
       const valW = 14;
