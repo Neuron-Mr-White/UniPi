@@ -74,7 +74,7 @@ When you type `/model`, autocomplete puts `/unipi:model` first.
 
 | Command | Arguments | What it does |
 |---|---|---|
-| `/unipi:info` | | Opens the info-screen dashboard. |
+| `/unipi:info` | `[page]` | Opens the dashboard: this session, context, usage, compaction savings and modules. |
 
 ## [kanboard](../../packages/kanboard/README.md)
 

@@ -80,7 +80,7 @@ screen shows one of them at random. Some favorites:
 
 ## 6. Hints
 
-Unicrab also teaches UniPi. The hint system has 90 lines in 9 categories:
+Unicrab also teaches UniPi. The hint system has 127 lines in 9 categories:
 commands, shortcuts, settings, capabilities, explanations, troubleshooting,
 release notes, workflows and lore.
 

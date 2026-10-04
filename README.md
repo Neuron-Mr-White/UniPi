@@ -64,6 +64,8 @@ runs commands. UniPi adds the parts that a long session needs.
 | **A board for deferred work** | Kanboard keeps tasks in Markdown files, with a web UI and a terminal UI. |
 | **Hang detection** | Watchdog asks a small judge model about long tool calls. |
 | **A short transcript** | Simple mode shows one line for each tool call. Ctrl+O expands it. |
+| **A view of the session** | `/unipi:info` shows cost, context use, spend history and what compaction saved. |
+| **A recap at the end** | The `summarize` skill gives the answer first, then open items, in plain words. |
 
 ## Proof
 
@@ -118,6 +120,61 @@ review or answer a blocked question in one click.
 
 The screenshots use demo data. Read the [Kanboard README](packages/kanboard/README.md).
 
+## See your session: `/unipi:info`
+
+Pi starts. Unicrab says hello and gives you three facts: how fast Pi got
+ready, the session you came back to, and what you spent today. Then it goes
+away. It does not take your keys, so you can type your first prompt at once.
+
+<p align="center">
+  <img src="docs/assets/screenshots/info-splash.png" width="760" alt="The Unicrab startup splash: mascot, UNIPI wordmark, version, ready time, resumed session and today's spend">
+</p>
+
+Run `/unipi:info` when you want the full picture. The first page is about
+**this session**. It answers the questions you ask during long work:
+
+- **What did this cost?** Cost, tokens, replies and time, in large digits.
+- **What fills my context?** A bucket shows each part in its own colour:
+  system prompt, tool schemas, summaries, your prompts, replies and tool
+  results. The edge of the bucket shows how full the window is. It turns
+  amber at 70% and red at 90%.
+- **Which tool output is the heaviest?** The page names the three largest.
+- **Which tools failed?** Each tool gets a bar, and failures show in red.
+
+<p align="center">
+  <img src="docs/assets/screenshots/info-session.png" alt="The This session page: cost, tokens, replies, time, the context bucket, billed tokens and tools">
+</p>
+
+The other pages answer the questions that come later:
+
+| Page | It shows |
+|---|---|
+| Usage | Spend today, this week and this month, a 30-day chart, and the share of each model. |
+| Compactor | Tokens that compaction kept out of your requests, and the money that saved. |
+| Tools · Skills · Modules | What Pi loaded, where it came from, and what each UniPi module adds. |
+| MCP · Memory · Web · Updates · Keys | The state of each module. |
+
+<table>
+  <tr>
+    <td><img src="docs/assets/screenshots/info-usage.png" alt="The Usage page: spend tiles, a 30-day chart with the peak labelled, and models this month"></td>
+    <td><img src="docs/assets/screenshots/info-compactor.png" alt="The Compactor page: money saved for this session, this project and all projects, and a without-versus-with bar"></td>
+  </tr>
+</table>
+
+A small letter before a number tells you its scope: **`s`** is this session,
+**`p`** is this project and **`g`** is every project on this machine. Numbers
+from one project never show in another.
+
+How the Compactor page counts: each compaction makes the context smaller.
+Every reply after it sends that smaller context. The page multiplies the
+tokens removed by the number of replies that followed. Then it prices them at
+the rate you paid for context. A free model saves tokens but no money.
+
+Keys: `←`/`→` or `1`–`9` change the page, `r` refreshes it, `q` closes it.
+`/unipi:info usage` opens one page. The dashboard opens at once on cached
+numbers, then updates them in the background. The screenshots use demo data.
+Read the [Info Screen README](packages/info-screen/README.md).
+
 ## Harness architecture
 
 UniPi adds these mechanisms to the Pi harness. Each page gives the problem, a
@@ -167,7 +224,9 @@ each package.
 
 Unicrab is the UniPi mascot. It started as the author's pet crab. Now it says
 hello when Pi starts and leaves hints above the input box. Press `Alt+H` for the
-next hint.
+next hint, or run `/unipi:hint` to read all 127 of them.
+
+After an update, the first hint tells you what is new in that release.
 
 Read [The making of Unicrab](docs/story/unicrab.md): from a real crab, to pixel
 art, to a terminal character that is 7 columns wide.
@@ -175,6 +234,17 @@ art, to a terminal character that is 7 columns wide.
 <p align="center">
   <img src="docs/assets/screenshots/unicrab-start.png" alt="The UniPi start screen with Unicrab in half-block pixel art">
 </p>
+
+## What's new
+
+The recent releases, in short. The [changelog](CHANGELOG.md) has the details.
+
+| Release | What changed for you |
+|---|---|
+| next | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
+| alpha.24 | The `summarize` skill and `/unipi:summarize [focus]`. Long work ends with a short recap: the answer first, then findings, open items and questions. |
+| alpha.23 | `/unipi:settings` explains each setting and each option in a panel below the list. Web tools with no working provider hide from the agent. |
+| alpha.22 | Simple mode is the default. Each tool call is one line, and `Ctrl+O` opens it. Images no longer overlap the text below them. |
 
 ## Docs
 

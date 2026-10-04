@@ -178,11 +178,11 @@ for a custom endpoint. `generate` and `edit` also have `api`.
 
 | Key | Values | Default | What it changes |
 |---|---|---|---|
-| `bootMode` | `on`, `off`, `auto-close` | `auto-close` | Sets what the dashboard does at startup. |
-| `bootTimeoutMs` | number | 2000 | Sets the time before `auto-close` closes the dashboard. |
-| `groupOrder` | list | — | Sets the tab order of the dashboard groups. |
+| `bootMode` | `on`, `off`, `auto-close` | `auto-close` | Sets what the Unicrab startup splash does. `/unipi:info` opens the dashboard any time. |
+| `bootTimeoutMs` | number | 2500 | Sets how long the splash stays in `auto-close` mode. |
+| `groupOrder` | list | — | Sets the page order of the dashboard. |
 
-The "Groups & stats…" page has one switch for each group and each stat.
+The "Pages & stats…" page has one switch for each page and each stat.
 
 ### input-shortcuts (hub: Input Shortcuts)
 

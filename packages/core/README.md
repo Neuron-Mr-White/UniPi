@@ -70,7 +70,13 @@ Unicrab is the UniPi mascot. The hints engine shows one short tip above the
 editor.
 
 - At startup, the engine shows the tip with the lowest show count. After a
-  version upgrade, it shows a "what's new" tip first.
+  version upgrade, it shows a "what's new" tip first. Each release adds its
+  own "what's new" tips, so you learn about a feature when it arrives.
+- The engine has 127 tips in 9 categories: commands, shortcuts, settings,
+  capabilities, explanations, troubleshooting, what's new, workflows and lore.
+- Some tips react to a moment, one time per session. Examples are a late-night
+  turn, 50 tool calls with no error, an `rm -rf`, a force push, a hot prompt
+  cache and a finished goal.
 - The start screen shows the Unicrab pixel art, the version and a random lore
   line. It needs 40 columns or more. At 72 columns or more, it shows the large crab.
 - Some events show a tip. Examples are context use of 70% or more, a `bash`

@@ -31,7 +31,7 @@ This page is the map of the UniPi docs. GitHub shows it when you open the
 | [Footer](../packages/footer/README.md) | `@pi-unipi/footer` | The glance frame and the live status strip. |
 | [BTW](../packages/btw/README.md) | `@pi-unipi/btw` | Side questions in a separate session. |
 | [Ask User](../packages/ask-user/README.md) | `@pi-unipi/ask-user` | Structured questions from the agent to you. |
-| [Info Screen](../packages/info-screen/README.md) | `@pi-unipi/info-screen` | A dashboard of module status. |
+| [Info Screen](../packages/info-screen/README.md) | `@pi-unipi/info-screen` | The Unicrab startup splash and the `/unipi:info` dashboard. |
 | [Utility](../packages/utility/README.md) | `@pi-unipi/utility` | Diagnostics, session names, diff view and image tools. |
 | [Updater](../packages/updater/README.md) | `@pi-unipi/updater` | Update checks, changelog and README browser. |
 | [Input Shortcuts](../packages/input-shortcuts/README.md) | `@pi-unipi/input-shortcuts` | Chord shortcuts for the input box. |
