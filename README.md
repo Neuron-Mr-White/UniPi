@@ -7,6 +7,17 @@ One command installs everything:
 pi install npm:@pi-unipi/unipi
 ```
 
+> [!TIP]
+> **UniPi 3 alpha is out.** Glance footer, long-horizon goals, plan and permission
+> modes, Fusion (lead + sidekick), kanboard v3 and more. Try it with:
+> ```bash
+> pi install npm:@pi-unipi/unipi@alpha
+> ```
+> Update with `pi update npm:@pi-unipi/unipi@alpha`; go back to stable with
+> `pi install npm:@pi-unipi/unipi@latest`. Alpha docs:
+> [v3.0.0-alpha branch](https://github.com/Neuron-Mr-White/unipi/tree/v3.0.0-alpha#readme) ·
+> [changelog](https://github.com/Neuron-Mr-White/unipi/blob/v3.0.0-alpha/CHANGELOG.md).
+
 ## Requirements
 
 - **Pi (`@earendil-works/pi-coding-agent`) `^0.84.0`** — Unipi 2.9.0 tracks the Pi 0.84 SDK (extension event map incl. `agent_settled`, `ModelRuntime` session options, kitty-protocol keyboard handling). Older Pi releases (0.80–0.83) still load most extensions, but npm will flag the peer dependency mismatch; pin `@pi-unipi/*@<2.9.0` if you must stay on an older Pi.
