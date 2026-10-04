@@ -127,17 +127,24 @@ The `sections.*` keys are `activeWork`, `requests`, `state`, `decisions`,
 
 | Key | Values | Default | What it changes |
 |---|---|---|---|
-| `enabled` | on, off | on | Turns the footer on or off. |
-| `preset` | `default`, `classic`, `minimal`, `dense`, `devops`, `zen` | `default` | Sets the segment layout. |
-| `glanceMode` | on, off | on | Turns the glance footer on. |
-| `showFullLabels` | on, off | off | Shows labels instead of compact segments. |
-| `separator` | `powerline`, `powerline-thin`, `slash`, `pipe`, `dot`, `ascii` | `powerline-thin` | Sets the segment divider. |
-| `zoneSeparator` | `│`, `╎`, `·`, `─`, `none` | `│` | Sets the divider between the footer zones. |
+| `enabled` | on, off | on | Turns the footer on or off. Off leaves the plain pi editor. |
+| `colorMode` | `auto`, `truecolor`, `256`, `none` | `auto` | Sets the color depth. The legacy value `mono` loads as `none`. |
 | `iconStyle` | `emoji`, `nerd`, `text` | `nerd` | Sets the icon style. |
-| `colorMode` | `auto`, `truecolor`, `256`, `mono` | `auto` | Sets the color depth. |
-| `groups.<group>.show` | on, off | on | Shows or hides a segment group. The `notify` group is off by default. |
+| `rainbow` | `always`, `brand-only`, `off` | `always` | Sets which frame parts get the animated rainbow. |
+| `processLine` | on, off | on | Shows the background-task line above the input. |
+| `strip.turns` | on, off | on | Turn and step counters in the stats line. |
+| `strip.time` | on, off | on | Model time and tool time. |
+| `strip.speed` | on, off | on | Average TTFT and tokens per second. |
+| `strip.tokens` | on, off | on | Session input and output tokens. |
+| `strip.cost` | on, off | on | Session cost, or `sub` on subscription models. |
+| `strip.compactions` | on, off | on | Compaction count, sizes and recency. |
+| `strip.cache` | on, off | on | Cache hit percentage. |
+| `badges.mode` | on, off | on | Long-horizon mode label beside the brand. |
+| `badges.planPermission` | on, off | on | PLAN badge and permission mode in the top border. |
+| `badges.fusion` | on, off | on | Fusion lead and sidekick in the bottom border. |
+| `badges.kanboard` | on, off | on | Kanboard claims label in the top border. |
 
-The "Segments…" page also has one switch for each segment.
+Old v2 keys (`preset`, `separator`, `zoneSeparator`, `showFullLabels`, `groups`, `glanceMode`) are ignored. Narrow terminals drop stats parts by priority (compactions first, tokens last) and frame badges before the branch or model truncate; below 20 terminal rows the stats and task lines hide.
 
 ### fusion (hub: Fusion)
 

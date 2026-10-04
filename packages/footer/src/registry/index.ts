@@ -1,60 +1,20 @@
 /**
- * @pi-unipi/footer — FooterRegistry
+ * @pi-unipi/footer — Shared status data store
  *
- * Central registry for segment groups with event subscription,
- * data caching, and reactive updates.
+ * A tiny cache keyed by group id ("core" today). Event handlers write mode /
+ * permission fallbacks here; the glance frame reads them when the shared
+ * status holders (core's getShared* helpers) have no value yet.
  */
-
-import type { FooterGroup } from "../types.js";
 
 /** Type for the reactive update callback */
 type UpdateCallback = () => void;
 
-/**
- * FooterRegistry manages segment groups and their cached data.
- * It subscribes to UNIPI_EVENTS, caches data per group, and
- * notifies subscribers when data changes.
- */
 export class FooterRegistry {
-  /** Registered segment groups */
-  private groups = new Map<string, FooterGroup>();
-
   /** Cached event data per group */
   private dataCache = new Map<string, unknown>();
 
   /** Reactive update subscribers */
   private subscribers = new Set<UpdateCallback>();
-
-  /** Whether to log debug info */
-  private debug: boolean;
-
-  constructor(options?: { debug?: boolean }) {
-    this.debug = options?.debug ?? false;
-  }
-
-  // ─── Group Management ─────────────────────────────────────────────────────
-
-  /**
-   * Register a segment group.
-   */
-  registerGroup(group: FooterGroup): void {
-    this.groups.set(group.id, group);
-    this.log("registerGroup", group.id);
-  }
-
-  /**
-   * Get a registered group by ID.
-   */
-  getGroup(groupId: string): FooterGroup | undefined {
-    return this.groups.get(groupId);
-  }
-
-  /**
-   * Get all registered groups.
-   */
-  getAllGroups(): FooterGroup[] {
-    return Array.from(this.groups.values());
-  }
 
   // ─── Data Cache ───────────────────────────────────────────────────────────
 
@@ -67,7 +27,6 @@ export class FooterRegistry {
     if (previous === data) return;
 
     this.dataCache.set(groupId, data);
-    this.log("updateData", groupId, data);
     this.notifySubscribers();
   }
 
@@ -83,7 +42,6 @@ export class FooterRegistry {
    */
   invalidateAll(): void {
     this.dataCache.clear();
-    this.log("invalidateAll");
     this.notifySubscribers();
   }
 
@@ -110,13 +68,6 @@ export class FooterRegistry {
         // Silently ignore — subscriber errors are non-blocking.
       }
     }
-  }
-
-  // ─── Debug ────────────────────────────────────────────────────────────────
-
-  private log(_event: string, ..._args: unknown[]): void {
-    // Debug logging disabled — was writing to stdout causing TUI rendering issues.
-    return;
   }
 }
 

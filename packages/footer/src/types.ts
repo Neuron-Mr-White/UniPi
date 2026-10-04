@@ -1,20 +1,16 @@
 /**
  * @pi-unipi/footer — Type definitions
  *
- * All TypeScript types for the footer package: segments, groups, config,
- * presets, separators, theme.
+ * The footer is the glance frame: a framed input surface with a stats strip
+ * below it. These types cover its settings and the theme colors it paints.
  */
 
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
-// ─── Semantic Colors ────────────────────────────────────────────────────────
+// ─── Theme colors ───────────────────────────────────────────────────────────
 
-/** Zone assignment for segment positioning */
-export type SegmentZone = "left" | "center" | "right";
-
-/** Semantic color names mapped to segment groups */
+/** Semantic color names mapped to colors (frame accents, strip numbers). */
 export type SemanticColor =
-  // ── Model & Identity (Left zone) ──
   | "brand"
   | "model"
   | "directory"
@@ -24,7 +20,6 @@ export type SemanticColor =
   | "gitDirty"
   | "session"
   | "worktree"
-  // ── Workflow (Left zone) ──
   | "workflow"
   | "workflowNone"
   | "workflowBrainstorm"
@@ -35,14 +30,12 @@ export type SemanticColor =
   | "workflowDebug"
   | "workflowChoreExec"
   | "workflowOther"
-  // ── TPS tiers (Center zone) ──
   | "tpsSlow"
   | "tpsModerate"
   | "tpsGood"
   | "tpsFast"
   | "tpsBlazing"
   | "tpsIdle"
-  // ── Metrics (Center zone) ──
   | "compactor"
   | "memory"
   | "mcp"
@@ -56,17 +49,14 @@ export type SemanticColor =
   | "contextError"
   | "cost"
   | "tokens"
-  // ── Time (Right zone) ──
   | "clock"
   | "duration"
-  // ── Thinking levels ──
   | "thinking"
   | "thinkingMinimal"
   | "thinkingLow"
   | "thinkingMedium"
   | "thinkingHigh"
   | "thinkingXhigh"
-  // ── UI chrome ──
   | "separator"
   | "border";
 
@@ -79,138 +69,61 @@ export type ThemeLike = Pick<Theme, "fg">;
 /** Mapping of semantic color names to actual colors */
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 
-// ─── Separators ─────────────────────────────────────────────────────────────
+// ─── Settings ───────────────────────────────────────────────────────────────
 
-/** Icon style — determines which icon set is used for segments */
+/** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */
 export type IconStyle = "nerd" | "emoji" | "text";
 
 /** Colour-emission mode for terminal output. */
 export type ColorMode = "auto" | "truecolor" | "256" | "none";
 
-/** Separator styles for segment dividers */
-export type SeparatorStyle =
-  | "powerline"
-  | "powerline-thin"
-  | "slash"
-  | "pipe"
-  | "dot"
-  | "ascii";
+/** Which frame parts get the animated lolcat rainbow. */
+export type RainbowMode = "always" | "brand-only" | "off";
 
-/** Separator definition with left/right glyph strings */
-export interface SeparatorDef {
-  left: string;
-  right: string;
+/** Per-part toggles for the session stats strip below the input. */
+export interface StripToggles {
+  /** Turns/steps counters. */
+  turns: boolean;
+  /** Wall (model) time + tool time. */
+  time: boolean;
+  /** Average TTFT + tok/s. */
+  speed: boolean;
+  /** Input/output token totals. */
+  tokens: boolean;
+  /** Session cost (or `sub` on subscription models). */
+  cost: boolean;
+  /** Compaction count, sizes and recency. */
+  compactions: boolean;
+  /** Cache hit percentage. */
+  cache: boolean;
 }
 
-// ─── Segments ───────────────────────────────────────────────────────────────
-
-/** Rendered segment output */
-export interface RenderedSegment {
-  /** The rendered content string (may include ANSI codes) */
-  content: string;
-  /** Whether this segment is visible */
-  visible: boolean;
+/** Frame title/border badge toggles. */
+export interface BadgeToggles {
+  /** Long-horizon mode label beside the brand. */
+  mode: boolean;
+  /** PLAN badge + permission mode in the top-right. */
+  planPermission: boolean;
+  /** Fusion lead/sidekick pair in the bottom border. */
+  fusion: boolean;
+  /** Kanboard claims label in the top border. */
+  kanboard: boolean;
 }
 
-/** Context passed to segment render functions */
-export interface FooterSegmentContext {
-  /** Pi theme for coloring */
-  theme: ThemeLike;
-  /** Resolved color scheme */
-  colors: ColorScheme;
-  /** Data from the registry for this segment's group */
-  data: unknown;
-  /** Available width for this segment */
-  width: number;
-  /** Per-segment options from preset */
-  options?: Record<string, unknown>;
-  /** Full pi context (for core segments that need ctx.sessionManager, etc.) */
-  piContext?: unknown;
-  /** Footer data provider (for core segments that need git, extension statuses) */
-  footerData?: unknown;
-  /** Label mode: compact (shortLabel) or labeled (full label) */
-  labelMode?: "compact" | "labeled";
-}
-
-/** Segment render function type */
-export type SegmentRenderFn = (ctx: FooterSegmentContext) => RenderedSegment;
-
-/** A single footer segment definition */
-export interface FooterSegment {
-  /** Unique segment identifier (e.g., "model", "compactions") */
-  id: string;
-  /** Display label (full name, used in labeled mode) */
-  label: string;
-  /** Compact display name (used in compact mode, e.g. "ses", "tps", "ctx") */
-  shortLabel: string;
-  /** Human-readable description (shown in footer-help overlay) */
-  description: string;
-  /** Layout zone assignment */
-  zone: SegmentZone;
-  /** Render function */
-  render: SegmentRenderFn;
-  /** Whether this segment is shown by default */
-  defaultShow: boolean;
-}
-
-// ─── Groups ─────────────────────────────────────────────────────────────────
-
-/** A group of related segments (typically one per package) */
-export interface FooterGroup {
-  /** Unique group identifier (e.g., "core", "compactor") */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Segments within this group */
-  segments: FooterSegment[];
-  /** Whether this group is shown by default */
-  defaultShow: boolean;
-}
-
-// ─── Settings ───────────────────────────────────────────────────────────────
-
-/** Per-group settings */
-export interface FooterGroupSettings {
-  /** Whether this group is visible */
-  show: boolean;
-  /** Per-segment visibility overrides */
-  segments?: Record<string, boolean>;
-}
-
-/** Footer settings stored in settings.json */
+/** Footer settings (canonical nested shape, stored under the `footer` namespace). */
 export interface FooterSettings {
-  /** Whether the footer is enabled */
+  /** Whether the footer (frame, strip, process line) renders at all. */
   enabled: boolean;
-  /** Active preset name */
-  preset: string;
-  /** Glance-style experiment: frame input box + session strip, suppress classic row */
-  glanceMode?: boolean;
-  /** Separator style */
-  separator: SeparatorStyle;
-  /** Icon style: nerd (Nerd Font glyphs), emoji (Unicode emoji), text (plain labels) */
+  /** Icon set for the frame titles. */
   iconStyle: IconStyle;
-  /** Zone separator string (between zones, default: "│") */
-  zoneSeparator?: string;
-  /** Show full labels instead of compact short labels */
-  showFullLabels?: boolean;
-  /** Terminal colour mode override (default: "auto" — env-detected). */
-  colorMode?: ColorMode;
-  /** Per-group settings */
-  groups: Record<string, FooterGroupSettings>;
-}
-
-// ─── Presets ────────────────────────────────────────────────────────────────
-
-/** Preset definition */
-export interface PresetDef {
-  /** Segments on the left side of the status bar */
-  leftSegments: string[];
-  /** Segments on the right side of the status bar */
-  rightSegments: string[];
-  /** Secondary row segments (shown when terminal is narrow) */
-  secondarySegments: string[];
-  /** Color scheme for this preset */
-  colors?: ColorScheme;
-  /** Zone separator string (between zones) */
-  zoneSeparator?: string;
+  /** Terminal colour mode override (legacy `mono` loads as `none`). */
+  colorMode: ColorMode;
+  /** Which parts get the animated rainbow. */
+  rainbow: RainbowMode;
+  /** Background-task line above the input. */
+  processLine: boolean;
+  /** Session stats strip toggles. */
+  strip: StripToggles;
+  /** Frame badge toggles. */
+  badges: BadgeToggles;
 }

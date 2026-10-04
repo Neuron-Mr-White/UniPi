@@ -23,6 +23,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getIcon, getResolvedIconStyle } from "./rendering/icons.js";
 import { kanboardGlanceLabel } from "@pi-unipi/core";
 import { lolcatRainbow, paintLolcatGradient } from "./rendering/lolcat.js";
+import type { BadgeToggles, RainbowMode } from "./types.js";
 
 /** Live status injected by the footer extension. */
 export interface GlanceStatus {
@@ -51,6 +52,10 @@ export interface GlanceStatus {
 	fusion: { leadName: string; leadEffort: string; sidekickName: string; sidekickEffort: string; savedUsd?: number; busy?: boolean; leadToolCalls?: number; sidekickToolCalls?: number } | null;
 	/** Kanboard claims/autowork snapshot (null → no `▣` segment). */
 	kanboard: { claims: string[]; autowork: boolean } | null;
+	/** Which frame parts get the animated rainbow. */
+	rainbow: RainbowMode;
+	/** User badge toggles (before narrow-terminal degradation). */
+	badges: BadgeToggles;
 }
 
 const BORDER = {
@@ -91,6 +96,27 @@ export function renderTopRightBadges(planMode: boolean, permissionMode: string |
 /** Same cluster without the permission label (narrow-terminal fallback). */
 export function renderTopRightBadgesNoPermission(planMode: boolean): string {
 	return planMode ? `${PLAN_BG} PLAN ${PLAN_BG_OFF} ` : "";
+}
+
+/**
+ * Drop frame badges one at a time until `fits` holds. Order — lowest value
+ * first: kanboard → fusion → plan/permission → mode. The git branch and the
+ * model name are never dropped this way; they only ever truncate via the
+ * frame's final width safety nets.
+ */
+export function planFrameBadges(
+	enabled: BadgeToggles,
+	fits: (plan: BadgeToggles) => boolean,
+): BadgeToggles {
+	const plan: BadgeToggles = { ...enabled };
+	if (fits(plan)) return plan;
+	const dropOrder: Array<keyof BadgeToggles> = ["kanboard", "fusion", "planPermission", "mode"];
+	for (const key of dropOrder) {
+		if (!plan[key]) continue;
+		plan[key] = false;
+		if (fits(plan)) break;
+	}
+	return plan;
 }
 
 /**
@@ -201,19 +227,23 @@ export function composeGlanceTitles(
 	workspace: string,
 	lhMode: string | null = null,
 	kanboard: { claims: string[]; autowork: boolean } | null = null,
+	opts?: { mode?: boolean; kanboard?: boolean },
 ): { titleParts: string[]; leftTitle: string } {
-	const kanboardLabel = kanboardGlanceLabel(kanboard);
+	const showMode = opts?.mode !== false;
+	const showKanboard = opts?.kanboard !== false;
+	const kanboardLabel = showKanboard ? kanboardGlanceLabel(kanboard) : null;
+	const mode = showMode ? lhMode : null;
 	const titleParts: string[] = [];
 	if (getResolvedIconStyle() === "text") {
 		titleParts.push(brand);
-		if (lhMode) titleParts.push(`mode:${lhMode}`);
+		if (mode) titleParts.push(`mode:${mode}`);
 		if (kanboardLabel) titleParts.push(kanboardLabel.replace(/^▣ /, "kanboard:"));
 		if (branch) titleParts.push(`branch:${branch}`);
 		return { titleParts, leftTitle: ` workspace:${workspace} ` };
 	}
 	const brandIcon = getIcon("model");
 	titleParts.push(`${brandIcon ? brandIcon + " " : ""}${brand}`);
-	if (lhMode) titleParts.push(lhMode);
+	if (mode) titleParts.push(mode);
 	if (kanboardLabel) titleParts.push(kanboardLabel);
 	if (branch) {
 		const gitIcon = getIcon("git");
@@ -221,6 +251,63 @@ export function composeGlanceTitles(
 	}
 	const dirIcon = getIcon("directory");
 	return { titleParts, leftTitle: ` ${dirIcon ? dirIcon + " " : ""}${workspace} ` };
+}
+
+/**
+ * Compose the top title (before borders) and the top-right badge cluster for
+ * a badge plan. `brand` defaults to plain "UNIPI" — measurement uses plain
+ * strings so width math never sees rainbow SGR bytes.
+ * (Exported for the badge tests.)
+ */
+export function composeTopParts(
+	st: GlanceStatus,
+	plan: BadgeToggles,
+	brand = "UNIPI",
+): { title: string; cluster: string } {
+	const { titleParts } = composeGlanceTitles(
+		brand,
+		st.branch,
+		st.workspace,
+		st.lhMode,
+		st.kanboard,
+		{ mode: plan.mode, kanboard: plan.kanboard },
+	);
+	return {
+		title: titleParts.join(SEP),
+		cluster: plan.planPermission ? renderTopRightBadges(st.planMode, st.permissionMode) : "",
+	};
+}
+
+/** Compose the bottom-border right cluster for a badge plan. (Exported for tests.) */
+export function composeBottomCluster(st: GlanceStatus, plan: BadgeToggles): string {
+	const rightParts: string[] = [];
+	const ctxPct = st.contextPct !== null ? Math.max(0, Math.min(100, st.contextPct)) : null;
+	const pctLabel = ctxPct !== null ? `${Math.round(ctxPct)}%` : "?%";
+	const winLabel = st.contextWindow > 0 ? `/${fmtTokens(st.contextWindow)}` : "";
+	rightParts.push(`${pctLabel}${winLabel}`);
+	if (plan.fusion && st.fusion) {
+		rightParts.push(renderFusionStatus(st.fusion));
+	} else {
+		if (st.modelName) rightParts.push(st.modelName);
+		if (st.thinkingLevel && st.thinkingLevel !== "off") {
+			rightParts.push(`thinking:${st.thinkingLevel}`);
+		}
+	}
+	return rightParts.join(SEP);
+}
+
+/**
+ * Minimal width the top and bottom lines need under a badge plan (filler at
+ * its 2-column minimum). Badge drops are chosen against these numbers; the
+ * final truncateToWidth calls stay as the safety net. (Exported for tests.)
+ */
+export function measureFrameLines(st: GlanceStatus, plan: BadgeToggles): { top: number; bottom: number } {
+	const { title, cluster } = composeTopParts(st, plan);
+	const titleText = ` ${title}${SEP}`;
+	const top = 1 + 2 + visibleWidth(stripControls(titleText)) + 2 + visibleWidth(stripControls(cluster)) + 1;
+	const { leftTitle } = composeGlanceTitles("UNIPI", null, st.workspace);
+	const bottom = 8 + visibleWidth(stripControls(leftTitle)) + visibleWidth(stripControls(composeBottomCluster(st, plan)));
+	return { top, bottom };
 }
 
 export class GlanceEditor extends CustomEditor {
@@ -280,22 +367,29 @@ export class GlanceEditor extends CustomEditor {
 		const st = this.glance();
 		const border = this.borderColor.bind(this);
 
+		// ── Badge plan: drop kanboard → fusion → plan/permission → mode when
+		// either border would overflow; branch/model only truncate afterwards.
+		const plan = planFrameBadges(st.badges, (p) => {
+			const m = measureFrameLines(st, p);
+			return m.top <= safe && m.bottom <= safe;
+		});
+
 		// ── Top frame: ╭─ 󰚩 UNIPI │  feat/... │ ───────────────╮ ──
 		// Brand rendered as an animated lolcat gradient (phase from wall time;
-		// the footer's 1s refresh timer re-renders, so it shimmers each tick).
-		const brand = lolcatRainbow("UNIPI", Date.now() / 1000);
-		const { titleParts, leftTitle } = composeGlanceTitles(brand, st.branch, st.workspace, st.lhMode, st.kanboard);
-		const title = titleParts.join(SEP);
+		// refresh ticks re-render, so it shimmers while lines change).
+		const brand = st.rainbow === "off" ? "UNIPI" : lolcatRainbow("UNIPI", Date.now() / 1000);
+		const { title } = composeTopParts(st, plan, brand);
 		const leadRule = `${BORDER.horizontal} `;
 		const titleText = ` ${title}${SEP}`;
-		// Right-aligned PLAN/permission cluster. Narrow terminals drop the
-		// permission label first; the final truncateToWidth trims the rest.
+		// Right-aligned PLAN/permission cluster (badge plan permitting). Narrow
+		// terminals drop the permission label first; the final truncateToWidth
+		// trims the rest.
 		const plainLead = visibleWidth(stripControls(leadRule + titleText));
 		const { cluster: topCluster, filler: topFiller } = planTopFrameWidths(
 			safe,
 			plainLead,
-			st.planMode,
-			st.permissionMode,
+			plan.planPermission ? st.planMode : false,
+			plan.planPermission ? st.permissionMode : null,
 		);
 		const top =
 			border(BORDER.topLeft) +
@@ -310,22 +404,11 @@ export class GlanceEditor extends CustomEditor {
 		const bodyRows = contentLines.map(row => " " + truncateToWidth(row, inner, ""));
 
 		// ── Bottom frame: ╰─ unipi ─────── [RIGHT CLUSTER] ─╯ ──
-		// Right cluster: workspace · pct%/window │ model │ thinking:level
-		const rightParts: string[] = [];
-		const ctxPct = st.contextPct !== null ? Math.max(0, Math.min(100, st.contextPct)) : null;
-		const pctLabel = ctxPct !== null ? `${Math.round(ctxPct)}%` : "?%";
-		const winLabel = st.contextWindow > 0 ? `/${fmtTokens(st.contextWindow)}` : "";
-		rightParts.push(`${pctLabel}${winLabel}`);
-		if (st.fusion) {
-			rightParts.push(renderFusionStatus(st.fusion));
-		} else {
-			if (st.modelName) rightParts.push(st.modelName);
-			if (st.thinkingLevel && st.thinkingLevel !== "off") {
-				rightParts.push(`thinking:${st.thinkingLevel}`);
-			}
-		}
-		// Workspace label per icon style (glyph prefix, or workspace: in text mode).
-		let cluster = rightParts.join(SEP);
+		// Right cluster: pct%/window │ fusion pair or model │ thinking:level.
+		// Fusion drops via the badge plan first; the shrink policy below only
+		// ever pops the thinking slot, then the model tail.
+		const leftTitle = composeGlanceTitles("UNIPI", null, st.workspace).leftTitle;
+		let cluster = composeBottomCluster(st, plan);
 
 		// Shrink policy for narrow terminals: thinking first, then model tail.
 		const maxCluster = inner - visibleWidth(leftTitle) - 8;
@@ -358,10 +441,12 @@ export class GlanceEditor extends CustomEditor {
 			truncateToWidth(bottom, safe),
 		];
 
-		// Thinking max/xhigh: the whole frame flows with an animated lolcat
-		// gradient (phase from wall time; 1s refresh ticks drive the motion;
-		// row offset makes the rainbow flow diagonally like full-screen lolcat).
-		if (GlanceEditor.isThinkingHot(st.thinkingLevel)) {
+		// Thinking max/xhigh + rainbow=always: the whole frame flows with an
+		// animated lolcat gradient (phase from wall time; refresh ticks drive
+		// the motion; row offset makes the rainbow flow diagonally like
+		// full-screen lolcat). rainbow=brand-only never paints the frame;
+		// rainbow=off only skips animation — the brand already renders plain.
+		if (st.rainbow === "always" && GlanceEditor.isThinkingHot(st.thinkingLevel)) {
 			const phase = Date.now() / 700;
 			for (let i = 0; i < lines.length; i++) {
 				lines[i] = truncateToWidth(this.paintLolcatLine(lines[i], phase + i * 0.5), safe);

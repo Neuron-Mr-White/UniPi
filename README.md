@@ -44,8 +44,9 @@ This screenshot shows one turn in a demo session:
 - **Memory** finds the test setup from an earlier session and saves a new fact
   for later sessions.
 - **The glance footer** frames the input box. It shows the git branch, the
-  mode, the context use and the model. The strip below it shows turns, steps,
-  wall time, tool time, time to first token, tokens per second and cache hits.
+  mode, the context use and the model. The strip below it shows tokens in and
+  out, cost, speed, turns, time and cache hits. It fits itself to the window:
+  on a narrow screen the less important parts drop out first.
 
 ## Why UniPi
 
@@ -241,10 +242,10 @@ The recent releases, in short. The [changelog](CHANGELOG.md) has the details.
 
 | Release | What changed for you |
 |---|---|
+| alpha.27 | The footer shows tokens in and out and the session cost under the input. It fits narrow and short windows. Each part of the stats line, the frame badges and the rainbow can be turned off in `/unipi:settings` → Footer. The classic footer is gone. |
 | alpha.25 | The Unicrab splash at startup. A new `/unipi:info`: this session, the context bucket, compaction savings and `s`/`p`/`g` scope tags. Prompts that UniPi sends for you (goal, summarize, answer) show as a UniPi panel, not as your own message. |
 | alpha.24 | The `summarize` skill and `/unipi:summarize [focus]`. Long work ends with a short recap: the answer first, then findings, open items and questions. |
 | alpha.23 | `/unipi:settings` explains each setting and each option in a panel below the list. Web tools with no working provider hide from the agent. |
-| alpha.22 | Simple mode is the default. Each tool call is one line, and `Ctrl+O` opens it. Images no longer overlap the text below them. |
 
 ## Docs
 

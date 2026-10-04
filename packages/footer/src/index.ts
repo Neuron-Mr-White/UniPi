@@ -1,118 +1,92 @@
 /**
  * @pi-unipi/footer — Extension entry point
  *
- * Main extension function that registers commands, subscribes to events,
- * initializes renderer on session_start.
+ * Registers commands, wires the TPS streaming hooks, installs the glance
+ * editor + widgets on session_start, and runs the 1s incremental branch scan
+ * that feeds the tracker and the strip snapshot.
  */
 
-import type { ExtensionAPI, Theme, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, UNIPI_PREFIX, FOOTER_COMMANDS, getSharedFusionStatus, getSharedKanboardStatus, getSharedLongHorizonMode, getSharedPlanPermissionStatus } from "@pi-unipi/core";
-import { FooterRegistry, getFooterRegistry } from "./registry/index.js";
-import { FooterRenderer } from "./rendering/renderer.js";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
+import {
+  UNIPI_EVENTS,
+  emitEvent,
+  UNIPI_PREFIX,
+  FOOTER_COMMANDS,
+  getSharedFusionStatus,
+  getSharedKanboardStatus,
+  getSharedLongHorizonMode,
+  getSharedPlanPermissionStatus,
+  getPackageVersion,
+  findPackageRoot,
+} from "@pi-unipi/core";
+import { getFooterRegistry, type FooterRegistry } from "./registry/index.js";
 import { subscribeToEvents } from "./events.js";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
-import { getPreset } from "./presets.js";
 import { registerCommands } from "./commands.js";
 import { GlanceEditor } from "./glance-editor.js";
-
-// Import segment groups
-import { CORE_SEGMENTS } from "./segments/core.js";
-import { COMPACTOR_SEGMENTS, compactionSummary } from "./segments/compactor.js";
-import { MEMORY_SEGMENTS } from "./segments/memory.js";
-import { MCP_SEGMENTS } from "./segments/mcp.js";
-import { RALPH_SEGMENTS } from "./segments/ralph.js";
-import { WORKFLOW_SEGMENTS } from "./segments/workflow.js";
-import { KANBOARD_SEGMENTS } from "./segments/kanboard.js";
-import { NOTIFY_SEGMENTS } from "./segments/notify.js";
-import { STATUS_EXT_SEGMENTS } from "./segments/status-ext.js";
-
-import type { FooterGroup, FooterSegment } from "./types.js";
+import type { GlanceStatus } from "./glance-editor.js";
 import { tpsTracker } from "./tps-tracker.js";
-import { renderProcessLine } from "./process-line.js";
+import { renderProcessLine, countBgProcesses } from "./process-line.js";
 import { MODE_LABELS } from "./segments/long-horizon.js";
+import { SessionScanner } from "./session-scan.js";
+import { renderSessionStrip, stripVisibleAtRows } from "./strip.js";
+import { setIconStyle } from "./rendering/icons.js";
 
-/** All segment groups */
-const ALL_GROUPS: FooterGroup[] = [
-  { id: "core", name: "Core", segments: CORE_SEGMENTS, defaultShow: true },
-  { id: "compactor", name: "Compactor", segments: COMPACTOR_SEGMENTS, defaultShow: true },
-  { id: "memory", name: "Memory", segments: MEMORY_SEGMENTS, defaultShow: true },
-  { id: "mcp", name: "MCP", segments: MCP_SEGMENTS, defaultShow: true },
-  { id: "ralph", name: "Ralph", segments: RALPH_SEGMENTS, defaultShow: true },
-  { id: "workflow", name: "Workflow", segments: WORKFLOW_SEGMENTS, defaultShow: true },
-  { id: "kanboard", name: "Kanboard", segments: KANBOARD_SEGMENTS, defaultShow: true },
-  { id: "notify", name: "Notify", segments: NOTIFY_SEGMENTS, defaultShow: false },
-  { id: "status_ext", name: "Extensions", segments: STATUS_EXT_SEGMENTS, defaultShow: true },
-];
-
-/** Build a segment lookup from all groups */
-function buildSegmentLookup(): Map<string, FooterSegment> {
-  const map = new Map<string, FooterSegment>();
-  for (const group of ALL_GROUPS) {
-    for (const segment of group.segments) {
-      map.set(segment.id, segment);
-    }
-  }
-  return map;
-}
+/** Package version (from this package's package.json). */
+const VERSION = getPackageVersion(
+  findPackageRoot(dirname(fileURLToPath(import.meta.url)), "@pi-unipi/footer") ?? dirname(fileURLToPath(import.meta.url)),
+);
 
 /** Extension state */
 export interface FooterState {
   enabled: boolean;
   registry: FooterRegistry;
-  renderer: FooterRenderer;
-  segmentLookup: Map<string, FooterSegment>;
   unsubscribeEvents: (() => void) | null;
   piContext: unknown;
   footerData: unknown;
-  tuiRef: import("@earendil-works/pi-tui").TUI | null | undefined;
+  tuiRef: TUI | null | undefined;
   refreshTimer: ReturnType<typeof setInterval> | null;
   /** Glance-style editor component installed */
   glanceInstalled: boolean;
-  /** Glance experiment active (frame input + strip, classic row suppressed) */
-  glanceMode: boolean;
   /** Deferred install timer (focus-safety deferral past the boot overlay) */
   glanceInstallTimer: ReturnType<typeof setTimeout> | null;
+  /** Incremental branch scanner (tracker feeding + strip snapshot). */
+  scanner: SessionScanner;
+  /** Cheap key of everything the tick renders — requestRender only on change. */
+  lastRenderKey: string;
+  /** Background tool calls currently open (render-key input). */
+  activeToolCalls: number;
   /** Re-register footer + widgets with pi UI (for live enable) */
   setupUI: ((pi: ExtensionAPI, ctx: ExtensionContext) => void) | null;
 }
 
 export default function footerExtension(pi: ExtensionAPI): void {
-  // Build segment lookup
-  const segmentLookup = buildSegmentLookup();
-
   // Create state
   const state: FooterState = {
     enabled: true,
     registry: getFooterRegistry(),
-    renderer: new FooterRenderer(
-      getFooterRegistry(),
-      { get: (id: string) => segmentLookup.get(id), allIds: () => Array.from(segmentLookup.keys()) },
-      loadFooterSettings().preset,
-    ),
-    segmentLookup,
     unsubscribeEvents: null,
     piContext: null,
     footerData: null,
     tuiRef: null,
     refreshTimer: null,
     glanceInstalled: false,
-    glanceMode: true,
     glanceInstallTimer: null,
+    scanner: new SessionScanner(),
+    lastRenderKey: "",
+    activeToolCalls: 0,
     setupUI: null,
   };
-
-  // Register all groups in the registry
-  for (const group of ALL_GROUPS) {
-    state.registry.registerGroup(group);
-  }
 
   // ─── TPS streaming-event hooks (registered once) ────────────────────────
   // pi.on() has no unsubscribe, so we register these exactly once at factory
   // time (not per session_start) to avoid duplicate handlers accumulating
   // across session restarts. The streamingIndex counter is reset on each
-  // session_shutdown. These hooks feed the TPS tracker in real time; the
-  // 1s branch-scan in the refresh timer only reconciles persisted messages.
+  // session_shutdown. These hooks feed the TPS tracker in real time; the 1s
+  // incremental scan only reconciles persisted messages.
   wireTpsStreamingEvents(pi);
 
   // TTFT request boundary (harness semantics): turn_start = "agent started".
@@ -130,10 +104,20 @@ export default function footerExtension(pi: ExtensionAPI): void {
 
   // Tool wall time: call → result pairs matched by callId.
   pi.on("tool_execution_start", ((event: { toolCallId?: string }) => {
-    try { if (event?.toolCallId) tpsTracker.onToolCallStart(event.toolCallId); } catch { /* best-effort */ }
+    try {
+      if (event?.toolCallId) {
+        tpsTracker.onToolCallStart(event.toolCallId);
+        state.activeToolCalls++;
+      }
+    } catch { /* best-effort */ }
   }) as (event: unknown) => void);
   pi.on("tool_execution_end", ((event: { toolCallId?: string }) => {
-    try { if (event?.toolCallId) tpsTracker.onToolCallEnd(event.toolCallId); } catch { /* best-effort */ }
+    try {
+      if (event?.toolCallId) {
+        tpsTracker.onToolCallEnd(event.toolCallId);
+        state.activeToolCalls = Math.max(0, state.activeToolCalls - 1);
+      }
+    } catch { /* best-effort */ }
   }) as (event: unknown) => void);
 
   // ─── Session lifecycle ──────────────────────────────────────────────────
@@ -141,10 +125,16 @@ export default function footerExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     const settings = loadFooterSettings();
     state.enabled = settings.enabled;
-    state.glanceMode = settings.glanceMode !== false; // default ON
     state.piContext = ctx;
-    state.renderer.setPreset(settings.preset);
-    state.renderer.setActive(settings.enabled);
+    setIconStyle(settings.iconStyle);
+
+    // Announce the module regardless of UI availability.
+    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+      name: "@pi-unipi/footer",
+      version: VERSION,
+      commands: [`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`],
+      tools: [],
+    });
 
     if (!settings.enabled || !ctx.hasUI) return;
 
@@ -161,10 +151,12 @@ export default function footerExtension(pi: ExtensionAPI): void {
     state.glanceInstallTimer = setTimeout(() => installGlanceEditor(state, ctx), 3500);
 
     // Sync TPS cursor with persisted assistant messages so streaming-hook
-    // indexes match the reconciliation scan's branch-local indexes.
+    // indexes match the scan's branch-local indexes, then take the first
+    // (full) scan so the strip has data before the first tick.
     tpsTracker.reset();
     resetTpsStreamingIndex();
     cursorSyncCount(ctx);
+    fullRescan(state);
 
     // Setup footer + widgets
     setupFooterUI(pi, ctx, state);
@@ -172,7 +164,6 @@ export default function footerExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
-    state.renderer.setActive(false);
     if (state.glanceInstallTimer) {
       clearTimeout(state.glanceInstallTimer);
       state.glanceInstallTimer = null;
@@ -186,6 +177,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
       state.refreshTimer = null;
     }
     state.tuiRef = null;
+    state.lastRenderKey = "";
     tpsTracker.reset();
     resetTpsStreamingIndex();
   });
@@ -193,17 +185,6 @@ export default function footerExtension(pi: ExtensionAPI): void {
   // ─── Register commands ──────────────────────────────────────────────────
 
   registerCommands(pi, state);
-
-  // ─── Emit MODULE_READY ──────────────────────────────────────────────────
-
-  pi.on("session_start", async () => {
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
-      name: "@pi-unipi/footer",
-      version: "0.1.0",
-      commands: [`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`, `${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER_HELP}`],
-      tools: [],
-    });
-  });
 }
 
 // ─── Footer UI setup ────────────────────────────────────────────────────────
@@ -213,113 +194,27 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
   ctx.ui.setFooter((tui, _theme, footerData) => {
     state.tuiRef = tui;
 
-    // Start periodic refresh for time-sensitive segments (e.g. clock, TPS)
+    // Periodic refresh for time-sensitive data (TPS, compaction age, bg
+    // tasks). The scan is incremental: new branch entries only, with a full
+    // rescan on branch change/compaction; requestRender fires only when the
+    // rendered key changes.
     if (!state.refreshTimer) {
       state.refreshTimer = setInterval(() => {
-        // Re-seed TPS tracker from the session branch on each tick.
-        // Streaming events (message_start/update/end) handle live updates
-        // in real time; this scan reconciles the tracker with persisted
-        // messages after compactions, branch switches, or session reloads
-        // where in-flight streaming state may have been lost.
-        try {
-          const piCtx = state.piContext as Record<string, unknown> | undefined;
-          if (piCtx?.sessionManager) {
-            const sm = (piCtx as any).sessionManager;
-            const events = sm?.getBranch?.() ?? [];
-            let msgIndex = 0;
-            let userCount = 0;
-            let firstAssistantTs = 0;
-            let lastAssistantTs = 0;
-            let prevAssistantTs = 0;
-            // Branch-derived tool time: pending callId → assistant msg ts.
-            const pendingToolCalls = new Map<string, number>();
-            let branchToolMs = 0;
-            for (const e of events) {
-              if (!e || typeof e !== "object") continue;
-              if (e.type !== "message") continue;
-              const m = e.message;
-              if (!m) continue;
-              // Branch-derived turn/wall accounting: user messages delimit
-              // turns; assistant timestamps bound the session wall time.
-              const ts = Date.parse((e as any).timestamp ?? "") || 0;
-              if (m.role === "user") {
-                userCount++;
-                continue;
-              }
-              if (m.role === "toolResult") {
-                // Pair back to the assistant that issued this call.
-                const callId = (m as any).toolCallId as string | undefined;
-                if (callId && pendingToolCalls.has(callId)) {
-                  const issuedAt = pendingToolCalls.get(callId)!;
-                  pendingToolCalls.delete(callId);
-                  if (ts > issuedAt) branchToolMs += Math.min(ts - issuedAt, 600_000);
-                }
-                continue;
-              }
-              if (m.role !== "assistant") continue;
-              if (m.stopReason === "error" || m.stopReason === "aborted") continue;
-              if (ts > 0) {
-                if (firstAssistantTs === 0 || ts < firstAssistantTs) firstAssistantTs = ts;
-                if (ts > lastAssistantTs) lastAssistantTs = ts;
-              }
-              const hasStop = !!m.stopReason;
-              // Pass the whole message: completed messages get anchored to
-              // exact provider usage.output; in-flight ones density-estimated.
-              tpsTracker.onMessageUpdate(msgIndex, m, hasStop);
-              // Register this message's tool calls for result pairing.
-              // Block type is "toolCall" (capital C) in persisted sessions.
-              const content = m.content as Array<{ type?: string; id?: string }> | undefined;
-              if (Array.isArray(content)) {
-                for (const block of content) {
-                  const btype = String((block as any)?.type ?? "").toLowerCase();
-                  const callId = (block as any)?.id;
-                  if ((btype === "toolcall" || btype === "tool_use") && typeof callId === "string" && ts > 0) {
-                    pendingToolCalls.set(callId, ts);
-                  }
-                }
-              }
-              // TTFT seed AFTER record creation: prev assistant ts ≈ request
-              // bound, own ts ≈ first output. No-ops once hooks give samples.
-              if (ts > 0) {
-                tpsTracker.seedTtftFallback(prevAssistantTs, ts, msgIndex);
-                prevAssistantTs = ts;
-              }
-              msgIndex++;
-            }
-            tpsTracker.syncBranchStats(userCount, msgIndex);
-            // NOTE: no per-record duration seeding here on purpose. Timestamps
-            // alone cannot mark stream END — a 'next-entry' delta would include
-            // tool runs + user think-time inside the rate window (the bug that
-            // made 100-tok/s models read ~7 tok/s). AVG now uses only
-            // hook-measured decode windows; see getSessionAvgTps().
-            if (lastAssistantTs > firstAssistantTs) {
-              tpsTracker.syncWallMs(lastAssistantTs - firstAssistantTs);
-            }
-            tpsTracker.syncToolMs(branchToolMs);
-          }
-        } catch {
-          // Silently ignore — TPS is best-effort
-        }
-        state.renderer.resetLayoutCache();
-        state.tuiRef?.requestRender();
+        tickScan(state);
       }, 1_000);
     }
     state.footerData = footerData;
-    state.renderer.setContext(state.piContext, footerData);
 
     const unsub = footerData.onBranchChange(() => {
-      // Branch indexes are relative to the current branch. Re-sync the TPS
-      // hook cursor and rebuild tracker records for the new branch.
-      tpsTracker.reset();
-      resetTpsStreamingIndex();
-      cursorSyncCount(state.piContext);
-      state.renderer.resetLayoutCache();
+      // Branch indexes are relative to the current branch. Drop all scan
+      // state; the next tick (or the call below) rebuilds from scratch.
+      fullRescan(state);
     });
 
     return {
       dispose: unsub,
       invalidate() {
-        state.renderer.resetLayoutCache();
+        state.lastRenderKey = "";
       },
       render(): string[] {
         return [];
@@ -327,98 +222,143 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
     };
   });
 
-  // Top row widget — dual role. Classic mode: status segment line. Glance
-  // mode: the bg-process one-liner, rendered directly above the glance frame
-  // (the frame replaces the editor, so this aboveEditor slot sits right above
-  // the footer); the frame's own borders show branch/context/model/thinking.
-  ctx.ui.setWidget("footer-top", (_tui, theme) => {
-    // Update the renderer's theme-like
-    const themeLike = { fg: (color: string, text: string) => theme.fg(color as any, text) };
-    // We need to patch the context with proper theme
-    state.renderer.setContext(state.piContext, state.footerData);
-
+  // Top row widget — the bg-process one-liner, rendered directly above the
+  // glance frame (the frame replaces the editor, so this aboveEditor slot sits
+  // right above the footer); the frame's own borders show
+  // branch/context/model/thinking.
+  ctx.ui.setWidget("footer-top", (tui, _theme) => {
+    state.tuiRef = tui;
     return {
       dispose() {},
-      invalidate() {
-        state.renderer.resetLayoutCache();
-      },
+      invalidate() {},
       render(width: number): string[] {
-        if (!state.enabled || !state.piContext || width <= 0) return [];
-        // Glance mode: this slot becomes the bg-process one-liner.
-        if (state.glanceMode) return renderProcessLine(width);
-        const layout = state.renderer.computeLayout(width);
-        if (!layout.topContent) return [];
-
-        // Hard safety net: never return a line wider than the terminal.
-        // This catches any edge cases in layout math or visibleWidth()
-        // inconsistencies with PUA characters + ANSI codes.
-        // Cap at width - 1 (issue #31): a line at EXACTLY the terminal width
-        // trips immediate-wrap terminals and desyncs the diff renderer.
-        const line = layout.topContent;
-        const cap = Math.max(1, width - 1);
-        return [visibleWidth(line) > cap ? truncateToWidth(line, cap) : line];
+        const settings = loadFooterSettings();
+        if (!state.enabled || !settings.processLine || !state.piContext || width <= 0) return [];
+        if (!stripVisibleAtRows(terminalRows(tui))) return [];
+        return renderProcessLine(width);
       },
     };
   }, { placement: "aboveEditor" });
 
   // Secondary row widget — glance-style session strip
-  ctx.ui.setWidget("footer-secondary", (_tui, theme) => {
+  ctx.ui.setWidget("footer-secondary", (tui, _theme) => {
+    state.tuiRef = tui;
     return {
       dispose() {},
-      invalidate() {
-        state.renderer.resetLayoutCache();
-      },
+      invalidate() {},
       render(width: number): string[] {
-        if (!state.enabled || !state.glanceMode || !state.piContext || width <= 0) return [];
-        const strip = renderSessionStrip(state.piContext);
-        if (!strip) return [];
-        // Centered under the input box.
-        const w = visibleWidth(strip);
-        // Truncate one column short of the terminal (issue #31 — same wrap
-        // desync as the glance frame; see glanceFrameWidth()).
-        if (w >= width) return [truncateToWidth(strip, Math.max(1, width - 1))];
-        const leftPad = Math.floor((width - w) / 2);
-        return [" ".repeat(leftPad) + strip];
+        const settings = loadFooterSettings();
+        if (!state.enabled || !state.piContext || width <= 0) return [];
+        if (!stripVisibleAtRows(terminalRows(tui))) return [];
+        return renderSessionStrip(settings, state.scanner.snapshot, state.piContext, width);
       },
     };
   }, { placement: "belowEditor" });
 }
 
-/**
- * Install the GlanceEditor via ctx.ui.setEditorComponent. Safe to call
- * repeatedly; no-ops when already installed, when glance mode is off, or
- * without a UI. Failures fall back to pi's default input box.
- */
-/**
- * Apply glanceMode live: install or remove the GlanceEditor and re-render.
- * Called from the settings overlay's onSettingsChanged callback. Removing
- * (setEditorComponent(undefined)) restores pi's default editor.
- */
-export function applyGlanceMode(
-  st: FooterState,
-  cmdCtx: { ui: { setEditorComponent(f: never): void }; hasUI: boolean },
-): void {
-  if (!cmdCtx.hasUI) return;
-  if (st.glanceInstallTimer) {
-    clearTimeout(st.glanceInstallTimer);
-    st.glanceInstallTimer = null;
+/** Terminal rows via pi-tui (undefined-safe → visible when unknown). */
+function terminalRows(tui: TUI | null | undefined): number | undefined {
+  try {
+    const rows = (tui as unknown as { terminal?: { rows?: number } } | null | undefined)?.terminal?.rows;
+    return typeof rows === "number" ? rows : undefined;
+  } catch {
+    return undefined;
   }
-  if (st.glanceMode) {
-    installGlanceEditor(st, cmdCtx);
-  } else {
-    try { cmdCtx.ui.setEditorComponent(undefined as never); } catch { /* already gone */ }
-    st.glanceInstalled = false;
-  }
-  st.tuiRef?.requestRender();
 }
 
-function installGlanceEditor(
+/**
+ * One 1s tick: feed new branch entries to the tracker/scanner (full reset+
+ * rescan when the branch changed shape), then requestRender only when the
+ * rendered key changed.
+ */
+function tickScan(state: FooterState): void {
+  if (!state.enabled) return; // /unipi:footer off — nothing to scan or draw
+  try {
+    const piCtx = state.piContext as Record<string, unknown> | undefined;
+    const sm = piCtx?.sessionManager as { getBranch?: () => unknown[] } | undefined;
+    const events = sm?.getBranch?.() ?? [];
+    if (state.scanner.needsFullRescan(events)) {
+      fullRescan(state, events);
+    } else {
+      state.scanner.scan(events);
+    }
+  } catch {
+    // Silently ignore — TPS/strip data is best-effort
+  }
+  requestRenderIfChanged(state);
+}
+
+/**
+ * Drop all scan state and rebuild from the current branch: tracker reset,
+ * streaming-hook cursor resync, fresh snapshot. Used on session_start,
+ * branch change, compaction, and live re-enable. (Exported for commands.ts.)
+ */
+export function fullRescan(state: FooterState, events?: readonly unknown[]): void {
+  try {
+    const branch = events ?? (() => {
+      const piCtx = state.piContext as Record<string, unknown> | undefined;
+      const sm = piCtx?.sessionManager as { getBranch?: () => unknown[] } | undefined;
+      return sm?.getBranch?.() ?? [];
+    })();
+    state.scanner.reset();
+    tpsTracker.reset();
+    resetTpsStreamingIndex();
+    cursorSyncCount(state.piContext);
+    state.scanner.scan(branch);
+  } catch {
+    // Silently ignore — TPS/strip data is best-effort
+  }
+  state.lastRenderKey = "";
+}
+
+/**
+ * Cheap key over everything the tick displays. A tick only calls
+ * requestRender() when this changes: snapshot sums, compaction age bucket,
+ * streaming state, open tool calls, background-task counts.
+ */
+function renderKey(state: FooterState): string {
+  const s = state.scanner.snapshot;
+  const age = s.compactionLastAt != null
+    ? Math.floor((Date.now() - s.compactionLastAt) / 60_000)
+    : "";
+  const bg = countBgProcesses();
+  return [
+    s.userCount,
+    s.assistantCount,
+    s.input,
+    s.output,
+    s.cost.toFixed(2),
+    s.compactionCount,
+    age,
+    tpsTracker.isStreaming() ? "S" : "",
+    state.activeToolCalls,
+    bg ? `${bg.running}/${bg.stopped}/${bg.failed}/${bg.done}` : "",
+    tpsTracker.getStepCount(),
+    // Rainbow brand animates with wall time — keep the 1s shimmer when on.
+    loadFooterSettings().rainbow !== "off" ? Math.floor(Date.now() / 1000) : "",
+  ].join("|");
+}
+
+function requestRenderIfChanged(state: FooterState): void {
+  const key = renderKey(state);
+  if (key === state.lastRenderKey) return;
+  state.lastRenderKey = key;
+  state.tuiRef?.requestRender();
+}
+
+/**
+ * Install the GlanceEditor via ctx.ui.setEditorComponent. Safe to call
+ * repeatedly; no-ops when already installed, when the footer is disabled, or
+ * without a UI. Failures fall back to pi's default input box.
+ * (Exported for the glance-focus regression tests.)
+ */
+export function installGlanceEditor(
   st: FooterState,
   uiHost: { ui: { setEditorComponent(f: unknown): void } },
 ): void {
-  if (st.glanceInstalled || !st.piContext || !st.glanceMode) return;
+  if (st.glanceInstalled || !st.piContext || !st.enabled) return;
   try {
-    const tui = st.tuiRef as (import("@earendil-works/pi-tui").TUI & {
+    const tui = st.tuiRef as (TUI & {
       isOverlayFocused?: () => boolean;
       getFocusedComponent?: () => import("@earendil-works/pi-tui").Component | null;
     }) | null | undefined;
@@ -431,7 +371,8 @@ function installGlanceEditor(
     const cwd = (piCtx?.sessionManager as any)?.getCwd?.() ?? (piCtx as any)?.cwd ?? process.cwd();
     const workspace = String(cwd).split("/").filter(Boolean).pop() ?? "~";
     uiHost.ui.setEditorComponent((tui: unknown, theme: unknown, keybindings: unknown) =>
-      new GlanceEditor(tui as never, theme as never, keybindings as never, () => {
+      new GlanceEditor(tui as never, theme as never, keybindings as never, (): GlanceStatus => {
+        const settings = loadFooterSettings();
         const p = st.piContext as Record<string, unknown> | undefined;
         const usage = typeof (p as any)?.getContextUsage === "function"
           ? (p as any).getContextUsage()
@@ -472,6 +413,8 @@ function installGlanceEditor(
           thinkingLevel: typeof p?.thinkingLevel === "string" ? p.thinkingLevel : null,
           fusion,
           kanboard,
+          rainbow: settings.rainbow,
+          badges: settings.badges,
         };
       }),
     );
@@ -502,133 +445,6 @@ function installGlanceEditor(
   } catch {
     st.glanceInstalled = false;
   }
-}
-
-// ─── Glance session strip ──────────────────────────────────────────────────
-
-/** Format ms as stopwatch duration: 00:12 / 00:12:14 (mm:ss past 1h → h:mm:ss). */
-function fmtWall(ms: number): string {
-	if (ms < 1000) return "00:00";
-	const totalSec = Math.floor(ms / 1000);
-	const h = Math.floor(totalSec / 3600);
-	const m = Math.floor((totalSec % 3600) / 60);
-	const s = totalSec % 60;
-	const mm = String(m).padStart(2, "0");
-	const ss = String(s).padStart(2, "0");
-	return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
-/** Cache hit % from the session branch usage; null when no data. */
-function cacheHitPct(piContext: unknown): number | null {
-  try {
-    let input = 0, cacheRead = 0, cacheWrite = 0;
-    const sm = (piContext as Record<string, unknown>)?.sessionManager as any;
-    for (const e of sm?.getBranch?.() ?? []) {
-      const m = e?.message;
-      if (!m || m.role !== "assistant" || !m.usage) continue;
-      input += m.usage.input ?? 0;
-      cacheRead += m.usage.cacheRead ?? 0;
-      cacheWrite += m.usage.cacheWrite ?? 0;
-    }
-    const denom = input + cacheRead + cacheWrite;
-    if (denom <= 0) return null;
-    return Math.round((cacheRead / denom) * 100);
-  } catch {
-    return null;
-  }
-}
-
-/** Basic truecolor accents for strip numbers. */
-const STRIP_COLOR = {
-	count: "\x1b[96m", // cyan — turns/steps
-	time: "\x1b[93m", // amber — wall · tool
-	ttft: "\x1b[95m", // magenta — avg ttft
-	psGood: "\x1b[92m", // green — ≥ 30 tok/s
-	psSlow: "\x1b[91m", // red — < 10 tok/s
-	psMid: "\x1b[97m", // white — in between
-	cacheHit: "\x1b[92m", // green — high hit
-	cacheWarn: "\x1b[93m", // amber — lowish hit
-	compact: "\x1b[94m", // blue — compactions
-	reset: "\x1b[39m",
-} as const;
-
-const c = (code: string, text: string) => `${code}${text}${STRIP_COLOR.reset}`;
-
-function fmtTokensShort(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
-  if (n < 1000000) return `${Math.round(n / 1000)}k`;
-  return `${(n / 1000000).toFixed(1)}M`;
-}
-
-function agoShort(ms: number): string {
-  const sec = Math.max(0, Math.round(ms / 1000));
-  if (sec < 60) return "just now";
-  if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
-  if (sec < 86400) return `${Math.round(sec / 3600)}h ago`;
-  return `${Math.round(sec / 86400)}d ago`;
-}
-
-/**
- * Glance-style centered stats strip under the input:
- *   n Turn · n Steps | wall · tool wall | avg TTFT · n tok/s | n compactions · 39k→13k · 3m ago | cache n%
- */
-function renderSessionStrip(piContext: unknown): string | null {
-  const parts: string[] = [];
-
-  const turns = tpsTracker.getTurnCount();
-  const steps = tpsTracker.getStepCount();
-  if (turns > 0 || steps > 0) {
-    parts.push(`${c(STRIP_COLOR.count, String(turns))} turn \u00b7 ${c(STRIP_COLOR.count, String(steps))} step${steps === 1 ? "" : "s"}`);
-  }
-
-  const llmMs = tpsTracker.getSessionLlmMs();
-  const toolMs = tpsTracker.getToolMs();
-  // Wall + tool time always rendered together once anything is known —
-  // '00:00 · tool 00:00' beats a silently missing slot mid-strip.
-  if (turns > 0 || steps > 0) {
-    parts.push(`${c(STRIP_COLOR.time, fmtWall(llmMs))} \u00b7 tool ${c(STRIP_COLOR.time, fmtWall(toolMs))}`);
-  }
-
-  const ttft = tpsTracker.getAvgTtftMs();
-  let avgTps = tpsTracker.getSessionAvgTps();
-  const tpsColor = avgTps >= 30 ? STRIP_COLOR.psGood : avgTps < 10 ? STRIP_COLOR.psSlow : STRIP_COLOR.psMid;
-  const avgTpsLabel = avgTps >= 100
-    ? String(Math.round(avgTps))
-    : avgTps > 0
-      ? avgTps.toFixed(1)
-      : "0";
-  if (ttft !== null || steps > 0) {
-    const seg = [
-      ttft !== null ? c(STRIP_COLOR.ttft, ttft >= 10000 ? `${Math.round(ttft / 1000)}s` : `${ttft}ms`) + " avg ttft" : null,
-      steps > 0 ? c(tpsColor, `${avgTpsLabel} tok/s`) : null,
-    ].filter(Boolean).join(" \u00b7 ");
-    if (seg) parts.push(seg);
-  }
-
-  // Compactions: hidden until the first one.
-  const branch = (() => {
-    try {
-      return ((piContext as any)?.sessionManager?.getBranch?.() ?? []) as unknown[];
-    } catch {
-      return [];
-    }
-  })();
-  const cmp = compactionSummary(branch);
-  if (cmp.count > 0) {
-    const sizes = cmp.before > 0 ? ` \u00b7 ${c(STRIP_COLOR.compact, `${fmtTokensShort(cmp.before)}\u2192${fmtTokensShort(cmp.after)}`)}` : "";
-    const age = cmp.lastAt != null ? ` \u00b7 ${agoShort(Date.now() - cmp.lastAt)}` : "";
-    parts.push(`${c(STRIP_COLOR.compact, String(cmp.count))} compaction${cmp.count === 1 ? "" : "s"}${sizes}${age}`);
-  }
-
-  const hit = cacheHitPct(piContext);
-  if (hit !== null) {
-    const hitColor = hit >= 70 ? STRIP_COLOR.cacheHit : STRIP_COLOR.cacheWarn;
-    parts.push(c(hitColor, `${hit}% cache hit`));
-  }
-
-  if (parts.length === 0) return null;
-  return parts.join(" | ");
 }
 
 // ─── TPS streaming-event hooks ──────────────────────────────────────────────
@@ -691,10 +507,10 @@ export function cursorSyncCount(piContext: unknown): void {
 
 /**
  * Subscribe to pi's message streaming events and feed the TPS tracker in real
- * time. This complements the 1s branch-scan in the refresh timer, which only
- * sees persisted (completed) messages. Without these hooks the tracker would
- * never observe an in-flight assistant message, so live TPS would stay frozen
- * at the last completed message's value.
+ * time. This complements the 1s scan in the refresh timer, which only sees
+ * persisted (completed) messages. Without these hooks the tracker would never
+ * observe an in-flight assistant message, so live TPS would stay frozen at the
+ * last completed message's value.
  *
  * Registered once at extension-factory time (pi.on has no unsubscribe, so we
  * must not re-register per session_start or handlers would accumulate).

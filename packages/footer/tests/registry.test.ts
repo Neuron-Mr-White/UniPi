@@ -1,43 +1,23 @@
 /**
- * @pi-unipi/footer — Registry tests
+ * @pi-unipi/footer — Registry tests (slimmed data store)
  */
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { FooterRegistry } from "../src/registry/index.ts";
-import type { FooterGroup } from "../src/types.ts";
 
-describe("FooterRegistry", () => {
+describe("FooterRegistry (data store)", () => {
   let registry: FooterRegistry;
 
   beforeEach(() => {
     registry = new FooterRegistry();
   });
 
-  describe("registerGroup", () => {
-    it("registers a group and retrieves it", () => {
-      const group: FooterGroup = {
-        id: "test",
-        name: "Test Group",
-        segments: [],
-        defaultShow: true,
-      };
-      registry.registerGroup(group);
-      assert.equal(registry.getGroup("test"), group);
-    });
-
-    it("getAllGroups returns all registered groups", () => {
-      registry.registerGroup({ id: "a", name: "A", segments: [], defaultShow: true });
-      registry.registerGroup({ id: "b", name: "B", segments: [], defaultShow: true });
-      assert.equal(registry.getAllGroups().length, 2);
-    });
-  });
-
   describe("updateData / getGroupData", () => {
     it("stores and retrieves data", () => {
-      registry.updateData("compactor", { compactions: 5 });
-      const data = registry.getGroupData("compactor") as Record<string, number>;
-      assert.equal(data.compactions, 5);
+      registry.updateData("core", { lhMode: "goal" });
+      const data = registry.getGroupData("core") as Record<string, string>;
+      assert.equal(data.lhMode, "goal");
     });
 
     it("returns undefined for unknown group", () => {
@@ -45,10 +25,10 @@ describe("FooterRegistry", () => {
     });
 
     it("overwrites previous data", () => {
-      registry.updateData("compactor", { compactions: 5 });
-      registry.updateData("compactor", { compactions: 10 });
-      const data = registry.getGroupData("compactor") as Record<string, number>;
-      assert.equal(data.compactions, 10);
+      registry.updateData("core", { permissionMode: "ask" });
+      registry.updateData("core", { permissionMode: "full" });
+      const data = registry.getGroupData("core") as Record<string, string>;
+      assert.equal(data.permissionMode, "full");
     });
   });
 
@@ -56,7 +36,7 @@ describe("FooterRegistry", () => {
     it("calls subscribers when data is updated", () => {
       let callCount = 0;
       registry.subscribe(() => callCount++);
-      registry.updateData("compactor", { compactions: 5 });
+      registry.updateData("core", { planMode: true });
       assert.equal(callCount, 1);
     });
 
@@ -64,27 +44,27 @@ describe("FooterRegistry", () => {
       let callCount = 0;
       const unsub = registry.subscribe(() => callCount++);
       unsub();
-      registry.updateData("compactor", { compactions: 5 });
+      registry.updateData("core", { planMode: true });
       assert.equal(callCount, 0);
     });
 
     it("does not notify when same data is set", () => {
       let callCount = 0;
-      const data = { compactions: 5 };
+      const data = { planMode: true };
       registry.subscribe(() => callCount++);
-      registry.updateData("compactor", data);
-      registry.updateData("compactor", data); // Same reference
+      registry.updateData("core", data);
+      registry.updateData("core", data); // Same reference
       assert.equal(callCount, 1);
     });
   });
 
   describe("invalidateAll", () => {
     it("clears all cached data", () => {
-      registry.updateData("compactor", { compactions: 5 });
-      registry.updateData("memory", { count: 10 });
+      registry.updateData("core", { planMode: true });
+      registry.updateData("other", { count: 10 });
       registry.invalidateAll();
-      assert.equal(registry.getGroupData("compactor"), undefined);
-      assert.equal(registry.getGroupData("memory"), undefined);
+      assert.equal(registry.getGroupData("core"), undefined);
+      assert.equal(registry.getGroupData("other"), undefined);
     });
 
     it("notifies subscribers", () => {

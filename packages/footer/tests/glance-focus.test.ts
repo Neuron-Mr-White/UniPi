@@ -1,13 +1,20 @@
+/**
+ * @pi-unipi/footer — Glance editor focus-safety tests
+ *
+ * Regression coverage for the overlay focus-steal bug: installing the glance
+ * editor must not strand an open overlay's focus (updater prompt, dialogs).
+ */
+
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyGlanceMode, type FooterState } from "../src/index.js";
+import { installGlanceEditor, type FooterState } from "../src/index.js";
 
 const EDITOR_SENTINEL = { name: "editor" };
 const OVERLAY_SENTINEL = { name: "overlay" };
 
 function state(tui: Record<string, unknown>): FooterState {
   return {
-    glanceMode: true,
+    enabled: true,
     glanceInstalled: false,
     piContext: {},
     tuiRef: tui,
@@ -23,12 +30,12 @@ function run(isOverlayFocused: boolean) {
     requestRender: () => undefined,
   };
   const st = state(fakeTui);
-  applyGlanceMode(st, {
+  installGlanceEditor(st, {
     hasUI: true,
     ui: {
       setEditorComponent: () => fakeTui.setFocus(EDITOR_SENTINEL),
     },
-  });
+  } as never);
   return calls;
 }
 
@@ -63,7 +70,7 @@ test("retargets stale overlay preFocus to the new editor", () => {
     requestRender: () => undefined,
   };
   const st = state(fakeTui);
-  applyGlanceMode(st, {
+  installGlanceEditor(st, {
     hasUI: true,
     ui: {
       // pi detaches the old editor and focuses the new one inside setEditorComponent
@@ -71,7 +78,7 @@ test("retargets stale overlay preFocus to the new editor", () => {
         focused = NEW_EDITOR;
       },
     },
-  });
+  } as never);
   assert.equal(overlayStack[0].preFocus, NEW_EDITOR);
   assert.equal(overlayStack[1].preFocus, OVERLAY_SENTINEL);
   assert.equal(overlayStack[2].preFocus, MOUNTED);

@@ -46,7 +46,7 @@ The umbrella package `@pi-unipi/unipi` installs all of them.
 - [Keyboard shortcuts](reference/shortcuts.md).
 - [Settings](reference/settings.md): where settings live and what they do.
 - [Glossary](reference/glossary.md): UniPi terms.
-- [Footer customization](../FOOTER_CUSTOMIZATION.md).
+- [Footer](../packages/footer/README.md): the glance frame and its settings.
 - [Changelog](../CHANGELOG.md).
 
 ## Harness architecture

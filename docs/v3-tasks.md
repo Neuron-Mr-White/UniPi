@@ -71,8 +71,9 @@ Removals and recreations are green-lit to start immediately.
 ### 6. `core` — keep
 - [ ] No planned changes (foundation stays stable; version-compare prerelease fix already landed)
 
-### 7. `footer` — configurability
-- [ ] Improve configurability (segments, layout, per-module toggles)
+### 7. `footer` — configurability ✅ (2026-10-05)
+- [x] Improve configurability — the classic segment renderer is removed (the glance frame is the only footer); glance gained its own settings (per-part strip toggles, rainbow mode, background-task line, frame badges), session tokens/cost joined the stats line, and the strip/frame degrade responsively to terminal width and height (v3 rework)
+- [x] Performance: incremental branch scan (no full replay per tick), cached settings + strip snapshot, redraw only on visible change
 
 ### 8. `fusion` — ux
 - [ ] Improve pairing/picker/runtime UX

@@ -1,105 +1,103 @@
 /**
- * @pi-unipi/footer — Configuration system
+ * @pi-unipi/footer — Configuration
  *
- * Loads/saves footer settings from ~/.pi/agent/settings.json
- * under the `unipi.footer` key.
+ * Footer settings live in the unified engine layout:
+ *   global  ~/.unipi/config/footer/config.json
+ *   project <cwd>/.unipi/config/footer/config.json   (workspace wins)
+ *
+ * Old v2 keys (`preset`, `separator`, `zoneSeparator`, `showFullLabels`,
+ * `groups`, `glanceMode`) are simply ignored — unknown keys never crash.
+ * Legacy `colorMode: "mono"` loads as `"none"`.
+ *
+ * Loads are cached in memory (getSettings reads two files per call and the
+ * strip paints every second). The cache invalidates on every engine write
+ * (`onSet`) and re-stats the config files at most once per second so external
+ * edits are picked up too.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
-import type { FooterSettings, FooterGroupSettings, SeparatorStyle, IconStyle, ColorMode } from "./types.js";
-import { UNIPI_SETTINGS_KEY, getSettings, registerSettings, setSettings } from "@pi-unipi/core";
-import { getFooterRegistry } from "./registry/index.js";
+import { statSync } from "node:fs";
+import {
+  getSettings,
+  globalSettingsPath,
+  projectSettingsPath,
+  registerSettings,
+  setSettings,
+} from "@pi-unipi/core";
+import type { BadgeToggles, ColorMode, FooterSettings, IconStyle, RainbowMode, StripToggles } from "./types.js";
+import { setIconStyle } from "./rendering/icons.js";
 
 /** Default footer settings */
 export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
   enabled: true,
-  preset: "default",
-  glanceMode: true,
-  separator: "powerline-thin",
   iconStyle: "nerd",
-  zoneSeparator: "\u2502", // │
-  showFullLabels: false,
   colorMode: "auto",
-  groups: {
-    core: { show: true, segments: {} },
-    compactor: { show: true, segments: {} },
-    memory: { show: true, segments: {} },
-    mcp: { show: true, segments: {} },
-    ralph: { show: true, segments: {} },
-    workflow: { show: true, segments: {} },
-    kanboard: { show: true, segments: {} },
-    notify: { show: false, segments: {} },
-    status_ext: { show: true, segments: {} },
+  rainbow: "always",
+  processLine: true,
+  strip: {
+    turns: true,
+    time: true,
+    speed: true,
+    tokens: true,
+    cost: true,
+    compactions: true,
+    cache: true,
+  },
+  badges: {
+    mode: true,
+    planPermission: true,
+    fusion: true,
+    kanboard: true,
   },
 };
 
-/**
- * Get the path to pi's settings.json
- */
-function getSettingsPath(): string {
-  const agentDir = process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
-  return path.join(agentDir, "settings.json");
+const COLOR_MODES: readonly ColorMode[] = ["auto", "truecolor", "256", "none"];
+const RAINBOW_MODES: readonly RainbowMode[] = ["always", "brand-only", "off"];
+const ICON_STYLES: readonly IconStyle[] = ["nerd", "emoji", "text"];
+
+function bool(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
-/**
- * Read the raw settings.json file.
- * Returns null if file doesn't exist or is malformed.
- */
-function readSettingsFile(): Record<string, unknown> | null {
-  try {
-    const settingsPath = getSettingsPath();
-    if (!fs.existsSync(settingsPath)) return null;
-    const raw = fs.readFileSync(settingsPath, "utf-8");
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    // Silently ignore — settings read failure falls back to null.
-    return null;
-  }
-}
-
-/**
- * Write settings back to settings.json.
- */
-function writeSettingsFile(settings: Record<string, unknown>): boolean {
-  try {
-    const settingsPath = getSettingsPath();
-    const dir = path.dirname(settingsPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+function toggles<T>(value: unknown, defaults: T): T {
+  const out = { ...defaults } as Record<string, boolean>;
+  if (typeof value === "object" && value !== null) {
+    const raw = value as Record<string, unknown>;
+    for (const key of Object.keys(defaults as Record<string, boolean>)) {
+      out[key] = bool(raw[key], (defaults as Record<string, boolean>)[key]);
     }
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-    return true;
-  } catch {
-    // Silently ignore — settings write failure is non-blocking.
-    return false;
   }
+  return out as T;
 }
 
-/**
- * Load footer settings from settings.json.
- * Falls back to defaults for any missing fields.
- */
-// Registered with the unified settings hub; the engine's migration imports
-// the legacy pi-settings unipi.footer block into the canonical layout once.
-// The "Segments…" page resolves sections from the LIVE FooterRegistry at
-// open time — it replaces the deleted legacy footer overlay.
+/** Registered with the unified settings hub — /unipi:settings → Footer. */
 registerSettings({
   namespace: "footer",
   label: "Footer",
   defaults: DEFAULT_FOOTER_SETTINGS as unknown as Record<string, unknown>,
+  onSet: () => {
+    // Hub/command writes land here — keep the load cache coherent and give
+    // the frame's next paint the new icon style.
+    invalidateFooterSettingsCache();
+    setIconStyle(loadFooterSettings().iconStyle);
+  },
   schema: [
     {
       title: "General",
       fields: [
-        { key: "enabled", type: "boolean", label: "Footer enabled", description: "The status line above the input. Off removes it and every segment entirely." },
-        { key: "glanceMode", type: "boolean", label: "Glance mode", description: "The framed input surface with status in its bottom border. Applies to new renders." },
+        { key: "enabled", type: "boolean", label: "Footer enabled", description: "The glance frame, stats strip and process line. Off leaves the plain pi editor." },
+        {
+          key: "colorMode",
+          type: "enum",
+          label: "Color mode",
+          plainOptions: true,
+          description: "How much color the footer emits.",
+          options: ["auto", "truecolor", "256", "none"],
+        },
         {
           key: "iconStyle",
           type: "enum",
           label: "Icon style",
-          description: "Glyph set for the brand and segment icons (glance frame included).",
+          description: "Glyph set for the brand and frame titles.",
           options: [
             { value: "emoji", label: "emoji", description: "emoji glyphs, always render" },
             { value: "nerd", label: "nerd font", description: "nerd-font glyphs, need a patched font" },
@@ -109,103 +107,118 @@ registerSettings({
       ],
     },
     {
-      title: "Classic footer",
-      description: "Used only when Glance mode is off.",
-      advanced: true,
+      title: "Glance",
+      description: "The stats strip below the input and the frame badges.",
       fields: [
         {
-          key: "preset",
+          key: "rainbow",
           type: "enum",
-          label: "Preset",
-          description: "Which segments appear and in what order.",
-          options: [
-            { value: "default", label: "default", description: "model, git, context, cost, clock — the balanced line" },
-            { value: "classic", label: "classic", description: "the pre-v3 view with more status segments" },
-            { value: "minimal", label: "minimal", description: "mode, model, git, context, clock only" },
-            { value: "compact", label: "compact", description: "minimal plus tps and cost" },
-            { value: "full", label: "full", description: "every segment, incl. servers, loops and tasks" },
-            { value: "ascii", label: "ascii", description: "compact set, safe on any terminal" },
-          ],
-        },
-        {
-          key: "separator",
-          type: "enum",
-          label: "Separator",
+          label: "Rainbow",
           plainOptions: true,
-          description: "Style of the divider drawn between segments.",
-          options: ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"],
+          description: "Which frame parts get the animated rainbow.",
+          options: ["always", "brand-only", "off"],
         },
-        {
-          key: "zoneSeparator",
-          type: "enum",
-          label: "Zone separator",
-          plainOptions: true,
-          description: "Divider between the left, center and right zones.",
-          options: ["│", "╎", "·", "─", "none"],
-        },
-        { key: "showFullLabels", type: "boolean", label: "Full labels", description: "Show each segment's name next to its value." },
-        {
-          key: "colorMode",
-          type: "enum",
-          label: "Color mode",
-          plainOptions: true,
-          description: "How much color the footer emits.",
-          options: ["auto", "truecolor", "256", "mono"],
-        },
-      ],
-    },
-    {
-      title: "Segments",
-      fields: [
-        {
-          key: "segments-page",
-          type: "page",
-          label: "Segments…",
-          description: "Choose which groups and segments appear in the footer.",
-          sections: () =>
-            getFooterRegistry().getAllGroups().map((g) => ({
-              title: g.name,
-              fields: [
-                { key: `groups.${g.id}.show`, type: "boolean" as const, label: `Show ${g.name}`, description: `Show the ${g.name} group in the footer.` },
-                ...g.segments.map((seg) => ({
-                  key: `groups.${g.id}.segments.${seg.id}`,
-                  type: "boolean" as const,
-                  label: seg.label,
-                  description: `Show the ${seg.label} segment in the ${g.name} group.`,
-                })),
-              ],
-            })),
-        },
+        { key: "processLine", type: "boolean", label: "Background tasks line", description: "The one-liner above the input counting background tasks." },
+        { key: "strip.turns", type: "boolean", label: "Strip: turns", description: "Turn and step counters in the stats strip." },
+        { key: "strip.time", type: "boolean", label: "Strip: time", description: "Model time and tool time in the stats strip." },
+        { key: "strip.speed", type: "boolean", label: "Strip: speed", description: "Average time to first token and tokens per second." },
+        { key: "strip.tokens", type: "boolean", label: "Strip: tokens", description: "Session input and output token totals." },
+        { key: "strip.cost", type: "boolean", label: "Strip: cost", description: "Session cost, or sub on subscription models." },
+        { key: "strip.compactions", type: "boolean", label: "Strip: compactions", description: "Compaction count, sizes and recency." },
+        { key: "strip.cache", type: "boolean", label: "Strip: cache", description: "Cache hit percentage." },
+        { key: "badges.mode", type: "boolean", label: "Badge: mode", description: "Long-horizon mode label beside the brand." },
+        { key: "badges.planPermission", type: "boolean", label: "Badge: plan/permission", description: "PLAN badge and permission mode in the top border." },
+        { key: "badges.fusion", type: "boolean", label: "Badge: fusion", description: "Fusion lead and sidekick in the bottom border." },
+        { key: "badges.kanboard", type: "boolean", label: "Badge: kanboard", description: "Kanboard claims label in the top border." },
       ],
     },
   ],
 });
 
-export function loadFooterSettings(): FooterSettings {
-  const footer = getSettings("footer", process.cwd());
-  try {
-    return {
-      enabled: typeof footer.enabled === "boolean" ? footer.enabled : DEFAULT_FOOTER_SETTINGS.enabled,
-      preset: typeof footer.preset === "string" ? footer.preset : DEFAULT_FOOTER_SETTINGS.preset,
-      glanceMode: typeof footer.glanceMode === "boolean" ? footer.glanceMode : DEFAULT_FOOTER_SETTINGS.glanceMode,
-      separator: isValidSeparator(footer.separator) ? footer.separator as SeparatorStyle : DEFAULT_FOOTER_SETTINGS.separator,
-      iconStyle: isValidIconStyle(footer.iconStyle) ? footer.iconStyle as IconStyle : DEFAULT_FOOTER_SETTINGS.iconStyle,
-      zoneSeparator: typeof footer.zoneSeparator === "string" ? footer.zoneSeparator : DEFAULT_FOOTER_SETTINGS.zoneSeparator,
-      showFullLabels: typeof footer.showFullLabels === "boolean" ? footer.showFullLabels : DEFAULT_FOOTER_SETTINGS.showFullLabels,
-      colorMode: isValidColorMode(footer.colorMode) ? footer.colorMode as ColorMode : DEFAULT_FOOTER_SETTINGS.colorMode,
-      groups: mergeGroupSettings(
-        DEFAULT_FOOTER_SETTINGS.groups,
-        footer.groups as Record<string, FooterGroupSettings> | undefined,
-      ),
-    };
-  } catch {
-    // Silently ignore — parse failure falls back to defaults.
-    return { ...DEFAULT_FOOTER_SETTINGS };
+// ─── Load (cached) ──────────────────────────────────────────────────────────
+
+interface SettingsCache {
+  value: FooterSettings;
+  /** Wall time of the last check. */
+  checkedAt: number;
+  /** mtime stamp of both config files at load time. */
+  stamp: string;
+}
+
+let cache: SettingsCache | null = null;
+
+/** Re-stat at most once per second; a load within that window is free. */
+const FRESH_MS = 1000;
+
+function configFileStamp(cwd: string): string {
+  let stamp = "";
+  for (const file of [globalSettingsPath("footer"), projectSettingsPath(cwd, "footer")]) {
+    try {
+      stamp += `${statSync(file).mtimeMs};`;
+    } catch {
+      stamp += "-1;";
+    }
   }
+  return stamp;
+}
+
+/** Read + validate settings from the engine, falling back to defaults. */
+function readFooterSettings(): FooterSettings {
+  let footer: Record<string, unknown>;
+  try {
+    footer = getSettings("footer", process.cwd());
+  } catch {
+    return structuredClone(DEFAULT_FOOTER_SETTINGS);
+  }
+  const colorModeRaw = footer.colorMode;
+  // Legacy "mono" (offered by the old hub, never understood by the code)
+  // means no color.
+  const colorMode: ColorMode =
+    colorModeRaw === "mono" ? "none"
+      : COLOR_MODES.includes(colorModeRaw as ColorMode) ? colorModeRaw as ColorMode
+        : DEFAULT_FOOTER_SETTINGS.colorMode;
+  const rainbow = RAINBOW_MODES.includes(footer.rainbow as RainbowMode)
+    ? footer.rainbow as RainbowMode
+    : DEFAULT_FOOTER_SETTINGS.rainbow;
+  return {
+    enabled: bool(footer.enabled, DEFAULT_FOOTER_SETTINGS.enabled),
+    iconStyle: ICON_STYLES.includes(footer.iconStyle as IconStyle)
+      ? footer.iconStyle as IconStyle
+      : DEFAULT_FOOTER_SETTINGS.iconStyle,
+    colorMode,
+    rainbow,
+    processLine: bool(footer.processLine, DEFAULT_FOOTER_SETTINGS.processLine),
+    strip: toggles(footer.strip, DEFAULT_FOOTER_SETTINGS.strip),
+    badges: toggles(footer.badges, DEFAULT_FOOTER_SETTINGS.badges),
+  };
 }
 
 /**
- * Save footer settings to settings.json.
+ * Load footer settings. Cached in memory; re-checks the config files' mtime
+ * at most once per second, and `saveFooterSettings`/hub writes invalidate
+ * immediately.
+ */
+export function loadFooterSettings(): FooterSettings {
+  const now = Date.now();
+  if (cache && now - cache.checkedAt < FRESH_MS) return cache.value;
+  const cwd = process.cwd();
+  const stamp = configFileStamp(cwd);
+  if (cache && stamp === cache.stamp) {
+    cache.checkedAt = now;
+    return cache.value;
+  }
+  const value = readFooterSettings();
+  cache = { value, checkedAt: now, stamp };
+  return value;
+}
+
+/** Drop the memoized settings so the next load re-reads the engine. */
+export function invalidateFooterSettingsCache(): void {
+  cache = null;
+}
+
+/**
+ * Save footer settings to the global layer.
  * Merges with existing settings (preserves other keys).
  */
 export function saveFooterSettings(partial: Partial<FooterSettings>): boolean {
@@ -215,80 +228,4 @@ export function saveFooterSettings(partial: Partial<FooterSettings>): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Get settings for a specific group.
- * Falls back to defaults if group not configured.
- */
-export function getGroupSettings(groupId: string): FooterGroupSettings {
-  const settings = loadFooterSettings();
-  return settings.groups[groupId] ?? { show: true, segments: {} };
-}
-
-/**
- * Check if a specific segment is enabled.
- * Respects both group-level and segment-level settings.
- */
-export function isSegmentEnabled(groupId: string, segmentId: string): boolean {
-  const groupSettings = getGroupSettings(groupId);
-  if (!groupSettings.show) return false;
-  if (groupSettings.segments && segmentId in groupSettings.segments) {
-    return groupSettings.segments[segmentId] ?? true;
-  }
-  return true;
-}
-
-/**
- * Check if a segment is explicitly enabled by user settings (toggled on).
- * Returns true only if the segment appears in the settings with value `true`.
- * Segments that are enabled by default but not explicitly configured return false.
- */
-export function isSegmentExplicitlyEnabled(groupId: string, segmentId: string): boolean {
-  const settings = loadFooterSettings();
-  const groupSettings = settings.groups[groupId];
-  if (!groupSettings) return false;
-  return groupSettings.segments?.[segmentId] === true;
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function isValidSeparator(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const valid: string[] = ["powerline", "powerline-thin", "slash", "pipe", "dot", "ascii"];
-  return valid.includes(value);
-}
-
-function isValidIconStyle(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const valid: string[] = ["nerd", "emoji", "text"];
-  return valid.includes(value);
-}
-
-function isValidColorMode(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const valid: string[] = ["auto", "truecolor", "256", "none"];
-  return valid.includes(value);
-}
-
-function mergeGroupSettings(
-  defaults: Record<string, FooterGroupSettings>,
-  overrides: Record<string, FooterGroupSettings> | undefined,
-): Record<string, FooterGroupSettings> {
-  const result: Record<string, FooterGroupSettings> = { ...defaults };
-
-  if (!overrides) return result;
-
-  for (const [groupId, groupOverride] of Object.entries(overrides)) {
-    const defaultGroup = result[groupId] ?? { show: true, segments: {} };
-    result[groupId] = {
-      show: typeof groupOverride.show === "boolean" ? groupOverride.show : defaultGroup.show,
-      segments: {
-        ...defaultGroup.segments,
-        ...(groupOverride.segments ?? {}),
-      },
-    };
-  }
-
-  return result;
 }

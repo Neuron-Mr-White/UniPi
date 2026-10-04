@@ -239,7 +239,6 @@ export const UPDATER_DIRS = {
 /** Footer command names */
 export const FOOTER_COMMANDS = {
   FOOTER: "footer",
-  FOOTER_HELP: "footer-help",
 } as const;
 
 /** Compactor defaults */

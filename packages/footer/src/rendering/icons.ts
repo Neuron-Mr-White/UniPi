@@ -8,7 +8,24 @@
  *   - "text"  → Plain text labels (works everywhere, most compact)
  */
 
-import { detectNerdFontSupport } from "./separators.js";
+// ─── Nerd Font detection ────────────────────────────────────────────────
+
+/**
+ * Detect Nerd Font support from the environment.
+ */
+export function detectNerdFontSupport(): boolean {
+  // Explicit overrides
+  if (process.env.POWERLINE_NERD_FONTS === "1") return true;
+  if (process.env.POWERLINE_NERD_FONTS === "0") return false;
+
+  // Ghostty exposes GHOSTTY_RESOURCES_DIR even inside tmux
+  if (process.env.GHOSTTY_RESOURCES_DIR) return true;
+
+  // Check common terminals known to ship/bundle Nerd Fonts
+  const term = (process.env.TERM_PROGRAM || "").toLowerCase();
+  const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];
+  return nerdTerms.some(t => term.includes(t));
+}
 
 // ─── Icon definitions ───────────────────────────────────────────────────────
 

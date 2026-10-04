@@ -59,7 +59,6 @@ Use `--agent` only when the command starts an LLM agent process.
 | Command | Arguments | What it does |
 |---|---|---|
 | `/unipi:footer` | `[on\|off]` | Turns the footer on or off. With no argument, it toggles the footer. |
-| `/unipi:footer-help` | | Shows the footer segment guide. |
 
 ## [fusion](../../packages/fusion/README.md)
 

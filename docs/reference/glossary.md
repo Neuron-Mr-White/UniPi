@@ -57,8 +57,8 @@ alphabetic order. For the design behind the terms, see the
 ## G
 
 **Glance footer**
-: The footer glance mode. It draws a frame around the input box and a live
-  session strip. The `footer` setting `glanceMode` turns it on or off.
+: The footer. It draws a frame around the input box and a live session strip.
+  The `footer` setting `enabled` turns it on or off.
 
 **Goal**
 : A long-horizon mode for one objective. The agent works over many turns until

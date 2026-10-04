@@ -244,7 +244,7 @@ export const HINT_LINES: readonly Hint[] = [
     when: "startup",
   },
 
-  // ─── setting (12) ───────────────────────────────────────────────────────────
+  // ─── setting (13) ───────────────────────────────────────────────────────────
   {
     id: "set.render-style",
     category: "setting",
@@ -317,6 +317,12 @@ export const HINT_LINES: readonly Hint[] = [
     id: "set.info-splash",
     category: "setting",
     text: "Info Screen → Unicrab splash in /unipi:settings: auto-close, stay until a key, or off.",
+    when: "startup",
+  },
+  {
+    id: "set.footer-rainbow",
+    category: "setting",
+    text: "footer.rainbow in /unipi:settings: always, brand-only, or off when the shimmer distracts you.",
     when: "startup",
   },
 
@@ -493,7 +499,7 @@ export const HINT_LINES: readonly Hint[] = [
     teaches: "/unipi:cleanup",
   },
 
-  // ─── whatsnew (12) ───────────────────────────────────────────────────────────
+  // ─── whatsnew (15) ───────────────────────────────────────────────────────────
   {
     id: "new.unicrab",
     category: "whatsnew",
@@ -581,6 +587,28 @@ export const HINT_LINES: readonly Hint[] = [
     text: "Prompts UniPi sends for you (goal, summarize, answer) now show as a UniPi panel, not as you.",
     when: "startup",
     since: "3.0.0-alpha.25",
+  },
+  {
+    id: "new.footer-tokens-cost",
+    category: "whatsnew",
+    text: "The footer now counts tokens in and out and what the session cost, right under the input.",
+    when: "startup",
+    since: "3.0.0-alpha.27",
+  },
+  {
+    id: "new.footer-settings",
+    category: "whatsnew",
+    text: "Too busy down there? /unipi:settings → Footer turns off any stats part, badge or the rainbow.",
+    when: "startup",
+    teaches: "/unipi:settings",
+    since: "3.0.0-alpha.27",
+  },
+  {
+    id: "new.footer-responsive",
+    category: "whatsnew",
+    text: "Shrink the window and the footer drops its least important stats first, no cut-off text.",
+    when: "startup",
+    since: "3.0.0-alpha.27",
   },
 
   // ─── workflow (8) ───────────────────────────────────────────────────────────

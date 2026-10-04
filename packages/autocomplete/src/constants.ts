@@ -118,9 +118,8 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:kanboard-do":       "kanboard",
   "unipi:kanboard-autowork": "kanboard",
 
-  // footer (3 commands)
+  // footer (1 command)
   "unipi:footer":            "footer",
-  "unipi:footer-help":       "footer",
 
   // updater (3 commands)
   "unipi:readme":            "updater",
@@ -183,8 +182,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:compact-help":     "Show compactor command help",
   "unipi:notify-event":     "Toggle a notify event without the TUI: <event> <on|off>",
 
-  "unipi:footer":            "Toggle footer or switch preset",
-  "unipi:footer-help":       "Show footer segment guide",
+  "unipi:footer":            "Toggle footer on or off",
 
   "unipi:readme":            "Browse package README files",
   "unipi:changelog":         "Browse changelog (Keep a Changelog format)",
