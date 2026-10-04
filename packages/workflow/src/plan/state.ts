@@ -16,6 +16,8 @@ export interface PlanSessionState {
   active: boolean;
   /** Absolute path of the only file plan mode may write. */
   planFile: string | null;
+  /** sha1 of the plan content when the user last chose "Keep planning" (not persisted). */
+  lastKeptHash: string | null;
 }
 
 let sessionState: PlanSessionState | null = null;
@@ -40,7 +42,7 @@ export function restorePlanState(
   entries: ReadonlyArray<object>,
   cwd: string,
 ): PlanSessionState {
-  sessionState = { sessionId, active: false, planFile: null };
+  sessionState = { sessionId, active: false, planFile: null, lastKeptHash: null };
   for (const entry of entries) {
     const customType = (entry as { customType?: string }).customType;
     if (customType !== PLAN_STATE_ENTRY) continue;
@@ -57,7 +59,7 @@ export function restorePlanState(
 }
 
 export function resetPlanState(sessionId: string): PlanSessionState {
-  sessionState = { sessionId, active: false, planFile: null };
+  sessionState = { sessionId, active: false, planFile: null, lastKeptHash: null };
   return sessionState;
 }
 

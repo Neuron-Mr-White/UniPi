@@ -7,10 +7,12 @@
  *
  *   - permission modes (ask | auto | full) gate every tool call, with jev
  *     judging ambiguous bash in auto mode;
- *   - plan mode (/unipi:plan, Alt+P) makes a session read-only except for its
- *     plan file.
+ *   - plan mode (/unipi:plan, Alt+P) keeps planning sessions on a leash: writes
+ *     outside the plan file, docs/plans/ and temp dirs are blocked, and
+ *     state-changing shell asks the user first.
  */
 
+import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
@@ -61,8 +63,26 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx: ExtensionContext) => {
     const input = describeToolCall(event);
 
-    const planBlock = enforcePlanMode(input, currentPlanState(ctx.sessionManager.getSessionId()), ctx.cwd);
-    if (planBlock) return planBlock;
+    const plan = enforcePlanMode(
+      input,
+      currentPlanState(ctx.sessionManager.getSessionId()),
+      ctx.cwd,
+      { tmpdir: tmpdir() },
+    );
+    if (plan?.kind === "block") return { block: true, reason: plan.reason };
+    if (plan?.kind === "ask" && permission.mode(ctx.cwd) !== "full") {
+      if (!ctx.hasUI) return { block: true, reason: plan.reason };
+      const outcome = await permission.approve(
+        {
+          toolName: input.toolName,
+          summary: summaryOf(input),
+          reason: plan.reason,
+          subject: input.subject,
+        },
+        ctx,
+      );
+      return outcome.block ? { block: true, reason: outcome.reason } : undefined;
+    }
 
     const decision = await permission.decide(input, ctx);
     if (decision.action === "allow") return undefined;

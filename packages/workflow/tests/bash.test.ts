@@ -222,8 +222,9 @@ describe("kanboard CLI allowance", () => {
     assert.equal(classifyBash("unipi-kanboard --actor agent list && rm -rf /tmp/x").kind, "dangerous");
   });
 
-  it("plan mode does not inherit the allowance", () => {
-    // Plan mode only accepts read-only commands; the board CLI is not one.
+  it("the board CLI is not read-only (plan mode passes it to the permission gate)", () => {
+    // classifyBash marks it `kanboard`, which plan mode lets through; it is not
+    // in the read-only allowlist itself.
     assert.equal(isReadOnlyCommand("unipi-kanboard --actor agent list"), false);
   });
 });
