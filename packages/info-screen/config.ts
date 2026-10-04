@@ -71,30 +71,30 @@ registerSettings({
   defaults: DEFAULT_SETTINGS as unknown as Record<string, unknown>,
   schema: [
     {
-      title: "Boot",
+      title: "Startup",
       fields: [
         {
           key: "bootMode",
           type: "enum",
-          label: "Boot mode",
-          description: "Dashboard behavior at startup.",
+          label: "Unicrab splash",
+          description: "The Unicrab card shown at startup. /unipi:info opens the dashboard any time.",
           options: [
-            { value: "on", label: "on", description: "show the dashboard and leave it open" },
-            { value: "off", label: "off", description: "don't show the dashboard" },
-            { value: "auto-close", label: "auto-close", description: "show it, then close after the timeout" },
+            { value: "auto-close", label: "auto-close", description: "show it, then fade out; never takes your keys" },
+            { value: "on", label: "on", description: "keep it up until you press a key" },
+            { value: "off", label: "off", description: "no splash" },
           ],
         },
-        { key: "bootTimeoutMs", type: "number", label: "Auto-close", unit: "ms", min: 0, description: "How long the dashboard stays up in auto-close mode." },
+        { key: "bootTimeoutMs", type: "number", label: "Splash time", unit: "ms", min: 500, description: "How long the splash stays up in auto-close mode." },
       ],
     },
     {
-      title: "Groups",
+      title: "Pages",
       fields: [
         {
           key: "groups-page",
           type: "page",
-          label: "Groups & stats…",
-          description: "Choose which groups and stats appear on the dashboard.",
+          label: "Pages & stats…",
+          description: "Choose which pages appear on the dashboard.",
           sections: () => {
             const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string; config: { stats: Array<{ id: string; label: string }> } }> } }).__unipi_info_registry;
             const groups = registry?.getAllGroups() ?? [];
@@ -115,8 +115,8 @@ registerSettings({
         {
           key: "groupOrder",
           type: "order",
-          label: "Group order",
-          description: "Tab order of the dashboard groups.",
+          label: "Page order",
+          description: "Tab order of the dashboard pages.",
           items: () => {
             const registry = (globalThis as { __unipi_info_registry?: { getAllGroups(): Array<{ id: string; name: string }> } }).__unipi_info_registry;
             return (registry?.getAllGroups() ?? []).map((g) => ({ value: g.id, label: g.name }));
@@ -127,8 +127,9 @@ registerSettings({
   ],
 });
 
-export function getInfoSettings(): InfoScreenSettings {
-  if (cachedSettings) return cachedSettings;
+/** `fresh` re-reads settings (dashboard open) so hub edits apply without a restart. */
+export function getInfoSettings(fresh = false): InfoScreenSettings {
+  if (cachedSettings && !fresh) return cachedSettings;
 
   const info = getSettings("info-screen", process.cwd());
   if (!isRecord(info) || Object.keys(info).length === 0) {
@@ -140,6 +141,7 @@ export function getInfoSettings(): InfoScreenSettings {
     bootMode: parseBootMode(info),
     bootTimeoutMs: typeof info.bootTimeoutMs === "number" ? info.bootTimeoutMs : DEFAULT_SETTINGS.bootTimeoutMs,
     groups: isRecord(info.groups) ? parseGroupSettings(info.groups) : {},
+    groupOrder: Array.isArray(info.groupOrder) ? info.groupOrder.filter((x): x is string => typeof x === "string") : [],
   };
 
   return cachedSettings;

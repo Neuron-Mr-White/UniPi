@@ -2,6 +2,8 @@
  * @pi-unipi/info-screen — Type definitions
  */
 
+import type { Paint, RGB } from "@pi-unipi/core";
+
 /** A single stat within a group */
 export interface InfoStat {
   /** Stat identifier */
@@ -26,6 +28,27 @@ export interface StatData {
   value: string;
   /** Optional detail text */
   detail?: string;
+  /**
+   * Structured payload for custom page renderers (series, lists, …).
+   * Must stay JSON-serializable: page data is persisted for instant reopen.
+   */
+  raw?: unknown;
+}
+
+/** Everything a page renderer gets. Lines it returns are fitted to `width`. */
+export interface PageContext {
+  data: GroupData;
+  /** Content width in cells (frame padding already removed). */
+  width: number;
+  /** Rows the page may use without scrolling. */
+  height: number;
+  /** Theme-aware painter (truecolor or 256-colour). */
+  paint: Paint;
+  /** The page's accent colour. */
+  accent: RGB;
+  /** True while the first fetch is still in flight. */
+  loading: boolean;
+  now: number;
 }
 
 /** Data returned by a group's data provider */
@@ -37,8 +60,17 @@ export interface InfoGroup {
   id: string;
   /** Display name */
   name: string;
-  /** Icon emoji */
+  /** Legacy icon (no longer drawn — the tab strip is text + colour). */
   icon: string;
+  /** Short tab label (defaults to `name`). */
+  short?: string;
+  /** Page accent colour (defaults to a colour derived from the id). */
+  accent?: RGB;
+  /**
+   * Optional custom renderer. Without one the page renders its visible
+   * stats as a styled key/value list.
+   */
+  render?: (ctx: PageContext) => string[];
   /** Priority for tab ordering (lower = earlier) */
   priority: number;
   /** Group configuration */
@@ -47,7 +79,7 @@ export interface InfoGroup {
   dataProvider: () => Promise<GroupData>;
 }
 
-/** How the dashboard behaves at startup. */
+/** How the Unicrab startup splash behaves. */
 export type BootMode = "on" | "off" | "auto-close";
 
 /** All valid boot modes, in the order the settings UI cycles them. */
@@ -56,17 +88,14 @@ export const BOOT_MODES: BootMode[] = ["on", "auto-close", "off"];
 /** Settings for info-screen in settings.json */
 export interface InfoScreenSettings {
   /**
-   * What the dashboard does at startup:
+   * What the Unicrab startup splash does (the /unipi:info dashboard never
+   * opens on its own):
    *  - "on":         show it and leave it up until dismissed (q/Esc)
-   *  - "off":        do not show it at all (no data is fetched)
+   *  - "off":        do not show it at all
    *  - "auto-close": show it, then close after `bootTimeoutMs`
    */
   bootMode: BootMode;
-  /**
-   * How long the boot dashboard stays up in "auto-close" mode, in ms.
-   * Any keypress cancels the timer and keeps the overlay open.
-   * Does not apply to the overlay opened via /unipi:info.
-   */
+  /** How long the splash stays up in "auto-close" mode, in ms. */
   bootTimeoutMs: number;
   /** Per-group settings */
   groups: Record<string, GroupSettings>;
@@ -85,7 +114,7 @@ export interface GroupSettings {
 /** Default settings */
 export const DEFAULT_SETTINGS: InfoScreenSettings = {
   bootMode: "auto-close",
-  bootTimeoutMs: 2000,
+  bootTimeoutMs: 2500,
   groups: {},
   groupOrder: [],
 };

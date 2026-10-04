@@ -1,598 +1,386 @@
 /**
- * @pi-unipi/info-screen — TUI Overlay Component (Cache-First Reactive)
+ * @pi-unipi/info-screen — the /unipi:info dashboard.
  *
- * Opens immediately with cached data.
- * Each group loads independently in the background.
- * Reactive: re-renders as data arrives.
- * Shows humanized "last updated" timestamps.
+ *   ╭─ ◆ UNIPI  info ───────────────────────────── Session · live ─╮
+ *   │  ▐Session▌  Usage  Tools  Skills  Modules  MCP  …          › │
+ *   │ ━━━━━━━━━━──────────────────────────────────────────────────  │
+ *   │  page body (fixed height for every page — no jumping)        │
+ *   │ ● ○ ○ ○ ○ ○  2s ago          ←→ page  ↑↓ scroll  r  q        │
+ *   ╰──────────────────────────────────────────────────────────────╯
+ *
+ * Cache-first: opens on whatever the registry has (memory or the on-disk
+ * snapshot), fetches the visible page right away and warms the rest on idle.
+ * Rendered page bodies are memoised per (page, data version, size), so a
+ * redraw that changes nothing costs a map lookup.
  */
 
 import type { Component } from "@earendil-works/pi-tui";
-import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { Key, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { CRAB, Paint, fitTo, gradient, ramp, type RGB } from "@pi-unipi/core";
 import { infoRegistry } from "../registry.js";
 import { getInfoSettings } from "../config.js";
-import type { InfoGroup, GroupData } from "../types.js";
-import { boxInnerWidth, OverlayTheme } from "@pi-unipi/core";
+import type { InfoGroup, GroupData, PageContext } from "../types.js";
+import { PAGE_STYLES, PANEL_BG, accentFor, shade } from "../palette.js";
+import { genericPage, scopeLegend, skeleton } from "./page-kit.js";
 
-/**
- * How long to wait before warming the non-visible tabs.
- *
- * Long enough that startup and the first paint finish first, short enough that
- * a tab switch a second later is already warm.
- */
-const PREFETCH_DELAY_MS = 1500;
+/** Pages that render data from another page (compactor → usage history). */
+const PAGE_DEPS: Record<string, string[]> = { compactor: ["usage"] };
 
-/** Tab color palette */
-const TAB_FG: Array<"accent" | "success" | "warning" | "error"> = [
-  "accent",
-  "success",
-  "warning",
-  "error",
-];
+/** Delay before warming the non-visible pages (after first paint). */
+const PREFETCH_DELAY_MS = 600;
 
-/** Humanize a duration in ms to a short string */
+/** Rows taken by chrome: top border, tabs, underline, footer, bottom border. */
+const CHROME_ROWS = 5;
+const MIN_BODY = 8;
+const MAX_BODY = 24;
+
 function humanizeAge(ms: number): string {
-  if (ms <= 0) return "never";
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+  if (ms <= 0) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 5) return "live";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
 }
 
-/**
- * Info overlay component with cache-first reactive model.
- */
 export class InfoOverlay implements Component {
   private groups: InfoGroup[] = [];
-  private activeTabIndex = 0;
-  private groupData = new Map<string, GroupData>();
-  private groupLoading = new Map<string, boolean>();
-  private scrollOffset = 0;
-  private tabScrollOffset = 0;
-  private lastGlobalUpdate = 0;
+  private active = 0;
+  private scroll = 0;
+  private tabScroll = 0;
   private unsubscribers: Array<() => void> = [];
-  private _destroyed = false;
-  /** Groups whose fetch has already been kicked off (lazy-load bookkeeping). */
+  private destroyed = false;
   private fetched = new Set<string>();
+  private loading = new Set<string>();
   private prefetchTimer: ReturnType<typeof setTimeout> | null = null;
-  private bootTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Data version per group — bumps on every update; keys the body memo. */
+  private version = new Map<string, number>();
+  private memo = new Map<string, string[]>();
+  private paint = new Paint(undefined, true);
 
   onClose?: () => void;
   requestRender?: () => void;
-  /**
-   * Whether this overlay is the focused (topmost) entry in the TUI overlay
-   * stack. The boot auto-close timer only fires while this is true — see
-   * `startBootTimer` for why.
-   */
-  isTopmostOverlay?: () => boolean;
-  /**
-   * Stack-safe self-removal via the overlay handle (`handle.hide()` splices
-   * this entry out of the TUI stack by identity, unlike `done()` which pops
-   * whatever is TOPMOST). Set from `onHandle` in index.ts. When available,
-   * the boot auto-close timer prefers this over `done()` so a splash that
-   * lingers while another overlay opens can never dismiss that overlay
-   * instead of itself.
-   */
-  selfHide?: () => void;
-  /**
-   * False when running as a non-capturing boot splash (auto-close): the
-   * overlay never receives keyboard input, so interactive hints like
-   * "q/Esc close" would be misleading and are replaced accordingly.
-   */
-  interactive = true;
-
-  private overlay = new OverlayTheme();
+  /** Terminal rows (set by index.ts from the TUI) — sizes the body. */
+  terminalRows?: () => number;
 
   setTheme(theme: Theme): void {
-    this.overlay.setTheme(theme);
+    this.paint = new Paint(theme as never);
+    this.memo.clear();
   }
 
-  constructor() {
-    // Load groups synchronously (they're already registered)
-    this.groups = infoRegistry.getAllGroups();
-    this.applyOrder();
-
-    // Seed cache with any existing data (instant display)
-    for (const group of this.groups) {
-      const cached = infoRegistry.getCachedData(group.id);
-      if (cached) {
-        this.groupData.set(group.id, cached);
-      }
-      this.groupLoading.set(group.id, true);
+  constructor(initialPage?: string) {
+    getInfoSettings(true);
+    this.groups = this.orderedGroups();
+    if (initialPage) {
+      const i = this.groups.findIndex((g) => g.id === initialPage);
+      if (i >= 0) this.active = i;
+    }
+    for (const g of this.groups) {
+      if (!infoRegistry.getCachedData(g.id)) this.loading.add(g.id);
     }
 
-    // Subscribe to per-group updates for reactive rendering
     this.unsubscribers.push(
       infoRegistry.subscribeAll((groupId, data) => {
-        if (this._destroyed) return;
-        // Skip empty data from registration notifications — syncGroups()
-        // will trigger the real fetch.
-        if (Object.keys(data).length === 0) {
-          this.requestRender?.();
-          return;
+        if (this.destroyed) return;
+        if (Object.keys(data).length > 0) {
+          this.loading.delete(groupId);
+          this.version.set(groupId, (this.version.get(groupId) ?? 0) + 1);
         }
-        this.groupData.set(groupId, data);
-        this.groupLoading.set(groupId, false);
-        this.lastGlobalUpdate = Date.now();
         this.requestRender?.();
-      })
+      }),
     );
 
-    // Fetch the visible tab now; everything else waits for idle.
-    this.fetchActiveGroup();
+    this.fetchActive();
     this.schedulePrefetch();
   }
 
-  /** Fetch one group, tracking its loading state. Safe to call repeatedly. */
-  private fetchGroup(groupId: string): void {
-    if (this._destroyed) return;
-    if (this.fetched.has(groupId)) return;
-    this.fetched.add(groupId);
-    infoRegistry.getGroupData(groupId).then(() => {
-      this.groupLoading.set(groupId, false);
-    }).catch(() => {
-      this.groupLoading.set(groupId, false);
-    });
+  // ─── data ──────────────────────────────────────────────────────────────
+
+  private orderedGroups(): InfoGroup[] {
+    const settings = getInfoSettings();
+    const hidden = (id: string): boolean => settings.groups[id]?.show === false;
+    const list = infoRegistry.getAllGroups().filter((g) => !hidden(g.id));
+    const order = settings.groupOrder ?? [];
+    if (order.length > 0) {
+      list.sort((a, b) => {
+        const ai = order.indexOf(a.id);
+        const bi = order.indexOf(b.id);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.priority - b.priority;
+      });
+    }
+    return list;
   }
 
-  /**
-   * Fetch the currently visible group.
-   *
-   * Deferred to a macrotask because an async dataProvider still runs
-   * synchronously up to its first `await`; calling it inline would put that
-   * work back on the constructor's caller (session_start).
-   */
-  private fetchActiveGroup(): void {
-    const group = this.groups[this.activeTabIndex];
-    if (!group) return;
-    setTimeout(() => this.fetchGroup(group.id), 0);
+  private fetchGroup(id: string, force = false): void {
+    if (this.destroyed) return;
+    if (!force && this.fetched.has(id)) return;
+    this.fetched.add(id);
+    const p = force ? infoRegistry.forceRefresh(id) : infoRegistry.getGroupData(id);
+    p.finally(() => {
+      this.loading.delete(id);
+      this.requestRender?.();
+    }).catch(() => {});
   }
 
-  /**
-   * Warm the remaining tabs once the app is idle.
-   *
-   * Fetching every group up front cost seconds of startup for panels the user
-   * may never open. Prefetching after a delay keeps tab switches instant
-   * without paying for them before the first prompt is ready.
-   */
+  /** Deferred a macrotask so a provider's sync prefix never runs inside render/open. */
+  private fetchActive(): void {
+    const g = this.groups[this.active];
+    if (!g) return;
+    setTimeout(() => {
+      this.fetchGroup(g.id);
+      // Pages that borrow another page's data pull it along.
+      for (const dep of PAGE_DEPS[g.id] ?? []) {
+        if (!this.fetched.has(dep)) {
+          this.fetched.add(dep);
+          void infoRegistry.getGroupData(dep).then(() => {
+            this.version.set(g.id, (this.version.get(g.id) ?? 0) + 1);
+            this.requestRender?.();
+          });
+        }
+      }
+    }, 0);
+  }
+
   private schedulePrefetch(): void {
     if (this.prefetchTimer) return;
     this.prefetchTimer = setTimeout(() => {
       this.prefetchTimer = null;
-      if (this._destroyed) return;
-      for (const group of this.groups) {
-        if (group.id === this.groups[this.activeTabIndex]?.id) continue;
-        this.fetchGroup(group.id);
-      }
+      if (this.destroyed) return;
+      for (const g of this.groups) this.fetchGroup(g.id);
     }, PREFETCH_DELAY_MS);
-    // Never hold the process open just to warm a panel.
     this.prefetchTimer.unref?.();
   }
 
-  /**
-   * Handle late-arriving groups (e.g., subagents announces after boot).
-   */
   private syncGroups(): void {
-    const allGroups = infoRegistry.getAllGroups();
-    const hadNewGroups = allGroups.length !== this.groups.length;
-    if (hadNewGroups) {
-      this.groups = allGroups;
-      this.applyOrder();
-    }
-
-    // Adopt any data the registry already has. Registration notifications
-    // inject `{}` to trigger a re-sync; that is not real data and must not be
-    // treated as fetched, or the stats render as "—".
-    //
-    // Groups are NOT fetched here: doing so would defeat lazy loading, since
-    // syncGroups() runs on every render. Fetches are driven by tab visibility
-    // (fetchActiveGroup) and the idle prefetch instead.
-    for (const group of this.groups) {
-      const existing = this.groupData.get(group.id);
-      const hasRealData = existing && Object.keys(existing).length > 0;
-      if (hasRealData) continue;
-
-      const cached = infoRegistry.getCachedData(group.id);
-      if (cached && Object.keys(cached).length > 0) {
-        this.groupData.set(group.id, cached);
-      }
-    }
-
-    // A late-arriving group may now be the visible one, and the prefetch pass
-    // may have already run — make sure the active tab still gets its data.
-    if (hadNewGroups) {
-      this.fetchActiveGroup();
+    const all = infoRegistry.getAllGroups();
+    const known = new Set(this.groups.map((g) => g.id));
+    if (all.some((g) => !known.has(g.id))) {
+      const current = this.groups[this.active]?.id;
+      this.groups = this.orderedGroups();
+      const i = this.groups.findIndex((g) => g.id === current);
+      this.active = i >= 0 ? i : 0;
+      this.fetchActive();
       this.schedulePrefetch();
     }
   }
 
-  private applyOrder(): void {
-    const settings = getInfoSettings();
-    if (settings.groupOrder && settings.groupOrder.length > 0) {
-      const order = settings.groupOrder;
-      this.groups.sort((a, b) => {
-        const ai = order.indexOf(a.id);
-        const bi = order.indexOf(b.id);
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-      });
-    }
-  }
-
-  /**
-   * Cleanup subscriptions.
-   */
   destroy(): void {
-    this._destroyed = true;
-    this.cancelBootTimer();
-    if (this.prefetchTimer) {
-      clearTimeout(this.prefetchTimer);
-      this.prefetchTimer = null;
-    }
-    for (const unsub of this.unsubscribers) {
-      unsub();
-    }
+    this.destroyed = true;
+    if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
+    this.prefetchTimer = null;
+    for (const u of this.unsubscribers) u();
     this.unsubscribers = [];
   }
 
-  /** Stop the boot auto-close timer, if one is pending. */
-  private cancelBootTimer(): void {
-    if (this.bootTimer) {
-      clearTimeout(this.bootTimer);
-      this.bootTimer = null;
-    }
-  }
-
-  /**
-   * Auto-close the overlay after `ms`.
-   *
-   * Used when the overlay is shown as a boot splash: the dashboard is
-   * informational, so it should get out of the way on its own rather than
-   * requiring a keypress.
-   *
-   * Dismissal uses `selfHide` (handle.hide() — removes THIS entry from the
-   * TUI overlay stack by identity) and only fires while `isTopmostVisible`
-   * confirms nothing is stacked above: dismissing a covered overlay breaks
-   * the covering one (pi retargets focus and orphans its pending
-   * interaction, e.g. a ctx.ui.select promise that never resolves while its
-   * overlay vanishes). If covered, the timer re-arms and retries.
-   *
-   * If `selfHide` is unavailable (older host), falls back to the guarded
-   * `onClose` (`done()`) path, which requires focus (topmost) for the same
-   * reason.
-   */
-  startBootTimer(ms: number, isTopmostVisible?: () => boolean): void {
-    this.cancelBootTimer();
-    if (!Number.isFinite(ms) || ms <= 0) return;
-    const arm = (): void => {
-      this.bootTimer = setTimeout(() => {
-        this.bootTimer = null;
-        if (this._destroyed) return;
-        if (this.selfHide) {
-          if (isTopmostVisible && !isTopmostVisible()) {
-            // Something is stacked on top of us — dismissing now would break
-            // it (orphaned select promise, focus retarget). Retry shortly;
-            // once the stack clears we dismiss as usual.
-            arm();
-            return;
-          }
-          this.selfHide();
-          this.destroy();
-          return;
-        }
-        if (this.isTopmostOverlay && !this.isTopmostOverlay()) {
-          // Fallback (no selfHide available): closing now would pop the
-          // covering overlay instead of this dashboard. Retry shortly; once
-          // we are topmost the close is safe.
-          arm();
-          return;
-        }
-        this.destroy();
-        this.onClose?.();
-      }, ms);
-      this.bootTimer.unref?.();
-    };
-    arm();
-  }
-
   invalidate(): void {
-    this.syncGroups();
+    this.memo.clear();
+  }
+
+  // ─── input ─────────────────────────────────────────────────────────────
+
+  private go(delta: number): void {
+    if (this.groups.length === 0) return;
+    this.active = (this.active + delta + this.groups.length) % this.groups.length;
+    this.scroll = 0;
+    this.fetchActive();
   }
 
   handleInput(data: string): void {
-    // Any keypress means the user is driving; stop the boot auto-close.
-    this.cancelBootTimer();
-
-    if (matchesKey(data, Key.right) || data === "l") {
-      this.activeTabIndex = (this.activeTabIndex + 1) % this.groups.length;
-      this.scrollOffset = 0;
-      this.fetchActiveGroup();
-    } else if (matchesKey(data, Key.left) || data === "h") {
-      this.activeTabIndex = (this.activeTabIndex - 1 + this.groups.length) % this.groups.length;
-      this.scrollOffset = 0;
-      this.fetchActiveGroup();
-    } else if (matchesKey(data, Key.down) || data === "j") {
-      this.scrollOffset++;
-    } else if (matchesKey(data, Key.up) || data === "k") {
-      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-    } else if (data === "g") {
-      this.scrollOffset = 0;
-    } else if (data === "G") {
-      this.scrollOffset = Infinity;
+    if (matchesKey(data, Key.right) || data === "l" || matchesKey(data, Key.tab)) this.go(1);
+    else if (matchesKey(data, Key.left) || data === "h" || matchesKey(data, Key.shift("tab"))) this.go(-1);
+    else if (matchesKey(data, Key.down) || data === "j") this.scroll++;
+    else if (matchesKey(data, Key.up) || data === "k") this.scroll = Math.max(0, this.scroll - 1);
+    else if (data === "g" || matchesKey(data, Key.home)) this.scroll = 0;
+    else if (data === "G" || matchesKey(data, Key.end)) this.scroll = Number.MAX_SAFE_INTEGER;
+    else if (/^[1-9]$/.test(data)) {
+      const i = Number(data) - 1;
+      if (i < this.groups.length) {
+        this.active = i;
+        this.scroll = 0;
+        this.fetchActive();
+      }
     } else if (data === "r") {
-      // Manual refresh
-      this.refreshActiveGroup();
+      const g = this.groups[this.active];
+      if (g) {
+        this.loading.add(g.id);
+        this.fetchGroup(g.id, true);
+      }
     } else if (data === "R") {
-      // Refresh all
-      this.refreshAll();
+      for (const g of this.groups) {
+        this.loading.add(g.id);
+        this.fetchGroup(g.id, true);
+      }
     } else if (data === "q" || matchesKey(data, Key.escape)) {
       this.destroy();
       this.onClose?.();
     }
   }
 
-  private refreshActiveGroup(): void {
-    const group = this.groups[this.activeTabIndex];
-    if (!group) return;
-    this.groupLoading.set(group.id, true);
-    this.requestRender?.();
-    // Explicit refresh must bypass the lazy-load guard.
-    this.fetched.add(group.id);
-    infoRegistry.refreshGroup(group.id);
+  // ─── render ────────────────────────────────────────────────────────────
+
+  private accentOf(g: InfoGroup): RGB {
+    return g.accent ?? accentFor(g.id);
   }
 
-  private refreshAll(): void {
-    for (const group of this.groups) {
-      this.groupLoading.set(group.id, true);
-      this.fetched.add(group.id);
-    }
-    this.requestRender?.();
-    infoRegistry.refreshAll();
+  private shortOf(g: InfoGroup): string {
+    return g.short ?? PAGE_STYLES[g.id]?.short ?? g.name;
+  }
+
+  private bodyHeight(): number {
+    const rows = this.terminalRows?.() ?? 40;
+    return Math.max(MIN_BODY, Math.min(MAX_BODY, Math.floor(rows * 0.85) - CHROME_ROWS));
   }
 
   render(width: number): string[] {
-    // Sync groups in case late arrivals
     this.syncGroups();
+    const p = this.paint;
+    const W = Math.max(20, Math.floor(width));
+    const inner = W - 2;
+    const content = Math.max(10, inner - 2);
+    const H = this.bodyHeight();
+    const g = this.groups[this.active];
+    const accent = g ? this.accentOf(g) : CRAB.orange;
+    const bgOpen = p.bgOpen(PANEL_BG);
+    const border = (s: string): string => p.rgb(shade(accent, -0.25), s);
 
-    if (this.groups.length === 0) {
-      return this.renderEmpty(width);
-    }
+    // Repaint the panel bg after any inner bg/full reset so the row is opaque.
+    const opaque = (s: string): string => bgOpen + s.replace(/\x1b\[(?:0|49)m/g, (m) => m + bgOpen) + "\x1b[49m";
+    const row = (s: string): string => opaque(`${border("│")}${fitTo(s, inner)}${border("│")}`);
 
-    return this.renderDashboard(width);
-  }
-
-  // ─── State views ─────────────────────────────────────────────────────
-
-  private renderEmpty(width: number): string[] {
-    const innerWidth = boxInnerWidth(width);
-    const lines: string[] = [];
-    lines.push(this.overlay.borderLine(innerWidth, "top"));
-    lines.push(this.overlay.frameLine(this.overlay.fg("accent", this.overlay.bold("📊 UniPi Info Screen")), innerWidth));
-    lines.push(this.overlay.ruleLine(innerWidth));
-    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "No groups registered."), innerWidth));
-    lines.push(this.overlay.frameLine(this.overlay.fg("dim", "Modules will register groups on startup."), innerWidth));
-    for (let i = 0; i < 4; i++) lines.push(this.overlay.frameLine("", innerWidth));
-    lines.push(this.overlay.ruleLine(innerWidth));
-    lines.push(this.overlay.frameLine(this.overlay.fg("dim", this.interactive ? "q/Esc close · r refresh" : "auto-dismissing…"), innerWidth));
-    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
-    return lines;
-  }
-
-  // ─── Dashboard ───────────────────────────────────────────────────────
-
-  private renderDashboard(width: number): string[] {
-    const innerWidth = boxInnerWidth(width);
-    const group = this.groups[this.activeTabIndex];
-    const data = this.groupData.get(group.id) ?? {};
-    const isLoading = this.groupLoading.get(group.id) ?? false;
-
-    const CONTENT_HEIGHT = 12;
     const lines: string[] = [];
 
-    lines.push(this.overlay.borderLine(innerWidth, "top"));
+    // Top border with brand + page title.
+    const brand = ` ${p.rgb(CRAB.orange, "◆")} ${gradient(p, "UNIPI", [CRAB.gold, CRAB.orange, CRAB.red], true)} ${p.fg("dim", "info")} `;
+    const isLoading = g ? this.loading.has(g.id) : false;
+    const age = g ? infoRegistry.getLastUpdated(g.id) : 0;
+    const status = isLoading && age === 0 ? p.rgb(CRAB.gold, "loading") : p.fg("dim", humanizeAge(Date.now() - age));
+    let title = g ? ` ${p.bold(p.rgb(accent, g.name))} ${p.fg("borderMuted", "·")} ${status} ` : "";
+    // Narrow: drop the status, then cut the name — the edge must stay exact.
+    const room = inner - 2 - visibleWidth(brand);
+    if (g && visibleWidth(title) > room) title = ` ${p.bold(p.rgb(accent, g.name))} `;
+    if (visibleWidth(title) > room) title = room > 2 ? ` ${fitTo(p.bold(p.rgb(accent, g?.name ?? "")), room - 2)} ` : "";
+    const fill = Math.max(0, inner - 1 - visibleWidth(brand) - visibleWidth(title));
+    lines.push(opaque(border("╭─") + brand + border("─".repeat(fill)) + title + border("╮")));
 
-    // Header: group name + loading indicator
-    const loadingDot = isLoading
-      ? ` ${this.overlay.fg("warning", "●")}`
-      : ` ${this.overlay.fg("success", "●")}`;
-    const headerText = this.overlay.fg("accent", this.overlay.bold(` ${group.icon} ${group.name} `)) + loadingDot;
-    lines.push(this.overlay.frameLine(headerText, innerWidth));
-    lines.push(this.overlay.ruleLine(innerWidth));
-
-    // Tab bar
-    lines.push(this.overlay.frameLine(this.renderTabBar(innerWidth), innerWidth));
-    lines.push(this.overlay.ruleLine(innerWidth));
-
-    // Content with scrolling
-    const contentLines = this.renderGroupContent(innerWidth, group, data);
-    const wrapped = this.wrapLines(contentLines, innerWidth);
-    const maxScroll = Math.max(0, wrapped.length - CONTENT_HEIGHT);
-    this.scrollOffset = Math.min(this.scrollOffset, maxScroll);
-
-    const visible = wrapped.slice(this.scrollOffset, this.scrollOffset + CONTENT_HEIGHT);
-    for (let i = 0; i < CONTENT_HEIGHT; i++) {
-      lines.push(this.overlay.frameLine(visible[i] ?? "", innerWidth));
-    }
-
-    // Footer
-    lines.push(this.overlay.ruleLine(innerWidth));
-    lines.push(this.overlay.frameLine(this.renderFooter(innerWidth, wrapped.length, CONTENT_HEIGHT), innerWidth));
-    lines.push(this.overlay.borderLine(innerWidth, "bottom"));
-
-    return lines;
-  }
-
-  private renderTabBar(width: number): string {
-    if (this.groups.length === 0) return "";
-
-    const tabWidths = this.groups.map(g => visibleWidth(` ${g.icon} ${g.name} `));
-    const sepW = visibleWidth(this.overlay.fg("borderMuted", "│"));
-    const indicatorSpace = 3;
-    let maxTabs = 0;
-    let totalW = 0;
-    for (let i = 0; i < this.groups.length; i++) {
-      const add = (i > 0 ? sepW : 0) + tabWidths[i]!;
-      if (totalW + add > width - 2 - indicatorSpace) break;
-      totalW += add;
-      maxTabs = i + 1;
-    }
-
-    if (maxTabs >= this.groups.length) {
-      return this.renderAllTabs();
-    }
-
-    if (this.activeTabIndex < this.tabScrollOffset) {
-      this.tabScrollOffset = this.activeTabIndex;
-    } else if (this.activeTabIndex >= this.tabScrollOffset + maxTabs) {
-      this.tabScrollOffset = this.activeTabIndex - maxTabs + 1;
-    }
-    this.tabScrollOffset = Math.max(0, Math.min(this.tabScrollOffset, this.groups.length - maxTabs));
-
-    const tabs: string[] = [];
-    for (let i = this.tabScrollOffset; i < this.tabScrollOffset + maxTabs && i < this.groups.length; i++) {
-      const g = this.groups[i]!;
-      const isActive = i === this.activeTabIndex;
-      const color = TAB_FG[i % TAB_FG.length]!;
-      // Per-tab loading indicator
-      const isLoading = this.groupLoading.get(g.id) ?? false;
-      const dot = isLoading ? this.overlay.fg("warning", "●") : "";
-
-      if (isActive) {
-        tabs.push(this.overlay.fg(color, this.overlay.bold(` ${g.icon} ${g.name} ${dot}`)));
-      } else {
-        tabs.push(this.overlay.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
-      }
-    }
-
-    const tabStr = tabs.join(this.overlay.fg("borderMuted", "│"));
-    if (this.tabScrollOffset > 0) return `${this.overlay.fg("dim", "◀")} ${tabStr}`;
-    if (this.tabScrollOffset + maxTabs < this.groups.length) return `${tabStr} ${this.overlay.fg("dim", "▶")}`;
-    return tabStr;
-  }
-
-  private renderAllTabs(): string {
-    const tabs: string[] = [];
-    for (let i = 0; i < this.groups.length; i++) {
-      const g = this.groups[i]!;
-      const isActive = i === this.activeTabIndex;
-      const color = TAB_FG[i % TAB_FG.length]!;
-      const isLoading = this.groupLoading.get(g.id) ?? false;
-      const dot = isLoading ? this.overlay.fg("warning", "●") : "";
-
-      if (isActive) {
-        tabs.push(this.overlay.fg(color, this.overlay.bold(` ${g.icon} ${g.name} ${dot}`)));
-      } else {
-        tabs.push(this.overlay.fg("dim", ` ${g.icon} ${g.name} ${dot}`));
-      }
-    }
-    return tabs.join(this.overlay.fg("borderMuted", "│"));
-  }
-
-  private renderGroupContent(width: number, group: InfoGroup, data: GroupData): string[] {
-    const lines: string[] = [];
-    const isLoading = this.groupLoading.get(group.id) ?? false;
-    const visibleStats = infoRegistry.getVisibleStats(group.id);
-
-    if (visibleStats.length === 0) {
-      lines.push(`  ${this.overlay.fg("dim", "No stats configured for this group.")}`);
+    if (!g) {
+      for (let i = 0; i < H + 3; i++) lines.push(row(i === 2 ? `  ${p.fg("dim", "No pages registered yet.")}` : ""));
+      lines.push(opaque(border(`╰${"─".repeat(inner)}╯`)));
       return lines;
     }
 
-    // If no data yet and loading, show placeholder per stat
-    if (Object.keys(data).length === 0 && isLoading) {
-      for (const stat of visibleStats) {
-        lines.push(`  ${this.overlay.fg("dim", `${stat.label}:`)} ${this.overlay.fg("warning", "···")}`);
-      }
-      return lines;
+    // Tab strip + underline.
+    const [tabs, underline] = this.renderTabs(content);
+    lines.push(row(` ${tabs} `));
+    lines.push(row(` ${underline} `));
+
+    // Body.
+    const body = this.pageBody(g, content, H);
+    const maxScroll = Math.max(0, body.length - H);
+    this.scroll = Math.min(this.scroll, maxScroll);
+    const view = body.slice(this.scroll, this.scroll + H);
+    for (let i = 0; i < H; i++) {
+      let l = view[i] ?? "";
+      // Scroll cues on the right edge.
+      if (maxScroll > 0 && i === 0 && this.scroll > 0) l = fitTo(l, content - 2) + p.fg("dim", " ▲");
+      if (maxScroll > 0 && i === H - 1 && this.scroll < maxScroll) l = fitTo(l, content - 2) + p.fg("dim", " ▼");
+      lines.push(row(` ${fitTo(l, content)} `));
     }
 
-    const maxLabelLen = Math.max(...visibleStats.map((s) => s.label.length));
-
-    for (const stat of visibleStats) {
-      const statData = data[stat.id];
-      const value = statData?.value ?? "—";
-      const detail = statData?.detail;
-
-      const label = `${stat.label}:`.padEnd(maxLabelLen + 1);
-      let line = `  ${this.overlay.fg("dim", label)} ${this.overlay.bold(value)}`;
-
-      if (detail) {
-        const detailLines = detail.split("\n");
-        if (detailLines.length === 1) {
-          line += ` ${this.overlay.fg("dim", `(${detail})`)}`;
-        } else {
-          lines.push(line);
-          for (const dLine of detailLines) {
-            const indent = " ".repeat(maxLabelLen + 4);
-            let detailLine = `${indent}${dLine}`;
-            if (visibleWidth(detailLine) > width - 2) {
-              detailLine = truncateToWidth(detailLine, width - 2);
-            }
-            lines.push(detailLine);
-          }
-          continue;
-        }
-      }
-
-      if (visibleWidth(line) > width - 2) {
-        line = truncateToWidth(line, width - 2);
-      }
-
-      lines.push(line);
-    }
-
+    // Footer: page dots + keys.
+    lines.push(row(` ${this.renderFooter(content, body.length > H)} `));
+    lines.push(opaque(border(`╰${"─".repeat(inner)}╯`)));
     return lines;
   }
 
-  private renderFooter(width: number, totalLines: number, visibleHeight: number): string {
-    const hasScroll = totalLines > visibleHeight;
-    let scrollStr = "";
-    if (hasScroll) {
-      scrollStr = this.overlay.fg("dim", `${this.scrollOffset + 1}-${Math.min(this.scrollOffset + visibleHeight, totalLines)}/${totalLines}`);
+  private pageBody(g: InfoGroup, width: number, height: number): string[] {
+    const ver = this.version.get(g.id) ?? 0;
+    const cached = infoRegistry.getCachedData(g.id);
+    const loading = this.loading.has(g.id) && !cached;
+    // Session data is time-sensitive (durations); others only change on new data.
+    const tick = g.id === "session" ? Math.floor(Date.now() / 1000) : 0;
+    const key = `${g.id}|${ver}|${cached ? 1 : 0}|${width}|${height}|${loading ? 1 : 0}|${tick}`;
+    const hit = this.memo.get(key);
+    if (hit) return hit;
+
+    const data: GroupData = cached ?? {};
+    const pc: PageContext = { data, width, height, paint: this.paint, accent: this.accentOf(g), loading, now: Date.now() };
+    let out: string[];
+    try {
+      if (loading && Object.keys(data).length === 0) out = skeleton(pc, Math.min(6, height));
+      else {
+        out = g.render ? g.render(pc) : [];
+        if (out.length === 0) out = genericPage(pc, infoRegistry.getVisibleStats(g.id), data);
+      }
+    } catch (err) {
+      out = [this.paint.rgb([230, 90, 80], `page failed: ${(err as Error).message ?? String(err)}`)];
     }
-
-    // Last updated for active group
-    const group = this.groups[this.activeTabIndex];
-    const lastUp = infoRegistry.getLastUpdated(group?.id ?? "");
-    const age = lastUp > 0 ? humanizeAge(Date.now() - lastUp) : "loading…";
-
-    const hints = this.interactive
-      ? [
-          `${this.overlay.fg("accent", "←/→")} tabs`,
-          `${this.overlay.fg("success", "↑/↓")} scroll`,
-          `${this.overlay.fg("warning", "r")} refresh`,
-          `${this.overlay.fg("error", "q/Esc")} close`,
-        ]
-      : [`${this.overlay.fg("dim", "auto-dismissing…")}`];
-
-    const hintStr = hints.join(`  ${this.overlay.fg("borderMuted", "•")}  `);
-
-    // Build right side: age + hints
-    const ageStr = this.overlay.fg("dim", `⏱ ${age}`);
-    const rightStr = `${ageStr}  ${this.overlay.fg("borderMuted", "│")}  ${hintStr}`;
-
-    const scrollW = visibleWidth(scrollStr);
-    const rightW = visibleWidth(rightStr);
-    const gap = 4;
-    const totalW = scrollW + gap + rightW;
-
-    if (totalW >= width - 2) {
-      return truncateToWidth(rightStr, width - 2);
-    }
-
-    const padding = " ".repeat(Math.max(0, width - 2 - totalW));
-    return scrollStr + padding + rightStr;
+    out = out.map((l) => fitTo(l, width));
+    // Bounded memo: drop everything for this group before storing.
+    for (const k of this.memo.keys()) if (k.startsWith(`${g.id}|`)) this.memo.delete(k);
+    this.memo.set(key, out);
+    return out;
   }
 
-  private wrapLines(lines: string[], innerWidth: number): string[] {
-    const wrapped: string[] = [];
-    for (const line of lines) {
-      if (!line) { wrapped.push(""); continue; }
-      wrapped.push(...wrapTextWithAnsi(line, Math.max(1, innerWidth)));
+  private renderTabs(width: number): [string, string] {
+    const p = this.paint;
+    const labels = this.groups.map((g) => this.shortOf(g));
+    const cellW = labels.map((l) => visibleWidth(l) + 2);
+    const gap = 1;
+    // Keep the active tab in view; reserve 2 cells for ‹ › cues.
+    const avail = width - 4;
+    if (this.active < this.tabScroll) this.tabScroll = this.active;
+    const span = (from: number, to: number): number => cellW.slice(from, to + 1).reduce((a, b) => a + b + gap, 0) - gap;
+    while (span(this.tabScroll, this.active) > avail && this.tabScroll < this.active) this.tabScroll++;
+    let last = this.tabScroll;
+    while (last + 1 < labels.length && span(this.tabScroll, last + 1) <= avail) last++;
+
+    let tabs = "";
+    let under = "";
+    for (let i = this.tabScroll; i <= last; i++) {
+      const g = this.groups[i]!;
+      const a = this.accentOf(g);
+      const label = ` ${labels[i]} `;
+      const isActive = i === this.active;
+      const busy = this.loading.has(g.id) && this.fetched.has(g.id);
+      if (isActive) tabs += p.on([18, 18, 22], a, p.bold(label));
+      else tabs += busy ? p.rgb(shade(a, -0.2), label) : p.fg("muted", label);
+      under += isActive ? p.rgb(a, "━".repeat(cellW[i]!)) : p.fg("borderMuted", "─".repeat(cellW[i]!));
+      if (i < last) {
+        tabs += " ".repeat(gap);
+        under += p.fg("borderMuted", "─".repeat(gap));
+      }
     }
-    return wrapped;
+    const left = this.tabScroll > 0 ? p.fg("dim", "‹ ") : "  ";
+    const right = last < labels.length - 1 ? p.fg("dim", " ›") : "  ";
+    const used = visibleWidth(tabs);
+    const pad = Math.max(0, avail - used);
+    return [
+      fitTo(left + tabs + " ".repeat(pad) + right, width),
+      fitTo(p.fg("borderMuted", "──") + under + p.fg("borderMuted", "─".repeat(Math.max(0, width - 2 - used))), width),
+    ];
+  }
+
+  private renderFooter(width: number, scrollable: boolean): string {
+    const p = this.paint;
+    const dots = this.groups
+      .map((g, i) => (i === this.active ? p.rgb(this.accentOf(g), "●") : p.rgb(shade(this.accentOf(g), -0.55), "•")))
+      .join("");
+    const pos = p.fg("dim", ` ${this.active + 1}/${this.groups.length}`);
+    const key = (k: string, what: string): string => `${p.fg("muted", k)} ${p.fg("dim", what)}`;
+    const legendStr = width >= 96 ? `   ${scopeLegend(p)}` : "";
+    const left = (width >= 70 ? dots + pos : pos.trimStart()) + legendStr;
+    const full = [key("←→", "page"), scrollable ? key("↑↓", "scroll") : "", key("r", "refresh"), key("q", "close")].filter(Boolean);
+    const terse = [`${p.fg("muted", "←→")}`, scrollable ? p.fg("muted", "↑↓") : "", p.fg("muted", "r"), p.fg("muted", "q")].filter(Boolean);
+    let keys = full.join(p.fg("borderMuted", "  ·  "));
+    if (visibleWidth(left) + visibleWidth(keys) + 2 > width) keys = full.join(" ");
+    if (visibleWidth(left) + visibleWidth(keys) + 2 > width) keys = terse.join(" ");
+    const gap = width - visibleWidth(left) - visibleWidth(keys);
+    if (gap < 2) return fitTo(gap < -20 ? left : `${left}  ${keys}`, width);
+    return left + " ".repeat(gap) + keys;
   }
 }
+
+/** Exposed for tests and the preview script. */
+export const _internals = { humanizeAge, ramp };
