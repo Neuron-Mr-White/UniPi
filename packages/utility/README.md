@@ -35,8 +35,27 @@ pi install npm:@pi-unipi/utility
 | `/unipi:cleanup` | Lists stale UniPi files, then asks before it removes them. `--dry-run` only lists. `--yes` does not ask. |
 | `/unipi:doctor` | Checks folders, config files, Node, the model cache, the Decision Model and skill exposure. |
 | `/unipi:answer [reply\|questions\|web]` | Opens a screen to answer the last agent reply. |
+| `/unipi:summarize [focus]` | Asks the agent for a summary of the session. Add text to set a focus. |
 
 The skill manager is in [Skill Registry](../skill-registry/README.md) (`/unipi:skills`).
+
+## Summaries
+
+Utility ships the `summarize` skill. The skill sets the shape of the agent's
+final reply after work:
+
+1. One sentence with the answer or the result.
+2. Numbered sections. Each section starts with one bold sentence.
+3. Problems and fixes, when the work hit a problem.
+4. Not verified, then Still open.
+5. Questions for you. Each question has a type: pick one, pick any or your answer.
+
+The agent uses the skill for every final reply, unless you ask for full detail
+or raw output. `/unipi:summarize` asks for this summary at any time.
+
+The skill is "must show" by default, so exposure judging does not hide it. To
+turn this off, open `/unipi:skills` and clear **M** on `summarize`. Clear **E**
+to remove the skill.
 
 ## Agent tools
 

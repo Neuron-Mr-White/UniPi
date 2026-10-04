@@ -39,7 +39,7 @@ Changes apply from the next prompt. You do not need `/reload`.
 **Skill settings…** shows each skill with its source (`vault`, `project`, `user`, `unipi` or `package`) and two columns:
 
 - **E** (enabled): the agent can see the skill. Off removes it from the session, and blocks `/skill:name`.
-- **M** (must show): the agent always sees the skill, also when exposure judging would hide it.
+- **M** (must show): the agent always sees the skill, also when exposure judging would hide it. The bundled `summarize` skill has **M** on by default.
 
 | Key | What it does |
 |---|---|

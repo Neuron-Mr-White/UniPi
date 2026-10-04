@@ -74,6 +74,7 @@ export const COMMAND_REGISTRY: Record<string, string> = {
   "unipi:cleanup":    "utility",
   "unipi:doctor":     "utility",
   "unipi:answer":     "utility",
+  "unipi:summarize":  "utility",
 
   // skill-registry
   "unipi:skills":     "skill-registry",
@@ -160,6 +161,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, string> = {
   "unipi:cleanup":    "Remove stale UniPi temp files and leftovers (preview first)",
   "unipi:doctor":     "Check UniPi's runtime: config, model cache, Decision Model, skills",
   "unipi:answer":     "Answer the last reply — fixed input under the scrollable reply, per question, or web form",
+  "unipi:summarize":  "Summarize this session — answer first, then findings, open items, questions; add text to set a focus",
   "unipi:skills":     "Manage skills — on/off per project, listed or not, the skill vault",
 
   "unipi:kanboard":        "Kanboard — capture tasks, run them, open the board",

@@ -27,6 +27,7 @@ import {
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
 import { registerAnswerCommand } from "./answer/index.js";
+import { registerSummarizeCommand } from "./summarize/index.js";
 import { registerAttachments } from "./attach/index.js";
 import { imageCatalogEntries, loadImageConfig, refreshImageModelCache, registerImage } from "./image/index.js";
 import { registerToolRenderers } from "./render/tools.js";
@@ -66,6 +67,7 @@ export default function (pi: ExtensionAPI) {
   registerUtilityCommands(pi);
   registerAutoRename(pi);
   registerAnswerCommand(pi);
+  registerSummarizeCommand(pi);
   registerAttachments(pi);
   registerImage(pi);
   const style = readUtilSettings().render.style;

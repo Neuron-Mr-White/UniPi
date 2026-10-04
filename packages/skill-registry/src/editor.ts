@@ -18,7 +18,7 @@
 
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { frameOverlay } from "@pi-unipi/core";
-import type { SkillSource } from "./registry.js";
+import { defaultMustShow, type SkillSource } from "./registry.js";
 import type { SkillState } from "./settings.js";
 
 export type Column = "enabled" | "mustShow";
@@ -52,9 +52,9 @@ export interface EditorOptions {
   visibleRows?: number;
 }
 
-function defaultFor(column: Column, source: SkillSource): boolean {
-  if (column === "enabled") return source !== "vault";
-  return false;
+function defaultFor(column: Column, skill: EditorSkill): boolean {
+  if (column === "enabled") return skill.source !== "vault";
+  return defaultMustShow(skill.name, skill.source);
 }
 
 /** Effective value of one cell: project over global over the source default. */
@@ -63,7 +63,7 @@ export function cellValue(layers: Layers, skill: EditorSkill, column: Column): {
   if (typeof p === "boolean") return { value: p, from: "project" };
   const g = layers.global[skill.name]?.[column];
   if (typeof g === "boolean") return { value: g, from: "global" };
-  return { value: defaultFor(column, skill.source), from: "default" };
+  return { value: defaultFor(column, skill), from: "default" };
 }
 
 function printable(data: string): string | undefined {

@@ -16,7 +16,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { emitEvent, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyRegistry, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
+import { applyRegistry, defaultMustShow, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
 import { readSkillsSettings, readStateLayers, writeStateLayers } from "./src/settings.js";
 import { SkillEditor, type EditorResult } from "./src/editor.js";
 import { listVaultSkills, vaultDir } from "./src/vault.js";
@@ -187,6 +187,8 @@ export default function skillRegistry(pi: ExtensionAPI) {
           if (inVault) disabled.add(s.name);
           return !inVault;
         });
+        // Proxy off: per-skill states are ignored, defaults still apply.
+        for (const s of pool) if (defaultMustShow(s.name, skillSource(s, cwd, vault))) mustShow.add(s.name);
       }
 
       const setSkills = (list: CatalogSkill[]) => {

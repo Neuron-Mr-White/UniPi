@@ -157,6 +157,9 @@ describe("registry", () => {
     assert.deepEqual(effectiveState({ enabled: false }, "user"), { enabled: false, mustShow: false });
     assert.deepEqual(effectiveState(undefined, "user"), { enabled: true, mustShow: false });
     assert.deepEqual(effectiveState({ mustShow: true }, "vault"), { enabled: true, mustShow: true }, "must show implies enabled");
+    assert.deepEqual(effectiveState(undefined, "unipi", "summarize"), { enabled: true, mustShow: true }, "bundled summarize is must show by default");
+    assert.deepEqual(effectiveState({ mustShow: false }, "unipi", "summarize"), { enabled: true, mustShow: false }, "a scope can turn the default off");
+    assert.deepEqual(effectiveState(undefined, "user", "summarize"), { enabled: true, mustShow: false }, "only the bundled copy gets the default");
   });
 
   it("parses /skill:name commands", () => {

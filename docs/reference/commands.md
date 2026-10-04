@@ -176,6 +176,7 @@ Run `/reload` after `/unipi:notify-event` to apply the change.
 | `/unipi:continue` | | Continues the agent from where it stopped. It adds no text. |
 | `/unipi:retry` | | Alias of `/unipi:continue`. |
 | `/unipi:answer` | `[reply\|questions\|web]` | Opens a screen to answer the last agent reply. |
+| `/unipi:summarize` | `[focus]` | Asks the agent for a summary of the session. It uses the bundled `summarize` skill. |
 | `/unipi:doctor` | | Checks the UniPi folders, config, model cache, Decision Model and skills. |
 | `/unipi:cleanup` | `[--dry-run] [--yes]` | Deletes old UniPi temp files. It shows a preview first. |
 

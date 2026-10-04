@@ -43,13 +43,25 @@ export function skillSource(s: CatalogSkill, cwd: string, vault: string): SkillS
   return "package";
 }
 
+/**
+ * Bundled UniPi skills that are listed by default ("Must show" on unless a
+ * scope turns it off). summarize sets the shape of the agent's final reply,
+ * so judging must not hide it on prompts that never mention a summary.
+ */
+export const DEFAULT_MUST_SHOW: ReadonlySet<string> = new Set(["summarize"]);
+
+/** The default "Must show" value of a skill from its name and source. */
+export function defaultMustShow(name: string, source: SkillSource): boolean {
+  return source === "unipi" && DEFAULT_MUST_SHOW.has(name);
+}
+
 export interface EffectiveState {
   enabled: boolean;
   mustShow: boolean;
 }
 
-export function effectiveState(state: SkillState | undefined, source: SkillSource): EffectiveState {
-  const mustShow = state?.mustShow === true;
+export function effectiveState(state: SkillState | undefined, source: SkillSource, name = ""): EffectiveState {
+  const mustShow = state?.mustShow ?? defaultMustShow(name, source);
   // Must show implies enabled and is always listed.
   return { enabled: mustShow || (state?.enabled ?? source !== "vault"), mustShow };
 }
@@ -73,7 +85,7 @@ export function applyRegistry<T extends CatalogSkill>(
   const disabled = new Set<string>();
   const mustShow = new Set<string>();
   for (const skill of catalog) {
-    const eff = effectiveState(states[skill.name], skillSource(skill, cwd, vault));
+    const eff = effectiveState(states[skill.name], skillSource(skill, cwd, vault), skill.name);
     if (eff.mustShow) mustShow.add(skill.name);
     if (!eff.enabled) disabled.add(skill.name);
     else listed.push(skill);

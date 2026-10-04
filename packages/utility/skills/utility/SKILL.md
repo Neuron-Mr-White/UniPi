@@ -4,7 +4,7 @@ scope: agent
 description: |
   What the @pi-unipi/utility extension does for the user: the /unipi:settings
   hub, /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor,
-  and automatic session naming. It gives the agent no tools.
+  /unipi:summarize, and automatic session naming. It gives the agent no tools.
 ---
 
 # @pi-unipi/utility
@@ -17,6 +17,7 @@ description: |
 | `/unipi:continue` / `/unipi:retry` | Take another turn without new text |
 | `/unipi:cleanup` | Remove stale UniPi temp files (previews and asks first; `--dry-run`, `--yes`) |
 | `/unipi:doctor` | Check config, model cache, Decision Model key, skill exposure |
+| `/unipi:summarize [focus]` | Ask the agent for a session summary (uses the `summarize` skill) |
 
 ## Notes for the agent
 
