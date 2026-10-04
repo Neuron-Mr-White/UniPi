@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `fusion`: the "Non-trivial shell work since last handoff" nudge fires at most once per agent run instead of repeating on every 4th non-trivial shell command; a sidekick handoff still resets the streak but no longer re-arms the nudge, and a new prompt arms it again. (UNI-87)
+- `long-horizon`: mode-control tools are now truly OFF in pi's active tool set outside their mode (previously registered/active and only hidden from the provider payload), so pi's tool snippets and other modules no longer see them. Fresh and resumed sessions start with them off; resolving into a mode (command, judge, or active owner) turns that mode's tools on. (UNI-90)
+- `info-screen`: scope order now reads biggest first — footer legend `g global  p project  s session`, Compactor savings tiles global → project → session, Memory tiles global → project → share.
+- `info-screen`: Skills page tags each source with its real scope (`g` for user/agents/unipi/package skills, `p` for project skills) instead of implying session scope; the Tools page's tool list is tagged `s` (the active set is per session).
+- `info-screen`: Usage page leaves one blank line between the model share bar and the ranked model rows.
+
 ## [3.0.0-alpha.25] — 2026-10-04
 
 ### Added
