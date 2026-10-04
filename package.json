@@ -44,6 +44,7 @@
     "packages/*/bridge/**/*.py",
     "packages/*/platforms/*",
     "packages/*/tui/*",
+    "packages/*/pages/*.ts",
     "packages/*/SKILL.md",
     "packages/*/skills/**/*",
     "packages/*/README.md",

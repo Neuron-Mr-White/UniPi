@@ -1,585 +1,379 @@
 /**
- * @pi-unipi/info-screen — Core group registrations
+ * @pi-unipi/info-screen — core pages: Session, Usage, Tools, Skills, Modules.
  *
- * Registers the 5 core groups: Overview, Usage, Tools, Extensions, Skills.
- * These are always available (subject to config visibility).
+ * Data comes from pi itself (live context, getAllTools, getCommands, module
+ * announcements) rather than filesystem scans, so it is cheap and it is what
+ * is actually loaded. Module packages register their own pages.
  */
 
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
-import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getPiVersion } from "@pi-unipi/core";
+import { getInstalledPackageVersion, listSettingsDefinitions } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
-import { parseUsageStatsAsync, formatTokens, formatCost } from "./usage-parser.js";
-import type { InfoGroup } from "./types.js";
+import { parseUsageStatsAsync } from "./usage-parser.js";
+import { collectSession, renderSession, sessionData, type SessionCtxLike } from "./pages/session.js";
+import { renderUsage, usageData, type UsageRaw } from "./pages/usage.js";
+import { setCompactorHistorySource } from "./pages/modules.js";
+import { inventoryData, renderInventory, renderModules, type ModulesRaw, type Named } from "./pages/inventory.js";
 
-/**
- * Discover loaded extensions by scanning filesystem.
- */
-function discoverExtensions(): Array<{ name: string; source: string; version: string }> {
-  const extensions: Array<{ name: string; source: string; version: string }> = [];
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  const cwd = process.cwd();
+// ─── load tracking ─────────────────────────────────────────────────────────
 
-  // Check settings.json for package extensions
-  const settingsPaths = [
-    join(homeDir, ".pi", "agent", "settings.json"),
-    join(cwd, ".pi", "settings.json"),
-  ];
-
-  const counted = new Set<string>();
-
-  for (const settingsPath of settingsPaths) {
-    if (!existsSync(settingsPath)) continue;
-
-    try {
-      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-      if (typeof settings !== "object" || settings === null) continue;
-
-      const packages = settings.packages;
-      if (!Array.isArray(packages)) continue;
-
-      for (const pkg of packages) {
-        let source: string | undefined;
-        let extensionsFilter: string[] | undefined;
-
-        if (typeof pkg === "string") {
-          source = pkg;
-        } else if (typeof pkg === "object" && pkg !== null) {
-          source = pkg.source;
-          extensionsFilter = pkg.extensions;
-        }
-
-        if (!source) continue;
-
-        // Extract package name from source
-        let name = source;
-        if (source.startsWith("npm:")) {
-          const npmPkg = source.slice(4);
-          // Handle scoped packages like @scope/name
-          if (npmPkg.startsWith("@")) {
-            // @scope/name -> name
-            const parts = npmPkg.split("/");
-            name = parts.length > 1 ? parts[1] : npmPkg;
-          } else {
-            name = npmPkg.split("@")[0];
-          }
-        } else if (source.startsWith("git:")) {
-          name = source.split("/").pop()?.replace(/\.git$/, "") ?? source;
-        }
-
-        // Skip empty names
-        if (!name || name.trim() === "") continue;
-        if (counted.has(name)) continue;
-        counted.add(name);
-
-        extensions.push({
-          name,
-          source: source.startsWith("npm:") ? "npm" : source.startsWith("git:") ? "git" : "local",
-          version: "latest",
-        });
-      }
-    } catch {
-      // Skip malformed settings
-    }
-  }
-
-  // Check extension directories
-  const extensionDirs = [
-    join(homeDir, ".pi", "agent", "extensions"),
-    join(cwd, ".pi", "extensions"),
-  ];
-
-  for (const dir of extensionDirs) {
-    if (!existsSync(dir)) continue;
-
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const name = entry.name;
-        if (counted.has(name)) continue;
-
-        if (entry.isFile() && name.endsWith(".ts")) {
-          counted.add(name.replace(".ts", ""));
-          extensions.push({
-            name: name.replace(".ts", ""),
-            source: "local",
-            version: "local",
-          });
-        } else if (entry.isDirectory()) {
-          counted.add(name);
-          extensions.push({
-            name,
-            source: "local",
-            version: "local",
-          });
-        }
-      }
-    } catch {
-      // Skip unreadable directories
-    }
-  }
-
-  return extensions;
-}
-
-/**
- * Load time tracking.
- */
-const loadTimes: Array<{ name: string; type: string; ms: number }> = [];
+const loadTimes = new Map<string, number>();
+let loadStart = 0;
 let totalLoadTimeMs = 0;
-let loadTrackingStarted = false;
-let loadTrackingStartMs = 0;
-const moduleStartTimes = new Map<string, number>();
 
-/** Start load time tracking */
 export function startLoadTracking(): void {
-  if (!loadTrackingStarted) {
-    loadTrackingStartMs = Date.now();
-    loadTrackingStarted = true;
-  }
+  if (!loadStart) loadStart = Date.now();
 }
 
-/** Record a load time */
-export function recordLoadTime(name: string, type: string, ms?: number): void {
-  // If no ms provided, calculate from start time
-  if (ms === undefined || ms === 0) {
-    const startTime = moduleStartTimes.get(name);
-    if (startTime) {
-      ms = Date.now() - startTime;
-    } else {
-      ms = 0;
-    }
-  }
-  // Avoid duplicates
-  const existing = loadTimes.find(t => t.name === name && t.type === type);
-  if (!existing) {
-    loadTimes.push({ name, type, ms });
-    totalLoadTimeMs += ms;
-  }
+export function recordLoadTime(name: string, _type: string, ms?: number): void {
+  if (!loadTimes.has(name)) loadTimes.set(name, ms ?? 0);
 }
 
-/** Finish load tracking */
 export function finishLoadTracking(): void {
-  if (loadTrackingStarted) {
-    totalLoadTimeMs = Date.now() - loadTrackingStartMs;
-  }
+  if (loadStart && !totalLoadTimeMs) totalLoadTimeMs = Date.now() - loadStart;
 }
 
-/** Get total load time */
 export function getTotalLoadTime(): number {
-  return totalLoadTimeMs > 0 ? totalLoadTimeMs : (loadTrackingStarted ? Date.now() - loadTrackingStartMs : 0);
+  return totalLoadTimeMs || (loadStart ? Date.now() - loadStart : 0);
 }
 
-/**
- * Additional skill directories registered by extensions.
- */
-const extraSkillDirs: string[] = [];
-
-/**
- * Register an additional skill directory (from extensions).
- */
-export function registerSkillDir(dir: string): void {
-  if (!extraSkillDirs.includes(dir)) {
-    extraSkillDirs.push(dir);
-  }
+/** Startup cost measured by packages/unipi around each module's register call. */
+function moduleLoadMs(name: string): number {
+  const g = (globalThis as { __unipi_load_times?: Record<string, number> }).__unipi_load_times;
+  return g?.[name] ?? loadTimes.get(name) ?? 0;
 }
 
-/**
- * Discover loaded skills by scanning filesystem.
- */
-function discoverSkills(): Array<{ name: string; source: string }> {
-  const skills: Array<{ name: string; source: string }> = [];
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  const cwd = process.cwd();
+// ─── module / tool tracking (fed by MODULE_READY) ─────────────────────────
 
-  // Skill directories to scan
-  const skillDirs = [
-    join(homeDir, ".pi", "agent", "skills"),
-    join(cwd, ".pi", "skills"),
-    // Add extra dirs from extensions
-    ...extraSkillDirs,
-  ];
-
-  const counted = new Set<string>();
-
-  for (const dir of skillDirs) {
-    if (!existsSync(dir)) continue;
-
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
-        const name = entry.name;
-        if (counted.has(name)) continue;
-
-        // Check if it has a SKILL.md
-        const skillPath = join(dir, name, "SKILL.md");
-        if (existsSync(skillPath)) {
-          counted.add(name);
-          // Determine source based on path
-          let source = "extension";
-          if (dir.includes(join(homeDir, ".pi"))) {
-            source = "global";
-          } else if (dir === join(cwd, ".pi", "skills")) {
-            source = "project";
-          }
-          skills.push({ name, source });
-        }
-      }
-    } catch {
-      // Skip unreadable directories
-    }
-  }
-
-  return skills;
-}
-
-/**
- * Track announced modules.
- */
 const announcedModules: Array<{ name: string; version: string }> = [];
-
-/**
- * Track registered tools.
- */
 const registeredTools: Array<{ name: string; source: string }> = [];
 
-/**
- * Reference to pi API for getting tools.
- */
-let piApi: ExtensionAPI | null = null;
-
-/**
- * Set the pi API reference.
- */
-export function setPiApi(api: ExtensionAPI): void {
-  piApi = api;
-}
-
-/**
- * Add a module to the announced list.
- */
 export function trackModule(name: string, version: string): void {
-
-  if (!announcedModules.find((m) => m.name === name)) {
-    announcedModules.push({ name, version });
-  
-  }
+  if (!announcedModules.find((m) => m.name === name)) announcedModules.push({ name, version });
 }
 
-/**
- * Get list of announced modules.
- */
 export function getAnnouncedModules(): Array<{ name: string; version: string }> {
-
   return [...announcedModules];
 }
 
-/**
- * Track a registered tool.
- */
 export function trackTool(name: string, source: string): void {
-  if (!registeredTools.find((t) => t.name === name)) {
-    registeredTools.push({ name, source });
-  }
+  if (!registeredTools.find((t) => t.name === name)) registeredTools.push({ name, source });
 }
 
-/**
- * Get list of registered tools.
- */
 export function getRegisteredTools(): Array<{ name: string; source: string }> {
   return [...registeredTools];
 }
 
-/**
- * Register all core groups.
- */
+/** Kept for API compatibility; skills now come from pi's command list. */
+export function registerSkillDir(_dir: string): void {}
+
+// ─── pi handles ────────────────────────────────────────────────────────────
+
+let piApi: ExtensionAPI | null = null;
+let liveCtx: SessionCtxLike | null = null;
+
+export function setPiApi(api: ExtensionAPI): void {
+  piApi = api;
+}
+
+let schemaMemo: { key: string; chars: number } | null = null;
+/** Characters of the active tools' name + description + JSON schema (what the model receives). */
+function toolSchemaChars(): number {
+  try {
+    const active = piApi?.getActiveTools?.() ?? [];
+    const key = active.join(",");
+    if (schemaMemo?.key === key) return schemaMemo.chars;
+    const set = new Set(active);
+    let chars = 0;
+    for (const t of piApi?.getAllTools?.() ?? []) {
+      if (!set.has(t.name)) continue;
+      chars += t.name.length + (t.description?.length ?? 0) + JSON.stringify(t.parameters ?? {}).length;
+    }
+    schemaMemo = { key, chars };
+    return chars;
+  } catch {
+    return 0;
+  }
+}
+
+/** Basename of this project's pi session dir (keys usage.compactionByDir). */
+export function projectSessionKey(): string | null {
+  try {
+    const dir = liveCtx?.sessionManager?.getSessionDir?.();
+    return dir ? (dir.split(/[/\\]/).filter(Boolean).pop() ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Latest ExtensionContext (session_start, each turn, and /unipi:info). */
+export function setSessionContext(ctx: SessionCtxLike): void {
+  liveCtx = ctx;
+}
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+
+type SourceInfoLike = { source?: string; scope?: string; origin?: string; path?: string; baseDir?: string };
+
+/** Human label for where a tool/command came from. */
+function sourceLabel(info: SourceInfoLike | undefined): string {
+  const src = info?.source ?? "";
+  if (src === "builtin") return "built-in";
+  if (src === "sdk") return "sdk";
+  const p = `${info?.path ?? ""} ${info?.baseDir ?? ""} ${src}`;
+  if (/@pi-unipi[/\\]|[/\\]unipi[/\\]packages[/\\]|npm:@pi-unipi/.test(p)) return "unipi";
+  if (/^npm:/.test(src)) return src.slice(4).replace(/^@[^/]+\//, "").split("@")[0] || "npm";
+  if (/^git:/.test(src)) return (src.split("/").pop() ?? "git").replace(/\.git$/, "");
+  if (info?.scope === "project") return "project";
+  return "local";
+}
+
+/** Package-ish name of an extension from its path. */
+function extensionName(info: SourceInfoLike | undefined): string {
+  const src = info?.source ?? "";
+  if (/^npm:/.test(src)) return src.slice(4).replace(/^@[^/]+\//, "").split("@")[0] || src;
+  if (/^git:/.test(src)) return (src.split("/").pop() ?? src).replace(/\.git$/, "");
+  const path = info?.baseDir ?? info?.path ?? src;
+  const parts = path.split(/[/\\]/).filter(Boolean);
+  const nm = parts.lastIndexOf("node_modules");
+  if (nm >= 0 && parts[nm + 1]) return parts[nm + 1]!.startsWith("@") ? `${parts[nm + 2] ?? parts[nm + 1]}` : parts[nm + 1]!;
+  const last = parts[parts.length - 1] ?? "extension";
+  return last.replace(/\.(ts|js|mjs)$/, "") === "index" ? (parts[parts.length - 2] ?? last) : last.replace(/\.(ts|js|mjs)$/, "");
+}
+
+// ─── registration ──────────────────────────────────────────────────────────
+
 export function registerCoreGroups(): void {
-  // 1. Overview group
+  // The Compactor page (registered by the compactor module) reads project and
+  // global savings from the usage page's parsed history.
+  setCompactorHistorySource(() => {
+    const u = infoRegistry.getCachedData("usage")?.raw?.raw as UsageRaw | undefined;
+    const key = projectSessionKey();
+    const g = u?.compaction && u.compaction.count > 0 ? u.compaction : null;
+    const pr = key && u?.compactionByDir?.[key] && u.compactionByDir[key]!.count > 0 ? u.compactionByDir[key]! : null;
+    return { project: pr, global: g };
+  });
   infoRegistry.registerGroup({
-    id: "overview",
-    name: "Overview",
-    icon: "📊",
+    id: "session",
+    name: "This session",
+    icon: "",
     priority: 10,
     config: {
       showByDefault: true,
       stats: [
-        { id: "version", label: "Pi Version", show: true },
-        { id: "cwd", label: "Working Directory", show: true },
-        { id: "modules", label: "Active Modules", show: true },
-        { id: "uptime", label: "Session Uptime", show: true },
-        { id: "loadTime", label: "Total Load Time", show: true },
+        { id: "cost", label: "Cost", show: true },
+        { id: "tokens", label: "Tokens", show: true },
+        { id: "replies", label: "Replies", show: true },
       ],
     },
     dataProvider: async () => {
-      const cwd = process.cwd();
-      const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-      const shortCwd = cwd.startsWith(homeDir) ? `~${cwd.slice(homeDir.length)}` : cwd;
-
-      // Get modules from announced events AND registered groups
-      const announced = getAnnouncedModules();
-      const registeredGroups = infoRegistry.getAllGroups();
-      
-      // Combine: announced modules + groups that aren't from announced modules
-      const moduleNames = new Set<string>();
-      for (const m of announced) {
-        moduleNames.add(m.name.replace(/^@[^/]+\//, ""));
+      if (!liveCtx) return {};
+      let thinking = "";
+      try {
+        thinking = piApi?.getThinkingLevel?.() ?? "";
+      } catch {
+        thinking = "";
       }
-      // Add non-core groups as modules (they come from extensions)
-      const coreGroupIds = new Set(["overview", "usage", "tools", "extensions", "skills"]);
-      for (const g of registeredGroups) {
-        if (!coreGroupIds.has(g.id)) {
-          moduleNames.add(g.id);
-        }
-      }
-      
-      const totalLoadTime = getTotalLoadTime();
-      const moduleList = Array.from(moduleNames);
-
-      return {
-        version: { value: getPiVersion(), detail: "pi" },
-        cwd: { value: shortCwd },
-        modules: {
-          value: String(moduleList.length),
-          detail: moduleList.slice(0, 4).join(", ") + (moduleList.length > 4 ? ` +${moduleList.length - 4} more` : ""),
-        },
-        uptime: { value: formatUptime(process.uptime()) },
-        loadTime: { value: `${totalLoadTime}ms` },
-      };
+      return sessionData(collectSession(liveCtx, thinking, toolSchemaChars()));
     },
+    render: renderSession,
   });
 
-  // 2. Usage group
   infoRegistry.registerGroup({
     id: "usage",
-    name: "Usage",
-    icon: "💰",
+    name: "Usage history",
+    icon: "",
     priority: 20,
     config: {
       showByDefault: true,
       stats: [
-        { id: "tokensToday", label: "Tokens Today", show: true },
-        { id: "tokensWeek", label: "Tokens This Week", show: true },
-        { id: "tokensMonth", label: "Tokens This Month", show: true },
-        { id: "costToday", label: "Cost Today", show: true },
-        { id: "costAllTime", label: "Cost All Time", show: true },
-        { id: "topModelToday", label: "Top Model Today", show: true },
-        { id: "topModelWeek", label: "Top Model Week", show: true },
-        { id: "topModelMonth", label: "Top Model Month", show: true },
-        { id: "sessions", label: "Total Sessions", show: true },
+        { id: "tokensToday", label: "Tokens today", show: true },
+        { id: "costToday", label: "Cost today", show: true },
+        { id: "costAllTime", label: "Cost all time", show: true },
+        { id: "sessions", label: "Sessions", show: true },
       ],
     },
-    dataProvider: async () => {
-      // Async variant yields to the event loop between files, so a cold parse
-      // cannot block keystrokes or the initial paint.
-      const stats = await parseUsageStatsAsync();
-
-      // Find top model for each period
-      const findTopModel = (modelStats: Record<string, { tokens: number; cost: number; sessions: number }> | undefined) => {
-        if (!modelStats) return { name: "none", cost: 0 };
-        let topName = "none";
-        let topCost = 0;
-        for (const [model, data] of Object.entries(modelStats)) {
-          if (data.cost > topCost) {
-            topCost = data.cost;
-            topName = model;
-          }
-        }
-        // Strip "Claude " prefix for brevity
-        if (topName.startsWith("Claude ")) {
-          topName = topName.slice(7);
-        }
-        return { name: topName, cost: topCost };
-      };
-
-      const topToday = findTopModel(stats.byModelToday);
-      const topWeek = findTopModel(stats.byModelWeek);
-      const topMonth = findTopModel(stats.byModelMonth);
-
-      return {
-        tokensToday: { value: formatTokens(stats.tokens.today) },
-        tokensWeek: { value: formatTokens(stats.tokens.week) },
-        tokensMonth: { value: formatTokens(stats.tokens.month) },
-        costToday: { value: formatCost(stats.cost.today) },
-        costAllTime: { value: formatCost(stats.cost.allTime) },
-        topModelToday: { value: topToday.name, detail: formatCost(topToday.cost) },
-        topModelWeek: { value: topWeek.name, detail: formatCost(topWeek.cost) },
-        topModelMonth: { value: topMonth.name, detail: formatCost(topMonth.cost) },
-        sessions: { value: String(stats.sessionCount) },
-      };
-    },
+    // Async parser yields to the event loop and reuses its per-file cache.
+    dataProvider: async () => usageData(await parseUsageStatsAsync()),
+    render: renderUsage,
   });
 
-  // 3. Tools group
   infoRegistry.registerGroup({
     id: "tools",
     name: "Tools",
-    icon: "🔧",
+    icon: "",
     priority: 30,
-    config: {
-      showByDefault: true,
-      stats: [
-        { id: "total", label: "Total Tools", show: true },
-        { id: "builtin", label: "Built-in", show: true },
-        { id: "registered", label: "Registered", show: true },
-        { id: "list", label: "Tools", show: true },
-      ],
-    },
+    config: { showByDefault: true, stats: [{ id: "total", label: "Tools", show: true }] },
     dataProvider: async () => {
-      // Use pi.getAllTools() to get actual tools with source info
-      let tools: Array<{ name: string; source?: string; sourceInfo?: any }> = [];
-      
-      if (piApi && typeof piApi.getAllTools === "function") {
-        try {
-          tools = piApi.getAllTools();
-        } catch {
-          // Fallback to tracked tools
-          tools = getRegisteredTools();
-        }
-      } else {
-        tools = getRegisteredTools();
+      let items: Named[] = [];
+      let active: Set<string> | null = null;
+      try {
+        active = new Set(piApi?.getActiveTools?.() ?? []);
+      } catch {
+        active = null;
       }
-
-      // Categorize by source
-      const builtin = tools.filter((t) => {
-        const source = t.sourceInfo?.source || t.source;
-        return source === "builtin";
-      });
-      const extension = tools.filter((t) => {
-        const source = t.sourceInfo?.source || t.source;
-        return source !== "builtin" && source !== "sdk";
-      });
-      const sdk = tools.filter((t) => {
-        const source = t.sourceInfo?.source || t.source;
-        return source === "sdk";
-      });
-
-      // Build tool list as comma-separated values with wrapping
-      const toolNames = tools.map((t) => `${t.name}`);
-      // Split into chunks of ~60 chars for wrapping
-      const chunks: string[] = [];
-      let current = "";
-      for (const name of toolNames) {
-        if (current && (current.length + name.length + 2) > 60) {
-          chunks.push(current);
-          current = name;
-        } else {
-          current = current ? `${current}, ${name}` : name;
-        }
+      try {
+        const all = piApi?.getAllTools?.() ?? [];
+        items = all.map((t) => ({ name: t.name, group: sourceLabel(t.sourceInfo as SourceInfoLike), active: active ? active.has(t.name) : true }));
+      } catch {
+        items = [];
       }
-      if (current) chunks.push(current);
-
-      return {
-        total: { value: String(tools.length) },
-        builtin: { value: String(builtin.length) },
-        registered: { value: String(extension.length + sdk.length) },
-        list: {
-          value: chunks.length > 0 ? chunks[0] : "none",
-          detail: chunks.length > 1 ? chunks.slice(1).join("\n") : undefined,
-        },
-      };
+      if (items.length === 0) items = getRegisteredTools().map((t) => ({ name: t.name, group: t.source === "builtin" ? "built-in" : "unipi" }));
+      const activeCount = active ? items.filter((i) => i.active).length : undefined;
+      return inventoryData(items, activeCount);
     },
+    render: (pc) => renderInventory(pc, "tools", "no tools registered"),
   });
 
-  // 4. Extensions group
-  infoRegistry.registerGroup({
-    id: "extensions",
-    name: "Extensions",
-    icon: "📦",
-    priority: 40,
-    config: {
-      showByDefault: true,
-      stats: [
-        { id: "count", label: "Total Extensions", show: true },
-        { id: "list", label: "Extensions", show: true },
-      ],
-    },
-    dataProvider: async () => {
-      const extensions = discoverExtensions();
-      const bySource: Record<string, number> = {};
-      for (const ext of extensions) {
-        bySource[ext.source] = (bySource[ext.source] ?? 0) + 1;
-      }
-
-      const breakdown = Object.entries(bySource)
-        .map(([src, count]) => `${count} ${src}`)
-        .join(", ");
-
-      // Build multi-line list - show all
-      const listLines: string[] = [];
-      for (const ext of extensions) {
-        listLines.push(`${ext.name} (${ext.source})`);
-      }
-
-      return {
-        count: { value: String(extensions.length), detail: breakdown || "none" },
-        list: {
-          value: listLines.length > 0 ? listLines[0] : "none",
-          detail: listLines.length > 1 ? listLines.slice(1).join("\n") : undefined,
-        },
-      };
-    },
-  });
-
-  // 5. Skills group
   infoRegistry.registerGroup({
     id: "skills",
     name: "Skills",
-    icon: "🎯",
-    priority: 50,
-    config: {
-      showByDefault: true,
-      stats: [
-        { id: "count", label: "Total Skills", show: true },
-        { id: "global", label: "Global Skills", show: true },
-        { id: "project", label: "Project Skills", show: true },
-        { id: "list", label: "Skills", show: true },
-      ],
-    },
+    icon: "",
+    priority: 40,
+    config: { showByDefault: true, stats: [{ id: "total", label: "Skills", show: true }] },
     dataProvider: async () => {
-      const skills = discoverSkills();
-      const global = skills.filter((s) => s.source === "global");
-      const project = skills.filter((s) => s.source === "project");
-
-      // Build skill list as comma-separated values with wrapping
-      const skillNames = skills.map((s) => `${s.name} (${s.source})`);
-      // Split into chunks of ~60 chars for wrapping
-      const chunks: string[] = [];
-      let current = "";
-      for (const name of skillNames) {
-        if (current && (current.length + name.length + 2) > 60) {
-          chunks.push(current);
-          current = name;
-        } else {
-          current = current ? `${current}, ${name}` : name;
-        }
+      let items: Named[] = [];
+      try {
+        const cmds = piApi?.getCommands?.() ?? [];
+        items = cmds
+          .filter((c) => c.source === "skill")
+          .map((c) => {
+            const info = c.sourceInfo as SourceInfoLike;
+            const group = info?.scope === "project" ? "project" : /[/\\]\.agents[/\\]/.test(info?.path ?? "") ? "agents" : sourceLabel(info) === "unipi" ? "unipi" : info?.origin === "package" ? "package" : "user";
+            return { name: c.name.replace(/^skill:/, ""), group };
+          });
+      } catch {
+        items = [];
       }
-      if (current) chunks.push(current);
+      return inventoryData(items);
+    },
+    render: (pc) => renderInventory(pc, "skills", "add skills under ~/.pi/agent/skills or .pi/skills"),
+  });
 
+  infoRegistry.registerGroup({
+    id: "extensions",
+    name: "Modules",
+    icon: "",
+    priority: 50,
+    config: { showByDefault: true, stats: [{ id: "count", label: "Modules", show: true }] },
+    dataProvider: async () => {
+      const g = globalThis as {
+        __unipi_load_times?: Record<string, number>;
+        __unipi_contributions?: Record<string, { tools: string[]; commands: string[]; shortcuts: number }>;
+      };
+      const times = g.__unipi_load_times ?? {};
+      const contrib = g.__unipi_contributions ?? {};
+      // Settings fields per namespace (module name, with the hub's aliases).
+      const NS_ALIAS: Record<string, string> = { "command-enchantment": "command-enchantment", "skill-registry": "skills" };
+      const fields = new Map<string, number>();
+      try {
+        for (const d of listSettingsDefinitions()) fields.set(d.namespace, (d.schema ?? []).reduce((a, sec) => a + sec.fields.length, 0));
+      } catch {
+        /* none */
+      }
+      const names = Object.keys(contrib).length > 0 ? Object.keys(contrib) : getAnnouncedModules().map((m) => m.name.replace(/^@[^/]+\//, ""));
+      const unipi = names.map((name) => {
+        const c = contrib[name];
+        return {
+          name,
+          ms: times[name] ?? 0,
+          tools: c?.tools.length ?? 0,
+          commands: c?.commands.length ?? 0,
+          shortcuts: c?.shortcuts ?? 0,
+          settings: fields.get(NS_ALIAS[name] ?? name) ?? 0,
+        };
+      });
+      // Other (non-unipi) extensions, grouped from tool + command sources.
+      const others = new Map<string, { name: string; kind: string; tools: number; commands: number }>();
+      const bump = (info: SourceInfoLike | undefined, key: "tools" | "commands"): void => {
+        const label = sourceLabel(info);
+        if (label === "unipi" || label === "built-in" || label === "sdk") return;
+        const name = extensionName(info);
+        const e = others.get(name) ?? { name, kind: label, tools: 0, commands: 0 };
+        e[key]++;
+        others.set(name, e);
+      };
+      try {
+        for (const t of piApi?.getAllTools?.() ?? []) bump(t.sourceInfo as SourceInfoLike, "tools");
+        for (const c of piApi?.getCommands?.() ?? []) if (c.source === "extension") bump(c.sourceInfo as SourceInfoLike, "commands");
+      } catch {
+        /* partial is fine */
+      }
+      let version = "";
+      try {
+        version = getInstalledPackageVersion(process.cwd(), "@pi-unipi/unipi");
+      } catch {
+        version = "";
+      }
+      const raw: ModulesRaw = {
+        version: version && version !== "0.0.0" ? version : (getAnnouncedModules().find((m) => /\d+\.\d+\.\d+-/.test(m.version))?.version ?? ""),
+        unipi,
+        others: [...others.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        totalLoadMs: getTotalLoadTime(),
+      };
       return {
-        count: { value: String(skills.length) },
-        global: { value: String(global.length) },
-        project: { value: String(project.length) },
-        list: {
-          value: chunks.length > 0 ? chunks[0] : "none",
-          detail: chunks.length > 1 ? chunks.slice(1).join("\n") : undefined,
-        },
+        count: { value: String(unipi.length + others.size) },
+        raw: { value: "", raw },
       };
     },
+    render: renderModules,
   });
 }
 
-/**
- * Format uptime for display.
- */
-function formatUptime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+// ─── splash facts ──────────────────────────────────────────────────────────
 
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return `${Math.floor(seconds)}s`;
+let updateLatest: string | null = null;
+/** Set by the UPDATE_AVAILABLE listener in index.ts. */
+export function setUpdateAvailable(latest: string | null): void {
+  updateLatest = latest;
+}
+
+/**
+ * Cheap, synchronous facts for the startup splash. Only reads memory and the
+ * last-session disk snapshot — never parses session history on the boot path.
+ */
+export function splashFacts(): import("./tui/splash.js").SplashFacts {
+  let tools: number | undefined;
+  try {
+    tools = piApi?.getAllTools?.().length;
+  } catch {
+    tools = undefined;
+  }
+  const usage = infoRegistry.getCachedData("usage")?.raw?.raw as { cost?: { today?: number }; sessionsToday?: number } | undefined;
+  // The usage snapshot may be from a previous day; only trust it for today.
+  const usageAt = infoRegistry.getLastUpdated("usage");
+  const sameDay = usageAt > 0 && new Date(usageAt).toDateString() === new Date().toDateString();
+  let resumed: import("./tui/splash.js").SplashFacts["resumed"] = null;
+  let cwd: string | undefined;
+  let branch: string | null = null;
+  if (liveCtx) {
+    try {
+      const raw = collectSession(liveCtx, "");
+      cwd = raw.cwd.replace(process.env.HOME ?? "\u0000", "~");
+      branch = raw.branch;
+      if (raw.replies > 0) {
+        const total = raw.input + raw.output + raw.cacheRead + raw.cacheWrite;
+        resumed = { replies: raw.replies, tokens: compactNum(total), cost: raw.cost > 0 ? `$${raw.cost.toFixed(2)}` : "$0" };
+      }
+    } catch {
+      /* cosmetic */
+    }
+  }
+  const unipiModules = (globalThis as { __unipi_load_times?: Record<string, number> }).__unipi_load_times;
+  return {
+    modules: unipiModules ? Object.keys(unipiModules).length : getAnnouncedModules().length || undefined,
+    tools,
+    todayCost: sameDay ? usage?.cost?.today : undefined,
+    todaySessions: sameDay ? usage?.sessionsToday : undefined,
+    resumed,
+    cwd,
+    branch,
+    update: updateLatest,
+  };
+}
+
+function compactNum(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return String(n);
 }
