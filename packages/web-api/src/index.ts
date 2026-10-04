@@ -112,7 +112,28 @@ export default function (pi: ExtensionAPI) {
               : "Not installed (npx wigolo init)";
           }
 
+          const { registry: providerRegistry } = await import("./providers/registry.js");
+          const { getApiKey, isProviderEnabled } = await import("./settings.js");
+          const providerRows = providerRegistry.getAllProviders().map((p) => ({
+            id: p.id,
+            name: p.name,
+            caps: p.capabilities,
+            enabled: isProviderEnabled(p.id),
+            keyed: p.requiresApiKey,
+            hasKey: !p.requiresApiKey || Boolean(getApiKey(p.id)),
+          }));
+          const avail = webToolAvailability();
           return {
+            raw: {
+              value: "",
+              raw: {
+                providers: providerRows,
+                tools: avail,
+                smartFetch: deps.available ? null : deps.missing,
+                wigolo: wigoloStatus,
+                cache: { entries: stats.totalEntries, bytes: stats.totalSizeBytes, expired: stats.expiredEntries },
+              },
+            },
             providers: { value: String(enabledCount) },
             wigolo: { value: wigoloStatus },
             smartFetch: { value: smartFetchStatus },

@@ -398,7 +398,26 @@ export default function (pi: ExtensionAPI) {
         dataProvider: async () => {
           const counts = b ? await b.list().catch(() => []) : [];
           const conv = readConversionState();
+          const recallOn = cfg.recallAtStart && overrides.recall !== false;
+          const writeOn = cfg.write && overrides.write !== false;
           return {
+            raw: {
+              value: "",
+              raw: {
+                project: b.project,
+                projectCount: counts.length,
+                total: countAllMemories(),
+                types: counts.reduce((acc: Record<string, number>, m: { type?: string }) => {
+                  const t = m.type ?? "other";
+                  acc[t] = (acc[t] ?? 0) + 1;
+                  return acc;
+                }, {}),
+                recall: recallOn,
+                write: writeOn,
+                pending: pendingCount(),
+                migrate: conv && conv.phase !== "done" ? { phase: conv.phase, done: conv.done, total: conv.total } : needsMigration() ? "needed" : null,
+              },
+            },
             projectCount: { value: String(counts.length) },
             totalCount: { value: String(countAllMemories()) },
             recall: { value: cfg.recallAtStart && overrides.recall !== false ? "on" : "off" },

@@ -49,7 +49,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
     // Register info-screen group
     const infoRegistry = globalThis.__unipi_info_registry;
     if (infoRegistry) {
-      let cachedResult: { currentVersion: string; latestVersion: string; updateAvailable: boolean; lastCheck: string } | null = null;
+      let cachedResult: { currentVersion: string; latestVersion: string; updateAvailable: boolean; lastCheck: string; checkedAt: number } | null = null;
 
       infoRegistry.registerGroup({
         id: "updater",
@@ -66,19 +66,31 @@ export default function updaterExtension(pi: ExtensionAPI): void {
           ],
         },
         dataProvider: async () => {
+          const cfg = loadConfig();
           if (!cachedResult) {
             return {
-              current: VERSION,
-              latest: "checking...",
-              status: "⏳ Checking",
-              lastCheck: "never",
+              current: { value: VERSION },
+              latest: { value: "checking…" },
+              status: { value: "checking" },
+              lastCheck: { value: "never" },
+              raw: { value: "", raw: { current: VERSION, latest: null, available: false, checkedAt: 0, mode: cfg.autoUpdate } },
             };
           }
           return {
-            current: cachedResult.currentVersion,
-            latest: cachedResult.latestVersion,
-            status: cachedResult.updateAvailable ? "↑ Update available" : "✓ Up to date",
-            lastCheck: cachedResult.lastCheck || "never",
+            current: { value: cachedResult.currentVersion },
+            latest: { value: cachedResult.latestVersion },
+            status: { value: cachedResult.updateAvailable ? "update available" : "up to date" },
+            lastCheck: { value: cachedResult.lastCheck || "never" },
+            raw: {
+              value: "",
+              raw: {
+                current: cachedResult.currentVersion,
+                latest: cachedResult.latestVersion,
+                available: cachedResult.updateAvailable,
+                checkedAt: cachedResult.checkedAt,
+                mode: cfg.autoUpdate,
+              },
+            },
           };
         },
       });
@@ -91,6 +103,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
           latestVersion: payload.latestVersion,
           updateAvailable: payload.updateAvailable,
           lastCheck: new Date().toLocaleTimeString(),
+          checkedAt: Date.now(),
         };
         emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
           groupId: "updater",

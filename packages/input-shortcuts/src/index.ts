@@ -271,6 +271,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
       dataProvider: async () => {
         const config = loadConfig();
         return {
+          raw: { value: "", raw: { chordKey: config.chordKey, tabInsertKey: config.tabInsertKey, stash: registers.getStash().length } },
           chordKey: { value: config.chordKey, detail: "Key to open shortcuts overlay" },
           tabInsertKey: { value: config.tabInsertKey, detail: "Key to insert tab" },
           stashStatus: { value: registers.getStash().length > 0 ? "set" : "empty", detail: "Stash register" },

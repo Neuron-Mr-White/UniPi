@@ -119,6 +119,19 @@ export default function (pi: ExtensionAPI) {
             const failed = reg.getFailed();
             const toolCount = reg.getTotalToolCount();
             return {
+              raw: {
+                value: "",
+                raw: {
+                  servers: all.map((s) => ({
+                    name: s.name,
+                    status: s.status,
+                    tools: s.toolCount,
+                    error: s.error,
+                    startedAt: s.startedAt,
+                    scope: reg.getEntry(s.name)?.resolved.source ?? "global",
+                  })),
+                },
+              },
               total: { value: String(all.length) },
               active: { value: String(active.length) },
               tools: { value: String(toolCount) },
