@@ -15,8 +15,12 @@ If you must stay on an older Pi, install `@pi-unipi/*@<3.0.0`.
 Run this command:
 
 ```bash
-pi install npm:@pi-unipi/unipi
+pi install npm:@pi-unipi/unipi@alpha
 ```
+
+UniPi 3 is in alpha and ships under the npm `alpha` tag. Without `@alpha`
+the command installs the stable 2.x line. Update an alpha install with
+`pi update npm:@pi-unipi/unipi@alpha`.
 
 This command installs all UniPi packages. Each package also works alone. To
 install one package, use its npm name, for example:

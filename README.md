@@ -27,8 +27,15 @@
 ## Install
 
 ```bash
-pi install npm:@pi-unipi/unipi
+pi install npm:@pi-unipi/unipi@alpha
 ```
+
+> [!NOTE]
+> **UniPi 3 is in alpha.** This README describes v3, published under the npm
+> `alpha` tag. Plain `pi install npm:@pi-unipi/unipi` still installs the stable
+> 2.x line ([2.x README](https://github.com/Neuron-Mr-White/unipi/tree/main#readme)).
+> To update an alpha install: `pi update npm:@pi-unipi/unipi@alpha`. To go back
+> to stable: `pi install npm:@pi-unipi/unipi@latest`.
 
 UniPi needs [Pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 `0.87.1` or later. This command installs 21 extension packages. Each package
