@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -11,6 +11,7 @@ import {
   filterPayloadTools,
   hiddenToolNames,
   renderModeFragment,
+  syncModeTools,
   toolNameOf,
 } from "../gate.js";
 import { OwnerCoordinator } from "../owner.js";
@@ -135,7 +136,9 @@ test("delegation set is empty — subagents are first-class in every mode", () =
 
 function fakePi(appended: Array<{ mode: string; source: string }>) {
   const handlers: Record<string, (e: unknown) => unknown> = {};
+  const activeTools: string[] = ["read", "bash", ...ALL_MODE_TOOLS];
   return {
+    activeTools,
     on: (evt: string, fn: (e: unknown) => unknown) => {
       handlers[evt] = fn;
     },
@@ -144,8 +147,15 @@ function fakePi(appended: Array<{ mode: string; source: string }>) {
     },
     // no-ops for the rest of register()'s wiring
     emit: () => {},
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (names: string[]) => {
+      activeTools.splice(0, activeTools.length, ...names);
+    },
     async fire(prompt: string) {
       await handlers["before_agent_start"]?.({ prompt, systemPrompt: "", systemPromptOptions: { sections: {} } });
+    },
+    async fireEvent(name: string, event: unknown) {
+      await handlers[name]?.(event);
     },
   };
 }
@@ -178,8 +188,13 @@ test("badge prints on mode transitions only, not every turn", async () => {
 test("after register + setSessionMode('none'), getSharedLongHorizonMode is none and event is emitted", () => {
   const { gate, dir } = harness();
   const events: Array<{ name: string; payload: unknown }> = [];
+  const activeTools: string[] = ["bash", ...ALL_MODE_TOOLS];
   const pi = {
     on: () => {},
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (names: string[]) => {
+      activeTools.splice(0, activeTools.length, ...names);
+    },
     events: {
       emit: (name: string, payload: unknown) => {
         events.push({ name, payload });
@@ -194,6 +209,7 @@ test("after register + setSessionMode('none'), getSharedLongHorizonMode is none 
     gate.setSessionMode("none");
 
     assert.equal(getSharedLongHorizonMode(), "none");
+    assert.deepEqual(activeTools.filter((name) => !ALL_MODE_TOOLS.includes(name)), ["bash"], "session mode sync strips the mode tools");
     const resolved = events.filter((e) => e.name === UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED);
     assert.equal(resolved.length, 1);
     assert.deepEqual(resolved[0]?.payload, { mode: "none", source: "explicit" });
@@ -201,5 +217,154 @@ test("after register + setSessionMode('none'), getSharedLongHorizonMode is none 
     setSharedLongHorizonMode(undefined);
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── active-set sync (UNI-90: mode tools truly off in pi's tool set) ────────
+
+function toolPi() {
+  const activeTools: string[] = ["bash", "read", ...ALL_MODE_TOOLS, "sidekick"];
+  const calls: string[][] = [];
+  return {
+    activeTools,
+    calls,
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (names: string[]) => {
+      calls.push([...names]);
+      activeTools.splice(0, activeTools.length, ...names);
+    },
+  };
+}
+
+const modeToolsIn = (tools: string[]): string[] => tools.filter((name) => ALL_MODE_TOOLS.includes(name));
+
+function expectExactlyModeTools(active: string[], wanted: string[]): void {
+  assert.deepEqual(
+    [...modeToolsIn(active)].sort(),
+    [...wanted].sort(),
+    `wanted ${JSON.stringify([...wanted].sort())}, got ${JSON.stringify([...modeToolsIn(active)].sort())}`,
+  );
+}
+
+test("syncModeTools('none') strips all 12 mode tools, keeps other tools in order, and is a no-op when settled", () => {
+  const pi = toolPi();
+  assert.equal(syncModeTools(pi, "none"), true);
+  assert.deepEqual(pi.activeTools, ["bash", "read", "sidekick"]);
+  assert.equal(syncModeTools(pi, "none"), false);
+  assert.equal(pi.calls.length, 1, "settled membership never calls setActiveTools again");
+});
+
+test("syncModeTools flips mode surfaces and never touches non-mode tools", () => {
+  const pi = toolPi();
+  // goal: exactly the goal control tools, non-mode tools untouched and in order.
+  assert.equal(syncModeTools(pi, "goal"), true);
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+  assert.deepEqual(pi.activeTools.filter((n) => !ALL_MODE_TOOLS.includes(n)), ["bash", "read", "sidekick"]);
+
+  // swarm: the swarm trio + todowrite; goal tools gone.
+  assert.equal(syncModeTools(pi, "swarm"), true);
+  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  assert.deepEqual(pi.activeTools.filter((n) => !ALL_MODE_TOOLS.includes(n)), ["bash", "read", "sidekick"]);
+
+  // none: everything mode-owned gone again.
+  assert.equal(syncModeTools(pi, "none"), true);
+  assert.deepEqual(modeToolsIn(pi.activeTools), []);
+  assert.deepEqual(pi.activeTools, ["bash", "read", "sidekick"]);
+});
+
+test("register(): session_start starts tools off, explicit goal turns them on, a plain turn turns them off", async () => {
+  const { gate, dir } = harness();
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+
+  // Fresh session: every mode tool off before any turn.
+  await pi.fireEvent("session_start", {});
+  assert.deepEqual(modeToolsIn(pi.activeTools), [], "a fresh session starts with mode tools off");
+  assert.deepEqual(pi.activeTools.filter((n) => !ALL_MODE_TOOLS.includes(n)), ["read", "bash"]);
+
+  // Explicit goal command → that turn's resolution turns them on.
+  gate.setExplicit("goal");
+  await pi.fire("start pursuing the objective");
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+
+  // Next plain turn (judge off → default none) → off again.
+  await pi.fire("just answer this");
+  assert.deepEqual(modeToolsIn(pi.activeTools), []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("setExplicit syncs the mode tools immediately, before any before_agent_start", () => {
+  const { gate, dir } = harness();
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+
+  gate.setExplicit("goal");
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+  assert.equal(appended.length, 0, "sync happens without firing a turn");
+  // A second identical explicit is a settled no-op.
+  gate.setExplicit("goal");
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("owner activate/resume outside a turn sync the owner's mode tools", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lh-gate-owner-"));
+  const owner = new OwnerCoordinator({
+    statePath: () => join(dir, "state.json"),
+    // Same single-hook wiring as index.ts: every transition goes through the gate.
+    onChange: (_snapshot, event) => gate.onOwnerChanged(event),
+  });
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+
+  // Command-runner activation between turns (kanboard unipi:goal-start shape).
+  owner.activate("swarm", "review");
+  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+
+  // Suspend syncs nothing (the next resolution is authoritative)...
+  owner.suspend("paused(user_requested)");
+  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  // ...and the /unipi:continue-style resume turns them back on.
+  owner.resume();
+  expectExactlyModeTools(pi.activeTools, ["swarm_status", "swarm_yield", "swarm_report", "todowrite"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("restore syncs an active owner's tools on; an ownerless restore leaves them off", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lh-gate-restore-"));
+  const owner = new OwnerCoordinator({
+    statePath: () => join(dir, "state.json"),
+    onChange: (_snapshot, event) => gate.onOwnerChanged(event),
+  });
+  const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
+  const appended: Array<{ mode: string; source: string }> = [];
+  const pi = fakePi(appended);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gate.register(pi as any);
+
+  // Gate's session_start sync puts tools off; ownerless restore keeps them off.
+  void pi.fireEvent("session_start", {});
+  assert.deepEqual(modeToolsIn(pi.activeTools), []);
+  owner.restore();
+  assert.deepEqual(modeToolsIn(pi.activeTools), []);
+
+  // Crash recovery with a live active owner (session_start's restore runs
+  // after the gate's sync): the owner's mode tools come back immediately.
+  writeFileSync(
+    join(dir, "state.json"),
+    JSON.stringify({
+      active: { ownerId: "o1", kind: "goal", label: "g", status: "active", revision: 0, lease: { ownerId: "o1", generation: 0 }, updatedAt: new Date().toISOString() },
+      history: [],
+    }),
+  );
+  owner.restore();
+  expectExactlyModeTools(pi.activeTools, ["create_goal", "get_goal", "update_goal", "todowrite"]);
+  rmSync(dir, { recursive: true, force: true });
 });
 

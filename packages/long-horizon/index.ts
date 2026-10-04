@@ -78,6 +78,11 @@ export default function longHorizon(pi: ExtensionAPI): void {
   const owner = new OwnerCoordinator({
     statePath,
     onChange: (_snapshot, event: OwnerEvent) => {
+      // Owner transitions sync pi's active set (UNI-90): activate/resume/restore
+      // outside before_agent_start must expose the owner's mode tools at once.
+      // `gate` below is initialized in this same synchronous body before any
+      // transition can fire, so the forward reference is safe.
+      gate.onOwnerChanged(event);
       if (ownerEventClearsStash(event)) {
         stash.take();
         stashMetaState = { meta: undefined, kickoff: false };

@@ -19,7 +19,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { emitEvent, isChildProcess, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
 import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
-import type { OwnerCoordinator, OwnerState } from "./owner.js";
+import type { OwnerCoordinator, OwnerEvent, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
 import type { FetchLike } from "./judge/typesafe.js";
 import { loadSettings, type LongHorizonSettings } from "./settings.js";
@@ -102,6 +102,28 @@ export function filterPayloadTools<T>(payload: T, mode: LhMode): T {
   return { ...record, tools: filtered } as T;
 }
 
+/**
+ * The gate owns mode-tool membership in pi's ACTIVE tool set: the payload
+ * filter alone leaves the tools declared in the system prompt, visible to
+ * pi's active-set consumers and to every other module. Touches ONLY names in
+ * ALL_MODE_TOOLS — adds the mode's controlTools, removes the rest — and
+ * preserves the order of every other tool. Skips setActiveTools when
+ * membership already matches (prefix-cache and re-entrancy safety). Returns
+ * whether the active set changed. (pi ignores unregistered names; harmless.)
+ */
+export function syncModeTools(
+  pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">,
+  mode: LhMode,
+): boolean {
+  const current = pi.getActiveTools();
+  const wanted = new Set<string>(MODE_REGISTRY[mode].controlTools);
+  if (ALL_MODE_TOOLS.every((name) => current.includes(name) === wanted.has(name))) return false;
+  const kept = current.filter((name) => !ALL_MODE_TOOLS.includes(name) || wanted.has(name));
+  const additions = [...wanted].filter((name) => !kept.includes(name));
+  pi.setActiveTools([...kept, ...additions]);
+  return true;
+}
+
 function ownerPresenceLine(owner?: OwnerState, parked?: OwnerState): string {
   // Presence only — numbers change every settlement and would bust the prefix
   // cache. Live status rides tail messages (continuation hints), not here.
@@ -152,6 +174,10 @@ export class Gate {
   setExplicit(mode: LhMode): void {
     this.pendingExplicit = mode;
     this.sessionOverride = null;
+    // The command's own next turn re-resolves and re-syncs; syncing now covers
+    // the gap where the kickoff rides a path that never re-enters
+    // before_agent_start (mid-run stash delivery → agent.continue()).
+    if (this.pi) syncModeTools(this.pi, mode);
   }
 
   /** Pin the session to a mode (/unipi:regular, goal stop): every later turn resolves to it. */
@@ -160,10 +186,35 @@ export class Gate {
     this.pendingExplicit = null;
     setSharedLongHorizonMode(mode);
     if (this.pi) {
+      syncModeTools(this.pi, mode);
       emitEvent(this.pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
         mode,
         source: "explicit",
       });
+    }
+  }
+
+  /**
+   * Owner transitions between turns sync the active set too (UNI-90): an owner
+   * activated, resumed, or restored OUTSIDE before_agent_start — slash
+   * commands, command runners (/unipi:continue, unipi:goal-start/resume),
+   * crash recovery — flips its mode's tools on immediately, so a kickoff
+   * delivered via agent.continue() (which never re-enters
+   * before_agent_start) still has them. Wired from index's single owner
+   * onChange closure; suspend/finish/clear deliberately sync nothing (the
+   * next turn's resolution is authoritative, and a suspend-and-switch already
+   * synced its new mode via setExplicit). Best-effort: never throws.
+   */
+  onOwnerChanged(event: OwnerEvent): void {
+    try {
+      if (!this.pi) return;
+      if (event.type !== "activated" && event.type !== "resumed" && event.type !== "restored") return;
+      if (isChildProcess() && process.env.UNIPI_LH_ALLOW_CHILD !== "1") return;
+      const owner = event.type === "restored" ? event.snapshot.active : event.owner;
+      if (!owner) return;
+      syncModeTools(this.pi, modeForOwnerKind(owner.kind));
+    } catch {
+      // An owner transition must never fail because of tool syncing.
     }
   }
 
@@ -221,6 +272,11 @@ export class Gate {
     // background by the entry renderer registered in index.ts.
     pi.on("before_agent_start", async (event) => {
       const state = await this.resolveForTurn(event.prompt);
+      // pi's live loadout is authoritative for this turn (agent-session honors
+      // setActiveTools from before_agent_start unless a handler edited
+      // systemPromptOptions.selectedTools), so flip the mode tools before
+      // anything else consumes the resolution.
+      syncModeTools(pi, state.mode);
       // Shared holder the footer pulls each render (timing-independent), plus
       // the event for the badge/other listeners.
       setSharedLongHorizonMode(state.mode);
@@ -265,6 +321,14 @@ export class Gate {
         .replace(/\n?<\/long-horizon>(\n|$)/, "$1");
       event.systemPromptOptions.sections["long-horizon"] = inner;
       return undefined;
+    });
+
+    // Fresh or resumed sessions start with the mode tools OFF: the session's
+    // first before_agent_start re-syncs to whatever the turn resolves to. All
+    // long-horizon tools register synchronously during module load (before
+    // session_start fires), so nothing re-activates them after this.
+    pi.on("session_start", () => {
+      syncModeTools(pi, "none");
     });
 
     pi.on("before_provider_request", (event) => {

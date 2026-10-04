@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { OwnerCoordinator } from "../owner.js";
-import { Gate, filterPayloadTools } from "../gate.js";
+import { Gate, ALL_MODE_TOOLS, filterPayloadTools } from "../gate.js";
 import { GoalMachine } from "../engine/goal-state.js";
 import { GoalToolset } from "../tools/goal.js";
 import { GoalContinuation } from "../engine/continuation.js";
@@ -35,9 +35,12 @@ interface World {
 interface FakePi {
   handlers: Map<string, Array<(event: unknown, ctx: unknown) => unknown>>;
   sent: string[];
+  activeTools: string[];
   on(event: string, handler: (event: unknown, ctx: unknown) => unknown): void;
   sendUserMessage(content: string): void;
   emit(event: string, payload: unknown): void;
+  getActiveTools(): string[];
+  setActiveTools(names: string[]): void;
 }
 
 function fakePi(): FakePi {
@@ -45,6 +48,8 @@ function fakePi(): FakePi {
   const pi: FakePi = {
     handlers,
     sent: [],
+    // The gate's syncModeTools reads/writes the live loadout through these.
+    activeTools: ["read", "bash", "edit", "write", ...ALL_MODE_TOOLS],
     on: (event, handler) => {
       const list = handlers.get(event) ?? [];
       list.push(handler as (event: unknown, ctx: unknown) => unknown);
@@ -55,6 +60,10 @@ function fakePi(): FakePi {
     },
     emit: (event, payload) => {
       for (const handler of handlers.get(event) ?? []) void handler(payload, {});
+    },
+    getActiveTools: () => [...pi.activeTools],
+    setActiveTools: (names) => {
+      pi.activeTools = names;
     },
   };
   return pi;
