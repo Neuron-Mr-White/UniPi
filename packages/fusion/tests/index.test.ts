@@ -148,7 +148,7 @@ test("recurring edit nudges reset once per turn", async () => {
   }
 });
 
-test("bash nudge fires once per run; sidekick resets the streak but not the flag", async () => {
+test("bash nudge fires once per handoff gap; only a completed handoff re-arms it", async () => {
   const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
   const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
   const previousHome = process.env.HOME;
@@ -163,18 +163,23 @@ test("bash nudge fires once per run; sidekick resets the streak but not the flag
     for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
     const fourth = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
     assert.equal(fourth?.content.at(-1)?.text, bashNudge(4));
-    // Once per run: further non-trivial calls (even across sidekick handoffs,
-    // which keep resetting the streak) never nudge again this run.
+    // Latched: further non-trivial calls never nudge again in this gap.
     for (let i = 0; i < 8; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    // A new prompt restarts the streak but NOT the latch — no re-nudge.
+    handlers.get("before_agent_start")?.({ systemPromptOptions: { sections: {} } }, ctx);
+    for (let i = 0; i < 6; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined, "a new prompt alone must not re-arm the nudge");
+    // A completed sidekick handoff re-arms: the 4th non-trivial call nudges again.
     toolResult({ toolName: "sidekick", content: [] }, ctx);
-    for (let i = 0; i < 4; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
+    const again = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
+    assert.equal(again?.content.at(-1)?.text, bashNudge(4));
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
   }
 });
 
-test("a new agent run re-arms the bash nudge; trivial commands never count", async () => {
+test("a new prompt restarts the streak but not the latch; trivial commands never count", async () => {
   const home = mkdtempSync(join("/tmp", "fusion-index-home-"));
   const cwd = mkdtempSync(join("/tmp", "fusion-index-cwd-"));
   const previousHome = process.env.HOME;
@@ -193,8 +198,11 @@ test("a new agent run re-arms the bash nudge; trivial commands never count", asy
     for (let i = 0; i < 8; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
     // Trivial commands still don't count toward the streak.
     for (let i = 0; i < 5; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "git status" }, content: [] }, ctx), undefined);
-    // New run: the nudge is armed again and fires on the 4th non-trivial call.
+    // New prompt: the streak restarts from zero but the nudge stays latched.
     handlers.get("before_agent_start")?.({ systemPromptOptions: { sections: {} } }, ctx);
+    for (let i = 0; i < 6; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined, "latched nudge must stay silent across prompts");
+    // A completed handoff is the only re-arm.
+    toolResult({ toolName: "read_subagent", content: [] }, ctx);
     for (let i = 0; i < 3; i++) assert.equal(toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx), undefined);
     const second = toolResult({ toolName: "bash", input: { command: "npm test" }, content: [] }, ctx) as { content: Array<{ text?: string }> } | undefined;
     assert.equal(second?.content.at(-1)?.text, bashNudge(4));

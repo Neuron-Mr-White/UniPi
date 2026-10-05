@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-- `utility`: **`/unipi:move [<old-path>] [--dry-run]`** re-links existing state to this project's new root after a move or rename. Never moves the folder itself — the old path must no longer exist (it's a re-link, not a move). Handlers cover Pi sessions, Pi trust, git worktrees, Kanboard boards (via the new `unipi-kanboard project rebind --root <PATH>`) and Memory; omitting the old path opens an orphan picker. Previews grouped changes and asks before writing; writes a log to `~/.unipi/logs/move-<ts>.log` and backs up small rewritten files under `~/.unipi/move-backup/<ts>/`.
-
 ### Changed
 - `utility`: **warnings share one collapsed shape.** Harness warning panels (Progress guard, watchdog, Kanboard unfinished-task, …) render label + synopsis + `Ctrl+O: full message (N rendered rows)` in regular/advanced; simple mode compresses them to the single label line (`▏ ⚠ UniPi · Source · Title`). Expanded views add the body; the advanced origin footer is dropped for warnings. Tool-result annotations with `severity: "warning"` (Fusion edit/shell nudges, Kanboard R1 reminder) trade the old plain two-line header for the same rail+fill panel — in simple mode just one rail line under the tool row.
+
+### Fixed
+- `fusion`: the shell-delegation nudge no longer re-arms on every new prompt (the reason it kept reappearing after each prompt). It now fires at most once per handoff gap: after a nudge, only a completed `sidekick`/`read_subagent` handoff re-arms it. The per-prompt streak reset stays, so a carried-over count still cannot fire early. Synopsis reads "Non-trivial shell work since last handoff" again — which is now literally true. (follow-up to UNI-87)
 
 ## [3.0.0-alpha.29] — 2026-10-04
 

@@ -231,11 +231,13 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   let leadToolCalls = 0;
   let editNudgedThisTurn = false;
   let bashStreak = 0;
-  // The shell-delegation nudge fires at most ONCE per agent run (per user
-  // prompt): before_agent_start re-arms the flag and restarts the streak, and
-  // sidekick/read_subagent handoffs keep resetting bashStreak, but the flag
-  // may not re-arm within the same run.
-  let bashNudgedThisRun = false;
+  // The shell-delegation nudge fires at most ONCE PER HANDOFF GAP: the latch
+  // survives new prompts (before_agent_start restarts only the streak) and
+  // clears when a sidekick/read_subagent handoff completes. The nudge means
+  // "non-trivial shell work since the last handoff" — repeating it after a
+  // mere new prompt says nothing the lead hasn't just been told (it made
+  // Fusion sessions warn on nearly every shell-heavy prompt).
+  let bashNudgedSinceHandoff = false;
 
   const wakeLine = createSidekickWakeLine({
     isBusy: () => runtime?.isBusy() === true,
@@ -383,7 +385,6 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   // replacing `systemPrompt`, which nukes the cached prefix). The section is
   // present only while Fusion is active.
   pi.on("before_agent_start", (event, ctx) => {
-    bashNudgedThisRun = false;
     bashStreak = 0; // each user prompt starts a fresh non-trivial count
     syncFusionTools(); // safety net: re-sync after any module re-juggled tools
     if (active?.kind === "fusion") {
@@ -405,6 +406,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     const toolName: string = event.toolName;
     if (toolName === "sidekick" || toolName === "read_subagent") {
       bashStreak = 0;
+      bashNudgedSinceHandoff = false; // a completed handoff re-arms the nudge
       return;
     }
     leadToolCalls += 1;
@@ -425,12 +427,12 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     if (toolName !== "bash") return;
     const command = typeof event.input.command === "string" ? event.input.command : "";
     if (isTrivialShell(command)) return;
-    if (bashNudgedThisRun) return;
+    if (bashNudgedSinceHandoff) return;
     bashStreak += 1;
     if (bashStreak < BASH_NUDGE_EVERY) return;
-    bashNudgedThisRun = true;
+    bashNudgedSinceHandoff = true;
     const annotation = bashNudge(bashStreak);
-    const synopsis = "Non-trivial shell work in this request";
+    const synopsis = "Non-trivial shell work since last handoff";
     const content = [...event.content, { type: "text" as const, text: annotation }];
     bashStreak = 0;
     return {
@@ -642,7 +644,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     stopRuntime();
     editNudgedThisTurn = false;
     bashStreak = 0;
-    bashNudgedThisRun = false;
+    bashNudgedSinceHandoff = false;
     modelBykey.clear();
     active = loadPreset(ctx.cwd ?? process.cwd()).preset.active;
     mirrorStartup(ctx.cwd ?? process.cwd());
