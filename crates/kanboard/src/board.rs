@@ -54,6 +54,48 @@ impl<'a> Board<'a> {
         self.cold_dir().join(format!("{id}.md"))
     }
 
+    /// Every distinct label used anywhere in the project — live tasks in
+    /// every lane (`Status::ALL` includes `Archived`) union cold-storage
+    /// files (old archived/cancelled tasks moved there by retention) — so a
+    /// label a user typed once stays reusable even after its only task is
+    /// archived or retained to cold storage (UNI-100). Order is first-seen;
+    /// case and surrounding whitespace are exactly as stored.
+    pub fn project_labels(&self) -> Result<Vec<String>> {
+        let mut labels: Vec<String> = Vec::new();
+        for task in self.tasks()? {
+            for label in task.labels {
+                if !labels.iter().any(|existing| existing == &label) {
+                    labels.push(label);
+                }
+            }
+        }
+        let cold_dir = self.cold_dir();
+        if cold_dir.exists() {
+            let mut entries: Vec<PathBuf> = fs::read_dir(&cold_dir)?
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().map(|ext| ext == "md").unwrap_or(false))
+                .collect();
+            entries.sort();
+            for path in entries {
+                let Ok(text) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let (task, problems) = format::parse(&path.to_string_lossy(), &text);
+                if !problems.is_empty() {
+                    continue;
+                }
+                let Some(task) = task else { continue };
+                for label in task.labels {
+                    if !labels.iter().any(|existing| existing == &label) {
+                        labels.push(label);
+                    }
+                }
+            }
+        }
+        Ok(labels)
+    }
+
     /// Dep-aware lookup: live tasks first, then the cold file (the frozen
     /// status still counts — archived-from-done satisfies a chain gate).
     pub fn dep_lookup<'t>(&self, tasks: &'t [Task]) -> impl Fn(&str) -> Option<Task> + use<'_, 't> {

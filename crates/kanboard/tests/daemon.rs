@@ -144,8 +144,10 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
     let daemon = Daemon::start(&fixture, &["--idle-secs", "120"]);
     let slug = &fixture.project.slug;
 
-    // Drive a task to in_review: `start` it (as an agent session), then a
-    // system `release` hands it to review.
+    // Claim a task with a pid that is dead on this host, so it reads as a
+    // confirmed stale run: in_progress → todo for the user actor still
+    // requires a note (UNI-106 only lifted the requirement from rework and
+    // unblock; releasing a stale run still needs one).
     let task = fixture.tasks().into_iter().next().expect("a task");
     let claimed = cli(
         &fixture,
@@ -157,7 +159,7 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
             "--session",
             "s-test",
             "--pid",
-            &std::process::id().to_string(),
+            "999999",
             "--json",
         ],
     );
@@ -166,25 +168,8 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
         "{}",
         String::from_utf8_lossy(&claimed.stderr)
     );
-    let released = cli(
-        &fixture,
-        &[
-            "release",
-            &task.id,
-            "--to",
-            "in_review",
-            "--comment",
-            "done",
-            "--json",
-        ],
-    );
-    assert!(
-        released.status.success(),
-        "{}",
-        String::from_utf8_lossy(&released.stderr)
-    );
 
-    // in_review → todo needs a rework note: 409 + needsComment.
+    // in_progress (stale) → todo needs a note: 409 + needsComment.
     let response = http(
         daemon.port,
         "POST",
@@ -198,7 +183,7 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
     // The UI/API names what is missing; only the CLI talks about `--comment`.
     assert_eq!(
         payload["error"],
-        "in_review → todo requires a comment (rework note)"
+        "in_progress → todo requires a comment (why the stale run is being released)"
     );
     assert!(!payload["error"].as_str().unwrap().contains("--comment"));
 
@@ -223,7 +208,7 @@ fn move_that_needs_a_comment_answers_409_then_succeeds_with_one() {
         stored
             .activity
             .iter()
-            .any(|entry| entry.text == "rework: needs a reconnect test")
+            .any(|entry| entry.text == "moved in_progress → todo: needs a reconnect test")
     );
 }
 
@@ -280,7 +265,8 @@ fn rules_endpoint_lists_the_transition_table_for_the_user_actor() {
     assert_eq!(response.status, 200, "{}", response.body);
     let payload = response.json();
 
-    // in_review → todo is a user move that needs a comment (the rework note).
+    // UNI-106: in_review → todo is a user move that no longer needs a
+    // comment (the rework note is optional now).
     let allowed: Vec<&str> = payload["allowedMoves"]["in_review"]
         .as_array()
         .unwrap()
@@ -288,8 +274,8 @@ fn rules_endpoint_lists_the_transition_table_for_the_user_actor() {
         .map(|value| value.as_str().unwrap())
         .collect();
     assert!(allowed.contains(&"todo"), "{allowed:?}");
-    assert_eq!(
-        payload["commentRequired"]["in_review"]["todo"], "rework note",
+    assert!(
+        payload["commentRequired"]["in_review"].get("todo").is_none(),
         "{}",
         payload
     );
@@ -1345,6 +1331,7 @@ fn running_lists_claimed_tasks_across_projects() {
         &[],
         &[],
         &[],
+        true,
     )
     .unwrap();
     let second = second_value["id"].as_str().unwrap().to_string();

@@ -83,9 +83,13 @@ pub enum Command {
         /// Dependency ids (may repeat).
         #[arg(long = "after", value_name = "ID")]
         after: Vec<String>,
-        /// Label (may repeat).
+        /// Label (may repeat). Must already exist on the project
+        /// (case-insensitive) unless --new-label is also given.
         #[arg(long = "label", value_name = "LABEL")]
         labels: Vec<String>,
+        /// Opt in to creating a label that does not already exist.
+        #[arg(long)]
+        new_label: bool,
     },
 
     /// List tasks. Bare `list` shows the active lanes only (todo,
@@ -109,7 +113,9 @@ pub enum Command {
     Move {
         id: String,
         status: String,
-        /// Required for some transitions (rework notes, block/unblock answers).
+        /// Required for some transitions (e.g. blocking, or releasing a
+        /// confirmed-stale claim); optional for others (rework notes,
+        /// unblock answers — UNI-106).
         #[arg(long)]
         comment: Option<String>,
         /// Attach a file (may repeat); its path in the comment is replaced by
@@ -154,9 +160,13 @@ pub enum Command {
         body: Option<String>,
         #[arg(long, value_name = "PRIORITY")]
         priority: Option<String>,
-        /// Comma-separated labels.
+        /// Comma-separated labels. Each must already exist on the project
+        /// (case-insensitive) unless --new-label is also given.
         #[arg(long, value_name = "A,B")]
         labels: Option<String>,
+        /// Opt in to creating labels that do not already exist.
+        #[arg(long)]
+        new_label: bool,
     },
 
     /// Add a dependency.

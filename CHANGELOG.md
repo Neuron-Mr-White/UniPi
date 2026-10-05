@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- `kanboard`: agents can unblock tasks to Todo or resume a blocked task through `start`, with the usual claim and session limits. (UNI-105)
+- `kanboard`: unblocking and review rework no longer require a description; empty notes produce clean activity text. (UNI-106)
+- `kanboard`: agent-created labels must reuse existing project labels unless `--new-label` explicitly allows a new one; matching preserves stored spelling. (UNI-100)
+- `kanboard`: removed the board's Task defaults tab and legacy Blocking setting, preserving the other board settings. (UNI-101)
 - `kanboard`: `/unipi:kanboard show <lane>` filters the chat board, with lane and `--all` argument autocomplete. (UNI-102)
 - `background-tasks`: launch and completion notices use width-fitted one-line chips in every render style; expanded views retain command, output and task details. (UNI-103)
 - `compactor`: `/unipi:compact-then <prompt>` compacts before continuing, preserving next-turn versus after-run queue behavior while streaming. (UNI-104)

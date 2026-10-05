@@ -124,6 +124,46 @@ fn a_session_may_start_several_tasks_but_the_session_cap_holds() {
     );
 }
 
+/// UNI-105: `start` also resumes a task the agent blocked — same claim and
+/// session-cap rules as a fresh todo claim.
+#[test]
+fn start_resumes_a_blocked_task_with_the_same_claim_and_cap_rules() {
+    use kanboard::commands;
+    let fixture = Fixture::new();
+    let task = fixture.add_with("work", Status::Todo, Priority::None, &[]);
+    start(&fixture, &task.id, "sess-a", alive()).expect("start");
+    let mut agent_common = fixture.common.clone();
+    agent_common.actor = Actor::Agent;
+    agent_common.session = Some("sess-a".to_string());
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent_common,
+        &task.id,
+        Status::Blocked,
+        Some("need the log format"),
+    )
+    .expect("block");
+    assert_eq!(stored(&fixture, &task.id).status, Status::Blocked);
+
+    // Resuming it goes through `start` again, same as a fresh claim.
+    let value = start(&fixture, &task.id, "sess-a", alive()).expect("resume");
+    assert_eq!(value["status"], "in_progress");
+    assert_eq!(value["run"]["session"], "sess-a");
+    let resumed = stored(&fixture, &task.id);
+    assert_eq!(resumed.status, Status::InProgress);
+    let last = resumed.activity.last().unwrap();
+    assert_eq!(last.actor, Actor::Agent);
+    assert!(last.text.starts_with("resumed"), "{}", last.text);
+
+    // The same session cap applies: two sessions already holding tasks blocks a third.
+    let other = fixture.add_with("other", Status::Todo, Priority::None, &[]);
+    start(&fixture, &other.id, "sess-b", alive()).expect("second session");
+    let third = fixture.add_with("third", Status::Todo, Priority::None, &[]);
+    let err = start(&fixture, &third.id, "sess-c", alive()).unwrap_err();
+    assert!(err.to_string().contains("sessions already run tasks"), "{err}");
+}
+
 #[test]
 fn finish_moves_the_own_claim_to_review_with_the_summary() {
     let fixture = Fixture::new();

@@ -214,6 +214,65 @@ pub fn project_show(layout: &Layout, project: &Project) -> Result<Value> {
 
 // ─── tasks ──────────────────────────────────────────────────────────────────
 
+/// Trim, drop empties and dedupe case-insensitively, preserving first-seen
+/// order and the first-seen spelling of each one.
+fn clean_labels(labels: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for label in labels {
+        let label = label.trim();
+        if label.is_empty() {
+            continue;
+        }
+        if !out.iter().any(|existing: &String| existing.eq_ignore_ascii_case(label)) {
+            out.push(label.to_string());
+        }
+    }
+    out
+}
+
+/// UNI-100: resolve `labels` (trimmed) against `existing` project labels
+/// (also trimmed, case-insensitive match, union of every lane including
+/// archived — see `Board::project_labels`). Known labels are rewritten to
+/// their stored (canonical) spelling. Unless `allow_new`, a label matching
+/// nothing already on the project is refused before anything is written —
+/// the task/edit is unaffected by the attempt; with `allow_new` any label is
+/// accepted as typed (still trimmed/deduped).
+fn resolve_labels(labels: &[String], existing: &[String], allow_new: bool) -> Result<Vec<String>> {
+    let cleaned = clean_labels(labels);
+    let mut out = Vec::new();
+    for label in cleaned {
+        match existing.iter().find(|candidate| candidate.eq_ignore_ascii_case(&label)) {
+            Some(canonical) => {
+                if !out.iter().any(|seen: &String| seen.eq_ignore_ascii_case(canonical)) {
+                    out.push(canonical.clone());
+                }
+            }
+            None => {
+                if allow_new {
+                    out.push(label);
+                    continue;
+                }
+                if existing.is_empty() {
+                    return Err(Error::rule(format!(
+                        "no labels exist yet — pass --new-label to create \"{label}\""
+                    )));
+                }
+                let mut sorted: Vec<&String> = existing.iter().collect();
+                sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                let list = sorted
+                    .iter()
+                    .map(|label| label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(Error::rule(format!(
+                    "unknown label \"{label}\" — existing labels: {list}. Reuse one, or pass --new-label to create it on purpose."
+                )));
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn add(
     layout: &Layout,
@@ -226,6 +285,7 @@ pub fn add(
     after: &[String],
     attach: &[std::path::PathBuf],
     labels: &[String],
+    new_label: bool,
 ) -> Result<Value> {
     let status = status.unwrap_or(Status::Backlog);
     if !matches!(status, Status::Backlog | Status::Todo) {
@@ -278,15 +338,17 @@ pub fn add(
     }
     task.body = body.trim().to_string();
     task.deps = after.to_vec();
-    // Labels are trimmed, deduped and never empty; creation order is kept.
-    let mut seen_labels = Vec::new();
-    for label in labels {
-        let label = label.trim();
-        if !label.is_empty() && !seen_labels.contains(&label.to_string()) {
-            seen_labels.push(label.to_string());
-        }
-    }
-    task.labels = seen_labels;
+    // UNI-100: the agent-created guard applies to the agent actor only (a
+    // human picking from the same label list stays free to create one on
+    // the spot, same as the web UI) — a label must already exist on the
+    // project (trimmed, case-insensitive) unless --new-label opts in; a
+    // match is rewritten to its stored spelling.
+    task.labels = if common.actor == Actor::Agent {
+        let existing_labels = board.project_labels()?;
+        resolve_labels(labels, &existing_labels, new_label)?
+    } else {
+        clean_labels(labels)
+    };
     // The creator is written once here and never again (UNI-59).
     task.creator = Some(common.actor);
     task.push_activity_session(
@@ -538,6 +600,9 @@ pub struct EditArgs<'a> {
     pub body: Option<&'a str>,
     pub priority: Option<Priority>,
     pub labels: Option<Vec<String>>,
+    /// UNI-100: opt in to creating labels that do not already exist on the
+    /// project. Ignored when `labels` is `None`.
+    pub new_label: bool,
 }
 
 pub fn edit(
@@ -575,7 +640,16 @@ pub fn edit(
         changed.push("priority");
     }
     if let Some(labels) = args.labels {
-        task.labels = labels;
+        // UNI-100: the agent-created guard applies to the agent actor only
+        // (the web UI/user keeps creating labels on the spot); resolve
+        // against the whole-project label union — a label this task
+        // already carries always matches there too.
+        task.labels = if common.actor == Actor::Agent {
+            let existing_labels = board.project_labels()?;
+            resolve_labels(&labels, &existing_labels, args.new_label)?
+        } else {
+            clean_labels(&labels)
+        };
         changed.push("labels");
     }
     if changed.is_empty() {
@@ -848,9 +922,11 @@ pub struct StartArgs<'a> {
 }
 
 /// `start <ID>`: the agent self-claims a todo task for its session
-/// (todo → in_progress, actor agent). Deps must be satisfied, the task not
-/// already claimed, and the per-project session cap free; a session may hold
-/// several started tasks.
+/// (todo → in_progress, actor agent), or resumes a task it blocked
+/// (blocked → in_progress — UNI-105: the same claim and session-cap rules
+/// apply either way). Deps must be satisfied, the task not already claimed,
+/// and the per-project session cap free; a session may hold several started
+/// tasks.
 pub fn start(
     layout: &Layout,
     project: Project,
@@ -882,9 +958,11 @@ pub fn start(
             owner.map(|run| run.session.as_str()).unwrap_or("?"),
         )));
     }
-    if task.status != Status::Todo {
+    // UNI-105: `start` also resumes a task the agent itself blocked — same
+    // claim and session-cap rules as a fresh todo claim.
+    if !matches!(task.status, Status::Todo | Status::Blocked) {
         return Err(Error::rule(format!(
-            "start {id}: the task is {}, not todo{}",
+            "start {id}: the task is {}, not todo or blocked{}",
             task.status,
             if task.status == Status::Backlog {
                 " — move it to todo first"
@@ -893,25 +971,23 @@ pub fn start(
             }
         )));
     }
+    let from = task.status;
     if task.is_claimed() {
         return Err(Error::rule(format!(
             "start {id}: the task is already claimed"
         )));
     }
-    if let Some(blocked) = deps::blocked_by(task, &by_id, gate) {
+    // UNI-105 regression: `blocked_by` only evaluates todo tasks — resuming
+    // a blocked one must not bypass the same dependency gate a fresh todo
+    // claim is held to, so the status-agnostic check runs for both.
+    if let Some(blocked) = deps::pending_deps_regardless_of_status(task, &by_id, gate) {
         return Err(Error::rule(format!(
             "start {id}: {}",
             blocked.describe(gate)
         )));
     }
     session_cap(&tasks, args.session)?;
-    transitions::check(
-        Status::Todo,
-        Status::InProgress,
-        Actor::Agent,
-        None,
-        Staleness::Running,
-    )?;
+    transitions::check(from, Status::InProgress, Actor::Agent, None, Staleness::Running)?;
 
     let mut task = task.clone();
     task.status = Status::InProgress;
@@ -928,7 +1004,11 @@ pub fn start(
         now,
         Actor::Agent,
         Some(args.session),
-        format!("started (pid {} on {})", args.pid, args.host),
+        if from == Status::Blocked {
+            format!("resumed from blocked (pid {} on {})", args.pid, args.host)
+        } else {
+            format!("started (pid {} on {})", args.pid, args.host)
+        },
     );
     board.save(&task)?;
     drop(lock);
@@ -1123,6 +1203,11 @@ pub fn move_task_undoable(
                     "use `start {id}` to begin a task (it claims it for your session)"
                 )));
             }
+            (Status::Blocked, Status::InProgress) => {
+                return Err(Error::rule(format!(
+                    "use `start {id}` to resume a blocked task (it claims it for your session)"
+                )));
+            }
             (Status::InProgress, Status::InReview) => {
                 return Err(Error::rule(format!(
                     "use `finish {id} --comment \"<summary>\"` to hand a task you started to review"
@@ -1159,9 +1244,22 @@ pub fn move_task_undoable(
     let note = note.as_str();
     let text = match (from, to) {
         (_, Status::Blocked) => format!("blocked: {note}"),
-        (Status::Blocked, Status::Todo) => format!("unblocked: {note}"),
+        (Status::Blocked, Status::Todo) => {
+            // UNI-106: the answer is optional — an empty note reads as a bare
+            // "unblocked", not "unblocked: " with nothing after the colon.
+            if note.is_empty() {
+                "unblocked".to_string()
+            } else {
+                format!("unblocked: {note}")
+            }
+        }
         (Status::InReview, Status::Todo) | (Status::InReview, Status::Backlog) => {
-            format!("rework: {note}")
+            // UNI-106: the rework note is optional.
+            if note.is_empty() {
+                "rework".to_string()
+            } else {
+                format!("rework: {note}")
+            }
         }
         (_, Status::Cancelled) => {
             if note.is_empty() {

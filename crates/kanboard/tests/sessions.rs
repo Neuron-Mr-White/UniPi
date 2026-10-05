@@ -63,6 +63,7 @@ fn the_session_cap_is_per_project() {
         &[],
         &[],
         &[],
+        true,
     )
     .unwrap();
     let host = commands::hostname();
@@ -182,6 +183,7 @@ fn agents_edit_only_their_own_drafts() {
             body: None,
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .unwrap_err();
@@ -200,6 +202,7 @@ fn agents_edit_only_their_own_drafts() {
             &[],
             &[],
             &[],
+            true,
         )
         .unwrap(),
     );
@@ -213,6 +216,7 @@ fn agents_edit_only_their_own_drafts() {
             body: Some("revised"),
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .expect("agent edits its own backlog task");
@@ -231,6 +235,7 @@ fn agents_edit_only_their_own_drafts() {
             &[],
             &[],
             &[],
+            true,
         )
         .unwrap(),
     );
@@ -255,6 +260,7 @@ fn agents_edit_only_their_own_drafts() {
             body: None,
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .unwrap_err();
@@ -324,6 +330,7 @@ fn activity_entries_carry_the_session_tag() {
         &[],
         &[],
         &[],
+        true,
     )
     .unwrap();
     let id = id_of(&value);
@@ -483,6 +490,7 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         &[],
         &[shot.clone(), doc],
         &[],
+        true,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();
@@ -502,6 +510,7 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
         &[],
         std::slice::from_ref(&log),
         &[],
+        true,
     )
     .unwrap();
     let body = value["body"].as_str().unwrap();

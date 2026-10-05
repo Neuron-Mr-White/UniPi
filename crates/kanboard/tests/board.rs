@@ -780,6 +780,7 @@ fn create_carries_labels_and_an_immutable_creator() {
         &[],
         &[],
         &[],
+        true,
     )
     .unwrap();
     assert_eq!(created["creator"], "agent");

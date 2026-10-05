@@ -26,9 +26,10 @@ be on `PATH`):
 <binary> --actor agent --project <slug> attach <ID> <file> --note "<what it shows>"
 <binary> --actor agent --project <slug> attachments <ID>
 <binary> --actor agent --project <slug> edit <ID> --title|--body|--labels …   # only tasks you created, while in backlog/todo
-<binary> --actor agent --project <slug> start <ID>                          # todo → in progress, claimed for your session (costs a -do slot)
+<binary> --actor agent --project <slug> start <ID>                          # todo → in progress, or blocked → in progress to resume a task you blocked (either way claims it for your session and costs a -do slot)
 <binary> --actor agent --project <slug> finish <ID> --comment "<summary>" [--attach <file>]…   # in progress → in review, only a task you started (free)
 <binary> --actor agent --project <slug> move <ID> blocked --comment "<what you need>" [--attach <file>]…
+<binary> --actor agent --project <slug> move <ID> todo [--comment "<why>"]   # unblock your own blocked task (comment optional) — then `start <ID>` to resume it, or leave it in todo
 <binary> --actor agent --project <slug> link <ID> --after <DEP>
 <binary> --actor agent --project <slug> unlink <ID> --after <DEP>
 <binary> --actor agent --project <slug> order <ID> --top|--bottom|--before <ID>
@@ -54,13 +55,14 @@ and `rotate-token` are user-only — the agent is refused.
 |---|---|
 | backlog ↔ todo | user, agent |
 | todo → in progress | the agent with `start <ID>` (claims it for its session; costs a `-do` slot) |
+| blocked → in progress | the agent with `start <ID>`, to resume a task it blocked — same claim/session-cap rules, same `-do` slot cost |
 | edit a task | agent — only tasks it created, and only in backlog/todo |
 | in progress → in review | the agent with `finish <ID> --comment` — only a task its own session `start`ed |
 | in progress → blocked | agent, system — **comment required** (what you need) |
 | in progress → todo | user or system `release` — comment required (the session died or gave the task up) |
-| blocked → todo | user only — comment required (the answer) |
+| blocked → todo | **user or agent** — comment optional (the answer, when there is one) |
 | in review → done | user only |
-| in review → todo/backlog | user only — comment required (rework note) |
+| in review → todo/backlog | user only — comment optional (a rework note, when there is one) |
 | anything → cancelled | user only |
 | in review → archived | user only (one-click archive) |
 | done/cancelled → archived | user (or automatically) |
@@ -91,11 +93,17 @@ lists them — read the files there directly if you need one.
 4. **Follow the blocking rule in your task prompt**: by default work
    autonomously and record assumptions with `note <ID> "assumed: <what/why>"`;
    block (with a comment saying exactly what you need) only when you truly
-   cannot continue — `move <ID> blocked --comment "<what you need>"`.
+   cannot continue — `move <ID> blocked --comment "<what you need>"`. Once you
+   have what you needed, you may unblock it yourself — `move <ID> todo` (a
+   comment is optional, unlike blocking) — and resume it with `start <ID>`
+   (blocked → in progress; the same claim and session-cap rules as a fresh
+   `start`, and it still costs a `-do` slot). You do not have to wait for the
+   user to answer in the board if you already have the answer.
 5. **Work only on the task you were given.** Follow-up work goes to the board as
    a new task in Backlog (`add "<title>"`), optionally `link <new> --after <ID>`.
    At most `maxSessions` (default 2) sessions may hold tasks in a project at
-   once — if the board refuses a `start`, that is why. You may
+   once — if the board refuses a `start`, that is why (this cap covers resuming
+   a blocked task too). You may
    block only the task your own session is running (`move <ID> blocked` checks
    `--session`/`UNIPI_KANBOARD_SESSION` against the claim).
 6. **Sidekicks and subagents can read the board but never write it** — every

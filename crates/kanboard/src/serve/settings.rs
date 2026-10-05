@@ -75,7 +75,6 @@ pub fn save(layout: &Layout, settings: &PanelSettings) -> Result<()> {
 // modules' keys must be preserved on write).
 
 pub const PI_SETTING_KEYS: &[&str] = &[
-    "blocking",
     "maxSessions",
     "turnAddLimit",
     "chainGate",
@@ -83,7 +82,6 @@ pub const PI_SETTING_KEYS: &[&str] = &[
     "retentionDays",
 ];
 
-pub const BLOCKING: &[&str] = &["avoid", "ask"];
 pub const CHAIN_GATES: &[&str] = &["in_review", "done"];
 
 /// `$HOME/.unipi/config/kanboard/config.json` (pi's global settings layer).
@@ -127,14 +125,6 @@ pub fn effective_pi_settings() -> serde_json::Map<String, serde_json::Value> {
     let stored = load_pi_settings();
     let mut out = serde_json::Map::new();
     out.insert(
-        "blocking".to_string(),
-        stored
-            .get("blocking")
-            .cloned()
-            .filter(|v| v.as_str().is_some_and(|s| BLOCKING.contains(&s)))
-            .unwrap_or_else(|| "avoid".into()),
-    );
-    out.insert(
         "maxSessions".to_string(),
         serde_json::Value::from(stored.get("maxSessions").and_then(|v| v.as_u64()).unwrap_or(2).max(1)),
     );
@@ -166,13 +156,6 @@ pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> 
     let mut out = serde_json::Map::new();
     for (key, value) in patch {
         match key.as_str() {
-            "blocking" => {
-                let v = value.as_str().ok_or("blocking must be a string")?;
-                if !BLOCKING.contains(&v) {
-                    return Err(format!("unknown blocking {v:?}"));
-                }
-                out.insert(key.clone(), value.clone());
-            }
             "chainGate" => {
                 let v = value.as_str().ok_or("chainGate must be a string")?;
                 if !CHAIN_GATES.contains(&v) {
@@ -194,8 +177,9 @@ pub fn validate_pi_patch(patch: &serde_json::Map<String, serde_json::Value>) -> 
                 out.insert(key.clone(), value.clone());
             }
             // Legacy keys (older daemons; the removed runner's routing and
-            // queue) — ignored, not rejected, so an older UI can still save.
-            "agentCommand" | "defaultStrategy" | "defaultPlan" | "queueMax" => {}
+            // queue, and the removed board "blocking" task default) —
+            // ignored, not rejected, so an older UI can still save.
+            "agentCommand" | "defaultStrategy" | "defaultPlan" | "queueMax" | "blocking" => {}
             other => return Err(format!("unknown settings key {other:?}")),
         }
     }

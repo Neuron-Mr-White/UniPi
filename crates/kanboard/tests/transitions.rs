@@ -54,20 +54,20 @@ fn every_table_row_is_reachable_and_gated() {
     }
 }
 
+/// UNI-106: a rework note is no longer mandatory — in_review → todo goes
+/// through with no comment at all, and still works when one is given.
 #[test]
-fn rework_note_message_matches_the_spec_example() {
-    let err = transitions::check(
+fn rework_note_is_optional() {
+    transitions::check(Status::InReview, Status::Todo, Actor::User, None, Staleness::Running)
+        .expect("in_review → todo needs no comment");
+    transitions::check(
         Status::InReview,
         Status::Todo,
         Actor::User,
-        None,
+        Some("needs tests"),
         Staleness::Running,
     )
-    .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "in_review → todo requires --comment (rework note)"
-    );
+    .expect("in_review → todo still accepts a comment");
 }
 
 #[test]
@@ -100,21 +100,12 @@ fn blocked_requires_a_comment_from_agent_and_system() {
     ));
 }
 
+/// UNI-105: an agent may unblock a task to todo (e.g. to resume it with
+/// `start`); UNI-106: the answer is optional for both actors.
 #[test]
-fn unblocking_requires_the_answer() {
-    let err = transitions::check(
-        Status::Blocked,
-        Status::Todo,
-        Actor::User,
-        None,
-        Staleness::Running,
-    )
-    .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("the answer, shown to the agent on next claim"),
-        "{err}"
-    );
+fn unblocking_is_free_of_a_comment_and_open_to_agents() {
+    transitions::check(Status::Blocked, Status::Todo, Actor::User, None, Staleness::Running)
+        .expect("blocked → todo needs no comment");
     assert!(allowed(
         Status::Blocked,
         Status::Todo,
@@ -122,8 +113,15 @@ fn unblocking_requires_the_answer() {
         Some("use json logs"),
         Staleness::Running
     ));
-    // Agents may not unblock themselves.
-    assert!(!allowed(
+    // UNI-105: agents may unblock too, with or without a comment.
+    assert!(allowed(
+        Status::Blocked,
+        Status::Todo,
+        Actor::Agent,
+        None,
+        Staleness::Running
+    ));
+    assert!(allowed(
         Status::Blocked,
         Status::Todo,
         Actor::Agent,
@@ -510,17 +508,8 @@ fn the_user_answers_a_blocked_task_and_the_note_survives() {
     )
     .expect("block");
 
-    let err = commands::move_task(
-        &fixture.layout,
-        fixture.project.clone(),
-        &fixture.common,
-        &task.id,
-        Status::Todo,
-        None,
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("requires --comment"));
-
+    // UNI-106: the answer is optional now — unblock with a comment still
+    // carries it through to the activity text.
     commands::move_task(
         &fixture.layout,
         fixture.project.clone(),
@@ -550,6 +539,40 @@ fn the_user_answers_a_blocked_task_and_the_note_survives() {
             .iter()
             .any(|entry| entry.text.contains("json logs"))
     );
+}
+
+/// UNI-105 / UNI-106: an agent may unblock its own blocked task with no
+/// comment at all — the bare activity text carries no trailing colon.
+#[test]
+fn an_agent_unblocks_without_a_comment_and_the_text_carries_no_colon() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("blocked by agent", Status::Todo, Priority::None, &[]);
+    fixture.start(&task.id, "sess-1", std::process::id());
+    let mut agent_common = fixture.common.clone();
+    agent_common.actor = Actor::Agent;
+    agent_common.session = Some("sess-1".to_string());
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent_common,
+        &task.id,
+        Status::Blocked,
+        Some("need the log format"),
+    )
+    .expect("block");
+
+    let value = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent_common,
+        &task.id,
+        Status::Todo,
+        None,
+    )
+    .expect("agent unblocks itself without a comment");
+    assert_eq!(value["status"], "todo");
+    let activity = value["activity"].as_array().unwrap();
+    assert_eq!(activity.last().unwrap()["text"], "unblocked");
 }
 
 #[test]

@@ -1165,10 +1165,9 @@ function ModelCombobox(props: {
   );
 }
 
-type SettingsCat = "summaries" | "defaults" | "sessions" | "archive";
+type SettingsCat = "summaries" | "sessions" | "archive";
 const SETTINGS_CATS: Array<[SettingsCat, string]> = [
   ["summaries", "Summaries"],
-  ["defaults", "Task defaults"],
   ["sessions", "Sessions"],
   ["archive", "Archive"],
 ];
@@ -1183,7 +1182,6 @@ export function SettingsDialog(): JSX.Element {
   const [modelsError, setModelsError] = createSignal("");
   const [modelList, setModelList] = createSignal<string[]>([]);
   const [cat, setCat] = createSignal<SettingsCat>("summaries");
-  const [blocking, setBlocking] = createSignal("avoid");
   const [maxSessions, setMaxSessions] = createSignal(2);
   const [turnAddLimit, setTurnAddLimit] = createSignal(20);
   const [chainGate, setChainGate] = createSignal("in_review");
@@ -1219,7 +1217,6 @@ export function SettingsDialog(): JSX.Element {
           setCustomInstruction(settings.summaryInstruction !== settings.defaultSummaryInstruction);
           setCat("summaries");
           const limits = settings.sessions ?? settings.runner;
-          setBlocking(settings.taskDefaults?.blocking ?? "avoid");
           setMaxSessions(limits?.maxSessions ?? 2);
           setTurnAddLimit(limits?.turnAddLimit ?? 20);
           setChainGate(limits?.chainGate ?? "in_review");
@@ -1240,7 +1237,6 @@ export function SettingsDialog(): JSX.Element {
       await api.saveSettings({
         summaryModel: model().trim(),
         summaryInstruction: customInstruction() ? instruction() : "",
-        blocking: blocking(),
         maxSessions: maxSessions(),
         turnAddLimit: turnAddLimit(),
         chainGate: chainGate(),
@@ -1328,18 +1324,6 @@ export function SettingsDialog(): JSX.Element {
               />
             </Show>
             <span class="field-hint">Plain-language style rules are always applied.</span>
-          </div>
-          </Show>
-
-          <Show when={cat() === "defaults"}>
-          <div class="settings-heading">Task defaults</div>
-          <div class="field">
-            <span class="field-label">Blocking</span>
-            <select class="input" aria-label="Blocking" value={blocking()} onChange={(e) => setBlocking(e.currentTarget.value)}>
-              <option value="avoid">Avoid — work autonomously, note assumptions</option>
-              <option value="ask">Ask — block the task to ask the user</option>
-            </select>
-            <span class="field-hint">What the agent does when it is unsure how to go on.</span>
           </div>
           </Show>
 

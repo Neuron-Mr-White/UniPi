@@ -381,6 +381,9 @@ pub async fn create(
         Ok(priority) => priority.unwrap_or(Priority::None),
         Err(error) => return map_error(error, false),
     };
+    // UNI-100's unknown-label refusal is a CLI/agent guard (`--new-label`
+    // opts in); the web UI is a human picking from (or typing into) the
+    // same label list and stays free to create one on the spot, as before.
     let result = commands::add(
         &state.layout,
         project,
@@ -392,6 +395,7 @@ pub async fn create(
         &request.after,
         &[],
         &request.labels,
+        true,
     );
     match result {
         Ok(value) => {
@@ -587,6 +591,9 @@ pub async fn edit(
         body: request.body.as_deref(),
         priority,
         labels: request.labels,
+        // UNI-100's unknown-label refusal is a CLI/agent guard; the web UI
+        // keeps creating labels on the spot, as before.
+        new_label: true,
     };
     match commands::edit(&state.layout, project, &common(), &id, args) {
         Ok(value) => {
@@ -913,9 +920,6 @@ fn settings_payload(state: &AppState) -> Value {
         "summaryModel": settings.summary_model,
         "summaryInstruction": settings.effective_instruction(),
         "defaultSummaryInstruction": super::settings::DEFAULT_SUMMARY_INSTRUCTION,
-        "taskDefaults": {
-            "blocking": pi.get("blocking"),
-        },
         // Key kept as `runner` for UI compatibility; these are the session
         // limits the agent works under (`start` session cap, `add` budget).
         "runner": {
@@ -1290,7 +1294,7 @@ pub(crate) fn entered_status(text: &str) -> Option<Status> {
     if text == "blocked" || text.starts_with("blocked:") {
         return Some(Status::Blocked);
     }
-    if text.starts_with("unblocked:") || text.starts_with("rework:") {
+    if text == "unblocked" || text.starts_with("unblocked:") || text == "rework" || text.starts_with("rework:") {
         return Some(Status::Todo);
     }
     if text == "cancelled" || text.starts_with("cancelled:") {

@@ -28,6 +28,7 @@ const USER: &[Actor] = &[U];
 const USER_AGENT: &[Actor] = &[U, A];
 const USER_SYSTEM: &[Actor] = &[U, S];
 const AGENT_SYSTEM: &[Actor] = &[A, S];
+const AGENT: &[Actor] = &[A];
 
 /// Every row of the spec's table, in order.
 pub const RULES: &[Rule] = &[
@@ -50,6 +51,15 @@ pub const RULES: &[Rule] = &[
         from: Status::Todo,
         to: Status::InProgress,
         actors: AGENT_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
+    // blocked → in_progress | agent (`start`, resume)
+    // | UNI-105: `start` also resumes a task it blocked, same claim and
+    // session-cap rules as todo — enforced by `start`, not `move`
+    Rule {
+        from: Status::Blocked,
+        to: Status::InProgress,
+        actors: AGENT,
         comment: Comment::NotNeeded,
     },
     // in_progress → in_review | agent (`finish`, own claim) + system (`release`)
@@ -88,26 +98,30 @@ pub const RULES: &[Rule] = &[
         actors: USER,
         comment: Comment::NotNeeded,
     },
-    // in_review → todo | user | comment required (rework note)
+    // in_review → todo | user | comment optional (UNI-106: a rework note, when
+    // there is one)
     Rule {
         from: Status::InReview,
         to: Status::Todo,
         actors: USER,
-        comment: Comment::Required("rework note"),
+        comment: Comment::NotNeeded,
     },
-    // in_review → backlog | user | comment required (rework note)
+    // in_review → backlog | user | comment optional (UNI-106: a rework note,
+    // when there is one)
     Rule {
         from: Status::InReview,
         to: Status::Backlog,
         actors: USER,
-        comment: Comment::Required("rework note"),
+        comment: Comment::NotNeeded,
     },
-    // blocked → todo | user | comment required (the answer shown to the agent)
+    // blocked → todo | user, agent (UNI-105: an agent may unblock itself, e.g.
+    // to resume with `start`) | comment optional (UNI-106: the answer, when there
+    // is one, shown to the agent on next claim)
     Rule {
         from: Status::Blocked,
         to: Status::Todo,
-        actors: USER,
-        comment: Comment::Required("the answer, shown to the agent on next claim"),
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
     },
     // blocked → done | user (UNI-63: a blocked task the user closes directly)
     Rule {
@@ -216,6 +230,11 @@ fn actor_denied(from: Status, to: Status, actor: Actor) -> String {
              with `start <ID>`"
                 .to_string()
         }
+        (Status::Blocked, Status::InProgress) => {
+            "blocked → in_progress is agent only — an agent resumes a blocked task for its session \
+             with `start <ID>`"
+                .to_string()
+        }
         (Status::InProgress, Status::InReview) => {
             "in_progress → in_review is agent/system only — the agent that `start`ed the task hands it \
              over with `finish <ID> --comment`"
@@ -260,7 +279,9 @@ fn not_allowed(from: Status, to: Status, actor: Actor, staleness: Staleness) -> 
         );
     }
     if to == Status::InProgress {
-        return "in_progress is reachable only from a ready todo task, claimed with `start <ID>`".to_string();
+        return "in_progress is reachable only from a ready todo task, or a blocked task being \
+                resumed, claimed with `start <ID>`"
+            .to_string();
     }
     if to == Status::Archived {
         return match from {

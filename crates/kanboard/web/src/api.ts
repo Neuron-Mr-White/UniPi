@@ -196,8 +196,6 @@ export interface Settings {
   /** The effective instruction — the custom one or the built-in default. */
   summaryInstruction: string;
   defaultSummaryInstruction: string;
-  /** pi-side kanboard settings (the ~/.unipi/config/kanboard namespace). */
-  taskDefaults: { blocking: string };
   /** Session limits (older daemons call this `runner`). */
   sessions?: { maxSessions: number; turnAddLimit: number; chainGate: string };
   runner?: { maxSessions: number; turnAddLimit: number; chainGate: string };
@@ -208,7 +206,6 @@ export interface Settings {
 export interface SettingsPatch {
   summaryModel?: string;
   summaryInstruction?: string;
-  blocking?: string;
   maxSessions?: number;
   turnAddLimit?: number;
   chainGate?: string;

@@ -487,16 +487,17 @@ fn pi_settings_patch_validates_and_preserves_other_keys() {
     assert_eq!(stored["otherKey"], "keep");
     // Valid patch validates.
     let good = validate_pi_patch(
-        &serde_json::json!({"blocking": "ask", "chainGate": "done", "retentionDays": 30}).as_object().unwrap().clone(),
+        &serde_json::json!({"chainGate": "done", "retentionDays": 30}).as_object().unwrap().clone(),
     ).unwrap();
-    assert_eq!(good["blocking"], "ask");
-    // Keys of the removed runner (routing, queue) are ignored, not written and not refused.
+    assert_eq!(good["chainGate"], "done");
+    // Keys of the removed runner (routing, queue) and the removed board
+    // "blocking" task default are ignored, not written and not refused.
     let legacy = validate_pi_patch(
-        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "queueMax": 5}).as_object().unwrap().clone(),
+        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "queueMax": 5, "blocking": "ask"}).as_object().unwrap().clone(),
     ).unwrap();
     assert!(legacy.is_empty(), "{legacy:?}");
     // Invalid values are rejected.
-    assert!(validate_pi_patch(&serde_json::json!({"blocking": "bogus"}).as_object().unwrap().clone()).is_err());
+    assert!(validate_pi_patch(&serde_json::json!({"chainGate": "bogus"}).as_object().unwrap().clone()).is_err());
     assert!(validate_pi_patch(&serde_json::json!({"maxSessions": 0}).as_object().unwrap().clone()).is_err());
     assert!(validate_pi_patch(&serde_json::json!({"nope": 1}).as_object().unwrap().clone()).is_err());
 }

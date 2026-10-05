@@ -9,7 +9,38 @@ use kanboard::model::{Actor, ChainGate, Priority, Status, Task};
 use kanboard::store::{Layout, Project};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use tempfile::TempDir;
+
+/// Test-only isolation: `commands::max_sessions()` (and the other
+/// `UNIPI_KANBOARD_*` tuning vars) read the *process* environment directly,
+/// so a caller's shell exporting e.g. `UNIPI_KANBOARD_MAX_SESSIONS=5`
+/// (common when iterating from an agent session that sets it for its own
+/// board) leaks straight into every in-process test that relies on the
+/// library's default cap of 2 — a test-harness gap, not a product bug, so
+/// the fix lives here rather than in `commands::env_usize`. Cleared exactly
+/// once per test binary, before the first `Fixture` is built, so every
+/// in-process test sees the library's real defaults regardless of the
+/// ambient shell. Tests that spawn the real binary as a *child* process
+/// (`cli_with_env`, `Daemon::start*`) are unaffected either way: an explicit
+/// `.env(...)` on a `Command` always overrides whatever the parent has.
+fn clear_ambient_tuning_env() {
+    static CLEARED: OnceLock<()> = OnceLock::new();
+    CLEARED.get_or_init(|| {
+        for var in [
+            "UNIPI_KANBOARD_MAX_SESSIONS",
+            "UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS",
+            "UNIPI_KANBOARD_RETENTION_DAYS",
+        ] {
+            // SAFETY: called once (OnceLock) before any Fixture-based test
+            // reads these vars, and no other code in this test binary sets
+            // them on the process env (session-cap overrides always go
+            // through `cli_with_env`'s child-process `.env(...)`, never the
+            // parent's environment).
+            unsafe { std::env::remove_var(var) };
+        }
+    });
+}
 
 pub struct Fixture {
     pub _home: TempDir,
@@ -21,6 +52,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Fixture {
+        clear_ambient_tuning_env();
         let home = TempDir::new().expect("home");
         let root = TempDir::new().expect("root");
         let layout = Layout::with_home(home.path());
@@ -73,6 +105,7 @@ impl Fixture {
             after,
             &[],
             labels,
+            true,
         )
         .expect("add");
         task_from(&value)
@@ -193,9 +226,31 @@ pub fn bin() -> &'static str {
 }
 
 /// Run the CLI against this fixture's home.
+/// Every `UNIPI_KANBOARD_*` the binary reads that a test might need to be
+/// absent by default (actor/session/pid/limits) — cleared on every spawn
+/// before the test's own `.env(...)` calls, so an ambient value exported by
+/// the *caller's* shell (e.g. a wrapping agent session with its own
+/// `UNIPI_KANBOARD_SESSION`/`UNIPI_KANBOARD_MAX_SESSIONS` set for its own
+/// board) never leaks into a child process the test spawns. `HOME` and
+/// `PROJECT` are not here: every test sets them explicitly right after.
+pub const AMBIENT_KANBOARD_ENV: &[&str] = &[
+    "UNIPI_KANBOARD_ACTOR",
+    "UNIPI_KANBOARD_SESSION",
+    "UNIPI_KANBOARD_PID",
+    "UNIPI_KANBOARD_MAX_SESSIONS",
+    "UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS",
+    "UNIPI_KANBOARD_RETENTION_DAYS",
+    "UNIPI_KANBOARD_CHAIN_GATE",
+];
+
 pub fn cli(fixture: &Fixture, args: &[&str]) -> std::process::Output {
-    Command::new(bin())
-        .args(args)
+    let mut command = Command::new(bin());
+    command.args(args);
+    for var in AMBIENT_KANBOARD_ENV {
+        command.env_remove(var);
+    }
+    command
+        .env("HOME", fixture.layout.home.as_os_str())
         .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
         .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
         .current_dir(fixture.root())
@@ -203,15 +258,21 @@ pub fn cli(fixture: &Fixture, args: &[&str]) -> std::process::Output {
         .expect("run unipi-kanboard")
 }
 
-/// Like `cli` but with extra environment overrides (limits, session).
+/// Like `cli` but with extra environment overrides (limits, session) — those
+/// apply after the ambient-env clear, so a test that wants a specific value
+/// still gets exactly that value regardless of what the parent shell has.
 pub fn cli_with_env(
     fixture: &Fixture,
     args: &[&str],
     env: &[(&str, &str)],
 ) -> std::process::Output {
     let mut command = Command::new(bin());
+    command.args(args);
+    for var in AMBIENT_KANBOARD_ENV {
+        command.env_remove(var);
+    }
     command
-        .args(args)
+        .env("HOME", fixture.layout.home.as_os_str())
         .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
         .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
         .current_dir(fixture.root());
@@ -270,6 +331,7 @@ impl Daemon {
         let mut command = Command::new(bin());
         command
             .args(&args)
+            .env("HOME", fixture.layout.home.as_os_str())
             .env("UNIPI_KANBOARD_HOME", home.as_os_str())
             .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
             .current_dir(fixture.root())

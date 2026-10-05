@@ -28,6 +28,24 @@ impl Blocked {
     }
 }
 
+/// Deps of `task` that have not reached `gate`, regardless of `task`'s own
+/// status — the status/claim gate that `blocked_by` applies for readiness is
+/// the caller's job. Shared by `blocked_by` (todo readiness) and `start`'s
+/// resume path (UNI-105: resuming a blocked task must not bypass the same
+/// dependency gate a fresh todo claim is held to).
+fn pending_deps(task: &Task, by_id: &dyn Fn(&str) -> Option<Task>, gate: ChainGate) -> Vec<(String, Option<Status>)> {
+    task.deps
+        .iter()
+        .filter_map(|dep| {
+            let status = by_id(dep).map(|task| task.status);
+            match status {
+                Some(status) if gate.satisfied_by(status) => None,
+                other => Some((dep.clone(), other)),
+            }
+        })
+        .collect()
+}
+
 /// A task is ready when it is an unclaimed todo whose deps all reached the gate.
 /// Cancelled and missing deps block.
 pub fn blocked_by(
@@ -38,17 +56,23 @@ pub fn blocked_by(
     if task.status != Status::Todo || task.is_claimed() {
         return None;
     }
-    let pending: Vec<(String, Option<Status>)> = task
-        .deps
-        .iter()
-        .filter_map(|dep| {
-            let status = by_id(dep).map(|task| task.status);
-            match status {
-                Some(status) if gate.satisfied_by(status) => None,
-                other => Some((dep.clone(), other)),
-            }
-        })
-        .collect();
+    let pending = pending_deps(task, by_id, gate);
+    if pending.is_empty() {
+        None
+    } else {
+        Some(Blocked { pending })
+    }
+}
+
+/// Same dependency check as `blocked_by`, without the todo/claim gate — for
+/// callers (like `start`'s blocked-resume path) that already know the task
+/// is eligible by status/claim and need only the dependency verdict.
+pub fn pending_deps_regardless_of_status(
+    task: &Task,
+    by_id: &dyn Fn(&str) -> Option<Task>,
+    gate: ChainGate,
+) -> Option<Blocked> {
+    let pending = pending_deps(task, by_id, gate);
     if pending.is_empty() {
         None
     } else {

@@ -20,6 +20,7 @@ fn add(fixture: &Fixture, title: &str, body: Option<&str>) -> Result<serde_json:
         &[],
         &[],
         &[],
+        true,
     )
 }
 
@@ -69,6 +70,7 @@ fn edit_may_clear_the_title_while_the_body_remains() {
             body: None,
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .expect("clear title");
@@ -90,6 +92,7 @@ fn edit_may_clear_the_body_while_the_title_remains() {
             body: Some(""),
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .expect("clear body");
@@ -112,6 +115,7 @@ fn edit_refuses_to_leave_neither_title_nor_body() {
             body: Some(""),
             priority: None,
             labels: None,
+            new_label: false,
         },
     )
     .unwrap_err();

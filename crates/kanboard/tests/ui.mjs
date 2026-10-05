@@ -894,17 +894,15 @@ try {
       return { trigger: !!trigger && trigger.textContent.includes('pi default'), cats, collapsed, customize: !!customize, hint: dialog.innerText.includes('Default: changelog bullets'), gear: !!dialog.querySelector('.dialog-head svg') };
     })()`);
     check("settings dialog shows the categories nav + combobox + collapsed instruction",
-      dlg && dlg.trigger && dlg.cats.length === 4 && dlg.cats.includes("Summaries") && dlg.cats.includes("Task defaults") && dlg.cats.includes("Sessions") && dlg.cats.includes("Archive") && dlg.collapsed && dlg.customize && dlg.hint,
+      dlg && dlg.trigger && dlg.cats.length === 3 && dlg.cats.includes("Summaries") && dlg.cats.includes("Sessions") && dlg.cats.includes("Archive") && !dlg.cats.includes("Task defaults") && dlg.collapsed && dlg.customize && dlg.hint,
       JSON.stringify(dlg));
     // Category nav switches panes.
     const catCheck = await session.evaluate(`(async () => {
       const click = (label) => [...document.querySelectorAll('.settings-nav-item')].find((b) => b.textContent.trim() === label)?.click();
-      click('Task defaults');
+      click('Sessions');
       await new Promise((r) => setTimeout(r, 120));
       const hasStrategy = !!document.querySelector('.dialog [aria-label="Default strategy"]');
       const hasBlocking = !!document.querySelector('.dialog [aria-label="Blocking"]');
-      click('Sessions');
-      await new Promise((r) => setTimeout(r, 120));
       const hasSessions = !!document.querySelector('.dialog [aria-label="Sessions at once"]');
       const hasQueue = !!document.querySelector('.dialog [aria-label="Queue limit"]');
       click('Archive');
@@ -914,8 +912,8 @@ try {
       await new Promise((r) => setTimeout(r, 120));
       return { hasStrategy, hasBlocking, hasSessions, hasQueue, hasArchive };
     })()`);
-    check("settings categories render their fields", catCheck.hasBlocking && catCheck.hasSessions && catCheck.hasArchive, JSON.stringify(catCheck));
-    check("settings no longer offer strategy or a queue limit", !catCheck.hasStrategy && !catCheck.hasQueue, JSON.stringify(catCheck));
+    check("settings categories render their fields", catCheck.hasSessions && catCheck.hasArchive, JSON.stringify(catCheck));
+    check("settings no longer offer strategy, a queue limit, or task-default blocking", !catCheck.hasStrategy && !catCheck.hasQueue && !catCheck.hasBlocking, JSON.stringify(catCheck));
     await session.shot("k14-settings-light-1440.png");
     // Point piCommand at the stub (echoes the prompt, serves --list-models),
     // then the dialog's Refresh link loads the daemon-owned catalog.
@@ -947,7 +945,7 @@ try {
       await new Promise((r) => setTimeout(r, 600));
       const settings = await fetch('/api/settings').then((r) => r.json());
       const catalog = await fetch('/api/models').then((r) => r.json());
-      return { all, filtered, expanded, model: settings.summaryModel, catalog: catalog.models, open: !!document.querySelector('.dialog'), taskDefaults: settings.taskDefaults };
+      return { all, filtered, expanded, model: settings.summaryModel, catalog: catalog.models, open: !!document.querySelector('.dialog') };
     })()`);
     check("the daemon serves list-models itself", Array.isArray(saved?.catalog) && saved.catalog.includes("omni/demo-a") && saved.catalog.length === 3, JSON.stringify(saved?.catalog));
     check("the combobox filters and lists the live models", saved?.filtered?.includes("omni/demo-b") && !saved.filtered.some((t) => t.includes("demo-a")), JSON.stringify(saved?.filtered));

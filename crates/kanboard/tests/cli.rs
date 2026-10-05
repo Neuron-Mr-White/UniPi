@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{Fixture, VALID_TASK};
+use common::{AMBIENT_KANBOARD_ENV, Fixture, VALID_TASK};
 use kanboard::store::Layout;
 use serde_json::Value;
 use std::process::Command;
@@ -23,8 +23,12 @@ struct Run {
 /// Run the binary with `UNIPI_KANBOARD_HOME` pointed at the fixture (naming it
 /// `kb` keeps `let run = kb(..)` shadowing legal).
 fn kb(fixture: &Fixture, args: &[&str]) -> Run {
-    let output = Command::new(bin())
-        .args(args)
+    let mut command = Command::new(bin());
+    command.args(args);
+    for var in AMBIENT_KANBOARD_ENV {
+        command.env_remove(var);
+    }
+    let output = command
         .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
         .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
         .env("UNIPI_KANBOARD_ACTOR", "user")
@@ -156,7 +160,8 @@ fn move_denied_reports_the_rule_and_exits_one() {
         "{run:?}"
     );
 
-    // in_review → todo without a comment is the spec's headline message.
+    // UNI-106: in_review → todo no longer requires a comment — it goes
+    // through clean, and the bare activity text carries no colon.
     kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
@@ -168,13 +173,24 @@ fn move_denied_reports_the_rule_and_exits_one() {
     )
     .unwrap();
     let run = kb(&fixture, &["move", &task.id, "todo", "--json"]);
-    assert_eq!(run.code, 1);
-    assert_eq!(
-        run.json["error"].as_str().unwrap(),
-        "in_review → todo requires --comment (rework note)"
-    );
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.json["status"], "todo");
+    let activity = run.json["activity"].as_array().unwrap();
+    assert_eq!(activity.last().unwrap()["text"], "rework");
 
-    // With the comment it goes through.
+    // With the comment it still goes through (back to in_progress and
+    // in_review first — the earlier move landed it back in todo).
+    fixture.start(&task.id, "s2", std::process::id());
+    kanboard::commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        kanboard::model::Status::InReview,
+        "for review again",
+        kanboard::model::ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
     let run = kb(
         &fixture,
         &[
@@ -411,6 +427,13 @@ fn project_rebind_is_user_only() {
     let fixture = Fixture::new();
     let new_root = tempfile::TempDir::new().expect("new root");
     let output = Command::new(bin())
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args([
             "project",
             "rebind",
@@ -534,6 +557,13 @@ fn actor_env_is_honoured_and_reported_in_activity() {
     let fixture = Fixture::new();
     let task = fixture.add("t");
     let output = Command::new(bin())
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args(["note", &task.id, "from the agent"])
         .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
         .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
@@ -559,6 +589,13 @@ fn the_agent_actor_cannot_cancel_and_the_message_forbids_actor_override() {
     let fixture = Fixture::new();
     let task = fixture.add("t");
     let output = Command::new(bin())
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args(["move", &task.id, "cancelled", "--json"])
         .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
         .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
@@ -779,5 +816,198 @@ fn bare_list_defaults_to_active_lanes_and_status_overrides() {
     assert_eq!(
         titles(&["list", "--all", "--json"]),
         vec!["gone", "in backlog", "in done", "in todo"]
+    );
+}
+
+// ─── UNI-100: label governance via the real binary ──────────────────────────
+
+/// `add --label` / `edit --labels`: an agent must reuse an existing project
+/// label (case-insensitive, trimmed) unless `--new-label` opts in. Exact
+/// wording, both branches: "no labels exist yet" carries no "unknown label"
+/// prefix and no trailing period; the "existing labels" branch lists them
+/// sorted, comma-separated.
+#[test]
+fn cli_add_label_reuses_or_refuses_by_exact_wording() {
+    let fixture = Fixture::new();
+    let run_as_agent = |args: &[&str]| {
+        let mut full = vec!["--actor", "agent"];
+        full.extend_from_slice(args);
+        {
+            let mut command = Command::new(bin());
+            command.args(&full);
+            for var in AMBIENT_KANBOARD_ENV {
+                command.env_remove(var);
+            }
+            command
+                .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+                .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+                .current_dir(fixture.root())
+                .output()
+                .expect("run unipi-kanboard")
+        }
+    };
+    let error_of = |out: &std::process::Output| -> String {
+        let payload: Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stderr).trim()).expect("json error payload");
+        payload["error"].as_str().unwrap().to_string()
+    };
+
+    // No labels exist yet: exact wording, no "unknown label" prefix, no period.
+    let out = run_as_agent(&["add", "first", "--label", "web", "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        error_of(&out),
+        "no labels exist yet — pass --new-label to create \"web\""
+    );
+
+    // --new-label opts in to creating it.
+    let out = run_as_agent(&["add", "first", "--label", "web", "--new-label", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+
+    // Now "web" exists — an unknown label is refused by name, with the sorted list.
+    let out = run_as_agent(&["add", "second", "--label", "backend", "--json"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        error_of(&out),
+        "unknown label \"backend\" — existing labels: web. Reuse one, or pass --new-label to create it on purpose."
+    );
+
+    // Reusing it (any case, with surrounding whitespace) succeeds without
+    // --new-label, and the canonical (first-seen) spelling is what is stored.
+    let out = run_as_agent(&["add", "third", "--label", "  WEB  ", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let payload: Value = serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("json payload");
+    assert_eq!(payload["labels"], serde_json::json!(["web"]), "canonical spelling, not WEB");
+}
+
+/// `edit --labels` follows the identical rule and the identical canonical
+/// spelling guarantee. An agent may only edit a task it created while in
+/// backlog/todo, so this task is created by the agent too.
+#[test]
+fn cli_edit_labels_reuses_or_refuses_and_keeps_canonical_spelling() {
+    let fixture = Fixture::new();
+    let run_as_agent = |args: &[&str]| {
+        let mut full = vec!["--actor", "agent"];
+        full.extend_from_slice(args);
+        {
+            let mut command = Command::new(bin());
+            command.args(&full);
+            for var in AMBIENT_KANBOARD_ENV {
+                command.env_remove(var);
+            }
+            command
+                .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+                .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+                .current_dir(fixture.root())
+                .output()
+                .expect("run unipi-kanboard")
+        }
+    };
+
+    let created = run_as_agent(&["add", "editable", "--label", "web", "--new-label", "--json"]);
+    assert_eq!(created.status.code(), Some(0), "{}", String::from_utf8_lossy(&created.stderr));
+    let payload: Value = serde_json::from_str(&String::from_utf8_lossy(&created.stdout)).expect("json payload");
+    let id = payload["id"].as_str().unwrap().to_string();
+
+    // Unknown label without --new-label is refused.
+    let out = run_as_agent(&["edit", &id, "--labels", "mobile", "--json"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error: Value =
+        serde_json::from_str(String::from_utf8_lossy(&out.stderr).trim()).expect("json error payload");
+    assert_eq!(
+        error["error"],
+        "unknown label \"mobile\" — existing labels: web. Reuse one, or pass --new-label to create it on purpose."
+    );
+
+    // Reusing the existing label by a different case round-trips to the
+    // canonical (first-seen) spelling.
+    let out = run_as_agent(&["edit", &id, "--labels", "WEB", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let payload: Value = serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("json payload");
+    assert_eq!(payload["labels"], serde_json::json!(["web"]));
+
+    // --new-label opts in to a genuinely new one.
+    let out = run_as_agent(&["edit", &id, "--labels", "mobile", "--new-label", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let payload: Value = serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("json payload");
+    assert_eq!(payload["labels"], serde_json::json!(["mobile"]));
+}
+
+// ─── regression: start on a task with unsatisfied deps while blocked ────────
+
+/// Regression: a task sitting in `blocked` whose deps are not satisfied must
+/// still be refused by `start` — resuming a blocked task does not bypass the
+/// readiness gate that governs a fresh todo claim. (`blocked_by` only looks
+/// at todo tasks, so unlike a fresh claim this is enforced purely by the
+/// transition table + claim check, not by `deps::blocked_by`; the task
+/// simply must not be resumable while the dependency is unsatisfied.)
+#[test]
+fn start_refuses_to_resume_a_blocked_task_whose_dep_is_unsatisfied() {
+    let fixture = Fixture::new();
+    let dep = fixture.add_with("dep", kanboard::model::Status::Todo, kanboard::model::Priority::None, &[]);
+    let task = fixture.add_with(
+        "blocked with a dep",
+        kanboard::model::Status::Todo,
+        kanboard::model::Priority::None,
+        std::slice::from_ref(&dep.id),
+    );
+    // The dep is unsatisfied, so `task` cannot be started fresh either —
+    // establishing the baseline the resume case must not bypass.
+    let err = fixture.try_start(&task.id, "s1", std::process::id()).unwrap_err();
+    assert!(err.to_string().contains(&dep.id), "{err}");
+
+    // Force it into blocked directly (bypassing the normal in_progress →
+    // blocked path) to set up the regression scenario: a blocked task whose
+    // dep is still unsatisfied.
+    let board = kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+    let mut forced = board.get(&task.id).unwrap();
+    forced.status = kanboard::model::Status::Blocked;
+    board.save(&forced).unwrap();
+
+    // Resuming it must not bypass the dependency gate.
+    let err = fixture.try_start(&task.id, "s1", std::process::id()).unwrap_err();
+    assert!(err.to_string().contains(&dep.id), "{err}");
+}
+
+// ─── Blocked → in_progress is agent-only, not system ─────────────────────────
+
+/// UNI-105: `blocked → in_progress` (the `start`-resume row) is agent-only —
+/// unlike `todo → in_progress`, system is not in the actor list (there is no
+/// system-driven resume path; a system release lands a stale claim back in
+/// todo/backlog/in_review, never straight into in_progress from blocked).
+#[test]
+fn blocked_to_in_progress_is_agent_only_not_system() {
+    assert!(
+        kanboard::transitions::check(
+            kanboard::model::Status::Blocked,
+            kanboard::model::Status::InProgress,
+            kanboard::model::Actor::Agent,
+            None,
+            kanboard::model::Staleness::Running,
+        )
+        .is_ok(),
+        "agent may resume"
+    );
+    assert!(
+        kanboard::transitions::check(
+            kanboard::model::Status::Blocked,
+            kanboard::model::Status::InProgress,
+            kanboard::model::Actor::System,
+            None,
+            kanboard::model::Staleness::Running,
+        )
+        .is_err(),
+        "system is not in the actor list for blocked → in_progress"
+    );
+    assert!(
+        kanboard::transitions::check(
+            kanboard::model::Status::Blocked,
+            kanboard::model::Status::InProgress,
+            kanboard::model::Actor::User,
+            None,
+            kanboard::model::Staleness::Running,
+        )
+        .is_err(),
+        "user may not resume either"
     );
 }

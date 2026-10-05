@@ -67,6 +67,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             priority,
             after,
             labels,
+            new_label,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let status = status
@@ -95,6 +96,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 after,
                 attach,
                 labels,
+                *new_label,
             )
         }
 
@@ -181,6 +183,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             body,
             priority,
             labels,
+            new_label,
         } => {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             let body = read_body(body.as_deref())?;
@@ -204,6 +207,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     body: body.as_deref(),
                     priority,
                     labels,
+                    new_label: *new_label,
                 },
             )
         }
