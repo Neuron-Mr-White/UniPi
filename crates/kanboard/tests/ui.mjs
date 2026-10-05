@@ -91,9 +91,12 @@ if (!urlMode) {
       ...Array.from({ length: 10 }, (_, index) => `line ${index + 1} of a long summary`),
     ].join("\n"),
   );
-  // One task in review so the comment-required move can be exercised.
+  // Two review tasks: one is reworked; the other remains for Done all.
   work(ids[2]);
   kb("finish", ids[2], "--comment", "ready for review", "--actor", "agent", "--session", "ui-check");
+  const reviewExtra = kb("add", "second review task", "--status", "todo").id;
+  work(reviewExtra);
+  kb("finish", reviewExtra, "--comment", "also ready for review", "--actor", "agent", "--session", "ui-check");
   // One blocked task with a reason (card callout + panel banner): the "chain task" (ids[4]).
   const blockedId = ids[4];
   work(blockedId);
@@ -493,24 +496,21 @@ try {
     `${before} → ${after} (dragged ${drag})${toastText ? ` · toasts: ${toastText}` : ""}`,
   );
 
-  // 6. a move that needs a comment opens the modal
-  const modal = await session.evaluate(`(async () => {
+  // 6. review rework moves immediately without a comment.
+  const rework = await session.evaluate(`(async () => {
     const card = document.querySelector('.lane[data-lane="in_review"] .card');
-    if (!card) return 'no in_review card';
+    if (!card) return { error: 'no in_review card' };
+    const id = card.dataset.id;
     const dt = new DataTransfer();
     card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
     const lane = document.querySelector('.lane[data-lane="todo"]');
     lane.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
     lane.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
     await new Promise((done) => setTimeout(done, 900));
-    const node = document.querySelector('.dialog.modal');
-    return node ? node.querySelector('.prompt')?.textContent ?? 'no prompt' : 'no modal';
+    return { modal: !!document.querySelector('.dialog.modal'), inTodo: !!document.querySelector('.lane[data-lane="todo"] .card[data-id="' + id + '"]') };
   })()`);
-  check("comment-required move shows the modal", typeof modal === "string" && !modal.startsWith("no "), String(modal));
-  await session.shot("k7-comment-light-1440.png");
-  await session.evaluate(`document.querySelector('.dialog [aria-label="Cancel"]').click()`);
-  await sleep(300);
-
+  check("rework move (in_review → todo) needs no comment", !rework.modal && rework.inTodo, JSON.stringify(rework));
+  await session.shot("k7-rework-light-1440.png");
   // 7. new-task dialog (C shortcut)
   await session.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }))`);
   await sleep(500);
