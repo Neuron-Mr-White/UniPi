@@ -34,6 +34,7 @@ pi install npm:@pi-unipi/utility
 | `/unipi:retry` | Same as `/unipi:continue`. |
 | `/unipi:cleanup` | Lists stale UniPi files, then asks before it removes them. `--dry-run` only lists. `--yes` does not ask. |
 | `/unipi:doctor` | Checks folders, config files, Node, the model cache, the Decision Model and skill exposure. |
+| `/unipi:move [<old-path>] [--dry-run]` | Re-links sessions, trust, boards and memories after moving or renaming a project. Opens an orphan picker when the old path is omitted; previews grouped changes and asks before applying. Never moves the project folder itself. |
 | `/unipi:answer [reply\|questions\|web]` | Opens a screen to answer the last agent reply. |
 | `/unipi:summarize [focus]` | Re-summarizes the last reply (the `summarize` skill). Any text is passed to the skill as your question. |
 

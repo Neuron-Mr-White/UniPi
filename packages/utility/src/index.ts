@@ -26,6 +26,7 @@ import {
 } from "@pi-unipi/core";
 import { registerUtilityCommands } from "./commands.js";
 import { registerAutoRename } from "./rename/index.js";
+import { registerMoveCommand } from "./move/index.js";
 import { registerAnswerCommand } from "./answer/index.js";
 import { registerSummarizeCommand } from "./summarize/index.js";
 import { registerAttachments } from "./attach/index.js";
@@ -49,6 +50,7 @@ const ALL_COMMANDS = [
   UTILITY_COMMANDS.CLEANUP,
   UTILITY_COMMANDS.DOCTOR,
   UTILITY_COMMANDS.ANSWER,
+  UTILITY_COMMANDS.MOVE,
   "settings",
 ].map((cmd) => `unipi:${cmd}`);
 
@@ -66,6 +68,7 @@ export default function (pi: ExtensionAPI) {
 
   registerUtilityCommands(pi);
   registerAutoRename(pi);
+  registerMoveCommand(pi);
   registerAnswerCommand(pi);
   registerSummarizeCommand(pi);
   registerAttachments(pi);

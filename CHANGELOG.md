@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `utility`: **`/unipi:move [<old-path>] [--dry-run]`** re-links existing state to this project's new root after a move or rename. Never moves the folder itself — the old path must no longer exist (it's a re-link, not a move). Handlers cover Pi sessions, Pi trust, git worktrees, Kanboard boards (via the new `unipi-kanboard project rebind --root <PATH>`) and Memory; omitting the old path opens an orphan picker. Previews grouped changes and asks before writing; writes a log to `~/.unipi/logs/move-<ts>.log` and backs up small rewritten files under `~/.unipi/move-backup/<ts>/`.
+
 ## [3.0.0-alpha.29] — 2026-10-04
 
 ### Fixed

@@ -178,6 +178,7 @@ Run `/reload` after `/unipi:notify-event` to apply the change.
 | `/unipi:summarize` | `[question]` | Runs the bundled `summarize` skill on the last reply, with the session as context. Any text is passed to the skill as your question. |
 | `/unipi:doctor` | | Checks the UniPi folders, config, model cache, Decision Model and skills. |
 | `/unipi:cleanup` | `[--dry-run] [--yes]` | Deletes old UniPi temp files. It shows a preview first. |
+| `/unipi:move` | `[<old-path>] [--dry-run]` | Re-links existing state to this project's new root after a move or rename; previews changes and asks before writing. The old path must no longer exist. Logs writes to `~/.unipi/logs/move-<ts>.log` and backs up small rewritten files in `~/.unipi/move-backup/<ts>/`. |
 
 `/unipi:answer` modes:
 

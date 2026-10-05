@@ -109,6 +109,7 @@ export const UTILITY_COMMANDS = {
   DOCTOR: "doctor",
   ANSWER: "answer",
   SUMMARIZE: "summarize",
+  MOVE: "move",
 } as const;
 
 /** Ask-user tool names */

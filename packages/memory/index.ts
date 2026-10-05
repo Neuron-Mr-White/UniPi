@@ -19,6 +19,7 @@ import {
   type KitTheme,
   formatTokens,
   harnessMetadata,
+  registerMoveHandler,
 } from "@pi-unipi/core";
 
 import { createSessionBackend, type SessionBackend } from "./session.js";
@@ -43,6 +44,7 @@ import {
 } from "./mempalace.js";
 import { fileThroughDaemon, deleteViaWriteMcp, deleteThroughDaemon, mineDirect } from "./daemon.js";
 import { projectName, projectDir, memoryRoot } from "./paths.js";
+import { memoryMoveHandler } from "./move.js";
 
 function getInfoRegistry() {
   return (globalThis as { __unipi_info_registry?: any }).__unipi_info_registry;
@@ -147,6 +149,7 @@ export function retroReminderGuard(): { readonly queued: boolean; queue(): void;
 }
 
 export default function (pi: ExtensionAPI) {
+  registerMoveHandler(memoryMoveHandler);
   let backend: SessionBackend | null = null;
   let recallDone = false;
   let storeDone = false;

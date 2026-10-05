@@ -317,6 +317,138 @@ fn project_lifecycle_over_the_cli() {
 }
 
 #[test]
+fn project_rebind_points_the_slug_at_a_new_root() {
+    let fixture = Fixture::new();
+    let new_root = tempfile::TempDir::new().expect("new root");
+    let canonical = std::fs::canonicalize(new_root.path()).unwrap();
+
+    let run = kb(
+        &fixture,
+        &[
+            "project",
+            "rebind",
+            &fixture.project.slug,
+            "--root",
+            new_root.path().to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(run.code, 0, "stderr: {}", run.stderr);
+    assert_eq!(run.json["slug"], fixture.project.slug.as_str());
+    assert_eq!(run.json["root"], canonical.to_string_lossy().as_ref());
+
+    // The rebind is durable — `project show` after reload reflects it, and
+    // the task files/counters are untouched (same slug, same board).
+    let reloaded = kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+    assert_eq!(reloaded.root, canonical);
+    assert_eq!(reloaded.next_id, fixture.project.next_id);
+}
+
+#[test]
+fn project_rebind_refuses_a_duplicate_root() {
+    let fixture = Fixture::new();
+    let other_root = tempfile::TempDir::new().expect("other root");
+    let run = kb(
+        &fixture,
+        &[
+            "project",
+            "add",
+            "--root",
+            other_root.path().to_str().unwrap(),
+            "--name",
+            "Other",
+            "--prefix",
+            "OTH",
+            "--json",
+        ],
+    );
+    assert_eq!(run.code, 0, "stderr: {}", run.stderr);
+    let other_slug = run.json["slug"].as_str().unwrap().to_string();
+
+    // Rebinding the fixture project onto the OTHER project's root is refused
+    // — two slugs must never point at the same board root.
+    let run = kb(
+        &fixture,
+        &[
+            "project",
+            "rebind",
+            &fixture.project.slug,
+            "--root",
+            other_root.path().to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(run.code, 1, "stderr: {}", run.stderr);
+    assert!(
+        run.json["error"].as_str().unwrap().contains(&other_slug),
+        "{}",
+        run.json["error"]
+    );
+
+    // And rebinding onto its own current root is refused too (a no-op must
+    // say so, not silently succeed).
+    let run = kb(
+        &fixture,
+        &[
+            "project",
+            "rebind",
+            &fixture.project.slug,
+            "--root",
+            fixture.root().to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(run.code, 1, "stderr: {}", run.stderr);
+    assert!(
+        run.json["error"].as_str().unwrap().contains("already rooted"),
+        "{}",
+        run.json["error"]
+    );
+}
+
+#[test]
+fn project_rebind_is_user_only() {
+    let fixture = Fixture::new();
+    let new_root = tempfile::TempDir::new().expect("new root");
+    let output = Command::new(bin())
+        .args([
+            "project",
+            "rebind",
+            &fixture.project.slug,
+            "--root",
+            new_root.path().to_str().unwrap(),
+            "--json",
+        ])
+        .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_ACTOR", "agent")
+        .current_dir(fixture.root())
+        .output()
+        .expect("run unipi-kanboard");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("user only"), "{stderr}");
+}
+
+#[test]
+fn project_rebind_requires_the_new_root_to_exist() {
+    let fixture = Fixture::new();
+    let missing = fixture.root().join("does-not-exist");
+    let run = kb(
+        &fixture,
+        &[
+            "project",
+            "rebind",
+            &fixture.project.slug,
+            "--root",
+            missing.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(run.code, 2, "usage errors exit 2 ({})", run.stderr);
+}
+
+#[test]
 fn show_includes_deps_status_and_staleness() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(

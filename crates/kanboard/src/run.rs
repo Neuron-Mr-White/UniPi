@@ -51,6 +51,12 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             let project = store::resolve_project(&layout, cli.project.as_deref())?;
             commands::project_show(&layout, &project)
         }
+        Command::Project(ProjectCommand::Rebind { slug, root }) => {
+            if common.actor == Actor::Agent {
+                return Err(Error::rule("project rebind is user only"));
+            }
+            commands::project_rebind(&layout, slug, root)
+        }
 
         Command::Add {
             title,
@@ -518,6 +524,10 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
         Command::Project(ProjectCommand::Unarchive { slug }) => {
             format!("project {slug} unarchived")
         }
+        Command::Project(ProjectCommand::Rebind { slug, root }) => format!(
+            "project {slug} rebound to {}",
+            root.display()
+        ),
         Command::Project(ProjectCommand::Show) => {
             let counts = field(payload, "counts");
             let lanes = Status::ALL

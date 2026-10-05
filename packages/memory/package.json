@@ -27,6 +27,7 @@
   "files": [
     "paths.ts",
     "files.ts",
+    "move.ts",
     "session.ts",
     "daemon.ts",
     "reader.ts",

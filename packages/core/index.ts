@@ -44,6 +44,7 @@ export * from "./src/attach/detect.js";
 export * from "./src/settings/catalog.js";
 export * from "./command-runner.js";
 export * from "./compaction-context.js";
+export * from "./move.js";
 export * from "./src/settings/migrations.js";
 export * from "./src/hints/index.js";
 export * from "./src/hints/store.js";

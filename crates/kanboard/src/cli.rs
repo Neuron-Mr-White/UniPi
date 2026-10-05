@@ -314,6 +314,13 @@ pub enum ProjectCommand {
     Archive { slug: String },
     /// Bring an archived project back.
     Unarchive { slug: String },
+    /// Point an existing project at a new root (after the folder moved) —
+    /// the slug, tasks and history are kept; only `root` changes.
+    Rebind {
+        slug: String,
+        #[arg(long, value_name = "PATH")]
+        root: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]

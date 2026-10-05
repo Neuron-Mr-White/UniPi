@@ -29,6 +29,7 @@ import {
   isChildProcess,
   registerCommandRunner,
   registerEvidenceContributor,
+  registerMoveHandler,
   registerNudgeProvider,
   registerProgressRenderer,
   setSharedKanboardStatus,
@@ -37,6 +38,7 @@ import {
 
 import { openCli, type KanboardCli } from "./src/bin.js";
 import { kanboardInvocations } from "./src/guard.js";
+import { kanboardMoveHandler } from "./src/move.js";
 import { maybeBadgeToolResult, registerBadgeRenderer } from "./src/badges.js";
 import {
   registerKanboardCommands,
@@ -69,6 +71,7 @@ export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
 export const KANBOARD_SKILL = "kanboard";
 
 export default function (pi: ExtensionAPI) {
+  registerMoveHandler(kanboardMoveHandler);
   // One session id shared by the agent's bash calls (refined at session_start
   // from the pi session id; children keep the value they inherited).
   process.env.UNIPI_KANBOARD_SESSION ??= `pi-${process.pid}`;

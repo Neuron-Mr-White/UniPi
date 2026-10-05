@@ -165,6 +165,38 @@ pub fn project_set_archived(layout: &Layout, slug: &str, archived: bool) -> Resu
     Ok(json!(project))
 }
 
+/// `project rebind <slug> --root <path>` — user only, checked by the caller.
+/// Repoints a registered project at a new root (the folder moved on disk):
+/// the slug, tasks and history are untouched — only `root` changes. The new
+/// root is canonicalized (it must exist) and must not already be used by
+/// another registered project; the write goes through the same atomic
+/// `project.json` write and the same per-project `board.lock` every other
+/// write uses, so a concurrent writer never sees a half-written file.
+pub fn project_rebind(layout: &Layout, slug: &str, root: &std::path::Path) -> Result<Value> {
+    let canonical = store::canonical_root(root)?;
+    let lock = layout.lock_board(slug)?;
+    let mut project = Project::load(layout, slug)?;
+    if project.root == canonical {
+        return Err(Error::rule(format!(
+            "project {slug} is already rooted at {}",
+            canonical.display()
+        )));
+    }
+    for other in layout.list_projects()? {
+        if other.slug != slug && other.root == canonical {
+            return Err(Error::rule(format!(
+                "{} is already registered at {} — refusing to bind two projects to the same root",
+                other.slug,
+                canonical.display()
+            )));
+        }
+    }
+    project.root = canonical;
+    project.save(layout)?;
+    drop(lock);
+    Ok(json!(project))
+}
+
 pub fn project_show(layout: &Layout, project: &Project) -> Result<Value> {
     let board = Board::open(layout, project.clone())?;
     let tasks = board.tasks()?;
