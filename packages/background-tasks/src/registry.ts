@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
@@ -855,7 +855,7 @@ export class BackgroundTaskRegistry {
    */
   async adoptRunningProcess(
     ctx: BackgroundTaskContext,
-    child: ChildProcess,
+    child: BackgroundTaskChildProcess,
     options: AdoptRunningProcessOptions,
   ): Promise<BgTask> {
     const normalizedCommand = options.command.trim();
@@ -917,9 +917,11 @@ export class BackgroundTaskRegistry {
     });
 
     try {
-      task.child = child as unknown as BackgroundTaskChildProcess;
+      task.child = child;
+      task.externalStop = options.stop;
+      task.pid = undefined;
       if (options.initialOutput) this.writeNotice(task, options.initialOutput);
-      this.wireChildProcess(task, child as unknown as BackgroundTaskChildProcess, undefined);
+      this.wireChildProcess(task, child, undefined);
       await this.writeMetadata(task);
       this.onChange();
       return task;
@@ -1571,6 +1573,11 @@ export class BackgroundTaskRegistry {
   private requestKill(task: BgTask, signal: NodeJS.Signals = 'SIGTERM'): void {
     if (task.status !== 'running') {
       throw new Error(`Task ${task.id} is ${task.status}, not running`);
+    }
+    if (task.externalStop) {
+      task.externalStop();
+      task.killSignalSent = true;
+      return;
     }
     if (!task.child) {
       throw new Error(`Task ${task.id} has no child process handle`);

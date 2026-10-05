@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
-- `watchdog`: a bash call that looks stuck is no longer killed by default: the call returns to the agent at once with the output so far, and the command keeps running as a background task the agent can check (`bg_logs`) or stop (`bg_kill`); its completion wakes the agent as usual. New watchdog action `background` (the default; `kill` and `warn` stay available) and `/unipi:bg-detach [reason]` to send the running bash call to the background by hand. Falls back to pi's own bash runner when pi's process helpers can't be loaded. (UNI-107)
+- `watchdog`: a bash call that looks stuck is no longer killed by default: the call returns to the agent at once with the output so far, and the command keeps running as a background task the agent can check (`bg_logs`) or stop (`bg_kill`); its completion wakes the agent as usual. New watchdog action `background` (the default; `kill` and `warn` stay available) and `/unipi:bg-detach [reason]` to send the running bash call to the background by hand. (UNI-107)
 - `kanboard`: agents can unblock tasks to Todo or resume a blocked task through `start`, with the usual claim and session limits. (UNI-105)
 - `kanboard`: unblocking and review rework no longer require a description; empty notes produce clean activity text. (UNI-106)
 - `kanboard`: agent-created labels must reuse existing project labels unless `--new-label` explicitly allows a new one; matching preserves stored spelling. (UNI-100)

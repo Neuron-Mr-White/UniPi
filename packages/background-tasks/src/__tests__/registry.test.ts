@@ -1243,7 +1243,8 @@ void describe('BackgroundTaskRegistry', () => {
       try {
         const child = new FakeChild(5150);
         const startTime = Date.now() - 5_000;
-        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+        const task = await h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
           command: 'sleep 999',
           name: 'Adopted Sleep',
           startTime,
@@ -1255,7 +1256,7 @@ void describe('BackgroundTaskRegistry', () => {
         assert.equal(task.command, 'sleep 999');
         assert.equal(task.name, 'Adopted Sleep');
         assert.equal(task.startTime, startTime);
-        assert.equal(task.pid, 5150);
+        assert.equal(task.pid, undefined);
         assert.equal(task.status, 'running');
         assert.equal(task.notifyOnCompletion, true);
         assert.equal(task.triggerOnCompletion, false);
@@ -1281,7 +1282,8 @@ void describe('BackgroundTaskRegistry', () => {
       const h = await createHarness();
       try {
         const child = new FakeChild(5151);
-        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+        const task = await h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
           command: 'npm run build-everything',
           startTime: Date.now(),
         });
@@ -1299,7 +1301,8 @@ void describe('BackgroundTaskRegistry', () => {
       const h = await createHarness();
       try {
         const child = new FakeChild(5152);
-        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+        const task = await h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
           command: 'tail -f adopted.log',
           startTime: Date.now(),
           notifyOnCompletion: true,
@@ -1323,11 +1326,12 @@ void describe('BackgroundTaskRegistry', () => {
       }
     });
 
-    void it('stopTask group-kills an adopted task through the standard shutdown path', async () => {
+    void it('stopTask uses an adopted task external stop through the shutdown path', async () => {
       const h = await createHarness();
       try {
         const child = new FakeChild(5153);
-        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+        const task = await h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
           command: 'sleep 999',
           startTime: Date.now(),
         });
@@ -1338,6 +1342,7 @@ void describe('BackgroundTaskRegistry', () => {
         await stopPromise;
         assert.equal(task.status, 'killed');
         assert.equal(task.killKind, 'shutdown');
+        assert.equal(task.killEscalationTimer, undefined);
       } finally {
         await cleanup(h.root);
       }
@@ -1349,7 +1354,8 @@ void describe('BackgroundTaskRegistry', () => {
         h.registry.setShuttingDown(true);
         const child = new FakeChild(5154);
         await assert.rejects(
-          h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
             command: 'echo hi',
             startTime: Date.now(),
           }),
@@ -1366,7 +1372,8 @@ void describe('BackgroundTaskRegistry', () => {
       try {
         const child = new FakeChild(5155);
         await assert.rejects(
-          h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          h.registry.adoptRunningProcess(h.ctx, child, {
+          stop: () => { child.kill(); },
             command: '   ',
             startTime: Date.now(),
           }),

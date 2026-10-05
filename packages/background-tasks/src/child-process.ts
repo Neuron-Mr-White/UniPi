@@ -16,7 +16,7 @@ export type ChildStdin = Writable;
 export interface OutputEventSource {
   on(event: "data", listener: (data: Buffer | string) => void): unknown;
   on(event: "end", listener: () => void): unknown;
-  [Symbol.asyncIterator](): AsyncIterableIterator<Buffer>;
+  [Symbol.asyncIterator]?(): AsyncIterableIterator<Buffer>;
 }
 
 /** Minimal child-process surface the registry drives. */

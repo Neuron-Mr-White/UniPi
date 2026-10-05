@@ -123,7 +123,7 @@ describe("watchdog — background action (detach)", () => {
     let adoptedTaskId: string | undefined;
     setBashBackgroundAdopter(async (request) => {
       const task = await registry.adoptRunningProcess(ctx, request.child, {
-        command: request.command, startTime: request.startTime, initialOutput: request.initialOutput,
+        command: request.command, startTime: request.startTime, stop: request.stop, initialOutput: request.initialOutput,
         notifyOnCompletion: true, triggerOnCompletion: true, watchdogAdopted: true,
       });
       adoptedTaskId = task.id;
@@ -211,7 +211,7 @@ describe("watchdog — background action (detach)", () => {
     let taskId: string | undefined;
     setBashBackgroundAdopter(async (request) => {
       const task = await registry.adoptRunningProcess(ctx, request.child, {
-        command: request.command, startTime: request.startTime, initialOutput: request.initialOutput,
+        command: request.command, startTime: request.startTime, stop: request.stop, initialOutput: request.initialOutput,
         notifyOnCompletion: true, triggerOnCompletion: true, watchdogAdopted: true,
       });
       taskId = task.id;

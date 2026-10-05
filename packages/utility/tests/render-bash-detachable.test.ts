@@ -65,7 +65,8 @@ describe("UNI-107: bash tool registrations carry detachable-bash operations", ()
     it(`${style}: a long-running command detached mid-flight resolves with a background-task notice, not a hang/error`, async () => {
       const [bash] = bashDefsFor(style);
       setBashBackgroundAdopter(async (request) => {
-        request.child.kill();
+        request.child.on("error", () => {});
+        setTimeout(request.stop, 100);
         return { taskId: "bg-task-1", outputPath: "/tmp/bg-task-1.log" };
       });
       try {

@@ -293,6 +293,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     return registry
       .adoptRunningProcess(ctx, request.child, {
         command: request.command,
+        stop: request.stop,
         startTime: request.startTime,
         initialOutput: request.initialOutput,
         notifyOnCompletion: true,

@@ -101,6 +101,7 @@ export interface BgTask extends Omit<BgTaskSnapshot, "name"> {
   wrapperAbsPath?: string | undefined;
   attestationAbsPath?: string | undefined;
   child?: BackgroundTaskChildProcess | undefined;
+  externalStop?: (() => void) | undefined;
   stream?: WriteStream | undefined;
   timeoutHandle?: NodeJS.Timeout | undefined;
   killKind?: KillKind | undefined;
@@ -224,6 +225,7 @@ export interface StartTaskOptions {
 }
 
 export interface AdoptRunningProcessOptions {
+  stop: () => void;
   command: string;
   name?: string | undefined;
   startTime: number;
