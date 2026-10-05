@@ -344,7 +344,7 @@ or warn you.
 | `firstCheckMin` | minutes | 2 | Sets the time before the first check. |
 | `confidence` | number | 0.8 | Sets the minimum jev confidence to act. |
 | `agreeChecks` | number | 2 | Sets how many checks in a row must agree. |
-| `action` | `kill`, `warn` | `kill` | Sets what the watchdog does. |
+| `action` | `background`, `kill`, `warn` | `background` | Bash calls return early and continue as background tasks by default; unavailable adoption falls back to kill/warn. Adopted tasks are excluded from further automatic watchdog action. |
 | `watchBash` | on, off | on | Watches `bash` calls. |
 | `watchBgTasks` | on, off | on | Watches background tasks. |
 | `otherTools` | `off`, `warn`, `abort-turn` | `warn` | Sets what happens for tools with no kill handle. |

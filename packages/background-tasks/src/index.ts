@@ -10,7 +10,15 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createSpinnerLine, isChildProcess, registerWaitSource, setHerdrWorking } from "@pi-unipi/core";
+import {
+  createSpinnerLine,
+  isChildProcess,
+  registerWaitSource,
+  setHerdrWorking,
+  setBashBackgroundAdopter,
+  type BashBackgroundRequest,
+  type BashDetachResult,
+} from "@pi-unipi/core";
 import { loadBackgroundTasksConfig } from "./config.js";
 import { BackgroundTaskRegistry } from "./registry.js";
 import {
@@ -274,12 +282,41 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     clearFinishedNotices,
   });
 
+  // Core handoff adapter: when pi's bash tool decides a running command
+  // should move to the background (watchdog-driven or otherwise), core calls
+  // this callback with the already-running child. We adopt it as a standard
+  // background task via `adoptRunningProcess` and mark it watchdogAdopted so
+  // the watchdog itself skips automatic kills on the now-registry-owned task.
+  function bashBackgroundAdopter(request: BashBackgroundRequest): Promise<BashDetachResult | null> {
+    const ctx = currentCtx;
+    if (!ctx) return Promise.resolve(null);
+    return registry
+      .adoptRunningProcess(ctx, request.child, {
+        command: request.command,
+        startTime: request.startTime,
+        initialOutput: request.initialOutput,
+        notifyOnCompletion: true,
+        triggerOnCompletion: true,
+      })
+      .then((task) => {
+        updateUi(ctx);
+        return { taskId: task.id, outputPath: task.outputPath };
+      })
+      .catch((error: unknown) => {
+        console.error(
+          `[background-tasks] bash background adoption failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      });
+  }
+
   pi.on("session_start", async (_event, ctx) => {
     registry.setShuttingDown(false);
     wakeLineInstalled = false; // pi clears extension widgets on reload/new session
     setSharedTaskRegistry(registry);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(ctx);
+    setBashBackgroundAdopter(bashBackgroundAdopter);
     updateUi(ctx);
     if (statusInterval) clearInterval(statusInterval);
     statusInterval = setInterval(() => {
@@ -291,6 +328,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     registry.setShuttingDown(true);
     wakeLineInstalled = false;
     clearSharedTaskRegistry();
+    setBashBackgroundAdopter(null);
     currentCtx = undefined;
     if (statusInterval) {
       clearInterval(statusInterval);

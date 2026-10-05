@@ -70,6 +70,15 @@ export interface BgTaskSnapshot {
   telemetryUnavailableReason?: string | undefined;
   /** Last few non-empty output lines (bounded), for compact chat cards. */
   outputTail?: string[] | undefined;
+  /**
+   * True when this task was created via `adoptRunningProcess` for an
+   * already-running child process (e.g. a bash call the core
+   * `setBashBackgroundAdopter` handoff moved to the background) rather than
+   * spawned fresh. The watchdog reads this flag and must skip automatic
+   * kills for adopted tasks: the adopting caller (core) owns the kill
+   * decision for the underlying process once adoption has occurred.
+   */
+  watchdogAdopted?: boolean | undefined;
 }
 
 
@@ -205,6 +214,22 @@ export interface StartTaskOptions {
   triggerOnCompletion?: boolean | undefined;
   /** @internal EventBus protocol barrier; callers should not set this outside the extension service. */
   terminalPublicationGate?: Promise<void> | undefined;
+  /**
+   * True when this task is standing in for an already-running process that
+   * was adopted rather than spawned by the registry (see
+   * `BackgroundTaskRegistry.adoptRunningProcess`). Propagated onto the task
+   * and its snapshot so the watchdog can skip automatic kills for it.
+   */
+  watchdogAdopted?: boolean | undefined;
+}
+
+export interface AdoptRunningProcessOptions {
+  command: string;
+  name?: string | undefined;
+  startTime: number;
+  initialOutput?: string | undefined;
+  notifyOnCompletion?: boolean | undefined;
+  triggerOnCompletion?: boolean | undefined;
 }
 
 
@@ -729,6 +754,7 @@ export function snapshot(task: BgTask): BgTaskSnapshot {
     model: task.model,
     telemetryUnavailableReason: task.telemetryUnavailableReason,
     outputTail: task.outputTail === undefined ? undefined : [...task.outputTail],
+    watchdogAdopted: task.watchdogAdopted,
   };
 }
 

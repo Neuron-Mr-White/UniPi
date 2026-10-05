@@ -6,15 +6,15 @@
  * tool calls, background tasks) is judged by jev (the long-horizon Decision
  * model): is it progressing, legitimately waiting, stuck, or looping? Only
  * stuck/looping answers with enough confidence, for enough consecutive
- * checks, on a non-persistent process, trigger a kill (or warn). pi's bash
- * tool is NOT overridden — the watchdog kills the tool's detached process
- * group out-of-band and annotates the tool result.
+ * checks, on a non-persistent process, trigger the configured action. Bash
+ * calls default to adoption as background tasks; explicit kill/warn modes
+ * retain the legacy behavior.
  */
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import * as os from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { askJev, harnessToolResultDetails, harnessMetadata, resolveDecisionModel, sendHarnessUserMessage } from "@pi-unipi/core";
+import { askJev, detachBashCall, detachCurrentBashCall, harnessToolResultDetails, harnessMetadata, resolveDecisionModel, sendHarnessUserMessage } from "@pi-unipi/core";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
 import { loadWatchdogSettings, registerWatchdogSettings, type WatchdogSettings } from "./src/config.js";
 import { evaluateTick } from "./src/decide.js";
@@ -112,6 +112,7 @@ interface OverrideTask {
   triggerOnCompletion: boolean;
   outputTail?: string[];
   delegate?: unknown;
+  watchdogAdopted?: boolean;
 }
 let registryOverride: OverrideTask[] | null = null;
 
@@ -137,11 +138,37 @@ export default function (pi: ExtensionAPI): void {
 }
 
 /** Extension wiring, separable for tests. */
-export function registerWatchdogExtension(pi: { on(event: string, handler: (event: any, ctx: any) => unknown): void }): void {
+export function registerWatchdogExtension(pi: {
+  on(event: string, handler: (event: any, ctx: any) => unknown): void;
+  registerCommand?(name: string, options: { description?: string; handler: (args: string, ctx: any) => Promise<void> }): void;
+}): void {
   state.pi = pi as ExtensionAPI;
   registerWatchdogSettings(process.cwd());
 
-  pi.on("__watchdog_tick", () => __watchdogTick(state.ctx as ExtensionContext));
+  pi.on("__watchdog_tick", (event, ctx) => __watchdogTick(ctx ?? event ?? state.ctx));
+
+  // Manual escape hatch: the agent (or a user) can move the currently
+  // running bash call to the background on demand, independent of any
+  // watchdog tick/decision. Same success/fail path as the automatic
+  // `action: "background"` branch in tick() — just triggered directly.
+  pi.registerCommand?.("unipi:bg-detach", {
+    description: "Move the currently running bash call to a background task",
+    handler: async (args: string, ctx: any) => {
+      const reason = (args ?? "").trim() || "manual /unipi:bg-detach";
+      const detached = await detachCurrentBashCall(reason).catch(() => null);
+      if (detached) {
+        ctx.ui.notify(
+          `Moved the running bash call to background task ${detached.taskId} (output: ${detached.outputPath})`,
+          "info",
+        );
+      } else {
+        ctx.ui.notify(
+          "Could not detach: no bash call is currently running, or background detachment is unavailable.",
+          "warning",
+        );
+      }
+    },
+  });
 
   pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
     state.ctx = ctx;
@@ -301,7 +328,7 @@ function gatherWatched(settings: WatchdogSettings): WatchedItem[] {
   if (settings.watchBgTasks) {
     const tasks = registryOverride ?? getSharedTaskRegistry()?.allTasks() ?? [];
     for (const task of tasks) {
-      if (task.status !== "running") continue;
+      if (task.status !== "running" || task.watchdogAdopted) continue;
       // triggerOnCompletion === false alone marks a persistent service.
       if (task.triggerOnCompletion === false) continue;
       const tail = (task.outputTail ?? []).join("\n");
@@ -409,10 +436,14 @@ async function tick(enabled: boolean): Promise<void> {
         fetchImpl: undefined,
         env: process.env,
       });
-      const decision = evaluateTick(answers, previousStreak, {
+      let decision = evaluateTick(answers, previousStreak, {
         confidence: settings.confidence,
         agreeChecks: settings.agreeChecks,
       });
+      // Test hook only: forces the act branch (kill/background/warn) for this
+      // tick without changing the normal streak/confidence/status decision,
+      // so action-path tests don't have to set up multi-tick agreement.
+      if (process.env.UNIPI_WATCHDOG_FORCE_ACT === "1") decision = { ...decision, act: true };
       state.streaks.set(item.key, decision.streak);
       state.tails.set(item.key, item.tail);
       state.checked.set(item.key, now);
@@ -431,24 +462,41 @@ async function tick(enabled: boolean): Promise<void> {
         `${outputChanged ? "output keeps repeating without progress" : `no new output for ${sinceLastOutput}s`}`;
 
       if (item.kind === "bash") {
-        if (settings.action === "kill" && process.platform !== "win32") {
+        const toolCallId = itemKeyToolCallId(item.key);
+        let handled = false;
+        if (settings.action === "background") {
+          const detached = await detachBashCall(toolCallId, reason).catch(() => null);
+          if (detached) {
+            // Success: the command keeps running as a background task. The
+            // watchdog no longer owns it — skip the kill map entirely so the
+            // tool_result hook never prefixes the (now-synthetic) result with
+            // a kill warning, and stop tracking/snapshotting it here.
+            state.bash.delete(toolCallId);
+            debugLog(`backgrounded bash ${item.command} as ${detached.taskId} (${reason})`);
+            handled = true;
+          } else {
+            debugLog(`bash ${item.command}: no background adopter available — falling back to kill`);
+          }
+        }
+        if (!handled && (settings.action === "kill" || settings.action === "background") && process.platform !== "win32") {
           const candidates = findBashChildren(process.pid, item.command);
           if (candidates.pids.length === 1) {
             killProcessGroup(candidates.pgids[0]!, candidates.pids[0]!, 1);
-            state.kills.set(itemKeyToolCallId(item.key), {
-              toolCallId: itemKeyToolCallId(item.key),
+            state.kills.set(toolCallId, {
+              toolCallId,
               durationMs,
               reason: `${decision.signal}; ${reason}`,
             });
-            state.bash.delete(itemKeyToolCallId(item.key));
+            state.bash.delete(toolCallId);
             debugLog(`killed bash ${item.command} (${reason})`);
-            continue;
+            handled = true;
+          } else {
+            debugLog(
+              `bash ${item.command}: ${candidates.pids.length} child matches — downgraded to warn`,
+            );
           }
-          debugLog(
-            `bash ${item.command}: ${candidates.pids.length} child matches — downgraded to warn`,
-          );
         }
-        queueWarn(item, decision, reason);
+        if (!handled) queueWarn(item, decision, reason);
       } else if (item.kind === "bg" && item.task) {
         const registry = getSharedTaskRegistry();
         const task = registry?.allTasks().find((t) => t.id === item.task!.id);

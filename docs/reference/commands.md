@@ -18,6 +18,12 @@ Some flows have no slash command. You start them from a row in the settings hub
 `/unipi:mcp-add`, `/unipi:notify-test` and `/unipi:web-cache-clear`. You cannot
 type these names. See [Actions in the settings hub](#actions-in-the-settings-hub).
 
+## [watchdog](../../packages/watchdog/README.md)
+
+| Command | What it does |
+|---|---|
+| `/unipi:bg-detach [reason]` | Return the most recent foreground bash call early, keeping its process running as a normal background task. |
+
 ## [background-tasks](../../packages/background-tasks/README.md)
 
 The package registers these commands only when its `enabled` setting is on.

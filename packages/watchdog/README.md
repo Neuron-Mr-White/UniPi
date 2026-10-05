@@ -1,6 +1,6 @@
 # Watchdog
 
-Watchdog finds tool calls and background tasks that are stuck, and stops them or warns the agent.
+Watchdog finds tool calls and background tasks that look stuck. By default it returns a foreground bash call early while keeping its process running as a background task.
 
 `@pi-unipi/watchdog` · part of [UniPi](../../README.md)
 
@@ -10,7 +10,8 @@ Watchdog finds tool calls and background tasks that are stuck, and stops them or
 - Asks jev, the UniPi Decision Model, if each item is progressing, waiting, stuck or looping.
 - Acts only after 2 checks in a row agree, with confidence 0.8 or more (defaults).
 - Protects dev servers, file watchers and daemons that run normally.
-- Tells the agent why it stopped a `bash` call, so the agent does not run it again blindly.
+- Gives the agent the background task ID, captured output and reason, so it can use `bg_logs`, `bg_kill`, or carry on.
+- Never automatically judges or kills a task it moved to the background.
 - Is off by default. No timers run until you turn it on.
 
 ## Quick start
@@ -26,13 +27,13 @@ pi install npm:@pi-unipi/watchdog
 3. Set `enabled` to on.
 4. Start a new session. Watchdog starts its timer at session start.
 
-Watchdog has no commands and no agent tools.
+`/unipi:bg-detach [reason]` manually moves the most recently started foreground bash call to the background. It works independently of the automatic watchdog setting. Watchdog has no agent tools.
 
 ## What it watches
 
 | Item | Setting | Action |
 |---|---|---|
-| `bash` tool calls | `watchBash` | Stops the process group of the command. |
+| `bash` tool calls | `watchBash` | Returns the call early and adopts its process as a background task by default. |
 | Background tasks | `watchBgTasks` | Stops the task through the background task registry. |
 | Other tools (web, image, MCP, subagents) | `otherTools` | Warns, or aborts the turn. |
 
@@ -49,14 +50,14 @@ Open `/unipi:settings` → Watchdog. The namespace is `watchdog`.
 | `firstCheckMin` | `2` | Minimum age of an item, in minutes, before its first check. |
 | `confidence` | `0.8` | Minimum jev confidence to act. Range 0 to 1. |
 | `agreeChecks` | `2` | Number of checks in a row that must agree. |
-| `action` | `kill` | `kill` stops a `bash` call. `warn` only sends a warning. |
+| `action` | `background` | `background` returns bash early without killing; `kill` stops it; `warn` leaves it running and queues a warning. |
 | `watchBash` | `true` | Watches `bash` calls. |
 | `watchBgTasks` | `true` | Watches background tasks. |
 | `otherTools` | `warn` | `off`, `warn` or `abort-turn` for tools that Watchdog cannot stop. |
 
 The group also has a Decision model section. Set `decisionModel.source` to `inherit` or `custom`.
 
-In this release, `action` applies to `bash` calls only. Watchdog stops a stuck background task also when `action` is `warn`.
+`action` applies to `bash` calls only. Ordinary stuck background tasks retain the existing stop behavior even when `action` is `warn`; watchdog-adopted tasks are excluded entirely.
 
 ## How it works
 
@@ -69,7 +70,9 @@ In this release, `action` applies to `bash` calls only. Watchdog stops a stuck b
    - The item is not a normal service. A `looping` item is never a normal service.
    - `agreeChecks` checks in a row agree.
 
-To stop a `bash` call, Watchdog does not replace the pi `bash` tool. It looks for the command in the child processes of pi. It stops the process group only when exactly one child matches. With zero or many matches, it sends a warning. On Windows, it always sends a warning.
+Utility wraps pi's local bash operations in every render style. When detaching, the background-task registry takes ownership of the same child, output stream and original start time. The tool returns normally; completion later sends the normal background notification and wakes the agent. Esc after detachment does not stop the adopted command. Background-task shutdown cleanup and `bg_kill` still apply.
+
+If adoption is unavailable (for example, background-tasks is disabled), automatic `background` falls back to the existing kill path: it stops the process group only when exactly one child matches the command. With zero or many matches, or on Windows, it queues a warning. Explicit `kill` uses that same path.
 
 The tool result of a stopped call starts with a line like this:
 
@@ -80,6 +83,8 @@ The tool result of a stopped call starts with a line like this:
 The original output follows. The result has `isError: true`. Warnings go to the agent at the start of the next turn. While Watchdog watches items, the status bar shows `watchdog: N`.
 
 ## Debug log
+
+For action-path testing, `UNIPI_WATCHDOG_FORCE_ACT=1` forces an act decision at a due check; normal decision prompting and thresholds are otherwise unchanged. Do not enable this in normal sessions.
 
 Set `UNIPI_DEBUG_WATCHDOG=1` to write a log to `~/.unipi/logs/watchdog.log`. Each check writes one line with the status, the confidence and the streak.
 

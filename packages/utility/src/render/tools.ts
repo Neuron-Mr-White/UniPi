@@ -31,10 +31,11 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import { createDetachableBashOperations, withDetachableBash } from "@pi-unipi/core";
 import { asJson, diffStats, exitCode, parseDiff, splitCommand, stripStatus, testSummary } from "./parse.js";
 import { simpleWrapTool } from "./simple.js";
 import { withHarnessToolAnnotations } from "./harness.js";
-import { readPiToolOptions } from "./pi-settings.js";
+import { readPiToolOptions, type PiToolOptions } from "./pi-settings.js";
 
 export type RenderStyle = "simple" | "regular" | "advanced";
 
@@ -161,6 +162,22 @@ function numbered(theme: Theme, lines: readonly string[], start = 1): string[] {
 // ─── the overrides ────────────────────────────────────────────────────────
 
 type AnyDef = ToolDefinition<any, any, any>;
+
+/**
+ * `opts.bash` merged with detachable-bash operations: the watchdog (if
+ * present) can move a stuck command to the background without unipi owning
+ * or depending on it — `operations` is the only field it ever needs to add.
+ * commandPrefix/shellPath/spawnHook (and any other BashToolOptions field)
+ * pass through unchanged.
+ */
+function detachableBashOpts(bash: PiToolOptions["bash"]): PiToolOptions["bash"] & { operations: ReturnType<typeof createDetachableBashOperations> } {
+  return { ...bash, operations: createDetachableBashOperations(bash) };
+}
+
+/** `createBashToolDefinition` + detachable-bash operations/execute wrapping, in one call. */
+function createDetachableBashToolDefinition(cwd: string, bash: PiToolOptions["bash"]): AnyDef {
+  return withDetachableBash(createBashToolDefinition(cwd, detachableBashOpts(bash)) as AnyDef);
+}
 
 function withDefinition(name: string, make: (cwd: string) => AnyDef, style: RenderStyle): AnyDef {
   const cache = new Map<string, AnyDef>();
@@ -325,7 +342,7 @@ export function registerToolRenderers(pi: ExtensionAPI, style: RenderStyle): voi
       pi.registerTool(withHarnessToolAnnotations(make(cwd) as AnyDef));
     }
     pi.registerTool(withHarnessToolAnnotations(createReadToolDefinition(cwd, opts.read) as AnyDef));
-    pi.registerTool(withHarnessToolAnnotations(createBashToolDefinition(cwd, opts.bash) as AnyDef));
+    pi.registerTool(withHarnessToolAnnotations(createDetachableBashToolDefinition(cwd, opts.bash)));
     pi.registerTool(withHarnessToolAnnotations(createEditToolDefinition(cwd) as AnyDef));
     pi.registerTool(withHarnessToolAnnotations(createWriteToolDefinition(cwd) as AnyDef));
     return;
@@ -341,13 +358,13 @@ export function registerToolRenderers(pi: ExtensionAPI, style: RenderStyle): voi
     // read/edit/write keep their (advanced) expanded renderers via withDefinition;
     // the collapsed row is overridden by the mcode wrapper in the unipi entry.
     pi.registerTool(simpleWrapTool(withDefinition("read", (c) => createReadToolDefinition(c, opts.read) as AnyDef, "advanced")));
-    pi.registerTool(simpleWrapTool(withDefinition("bash", (c) => createBashToolDefinition(c, opts.bash) as AnyDef, "advanced")));
+    pi.registerTool(simpleWrapTool(withDefinition("bash", (c) => createDetachableBashToolDefinition(c, opts.bash), "advanced")));
     pi.registerTool(simpleWrapTool(withDefinition("edit", (c) => createEditToolDefinition(c) as AnyDef, "advanced")));
     pi.registerTool(simpleWrapTool(withDefinition("write", (c) => createWriteToolDefinition(c) as AnyDef, "advanced")));
     return;
   }
   pi.registerTool(withDefinition("read", (cwd) => createReadToolDefinition(cwd, opts.read) as AnyDef, style));
-  pi.registerTool(withDefinition("bash", (cwd) => createBashToolDefinition(cwd, opts.bash) as AnyDef, style));
+  pi.registerTool(withDefinition("bash", (cwd) => createDetachableBashToolDefinition(cwd, opts.bash), style));
   pi.registerTool(withDefinition("edit", (cwd) => createEditToolDefinition(cwd) as AnyDef, style));
   pi.registerTool(withDefinition("write", (cwd) => createWriteToolDefinition(cwd) as AnyDef, style));
 }

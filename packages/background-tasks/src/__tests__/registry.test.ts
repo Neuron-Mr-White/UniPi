@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type ChildProcess as NodeChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -1235,5 +1235,146 @@ void describe('BackgroundTaskRegistry', () => {
     } finally {
       await cleanup(h.root);
     }
+  });
+
+  void describe('adoptRunningProcess', () => {
+    void it('creates a standard task without spawning, flagged watchdogAdopted', async () => {
+      const h = await createHarness();
+      try {
+        const child = new FakeChild(5150);
+        const startTime = Date.now() - 5_000;
+        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          command: 'sleep 999',
+          name: 'Adopted Sleep',
+          startTime,
+          initialOutput: 'buffered before adoption\n',
+        });
+
+        assert.equal(h.children.length, 0, 'adoptRunningProcess must not spawn a new child');
+        assert.equal(task.watchdogAdopted, true);
+        assert.equal(task.command, 'sleep 999');
+        assert.equal(task.name, 'Adopted Sleep');
+        assert.equal(task.startTime, startTime);
+        assert.equal(task.pid, 5150);
+        assert.equal(task.status, 'running');
+        assert.equal(task.notifyOnCompletion, true);
+        assert.equal(task.triggerOnCompletion, false);
+        assert.equal(h.registry.resolveTask(task.id), task);
+
+        const snap = h.registry.snapshot(task);
+        assert.equal(snap.watchdogAdopted, true);
+
+        const output = await readFile(task.outputAbsPath, 'utf8');
+        assert.match(output, /buffered before adoption/);
+
+        const metadata = await readJsonEventually(task.metadataAbsPath);
+        assert.equal(metadata['watchdogAdopted'], true);
+
+        child.close(0, null);
+        await waitFor(() => task.status === 'completed', 'adopted task completion');
+      } finally {
+        await cleanup(h.root);
+      }
+    });
+
+    void it('derives a name from the command when none is given and defaults notification flags', async () => {
+      const h = await createHarness();
+      try {
+        const child = new FakeChild(5151);
+        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          command: 'npm run build-everything',
+          startTime: Date.now(),
+        });
+        assert.match(task.name, /npm run build/);
+        assert.equal(task.notifyOnCompletion, true);
+        assert.equal(task.triggerOnCompletion, false);
+        child.close(0, null);
+        await waitFor(() => task.status === 'completed', 'adopted default-name completion');
+      } finally {
+        await cleanup(h.root);
+      }
+    });
+
+    void it('shares post-spawn wiring: output capture, close finalize, notification', async () => {
+      const h = await createHarness();
+      try {
+        const child = new FakeChild(5152);
+        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          command: 'tail -f adopted.log',
+          startTime: Date.now(),
+          notifyOnCompletion: true,
+          triggerOnCompletion: true,
+        });
+
+        child.writeStdout('adopted stdout line\n');
+        child.writeStderr('adopted stderr line\n');
+        await waitFor(() => task.bytesWritten > 0, 'adopted output captured');
+        const output = await readFile(task.outputAbsPath, 'utf8');
+        assert.match(output, /adopted stdout line/);
+        assert.match(output, /adopted stderr line/);
+
+        child.close(0, null);
+        await waitFor(() => task.status === 'completed', 'adopted task finalize');
+        await waitFor(() => h.notifications.length === 1, 'adopted task notification');
+        assert.equal(h.notifications[0]?.options.triggerTurn, true);
+        assert.equal(task.finalized, true);
+      } finally {
+        await cleanup(h.root);
+      }
+    });
+
+    void it('stopTask group-kills an adopted task through the standard shutdown path', async () => {
+      const h = await createHarness();
+      try {
+        const child = new FakeChild(5153);
+        const task = await h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+          command: 'sleep 999',
+          startTime: Date.now(),
+        });
+
+        const stopPromise = h.registry.stopTask(task, 'shutdown', 'test shutdown');
+        await waitFor(() => child.killCalls.length > 0, 'adopted task kill requested');
+        child.close(0, 'SIGTERM');
+        await stopPromise;
+        assert.equal(task.status, 'killed');
+        assert.equal(task.killKind, 'shutdown');
+      } finally {
+        await cleanup(h.root);
+      }
+    });
+
+    void it('rejects adoption while the registry is shutting down', async () => {
+      const h = await createHarness();
+      try {
+        h.registry.setShuttingDown(true);
+        const child = new FakeChild(5154);
+        await assert.rejects(
+          h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+            command: 'echo hi',
+            startTime: Date.now(),
+          }),
+          /shutting down/,
+        );
+      } finally {
+        h.registry.setShuttingDown(false);
+        await cleanup(h.root);
+      }
+    });
+
+    void it('rejects adoption with an empty command', async () => {
+      const h = await createHarness();
+      try {
+        const child = new FakeChild(5155);
+        await assert.rejects(
+          h.registry.adoptRunningProcess(h.ctx, child as unknown as NodeChildProcess, {
+            command: '   ',
+            startTime: Date.now(),
+          }),
+          /empty/,
+        );
+      } finally {
+        await cleanup(h.root);
+      }
+    });
   });
 });

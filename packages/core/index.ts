@@ -43,6 +43,7 @@ export { openSettingsHub } from "./src/settings/open.js";
 export * from "./src/attach/detect.js";
 export * from "./src/settings/catalog.js";
 export * from "./command-runner.js";
+export * from "./detachable-bash.js";
 export * from "./compaction-context.js";
 export * from "./move.js";
 export * from "./src/settings/migrations.js";

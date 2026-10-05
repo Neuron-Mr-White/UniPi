@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
+import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
@@ -22,6 +22,7 @@ import {
   shellQuote,
   snapshot,
   taskDisplayName,
+  type AdoptRunningProcessOptions,
   type BgLogsDetails,
   type BgTask,
   type BgTaskSnapshot,
@@ -830,59 +831,7 @@ export class BackgroundTaskRegistry {
 
       task.child = child;
       task.pid = child.pid;
-
-      child.stdout?.on('data', (data) => {
-        this.appendChildOutput(task, data, 'stdout');
-      });
-      child.stderr?.on('data', (data) => {
-        this.appendChildOutput(task, data, 'stderr');
-      });
-
-      child.on('error', (error) => {
-        this.writeNotice(task, `\n[background task spawn error: ${error.message}]\n`);
-        void this.finalizeTask(task, 'failed', null, undefined, error.message);
-      });
-
-      child.on('close', (code, signalName) => {
-        let status: TaskStatus;
-        let error: string | undefined;
-        if (task.killKind === 'user' || task.killKind === 'shutdown') {
-          status = 'killed';
-        } else if (task.killKind === 'timeout') {
-          status = 'failed';
-          error = task.error ?? `Timed out after ${String(timeoutSeconds)}s`;
-        } else if (task.killKind === 'output_cap') {
-          status = 'failed';
-          error = task.error ?? `Output exceeded cap of ${formatSize(this.maxOutputBytes)}`;
-        } else if ((code ?? 0) === 0) {
-          status = 'completed';
-        } else {
-          status = 'failed';
-          const exitCode = code === null ? 'null' : String(code);
-          error = `Exited with code ${exitCode}${signalName ? ` (${signalName})` : ''}`;
-        }
-        void this.finalizeTask(task, status, code, signalName, error);
-      });
-
-      if (timeoutSeconds !== undefined) {
-        task.timeoutHandle = setTimeout(() => {
-          if (task.status !== 'running') return;
-          task.killKind = 'timeout';
-          task.error = `Timed out after ${String(timeoutSeconds)}s`;
-          this.writeNotice(task, `\n[background task timeout: ${task.error}]\n`);
-          try {
-            this.requestKill(task, 'SIGTERM');
-          } catch (error) {
-            void this.finalizeTask(
-              task,
-              'failed',
-              null,
-              undefined,
-              `${task.error}; kill failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }, timeoutSeconds * 1000);
-      }
+      this.wireChildProcess(task, child, timeoutSeconds);
 
       await this.writeMetadata(task);
       this.onChange();
@@ -892,6 +841,158 @@ export class BackgroundTaskRegistry {
       this.writeNotice(task, `\n[background task spawn exception: ${message}]\n`);
       await this.finalizeTask(task, 'failed', null, undefined, message);
       throw new Error(`Failed to start background task: ${message}`);
+    }
+  }
+
+  /**
+   * Adopt an already-running child process (e.g. a bash call handed off by
+   * core's `setBashBackgroundAdopter`) as a standard background task, without
+   * spawning anything ourselves. Shares all post-spawn wiring (output
+   * capture, close/error handling, timeout, metadata, notification) with
+   * `startTask` via `wireChildProcess`; the only difference is that the
+   * caller already owns a live `child` and may have buffered output that
+   * preceded adoption.
+   */
+  async adoptRunningProcess(
+    ctx: BackgroundTaskContext,
+    child: ChildProcess,
+    options: AdoptRunningProcessOptions,
+  ): Promise<BgTask> {
+    const normalizedCommand = options.command.trim();
+    if (!normalizedCommand) throw new Error('Background command is empty');
+    if (this.shuttingDown)
+      throw new Error('Cannot adopt a background task while Pi is shutting down');
+
+    const dir = await this.ensureRuntimeDir(ctx);
+    const id = this.makeTaskIdFn();
+    const outputAbsPath = join(dir.abs, `${id}.output`);
+    const metadataAbsPath = join(dir.abs, `${id}.json`);
+    const outputPath = join(dir.display, `${id}.output`);
+    const taskName =
+      normalizeTaskName(options.name) ?? deriveTaskNameFromCommand(normalizedCommand);
+
+    const task: BgTask = {
+      id,
+      name: taskName,
+      command: normalizedCommand,
+      description: undefined,
+      status: 'running',
+      outputPath,
+      outputAbsPath,
+      metadataAbsPath,
+      cwd: ctx.cwd,
+      startTime: options.startTime,
+      exitCode: undefined,
+      pid: child.pid,
+      bytesWritten: 0,
+      isAgent: false,
+      notified: false,
+      notifyOnCompletion: options.notifyOnCompletion ?? true,
+      triggerOnCompletion: options.triggerOnCompletion ?? false,
+      timeoutSeconds: undefined,
+      terminalPublicationGate: undefined,
+      watchdogAdopted: true,
+      waiters: [],
+    };
+    this.tasks.set(id, task);
+
+    const stream = createWriteStream(outputAbsPath, { flags: 'a', encoding: 'utf8' });
+    task.stream = stream;
+    stream.on('error', (error) => {
+      task.error = `Output file write failed: ${error.message}`;
+      if (task.status === 'running') {
+        task.killKind = 'output_cap';
+        try {
+          this.requestKill(task, 'SIGTERM');
+        } catch (killError) {
+          void this.finalizeTask(
+            task,
+            'failed',
+            null,
+            undefined,
+            `${task.error}; kill failed: ${killError instanceof Error ? killError.message : String(killError)}`,
+          );
+        }
+      }
+    });
+
+    try {
+      task.child = child as unknown as BackgroundTaskChildProcess;
+      if (options.initialOutput) this.writeNotice(task, options.initialOutput);
+      this.wireChildProcess(task, child as unknown as BackgroundTaskChildProcess, undefined);
+      await this.writeMetadata(task);
+      this.onChange();
+      return task;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.writeNotice(task, `\n[background task adoption exception: ${message}]\n`);
+      await this.finalizeTask(task, 'failed', null, undefined, message);
+      throw new Error(`Failed to adopt background task: ${message}`);
+    }
+  }
+
+  /**
+   * Shared post-spawn wiring: output capture, error/close handling, and the
+   * optional timeout escalation. Used by both `startTask` (fresh spawn) and
+   * `adoptRunningProcess` (already-running child) so the finalize/close
+   * semantics never drift between the two paths.
+   */
+  private wireChildProcess(
+    task: BgTask,
+    child: BackgroundTaskChildProcess,
+    timeoutSeconds: number | undefined,
+  ): void {
+    child.stdout?.on('data', (data) => {
+      this.appendChildOutput(task, data, 'stdout');
+    });
+    child.stderr?.on('data', (data) => {
+      this.appendChildOutput(task, data, 'stderr');
+    });
+
+    child.on('error', (error) => {
+      this.writeNotice(task, `\n[background task spawn error: ${error.message}]\n`);
+      void this.finalizeTask(task, 'failed', null, undefined, error.message);
+    });
+
+    child.on('close', (code, signalName) => {
+      let status: TaskStatus;
+      let error: string | undefined;
+      if (task.killKind === 'user' || task.killKind === 'shutdown') {
+        status = 'killed';
+      } else if (task.killKind === 'timeout') {
+        status = 'failed';
+        error = task.error ?? `Timed out after ${String(timeoutSeconds)}s`;
+      } else if (task.killKind === 'output_cap') {
+        status = 'failed';
+        error = task.error ?? `Output exceeded cap of ${formatSize(this.maxOutputBytes)}`;
+      } else if (code === 0 && !signalName) {
+        status = 'completed';
+      } else {
+        status = 'failed';
+        const exitCode = code === null ? 'null' : String(code);
+        error = `Exited with code ${exitCode}${signalName ? ` (${signalName})` : ''}`;
+      }
+      void this.finalizeTask(task, status, code, signalName, error);
+    });
+
+    if (timeoutSeconds !== undefined) {
+      task.timeoutHandle = setTimeout(() => {
+        if (task.status !== 'running') return;
+        task.killKind = 'timeout';
+        task.error = `Timed out after ${String(timeoutSeconds)}s`;
+        this.writeNotice(task, `\n[background task timeout: ${task.error}]\n`);
+        try {
+          this.requestKill(task, 'SIGTERM');
+        } catch (error) {
+          void this.finalizeTask(
+            task,
+            'failed',
+            null,
+            undefined,
+            `${task.error}; kill failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }, timeoutSeconds * 1000);
     }
   }
 

@@ -7,7 +7,7 @@
 
 import { getSettings, registerSettings, decisionModelSection, DEFAULT_DECISION_OVERRIDE } from "@pi-unipi/core";
 
-export type WatchdogAction = "kill" | "warn";
+export type WatchdogAction = "background" | "kill" | "warn";
 export type OtherToolsMode = "off" | "warn" | "abort-turn";
 
 export interface WatchdogSettings {
@@ -21,7 +21,7 @@ export interface WatchdogSettings {
   confidence: number;
   /** Consecutive agreeing checks before acting (default: 2). */
   agreeChecks: number;
-  /** kill the item, or only warn (default: kill). */
+  /** background a stuck bash call, kill it, or only warn (default: background). */
   action: WatchdogAction;
   /** Watch pi's bash tool calls (default: true). */
   watchBash: boolean;
@@ -37,7 +37,7 @@ export const DEFAULT_WATCHDOG_SETTINGS: WatchdogSettings = {
   firstCheckMin: 2,
   confidence: 0.8,
   agreeChecks: 2,
-  action: "kill",
+  action: "background",
   watchBash: true,
   watchBgTasks: true,
   otherTools: "warn",
@@ -53,7 +53,11 @@ function num(v: unknown, fallback: number, min: number, max?: number): number {
 export function loadWatchdogSettings(cwd: string): WatchdogSettings {
   try {
     const parsed = getSettings("watchdog", cwd) as Record<string, unknown>;
-    const action = parsed?.action === "warn" ? "warn" : parsed?.action === "kill" ? "kill" : DEFAULT_WATCHDOG_SETTINGS.action;
+    const action =
+      parsed?.action === "warn" ? "warn" :
+      parsed?.action === "kill" ? "kill" :
+      parsed?.action === "background" ? "background" :
+      DEFAULT_WATCHDOG_SETTINGS.action;
     const otherTools =
       parsed?.otherTools === "warn" || parsed?.otherTools === "abort-turn" || parsed?.otherTools === "off"
         ? (parsed.otherTools as OtherToolsMode)
@@ -97,6 +101,7 @@ export function registerWatchdogSettings(cwd: string): void {
             label: "Action",
             description: "What happens when the watchdog is confident something is stuck.",
             options: [
+              { value: "background", label: "background", description: "move a stuck bash call to a background task instead of killing it; falls back to kill if that is unavailable" },
               { value: "kill", label: "kill", description: "kill the stuck item" },
               { value: "warn", label: "warn", description: "notify you and leave it running" },
             ],
