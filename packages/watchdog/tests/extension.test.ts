@@ -21,6 +21,7 @@ describe("watchdog extension", () => {
     registerWatchdogExtension: (pi: any) => void;
     __recordKill: (id: string, r: { durationMs: number; reason: string }) => void;
     resetWatchdogState: () => void;
+    __setSampler: (fn: (() => Promise<null>) | null) => void;
     __watchdogTick: (ctx: unknown) => Promise<void>;
     __getKills: () => Map<string, unknown>;
     __setClock: (fn: (() => number) | null) => void;
@@ -144,7 +145,7 @@ describe("watchdog extension", () => {
       calls++;
       onCall?.(String((JSON.parse(String(init.body)) as { state?: string }).state ?? ""));
       return new Response(JSON.stringify({
-        answers: { status: { choice: status, confidence: 0.95 }, persistent: { noul: 0.0 } },
+        answers: { expect: { choice: "minutes", confidence: 1 }, stop: { noul: .95 }, status: { choice: status, confidence: 0.95 }, persistent: { noul: 0.0 } },
       }), { status: 200 });
     };
     return { calls: () => calls };
@@ -155,9 +156,10 @@ describe("watchdog extension", () => {
     const jev = stubJev("looping");
     let now = 1_000_000;
     watchdogMod.__setClock(() => now);
+    watchdogMod.__setSampler(async () => null);
 
     // A real detached child whose command the pid finder must match exactly once.
-    const cmd = "sleep 300; echo wd-gating-unique";
+    const cmd = "sleep 300 && echo wd-gating-unique";
     const child = spawn("sh", ["-c", cmd], { detached: true, stdio: "ignore" });
     child.unref();
     await new Promise((r) => setTimeout(r, 150));
@@ -174,16 +176,16 @@ describe("watchdog extension", () => {
 
     now += 15_000; // 30s: first check, streak 1/2 → no kill
     await tickFn(fakeCtx());
-    assert.equal(jev.calls(), 1, "first check at ~30s");
+    assert.equal(jev.calls(), 2, "first check at ~30s");
     assert.ok(!watchdogMod.__getKills().has("call-gate"), "no kill on streak 1");
 
     now += 15_000; // 45s: within intervalMin of the last check → skipped
     await tickFn(fakeCtx());
-    assert.equal(jev.calls(), 1, "not re-checked within intervalMin");
+    assert.equal(jev.calls(), 2, "not re-checked within intervalMin");
 
-    now += 15_000; // 60s: second check, streak 2/2 → kill
+    now += 315_000; // bound expired: second check, streak 2/2 → kill
     await tickFn(fakeCtx());
-    assert.equal(jev.calls(), 2, "second check at ~60s");
+    assert.equal(jev.calls(), 3, "second check at ~60s");
     assert.ok(watchdogMod.__getKills().has("call-gate"), "killed at the 2nd agreeing check");
 
     await new Promise((r) => setTimeout(r, 300));
@@ -198,21 +200,22 @@ describe("watchdog extension", () => {
     const jev = stubJev("stuck");
     let now = 2_000_000;
     watchdogMod.__setClock(() => now);
+    watchdogMod.__setSampler(async () => null);
     handlers["tool_execution_start"]!(
       { type: "tool_execution_start", toolCallId: "call-x", toolName: "bash", args: { command: "sleep 300" } },
       fakeCtx(),
     );
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
     await tickFn(fakeCtx());
-    assert.equal(jev.calls(), 1, "first tick checks");
+    assert.equal(jev.calls(), 2, "first tick checks");
     for (const step of [1_000, 5_000, 10_000]) {
       now += step; // cumulative 16s < 30s interval
       await tickFn(fakeCtx());
     }
-    assert.equal(jev.calls(), 1, "no new jev calls within intervalMin");
+    assert.equal(jev.calls(), 2, "no new jev calls within intervalMin");
     now += 14_000; // cumulative 30s → due again
     await tickFn(fakeCtx());
-    assert.equal(jev.calls(), 2, "checked again once intervalMin elapsed");
+    assert.equal(jev.calls(), 3, "checked again once intervalMin elapsed");
   });
 
   it("bg sinceLastOutput grows while the tail is unchanged and resets on change", async () => {
@@ -221,6 +224,7 @@ describe("watchdog extension", () => {
     stubJev("progressing", (s) => states.push(s));
     let now = 3_000_000;
     watchdogMod.__setClock(() => now);
+    watchdogMod.__setSampler(async () => null);
     const task = {
       id: "bg-1", command: "bash loop.sh", status: "running", startTime: now,
       notifyOnCompletion: true, triggerOnCompletion: true, outputTail: ["line a"],

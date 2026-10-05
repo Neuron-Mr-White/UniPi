@@ -112,10 +112,15 @@ describe("watchdog — background action (detach)", () => {
   });
 
   it("action: background — detachBashCall succeeds: no kill recorded, task adopted", async () => {
-    await enableJudge({ action: "background", firstCheckMin: 0, intervalMin: 0.5 });
-    stubJev("stuck");
-    process.env.UNIPI_WATCHDOG_FORCE_ACT = "1";
+    await enableJudge({ action: "background", confidence: .5, agreeChecks: 2, firstCheckMin: 0, intervalMin: 0.5 });
+    const states: string[] = [];
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      states.push(body.state ?? body.messages?.map((m: { content: string }) => m.content).join("\n") ?? JSON.stringify(body));
+      return new Response(JSON.stringify({ answers: { expect: { choice: "minutes" }, status: { choice: "stuck", confidence: .9 }, stop: { noul: .8 } } }));
+    };
     watchdogMod.__setClock(() => 2_000_000);
+    watchdogMod.__setSampler(async () => ({ processes: [{ pid: 1, ppid: 0, comm: "python3", cmdline: "work", state: "S", wchan: "futex_do_wait", fd0: "/dev/null", cpu_pct: 0, io: { read_bytes: 0, write_bytes: 0, rchar: 0, wchar: 0 }, sockets: [], children: 0 }], group_totals: { cpu_pct: 0, read_bytes: 0, write_bytes: 0, rchar: 0, wchar: 0, any_running: false, io_bytes: 0 }, cumulative_io: 0 }));
 
     const { BackgroundTaskRegistry } = await import("@pi-unipi/background-tasks/src/registry.js");
     const registry = new BackgroundTaskRegistry({ sendCompletionNotification: () => {} });
@@ -131,16 +136,22 @@ describe("watchdog — background action (detach)", () => {
     });
 
     const abort = new AbortController();
-    const done = bashDefinition().execute("call-bg", { command: "printf a; sleep 2; printf b" }, abort.signal, undefined, undefined as never);
+    const done = bashDefinition().execute("call-bg", { command: "printf a; sleep 30; printf b" }, abort.signal, undefined, undefined as never);
     await new Promise((r) => setTimeout(r, 150));
 
     handlers["tool_execution_start"]!(
-      { type: "tool_execution_start", toolCallId: "call-bg", toolName: "bash", args: { command: "printf a; sleep 2; printf b" } },
+      { type: "tool_execution_start", toolCallId: "call-bg", toolName: "bash", args: { command: "printf a; sleep 30; printf b" } },
       fakeCtx(),
     );
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
     await tickFn(fakeCtx());
 
+    watchdogMod.__setClock(() => 2_030_000);
+    await tickFn(fakeCtx());
+    assert.ok(states[1]!.includes("Process tree (sampled over 5s):"));
+    assert.ok(!states[1]!.includes("Output changed"));
+    assert.ok(states[2]!.includes("Output changed since previous check (0s): no"));
+    console.log("TICK STATE:\n" + states[2]);
     assert.ok(adoptedTaskId, "the registry adopted the running process");
     assert.ok(!watchdogMod.__getKills().has("call-bg"), "no kill recorded for a successfully backgrounded call");
 
@@ -154,6 +165,7 @@ describe("watchdog — background action (detach)", () => {
     abort.abort();
     const detachedResult = await done;
     assert.equal(detachedResult.isError, false);
+    assert.match(JSON.stringify(detachedResult.content), /jev judged it unlikely to finish on its own/);
     await registry.stopTask(registry.resolveTask(adoptedTaskId!), "user").catch(() => {});
   });
 

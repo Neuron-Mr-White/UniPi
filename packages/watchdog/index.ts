@@ -17,7 +17,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { askJev, detachBashCall, detachCurrentBashCall, harnessToolResultDetails, harnessMetadata, resolveDecisionModel, sendHarnessUserMessage } from "@pi-unipi/core";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
 import { loadWatchdogSettings, registerWatchdogSettings, type WatchdogSettings } from "./src/config.js";
-import { evaluateTick } from "./src/decide.js";
+import { evaluateTick, decideBash, declaredBoundSec, type BashCheckInput } from "./src/decide.js";
+import { sampleSession, type ProcSample } from "./src/proc-sample.js";
+import { bashState, EXPECT, KIND, STATUS, STOP } from "./src/bash-prompt.js";
 import { findBashChildren, killProcessGroup } from "./src/bash-kill.js";
 import { extractText } from "./src/extract.js";
 
@@ -36,6 +38,13 @@ interface TrackedCall {
   startedAt: number;
   lastChangeAt: number;
   lastTail: string;
+  totalBytes: number;
+  prevIdle: boolean;
+  prevCumulativeIo: number | null;
+  stopStreak: number;
+  prevAge?: number;
+  prevCheckAt?: number;
+  expect?: BashCheckInput["expect"];
 }
 
 interface KillRecord {
@@ -66,6 +75,8 @@ const state = {
 
 /** Wall clock; swappable in tests (fake-clock gating tests). */
 let clock: () => number = () => Date.now();
+let sampler = sampleSession;
+export function __setSampler(fn: typeof sampleSession | null): void { sampler = fn ?? sampleSession; }
 
 /** Test hook: replace the clock (pass null to restore Date.now). */
 export function __setClock(fn: (() => number) | null): void {
@@ -130,6 +141,7 @@ export function resetWatchdogState(): void {
   state.warned.clear();
   registryOverride = null;
   clock = () => Date.now();
+  sampler = sampleSession;
 }
 
 /** Register the watchdog with pi. */
@@ -202,7 +214,7 @@ export function registerWatchdogExtension(pi: {
       display,
       startedAt: now,
       lastChangeAt: now,
-      lastTail: "",
+      lastTail: "", totalBytes: 0, prevIdle: false, prevCumulativeIo: null, stopStreak: 0,
     };
     if (event.toolName === "bash") state.bash.set(event.toolCallId, tracked);
     else state.other.set(event.toolCallId, tracked);
@@ -212,9 +224,11 @@ export function registerWatchdogExtension(pi: {
     const tracked = state.bash.get(event.toolCallId) ?? state.other.get(event.toolCallId);
     if (!tracked) return;
     const tail = extractText(event.partialResult);
+    // pi updates contain an accumulated, potentially truncated tail: a lower bound, not a byte counter.
+    tracked.totalBytes = Math.max(tracked.totalBytes, Buffer.byteLength(tail));
     if (tail && tail !== tracked.lastTail) {
       tracked.lastChangeAt = clock();
-      tracked.lastTail = tail.slice(-3200);
+      tracked.lastTail = tail;
     }
   });
 
@@ -429,17 +443,43 @@ async function tick(enabled: boolean): Promise<void> {
             "i.e. its recent output shows normal activity rather than repeated errors or failures?",
         },
       };
-      const answers = await askJev({
-        state: state_text,
-        questions,
-        settings: jevSettings,
-        fetchImpl: undefined,
-        env: process.env,
-      });
-      let decision = evaluateTick(answers, previousStreak, {
-        confidence: settings.confidence,
-        agreeChecks: settings.agreeChecks,
-      });
+      let bashReason: string | undefined;
+      let decision: { act: boolean; streak: number; status: string; confidence: number; persistent: boolean; signal?: string };
+      if (item.kind === "bash") {
+        const tracked = state.bash.get(itemKeyToolCallId(item.key));
+        if (!tracked) continue;
+        if (tracked.expect === undefined) {
+          const expected = await askJev({ state: `Tool: bash\nCommand: ${tracked.display}`,
+            questions: { expect: EXPECT }, settings: jevSettings, env: process.env });
+          const choice = expected?.expect?.choice;
+          tracked.expect = choice === "seconds" || choice === "minutes" || choice === "long" || choice === "never" ? choice : "unknown";
+        }
+        const matches = findBashChildren(process.pid, tracked.display);
+        const sample: ProcSample | null = matches.pids.length === 1 ? await sampler(matches.pids[0]!) : null;
+        if (!state.bash.has(tracked.toolCallId)) continue;
+        const checkAt = clock();
+        const age = (checkAt - tracked.startedAt) / 1000;
+        const quiet = (clock() - tracked.lastChangeAt) / 1000;
+        const prompt = bashState(tracked.display, age, quiet, tracked.totalBytes, tracked.lastTail, sample,
+          tracked.prevAge === undefined ? undefined : { age: tracked.prevAge, changed: tracked.lastChangeAt > tracked.prevCheckAt! });
+        const answers = await askJev({ state: prompt, questions: { kind: KIND, status: STATUS, stop: STOP },
+          settings: jevSettings, env: process.env });
+        const bash = decideBash({ ageSec: age, sinceOutputSec: quiet, command: tracked.display, sample,
+          prevIdle: tracked.prevIdle, prevCumulativeIo: tracked.prevCumulativeIo,
+          stop: answers?.stop?.noul ?? null, stopStreak: tracked.stopStreak, expect: tracked.expect,
+          threshold: settings.confidence, agreeChecks: settings.agreeChecks });
+        tracked.prevIdle = bash.idle; tracked.prevCumulativeIo = bash.cumulativeIo;
+        tracked.stopStreak = bash.stopStreak; tracked.prevAge = age; tracked.prevCheckAt = checkAt;
+        bashReason = bash.reason;
+        decision = { act: bash.act, streak: bash.stopStreak, status: answers?.status?.choice ?? "unknown",
+          confidence: answers?.stop?.noul ?? 0, persistent: false };
+        debugLog(`bash decision ${item.key}: ${JSON.stringify({ ...bash,
+          sleeper: sample?.processes.some(p => p.comm === "sleep" || p.wchan.includes("nanosleep")) ?? false,
+          stop: answers?.stop?.noul ?? null, expect: tracked.expect, bound: declaredBoundSec(tracked.display) })}`);
+      } else {
+        const answers = await askJev({ state: state_text, questions, settings: jevSettings, fetchImpl: undefined, env: process.env });
+        decision = evaluateTick(answers, previousStreak, { confidence: settings.confidence, agreeChecks: settings.agreeChecks });
+      }
       // Test hook only: forces the act branch (kill/background/warn) for this
       // tick without changing the normal streak/confidence/status decision,
       // so action-path tests don't have to set up multi-tick agreement.
@@ -456,7 +496,7 @@ async function tick(enabled: boolean): Promise<void> {
       if (!decision.act) continue;
 
       const durationMs = now - item.startedAt;
-      const reason =
+      const reason = bashReason ||
         `${decision.status} (confidence ${decision.confidence.toFixed(2)}) ` +
         `on ${decision.streak} consecutive checks — ` +
         `${outputChanged ? "output keeps repeating without progress" : `no new output for ${sinceLastOutput}s`}`;

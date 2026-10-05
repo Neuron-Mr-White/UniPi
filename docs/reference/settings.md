@@ -340,9 +340,9 @@ or warn you.
 | Key | Values | Default | What it changes |
 |---|---|---|---|
 | `enabled` | on, off | off | Turns the watchdog on. |
-| `intervalMin` | minutes | 5 | Sets the time between checks. |
+| `intervalMin` | minutes | 3 | Sets the time between checks. |
 | `firstCheckMin` | minutes | 2 | Sets the time before the first check. |
-| `confidence` | number | 0.8 | Sets the minimum jev confidence to act. |
+| `confidence` | number | 0.5 | Minimum bash stop score; background tasks and other tools use it as status confidence. |
 | `agreeChecks` | number | 2 | Sets how many checks in a row must agree. |
 | `action` | `background`, `kill`, `warn` | `background` | Bash calls return early and continue as background tasks by default; unavailable adoption falls back to kill/warn. Adopted tasks are excluded from further automatic watchdog action. |
 | `watchBash` | on, off | on | Watches `bash` calls. |

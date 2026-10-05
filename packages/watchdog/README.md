@@ -8,7 +8,7 @@ Watchdog finds tool calls and background tasks that look stuck. By default it re
 
 - Watches running `bash` calls, background tasks and other long tools.
 - Asks jev, the UniPi Decision Model, if each item is progressing, waiting, stuck or looping.
-- Acts only after 2 checks in a row agree, with confidence 0.8 or more (defaults).
+- Acts only after 2 checks in a row agree, using a stop score of 0.5 (bash) or status confidence of 0.5 (other items).
 - Protects dev servers, file watchers and daemons that run normally.
 - Gives the agent the background task ID, captured output and reason, so it can use `bg_logs`, `bg_kill`, or carry on.
 - Never automatically judges or kills a task it moved to the background.
@@ -46,9 +46,9 @@ Open `/unipi:settings` → Watchdog. The namespace is `watchdog`.
 | Key | Default | What it does |
 |---|---|---|
 | `enabled` | `false` | Turns the watchdog on. |
-| `intervalMin` | `5` | Minutes between two checks of one item. |
+| `intervalMin` | `3` | Minutes between two checks of one item. |
 | `firstCheckMin` | `2` | Minimum age of an item, in minutes, before its first check. |
-| `confidence` | `0.8` | Minimum jev confidence to act. Range 0 to 1. |
+| `confidence` | `0.5` | Stop score for bash; status confidence for background tasks and other tools. Range 0 to 1. |
 | `agreeChecks` | `2` | Number of checks in a row that must agree. |
 | `action` | `background` | `background` returns bash early without killing; `kill` stops it; `warn` leaves it running and queues a warning. |
 | `watchBash` | `true` | Watches `bash` calls. |
@@ -58,6 +58,15 @@ Open `/unipi:settings` → Watchdog. The namespace is `watchdog`.
 The group also has a Decision model section. Set `decisionModel.source` to `inherit` or `custom`.
 
 `action` applies to `bash` calls only. Ordinary stuck background tasks retain the existing stop behavior even when `action` is `warn`; watchdog-adopted tasks are excluded entirely.
+
+## How a bash call is judged
+
+Bash calls use Linux process activity plus jev's stop question. A call triggers when:
+- Two checks are idle with no CPU, disk or output activity, and no sleeping process.
+- The stop score meets the threshold for the configured consecutive checks.
+- Jev expects the command to finish within seconds, but it has reached its first watchdog check.
+
+An explicit `timeout`, chained `sleep`, or bounded `seq`/`sleep` loop vetoes every trigger until its declared time bound expires. Missing process samples never count as idle. Background tasks and other tools retain the existing status-based decision path.
 
 ## How it works
 

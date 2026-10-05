@@ -176,7 +176,14 @@ function detachableBashOpts(bash: PiToolOptions["bash"]): PiToolOptions["bash"] 
 
 /** `createBashToolDefinition` + detachable-bash operations/execute wrapping, in one call. */
 function createDetachableBashToolDefinition(cwd: string, bash: PiToolOptions["bash"]): AnyDef {
-  return withDetachableBash(createBashToolDefinition(cwd, detachableBashOpts(bash)) as AnyDef);
+  const definition = withDetachableBash(createBashToolDefinition(cwd, detachableBashOpts(bash)) as AnyDef);
+  const original = definition.renderResult;
+  return { ...definition, renderResult: (res, options, theme, context) => {
+    const id = (res.details as { detachedToTask?: string } | undefined)?.detachedToTask;
+    if (!id) return original?.(res, options, theme, context);
+    return new Lines((width) => [...outputBlock(theme, textOf(res as never)), theme.fg("accent", `→ background task ${id}`)]
+      .map(line => truncateToWidth(line, width, "…")));
+  } } as AnyDef;
 }
 
 function withDefinition(name: string, make: (cwd: string) => AnyDef, style: RenderStyle): AnyDef {
@@ -259,12 +266,13 @@ function renderers(name: string, style: RenderStyle, def: (cwd: string) => AnyDe
     }
 
     if (name === "bash") {
+      const detached = (res.details as { detachedToTask?: string } | undefined)?.detachedToTask;
       const output = stripStatus(text);
       const code = partial ? undefined : exitCode(text, bad);
       const count = output ? output.split("\n").length : 0;
       const tests = partial ? undefined : testSummary(output);
       if (simple) {
-        state.meta = partial ? "" : [
+        state.meta = detached ? `→ background task ${detached}` : partial ? "" : [
           code && code !== 0 ? `exit ${code}` : code === undefined && !partial ? "stopped" : "",
           `${count} output line${count === 1 ? "" : "s"}`,
           tests ? `${tests.passed} passed${tests.failed ? `, ${tests.failed} failed` : ""}` : "",
@@ -280,8 +288,8 @@ function renderers(name: string, style: RenderStyle, def: (cwd: string) => AnyDe
         out.push(...shown.map((l) => gutter(theme, l)));
         if (tests) out.push(gutter(theme, theme.fg(tests.failed ? "error" : "success", `${tests.failed ? "✗" : "✓"} ${tests.passed} passed · ${tests.failed} failed`)));
         if (!partial) {
-          const status = code === undefined ? "Stopped" : `Exited with code ${code}`;
-          out.push(`${theme.fg("borderMuted", "└")} ${theme.fg(code === 0 ? "success" : "error", status)}${theme.fg("muted", ` · ${elapsed(state)}`)}`);
+          const status = detached ? `→ background task ${detached}` : code === undefined ? "Stopped" : `Exited with code ${code}`;
+          out.push(`${theme.fg("borderMuted", "└")} ${theme.fg(detached ? "accent" : code === 0 ? "success" : "error", status)}${detached ? "" : theme.fg("muted", ` · ${elapsed(state)}`)}`);
         }
         return out.map((l) => truncateToWidth(l, width, "…"));
       }, true);

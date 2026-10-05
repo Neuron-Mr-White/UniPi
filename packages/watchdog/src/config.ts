@@ -13,11 +13,11 @@ export type OtherToolsMode = "off" | "warn" | "abort-turn";
 export interface WatchdogSettings {
   /** Master switch (default: off). */
   enabled: boolean;
-  /** Minutes between checks of every watched item (default: 5). */
+  /** Minutes between checks of every watched item (default: 3). */
   intervalMin: number;
   /** Minutes until the first check after session start (default: 2). */
   firstCheckMin: number;
-  /** Minimum jev confidence for a kill/warn decision (default: 0.8). */
+  /** Minimum jev stop score for bash, status confidence for other items (default: 0.5). */
   confidence: number;
   /** Consecutive agreeing checks before acting (default: 2). */
   agreeChecks: number;
@@ -33,9 +33,9 @@ export interface WatchdogSettings {
 
 export const DEFAULT_WATCHDOG_SETTINGS: WatchdogSettings = {
   enabled: false,
-  intervalMin: 5,
+  intervalMin: 3,
   firstCheckMin: 2,
-  confidence: 0.8,
+  confidence: 0.5,
   agreeChecks: 2,
   action: "background",
   watchBash: true,
@@ -93,7 +93,7 @@ export function registerWatchdogSettings(cwd: string): void {
           { key: "enabled", type: "boolean", label: "Enabled", description: "Watch long-running bash calls and background tasks with jev; off runs no timers." },
           { key: "intervalMin", type: "number", label: "Check interval", unit: "min", min: 0.1, description: "Every watched item is judged once per interval." },
           { key: "firstCheckMin", type: "number", label: "First check after", unit: "min", min: 0, description: "Delay before the first check; 0 checks right away." },
-          { key: "confidence", type: "number", label: "Confidence", min: 0, max: 1, description: "Minimum jev confidence to act." },
+          { key: "confidence", type: "number", label: "Stop score", min: 0, max: 1, description: "Minimum jev score that a bash call will not finish on its own (bash calls); background tasks keep using it as the status confidence." },
           { key: "agreeChecks", type: "number", label: "Agreeing checks", min: 1, description: "Consecutive agreeing checks before the action fires." },
           {
             key: "action",

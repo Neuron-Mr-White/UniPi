@@ -20,6 +20,8 @@ import { registerToolRenderers, type RenderStyle } from "../src/render/tools.ts"
 
 type AnyDef = {
   name: string;
+  renderCall?: (...args: any[]) => any;
+  renderResult?: (...args: any[]) => any;
   execute: (
     id: string,
     params: unknown,
@@ -56,6 +58,16 @@ function fakeCtx(cwd: string): unknown {
 
 describe("UNI-107: bash tool registrations carry detachable-bash operations", () => {
   for (const style of ["simple", "regular", "advanced"] as const) {
+    it(`${style}: detached rendering has background marker without exit footer`, () => {
+      const [bash] = bashDefsFor(style);
+      const theme = { fg: (_c: string, text: string) => text, bg: (_c: string, text: string) => text, bold: (text: string) => text };
+      const ctx = { toolCallId: `render-${style}`, cwd: process.cwd(), args: {command:"sleep 30"}, state: {}, expanded: false,
+        executionStarted: true, isError: false, invalidate: () => {} };
+      const call = style === "regular" ? undefined : bash!.renderCall!({command:"sleep 30"},theme,ctx);
+      const result = bash!.renderResult!({content:[{type:"text",text:"a"}],details:{detachedToTask:"b123"}}, {isPartial:false,expanded:false},theme,ctx);
+      const rendered = [...(call?.render(120) ?? []),...(result?.render(120) ?? [])].join("\n");
+      assert.match(rendered,/→ background task b123/); assert.ok(!/exit/i.test(rendered));
+    });
     it(`${style}: registers exactly one bash tool`, () => {
       const defs = bashDefsFor(style);
       assert.equal(defs.length, 1);

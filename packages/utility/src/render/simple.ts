@@ -545,6 +545,8 @@ export function resetSimpleGroups(): void {
  * the renderResult change-detection never sees the suffix.
  */
 function pinnedMeta(rec: CallRec): string {
+  const detached = (rec.details as { detachedToTask?: string } | undefined)?.detachedToTask;
+  if (detached) return ` · → background task ${detached}`;
   return !rec.running && rec.durationMs !== undefined ? `${rec.meta} · ${formatSeconds(rec.durationMs)}` : rec.meta;
 }
 
