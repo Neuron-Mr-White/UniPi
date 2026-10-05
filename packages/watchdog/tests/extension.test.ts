@@ -86,6 +86,8 @@ describe("watchdog extension", () => {
   });
 
   it("enabled=false → tick returns early, no jev call", async () => {
+    const { setSettings } = await import("@pi-unipi/core");
+    setSettings("watchdog", { enabled: false }, "global", process.cwd());
     let calls = 0;
     (globalThis as { fetch: unknown }).fetch = () => { calls++; return new Response("{}", { status: 200 }); };
     const sessionStart = handlers["session_start"]!;
@@ -94,6 +96,14 @@ describe("watchdog extension", () => {
     const tickFn = handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>;
     await tickFn(fakeCtx());
     assert.equal(calls, 0, "disabled → no jev call");
+  });
+
+  it("enabled defaults with no bash calls make no jev requests", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; throw new Error("unexpected idle request"); };
+    await handlers["session_start"]!({ type: "session_start", reason: "startup" }, fakeCtx());
+    await (handlers["__watchdog_tick"] as (ctx: unknown) => Promise<void>)(fakeCtx());
+    assert.equal(calls, 0);
   });
 
   it("finds and kills a single detached bash child", async () => {

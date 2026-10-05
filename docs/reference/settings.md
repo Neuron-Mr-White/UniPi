@@ -339,15 +339,15 @@ or warn you.
 
 | Key | Values | Default | What it changes |
 |---|---|---|---|
-| `enabled` | on, off | off | Turns the watchdog on. |
+| `enabled` | on, off | on | Watchdog is enabled for bash by default. |
 | `intervalMin` | minutes | 3 | Sets the time between checks. |
 | `firstCheckMin` | minutes | 2 | Sets the time before the first check. |
 | `confidence` | number | 0.5 | Minimum bash stop score; background tasks and other tools use it as status confidence. |
 | `agreeChecks` | number | 2 | Sets how many checks in a row must agree. |
 | `action` | `background`, `kill`, `warn` | `background` | Bash calls return early and continue as background tasks by default; unavailable adoption falls back to kill/warn. Adopted tasks are excluded from further automatic watchdog action. |
 | `watchBash` | on, off | on | Watches `bash` calls. |
-| `watchBgTasks` | on, off | on | Watches background tasks. |
-| `otherTools` | `off`, `warn`, `abort-turn` | `warn` | Sets what happens for tools with no kill handle. |
+| `watchBgTasks` | on, off | off | Watches background tasks. |
+| `otherTools` | `off`, `warn`, `abort-turn` | `off` | Sets what happens for tools with no kill handle. |
 
 ### web-api (hub: Web API)
 

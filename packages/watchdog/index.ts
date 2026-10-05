@@ -2,7 +2,7 @@
  * @pi-unipi/watchdog — Jev watchdog for long-running tool calls and
  * background tasks.
  *
- * Off by default. When enabled, every interval each watched item (pi's bash
+ * On by default for bash calls only. Every interval each watched item (pi's bash
  * tool calls, background tasks) is judged by jev (the long-horizon Decision
  * model): is it progressing, legitimately waiting, stuck, or looping? Only
  * stuck/looping answers with enough confidence, for enough consecutive
@@ -397,6 +397,8 @@ async function tick(enabled: boolean): Promise<void> {
 
     if (items.length > 0) ctx.ui.setStatus("watchdog", `watchdog: ${items.length}`);
     else ctx.ui.setStatus("watchdog", undefined);
+
+    if (items.length === 0) return;
 
     // One jevSettings read for the entire tick.
     const jevSettings = resolveDecisionModel(ctx.cwd, "watchdog");

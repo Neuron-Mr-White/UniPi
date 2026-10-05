@@ -11,7 +11,7 @@ export type WatchdogAction = "background" | "kill" | "warn";
 export type OtherToolsMode = "off" | "warn" | "abort-turn";
 
 export interface WatchdogSettings {
-  /** Master switch (default: off). */
+  /** Master switch (default: on). */
   enabled: boolean;
   /** Minutes between checks of every watched item (default: 3). */
   intervalMin: number;
@@ -25,22 +25,22 @@ export interface WatchdogSettings {
   action: WatchdogAction;
   /** Watch pi's bash tool calls (default: true). */
   watchBash: boolean;
-  /** Watch background tasks (default: true). */
+  /** Watch background tasks (default: false). */
   watchBgTasks: boolean;
-  /** Tools without a kill handle: off | warn | abort-turn (default: warn). */
+  /** Tools without a kill handle: off | warn | abort-turn (default: off). */
   otherTools: OtherToolsMode;
 }
 
 export const DEFAULT_WATCHDOG_SETTINGS: WatchdogSettings = {
-  enabled: false,
+  enabled: true,
   intervalMin: 3,
   firstCheckMin: 2,
   confidence: 0.5,
   agreeChecks: 2,
   action: "background",
   watchBash: true,
-  watchBgTasks: true,
-  otherTools: "warn",
+  watchBgTasks: false,
+  otherTools: "off",
 };
 
 function num(v: unknown, fallback: number, min: number, max?: number): number {
@@ -88,9 +88,9 @@ export function registerWatchdogSettings(cwd: string): void {
     schema: [
       {
         title: "Watchdog",
-        description: "Jev judges long-running tool calls and background tasks; kills or warns when stuck",
+        description: "On by default for bash calls; hands stuck-looking calls to background tasks",
         fields: [
-          { key: "enabled", type: "boolean", label: "Enabled", description: "Watch long-running bash calls and background tasks with jev; off runs no timers." },
+          { key: "enabled", type: "boolean", label: "Enabled", description: "On by default for bash calls; off runs no timers." },
           { key: "intervalMin", type: "number", label: "Check interval", unit: "min", min: 0.1, description: "Every watched item is judged once per interval." },
           { key: "firstCheckMin", type: "number", label: "First check after", unit: "min", min: 0, description: "Delay before the first check; 0 checks right away." },
           { key: "confidence", type: "number", label: "Stop score", min: 0, max: 1, description: "Minimum jev score that a bash call will not finish on its own (bash calls); background tasks keep using it as the status confidence." },
@@ -106,13 +106,13 @@ export function registerWatchdogSettings(cwd: string): void {
               { value: "warn", label: "warn", description: "notify you and leave it running" },
             ],
           },
-          { key: "watchBash", type: "boolean", label: "Watch bash", description: "Watch bash tool calls as well as background tasks." },
-          { key: "watchBgTasks", type: "boolean", label: "Watch background tasks", description: "Servers (no completion triggers) are never checked." },
+          { key: "watchBash", type: "boolean", label: "Watch bash", description: "Watch bash tool calls; on by default." },
+          { key: "watchBgTasks", type: "boolean", label: "Watch background tasks", description: "Off by default. Servers (no completion triggers) are never checked." },
           {
             key: "otherTools",
             type: "enum",
             label: "Other tools",
-            description: "What happens to tools that cannot be killed (web, image, mcp, subagents) when they look stuck.",
+            description: "Off by default; what happens to tools without a kill handle when they look stuck.",
             options: [
               { value: "off", label: "off", description: "leave other tools unwatched" },
               { value: "warn", label: "warn", description: "notify and inject a message" },

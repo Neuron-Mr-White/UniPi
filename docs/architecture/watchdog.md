@@ -11,7 +11,7 @@ timeout kills good work.
 
 The `watchdog` package asks jev, the decision model, to judge each long
 running item. It acts only on a repeated, confident "stuck" or "looping"
-answer. The watchdog is off by default.
+answer. The watchdog is on by default for bash calls only; background tasks and other tools are opt-in.
 
 It watches three kinds of item:
 
@@ -80,10 +80,10 @@ custom message. Each item and status pair warns once.
 
 | Item | Value | Source |
 |---|---|---|
-| Default state | off | `DEFAULT_WATCHDOG_SETTINGS`, `packages/watchdog/src/config.ts` |
-| Check interval | 5 min per item | `intervalMin` |
+| Default state | on, bash only | `DEFAULT_WATCHDOG_SETTINGS`, `packages/watchdog/src/config.ts` |
+| Check interval | 3 min per item | `intervalMin` |
 | First check | 2 min after the item starts | `firstCheckMin` |
-| Confidence minimum | 0.8 | `confidence` |
+| Stop score / confidence minimum | 0.5 | `confidence` |
 | Agreeing checks in a row | 2 | `agreeChecks` |
 | Default action | `kill` | `action` |
 | `other` tools default | `warn` | `otherTools` |

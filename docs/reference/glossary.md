@@ -210,4 +210,4 @@ alphabetic order. For the design behind the terms, see the
 
 **Watchdog**
 : A module that asks jev about long-running tool calls. It can kill a stuck
-  call or warn you. It is off by default.
+  call or warn you. It is on by default for bash calls only.
