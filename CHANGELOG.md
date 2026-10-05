@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.30] — 2026-10-05
+
 ### Changed
 - `watchdog`: **on by default, for bash calls only.** A bash call that still looks stuck after the first check (2 min) is handed to a background task, never killed by default; background tasks and other tools stay unwatched unless you turn them on. (UNI-107)
 - `watchdog`: bash calls are judged by process activity (no CPU, disk or output on two checks), a jev "will it finish on its own?" score on two checks in a row, or jev expecting the command to take seconds; a time limit written in the command (`timeout N`, `sleep N &&`, a bounded `seq … sleep` loop) holds every trigger off until it passes. Checks every 3 min after the first at 2 min. On a 20-case holdout: 9/10 stuck caught, 0/10 false (majority of 3 jev runs). Detached bash cards show `→ background task <id>` instead of an exit footer. (UNI-107)
