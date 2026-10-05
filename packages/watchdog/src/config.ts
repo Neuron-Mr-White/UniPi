@@ -101,7 +101,7 @@ export function registerWatchdogSettings(cwd: string): void {
             label: "Action",
             description: "What happens when the watchdog is confident something is stuck.",
             options: [
-              { value: "background", label: "background", description: "move a stuck bash call to a background task instead of killing it; falls back to kill if that is unavailable" },
+              { value: "background", label: "background", description: "hand a stuck bash call to a background task" },
               { value: "kill", label: "kill", description: "kill the stuck item" },
               { value: "warn", label: "warn", description: "notify you and leave it running" },
             ],

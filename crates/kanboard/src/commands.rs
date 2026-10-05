@@ -258,7 +258,7 @@ fn resolve_labels(labels: &[String], existing: &[String], allow_new: bool) -> Re
                     )));
                 }
                 let mut sorted: Vec<&String> = existing.iter().collect();
-                sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                sorted.sort_by_key(|a| a.to_lowercase());
                 let list = sorted
                     .iter()
                     .map(|label| label.as_str())
