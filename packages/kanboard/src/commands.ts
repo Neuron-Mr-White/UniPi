@@ -35,7 +35,7 @@ export const HELP = `Kanboard commands
   /unipi:kanboard close                 shut the board down
   /unipi:kanboard onboard               register this project
   /unipi:kanboard status                board and claims
-  /unipi:kanboard show [--all]          the board, in chat (lanes + claim order)
+  /unipi:kanboard show [<lane>] [--all] the board, in chat (lanes + claim order)
   /unipi:kanboard doctor                check the setup
   /unipi:kanboard-add [-p 1-5] <title>  add a task; lines below the title are the description (paste images there)
   /unipi:kanboard-do <request>          grant the agent task slots + a write budget
@@ -886,6 +886,13 @@ const SHOW_EXTRA_LANES: Array<{ id: string; label: string }> = [
   { id: "cancelled", label: "Cancelled" },
   { id: "archived", label: "Archived" },
 ];
+const SHOW_FILTERS = ["backlog", "todo", "in_progress", "blocked", "in_review", "done", "cancelled", "archived"];
+
+function showLanes(all: boolean, filter?: string): Array<{ id: string; label: string }> {
+  const lanes = [...SHOW_LANES, ...SHOW_EXTRA_LANES];
+  return filter ? lanes.filter((lane) => lane.id === filter) : all ? lanes : SHOW_LANES;
+}
+
 const PRIO_GLYPH: Record<string, string> = { urgent: "⇈", high: "↑", medium: "·", low: "↓", none: " " };
 const PRIO_RANK: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
 
@@ -977,8 +984,9 @@ function laneRows(tasks: ShowTask[], lane: string): ShowRow[] {
 }
 
 /** Plain-text fallback (also what the message stores as content). */
-export function renderShowPlain(project: string, tasks: ShowTask[], all: boolean): string {
-  const lanes = all ? [...SHOW_LANES, ...SHOW_EXTRA_LANES] : SHOW_LANES;
+export function renderShowPlain(project: string, tasks: ShowTask[], all: boolean, filter?: string): string {
+  const lanes = showLanes(all, filter);
+  if (filter) tasks = tasks.filter((task) => task.status === filter);
   const lines = [`${project} · ${tasks.length} tasks`];
   for (const lane of lanes) {
     const inLane = tasks.filter((task) => task.status === lane.id);
@@ -996,7 +1004,7 @@ export function renderShowPlain(project: string, tasks: ShowTask[], all: boolean
 
 /** The themed renderer registered for SHOW_CUSTOM_TYPE. */
 export function showRenderer(
-  message: { content: unknown; details?: { project?: string; tasks?: ShowTask[]; all?: boolean } },
+  message: { content: unknown; details?: { project?: string; tasks?: ShowTask[]; all?: boolean; lane?: string } },
   _options: unknown,
   theme: Theme,
 ): { render: (width: number) => string[]; invalidate: () => void } {
@@ -1004,10 +1012,11 @@ export function showRenderer(
     render(width: number): string[] {
       const details = message.details;
       if (!details?.tasks) return [typeof message.content === "string" ? message.content : ""];
-      const lanes = details.all ? [...SHOW_LANES, ...SHOW_EXTRA_LANES] : SHOW_LANES;
-      const lines: string[] = [theme.bold(`${details.project ?? "board"} · ${details.tasks.length} tasks`)];
+      const lanes = showLanes(details.all ?? false, details.lane);
+      const tasks = details.tasks.filter((task) => !details.lane || task.status === details.lane);
+      const lines: string[] = [theme.bold(`${details.project ?? "board"} · ${tasks.length} tasks`)];
       for (const lane of lanes) {
-        const inLane = details.tasks.filter((task) => task.status === lane.id);
+        const inLane = tasks.filter((task) => task.status === lane.id);
         if (inLane.length === 0) {
           lines.push(`  ${theme.fg("dim", `${lane.label} — empty`)}`);
           continue;
@@ -1043,7 +1052,7 @@ export function showRenderer(
   };
 }
 
-async function runShow(deps: CommandDeps, ctx: ExtensionCommandContext, pi: ExtensionAPI, all: boolean): Promise<void> {
+async function runShow(deps: CommandDeps, ctx: ExtensionCommandContext, pi: ExtensionAPI, all: boolean, lane?: string): Promise<void> {
   const client = deps.cli;
   if (!client) {
     ctx.ui.notify(`kanboard: ${deps.unavailable}`, "warning");
@@ -1055,7 +1064,7 @@ async function runShow(deps: CommandDeps, ctx: ExtensionCommandContext, pi: Exte
   try {
     // --all: this display lists every lane; the CLI bare default hides backlog/cancelled (UNI-62).
     const payload = (await client.run(["list", "--all", "--json"], { cwd: ctx.cwd })) as { tasks?: ShowTask[] };
-    tasks = payload.tasks ?? [];
+    tasks = (payload.tasks ?? []).filter((task) => !lane || task.status === lane);
   } catch (error) {
     ctx.ui.notify(`kanboard: show failed — ${error instanceof KanboardCliError ? error.message : String(error)}`, "error");
     return;
@@ -1063,9 +1072,9 @@ async function runShow(deps: CommandDeps, ctx: ExtensionCommandContext, pi: Exte
   pi.sendMessage(
     {
       customType: SHOW_CUSTOM_TYPE,
-      content: renderShowPlain(slug, tasks, all),
+      content: renderShowPlain(slug, tasks, all, lane),
       display: true,
-      details: { project: slug, tasks, all },
+      details: { project: slug, tasks, all, lane },
     },
     { triggerTurn: false },
   );
@@ -1095,7 +1104,7 @@ const SUB_DESCRIPTIONS: Record<Subcommand, string> = {
   onboard: "Register this project on the board",
   status: "Daemon, project counts and claims",
   doctor: "Check the whole setup (binary, daemon, project, agent, claims)",
-  show: "The board in chat: lanes + claim order (--all adds cancelled/archived)",
+  show: "The board in chat: show <lane> filters a lane; --all adds cancelled/archived",
 };
 
 /** /unipi:kanboard … */
@@ -1128,7 +1137,10 @@ export function kanboardCompletions(prefix: string): CompletionItem[] | null {
   const showFlags = /^(show\s+)(\S*)$/.exec(raw);
   if (showFlags) {
     const [, before, partial] = showFlags;
-    return [{ value: "--all", label: "--all", description: "Include cancelled and archived lanes" }]
+    return [
+      ...SHOW_FILTERS.map((lane) => ({ value: lane, label: lane, description: `Show only ${lane}` })),
+      { value: "--all", label: "--all", description: "Include cancelled and archived lanes" },
+    ]
       .filter((item) => item.value.startsWith(partial))
       .map((item) => ({ ...item, value: fullArgs(before!, item.value) }));
   }
@@ -1284,7 +1296,7 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
   // stays plain text as a fallback and the context filter drops it.
   if (typeof pi.registerMessageRenderer === "function") {
     pi.registerMessageRenderer(SHOW_CUSTOM_TYPE, (message, options, theme) =>
-      showRenderer(message as { content: unknown; details?: { project?: string; tasks?: ShowTask[]; all?: boolean } }, options, theme),
+      showRenderer(message as { content: unknown; details?: { project?: string; tasks?: ShowTask[]; all?: boolean; lane?: string } }, options, theme),
     );
   }
 
@@ -1379,7 +1391,7 @@ export function registerKanboardCommands(pi: ExtensionAPI, deps: CommandDeps): v
           await runDoctor(deps, ctx, pi);
           return;
         case "show":
-          await runShow(deps, ctx, pi, parts.includes("--all"));
+          await runShow(deps, ctx, pi, parts.includes("--all"), parts.find((part) => SHOW_FILTERS.includes(part)));
           return;
         case "open":
           if (!deps.cli) {

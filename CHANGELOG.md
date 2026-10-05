@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- `kanboard`: `/unipi:kanboard show <lane>` filters the chat board, with lane and `--all` argument autocomplete. (UNI-102)
 - `background-tasks`: launch and completion notices use width-fitted one-line chips in every render style; expanded views retain command, output and task details. (UNI-103)
 - `compactor`: `/unipi:compact-then <prompt>` compacts before continuing, preserving next-turn versus after-run queue behavior while streaming. (UNI-104)
 - `utility`: **warnings share one collapsed shape.** Harness warning panels (Progress guard, watchdog, Kanboard unfinished-task, …) render label + synopsis + `Ctrl+O: full message (N rendered rows)` in regular/advanced; simple mode compresses them to the single label line (`▏ ⚠ UniPi · Source · Title`). Expanded views add the body; the advanced origin footer is dropped for warnings. Tool-result annotations with `severity: "warning"` (Fusion edit/shell nudges, Kanboard R1 reminder) trade the old plain two-line header for the same rail+fill panel — in simple mode just one rail line under the tool row.
