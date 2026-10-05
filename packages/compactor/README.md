@@ -34,6 +34,13 @@ The full history stays in the session file, and the agent can search it.
 | `/unipi:compact-stats` | Shows the compactions and the saved tokens of this session. |
 | `/unipi:compact-doctor` | Checks the settings, Pi's compaction switch and old files. |
 | `/unipi:compact-help` | Shows a list of compactor commands. |
+| `/unipi:compact-then [prompt]` | Compacts, then sends `prompt` once it lands. Not a registered command — the package adds its own single autocomplete entry for it. |
+
+`/unipi:compact-then` works idle or while the agent is streaming. Idle, it
+compacts now and queues the prompt as a follow-up. Streaming, it queues the
+compaction for the next turn boundary and delivers the prompt the same way you
+submitted it — as a steer (Enter) or a follow-up (Alt+Enter) — once that
+turn's own compaction lands. With no prompt, it just compacts.
 
 ## Agent tools
 

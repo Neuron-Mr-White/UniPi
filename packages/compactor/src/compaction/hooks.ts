@@ -14,7 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { compact as piCompact, generateSummaryWithUsage, DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
-import { collectCompactionContext, emitEvent, formatTokens, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
+import { collectCompactionContext, COMPACTOR_INSTRUCTION, emitEvent, formatTokens, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { autoCompactionOf } from "../config/schema.js";
 import { buildOwnCut, resolveSmartKeepUserTurns, applyTailBudget, MAX_SMART_TAIL_TOKENS } from "./cut.js";
@@ -40,6 +40,11 @@ const TAIL_WINDOW_SHARE = 0.25;
 
 /** Custom types from the pre-rework compactor, still present in old sessions. */
 const LEGACY_HIDDEN_TYPES = new Set(["compactor-auto-continue", "unipi-compactor-resume"]);
+
+/** `/unipi:compact-then <prompt>` — not a registered command: recognized here
+ *  so it works through the same `input` path whether idle or streaming. The
+ *  prompt is optional text; an empty prompt just compacts (no follow-up). */
+const COMPACT_THEN_RE = /^\/unipi:compact-then(\s+([\s\S]*))?$/;
 
 let lastStats: CompactionStats | null = null;
 /** Details of our last plan (sections, jev outcome) for the compaction card. */
@@ -296,6 +301,10 @@ export interface CompactionHookDeps {
 
 export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDeps): void {
   let autoState: AutoCompactionState = createAutoCompactionState();
+  // `/unipi:compact-then <prompt>` queued while streaming: delivered at the
+  // next turn boundary (steer) once that turn's own compaction draft lands,
+  // or at agent_end/agent_settled once the run finishes (followUp).
+  let compactThenQueued: { prompt: string; mode: "steer" | "followUp" } | null = null;
 
   const afterCompaction = (stats: CompactionStats | null, method: CompactionMethod) => {
     deps.counters.compactions++;
@@ -318,20 +327,69 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
   });
 
   // Mark user messages that extensions send, so summaries can tell them from
-  // the user's own words (see source.ts).
-  pi.on("input", (event) => {
-    if (event.source !== "extension" || !event.text?.trim()) return;
-    try {
-      pi.appendEntry(ORIGIN_ENTRY_TYPE, { key: originKey(event.text) });
-    } catch {
-      // Never block input on bookkeeping.
+  // the user's own words (see source.ts). Also recognizes `/unipi:compact-then
+  // <prompt>` — not a registered command. The SDK routes unknown slash text
+  // through `input` (never a command handler), so this one handler covers
+  // both idle and streaming submission.
+  pi.on("input", (event, ctx) => {
+    if (event.source === "extension" && event.text?.trim()) {
+      try {
+        pi.appendEntry(ORIGIN_ENTRY_TYPE, { key: originKey(event.text) });
+      } catch {
+        // Never block input on bookkeeping.
+      }
     }
+
+    const text = event.text ?? "";
+    const match = COMPACT_THEN_RE.exec(text);
+    if (!match) return;
+    const prompt = (match[2] ?? "").trim();
+
+    if (!event.streamingBehavior) {
+      // Idle: compact now; deliver the prompt (if any) once compaction lands.
+      setPendingCompaction(null, true, "unipi:compact-then");
+      try {
+        ctx.compact({
+          customInstructions: COMPACTOR_INSTRUCTION,
+          onComplete: () => {
+            if (!prompt) return;
+            try {
+              sendHarnessUserMessage(pi, prompt, { source: "Compactor", title: "Compact then", synopsis: "Prompt queued after compaction" }, { deliverAs: "followUp" });
+            } catch {}
+          },
+          onError: (err: Error) => {
+            try {
+              ctx.ui?.notify?.(`Compaction failed: ${err.message}`, "error");
+            } catch {}
+          },
+        });
+      } catch (err) {
+        try {
+          ctx.ui?.notify?.(`Could not start compaction: ${err instanceof Error ? err.message : String(err)}`, "error");
+        } catch {}
+      }
+      return { action: "handled" as const };
+    }
+
+    // Streaming: record the prompt+mode; delivered at the next turn boundary
+    // (steer) or once the run settles (followUp) — never awaited here.
+    compactThenQueued = { prompt, mode: event.streamingBehavior };
+    try {
+      ctx.ui?.notify?.(
+        event.streamingBehavior === "followUp"
+          ? "Compact then: queued — will compact and continue after this run."
+          : "Compact then: queued — will compact and continue at the next turn.",
+        "info",
+      );
+    } catch {}
+    return { action: "handled" as const };
   });
 
   pi.on("session_start", () => {
     autoState = createAutoCompactionState();
     pendingMethod = null;
     commandCompaction = false;
+    compactThenQueued = null;
   });
 
   pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx) => {
@@ -450,57 +508,151 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
     }
   });
 
-  // Percentage trigger: compact at the turn boundary (no abort, loops continue).
+  // `/unipi:compact-then` queued as a follow-up: compact once the run
+  // settles, then deliver the prompt. agent_settled is the primary point
+  // (the agent is idle by then); agent_end is a backstop for runs that
+  // never reach agent_settled while a queued compact-then is outstanding.
+  const runFollowUpCompactThen = (ctx: ExtensionContext) => {
+    const queued = compactThenQueued;
+    if (!queued || queued.mode !== "followUp") return;
+    compactThenQueued = null;
+    setPendingCompaction(null, true, "unipi:compact-then");
+    try {
+      ctx.compact({
+        customInstructions: COMPACTOR_INSTRUCTION,
+        onComplete: () => {
+          if (!queued.prompt) return;
+          try {
+            sendHarnessUserMessage(pi, queued.prompt, { source: "Compactor", title: "Compact then", synopsis: "Prompt queued after compaction" }, { deliverAs: "followUp" });
+          } catch {}
+        },
+        onError: (err: Error) => {
+          try {
+            ctx.ui?.notify?.(`Compaction failed: ${err.message}`, "error");
+          } catch {}
+        },
+      });
+    } catch (err) {
+      try {
+        ctx.ui?.notify?.(`Could not start compaction: ${err instanceof Error ? err.message : String(err)}`, "error");
+      } catch {}
+    }
+  };
+  pi.on("agent_end", (_event, ctx) => {
+    runFollowUpCompactThen(ctx);
+  });
+  pi.on("agent_settled", (_event, ctx) => {
+    runFollowUpCompactThen(ctx);
+  });
+
+  // Turn boundary: `/unipi:compact-then` steer first (its own compaction,
+  // using config.method, same no-abort draft path as the percent trigger),
+  // then the percentage trigger (skipped if compact-then already compacted
+  // this boundary).
   pi.on("turn_end", async (event, ctx) => {
     const cwd = ctx?.cwd ?? process.cwd();
     const config = loadConfig(cwd);
-    if (config.trigger !== "percent") return;
-    if (event.outcome === "aborted") return;
-    if (event.entries.some((draft) => draft.type === "compaction")) return;
+    let entries: typeof event.entries = event.entries;
 
-    const decision = decideAutoCompaction({
-      config: autoCompactionOf(config),
-      usage: ctx.getContextUsage?.(),
-      state: autoState,
-      nowMs: Date.now(),
-    });
-    autoState = decision.state;
-    if (!decision.shouldTrigger) return;
-
-    const branch = ctx.sessionManager.getBranch() as any[];
-    try {
-      const draft = config.method === "llm"
-        ? await boundaryLlmDraft(pi, ctx, branch, config)
-        : await boundaryLosslessDraft(branch, config, cwd, decision.usage?.tokens, ctx.model?.contextWindow);
-      if (!draft) {
-        autoState = markAutoCompactionError(autoState, Date.now());
-        return;
+    const queued = compactThenQueued;
+    if (queued && queued.mode === "steer") {
+      compactThenQueued = null;
+      if (event.outcome !== "aborted") {
+        if (entries.some((draft) => draft.type === "compaction")) {
+          // Already compacted this boundary (e.g. the percent trigger) — just deliver.
+          if (queued.prompt) {
+            try {
+              sendHarnessUserMessage(pi, queued.prompt, { source: "Compactor", title: "Compact then", synopsis: "Prompt queued after compaction" }, { deliverAs: "steer" });
+            } catch {}
+          }
+        } else {
+          const branch = ctx.sessionManager.getBranch() as any[];
+          try {
+            const draft = config.method === "llm"
+              ? await boundaryLlmDraft(pi, ctx, branch, config)
+              : await boundaryLosslessDraft(branch, config, cwd, ctx.getContextUsage?.()?.tokens ?? undefined, ctx.model?.contextWindow);
+            if (draft) {
+              afterCompaction(draft.stats, config.method);
+              const card = config.notify
+                ? [{
+                    type: "custom" as const,
+                    customType: CARD_TYPE,
+                    data: buildCardData({
+                      method: config.method,
+                      trigger: "manual",
+                      command: "unipi:compact-then",
+                      tokensBefore: Number(draft.entry.usage?.tokensBefore ?? draft.stats?.tokensBefore ?? 0),
+                      stats: draft.stats,
+                      details: (draft.entry.details as Record<string, unknown> | undefined) ?? null,
+                      summary: draft.entry.summary,
+                    }),
+                  }]
+                : [];
+              entries = [...entries, draft.entry, ...card];
+            } else if (config.notify) {
+              ctx.ui?.notify?.("compactor: nothing to compact for /unipi:compact-then", "warning");
+            }
+          } catch (err) {
+            try {
+              ctx.ui?.notify?.(`Compaction failed: ${err instanceof Error ? err.message : String(err)}`, "warning");
+            } catch {}
+          }
+          if (queued.prompt) {
+            try {
+              sendHarnessUserMessage(pi, queued.prompt, { source: "Compactor", title: "Compact then", synopsis: "Prompt queued after compaction" }, { deliverAs: "steer" });
+            } catch {}
+          }
+        }
       }
-      autoState = markAutoCompactionComplete(autoState);
-      afterCompaction(draft.stats, config.method);
-      // Boundary compactions skip session_compact: the card rides in the same draft, after the compaction.
-      const card = config.notify
-        ? [{
-            type: "custom" as const,
-            customType: CARD_TYPE,
-            data: buildCardData({
-              method: config.method,
-              trigger: "percent",
-              tokensBefore: Number(draft.entry.usage?.tokensBefore ?? decision.usage?.tokens ?? draft.stats?.tokensBefore ?? 0),
-              stats: draft.stats,
-              details: (draft.entry.details as Record<string, unknown> | undefined) ?? null,
-              summary: draft.entry.summary,
-              percent: decision.usage?.percent,
-              threshold: decision.thresholdPercent,
-            }),
-          }]
-        : [];
-      return { entries: [draft.entry, ...card] };
-    } catch (err) {
-      autoState = markAutoCompactionError(autoState, Date.now());
-      if (config.notify) ctx.ui.notify(`Auto-compaction failed: ${err instanceof Error ? err.message : String(err)}`, "warning");
-      return;
     }
+
+    // Percentage trigger: compact at the turn boundary (no abort, loops continue).
+    if (config.trigger === "percent" && event.outcome !== "aborted" && !entries.some((draft) => draft.type === "compaction")) {
+      const decision = decideAutoCompaction({
+        config: autoCompactionOf(config),
+        usage: ctx.getContextUsage?.(),
+        state: autoState,
+        nowMs: Date.now(),
+      });
+      autoState = decision.state;
+      if (decision.shouldTrigger) {
+        const branch = ctx.sessionManager.getBranch() as any[];
+        try {
+          const draft = config.method === "llm"
+            ? await boundaryLlmDraft(pi, ctx, branch, config)
+            : await boundaryLosslessDraft(branch, config, cwd, decision.usage?.tokens, ctx.model?.contextWindow);
+          if (!draft) {
+            autoState = markAutoCompactionError(autoState, Date.now());
+          } else {
+            autoState = markAutoCompactionComplete(autoState);
+            afterCompaction(draft.stats, config.method);
+            // Boundary compactions skip session_compact: the card rides in the same draft, after the compaction.
+            const card = config.notify
+              ? [{
+                  type: "custom" as const,
+                  customType: CARD_TYPE,
+                  data: buildCardData({
+                    method: config.method,
+                    trigger: "percent",
+                    tokensBefore: Number(draft.entry.usage?.tokensBefore ?? decision.usage?.tokens ?? draft.stats?.tokensBefore ?? 0),
+                    stats: draft.stats,
+                    details: (draft.entry.details as Record<string, unknown> | undefined) ?? null,
+                    summary: draft.entry.summary,
+                    percent: decision.usage?.percent,
+                    threshold: decision.thresholdPercent,
+                  }),
+                }]
+              : [];
+            entries = [...entries, draft.entry, ...card];
+          }
+        } catch (err) {
+          autoState = markAutoCompactionError(autoState, Date.now());
+          if (config.notify) ctx.ui.notify(`Auto-compaction failed: ${err instanceof Error ? err.message : String(err)}`, "warning");
+        }
+      }
+    }
+
+    if (entries !== event.entries) return { entries };
   });
 }
 

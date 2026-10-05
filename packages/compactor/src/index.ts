@@ -3,6 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, emitEvent } from "@pi-unipi/core";
 import { migrateLegacyConfigFiles } from "./config/manager.js";
 import { registerCompactionHooks } from "./compaction/hooks.js";
@@ -11,6 +12,38 @@ import { registerCompactorTools } from "./tools/register.js";
 import type { RuntimeCounters } from "./types.js";
 import { CARD_TYPE, renderCompactionCard, type CompactionCardData } from "./card.js";
 import type { KitTheme } from "@pi-unipi/core";
+
+const COMPACT_THEN_ITEM: AutocompleteItem = {
+  value: "unipi:compact-then",
+  label: "unipi:compact-then",
+  description: "Compacts, then sends a prompt once it lands (not a registered command)",
+};
+
+/**
+ * `/unipi:compact-then` has no `pi.registerCommand` (it is recognized
+ * directly in the `input` handler, see compaction/hooks.ts), so it is
+ * absent from `ctx.getCommands()` and the base autocomplete provider's
+ * command list. This wrapper adds a single synthetic suggestion for it
+ * at the command-name position, leaving every other suggestion (including
+ * argument completions) to the wrapped provider unchanged.
+ */
+export function createCompactThenAutocompleteProvider(current: AutocompleteProvider): AutocompleteProvider {
+  return {
+    applyCompletion: (...args) => current.applyCompletion(...args),
+    async getSuggestions(lines, cursorLine, cursorCol, options) {
+      const base = await current.getSuggestions(lines, cursorLine, cursorCol, options);
+      const currentLine = lines[cursorLine] ?? "";
+      const textBeforeCursor = currentLine.slice(0, cursorCol);
+      // Command-name position only: a leading slash, no space yet.
+      if (!textBeforeCursor.startsWith("/") || textBeforeCursor.includes(" ")) return base;
+      const query = textBeforeCursor.slice(1).toLowerCase();
+      if (!"unipi:compact-then".includes(query) && !"compact-then".startsWith(query)) return base;
+      const prefix = base?.prefix ?? textBeforeCursor;
+      const items = base ? [...base.items, COMPACT_THEN_ITEM] : [COMPACT_THEN_ITEM];
+      return { items, prefix };
+    },
+  };
+}
 
 export default function compactorExtension(pi: ExtensionAPI): void {
   const counters: RuntimeCounters = { recallQueries: 0, compactions: 0 };
@@ -38,6 +71,14 @@ export default function compactorExtension(pi: ExtensionAPI): void {
         return [];
       }
     };
+
+    if (ctx.hasUI) {
+      try {
+        ctx.ui.addAutocompleteProvider(createCompactThenAutocompleteProvider);
+      } catch {
+        // Autocomplete is a nicety; /unipi:compact-then still works typed in full.
+      }
+    }
 
     const infoRegistry = globalThis.__unipi_info_registry;
     if (infoRegistry) {

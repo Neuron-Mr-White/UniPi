@@ -138,6 +138,95 @@ describe("percentage trigger", () => {
   });
 });
 
+describe("/unipi:compact-then", () => {
+  it("idle: compacts now and queues the prompt as a follow-up once compaction lands", () => {
+    const h = harness();
+    const ctx = notifyCtx({ compact: (opts: any) => opts.onComplete({}) });
+    const result = h.fire("input", { type: "input", text: "/unipi:compact-then keep going", source: "interactive" }, ctx);
+    expect(result).toEqual({ action: "handled" });
+    expect(h.sent).toEqual([["user", "keep going", { deliverAs: "followUp" }]]);
+  });
+
+  it("idle: an empty prompt just compacts, nothing is queued", () => {
+    const h = harness();
+    const ctx = notifyCtx({ compact: (opts: any) => opts.onComplete({}) });
+    h.fire("input", { type: "input", text: "/unipi:compact-then", source: "interactive" }, ctx);
+    expect(h.sent).toEqual([]);
+  });
+
+  it("idle: a compaction error notifies instead of queuing", () => {
+    const h = harness();
+    let notified = "";
+    const ctx = notifyCtx({
+      ui: { notify: (text: string) => { notified = text; } },
+      compact: (opts: any) => opts.onError(new Error("boom")),
+    });
+    h.fire("input", { type: "input", text: "/unipi:compact-then go on", source: "interactive" }, ctx);
+    expect(notified).toContain("boom");
+    expect(h.sent).toEqual([]);
+  });
+
+  it("streaming as a steer: compacts at the next turn boundary and delivers the prompt as a steer", async () => {
+    writeConfig({});
+    const h = harness();
+    h.fire("input", { type: "input", text: "/unipi:compact-then wrap it up", source: "interactive", streamingBehavior: "steer" }, notifyCtx());
+    const turnEnd = { type: "turn_end", entries: [], outcome: "completed", continue: false };
+    const result = await h.fire("turn_end", turnEnd, notifyCtx({ sessionManager: { getBranch: () => workingSession() } }));
+    expect(result.entries[0].type).toBe("compaction");
+    expect(h.sent).toEqual([["user", "wrap it up", { deliverAs: "steer" }]]);
+  });
+
+  it("streaming as a steer with no prompt: compacts but sends nothing", async () => {
+    writeConfig({});
+    const h = harness();
+    h.fire("input", { type: "input", text: "/unipi:compact-then", source: "interactive", streamingBehavior: "steer" }, notifyCtx());
+    const turnEnd = { type: "turn_end", entries: [], outcome: "completed", continue: false };
+    const result = await h.fire("turn_end", turnEnd, notifyCtx({ sessionManager: { getBranch: () => workingSession() } }));
+    expect(result.entries[0].type).toBe("compaction");
+    expect(h.sent).toEqual([]);
+  });
+
+  it("streaming as a steer: an aborted turn delivers nothing and does not compact", async () => {
+    writeConfig({});
+    const h = harness();
+    h.fire("input", { type: "input", text: "/unipi:compact-then wrap it up", source: "interactive", streamingBehavior: "steer" }, notifyCtx());
+    const turnEnd = { type: "turn_end", entries: [], outcome: "aborted", continue: false };
+    const result = await h.fire("turn_end", turnEnd, notifyCtx({ sessionManager: { getBranch: () => workingSession() } }));
+    expect(result).toBeUndefined();
+    expect(h.sent).toEqual([]);
+  });
+
+  it("streaming as a follow-up: compacts once the run settles, then delivers the prompt as a follow-up", () => {
+    const h = harness();
+    h.fire("input", { type: "input", text: "/unipi:compact-then one more thing", source: "interactive", streamingBehavior: "followUp" }, notifyCtx());
+    const ctx = notifyCtx({ compact: (opts: any) => opts.onComplete({}) });
+    h.fire("agent_settled", { type: "agent_settled" }, ctx);
+    expect(h.sent).toEqual([["user", "one more thing", { deliverAs: "followUp" }]]);
+  });
+
+  it("streaming as a follow-up: agent_end and agent_settled together only compact once", () => {
+    const h = harness();
+    h.fire("input", { type: "input", text: "/unipi:compact-then once only", source: "interactive", streamingBehavior: "followUp" }, notifyCtx());
+    let compactCalls = 0;
+    const ctx = notifyCtx({
+      compact: (opts: any) => {
+        compactCalls += 1;
+        opts.onComplete({});
+      },
+    });
+    h.fire("agent_end", { type: "agent_end", messages: [] }, ctx);
+    h.fire("agent_settled", { type: "agent_settled" }, ctx);
+    expect(compactCalls).toBe(1);
+    expect(h.sent).toEqual([["user", "once only", { deliverAs: "followUp" }]]);
+  });
+
+  it("does not match other /unipi: commands", () => {
+    const h = harness();
+    const result = h.fire("input", { type: "input", text: "/unipi:compact-vcc", source: "interactive" }, notifyCtx());
+    expect(result).toBeUndefined();
+  });
+});
+
 describe("bookkeeping", () => {
   it("marks user messages that extensions send", () => {
     const h = harness();

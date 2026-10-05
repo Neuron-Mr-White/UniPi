@@ -48,6 +48,15 @@ Use `--agent` only when the command starts an LLM agent process.
 
 `keep:N` keeps the last N turns. `scope:all` also searches edited or retried turns.
 
+`/unipi:compact-then <prompt>` is not in the table above: it is not a
+registered command, so it does not appear in `ctx.getCommands()`. The
+compactor recognizes the text directly, and adds its own single autocomplete
+suggestion on top of the base provider so it still shows up while typing.
+Idle, it compacts now and queues `<prompt>` as a follow-up once compaction
+lands. While the agent is streaming, it queues the compaction and `<prompt>`
+for delivery as a steer or a follow-up, matching however you submitted it
+(Enter steers, Alt+Enter follows up). An empty `<prompt>` just compacts.
+
 ## [core](../../packages/core/README.md)
 
 | Command | Arguments | What it does |
