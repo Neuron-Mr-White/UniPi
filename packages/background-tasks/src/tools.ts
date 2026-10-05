@@ -163,8 +163,8 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
 
   pi.registerMessageRenderer<BgTaskSnapshot>(
     "background-task-notification",
-    (message: { details?: BgTaskSnapshot }, _options: unknown, theme: any) =>
-      renderCompletionCard(theme, message.details),
+    (message: { details?: BgTaskSnapshot }, options: { expanded?: boolean }, theme: any) =>
+      renderCompletionCard(theme, message.details, options?.expanded === true),
   );
 
   // ── Tools (reference names kept) ─────────────────────────────────────────
@@ -219,8 +219,8 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
         0,
       );
     },
-    renderResult(result: { details: BgRunDetails }, _options: unknown, theme: any) {
-      return renderLaunchCard(theme, result.details.task);
+    renderResult(result: { details: BgRunDetails }, options: { expanded?: boolean }, theme: any) {
+      return renderLaunchCard(theme, result.details.task, options?.expanded === true);
     },
   });
 
