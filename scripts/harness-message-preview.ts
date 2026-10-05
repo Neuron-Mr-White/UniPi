@@ -21,7 +21,8 @@ import { Markdown, matchesKey, ProcessTerminal, TuiMainScreen, truncateToWidth, 
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { paintLine } from "../packages/utility/src/render/reply-bg.ts";
-import { renderHarnessMessage, installHarnessRenderers, installHarnessUserRendering, fallbackHarnessMeta, readHarnessMeta, contentText, KNOWN_CUSTOM_TYPES, type HarnessThemeCompat, type HarnessMessageMeta, type RenderStyle } from "../packages/utility/src/render/harness.ts";
+import { renderHarnessMessage, installHarnessRenderers, installHarnessUserRendering, fallbackHarnessMeta, readHarnessMeta, contentText, warningAnnotationRows, KNOWN_CUSTOM_TYPES, type HarnessThemeCompat, type HarnessMessageMeta, type RenderStyle } from "../packages/utility/src/render/harness.ts";
+import { harnessMetadata } from "../packages/core/harness-messages.ts";
 import { bashNudge, EDIT_NUDGE } from "../packages/fusion/src/prompts.ts";
 import { CONTINUATION_HINT, RECOVERY_FRAGMENT, renderKickoff, WRAP_UP_PROMPT } from "../packages/long-horizon/src/prompts/goal.ts";
 
@@ -759,6 +760,12 @@ export function renderPanel(f: Fixture, style: Style, expanded: boolean, details
   if (f.category === "tool-annotation") {
     const out: string[] = [];
     out.push(truncateToWidth(`${warn("⚠")} ${violet(bold("tool-result annotation"))} ${dim(`· ${f.label}`)} ${dim("— not a user message")}`, width));
+    if (f.warning) {
+      // The production header (warningAnnotationRows) — kept drift-free by
+      // calling it directly. Expanded gallery rows show label + synopsis.
+      const meta = harnessMetadata({ source: f.label, title: f.title, synopsis: f.synopsis, severity: "warning" }, "boundary");
+      for (const l of warningAnnotationRows(meta, f.payload, width, expanded)) out.push(l);
+    }
     out.push(truncateToWidth(dim("⏺ tool result → appended:"), width));
     for (const l of wrapRow(f.payload, width)) out.push(truncateToWidth(f.warning ? warn(l) : l, width));
     for (const l of wrapRow(dim(`classification: tool-result annotation · delivery: ${f.delivery}`), width)) out.push(truncateToWidth(l, width));

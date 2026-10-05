@@ -201,6 +201,20 @@ export class HarnessPanel implements Component {
     const body = mdLines(this.content, inner, pal.light);
     const out: string[] = [];
     out.push(...plainRows(label, labelColorize));
+    if (warning) {
+      // Warnings share ONE collapsed shape (the Progress-guard look):
+      // regular/advanced = label + synopsis + Ctrl+O hint; simple mode
+      // compresses to the label line alone. Expanded always adds the body.
+      if (style !== "simple" || expanded) {
+        out.push(...plainRows(this.meta.synopsis ?? this.meta.title, W));
+      }
+      if (expanded) {
+        out.push(...body);
+      } else if (style !== "simple") {
+        out.push(...plainRows(`Ctrl+O: full message (${body.length} rendered rows)`, DIM));
+      }
+      return out.map((l) => truncateToWidth(l, inner)).map(paint);
+    }
     if (style === "simple") {
       const synopsis = this.meta.synopsis ?? this.meta.title;
       out.push(...plainRows(synopsis, (l) => (warning ? W(l) : DIM(l))));
@@ -234,6 +248,39 @@ function detailText(meta: HarnessMessageMeta): string {
     `origin: harness · transport: ${meta.delivery}`,
     meta.synopsis ? `synopsis: ${meta.synopsis}` : "",
   ].filter((r) => r.length > 0).join("\n");
+}
+
+// ── warning annotation header (tool-result nudges) ───────────────────────
+// The exact rows a `severity: "warning"` tool annotation renders as, shared
+// by the production wrapper and the preview gallery so they cannot drift.
+// Collapsed: label + synopsis + Ctrl+O hint (the Progress-guard shape, with
+// rail + fill). Expanded: label + synopsis — the guidance text itself follows
+// inside the tool output.
+export function warningAnnotationRows(meta: HarnessMessageMeta, text: string, width: number, expanded: boolean): string[] {
+  const pal = paletteFor(undefined);
+  const inner = Math.max(8, width - 2);
+  const rail = `${pal.violet}▏${FG_RESET}`;
+  const W = (s: string) => `${pal.warn}${s}${FG_RESET}`;
+  const DIM = (s: string) => `${pal.lightDim}${s}${FG_RESET}`;
+  const paint = (line: string): string => paintLine(`${rail} ${line}`, width, pal.fill);
+  const rows = [
+    W(`⚠ UniPi · ${meta.source} · ${meta.title}`),
+    W(meta.synopsis ?? meta.title),
+  ];
+  if (!expanded) {
+    rows.push(DIM(`Ctrl+O: full message (${mdLines(text, inner, pal.light).length} rendered rows)`));
+  }
+  return rows
+    .flatMap((l) => wrapTextWithAnsi(l, inner))
+    .map((l) => paint(truncateToWidth(l, inner)));
+}
+
+/** The ONE simple-mode rail line for a warning annotation (label only). */
+export function warningAnnotationLine(meta: HarnessMessageMeta, width: number): string {
+  const pal = paletteFor(undefined);
+  const inner = Math.max(8, width - 2);
+  const label = truncateToWidth(`${pal.warn}⚠${FG_RESET} UniPi · ${meta.source} · ${meta.title}`, inner);
+  return paintLine(`${pal.violet}▏${FG_RESET} ${label}`, width, pal.fill);
 }
 
 /** Public pure entry: build the panel component for a harness message.
@@ -668,11 +715,15 @@ export function withHarnessToolAnnotations<T extends object>(def: T & { name?: s
   if (isHarnessAnnotated(def)) return def;
   const anyDef = def as { [ANNOTATION_WRAPPED]?: boolean; renderResult?: unknown; simpleResult?: unknown; name?: string };
   const toolName = typeof anyDef.name === "string" ? anyDef.name : undefined;
-  const headerFor = (result: unknown): string[] => {
+  const headerFor = (result: unknown, width: number, expanded: boolean): string[] => {
     const pal = paletteFor(undefined);
     const rows: string[] = [];
     for (const a of annotationsOf(result)) {
-      const glyph = a.meta.severity === "warning" ? `${pal.warn}⚠${FG_RESET}` : `${pal.violet}◇${FG_RESET}`;
+      if (a.meta.severity === "warning") {
+        rows.push(...warningAnnotationRows(a.meta, a.text, width, expanded));
+        continue;
+      }
+      const glyph = `${pal.violet}◇${FG_RESET}`;
       rows.push(`${glyph} UniPi · ${pal.violet}${a.meta.source}${FG_RESET} · ${a.meta.title}${toolName ? ` · ${toolName} guidance` : " · tool guidance"}`);
       if (a.meta.synopsis) rows.push(`  ${a.meta.synopsis}`);
     }
@@ -683,7 +734,8 @@ export function withHarnessToolAnnotations<T extends object>(def: T & { name?: s
     anyDef.renderResult = ((result: unknown, options: unknown, theme: unknown, ctx: unknown) => {
       const out: unknown = original(result, options, theme, ctx);
       if (annotationsOf(result).length === 0) return out;
-      return composeWithRows(out, (width) => headerFor(result).map((l) => truncateToWidth(l, width)));
+      const expanded = (options as { expanded?: boolean } | undefined)?.expanded === true;
+      return composeWithRows(out, (width) => headerFor(result, width, expanded));
     }) as unknown as (result: never, options: never, theme: never, ctx: never) => unknown;
   }
   const originalSimple = anyDef.simpleResult as unknown as ((r: unknown, t: unknown, c?: unknown) => unknown) | undefined;
@@ -692,9 +744,11 @@ export function withHarnessToolAnnotations<T extends object>(def: T & { name?: s
     const anns = annotationsOf(result);
     if (anns.length === 0) return base;
     return composeWithRows(base, (width) =>
-      anns.flatMap((a) =>
-        wrapTextWithAnsi(`⚠ UniPi · ${a.meta.source} · ${a.meta.synopsis ?? a.meta.title}`, width),
-      ),
+      anns.flatMap((a) => {
+        // Simple mode: a warning is ONE rail line — the label alone.
+        if (a.meta.severity === "warning") return [warningAnnotationLine(a.meta, width)];
+        return wrapTextWithAnsi(`⚠ UniPi · ${a.meta.source} · ${a.meta.synopsis ?? a.meta.title}`, width);
+      }),
     );
   }) as unknown as (result: never, theme: never, ctx?: never) => unknown;
   markHarnessAnnotated(def);

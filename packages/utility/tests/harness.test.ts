@@ -41,6 +41,9 @@ function panelText(panel: HarnessPanel, width: number): string {
   return panel.render(width).map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")).join("\n");
 }
 
+/** Module-level strip for tests below; some tests shadow it locally. */
+const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+
 function fakePi() {
   const handlers: Record<string, Array<(event?: unknown, ctx?: unknown) => unknown>> = {};
   const renderers: Record<string, unknown> = {};
@@ -113,12 +116,28 @@ const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\
     }
   });
 
-  it("simple collapsed shows the Ctrl+O hint instead of the body", () => {
-    const text = panelText(new HarnessPanel(content, meta, { expanded: false, style: "simple" }, THEME), 80);
-    assert.ok(text.includes("Ctrl+O: full message"), "hint missing");
-    assert.ok(!text.includes("tail-END"), "collapsed simple must not inline the body");
+  it("simple collapsed shows the label line only — no synopsis, no hint, no body", () => {
+    const rows = new HarnessPanel(content, meta, { expanded: false, style: "simple" }, THEME).render(80).map(strip);
+    assert.equal(rows.length, 1, `simple warning collapses to ONE row, got ${rows.length}: ${JSON.stringify(rows)}`);
+    assert.ok(rows[0]!.includes("No-progress guard"), "label missing");
+    assert.ok(!rows.join("").includes("Ctrl+O"), "simple warning must not show the hint");
+    assert.ok(!rows.join("").includes("Repeated work"), "simple warning must not show the synopsis");
     const expanded = panelText(new HarnessPanel(content, meta, { expanded: true, style: "simple" }, THEME), 80);
-    assert.ok(expanded.includes("tail-END"));
+    assert.ok(expanded.includes("tail-END"), "expanded simple must inline the body");
+    assert.ok(expanded.includes("Repeated work detected"), "expanded simple keeps the synopsis");
+  });
+
+  it("regular/advanced warnings collapse to label + synopsis + Ctrl+O hint; expanded adds the body", () => {
+    for (const style of ["regular", "advanced"] as const) {
+      const rows = new HarnessPanel(content, meta, { expanded: false, style }, THEME).render(80).map(strip);
+      assert.equal(rows.length, 3, `${style}: label + synopsis + hint, got ${JSON.stringify(rows)}`);
+      assert.ok(rows[1]!.includes("Repeated work detected"), `${style}: synopsis missing`);
+      assert.ok(rows[2]!.includes("Ctrl+O: full message"), `${style}: hint missing`);
+      assert.ok(!rows.join("").includes("tail-END"), `${style}: collapsed must not inline the body`);
+      const expanded = panelText(new HarnessPanel(content, meta, { expanded: true, style }, THEME), 80);
+      assert.ok(expanded.includes("tail-END"), `${style}: body missing when expanded`);
+      assert.ok(!expanded.includes("Ctrl+O"), `${style}: expanded must drop the hint`);
+    }
   });
 
   it("color mode follows the passed theme (256 vs truecolor) and cache keys per theme", () => {
@@ -131,11 +150,15 @@ const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\][^\
   function content256(): string { return "mode body"; }
   function meta256() { return harnessMetadata({ source: "T", title: "T" }, "direct"); }
 
-  it("advanced footer names the user role and delivery", () => {
-    const text = panelText(new HarnessPanel(content, meta, { expanded: false, style: "advanced" }, THEME), 80);
+  it("advanced footer names the user role and delivery (non-warning panels only)", () => {
+    const plainMeta = harnessMetadata({ source: "Goal", title: "Kickoff" }, "steer");
+    const text = panelText(new HarnessPanel(content, plainMeta, { expanded: false, style: "advanced" }, THEME), 80);
     assert.ok(text.includes("model role: user"), "footer missing");
     assert.ok(text.includes("delivery: steer"), "delivery missing");
     assert.ok(!/model role:\s*system/i.test(text));
+    // Warnings use the guard shape instead: no origin footer at all.
+    const warned = panelText(new HarnessPanel(content, meta, { expanded: false, style: "advanced" }, THEME), 80);
+    assert.ok(!warned.includes("model role:"), "warning panel must not show the origin footer");
   });
 });
 
@@ -242,20 +265,24 @@ describe("withHarnessToolAnnotations", () => {
     const wrapped = withHarnessToolAnnotations(def as never);
     const result = { content: [], details: { unipiHarnessAnnotations: [{ meta, text: "annotation text" }] } };
     const out = wrapped.renderResult!(result, { expanded: false }, {}, undefined) as unknown;
-    const base = (def.renderResult as () => string[])();
-    const tail = Array.isArray(out)
-      ? (out as string[]).slice(base.length)
-      : (out as { render(w: number): string[] }).render(80);
-    assert.ok(Array.isArray(tail), "header rows missing");
-    assert.ok(tail.join("\n").includes("UniPi"), "header missing");
-    assert.ok(tail.join("\n").includes("R1 progress reminder"), "title missing");
-    assert.ok(tail.join("\n").includes("bash guidance"), "tool role missing from header");
-    // body rendered exactly once: the header rows carry no annotation text —
-    // the guidance text stays only in the original body rows.
-    assert.ok(!tail.slice(-2).join("\n").includes("annotation text"), "header duplicated the annotation body");
+    const tail = (out as { render(w: number): string[] }).render(80).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+    const header = tail.slice(-3); // label + synopsis + hint
+    assert.ok(header[0]!.includes("UniPi · Kanboard · R1 progress reminder"), "label missing");
+    assert.ok(header[1]!.includes("UNI-12 still Todo"), "synopsis missing");
+    assert.ok(header[2]!.includes("Ctrl+O: full message"), "collapsed hint missing");
+    for (const row of header) assert.ok(row.startsWith("▏ "), `warning header rows must carry the rail: ${JSON.stringify(row.slice(0, 30))}`);
+    assert.ok(!header.join("\n").includes("annotation text"), "header duplicated the annotation body");
+    // expanded renderResult drops the hint (the guidance text itself follows)
+    const expandedOut = wrapped.renderResult!(result, { expanded: true }, {}, undefined) as { render(w: number): string[] };
+    const expandedHeader = expandedOut.render(80).map((l) => l.replace(/\x1b\[[0-9;]*m/g, "")).slice(-2);
+    assert.ok(!expandedHeader.join("\n").includes("Ctrl+O"), "expanded must drop the hint");
+    assert.ok(expandedHeader[1]!.includes("UNI-12 still Todo"), "expanded synopsis missing");
     const simple = wrapped.simpleResult!(result, {}, undefined) as { render(w: number): string[] };
     assert.ok(typeof simple === "object" && typeof simple.render === "function", "simple annotation rows must be width-aware");
-    assert.ok(simple.render(80).join("\n").includes("Kanboard"), "simple annotation rows missing");
+    const simpleRows = simple.render(80).map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+    assert.equal(simpleRows.filter((l) => l.includes("R1 progress reminder")).length, 1, "simple warning annotation must be ONE label row");
+    assert.ok(simpleRows.at(-1)!.startsWith("▏ "), "simple warning row must carry the rail");
+    assert.ok(!simpleRows.join("").includes("UNI-12 still Todo"), "simple mode must not show the synopsis");
   });
 
   it(" Component simpleResult hooks (memory searchCard) survive the wrapper", () => {
