@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
-import { MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS, emitEvent } from "@pi-unipi/core";
+import { bus, MODULES, UNIPI_EVENTS, COMPACTOR_COMMANDS, COMPACTOR_TOOLS } from "@pi-unipi/core";
 import { migrateLegacyConfigFiles } from "./config/manager.js";
 import { registerCompactionHooks } from "./compaction/hooks.js";
 import { registerCommands } from "./commands/index.js";
@@ -107,7 +107,7 @@ export default function compactorExtension(pi: ExtensionAPI): void {
       });
     }
 
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.COMPACTOR,
       version: "0.2.0",
       commands: Object.values(COMPACTOR_COMMANDS),

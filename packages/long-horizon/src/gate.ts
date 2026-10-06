@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, isChildProcess, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, isChildProcess, UNIPI_EVENTS } from "@pi-unipi/core";
 import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
 import type { OwnerCoordinator, OwnerEvent, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
@@ -200,7 +200,7 @@ export class Gate {
     this.deps.onDisplayChanged?.();
     if (this.pi) {
       syncModeTools(this.pi, mode);
-      emitEvent(this.pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
         mode,
         source: "explicit",
       });
@@ -323,7 +323,7 @@ export class Gate {
       // the event for the badge/other listeners.
       this.display = state.mode;
       this.deps.onDisplayChanged?.();
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
         mode: state.mode,
         source: state.source,
         ...(state.confidence !== undefined ? { confidence: state.confidence } : {}),

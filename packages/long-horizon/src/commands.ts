@@ -16,7 +16,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, sendHarnessUserMessage, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
+import { bus, appendProgress, sendHarnessUserMessage, UNIPI_EVENTS, type ProgressData } from "@pi-unipi/core";
 import type { LhMode, OwnerKind } from "./modes.js";
 import { MODE_REGISTRY } from "./modes.js";
 import type { Gate } from "./gate.js";
@@ -66,7 +66,7 @@ export function stopActiveOwner(
     toolset?.discardProposal();
   }
   const finished = owner.finish("stopped(user_requested)");
-  emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+  bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
     event: "stopped",
     kind: active.kind,
     ...(finished ? { ownerId: finished.ownerId } : {}),
@@ -244,7 +244,7 @@ export function registerLongHorizonCommands(
         notify(ctx, "No parked owner to resume.");
         return;
       }
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "resumed", ownerId: resumed.ownerId });
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "resumed", ownerId: resumed.ownerId });
       const resumeMode = resumed.kind === "ralph-loop" ? "ralph" : resumed.kind;
       gate.setExplicit(resumeMode as LhMode);
       await sendHarnessUserMessage(
@@ -275,7 +275,7 @@ export function registerLongHorizonCommands(
           : "Nothing to clear.",
       );
       if (cleared) {
-        emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "cleared", ownerId: cleared.ownerId });
+        bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "cleared", ownerId: cleared.ownerId });
       }
       return;
     }
@@ -295,7 +295,7 @@ export function registerLongHorizonCommands(
         );
         return;
       }
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: "suspended",
         ownerId: suspended.ownerId,
         reason: `paused(superseded_by:${mode})`,

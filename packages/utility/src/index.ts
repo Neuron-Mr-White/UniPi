@@ -14,10 +14,10 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   UNIPI_EVENTS,
   MODULES,
   UTILITY_COMMANDS,
-  emitEvent,
   getPackageVersion,
   installHints,
   openSettingsHub,
@@ -91,7 +91,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     try {
-      emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+      bus.emit(UNIPI_EVENTS.MODULE_READY, {
         name: MODULES.UTILITY,
         version: VERSION,
         commands: ALL_COMMANDS,

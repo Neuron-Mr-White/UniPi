@@ -46,7 +46,7 @@ function createHarness(
   };
 
   const registry = new ServerRegistry({
-    emitEvent: () => {},
+    emit: () => {},
     registerTool: (definition) => {
       register?.(definition.name);
       registered.push(definition.name);
@@ -111,7 +111,7 @@ test("registration errors reject startup and are not reported as running", async
 test("hosts without tool removal report a partial registration truthfully", async () => {
   const registered: string[] = [];
   const registry = new ServerRegistry({
-    emitEvent: () => {},
+    emit: () => {},
     registerTool: (definition) => {
       if (definition.name === "server__b") throw new Error("registration failed");
       registered.push(definition.name);
@@ -145,7 +145,7 @@ test("hosts without tool removal reject runtime stop without false state changes
     get pid() { return undefined; },
   };
   const registry = new ServerRegistry({
-    emitEvent: (event) => events.push(event),
+    emit: (event) => events.push(event),
     registerTool: () => {},
     unregisterTool: () => { throw new Error("must not be called"); },
     canUnregisterTools: false,

@@ -10,13 +10,12 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   UNIPI_EVENTS,
   MODULES,
   UPDATER_COMMANDS,
   UNIPI_PREFIX,
-  emitEvent,
   getPackageVersion,
-  type UnipiUpdateCheckEvent,
 } from "@pi-unipi/core";
 import { registerCommands } from "./commands.js";
 import { loadConfig } from "./settings.js";
@@ -36,7 +35,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
   // Session lifecycle — check for updates and announce module
   pi.on("session_start", async (_event, ctx) => {
     // Emit MODULE_READY
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.UPDATER,
       version: VERSION,
       commands: [
@@ -96,8 +95,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       });
 
       // Subscribe to events to update cached data
-      pi.events.on(UNIPI_EVENTS.UPDATE_CHECK, (data) => {
-        const payload = data as UnipiUpdateCheckEvent;
+      bus.on(pi, UNIPI_EVENTS.UPDATE_CHECK, (payload) => {
         cachedResult = {
           currentVersion: payload.currentVersion,
           latestVersion: payload.latestVersion,
@@ -105,30 +103,18 @@ export default function updaterExtension(pi: ExtensionAPI): void {
           lastCheck: new Date().toLocaleTimeString(),
           checkedAt: Date.now(),
         };
-        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
-          groupId: "updater",
-          keys: ["current", "latest", "status", "lastCheck"],
-        });
       });
 
-      pi.events.on(UNIPI_EVENTS.UPDATE_AVAILABLE, (_data: unknown) => {
+      bus.on(pi, UNIPI_EVENTS.UPDATE_AVAILABLE, () => {
         if (cachedResult) {
           cachedResult.updateAvailable = true;
         }
-        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
-          groupId: "updater",
-          keys: ["status"],
-        });
       });
 
-      pi.events.on(UNIPI_EVENTS.UPDATE_APPLIED, (_data: unknown) => {
+      bus.on(pi, UNIPI_EVENTS.UPDATE_APPLIED, () => {
         if (cachedResult) {
           cachedResult.updateAvailable = false;
         }
-        emitEvent(pi, UNIPI_EVENTS.INFO_DATA_UPDATED, {
-          groupId: "updater",
-          keys: ["status"],
-        });
       });
     }
 
@@ -140,7 +126,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       const result = await checkForUpdates();
 
       // Emit check event
-      emitEvent(pi, UNIPI_EVENTS.UPDATE_CHECK, result);
+      bus.emit(UNIPI_EVENTS.UPDATE_CHECK, result);
 
       if (!result.updateAvailable || result.error) return;
 
@@ -148,7 +134,7 @@ export default function updaterExtension(pi: ExtensionAPI): void {
       if (isVersionSkipped(result.latestVersion)) return;
 
       // Emit available event
-      emitEvent(pi, UNIPI_EVENTS.UPDATE_AVAILABLE, {
+      bus.emit(UNIPI_EVENTS.UPDATE_AVAILABLE, {
         currentVersion: result.currentVersion,
         latestVersion: result.latestVersion,
       });

@@ -62,7 +62,7 @@ describe("setHerdrWorking", () => {
     assert.equal(pi.events_.filter((e) => !e.payload.active).length, 2);
   });
 
-  it("never throws when the bus rejects (emitEvent swallows)", () => {
+  it("never throws when the bus rejects (emitPiEvent swallows)", () => {
     const pi = {
       events: {
         emit: () => {

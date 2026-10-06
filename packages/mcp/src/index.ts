@@ -8,10 +8,10 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   UNIPI_EVENTS,
   MODULES,
   MCP_COMMANDS,
-  emitEvent,
   getPackageVersion,
   registerCommandRunner,
   HUB_OVERLAY_OPTIONS,
@@ -69,7 +69,7 @@ export default function (pi: ExtensionAPI) {
         : () => {};
 
     registry = new ServerRegistry({
-      emitEvent: (event, payload) => emitEvent(pi, event, payload),
+      emit: (event, payload) => bus.emit(event, payload),
       registerTool,
       unregisterTool,
       canUnregisterTools,
@@ -161,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 
     // Emit MODULE_READY
     const activeServers = registry?.getActive() ?? [];
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.MCP,
       version: VERSION,
       commands: [`unipi:${MCP_COMMANDS.STATUS}`],
@@ -236,10 +236,6 @@ export default function (pi: ExtensionAPI) {
     try {
       ctx.ui.notify("Syncing MCP catalog from GitHub...", "info");
       const catalog = await syncCatalog();
-      emitEvent(pi, UNIPI_EVENTS.MCP_CATALOG_SYNCED, {
-        totalServers: catalog.totalServers,
-        source: catalog.source,
-      });
       ctx.ui.notify(
         `MCP Catalog Synced\nSource: ${catalog.source}\nServers: ${catalog.totalServers}\nUpdated: ${catalog.lastUpdated}`,
         "info",

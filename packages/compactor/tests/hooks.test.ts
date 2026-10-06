@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, resetBusForTests, registerCompactionContext, UNIPI_EVENTS } from "@pi-unipi/core";
 import { planLosslessCompaction, registerCompactionHooks, setPendingCompaction } from "../src/compaction/hooks.js";
 import { loadConfig, translateLegacyConfig } from "../src/config/manager.js";
 import { DEFAULT_COMPACTOR_CONFIG } from "../src/config/schema.js";
@@ -31,9 +31,11 @@ function harness() {
     appendEntry: (type: string, data: unknown) => entries.push({ type, data }),
     sendMessage: (...args: unknown[]) => sent.push(["message", ...args]),
     sendUserMessage: (...args: unknown[]) => sent.push(["user", ...args]),
-    events: { emit: (name: string, payload: unknown) => events.push({ name, payload }), on: () => {} },
     getThinkingLevel: () => "off",
   };
+  resetBusForTests();
+  // hooks.ts publishes COMPACTOR_COMPACTED via the bus now.
+  bus.on(pi, UNIPI_EVENTS.COMPACTOR_COMPACTED, (payload) => events.push({ name: UNIPI_EVENTS.COMPACTOR_COMPACTED, payload }));
   registerCompactionHooks(pi, { counters: { recallQueries: 0, compactions: 0 } });
   const fire = (name: string, event: unknown, ctx: unknown = {}) => handlers.get(name)![0](event, ctx);
   return { fire, sent, entries, events };

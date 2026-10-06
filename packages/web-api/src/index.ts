@@ -9,9 +9,9 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   UNIPI_EVENTS,
   MODULES,
-  emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
 import { registerWebTools, syncWebTools, webToolAvailability, WEB_TOOLS } from "./tools.js";
@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI) {
     webCache.clearExpired();
 
     // Announce module (for subagent integration)
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.WEB_API,
       version: VERSION,
       commands: [

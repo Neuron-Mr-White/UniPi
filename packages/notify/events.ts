@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_EVENTS, emitEvent } from "@pi-unipi/core";
+import { bus, isUnipiEventName, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult, NotifyPriority } from "./types.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
@@ -261,10 +261,14 @@ export function registerEventListeners(
     // pi.on(). These are stored in
     // extension.handlers and automatically replaced on reload, so they
     // do NOT accumulate like EventBus listeners.
+    const hook = def.hook;
     if (LIFECYCLE_EVENTS.has(eventKey)) {
-      (pi as any).on(def.hook, handler);
+      (pi as any).on(hook, handler);
+    } else if (isUnipiEventName(hook)) {
+      // Internal unipi events ride the central bus.
+      unsubs.push(bus.on(pi, hook, handler));
     } else {
-      unsubs.push(pi.events.on(def.hook, handler));
+      unsubs.push(pi.events.on(hook, handler));
     }
   }
 
@@ -439,7 +443,7 @@ export async function dispatchNotification(
     .map((r) => r.platform);
 
   // Emit notification sent event
-  emitEvent(pi, UNIPI_EVENTS.NOTIFICATION_SENT, {
+  bus.emit(UNIPI_EVENTS.NOTIFICATION_SENT, {
     eventType,
     platforms: enabledPlatforms,
     success: allSuccess,

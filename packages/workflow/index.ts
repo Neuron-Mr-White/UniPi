@@ -17,9 +17,9 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   MODULES,
   UNIPI_EVENTS,
-  emitEvent,
   getPackageVersion,
   initUnipiDirs,
 } from "@pi-unipi/core";
@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     initUnipiDirs();
 
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.WORKFLOW,
       version: VERSION,
       commands: ["unipi:plan", "unipi:permission"],

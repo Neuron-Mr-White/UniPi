@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, bus, emitEvent, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -99,7 +99,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
         stash.take();
         stashMetaState = { meta: undefined, kickoff: false };
       }
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: event.type,
         ...("owner" in event && event.owner
           ? { ownerId: event.owner.ownerId, kind: event.owner.kind, status: event.owner.status }
@@ -116,7 +116,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
     if (active.kind === "goal") machine.pause("paused(superseded)");
     const suspended = owner.suspend(`paused(superseded_by:${mode})`);
     if (suspended) {
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, {
         event: "suspended",
         ownerId: suspended.ownerId,
         reason: `paused(superseded_by:${mode})`,
@@ -247,12 +247,10 @@ export default function longHorizon(pi: ExtensionAPI): void {
     // Iteration prompts ride the arbiter's nudge stash like the goal's.
     send: (message, kind) => send(message, kind, { source: "Ralph", title: "Iteration", synopsis: "Loop iteration prompt" }),
     onEvent: (event) => {
-      if (event.type === "loop_start") {
-        emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_START, { name: event.name, iteration: event.iteration, total: event.total });
-      } else if (event.type === "iteration_done") {
-        emitEvent(pi, UNIPI_EVENTS.RALPH_ITERATION_DONE, { name: event.name, iteration: event.iteration, remaining: event.remaining });
+      if (event.type === "iteration_done") {
+        bus.emit(UNIPI_EVENTS.RALPH_ITERATION_DONE, { name: event.name, iteration: event.iteration, remaining: event.remaining });
       } else if (event.type === "loop_end") {
-        emitEvent(pi, UNIPI_EVENTS.RALPH_LOOP_END, { name: event.name, reason: event.reason, iterations: event.iterations });
+        bus.emit(UNIPI_EVENTS.RALPH_LOOP_END, { name: event.name, reason: event.reason, iterations: event.iterations });
       }
       // User-only progress bar on every loop update.
       const bar = ralphProgressData(ralph);
@@ -327,7 +325,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
     const parked = owner.suspend("paused(user_requested)");
     if (!parked) {
       // Slot held: the goal stays paused but unowned — resume reactivates it.
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "suspended", kind: "goal" });
+      bus.emit(UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, { event: "suspended", kind: "goal" });
     }
     return { ok: true, goalId: paused.goalId, status: paused.status };
   });
@@ -415,7 +413,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
     publishLh();
   });
 
-  emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+  bus.emit(UNIPI_EVENTS.MODULE_READY, {
     name: "@pi-unipi/long-horizon",
     version,
     commands: [

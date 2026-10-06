@@ -12,7 +12,6 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
 
 export const TODO_STATUSES = ["pending", "in_progress", "completed", "cancelled"] as const;
 export type TodoStatus = (typeof TODO_STATUSES)[number];
@@ -141,10 +140,6 @@ export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
           details: { rejected: true },
         };
       }
-      emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_TODO_UPDATED, {
-        list: result.list,
-        line: renderTodoLine(result.list),
-      });
       return {
         content: [{ type: "text", text: `Plan updated: ${renderTodoLine(result.list)}` }],
         details: { count: result.list.length },

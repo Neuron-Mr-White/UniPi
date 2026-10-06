@@ -9,10 +9,10 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   UNIPI_EVENTS,
   MODULES,
   NOTIFY_TOOLS,
-  emitEvent,
   getPackageVersion,
 } from "@pi-unipi/core";
 import { registerNotifyTools } from "./tools.js";
@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI) {
     const config = loadConfig();
     registerEventListeners(pi, config, cwd);
 
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.NOTIFY,
       version: VERSION,
       commands: [],

@@ -14,14 +14,12 @@ import {
   UNIPI_EVENTS,
   STICKY_EVENTS,
   bus,
-  emitEvent,
   UNIPI_PREFIX,
   FOOTER_COMMANDS,
   getPackageVersion,
   findPackageRoot,
 } from "@pi-unipi/core";
 import { getFooterRegistry, type FooterRegistry } from "./registry/index.js";
-import { subscribeToEvents } from "./events.js";
 import { loadFooterSettings, saveFooterSettings } from "./config.js";
 import { registerCommands } from "./commands.js";
 import { GlanceEditor } from "./glance-editor.js";
@@ -42,7 +40,6 @@ const VERSION = getPackageVersion(
 export interface FooterState {
   enabled: boolean;
   registry: FooterRegistry;
-  unsubscribeEvents: (() => void) | null;
   piContext: unknown;
   footerData: unknown;
   tuiRef: TUI | null | undefined;
@@ -68,7 +65,6 @@ export default function footerExtension(pi: ExtensionAPI): void {
   const state: FooterState = {
     enabled: true,
     registry: getFooterRegistry(),
-    unsubscribeEvents: null,
     piContext: null,
     footerData: null,
     tuiRef: null,
@@ -130,7 +126,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     setIconStyle(settings.iconStyle);
 
     // Announce the module regardless of UI availability.
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: "@pi-unipi/footer",
       version: VERSION,
       commands: [`${UNIPI_PREFIX}${FOOTER_COMMANDS.FOOTER}`],
@@ -138,9 +134,6 @@ export default function footerExtension(pi: ExtensionAPI): void {
     });
 
     if (!settings.enabled || !ctx.hasUI) return;
-
-    // Subscribe to events
-    state.unsubscribeEvents = subscribeToEvents(pi, state.registry);
 
     // Glance frame data now rides the bus's sticky state; request a render
     // whenever a publisher updates any of the four sticky keys. One set of
@@ -179,8 +172,6 @@ export default function footerExtension(pi: ExtensionAPI): void {
       clearTimeout(state.glanceInstallTimer);
       state.glanceInstallTimer = null;
     }
-    state.unsubscribeEvents?.();
-    state.unsubscribeEvents = null;
     for (const unsub of state.busUnsubs.splice(0)) unsub();
     state.piContext = null;
     state.footerData = null;

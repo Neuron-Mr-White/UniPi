@@ -23,6 +23,7 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import { getSettings, registerSettings } from "../settings/engine.js";
+import { bus, isUnipiEventName } from "../../bus.js";
 import { registerCommandRunner } from "../../command-runner.js";
 import { hubDimText } from "../tui/hub-kit.js";
 import { getInstalledPackageVersion, getPiVersion, compareVersions } from "../../utils.js";
@@ -706,6 +707,9 @@ export function installHints(pi: ExtensionAPI): void {
       subscribed.add(name);
       if (PI_EVENTS.has(name)) {
         pi.on(name as "tool_call", (event: unknown) => fireEvent(name, event));
+      } else if (isUnipiEventName(name)) {
+        // Internal unipi events ride the central bus.
+        bus.on(pi, name, (payload) => fireEvent(name, payload));
       } else {
         pi.events?.on?.(name, (payload: unknown) => fireEvent(name, payload));
       }

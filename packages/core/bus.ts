@@ -18,10 +18,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
   type UnipiAskUserPromptEvent,
-  type UnipiMcpCatalogSyncedEvent,
   type UnipiCompactionEvent,
-  type UnipiCompactorStatsEvent,
-  type UnipiInfoDataEvent,
+  type UnipiLhModeResolvedEvent,
+  type UnipiLhOwnerChangedEvent,
   type UnipiMemoryConsolidatedEvent,
   type UnipiMemoryDeletedEvent,
   type UnipiMemoryStoredEvent,
@@ -29,6 +28,8 @@ import {
   type UnipiMcpToolsEvent,
   type UnipiModuleEvent,
   type UnipiNotificationSentEvent,
+  type UnipiPlanModeEvent,
+  type UnipiPermissionModeEvent,
   type UnipiRalphIterationEvent,
   type UnipiRalphLoopEvent,
   type UnipiUpdateAppliedEvent,
@@ -92,28 +93,20 @@ export interface UnipiEventMap {
 
   // One-shot
   [UNIPI_EVENTS.MODULE_READY]: UnipiModuleEvent;
-  [UNIPI_EVENTS.WORKFLOW_START]: UnipiWorkflowEvent;
   [UNIPI_EVENTS.WORKFLOW_END]: UnipiWorkflowEvent;
-  [UNIPI_EVENTS.PERMISSION_MODE_CHANGED]: unknown;
-  [UNIPI_EVENTS.PLAN_MODE_CHANGED]: unknown;
-  [UNIPI_EVENTS.RALPH_LOOP_START]: UnipiRalphLoopEvent;
+  [UNIPI_EVENTS.PERMISSION_MODE_CHANGED]: UnipiPermissionModeEvent;
+  [UNIPI_EVENTS.PLAN_MODE_CHANGED]: UnipiPlanModeEvent;
   [UNIPI_EVENTS.RALPH_LOOP_END]: UnipiRalphLoopEvent;
   [UNIPI_EVENTS.RALPH_ITERATION_DONE]: UnipiRalphIterationEvent;
-  [UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED]: unknown;
-  [UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED]: unknown;
-  [UNIPI_EVENTS.LONG_HORIZON_TODO_UPDATED]: unknown;
-  [UNIPI_EVENTS.INFO_DATA_UPDATED]: UnipiInfoDataEvent;
+  [UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED]: UnipiLhModeResolvedEvent;
+  [UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED]: UnipiLhOwnerChangedEvent;
   [UNIPI_EVENTS.MEMORY_STORED]: UnipiMemoryStoredEvent;
   [UNIPI_EVENTS.MEMORY_DELETED]: UnipiMemoryDeletedEvent;
   [UNIPI_EVENTS.MEMORY_CONSOLIDATED]: UnipiMemoryConsolidatedEvent;
   [UNIPI_EVENTS.MCP_SERVER_STARTED]: UnipiMcpServerEvent;
-  [UNIPI_EVENTS.MCP_SERVER_STOPPED]: UnipiMcpServerEvent;
   [UNIPI_EVENTS.MCP_SERVER_ERROR]: UnipiMcpServerEvent;
   [UNIPI_EVENTS.MCP_TOOLS_REGISTERED]: UnipiMcpToolsEvent;
-  [UNIPI_EVENTS.MCP_TOOLS_UNREGISTERED]: UnipiMcpToolsEvent;
-  [UNIPI_EVENTS.MCP_CATALOG_SYNCED]: UnipiMcpCatalogSyncedEvent;
   [UNIPI_EVENTS.COMPACTOR_COMPACTED]: UnipiCompactionEvent;
-  [UNIPI_EVENTS.COMPACTOR_STATS_UPDATED]: UnipiCompactorStatsEvent;
   [UNIPI_EVENTS.NOTIFICATION_SENT]: UnipiNotificationSentEvent;
   [UNIPI_EVENTS.ASK_USER_PROMPT]: UnipiAskUserPromptEvent;
   [UNIPI_EVENTS.UPDATE_CHECK]: UnipiUpdateCheckEvent;

@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_EVENTS, emitEvent, harnessMetadata, registerCommandRunner, sendHarnessUserMessage } from "@pi-unipi/core";
+import { bus, UNIPI_EVENTS, harnessMetadata, registerCommandRunner, sendHarnessUserMessage } from "@pi-unipi/core";
 import { updateWorkflowStatus } from "../status.js";
 import {
   PLAN_MESSAGE_TYPE,
@@ -203,7 +203,7 @@ export function enablePlanMode(
 
   pi.appendEntry(PLAN_STATE_ENTRY, { active: true, planFile });
   updateWorkflowStatus({ planMode: true });
-  emitEvent(pi, UNIPI_EVENTS.PLAN_MODE_CHANGED, {
+  bus.emit(UNIPI_EVENTS.PLAN_MODE_CHANGED, {
     active: true,
     planFile: displayPlanPath(ctx.cwd, planFile),
   });
@@ -231,7 +231,7 @@ export function disablePlanMode(
 
   pi.appendEntry(PLAN_STATE_ENTRY, { active: false, planFile });
   updateWorkflowStatus({ planMode: false });
-  emitEvent(pi, UNIPI_EVENTS.PLAN_MODE_CHANGED, {
+  bus.emit(UNIPI_EVENTS.PLAN_MODE_CHANGED, {
     active: false,
     planFile: displayPlanPath(ctx.cwd, planFile),
     reason,
@@ -388,7 +388,7 @@ export function registerPlanMode(pi: ExtensionAPI): void {
     const state = restorePlanState(sessionId(ctx), ctx.sessionManager.getEntries(), ctx.cwd);
     // Re-announce on resume so the footer shows PLAN without a fresh toggle.
     updateWorkflowStatus({ planMode: state.active });
-    emitEvent(pi, UNIPI_EVENTS.PLAN_MODE_CHANGED, {
+    bus.emit(UNIPI_EVENTS.PLAN_MODE_CHANGED, {
       active: state.active,
       planFile: displayPlanPath(ctx.cwd, state.planFile),
     });

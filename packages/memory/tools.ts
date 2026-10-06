@@ -9,7 +9,7 @@
 
 import { Type } from "typebox";
 import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
-import { UNIPI_EVENTS, emitEvent, meter, rail, type KitTheme } from "@pi-unipi/core";
+import { bus, UNIPI_EVENTS, meter, rail, type KitTheme } from "@pi-unipi/core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { SessionBackend, SearchHit } from "./session.js";
 import { findByTitle, findSimilar } from "./files.js";
@@ -212,7 +212,7 @@ export function memoryExecutors(
     });
     activity?.onWriteDone?.();
     const action = exact ? "updated" : "created";
-    emitEvent(pi, UNIPI_EVENTS.MEMORY_STORED, {
+    bus.emit(UNIPI_EVENTS.MEMORY_STORED, {
       id: res.record.id,
       title: res.record.title,
       type,
@@ -280,7 +280,7 @@ export function memoryExecutors(
     const res = await b.delete(b.project, key);
     activity?.onWriteDone?.();
     if (res.found) {
-      emitEvent(pi, UNIPI_EVENTS.MEMORY_DELETED, { id: key, title: key, project: b.project });
+      bus.emit(UNIPI_EVENTS.MEMORY_DELETED, { id: key, title: key, project: b.project });
     }
     return {
       content: [{ type: "text" as const, text: res.found ? `Deleted memory: ${key} (${res.outcome})` : `Memory not found: ${key}` }],

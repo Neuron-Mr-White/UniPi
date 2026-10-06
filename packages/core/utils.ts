@@ -251,19 +251,18 @@ export function initUnipiDirs(cwd: string = process.cwd()): void {
 }
 
 /**
- * Emit a unipi event via pi.events (safe wrapper).
- * Returns true if event was emitted.
+ * Emit a foreign-protocol event via pi.events (safe wrapper). Used only for
+ * non-unipi channels (herdr:*); unipi:* events go through the bus (bus.ts).
  */
-export function emitEvent(
+function emitPiEvent(
   pi: { events: { emit: (name: string, payload: unknown) => void } },
   eventName: string,
   payload: unknown,
-): boolean {
+): void {
   try {
     pi.events.emit(eventName, payload);
-    return true;
   } catch {
-    return false;
+    // Foreign event sinks are best-effort.
   }
 }
 
@@ -284,7 +283,7 @@ export async function withHerdrBlocked<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const event = (active: boolean) =>
-    emitEvent(pi, "herdr:blocked", { active, label });
+    emitPiEvent(pi, "herdr:blocked", { active, label });
   event(true);
   try {
     return await fn();
@@ -320,13 +319,13 @@ export function setHerdrWorking(
   if (label === null) {
     if (previous === undefined) return;
     herdrWorkingClaims.delete(key);
-    emitEvent(pi, "herdr:working", { active: false, label: previous });
+    emitPiEvent(pi, "herdr:working", { active: false, label: previous });
     return;
   }
   if (previous === label) return;
-  if (previous !== undefined) emitEvent(pi, "herdr:working", { active: false, label: previous });
+  if (previous !== undefined) emitPiEvent(pi, "herdr:working", { active: false, label: previous });
   herdrWorkingClaims.set(key, label);
-  emitEvent(pi, "herdr:working", { active: true, label });
+  emitPiEvent(pi, "herdr:working", { active: true, label });
 }
 
 /** Format a token count for display (e.g. 1234 → "1.2k", 1500000 → "1.5M"). */

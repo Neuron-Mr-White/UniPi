@@ -6,7 +6,7 @@
 
 import { after, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { UNIPI_EVENTS } from "@pi-unipi/core";
+import { UNIPI_EVENTS, bus, isUnipiEventName, resetBusForTests } from "@pi-unipi/core";
 
 import {
   disarmRenotify,
@@ -110,12 +110,19 @@ async function invokeBus(
   event: string,
   payload?: unknown,
 ): Promise<void> {
+  // Internal unipi:* events now ride the central bus; foreign channels
+  // (rpiv:*, herdr:*, permissions:*) stay on pi.events.
+  if (isUnipiEventName(event)) {
+    bus.emit(event, payload);
+    return;
+  }
   const handler = h.bus.get(event)?.[0];
   assert.ok(handler, `no bus handler registered for ${event}`);
   await handler(payload);
 }
 
 beforeEach(() => {
+  resetBusForTests();
   clearSharedTaskRegistry();
   disarmRenotify();
 });

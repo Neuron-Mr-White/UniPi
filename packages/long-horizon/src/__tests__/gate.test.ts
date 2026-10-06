@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
-import { resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import {
   ALL_MODE_TOOLS,
   DELEGATION_TOOLS,
@@ -197,12 +197,11 @@ test("after register + setSessionMode('none'), the display mode is none and even
     setActiveTools: (names: string[]) => {
       activeTools.splice(0, activeTools.length, ...names);
     },
-    events: {
-      emit: (name: string, payload: unknown) => {
-        events.push({ name, payload });
-      },
-    },
   };
+  // The gate publishes mode resolutions via the bus now.
+  bus.on(pi as Parameters<typeof bus.on>[0], UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, (payload) => {
+    events.push({ name: UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, payload });
+  });
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

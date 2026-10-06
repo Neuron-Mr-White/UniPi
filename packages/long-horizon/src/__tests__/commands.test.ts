@@ -2,7 +2,8 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
+import { bus, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import { GoalMachine } from "../engine/goal-state.js";
 import { GoalToolset } from "../tools/goal.js";
 import { OwnerCoordinator } from "../owner.js";
@@ -54,6 +55,11 @@ function rig(): Rig {
     },
     events: { emit: (name: string, payload: Record<string, unknown>) => events.push({ name, payload }) },
   } as never;
+  resetBusForTests();
+  // commands.ts publishes owner transitions via the bus now.
+  bus.on(pi as Parameters<typeof bus.on>[0], UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, (payload) => {
+    events.push({ name: UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED, payload: payload as Record<string, unknown> });
+  });
   toolset.register(pi as Parameters<GoalToolset["register"]>[0]);
   registerLongHorizonCommands(pi, gate, owner, undefined, undefined, machine, toolset);
   const continuation = new GoalContinuation({

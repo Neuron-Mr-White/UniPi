@@ -18,7 +18,7 @@ import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
-  UNIPI_EVENTS, bus, emitEvent, getSettings, isChildProcess, registerSettings, registerWaitSource, SPINNER_MS,
+  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, registerSettings, registerWaitSource, SPINNER_MS,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -675,5 +675,5 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     uiCtx = undefined;
   });
 
-  emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { module: "subagents" });
+  bus.emit(UNIPI_EVENTS.MODULE_READY, { name: MODULES.SUBAGENTS, version: getPackageVersion("subagents"), commands: [], tools: [] });
 }

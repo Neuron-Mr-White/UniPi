@@ -14,10 +14,10 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
+  bus,
   getSettingsScoped,
   UNIPI_EVENTS,
   askJev,
-  emitEvent,
   resolveDecisionModel,
   registerCommandRunner,
   runCommandByName,
@@ -97,7 +97,7 @@ export function createPermissionController(pi: ExtensionAPI): PermissionControll
   function set(next: PermissionMode, cwd: string): void {
     writePermissionMode(next, cwd);
     updateWorkflowStatus({ permissionMode: next });
-    emitEvent(pi, UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: next });
+    bus.emit(UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: next });
     debugLog(`mode set to ${next}`);
   }
 
@@ -223,7 +223,7 @@ export function registerPermissionModes(pi: ExtensionAPI, controller: Permission
     registerPermissionSettings(ctx.cwd);
     // The bus snapshot is what the footer reads; the event stays for other consumers.
     updateWorkflowStatus({ permissionMode: settings.mode });
-    emitEvent(pi, UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: settings.mode });
+    bus.emit(UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: settings.mode });
   });
 }
 

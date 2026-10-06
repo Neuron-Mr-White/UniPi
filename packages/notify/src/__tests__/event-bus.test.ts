@@ -1,13 +1,9 @@
 /**
  * Test: Notify — event bus registration
  *
- * Verifies that the notify plugin correctly uses pi.events.on() for custom
- * unipi events and pi.on() for pi lifecycle events — same pattern enforced
- * by subagents/badge-generation.test.ts.
- *
- * BUG 2 (Wrong event bus):
- * Cross-module events emitted via pi.events.emit() must be listened via
- * pi.events.on(), NOT pi.on() (which only dispatches lifecycle events).
+ * Verifies the notify routing convention: pi lifecycle events via pi.on(),
+ * internal unipi:* events via the central bus (bus.on), and foreign
+ * cross-extension events via pi.events.on().
  */
 
 import { describe, it } from "node:test";
@@ -52,19 +48,24 @@ describe("notify — event bus registration", () => {
     );
   });
 
-  it("unipi:* events use pi.events.on(), NOT pi.on()", () => {
+  it("unipi:* events ride the central bus (bus.on), NOT pi.on() or pi.events.on()", () => {
     const src = readSource("packages/notify/events.ts");
 
     assert.match(
       src,
-      /pi\.events\.on\(def\.hook,\s*handler\)/,
-      "Custom unipi events should use pi.events.on(def.hook, handler)",
+      /isUnipiEventName\(hook\)\)\s*\{\s*\/\/ Internal unipi events ride the central bus\.\s*unsubs\.push\(bus\.on\(pi, hook, handler\)\)/,
+      "Internal unipi events should route through bus.on(pi, hook, handler)",
     );
 
     assert.doesNotMatch(
       src,
       /(?:\(pi\s+as\s+any\)|pi)\.on\s*\(\s*UNIPI_EVENTS\./,
       "Should NOT use pi.on() for custom unipi events",
+    );
+    assert.doesNotMatch(
+      src,
+      /pi\.events\.on\(UNIPI_EVENTS\./,
+      "Should NOT use pi.events.on() for unipi:* events",
     );
   });
 
@@ -73,7 +74,7 @@ describe("notify — event bus registration", () => {
 
     assert.ok(
       src.includes("LIFECYCLE_EVENTS.has(eventKey)") &&
-        src.includes("(pi as any).on(def.hook, handler)"),
+        src.includes("(pi as any).on(hook, handler)"),
       "Lifecycle events should be routed through pi.on() in the registration loop",
     );
   });

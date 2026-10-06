@@ -13,7 +13,7 @@
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { emitEvent, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, getPackageVersion, harnessMetadata, HUB_OVERLAY_OPTIONS, MODULES, openSettingsHub, registerCommandRunner, setSettings, UNIPI_EVENTS } from "@pi-unipi/core";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRegistry, defaultMustShow, isBundledSkillLocation, isUnderDir, skillCommandName, skillDir, skillSource, type CatalogSkill } from "./src/registry.js";
@@ -35,9 +35,6 @@ import {
 export { SKILLS_JUDGED_ENTRY, SKILLS_REVEALED_ENTRY } from "./src/judge.js";
 
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
-
-/** Event another module emits to reveal a skill by name (append-only). */
-export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
 
 export default function skillRegistry(pi: ExtensionAPI) {
   let state: SessionSkillsState | null = null;
@@ -131,7 +128,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     try {
       state = restoreState(ctx.sessionManager.getSessionId(), ctx.sessionManager.getEntries());
-      emitEvent(pi, UNIPI_EVENTS.MODULE_READY, { name: MODULES.SKILL_REGISTRY, version: VERSION, commands: ["unipi:skills"], tools: [] });
+      bus.emit(UNIPI_EVENTS.MODULE_READY, { name: MODULES.SKILL_REGISTRY, version: VERSION, commands: ["unipi:skills"], tools: [] });
     } catch {
       // never block startup
     }
@@ -149,7 +146,7 @@ export default function skillRegistry(pi: ExtensionAPI) {
     }
   });
 
-  pi.events?.on?.(SKILL_REVEAL_EVENT, (payload: unknown) => {
+  bus.on(pi, UNIPI_EVENTS.SKILLS_REVEAL, (payload) => {
     try {
       const data = payload as { names?: unknown } | undefined;
       if (!Array.isArray(data?.names) || !state) return;

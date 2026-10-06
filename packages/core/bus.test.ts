@@ -166,7 +166,7 @@ test("isUnipiEventName: true for known event names, false for foreign ones", () 
   assert.equal(isUnipiEventName("herdr:blocked"), false);
   assert.equal(isUnipiEventName(""), false);
 
-  const name: string = "unipi:workflow:start";
+  const name: string = "unipi:memory:stored";
   if (isUnipiEventName(name)) {
     const _narrowed: UnipiEventName = name;
     void _narrowed;

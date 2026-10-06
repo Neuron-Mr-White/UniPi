@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   UNIPI_EVENTS,
+  bus,
   MODULES,
-  emitEvent,
   getPackageVersion,
   type KitTheme,
   formatTokens,
@@ -354,7 +354,7 @@ export default function (pi: ExtensionAPI) {
         void maybeAutoUpdateMempalace()
           .then((outcome) => {
             if (outcome.updated) {
-              emitEvent(pi, UNIPI_EVENTS.UPDATE_APPLIED, {
+              bus.emit(UNIPI_EVENTS.UPDATE_APPLIED, {
                 previousVersion: outcome.currentVersion ?? "",
                 newVersion: outcome.latestVersion ?? "",
               });
@@ -364,7 +364,7 @@ export default function (pi: ExtensionAPI) {
       }
     })();
 
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.MEMORY,
       version: VERSION,
       commands: [
@@ -643,7 +643,7 @@ export default function (pi: ExtensionAPI) {
     recallDone = false;
   });
   // Boundary compactions (compactor's percentage trigger) skip session_compact.
-  pi.events?.on?.(UNIPI_EVENTS.COMPACTOR_COMPACTED, () => {
+  bus.on(pi, UNIPI_EVENTS.COMPACTOR_COMPACTED, () => {
     recallDone = false;
   });
 

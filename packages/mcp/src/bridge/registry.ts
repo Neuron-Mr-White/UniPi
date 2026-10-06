@@ -18,10 +18,10 @@ import {
   type PiExternalTool,
 } from "./translator.js";
 
-/** Callback for emitting events */
-export type EventEmitFn = (
-  event: string,
-  payload: Record<string, unknown>,
+/** Callback for emitting unipi bus events */
+export type EventEmitFn = <K extends import("@pi-unipi/core").UnipiEventName>(
+  event: K,
+  payload: import("@pi-unipi/core").UnipiEventMap[K],
 ) => void;
 
 /** Callback for registering a tool with pi */
@@ -39,7 +39,7 @@ export type RegistryClient = Pick<
 /** Options for ServerRegistry */
 export interface ServerRegistryOptions {
   /** Function to emit events via pi.events */
-  emitEvent: EventEmitFn;
+  emit: EventEmitFn;
   /** Function to register a tool with pi */
   registerTool: RegisterToolFn;
   /** Function to unregister a tool from pi */
@@ -61,7 +61,7 @@ interface PreparedServer {
 /** Server registry — tracks all MCP server connections and their tools. */
 export class ServerRegistry {
   private entries = new Map<string, McpRegistryEntry>();
-  private readonly emitEvent: EventEmitFn;
+  private readonly emit: EventEmitFn;
   private readonly registerTool: RegisterToolFn;
   private readonly unregisterTool: UnregisterToolFn;
   private readonly canUnregisterTools: boolean;
@@ -69,7 +69,7 @@ export class ServerRegistry {
   private readonly createClient: () => RegistryClient;
 
   constructor(options: ServerRegistryOptions) {
-    this.emitEvent = options.emitEvent;
+    this.emit = options.emit;
     this.registerTool = options.registerTool;
     this.unregisterTool = options.unregisterTool;
     this.canUnregisterTools = options.canUnregisterTools ?? true;
@@ -179,7 +179,7 @@ export class ServerRegistry {
             toolCount: toolNames.length,
             error: message,
           };
-          this.emitEvent(UNIPI_EVENTS.MCP_SERVER_ERROR, {
+          this.emit(UNIPI_EVENTS.MCP_SERVER_ERROR, {
             name: entry.name,
             error: message,
           });
@@ -201,12 +201,12 @@ export class ServerRegistry {
         toolCount: toolNames.length,
       };
 
-      this.emitEvent(UNIPI_EVENTS.MCP_SERVER_STARTED, {
+      this.emit(UNIPI_EVENTS.MCP_SERVER_STARTED, {
         name: entry.name,
         toolCount: toolNames.length,
       });
       if (toolNames.length > 0) {
-        this.emitEvent(UNIPI_EVENTS.MCP_TOOLS_REGISTERED, {
+        this.emit(UNIPI_EVENTS.MCP_TOOLS_REGISTERED, {
           serverName: entry.name,
           toolNames,
         });
@@ -264,7 +264,7 @@ export class ServerRegistry {
         }
       }
       entry.client = null;
-      this.emitEvent(UNIPI_EVENTS.MCP_SERVER_ERROR, { name, error: message });
+      this.emit(UNIPI_EVENTS.MCP_SERVER_ERROR, { name, error: message });
       throw error;
     }
   }
@@ -296,7 +296,7 @@ export class ServerRegistry {
         // Ignore cleanup errors.
       }
       entry.client = null;
-      this.emitEvent(UNIPI_EVENTS.MCP_SERVER_ERROR, { name: entry.name, error: message });
+      this.emit(UNIPI_EVENTS.MCP_SERVER_ERROR, { name: entry.name, error: message });
     }));
   }
 
@@ -315,13 +315,6 @@ export class ServerRegistry {
       this.unregisterTool(toolName);
     }
 
-    if (entry.toolNames.length > 0) {
-      this.emitEvent(UNIPI_EVENTS.MCP_TOOLS_UNREGISTERED, {
-        serverName: name,
-        toolNames: entry.toolNames,
-      });
-    }
-
     if (entry.client) {
       try {
         await (entry.client as RegistryClient).disconnect();
@@ -333,7 +326,6 @@ export class ServerRegistry {
 
     entry.state = { ...entry.state, status: "stopped", toolCount: 0 };
     entry.toolNames = [];
-    this.emitEvent(UNIPI_EVENTS.MCP_SERVER_STOPPED, { name });
   }
 
   /** Restart an MCP server: stop then start. */

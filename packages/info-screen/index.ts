@@ -11,7 +11,7 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { UNIPI_EVENTS, MODULES, UNIPI_PREFIX, emitEvent, getPackageVersion, type UnipiModuleEvent } from "@pi-unipi/core";
+import { bus, UNIPI_EVENTS, MODULES, UNIPI_PREFIX, getPackageVersion } from "@pi-unipi/core";
 import { infoRegistry } from "./registry.js";
 import {
   registerCoreGroups,
@@ -32,7 +32,7 @@ import { InfoOverlay } from "./tui/info-overlay.js";
 import { renderSplash } from "./tui/splash.js";
 import { flushUsageCache, usageCacheWarm } from "./usage-parser.js";
 import { armSelfDismiss } from "./tui/self-dismiss.js";
-import { getPiVersion, getInstalledPackageVersion, type UnipiUpdateAvailableEvent } from "@pi-unipi/core";
+import { getPiVersion, getInstalledPackageVersion } from "@pi-unipi/core";
 
 /** Re-export for external use */
 export { infoRegistry, registerSkillDir, startLoadTracking, recordLoadTime, finishLoadTracking };
@@ -59,8 +59,7 @@ export default function (pi: ExtensionAPI) {
     infoRegistry.invalidateCache("extensions");
     infoRegistry.invalidateCache("tools");
   };
-  pi.events.on(UNIPI_EVENTS.MODULE_READY, (data) => {
-    const e = data as UnipiModuleEvent;
+  bus.on(pi, UNIPI_EVENTS.MODULE_READY, (e) => {
     if (!e.name || e.name === MODULES.INFO_SCREEN) return;
     batch.push({ name: e.name, version: e.version, tools: e.tools, loadTimeMs: e.loadTimeMs });
     if (batchTimer) clearTimeout(batchTimer);
@@ -116,10 +115,10 @@ export default function (pi: ExtensionAPI) {
     );
   }
 
-  pi.events.on(UNIPI_EVENTS.UPDATE_AVAILABLE, (data) => {
-    setUpdateAvailable((data as UnipiUpdateAvailableEvent).latestVersion ?? null);
+  bus.on(pi, UNIPI_EVENTS.UPDATE_AVAILABLE, (data) => {
+    setUpdateAvailable(data.latestVersion ?? null);
   });
-  pi.events.on(UNIPI_EVENTS.UPDATE_APPLIED, () => setUpdateAvailable(null));
+  bus.on(pi, UNIPI_EVENTS.UPDATE_APPLIED, () => setUpdateAvailable(null));
 
   /**
    * Unicrab splash. Auto-close mode is NON-capturing — it lives exactly while
@@ -234,7 +233,7 @@ export default function (pi: ExtensionAPI) {
     if (usageCacheWarm()) {
       setTimeout(() => void infoRegistry.getGroupData("usage"), 4000).unref?.();
     }
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.INFO_SCREEN,
       version: VERSION,
       commands: ["unipi:info"],

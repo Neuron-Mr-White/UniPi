@@ -14,7 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
 import { compact as piCompact, generateSummaryWithUsage, DEFAULT_COMPACTION_SETTINGS } from "@earendil-works/pi-coding-agent";
-import { collectCompactionContext, COMPACTOR_INSTRUCTION, emitEvent, formatTokens, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, collectCompactionContext, COMPACTOR_INSTRUCTION, formatTokens, sendHarnessUserMessage, UNIPI_EVENTS } from "@pi-unipi/core";
 import { loadConfig } from "../config/manager.js";
 import { autoCompactionOf } from "../config/schema.js";
 import { buildOwnCut, resolveSmartKeepUserTurns, applyTailBudget, MAX_SMART_TAIL_TOKENS } from "./cut.js";
@@ -308,7 +308,7 @@ export function registerCompactionHooks(pi: ExtensionAPI, deps: CompactionHookDe
 
   const afterCompaction = (stats: CompactionStats | null, method: CompactionMethod) => {
     deps.counters.compactions++;
-    emitEvent(pi, UNIPI_EVENTS.COMPACTOR_COMPACTED, {
+    bus.emit(UNIPI_EVENTS.COMPACTOR_COMPACTED, {
       method,
       summarized: stats?.summarized ?? 0,
       kept: stats?.kept ?? 0,

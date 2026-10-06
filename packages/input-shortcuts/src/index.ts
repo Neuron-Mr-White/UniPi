@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { MODULES, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, MODULES, UNIPI_EVENTS } from "@pi-unipi/core";
 import { RegisterStore } from "./registers.ts";
 import { EditHistory } from "./undo-redo.ts";
 import { BurstTracker } from "./burst.ts";
@@ -282,7 +282,7 @@ export default function inputShortcutsExtension(pi: ExtensionAPI): void {
 
   // ─── Module ready event ──────────────────────────────────────────────────
 
-  emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+  bus.emit(UNIPI_EVENTS.MODULE_READY, {
     name: MODULES.INPUT_SHORTCUTS,
     version: "0.1.0",
     commands: [],

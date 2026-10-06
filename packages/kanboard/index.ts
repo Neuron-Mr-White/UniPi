@@ -21,7 +21,6 @@ import {
   MODULES,
   UNIPI_EVENTS,
   bus,
-  emitEvent,
   getPackageVersion,
   getSettings,
   initUnipiDirs,
@@ -65,7 +64,6 @@ import {
 const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Utility owns the frozen judged set, so kanboard asks it to reveal the skill. */
-export const SKILL_REVEAL_EVENT = "unipi:skills:reveal";
 export const KANBOARD_SKILL = "kanboard";
 
 export default function (pi: ExtensionAPI) {
@@ -213,7 +211,7 @@ export default function (pi: ExtensionAPI) {
 
   const revealSkill = (ctx: ExtensionContext | { cwd?: string }): void => {
     // Append-only reveal (never the system prompt), so the prefix cache holds.
-    emitEvent(pi, SKILL_REVEAL_EVENT, { names: [KANBOARD_SKILL], ctx });
+    bus.emit(UNIPI_EVENTS.SKILLS_REVEAL, { names: [KANBOARD_SKILL], ctx });
     debug(`reveal requested for ${KANBOARD_SKILL}`);
   };
 
@@ -353,7 +351,7 @@ export default function (pi: ExtensionAPI) {
       const deps = buildDeps();
       if (deps.cli) void syncPiRuntime(deps, ctx as unknown as ExtensionContext);
     }
-    emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+    bus.emit(UNIPI_EVENTS.MODULE_READY, {
       name: MODULES.KANBOARD,
       version: VERSION,
       commands: ["kanboard"],

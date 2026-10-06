@@ -10,8 +10,6 @@ export const UNIPI_EVENTS = {
   /** Module loaded and ready */
   MODULE_READY: "unipi:module:ready",
 
-  /** Workflow command started */
-  WORKFLOW_START: "unipi:workflow:start",
   /** Workflow command ended */
   WORKFLOW_END: "unipi:workflow:end",
 
@@ -20,8 +18,6 @@ export const UNIPI_EVENTS = {
   /** Plan mode toggled on/off */
   PLAN_MODE_CHANGED: "unipi:plan:mode:changed",
 
-  /** Ralph loop started */
-  RALPH_LOOP_START: "unipi:ralph:loop:start",
   /** Ralph loop ended */
   RALPH_LOOP_END: "unipi:ralph:loop:end",
   /** Ralph loop iteration completed */
@@ -31,12 +27,6 @@ export const UNIPI_EVENTS = {
   LONG_HORIZON_MODE_RESOLVED: "unipi:long-horizon:mode:resolved",
   /** Long-horizon automation owner lifecycle changed */
   LONG_HORIZON_OWNER_CHANGED: "unipi:long-horizon:owner:changed",
-  /** Long-horizon visible todo plan updated */
-  LONG_HORIZON_TODO_UPDATED: "unipi:long-horizon:todo:updated",
-
-
-  /** Info screen data updated */
-  INFO_DATA_UPDATED: "unipi:info:data:updated",
 
   /** Memory stored/updated */
   MEMORY_STORED: "unipi:memory:stored",
@@ -47,21 +37,13 @@ export const UNIPI_EVENTS = {
 
   /** MCP server started */
   MCP_SERVER_STARTED: "unipi:mcp:server:started",
-  /** MCP server stopped */
-  MCP_SERVER_STOPPED: "unipi:mcp:server:stopped",
   /** MCP server error */
   MCP_SERVER_ERROR: "unipi:mcp:server:error",
   /** MCP tools registered */
   MCP_TOOLS_REGISTERED: "unipi:mcp:tools:registered",
-  /** MCP tools unregistered */
-  MCP_TOOLS_UNREGISTERED: "unipi:mcp:tools:unregistered",
-  /** MCP catalog synced */
-  MCP_CATALOG_SYNCED: "unipi:mcp:catalog:synced",
 
   /** Compactor: compaction completed */
   COMPACTOR_COMPACTED: "unipi:compactor:compacted",
-  /** @deprecated Footer reads live Pi session data; retained for compatibility. */
-  COMPACTOR_STATS_UPDATED: "unipi:compactor:stats:updated",
 
   /** Notification sent */
   NOTIFICATION_SENT: "unipi:notify:sent",
@@ -106,7 +88,7 @@ export interface UnipiModuleEvent {
   loadTimeMs?: number;
 }
 
-/** Payload for WORKFLOW_START / WORKFLOW_END */
+/** Payload for WORKFLOW_END */
 export interface UnipiWorkflowEvent {
   /** Command name, e.g. "brainstorm" */
   command: string;
@@ -120,18 +102,30 @@ export interface UnipiWorkflowEvent {
   durationMs?: number;
 }
 
-/** Payload for RALPH_LOOP_START / RALPH_LOOP_END */
+/** Payload for PERMISSION_MODE_CHANGED */
+export interface UnipiPermissionModeEvent {
+  /** The new permission mode (ask | auto | full) */
+  mode: string;
+}
+
+/** Payload for PLAN_MODE_CHANGED */
+export interface UnipiPlanModeEvent {
+  /** Plan mode is now on/off */
+  active: boolean;
+  /** Plan file path (display form) */
+  planFile: string;
+  /** Why plan mode ended (toggled | approved | discarded) */
+  reason?: string;
+}
+
+/** Payload for RALPH_LOOP_END */
 export interface UnipiRalphLoopEvent {
   /** Loop name */
   name: string;
-  /** Current iteration */
-  iteration: number;
-  /** Max iterations (0 = unlimited) */
-  maxIterations: number;
-  /** Loop status */
-  status: "active" | "paused" | "completed";
-  /** For RALPH_LOOP_END: reason */
-  reason?: "completed" | "max_reached" | "cancelled" | "error";
+  /** Terminal reason */
+  reason: string;
+  /** Iterations completed */
+  iterations: number;
 }
 
 /** Payload for RALPH_ITERATION_DONE */
@@ -140,10 +134,33 @@ export interface UnipiRalphIterationEvent {
   name: string;
   /** Iteration that just completed */
   iteration: number;
-  /** Next iteration number */
-  nextIteration: number;
+  /** Iterations remaining (budget minus done) */
+  remaining: number;
 }
 
+/** Payload for LONG_HORIZON_MODE_RESOLVED */
+export interface UnipiLhModeResolvedEvent {
+  /** Resolved mode id */
+  mode: string;
+  /** Resolution source (explicit | owner | judge | default | …) */
+  source: string;
+  /** Judge confidence, when judged */
+  confidence?: number;
+}
+
+/** Payload for LONG_HORIZON_OWNER_CHANGED */
+export interface UnipiLhOwnerChangedEvent {
+  /** Transition type (activated | suspended | resumed | finished | cleared | restored) */
+  event: string;
+  /** Owner id, when the transition names one */
+  ownerId?: string;
+  /** Owner kind, when present */
+  kind?: string;
+  /** Owner status, when present */
+  status?: string;
+  /** Terminal/pause reason for finished/suspended */
+  reason?: string;
+}
 
 
 /** Payload for MEMORY_STORED */
@@ -180,15 +197,7 @@ export interface UnipiMemoryConsolidatedEvent {
 }
 
 
-/** Payload for INFO_DATA_UPDATED */
-export interface UnipiInfoDataEvent {
-  /** Group id */
-  groupId: string;
-  /** Updated data keys */
-  keys: string[];
-}
-
-/** Payload for MCP_SERVER_STARTED / MCP_SERVER_STOPPED */
+/** Payload for MCP_SERVER_STARTED / MCP_SERVER_ERROR */
 export interface UnipiMcpServerEvent {
   /** Server name */
   name: string;
@@ -200,7 +209,7 @@ export interface UnipiMcpServerEvent {
   pid?: number;
 }
 
-/** Payload for MCP_TOOLS_REGISTERED / MCP_TOOLS_UNREGISTERED */
+/** Payload for MCP_TOOLS_REGISTERED */
 export interface UnipiMcpToolsEvent {
   /** Server name */
   serverName: string;
@@ -208,40 +217,20 @@ export interface UnipiMcpToolsEvent {
   toolNames: string[];
 }
 
-/** Payload for MCP_CATALOG_SYNCED */
-export interface UnipiMcpCatalogSyncedEvent {
-  /** Total servers in catalog */
-  totalServers: number;
-  /** Source of sync */
-  source: string;
-}
-
 /** Payload for COMPACTOR compaction completed */
 export interface UnipiCompactionEvent {
-  /** Session ID */
-  sessionId: string;
+  /** Compaction method (boundary | percentage | …) */
+  method: string;
   /** Messages summarized */
   summarized: number;
   /** Messages kept */
   kept: number;
+  /** Tokens before compaction */
+  tokensBefore: number;
+  /** Tokens after compaction */
+  tokensAfter: number;
   /** Estimated tokens saved */
   tokensSaved: number;
-  /** Compression ratio string, e.g. "56:1" */
-  compressionRatio: string;
-}
-
-/** Payload for COMPACTOR stats update */
-export interface UnipiCompactorStatsEvent {
-  /** Session events count */
-  sessionEvents: number;
-  /** Compactions count */
-  compactions: number;
-  /** Tokens saved total */
-  tokensSaved: number;
-  /** Sandbox executions count */
-  sandboxRuns: number;
-  /** Search queries count */
-  searchQueries: number;
 }
 
 
@@ -319,17 +308,18 @@ export interface UnipiNotificationSentEvent {
 export type UnipiEventPayload =
   | UnipiModuleEvent
   | UnipiWorkflowEvent
+  | UnipiPermissionModeEvent
+  | UnipiPlanModeEvent
   | UnipiRalphLoopEvent
   | UnipiRalphIterationEvent
+  | UnipiLhModeResolvedEvent
+  | UnipiLhOwnerChangedEvent
   | UnipiMemoryStoredEvent
   | UnipiMemoryDeletedEvent
   | UnipiMemoryConsolidatedEvent
-  | UnipiInfoDataEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
-  | UnipiMcpCatalogSyncedEvent
   | UnipiCompactionEvent
-  | UnipiCompactorStatsEvent
   | UnipiNotificationSentEvent
   | UnipiAskUserPromptEvent
   | UnipiUpdateCheckEvent

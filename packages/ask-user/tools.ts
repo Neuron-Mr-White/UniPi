@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, emitEvent, UNIPI_EVENTS, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
+import { bus, ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, UNIPI_EVENTS, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
 import { AskPanel, type PanelResult } from "./ask-ui.js";
 import { getAskUserSettings, type AskUserSettings } from "./config.js";
 import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
@@ -143,7 +143,7 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
       if (questions.length === 0) throw new Error("ask_user needs at least one question with a question text.");
 
       if (settings.notifyOnAsk) {
-        emitEvent(pi, UNIPI_EVENTS.ASK_USER_PROMPT, {
+        bus.emit(UNIPI_EVENTS.ASK_USER_PROMPT, {
           question: questions.map((q) => q.question).join(" · "),
           optionCount: questions.reduce((n, q) => n + q.options.length, 0),
           allowMultiple: questions.some((q) => q.multi_select),

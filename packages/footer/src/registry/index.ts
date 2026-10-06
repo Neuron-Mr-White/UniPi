@@ -1,9 +1,8 @@
 /**
  * @pi-unipi/footer — Shared status data store
  *
- * A tiny cache keyed by group id ("core" today). Event handlers write mode /
- * permission fallbacks here; the glance frame reads them when the shared
- * status holders (core's getShared* helpers) have no value yet.
+ * A tiny cache keyed by group id. Glance widgets cache per-group render data
+ * here; the bus (bus.ts) is the cross-module state channel.
  */
 
 /** Type for the reactive update callback */
