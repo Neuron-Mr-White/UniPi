@@ -257,11 +257,12 @@ describe("notify — event priority defaults", () => {
   });
 
   it("leaves other events without a priority override", async () => {
-    const h = harness(fakeConfig(["workflow_end"]));
+    const h = harness(fakeConfig(["ralph_loop_end"]));
 
-    await invokeBus(h, UNIPI_EVENTS.WORKFLOW_END, {
-      command: "test",
-      success: true,
+    await invokeBus(h, UNIPI_EVENTS.RALPH_LOOP_END, {
+      name: "ship-it",
+      reason: "complete",
+      iterations: 3,
     });
 
     assert.equal(h.calls.length, 1);
@@ -406,10 +407,10 @@ describe("notify — re-notify unanswered blocking prompts", () => {
 
   it("does not arm for non-blocking events", async (t) => {
     t.mock.timers.enable({ apis: ["setInterval"] });
-    const h = harness(fakeConfig(["agent_end", "workflow_end"]));
+    const h = harness(fakeConfig(["agent_end", "ralph_loop_end"]));
 
     await invokeLifecycle(h, "agent_end", {});
-    await invokeBus(h, UNIPI_EVENTS.WORKFLOW_END, { command: "test", success: true });
+    await invokeBus(h, UNIPI_EVENTS.RALPH_LOOP_END, { name: "ship-it", reason: "complete", iterations: 3 });
     t.mock.timers.tick(RENOTIFY_INTERVAL * 5);
 
     assert.equal(h.calls.length, 2);

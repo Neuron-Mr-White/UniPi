@@ -10,9 +10,6 @@ export const UNIPI_EVENTS = {
   /** Module loaded and ready */
   MODULE_READY: "unipi:module:ready",
 
-  /** Workflow command ended */
-  WORKFLOW_END: "unipi:workflow:end",
-
   /** Permission mode changed (ask | auto | full) */
   PERMISSION_MODE_CHANGED: "unipi:permission:mode:changed",
   /** Plan mode toggled on/off */
@@ -32,9 +29,6 @@ export const UNIPI_EVENTS = {
   MEMORY_STORED: "unipi:memory:stored",
   /** Memory deleted */
   MEMORY_DELETED: "unipi:memory:deleted",
-  /** Memory consolidation completed */
-  MEMORY_CONSOLIDATED: "unipi:memory:consolidated",
-
   /** MCP server started */
   MCP_SERVER_STARTED: "unipi:mcp:server:started",
   /** MCP server error */
@@ -57,8 +51,6 @@ export const UNIPI_EVENTS = {
   UPDATE_AVAILABLE: "unipi:update:available",
   /** Update applied */
   UPDATE_APPLIED: "unipi:update:applied",
-  /** Update error */
-  UPDATE_ERROR: "unipi:update:error",
 
   /** Long-horizon footer state (sticky; replayed to late subscribers by the bus) */
   LH_STATE: "unipi:long-horizon:state",
@@ -86,20 +78,6 @@ export interface UnipiModuleEvent {
   tools: string[];
   /** Load time in milliseconds (optional) */
   loadTimeMs?: number;
-}
-
-/** Payload for WORKFLOW_END */
-export interface UnipiWorkflowEvent {
-  /** Command name, e.g. "brainstorm" */
-  command: string;
-  /** Full command with prefix, e.g. "/unipi:plan" */
-  fullCommand: string;
-  /** Arguments passed to command */
-  args: string;
-  /** For WORKFLOW_END: whether it succeeded */
-  success?: boolean;
-  /** For WORKFLOW_END: duration in ms */
-  durationMs?: number;
 }
 
 /** Payload for PERMISSION_MODE_CHANGED */
@@ -188,14 +166,6 @@ export interface UnipiMemoryDeletedEvent {
 }
 
 
-/** Payload for MEMORY_CONSOLIDATED */
-export interface UnipiMemoryConsolidatedEvent {
-  /** Number of memories extracted */
-  count: number;
-  /** Project name */
-  projectName: string;
-}
-
 
 /** Payload for MCP_SERVER_STARTED / MCP_SERVER_ERROR */
 export interface UnipiMcpServerEvent {
@@ -279,14 +249,6 @@ export interface UnipiUpdateAppliedEvent {
   newVersion: string;
 }
 
-/** Payload for UPDATE_ERROR */
-export interface UnipiUpdateErrorEvent {
-  /** Error message */
-  error: string;
-  /** Whether the error was from check or install */
-  phase: "check" | "install";
-}
-
 
 
 
@@ -307,7 +269,6 @@ export interface UnipiNotificationSentEvent {
 /** Union of all unipi event payloads */
 export type UnipiEventPayload =
   | UnipiModuleEvent
-  | UnipiWorkflowEvent
   | UnipiPermissionModeEvent
   | UnipiPlanModeEvent
   | UnipiRalphLoopEvent
@@ -316,7 +277,6 @@ export type UnipiEventPayload =
   | UnipiLhOwnerChangedEvent
   | UnipiMemoryStoredEvent
   | UnipiMemoryDeletedEvent
-  | UnipiMemoryConsolidatedEvent
   | UnipiMcpServerEvent
   | UnipiMcpToolsEvent
   | UnipiCompactionEvent
@@ -324,5 +284,4 @@ export type UnipiEventPayload =
   | UnipiAskUserPromptEvent
   | UnipiUpdateCheckEvent
   | UnipiUpdateAvailableEvent
-  | UnipiUpdateAppliedEvent
-  | UnipiUpdateErrorEvent;
+  | UnipiUpdateAppliedEvent;

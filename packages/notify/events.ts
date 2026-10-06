@@ -195,10 +195,8 @@ export const BUILTIN_EVENTS: Record<
 > = {
   agent_end: { hook: "agent_end", label: "Agent Run Complete" },
   agent_settled: { hook: "agent_settled", label: "Agent Complete" },
-  workflow_end: { hook: UNIPI_EVENTS.WORKFLOW_END, label: "Workflow Done" },
   ralph_loop_end: { hook: UNIPI_EVENTS.RALPH_LOOP_END, label: "Ralph Complete" },
   mcp_server_error: { hook: UNIPI_EVENTS.MCP_SERVER_ERROR, label: "MCP Error" },
-  memory_consolidated: { hook: UNIPI_EVENTS.MEMORY_CONSOLIDATED, label: "Memory Saved" },
   session_shutdown: { hook: "session_shutdown", label: "Session End" },
   ask_user_prompt: { hook: UNIPI_EVENTS.ASK_USER_PROMPT, label: "Question Asked" },
   permission_request: { hook: PERMISSION_UI_PROMPT_EVENT, label: "Permission Request" },
@@ -525,8 +523,6 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
   const p = payload as Record<string, unknown>;
 
   switch (eventKey) {
-    case "workflow_end":
-      return `Workflow ${String(p.command || "unknown")}${p.success === false ? " failed" : " completed"}`;
     case "ralph_loop_end":
       return `Ralph loop "${String(p.name || "unknown")}" ${p.status || "completed"}`;
     case "mcp_server_error":
@@ -535,8 +531,6 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
       return "Agent run finished responding";
     case "agent_settled":
       return "Agent is complete";
-    case "memory_consolidated":
-      return `Memory consolidated (${p.count || 0} items)`;
     case "session_shutdown":
       return "Session ending";
     case "ask_user_prompt":

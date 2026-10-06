@@ -370,12 +370,6 @@ export const HINT_LINES: readonly Hint[] = [
     when: { event: "unipi:memory:stored" },
   },
   {
-    id: "cap.memory-consolidated",
-    category: "capability",
-    text: "Memories consolidated — background analysis organized related notes into drawers.",
-    when: { event: "unipi:memory:consolidated" },
-  },
-  {
     id: "cap.long-bash",
     category: "capability",
     text: "Long bash command? The agent can bg_run it — the session stays responsive.",
@@ -478,12 +472,6 @@ export const HINT_LINES: readonly Hint[] = [
     category: "trouble",
     text: "An MCP server ran aground — inspect server status with /unipi:mcp-status.",
     when: { event: "unipi:mcp:server:error" },
-  },
-  {
-    id: "trb.update-error",
-    category: "trouble",
-    text: "Update check error — verify your network or browse /unipi:changelog directly.",
-    when: { event: "unipi:update:error" },
   },
   {
     id: "trb.context-high",

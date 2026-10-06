@@ -58,8 +58,8 @@ describe("loadConfig deep copy", () => {
     assert.notEqual(config, DEFAULT_CONFIG);
     assert.notEqual(config.events, DEFAULT_CONFIG.events);
     assert.notEqual(config.silenceAfterInput, DEFAULT_CONFIG.silenceAfterInput);
-    config.events.workflow_end.enabled = false;
-    assert.equal(DEFAULT_CONFIG.events.workflow_end.enabled, true);
+    config.events.ralph_loop_end.enabled = false;
+    assert.equal(DEFAULT_CONFIG.events.ralph_loop_end.enabled, true);
   });
 
   it("merge path: nested objects from a partial file do not share with defaults", () => {
@@ -72,11 +72,11 @@ describe("loadConfig deep copy", () => {
 
     const config = loadConfig();
     assert.equal(config.native.enabled, true);
-    config.events.workflow_end.enabled = false;
+    config.events.ralph_loop_end.enabled = false;
     config.recap.enabled = true;
 
     const reloaded = loadConfig();
-    assert.equal(reloaded.events.workflow_end.enabled, true);
+    assert.equal(reloaded.events.ralph_loop_end.enabled, true);
     assert.equal(reloaded.recap.enabled, false);
     assert.deepEqual(reloaded.silenceAfterInput.platforms, ["native"]);
   });
@@ -98,5 +98,37 @@ describe("DEFAULT_CONFIG events", () => {
       enabled: false,
       platforms: [],
     });
+  });
+
+  it("drops removed event keys from an old saved config silently", () => {
+    const dir = join(home, ".unipi", "config", "notify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        events: {
+          // Removed in the bus migration — must be ignored, not re-saved.
+          workflow_end: { enabled: true, platforms: ["native"] },
+          memory_consolidated: { enabled: true, platforms: [] },
+          update_error: { enabled: true, platforms: [] },
+          ralph_loop_end: { enabled: false, platforms: ["gotify"] },
+        },
+      } satisfies Partial<NotifyConfig>),
+    );
+
+    const config = loadConfig();
+    assert.equal(config.events.workflow_end, undefined);
+    assert.equal(config.events.memory_consolidated, undefined);
+    assert.equal(config.events.update_error, undefined);
+    assert.deepEqual(config.events.ralph_loop_end, { enabled: false, platforms: ["gotify"] });
+
+    // Saving the loaded config keeps the dropped keys out of the save patch:
+    // a later loadConfig stays clean and known keys survive.
+    saveConfig(config);
+    const reloaded = loadConfig();
+    assert.equal(reloaded.events.workflow_end, undefined);
+    assert.equal(reloaded.events.memory_consolidated, undefined);
+    assert.equal(reloaded.events.update_error, undefined);
+    assert.deepEqual(reloaded.events.ralph_loop_end, { enabled: false, platforms: ["gotify"] });
   });
 });

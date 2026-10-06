@@ -21,7 +21,6 @@ import {
   type UnipiCompactionEvent,
   type UnipiLhModeResolvedEvent,
   type UnipiLhOwnerChangedEvent,
-  type UnipiMemoryConsolidatedEvent,
   type UnipiMemoryDeletedEvent,
   type UnipiMemoryStoredEvent,
   type UnipiMcpServerEvent,
@@ -35,8 +34,6 @@ import {
   type UnipiUpdateAppliedEvent,
   type UnipiUpdateAvailableEvent,
   type UnipiUpdateCheckEvent,
-  type UnipiUpdateErrorEvent,
-  type UnipiWorkflowEvent,
 } from "./events.js";
 
 export interface LhStateEvent {
@@ -95,7 +92,6 @@ export interface UnipiEventMap {
 
   // One-shot
   [UNIPI_EVENTS.MODULE_READY]: UnipiModuleEvent;
-  [UNIPI_EVENTS.WORKFLOW_END]: UnipiWorkflowEvent;
   [UNIPI_EVENTS.PERMISSION_MODE_CHANGED]: UnipiPermissionModeEvent;
   [UNIPI_EVENTS.PLAN_MODE_CHANGED]: UnipiPlanModeEvent;
   [UNIPI_EVENTS.RALPH_LOOP_END]: UnipiRalphLoopEvent;
@@ -104,7 +100,6 @@ export interface UnipiEventMap {
   [UNIPI_EVENTS.LONG_HORIZON_OWNER_CHANGED]: UnipiLhOwnerChangedEvent;
   [UNIPI_EVENTS.MEMORY_STORED]: UnipiMemoryStoredEvent;
   [UNIPI_EVENTS.MEMORY_DELETED]: UnipiMemoryDeletedEvent;
-  [UNIPI_EVENTS.MEMORY_CONSOLIDATED]: UnipiMemoryConsolidatedEvent;
   [UNIPI_EVENTS.MCP_SERVER_STARTED]: UnipiMcpServerEvent;
   [UNIPI_EVENTS.MCP_SERVER_ERROR]: UnipiMcpServerEvent;
   [UNIPI_EVENTS.MCP_TOOLS_REGISTERED]: UnipiMcpToolsEvent;
@@ -114,7 +109,6 @@ export interface UnipiEventMap {
   [UNIPI_EVENTS.UPDATE_CHECK]: UnipiUpdateCheckEvent;
   [UNIPI_EVENTS.UPDATE_AVAILABLE]: UnipiUpdateAvailableEvent;
   [UNIPI_EVENTS.UPDATE_APPLIED]: UnipiUpdateAppliedEvent;
-  [UNIPI_EVENTS.UPDATE_ERROR]: UnipiUpdateErrorEvent;
   [UNIPI_EVENTS.SKILLS_REVEAL]: { names: string[]; ctx?: unknown };
 }
 

@@ -21,12 +21,10 @@ function resolveConfigPath(): string {
 export const DEFAULT_CONFIG: NotifyConfig = {
   defaultPlatforms: ["native"],
   events: {
-    workflow_end: { enabled: true, platforms: [] },
     ralph_loop_end: { enabled: true, platforms: [] },
     mcp_server_error: { enabled: true, platforms: [] },
     agent_end: { enabled: false, platforms: [] },
     agent_settled: { enabled: false, platforms: [] },
-    memory_consolidated: { enabled: false, platforms: [] },
     session_shutdown: { enabled: false, platforms: [] },
     ask_user_prompt: { enabled: false, platforms: [] },
     permission_request: { enabled: false, platforms: [] },
@@ -71,12 +69,10 @@ const PLATFORM_OPTIONS = [
 
 /** What each event means, as "…when <phrase>." — hub descriptions. */
 const EVENT_PHRASES: Record<string, string> = {
-  workflow_end: "a workflow finishes.",
   ralph_loop_end: "a ralph loop iteration ends.",
   mcp_server_error: "an MCP server errors.",
   agent_end: "the agent finishes a turn.",
   agent_settled: "the agent settles after streaming.",
-  memory_consolidated: "a memory consolidation completes.",
   session_shutdown: "the session shuts down.",
   ask_user_prompt: "the agent asks you a question.",
   permission_request: "a permission prompt opens.",
@@ -242,7 +238,14 @@ export function loadConfig(): NotifyConfig {
 
 /** Save config to disk, creating directory if needed */
 export function saveConfig(config: NotifyConfig): void {
-  setSettings("notify", config as unknown as Record<string, unknown>, "global", process.cwd());
+  // The settings engine deep-merges the patch into the stored file, so strip
+  // event keys this build no longer knows first (old saved configs) — they
+  // must never be re-dispatched or re-persisted through a save.
+  const known = new Set(Object.keys(DEFAULT_CONFIG.events));
+  const events = Object.fromEntries(
+    Object.entries(config.events).filter(([key]) => known.has(key)),
+  );
+  setSettings("notify", { ...config, events } as unknown as Record<string, unknown>, "global", process.cwd());
 }
 
 /** Update config with partial changes */
@@ -287,7 +290,14 @@ function mergeWithDefaults(loaded: Partial<NotifyConfig>): NotifyConfig {
   const base = structuredClone(DEFAULT_CONFIG);
   return {
     defaultPlatforms: loaded.defaultPlatforms ?? base.defaultPlatforms,
-    events: { ...base.events, ...loaded.events },
+    // Unknown event keys (e.g. removed events in an old saved config) are
+    // dropped silently — never re-saved, never dispatched.
+    events: {
+      ...base.events,
+      ...Object.fromEntries(
+        Object.entries(loaded.events ?? {}).filter(([key]) => key in base.events),
+      ),
+    },
     native: { ...base.native, ...loaded.native },
     gotify: { ...base.gotify, ...loaded.gotify },
     telegram: { ...base.telegram, ...loaded.telegram },
