@@ -7,28 +7,13 @@
  * extension init / session start and cleared on shutdown.
  */
 
-export interface SharedFusionStatus {
-  /** Display name of the lead (the session model). */
-  leadName: string;
-  /** Lead model key provider/id (for child-model resolution). */
-  leadKey?: string;
-  /** Sidekick model key provider/id (for child-model resolution). */
-  sidekickKey?: string;
-  /** Lead thinking level, e.g. "medium". */
-  leadEffort: string;
-  /** Display name of the sidekick. */
-  sidekickName: string;
-  /** Sidekick thinking level. */
-  sidekickEffort: string;
-  /** Estimated savings compared with pricing all sidekick usage at lead rates. */
-  savedUsd?: number;
-  /** A handoff is running on the sidekick right now. */
-  busy?: boolean;
-  /** Tool calls made directly by the lead in this session while Fusion was active. */
-  leadToolCalls?: number;
-  /** Tool calls made by the sidekick across all handoffs (completed + in flight). */
-  sidekickToolCalls?: number;
-}
+import type { FusionStatusEvent } from "./bus.js";
+
+/**
+ * @deprecated Use `FusionStatusEvent` from the central bus (`bus.ts`). Kept as an
+ * alias so existing pull-only consumers keep compiling until the bus is wired.
+ */
+export type SharedFusionStatus = FusionStatusEvent;
 
 const KEY = Symbol.for("unipi.fusion.status");
 

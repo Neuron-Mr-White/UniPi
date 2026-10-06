@@ -78,6 +78,18 @@ export const UNIPI_EVENTS = {
   /** Update error */
   UPDATE_ERROR: "unipi:update:error",
 
+  /** Long-horizon footer state (sticky; replayed to late subscribers by the bus) */
+  LH_STATE: "unipi:long-horizon:state",
+  /** Kanboard claims/autowork status (sticky) */
+  KANBOARD_STATUS: "unipi:kanboard:status",
+  /** Fusion lead/sidekick display status (sticky; undefined = cleared) */
+  FUSION_STATUS: "unipi:fusion:status",
+  /** Workflow plan/permission mode (sticky) */
+  WORKFLOW_STATUS: "unipi:workflow:status",
+
+  /** Reveal hidden skills by name (one-shot; previously used as a literal string) */
+  SKILLS_REVEAL: "unipi:skills:reveal",
+
 } as const;
 
 /** Payload for MODULE_READY / MODULE_GONE */
