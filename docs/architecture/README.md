@@ -109,4 +109,5 @@ and kanboard refuses board writes.
   before the first module.
 - `packages/core/index.ts`: the list of shared exports.
 - `packages/core/src/turn/arbiter.ts`: `isChildProcess()`.
-- `packages/core/events.ts` and `packages/core/utils.ts` (`emitEvent`).
+- `packages/core/events.ts` and `packages/core/bus.ts` (typed event map,
+  sticky state, `bus.emit` / `bus.get` / `bus.on`).

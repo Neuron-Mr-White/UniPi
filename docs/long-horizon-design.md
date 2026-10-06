@@ -255,5 +255,7 @@ resolves mode `none` (source `child`), never consults the judge, and
 `OwnerCoordinator.activate` refuses owner creation with "report back to the
 lead" — children are the hands, the lead is the voice. Escape hatch:
 `UNIPI_LH_ALLOW_CHILD=1` restores normal behavior inside a child. Owner
-transitions publish to the shared holder (`getSharedOwnerStatus`) that
-kanboard's monitor reads for deference and stop notices.
+transitions publish one `LH_STATE` event on the core bus from a single point
+(`lhStateFrom` in `src/lh-state.ts`); its sticky payload carries the owner,
+the last stop and the parked mode. Kanboard's monitor reads it for deference
+and stop notices.

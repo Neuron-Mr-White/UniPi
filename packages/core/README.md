@@ -26,17 +26,25 @@ pi install npm:@pi-unipi/unipi
 
 ## Developer API
 
-Import from `@pi-unipi/core`. Use `emitEvent` to send events on the Pi event bus.
-It returns `false` and does not throw if the emit fails.
+Import from `@pi-unipi/core`. Use the bus to share state and events between
+packages. `bus.emit` publishes. `bus.get` reads the last sticky value.
+`bus.on` subscribes; it auto-unsubscribes on the pi's session shutdown.
+Emit and subscribe never throw.
 
 ```typescript
-import { UNIPI_EVENTS, MODULES, emitEvent, sanitize } from "@pi-unipi/core";
+import { UNIPI_EVENTS, MODULES, bus, sanitize } from "@pi-unipi/core";
 
-emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {
+// Publish a one-shot event:
+bus.emit(UNIPI_EVENTS.MODULE_READY, {
   name: MODULES.WORKFLOW,
   version: "3.0.0",
   commands: ["unipi:plan"],
   tools: [],
+});
+
+// Subscribe (sticky keys replay their last value here):
+bus.on(pi, UNIPI_EVENTS.MODULE_READY, (payload) => {
+  console.log(payload.name);
 });
 
 const safeName = sanitize("my/feature: branch");

@@ -258,10 +258,10 @@ Expected: Footer group registered with segments (if applicable).
 In the package's `src/index.ts`, emit the module ready event:
 
 ```typescript
-import { MODULES, emitEvent, UNIPI_EVENTS } from "@pi-unipi/core";
+import { MODULES, UNIPI_EVENTS, bus } from "@pi-unipi/core";
 
 // At end of extension function:
-emitEvent(pi as any, UNIPI_EVENTS.MODULE_READY, {
+bus.emit(UNIPI_EVENTS.MODULE_READY, {
   name: MODULES.<NAME>,     // Must exist in core constants.ts (Step 3)
   version: "0.1.0",
   commands: ["unipi:cmd1", "unipi:cmd2"],  // Full unipi: prefix
