@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ensureDir, isChildProcess, markSharedOwnerStopped, setSharedOwner, tryRead, writeJson } from "@pi-unipi/core";
+import { ensureDir, isChildProcess, tryRead, writeJson } from "@pi-unipi/core";
 import type { OwnerKind } from "./modes.js";
 
 /** Surfaced by create_goal / ralph / swarm / graph tools inside children. */
@@ -76,6 +76,8 @@ export class OwnerCoordinator {
   private active?: OwnerState;
   private parked?: OwnerState;
   private history: OwnerHistoryEntry[] = [];
+  /** Last owner stop this run (finish/suspend only); kanboard compares `at` against its turn-start marker. */
+  private stop?: { kind: "complete" | "paused" | "budget" | "other"; at: number };
   private readonly deps: OwnerCoordinatorDeps;
 
   constructor(deps: OwnerCoordinatorDeps) {
@@ -98,6 +100,11 @@ export class OwnerCoordinator {
 
   getParked(): OwnerState | undefined {
     return this.parked;
+  }
+
+  /** Last owner stop this run, or undefined before the first finish/suspend. */
+  lastStop(): { kind: "complete" | "paused" | "budget" | "other"; at: number } | undefined {
+    return this.stop;
   }
 
   /** A lease is current if it names the active owner at its generation. */
@@ -224,30 +231,20 @@ export class OwnerCoordinator {
     }
     const snapshot = this.snapshot();
     this.deps.onChange?.(snapshot, { type: "restored", snapshot });
-    this.publishStatus({ type: "restored", snapshot });
     return snapshot;
   }
 
   private commit(event: OwnerEvent): OwnerState | undefined {
     this.persist();
-    this.publishStatus(event);
+    // Stop bookkeeping lives with the coordinator (single publish point in
+    // index's onChange publishes it via LH_STATE). A paused goal goes through
+    // suspend, not finish — readers must see it as a stop of kind "paused"
+    // this run, same as finish would.
+    const now = this.deps.now?.() ?? Date.now();
+    if (event.type === "finished") this.stop = { kind: stopKindOf(event.reason), at: now };
+    if (event.type === "suspended") this.stop = { kind: "paused", at: now };
     this.deps.onChange?.(this.snapshot(), event);
     return "owner" in event ? event.owner : undefined;
-  }
-
-  /** Publish the transition to the shared holder kanboard's monitor reads. */
-  private publishStatus(event: OwnerEvent): void {
-    try {
-      if (event.type === "finished") markSharedOwnerStopped(stopKindOf(event.reason));
-      // Parked (paused) goals go through suspend, not finish — kanboard must
-      // see them as a stop of kind "paused" this run, same as finish would.
-      if (event.type === "suspended") markSharedOwnerStopped("paused");
-      if (this.active) setSharedOwner({ kind: this.active.kind, status: "active" });
-      else if (this.parked) setSharedOwner({ kind: this.parked.kind, status: "parked" });
-      else setSharedOwner(undefined);
-    } catch {
-      // Status publishing must never roll back a committed transition.
-    }
   }
 
   private commitActive(patch: Partial<OwnerState>): OwnerState {

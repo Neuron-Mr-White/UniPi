@@ -57,7 +57,7 @@ export interface WorkflowStatusEvent {
   permissionMode: string | null;
 }
 
-/** Fusion lead/sidekick display status (moved from fusion-status.ts SharedFusionStatus). */
+/** Fusion lead/sidekick display status (replaces the old pull-only fusion holder). */
 export interface FusionStatusEvent {
   /** Display name of the lead (the session model). */
   leadName: string;

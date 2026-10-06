@@ -10,10 +10,11 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, emitEvent, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { appendProgress, bus, emitEvent, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
+import { lhStateFrom } from "./src/lh-state.js";
 import { registerLongHorizonCommands, stopActiveOwner } from "./src/commands.js";
 import { loadSettings } from "./src/settings.js";
 import { GoalMachine } from "./src/engine/goal-state.js";
@@ -75,6 +76,17 @@ export default function longHorizon(pi: ExtensionAPI): void {
   // Provenance mirror state lives with the stash (declared BEFORE the owner
   // constructor — its onChange may fire immediately).
   let stashMetaState: StashMetaState<ReturnType<typeof harnessMetadata>> = { meta: undefined, kickoff: false };
+  // True once `gate` exists — owner onChange can fire before that (TDZ guard).
+  let gateReady = false;
+  // THE single publish point for the footer's LH_STATE (UNI-122): one payload
+  // shape for active owner, parked owner, last stop, and display mode.
+  function publishLh(): void {
+    if (!gateReady) return;
+    const active = owner.getActive();
+    const parked = owner.getParked();
+    const stop = owner.lastStop();
+    bus.emit(UNIPI_EVENTS.LH_STATE, lhStateFrom(active, parked, stop, gate.displayMode()));
+  }
   const owner = new OwnerCoordinator({
     statePath,
     onChange: (_snapshot, event: OwnerEvent) => {
@@ -94,6 +106,7 @@ export default function longHorizon(pi: ExtensionAPI): void {
           : {}),
         ...(event.type === "finished" ? { reason: event.reason } : {}),
       });
+      publishLh();
     },
   });
 
@@ -111,8 +124,9 @@ export default function longHorizon(pi: ExtensionAPI): void {
     }
     return Boolean(suspended);
   };
-  const gate = new Gate({ owner, loadSettings, onExplicitSwitch: suspendActiveFor });
+  const gate = new Gate({ owner, loadSettings, onExplicitSwitch: suspendActiveFor, onDisplayChanged: publishLh });
   gate.register(pi);
+  gateReady = true;
   // Decision badge renderer — special background so routing decisions are
   // visible in the transcript (UI-only; appendEntry never reaches the LLM).
   try {
@@ -385,22 +399,20 @@ export default function longHorizon(pi: ExtensionAPI): void {
   pi.on("session_start", () => {
     // Mode tools start OFF; a restored active owner re-syncs them ON below.
     gate.resetModeTools();
-    const restored = owner.restore();
+    // Point the display at the sticky session mode / default BEFORE the
+    // restore's onChange publishes — a persisted parked owner must surface as
+    // "<Mode> · paused", not as a plain default mode.
+    gate.resetDisplay(loadSettings().defaultMode);
+    owner.restore();
     machine.restore();
     // Only a truly drivable goal arms the recovery fragment; a paused goal
     // must come back idle until the user (or the kanboard runner) resumes it.
     const goalStatus = machine.get()?.status;
     if (goalStatus === "active" || goalStatus === "waiting") continuation.armRecovery();
-    // Resume (`pi -r`) starts no turn, so before_agent_start never fires. Publish
-    // the mode to the shared holder the footer PULLS each render — the active
-    // owner's mode if one survived, else the default — so the header restores
-    // without depending on a one-shot event beating the footer's subscription.
-    try {
-      const active = restored.active;
-      setSharedLongHorizonMode(active ? active.kind : loadSettings().defaultMode);
-    } catch {
-      // Best-effort restore; never block session start on the header.
-    }
+    // Resume (`pi -r`) starts no turn, so before_agent_start never fires.
+    // Publish unconditionally so the header restores without depending on a
+    // one-shot event beating the footer's subscription.
+    publishLh();
   });
 
   emitEvent(pi, UNIPI_EVENTS.MODULE_READY, {

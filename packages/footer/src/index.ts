@@ -12,13 +12,11 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { TUI } from "@earendil-works/pi-tui";
 import {
   UNIPI_EVENTS,
+  STICKY_EVENTS,
+  bus,
   emitEvent,
   UNIPI_PREFIX,
   FOOTER_COMMANDS,
-  getSharedFusionStatus,
-  getSharedKanboardStatus,
-  getSharedLongHorizonMode,
-  getSharedPlanPermissionStatus,
   getPackageVersion,
   findPackageRoot,
 } from "@pi-unipi/core";
@@ -30,7 +28,7 @@ import { GlanceEditor } from "./glance-editor.js";
 import type { GlanceStatus } from "./glance-editor.js";
 import { tpsTracker } from "./tps-tracker.js";
 import { renderProcessLine, countBgProcesses } from "./process-line.js";
-import { MODE_LABELS } from "./segments/long-horizon.js";
+import { lhModeLabel } from "./segments/long-horizon.js";
 import { SessionScanner } from "./session-scan.js";
 import { renderSessionStrip, stripVisibleAtRows } from "./strip.js";
 import { setIconStyle } from "./rendering/icons.js";
@@ -53,6 +51,8 @@ export interface FooterState {
   glanceInstalled: boolean;
   /** Deferred install timer (focus-safety deferral past the boot overlay) */
   glanceInstallTimer: ReturnType<typeof setTimeout> | null;
+  /** Bus sticky-state subscriptions (requestRender on change); re-created per session. */
+  busUnsubs: Array<() => void>;
   /** Incremental branch scanner (tracker feeding + strip snapshot). */
   scanner: SessionScanner;
   /** Cheap key of everything the tick renders — requestRender only on change. */
@@ -75,6 +75,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     refreshTimer: null,
     glanceInstalled: false,
     glanceInstallTimer: null,
+    busUnsubs: [],
     scanner: new SessionScanner(),
     lastRenderKey: "",
     activeToolCalls: 0,
@@ -141,6 +142,16 @@ export default function footerExtension(pi: ExtensionAPI): void {
     // Subscribe to events
     state.unsubscribeEvents = subscribeToEvents(pi, state.registry);
 
+    // Glance frame data now rides the bus's sticky state; request a render
+    // whenever a publisher updates any of the four sticky keys. One set of
+    // subscriptions per session: drop the previous set before re-subscribing
+    // (session_start can fire again on the same pi; the bus also auto-removes
+    // these on session_shutdown).
+    for (const unsub of state.busUnsubs.splice(0)) unsub();
+    state.busUnsubs = [...STICKY_EVENTS].map((key) =>
+      bus.on(pi, key, () => (state.tuiRef as { requestRender?: () => void } | null | undefined)?.requestRender?.()),
+    );
+
     // Glance-style input surface (pi-glance-inspired). Preserves all default
     // editor behavior via CustomEditor subclassing; only paint differs.
     //
@@ -170,6 +181,7 @@ export default function footerExtension(pi: ExtensionAPI): void {
     }
     state.unsubscribeEvents?.();
     state.unsubscribeEvents = null;
+    for (const unsub of state.busUnsubs.splice(0)) unsub();
     state.piContext = null;
     state.footerData = null;
     if (state.refreshTimer) {
@@ -381,31 +393,16 @@ export function installGlanceEditor(
         let modelName = (model?.name || model?.id || "") as string;
         if (modelName.startsWith("Claude ")) modelName = modelName.slice(7);
         const branch = (st.footerData as any)?.getGitBranch?.() ?? null;
-        const fusion = getSharedFusionStatus() ?? null;
-        // Pull the mode from the shared holder (set on both resume and live
-        // turns); fall back to the registry data the event listener writes.
-        const lhModeRaw = getSharedLongHorizonMode()
-          ?? (st.registry.getGroupData("core") as { lhMode?: string } | undefined)?.lhMode;
-        const lhMode = typeof lhModeRaw === "string" && lhModeRaw.length > 0
-          ? MODE_LABELS[lhModeRaw] ?? lhModeRaw
-          : null;
-        const kanboard = getSharedKanboardStatus() ?? null;
-        // Plan/permission state rides the same CORE registry data, written by
-        // the workflow module's events (also re-emitted on session_start).
-        const coreData = st.registry.getGroupData("core") as
-          | { planMode?: boolean; permissionMode?: string }
-          | undefined;
-        const sharedBadges = getSharedPlanPermissionStatus();
+        const fusion = bus.get(UNIPI_EVENTS.FUSION_STATUS) ?? null;
+        const kanboard = bus.get(UNIPI_EVENTS.KANBOARD_STATUS) ?? null;
+        // Plan/permission mode is one sticky snapshot published by workflow.
+        const wf = bus.get(UNIPI_EVENTS.WORKFLOW_STATUS);
         return {
           workspace,
-          lhMode,
-          planMode: sharedBadges.planMode || coreData?.planMode === true,
+          lhMode: lhModeLabel(bus.get(UNIPI_EVENTS.LH_STATE)),
+          planMode: wf?.planMode === true,
           permissionMode:
-            typeof sharedBadges.permissionMode === "string" && sharedBadges.permissionMode.length > 0
-              ? sharedBadges.permissionMode
-              : typeof coreData?.permissionMode === "string" && coreData.permissionMode.length > 0
-                ? coreData.permissionMode
-                : null,
+            typeof wf?.permissionMode === "string" && wf.permissionMode.length > 0 ? wf.permissionMode : null,
           branch: typeof branch === "string" ? branch : null,
           contextPct: typeof usage?.percent === "number" ? usage.percent : null,
           contextWindow: typeof usage?.contextWindow === "number" ? usage.contextWindow : 0,

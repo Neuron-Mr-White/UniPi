@@ -2,10 +2,11 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { getSharedOwnerStatus } from "@pi-unipi/core";
+import { beforeEach, test } from "node:test";
+import { bus, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import { Gate } from "../gate.js";
 import { OwnerCoordinator, CHILD_OWNER_REFUSAL, stopKindOf } from "../owner.js";
+import { lhStateFrom } from "../lh-state.js";
 import { DEFAULT_SETTINGS } from "../settings.js";
 
 const CHILD_KEYS = ["UNIPI_FUSION_CHILD", "UNIPI_SUBAGENT_CHILD", "UNIPI_KANBOARD_CHILD", "UNIPI_LH_ALLOW_CHILD"] as const;
@@ -29,10 +30,20 @@ function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
 
 function harness() {
   const dir = mkdtempSync(join(tmpdir(), "lh-child-"));
-  const owner = new OwnerCoordinator({ statePath: () => join(dir, "state.json") });
+  const owner = new OwnerCoordinator({
+    statePath: () => join(dir, "state.json"),
+    // Publish to the bus the way index.ts does (these tests only assert
+    // owner/lastStop, so the display half is a literal).
+    onChange: () => publishLh(),
+  });
+  const publishLh = (): void => {
+    bus.emit(UNIPI_EVENTS.LH_STATE, lhStateFrom(owner.getActive(), owner.getParked(), owner.lastStop(), "none"));
+  };
   const gate = new Gate({ owner, loadSettings: () => DEFAULT_SETTINGS, env: {} });
   return { gate, owner, dir };
 }
+
+beforeEach(() => resetBusForTests());
 
 // ── gate: children never resolve an LH mode ─────────────────────────────
 
@@ -105,20 +116,20 @@ test("UNIPI_LH_ALLOW_CHILD=1 allows owning in a child", async () => {
 
 // ── owner status holder: transitions publish ────────────────────────────
 
-test("owner transitions publish to the shared holder", async () => {
+test("owner transitions publish to the bus", async () => {
   await withEnv({}, () => {
     const { owner } = harness();
     const active = owner.activate("goal", "objective");
     assert.ok(active);
-    assert.deepEqual(getSharedOwnerStatus()?.owner, { kind: "goal", status: "active" });
+    assert.deepEqual(bus.get(UNIPI_EVENTS.LH_STATE)?.owner, { kind: "goal", status: "active" });
     const parked = owner.suspend("paused(user_requested)");
     assert.ok(parked);
-    assert.deepEqual(getSharedOwnerStatus()?.owner, { kind: "goal", status: "parked" });
+    assert.deepEqual(bus.get(UNIPI_EVENTS.LH_STATE)?.owner, { kind: "goal", status: "parked" });
     owner.resume();
-    assert.deepEqual(getSharedOwnerStatus()?.owner, { kind: "goal", status: "active" });
+    assert.deepEqual(bus.get(UNIPI_EVENTS.LH_STATE)?.owner, { kind: "goal", status: "active" });
     owner.finish("complete(verifier_met)");
-    assert.equal(getSharedOwnerStatus()?.owner, undefined);
-    assert.equal(getSharedOwnerStatus()?.lastStop?.kind, "complete");
+    assert.equal(bus.get(UNIPI_EVENTS.LH_STATE)?.owner, undefined);
+    assert.equal(bus.get(UNIPI_EVENTS.LH_STATE)?.lastStop?.kind, "complete");
   });
 });
 
@@ -131,12 +142,12 @@ test("stop kinds map: complete/paused/budget/other", () => {
   assert.equal(stopKindOf("failed"), "other");
 });
 
-test("finish records the mapped stop kind on the shared holder", async () => {
+test("finish records the mapped stop kind on the bus", async () => {
   await withEnv({}, () => {
     const { owner } = harness();
     owner.activate("goal", "objective");
     owner.finish("budget_limited");
-    assert.equal(getSharedOwnerStatus()?.lastStop?.kind, "budget");
-    assert.equal(typeof getSharedOwnerStatus()?.lastStop?.at, "number");
+    assert.equal(bus.get(UNIPI_EVENTS.LH_STATE)?.lastStop?.kind, "budget");
+    assert.equal(typeof bus.get(UNIPI_EVENTS.LH_STATE)?.lastStop?.at, "number");
   });
 });

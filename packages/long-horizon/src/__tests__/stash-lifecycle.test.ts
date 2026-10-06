@@ -2,20 +2,28 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { getSharedOwnerStatus } from "@pi-unipi/core";
+import { beforeEach, test } from "node:test";
+import { bus, resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import { NudgeStash, ownerEventClearsStash } from "../engine/nudge-stash.js";
 import { OwnerCoordinator, type OwnerEvent } from "../owner.js";
+import { lhStateFrom } from "../lh-state.js";
 
 function harness(): { coordinator: OwnerCoordinator; events: OwnerEvent[] } {
   const dir = mkdtempSync(join(tmpdir(), "lh-stash-owner-"));
   const events: OwnerEvent[] = [];
   const coordinator = new OwnerCoordinator({
     statePath: () => join(dir, "state.json"),
-    onChange: (_snapshot, event) => events.push(event),
+    onChange: (_snapshot, event) => {
+      events.push(event);
+      // Publish to the bus the way index.ts does (display half is a literal;
+      // these tests assert owner/lastStop only).
+      bus.emit(UNIPI_EVENTS.LH_STATE, lhStateFrom(coordinator.getActive(), coordinator.getParked(), coordinator.lastStop(), "none"));
+    },
   });
   return { coordinator, events };
 }
+
+beforeEach(() => resetBusForTests());
 
 test("finished and suspended owner events clear the stash marker", () => {
   assert.equal(ownerEventClearsStash({ type: "finished" }), true);
@@ -60,11 +68,11 @@ test("R1: a parked owner clears the stash too", () => {
   assert.equal(stash.peek(), null);
 });
 
-test("R2: suspend publishes a paused stop on the shared holder", () => {
+test("R2: suspend publishes a paused stop on the bus", () => {
   const { coordinator } = harness();
   coordinator.activate("goal", "objective");
   coordinator.suspend("paused(user_requested)");
-  const status = getSharedOwnerStatus();
+  const status = bus.get(UNIPI_EVENTS.LH_STATE);
   assert.equal(status?.owner?.status, "parked");
   assert.equal(status?.lastStop?.kind, "paused", "paused goals stop via suspend, not finish");
   assert.equal(typeof status?.lastStop?.at, "number");

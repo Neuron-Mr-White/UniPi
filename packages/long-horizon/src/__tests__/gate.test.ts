@@ -2,8 +2,8 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { getSharedLongHorizonMode, setSharedLongHorizonMode, UNIPI_EVENTS } from "@pi-unipi/core";
+import { beforeEach, test } from "node:test";
+import { resetBusForTests, UNIPI_EVENTS } from "@pi-unipi/core";
 import {
   ALL_MODE_TOOLS,
   DELEGATION_TOOLS,
@@ -27,6 +27,8 @@ function harness() {
   });
   return { gate, owner, dir };
 }
+
+beforeEach(() => resetBusForTests());
 
 // ── pure surface logic ───────────────────────────────────────────────────
 
@@ -185,7 +187,7 @@ test("badge prints on mode transitions only, not every turn", async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("after register + setSessionMode('none'), getSharedLongHorizonMode is none and event is emitted", () => {
+test("after register + setSessionMode('none'), the display mode is none and event is emitted", () => {
   const { gate, dir } = harness();
   const events: Array<{ name: string; payload: unknown }> = [];
   const activeTools: string[] = ["bash", ...ALL_MODE_TOOLS];
@@ -203,18 +205,16 @@ test("after register + setSessionMode('none'), getSharedLongHorizonMode is none 
   };
 
   try {
-    setSharedLongHorizonMode("goal");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     gate.register(pi as any);
     gate.setSessionMode("none");
 
-    assert.equal(getSharedLongHorizonMode(), "none");
+    assert.equal(gate.displayMode(), "none");
     assert.deepEqual(activeTools.filter((name) => !ALL_MODE_TOOLS.includes(name)), ["bash"], "session mode sync strips the mode tools");
     const resolved = events.filter((e) => e.name === UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED);
     assert.equal(resolved.length, 1);
     assert.deepEqual(resolved[0]?.payload, { mode: "none", source: "explicit" });
   } finally {
-    setSharedLongHorizonMode(undefined);
     rmSync(dir, { recursive: true, force: true });
   }
 });

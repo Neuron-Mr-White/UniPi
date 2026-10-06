@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, setHerdrWorking, setSharedFusionStatus, stateDir, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS } from "@pi-unipi/core";
+import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, setHerdrWorking, stateDir, UNIPI_EVENTS, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS, bus } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -285,7 +285,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     if (active?.kind === "fusion") {
       // Displayed in the input-box model slot (footer glance frame):
       // the working lead lit, the sidekick muted.
-      setSharedFusionStatus({
+      bus.emit(UNIPI_EVENTS.FUSION_STATUS, {
         leadName: names(active.lead),
         leadKey: active.lead,
         sidekickKey: active.sidekick,
@@ -298,7 +298,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         sidekickToolCalls: runtime?.totalToolCalls() ?? 0,
       });
     } else {
-      setSharedFusionStatus(undefined);
+      bus.emit(UNIPI_EVENTS.FUSION_STATUS, undefined);
     }
   }
 
@@ -670,7 +670,7 @@ export default function fusionExtension(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", () => {
     stopRuntime();
-    setSharedFusionStatus(undefined);
+    bus.emit(UNIPI_EVENTS.FUSION_STATUS, undefined);
   });
 
   pi.on("model_select", (event, ctx) => {

@@ -21,8 +21,8 @@ import {
   resolveDecisionModel,
   registerCommandRunner,
   runCommandByName,
-  setSharedPermissionMode,
 } from "@pi-unipi/core";
+import { updateWorkflowStatus } from "../status.js";
 import { decideToolCall, type Decision, type JevRisk } from "./decide.js";
 import { requestApproval } from "./prompt.js";
 import {
@@ -96,7 +96,7 @@ export function createPermissionController(pi: ExtensionAPI): PermissionControll
 
   function set(next: PermissionMode, cwd: string): void {
     writePermissionMode(next, cwd);
-    setSharedPermissionMode(next);
+    updateWorkflowStatus({ permissionMode: next });
     emitEvent(pi, UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: next });
     debugLog(`mode set to ${next}`);
   }
@@ -221,9 +221,8 @@ export function registerPermissionModes(pi: ExtensionAPI, controller: Permission
   pi.on("session_start", async (_event, ctx) => {
     const settings = readPermissionSettings(ctx.cwd);
     registerPermissionSettings(ctx.cwd);
-    // The holder is what the footer reads (its event subscription attaches after
-    // this handler runs); the event stays for other consumers.
-    setSharedPermissionMode(settings.mode);
+    // The bus snapshot is what the footer reads; the event stays for other consumers.
+    updateWorkflowStatus({ permissionMode: settings.mode });
     emitEvent(pi, UNIPI_EVENTS.PERMISSION_MODE_CHANGED, { mode: settings.mode });
   });
 }

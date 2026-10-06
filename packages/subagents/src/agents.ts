@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { getSharedFusionStatus, registerCommandRunner } from "@pi-unipi/core";
+import { bus, UNIPI_EVENTS, registerCommandRunner } from "@pi-unipi/core";
 import { EXPLORE_TOOLS, builtinProfiles, loadProfiles, type AgentProfile } from "./profiles.js";
 import { resolveModel } from "./model-resolver.js";
 
@@ -80,7 +80,7 @@ async function pickModel(ui: UI, ctx: ExtensionContext): Promise<string | undefi
   const cur = ctx.model as { provider?: string; id?: string } | undefined;
   const choices = new Map<string, string>();
   if (cur?.provider && cur.id) choices.set(`Your current model — ${cur.provider}/${cur.id}`, `${cur.provider}/${cur.id}`);
-  const sidekick = getSharedFusionStatus()?.sidekickKey;
+  const sidekick = bus.get(UNIPI_EVENTS.FUSION_STATUS)?.sidekickKey;
   if (sidekick) choices.set(`Fusion sidekick — ${sidekick}`, sidekick);
   const choice = await ui.select("Model", [DEFAULT, ...choices.keys(), OTHER]);
   if (choice === undefined) return null;

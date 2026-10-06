@@ -1,12 +1,14 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getSharedFusionStatus } from "@pi-unipi/core";
+import { UNIPI_EVENTS, bus, resetBusForTests } from "@pi-unipi/core";
 import fusionExtension from "../src/index.js";
 import { EDIT_NUDGE, bashNudge } from "../src/prompts.js";
 import { globalPresetPath, loadPreset } from "../src/preset.js";
+
+beforeEach(() => resetBusForTests());
 
 function model(provider: string, id: string): Record<string, unknown> {
   return { provider, id, name: id, reasoning: true, cost: { input: 1, cacheRead: 0.1, output: 2 } };
@@ -76,8 +78,8 @@ test("session_start restores a persisted Fusion lead when pi boots on sidekick",
     await handlers.get("session_start")?.({}, ctx);
     assert.deepEqual(calls.setModel, [lead]);
     assert.deepEqual(calls.thinking, ["high"]);
-    assert.equal(getSharedFusionStatus()?.leadName, "lead");
-    assert.equal(getSharedFusionStatus()?.sidekickName, "side");
+    assert.equal(bus.get(UNIPI_EVENTS.FUSION_STATUS)?.leadName, "lead");
+    assert.equal(bus.get(UNIPI_EVENTS.FUSION_STATUS)?.sidekickName, "side");
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
@@ -95,7 +97,7 @@ test("session_start disables Fusion and warns when the persisted lead is unavail
     await handlers.get("session_start")?.({}, ctx);
     assert.equal(calls.setModel.length, 0);
     assert.deepEqual(calls.notices, ["Fusion lead a/lead unavailable — Fusion off"]);
-    assert.equal(getSharedFusionStatus(), undefined);
+    assert.equal(bus.get(UNIPI_EVENTS.FUSION_STATUS), undefined);
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
@@ -252,7 +254,7 @@ test("trivial bash does not contribute to the nudge streak or lead status count"
     await handlers.get("session_start")?.({}, { ...ctx, model: lead });
     const toolResult = handlers.get("tool_result")!;
     toolResult({ toolName: "bash", input: { command: "git status" }, content: [] }, ctx);
-    const status = getSharedFusionStatus();
+    const status = bus.get(UNIPI_EVENTS.FUSION_STATUS);
     assert.equal(status?.busy, false);
     assert.equal(status?.leadToolCalls, 1);
   } finally {

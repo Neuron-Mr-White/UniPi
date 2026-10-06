@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { emitEvent, isChildProcess, UNIPI_EVENTS, setSharedLongHorizonMode } from "@pi-unipi/core";
+import { emitEvent, isChildProcess, UNIPI_EVENTS } from "@pi-unipi/core";
 import { LH_MODES, MODE_REGISTRY, modeForOwnerKind, type LhMode } from "./modes.js";
 import type { OwnerCoordinator, OwnerEvent, OwnerState } from "./owner.js";
 import { resolveMode, type ResolutionSource } from "./judge/resolve.js";
@@ -47,6 +47,9 @@ export interface GateDeps {
    * refused and the owner keeps the turn.
    */
   readonly onExplicitSwitch?: (mode: LhMode) => boolean;
+  /** Called after every display-mode change (before_agent_start, setSessionMode,
+   *  resetDisplay, owner finish/suspend) so index can publish LH_STATE. */
+  readonly onDisplayChanged?: () => void;
 }
 
 /** Delegation tools governed by the exposure matrix (design §8). */
@@ -160,6 +163,10 @@ export class Gate {
   private pendingExplicit: LhMode | null = null;
   /** Sticky per-session mode (/unipi:regular): judge/default skip until an explicit command clears it. */
   private sessionOverride: LhMode | null = null;
+  /** Mode the footer should show right now: the last resolved turn mode, or
+   *  the session override / settings default after an owner settlement
+   *  (UNI-122 — the footer flips at settlement, not at the next turn). */
+  private display: LhMode = "none";
   /** Mode of the last badge shown, so only mode TRANSITIONS reprint. */
   private lastBadge: LhMode | null = null;
   private readonly deps: GateDeps;
@@ -167,6 +174,11 @@ export class Gate {
 
   constructor(deps: GateDeps) {
     this.deps = deps;
+  }
+
+  /** Current display mode for the footer (no turn required). */
+  displayMode(): LhMode {
+    return this.display;
   }
 
   /** Commands call this before sendUserMessage to force next-turn mode (one-shot;
@@ -184,7 +196,8 @@ export class Gate {
   setSessionMode(mode: LhMode): void {
     this.sessionOverride = mode;
     this.pendingExplicit = null;
-    setSharedLongHorizonMode(mode);
+    this.display = mode;
+    this.deps.onDisplayChanged?.();
     if (this.pi) {
       syncModeTools(this.pi, mode);
       emitEvent(this.pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
@@ -207,6 +220,14 @@ export class Gate {
    */
   onOwnerChanged(event: OwnerEvent): void {
     try {
+      // UNI-122: an owner settling (finished) or parking (suspended) between
+      // turns must drop the footer back to the session default IMMEDIATELY —
+      // the next turn may never come. Applied always (pi/child state is
+      // irrelevant for the display value).
+      if (event.type === "finished" || event.type === "suspended") {
+        this.display = this.sessionOverride ?? (this.deps.loadSettings?.() ?? loadSettings()).defaultMode;
+        this.deps.onDisplayChanged?.();
+      }
       if (!this.pi) return;
       if (event.type !== "activated" && event.type !== "resumed" && event.type !== "restored") return;
       if (isChildProcess() && process.env.UNIPI_LH_ALLOW_CHILD !== "1") return;
@@ -229,6 +250,14 @@ export class Gate {
     } catch {
       // Session start must never fail because of tool syncing.
     }
+  }
+
+  /** Session start: point the display at the sticky session mode if one
+   *  survives, else the settings default — before owner.restore()'s onChange
+   *  publishes LH_STATE. */
+  resetDisplay(defaultMode: LhMode): void {
+    this.display = this.sessionOverride ?? defaultMode;
+    this.deps.onDisplayChanged?.();
   }
 
   current(): GateState | null {
@@ -290,9 +319,10 @@ export class Gate {
       // systemPromptOptions.selectedTools), so flip the mode tools before
       // anything else consumes the resolution.
       syncModeTools(pi, state.mode);
-      // Shared holder the footer pulls each render (timing-independent), plus
+      // The bus's sticky display mode (published via onDisplayChanged), plus
       // the event for the badge/other listeners.
-      setSharedLongHorizonMode(state.mode);
+      this.display = state.mode;
+      this.deps.onDisplayChanged?.();
       emitEvent(pi, UNIPI_EVENTS.LONG_HORIZON_MODE_RESOLVED, {
         mode: state.mode,
         source: state.source,

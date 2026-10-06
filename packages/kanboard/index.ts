@@ -20,11 +20,10 @@ import { Text } from "@earendil-works/pi-tui";
 import {
   MODULES,
   UNIPI_EVENTS,
+  bus,
   emitEvent,
   getPackageVersion,
   getSettings,
-  getSharedKanboardStatus,
-  getSharedOwnerStatus,
   initUnipiDirs,
   isChildProcess,
   registerCommandRunner,
@@ -32,7 +31,6 @@ import {
   registerMoveHandler,
   registerNudgeProvider,
   registerProgressRenderer,
-  setSharedKanboardStatus,
   appendProgress,
 } from "@pi-unipi/core";
 
@@ -133,7 +131,14 @@ export default function (pi: ExtensionAPI) {
     list: () => listTasks(),
     listReady: () => listTasks(["--ready"]),
     session: sessionId,
-    ownerStatus: () => getSharedOwnerStatus(),
+    // The long-horizon owner lifecycle rides the bus's sticky LH_STATE now;
+    // the monitor's deps shape is unchanged.
+    ownerStatus: () => {
+      const s = bus.get(UNIPI_EVENTS.LH_STATE);
+      return s
+        ? { ...(s.owner ? { owner: s.owner } : {}), ...(s.lastStop ? { lastStop: s.lastStop } : {}) }
+        : undefined;
+    },
     now: () => Date.now(),
     // User-only: only QUEUE here — a sendMessage custom message would be
     // converted to a user-role LLM message (never what a notice wants).
@@ -156,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 
   const refreshHolder = async (): Promise<void> => {
     try {
-      setSharedKanboardStatus({
+      bus.emit(UNIPI_EVENTS.KANBOARD_STATUS, {
         claims: (await ownClaims()).map((task) => task.id),
         autowork: guard.remaining().autowork,
       });
@@ -449,7 +454,7 @@ export default function (pi: ExtensionAPI) {
           .then(() => debug(`released ${task.id} at shutdown`))
           .catch((error) => debug(`shutdown release ${task.id} failed: ${error instanceof Error ? error.message : String(error)}`));
       }
-      setSharedKanboardStatus({ claims: [], autowork: guard.remaining().autowork });
+      bus.emit(UNIPI_EVENTS.KANBOARD_STATUS, { claims: [], autowork: guard.remaining().autowork });
     } catch {
       // Shutdown must never hang the session teardown.
     }

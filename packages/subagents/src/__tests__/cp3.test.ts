@@ -174,7 +174,7 @@ test("spawn env: DEPTH=parent+1, MAX_DEPTH blocks nesting by default", () => {
 // ── review items: model/thinking resolution, resume guard, session dirs ─────
 
 import { resolveSubagentModel, resolveSubagentThinking } from "../index.js";
-import { setSharedFusionStatus } from "@pi-unipi/core";
+import { UNIPI_EVENTS, bus, resetBusForTests } from "@pi-unipi/core";
 
 function modelCtx(id = "ds/deepseek-flash") {
   return { model: { provider: "omniroute", id } } as never;
@@ -190,10 +190,11 @@ test("model order: profile → general-parent → config → sidekickKey → par
   // config.defaultModel for non-general
   assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true, defaultModel: "cfg/model" }), "cfg/model");
   // fusion sidekickKey next
-  setSharedFusionStatus({ leadName: "L", leadEffort: "", sidekickName: "S", sidekickEffort: "", leadKey: "l/k", sidekickKey: "side/kick" });
+  resetBusForTests();
+  bus.emit(UNIPI_EVENTS.FUSION_STATUS, { leadName: "L", leadEffort: "", sidekickName: "S", sidekickEffort: "", leadKey: "l/k", sidekickKey: "side/kick" });
   assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true }), "side/kick");
   // parent last
-  setSharedFusionStatus(undefined);
+  bus.emit(UNIPI_EVENTS.FUSION_STATUS, undefined);
   assert.equal(resolveSubagentModel(custom, modelCtx(), { enabled: true }), "omniroute/ds/deepseek-flash");
 });
 

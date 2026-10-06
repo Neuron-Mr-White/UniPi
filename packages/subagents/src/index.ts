@@ -18,7 +18,7 @@ import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
-  UNIPI_EVENTS, emitEvent, getSettings, isChildProcess, registerSettings, registerWaitSource, getSharedFusionStatus, SPINNER_MS,
+  UNIPI_EVENTS, bus, emitEvent, getSettings, isChildProcess, registerSettings, registerWaitSource, SPINNER_MS,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -130,7 +130,7 @@ export function resolveSubagentModel(
   const parent = cur ? `${String(cur.provider)}/${String(cur.id)}` : "";
   if (profile.id === "subagent_general") return parent;
   if (config.defaultModel !== undefined) return config.defaultModel;
-  const sidekickKey = getSharedFusionStatus()?.sidekickKey;
+  const sidekickKey = bus.get(UNIPI_EVENTS.FUSION_STATUS)?.sidekickKey;
   if (sidekickKey !== undefined) return sidekickKey;
   return parent;
 }
@@ -622,7 +622,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
       delete event.systemPromptOptions.sections["subagents"];
       return undefined;
     }
-    const fusionActive = getSharedFusionStatus() !== undefined;
+    const fusionActive = bus.get(UNIPI_EVENTS.FUSION_STATUS) !== undefined;
     const out = [
       "You can delegate self-contained subtasks to subagents with `run_subagent`. A subagent is an independent agent with its own context: it does not see this conversation, so put everything it needs in `task` — the goal, relevant paths, constraints, and exactly what to report back.",
       "",
