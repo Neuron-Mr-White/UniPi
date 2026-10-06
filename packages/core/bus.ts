@@ -51,6 +51,8 @@ export interface LhStateEvent {
 export interface KanboardStatusEvent {
   claims: string[];
   autowork: boolean;
+  /** Full CLI prefix for board writes: `<binary> --actor agent --project <slug>`. */
+  cli?: string;
 }
 
 export interface WorkflowStatusEvent {

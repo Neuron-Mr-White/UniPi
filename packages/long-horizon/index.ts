@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, kanboardClaimsReminder, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -238,6 +238,8 @@ export default function longHorizon(pi: ExtensionAPI): void {
     // single before_settle nudge); timer wakes use sendNow directly.
     send,
     sendNow,
+    // UNI-123b: goal continuations carry the kanboard board contract.
+    boardLine: () => kanboardClaimsReminder(bus.get(UNIPI_EVENTS.KANBOARD_STATUS)),
   });
   // Ralph loop rides the same goal machine + verifier; footer events preserved.
   const ralph = new RalphLoop({

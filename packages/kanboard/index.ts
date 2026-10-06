@@ -26,6 +26,7 @@ import {
   initUnipiDirs,
   isChildProcess,
   registerCommandRunner,
+  registerCompactionContext,
   registerEvidenceContributor,
   registerMoveHandler,
   registerNudgeProvider,
@@ -48,6 +49,7 @@ import {
 } from "./src/commands.js";
 import { createWriteGuard } from "./src/guard.js";
 import { NOTICE_ENTRY, flushNotices, NoticeBuffer } from "./src/notice-buffer.js";
+import { kanboardCompactionContext, rearmOnOwnerResume } from "./src/bus-hooks.js";
 import { createKanboardMonitor } from "./src/monitor.js";
 import { createDebugLog } from "./src/debug.js";
 import { createProgressTracker, registerProgressReminders, ANTI_POISONING_SUFFIX } from "./src/reminders.js";
@@ -65,6 +67,9 @@ const VERSION = getPackageVersion(dirname(fileURLToPath(import.meta.url)));
 
 /** Utility owns the frozen judged set, so kanboard asks it to reveal the skill. */
 export const KANBOARD_SKILL = "kanboard";
+
+/** Last non-null CLI prefix (`<bin> --actor agent --project <slug>`); survives CLI re-attach gaps (UNI-123d). */
+let lastCliPrefix: string | null = null;
 
 export default function (pi: ExtensionAPI) {
   registerMoveHandler(kanboardMoveHandler);
@@ -98,6 +103,12 @@ export default function (pi: ExtensionAPI) {
     } catch {
       return "";
     }
+  };
+
+  /** Full CLI prefix for board writes, or null while the CLI/slug is unknown. */
+  const currentCliPrefix = (): string | null => {
+    const slug = projectSlug();
+    return cli && slug ? `${cli.binary.path} --actor agent --project ${slug}` : null;
   };
 
   // ── board reads (lead monitor/evidence/holder/notice) ────────────────
@@ -151,8 +162,10 @@ export default function (pi: ExtensionAPI) {
       void refreshHolder();
     },
     cliPrefix: () => {
-      const slug = projectSlug();
-      return cli && slug ? `${cli.binary.path} --actor agent --project ${slug}` : null;
+      // UNI-123d: before the CLI attaches, fall back to the last known prefix
+      // so nudge text carries the real --actor/--project invocation.
+      const current = currentCliPrefix();
+      return current ?? lastCliPrefix;
     },
     debug,
   });
@@ -171,6 +184,19 @@ export default function (pi: ExtensionAPI) {
   if (!isChildProcess()) {
     try {
       registerNudgeProvider("kanboard", 50, (info) => monitor.propose(info));
+    } catch {
+      // Registration must never block module load.
+    }
+    // UNI-123a: the board contract survives compaction — the reminder rides
+    // every summary while claims are open.
+    try {
+      registerCompactionContext("kanboard", kanboardCompactionContext);
+    } catch {
+      // Registration must never block module load.
+    }
+    // UNI-123c: a resumed owner re-arms the settle monitor (pause disarmed it).
+    try {
+      rearmOnOwnerResume(pi, monitor);
     } catch {
       // Registration must never block module load.
     }
@@ -452,7 +478,12 @@ export default function (pi: ExtensionAPI) {
           .then(() => debug(`released ${task.id} at shutdown`))
           .catch((error) => debug(`shutdown release ${task.id} failed: ${error instanceof Error ? error.message : String(error)}`));
       }
-      bus.emit(UNIPI_EVENTS.KANBOARD_STATUS, { claims: [], autowork: guard.remaining().autowork });
+      const shutdownPrefix = currentCliPrefix() ?? lastCliPrefix;
+      bus.emit(UNIPI_EVENTS.KANBOARD_STATUS, {
+        claims: [],
+        autowork: guard.remaining().autowork,
+        ...(shutdownPrefix ? { cli: shutdownPrefix } : {}),
+      });
     } catch {
       // Shutdown must never hang the session teardown.
     }

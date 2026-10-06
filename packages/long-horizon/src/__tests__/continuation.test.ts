@@ -44,7 +44,10 @@ interface Rig {
   verifierResults: Array<{ verdict: string; reason: string; missing?: string[] }>;
 }
 
-function rig(verdicts: Array<{ verdict: string; reason: string; missing?: string[] }> = []): Rig {
+function rig(
+  verdicts: Array<{ verdict: string; reason: string; missing?: string[] }> = [],
+  options: { boardLine?: () => string | null } = {},
+): Rig {
   const dir = mkdtempSync(join(tmpdir(), "lh-cont-"));
   const machine = new GoalMachine({ statePath: () => join(dir, "goal.json") });
   const owner = new OwnerCoordinator({ statePath: () => join(dir, "owner.json") });
@@ -68,6 +71,7 @@ function rig(verdicts: Array<{ verdict: string; reason: string; missing?: string
     send: (message) => sent.push(message),
     notify: (text, level) => notifications.push({ text, level: level ?? "warning" }),
     schedule: (fire, delayMs) => timers.push({ delayMs, fire }),
+    ...(options.boardLine ? { boardLine: options.boardLine } : {}),
   });
   return { machine, owner, toolset, sent, notifications, timers, continuation, dir, verifierResults };
 }
@@ -393,5 +397,40 @@ test("a pending proposal is discarded when no drivable goal remains (FIX 2d)", a
   assert.equal(decision.action, "none");
   assert.equal(r.toolset.peekProposal(), null);
   assert.equal(r.sent.length, 1, "kickoff only");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+// ── UNI-123b: kanboard board contract rides goal continuations ───────────
+
+const BOARD_LINE = "Kanboard: this session holds UNI-1 In Progress. Never leave a claimed task In Progress.";
+
+test("boardLine is appended to the continuation hint", async () => {
+  const r = rig([], { boardLine: () => BOARD_LINE });
+  await startGoal(r);
+  const decision = await r.continuation.onTurnEnd(activity());
+  assert.equal(decision.action, "continue");
+  const hint = r.sent.at(-1)!;
+  assert.ok(hint.endsWith(BOARD_LINE), "hint must end with the board contract");
+  assert.ok(hint.includes("\n\nKanboard:"), "blank-line separated");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("boardLine null leaves the hint unchanged", async () => {
+  const r = rig([], { boardLine: () => null });
+  await startGoal(r);
+  await r.continuation.onTurnEnd(activity());
+  const hint = r.sent.at(-1)!;
+  assert.ok(!hint.includes("Kanboard:"), "clean board → no reminder");
+  rmSync(r.dir, { recursive: true, force: true });
+});
+
+test("kickoff never carries the board line", async () => {
+  const r = rig([], { boardLine: () => BOARD_LINE });
+  r.machine.create("all tests pass");
+  r.owner.activate("goal", "all tests pass");
+  const kickoff = await r.continuation.onTurnEnd(activity());
+  assert.deepEqual(kickoff, { action: "none", reason: "kickoff-delivered" });
+  assert.equal(r.sent.length, 1);
+  assert.ok(!r.sent[0]!.includes("Kanboard:"), "kickoff contract stays cache-stable");
   rmSync(r.dir, { recursive: true, force: true });
 });

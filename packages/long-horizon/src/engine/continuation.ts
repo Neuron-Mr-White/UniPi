@@ -69,6 +69,9 @@ export interface ContinuationDeps {
   sendNow?(message: string): void;
   /** User-only notification (wired to ctx.ui.notify at agent_end; optional in tests). */
   notify?(text: string, level?: "info" | "warning" | "error"): void;
+  /** Kanboard claims reminder appended to continuation messages (UNI-123b);
+   *  null/empty when the board is clean. Never rides kickoff/wrap-up/wakes. */
+  boardLine?(): string | null;
   getTokenCount?(): number | undefined;
   now?(): number;
   schedule?(callback: () => void, delayMs: number): void;
@@ -288,21 +291,27 @@ export class GoalContinuation {
     this.consecutiveWaits = 0;
     const hintKind = selectHint(settled, activity, this.recoveryArmed);
     this.recoveryArmed = false;
+    // UNI-123b: goal-mode continuations still owe the board its finish/block
+    // contract — ride the reminder on every continuation message (never on
+    // kickoff, wrap-up, or timer wakes).
+    const boardLine = this.deps.boardLine?.() ?? null;
+    const sendContinuation = (message: string): void =>
+      this.deps.send(boardLine ? `${message}\n\n${boardLine}` : message);
     switch (hintKind) {
       case "recovery":
-        this.deps.send(RECOVERY_FRAGMENT);
+        sendContinuation(RECOVERY_FRAGMENT);
         break;
       case "nudge-no-tool":
-        this.deps.send(NO_TOOL_NUDGE);
+        sendContinuation(NO_TOOL_NUDGE);
         break;
       case "nudge-no-progress":
-        this.deps.send(NO_PROGRESS_NUDGE);
+        sendContinuation(NO_PROGRESS_NUDGE);
         break;
       case "terminal-audit":
-        this.deps.send(TERMINAL_AUDIT);
+        sendContinuation(TERMINAL_AUDIT);
         break;
       default:
-        this.deps.send(renderContinuationHint(settled, this.lastVerifierReason));
+        sendContinuation(renderContinuationHint(settled, this.lastVerifierReason));
     }
     return { action: "continue", via: hintKind };
   }
