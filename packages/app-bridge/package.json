@@ -1,7 +1,7 @@
 {
   "name": "@pi-unipi/app-bridge",
   "version": "3.0.0-alpha.33",
-  "description": "Live bridge between a pi TUI session and the UniPi phone app — streaming chat, prompts, steering and dialogs from the phone",
+  "description": "Live bridge between a pi TUI session and the UniPi phone app \u2014 streaming chat, prompts, steering and dialogs from the phone",
   "type": "module",
   "main": "index.ts",
   "license": "MIT",
@@ -34,7 +34,8 @@
     "@pi-unipi/core": "3.0.0-alpha.33"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.87.1"
+    "@earendil-works/pi-coding-agent": "^0.87.1",
+    "@earendil-works/pi-tui": "^0.87.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

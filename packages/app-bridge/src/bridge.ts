@@ -28,6 +28,7 @@ import {
   type SessionInfo,
 } from "./wire.js";
 import { setRemoteDialogs } from "./remote.js";
+import { fileSuggestions } from "./files.js";
 
 export const BRIDGE_VERSION = "1.0.0";
 
@@ -328,6 +329,11 @@ export function createBridge(pi: ExtensionAPI) {
       case "history": {
         const page = historyPage(c.sessionManager.getBranch(), msg.before, Math.min(ENTRIES_BUDGET, LINE_BUDGET - 32 * 1024));
         write(sock, { t: "history", before: msg.before, entries: page.entries, more: page.more, ref: msg.ref });
+        return;
+      }
+      case "files": {
+        const items = await fileSuggestions(c.cwd, msg.query);
+        write(sock, { t: "files", query: msg.query, items, ref: msg.ref });
         return;
       }
     }
