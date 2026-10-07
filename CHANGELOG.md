@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.33] — 2026-10-07
+
+### Added
+- `app-bridge`: **history paging.** The phone gets the newest part of a session when it opens a chat (about 256 KB) and loads older history page by page as you scroll up (`history{before}`), down to the start of the conversation, past compactions. (UNI-113)
+
 ## [3.0.0-alpha.32] — 2026-10-07
 
 ### Fixed

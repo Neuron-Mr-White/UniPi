@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/info-screen",
-  "version": "3.0.0-alpha.32",
+  "version": "3.0.0-alpha.33",
   "description": "Unicrab startup splash and the /unipi:info dashboard — this session, context, usage, compaction savings",
   "type": "module",
   "main": "index.ts",
@@ -33,7 +33,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.32"
+    "@pi-unipi/core": "3.0.0-alpha.33"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.87.1",
