@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.32] — 2026-10-07
+
+### Fixed
+- `app-bridge`: long sessions no longer fail to open on the phone with "hello message too large". Run logs inside tool and custom-message details (sidekick event lists, diffs) are dropped from what the phone gets, and the history is sized in UTF-8 bytes with room left for the command and model lists. (UNI-113)
+
 ## [3.0.0-alpha.31] — 2026-10-07
 
 ### Added
