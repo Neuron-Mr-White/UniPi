@@ -35,6 +35,7 @@ import updater from "@pi-unipi/updater";
 import inputShortcuts from "@pi-unipi/input-shortcuts";
 import fusion from "@pi-unipi/fusion";
 import watchdog from "@pi-unipi/watchdog";
+import appBridge from "@pi-unipi/app-bridge";
 
 export default function (pi: ExtensionAPI) {
   const api = withCommandEcho(pi);
@@ -130,6 +131,7 @@ export default function (pi: ExtensionAPI) {
   load("input-shortcuts", inputShortcuts);
   load("fusion", fusion);
   load("watchdog", watchdog);
+  load("app-bridge", appBridge);
 
   // After all modules registered: apply the mcode-style wrapper. Re-register
   // with the RAW register (not the capturing proxy) to avoid double-capture.

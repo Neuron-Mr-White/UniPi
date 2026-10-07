@@ -83,6 +83,7 @@
     "typebox": "^1.1.38"
   },
   "dependencies": {
+    "@pi-unipi/app-bridge": "3.0.0-alpha.30",
     "@pi-unipi/ask-user": "3.0.0-alpha.30",
     "@pi-unipi/background-tasks": "3.0.0-alpha.30",
     "@pi-unipi/btw": "3.0.0-alpha.30",

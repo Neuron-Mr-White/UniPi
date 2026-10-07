@@ -1,0 +1,51 @@
+{
+  "name": "@pi-unipi/app-bridge",
+  "version": "3.0.0-alpha.30",
+  "description": "Live bridge between a pi TUI session and the UniPi phone app — streaming chat, prompts, steering and dialogs from the phone",
+  "type": "module",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Neuron Mr White",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Neuron-Mr-White/unipi.git",
+    "directory": "packages/app-bridge"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "unipi",
+    "mobile",
+    "bridge"
+  ],
+  "files": [
+    "index.ts",
+    "src/**/*.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "npx tsx --test tests/*.test.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pi-unipi/core": "3.0.0-alpha.30"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.87.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
+}

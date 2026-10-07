@@ -48,3 +48,4 @@ export * from "./src/hints/index.js";
 export * from "./src/hints/store.js";
 export { CRAB_14_LINES_256, CRAB_14_LINES_TRUECOLOR, CRAB_22_LINES_256, CRAB_22_LINES_TRUECOLOR } from "./src/hints/crab-data.js";
 export * from "./harness-messages.js";
+export * from "./remote-dialogs.js";

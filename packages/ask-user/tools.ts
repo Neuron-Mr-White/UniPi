@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { bus, ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, UNIPI_EVENTS, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
+import { bus, ASK_USER_TOOLS, COMPACTOR_INSTRUCTION, UNIPI_EVENTS, raceRemote, withHerdrBlocked, type Attachment } from "@pi-unipi/core";
 import { AskPanel, type PanelResult } from "./ask-ui.js";
 import { getAskUserSettings, type AskUserSettings } from "./config.js";
 import { queueCompactHandoff, queueDirectHandoff } from "./handoff.js";
@@ -20,6 +20,35 @@ import { answerSummary, answersText, clarifyText, HEADER_MAX, prepareArgs, type 
 import type { SessionLauncherResult } from "./types.js";
 
 /** Subagent children never talk to the user directly — their lead owns ambiguity. */
+/**
+ * Turns the phone app's answer into a panel result. Phone shape:
+ * `{type:"answered", answers:[{selected, custom_text?, skipped}]}` or
+ * `{type:"cancel"}` / null. Unknown option values are dropped; the answer
+ * list is padded/trimmed to the question count (missing = skipped).
+ */
+export function phoneAnswer(value: unknown, questions: readonly AskQuestion[]): PanelResult {
+  const v = value as { type?: unknown; answers?: unknown } | null;
+  if (!v || v.type !== "answered" || !Array.isArray(v.answers)) return { type: "cancel" };
+  const answers: QuestionAnswer[] = questions.map((q, i) => {
+    const a = (v.answers as unknown[])[i] as { selected?: unknown; custom_text?: unknown; skipped?: unknown } | undefined;
+    if (!a || a.skipped === true) return { selected: [], skipped: true };
+    const allowed = new Set(q.options.map((o) => o.value ?? o.label));
+    let selected = Array.isArray(a.selected) ? a.selected.filter((s): s is string => typeof s === "string" && allowed.has(s)) : [];
+    if (!q.multi_select) selected = selected.slice(0, 1);
+    const custom = typeof a.custom_text === "string" && a.custom_text.trim() && q.other !== false ? a.custom_text.trim() : undefined;
+    if (!selected.length && !custom) return { selected: [], skipped: true };
+    return custom ? { selected, custom_text: custom, skipped: false } : { selected, skipped: false };
+  });
+  // An option with an action (end turn / new session) acts like it does in the TUI.
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]!;
+    if (q.multi_select) continue;
+    const opt = q.options.find((o) => o.action && (o.value ?? o.label) === answers[i]!.selected[0]);
+    if (opt) return { type: "action", question: i, option: opt, answers };
+  }
+  return { type: "answered", answers, attachments: [] };
+}
+
 export function isSubagentChild(env: Record<string, string | undefined> = process.env): boolean {
   return env.UNIPI_SUBAGENT_CHILD === "1";
 }
@@ -151,9 +180,18 @@ export function registerAskUserTools(pi: ExtensionAPI): void {
         });
       }
 
+      // The UniPi phone app (app bridge) can answer too: first answer wins,
+      // and a phone answer closes the TUI panel through `signal`.
       const result = await withHerdrBlocked(pi, "ask_user", () =>
-        ctx.ui.custom<PanelResult>((tui, theme, _kb, done) =>
-          new AskPanel(tui, theme, questions, done, undefined, { escape: settings.escape, digitAdvance: settings.digitAdvance, helpLine: settings.helpLine })),
+        raceRemote<PanelResult | undefined>(
+          { kind: "ask_user", title: questions.map((q) => q.header || q.question).join(" · "), questions },
+          (signal) =>
+            ctx.ui.custom<PanelResult>((tui, theme, _kb, done) => {
+              signal.addEventListener("abort", () => done({ type: "cancel" }), { once: true });
+              return new AskPanel(tui, theme, questions, done, undefined, { escape: settings.escape, digitAdvance: settings.digitAdvance, helpLine: settings.helpLine });
+            }),
+          (value) => phoneAnswer(value, questions),
+        ),
       );
       const legacy = questions.length === 1 ? { question: questions[0]!.question } : {};
 
