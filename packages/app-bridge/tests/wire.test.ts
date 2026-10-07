@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { LineSplitter, parseIn } from "../src/wire.js";
-import { clipText, fitLine, LINE_BUDGET, phoneSafe, snapshotEntries, wantedEntry } from "../src/snapshot.js";
+import { clipText, fitLine, jsonBytes, LINE_BUDGET, phoneSafe, snapshotEntries, wantedEntry } from "../src/snapshot.js";
 import { DialogHub, wrapUi } from "../src/dialogs.js";
 
 describe("parseIn", () => {
@@ -136,5 +136,34 @@ describe("entry filter", () => {
       { type: "thinking_level_change", id: "t", thinkingLevel: "high" },
     ];
     assert.deepEqual(snapshotEntries(branch).entries.map((e: any) => e.id), ["u", "r"]);
+  });
+});
+
+describe("details slimming (hello too large, 2026-10-07)", () => {
+  it("drops run logs from details, keeps the fields the phone shows", () => {
+    const e = {
+      type: "custom_message",
+      id: "x",
+      customType: "sidekick-completion",
+      content: "done",
+      details: { status: "completed", durationMs: 88019, usage: { cost: 0.06 }, text: "## Result", events: Array.from({ length: 400 }, (_, i) => ({ kind: "tool", output: "y".repeat(300), i })) },
+    };
+    const safe = phoneSafe(e) as any;
+    assert.equal(safe.details.events, undefined);
+    assert.equal(safe.details.status, "completed");
+    assert.equal(safe.details.text, "## Result");
+    assert.ok(JSON.stringify(safe).length < 2000);
+  });
+  it("caps tool-result details and keeps every snapshot under the entries budget in UTF-8 bytes", () => {
+    const branch = Array.from({ length: 40 }, (_, i) => ({
+      type: "message",
+      id: String(i),
+      message: { role: "toolResult", toolCallId: `c${i}`, content: [{ type: "text", text: "é".repeat(20000) }], details: { diff: "z".repeat(100000), exitCode: 0 } },
+    }));
+    const { entries, truncated } = snapshotEntries(branch, 300 * 1024);
+    assert.ok(jsonBytes(entries) <= 300 * 1024);
+    assert.equal(truncated, true);
+    assert.equal((entries.at(-1) as any).message.details.diff, undefined);
+    assert.equal((entries.at(-1) as any).message.details.exitCode, 0);
   });
 });

@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
-import { fitLine, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
+import { ENTRIES_BUDGET, LINE_BUDGET, fitLine, jsonBytes, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
 import {
   BRIDGE_PROTOCOL,
   LineSplitter,
@@ -216,23 +216,24 @@ export function createBridge(pi: ExtensionAPI) {
 
   const hello = (): OutMsg => {
     const c = ctx!;
-    const { entries, truncated } = snapshotEntries(c.sessionManager.getBranch());
-    return {
-      t: "hello",
+    const rest = {
+      t: "hello" as const,
       v: BRIDGE_PROTOCOL,
       pid: process.pid,
       piVersion: process.env.PI_VERSION,
       session: sessionInfo(),
       state: runState(),
-      entries,
-      truncated,
-      streaming: streaming ? { id: streaming.id, role: "assistant", content: phoneSafe(streaming.content) as unknown[] } : undefined,
-      tools: [...tools.values()],
-      commands: commands(),
+      streaming: streaming ? { id: streaming.id, role: "assistant" as const, content: phoneSafe(streaming.content) as unknown[] } : undefined,
+      tools: [...tools.values()].map((t) => ({ ...t, text: t.text ? clipText(t.text, 8 * 1024) : t.text })),
+      commands: commands().map((x) => ({ ...x, description: x.description ? clipText(x.description, 160) : x.description })),
       models: models(),
       dialogs: hub.list(),
       queue: [...queue],
     };
+    // Entries get whatever the rest of the hello leaves of the line budget.
+    const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
+    const { entries, truncated } = snapshotEntries(c.sessionManager.getBranch(), Math.max(64 * 1024, Math.min(ENTRIES_BUDGET, spare)));
+    return { ...rest, entries, truncated };
   };
 
   const writeRecord = () => {
