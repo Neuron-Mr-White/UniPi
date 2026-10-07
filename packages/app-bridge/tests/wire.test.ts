@@ -123,3 +123,18 @@ describe("DialogHub", () => {
     assert.equal(await p, undefined, "unknown option from the phone = no pick");
   });
 });
+
+describe("entry filter", () => {
+  it("drops the system prompt, hidden custom messages and context-edited entries", () => {
+    const branch = [
+      { type: "message", id: "s", message: { role: "system", content: "huge" } },
+      { type: "message", id: "u", message: { role: "user", content: "hi" } },
+      { type: "custom_message", id: "c", customType: "unipi-continue", content: "", display: false },
+      { type: "custom_message", id: "r", customType: "unipi-memory-recall-reminder", content: "x", display: true },
+      { type: "message", id: "gone", message: { role: "assistant", content: [] } },
+      { type: "context_edit", id: "e", targetId: "gone", replacement: null },
+      { type: "thinking_level_change", id: "t", thinkingLevel: "high" },
+    ];
+    assert.deepEqual(snapshotEntries(branch).entries.map((e: any) => e.id), ["u", "r"]);
+  });
+});

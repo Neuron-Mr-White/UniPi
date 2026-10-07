@@ -129,7 +129,7 @@ describe("app bridge over a unix socket", () => {
   it("greets with a snapshot", async () => {
     const hello = await c.next((m) => m.t === "hello");
     assert.equal(hello.session.name, "my session");
-    assert.deepEqual(hello.entries.map((e: any) => e.id), ["h", "m1", "m2"]);
+    assert.deepEqual(hello.entries.map((e: any) => e.id), ["m1", "m2"], "session header is not sent");
     assert.equal(hello.state.model.id, "m");
     assert.equal(hello.state.context.percent, 10);
     assert.equal(hello.state.cost, 0.01);

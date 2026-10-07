@@ -54,12 +54,28 @@ const STATE_ONLY_CUSTOM = new Set([
   "pi.virtual-model-state",
 ]);
 
+/** Entry types the phone never draws (state, tree bookkeeping). */
+const SKIP_TYPES = new Set(["label", "session_info", "session", "thinking_level_change", "context_edit", "branch_summary_state"]);
+
 export function wantedEntry(entry: unknown): boolean {
-  const e = entry as { type?: string; customType?: string } | null;
+  const e = entry as { type?: string; customType?: string; display?: boolean; message?: { role?: string } } | null;
   if (!e || typeof e.type !== "string") return false;
-  if (e.type === "label" || e.type === "session_info") return false;
+  if (SKIP_TYPES.has(e.type)) return false;
+  // The system prompt is huge and never shown.
+  if (e.type === "message" && e.message?.role === "system") return false;
   if (e.type === "custom" && e.customType && STATE_ONLY_CUSTOM.has(e.customType)) return false;
+  // Hidden custom messages (display:false, e.g. unipi-continue triggers).
+  if (e.type === "custom_message" && e.display === false) return false;
   return true;
+}
+
+/** Entries hidden by a later `context_edit` (replacement null) on the branch. */
+export function editedAway(branch: readonly unknown[]): Set<string> {
+  const hidden = new Set<string>();
+  for (const e of branch as Array<{ type?: string; targetId?: string; replacement?: unknown }>) {
+    if (e?.type === "context_edit" && typeof e.targetId === "string" && e.replacement === null) hidden.add(e.targetId);
+  }
+  return hidden;
 }
 
 /**
@@ -75,7 +91,11 @@ export function snapshotEntries(branch: readonly unknown[], budget = LINE_BUDGET
       break;
     }
   }
-  const picked = branch.slice(start).filter(wantedEntry).map((e) => phoneSafe(e));
+  const hidden = editedAway(branch);
+  const picked = branch
+    .slice(start)
+    .filter((e) => wantedEntry(e) && !hidden.has((e as { id?: string }).id ?? ""))
+    .map((e) => phoneSafe(e));
   let truncated = start > 0;
   const sizes = picked.map((e) => JSON.stringify(e).length + 1);
   let total = sizes.reduce((a, b) => a + b, 0);

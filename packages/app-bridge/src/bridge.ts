@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
-import { fitLine, phoneSafe, snapshotEntries, clipText } from "./snapshot.js";
+import { fitLine, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
 import {
   BRIDGE_PROTOCOL,
   LineSplitter,
@@ -505,8 +505,18 @@ export function createBridge(pi: ExtensionAPI) {
       try {
         if (!ctx || clients.size === 0) return;
         const leaf = ctx.sessionManager.getLeafEntry?.() ?? ctx.sessionManager.getBranch().at(-1);
-        if (leaf && (leaf as { message?: unknown }).message === event.message) send({ t: "entry", entry: phoneSafe(leaf) });
-        else send({ t: "entry", entry: phoneSafe({ type: "message", id: `live-${Date.now()}`, timestamp: new Date().toISOString(), message: event.message }) });
+        const l = leaf as { type?: string; message?: unknown; customType?: string } | undefined;
+        const msg = event.message as { customType?: string; content?: unknown; display?: boolean; details?: unknown };
+        // pi stores custom messages flat ({type:"custom_message", customType, content, …}).
+        const entry =
+          m.role === "custom"
+            ? l?.type === "custom_message" && l.customType === msg.customType
+              ? l
+              : { type: "custom_message", id: `live-${Date.now()}`, timestamp: new Date().toISOString(), customType: msg.customType, content: msg.content, display: msg.display, details: msg.details }
+            : l && l.message === event.message
+              ? l
+              : { type: "message", id: `live-${Date.now()}`, timestamp: new Date().toISOString(), message: event.message };
+        if (wantedEntry(entry)) send({ t: "entry", entry: phoneSafe(entry) });
         if (m.role === "assistant") send({ t: "state", ...runState() });
       } catch {
         // ignore
@@ -563,7 +573,9 @@ export function createBridge(pi: ExtensionAPI) {
     const from = lastLeaf ? branch.findIndex((e) => e.id === lastLeaf) + 1 : branch.length;
     lastLeaf = leafId;
     if (from <= 0) return;
-    for (const e of branch.slice(from)) if (e.type === "custom" || e.type === "custom_message" || e.type === "compaction" || e.type === "model_change") send({ t: "entry", entry: phoneSafe(e) });
+    for (const e of branch.slice(from)) {
+      if ((e.type === "custom" || e.type === "compaction" || e.type === "model_change") && wantedEntry(e)) send({ t: "entry", entry: phoneSafe(e) });
+    }
   };
   on("turn_end", safe(syncCustom));
   on("agent_settled", safe(syncCustom));
