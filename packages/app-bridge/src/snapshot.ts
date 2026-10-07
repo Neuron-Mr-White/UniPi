@@ -8,6 +8,8 @@ export const LINE_BUDGET = 900 * 1024;
 /** The entries of a hello snapshot get this much; the rest of the hello
  * (commands, models, state) fits in what is left of LINE_BUDGET. */
 export const ENTRIES_BUDGET = 600 * 1024;
+/** The first screenful(s) on connect; older history pages in on scroll-up. */
+export const HELLO_ENTRIES_BUDGET = 256 * 1024;
 /** Tool-result / custom-message `details` kept per entry: the phone reads
  * only small scalar fields (status, exit code, durations, usage, report text). */
 export const DETAILS_CLIP = 4 * 1024;
@@ -157,4 +159,38 @@ export function fitLine(msg: object): string {
   if (Buffer.byteLength(line, "utf8") <= LINE_BUDGET) return line;
   const t = (msg as { t?: string }).t ?? "unknown";
   return JSON.stringify({ t: "error", message: `A ${t} message was too large to send to the phone.` });
+}
+
+/**
+ * A page of history ending right before entry `before` on the active branch
+ * (compactions included as markers, nothing skipped): the newest entries
+ * that fit `budget`, oldest first. `more` = older entries remain.
+ * `before` not on the branch → empty page, more false.
+ */
+export function historyPage(branch: readonly unknown[], before: string, budget = ENTRIES_BUDGET): { entries: Json[]; more: boolean } {
+  const end = branch.findIndex((e) => (e as { id?: string })?.id === before);
+  if (end <= 0) return { entries: [], more: false };
+  const hidden = editedAway(branch);
+  const out: Json[] = [];
+  let used = 0;
+  let i = end - 1;
+  for (; i >= 0; i--) {
+    const e = branch[i];
+    if (!wantedEntry(e) || hidden.has((e as { id?: string }).id ?? "")) continue;
+    const safe = phoneSafe(e);
+    const size = jsonBytes(safe) + 1;
+    if (used + size > budget && out.length > 0) break;
+    out.push(size > budget ? phoneSafe(e, 8 * 1024) : safe);
+    used += size;
+  }
+  // Any wanted entry left before i?
+  let more = false;
+  for (let j = i; j >= 0; j--) {
+    const e = branch[j];
+    if (wantedEntry(e) && !hidden.has((e as { id?: string }).id ?? "")) {
+      more = true;
+      break;
+    }
+  }
+  return { entries: out.reverse(), more };
 }

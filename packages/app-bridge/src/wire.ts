@@ -90,7 +90,9 @@ export type OutMsg =
   | { t: "dialog_end"; id: number; by: "tui" | "phone" | "cancel" }
   | { t: "notify"; text: string; level: string }
   | { t: "error"; message: string; ref?: string }
-  | { t: "ack"; ref?: string };
+  | { t: "ack"; ref?: string }
+  /** A page of older entries (oldest first) ending right before `before`. */
+  | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string };
 
 /** phone → pi. */
 export type InMsg =
@@ -100,9 +102,11 @@ export type InMsg =
   | { t: "set_model"; provider: string; model: string; ref?: string }
   | { t: "set_thinking"; level: string; ref?: string }
   | { t: "compact"; instructions?: string; ref?: string }
-  | { t: "resync"; ref?: string };
+  | { t: "resync"; ref?: string }
+  /** Older history: entries before the entry `before` on the active branch. */
+  | { t: "history"; before: string; ref?: string };
 
-const IN_TYPES = new Set(["prompt", "abort", "answer", "set_model", "set_thinking", "compact", "resync"]);
+const IN_TYPES = new Set(["prompt", "abort", "answer", "set_model", "set_thinking", "compact", "resync", "history"]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
 export function parseIn(line: string): InMsg | { bad: string; ref?: string } | undefined {
@@ -139,6 +143,9 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       return { t: "set_thinking", level: m.level, ref };
     case "compact":
       return { t: "compact", instructions: typeof m.instructions === "string" ? m.instructions : undefined, ref };
+    case "history":
+      if (typeof m.before !== "string" || !m.before) return { bad: "history.before must be an entry id", ref };
+      return { t: "history", before: m.before.slice(0, 128), ref };
     default:
       return { t: m.t as "abort" | "resync", ref };
   }

@@ -13,7 +13,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
-import { ENTRIES_BUDGET, LINE_BUDGET, fitLine, jsonBytes, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
+import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
 import {
   BRIDGE_PROTOCOL,
   LineSplitter,
@@ -232,7 +232,7 @@ export function createBridge(pi: ExtensionAPI) {
     };
     // Entries get whatever the rest of the hello leaves of the line budget.
     const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
-    const { entries, truncated } = snapshotEntries(c.sessionManager.getBranch(), Math.max(64 * 1024, Math.min(ENTRIES_BUDGET, spare)));
+    const { entries, truncated } = snapshotEntries(c.sessionManager.getBranch(), Math.max(64 * 1024, Math.min(HELLO_ENTRIES_BUDGET, spare)));
     return { ...rest, entries, truncated };
   };
 
@@ -325,6 +325,11 @@ export function createBridge(pi: ExtensionAPI) {
       case "resync":
         write(sock, hello());
         return;
+      case "history": {
+        const page = historyPage(c.sessionManager.getBranch(), msg.before, Math.min(ENTRIES_BUDGET, LINE_BUDGET - 32 * 1024));
+        write(sock, { t: "history", before: msg.before, entries: page.entries, more: page.more, ref: msg.ref });
+        return;
+      }
     }
   };
 

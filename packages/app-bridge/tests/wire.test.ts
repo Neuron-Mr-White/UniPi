@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { LineSplitter, parseIn } from "../src/wire.js";
-import { clipText, fitLine, jsonBytes, LINE_BUDGET, phoneSafe, snapshotEntries, wantedEntry } from "../src/snapshot.js";
+import { clipText, fitLine, historyPage, jsonBytes, LINE_BUDGET, phoneSafe, snapshotEntries, wantedEntry } from "../src/snapshot.js";
 import { DialogHub, wrapUi } from "../src/dialogs.js";
 
 describe("parseIn", () => {
@@ -165,5 +165,36 @@ describe("details slimming (hello too large, 2026-10-07)", () => {
     assert.equal(truncated, true);
     assert.equal((entries.at(-1) as any).message.details.diff, undefined);
     assert.equal((entries.at(-1) as any).message.details.exitCode, 0);
+  });
+});
+
+describe("history paging", () => {
+  const branch = [
+    { type: "message", id: "a", message: { role: "user", content: "x".repeat(400) } },
+    { type: "message", id: "s", message: { role: "system", content: "sys" } },
+    { type: "compaction", id: "c", summary: "sum" },
+    { type: "message", id: "b", message: { role: "assistant", content: [{ type: "text", text: "y".repeat(400) }] } },
+    { type: "message", id: "d", message: { role: "user", content: "z" } },
+  ];
+  it("returns the newest entries before `before`, through compactions, oldest first", () => {
+    const page = historyPage(branch, "d", 10_000);
+    assert.deepEqual(page.entries.map((e: any) => e.id), ["a", "c", "b"]);
+    assert.equal(page.more, false);
+  });
+  it("pages by budget and reports more", () => {
+    const page = historyPage(branch, "d", 600);
+    assert.deepEqual(page.entries.map((e: any) => e.id), ["c", "b"]);
+    assert.equal(page.more, true);
+    const next = historyPage(branch, "c", 600);
+    assert.deepEqual(next.entries.map((e: any) => e.id), ["a"]);
+    assert.equal(next.more, false);
+  });
+  it("unknown or first entry → empty", () => {
+    assert.deepEqual(historyPage(branch, "nope"), { entries: [], more: false });
+    assert.deepEqual(historyPage(branch, "a"), { entries: [], more: false });
+  });
+  it("parses the history request", () => {
+    assert.deepEqual(parseIn('{"t":"history","before":"e1","ref":"h"}'), { t: "history", before: "e1", ref: "h" });
+    assert.ok("bad" in (parseIn('{"t":"history"}') as object));
   });
 });
