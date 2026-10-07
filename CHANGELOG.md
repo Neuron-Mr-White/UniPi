@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.31] — 2026-10-07
+
+### Added
+- `app-bridge` (new module): **the UniPi phone app can chat with a pi running in herdr, live in both directions.** Each pi listens on `~/.unipi/bridge/<pid>.sock` (owner-only) and keeps `~/.unipi/bridge/<pid>.json` current (session file, cwd, herdr pane), so `unipi-host` can find the pi behind a herdr pane. The phone sees text, thinking, tool calls and unipi events as they stream, and what you send from the phone shows in the TUI as a normal message (it steers while pi works, or waits until it finishes). `/model`, `/thinking` and `/compact` work from the phone. TUI mode only; off in subagent children and with `UNIPI_APP_BRIDGE=0`. (UNI-113)
+- Dialogs (`select`, `confirm`, `input`, `editor`) can be answered from the phone: the TUI dialog and the phone race, the first answer wins and the other side closes. (UNI-113)
+- `ask_user`: answerable from the phone, including options that end the turn or start a new session; a phone answer closes the TUI panel. (UNI-113)
+
 ## [3.0.0-alpha.30] — 2026-10-05
 
 ### Changed
