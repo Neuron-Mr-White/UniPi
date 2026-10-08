@@ -61,6 +61,11 @@ export interface NtfyConfig {
   token?: string;
   /** Priority level (1-5, default: 3) */
   priority: number;
+  /** How much of the prompt text rides along in the ntfy payload (UNI-161
+   *  §4): "minimal" (default) sends a generic message, relying on the app's
+   *  own deep-link/tags routing to show detail once opened; "full" sends the
+   *  message as built. */
+  appDetail?: "minimal" | "full";
 }
 
 /** Recap notification config */

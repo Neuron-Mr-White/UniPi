@@ -12,7 +12,9 @@ import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
 import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
-import { sendNtfyNotification } from "./platforms/ntfy.js";
+import { sendNtfyNotification, publishToEndpoint } from "./platforms/ntfy.js";
+import { loadAppEndpoints } from "./app-endpoints.js";
+import { hostname } from "node:os";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
 import { buildInputNeededMessage } from "./input-needed-message.js";
@@ -413,7 +415,7 @@ export async function dispatchNotification(
   const results = await Promise.all(
     platformsToSend.map(async (platform) => {
       try {
-        const effectivePriority = await sendToPlatform(platform, title, message, config, cwd, priority);
+        const effectivePriority = await sendToPlatform(platform, title, message, config, cwd, priority, eventType);
         return { platform, success: true, ...(effectivePriority === undefined ? {} : { priority: effectivePriority }) };
       } catch (err) {
         // SuppressedError is intentional, not a failure
@@ -468,6 +470,7 @@ async function sendToPlatform(
   config: NotifyConfig,
   cwd: string,
   priority?: NotifyPriority,
+  eventType?: string,
 ): Promise<number | undefined> {
   switch (platform) {
     case "native":
@@ -505,16 +508,39 @@ async function sendToPlatform(
       if (!ntfyConfig.serverUrl || !ntfyConfig.topic) {
         throw new Error("ntfy: serverUrl and topic are required");
       }
-      await sendNtfyNotification(
-        ntfyConfig.serverUrl,
-        ntfyConfig.topic,
-        title,
-        message,
-        priority ? mapNotifyPriority("ntfy", priority) : ntfyConfig.priority,
-        ntfyConfig.token
-      );
-      return priority ? mapNotifyPriority("ntfy", priority) : ntfyConfig.priority;
+      const effective = priority ? mapNotifyPriority("ntfy", priority) : ntfyConfig.priority;
+      // UNI-161 §4: app routing data (deep link + tag) lets the phone jump
+      // straight to the right chat; `host` is the machine hostname (the pi
+      // side has no paired-host id of its own — the app maps hostname →
+      // paired host). appDetail controls whether the prompt text itself
+      // rides along or just a generic "tap to open" message.
+      const route = { host: hostnameForRoute(), kind: eventType };
+      const options = { route, appDetail: ntfyConfig.appDetail ?? "minimal" } as const;
+      await sendNtfyNotification(ntfyConfig.serverUrl, ntfyConfig.topic, title, message, effective, ntfyConfig.token, options);
+      // Fan out to every phone that registered a UnifiedPush endpoint
+      // (notify_register) — best-effort, never blocks/fails the primary send.
+      const endpoints = loadAppEndpoints();
+      if (endpoints.length) {
+        await Promise.all(
+          endpoints.map((e) =>
+            publishToEndpoint(e.url, title, message, effective, options).catch(() => {
+              // one dead/revoked endpoint must never fail the whole dispatch
+            }),
+          ),
+        );
+      }
+      return effective;
     }
+  }
+}
+
+/** Best-effort machine hostname for the ntfy deep link's `host` param (the
+ * pi process has no paired-host id of its own — see platforms/ntfy.ts). */
+function hostnameForRoute(): string {
+  try {
+    return hostname();
+  } catch {
+    return "unknown-host";
   }
 }
 
