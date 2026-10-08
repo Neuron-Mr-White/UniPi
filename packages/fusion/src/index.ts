@@ -661,9 +661,16 @@ export default function fusionExtension(pi: ExtensionAPI): void {
       const reg = registryOf(lastCtx);
       const named = (keys: readonly string[]): FusionApiModel[] =>
         keys.map((key) => ({ key, name: findModel(reg, key)?.name || splitModelKey(key)?.id || key }));
+      const seen = new Set<string>();
+      const curatedKeys = [...preset.recent, ...preset.lead, ...preset.sidekick].filter((key) => {
+        if (seen.has(key) || !findModel(reg, key)) return false;
+        seen.add(key);
+        return true;
+      });
       return {
         leads: named(preset.lead),
         sidekicks: named(preset.sidekick),
+        curated: named(curatedKeys),
         default: { lead: preset.default.lead, sidekick: preset.default.sidekick },
         effort: preset.effort,
         active,

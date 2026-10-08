@@ -21,6 +21,10 @@ export interface FusionApiModel {
 export interface FusionApiPicker {
   leads: FusionApiModel[];
   sidekicks: FusionApiModel[];
+  /** The TUI picker's list order: recent models, then the curated leads and
+   *  sidekicks (deduplicated; only models still in the catalogue). The rest
+   *  of the catalogue is for search only. */
+  curated: FusionApiModel[];
   default: { lead?: ModelKey; sidekick?: ModelKey };
   effort: Readonly<Record<ModelKey, EffortLevel>>;
   active: ActiveSelection | undefined;

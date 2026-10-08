@@ -67,6 +67,7 @@ interface FusionApiModel {
 interface FusionApiPicker {
   leads: FusionApiModel[];
   sidekicks: FusionApiModel[];
+  curated?: FusionApiModel[];
   default: { lead?: string; sidekick?: string };
   effort: Record<string, string>;
   active:
@@ -397,7 +398,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   const fusionPreset = (): FusionPresetInfo | undefined => {
     const picker = getFusionApi()?.getPicker();
     if (!picker) return undefined;
-    return { leads: picker.leads, sidekicks: picker.sidekicks, default: picker.default, effort: picker.effort, active: picker.active };
+    return { leads: picker.leads, sidekicks: picker.sidekicks, curated: picker.curated, default: picker.default, effort: picker.effort, active: picker.active };
   };
 
   const workItems = (): WorkItemInfo[] => {
@@ -491,19 +492,37 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return [...BUILTIN_COMMANDS, ...list];
   };
 
+  /**
+   * The phone's model list, in the order the terminal picker uses: scoped
+   * models (pi's enabledModels), Fusion's recent + curated preset, the
+   * current model, the configured default, then the rest of the catalogue
+   * grouped so a big provider (openrouter: 400+ models from an env key)
+   * can't push the ones the user actually uses out of the cap.
+   */
   const models = (): ModelInfo[] => {
     try {
-      const scoped = (ctx!.scopedModels ?? []).map((s) => s.model);
-      const available = ctx!.modelRegistry.getAvailable();
-      const seen = new Set<string>();
+      const reg = ctx!.modelRegistry;
+      const available = reg.getAvailable();
+      const byKey = new Map(available.map((m) => [`${m.provider}/${m.id}`, m]));
       const out: ModelInfo[] = [];
-      for (const m of [...scoped, ...available]) {
+      const seen = new Set<string>();
+      const add = (m: (typeof available)[number] | undefined) => {
+        if (!m) return;
         const key = `${m.provider}/${m.id}`;
-        if (seen.has(key)) continue;
+        if (seen.has(key) || out.length >= 400) return;
         seen.add(key);
-        out.push(modelInfo(m)!);
-        if (out.length >= 400) break;
-      }
+        const info = modelInfo(m);
+        if (info) out.push(info);
+      };
+      for (const s of ctx!.scopedModels ?? []) add(s.model);
+      for (const f of getFusionApi()?.getPicker()?.curated ?? []) add(byKey.get(f.key));
+      if (ctx!.model) add(byKey.get(`${ctx!.model.provider}/${ctx!.model.id}`));
+      // Providers with stored credentials or a models.json entry first; huge
+      // env-key catalogues (openrouter) last.
+      const counts = new Map<string, number>();
+      for (const m of available) counts.set(m.provider, (counts.get(m.provider) ?? 0) + 1);
+      const rest = [...available].sort((a, b) => (counts.get(a.provider)! > 150 ? 1 : 0) - (counts.get(b.provider)! > 150 ? 1 : 0));
+      for (const m of rest) add(m);
       return out;
     } catch {
       return [];

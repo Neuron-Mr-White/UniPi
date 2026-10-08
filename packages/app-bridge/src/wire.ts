@@ -88,6 +88,10 @@ export interface FusionModelInfo {
 export interface FusionPresetInfo {
   leads: FusionModelInfo[];
   sidekicks: FusionModelInfo[];
+  /** The TUI picker's list (recent, then curated leads + sidekicks). The
+   *  phone's Single list shows these; the rest of the catalogue only when
+   *  searching — same as /unipi:model in the terminal. Absent on older pi. */
+  curated?: FusionModelInfo[];
   default: { lead?: string; sidekick?: string };
   effort: Record<string, string>;
   active:
