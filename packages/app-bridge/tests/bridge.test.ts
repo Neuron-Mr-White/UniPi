@@ -42,6 +42,11 @@ function fakePi() {
   const ui = {
     select: (_t: string, _o: string[], opts?: { signal?: AbortSignal }) =>
       new Promise<string | undefined>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(undefined))),
+    confirm: (_t: string, _m: string, opts?: { signal?: AbortSignal }) =>
+      new Promise<boolean>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(false))),
+    input: (_t: string, _p?: string, opts?: { signal?: AbortSignal }) =>
+      new Promise<string | undefined>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(undefined))),
+    editor: (_t: string, _p?: string) => new Promise<string | undefined>(() => {}),
     notify: () => {},
   };
   // What the hidden command's calls return (tests can override per-case).
@@ -539,6 +544,116 @@ describe("app bridge over a unix socket", () => {
     c.send({ t: "btw_list", ref: "nobtw2" });
     const list = await c.next((m) => m.t === "btw_list" && m.ref === "nobtw2");
     assert.deepEqual(list.pages, []);
+  });
+
+  it("every wrapped ui.* dialog kind can be answered from the phone (select/confirm/input/editor)", async () => {
+    const confirmP = (f.ctx.ui as any).confirm("Sure?", "Really do it?");
+    const d1 = await c.next((m) => m.t === "dialog" && m.kind === "confirm");
+    assert.equal(d1.message, "Really do it?");
+    c.send({ t: "answer", id: d1.id, value: true, ref: "cf1" });
+    assert.equal(await confirmP, true);
+    await c.next((m) => m.t === "dialog_end" && m.id === d1.id);
+
+    const inputP = (f.ctx.ui as any).input("Name?", "placeholder");
+    const d2 = await c.next((m) => m.t === "dialog" && m.kind === "input");
+    assert.equal(d2.placeholder, "placeholder");
+    c.send({ t: "answer", id: d2.id, value: "Ada", ref: "in1" });
+    assert.equal(await inputP, "Ada");
+    await c.next((m) => m.t === "dialog_end" && m.id === d2.id);
+
+    const editorP = (f.ctx.ui as any).editor("Edit", "prefill text");
+    const d3 = await c.next((m) => m.t === "dialog" && m.kind === "editor");
+    assert.equal(d3.prefill, "prefill text");
+    c.send({ t: "answer", id: d3.id, value: "edited text", ref: "ed1" });
+    assert.equal(await editorP, "edited text");
+    await c.next((m) => m.t === "dialog_end" && m.id === d3.id);
+  });
+
+  it("ask_user: every outcome shape the phone can send (answered, cancel, action end_turn, action new_session+prefill)", async () => {
+    const { raceRemote } = await import("@pi-unipi/core");
+    const questions = [
+      {
+        question: "Pick one",
+        header: "Pick",
+        options: [
+          { label: "Keep going", value: "keep" },
+          { label: "Stop here", value: "stop", action: "end_turn" },
+          { label: "Start fresh", value: "fresh", action: "new_session", prefill: "/new continue the plan" },
+        ],
+      },
+    ];
+
+    const race = () =>
+      raceRemote<unknown>(
+        { kind: "ask_user", title: "Pick one", questions },
+        () => new Promise(() => {}),
+        (v) => v,
+      );
+
+    // 1) a plain answered shape.
+    const p1 = race();
+    const dq1 = await c.next((m) => m.t === "dialog" && m.kind === "ask_user");
+    assert.deepEqual(dq1.questions, questions);
+    c.send({ t: "answer", id: dq1.id, value: { type: "answered", answers: [{ selected: ["keep"], skipped: false }] }, ref: "aq-ans" });
+    assert.deepEqual(await p1, { type: "answered", answers: [{ selected: ["keep"], skipped: false }] });
+    await c.next((m) => m.t === "dialog_end" && m.id === dq1.id);
+
+    // 2) cancel.
+    const p2 = race();
+    const dq2 = await c.next((m) => m.t === "dialog" && m.kind === "ask_user");
+    c.send({ t: "answer", id: dq2.id, value: { type: "cancel" }, ref: "aq-cancel" });
+    assert.deepEqual(await p2, { type: "cancel" });
+    await c.next((m) => m.t === "dialog_end" && m.id === dq2.id);
+
+    // 3) an action option (end_turn) — the phone sends the option's value as selected.
+    const p3 = race();
+    const dq3 = await c.next((m) => m.t === "dialog" && m.kind === "ask_user");
+    c.send({ t: "answer", id: dq3.id, value: { type: "answered", answers: [{ selected: ["stop"], skipped: false }] }, ref: "aq-end" });
+    assert.deepEqual(await p3, { type: "answered", answers: [{ selected: ["stop"], skipped: false }] });
+    await c.next((m) => m.t === "dialog_end" && m.id === dq3.id);
+
+    // 4) an action option (new_session) with a prefill — same wire shape;
+    // ask-user's tools.ts phoneAnswer() is what turns the picked option into
+    // a {type:"action"} PanelResult (covered by ask-user's own tests).
+    const p4 = race();
+    const dq4 = await c.next((m) => m.t === "dialog" && m.kind === "ask_user");
+    c.send({ t: "answer", id: dq4.id, value: { type: "answered", answers: [{ selected: ["fresh"], skipped: false }] }, ref: "aq-fresh" });
+    assert.deepEqual(await p4, { type: "answered", answers: [{ selected: ["fresh"], skipped: false }] });
+    await c.next((m) => m.t === "dialog_end" && m.id === dq4.id);
+  });
+
+  it("a custom dialog (another extension's own ctx.ui.custom) reaches the phone; the app shows no answer UI for it, but a phone answer still closes it", async () => {
+    const { raceRemote } = await import("@pi-unipi/core");
+    const tuiDone = raceRemote<string>(
+      { kind: "custom", title: "Some other extension's own UI" },
+      (signal) => new Promise<string>((res) => signal.addEventListener("abort", () => res("tui-done"))),
+      (v) => String(v),
+    );
+    const d = await c.next((m) => m.t === "dialog" && m.kind === "custom");
+    assert.equal(d.title, "Some other extension's own UI");
+    assert.equal(d.options, undefined);
+    // The hub itself doesn't special-case "custom" -- it's the app's DialogCard
+    // that renders "Answer in the terminal" instead of an answer UI
+    // (docs/m5/PROTOCOL.md section 3). A phone answer still closes the dialog.
+    c.send({ t: "answer", id: d.id, value: "phone-sent", ref: "cu1" });
+    assert.equal(await tuiDone, "phone-sent");
+    assert.equal((await c.next((m) => m.t === "dialog_end" && m.id === d.id)).by, "phone");
+  });
+
+  it("reconnect restores every open dialog (hello.dialogs)", async () => {
+    const { raceRemote } = await import("@pi-unipi/core");
+    const p = raceRemote<string | undefined>(
+      { kind: "select", title: "Still open?", questions: undefined },
+      () => new Promise(() => {}),
+      (v) => (typeof v === "string" ? v : undefined),
+    );
+    const opened = await c.next((m) => m.t === "dialog" && m.kind === "select" && m.title === "Still open?");
+    c.sock.destroy();
+    c = client(join(dir, `${process.pid}.sock`));
+    const hello = await c.next((m) => m.t === "hello");
+    assert.ok(hello.dialogs.some((x: any) => x.id === opened.id && x.kind === "select"), "the still-open dialog is in hello.dialogs");
+    c.send({ t: "answer", id: opened.id, value: "ok", ref: "reopen" });
+    assert.equal(await p, "ok");
   });
 
   it("removes its files on quit", async () => {
