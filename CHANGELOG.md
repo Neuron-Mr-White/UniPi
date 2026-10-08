@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.35] — 2026-10-08
+
+### Added
+- `notify`: **end-to-end encrypted phone push.** With the per-pairing key the UniPi host creates (`~/.unipi/app-host/notify-key`), app pushes are sealed with AES-256-GCM (`unipi1:` envelope): the ntfy server — now self-hosted — only sees a neutral "UniPi" title and ciphertext; the deep link carries no content. Without a key nothing changes. Pushes also go to the phone's registered UnifiedPush endpoints. (UNI-161)
+
 ## [3.0.0-alpha.34] — 2026-10-08
 
 Everything the UniPi phone app (unipi-app 0.3.0) needs from pi.
