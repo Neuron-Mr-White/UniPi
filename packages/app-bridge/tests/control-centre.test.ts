@@ -223,11 +223,12 @@ describe("UNI-160 control centre: fusion / work / stats / info", () => {
     assert.match(err.message, /not installed/);
   });
 
-  it("set_fusion single: forwards to the Fusion API's apply() and pushes state", async () => {
+  it("set_fusion single: forwards to the Fusion API's apply() and pushes state with the fusion preset (UNI-176)", async () => {
     fakeFusionApi({ leads: [], sidekicks: [], default: {}, effort: {}, active: undefined });
     c.send({ t: "set_fusion", single: "p/m", effort: "high", ref: "sf2" });
     assert.deepEqual(await c.next((m) => m.t === "ack" && m.ref === "sf2"), { t: "ack", ref: "sf2" });
-    await c.next((m) => m.t === "state");
+    const state = await c.next((m) => m.t === "state");
+    assert.ok(state.fusion, "the state push after set_fusion carries the fusion preset");
   });
 
   it("set_fusion fusion pair: an apply() failure surfaces as an error", async () => {

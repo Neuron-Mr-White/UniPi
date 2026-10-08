@@ -1021,7 +1021,10 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           const applied = await api.apply(result);
           if (!applied.ok) return fail(applied.message);
           ack();
-          send({ t: "state", ...runState() });
+          // Push the fresh preset too: runState() alone doesn't carry
+          // `fusion`, so the phone's Lead/Sidekick highlight would stay
+          // on the old pair after set_fusion (UNI-176).
+          send({ t: "state", ...runState(), fusion: fusionPreset() });
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
