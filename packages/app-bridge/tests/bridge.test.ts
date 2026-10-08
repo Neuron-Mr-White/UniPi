@@ -241,7 +241,7 @@ describe("app bridge over a unix socket", () => {
 
   it("mirrors input, the queue and streaming deltas (coalesced)", async () => {
     await f.emit("input", { text: "from tui", source: "interactive", streamingBehavior: "steer" });
-    assert.deepEqual(await c.next((m) => m.t === "queue"), { t: "queue", items: [{ text: "from tui", mode: "steer" }] });
+    assert.deepEqual(await c.next((m) => m.t === "queue"), { t: "queue", items: [{ id: "tui-0", text: "from tui", mode: "steer", source: "tui", editable: false }] });
     assert.equal((await c.next((m) => m.t === "input")).source, "interactive");
     await f.emit("message_start", { message: { role: "user", content: "from tui" } });
     assert.deepEqual((await c.next((m) => m.t === "queue")).items, []);
@@ -361,6 +361,184 @@ describe("app bridge over a unix socket", () => {
     assert.equal(f.calls.length, before + 1);
     assert.equal(f.calls.at(-1)!.op, "newSession");
     f.setIdle(true);
+  });
+
+  it("prompt modes: steer (busy), now (abort+wait+send), after (bridge queue, idle delivers immediately)", async () => {
+    // busy + mode steer: delivered right away as a steer.
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "steer this", mode: "steer", ref: "pm1" });
+    await c.next((m) => m.t === "ack" && m.ref === "pm1");
+    assert.equal(f.sent.at(-1)!.opts.deliverAs, "steer");
+
+    // busy + mode now: aborts, waits for idle (the fake's abort() sets idle=true), then sends as a plain prompt.
+    const beforeSent = f.sent.length;
+    c.send({ t: "prompt", text: "do it now", mode: "now", ref: "pm2" });
+    await c.next((m) => m.t === "ack" && m.ref === "pm2");
+    assert.equal(f.sent.length, beforeSent + 1);
+    assert.deepEqual(f.sent.at(-1), { content: "do it now", opts: { expandPromptTemplates: true } });
+
+    // idle + mode after, nothing else queued: delivered immediately (nothing to wait for).
+    f.setIdle(true);
+    const beforeSent2 = f.sent.length;
+    c.send({ t: "prompt", text: "after, idle", mode: "after", ref: "pm3" });
+    await c.next((m) => m.t === "ack" && m.ref === "pm3");
+    assert.equal(f.sent.length, beforeSent2 + 1);
+    assert.deepEqual(f.sent.at(-1), { content: "after, idle", opts: { expandPromptTemplates: true } });
+  });
+
+  it("bridge queue: after-it-ends items wait, are editable/removable/reorderable, deliver one at a time on agent_end", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "first after", mode: "after", ref: "aq1" });
+    await c.next((m) => m.t === "ack" && m.ref === "aq1");
+    let q = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q.items, [{ id: q.items[0].id, text: "first after", mode: "after", source: "phone", editable: true }]);
+    const id1 = q.items[0].id as string;
+
+    c.send({ t: "prompt", text: "second after", mode: "after", ref: "aq2" });
+    await c.next((m) => m.t === "ack" && m.ref === "aq2");
+    q = await c.next((m) => m.t === "queue");
+    assert.equal(q.items.length, 2);
+    const id2 = q.items[1].id as string;
+
+    // Edit the first item's text.
+    c.send({ t: "queue_edit", id: id1, text: "first after (edited)", ref: "qe1" });
+    await c.next((m) => m.t === "ack" && m.ref === "qe1");
+    q = await c.next((m) => m.t === "queue");
+    assert.equal(q.items.find((x: any) => x.id === id1)!.text, "first after (edited)");
+
+    // Reorder: move the second item to the front.
+    c.send({ t: "queue_move", id: id2, index: 0, ref: "qm1" });
+    await c.next((m) => m.t === "ack" && m.ref === "qm1");
+    q = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q.items.map((x: any) => x.id), [id2, id1]);
+
+    // Remove the (now first) item.
+    c.send({ t: "queue_remove", id: id2, ref: "qr1" });
+    await c.next((m) => m.t === "ack" && m.ref === "qr1");
+    q = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q.items.map((x: any) => x.id), [id1]);
+
+    // agent_end delivers the one remaining item as a fresh prompt.
+    const beforeSent = f.sent.length;
+    await f.emit("agent_end", { messages: [] });
+    q = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q.items, []);
+    assert.equal(f.sent.length, beforeSent + 1);
+    assert.deepEqual(f.sent.at(-1), { content: "first after (edited)", opts: { expandPromptTemplates: true } });
+
+    // A second agent_end with nothing queued sends nothing new.
+    const beforeSent2 = f.sent.length;
+    await f.emit("agent_end", { messages: [] });
+    assert.equal(f.sent.length, beforeSent2);
+    f.setIdle(true);
+  });
+
+  it("bridge queue: only the first item delivers per agent_end; the user starting something new clears the rest", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "one", mode: "after", ref: "nq1" });
+    await c.next((m) => m.t === "ack" && m.ref === "nq1");
+    c.send({ t: "prompt", text: "two", mode: "after", ref: "nq2" });
+    await c.next((m) => m.t === "ack" && m.ref === "nq2");
+    await c.next((m) => m.t === "queue");
+    await c.next((m) => m.t === "queue");
+
+    const beforeSent = f.sent.length;
+    await f.emit("agent_end", { messages: [] });
+    const q1 = await c.next((m) => m.t === "queue");
+    assert.equal(q1.items.length, 1, "only one item left: the second waits for the next agent_end");
+    assert.equal(f.sent.length, beforeSent + 1);
+
+    // The user starts something new (TUI input) before the next agent_end: the rest is dropped.
+    await f.emit("input", { text: "user typed something else", source: "interactive" });
+    const q2 = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q2.items, []);
+    f.setIdle(true);
+  });
+
+  it("queue_promote: 'steer' sends right away as a steer, 'now' aborts/waits/sends as a prompt", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "promote me (steer)", mode: "after", ref: "qp1" });
+    await c.next((m) => m.t === "ack" && m.ref === "qp1");
+    let q = await c.next((m) => m.t === "queue");
+    const id1 = q.items[0].id as string;
+    c.send({ t: "queue_promote", id: id1, to: "steer", ref: "qp1a" });
+    await c.next((m) => m.t === "ack" && m.ref === "qp1a");
+    assert.equal(f.sent.at(-1)!.opts.deliverAs, "steer");
+    q = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q.items, []);
+
+    c.send({ t: "prompt", text: "promote me (now)", mode: "after", ref: "qp2" });
+    await c.next((m) => m.t === "ack" && m.ref === "qp2");
+    q = await c.next((m) => m.t === "queue");
+    const id2 = q.items[0].id as string;
+    const beforeSent = f.sent.length;
+    c.send({ t: "queue_promote", id: id2, to: "now", ref: "qp2a" });
+    await c.next((m) => m.t === "ack" && m.ref === "qp2a");
+    assert.equal(f.sent.length, beforeSent + 1);
+    assert.deepEqual(f.sent.at(-1), { content: "promote me (now)", opts: { expandPromptTemplates: true } });
+    f.setIdle(true);
+  });
+
+  it("bridge queue survives a phone reconnect (sent in hello)", async () => {
+    f.setIdle(false);
+    c.send({ t: "prompt", text: "still waiting", mode: "after", ref: "rc1" });
+    await c.next((m) => m.t === "ack" && m.ref === "rc1");
+    await c.next((m) => m.t === "queue");
+
+    c.send({ t: "resync", ref: "rc-sync" });
+    const hello = await c.next((m) => m.t === "hello");
+    assert.deepEqual(hello.queue.map((x: any) => ({ text: x.text, mode: x.mode, source: x.source, editable: x.editable })), [
+      { text: "still waiting", mode: "after", source: "phone", editable: true },
+    ]);
+
+    // Clean up: remove it so later tests start from an empty bridge queue.
+    c.send({ t: "queue_remove", id: hello.queue[0].id, ref: "rc-clean" });
+    await c.next((m) => m.t === "ack" && m.ref === "rc-clean");
+    f.setIdle(true);
+  });
+
+  it("btw: forwards to @pi-unipi/btw's UI-free API (globalThis), streaming deltas to the requesting phone only", async () => {
+    const BTW_API_KEY = Symbol.for("unipi.btw.api");
+    const events: any[] = [];
+    (globalThis as any)[BTW_API_KEY] = {
+      ask(_cctx: unknown, question: string, onEvent: (e: any) => void) {
+        events.push(question);
+        const finished = (async () => {
+          onEvent({ type: "delta", kind: "text", text: "Pela" });
+          onEvent({ type: "delta", kind: "text", text: "can." });
+          onEvent({ type: "end", answer: "Pelican.", usage: { input: 10, output: 2, totalTokens: 12 } });
+        })();
+        return { id: "btw-1", finished };
+      },
+      list: () => [{ question: "earlier q", answer: "earlier a" }],
+    };
+    try {
+      c.send({ t: "btw", question: "what's the codename?", ref: "bq1" });
+      const d1 = await c.next((m) => m.t === "btw_delta" && m.ref === "bq1");
+      assert.equal(d1.kind, "text");
+      assert.equal(d1.text, "Pela");
+      const d2 = await c.next((m) => m.t === "btw_delta" && m.ref === "bq1");
+      assert.equal(d2.text, "can.");
+      const end = await c.next((m) => m.t === "btw_end" && m.ref === "bq1");
+      assert.equal(end.answer, "Pelican.");
+      assert.deepEqual(end.usage, { input: 10, output: 2, totalTokens: 12 });
+      assert.deepEqual(events, ["what's the codename?"]);
+
+      c.send({ t: "btw_list", ref: "bl1" });
+      const list = await c.next((m) => m.t === "btw_list" && m.ref === "bl1");
+      assert.deepEqual(list.pages, [{ question: "earlier q", answer: "earlier a" }]);
+    } finally {
+      delete (globalThis as any)[BTW_API_KEY];
+    }
+  });
+
+  it("btw: a pi without @pi-unipi/btw loaded answers an error, and an empty page list", async () => {
+    c.send({ t: "btw", question: "anything?", ref: "nobtw1" });
+    const err = await c.next((m) => m.t === "error" && m.ref === "nobtw1");
+    assert.match(err.message, /not installed/);
+    c.send({ t: "btw_list", ref: "nobtw2" });
+    const list = await c.next((m) => m.t === "btw_list" && m.ref === "nobtw2");
+    assert.deepEqual(list.pages, []);
   });
 
   it("removes its files on quit", async () => {

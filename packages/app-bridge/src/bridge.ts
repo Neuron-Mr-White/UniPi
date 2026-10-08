@@ -38,6 +38,19 @@ import { registerPath, resolveMedia } from "./media.js";
  * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
 const MEDIA_CHUNK_CHARS = 700 * 1024;
 
+/** @pi-unipi/btw's UI-free API, read lazily off globalThis (the bridge never
+ * imports @pi-unipi/btw directly: btw may not be installed). See btw.ts
+ * publishUiFreeApi()/getBtwApi(). */
+type BtwEvent =
+  | { type: "delta"; kind: "text" | "thinking" | "tool"; text: string }
+  | { type: "end"; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number } };
+interface BtwApi {
+  ask(cctx: ExtensionCommandContext, question: string, onEvent: (event: BtwEvent) => void): { id: string; finished: Promise<void> };
+  list(): Array<{ question: string; answer: string; error?: string }>;
+}
+const BTW_API_KEY = Symbol.for("unipi.btw.api");
+const getBtwApi = (): BtwApi | undefined => (globalThis as unknown as Record<symbol, unknown>)[BTW_API_KEY] as BtwApi | undefined;
+
 export const BRIDGE_VERSION = "1.0.0";
 
 /** The hidden extension command the bridge uses to get a command-capable
@@ -120,7 +133,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let socketPath: string | undefined;
   const clients = new Set<Socket>();
   let running = false;
-  const queue: Queued[] = [];
+  /** pi's own queue (TUI steer/follow-up, from the `input` event's `streamingBehavior`): read-only to the phone. */
+  const tuiQueue: Array<{ text: string; mode: "steer" | "followUp" }> = [];
+  /** The bridge's own queue ("after it ends"): phone-only, editable/removable/reorderable/promotable,
+   * delivered one at a time on `agent_end`. Survives phone reconnects (sent in `hello`), not a pi restart. */
+  const bridgeQueue: Array<{ id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
+  let queueSeq = 0;
+  const nextQueueId = () => `q${process.pid}-${++queueSeq}`;
+  /** Every queue row the phone sees: TUI items first (oldest-submitted order, read-only), then bridge items (editable, reorderable). */
+  const queueView = (): Queued[] => [
+    ...tuiQueue.map((q, i) => ({ id: `tui-${i}`, text: q.text, mode: q.mode, source: "tui" as const, editable: false })),
+    ...bridgeQueue.map((q) => ({ id: q.id, text: q.text, mode: "after" as const, source: "phone" as const, editable: true })),
+  ];
   /** Phone prompts handed to pi, waiting for their `input` event (matched by the exact text pi saw). */
   const phoneInputs: Array<{ ref?: string; text: string; at: number }> = [];
   /** The assistant message streaming now (for late joiners). */
@@ -314,7 +338,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       commands: commands().map((x) => ({ ...x, description: x.description ? clipText(x.description, 160) : x.description })),
       models: models(),
       dialogs: hub.list(),
-      queue: [...queue],
+      queue: queueView(),
     };
     // Entries get whatever the rest of the hello leaves of the line budget.
     const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
@@ -400,6 +424,40 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     return out;
   };
 
+  /** Delivers one bridge-queued ("after it ends") item as a fresh prompt
+   * (pi is idle: agent_end/now just fired or the force-abort above settled). */
+  const deliverQueued = (q: { id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }) => {
+    const content = q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text;
+    try {
+      pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
+    } catch {
+      // Nothing we can tell the phone here (no ref): it will notice the item vanished from the queue.
+    }
+  };
+
+  /** On agent_end: deliver the first "after it ends" item, if any. The rest
+   * wait for the NEXT agent_end (one at a time, as the task spec requires). */
+  const deliverNextQueued = () => {
+    const next = bridgeQueue.shift();
+    if (!next) return;
+    send({ t: "queue", items: queueView() });
+    deliverQueued(next);
+  };
+
+  // `path` images were uploaded via the host's blob channel (same machine as
+  // this bridge): read the bytes straight off disk.
+  const imageContent = (i: { mime: string; data: string } | { mime: string; path: string }) => {
+    if ("data" in i) return { type: "image" as const, mimeType: i.mime, data: i.data };
+    try {
+      return { type: "image" as const, mimeType: i.mime, data: readFileSync(i.path).toString("base64") };
+    } catch {
+      return { type: "text" as const, text: `[image unavailable: ${i.path}]` };
+    }
+  };
+
+  /** btw runs in flight, keyed by id, so a `btw_delta`/`btw_end` only reaches the requesting phone. */
+  const btwRuns = new Map<string, Socket>();
+
   const handle = async (sock: Socket, msg: InMsg) => {
     const c = ctx;
     if (!c) return;
@@ -408,17 +466,51 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     switch (msg.t) {
       case "prompt": {
         const idle = c.isIdle();
-        const deliverAs = idle ? undefined : msg.mode === "followUp" ? "followUp" : "steer";
-        // `path` images were uploaded via the host's blob channel (same
-        // machine as this bridge): read the bytes straight off disk.
-        const imageContent = (i: { mime: string; data: string } | { mime: string; path: string }) => {
-          if ("data" in i) return { type: "image" as const, mimeType: i.mime, data: i.data };
-          try {
-            return { type: "image" as const, mimeType: i.mime, data: readFileSync(i.path).toString("base64") };
-          } catch {
-            return { type: "text" as const, text: `[image unavailable: ${i.path}]` };
+        if (msg.mode === "after") {
+          // Waits in the BRIDGE's own queue (not pi's): editable, removable,
+          // reorderable, promotable — delivered one at a time on agent_end.
+          // Idle right now: nothing to wait for, deliver immediately.
+          if (idle && bridgeQueue.length === 0) {
+            const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
+            const name = /^\/(\S+)/.exec(msg.text)?.[1];
+            const isCommand = !!name && commands().some((x) => x.name === name && x.source === "extension");
+            const now = Date.now();
+            if (!isCommand) phoneInputs.push({ ref: msg.ref, text: msg.text, at: now });
+            try {
+              pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
+              write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
+            } catch (error) {
+              fail(error instanceof Error ? error.message : String(error));
+            }
+            return;
           }
-        };
+          const id = nextQueueId();
+          bridgeQueue.push({ id, text: msg.text, images: msg.images });
+          send({ t: "queue", items: queueView() });
+          ack();
+          return;
+        }
+        if (msg.mode === "now") {
+          // Abort the run, wait for idle, then send as a fresh prompt.
+          if (!idle) {
+            c.abort();
+            const deadline = Date.now() + 10_000;
+            while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+          }
+          const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
+          const name = /^\/(\S+)/.exec(msg.text)?.[1];
+          const isCommand = !!name && commands().some((x) => x.name === name && x.source === "extension");
+          const now = Date.now();
+          if (!isCommand) phoneInputs.push({ ref: msg.ref, text: msg.text, at: now });
+          try {
+            pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
+            write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
+          } catch (error) {
+            fail(error instanceof Error ? error.message : String(error));
+          }
+          return;
+        }
+        const deliverAs = idle ? undefined : msg.mode === "followUp" ? "followUp" : "steer";
         const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
         // An extension command runs right away and saves no chat message:
         // tell the phone so its "Sending…" bubble goes.
@@ -433,6 +525,88 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
+        return;
+      }
+      case "queue_edit": {
+        const item = bridgeQueue.find((q) => q.id === msg.id);
+        if (!item) return fail("That queued message is gone.");
+        item.text = msg.text;
+        send({ t: "queue", items: queueView() });
+        ack();
+        return;
+      }
+      case "queue_remove": {
+        const i = bridgeQueue.findIndex((q) => q.id === msg.id);
+        if (i < 0) return fail("That queued message is gone.");
+        bridgeQueue.splice(i, 1);
+        send({ t: "queue", items: queueView() });
+        ack();
+        return;
+      }
+      case "queue_move": {
+        const i = bridgeQueue.findIndex((q) => q.id === msg.id);
+        if (i < 0) return fail("That queued message is gone.");
+        const [item] = bridgeQueue.splice(i, 1);
+        const at = Math.max(0, Math.min(bridgeQueue.length, msg.index));
+        bridgeQueue.splice(at, 0, item!);
+        send({ t: "queue", items: queueView() });
+        ack();
+        return;
+      }
+      case "queue_promote": {
+        const i = bridgeQueue.findIndex((q) => q.id === msg.id);
+        if (i < 0) return fail("That queued message is gone.");
+        const [item] = bridgeQueue.splice(i, 1);
+        send({ t: "queue", items: queueView() });
+        const content = item!.images?.length ? [{ type: "text" as const, text: item!.text }, ...item!.images.map(imageContent)] : item!.text;
+        if (msg.to === "steer") {
+          try {
+            pi.sendUserMessage(content, { deliverAs: c.isIdle() ? undefined : "steer", expandPromptTemplates: true } as never);
+            ack();
+          } catch (error) {
+            fail(error instanceof Error ? error.message : String(error));
+          }
+          return;
+        }
+        // to === "now": abort, wait for idle, then send as a fresh prompt.
+        if (!c.isIdle()) {
+          c.abort();
+          const deadline = Date.now() + 10_000;
+          while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+        }
+        try {
+          pi.sendUserMessage(content, { expandPromptTemplates: true } as never);
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "btw": {
+        const api = getBtwApi();
+        if (!api) return fail("btw is not installed on this pi.");
+        try {
+          await runCommandOp(async (cctx) => {
+            let runId = "";
+            const result = api.ask(cctx, msg.question, (event: BtwEvent) => {
+              if (event.type === "delta") write(sock, { t: "btw_delta", id: runId, kind: event.kind, text: event.text, ref: msg.ref });
+              else {
+                write(sock, { t: "btw_end", id: runId, answer: event.answer, error: event.error, usage: event.usage, ref: msg.ref });
+                btwRuns.delete(runId);
+              }
+            });
+            runId = result.id;
+            btwRuns.set(runId, sock);
+            await result.finished;
+          });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "btw_list": {
+        const api = getBtwApi();
+        write(sock, { t: "btw_list", pages: api ? api.list() : [], ref: msg.ref });
         return;
       }
       case "abort":
@@ -668,7 +842,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       if (event?.reason && event.reason !== "startup") {
         streaming = undefined;
         tools.clear();
-        queue.length = 0;
+        tuiQueue.length = 0;
+        bridgeQueue.length = 0;
         for (const sock of clients) write(sock, hello());
       }
     } catch {
@@ -697,8 +872,14 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     try {
       const mode = event.streamingBehavior === "steer" || event.streamingBehavior === "followUp" ? event.streamingBehavior : "prompt";
       if (mode !== "prompt") {
-        queue.push({ text: clipText(event.text ?? "", 4000), mode });
-        send({ t: "queue", items: [...queue] });
+        tuiQueue.push({ text: clipText(event.text ?? "", 4000), mode });
+        send({ t: "queue", items: queueView() });
+      } else if (event.source !== "extension" && bridgeQueue.length) {
+        // The user started something new before the queued items could be
+        // delivered on the next agent_end: stop auto-delivering them (the
+        // phone can still edit/remove/promote what remains by hand).
+        bridgeQueue.length = 0;
+        send({ t: "queue", items: queueView() });
       }
       const i = phoneInputs.findIndex((p) => p.text === event.text);
       const ref = i >= 0 ? phoneInputs.splice(i, 1)[0]!.ref : undefined;
@@ -717,21 +898,24 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     running = false;
     streaming = undefined;
     tools.clear();
-    if (queue.length) {
-      queue.length = 0;
-      send({ t: "queue", items: [] });
+    if (tuiQueue.length) {
+      tuiQueue.length = 0;
+      send({ t: "queue", items: queueView() });
     }
     send({ t: "state", ...runState() });
   }));
+  // "After it ends" messages (the bridge's own queue): deliver the first one
+  // as a fresh prompt, one at a time — the rest wait for the NEXT agent_end.
+  on("agent_end", safe(() => deliverNextQueued()));
 
   on("message_start", safe((event) => {
     const m = event.message as { role?: string; content?: unknown };
-    if (m.role === "user" && queue.length) {
+    if (m.role === "user" && tuiQueue.length) {
       const text = textOfContent(m.content);
-      const i = queue.findIndex((q) => q.text === clipText(text, 4000));
+      const i = tuiQueue.findIndex((q) => q.text === clipText(text, 4000));
       if (i >= 0) {
-        queue.splice(i, 1);
-        send({ t: "queue", items: [...queue] });
+        tuiQueue.splice(i, 1);
+        send({ t: "queue", items: queueView() });
       }
     }
     if (m.role === "assistant") {

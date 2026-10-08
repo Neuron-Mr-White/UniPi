@@ -154,9 +154,17 @@ export interface BtwPage {
   error?: string;
   aborted?: boolean;
   done: boolean;
+  /** Token usage for the one assistant response (bridge forwards it in `btw_end`). */
+  usage?: { input: number; output: number; totalTokens: number };
 }
 
 const pages: BtwPage[] = [];
+
+/** Read-only snapshot of recent pages (question, answer, error) for a
+ *  `btw_list{}` reply — never mutate the result. */
+export function listPages(): Array<{ question: string; answer: string; error?: string }> {
+  return pages.map((p) => ({ question: p.question, answer: p.answer, error: p.error }));
+}
 
 /** ↑/↓ paging reducer — clamp the target index into [0, count-1]. */
 export function pageIndexAfter(current: number, delta: number, count: number): number {
@@ -210,12 +218,18 @@ export function formatToolLine(
   return `${mark} ${label}${detail}`;
 }
 
+/** Delta kinds forwarded to `onDelta` (the bridge's UI-free API streams these
+ *  to the phone as `btw_delta`; the TUI panel ignores it — it re-renders
+ *  `page.answer`/`toolLines` from `onUpdate` instead). */
+export type BtwDeltaKind = "text" | "thinking" | "tool";
+
 function runQuestion(
   ctx: ExtensionCommandContext,
   question: string,
   page: BtwPage,
   thinkingLevel: AiThinkingLevel,
   onUpdate: () => void,
+  onDelta?: (kind: BtwDeltaKind, text: string) => void,
 ): BtwRun {
   let session: AgentSession | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -253,8 +267,10 @@ function runQuestion(
           const e = event as { toolCallId: string; toolName: string; args?: Record<string, unknown> };
           pendingStarts.set(e.toolCallId, { args: e.args });
           lineIndex.set(e.toolCallId, page.toolLines.length);
-          page.toolLines.push(formatToolLine(e.toolName, e.args, ctx.cwd, "running"));
+          const line = formatToolLine(e.toolName, e.args, ctx.cwd, "running");
+          page.toolLines.push(line);
           onUpdate();
+          onDelta?.("tool", line);
         } else if (event.type === "tool_execution_end") {
           const e = event as { toolCallId: string; toolName: string; isError: boolean };
           const start = pendingStarts.get(e.toolCallId);
@@ -264,6 +280,11 @@ function runQuestion(
           else page.toolLines.push(line);
           pendingStarts.delete(e.toolCallId);
           onUpdate();
+          onDelta?.("tool", line);
+        } else if (event.type === "message_update") {
+          const e = event as { assistantMessageEvent?: { type?: string; delta?: string } };
+          if (e.assistantMessageEvent?.type === "text_delta" && e.assistantMessageEvent.delta) onDelta?.("text", e.assistantMessageEvent.delta);
+          else if (e.assistantMessageEvent?.type === "thinking_delta" && e.assistantMessageEvent.delta) onDelta?.("thinking", e.assistantMessageEvent.delta);
         }
       });
 
@@ -279,6 +300,7 @@ function runQuestion(
         page.error = response.errorMessage || "request failed";
       } else {
         page.answer = extractText(response.content, "text") || "(no text)";
+        if (response.usage) page.usage = { input: response.usage.input, output: response.usage.output, totalTokens: response.usage.totalTokens };
       }
     } catch (err) {
       page.error = err instanceof Error ? err.message : String(err);
@@ -455,7 +477,64 @@ class BtwPanel implements Component {
   dispose(): void {}
 }
 
-// ─── Extension ──────────────────────────────────────────────────────────────
+// ─── UI-free API (the app bridge, no TUI needed) ───────────────────
+
+/** One streamed update from `BtwApi.ask` (mirrors the bridge's `btw_delta`/`btw_end`). */
+export type BtwEvent =
+  | { type: "delta"; kind: BtwDeltaKind; text: string }
+  | { type: "end"; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number } };
+
+export interface BtwApi {
+  /** Starts a question, streaming `onEvent` until it ends (also resolved by `finished`).
+   *  Only one question runs at a time (shared with the TUI panel): a second call while
+   *  one is in flight ends immediately with an error. */
+  ask(cctx: ExtensionCommandContext, question: string, onEvent: (event: BtwEvent) => void): { id: string; finished: Promise<void> };
+  /** Recent pages (question, answer, error) for this pi session — shared with the TUI panel. */
+  list(): Array<{ question: string; answer: string; error?: string }>;
+}
+
+const BTW_API_KEY = Symbol.for("unipi.btw.api");
+
+/** Publishes the UI-free API on globalThis so the app bridge (a sibling
+ *  extension, no shared module instance guaranteed) can ask a side question
+ *  without a TUI: `(globalThis as any)[Symbol.for("unipi.btw.api")]`. */
+function publishUiFreeApi(pi: ExtensionAPI, getActiveRun: () => BtwRun | null, setActiveRun: (run: BtwRun | null) => void): void {
+  let idSeq = 0;
+  const api: BtwApi = {
+    ask(cctx, question, onEvent) {
+      const id = `api-${process.pid}-${++idSeq}`;
+      if (getActiveRun()) {
+        const finished = Promise.resolve().then(() => onEvent({ type: "end", answer: "", error: "btw is already answering another question" }));
+        return { id, finished };
+      }
+      const page: BtwPage = { question, toolLines: [], answer: "", done: false };
+      pages.push(page);
+      const run = runQuestion(
+        cctx,
+        question,
+        page,
+        pi.getThinkingLevel() as AiThinkingLevel,
+        () => {},
+        (kind, text) => onEvent({ type: "delta", kind, text }),
+      );
+      setActiveRun(run);
+      const finished = run.finished.then(() => {
+        setActiveRun(null);
+        onEvent({ type: "end", answer: page.answer, error: page.error, usage: page.usage });
+      });
+      return { id, finished };
+    },
+    list: () => listPages(),
+  };
+  (globalThis as unknown as Record<symbol, unknown>)[BTW_API_KEY] = api;
+}
+
+/** Reads the published API, or undefined when @pi-unipi/btw is not loaded. */
+export function getBtwApi(): BtwApi | undefined {
+  return (globalThis as unknown as Record<symbol, unknown>)[BTW_API_KEY] as BtwApi | undefined;
+}
+
+// ─── Extension ─────────────────────────────────────────────────────────────────────
 
 export default function btwExtension(pi: ExtensionAPI): void {
   let panelRef: BtwPanel | null = null;
@@ -519,6 +598,8 @@ export default function btwExtension(pi: ExtensionAPI): void {
     activeRun = null;
     notify(ctx, page.error ? `btw failed: ${page.error}` : `btw: ${page.answer}`, page.error ? "error" : "info");
   }
+
+  publishUiFreeApi(pi, () => activeRun, (run) => (activeRun = run));
 
   pi.on("session_start", () => {
     abortActiveRun();

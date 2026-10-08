@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { buildSeedEntries, formatToolLine, pageIndexAfter } from "../extensions/btw.js";
+import btwExtension, { buildSeedEntries, formatToolLine, getBtwApi, pageIndexAfter } from "../extensions/btw.js";
 
 function msgEntry(id: string, parentId: string | null, text: string, role = "user") {
   return {
@@ -123,4 +123,85 @@ test("formatToolLine renders Devin-style verbs, relative paths, error mark", () 
   assert.equal(formatToolLine("ls", { path: "/repo" }, cwd, "done"), "✓ Listed .");
   assert.equal(formatToolLine("read", { path: "/repo/x" }, cwd, "error"), "✗ Read x");
   assert.equal(formatToolLine("mystery", { foo: 1 }, cwd, "running"), "… Running mystery");
+});
+
+// ── (e) UI-free API (the app bridge's btw{} wire message) ───────────────
+
+function fakeExtensionApi() {
+  const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
+  return {
+    on: (name: string, h: (...args: unknown[]) => unknown) => {
+      handlers.set(name, [...(handlers.get(name) ?? []), h]);
+      return () => {};
+    },
+    registerCommand: () => {},
+    registerMessageRenderer: () => {},
+    registerMarkdownTransformer: () => {},
+    getThinkingLevel: () => "medium",
+    emit: async (name: string, event: unknown = {}) => {
+      for (const h of handlers.get(name) ?? []) await h(event);
+    },
+  };
+}
+
+function fakeCommandCtx(overrides: Record<string, unknown> = {}) {
+  return {
+    cwd: "/tmp",
+    model: undefined,
+    modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: false, error: "no key" }) },
+    sessionManager: { getHeader: () => null, getBranch: () => [] },
+    ui: { notify: () => {} },
+    getSystemPrompt: () => "system",
+    ...overrides,
+  } as never;
+}
+
+test("getBtwApi() is undefined until the extension registers it, then publishes ask()/list()", async () => {
+  // Before any extension instance runs in this process, a prior test's
+  // registration may still be there (module-level globalThis) — just check
+  // that creating the extension publishes a working api.
+  const pi = fakeExtensionApi();
+  btwExtension(pi as never);
+  const api = getBtwApi();
+  assert.ok(api, "publishes a BtwApi on globalThis");
+  assert.deepEqual(api!.list(), [], "no pages asked yet in this process");
+});
+
+test("BtwApi.ask() surfaces a clear error when there is no active model (no network needed)", async () => {
+  const pi = fakeExtensionApi();
+  btwExtension(pi as never);
+  const api = getBtwApi()!;
+  const events: Array<{ type: string; error?: string; answer?: string }> = [];
+  const { finished } = api.ask(fakeCommandCtx(), "what's the plan?", (e) => events.push(e as never));
+  await finished;
+  assert.deepEqual(events, [{ type: "end", answer: "", error: "No active model selected.", usage: undefined }]);
+});
+
+test("BtwApi.ask() refuses a second question while the first is still in flight (shared with the TUI panel)", async () => {
+  const pi = fakeExtensionApi();
+  btwExtension(pi as never);
+  const api = getBtwApi()!;
+  // A slow model lookup keeps the first run "in flight" long enough to prove
+  // the second call is rejected immediately, without waiting for the first.
+  let resolveAuth: (() => void) | undefined;
+  const slowCtx = fakeCommandCtx({
+    model: { provider: "p", id: "m" },
+    modelRegistry: {
+      getApiKeyAndHeaders: () =>
+        new Promise((resolve) => {
+          resolveAuth = () => resolve({ ok: false, error: "no key" });
+        }),
+    },
+  });
+  const firstEvents: Array<{ type: string; error?: string }> = [];
+  const first = api.ask(slowCtx, "q1", (e) => firstEvents.push(e as never));
+
+  const secondEvents: Array<{ type: string; error?: string }> = [];
+  const second = api.ask(fakeCommandCtx(), "q2", (e) => secondEvents.push(e as never));
+  await second.finished;
+  assert.deepEqual(secondEvents, [{ type: "end", answer: "", error: "btw is already answering another question" }]);
+
+  resolveAuth?.();
+  await first.finished;
+  assert.deepEqual(firstEvents, [{ type: "end", answer: "", error: "no key", usage: undefined }]);
 });
