@@ -44,6 +44,7 @@ import { duration, renderSidekickStep } from "./transcript.js";
 import { persistDefaultModel, piSettingsPath } from "./pi-settings.js";
 import { ensureReadSubagentTool, setReadSubagentDemand } from "@pi-unipi/core/child-agent.js";
 import { readFileSync } from "node:fs";
+import { publishFusionApi, type FusionApiModel, type FusionApiPicker } from "./api.js";
 
 export const MODEL_COMMAND = `${UNIPI_PREFIX}model`;
 
@@ -446,21 +447,25 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     };
   });
 
-  async function applyResult(ctx: ExtensionContext, result: PickerResult, preset: FusionPreset, loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean }): Promise<void> {
-    if (result.type === "cancelled") return;
+  async function applyResult(
+    ctx: ExtensionContext,
+    result: PickerResult,
+    preset: FusionPreset,
+    loaded: { globalPath: string; projectPath: string; hasProjectLayer: boolean },
+    opts: { silent?: boolean } = {},
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const notifyErr = (message: string) => {
+      if (!opts.silent && ctx.hasUI) ctx.ui.notify(message, "error");
+      return { ok: false as const, message };
+    };
+    if (result.type === "cancelled") return { ok: true };
     const samePair = result.type === "fusion" && active?.kind === "fusion" && active.lead === result.lead && active.sidekick === result.sidekick;
     const reg = registryOf(ctx);
     const targetKey = result.type === "single" ? result.model : result.lead;
     const model = findModel(reg, targetKey);
-    if (!model) {
-      ctx.ui.notify(`Model ${targetKey} is not available. Run /login or fix the preset.`, "error");
-      return;
-    }
+    if (!model) return notifyErr(`Model ${targetKey} is not available. Run /login or fix the preset.`);
     const ok = await pi.setModel(model);
-    if (!ok) {
-      ctx.ui.notify(`Could not switch to ${targetKey}.`, "error");
-      return;
-    }
+    if (!ok) return notifyErr(`Could not switch to ${targetKey}.`);
     if (!samePair) stopRuntime();
     else if (
       result.type === "fusion" &&
@@ -504,13 +509,16 @@ export default function fusionExtension(pi: ExtensionAPI): void {
     saveRuntimeState(loaded.globalPath, { effort: result.effortMap, recent, active });
     syncFusionTools();
     publishStatus(ctx);
-    const label =
-      result.type === "single"
-        ? `${model.name || model.id} · ${effortLabel(effort)}`
-        : `Fusion · ${model.name || model.id} ${effortLabel(effort)} ◆ ${
-            findModel(reg, result.sidekick)?.name ?? splitModelKey(result.sidekick)?.id ?? result.sidekick
-          } ${effortLabel(result.sidekickEffort)}`;
-    ctx.ui.notify(label, "info");
+    if (!opts.silent && ctx.hasUI) {
+      const label =
+        result.type === "single"
+          ? `${model.name || model.id} · ${effortLabel(effort)}`
+          : `Fusion · ${model.name || model.id} ${effortLabel(effort)} ◆ ${
+              findModel(reg, result.sidekick)?.name ?? splitModelKey(result.sidekick)?.id ?? result.sidekick
+            } ${effortLabel(result.sidekickEffort)}`;
+      ctx.ui.notify(label, "info");
+    }
+    return { ok: true };
   }
 
   pi.registerCommand("unipi:model", {
@@ -638,6 +646,35 @@ export default function fusionExtension(pi: ExtensionAPI): void {
         `Saved preset → ${path}\n${String(result.curation.lead.length)} lead · ${String(result.curation.sidekick.length)} sidekick`,
         "info",
       );
+  });
+
+  // UI-free API (UNI-160 "session control centre"): lets the app bridge read
+  // the preset and apply a picker result without the TUI overlay. `ctx` is
+  // always the latest from session_start / events — events fire only while
+  // pi is alive, so this is never stale by more than one turn.
+  publishFusionApi({
+    getPicker(): FusionApiPicker | undefined {
+      if (!lastCtx) return undefined;
+      const cwd = lastCtx.cwd ?? process.cwd();
+      const loaded = loadPreset(cwd);
+      const preset = loaded.preset;
+      const reg = registryOf(lastCtx);
+      const named = (keys: readonly string[]): FusionApiModel[] =>
+        keys.map((key) => ({ key, name: findModel(reg, key)?.name || splitModelKey(key)?.id || key }));
+      return {
+        leads: named(preset.lead),
+        sidekicks: named(preset.sidekick),
+        default: { lead: preset.default.lead, sidekick: preset.default.sidekick },
+        effort: preset.effort,
+        active,
+      };
+    },
+    async apply(result) {
+      if (!lastCtx) return { ok: false, message: "No active pi session." };
+      const cwd = lastCtx.cwd ?? process.cwd();
+      const loaded = loadPreset(cwd);
+      return applyResult(lastCtx, result, loaded.preset, loaded, { silent: true });
+    },
   });
 
   pi.on("session_start", async (_e, ctx) => {
