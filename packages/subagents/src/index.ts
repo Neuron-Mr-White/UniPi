@@ -28,6 +28,7 @@ import {
   SubagentManager, backgroundRunningReason, canSpawn, getSharedSubagents, subscribeSubagents, recordStatusFor,
   MAX_CONCURRENT, type SubagentRecord, type SubagentRun, type SubagentStatus,
 } from "./manager.js";
+import { setSharedSubagentManager, clearSharedSubagentManager } from "./manager-shared.js";
 import { loadProfiles, type AgentProfile } from "./profiles.js";
 import { buildTranscript, itemsFromEvents } from "./transcript.js";
 import {
@@ -175,6 +176,7 @@ export function appendSubagentStep(
 
 export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentManager }): void {
   const manager = deps?.manager ?? new SubagentManager();
+  setSharedSubagentManager(manager);
   const delivery = createCompletionDelivery<HandoffReport>((report) => deliverCompletion(report));
 
   // Turn-arbiter wait source (lead only): a background subagent is still
@@ -673,6 +675,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     unsubInput = undefined;
     unsubRegistry();
     uiCtx = undefined;
+    clearSharedSubagentManager();
   });
 
   bus.emit(UNIPI_EVENTS.MODULE_READY, { name: MODULES.SUBAGENTS, version: getPackageVersion("subagents"), commands: [], tools: [] });
