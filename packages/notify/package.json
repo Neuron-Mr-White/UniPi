@@ -1,6 +1,6 @@
 {
   "name": "@pi-unipi/notify",
-  "version": "3.0.0-alpha.33",
+  "version": "3.0.0-alpha.34",
   "description": "Cross-platform notification extension for Pi — native OS, Gotify, and Telegram notifications for agent lifecycle events",
   "type": "module",
   "main": "index.ts",
@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pi-unipi/core": "3.0.0-alpha.33",
+    "@pi-unipi/core": "3.0.0-alpha.34",
     "node-notifier": "^10.0.1"
   },
   "peerDependencies": {

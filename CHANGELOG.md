@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0-alpha.34] — 2026-10-08
+
+Everything the UniPi phone app (unipi-app 0.3.0) needs from pi.
+
+### Added
+- `app-bridge`: **session navigation from the phone** — list sessions (this project / all), the session tree, new / resume / fork / jump to any message (with an optional summary of the branch you leave), rename. Busy pi answers `busy` so the phone can offer "stop the current run first". (UNI-158)
+- `app-bridge`: **send modes** — steer, send now (stops the run, then sends) and "after it ends" in the bridge's own queue: editable, re-orderable, removable, promotable. (UNI-159)
+- `btw`: a UI-free API so side questions can be asked and streamed from the phone; pages are shared with the terminal panel. (UNI-159)
+- `app-bridge`: **media** — phone photos (inline or uploaded through the host), agent images as thumbnails / fetched on tap, `details.attachments[]`, tappable file paths (`file_share`, session cwd only). (UNI-157)
+- `app-bridge`: **session control centre** — Fusion picker read/apply, running work (background tasks, subagents, sidekick) with logs and stop, live context/cost/tps stats and `/unipi:info` cards. `fusion`, `subagents` and `footer` expose small shared accessors for it. (UNI-160)
+- `app-bridge`: "needs you" — the discovery record says when a session waits on you (open question, or finished and not seen); every dialog kind and ask_user action works from the phone. `notify`: ntfy messages carry an app deep link and kind tag (`appDetail` minimal/full) and also post to registered app endpoints. (UNI-161)
+- `app-bridge`: `@` file suggestions answered by pi's own finder.
+
+### Fixed
+- `app-bridge`: the phone's "Sending…" bubble never sticks — extension commands ack as commands, `input` events carry the phone's ref, every `ui.notify` reaches the phone. (UNI-143)
+- `app-bridge`: new / resume / fork no longer leave the phone on the old session (the outgoing bridge sends `reconnect` and frees the socket).
+- `app-bridge`: the phone's model list follows the terminal picker (scoped, Fusion curated, current, your providers) instead of the first 400 of a huge env-key catalogue.
+
 ## [3.0.0-alpha.33] — 2026-10-07
 
 ### Added
