@@ -192,6 +192,12 @@ export type InMsg =
    *  `media_chunk` (≤ 700 KB of base64 per chunk) ending in `done:true`, or a
    *  `media_error`. `ref` (optional) matches the request like every other op. */
   | { t: "media"; mediaRef: string; ref?: string }
+  /** Registers an absolute path (a file mentioned in chat: a tapped inline-code
+   *  token, `@path`…) with the media/blob-channel allow-list, so the host's
+   *  `blob_get{path}` can serve it. Refused outside the session's cwd (never
+   *  lets the phone read arbitrary host files). Replies `ack` (no data needed:
+   *  the phone already knows the path) or `error`. */
+  | { t: "file_share"; path: string; ref?: string }
   /** Set the session's display name. */
   | { t: "session_rename"; name: string; ref?: string }
   /** Ask a side question (btw): streams `btw_delta`/`btw_end` to this phone only. */
@@ -227,6 +233,7 @@ const IN_TYPES = new Set([
   "tree_go",
   "session_rename",
   "media",
+  "file_share",
   "btw",
   "btw_list",
   "queue_edit",
@@ -303,6 +310,9 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "media":
       if (typeof m.mediaRef !== "string" || !m.mediaRef) return { bad: "media.mediaRef must be a string", ref };
       return { t: "media", mediaRef: m.mediaRef.slice(0, 128), ref };
+    case "file_share":
+      if (typeof m.path !== "string" || !m.path) return { bad: "file_share.path must be a string", ref };
+      return { t: "file_share", path: m.path.slice(0, 4096), ref };
     case "btw":
       if (typeof m.question !== "string" || !m.question.trim()) return { bad: "btw.question must be a non-empty string", ref };
       return { t: "btw", question: m.question.slice(0, 8000), ref };

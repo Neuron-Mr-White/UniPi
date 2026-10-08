@@ -12,7 +12,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createServer, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve as resolvePath } from "node:path";
 import { DialogHub, wrapUi } from "./dialogs.js";
 import { ENTRIES_BUDGET, HELLO_ENTRIES_BUDGET, LINE_BUDGET, fitLine, historyPage, jsonBytes, phoneSafe, snapshotEntries, clipText, wantedEntry } from "./snapshot.js";
 import {
@@ -109,6 +109,18 @@ export function sweepDead(dir: string): void {
     const pid = Number(m[1]);
     if (pid !== process.pid && !alive(pid)) rmSync(join(dir, name), { force: true });
   }
+}
+
+/** Whether `path` is inside `cwd` (or equal to it), after resolving both
+ * to absolute paths (so a relative `path`, or one with `.`/`..` segments,
+ * is judged by where it actually points — not its spelling). No symlink
+ * resolution; good enough to stop the phone naming arbitrary host files
+ * via `file_share` (it only ever offers paths it already saw in-session). */
+export function isInsideCwd(path: string, cwd: string): boolean {
+  const root = resolvePath(cwd);
+  const target = resolvePath(root, path);
+  const rel = relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
 }
 
 const textOfContent = (content: unknown): string => {
@@ -751,6 +763,13 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         } catch (error) {
           write(sock, { t: "media_error", mediaRef: msg.mediaRef, message: error instanceof Error ? error.message : String(error) });
         }
+        return;
+      }
+      case "file_share": {
+        if (!isInsideCwd(msg.path, c.cwd)) return fail("That path is outside this session's directory.");
+        if (!existsSync(msg.path)) return fail("That file doesn't exist on the host.");
+        registerPath(msg.path);
+        ack();
         return;
       }
     }
