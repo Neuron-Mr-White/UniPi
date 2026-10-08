@@ -84,6 +84,8 @@ export function createBridge(pi: ExtensionAPI) {
   const clients = new Set<Socket>();
   let running = false;
   const queue: Queued[] = [];
+  /** Phone prompts handed to pi, waiting for their `input` event (matched by the exact text pi saw). */
+  const phoneInputs: Array<{ ref?: string; text: string; at: number }> = [];
   /** The assistant message streaming now (for late joiners). */
   let streaming: { id: string; content: unknown[] } | undefined;
   let streamSeq = 0;
@@ -277,9 +279,16 @@ export function createBridge(pi: ExtensionAPI) {
         const content = msg.images?.length
           ? [{ type: "text" as const, text: msg.text }, ...msg.images.map((i) => ({ type: "image" as const, mimeType: i.mime, data: i.data }))]
           : msg.text;
+        // An extension command runs right away and saves no chat message:
+        // tell the phone so its "Sending…" bubble goes.
+        const name = /^\/(\S+)/.exec(msg.text)?.[1];
+        const isCommand = !!name && commands().some((x) => x.name === name && x.source === "extension");
+        const now = Date.now();
+        while (phoneInputs.length && (phoneInputs.length > 32 || now - phoneInputs[0]!.at > 120_000)) phoneInputs.shift();
+        if (!isCommand) phoneInputs.push({ ref: msg.ref, text: msg.text, at: now });
         try {
           pi.sendUserMessage(content, { deliverAs, expandPromptTemplates: true } as never);
-          ack();
+          write(sock, { t: "ack", ref: msg.ref, ...(isCommand ? { as: "command" as const } : {}) });
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
         }
@@ -417,7 +426,7 @@ export function createBridge(pi: ExtensionAPI) {
     try {
       ctx = c;
       if (c.mode !== "tui" || process.env.UNIPI_SUBAGENT_CHILD === "1" || process.env.UNIPI_APP_BRIDGE === "0") return;
-      if (c.hasUI) wrapUi(c.ui, hub);
+      if (c.hasUI) wrapUi(c.ui, hub, (text, level) => send({ t: "notify", text: clipText(text, 4000), level }));
       computeCost();
       setRemoteDialogs(hub);
       listen();
@@ -457,7 +466,9 @@ export function createBridge(pi: ExtensionAPI) {
         queue.push({ text: clipText(event.text ?? "", 4000), mode });
         send({ t: "queue", items: [...queue] });
       }
-      send({ t: "input", text: clipText(event.text ?? "", 64 * 1024), source: event.source, mode });
+      const i = phoneInputs.findIndex((p) => p.text === event.text);
+      const ref = i >= 0 ? phoneInputs.splice(i, 1)[0]!.ref : undefined;
+      send({ t: "input", text: clipText(event.text ?? "", 64 * 1024), source: event.source, mode, ...(ref ? { ref } : {}) });
     } catch {
       // ignore
     }

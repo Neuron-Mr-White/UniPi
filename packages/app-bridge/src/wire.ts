@@ -84,13 +84,15 @@ export type OutMsg =
   | { t: "tool_start"; callId: string; name: string; args: unknown }
   | { t: "tool_update"; callId: string; text: string }
   | { t: "tool_end"; callId: string; isError: boolean }
-  | { t: "input"; text: string; source: string; mode: InputMode }
+  /** `ref`: the phone request that caused it (its optimistic bubble is now with pi). */
+  | { t: "input"; text: string; source: string; mode: InputMode; ref?: string }
   | { t: "queue"; items: Queued[] }
   | ({ t: "dialog" } & Dialog)
   | { t: "dialog_end"; id: number; by: "tui" | "phone" | "cancel" }
   | { t: "notify"; text: string; level: string }
   | { t: "error"; message: string; ref?: string }
-  | { t: "ack"; ref?: string }
+  /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
+  | { t: "ack"; ref?: string; as?: "command" }
   /** A page of older entries (oldest first) ending right before `before`. */
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */

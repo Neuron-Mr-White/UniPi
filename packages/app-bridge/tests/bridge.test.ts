@@ -152,6 +152,20 @@ describe("app bridge over a unix socket", () => {
     f.setIdle(true);
   });
 
+  it("an extension command acks as a command; a phone prompt's input event names its ref; notify reaches the phone (UNI-143)", async () => {
+    c.send({ t: "prompt", text: "/unipi:goal", ref: "cmd" });
+    assert.deepEqual(await c.next((m) => m.t === "ack" && m.ref === "cmd"), { t: "ack", ref: "cmd", as: "command" });
+    c.send({ t: "prompt", text: "plain words", ref: "p1" });
+    assert.deepEqual(await c.next((m) => m.t === "ack" && m.ref === "p1"), { t: "ack", ref: "p1" });
+    await f.emit("input", { text: "plain words", source: "extension" });
+    const input = await c.next((m) => m.t === "input" && m.text === "plain words");
+    assert.equal(input.ref, "p1");
+    await f.emit("input", { text: "plain words", source: "interactive" });
+    assert.equal((await c.next((m) => m.t === "input" && m.source === "interactive")).ref, undefined, "the same text typed in the TUI is not the phone's");
+    f.ctx.ui.notify("kanboard: -do needs a request", "warning");
+    assert.deepEqual(await c.next((m) => m.t === "notify"), { t: "notify", text: "kanboard: -do needs a request", level: "warning" });
+  });
+
   it("mirrors input, the queue and streaming deltas (coalesced)", async () => {
     await f.emit("input", { text: "from tui", source: "interactive", streamingBehavior: "steer" });
     assert.deepEqual(await c.next((m) => m.t === "queue"), { t: "queue", items: [{ text: "from tui", mode: "steer" }] });

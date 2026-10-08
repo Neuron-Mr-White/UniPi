@@ -106,11 +106,26 @@ interface DialogOpts {
 
 const WRAPPED = Symbol.for("unipi.app-bridge.ui-wrapped");
 
-/** Wraps a pi ui context in place (idempotent per object). */
-export function wrapUi(ui: object, hub: DialogHub): void {
+/**
+ * Wraps a pi ui context in place (idempotent per object). `onNotify` also
+ * gets every `ui.notify` (the phone shows them: a command's "needs an
+ * argument" warning would otherwise only reach the terminal).
+ */
+export function wrapUi(ui: object, hub: DialogHub, onNotify?: (text: string, level: string) => void): void {
   const u = ui as Record<string | symbol, unknown>;
   if (u[WRAPPED]) return;
   u[WRAPPED] = true;
+  const notify = u.notify as AnyFn | undefined;
+  if (notify && onNotify) {
+    u.notify = (message: unknown, type?: unknown) => {
+      try {
+        onNotify(String(message ?? ""), typeof type === "string" ? type : "info");
+      } catch {
+        // the phone never breaks the TUI
+      }
+      return notify.call(ui, message, type);
+    };
+  }
   const select = u.select as AnyFn | undefined;
   const confirm = u.confirm as AnyFn | undefined;
   const input = u.input as AnyFn | undefined;
