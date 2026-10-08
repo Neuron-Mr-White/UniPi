@@ -25,11 +25,14 @@ import { registerCommands } from "./commands.js";
 import { GlanceEditor } from "./glance-editor.js";
 import type { GlanceStatus } from "./glance-editor.js";
 import { tpsTracker } from "./tps-tracker.js";
+import { publishSharedTps } from "./tps-shared.js";
 import { renderProcessLine, countBgProcesses } from "./process-line.js";
 import { lhModeLabel } from "./segments/long-horizon.js";
 import { SessionScanner } from "./session-scan.js";
 import { renderSessionStrip, stripVisibleAtRows } from "./strip.js";
 import { setIconStyle } from "./rendering/icons.js";
+
+publishSharedTps();
 
 /** Package version (from this package's package.json). */
 const VERSION = getPackageVersion(
