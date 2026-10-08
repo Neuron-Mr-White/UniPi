@@ -16,6 +16,7 @@ export * from "./spinner-line.js";
 export * from "./kanboard-label.js";
 export * from "./command-echo.js";
 export * from "./src/turn/arbiter.js";
+export * from "./src/work/index.js";
 export * from "./src/evidence.js";
 
 // v3 workspace identity + state layout (marker-file id, per-workspace roots)

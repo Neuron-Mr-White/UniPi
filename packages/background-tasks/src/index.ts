@@ -26,7 +26,7 @@ import {
   type BackgroundTaskExtensionService,
 } from "./extension-api.js";
 import { registerToolsAndCommands } from "./tools.js";
-import { setSharedTaskRegistry, clearSharedTaskRegistry } from "./registry-shared.js";
+import { setSharedTaskRegistry, clearSharedTaskRegistry, notifyTaskRegistryChange } from "./registry-shared.js";
 import { formatDuration, taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
 
 const STATUS_INTERVAL_MS = 1000;
@@ -82,6 +82,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     maxRecentTasks: config.maxFinishedTasks,
     onChange: () => {
       updateUi();
+      notifyTaskRegistryChange();
     },
     sendCompletionNotification: (message, options) => {
       // Our sendMessage path (same contract as reference; pi delivers followUp + triggerTurn)

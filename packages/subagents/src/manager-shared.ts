@@ -7,18 +7,23 @@
  * without a hard dependency on this package.
  */
 import type { SubagentManager, SubagentRecord } from "./manager.js";
-import { getSharedSubagents } from "./manager.js";
+import { getSharedSubagents, subscribeSubagents } from "./manager.js";
 
 const SHARED_MANAGER_KEY = Symbol.for("unipi.subagents.shared-manager");
 /** Plain function reference to `getSharedSubagents` (module-level records,
  *  not itself globalThis-based) — published so a sibling extension can read
  *  the list without a hard dependency on this package. */
 const SHARED_LIST_KEY = Symbol.for("unipi.subagents.shared-list");
+/** Plain function reference to `subscribeSubagents` (UNI-126 tray change
+ *  signal): lets core's work-list module react to record changes instead of
+ *  polling every frame. */
+const SHARED_SUBSCRIBE_KEY = Symbol.for("unipi.subagents.shared-subscribe");
 
 /** Publish the live manager (idempotent; later calls overwrite). */
 export function setSharedSubagentManager(manager: SubagentManager): void {
   (globalThis as unknown as Record<symbol, unknown>)[SHARED_MANAGER_KEY] = manager;
   (globalThis as unknown as Record<symbol, unknown>)[SHARED_LIST_KEY] ??= (): readonly SubagentRecord[] => getSharedSubagents();
+  (globalThis as unknown as Record<symbol, unknown>)[SHARED_SUBSCRIBE_KEY] ??= (listener: () => void) => subscribeSubagents(listener);
 }
 
 /** Read the live manager, or undefined when subagents is not loaded. */
