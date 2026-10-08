@@ -32,6 +32,11 @@ import {
 } from "./wire.js";
 import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
+import { registerPath, resolveMedia } from "./media.js";
+
+/** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
+ * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
+const MEDIA_CHUNK_CHARS = 700 * 1024;
 
 export const BRIDGE_VERSION = "1.0.0";
 
@@ -547,6 +552,22 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
           ack();
         } catch (error) {
           fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "media": {
+        const entry = resolveMedia(msg.mediaRef);
+        if (!entry) return write(sock, { t: "media_error", mediaRef: msg.mediaRef, message: "That image is no longer available. Re-open the message." });
+        try {
+          const data = entry.kind === "base64" ? entry.data : readFileSync(entry.path).toString("base64");
+          for (let i = 0; i < data.length || i === 0; i += MEDIA_CHUNK_CHARS) {
+            const piece = data.slice(i, i + MEDIA_CHUNK_CHARS);
+            const done = i + MEDIA_CHUNK_CHARS >= data.length;
+            write(sock, { t: "media_chunk", mediaRef: msg.mediaRef, mime: entry.mime, data: piece, done });
+            if (done) break;
+          }
+        } catch (error) {
+          write(sock, { t: "media_error", mediaRef: msg.mediaRef, message: error instanceof Error ? error.message : String(error) });
         }
         return;
       }

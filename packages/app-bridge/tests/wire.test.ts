@@ -8,6 +8,9 @@ describe("parseIn", () => {
   it("accepts prompts with a default auto mode and keeps the ref", () => {
     assert.deepEqual(parseIn('{"t":"prompt","text":"hi","ref":"r1"}'), { t: "prompt", text: "hi", images: undefined, mode: "auto", ref: "r1" });
     assert.equal((parseIn('{"t":"prompt","text":"x","mode":"followUp"}') as { mode: string }).mode, "followUp");
+    assert.equal((parseIn('{"t":"prompt","text":"x","mode":"now"}') as { mode: string }).mode, "now");
+    assert.equal((parseIn('{"t":"prompt","text":"x","mode":"after"}') as { mode: string }).mode, "after");
+    assert.equal((parseIn('{"t":"prompt","text":"x","mode":"bogus"}') as { mode: string }).mode, "auto");
   });
   it("rejects empty prompts, unknown types and garbage without throwing", () => {
     assert.deepEqual(parseIn('{"t":"prompt","text":"  "}'), { bad: "prompt is empty", ref: undefined });
@@ -42,6 +45,20 @@ describe("parseIn", () => {
     assert.deepEqual(parseIn('{"t":"session_rename","name":"new name"}'), { t: "session_rename", name: "new name", ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"session_rename"}') as object));
   });
+  it("validates btw / btw_list / queue_edit / queue_remove / queue_promote / queue_move", () => {
+    assert.deepEqual(parseIn('{"t":"btw","question":"why?"}'), { t: "btw", question: "why?", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"btw","question":"  "}') as object));
+    assert.ok("bad" in (parseIn('{"t":"btw"}') as object));
+    assert.deepEqual(parseIn('{"t":"btw_list","ref":"bl"}'), { t: "btw_list", ref: "bl" });
+    assert.deepEqual(parseIn('{"t":"queue_edit","id":"q1","text":"new text"}'), { t: "queue_edit", id: "q1", text: "new text", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"queue_edit","id":"q1"}') as object));
+    assert.deepEqual(parseIn('{"t":"queue_remove","id":"q1"}'), { t: "queue_remove", id: "q1", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"queue_remove"}') as object));
+    assert.deepEqual(parseIn('{"t":"queue_promote","id":"q1","to":"now"}'), { t: "queue_promote", id: "q1", to: "now", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"queue_promote","id":"q1","to":"later"}') as object));
+    assert.deepEqual(parseIn('{"t":"queue_move","id":"q1","index":2}'), { t: "queue_move", id: "q1", index: 2, ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"queue_move","id":"q1"}') as object));
+  });
 });
 
 describe("LineSplitter", () => {
@@ -55,11 +72,21 @@ describe("LineSplitter", () => {
 });
 
 describe("snapshot", () => {
-  it("replaces images and clips long text", () => {
+  it("inlines small images whole and clips long text", () => {
     const safe = phoneSafe({ role: "user", content: [{ type: "image", data: "A".repeat(4000), mimeType: "image/png" }, { type: "text", text: "x".repeat(100) }] }, 50) as any;
-    assert.deepEqual(safe.content[0], { type: "image", mime: "image/png", omitted: true, bytes: 3000 });
+    assert.deepEqual(safe.content[0], { type: "image", mime: "image/png", omitted: false, bytes: 3000, data: "A".repeat(4000) });
     assert.match(safe.content[1].text, /clipped 50 chars/);
     assert.equal(clipText("short", 10), "short");
+  });
+  it("big images get a mediaRef instead of the bytes", () => {
+    const big = "A".repeat(40000); // > INLINE_THUMBNAIL_MAX (24 KiB) chars of base64
+    const safe = phoneSafe({ role: "user", content: [{ type: "image", data: big, mimeType: "image/jpeg" }] }) as any;
+    const img = safe.content[0];
+    assert.equal(img.type, "image");
+    assert.equal(img.omitted, true);
+    assert.equal(img.mime, "image/jpeg");
+    assert.equal(typeof img.mediaRef, "string");
+    assert.equal(img.data, undefined);
   });
   it("starts at the latest compaction and drops state-only entries", () => {
     const branch = [

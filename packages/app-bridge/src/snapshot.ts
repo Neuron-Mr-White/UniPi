@@ -1,7 +1,13 @@
 /**
- * Phone-safe copies of session entries: images replaced by a marker, long
- * text clipped, the hello snapshot capped so its line fits one relay frame.
+ * Phone-safe copies of session entries: images replaced by a marker (with a
+ * thumbnail when small, else a fetchable `ref` — see `media.ts`), long text
+ * clipped, the hello snapshot capped so its line fits one relay frame.
  */
+import { registerBase64, registerPath } from "./media.js";
+
+/** Images this small are sent whole (base64) in the placeholder; bigger
+ * ones get a `ref` the phone fetches on demand via `media{mediaRef}`. */
+export const INLINE_THUMBNAIL_MAX = 24 * 1024;
 
 /** One relay frame is 1 MiB; keep every line well under it (UTF-8 bytes). */
 export const LINE_BUDGET = 900 * 1024;
@@ -28,6 +34,13 @@ export function slimDetails(details: unknown): Json {
   let used = 0;
   for (const [k, v] of Object.entries(details as Record<string, unknown>)) {
     if (DETAILS_DROP.has(k) || typeof v === "function" || v === undefined) continue;
+    // File attachments (kanboard uploads, screenshots, tool-produced files):
+    // register each path so the host's blob_get{path} can serve it, and give
+    // the phone a mediaRef it can fetch inline bytes through too.
+    if (k === "attachments" && Array.isArray(v)) {
+      out[k] = v.slice(0, 20).map((a) => attachmentSafe(a));
+      continue;
+    }
     // Report-like text the phone shows in a card keeps more room.
     const max = k === "report" || k === "text" ? 32 * 1024 : 2 * 1024;
     const safe = phoneSafe(v, max, 1);
@@ -52,6 +65,24 @@ export function clipText(text: string, max: number): string {
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
+/** One `details.attachments[]` entry (kanboard uploads, tool-produced files,
+ * screenshot paths…): `{path, mime, size, caption?}`. Registers `path` with
+ * the media registry (host blob allow-list + phone `media{mediaRef}` fetch)
+ * and keeps only the small scalar fields on the wire. */
+function attachmentSafe(raw: unknown): Json {
+  const a = raw as { path?: unknown; mime?: unknown; size?: unknown; caption?: unknown } | null;
+  if (!a || typeof a.path !== "string") return null;
+  const mime = typeof a.mime === "string" ? a.mime : "application/octet-stream";
+  const mediaRef = registerPath(a.path, mime);
+  return {
+    path: a.path,
+    mime,
+    ...(typeof a.size === "number" ? { size: a.size } : {}),
+    ...(typeof a.caption === "string" ? { caption: clipText(a.caption, 256) } : {}),
+    mediaRef,
+  };
+}
+
 /** Deep copy of a content part list / message with images and big text made phone-safe. */
 export function phoneSafe(value: unknown, textMax = TEXT_CLIP, depth = 0): Json {
   if (depth > 40) return null;
@@ -63,7 +94,17 @@ export function phoneSafe(value: unknown, textMax = TEXT_CLIP, depth = 0): Json 
   if (typeof value === "object") {
     const o = value as Record<string, unknown>;
     if (o.type === "image" && typeof o.data === "string") {
-      return { type: "image", mime: typeof o.mimeType === "string" ? o.mimeType : "image/*", omitted: true, bytes: Math.round((o.data.length * 3) / 4) };
+      const mime = typeof o.mimeType === "string" ? o.mimeType : "image/*";
+      const bytes = Math.round((o.data.length * 3) / 4);
+      // Small enough to inline whole (a thumbnail already, or a tiny icon):
+      // the phone can show it immediately with no round trip.
+      if (o.data.length <= INLINE_THUMBNAIL_MAX) {
+        return { type: "image", mime, omitted: false, bytes, data: o.data };
+      }
+      // Too big to inline: register it and let the phone fetch it with
+      // `media{mediaRef}` only if/when it actually renders this message.
+      const ref = registerBase64(o.data, mime);
+      return { type: "image", mime, omitted: true, bytes, mediaRef: ref };
     }
     const out: Record<string, Json> = {};
     for (const [k, v] of Object.entries(o)) {

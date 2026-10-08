@@ -81,9 +81,17 @@ export interface CommandInfo {
   source: "extension" | "prompt" | "skill" | "builtin";
 }
 
+/** One queue row shown in the phone's queue strip. `source:"tui"` items (from
+ *  pi's own input events, typed or steered elsewhere) are never editable —
+ *  the extension API can't touch pi's own queue. `source:"phone"` + `mode:
+ *  "after"` items live in the BRIDGE's own queue (not pi's): editable,
+ *  removable, reorderable, promotable. */
 export interface Queued {
+  id: string;
   text: string;
-  mode: "steer" | "followUp";
+  mode: "steer" | "followUp" | "after";
+  source: "phone" | "tui";
+  editable: boolean;
 }
 
 export type InputMode = "prompt" | "steer" | "followUp";
@@ -121,6 +129,11 @@ export type OutMsg =
   | ({ t: "dialog" } & Dialog)
   | { t: "dialog_end"; id: number; by: "tui" | "phone" | "cancel" }
   | { t: "notify"; text: string; level: string }
+  /** A /unipi:btw aside streaming to the requesting phone only. */
+  | { t: "btw_delta"; id: string; kind: "text" | "thinking" | "tool"; text: string; ref?: string }
+  | { t: "btw_end"; id: string; answer: string; error?: string; usage?: { input: number; output: number; totalTokens: number }; ref?: string }
+  /** Reply to `btw_list{}`: recent pages (question, answer) for this pi session. */
+  | { t: "btw_list"; pages: Array<{ question: string; answer: string; error?: string }>; ref?: string }
   /** `code: "busy"`: new/resume/fork/tree_go while pi is running — the phone may retry with `force:true`. */
   | { t: "error"; message: string; ref?: string; code?: "busy" }
   /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
@@ -132,14 +145,22 @@ export type OutMsg =
   /** Sessions matching `sessions{scope, query?}`, newest first, capped. */
   | { t: "sessions"; items: SessionsItem[]; more: boolean; ref?: string }
   /** Every branch of the session tree, previews only. */
-  | { t: "tree"; nodes: TreeNode[]; ref?: string };
+  | { t: "tree"; nodes: TreeNode[]; ref?: string }
+  /** A chunk of a `media{mediaRef}` fetch: base64 `data`, more chunks follow until `done`. */
+  | { t: "media_chunk"; mediaRef: string; mime: string; data: string; done: boolean }
+  /** `media{mediaRef}` failed (unknown/expired ref, read error…). */
+  | { t: "media_error"; mediaRef: string; message: string };
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };
 
 /** phone → pi. */
 export type InMsg =
-  | { t: "prompt"; text: string; images?: Array<{ mime: string; data: string }>; mode?: "auto" | "steer" | "followUp"; ref?: string }
+  /** `mode`: `auto` (prompt when idle, steer when busy; default) \| `steer` (next tool
+   *  boundary) \| `followUp` (pi's own queued follow-up — kept for older apps) \|
+   *  `now` (abort the run, wait for idle, then send as a prompt) \| `after` (wait in
+   *  the bridge's own queue, delivered one at a time on `agent_end`). */
+  | { t: "prompt"; text: string; images?: Array<{ mime: string; data: string }>; mode?: "auto" | "steer" | "followUp" | "now" | "after"; ref?: string }
   | { t: "abort"; ref?: string }
   | { t: "answer"; id: number; value: unknown; ref?: string }
   | { t: "set_model"; provider: string; model: string; ref?: string }
@@ -162,8 +183,27 @@ export type InMsg =
   | { t: "tree"; ref?: string }
   /** Navigate to a different point in the tree. `force`: abort the current run first. */
   | { t: "tree_go"; id: string; summarize?: boolean; force?: boolean; ref?: string }
+  /** Fetches the full bytes behind an image `mediaRef` the bridge sent in a
+   *  `media`-omitted placeholder (see `phoneSafe`): replies with one or more
+   *  `media_chunk` (≤ 700 KB of base64 per chunk) ending in `done:true`, or a
+   *  `media_error`. `ref` (optional) matches the request like every other op. */
+  | { t: "media"; mediaRef: string; ref?: string }
   /** Set the session's display name. */
-  | { t: "session_rename"; name: string; ref?: string };
+  | { t: "session_rename"; name: string; ref?: string }
+  /** Ask a side question (btw): streams `btw_delta`/`btw_end` to this phone only. */
+  | { t: "btw"; question: string; ref?: string }
+  /** Recent btw pages for this pi session. */
+  | { t: "btw_list"; ref?: string }
+  /** Edit a bridge-queued (`mode:"after"`, `source:"phone"`) message's text. */
+  | { t: "queue_edit"; id: string; text: string; ref?: string }
+  /** Remove a bridge-queued message. */
+  | { t: "queue_remove"; id: string; ref?: string }
+  /** Promote a bridge-queued message to run now: `to:"steer"` steers it in at
+   *  the next tool boundary, `to:"now"` aborts the run, waits for idle, then
+   *  sends it as a fresh prompt. */
+  | { t: "queue_promote"; id: string; to: "steer" | "now"; ref?: string }
+  /** Reorder a bridge-queued message to `index` (phone items only). */
+  | { t: "queue_move"; id: string; index: number; ref?: string };
 
 const IN_TYPES = new Set([
   "prompt",
@@ -182,6 +222,13 @@ const IN_TYPES = new Set([
   "tree",
   "tree_go",
   "session_rename",
+  "media",
+  "btw",
+  "btw_list",
+  "queue_edit",
+  "queue_remove",
+  "queue_promote",
+  "queue_move",
 ]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
@@ -201,7 +248,7 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
   switch (m.t) {
     case "prompt": {
       if (typeof m.text !== "string") return { bad: "prompt.text must be a string", ref };
-      const mode = m.mode === "steer" || m.mode === "followUp" ? m.mode : "auto";
+      const mode = m.mode === "steer" || m.mode === "followUp" || m.mode === "now" || m.mode === "after" ? m.mode : "auto";
       const images = Array.isArray(m.images)
         ? m.images.filter((i): i is { mime: string; data: string } => !!i && typeof i.mime === "string" && /^image\//.test(i.mime) && typeof i.data === "string")
         : undefined;
@@ -246,6 +293,29 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "session_rename":
       if (typeof m.name !== "string") return { bad: "session_rename.name must be a string", ref };
       return { t: "session_rename", name: m.name.slice(0, 200), ref };
+    case "media":
+      if (typeof m.mediaRef !== "string" || !m.mediaRef) return { bad: "media.mediaRef must be a string", ref };
+      return { t: "media", mediaRef: m.mediaRef.slice(0, 128), ref };
+    case "btw":
+      if (typeof m.question !== "string" || !m.question.trim()) return { bad: "btw.question must be a non-empty string", ref };
+      return { t: "btw", question: m.question.slice(0, 8000), ref };
+    case "btw_list":
+      return { t: "btw_list", ref };
+    case "queue_edit":
+      if (typeof m.id !== "string" || !m.id) return { bad: "queue_edit.id must be a string", ref };
+      if (typeof m.text !== "string") return { bad: "queue_edit.text must be a string", ref };
+      return { t: "queue_edit", id: m.id, text: m.text, ref };
+    case "queue_remove":
+      if (typeof m.id !== "string" || !m.id) return { bad: "queue_remove.id must be a string", ref };
+      return { t: "queue_remove", id: m.id, ref };
+    case "queue_promote":
+      if (typeof m.id !== "string" || !m.id) return { bad: "queue_promote.id must be a string", ref };
+      if (m.to !== "steer" && m.to !== "now") return { bad: "queue_promote.to must be 'steer' or 'now'", ref };
+      return { t: "queue_promote", id: m.id, to: m.to, ref };
+    case "queue_move":
+      if (typeof m.id !== "string" || !m.id) return { bad: "queue_move.id must be a string", ref };
+      if (typeof m.index !== "number") return { bad: "queue_move.index must be a number", ref };
+      return { t: "queue_move", id: m.id, index: m.index, ref };
     default:
       return { t: m.t as "abort" | "resync", ref };
   }
