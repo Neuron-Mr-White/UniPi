@@ -9,6 +9,6 @@ export default function appBridge(pi: ExtensionAPI): void {
   createBridge(pi);
 }
 
-export { createBridge, bridgeDir, sweepDead, BRIDGE_VERSION } from "./src/bridge.js";
+export { createBridge, bridgeDir, sweepDead, BRIDGE_VERSION, SESSION_COMMAND } from "./src/bridge.js";
 export { DialogHub, wrapUi } from "./src/dialogs.js";
 export * from "./src/wire.js";

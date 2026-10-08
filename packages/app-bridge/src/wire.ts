@@ -28,6 +28,37 @@ export interface SessionInfo {
   cwd: string;
 }
 
+/** One row of a `sessions` reply: a session the phone can resume. */
+export interface SessionsItem {
+  path: string;
+  id: string;
+  name?: string;
+  cwd: string;
+  /** First user message, clipped. */
+  firstMessage: string;
+  /** `modified`, ms since epoch. */
+  modified: number;
+  messageCount: number;
+  /** This is the session we're in right now. */
+  current: boolean;
+}
+
+/** One row of a `tree` reply: a session entry, preview only. */
+export interface TreeNode {
+  id: string;
+  parentId: string | null;
+  /** Message role for `type:"message"` entries, else the entry type (compaction, model_change, …). */
+  kind: string;
+  /** Short preview, \u2264120 chars. */
+  preview: string;
+  timestamp?: string;
+  label?: string;
+  /** On the branch from root to the current leaf. */
+  onPath: boolean;
+  /** This is where the session is right now. */
+  current: boolean;
+}
+
 export interface ModelInfo {
   provider: string;
   id: string;
@@ -90,13 +121,18 @@ export type OutMsg =
   | ({ t: "dialog" } & Dialog)
   | { t: "dialog_end"; id: number; by: "tui" | "phone" | "cancel" }
   | { t: "notify"; text: string; level: string }
-  | { t: "error"; message: string; ref?: string }
+  /** `code: "busy"`: new/resume/fork/tree_go while pi is running — the phone may retry with `force:true`. */
+  | { t: "error"; message: string; ref?: string; code?: "busy" }
   /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
   | { t: "ack"; ref?: string; as?: "command" }
   /** A page of older entries (oldest first) ending right before `before`. */
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */
-  | { t: "files"; query: string; items: FileItem[]; ref?: string };
+  | { t: "files"; query: string; items: FileItem[]; ref?: string }
+  /** Sessions matching `sessions{scope, query?}`, newest first, capped. */
+  | { t: "sessions"; items: SessionsItem[]; more: boolean; ref?: string }
+  /** Every branch of the session tree, previews only. */
+  | { t: "tree"; nodes: TreeNode[]; ref?: string };
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };
@@ -113,9 +149,40 @@ export type InMsg =
   /** Older history: entries before the entry `before` on the active branch. */
   | { t: "history"; before: string; ref?: string }
   /** `@` file suggestions; `query` is the text after `@` (may start with `"`). */
-  | { t: "files"; query: string; ref?: string };
+  | { t: "files"; query: string; ref?: string }
+  /** List sessions to resume: this project's or every project's, optionally filtered. */
+  | { t: "sessions"; scope: "cwd" | "all"; query?: string; ref?: string }
+  /** Start a brand-new session. `force`: abort the current run first. */
+  | { t: "session_new"; force?: boolean; ref?: string }
+  /** Resume a session file. `force`: abort the current run first. */
+  | { t: "session_resume"; path: string; force?: boolean; ref?: string }
+  /** Fork from a session entry into a new session file. `force`: abort the current run first. */
+  | { t: "session_fork"; entryId: string; force?: boolean; ref?: string }
+  /** The whole session tree, every branch, previews only. */
+  | { t: "tree"; ref?: string }
+  /** Navigate to a different point in the tree. `force`: abort the current run first. */
+  | { t: "tree_go"; id: string; summarize?: boolean; force?: boolean; ref?: string }
+  /** Set the session's display name. */
+  | { t: "session_rename"; name: string; ref?: string };
 
-const IN_TYPES = new Set(["prompt", "abort", "answer", "set_model", "set_thinking", "compact", "resync", "history", "files"]);
+const IN_TYPES = new Set([
+  "prompt",
+  "abort",
+  "answer",
+  "set_model",
+  "set_thinking",
+  "compact",
+  "resync",
+  "history",
+  "files",
+  "sessions",
+  "session_new",
+  "session_resume",
+  "session_fork",
+  "tree",
+  "tree_go",
+  "session_rename",
+]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
 export function parseIn(line: string): InMsg | { bad: string; ref?: string } | undefined {
@@ -158,6 +225,27 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "files":
       if (typeof m.query !== "string") return { bad: "files.query must be a string", ref };
       return { t: "files", query: m.query.slice(0, 512).replace(/[\r\n]/g, ""), ref };
+    case "sessions": {
+      const scope = m.scope === "all" ? "all" : m.scope === "cwd" ? "cwd" : undefined;
+      if (!scope) return { bad: "sessions.scope must be 'cwd' or 'all'", ref };
+      return { t: "sessions", scope, query: typeof m.query === "string" ? m.query.slice(0, 256) : undefined, ref };
+    }
+    case "session_new":
+      return { t: "session_new", force: m.force === true, ref };
+    case "session_resume":
+      if (typeof m.path !== "string" || !m.path) return { bad: "session_resume.path must be a string", ref };
+      return { t: "session_resume", path: m.path, force: m.force === true, ref };
+    case "session_fork":
+      if (typeof m.entryId !== "string" || !m.entryId) return { bad: "session_fork.entryId must be a string", ref };
+      return { t: "session_fork", entryId: m.entryId, force: m.force === true, ref };
+    case "tree":
+      return { t: "tree", ref };
+    case "tree_go":
+      if (typeof m.id !== "string" || !m.id) return { bad: "tree_go.id must be a string", ref };
+      return { t: "tree_go", id: m.id, summarize: m.summarize === true, force: m.force === true, ref };
+    case "session_rename":
+      if (typeof m.name !== "string") return { bad: "session_rename.name must be a string", ref };
+      return { t: "session_rename", name: m.name.slice(0, 200), ref };
     default:
       return { t: m.t as "abort" | "resync", ref };
   }

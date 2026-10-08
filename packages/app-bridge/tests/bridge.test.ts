@@ -10,19 +10,33 @@ import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "app-bridge-"));
 process.env.UNIPI_BRIDGE_DIR = dir;
-const { createBridge } = await import("../src/bridge.js");
+const { createBridge, SESSION_COMMAND } = await import("../src/bridge.js");
 
 type Handler = (event: any, ctx: any) => unknown;
 
 function fakePi() {
   const handlers = new Map<string, Handler[]>();
+  const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
   const sent: Array<{ content: unknown; opts: any }> = [];
   let idle = true;
   let thinking = "medium";
+  let sessionName: string | undefined = "my session";
   const branch: any[] = [
     { type: "session", id: "h" },
     { type: "message", id: "m1", message: { role: "user", content: "hello" } },
     { type: "message", id: "m2", message: { role: "assistant", content: [{ type: "text", text: "hi!" }], usage: { cost: { total: 0.01 } } } },
+  ];
+  const tree = [
+    {
+      entry: { id: "m1", parentId: null, type: "message", timestamp: "t1", message: { role: "user", content: "hello" } },
+      children: [
+        {
+          entry: { id: "m2", parentId: "m1", type: "message", timestamp: "t2", message: { role: "assistant", content: [{ type: "text", text: "hi!" }] } },
+          children: [],
+        },
+        { entry: { id: "m3", parentId: "m1", type: "message", timestamp: "t3", message: { role: "user", content: "a branch" } }, children: [] },
+      ],
+    },
   ];
   const model = { provider: "p", id: "m", name: "Model M", reasoning: true };
   const ui = {
@@ -30,6 +44,14 @@ function fakePi() {
       new Promise<string | undefined>((resolve) => opts?.signal?.addEventListener("abort", () => resolve(undefined))),
     notify: () => {},
   };
+  // What the hidden command's calls return (tests can override per-case).
+  const sessionOps = {
+    newSession: async () => ({ cancelled: false }),
+    fork: async (_entryId: string) => ({ cancelled: false }),
+    navigateTree: async (_id: string, _opts?: unknown) => ({ cancelled: false }),
+    switchSession: async (_path: string) => ({ cancelled: false }),
+  };
+  const calls: Array<{ op: string; args: unknown[] }> = [];
   const ctx = {
     mode: "tui",
     hasUI: true,
@@ -44,20 +66,55 @@ function fakePi() {
       getBranch: () => branch,
       getEntries: () => branch,
       getLeafEntry: () => branch.at(-1),
+      getLeafId: () => branch.at(-1)?.id ?? null,
+      getTree: () => tree,
     },
     isIdle: () => idle,
-    abort: () => {},
+    abort: () => (idle = true),
     getContextUsage: () => ({ tokens: 1000, contextWindow: 10000, percent: 10 }),
     compact: () => {},
+  };
+  const cctx = {
+    ...ctx,
+    waitForIdle: async () => {},
+    newSession: async (...args: unknown[]) => {
+      calls.push({ op: "newSession", args });
+      return sessionOps.newSession();
+    },
+    fork: async (...args: unknown[]) => {
+      calls.push({ op: "fork", args });
+      return sessionOps.fork(args[0] as string);
+    },
+    navigateTree: async (...args: unknown[]) => {
+      calls.push({ op: "navigateTree", args });
+      return sessionOps.navigateTree(args[0] as string, args[1]);
+    },
+    switchSession: async (...args: unknown[]) => {
+      calls.push({ op: "switchSession", args });
+      return sessionOps.switchSession(args[0] as string);
+    },
   };
   const pi = {
     on: (name: string, h: Handler) => {
       handlers.set(name, [...(handlers.get(name) ?? []), h]);
       return () => {};
     },
-    sendUserMessage: (content: unknown, opts: any) => sent.push({ content, opts }),
-    getCommands: () => [{ name: "unipi:goal", description: "Set a goal", source: "extension" }],
-    getSessionName: () => "my session",
+    sendUserMessage: (content: unknown, opts: any) => {
+      sent.push({ content, opts });
+      // The bridge's hidden command: run it with a command-capable context,
+      // the only way to reach newSession/fork/navigateTree/switchSession.
+      if (typeof content === "string" && content === `/${SESSION_COMMAND}`) {
+        const cmd = commands.get(SESSION_COMMAND);
+        if (cmd) void cmd.handler("", cctx);
+      }
+    },
+    registerCommand: (name: string, options: { handler: (args: string, ctx: any) => Promise<void> }) => commands.set(name, options),
+    getCommands: () => [
+      { name: "unipi:goal", description: "Set a goal", source: "extension" },
+      ...[...commands.keys()].map((name) => ({ name, source: "extension" as const })),
+    ],
+    getSessionName: () => sessionName,
+    setSessionName: (name: string) => (sessionName = name),
     getThinkingLevel: () => thinking,
     setThinkingLevel: (l: string) => (thinking = l),
     setModel: async () => true,
@@ -65,7 +122,20 @@ function fakePi() {
   const emit = async (name: string, event: any = {}) => {
     for (const h of handlers.get(name) ?? []) await h(event, ctx);
   };
-  return { pi, ctx, emit, sent, branch, setIdle: (v: boolean) => (idle = v) };
+  return { pi, ctx, emit, sent, branch, calls, sessionOps, setIdle: (v: boolean) => (idle = v) };
+}
+
+/** Fake SessionManager.list/listAll deps for `sessions{}` (the real bridge talks to disk). */
+function fakeDeps() {
+  const cwdSessions = [
+    { path: "/tmp/proj/s.jsonl", id: "sid", cwd: "/tmp/proj", name: "my session", created: new Date(1000), modified: new Date(3000), messageCount: 4, firstMessage: "hello there", allMessagesText: "hello there general kenobi" },
+    { path: "/tmp/proj/old.jsonl", id: "old", cwd: "/tmp/proj", created: new Date(500), modified: new Date(1500), messageCount: 2, firstMessage: "fix the bug", allMessagesText: "fix the bug thanks" },
+  ];
+  const allSessions = [...cwdSessions, { path: "/other/x.jsonl", id: "x", cwd: "/other", created: new Date(900), modified: new Date(2500), messageCount: 1, firstMessage: "other project", allMessagesText: "other project" }];
+  return {
+    listSessions: async (_cwd: string) => cwdSessions as never,
+    listAllSessions: async () => allSessions as never,
+  };
 }
 
 function client(path: string) {
@@ -103,7 +173,7 @@ function client(path: string) {
 
 describe("app bridge over a unix socket", () => {
   const f = fakePi();
-  const bridge = createBridge(f.pi as never);
+  const bridge = createBridge(f.pi as never, fakeDeps());
   let c: ReturnType<typeof client>;
 
   before(async () => {
@@ -136,6 +206,9 @@ describe("app bridge over a unix socket", () => {
     assert.ok(hello.commands.some((x: any) => x.name === "model" && x.source === "builtin"));
     assert.ok(hello.commands.some((x: any) => x.name === "unipi:goal"));
     assert.equal(hello.models.length, 2);
+    assert.ok(hello.commands.some((x: any) => x.name === "new" && x.source === "builtin"));
+    assert.ok(hello.commands.some((x: any) => x.name === "tree" && x.source === "builtin"));
+    assert.ok(!hello.commands.some((x: any) => x.name === SESSION_COMMAND), "the hidden session command never reaches the phone");
   });
 
   it("idle prompt goes straight in; busy prompt steers or follows up", async () => {
@@ -217,6 +290,77 @@ describe("app bridge over a unix socket", () => {
     assert.match((await c.next((m) => m.t === "error" && m.ref === "sm")).message, /Unknown model/);
     c.sock.write("garbage\n");
     assert.equal((await c.next((m) => m.t === "error" && !m.ref)).message, "not JSON");
+  });
+
+  it("session_rename sets the display name", async () => {
+    c.send({ t: "session_rename", name: "renamed chat", ref: "rn" });
+    await c.next((m) => m.t === "ack" && m.ref === "rn");
+    assert.equal(f.pi.getSessionName(), "renamed chat");
+  });
+
+  it("sessions{scope} lists this project's or every project's sessions, newest first, with the current one marked", async () => {
+    c.send({ t: "sessions", scope: "cwd", ref: "s1" });
+    const cwd = await c.next((m) => m.t === "sessions" && m.ref === "s1");
+    assert.deepEqual(cwd.items.map((i: any) => i.path), ["/tmp/proj/s.jsonl", "/tmp/proj/old.jsonl"], "newest modified first");
+    assert.equal(cwd.items[0].current, true);
+    assert.equal(cwd.items[1].current, false);
+    assert.equal(cwd.more, false);
+
+    c.send({ t: "sessions", scope: "all", ref: "s2" });
+    const all = await c.next((m) => m.t === "sessions" && m.ref === "s2");
+    assert.equal(all.items.length, 3);
+
+    c.send({ t: "sessions", scope: "cwd", query: "bug", ref: "s3" });
+    const filtered = await c.next((m) => m.t === "sessions" && m.ref === "s3");
+    assert.deepEqual(filtered.items.map((i: any) => i.path), ["/tmp/proj/old.jsonl"], "matches firstMessage/allMessagesText case-insensitively");
+  });
+
+  it("tree{} lists every branch, previews only, marking the current branch and leaf", async () => {
+    c.send({ t: "tree", ref: "tr1" });
+    const tree = await c.next((m) => m.t === "tree" && m.ref === "tr1");
+    assert.deepEqual(tree.nodes.map((n: any) => n.id), ["m1", "m2", "m3"]);
+    assert.equal(tree.nodes.find((n: any) => n.id === "m1").kind, "user");
+    assert.equal(tree.nodes.find((n: any) => n.id === "m2").preview, "hi!");
+    // The fake session's branch (getBranch) holds m1, m2 and the m3 an
+    // earlier test appended: all three are "on the current path"; only the
+    // leaf (m3) is "current".
+    assert.equal(tree.nodes.find((n: any) => n.id === "m2").onPath, true);
+    assert.equal(tree.nodes.find((n: any) => n.id === "m2").current, false);
+    assert.equal(tree.nodes.find((n: any) => n.id === "m3").onPath, true);
+    assert.equal(tree.nodes.find((n: any) => n.id === "m3").current, true);
+  });
+
+  it("session_new / session_resume / session_fork / tree_go run through the hidden command with a real command context", async () => {
+    c.send({ t: "session_new", ref: "n1" });
+    await c.next((m) => m.t === "ack" && m.ref === "n1");
+    assert.deepEqual(f.calls.at(-1), { op: "newSession", args: [] });
+
+    c.send({ t: "session_resume", path: "/tmp/other.jsonl", ref: "r1" });
+    await c.next((m) => m.t === "ack" && m.ref === "r1");
+    assert.deepEqual(f.calls.at(-1), { op: "switchSession", args: ["/tmp/other.jsonl"] });
+
+    c.send({ t: "session_fork", entryId: "m2", ref: "f1" });
+    await c.next((m) => m.t === "ack" && m.ref === "f1");
+    assert.deepEqual(f.calls.at(-1), { op: "fork", args: ["m2"] });
+
+    c.send({ t: "tree_go", id: "m1", summarize: true, ref: "g1" });
+    await c.next((m) => m.t === "ack" && m.ref === "g1");
+    assert.deepEqual(f.calls.at(-1), { op: "navigateTree", args: ["m1", { summarize: true }] });
+  });
+
+  it("while pi is busy, new/resume/fork/tree_go answer a busy error; force:true aborts, waits for idle, then runs", async () => {
+    f.setIdle(false);
+    c.send({ t: "session_new", ref: "busy1" });
+    const err = await c.next((m) => m.t === "error" && m.ref === "busy1");
+    assert.equal(err.code, "busy");
+    assert.equal(f.calls.some((x) => x.op === "newSession"), true, "earlier calls from the previous test still there");
+    const before = f.calls.length;
+
+    c.send({ t: "session_new", force: true, ref: "busy2" });
+    await c.next((m) => m.t === "ack" && m.ref === "busy2");
+    assert.equal(f.calls.length, before + 1);
+    assert.equal(f.calls.at(-1)!.op, "newSession");
+    f.setIdle(true);
   });
 
   it("removes its files on quit", async () => {

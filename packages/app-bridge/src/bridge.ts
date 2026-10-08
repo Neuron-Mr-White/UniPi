@@ -7,7 +7,8 @@
  *   (whose pi session file it knows) to this socket.
  * - Every hook body is try/catch: the bridge must never break a turn.
  */
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createServer, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -26,18 +27,42 @@ import {
   type Queued,
   type RunState,
   type SessionInfo,
+  type SessionsItem,
+  type TreeNode,
 } from "./wire.js";
 import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
 
 export const BRIDGE_VERSION = "1.0.0";
 
+/** The hidden extension command the bridge uses to get a command-capable
+ * context (newSession/fork/navigateTree/switchSession only exist there). */
+export const SESSION_COMMAND = "unipi-app-session";
+
 /** Commands the app maps to bridge calls (pi's built-ins can't be sent as text). */
 const BUILTIN_COMMANDS: CommandInfo[] = [
   { name: "model", description: "Switch the model", source: "builtin" },
   { name: "thinking", description: "Set the thinking level", source: "builtin" },
   { name: "compact", description: "Compact the conversation", source: "builtin" },
+  { name: "new", description: "Start a new session", source: "builtin" },
+  { name: "resume", description: "Resume a session", source: "builtin" },
+  { name: "fork", description: "Fork the session from a message", source: "builtin" },
+  { name: "tree", description: "Browse the session tree", source: "builtin" },
 ];
+
+/** A short, phone-sized preview of a session entry (tree / resume rows). */
+function entryPreview(entry: unknown, max = 120): string {
+  const e = entry as { type?: string; message?: { role?: string; content?: unknown }; summary?: string; customType?: string; content?: unknown; provider?: string; modelId?: string } | null;
+  if (!e) return "";
+  let text = "";
+  if (e.type === "message") text = textOfContent(e.message?.content);
+  else if (e.type === "compaction" || e.type === "branch_summary") text = e.summary ?? "";
+  else if (e.type === "custom_message") text = textOfContent(e.content);
+  else if (e.type === "model_change") text = `model → ${e.provider ?? ""}/${e.modelId ?? ""}`;
+  else text = e.customType ?? e.type ?? "";
+  text = text.replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
 
 export function bridgeDir(): string {
   return process.env.UNIPI_BRIDGE_DIR || join(homedir(), ".unipi", "bridge");
@@ -77,7 +102,14 @@ const textOfContent = (content: unknown): string => {
     .join("");
 };
 
-export function createBridge(pi: ExtensionAPI) {
+/** Test seam: SessionManager.list/listAll do real disk IO; fakes inject their own. */
+export interface BridgeDeps {
+  listSessions: typeof SessionManager.list;
+  listAllSessions: typeof SessionManager.listAll;
+}
+const defaultDeps: BridgeDeps = { listSessions: SessionManager.list, listAllSessions: SessionManager.listAll as typeof SessionManager.listAll };
+
+export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let ctx: ExtensionContext | undefined;
   let server: Server | undefined;
   let socketPath: string | undefined;
@@ -100,6 +132,50 @@ export function createBridge(pi: ExtensionAPI) {
     open: (dialog) => send({ t: "dialog", ...dialog }),
     close: (id, by) => send({ t: "dialog_end", id, by }),
   });
+
+  /** The hidden `unipi-app-session` command runs this once, with a real
+   * ExtensionCommandContext, then clears it. See runCommandOp(). */
+  let pendingOp: ((cctx: ExtensionCommandContext) => Promise<void>) | undefined;
+  pi.registerCommand(SESSION_COMMAND, {
+    description: "Internal: runs a UniPi app session-navigation request. Not for direct use.",
+    handler: async (_args: string, cctx: ExtensionCommandContext) => {
+      const op = pendingOp;
+      pendingOp = undefined;
+      if (op) await op(cctx);
+    },
+  });
+
+  /** Runs `op` with a command-capable context, via the hidden command (the
+   * only way to reach newSession/fork/navigateTree/switchSession). Only one
+   * can be in flight; callers only run this while pi is idle. */
+  const runCommandOp = (op: (cctx: ExtensionCommandContext) => Promise<void>): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      pendingOp = async (cctx) => {
+        try {
+          await op(cctx);
+          resolve();
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      try {
+        pi.sendUserMessage(`/${SESSION_COMMAND}`, { expandPromptTemplates: true });
+      } catch (error) {
+        pendingOp = undefined;
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+
+  /** new/resume/fork/tree_go while pi is busy: `force` aborts and waits for idle first. */
+  const ensureIdle = async (force: boolean | undefined): Promise<boolean> => {
+    if (!ctx) return false;
+    if (ctx.isIdle()) return true;
+    if (!force) return false;
+    ctx.abort();
+    const deadline = Date.now() + 10_000;
+    while (!ctx.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    return ctx.isIdle();
+  };
 
   const write = (sock: Socket, msg: OutMsg | object) => {
     try {
@@ -191,7 +267,9 @@ export function createBridge(pi: ExtensionAPI) {
   const commands = (): CommandInfo[] => {
     let list: CommandInfo[] = [];
     try {
-      list = pi.getCommands().map((c) => ({ name: c.name, description: c.description, source: c.source }));
+      list = pi.getCommands()
+        .filter((c) => c.name !== SESSION_COMMAND)
+        .map((c) => ({ name: c.name, description: c.description, source: c.source }));
     } catch {
       // ignore
     }
@@ -266,6 +344,56 @@ export function createBridge(pi: ExtensionAPI) {
     }
   };
   const startedAt = Date.now();
+
+  /** `sessions{scope, query?}`: this project's or every project's sessions, newest first, capped. */
+  const listSessions = async (scope: "cwd" | "all", query: string | undefined): Promise<{ items: SessionsItem[]; more: boolean }> => {
+    const c = ctx!;
+    const current = c.sessionManager.getSessionFile();
+    const raw = scope === "all" ? await deps.listAllSessions() : await deps.listSessions(c.cwd);
+    const sorted = [...raw].sort((a, b) => b.modified.getTime() - a.modified.getTime());
+    const q = query?.trim().toLowerCase();
+    const matches = (s: (typeof sorted)[number]) =>
+      !q || (s.name ?? "").toLowerCase().includes(q) || s.firstMessage.toLowerCase().includes(q) || s.allMessagesText.toLowerCase().includes(q);
+    const filtered = sorted.filter(matches);
+    const cap = 200;
+    const items: SessionsItem[] = filtered.slice(0, cap).map((s) => ({
+      path: s.path,
+      id: s.id,
+      name: s.name,
+      cwd: s.cwd,
+      firstMessage: clipText(s.firstMessage, 200),
+      modified: s.modified.getTime(),
+      messageCount: s.messageCount,
+      current: s.path === current,
+    }));
+    return { items, more: filtered.length > cap };
+  };
+
+  /** `tree{}`: every branch, previews only, the current branch and leaf marked. */
+  const buildTree = (): TreeNode[] => {
+    const c = ctx!;
+    const sm = c.sessionManager;
+    const leafId = sm.getLeafId();
+    const onPath = new Set<string>();
+    if (leafId) for (const e of sm.getBranch(leafId)) onPath.add(e.id);
+    const out: TreeNode[] = [];
+    const visit = (node: { entry: unknown; children: unknown[]; label?: string }) => {
+      const e = node.entry as { id: string; parentId: string | null; type: string; timestamp?: string; message?: { role?: string } };
+      out.push({
+        id: e.id,
+        parentId: e.parentId,
+        kind: e.type === "message" ? (e.message?.role ?? "message") : e.type,
+        preview: entryPreview(e),
+        timestamp: e.timestamp,
+        label: node.label,
+        onPath: onPath.has(e.id),
+        current: e.id === leafId,
+      });
+      for (const child of node.children as Array<{ entry: unknown; children: unknown[]; label?: string }>) visit(child);
+    };
+    for (const root of sm.getTree()) visit(root as never);
+    return out;
+  };
 
   const handle = async (sock: Socket, msg: InMsg) => {
     const c = ctx;
@@ -343,6 +471,83 @@ export function createBridge(pi: ExtensionAPI) {
       case "files": {
         const items = await fileSuggestions(c.cwd, msg.query);
         write(sock, { t: "files", query: msg.query, items, ref: msg.ref });
+        return;
+      }
+      case "sessions": {
+        try {
+          const { items, more } = await listSessions(msg.scope, msg.query);
+          write(sock, { t: "sessions", items, more, ref: msg.ref });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "tree": {
+        try {
+          write(sock, { t: "tree", nodes: buildTree(), ref: msg.ref });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "session_rename":
+        try {
+          pi.setSessionName(msg.name);
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      case "session_new": {
+        if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
+        try {
+          await runCommandOp(async (cctx) => {
+            const result = await cctx.newSession();
+            if (result.cancelled) throw new Error("Cancelled");
+          });
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "session_resume": {
+        if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
+        try {
+          await runCommandOp(async (cctx) => {
+            const result = await cctx.switchSession(msg.path);
+            if (result.cancelled) throw new Error("Cancelled");
+          });
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "session_fork": {
+        if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
+        try {
+          await runCommandOp(async (cctx) => {
+            const result = await cctx.fork(msg.entryId);
+            if (result.cancelled) throw new Error("Cancelled");
+          });
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "tree_go": {
+        if (!(await ensureIdle(msg.force))) return write(sock, { t: "error", message: "pi is busy. Stop the current run first.", code: "busy", ref: msg.ref });
+        try {
+          await runCommandOp(async (cctx) => {
+            const result = await cctx.navigateTree(msg.id, { summarize: msg.summarize });
+            if (result.cancelled) throw new Error("Cancelled");
+          });
+          ack();
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
         return;
       }
     }

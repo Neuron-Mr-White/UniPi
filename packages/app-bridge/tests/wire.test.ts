@@ -25,6 +25,23 @@ describe("parseIn", () => {
     assert.ok("bad" in (parseIn('{"t":"set_model","provider":"x"}') as object));
     assert.deepEqual(parseIn('{"t":"set_thinking","level":"high"}'), { t: "set_thinking", level: "high", ref: undefined });
   });
+  it("validates sessions / session_new / session_resume / session_fork / tree / tree_go / session_rename", () => {
+    assert.deepEqual(parseIn('{"t":"sessions","scope":"cwd"}'), { t: "sessions", scope: "cwd", query: undefined, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"sessions","scope":"all","query":"bug"}'), { t: "sessions", scope: "all", query: "bug", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"sessions","scope":"nope"}') as object));
+    assert.deepEqual(parseIn('{"t":"session_new"}'), { t: "session_new", force: false, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"session_new","force":true}'), { t: "session_new", force: true, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"session_resume","path":"/a/b.jsonl"}'), { t: "session_resume", path: "/a/b.jsonl", force: false, ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"session_resume"}') as object));
+    assert.deepEqual(parseIn('{"t":"session_fork","entryId":"m2"}'), { t: "session_fork", entryId: "m2", force: false, ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"session_fork"}') as object));
+    assert.deepEqual(parseIn('{"t":"tree","ref":"t1"}'), { t: "tree", ref: "t1" });
+    assert.deepEqual(parseIn('{"t":"tree_go","id":"m1"}'), { t: "tree_go", id: "m1", summarize: false, force: false, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"tree_go","id":"m1","summarize":true,"force":true}'), { t: "tree_go", id: "m1", summarize: true, force: true, ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"tree_go"}') as object));
+    assert.deepEqual(parseIn('{"t":"session_rename","name":"new name"}'), { t: "session_rename", name: "new name", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"session_rename"}') as object));
+  });
 });
 
 describe("LineSplitter", () => {
