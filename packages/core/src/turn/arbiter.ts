@@ -108,6 +108,28 @@ export function registerWaitSource(source: string, waiting: () => string | null)
 	};
 }
 
+/**
+ * Every wait source's current reason (UNI-162 "end judgement"): a snapshot
+ * of `{source, reason}` for each registered source that currently returns
+ * non-null — the SAME sources `decideSettle` consults at `agent_before_settle`,
+ * but readable any time (a pending-work monitor needs this after settle has
+ * already happened, not just during the boundary). A throwing wait source
+ * contributes nothing (same "never blocks" contract as decideSettle).
+ */
+export function currentWaitReasons(): Array<{ source: string; reason: string }> {
+	const h = holder();
+	const out: Array<{ source: string; reason: string }> = [];
+	for (const waitSource of h.waitSources.values()) {
+		try {
+			const reason = waitSource.waiting();
+			if (reason !== null) out.push({ source: waitSource.source, reason });
+		} catch {
+			// A broken wait source contributes nothing.
+		}
+	}
+	return out;
+}
+
 export function onSettleDecision(listener: SettleDecisionListener): () => void {
 	const h = holder();
 	h.listeners.add(listener);

@@ -10,7 +10,7 @@ import { existsSync, renameSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, kanboardClaimsReminder, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
+import { appendProgress, bus, getPackageVersion, harnessMetadata, installArbiter, installPendingWorkMonitor, kanboardClaimsReminder, registerCommandRunner, registerCompactionContext, registerNudgeProvider, sendHarnessUserMessage, stateDir, UNIPI_EVENTS } from "@pi-unipi/core";
 import { longHorizonCompactionBrief } from "./src/compaction-brief.js";
 import { OwnerCoordinator, type OwnerEvent } from "./src/owner.js";
 import { Gate } from "./src/gate.js";
@@ -67,6 +67,12 @@ export default function longHorizon(pi: ExtensionAPI): void {
     installArbiter(pi);
   } catch {
     // Never block module load on the arbiter.
+  }
+  // Same standalone-safety note (UNI-162): idempotent, no-op under the umbrella.
+  try {
+    installPendingWorkMonitor(pi);
+  } catch {
+    // Never block module load on the monitor.
   }
 
   // Owner lifecycle → unipi event bus (footer/info-screen consume these).

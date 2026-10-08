@@ -10,7 +10,7 @@
  */
 
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { installArbiter, installHarnessProvenance, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
+import { installArbiter, installHarnessProvenance, installPendingWorkMonitor, migrateState, sweepOrphanSessions, withCommandEcho } from "@pi-unipi/core";
 import { withHarnessToolAnnotations } from "@pi-unipi/utility";
 import { readUtilSettings, simpleWrapTool, simpleWrapped, installSimpleGroupEvents } from "@pi-unipi/utility";
 
@@ -51,6 +51,13 @@ export default function (pi: ExtensionAPI) {
     installArbiter(pi);
   } catch {
     // Never block startup on the arbiter.
+  }
+  // UNI-162: one pending-work monitor reading the arbiter's own wait sources
+  // (idempotent; a no-op in child processes).
+  try {
+    installPendingWorkMonitor(pi);
+  } catch {
+    // Never block startup on the monitor.
   }
   // "simple" render style = mcode transcript: every tool registered by any
   // unipi module is captured here and, after all modules load, re-registered

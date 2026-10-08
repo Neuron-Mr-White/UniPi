@@ -165,11 +165,12 @@ test("path A: a user message ends the turn, the wake line covers the still-runni
     await h.endTurn();
     assert.equal(h.wakeWidgets().length, 1, "wake line shown once the turn has ended");
     assert.equal(typeof h.wakeWidgets()[0]?.widget, "function");
-    assert.deepEqual(
-      h.herdrWorking(),
-      [{ active: true, label: "sidekick working — resumes automatically" }],
-      "wake line claims herdr working exactly once",
-    );
+    // UNI-162: the herdr `working` claim while the wake line is up moved out
+    // of this extension and into core's pending-work monitor (reading the
+    // "fusion" wait source) — this harness doesn't install that monitor, so
+    // no herdr:working event is expected here any more; see
+    // core/src/turn/__tests__/pending-work.test.ts for that claim's coverage.
+    assert.deepEqual(h.herdrWorking(), [], "fusion no longer claims herdr working directly");
   } finally {
     await h.shutdown();
   }
@@ -232,11 +233,10 @@ test("the wake line is cleared when the session shuts down", async () => {
 
     await h.shutdown();
     assert.equal(h.wakeWidgets().at(-1)?.widget, undefined, "session shutdown clears the line");
-    assert.deepEqual(
-      h.herdrWorking().at(-1),
-      { active: false, label: "sidekick working — resumes automatically" },
-      "session shutdown releases the herdr working claim",
-    );
+    // UNI-162: herdr `working` is no longer claimed here (see above) — the
+    // pending-work monitor owns clearing its own claim via the "fusion" wait
+    // source going null, independent of this widget's lifecycle.
+    assert.deepEqual(h.herdrWorking(), [], "fusion no longer claims herdr working directly");
   } finally {
     await h.shutdown();
   }

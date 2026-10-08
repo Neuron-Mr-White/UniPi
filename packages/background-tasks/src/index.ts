@@ -14,7 +14,6 @@ import {
   createSpinnerLine,
   isChildProcess,
   registerWaitSource,
-  setHerdrWorking,
   setBashBackgroundAdopter,
   type BashBackgroundRequest,
   type BashDetachResult,
@@ -161,21 +160,15 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
           { placement: "aboveEditor" },
         );
         wakeLineInstalled = true;
-        // The pane is not done: a running task will re-invoke the agent. Keep
-        // herdr at `working` instead of `idle` for exactly as long as the wake
-        // line is up (one claim transition per widget install, not per tick).
-        const wakeCount = registry
-          .allTasks()
-          .filter((task) => task.status === "running" && task.triggerOnCompletion).length;
-        setHerdrWorking(
-          pi,
-          "bg-wake",
-          `${wakeCount === 1 ? "1 bg task" : `${String(wakeCount)} bg tasks`} will resume agent`,
-        );
+        // The pane is not done: a running task will re-invoke the agent. The
+        // herdr `working` claim for this (UNI-162) is no longer made HERE —
+        // the core pending-work monitor (installPendingWorkMonitor) reads the
+        // "background-tasks" wait source (registerWaitSource above) and makes
+        // ONE claim covering bg wake + subagents + fusion handoffs together,
+        // instead of each owner claiming its own herdr key.
       } else if (!wantWakeLine && wakeLineInstalled) {
         target.ui.setWidget("background-tasks", undefined);
         wakeLineInstalled = false;
-        setHerdrWorking(pi, "bg-wake", null);
       }
       if (running.length === 0 && unseenFinishedCount === 0) {
         target.ui.setStatus("background-tasks", undefined);

@@ -16,7 +16,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
-import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, setHerdrWorking, stateDir, UNIPI_EVENTS, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS, bus } from "@pi-unipi/core";
+import { createSpinnerLine, harnessToolResultDetails, registerCommandRunner, stateDir, UNIPI_EVENTS, UNIPI_PREFIX, HUB_OVERLAY_OPTIONS, HUB_PICKER_OVERLAY_OPTIONS, bus } from "@pi-unipi/core";
 import { join } from "node:path";
 import {
   effortLabel,
@@ -92,14 +92,18 @@ export interface SidekickWakeLine {
 export function createSidekickWakeLine(deps: {
   isBusy: () => boolean;
   progress: () => { toolCalls: number; startedAt: number } | undefined;
-  /** Claim hook: called with a label when the line goes up, null when it comes down. */
-  onHeld?: (label: string | null) => void;
 }): SidekickWakeLine {
   let installed = false;
 
   const removable = (ctx: ExtensionContext | undefined): ctx is ExtensionContext =>
     Boolean(ctx?.hasUI) && typeof ctx?.ui.setWidget === "function";
 
+  // UNI-162: the herdr `working` claim while this line is up used to be made
+  // HERE (key "fusion-sidekick"). It is now the core pending-work monitor's
+  // job (installPendingWorkMonitor), reading the "fusion" wait source
+  // (tools.ts's BackgroundHandoffTracker, which already covers exactly this
+  // case — a detached/non-blocking handoff still running) — one claim across
+  // bg wake + subagents + fusion instead of three.
   return {
     publish(ctx) {
       if (!removable(ctx)) return;
@@ -111,17 +115,14 @@ export function createSidekickWakeLine(deps: {
           { placement: "aboveEditor" },
         );
         installed = true;
-        deps.onHeld?.("sidekick working — resumes automatically");
       } else if (!want && installed) {
         ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
         installed = false;
-        deps.onHeld?.(null);
       }
     },
     clear(ctx) {
       if (!installed) return;
       installed = false;
-      deps.onHeld?.(null);
       if (!removable(ctx)) return;
       ctx.ui.setWidget(SIDEKICK_WAKE_WIDGET_KEY, undefined);
     },
@@ -243,10 +244,6 @@ export default function fusionExtension(pi: ExtensionAPI): void {
   const wakeLine = createSidekickWakeLine({
     isBusy: () => runtime?.isBusy() === true,
     progress: () => runtime?.progress(),
-    // While the wake line is up the pane must read `working` in herdr (the
-    // sidekick will re-invoke the lead), not `idle` — same claim the bg-tasks
-    // wake line makes.
-    onHeld: (label) => setHerdrWorking(pi, "fusion-sidekick", label),
   });
 
   const syncTools = makeFusionToolSync(pi);

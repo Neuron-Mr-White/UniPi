@@ -328,6 +328,11 @@ export function setHerdrWorking(
   emitPiEvent(pi, "herdr:working", { active: true, label });
 }
 
+/** Test hook: drop every herdr `working` claim so each test starts clean. */
+export function resetHerdrWorkingForTests(): void {
+  herdrWorkingClaims.clear();
+}
+
 /** Format a token count for display (e.g. 1234 → "1.2k", 1500000 → "1.5M"). */
 export function formatTokens(n: number): string {
   if (n < 1000) return String(n);
