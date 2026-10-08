@@ -75,6 +75,11 @@ function registeredCommands(): { commands: Set<string>; nonUnipi: string[]; unre
         continue;
       }
 
+      // The app bridge's hidden helper command (filtered out of every command
+      // list; only the bridge invokes it to get a command context for phone
+      // session switches) — not a user command, never autocompleted.
+      if (path === "packages/app-bridge/src/bridge.ts" && expr === "SESSION_COMMAND") continue;
+
       const command = evaluateCommandExpression(expr, constants);
       if (!command || command.includes("${")) {
         unresolved.push(`${path}: ${expr}`);
