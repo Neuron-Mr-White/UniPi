@@ -656,6 +656,50 @@ describe("app bridge over a unix socket", () => {
     assert.equal(await p, "ok");
   });
 
+  it('"needs you" (UNI-161): the discovery record carries `waiting` while a dialog is open, and clears once it closes', async () => {
+    const pick = (f.ctx.ui as any).select("Pick a path", ["a", "b"]);
+    const d = await c.next((m) => m.t === "dialog" && m.kind === "select" && m.title === "Pick a path");
+    for (let i = 0; i < 50; i++) {
+      const rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+      if (rec.waiting) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    let rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+    assert.equal(rec.waiting.kind, "select");
+    assert.equal(rec.waiting.title, "Pick a path");
+    assert.equal(typeof rec.waiting.since, "number");
+
+    c.send({ t: "answer", id: d.id, value: "a", ref: "needs-you-1" });
+    assert.equal(await pick, "a");
+    await c.next((m) => m.t === "dialog_end" && m.id === d.id);
+    for (let i = 0; i < 50; i++) {
+      rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+      if (!rec.waiting) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(rec.waiting, null);
+  });
+
+  it('"needs you": idle right after an agent_end with no phone connected also marks `waiting`, cleared once a phone (re)connects', async () => {
+    c.sock.destroy();
+    // No socket connected now — give the server a tick to drop it.
+    await new Promise((r) => setTimeout(r, 50));
+    await f.emit("agent_end", { messages: [] });
+    let rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+    assert.equal(rec.waiting.kind, "agent_end");
+    assert.equal(typeof rec.waiting.since, "number");
+
+    // Reconnecting clears it (the phone has now seen the state in `hello`).
+    c = client(join(dir, `${process.pid}.sock`));
+    await c.next((m) => m.t === "hello");
+    for (let i = 0; i < 50; i++) {
+      rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+      if (!rec.waiting) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(rec.waiting, null);
+  });
+
   it("removes its files on quit", async () => {
     await f.emit("session_shutdown", { reason: "quit" });
     assert.equal(existsSync(join(dir, `${process.pid}.json`)), false);

@@ -221,6 +221,15 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let deltaTimer: NodeJS.Timeout | undefined;
   const toolTimers = new Map<string, NodeJS.Timeout>();
   let sessionCost = 0;
+  /** "Needs you" (UNI-161): an open dialog, or idle right after an
+   * `agent_end` no phone has seen yet. Written into the discovery record so
+   * the host's `chat_list` (crates/host/src/chat.rs) can float it to the top
+   * without a live socket connection. A dialog takes priority over a bare
+   * idle-since-agent_end (it's the more specific, answerable thing). Cleared
+   * once every open dialog closes / a phone client connects (it's seen the end). */
+  let dialogWaiting: { kind: string; title?: string; since: number } | undefined;
+  let idleWaitingSince: number | undefined;
+  const effectiveWaiting = () => dialogWaiting ?? (idleWaitingSince ? { kind: "agent_end", since: idleWaitingSince } : undefined);
   /** Sockets that asked `watch{stats:true}` / `watch{info:true}` (UNI-160 §3/§5):
    * stats/info pushes only run while at least one client wants them, ≤1/s. */
   const statsWatchers = new Set<Socket>();
@@ -229,9 +238,29 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let workTimer: NodeJS.Timeout | undefined;
   let pushTicker: NodeJS.Timeout | undefined;
 
+  /** A dialog's "waiting" title: the ask_user header/question, or the
+   * select/confirm/input/editor title — whatever the phone shows first. */
+  const dialogWaitingTitle = (dialog: Dialog): string | undefined => {
+    if (dialog.kind === "ask_user") {
+      const qs = (dialog.questions ?? []) as Array<{ header?: string; question?: string }>;
+      return qs[0]?.header || qs[0]?.question || dialog.title;
+    }
+    return dialog.title;
+  };
+
   const hub = new DialogHub({
-    open: (dialog) => send({ t: "dialog", ...dialog }),
-    close: (id, by) => send({ t: "dialog_end", id, by }),
+    open: (dialog) => {
+      dialogWaiting = { kind: dialog.kind, title: dialogWaitingTitle(dialog), since: Date.now() };
+      writeRecord();
+      send({ t: "dialog", ...dialog });
+    },
+    close: (id, by) => {
+      // DialogHub deletes the closing entry from `pending` before calling
+      // this, so an empty list here means no dialog is left open.
+      if (hub.list().length === 0) dialogWaiting = undefined;
+      writeRecord();
+      send({ t: "dialog_end", id, by });
+    },
   });
 
   /** The hidden `unipi-app-session` command runs this once, with a real
@@ -569,6 +598,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       herdrSocket: process.env.HERDR_SOCKET_PATH ?? null,
       bridgeVersion: BRIDGE_VERSION,
       startedAt: startedAt,
+      waiting: effectiveWaiting() ?? null,
     };
     try {
       const file = join(dir, `${process.pid}.json`);
@@ -1047,6 +1077,13 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     rmSync(socketPath, { force: true });
     const srv = createServer((sock) => {
       clients.add(sock);
+      // A phone connecting has now seen the state (it's in `hello`): the
+      // idle-since-agent_end "needs you" mark no longer applies (an open
+      // dialog is a separate thing — dialogWaiting only clears on close).
+      if (idleWaitingSince !== undefined) {
+        idleWaitingSince = undefined;
+        writeRecord();
+      }
       sock.setEncoding("utf8");
       const lines = new LineSplitter();
       const drop = () => {
@@ -1195,6 +1232,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
 
   on("agent_start", safe(() => {
     running = true;
+    idleWaitingSince = undefined;
+    writeRecord();
     send({ t: "state", running: true });
   }));
   on("agent_settled", safe(() => {
@@ -1209,7 +1248,15 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   }));
   // "After it ends" messages (the bridge's own queue): deliver the first one
   // as a fresh prompt, one at a time — the rest wait for the NEXT agent_end.
-  on("agent_end", safe(() => deliverNextQueued()));
+  // A phone already connected has already seen it live (no "needs you" badge
+  // for someone watching); one with no phone open gets the idle-waiting mark.
+  on("agent_end", safe(() => {
+    deliverNextQueued();
+    if (clients.size === 0) {
+      idleWaitingSince = Date.now();
+      writeRecord();
+    }
+  }));
 
   on("message_start", safe((event) => {
     const m = event.message as { role?: string; content?: unknown };
