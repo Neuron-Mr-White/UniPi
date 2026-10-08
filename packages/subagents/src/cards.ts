@@ -16,7 +16,7 @@
 
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Markdown, truncateToWidth, type Component } from "@earendil-works/pi-tui";
-import { badge, leader, settledGlyph, SPINNER_MS, stateGlyph, STATE_COLOR } from "@pi-unipi/core";
+import { badge, leader, settledGlyph, stateGlyph, STATE_COLOR, subscribeTick } from "@pi-unipi/core";
 import type { SidekickUsage } from "@pi-unipi/core/child-agent.js";
 import type { SubagentStatus } from "./manager.js";
 import { elapsed, plural, profileLabel, STATUS_LABEL, statLine, usageTail, type ThemeLike } from "./ui.js";
@@ -47,7 +47,9 @@ export interface CardState {
   /** Right side of the background badge line. */
   bgRight?: string;
   bgStatus?: SubagentStatus;
-  timer?: ReturnType<typeof setInterval>;
+  /** Unsubscribe from the shared animation ticker (UNI-133: one process-wide
+   *  timer instead of one `setInterval` per running card). */
+  unsubTick?: () => void;
 }
 
 export interface CardContext {
@@ -86,8 +88,8 @@ function isBackground(args: RunArgs): boolean {
 }
 
 function stopTimer(state: CardState): void {
-  if (state.timer) clearInterval(state.timer);
-  state.timer = undefined;
+  state.unsubTick?.();
+  state.unsubTick = undefined;
 }
 
 /** Head line — also animates the spinner while the run is live. */
@@ -102,9 +104,8 @@ export function renderRunCall(args: RunArgs, theme: ThemeLike, context: CardCont
       return [leader(theme, `${chip} ${theme.bold(profileLabel(args.profile ?? "subagent"))} ${title}`, theme.fg("dim", state.bgRight ?? "starting…"), w)];
     });
   }
-  if (state.settled === undefined && state.timer === undefined) {
-    state.timer = setInterval(() => context.invalidate(), SPINNER_MS);
-    state.timer.unref?.();
+  if (state.settled === undefined && state.unsubTick === undefined) {
+    state.unsubTick = subscribeTick(() => context.invalidate());
   }
   return lines((w) => {
     const s = state.settled;

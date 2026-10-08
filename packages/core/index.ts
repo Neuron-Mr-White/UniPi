@@ -27,6 +27,7 @@ export * from "./src/tui/hub-kit.js";
 export * from "./src/tui/kit.js";
 export * from "./src/tui/progress.js";
 export * from "./src/tui/viz.js";
+export * from "./src/tui/shared-ticker.js";
 export * from "./src/compaction-savings.js";
 export * from "./src/jev/client.js";
 export * from "./src/jev/settings.js";

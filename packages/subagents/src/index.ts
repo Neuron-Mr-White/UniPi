@@ -18,7 +18,7 @@ import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
-  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, registerSettings, registerWaitSource, SPINNER_MS,
+  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, registerSettings, registerWaitSource, subscribeTick,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -296,10 +296,14 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
       const wantFg = watched.size > 0;
       if (wantFg && !fgInstalled) {
         fgInstalled = true;
+        // UNI-133: one process-wide animation tick (core's subscribeTick)
+        // instead of a per-widget `setInterval(…, 90ms)` — the FG widget used
+        // to own its own timer, stacking with every running card's own timer
+        // (cards.ts) and the strip's 1s timer, each triggering a separate
+        // re-render pass and starving the editor's own loader animation.
         ctx.ui.setWidget(FG_KEY, (tui, theme) => {
-          const timer = setInterval(() => tui.requestRender(), SPINNER_MS);
-          timer.unref?.();
-          return { invalidate() {}, render: (w: number) => renderWatched(w, theme), dispose: () => clearInterval(timer) };
+          const unsub = subscribeTick(() => tui.requestRender());
+          return { invalidate() {}, render: (w: number) => renderWatched(w, theme), dispose: () => unsub() };
         }, { placement: "aboveEditor" });
       } else if (!wantFg && fgInstalled) {
         fgInstalled = false;
