@@ -39,7 +39,7 @@ import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
 import { registerPath, resolveMedia } from "./media.js";
 import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
-import { bus, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, pendingWorkLabel, UNIPI_EVENTS } from "@pi-unipi/core";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
  * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
@@ -373,6 +373,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     } catch {
       // ignore
     }
+    // UNI-162: while pi looks idle but a wait source still has a reason (a
+    // background subagent, a bg wake, a fusion handoff), say so instead of
+    // reporting a plain idle state — same label the footer's "waiting on
+    // …" line shows.
+    let waiting: string | undefined;
+    if (!running) {
+      try {
+        waiting = pendingWorkLabel() ?? undefined;
+      } catch {
+        // ignore — waiting is cosmetic
+      }
+    }
     return {
       running,
       model: modelInfo(c.model),
@@ -380,6 +392,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       thinkingLevels: thinkingLevels(c.model),
       context,
       cost: Math.round(sessionCost * 10000) / 10000,
+      ...(waiting !== undefined ? { waiting } : {}),
     };
   };
 
@@ -1268,7 +1281,18 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   // for someone watching); one with no phone open gets the idle-waiting mark.
   on("agent_end", safe(() => {
     deliverNextQueued();
-    if (clients.size === 0) {
+    // UNI-162: a settled turn with no phone open is only truly "needs you"
+    // idle if nothing is still pending (a background subagent, a bg wake, a
+    // fusion handoff) — those will re-invoke pi themselves; marking idle now
+    // would tell a notification-watching user the session is done when it
+    // isn't.
+    let pending = false;
+    try {
+      pending = pendingWorkLabel() !== null;
+    } catch {
+      pending = false;
+    }
+    if (clients.size === 0 && !pending) {
       idleWaitingSince = Date.now();
       writeRecord();
     }

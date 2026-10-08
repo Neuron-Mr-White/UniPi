@@ -15,6 +15,7 @@
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { getSharedTaskRegistry } from "@pi-unipi/background-tasks";
+import { pendingWorkLabel } from "@pi-unipi/core";
 
 const GREEN_DOT = "\x1b[38;5;82m●\x1b[0m"; // running — active work
 const YELLOW_DOT = "\x1b[38;5;220m●\x1b[0m"; // stopped (killed) — needs attention
@@ -75,4 +76,31 @@ export function renderProcessLine(width: number): string[] {
   if (w >= width) return [truncateToWidth(line, Math.max(1, width - 1))];
   const leftPad = Math.floor((width - w) / 2);
   return [" ".repeat(leftPad) + line];
+}
+
+/**
+ * UNI-162: while pi is idle but a wait source still has a reason (a
+ * background subagent running, a bg task that will wake the agent, a
+ * non-blocking fusion handoff in flight), the footer's own idea of "done"
+ * must say so instead of reading as finished — same contract as herdr's
+ * pending-work claim, read straight off the arbiter's wait sources via
+ * core's `pendingWorkLabel()` (no extra wiring: whichever package already
+ * registered the wait source is the source of truth).
+ *
+ * Returns `undefined` when nothing is pending (callers show their normal
+ * idle state), centered to `width` like `renderProcessLine`.
+ */
+export function renderWaitingLine(width: number, isIdle: () => boolean): string | undefined {
+  if (width <= 1) return undefined;
+  let idle: boolean;
+  try {
+    idle = isIdle();
+  } catch {
+    idle = true;
+  }
+  if (!idle) return undefined;
+  const label = pendingWorkLabel();
+  if (label === null) return undefined;
+  const line = `waiting on ${label}`;
+  return truncateToWidth(line, Math.max(1, width - 1));
 }

@@ -700,6 +700,40 @@ describe("app bridge over a unix socket", () => {
     assert.equal(rec.waiting, null);
   });
 
+  it("UNI-162: agent_end with no phone connected does NOT mark `waiting` while a wait source has a reason", async () => {
+    const { registerWaitSource, resetArbiterForTests } = await import("@pi-unipi/core");
+    c.sock.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    const unregister = registerWaitSource("subagents", () => "subagent running");
+    try {
+      await f.emit("agent_end", { messages: [] });
+      const rec = JSON.parse(readFileSync(join(dir, `${process.pid}.json`), "utf8"));
+      assert.equal(rec.waiting, null, "a pending wait source means the session isn't really idle yet");
+    } finally {
+      unregister();
+      resetArbiterForTests();
+      // Reconnect so later tests in this file see a normal socket.
+      c = client(join(dir, `${process.pid}.sock`));
+      await c.next((m) => m.t === "hello");
+    }
+  });
+
+  it("UNI-162: state.waiting carries the pending-work label while idle, and is absent once clear", async () => {
+    const { registerWaitSource, resetArbiterForTests } = await import("@pi-unipi/core");
+    const unregister = registerWaitSource("subagents", () => "subagent running");
+    try {
+      await f.emit("agent_settled", {});
+      const state = await c.next((m) => m.t === "state");
+      assert.equal(state.waiting, "subagent running");
+    } finally {
+      unregister();
+      resetArbiterForTests();
+    }
+    await f.emit("agent_settled", {});
+    const cleared = await c.next((m) => m.t === "state");
+    assert.equal(cleared.waiting, undefined);
+  });
+
   it("a session switch tells phones to reconnect and frees the socket for the next instance", async () => {
     const extra = client(join(dir, `${process.pid}.sock`));
     await extra.next((m) => m.t === "hello");

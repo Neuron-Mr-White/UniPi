@@ -26,7 +26,7 @@ import { GlanceEditor } from "./glance-editor.js";
 import type { GlanceStatus } from "./glance-editor.js";
 import { tpsTracker } from "./tps-tracker.js";
 import { publishSharedTps } from "./tps-shared.js";
-import { renderProcessLine, countBgProcesses } from "./process-line.js";
+import { renderProcessLine, countBgProcesses, renderWaitingLine } from "./process-line.js";
 import { lhModeLabel } from "./segments/long-horizon.js";
 import { SessionScanner } from "./session-scan.js";
 import { renderSessionStrip, stripVisibleAtRows } from "./strip.js";
@@ -241,6 +241,13 @@ function setupFooterUI(pi: ExtensionAPI, ctx: ExtensionContext, state: FooterSta
         const settings = loadFooterSettings();
         if (!state.enabled || !settings.processLine || !state.piContext || width <= 0) return [];
         if (!stripVisibleAtRows(terminalRows(tui))) return [];
+        // UNI-162: a short "waiting on …" line takes priority over the bg
+        // process dots while pi looks idle but work is still pending (a
+        // background subagent, a bg wake, a fusion handoff) — the pane must
+        // not read as finished.
+        const ctx = state.piContext as { isIdle?: () => boolean } | undefined;
+        const waiting = ctx?.isIdle ? renderWaitingLine(width, () => ctx.isIdle!()) : undefined;
+        if (waiting !== undefined) return [waiting];
         return renderProcessLine(width);
       },
     };

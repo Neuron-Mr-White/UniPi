@@ -73,6 +73,11 @@ export interface RunState {
   thinkingLevels?: string[];
   context?: { tokens: number | null; window: number; percent: number | null };
   cost?: number;
+  /** UNI-162: a short label (e.g. "2 bg tasks will resume agent · subagent
+   *  running") while pi looks idle but a wait source still has a reason —
+   *  the same text the footer's "waiting on …" line shows. `undefined` when
+   *  nothing is pending (the phone shows its normal idle state). */
+  waiting?: string;
 }
 
 /** One model entry of a Fusion lead/sidekick list (hello.fusion / fusion push). */

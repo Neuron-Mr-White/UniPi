@@ -4,12 +4,13 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { countBgProcesses, renderProcessLine } from "../src/process-line.ts";
+import { countBgProcesses, renderProcessLine, renderWaitingLine } from "../src/process-line.ts";
 import {
   setSharedTaskRegistry,
   getSharedTaskRegistry,
   clearSharedTaskRegistry,
 } from "../../background-tasks/src/registry-shared.ts";
+import { registerWaitSource, resetArbiterForTests } from "@pi-unipi/core";
 
 type FakeStatus = "running" | "completed" | "failed" | "killed";
 
@@ -108,6 +109,51 @@ describe("process-line", () => {
       assert.deepEqual(renderProcessLine(0), []);
       const tiny = renderProcessLine(4)[0];
       assert.ok(tiny.length > 0); // truncated, but present
+    });
+  });
+
+  describe("renderWaitingLine (UNI-162)", () => {
+    beforeEach(() => {
+      resetArbiterForTests();
+    });
+
+    it("undefined when pi is busy, even with a pending wait source", () => {
+      registerWaitSource("subagents", () => "subagent running");
+      assert.equal(renderWaitingLine(80, () => false), undefined);
+    });
+
+    it("undefined when idle and nothing is pending", () => {
+      assert.equal(renderWaitingLine(80, () => true), undefined);
+    });
+
+    it("shows the joined wait reasons when idle and something is pending", () => {
+      registerWaitSource("background-tasks", () => "2 bg tasks will resume agent");
+      registerWaitSource("subagents", () => "subagent running");
+      const line = renderWaitingLine(80, () => true);
+      assert.equal(line, "waiting on 2 bg tasks will resume agent · subagent running");
+    });
+
+    it("a throwing isIdle counts as idle (same contract as the bg wake line)", () => {
+      registerWaitSource("subagents", () => "subagent running");
+      const line = renderWaitingLine(80, () => {
+        throw new Error("boom");
+      });
+      assert.equal(line, "waiting on subagent running");
+    });
+
+    it("respects width (never grows past a modest bound, truncation delegated to truncateToWidth)", () => {
+      registerWaitSource("subagents", () => "a very long reason that will not fit in a narrow terminal");
+      const line = renderWaitingLine(20, () => true);
+      assert.ok(line !== undefined);
+      // truncateToWidth may append an ellipsis char beyond the raw column
+      // count; the important invariant is "much shorter than the full label".
+      assert.ok(line.length < 40);
+    });
+
+    it("undefined at width <= 1", () => {
+      registerWaitSource("subagents", () => "subagent running");
+      assert.equal(renderWaitingLine(1, () => true), undefined);
+      assert.equal(renderWaitingLine(0, () => true), undefined);
     });
   });
 });
