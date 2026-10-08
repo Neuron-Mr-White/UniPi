@@ -160,7 +160,11 @@ export type InMsg =
    *  boundary) \| `followUp` (pi's own queued follow-up — kept for older apps) \|
    *  `now` (abort the run, wait for idle, then send as a prompt) \| `after` (wait in
    *  the bridge's own queue, delivered one at a time on `agent_end`). */
-  | { t: "prompt"; text: string; images?: Array<{ mime: string; data: string }>; mode?: "auto" | "steer" | "followUp" | "now" | "after"; ref?: string }
+  /** An image attached to a prompt: inline base64 (`data`, small/compressed enough to
+   *  fit the 1 MiB relay line) or a host-local file (`path`, uploaded via the blob
+   *  channel first — the bridge and the host run on the same machine, so it reads
+   *  the file straight off disk). */
+  | { t: "prompt"; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }>; mode?: "auto" | "steer" | "followUp" | "now" | "after"; ref?: string }
   | { t: "abort"; ref?: string }
   | { t: "answer"; id: number; value: unknown; ref?: string }
   | { t: "set_model"; provider: string; model: string; ref?: string }
@@ -249,9 +253,12 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
     case "prompt": {
       if (typeof m.text !== "string") return { bad: "prompt.text must be a string", ref };
       const mode = m.mode === "steer" || m.mode === "followUp" || m.mode === "now" || m.mode === "after" ? m.mode : "auto";
-      const images = Array.isArray(m.images)
-        ? m.images.filter((i): i is { mime: string; data: string } => !!i && typeof i.mime === "string" && /^image\//.test(i.mime) && typeof i.data === "string")
-        : undefined;
+      const isImage = (i: unknown): i is { mime: string; data: string } | { mime: string; path: string } =>
+        !!i &&
+        typeof (i as { mime?: unknown }).mime === "string" &&
+        /^image\//.test((i as { mime: string }).mime) &&
+        (typeof (i as { data?: unknown }).data === "string" || typeof (i as { path?: unknown }).path === "string");
+      const images = Array.isArray(m.images) ? m.images.filter(isImage) : undefined;
       if (!m.text.trim() && !images?.length) return { bad: "prompt is empty", ref };
       return { t: "prompt", text: m.text, images: images?.length ? images : undefined, mode, ref };
     }

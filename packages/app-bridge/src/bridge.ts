@@ -409,9 +409,17 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       case "prompt": {
         const idle = c.isIdle();
         const deliverAs = idle ? undefined : msg.mode === "followUp" ? "followUp" : "steer";
-        const content = msg.images?.length
-          ? [{ type: "text" as const, text: msg.text }, ...msg.images.map((i) => ({ type: "image" as const, mimeType: i.mime, data: i.data }))]
-          : msg.text;
+        // `path` images were uploaded via the host's blob channel (same
+        // machine as this bridge): read the bytes straight off disk.
+        const imageContent = (i: { mime: string; data: string } | { mime: string; path: string }) => {
+          if ("data" in i) return { type: "image" as const, mimeType: i.mime, data: i.data };
+          try {
+            return { type: "image" as const, mimeType: i.mime, data: readFileSync(i.path).toString("base64") };
+          } catch {
+            return { type: "text" as const, text: `[image unavailable: ${i.path}]` };
+          }
+        };
+        const content = msg.images?.length ? [{ type: "text" as const, text: msg.text }, ...msg.images.map(imageContent)] : msg.text;
         // An extension command runs right away and saves no chat message:
         // tell the phone so its "Sending…" bubble goes.
         const name = /^\/(\S+)/.exec(msg.text)?.[1];

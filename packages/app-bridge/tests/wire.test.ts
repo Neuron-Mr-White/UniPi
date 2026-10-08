@@ -22,6 +22,11 @@ describe("parseIn", () => {
     const m = parseIn('{"t":"prompt","text":"","images":[{"mime":"image/png","data":"AA=="},{"mime":"text/plain","data":"x"}]}') as { images: unknown[] };
     assert.equal(m.images.length, 1);
   });
+  it("accepts path-based images (blob-channel uploads) alongside inline data", () => {
+    const m = parseIn('{"t":"prompt","text":"","images":[{"mime":"image/jpeg","path":"/tmp/x.jpg"},{"mime":"image/png","data":"AA=="}]}') as { images: unknown[] };
+    assert.equal(m.images.length, 2);
+    assert.deepEqual(m.images[0], { mime: "image/jpeg", path: "/tmp/x.jpg" });
+  });
   it("validates answer / set_model / set_thinking", () => {
     assert.deepEqual(parseIn('{"t":"answer","id":3,"value":"b"}'), { t: "answer", id: 3, value: "b", ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"answer","id":"3"}') as object));
