@@ -21,18 +21,25 @@ import {
   parseIn,
   type CommandInfo,
   type Dialog,
+  type FusionPresetInfo,
+  type FusionStatusInfo,
   type InMsg,
+  type InfoGroupInfo,
   type ModelInfo,
   type OutMsg,
   type Queued,
   type RunState,
   type SessionInfo,
   type SessionsItem,
+  type StatsInfo,
   type TreeNode,
+  type WorkItemInfo,
 } from "./wire.js";
 import { setRemoteDialogs } from "./remote.js";
 import { fileSuggestions } from "./files.js";
 import { registerPath, resolveMedia } from "./media.js";
+import { listWorkItems, stopWorkItem, backgroundWorkItem, workLogPage } from "./work.js";
+import { bus, UNIPI_EVENTS } from "@pi-unipi/core";
 
 /** `media_chunk.data` (base64) stays well under the 900 KiB bridge line
  * budget; 700 KB of base64 chars per chunk leaves slack for the envelope. */
@@ -50,6 +57,51 @@ interface BtwApi {
 }
 const BTW_API_KEY = Symbol.for("unipi.btw.api");
 const getBtwApi = (): BtwApi | undefined => (globalThis as unknown as Record<symbol, unknown>)[BTW_API_KEY] as BtwApi | undefined;
+
+/** @pi-unipi/fusion's UI-free API (UNI-160 §1 Model), read lazily off
+ * globalThis the same way — see fusion/src/api.ts publishFusionApi(). */
+interface FusionApiModel {
+  key: string;
+  name: string;
+}
+interface FusionApiPicker {
+  leads: FusionApiModel[];
+  sidekicks: FusionApiModel[];
+  default: { lead?: string; sidekick?: string };
+  effort: Record<string, string>;
+  active:
+    | { kind: "single"; model: string }
+    | { kind: "fusion"; lead: string; sidekick: string; leadEffort?: string; sidekickEffort?: string }
+    | undefined;
+}
+type FusionPickerResult =
+  | { type: "single"; model: string; effort: string; effortMap: Record<string, string> }
+  | { type: "fusion"; lead: string; sidekick: string; leadEffort: string; sidekickEffort: string; effortMap: Record<string, string> }
+  | { type: "cancelled" };
+interface FusionApi {
+  getPicker(): FusionApiPicker | undefined;
+  apply(result: FusionPickerResult): Promise<{ ok: true } | { ok: false; message: string }>;
+}
+const FUSION_API_KEY = Symbol.for("unipi.fusion.api");
+const getFusionApi = (): FusionApi | undefined => (globalThis as unknown as Record<symbol, unknown>)[FUSION_API_KEY] as FusionApi | undefined;
+
+/** `globalThis.__unipi_info_registry` (@pi-unipi/info-screen's registry.ts),
+ * read lazily the same way — info-screen may not be installed. */
+interface InfoRegistryLike {
+  getAllGroups(): Array<{ id: string; name: string; config?: { stats: Array<{ id: string; label: string; show: boolean }> } }>;
+  getGroupData(groupId: string): Promise<Record<string, { value: string; detail?: string }>>;
+  getVisibleStats(groupId: string): Array<{ id: string; label: string }>;
+}
+const getInfoRegistry = (): InfoRegistryLike | undefined =>
+  (globalThis as unknown as { __unipi_info_registry?: InfoRegistryLike }).__unipi_info_registry;
+
+/** @pi-unipi/footer's shared TpsTracker (see footer/src/tps-shared.ts), read
+ * lazily the same way — footer may not be installed. */
+interface TpsTrackerLike {
+  getSessionAvgTps(): number;
+}
+const FOOTER_TPS_KEY = Symbol.for("unipi.footer.shared-tps");
+const getSharedTps = (): TpsTrackerLike | undefined => (globalThis as unknown as Record<symbol, unknown>)[FOOTER_TPS_KEY] as TpsTrackerLike | undefined;
 
 export const BRIDGE_VERSION = "1.0.0";
 
@@ -168,6 +220,13 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let deltaTimer: NodeJS.Timeout | undefined;
   const toolTimers = new Map<string, NodeJS.Timeout>();
   let sessionCost = 0;
+  /** Sockets that asked `watch{stats:true}` / `watch{info:true}` (UNI-160 §3/§5):
+   * stats/info pushes only run while at least one client wants them, ≤1/s. */
+  const statsWatchers = new Set<Socket>();
+  const infoWatchers = new Set<Socket>();
+  let lastWorkJson = "";
+  let workTimer: NodeJS.Timeout | undefined;
+  let pushTicker: NodeJS.Timeout | undefined;
 
   const hub = new DialogHub({
     open: (dialog) => send({ t: "dialog", ...dialog }),
@@ -305,6 +364,121 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     }
   };
 
+  /** Context + cost + tps snapshot (UNI-160 §3): tokens in/out and cache hit
+   * summed over the branch's assistant usage; tps read off the shared
+   * footer tracker when the module is installed (0 otherwise). */
+  const buildStats = (): StatsInfo => {
+    let tokensIn = 0;
+    let tokensOut = 0;
+    let cacheHit = 0;
+    try {
+      for (const e of ctx!.sessionManager.getEntries() as Array<{ type?: string; message?: { role?: string; usage?: { input?: number; output?: number; cacheRead?: number } } }>) {
+        if (e.type !== "message" || e.message?.role !== "assistant") continue;
+        const u = e.message.usage;
+        tokensIn += u?.input ?? 0;
+        tokensOut += u?.output ?? 0;
+        cacheHit += u?.cacheRead ?? 0;
+      }
+    } catch {
+      // ignore
+    }
+    const state = runState();
+    let tps = 0;
+    try {
+      tps = getSharedTps()?.getSessionAvgTps() ?? 0;
+    } catch {
+      // footer not installed
+    }
+    return { context: state.context, tokensIn, tokensOut, cacheHit, cost: state.cost ?? 0, tps: Math.round(tps * 10) / 10 };
+  };
+
+  /** Fusion's preset, phone-shaped (hello.fusion / future set_fusion replies).
+   * `undefined` when the Fusion package isn't installed. */
+  const fusionPreset = (): FusionPresetInfo | undefined => {
+    const picker = getFusionApi()?.getPicker();
+    if (!picker) return undefined;
+    return { leads: picker.leads, sidekicks: picker.sidekicks, default: picker.default, effort: picker.effort, active: picker.active };
+  };
+
+  const workItems = (): WorkItemInfo[] => {
+    try {
+      return listWorkItems();
+    } catch {
+      return [];
+    }
+  };
+
+  /** /unipi:info groups, phone-shaped (UNI-160 §5): a card's title + its
+   * visible stat rows (label/value), no TUI rendering. Capped so an info
+   * module with a huge raw payload can't blow the line budget. */
+  const infoGroups = async (): Promise<InfoGroupInfo[]> => {
+    const registry = getInfoRegistry();
+    if (!registry) return [];
+    const groups = registry.getAllGroups();
+    const out: InfoGroupInfo[] = [];
+    for (const g of groups.slice(0, 40)) {
+      try {
+        const data = await registry.getGroupData(g.id);
+        const visible = registry.getVisibleStats(g.id);
+        const stats = (visible.length ? visible : Object.keys(data).map((id) => ({ id, label: id })))
+          .map((s) => ({ label: s.label, value: clipText(data[s.id]?.value ?? "", 200) }))
+          .filter((s) => s.value)
+          .slice(0, 24);
+        if (stats.length) out.push({ id: g.id, label: g.name, stats });
+      } catch {
+        // One group's provider failing never blocks the others.
+      }
+    }
+    return out;
+  };
+
+  /** Schedules a throttled push (≤1/s) to every socket in `watchers`, de-duped
+   * by a JSON snapshot of the last sent payload. */
+  const schedulePush = (
+    watchers: Set<Socket>,
+    timerRef: { current: NodeJS.Timeout | undefined },
+    build: () => Promise<OutMsg> | OutMsg,
+    lastRef: { current: string },
+  ) => {
+    if (watchers.size === 0 || timerRef.current) return;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = undefined;
+      void (async () => {
+        if (watchers.size === 0) return;
+        try {
+          const msg = await build();
+          const json = JSON.stringify(msg);
+          if (json === lastRef.current) return;
+          lastRef.current = json;
+          for (const sock of watchers) write(sock, msg);
+        } catch {
+          // A push failing once never breaks the connection.
+        }
+      })();
+    }, 1000);
+  };
+
+  const statsTimerRef = { current: undefined as NodeJS.Timeout | undefined };
+  const infoTimerRef = { current: undefined as NodeJS.Timeout | undefined };
+  const lastStatsJson = { current: "" };
+  const lastInfoJson = { current: "" };
+  const pushStats = () => schedulePush(statsWatchers, statsTimerRef, () => ({ t: "stats" as const, stats: buildStats() }), lastStatsJson);
+  const pushInfo = () => schedulePush(infoWatchers, infoTimerRef, async () => ({ t: "info" as const, groups: await infoGroups() }), lastInfoJson);
+
+  /** The Running section changed (UNI-160 §4): pushed to every client,
+   * throttled to ≤1/s and only when the list actually changed. */
+  const pushWork = () => {
+    if (clients.size === 0 || workTimer) return;
+    workTimer = setTimeout(() => {
+      workTimer = undefined;
+      const items = workItems();
+      const json = JSON.stringify(items);
+      if (json === lastWorkJson) return;
+      lastWorkJson = json;
+      send({ t: "work", items });
+    }, 1000);
+  };
+
   const commands = (): CommandInfo[] => {
     let list: CommandInfo[] = [];
     try {
@@ -351,6 +525,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       models: models(),
       dialogs: hub.list(),
       queue: queueView(),
+      fusion: fusionPreset(),
+      work: workItems(),
     };
     // Entries get whatever the rest of the hello leaves of the line budget.
     const spare = LINE_BUDGET - jsonBytes(rest) - 64 * 1024;
@@ -772,6 +948,69 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         ack();
         return;
       }
+      case "set_fusion": {
+        const api = getFusionApi();
+        if (!api) return fail("Fusion is not installed on this pi.");
+        const result: FusionPickerResult =
+          "single" in msg
+            ? { type: "single", model: msg.single, effort: msg.effort, effortMap: {} }
+            : { type: "fusion", lead: msg.lead, sidekick: msg.sidekick, leadEffort: msg.leadEffort, sidekickEffort: msg.sidekickEffort, effortMap: {} };
+        try {
+          const applied = await api.apply(result);
+          if (!applied.ok) return fail(applied.message);
+          ack();
+          send({ t: "state", ...runState() });
+        } catch (error) {
+          fail(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      case "watch": {
+        if (msg.stats !== undefined) {
+          if (msg.stats) statsWatchers.add(sock);
+          else statsWatchers.delete(sock);
+        }
+        if (msg.info !== undefined) {
+          if (msg.info) infoWatchers.add(sock);
+          else infoWatchers.delete(sock);
+        }
+        ack();
+        // An immediate snapshot, not just the next throttled tick.
+        if (msg.stats) write(sock, { t: "stats", stats: buildStats() });
+        if (msg.info) void infoGroups().then((groups) => write(sock, { t: "info", groups }));
+        return;
+      }
+      case "work_log": {
+        const page = await workLogPage(msg.id, { maxBytes: 256 * 1024 });
+        if ("error" in page) return fail(page.error);
+        write(sock, { t: "work_log", id: msg.id, text: page.text, more: page.more, ref: msg.ref });
+        return;
+      }
+      case "work_transcript": {
+        // Subagent mini-transcripts need @pi-unipi/subagents' transcript
+        // builder (TUI-flavoured); UNI-160 ships the live-log half (bg tasks)
+        // first and reports this a known gap (see the task report).
+        fail("Subagent transcripts aren't available yet.");
+        return;
+      }
+      case "work_stop": {
+        const result = await stopWorkItem(msg.id);
+        if (!result.ok) return fail(result.message);
+        ack();
+        pushWork();
+        return;
+      }
+      case "work_rerun": {
+        fail("Re-running a finished task isn't available yet.");
+        return;
+      }
+      case "work_background": {
+        const result = backgroundWorkItem(msg.id);
+        if (!result.ok) return fail(result.message);
+        ack();
+        pushWork();
+        return;
+      }
     }
   };
 
@@ -791,7 +1030,11 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       clients.add(sock);
       sock.setEncoding("utf8");
       const lines = new LineSplitter();
-      const drop = () => clients.delete(sock);
+      const drop = () => {
+        clients.delete(sock);
+        statsWatchers.delete(sock);
+        infoWatchers.delete(sock);
+      };
       sock.on("close", drop);
       sock.on("error", drop);
       sock.on("data", (chunk: string) => {
@@ -824,11 +1067,26 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     });
     srv.unref();
     server = srv;
+    // One tick drives all three low-frequency pushes (work/stats/info): bg
+    // tasks and subagents change without an extension event reaching this
+    // bridge, so a 1 s poll is cheaper than wiring every producer's onChange.
+    // Each push is itself de-duped (schedulePush/pushWork skip an unchanged
+    // snapshot), so an idle session with no watchers costs one JSON diff/s.
+    pushTicker = setInterval(() => {
+      if (clients.size > 0) pushWork();
+      if (statsWatchers.size > 0) pushStats();
+      if (infoWatchers.size > 0) pushInfo();
+    }, 1000);
+    pushTicker.unref?.();
   };
 
   const close = () => {
     for (const sock of clients) sock.destroy();
     clients.clear();
+    statsWatchers.clear();
+    infoWatchers.clear();
+    if (pushTicker) clearInterval(pushTicker);
+    pushTicker = undefined;
     server?.close();
     server = undefined;
     const dir = bridgeDir();
@@ -886,6 +1144,13 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     writeRecord();
     send({ t: "session", reason: "rename", ...sessionInfo() });
   }));
+
+  // Fusion lead/sidekick live status (UNI-160 §1): pushed on every change
+  // (busy, savings, tool counts), not throttled — FUSION_STATUS already
+  // fires at a human pace (turn boundaries), never per-token.
+  bus.on(pi, UNIPI_EVENTS.FUSION_STATUS, (status) => {
+    send({ t: "fusion", status: status as FusionStatusInfo | undefined });
+  });
 
   on("input", (event) => {
     try {

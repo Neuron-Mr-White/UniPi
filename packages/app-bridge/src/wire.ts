@@ -75,6 +75,77 @@ export interface RunState {
   cost?: number;
 }
 
+/** One model entry of a Fusion lead/sidekick list (hello.fusion / fusion push). */
+export interface FusionModelInfo {
+  key: string;
+  name: string;
+}
+
+/** Fusion's preset + active selection, phone-shaped (UNI-160 §1 Model).
+ *  `undefined` (as `hello.fusion`) when the Fusion package isn't installed on
+ *  this pi — the phone then shows only the Single/model list, no Fusion
+ *  switch. */
+export interface FusionPresetInfo {
+  leads: FusionModelInfo[];
+  sidekicks: FusionModelInfo[];
+  default: { lead?: string; sidekick?: string };
+  effort: Record<string, string>;
+  active:
+    | { kind: "single"; model: string }
+    | { kind: "fusion"; lead: string; sidekick: string; leadEffort?: string; sidekickEffort?: string }
+    | undefined;
+}
+
+/** Live Fusion status (lead/sidekick names, efforts, savings, busy, tool
+ *  counts) — pushed on FUSION_STATUS changes while Fusion is active;
+ *  `undefined` when Fusion is off. */
+export interface FusionStatusInfo {
+  leadName: string;
+  leadKey?: string;
+  sidekickKey?: string;
+  leadEffort: string;
+  sidekickName: string;
+  sidekickEffort: string;
+  savedUsd?: number;
+  busy?: boolean;
+  leadToolCalls?: number;
+  sidekickToolCalls?: number;
+}
+
+/** One row of the phone's "Running" section (UNI-160 §4): a background task,
+ *  a subagent, or the Fusion sidekick, in one shape. */
+export interface WorkItemInfo {
+  id: string;
+  kind: "bg" | "subagent" | "sidekick";
+  title: string;
+  dot: "running" | "stopped" | "failed" | "done";
+  detail?: string;
+  startedAt: number;
+  endedAt?: number;
+  canStop: boolean;
+  canRerun: boolean;
+  canBackground: boolean;
+}
+
+/** Context/cost/tps snapshot (UNI-160 §3): pushed ≤1/s while the phone has
+ *  `watch{stats:true}` open. */
+export interface StatsInfo {
+  context?: { tokens: number | null; window: number; percent: number | null };
+  tokensIn: number;
+  tokensOut: number;
+  cacheHit: number;
+  cost: number;
+  tps: number;
+}
+
+/** One info-screen group, phone-shaped (UNI-160 §5): a card's title + stat
+ *  rows (label/value), no TUI rendering. */
+export interface InfoGroupInfo {
+  id: string;
+  label: string;
+  stats: Array<{ label: string; value: string }>;
+}
+
 export interface CommandInfo {
   name: string;
   description?: string;
@@ -113,6 +184,10 @@ export type OutMsg =
       models: ModelInfo[];
       dialogs: Dialog[];
       queue: Queued[];
+      /** Fusion's preset — absent when the Fusion package isn't installed. */
+      fusion?: FusionPresetInfo;
+      /** The Running section's items at connect time (UNI-160 §4). */
+      work: WorkItemInfo[];
     }
   | ({ t: "state" } & Partial<RunState>)
   | ({ t: "session"; reason: string } & SessionInfo)
@@ -149,7 +224,20 @@ export type OutMsg =
   /** A chunk of a `media{mediaRef}` fetch: base64 `data`, more chunks follow until `done`. */
   | { t: "media_chunk"; mediaRef: string; mime: string; data: string; done: boolean }
   /** `media{mediaRef}` failed (unknown/expired ref, read error…). */
-  | { t: "media_error"; mediaRef: string; message: string };
+  | { t: "media_error"; mediaRef: string; message: string }
+  /** Fusion lead/sidekick live status (UNI-160 §1); `undefined` = Fusion off. */
+  | { t: "fusion"; status: FusionStatusInfo | undefined }
+  /** The Running section's items changed (UNI-160 §4): on any add/remove/status
+   *  change, throttled to ≤1/s. */
+  | { t: "work"; items: WorkItemInfo[] }
+  /** A page of a bg task's live log (UNI-160 §4), tail-first; `ref` matches `work_log{id}`. */
+  | { t: "work_log"; id: string; text: string; more: boolean; ref?: string }
+  /** A mini-transcript item of a subagent run (UNI-160 §4); `ref` matches `work_log{id}`. */
+  | { t: "work_transcript"; id: string; items: unknown[]; report?: string; ref?: string }
+  /** Context/cost/tps snapshot (UNI-160 §3), pushed ≤1/s while `watch{stats:true}` is open. */
+  | { t: "stats"; stats: StatsInfo }
+  /** The /unipi:info groups, phone-shaped (UNI-160 §5), pushed while `watch{info:true}` is open. */
+  | { t: "info"; groups: InfoGroupInfo[] };
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };
@@ -213,7 +301,24 @@ export type InMsg =
    *  sends it as a fresh prompt. */
   | { t: "queue_promote"; id: string; to: "steer" | "now"; ref?: string }
   /** Reorder a bridge-queued message to `index` (phone items only). */
-  | { t: "queue_move"; id: string; index: number; ref?: string };
+  | { t: "queue_move"; id: string; index: number; ref?: string }
+  /** UNI-160 §1: switch to a single model, or turn Fusion on/set its pair/efforts. */
+  | { t: "set_fusion"; single: string; effort: string; ref?: string }
+  | { t: "set_fusion"; lead: string; sidekick: string; leadEffort: string; sidekickEffort: string; ref?: string }
+  /** UNI-160 §3/§5: start/stop a push stream while the given sheet section is open.
+   *  `stats`/`info` each default to their last value when omitted. */
+  | { t: "watch"; stats?: boolean; info?: boolean; ref?: string }
+  /** UNI-160 §4: a page of a bg task's live log, tail-first (≤256 KB per page). `before`
+   *  pages further back from that byte offset (older bytes). */
+  | { t: "work_log"; id: string; before?: number; ref?: string }
+  /** UNI-160 §4: a subagent's mini-transcript + report. */
+  | { t: "work_transcript"; id: string; ref?: string }
+  /** UNI-160 §4: stop a running bg task or subagent (confirm lives on the phone). */
+  | { t: "work_stop"; id: string; ref?: string }
+  /** UNI-160 §4: re-run a finished/stopped bg task (same command) or subagent (resume). */
+  | { t: "work_rerun"; id: string; ref?: string }
+  /** UNI-160 §4: send a running foreground subagent to the background. */
+  | { t: "work_background"; id: string; ref?: string };
 
 const IN_TYPES = new Set([
   "prompt",
@@ -240,6 +345,13 @@ const IN_TYPES = new Set([
   "queue_remove",
   "queue_promote",
   "queue_move",
+  "set_fusion",
+  "watch",
+  "work_log",
+  "work_transcript",
+  "work_stop",
+  "work_rerun",
+  "work_background",
 ]);
 
 /** Parses one phone line; `undefined` for garbage (never throws). */
@@ -333,6 +445,36 @@ export function parseIn(line: string): InMsg | { bad: string; ref?: string } | u
       if (typeof m.id !== "string" || !m.id) return { bad: "queue_move.id must be a string", ref };
       if (typeof m.index !== "number") return { bad: "queue_move.index must be a number", ref };
       return { t: "queue_move", id: m.id, index: m.index, ref };
+    case "set_fusion": {
+      if (typeof m.single === "string") {
+        if (typeof m.effort !== "string") return { bad: "set_fusion.effort must be a string", ref };
+        return { t: "set_fusion", single: m.single, effort: m.effort, ref };
+      }
+      if (typeof m.lead === "string" && typeof m.sidekick === "string") {
+        if (typeof m.leadEffort !== "string" || typeof m.sidekickEffort !== "string") {
+          return { bad: "set_fusion needs leadEffort and sidekickEffort", ref };
+        }
+        return { t: "set_fusion", lead: m.lead, sidekick: m.sidekick, leadEffort: m.leadEffort, sidekickEffort: m.sidekickEffort, ref };
+      }
+      return { bad: "set_fusion needs either 'single' or 'lead'+'sidekick'", ref };
+    }
+    case "watch":
+      return { t: "watch", stats: typeof m.stats === "boolean" ? m.stats : undefined, info: typeof m.info === "boolean" ? m.info : undefined, ref };
+    case "work_log":
+      if (typeof m.id !== "string" || !m.id) return { bad: "work_log.id must be a string", ref };
+      return { t: "work_log", id: m.id, before: typeof m.before === "number" ? m.before : undefined, ref };
+    case "work_transcript":
+      if (typeof m.id !== "string" || !m.id) return { bad: "work_transcript.id must be a string", ref };
+      return { t: "work_transcript", id: m.id, ref };
+    case "work_stop":
+      if (typeof m.id !== "string" || !m.id) return { bad: "work_stop.id must be a string", ref };
+      return { t: "work_stop", id: m.id, ref };
+    case "work_rerun":
+      if (typeof m.id !== "string" || !m.id) return { bad: "work_rerun.id must be a string", ref };
+      return { t: "work_rerun", id: m.id, ref };
+    case "work_background":
+      if (typeof m.id !== "string" || !m.id) return { bad: "work_background.id must be a string", ref };
+      return { t: "work_background", id: m.id, ref };
     default:
       return { t: m.t as "abort" | "resync", ref };
   }

@@ -64,6 +64,25 @@ describe("parseIn", () => {
     assert.deepEqual(parseIn('{"t":"queue_move","id":"q1","index":2}'), { t: "queue_move", id: "q1", index: 2, ref: undefined });
     assert.ok("bad" in (parseIn('{"t":"queue_move","id":"q1"}') as object));
   });
+
+  it("validates set_fusion / watch / work_* (UNI-160)", () => {
+    assert.deepEqual(parseIn('{"t":"set_fusion","single":"p/m","effort":"high"}'), { t: "set_fusion", single: "p/m", effort: "high", ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"set_fusion","single":"p/m"}') as object));
+    assert.deepEqual(
+      parseIn('{"t":"set_fusion","lead":"p/l","sidekick":"p/s","leadEffort":"high","sidekickEffort":"low"}'),
+      { t: "set_fusion", lead: "p/l", sidekick: "p/s", leadEffort: "high", sidekickEffort: "low", ref: undefined },
+    );
+    assert.ok("bad" in (parseIn('{"t":"set_fusion","lead":"p/l","sidekick":"p/s"}') as object));
+    assert.ok("bad" in (parseIn('{"t":"set_fusion"}') as object));
+    assert.deepEqual(parseIn('{"t":"watch","stats":true}'), { t: "watch", stats: true, info: undefined, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"watch","info":false}'), { t: "watch", stats: undefined, info: false, ref: undefined });
+    assert.deepEqual(parseIn('{"t":"work_log","id":"bg-1","before":200}'), { t: "work_log", id: "bg-1", before: 200, ref: undefined });
+    assert.ok("bad" in (parseIn('{"t":"work_log"}') as object));
+    assert.deepEqual(parseIn('{"t":"work_transcript","id":"agent-1"}'), { t: "work_transcript", id: "agent-1", ref: undefined });
+    assert.deepEqual(parseIn('{"t":"work_stop","id":"bg-1"}'), { t: "work_stop", id: "bg-1", ref: undefined });
+    assert.deepEqual(parseIn('{"t":"work_rerun","id":"bg-1"}'), { t: "work_rerun", id: "bg-1", ref: undefined });
+    assert.deepEqual(parseIn('{"t":"work_background","id":"agent-1"}'), { t: "work_background", id: "agent-1", ref: undefined });
+  });
 });
 
 describe("LineSplitter", () => {
