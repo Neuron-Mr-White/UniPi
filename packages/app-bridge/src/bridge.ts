@@ -1190,7 +1190,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
       if (event?.reason === "quit" || event?.reason === undefined) {
         setRemoteDialogs(undefined);
         close();
+        return;
       }
+      // new / resume / fork / reload: pi tears this runtime down and loads
+      // every extension again — a NEW bridge instance takes over the same
+      // socket path. Hand over cleanly: stop listening and tell connected
+      // phones to reconnect (they get the new session's hello from the new
+      // instance). Leaving this server up kept phones on a dead instance
+      // that never sent the new session.
+      for (const sock of clients) write(sock, { t: "reconnect", reason: String(event?.reason ?? "switch") });
+      for (const sock of clients) sock.end();
+      clients.clear();
+      statsWatchers.clear();
+      infoWatchers.clear();
+      if (pushTicker) clearInterval(pushTicker);
+      pushTicker = undefined;
+      server?.close();
+      server = undefined;
     } catch {
       // ignore
     }

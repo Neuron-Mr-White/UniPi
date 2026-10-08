@@ -217,6 +217,8 @@ export type OutMsg =
   | { t: "error"; message: string; ref?: string; code?: "busy" }
   /** `as: "command"`: the prompt ran an extension command (no chat message follows). */
   | { t: "ack"; ref?: string; as?: "command" }
+  /** The session is being replaced (new/resume/fork/reload): reconnect to get the new session's hello. */
+  | { t: "reconnect"; reason: string }
   /** A page of older entries (oldest first) ending right before `before`. */
   | { t: "history"; before: string; entries: unknown[]; more: boolean; ref?: string }
   /** `@` file suggestions for `query` (pi's own finder: fd, .gitignore aware). */

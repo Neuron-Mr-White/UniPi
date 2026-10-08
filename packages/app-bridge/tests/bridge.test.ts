@@ -700,6 +700,22 @@ describe("app bridge over a unix socket", () => {
     assert.equal(rec.waiting, null);
   });
 
+  it("a session switch tells phones to reconnect and frees the socket for the next instance", async () => {
+    const extra = client(join(dir, `${process.pid}.sock`));
+    await extra.next((m) => m.t === "hello");
+    await f.emit("session_shutdown", { reason: "resume" });
+    assert.deepEqual(await extra.next((m) => m.t === "reconnect"), { t: "reconnect", reason: "resume" });
+    await new Promise((r) => extra.sock.once("close", r));
+    // The next instance (pi reloads extensions) listens again on session_start.
+    await f.emit("session_start", { reason: "resume" });
+    for (let i = 0; i < 50 && !existsSync(join(dir, `${process.pid}.sock`)); i++) await new Promise((r) => setTimeout(r, 20));
+    const again = client(join(dir, `${process.pid}.sock`));
+    assert.equal((await again.next((m) => m.t === "hello")).t, "hello");
+    again.sock.destroy();
+    c = client(join(dir, `${process.pid}.sock`));
+    await c.next((m) => m.t === "hello");
+  });
+
   it("removes its files on quit", async () => {
     await f.emit("session_shutdown", { reason: "quit" });
     assert.equal(existsSync(join(dir, `${process.pid}.json`)), false);
