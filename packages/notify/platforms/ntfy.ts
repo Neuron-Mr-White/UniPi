@@ -10,7 +10,15 @@
  * `appDetail` to control how much of the prompt text ntfy ever carries (the
  * server-side notify config has no app secrets, but "minimal" keeps the
  * question text itself off a third-party ntfy.sh server by default).
+ *
+ * UNI-161 §1: when `encryptKey` is set (notify-key.ts), the whole payload
+ * is AES-256-GCM-encrypted (ntfy-crypto.ts) into the ntfy `message`; the
+ * ntfy `title` is pinned to a fixed neutral "UniPi" and `click` carries no
+ * content beyond host/pid/dialog (deep-link routing only, never prompt
+ * text) — so a self-hosted *or* public ntfy server only ever sees
+ * ciphertext. Without a key: unchanged legacy minimal/full behaviour.
  */
+import { encryptNotifyPayload } from "../ntfy-crypto.js";
 
 /** What the phone needs to open the right chat (UNI-161 §4): the deep link's
  * query params. `host`: the paired host's id, or (when unknown on the pi
@@ -28,8 +36,17 @@ export interface NtfyPublishOptions {
   route?: NtfyAppRoute;
   /** "minimal" (default): generic title/message, no prompt text — only the
    *  route data. "full": the message argument is sent as-is. Controlled by
-   *  the user's `notify.ntfy.appDetail` setting. */
+   *  the user's `notify.ntfy.appDetail` setting. Also governs whether the
+   *  encrypted payload (when `encryptKey` is set) includes the message
+   *  text or just a generic body. */
   appDetail?: "minimal" | "full";
+  /** UNI-161 §1: the per-pairing E2E key. When present, the payload is
+   *  encrypted end to end and `appDetail`/`route` only ever affect what
+   *  goes *inside* the ciphertext, never the ntfy title/message/click. */
+  encryptKey?: Buffer;
+  /** Folded into the encrypted payload (ignored without `encryptKey`). */
+  session?: string;
+  dialogId?: number;
 }
 
 /** `unipi://chat?host=<id>&pid=<pid>&dialog=<id>` — the app's existing
@@ -42,21 +59,50 @@ export function buildDeepLink(route: NtfyAppRoute): string {
   return `unipi://chat?${params.toString()}`;
 }
 
+/** The fixed neutral ntfy title used once a payload is encrypted — the
+ * server must never see a hint of the real title. */
+const ENCRYPTED_TITLE = "UniPi";
+
 /** Builds the ntfy JSON publish body shared by the topic send and every
- * registered app-endpoint send (UNI-161 §4b: notify_register{endpoint}). */
+ * registered app-endpoint send (UNI-161 §4b: notify_register{endpoint}).
+ * `topicField` lets `publishToEndpoint` omit the `topic` key (the endpoint
+ * URL already names it) while sharing the same body-building logic. */
 export function buildNtfyBody(
-  topic: string,
+  topicOrNull: string | null,
   title: string,
   message: string,
   priority: number,
   options?: NtfyPublishOptions,
 ): Record<string, unknown> {
+  const clamped = Math.max(1, Math.min(5, priority));
+  if (options?.encryptKey) {
+    const route = options.route;
+    const envelope = encryptNotifyPayload(options.encryptKey, {
+      title,
+      body: options.appDetail === "full" || !route ? message : "Tap to open in UniPi",
+      kind: route?.kind,
+      host: route?.host,
+      pid: route?.pid,
+      session: options.session,
+      dialogId: options.dialogId,
+    });
+    const body: Record<string, unknown> = {
+      title: ENCRYPTED_TITLE,
+      message: envelope,
+      priority: clamped,
+    };
+    if (topicOrNull !== null) body.topic = topicOrNull;
+    // The click target itself must stay content-free: host/pid/dialog
+    // only, same shape as the unencrypted route, never prompt text.
+    if (route) body.click = buildDeepLink(route);
+    return body;
+  }
   const body: Record<string, unknown> = {
-    topic,
     title,
     message: options?.appDetail === "full" || !options?.route ? message : "Tap to open in UniPi",
-    priority: Math.max(1, Math.min(5, priority)),
+    priority: clamped,
   };
+  if (topicOrNull !== null) body.topic = topicOrNull;
   if (options?.route) {
     body.click = buildDeepLink(options.route);
     if (options.route.kind) body.tags = [options.route.kind];
@@ -110,15 +156,7 @@ export async function sendNtfyNotification(
  * Best-effort: endpoint failures never block the primary ntfy send.
  */
 export async function publishToEndpoint(endpoint: string, title: string, message: string, priority: number, options?: NtfyPublishOptions): Promise<void> {
-  const body: Record<string, unknown> = {
-    title,
-    message: options?.appDetail === "full" || !options?.route ? message : "Tap to open in UniPi",
-    priority: Math.max(1, Math.min(5, priority)),
-  };
-  if (options?.route) {
-    body.click = buildDeepLink(options.route);
-    if (options.route.kind) body.tags = [options.route.kind];
-  }
+  const body = buildNtfyBody(null, title, message, priority, options);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

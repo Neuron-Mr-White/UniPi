@@ -90,6 +90,7 @@ Open `/unipi:settings` → **Notify**. The file is `~/.unipi/config/notify/confi
 | `gotify.serverUrl`, `gotify.appToken`, `gotify.priority` | priority `5` | Gotify server, token and priority (0–10). |
 | `telegram.botToken`, `telegram.chatId` | unset | Telegram bot and chat. |
 | `ntfy.serverUrl`, `ntfy.topic`, `ntfy.token`, `ntfy.priority` | `https://ntfy.sh`, priority `3` | ntfy server, topic, token and priority (1–5). |
+| `ntfy.appDetail` | `"minimal"` | `"minimal"` sends a generic "Tap to open in UniPi" body (just the deep link); `"full"` sends the real question text. Controls what goes *inside* the encrypted payload too (see below) — never changes whether encryption happens. |
 | `silenceAfterInput.enabled` | `false` | Stops notifications for a time after you press a key. |
 | `silenceAfterInput.windowMs` | `10000` | Length of that quiet time, in milliseconds. |
 | `silenceAfterInput.platforms` | `["native"]` | Platforms to keep quiet. |
@@ -117,6 +118,32 @@ Recap sends the last message (2,000 characters at most) to the recap model with 
 Native notifications use [node-notifier](https://github.com/mikaelbr/node-notifier): SnoreToast on Windows, terminal-notifier on macOS and `notify-send` on Linux.
 
 Each sent notification emits a `NOTIFICATION_SENT` event on the [event bus](../../docs/architecture/event-bus.md).
+
+## UniPi app push (end-to-end encrypted)
+
+When the UniPi phone app is paired with this machine, ntfy notifications
+also carry a deep link so a tap opens the right chat/dialog, and — once a
+key exists — the whole payload is encrypted so the ntfy server (even a
+public one) only ever sees ciphertext:
+
+- **Key**: `unipi-host` generates a random 256-bit key at
+  `$UNIPI_HOST_DIR/notify-key` (default `~/.unipi/app-host/notify-key`) the
+  first time the app asks for it (`notify_config`). This package reads the
+  same file (`notify-key.ts`) — if present, `platforms/ntfy.ts` encrypts
+  the ntfy `message` with AES-256-GCM and pins `title` to a fixed neutral
+  `"UniPi"`; `click` still carries the deep link (`host`/`pid`/`dialog`
+  query params only, never question text). No key yet → unchanged
+  plaintext/`appDetail` behaviour.
+- **Wire format**: `unipi1:` + base64(12-byte IV + AES-256-GCM ciphertext +
+  16-byte tag) of a small JSON object (`{title, body, kind, host, pid,
+  session, dialogId, options?}`). Full format and the host/app sides are
+  documented in `unipi-app`'s `docs/m6/PROTOCOL.md`.
+- **Fan-out**: the UniPi app can also register a
+  [UnifiedPush](https://unifiedpush.org) endpoint (`notify_register` on the
+  host) so notifications reach it even when it has no ntfy topic/token of
+  its own — `app-endpoints.ts` persists the list at `~/.unipi/config/
+  notify/app-endpoints.json`, and every send fans out to each registered
+  endpoint in addition to the configured topic.
 
 ## See also
 

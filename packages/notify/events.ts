@@ -14,6 +14,7 @@ import { sendGotifyNotification } from "./platforms/gotify.js";
 import { sendTelegramNotification } from "./platforms/telegram.js";
 import { sendNtfyNotification, publishToEndpoint } from "./platforms/ntfy.js";
 import { loadAppEndpoints } from "./app-endpoints.js";
+import { loadNotifyKey } from "./notify-key.js";
 import { hostname } from "node:os";
 import { buildAskUserPromptMessage } from "./ask-user-prompt-message.js";
 import { buildPermissionPromptMessage } from "./permission-prompt-message.js";
@@ -515,7 +516,7 @@ async function sendToPlatform(
       // paired host). appDetail controls whether the prompt text itself
       // rides along or just a generic "tap to open" message.
       const route = { host: hostnameForRoute(), kind: eventType };
-      const options = { route, appDetail: ntfyConfig.appDetail ?? "minimal" } as const;
+      const options = { route, appDetail: ntfyConfig.appDetail ?? "minimal", encryptKey: loadNotifyKey() };
       await sendNtfyNotification(ntfyConfig.serverUrl, ntfyConfig.topic, title, message, effective, ntfyConfig.token, options);
       // Fan out to every phone that registered a UnifiedPush endpoint
       // (notify_register) — best-effort, never blocks/fails the primary send.
