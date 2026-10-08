@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { bus, isUnipiEventName, UNIPI_EVENTS } from "@pi-unipi/core";
+import { bus, hasPendingWork, isUnipiEventName, subscribeWorkChanges, UNIPI_EVENTS } from "@pi-unipi/core";
 import type { NotifyConfig, NotifyPlatform, NotifyDispatchResult, NotifyPriority } from "./types.js";
 import { loadNtfyConfig } from "./ntfy-config.js";
 import { sendNativeNotification, SuppressedError } from "./platforms/native.js";
@@ -78,6 +78,18 @@ const unsubs: Array<() => void> = [];
 
 /** Pending re-notify interval for an unanswered blocking prompt. */
 let renotifyTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * UNI-162: true once an agent_end/agent_settled "done" notification was
+ * suppressed because `hasPendingWakeTask()` or core's `hasPendingWork()`
+ * (subagents still running, fusion handoffs in flight) said work was still
+ * pending. Watched by the work-change subscriber below so the eventual
+ * all-clear sends exactly ONE "All done" notification instead of pi's idle
+ * state silently going unnotified.
+ */
+let pendingWorkSuppressedDone = false;
+/** Unsubscribe from the shared work-list change signal (torn down on reload). */
+let unsubPendingWorkWatch: (() => void) | undefined;
 
 /**
  * A `ui_prompt_start` within this window of an ask_user/permission alert is
@@ -175,6 +187,9 @@ function unregisterAll(): void {
   disarmRenotify();
   agentRunning = false;
   openPrompts = 0;
+  pendingWorkSuppressedDone = false;
+  unsubPendingWorkWatch?.();
+  unsubPendingWorkWatch = undefined;
   for (const unsub of unsubs) {
     try { unsub(); } catch { /* ignore */ }
   }
@@ -569,6 +584,38 @@ function buildEventMessage(eventKey: string, payload: unknown): string {
   }
 }
 
+/**
+ * Arm the "All done" watcher once (idempotent per registration): subscribes
+ * to the shared work-list change signal and, the first time every wait
+ * source clears AND pi reports idle, sends exactly one "All done"
+ * notification. Nothing re-arms until the next suppressed agent_end/
+ * agent_settled (set by the caller before calling this).
+ */
+function armAllDoneWatch(
+  pi: ExtensionAPI,
+  platforms: NotifyPlatform[],
+  config: NotifyConfig,
+  cwd: string,
+  dispatch: DispatchNotification,
+): void {
+  if (pendingWorkSuppressedDone) return; // already armed
+  pendingWorkSuppressedDone = true;
+  unsubPendingWorkWatch?.();
+  unsubPendingWorkWatch = subscribeWorkChanges(() => {
+    if (hasPendingWakeTask() || hasPendingWork()) return;
+    // Everything cleared: send ONE "All done" and disarm.
+    pendingWorkSuppressedDone = false;
+    unsubPendingWorkWatch?.();
+    unsubPendingWorkWatch = undefined;
+    const sessionName = pi.getSessionName?.();
+    const title = "Pi — All Done";
+    const message = sessionName ? `${sessionName} - All pending work finished` : "All pending work finished";
+    dispatch(pi, title, message, platforms, "agent_settled", config, cwd, "low").catch(() => {
+      // Silently ignore — background agent notification failure is non-blocking.
+    });
+  });
+}
+
 /** Register an agent lifecycle notification with session name and recap support. */
 function registerAgentNotification(
   pi: ExtensionAPI,
@@ -584,7 +631,17 @@ function registerAgentNotification(
     // A running background task with triggerOnCompletion wakes the agent in a
     // fresh turn that produces its own agent_end/agent_settled. Notifying for
     // this intermediate turn as well would duplicate the wake message.
-    if (hasPendingWakeTask()) return;
+    //
+    // UNI-162: the same applies to a background subagent still running or a
+    // non-blocking fusion handoff in flight (core's hasPendingWork(), reading
+    // the arbiter's wait sources) — any of those also means this "done" is an
+    // intermediate turn. Arm the watcher so the EVENTUAL all-clear sends one
+    // "All done" instead of the session going quiet with no notification at
+    // all once the last pending thing finishes.
+    if (hasPendingWakeTask() || hasPendingWork()) {
+      armAllDoneWatch(pi, eventConfig.platforms, config, cwd, dispatch);
+      return;
+    }
 
     // Fire-and-forget: build message and dispatch in background,
     // don't block agent lifecycle hooks from completing.

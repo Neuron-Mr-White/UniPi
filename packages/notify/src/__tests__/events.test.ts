@@ -15,6 +15,7 @@ import {
   registerEventListeners,
   type DispatchNotification,
 } from "../../events.ts";
+import { registerWaitSource, resetArbiterForTests, resetWorkChangesForTests } from "@pi-unipi/core";
 import { DEFAULT_CONFIG } from "../../settings.ts";
 import type { NotifyConfig, NotifyPriority } from "../../types.ts";
 import {
@@ -125,11 +126,15 @@ beforeEach(() => {
   resetBusForTests();
   clearSharedTaskRegistry();
   disarmRenotify();
+  resetArbiterForTests();
+  resetWorkChangesForTests();
 });
 
 after(() => {
   clearSharedTaskRegistry();
   disarmRenotify();
+  resetArbiterForTests();
+  resetWorkChangesForTests();
 });
 
 describe("notify — agent lifecycle suppression while a wake is pending", () => {
@@ -195,6 +200,52 @@ describe("notify — agent lifecycle suppression while a wake is pending", () =>
 
   it("reports no pending wake when no registry is available", () => {
     assert.equal(hasPendingWakeTask(), false);
+  });
+
+  it("UNI-162: does not dispatch agent_end while core reports pending work (a subagent running)", async () => {
+    const g = globalThis as unknown as Record<symbol, unknown>;
+    g[Symbol.for("unipi.subagents.shared-list")] = () => [
+      { id: "a1", title: "Explore", status: "running", background: true, startedAt: Date.now() },
+    ];
+    try {
+      registerWaitSource("subagents", () => "subagent running");
+      const h = harness(fakeConfig(["agent_end"]));
+      await invokeLifecycle(h, "agent_end", {});
+      assert.equal(h.calls.length, 0);
+    } finally {
+      resetArbiterForTests();
+      delete g[Symbol.for("unipi.subagents.shared-list")];
+    }
+  });
+
+  it("UNI-162: sends exactly one 'All done' once pending work clears, via the work-change signal", async () => {
+    let subagentDone = false;
+    const g = globalThis as unknown as Record<symbol, unknown>;
+    let fireChange: (() => void) | undefined;
+    g[Symbol.for("unipi.subagents.shared-subscribe")] = (listener: () => void) => {
+      fireChange = listener;
+      return () => {
+        fireChange = undefined;
+      };
+    };
+    try {
+      registerWaitSource("subagents", () => (subagentDone ? null : "subagent running"));
+      const h = harness(fakeConfig(["agent_end"]));
+      await invokeLifecycle(h, "agent_end", {});
+      assert.equal(h.calls.length, 0, "suppressed while the subagent runs");
+
+      subagentDone = true;
+      fireChange?.();
+      assert.equal(h.calls.length, 1, "exactly one notification once work clears");
+      assert.equal(h.calls[0]?.title, "Pi — All Done");
+
+      // A second change tick with nothing new pending must not re-fire.
+      fireChange?.();
+      assert.equal(h.calls.length, 1, "does not re-fire once disarmed");
+    } finally {
+      resetArbiterForTests();
+      delete g[Symbol.for("unipi.subagents.shared-subscribe")];
+    }
   });
 
   it("runs the agent_end guard synchronously", () => {
