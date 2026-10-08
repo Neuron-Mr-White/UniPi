@@ -1,0 +1,15 @@
+{
+  "comment": "UNI-161 §1 cross-runtime fixture: one unipi1: envelope, encrypted with a fixed test key/IV (node:crypto on the pi side) so the app's WebCrypto decrypt (apps/mobile/src/lib/notifyCrypto.ts) and the pi's own createDecipheriv (packages/notify/ntfy-crypto.ts in the unipi repo) both prove they agree on the exact byte layout. Never use a fixed IV outside this fixture.",
+  "keyB64": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
+  "envelope": "unipi1:AQEBAQEBAQEBAQEBDcP93uTTiSzr9oxIUFkVVMyINI134hk/elMsBh+WDJmG13jc82ql9DFSOHmuGtG7ojmCazPa3WWAI9RjiVf28NvFchJmo0VZQWI7EMgVI7Rx/wpTIfAvHwATapTL67ZhY/4ltcCmdaMWI1DNCdsvgX08pxHpWSGxz9P3TfYH6rpmV48Xsmel6UCH7nAxPRu1ygtSpG5sIQFXnqxn/RE=",
+  "payload": {
+    "title": "Pi needs you",
+    "body": "Deploy to prod?",
+    "kind": "ask_user",
+    "host": "pc1",
+    "pid": 42,
+    "session": "main",
+    "dialogId": 3,
+    "options": ["Yes", "No"]
+  }
+}

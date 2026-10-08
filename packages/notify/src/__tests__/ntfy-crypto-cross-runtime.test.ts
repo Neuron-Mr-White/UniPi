@@ -16,7 +16,9 @@ import { decryptNotifyPayload } from "../../ntfy-crypto.ts";
 const here = dirname(fileURLToPath(import.meta.url));
 // packages/notify/src/__tests__ -> ../../../../ reaches the unipi repo root;
 // the fixture lives in the sibling unipi-app repo's protocol/fixtures.
-const fixturePath = join(here, "../../../../unipi-app/protocol/fixtures/notify-crypto.json");
+// A copy of unipi-app/protocol/fixtures/notify-crypto.json (unipi-app is a
+// separate repo, absent in CI): both repos test against the same bytes.
+const fixturePath = join(here, "fixtures/notify-crypto.json");
 
 describe("cross-runtime unipi1: envelope fixture", () => {
   it("decrypts the fixture the same way the app's WebCrypto decrypt does", () => {
