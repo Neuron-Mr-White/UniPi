@@ -6,10 +6,19 @@
  * read surface doesn't exist (writes-only job queue), so this is how pi sees
  * every drawer — its own plus Devin/zcode/diary notes written by other tools.
  * Respawns once on crash; the caller kills it on session shutdown.
+ *
+ * Memory: the server is ~85 MB idle and ~300–470 MB once the first search has
+ * loaded the embedder + HNSW index, and there is one per pi session (incl.
+ * subagent children). So the reader starts lazily on the first call and
+ * unloads itself after `idleMs` without calls; the next call respawns it
+ * (~1.4 s cold instead of ~30 ms warm).
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { venvBin, type MempalaceInstall } from "./mempalace.js";
+import { mempalaceEnv, venvBin, type MempalaceInstall } from "./mempalace.js";
+
+/** Default idle window before the reader process is unloaded. */
+export const READER_IDLE_MS = 10 * 60_000;
 
 export interface ReaderSearchHit {
   drawer_id: string;
@@ -53,23 +62,47 @@ export class MemoryReader {
   /** Respawn timestamps inside the last 10 minutes — at most 5 restarts per window. */
   private respawns: number[] = [];
   private starting: Promise<boolean> | null = null;
+  private idleTimer: NodeJS.Timeout | null = null;
+  /** In-flight tool calls — the idle unload never fires under them. */
+  private active = 0;
+  /** The last exit was our own idle unload — the next start isn't a crash respawn. */
+  private unloadedIdle = false;
+  /** Times the process was unloaded for idleness (diagnostics/tests). */
+  idleUnloads = 0;
 
   constructor(
     private readonly install: MempalaceInstall,
     private readonly palacePath: string,
     /** readOnly=false spawns the WRITE-mode server (for one-shot deletes). */
     private readonly readOnly = true,
+    /** Unload the process after this long without calls; 0 = keep it warm. */
+    private readonly idleMs = READER_IDLE_MS,
   ) {}
+
+  /** The live server pid, if one is running. */
+  get pid(): number | undefined {
+    return this.alive() ? this.proc?.pid : undefined;
+  }
+
+  private alive(): boolean {
+    // A signal-killed child (e.g. OOM SIGKILL) keeps exitCode null — check both.
+    return !!this.proc && this.proc.exitCode === null && this.proc.signalCode === null;
+  }
 
   /** Start (or confirm) the reader process. Idempotent + single-flight. */
   async start(): Promise<boolean> {
-    // A signal-killed child (e.g. OOM SIGKILL) keeps exitCode null — check both.
-    if (this.proc && this.proc.exitCode === null && this.proc.signalCode === null) return true;
+    if (this.alive()) return true;
     if (this.starting) return this.starting;
-    const now = Date.now();
-    this.respawns = this.respawns.filter((t) => now - t < 10 * 60_000);
-    if (this.respawns.length >= 5) return false;
-    this.respawns.push(now);
+    if (this.unloadedIdle) {
+      // Coming back from an idle unload is not a crash — don't spend the
+      // crash-respawn budget on it.
+      this.unloadedIdle = false;
+    } else {
+      const now = Date.now();
+      this.respawns = this.respawns.filter((t) => now - t < 10 * 60_000);
+      if (this.respawns.length >= 5) return false;
+      this.respawns.push(now);
+    }
     this.starting = this.spawn();
     const ok = await this.starting;
     this.starting = null;
@@ -85,7 +118,7 @@ export class MemoryReader {
           this.readOnly
             ? ["--palace", this.palacePath, "--read-only"]
             : ["--palace", this.palacePath],
-          { stdio: ["pipe", "pipe", "ignore"] },
+          { stdio: ["pipe", "pipe", "ignore"], env: mempalaceEnv() },
         );
       } catch {
         resolve(false);
@@ -172,8 +205,45 @@ export class MemoryReader {
     });
   }
 
+  /** (Re)arm the idle unload — called whenever the reader goes quiet. */
+  private armIdle(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+    if (this.idleMs <= 0 || this.active > 0 || !this.alive()) return;
+    this.idleTimer = setTimeout(() => this.unloadIfIdle(), this.idleMs);
+    this.idleTimer.unref?.();
+  }
+
+  private unloadIfIdle(): void {
+    this.idleTimer = null;
+    if (this.active > 0 || this.starting || !this.alive()) return;
+    this.unloadedIdle = true;
+    this.idleUnloads += 1;
+    this.stopProcess();
+  }
+
+  private stopProcess(): void {
+    const proc = this.proc;
+    this.proc = null;
+    // stdin EOF is the server's clean shutdown; the signal covers a wedged one.
+    try { proc?.stdin?.end(); } catch { /* ignore */ }
+    try { proc?.kill(); } catch { /* ignore */ }
+    this.failPending();
+  }
+
   /** tools/call → parsed tool payload (the server returns JSON text). */
   private async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    this.active += 1;
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    try {
+      return await this.callToolInner(name, args);
+    } finally {
+      this.active -= 1;
+      this.armIdle();
+    }
+  }
+
+  private async callToolInner(name: string, args: Record<string, unknown>): Promise<unknown> {
     if (!(await this.start())) return { error: "reader unavailable" };
     const m = await this.callRaw("tools/call", { name, arguments: args });
     const text = m.result?.content?.[0]?.text;
@@ -264,9 +334,7 @@ export class MemoryReader {
   }
 
   kill(): void {
-    try { this.proc?.stdin?.end(); } catch { /* ignore */ }
-    try { this.proc?.kill(); } catch { /* ignore */ }
-    this.proc = null;
-    this.failPending();
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+    this.stopProcess();
   }
 }

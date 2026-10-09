@@ -268,7 +268,7 @@ export async function deleteViaWriteMcp(
   sourceFile: string,
   palacePath = DEFAULT_PALACE,
 ): Promise<DirectWriteResult> {
-  const proc = new MemoryReader(install, palacePath, false);
+  const proc = new MemoryReader(install, palacePath, false, 0);
   const up = await proc.start();
   if (!up) {
     proc.kill();

@@ -271,8 +271,9 @@ export function createSessionBackend(cwd: string): SessionBackend {
       ? `MemPalace ${install.version} is too old — run \`uv tool upgrade mempalace\` for semantic search`
       : undefined;
   const mode: "palace" | "local" = versionOk ? "palace" : "local";
+  // Lazy: the reader spawns on the first search/list call (most sessions and
+  // every subagent child never search) and unloads itself when idle.
   const reader = versionOk && install ? new MemoryReader(install, DEFAULT_PALACE) : null;
-  if (reader) void reader.start(); // warm up without blocking session_start
 
   /** Write the record via the best available path; journal what didn't land. */
   const storeRecord = async (rec: MemoryRecord): Promise<StoreOutcome> => {

@@ -26,6 +26,21 @@ export interface MempalaceInstall {
   version: string;
 }
 
+/**
+ * Environment for every MemPalace process pi spawns (reader, `mine`,
+ * `wake-up`, `daemon start` — a daemon auto-started by `mempalace mine`
+ * inherits it too).
+ *
+ * glibc gives each thread its own malloc arena; the MemPalace daemon and
+ * MCP server run ~100+ threads (chromadb/onnxruntime pools) and their RSS
+ * ratchets up job after job without ever being returned — measured on a
+ * /tmp palace copy: 80 MB → 1.3 GB over 160 mine jobs by default, flat at
+ * ~370 MB with MALLOC_ARENA_MAX=2 (same latency). A user-set value wins.
+ */
+export function mempalaceEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...base, MALLOC_ARENA_MAX: base.MALLOC_ARENA_MAX || "2" };
+}
+
 /** The mempalace/mempalace-mcp binaries live beside the venv python. */
 export function venvBin(install: MempalaceInstall, name: string): string {
   return path.join(path.dirname(install.python), name);
@@ -208,7 +223,7 @@ export function runProcess(bin: string, args: string[], timeoutMs: number): Prom
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
+      child = spawn(bin, args, { stdio: ["ignore", "ignore", "ignore"], env: mempalaceEnv() });
     } catch {
       resolve(false);
       return;
@@ -235,7 +250,7 @@ export function runProcessOutput(bin: string, args: string[], timeoutMs: number)
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(bin, args, { stdio: ["ignore", "pipe", "ignore"] });
+      child = spawn(bin, args, { stdio: ["ignore", "pipe", "ignore"], env: mempalaceEnv() });
     } catch {
       resolve(null);
       return;
@@ -270,7 +285,7 @@ export function runProcessCombined(
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env: mempalaceEnv() });
     } catch {
       resolve({ code: null, stdout: "", stderr: "" });
       return;

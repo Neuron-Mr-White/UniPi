@@ -120,3 +120,11 @@ test("submit with no endpoint fails cleanly", async () => {
     fs.rmSync(emptyHome, { recursive: true, force: true });
   }
 });
+
+test("mempalaceEnv caps malloc arenas and keeps a user value (UNI-179)", async () => {
+  const { mempalaceEnv } = await import("../mempalace.js");
+  assert.equal(mempalaceEnv({ PATH: "/x" }).MALLOC_ARENA_MAX, "2");
+  assert.equal(mempalaceEnv({ PATH: "/x" }).PATH, "/x");
+  assert.equal(mempalaceEnv({ MALLOC_ARENA_MAX: "8" }).MALLOC_ARENA_MAX, "8");
+  assert.equal(mempalaceEnv({ MALLOC_ARENA_MAX: "" }).MALLOC_ARENA_MAX, "2");
+});

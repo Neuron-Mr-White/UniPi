@@ -244,6 +244,9 @@ export default function (pi: ExtensionAPI) {
       pi.setActiveTools(active);
     }
 
+    // A session_start without a matching shutdown must not orphan the old
+    // reader process (one per backend).
+    backend?.close();
     backend = createSessionBackend(ctx.cwd);
     const b = backend;
     const migrating = needsMigration();

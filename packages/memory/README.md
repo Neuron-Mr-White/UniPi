@@ -76,6 +76,16 @@ package runs `mempalace mine` directly. If both fail, the write waits in a
 pending file. The next session replays it. Reads go through one read-only
 `mempalace-mcp` process for each session.
 
+The read process starts on the first search, not at session start. It stops
+after 10 minutes without a search, and the next search starts it again (about
+1.5 s). One loaded read process uses about 300 MB of RAM.
+
+Every MemPalace process that pi starts gets `MALLOC_ARENA_MAX=2`. Without it,
+the daemon grows with each write job and does not give memory back. In a test,
+it went from 80 MB to 1.3 GB after 160 jobs. With it, the daemon stays at about
+380 MB. If you set `MALLOC_ARENA_MAX` yourself, pi keeps your value. A daemon
+that runs already keeps its old settings until it restarts.
+
 ## Upgrade from v2
 
 The migration does not start by itself. When the package finds v2 data, the

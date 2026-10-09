@@ -106,14 +106,15 @@ export function registerMemoryCommands(
       if (sub === "status") {
         const cfg = readMemoryConfig();
         const daemon = await probeDaemon(DEFAULT_PALACE);
-        const readerUp = b?.reader ? await b.reader.status().then((s) => !!s).catch(() => false) : false;
+        // Don't spawn the (lazy, idle-unloaded) reader just to report on it.
+        const readerPid = b?.reader?.pid;
         const counts = b ? (await b.list()).length : 0;
         const pending = readPending();
         const conv = readConversionState();
         const lines = [
           `backend: ${b?.install ? `mempalace ${b.install.version}` : "unavailable"}${b?.mode === "local" ? " (markdown-only)" : ""}`,
           `daemon: ${daemon.reachable ? `up${daemon.busy ? " (busy)" : ""}` : "down"}`,
-          `reader: ${readerUp ? "warm" : "down"}`,
+          `reader: ${!b?.reader ? "none (markdown-only)" : readerPid ? `warm (pid ${readerPid})` : "idle — starts on the next search"}`,
           `project memories: ${counts} (${b?.project ?? "?"})`,
           `pending ops: ${pending.length}`,
           ...(pending.some((o) => o.heldBy)
