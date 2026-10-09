@@ -787,6 +787,31 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
    * re-sent with its new text (`queue_edit`). Images ride along for an
    * edit/re-send; `queue_promote` sends the edited item right away instead
    * of re-queuing it. */
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** Set by a phone-initiated abort so that abort's own agent_end doesn't
+   * auto-deliver the next "after it ends" item (a Stop isn't an ending). */
+  let skipNextDelivery = false;
+  /** ctx.abort() in the TUI runs pi's own restoreQueuedMessagesToEditor,
+   * which dumps every queued message into the TUI editor. The phone owns
+   * this abort (it re-sends or gets `restored`), so put the editor back. */
+  const abortKeepingEditor = async (c: NonNullable<typeof ctx>) => {
+    let before: string | undefined;
+    try {
+      before = c.hasUI ? c.ui.getEditorText() : undefined;
+    } catch {
+      before = undefined;
+    }
+    skipNextDelivery = true;
+    c.abort();
+    if (before !== undefined) {
+      try {
+        c.ui.setEditorText(before);
+      } catch {
+        // no editor: nothing to restore
+      }
+    }
+  };
+
   const editPiQueued = async (sock: Socket, id: string, ref: string | undefined, apply: (item: (typeof tuiQueue)[number]) => "drop" | "promote" | void) => {
     const c = ctx;
     const ack = () => write(sock, { t: "ack", ref });
@@ -796,22 +821,31 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     if (i < 0) return fail("That queued message is gone.");
     const [target] = tuiQueue.splice(i, 1);
     const action = apply(target!) ?? undefined;
+    // Keep the edited/kept target in its original slot (promote: first).
     const rest = tuiQueue.splice(0, tuiQueue.length);
+    if (action === "promote") rest.unshift(target!);
+    else if (action !== "drop") rest.splice(i, 0, target!);
     if (!c.isIdle()) {
-      c.abort();
+      await abortKeepingEditor(c);
       const deadline = Date.now() + 10_000;
-      while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+      while (!c.isIdle() && Date.now() < deadline) await sleep(50);
     }
     send({ t: "queue", items: queueView() });
     const contentOf = (q: (typeof tuiQueue)[number]) => (q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text);
     try {
-      // Re-queue the others first (steering ones ahead of follow-ups mirrors
-      // pi's own delivery order: steer drains before followUp).
-      for (const q of [...rest].sort((a, b) => (a.mode === b.mode ? 0 : a.mode === "steer" ? -1 : 1))) {
-        pi.sendUserMessage(contentOf(q), { deliverAs: q.mode, expandPromptTemplates: true } as never);
-      }
-      if (action !== "drop") {
-        pi.sendUserMessage(contentOf(target!), action === "promote" ? { expandPromptTemplates: true } : { deliverAs: target!.mode, expandPromptTemplates: true } as never);
+      // pi is idle now, so a deliverAs message would be rejected ("Specify
+      // streamingBehavior"/"already processing"). The first item starts a
+      // fresh run; wait until pi is streaming, then queue the rest in pi's
+      // own order (steer drains before followUp).
+      const order = [...rest].sort((a, b) => (a === rest[0] ? -1 : b === rest[0] ? 1 : a.mode === b.mode ? 0 : a.mode === "steer" ? -1 : 1));
+      for (const q of order) {
+        if (c.isIdle()) {
+          pi.sendUserMessage(contentOf(q), { expandPromptTemplates: true } as never);
+          const until = Date.now() + 5_000;
+          while (c.isIdle() && Date.now() < until) await sleep(20);
+        } else {
+          pi.sendUserMessage(contentOf(q), { deliverAs: q.mode, expandPromptTemplates: true } as never);
+        }
       }
       ack();
     } catch (error) {
@@ -987,7 +1021,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         // left alone (explicitly "after", not lost to this abort).
         const texts = tuiQueue.map((q) => q.text);
         tuiQueue.length = 0;
-        c.abort();
+        if (c.isIdle()) skipNextDelivery = false;
+        else await abortKeepingEditor(c);
         ack();
         if (texts.length) send({ t: "restored", texts });
         send({ t: "queue", items: queueView() });
@@ -1398,6 +1433,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   });
 
   on("agent_start", safe(() => {
+    // the aborted run's agent_end already passed (abort waits for idle)
+    skipNextDelivery = false;
     running = true;
     idleWaitingSince = undefined;
     writeRecord();
@@ -1428,7 +1465,8 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   // A phone already connected has already seen it live (no "needs you" badge
   // for someone watching); one with no phone open gets the idle-waiting mark.
   on("agent_end", safe(() => {
-    deliverNextQueued();
+    if (skipNextDelivery) skipNextDelivery = false;
+    else deliverNextQueued();
     // UNI-162: a settled turn with no phone open is only truly "needs you"
     // idle if nothing is still pending (a background subagent, a bg wake, a
     // fusion handoff) — those will re-invoke pi themselves; marking idle now

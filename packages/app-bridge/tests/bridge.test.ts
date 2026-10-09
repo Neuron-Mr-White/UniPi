@@ -19,6 +19,7 @@ function fakePi() {
   const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
   const sent: Array<{ content: unknown; opts: any }> = [];
   let idle = true;
+  let promptStartsRun = false;
   let thinking = "medium";
   let sessionName: string | undefined = "my session";
   const branch: any[] = [
@@ -106,6 +107,8 @@ function fakePi() {
     },
     sendUserMessage: (content: unknown, opts: any) => {
       sent.push({ content, opts });
+      // like pi (opt-in): a plain prompt (no deliverAs) starts a run
+      if (promptStartsRun && !opts?.deliverAs) idle = false;
       // The bridge's hidden command: run it with a command-capable context,
       // the only way to reach newSession/fork/navigateTree/switchSession.
       if (typeof content === "string" && content === `/${SESSION_COMMAND}`) {
@@ -127,7 +130,7 @@ function fakePi() {
   const emit = async (name: string, event: any = {}) => {
     for (const h of handlers.get(name) ?? []) await h(event, ctx);
   };
-  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, setIdle: (v: boolean) => (idle = v) };
+  return { pi, ctx, emit, sent, branch, tree, calls, sessionOps, setIdle: (v: boolean) => (idle = v), setPromptStartsRun: (v: boolean) => (promptStartsRun = v) };
 }
 
 /** Fake SessionManager.list/listAll deps for `sessions{}` (the real bridge talks to disk). */
@@ -567,8 +570,11 @@ describe("app bridge over a unix socket", () => {
     assert.ok(idA.startsWith("tui-"));
     assert.ok(idB.startsWith("tui-"));
 
-    // Edit A's text: aborts (fake's abort() sets idle=true), re-sends B
-    // (unedited, same mode) and the edited A, each via sendUserMessage.
+    // Edit A's text: aborts (fake's abort() sets idle=true). pi is idle
+    // then, so the first item (edited A, kept in its slot) starts a fresh
+    // run as a plain prompt — a deliverAs while idle would be rejected by
+    // pi — and the rest (B) re-queue in their own mode once it's running.
+    f.setPromptStartsRun(true);
     const beforeSent = f.sent.length;
     c.send({ t: "queue_edit", id: idA, text: "steer A (edited)", ref: "te1" });
     await c.next((m) => m.t === "ack" && m.ref === "te1");
@@ -576,10 +582,11 @@ describe("app bridge over a unix socket", () => {
     assert.deepEqual(
       resent.map((s) => ({ content: s.content, deliverAs: s.opts.deliverAs })),
       [
+        { content: "steer A (edited)", deliverAs: undefined },
         { content: "follow B", deliverAs: "followUp" },
-        { content: "steer A (edited)", deliverAs: "steer" },
       ],
     );
+    f.setIdle(false);
     q = await c.next((m) => m.t === "queue" && m.items.length === 0);
 
     // Remove: drops the target, re-sends the rest.
@@ -602,6 +609,8 @@ describe("app bridge over a unix socket", () => {
     await c.next((m) => m.t === "ack" && m.ref === "tp1");
     assert.deepEqual(f.sent.at(-1), { content: "steer D", opts: { expandPromptTemplates: true } });
     assert.equal(f.sent.length, beforeSent3 + 1);
+    f.setPromptStartsRun(false);
+    f.setIdle(false);
 
     // Reordering a pi-owned item is refused (only bridge items are reorderable).
     await f.emit("input", { text: "steer E", source: "interactive", streamingBehavior: "steer" });
