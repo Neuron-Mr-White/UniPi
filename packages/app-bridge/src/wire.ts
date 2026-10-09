@@ -161,11 +161,15 @@ export interface CommandInfo {
   source: "extension" | "prompt" | "skill" | "builtin";
 }
 
-/** One queue row shown in the phone's queue strip. `source:"tui"` items (from
- *  pi's own input events, typed or steered elsewhere) are never editable —
- *  the extension API can't touch pi's own queue. `source:"phone"` + `mode:
- *  "after"` items live in the BRIDGE's own queue (not pi's): editable,
- *  removable, reorderable, promotable. */
+/** One queue row shown in the phone's queue strip. `source:"tui"` items
+ *  mirror pi's own steer/followUp queue (TUI keybindings, the harness, any
+ *  extension) — the bridge can't edit pi's live queue in place (no such
+ *  extension API), so editing/removing/promoting one of these (UNI-202)
+ *  aborts the run (same as the TUI's own Stop) and re-queues what's left in
+ *  the BRIDGE's own queue, delivered the same way. `source:"phone"` + `mode:
+ *  "after"` items already live in the BRIDGE's own queue: editable,
+ *  removable, reorderable, promotable directly, no abort needed. Every row
+ *  is `editable` now (UNI-202). */
 export interface Queued {
   id: string;
   text: string;
@@ -248,7 +252,16 @@ export type OutMsg =
   /** Context/cost/tps snapshot (UNI-160 §3), pushed ≤1/s while `watch{stats:true}` is open. */
   | { t: "stats"; stats: StatsInfo }
   /** The /unipi:info groups, phone-shaped (UNI-160 §5), pushed while `watch{info:true}` is open. */
-  | { t: "info"; groups: InfoGroupInfo[] };
+  | { t: "info"; groups: InfoGroupInfo[] }
+  /** UNI-202/211: an abort pulled pi's own queued messages (steer/followUp,
+   *  from any source) out of pi's queue — matching the TUI's own Stop
+   *  (`restoreQueuedMessagesToEditor`), which puts them back in ITS editor.
+   *  The phone has no editor of pi's to read, so the bridge sends the exact
+   *  same texts here; the app folds them into the composer draft (joined by
+   *  blank lines), same as the TUI. The bridge's own "after it ends" queue is
+   *  untouched (still in `queue{}` — those are explicitly "after", not lost
+   *  to the abort). */
+  | { t: "restored"; texts: string[] };
 
 /** One `@` suggestion: `value` replaces the typed `@query` (pi's completion text, e.g. `@src/a.ts` or `@"my dir/"`). */
 export type FileItem = { value: string; label: string; path: string; dir: boolean };

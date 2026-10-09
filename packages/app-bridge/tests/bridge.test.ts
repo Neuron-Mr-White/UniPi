@@ -246,7 +246,8 @@ describe("app bridge over a unix socket", () => {
 
   it("mirrors input, the queue and streaming deltas (coalesced)", async () => {
     await f.emit("input", { text: "from tui", source: "interactive", streamingBehavior: "steer" });
-    assert.deepEqual(await c.next((m) => m.t === "queue"), { t: "queue", items: [{ id: "tui-0", text: "from tui", mode: "steer", source: "tui", editable: false }] });
+    const q0 = await c.next((m) => m.t === "queue");
+    assert.deepEqual(q0.items, [{ id: q0.items[0].id, text: "from tui", mode: "steer", source: "tui", editable: true }]);
     assert.equal((await c.next((m) => m.t === "input")).source, "interactive");
     await f.emit("message_start", { message: { role: "user", content: "from tui" } });
     assert.deepEqual((await c.next((m) => m.t === "queue")).items, []);
@@ -548,7 +549,108 @@ describe("app bridge over a unix socket", () => {
     // Clean up: remove it so later tests start from an empty bridge queue.
     c.send({ t: "queue_remove", id: hello.queue[0].id, ref: "rc-clean" });
     await c.next((m) => m.t === "ack" && m.ref === "rc-clean");
+    await c.next((m) => m.t === "queue");
     f.setIdle(true);
+  });
+
+  it("UNI-202: a pi-owned (tui-*) queued item is editable/removable/promotable too — no clearQueue() API, so it aborts and re-sends what's left", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "steer A", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer A");
+    let q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer A"));
+    const idA = q.items.find((x: any) => x.text === "steer A")!.id as string;
+
+    await f.emit("input", { text: "follow B", source: "interactive", streamingBehavior: "followUp" });
+    await c.next((m) => m.t === "input" && m.text === "follow B");
+    q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "follow B"));
+    const idB = q.items.find((x: any) => x.text === "follow B")!.id as string;
+    assert.ok(idA.startsWith("tui-"));
+    assert.ok(idB.startsWith("tui-"));
+
+    // Edit A's text: aborts (fake's abort() sets idle=true), re-sends B
+    // (unedited, same mode) and the edited A, each via sendUserMessage.
+    const beforeSent = f.sent.length;
+    c.send({ t: "queue_edit", id: idA, text: "steer A (edited)", ref: "te1" });
+    await c.next((m) => m.t === "ack" && m.ref === "te1");
+    const resent = f.sent.slice(beforeSent);
+    assert.deepEqual(
+      resent.map((s) => ({ content: s.content, deliverAs: s.opts.deliverAs })),
+      [
+        { content: "follow B", deliverAs: "followUp" },
+        { content: "steer A (edited)", deliverAs: "steer" },
+      ],
+    );
+    q = await c.next((m) => m.t === "queue" && m.items.length === 0);
+
+    // Remove: drops the target, re-sends the rest.
+    await f.emit("input", { text: "steer C", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer C");
+    q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer C"));
+    const idC = q.items.find((x: any) => x.text === "steer C")!.id as string;
+    const beforeSent2 = f.sent.length;
+    c.send({ t: "queue_remove", id: idC, ref: "tr1" });
+    await c.next((m) => m.t === "ack" && m.ref === "tr1");
+    assert.equal(f.sent.length, beforeSent2, "nothing else was queued: removing the only item re-sends nothing");
+
+    // Promote: sends right away (no deliverAs — idle after the abort).
+    await f.emit("input", { text: "steer D", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer D");
+    q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer D"));
+    const idD = q.items.find((x: any) => x.text === "steer D")!.id as string;
+    const beforeSent3 = f.sent.length;
+    c.send({ t: "queue_promote", id: idD, to: "steer", ref: "tp1" });
+    await c.next((m) => m.t === "ack" && m.ref === "tp1");
+    assert.deepEqual(f.sent.at(-1), { content: "steer D", opts: { expandPromptTemplates: true } });
+    assert.equal(f.sent.length, beforeSent3 + 1);
+
+    // Reordering a pi-owned item is refused (only bridge items are reorderable).
+    await f.emit("input", { text: "steer E", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer E");
+    q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer E"));
+    const idE = q.items.find((x: any) => x.text === "steer E")!.id as string;
+    c.send({ t: "queue_move", id: idE, index: 0, ref: "tm1" });
+    assert.match((await c.next((m) => m.t === "error" && m.ref === "tm1")).message, /isn't reorderable/);
+    // Clean up: this run left "steer E" in tuiQueue — abort so the next test starts clean.
+    c.send({ t: "abort", ref: "ta-clean" });
+    await c.next((m) => m.t === "ack" && m.ref === "ta-clean");
+    await c.next((m) => m.t === "restored");
+    f.setIdle(true);
+  });
+
+  it("UNI-202/211: abort pulls pi's own queued messages back (matching the TUI's own Stop) and the phone gets `restored`; the bridge's own 'after' queue is untouched", async () => {
+    f.setIdle(false);
+    await f.emit("input", { text: "steer X", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer X");
+    await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer X"));
+    await f.emit("input", { text: "follow Y", source: "interactive", streamingBehavior: "followUp" });
+    await c.next((m) => m.t === "input" && m.text === "follow Y");
+    await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "follow Y"));
+    c.send({ t: "prompt", text: "after it ends", mode: "after", ref: "ab-after" });
+    await c.next((m) => m.t === "ack" && m.ref === "ab-after");
+    const qBefore = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "after it ends"));
+    assert.equal(qBefore.items.length, 3);
+
+    c.send({ t: "abort", ref: "ab1" });
+    const restored = await c.next((m) => m.t === "restored");
+    assert.deepEqual(restored.texts, ["steer X", "follow Y"]);
+    await c.next((m) => m.t === "ack" && m.ref === "ab1");
+    const qAfter = await c.next((m) => m.t === "queue" && m.items.length === 1);
+    assert.deepEqual(qAfter.items.map((x: any) => x.text), ["after it ends"]);
+
+    // Clean up the bridge's own queue item so later tests see an empty one.
+    c.send({ t: "queue_remove", id: qAfter.items[0].id, ref: "ab-clean" });
+    await c.next((m) => m.t === "ack" && m.ref === "ab-clean");
+    await c.next((m) => m.t === "queue" && m.items.length === 0);
+    f.setIdle(true);
+  });
+
+  it("UNI-211: a settle with nothing pending leaves no stray queue rows (agent_settled still sweeps an empty-run mirror)", async () => {
+    await f.emit("input", { text: "steer Z", source: "interactive", streamingBehavior: "steer" });
+    await c.next((m) => m.t === "input" && m.text === "steer Z");
+    const q = await c.next((m) => m.t === "queue" && m.items.some((x: any) => x.text === "steer Z"));
+    assert.equal(q.items.length, 1);
+    await f.emit("agent_settled");
+    assert.deepEqual((await c.next((m) => m.t === "queue" && m.items.length === 0)).items, []);
   });
 
   it("btw: forwards to @pi-unipi/btw's UI-free API (globalThis), streaming deltas to the requesting phone only", async () => {

@@ -198,16 +198,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   let socketPath: string | undefined;
   const clients = new Set<Socket>();
   let running = false;
-  /** pi's own queue (TUI steer/follow-up, from the `input` event's `streamingBehavior`): read-only to the phone. */
-  const tuiQueue: Array<{ text: string; mode: "steer" | "followUp" }> = [];
+  /** pi's own queue (steer/follow-up from ANY source — TUI keybindings, the
+   * harness, an extension's `pi.sendUserMessage({deliverAs})`), mirrored from
+   * the `input` event's `streamingBehavior`. UNI-202: editable/removable/
+   * promotable from the phone too, even though the bridge can't reach pi's
+   * live queue array directly — an edit/remove/promote on one of these
+   * aborts the run (same effect as the TUI's Stop) and re-sends what's left
+   * via `pi.sendUserMessage`, same as the TUI's own dequeue-and-resend. */
+  const tuiQueue: Array<{ id: string; text: string; mode: "steer" | "followUp"; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
   /** The bridge's own queue ("after it ends"): phone-only, editable/removable/reorderable/promotable,
    * delivered one at a time on `agent_end`. Survives phone reconnects (sent in `hello`), not a pi restart. */
   const bridgeQueue: Array<{ id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }> }> = [];
   let queueSeq = 0;
   const nextQueueId = () => `q${process.pid}-${++queueSeq}`;
-  /** Every queue row the phone sees: TUI items first (oldest-submitted order, read-only), then bridge items (editable, reorderable). */
+  /** Every queue row the phone sees: TUI items first (oldest-submitted order), then bridge items —
+   * every row editable/removable/promotable now (UNI-202). */
   const queueView = (): Queued[] => [
-    ...tuiQueue.map((q, i) => ({ id: `tui-${i}`, text: q.text, mode: q.mode, source: "tui" as const, editable: false })),
+    ...tuiQueue.map((q) => ({ id: q.id, text: q.text, mode: q.mode, source: "tui" as const, editable: true })),
     ...bridgeQueue.map((q) => ({ id: q.id, text: q.text, mode: "after" as const, source: "phone" as const, editable: true })),
   ];
   /** Phone prompts handed to pi, waiting for their `input` event (matched by the exact text pi saw). */
@@ -770,6 +777,48 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
   /** btw runs in flight, keyed by id, so a `btw_delta`/`btw_end` only reaches the requesting phone. */
   const btwRuns = new Map<string, Socket>();
 
+  /** UNI-202: edit/remove/promote a single `tui-*` queued item (pi's own
+   * steer/followUp queue, mirrored from ANY source). There's no extension
+   * API to mutate pi's live queue array in place, so this aborts the run
+   * (same effect as the TUI's own Stop — pi hands every queued message
+   * back), then re-sends every OTHER item in its original mode/order via
+   * `pi.sendUserMessage`, same as the TUI's own dequeue-and-resend. The
+   * target item is dropped (`queue_remove`/`queue_promote`) or edited and
+   * re-sent with its new text (`queue_edit`). Images ride along for an
+   * edit/re-send; `queue_promote` sends the edited item right away instead
+   * of re-queuing it. */
+  const editPiQueued = async (sock: Socket, id: string, ref: string | undefined, apply: (item: (typeof tuiQueue)[number]) => "drop" | "promote" | void) => {
+    const c = ctx;
+    const ack = () => write(sock, { t: "ack", ref });
+    const fail = (message: string) => write(sock, { t: "error", message, ref });
+    if (!c) return fail("pi is gone.");
+    const i = tuiQueue.findIndex((q) => q.id === id);
+    if (i < 0) return fail("That queued message is gone.");
+    const [target] = tuiQueue.splice(i, 1);
+    const action = apply(target!) ?? undefined;
+    const rest = tuiQueue.splice(0, tuiQueue.length);
+    if (!c.isIdle()) {
+      c.abort();
+      const deadline = Date.now() + 10_000;
+      while (!c.isIdle() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    }
+    send({ t: "queue", items: queueView() });
+    const contentOf = (q: (typeof tuiQueue)[number]) => (q.images?.length ? [{ type: "text" as const, text: q.text }, ...q.images.map(imageContent)] : q.text);
+    try {
+      // Re-queue the others first (steering ones ahead of follow-ups mirrors
+      // pi's own delivery order: steer drains before followUp).
+      for (const q of [...rest].sort((a, b) => (a.mode === b.mode ? 0 : a.mode === "steer" ? -1 : 1))) {
+        pi.sendUserMessage(contentOf(q), { deliverAs: q.mode, expandPromptTemplates: true } as never);
+      }
+      if (action !== "drop") {
+        pi.sendUserMessage(contentOf(target!), action === "promote" ? { expandPromptTemplates: true } : { deliverAs: target!.mode, expandPromptTemplates: true } as never);
+      }
+      ack();
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const handle = async (sock: Socket, msg: InMsg) => {
     const c = ctx;
     if (!c) return;
@@ -840,6 +889,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "queue_edit": {
+        if (msg.id.startsWith("tui-")) return void (await editPiQueued(sock, msg.id, msg.ref, (item) => void (item.text = msg.text)));
         const item = bridgeQueue.find((q) => q.id === msg.id);
         if (!item) return fail("That queued message is gone.");
         item.text = msg.text;
@@ -848,6 +898,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "queue_remove": {
+        if (msg.id.startsWith("tui-")) return void (await editPiQueued(sock, msg.id, msg.ref, () => "drop"));
         const i = bridgeQueue.findIndex((q) => q.id === msg.id);
         if (i < 0) return fail("That queued message is gone.");
         bridgeQueue.splice(i, 1);
@@ -856,6 +907,9 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "queue_move": {
+        // pi-owned rows aren't reorderable (their relative order is pi's own
+        // steering/follow-up semantics, not ours to rearrange) — only bridge items are.
+        if (msg.id.startsWith("tui-")) return fail("That message isn't reorderable.");
         const i = bridgeQueue.findIndex((q) => q.id === msg.id);
         if (i < 0) return fail("That queued message is gone.");
         const [item] = bridgeQueue.splice(i, 1);
@@ -866,6 +920,7 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         return;
       }
       case "queue_promote": {
+        if (msg.id.startsWith("tui-")) return void (await editPiQueued(sock, msg.id, msg.ref, () => "promote"));
         const i = bridgeQueue.findIndex((q) => q.id === msg.id);
         if (i < 0) return fail("That queued message is gone.");
         const [item] = bridgeQueue.splice(i, 1);
@@ -921,10 +976,23 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
         write(sock, { t: "btw_list", pages: api ? api.list() : [], ref: msg.ref });
         return;
       }
-      case "abort":
+      case "abort": {
+        // UNI-202/211: match the TUI's own Stop (`app.interrupt` →
+        // restoreQueuedMessagesToEditor({abort:true})): pi's own queued
+        // steer/followUp messages (mirrored in tuiQueue, from ANY source)
+        // don't just vanish — they're handed back. The TUI puts them in
+        // ITS editor; the phone has no such editor to read, so the bridge
+        // sends the same texts back as `restored` for the app to fold into
+        // the composer draft. The bridge's OWN "after it ends" queue is
+        // left alone (explicitly "after", not lost to this abort).
+        const texts = tuiQueue.map((q) => q.text);
+        tuiQueue.length = 0;
         c.abort();
         ack();
+        if (texts.length) send({ t: "restored", texts });
+        send({ t: "queue", items: queueView() });
         return;
+      }
       case "answer":
         if (hub.answer(msg.id, msg.value)) ack();
         else fail("That question was already answered.");
@@ -1306,7 +1374,12 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     try {
       const mode = event.streamingBehavior === "steer" || event.streamingBehavior === "followUp" ? event.streamingBehavior : "prompt";
       if (mode !== "prompt") {
-        tuiQueue.push({ text: clipText(event.text ?? "", 4000), mode });
+        tuiQueue.push({
+          id: `tui-${process.pid}-${++queueSeq}`,
+          text: clipText(event.text ?? "", 4000),
+          mode,
+          images: event.images?.length ? event.images.map((i: { data: string; mimeType: string }) => ({ mime: i.mimeType, data: i.data })) : undefined,
+        });
         send({ t: "queue", items: queueView() });
       } else if (event.source !== "extension" && bridgeQueue.length) {
         // The user started something new before the queued items could be
@@ -1334,6 +1407,16 @@ export function createBridge(pi: ExtensionAPI, deps: BridgeDeps = defaultDeps) {
     running = false;
     streaming = undefined;
     tools.clear();
+    // UNI-211: no longer unconditionally clearing tuiQueue here. A phone
+    // abort already cleared it and told the phone via `restored` (the
+    // "abort" case above). The TUI's own Stop (app.interrupt) clears pi's
+    // real queues and restores them to ITS editor WITHOUT firing any
+    // extension event the bridge can see, so if any mirrored rows remain
+    // here they're either stale (TUI just stopped: drop them — the TUI's
+    // own restore means nothing is left running to deliver them) or really
+    // were delivered without an `input` removal (shouldn't happen, but
+    // dropping here is the TUI's own behavior too: queues don't survive an
+    // agent that settled with nothing left streaming).
     if (tuiQueue.length) {
       tuiQueue.length = 0;
       send({ t: "queue", items: queueView() });
