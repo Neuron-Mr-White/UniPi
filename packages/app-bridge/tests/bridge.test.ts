@@ -297,6 +297,21 @@ describe("app bridge over a unix socket", () => {
     assert.equal((await c.next((m) => m.t === "error" && !m.ref)).message, "not JSON");
   });
 
+  it("compact{instructions} (UNI-205) forwards free text through to ctx.compact as customInstructions, same as pi's own /compact <text>", async () => {
+    const seen: Array<string | undefined> = [];
+    f.ctx.compact = (opts: { customInstructions?: string; onComplete?: () => void }) => {
+      seen.push(opts.customInstructions);
+      opts.onComplete?.();
+    };
+    c.send({ t: "compact", instructions: "focus on the login bug", ref: "cp1" });
+    await c.next((m) => m.t === "ack" && m.ref === "cp1");
+    assert.deepEqual(seen, ["focus on the login bug"]);
+
+    c.send({ t: "compact", ref: "cp2" });
+    await c.next((m) => m.t === "ack" && m.ref === "cp2");
+    assert.deepEqual(seen, ["focus on the login bug", undefined]);
+  });
+
   it("session_rename sets the display name", async () => {
     c.send({ t: "session_rename", name: "renamed chat", ref: "rn" });
     await c.next((m) => m.t === "ack" && m.ref === "rn");

@@ -96,6 +96,19 @@ describe("routing", () => {
     expect(await h.fire("session_before_compact", beforeCompact("overflow", undefined, []), notifyCtx())).toBeUndefined();
   });
 
+  it("/compact <text> (manual, from pi's TUI or an extension's ctx.compact()) delivers the text as a follow-up once vcc compaction lands", async () => {
+    // UNI-205: the phone's `/compact <text>` reaches the same session_before_compact/session_compact
+    // hooks with reason "manual" as pi's own /compact, whether `ctx.compact()` is called from the TUI
+    // or from an extension (e.g. the app-bridge). The free text (no keep:N, no __compactor__ marker) is
+    // kept as a follow-up prompt and delivered after the compaction completes.
+    const h = harness();
+    const result = await h.fire("session_before_compact", beforeCompact("manual", "focus on the login bug"), notifyCtx());
+    expect(result.compaction.details.method).toBe("vcc");
+    h.fire("session_compact", { compactionEntry: { details: result.compaction.details }, fromExtension: true, reason: "manual" }, notifyCtx());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(h.sent).toEqual([["user", "focus on the login bug", { deliverAs: "followUp" }]]);
+  });
+
   it("leads the summary with registered active work", async () => {
     const off = registerCompactionContext("test-loop", () => "Goal (active, turn 3/50): \"ship the login page\"");
     const h = harness();
