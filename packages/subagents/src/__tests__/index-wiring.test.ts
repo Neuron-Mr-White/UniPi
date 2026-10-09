@@ -103,3 +103,23 @@ test("appendSubagentStep is the exact payload the wired path emits", () => {
   appendSubagentStep((_t, data) => seen.push(data), rec, step);
   assert.equal(seen[0]!.group, "subagent:a:7");
 });
+
+test("UNI-126: subagents registers the Subagents tab of the shared work tray, no own strip widget", async () => {
+  const core = await import("@pi-unipi/core");
+  core.resetWorkTrayForTests();
+  const { pi } = fakePi();
+  const handlers = new Map<string, (...a: unknown[]) => unknown>();
+  (pi as unknown as { on: unknown }).on = (e: string, h: (...a: unknown[]) => unknown) => handlers.set(e, h);
+  subagents(pi as never, { manager: wiredManager() });
+  // The tray registered its own session_start (strip widget + ↓ hook).
+  const widgets: string[] = [];
+  const ui = { setWidget: (k: string) => widgets.push(k), onTerminalInput: () => () => {}, setWorkingMessage: () => {}, notify: () => {} };
+  // fakePi keeps one handler per event: the last registered session_start
+  // is the subagents' own; the tray's is checked in core's tray tests.
+  handlers.get("session_start")!({}, { hasUI: true, ui, cwd: join(scratch, "ctx"), sessionManager: {} });
+  assert.ok(!widgets.includes("subagents-strip"), "old strip widget is gone");
+  const { getSharedSubagents } = await import("../manager.js");
+  assert.ok(getSharedSubagents().length > 0, "earlier tests left records");
+  assert.equal(core.workTrayItemCount(), getSharedSubagents().length, "the Subagents tab is registered and counts the session's records");
+  core.resetWorkTrayForTests();
+});

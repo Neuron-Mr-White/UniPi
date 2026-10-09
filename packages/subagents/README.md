@@ -26,13 +26,13 @@ main context stays small.
    package alone: `pi install npm:@pi-unipi/subagents`.
 2. Ask the agent to explore a part of the code with a subagent.
 3. Push `Ctrl+B` to send a foreground child to the background.
-4. Push the down arrow in an empty input to open the subagent panel.
+4. Push the down arrow in an empty input to open the work tray, then push `Right` for the Subagents tab.
 
 ## Commands
 
 | Command or key | What it does |
 |---|---|
-| `/unipi:subagents` | Opens the subagent panel. |
+| `/unipi:subagents` | Opens the work tray on the Subagents tab. |
 | `/unipi:agents` | Lists profiles. Creates, edits, copies or deletes custom agents. |
 | `Ctrl+B` | Sends all foreground children to the background. |
 | `Esc` | Cancels a foreground child. |

@@ -139,7 +139,7 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
   });
 
   pi.registerCommand("unipi:bg-tasks", {
-    description: "Open the background task manager UI",
+    description: "Open the work tray on the Background tasks tab",
     handler: async (args, ctx) => {
       const taskId = typeof args === "string" ? args.trim() : "";
       await options.openTaskManager(ctx, taskId || undefined);
@@ -147,7 +147,7 @@ export function registerToolsAndCommands(options: RegisterSurfaceOptions): void 
   });
 
   pi.registerShortcut("shift+down" as never, {
-    description: "Open focused background task footer dock",
+    description: "Open the work tray on the Background tasks tab",
     handler: async (ctx) => {
       await options.openTaskManager(ctx);
     },

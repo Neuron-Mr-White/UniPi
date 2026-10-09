@@ -430,6 +430,23 @@ void describe('BackgroundTasksManager component', () => {
     }
   });
 
+  void it('work tray pane (UNI-126): list leaves ←/→ to the tray tabs, detail keeps ← for back; Enter still opens logs', async () => {
+    const h = manager({}, [task()]);
+    try {
+      assert.equal(h.instance.capturesArrows(), false);
+      h.instance.handleInput('\x1b[C');
+      assert.match(stripAnsi(h.instance.render(90).join('\n')), /bg tasks focused/, '→ no longer opens the detail view');
+      h.instance.handleInput('\r');
+      assert.equal(h.instance.capturesArrows(), true);
+      assert.match(stripAnsi(h.instance.render(90).join('\n')), /bg: /);
+      h.instance.handleInput('\x1b[D');
+      assert.equal(h.instance.capturesArrows(), false);
+      assert.match(stripAnsi(h.instance.render(90).join('\n')), /bg tasks focused/);
+    } finally {
+      h.instance.dispose();
+    }
+  });
+
   void it('handles non-running stop, output read failures, paging, long text, and close aliases', async () => {
     const many = Array.from({ length: 20 }, (_, i) =>
       task({

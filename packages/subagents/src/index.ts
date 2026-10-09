@@ -9,16 +9,17 @@
  * re-read every turn, so settings and agent files apply without a restart.
  *
  * TUI (Devin parity): spawn card with a live tail, `Subagent "…" completed`
- * lines, the `N subagents (k running) · ↓ select` strip, the dock (↵ view,
- * f foreground, x cancel), Ctrl+B to background a foreground subagent.
+ * lines, the Subagents tab of the shared work tray (core/src/work/tray.ts —
+ * ↓ from an empty input; ↵ view, f foreground, x cancel), Ctrl+B to background
+ * a foreground subagent.
  */
 
 import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Key, matchesKey, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { renderDelegatedStep, type DelegatedStep } from "@pi-unipi/utility/src/render/delegated.js";
 import {
-  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, registerSettings, registerWaitSource, subscribeTick,
+  MODULES, UNIPI_EVENTS, bus, getPackageVersion, getSettings, isChildProcess, openWorkTray, registerSettings, registerWaitSource, registerWorkTrayTab, subscribeTick,
 } from "@pi-unipi/core";
 import {
   ensureReadSubagentTool, registerSubagentReader, setReadSubagentDemand,
@@ -32,7 +33,7 @@ import { setSharedSubagentManager, clearSharedSubagentManager } from "./manager-
 import { loadProfiles, type AgentProfile } from "./profiles.js";
 import { buildTranscript, itemsFromEvents } from "./transcript.js";
 import {
-  SubagentDock, SubagentStrip, elapsed, plural, profileLabel, statusColor, statusGlyph, statLine, tailLines, STATUS_LABEL, type ThemeLike,
+  SubagentDock, elapsed, plural, profileLabel, runningPreview, statusColor, statusGlyph, statLine, tailLines, STATUS_LABEL, type ThemeLike,
 } from "./ui.js";
 import { AGENTS_COMMAND, registerAgentsCommand } from "./agents.js";
 import {
@@ -109,7 +110,6 @@ const RunSubagentParams = Type.Object({
 const RUN_DESCRIPTION =
   "Launch an independent subagent for a self-contained task. It has its own context and does not see this conversation, so put everything it needs in `task`. Foreground (default) waits and returns the subagent's report. With is_background:true it returns immediately and you receive a <subagent_completion_notification> when it finishes; use read_subagent to wait for it — never poll in a loop. Background subagents cannot ask for approval: tool calls that would need approval are denied. Use resume:<agent_id> to continue an earlier subagent with a follow-up task.";
 
-const STRIP_KEY = "subagents-strip";
 const FG_KEY = "subagents-foreground";
 const WORKING = "Subagent running · Ctrl+B to run in background";
 
@@ -197,10 +197,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
   const warned = new Set<string>();
 
   // UI state
-  let stripTui: TUI | undefined;
-  let stripInstalled = false;
   let fgInstalled = false;
-  let dockOpen = false;
   let workingShown = false;
   let unsubInput: (() => void) | undefined;
   /** Foreground waiters (run_subagent / read_subagent block) → move to bg. */
@@ -279,27 +276,13 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
       for (const id of watched) {
         if (manager.run(id) === undefined) watched.delete(id);
       }
-      const wantStrip = getSharedSubagents().length > 0;
-      if (wantStrip && !stripInstalled) {
-        stripInstalled = true;
-        ctx.ui.setWidget(STRIP_KEY, (tui, theme) => {
-          stripTui = tui;
-          return new SubagentStrip(tui, theme, getSharedSubagents, (rec) => ({ toolCalls: manager.toolCalls(rec.id), usage: manager.usage(rec.id) }));
-        }, { placement: "belowEditor" });
-      } else if (!wantStrip && stripInstalled) {
-        stripInstalled = false;
-        stripTui = undefined;
-        ctx.ui.setWidget(STRIP_KEY, undefined);
-      } else {
-        stripTui?.requestRender();
-      }
       const wantFg = watched.size > 0;
       if (wantFg && !fgInstalled) {
         fgInstalled = true;
         // UNI-133: one process-wide animation tick (core's subscribeTick)
         // instead of a per-widget `setInterval(…, 90ms)` — the FG widget used
         // to own its own timer, stacking with every running card's own timer
-        // (cards.ts) and the strip's 1s timer, each triggering a separate
+        // (cards.ts) and the old strip's 1s timer, each triggering a separate
         // re-render pass and starving the editor's own loader animation.
         ctx.ui.setWidget(FG_KEY, (tui, theme) => {
           const unsub = subscribeTick(() => tui.requestRender());
@@ -365,38 +348,35 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
     return manager.cancel(id, "user") ? undefined : "Not running.";
   }
 
-  async function openDock(ctx: ExtensionContext, initialId?: string): Promise<void> {
-    if (dockOpen || !ctx.hasUI) return;
-    dockOpen = true;
-    try {
-      await ctx.ui.custom<void>((tui, theme, _kb, done) => new SubagentDock(tui, theme, {
-        records: getSharedSubagents,
-        transcript: transcriptOf,
-        toolCalls: (rec) => manager.toolCalls(rec.id),
-        usage: (rec) => manager.usage(rec.id),
-        subscribe: subscribeSubagents,
-        foreground: foregroundAgent,
-        cancel: cancelAgent,
-      }, () => done(), initialId));
-    } finally {
-      dockOpen = false;
-    }
-  }
+  // One bottom pane with the background tasks (UNI-126): the Subagents tab.
+  // The tray owns ↓, ←/→ and the strip under the editor (with the per-agent
+  // stat lines this module's own strip used to draw).
+  registerWorkTrayTab(pi, {
+    id: "subagents",
+    label: "Subagents",
+    order: 1,
+    counts: () => {
+      const all = getSharedSubagents();
+      return { total: all.length, running: all.filter((r) => r.status === "running").length };
+    },
+    createPane: ({ tui, theme, close, initialId }) => new SubagentDock(tui, theme, {
+      records: getSharedSubagents,
+      transcript: transcriptOf,
+      toolCalls: (rec) => manager.toolCalls(rec.id),
+      usage: (rec) => manager.usage(rec.id),
+      subscribe: subscribeSubagents,
+      foreground: foregroundAgent,
+      cancel: cancelAgent,
+    }, close, initialId),
+    previewLines: (width, theme) => runningPreview(getSharedSubagents(), width, theme, (rec) => ({ toolCalls: manager.toolCalls(rec.id), usage: manager.usage(rec.id) })),
+  });
 
-  /** The editor is focused, empty and not autocompleting (↓ may open the dock). */
-  function editorIdle(): boolean {
-    const tui = stripTui as { getFocusedComponent?: () => unknown } | undefined;
-    const f = tui?.getFocusedComponent?.() as { getText?: () => string; isShowingAutocomplete?: () => boolean } | null | undefined;
-    if (!f || typeof f.getText !== "function" || typeof f.isShowingAutocomplete !== "function") return false;
-    return f.getText() === "" && !f.isShowingAutocomplete();
+  async function openDock(ctx: ExtensionContext, initialId?: string): Promise<void> {
+    await openWorkTray(ctx, { tab: "subagents", ...(initialId !== undefined ? { initialId } : {}) });
   }
 
   function onTerminalInput(data: string): { consume?: boolean } | undefined {
     if (matchesKey(data, "ctrl+b")) return backgroundAll() ? { consume: true } : undefined;
-    if (matchesKey(data, Key.down) && !dockOpen && stripInstalled && uiCtx && editorIdle()) {
-      void openDock(uiCtx);
-      return { consume: true };
-    }
     return undefined;
   }
 
@@ -651,7 +631,7 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
 
   // ── Commands ──────────────────────────────────────────────────────────────
   pi.registerCommand("unipi:subagents", {
-    description: "Open the subagent panel (also ↓ from an empty input)",
+    description: "Open the Subagents tab of the work tray (also ↓ from an empty input)",
     handler: async (_args, ctx) => {
       if (getSharedSubagents().length === 0) {
         ctx.ui.notify("No subagents in this session yet.", "info");
@@ -664,7 +644,6 @@ export default function subagents(pi: ExtensionAPI, deps?: { manager?: SubagentM
 
   pi.on("session_start", (_event, ctx) => {
     uiCtx = ctx;
-    stripInstalled = false;
     fgInstalled = false;
     workingShown = false;
     manager.restore(ctx.cwd ?? process.cwd(), leadSessionId(ctx));

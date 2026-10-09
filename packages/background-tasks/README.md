@@ -20,15 +20,15 @@ continue to work. When a task finishes, the agent gets a notice.
 1. Install UniPi: `pi install npm:@pi-unipi/unipi`. You can also install this
    package alone: `pi install npm:@pi-unipi/background-tasks`.
 2. Ask the agent to run a long test suite in the background. The agent calls `bg_run`.
-3. Push `Shift+Down` to open the task dock.
+3. Push the down arrow in an empty input, or `Shift+Down`, to open the work tray. Background tasks is its first tab.
 
 ## Commands
 
 | Command or key | What it does |
 |---|---|
 | `/unipi:bg [--agent] [--name "Name"] <command>` | Starts a background task. It sends a notice, but does not start a turn. |
-| `/unipi:bg-tasks` | Opens the task manager. |
-| `Shift+Down` | Opens the task dock. |
+| `/unipi:bg-tasks` | Opens the work tray on the Background tasks tab. |
+| `Shift+Down` | Opens the work tray on the Background tasks tab. |
 | `Ctrl+Alt+C` | Clears the notices of finished tasks. |
 
 ## Agent tools

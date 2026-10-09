@@ -11,9 +11,10 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  createSpinnerLine,
   isChildProcess,
+  openWorkTray,
   registerWaitSource,
+  registerWorkTrayTab,
   setBashBackgroundAdopter,
   type BashBackgroundRequest,
   type BashDetachResult,
@@ -26,29 +27,11 @@ import {
 } from "./extension-api.js";
 import { registerToolsAndCommands } from "./tools.js";
 import { setSharedTaskRegistry, clearSharedTaskRegistry, notifyTaskRegistryChange } from "./registry-shared.js";
-import { formatDuration, taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
-
-const STATUS_INTERVAL_MS = 1000;
+import { taskDisplayName, type BgTask, type StartTaskOptions } from "./types.js";
+import { BackgroundTasksManager, type TaskManagerTheme } from "./task-manager.js";
 
 // Direct synchronous access for sibling extensions (footer process one-liner).
 export { getSharedTaskRegistry } from "./registry-shared.js";
-
-/** Live line above the editor: the agent is idle but a task will wake it. */
-function pendingWakeText(registry: BackgroundTaskRegistry, isIdle: () => boolean): string | undefined {
-  if (!isIdle()) return undefined;
-  const pendingWake = registry
-    .allTasks()
-    .filter((task) => task.status === "running" && task.triggerOnCompletion);
-  if (pendingWake.length === 0) return undefined;
-  const now = Date.now();
-  const first = pendingWake[0];
-  const detail =
-    first === undefined
-      ? ""
-      : ` · ${taskDisplayName(first)} ${formatDuration(now - first.startTime)}${pendingWake.length > 1 ? ` +${String(pendingWake.length - 1)} more` : ""}`;
-  const count = pendingWake.length === 1 ? "1 bg task" : `${String(pendingWake.length)} bg tasks`;
-  return `waiting on ${count}${detail} — agent resumes automatically when done`;
-}
 
 /** Arbiter wait-source reason (lead only): what a running wake-task is, or null. */
 export function pendingWakeReason(tasks: readonly { status: string; triggerOnCompletion: boolean; command?: string; name?: string; description?: string; id?: string }[]): string | null {
@@ -72,15 +55,11 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   const seenTaskIds = new Set<string>();
   let currentCtx: ExtensionContext | undefined;
-  let dockOpen = false;
-  let wakeLineInstalled = false;
-  let statusInterval: NodeJS.Timeout | undefined;
 
   const registry = new BackgroundTaskRegistry({
     maxOutputBytes: config.maxOutputBytes,
     maxRecentTasks: config.maxFinishedTasks,
     onChange: () => {
-      updateUi();
       notifyTaskRegistryChange();
     },
     sendCompletionNotification: (message, options) => {
@@ -123,78 +102,66 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
     return unseen.length;
   }
 
+  /** The work tray (UNI-126) re-renders off the registry change signal
+   *  and owns the strip, so the old status label + "waiting on N bg tasks"
+   *  wake line are gone: the footer's UNI-162 "waiting on …" line already
+   *  reads this module's wait source (registerWaitSource above). This only
+   *  remembers the context the tray's pane actions need. */
   function updateUi(ctx?: ExtensionContext): void {
-    if (registry.isShuttingDown()) return;
-    const target = ctx ?? currentCtx;
-    if (!target) return;
-    try {
-      if (!target.hasUI) return;
-      const allTasks = registry.allTasks();
-      const running = allTasks.filter((task) => task.status === "running");
-      const unseenFailed = allTasks.filter((task) => task.status === "failed" && !seenTaskIds.has(task.id));
-      const unseenStopped = allTasks.filter((task) => task.status === "killed" && !seenTaskIds.has(task.id));
-      const unseenDone = allTasks.filter((task) => task.status === "completed" && !seenTaskIds.has(task.id));
-      const unseenFinishedCount = unseenFailed.length + unseenStopped.length + unseenDone.length;
-
-      // Pending-wake indicator. When the agent is idle but a bg task that will
-      // wake it is still running, the UI otherwise looks finished and users
-      // assume the turn is over. Install a self-animating spinner line above
-      // the editor ONCE while any such task exists (the widget owns its 80 ms
-      // frame timer and re-reads the registry on every frame, so this 1 s
-      // poll only decides whether the widget exists — never its animation).
-      const isIdle = () => {
-        try {
-          return target.isIdle();
-        } catch {
-          return true;
-        }
-      };
-      const wantWakeLine = pendingWakeText(registry, isIdle) !== undefined;
-      if (wantWakeLine && !wakeLineInstalled) {
-        target.ui.setWidget(
-          "background-tasks",
-          createSpinnerLine({
-            text: () => pendingWakeText(registry, isIdle),
-            colorSpinner: (g: string) => `\x1b[38;5;82m${g}\x1b[0m`,
-          }),
-          { placement: "aboveEditor" },
-        );
-        wakeLineInstalled = true;
-        // The pane is not done: a running task will re-invoke the agent. The
-        // herdr `working` claim for this (UNI-162) is no longer made HERE —
-        // the core pending-work monitor (installPendingWorkMonitor) reads the
-        // "background-tasks" wait source (registerWaitSource above) and makes
-        // ONE claim covering bg wake + subagents + fusion handoffs together,
-        // instead of each owner claiming its own herdr key.
-      } else if (!wantWakeLine && wakeLineInstalled) {
-        target.ui.setWidget("background-tasks", undefined);
-        wakeLineInstalled = false;
-      }
-      if (running.length === 0 && unseenFinishedCount === 0) {
-        target.ui.setStatus("background-tasks", undefined);
-        return;
-      }
-
-      const parts: string[] = [];
-      if (running.length > 0) parts.push(`${String(running.length)} running`);
-      if (unseenFailed.length > 0) parts.push(`${String(unseenFailed.length)} failed`);
-      if (unseenStopped.length > 0) parts.push(`${String(unseenStopped.length)} stopped`);
-      if (unseenDone.length > 0) parts.push(`${String(unseenDone.length)} done`);
-      const entryHint = dockOpen ? "focused" : `Shift↓${unseenFinishedCount > 0 ? " · Ctrl+Alt+C clear" : ""}`;
-      const label = ` bg ${[...parts, entryHint].join(" · ")} `;
-      target.ui.setStatus("background-tasks", label);
-    } catch (error) {
-      console.error(
-        `[background-tasks] UI update failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      currentCtx = undefined;
-    }
+    if (ctx) currentCtx = ctx;
   }
 
   async function startTask(ctx: ExtensionContext, command: string, opts: StartTaskOptions = {}): Promise<BgTask> {
     currentCtx = ctx;
     return registry.startTask(ctx, command, opts);
   }
+
+  function createPane(ctx: ExtensionContext | undefined, close: () => void, tui: { requestRender(): void }, theme: TaskManagerTheme, initialTaskId?: string): BackgroundTasksManager {
+    return new BackgroundTasksManager(tui, theme, () => close(), {
+      getTasks: () => registry.allTasks(),
+      stopTask: async (task) => {
+        await registry.stopTask(registry.resolveTask(task.id), "user");
+      },
+      stopAllRunning: async () => registry.stopAllRunning("user"),
+      rerunTask: async (task) => {
+        const target = ctx ?? currentCtx;
+        if (!target) throw new Error("No active session to rerun in.");
+        const rerunOptions: StartTaskOptions = {
+          name: taskDisplayName(task),
+          isAgent: task.isAgent,
+          notifyOnCompletion: true,
+          triggerOnCompletion: false,
+        };
+        if (task.description !== undefined) rerunOptions.description = task.description;
+        if (task.timeoutSeconds !== undefined) rerunOptions.timeoutSeconds = task.timeoutSeconds;
+        return startTask(target, task.command, rerunOptions);
+      },
+      showOutputPath: (task) => {
+        (ctx ?? currentCtx)?.ui.notify(`Output path for ${taskDisplayName(task)} (${task.id}):\n${task.outputPath}`, "info");
+      },
+      markSeen: (taskId: string) => {
+        seenTaskIds.add(taskId);
+      },
+      markFinishedSeen: (taskIds: string[]) => {
+        for (const taskId of taskIds) seenTaskIds.add(taskId);
+      },
+      isSeen: (taskId: string) => seenTaskIds.has(taskId),
+      ...(initialTaskId ? { initialTaskId } : {}),
+    });
+  }
+
+  // One bottom pane with the subagents (UNI-126): this is its first tab.
+  registerWorkTrayTab(pi, {
+    id: "bg",
+    label: "Background tasks",
+    shortLabel: "Bg tasks",
+    order: 0,
+    counts: () => {
+      const all = registry.allTasks();
+      return { total: all.length, running: all.filter((task) => task.status === "running").length };
+    },
+    createPane: ({ tui, theme, close, initialId }) => createPane(currentCtx, close, tui, theme, initialId),
+  });
 
   async function openTaskManager(ctx: ExtensionContext, initialTaskId?: string): Promise<void> {
     currentCtx = ctx;
@@ -205,67 +172,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
       );
       return;
     }
-    dockOpen = true;
-    updateUi(ctx);
-    try {
-      // Task manager overlay on our slot patterns — dynamic import keeps the
-      // component tree lazy. FleetView-style: bottom-center anchored overlay.
-      const { BackgroundTasksManager } = await import("./task-manager.js");
-      await ctx.ui.custom<"closed">(
-        (tui, theme, _keybindings, done) =>
-          new BackgroundTasksManager(tui, theme, done, {
-            getTasks: () => registry.allTasks(),
-            stopTask: async (task) => {
-              await registry.stopTask(registry.resolveTask(task.id), "user");
-              updateUi(ctx);
-            },
-            stopAllRunning: async () => {
-              const result = await registry.stopAllRunning("user");
-              updateUi(ctx);
-              return result;
-            },
-            rerunTask: async (task) => {
-              const rerunOptions: StartTaskOptions = {
-                name: taskDisplayName(task),
-                isAgent: task.isAgent,
-                notifyOnCompletion: true,
-                triggerOnCompletion: false,
-              };
-              if (task.description !== undefined) rerunOptions.description = task.description;
-              if (task.timeoutSeconds !== undefined) rerunOptions.timeoutSeconds = task.timeoutSeconds;
-              const rerun = await startTask(ctx, task.command, rerunOptions);
-              updateUi(ctx);
-              return rerun;
-            },
-            showOutputPath: (task) => {
-              ctx.ui.notify(`Output path for ${taskDisplayName(task)} (${task.id}):\n${task.outputPath}`, "info");
-            },
-            markSeen: (taskId: string) => {
-              seenTaskIds.add(taskId);
-              updateUi(ctx);
-            },
-            markFinishedSeen: (taskIds: string[]) => {
-              for (const taskId of taskIds) seenTaskIds.add(taskId);
-              updateUi(ctx);
-            },
-            isSeen: (taskId: string) => seenTaskIds.has(taskId),
-            ...(initialTaskId ? { initialTaskId } : {}),
-          }),
-        {
-          overlay: true,
-          overlayOptions: {
-            anchor: "bottom-center",
-            width: "96%",
-            minWidth: 64,
-            maxHeight: "60%",
-            margin: { bottom: 1, left: 1, right: 1 },
-          } as never,
-        },
-      );
-    } finally {
-      dockOpen = false;
-      updateUi(ctx);
-    }
+    await openWorkTray(ctx, { tab: "bg", ...(initialTaskId ? { initialId: initialTaskId } : {}) });
   }
 
   registerToolsAndCommands({
@@ -307,28 +214,18 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     registry.setShuttingDown(false);
-    wakeLineInstalled = false; // pi clears extension widgets on reload/new session
     setSharedTaskRegistry(registry);
     currentCtx = ctx;
     await registry.ensureRuntimeDir(ctx);
     setBashBackgroundAdopter(bashBackgroundAdopter);
     updateUi(ctx);
-    if (statusInterval) clearInterval(statusInterval);
-    statusInterval = setInterval(() => {
-      updateUi();
-    }, STATUS_INTERVAL_MS);
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
     registry.setShuttingDown(true);
-    wakeLineInstalled = false;
     clearSharedTaskRegistry();
     setBashBackgroundAdopter(null);
     currentCtx = undefined;
-    if (statusInterval) {
-      clearInterval(statusInterval);
-      statusInterval = undefined;
-    }
     try {
       const running = registry.allTasks().filter((task) => task.status === "running");
       if (running.length === 0) return;

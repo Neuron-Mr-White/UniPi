@@ -253,6 +253,12 @@ export class BackgroundTasksManager implements Component {
     clearInterval(this.refreshTimer);
   }
 
+  /** Work tray (UNI-126): the detail view keeps ← (back to the list); the
+   *  list leaves ←/→ to the tray's tab switching. */
+  capturesArrows(): boolean {
+    return this.mode === 'detail';
+  }
+
   invalidate(): void {
     this.tui.requestRender();
   }
@@ -323,7 +329,8 @@ export class BackgroundTasksManager implements Component {
       this.tui.requestRender();
       return;
     }
-    if (matchesKey(data, 'return') || matchesKey(data, 'right')) {
+    // Enter only: → belongs to the work tray's tab switching (UNI-126).
+    if (matchesKey(data, 'return')) {
       const task = tasks[this.selectedIndex];
       if (!task) return;
       this.openDetail(task.id);

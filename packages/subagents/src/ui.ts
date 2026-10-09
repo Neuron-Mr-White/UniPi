@@ -1,9 +1,10 @@
 /**
  * @pi-unipi/subagents — TUI: strip, dock (list + transcript view), live tail.
  *
- * Devin layout, UniPi styling:
- *   strip (below editor)  `◆ 2 subagents (1 running) · ↓ select`
- *   dock (replaces editor) `── Subagents ──` rows `❭ DONE Explore title ····· 7s · 1 tool · model`
+ * Devin layout, UniPi styling. The strip + ↓ + tab strip are the shared
+ * work tray's (core/src/work/tray.ts, UNI-126); this module supplies:
+ *   preview (under the strip) one stat line per running agent
+ *   dock (Subagents tab)  rows `❭ DONE Explore title ····· 7s · 1 tool · model`
  *                          keys `↑↓ navigate · ↵ view · f foreground · x cancel · esc close`
  *   view                  `── ◔ Explore › title ── 2m49s · 8 tools ──`, model line, task, live steps
  */
@@ -85,61 +86,32 @@ export function statLine(
   return `${profileLabel(rec.profile)} · ${rec.model} · ${elapsed(durationOf(rec, now))} · ${plural(toolCalls, "tool call")}${usageTail(usage)}`;
 }
 
-/** `◆ 2 subagents (1 running) · ↓ select` — undefined when there are none. */
-export function stripText(records: readonly SubagentRecord[], theme: ThemeLike): string | undefined {
-  if (records.length === 0) return undefined;
-  const running = records.filter((r) => r.status === "running").length;
-  const count = plural(records.length, "subagent");
-  const run = running > 0 ? ` ${theme.fg("accent", `(${String(running)} running)`)}` : "";
-  return `${theme.fg(running > 0 ? "accent" : "muted", "◆")} ${theme.fg("muted", count)}${run}${theme.fg("dim", " · ↓ select")}`;
-}
-
 function spinFrame(): number {
   return Date.now();
 }
 
-/** Live stats accessor for the strip's per-agent lines. */
+/** Live stats accessor for the per-agent preview lines. */
 export interface AgentStats {
   toolCalls: number;
   usage?: SidekickUsage;
 }
 
-/** Persistent strip under the editor: `◆ 2 subagents (1 running) · ↓ select`
- *  plus one stat line per running agent, ticking once a second. */
-export class SubagentStrip implements Component {
-  private readonly timer: ReturnType<typeof setInterval>;
-
-  constructor(
-    tui: TUI,
-    private readonly theme: ThemeLike,
-    private readonly getRecords: () => readonly SubagentRecord[],
-    private readonly stats: (rec: SubagentRecord) => AgentStats,
-  ) {
-    this.timer = setInterval(() => {
-      if (this.getRecords().some((r) => r.status === "running")) tui.requestRender();
-    }, 1000);
-    this.timer.unref?.();
+/** Work-tray preview under the strip (was SubagentStrip's body): one stat
+ *  line per running agent, at most 3, then `… +N more`. */
+export function runningPreview(
+  records: readonly SubagentRecord[],
+  width: number,
+  theme: ThemeLike,
+  stats: (rec: SubagentRecord) => AgentStats,
+): string[] {
+  const running = records.filter((r) => r.status === "running");
+  const lines: string[] = [];
+  for (const rec of running.slice(0, 3)) {
+    const s = stats(rec);
+    lines.push(truncateToWidth(`  ${spinner(theme, undefined)} ${theme.fg("dim", statLine(rec, s.toolCalls, s.usage))}`, width));
   }
-
-  invalidate(): void {}
-
-  dispose(): void {
-    clearInterval(this.timer);
-  }
-
-  render(width: number): string[] {
-    const text = stripText(this.getRecords(), this.theme);
-    if (text === undefined) return [];
-    const t = this.theme;
-    const lines = [truncateToWidth(text, width)];
-    const running = this.getRecords().filter((r) => r.status === "running");
-    for (const rec of running.slice(0, 3)) {
-      const s = this.stats(rec);
-      lines.push(truncateToWidth(`  ${spinner(t, undefined)} ${t.fg("dim", statLine(rec, s.toolCalls, s.usage))}`, width));
-    }
-    if (running.length > 3) lines.push(truncateToWidth(`  ${t.fg("dim", `… +${String(running.length - 3)} more`)}`, width));
-    return lines;
-  }
+  if (running.length > 3) lines.push(truncateToWidth(`  ${theme.fg("dim", `… +${String(running.length - 3)} more`)}`, width));
+  return lines;
 }
 
 // ── transcript rendering ────────────────────────────────────────────────────
@@ -203,9 +175,10 @@ export interface DockActions {
   cancel: (id: string) => string | undefined;
 }
 
-const LIST_HINT = "↑↓ navigate · ↵ view · f foreground · x cancel · esc close";
-const VIEW_HINT = "↑↓ scroll · g/G top/end · o output · f foreground · x cancel · esc back";
+const LIST_HINT = "↑↓ navigate · ↵ view · f foreground · x cancel · ←→ tabs · esc close";
+const VIEW_HINT = "↑↓ scroll · g/G top/end · o output · f foreground · x cancel · ←/esc back";
 const MAX_LIST_ROWS = 10;
+const MIN_TITLE = 24;
 
 function rule(theme: ThemeLike, left: string, right: string, width: number): string {
   const l = `── ${left} `;
@@ -214,7 +187,7 @@ function rule(theme: ThemeLike, left: string, right: string, width: number): str
   return truncateToWidth(`${theme.fg("borderMuted", "── ")}${left} ${theme.fg("borderMuted", "─".repeat(fill))}${r ? theme.fg("dim", r) : ""}`, width);
 }
 
-/** Inline dock (replaces the editor like /unipi:btw). */
+/** The work tray's Subagents tab (replaces the editor like /unipi:btw). */
 export class SubagentDock implements Component {
   private selected = 0;
   private listTop = 0;
@@ -261,6 +234,12 @@ export class SubagentDock implements Component {
     this.unsubscribe();
   }
 
+  /** Work tray: the transcript view keeps ←/→; the list leaves them to the
+   *  tray's tab switching. */
+  capturesArrows(): boolean {
+    return this.viewId !== undefined;
+  }
+
   render(width: number): string[] {
     const w = Math.max(30, width);
     return this.viewId !== undefined ? this.renderView(w) : this.renderList(w);
@@ -269,8 +248,8 @@ export class SubagentDock implements Component {
   private renderList(w: number): string[] {
     const t = this.theme;
     const recs = this.ordered();
-    const running = recs.filter((r) => r.status === "running").length;
-    const out = [rule(t, t.fg("accent", t.bold("Subagents")), `${String(recs.length)}${running > 0 ? ` · ${String(running)} running` : ""}`, w)];
+    // The tray's tab strip above already shows "Subagents (N · k running)".
+    const out: string[] = [];
     if (recs.length === 0) out.push(t.fg("dim", "  No subagents in this session yet."));
     this.selected = Math.max(0, Math.min(this.selected, recs.length - 1));
     if (this.selected < this.listTop) this.listTop = this.selected;
@@ -289,7 +268,13 @@ export class SubagentDock implements Component {
       const tok = usageTail(this.actions.usage?.(rec));
       if (tok) tags.push(tok.slice(3));
       const live = rec.status === "running" ? `${spinner(t, undefined, frame)} ` : "";
-      const right = `${live}${t.fg("dim", tags.join(" · "))}`;
+      // Narrow panes: the title keeps ≥ MIN_TITLE columns; tags drop from
+      // the end (tokens, then model) before the title is squeezed.
+      const minLeft = Math.min(visibleWidth(left), visibleWidth(left) - visibleWidth(rec.title) + MIN_TITLE);
+      let shown = tags.length;
+      const rightOf = (n: number) => `${live}${t.fg("dim", tags.slice(0, n).join(" · "))}`;
+      while (shown > 2 && visibleWidth(rightOf(shown)) + minLeft + 4 > w) shown--;
+      const right = rightOf(shown);
       out.push(visibleWidth(right) + 16 < w ? leader(t, truncateToWidth(left, w - visibleWidth(right) - 4), right, w) : truncateToWidth(left, w));
     }
     const below = recs.length - (this.listTop + MAX_LIST_ROWS);
@@ -346,7 +331,7 @@ export class SubagentDock implements Component {
   handleInput(data: string): void {
     const rec = this.current();
     this.flash = undefined;
-    if (matchesKey(data, Key.escape) || data === "q") {
+    if (matchesKey(data, Key.escape) || data === "q" || (this.viewId !== undefined && matchesKey(data, Key.left))) {
       if (this.viewId !== undefined) {
         this.viewId = undefined;
         this.tui.requestRender();

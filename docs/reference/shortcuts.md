@@ -18,10 +18,10 @@ These keys work while the Pi input box has focus.
 | `Alt+Shift+H` | [core](../../packages/core/README.md) | Shows the previous hint. |
 | `Alt+S` | [input-shortcuts](../../packages/input-shortcuts/README.md) | Opens the chord overlay. See [Chord keys](#chord-keys). |
 | `Alt+I` | [input-shortcuts](../../packages/input-shortcuts/README.md) | Adds a tab character to the input. |
-| `Shift+Down` | [background-tasks](../../packages/background-tasks/README.md) | Opens the background task dock. |
+| `Shift+Down` | [background-tasks](../../packages/background-tasks/README.md) | Opens the work tray on the Background tasks tab. |
 | `Ctrl+Alt+C` | [background-tasks](../../packages/background-tasks/README.md) | Clears the notices of finished background tasks. |
 | `Ctrl+B` | [subagents](../../packages/subagents/README.md) | Moves the foreground subagents to the background. |
-| `Down` | [subagents](../../packages/subagents/README.md) | Opens the subagent panel. This works only when the input is empty and the session has subagents. |
+| `Down` | [core](../../packages/core/README.md) | Opens the work tray: one pane with a Background tasks tab and a Subagents tab. This works only when the input is empty and the session has background tasks or subagents. In the tray, `Left` and `Right` switch tabs and `Esc` closes it. |
 
 The background-tasks keys exist only when the `background-tasks` setting
 `enabled` is on.

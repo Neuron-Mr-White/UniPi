@@ -10,7 +10,8 @@ process.env.HOME = HOME;
 
 import { SubagentManager, recordStatusFor, getSharedSubagents } from "../manager.js";
 import { buildTranscript, itemsFromSessionFile, itemsFromEvents } from "../transcript.js";
-import { SubagentDock, stripText, renderItems, profileLabel, elapsed } from "../ui.js";
+import { SubagentDock, runningPreview, renderItems, profileLabel, elapsed } from "../ui.js";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { agentMarkdown, validateName, agentFile } from "../agents.js";
 import { loadProfiles } from "../profiles.js";
 import { cardOutcome } from "../index.js";
@@ -185,10 +186,16 @@ const rec = (over: Record<string, unknown> = {}) => ({
   background: false, startedAt: Date.now() - 7000, endedAt: Date.now(), toolCalls: 1, lastActivity: 0, sessionFile: "/nope", depth: 1, ...over,
 }) as never;
 
-test("strip: cleaned style, running count only while running, hidden when empty", () => {
-  assert.equal(stripText([], theme), undefined);
-  assert.equal(stripText([rec(), rec({ status: "running" })], theme), "◆ 2 subagents (1 running) · ↓ select");
-  assert.equal(stripText([rec()], theme), "◆ 1 subagent · ↓ select");
+test("tray preview: one stat line per running agent (max 3, then +N more), nothing when idle", () => {
+  const stats = () => ({ toolCalls: 2 });
+  assert.deepEqual(runningPreview([rec()], 120, theme, stats), []);
+  const one = runningPreview([rec(), rec({ status: "running" })], 120, theme, stats);
+  assert.equal(one.length, 1);
+  assert.match(one[0]!, /Explore · ds\/deepseek-flash · \d+s · 2 tool calls$/);
+  const many = runningPreview(Array.from({ length: 5 }, () => rec({ status: "running" })), 40, theme, stats);
+  assert.equal(many.length, 4);
+  assert.equal(many[3], "  … +2 more");
+  for (const l of many) assert.ok(visibleWidth(l) <= 40);
 });
 
 test("foreground card: one head line, glyph settles in place (spinner → ✓), no tinted box", () => {
@@ -264,13 +271,18 @@ test("dock: list → view → back; f foregrounds + closes; x cancels and flashe
   const calls: string[] = [];
   const { d, isClosed } = dock([rec({ id: "old", startedAt: 1 }), rec({ id: "new", status: "running", title: "Newest" })], calls);
   const list = d.render(100).join("\n");
-  assert.match(list, /Subagents/);
+  assert.doesNotMatch(list, /── Subagents/, "the tray's tab strip carries the title + counts now");
   assert.match(list, /❭ .*Newest/, "newest first + selected (running)");
-  assert.match(list, /↑↓ navigate · ↵ view · f foreground · x cancel · esc close/);
+  assert.match(list, /↑↓ navigate · ↵ view · f foreground · x cancel · ←→ tabs · esc close/);
+  assert.equal(d.capturesArrows(), false, "list leaves ←/→ to the tray");
   d.handleInput("\r");
   const view = d.render(100).join("\n");
   assert.match(view, /Model: ds\/deepseek-flash/);
   assert.match(view, /the task/);
+  assert.equal(d.capturesArrows(), true, "transcript view keeps ←/→");
+  d.handleInput("\x1b[D");
+  assert.match(d.render(100).join("\n"), /navigate/, "← from view → list");
+  d.handleInput("\r");
   d.handleInput("\x1b");
   assert.match(d.render(100).join("\n"), /navigate/, "esc from view → list");
   d.handleInput("j");
@@ -281,6 +293,20 @@ test("dock: list → view → back; f foregrounds + closes; x cancels and flashe
   d.handleInput("f");
   assert.deepEqual(calls, ["x:old", "f:new"]);
   assert.equal(isClosed(), true);
+  d.dispose();
+});
+
+test("dock at 80 cols: long titles keep ≥24 columns, tags drop from the end first, never wider than the pane", () => {
+  const long = "Beta sleeper with a really long title that keeps going and going to test truncation";
+  const { d } = dock([rec({ id: "a", title: long, status: "running", background: true }), rec({ id: "b", title: "Short" })], []);
+  for (const w of [50, 80, 120]) {
+    const lines = d.render(w);
+    for (const l of lines) assert.ok(visibleWidth(l) <= w, `w=${w}: ${l}`);
+  }
+  const row80 = d.render(80).find((l) => l.includes("Beta"))!;
+  assert.match(row80, /Beta sleeper with a real/, "title keeps its first 24 columns");
+  assert.match(row80, /\d+s · 1 tool/, "elapsed + tools stay");
+  assert.match(d.render(200).find((l) => l.includes("Beta"))!, /ds\/deepseek-flash/, "wide: model shown");
   d.dispose();
 });
 

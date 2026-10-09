@@ -31,7 +31,7 @@ The package registers these commands only when its `enabled` setting is on.
 | Command | Arguments | What it does |
 |---|---|---|
 | `/unipi:bg` | `[--agent] [--name "Task name"] <command>` | Starts a shell command as a tracked background task. |
-| `/unipi:bg-tasks` | `[task-id]` | Opens the background task manager. |
+| `/unipi:bg-tasks` | `[task-id]` | Opens the work tray on the Background tasks tab. |
 
 Use `--agent` only when the command starts an LLM agent process.
 
@@ -172,7 +172,7 @@ Run `/reload` after `/unipi:notify-event` to apply the change.
 
 | Command | Arguments | What it does |
 |---|---|---|
-| `/unipi:subagents` | | Opens the subagent panel. |
+| `/unipi:subagents` | | Opens the work tray on the Subagents tab. |
 | `/unipi:agents` | | Lists, creates, edits, copies and deletes custom subagent profiles. |
 
 ## [updater](../../packages/updater/README.md)
